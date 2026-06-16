@@ -31,7 +31,9 @@ defines a small, surgical extension to #2 and only *references* #3.
   and (b) add *capability-aware* asking (route per the profile). The wording **discipline** lives
   here, not in #1. **Local-first, then promote:** validate the additions locally in clavity, then
   promote them up to the global AGENTS.md "Working with Antigravity" (the shared upstream) — §5.
-  **DONE 2026-06-16:** promoted to `corelib/AGENTS.md` (commit `4f4b09a5`).
+  **Status:** local validation done; **global promotion NOT done** — an attempt to promote into the
+  `corelib` repo was reverted (wrong target: corelib is an unrelated project). The conventions live in
+  clavity only; pick a correct shared destination before promoting.
 - **#3 — When-gate (UNCHANGED): `~/.claude/hooks/agy-first-brainstorm.sh`.** The user's policy for
   when to consult agy automatically before presenting to the user. Referenced from #2; **not edited**.
 
@@ -152,10 +154,10 @@ out, **promote the capability-aware additions up to the global AGENTS.md "Workin
 (the canonical upstream all projects share). Test local → promote global; don't edit the global until
 the local version is validated.
 
-> **DONE 2026-06-16.** Validated locally (acceptance suite 10/10 against agy 1.0.8), then promoted to
-> the canonical `~/Development/Node/corelib/AGENTS.md` "Working with Antigravity" as a transport-agnostic
-> "Driving conventions" subsection that cross-references clavity's `agy-capabilities.md` / `agy-test-suite.md`
-> rather than duplicating them (corelib commit `4f4b09a5`).
+> **Status 2026-06-16:** local extension validated (acceptance suite 10/10 against agy 1.0.8). Global
+> promotion is **NOT done** — an attempt to add this to the `corelib` repo's AGENTS.md was **reverted**,
+> because corelib is an unrelated project (wrong target). The capability-aware conventions live in
+> clavity only for now; choose the correct shared destination before promoting.
 
 ## 6. #3 — The when-gate (reference only)
 

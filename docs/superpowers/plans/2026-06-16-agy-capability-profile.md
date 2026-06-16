@@ -1,8 +1,9 @@
 # agy Capability Profile — Implementation Plan
 
-> **Status: ✅ EXECUTED 2026-06-16** — all tasks complete. #1 profile built/verified/agy-reviewed; #2
-> wording protocol extended + agy-verified; acceptance suite **10/10** live against agy 1.0.8; Task 9
-> promotion landed in `corelib/AGENTS.md` (`4f4b09a5`). Committed on clavity `main`.
+> **Status 2026-06-16:** #1 profile + #2 wording protocol + acceptance suite (**10/10** live against
+> agy 1.0.8) complete on clavity `main`. **Task 9 (global promotion) NOT done** — a corelib attempt was
+> reverted as wrong-target (corelib is unrelated); the conventions live in clavity only, pending a
+> correct shared destination.
 >
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended)
 > or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`)
@@ -320,23 +321,24 @@ git add -A && git commit -m "docs(agy-protocol): fixes from live capability-awar
 
 ---
 
-## Task 9: Promote #2 to the global AGENTS.md (after local validation) — ✅ DONE 2026-06-16
+## Task 9: Promote #2 to the global AGENTS.md (after local validation) — ⚠️ NOT DONE (attempt reverted)
 
 **Files:** Modify: the global AGENTS.md "Working with Antigravity" wording guidance (the shared
 upstream). Resolve its exact path at this task (the in-repo instance derives from
 `~/.claude/skills/token-discipline-installer/templates/AGENTS-antigravity-protocol.md`).
 
-- [x] **Step 1: Locate the canonical global wording doc.** → `~/Development/Node/corelib/AGENTS.md`
-  (the "corelib AGENTS.md" the `agy-first-brainstorm.sh` hook cites; MarketMonitor/fincloud are
-  per-project instances). Confirmed with the user before editing.
+- [ ] **Step 1: Locate the canonical global wording doc.** A 2026-06-16 attempt targeted
+  `~/Development/Node/corelib/AGENTS.md` (it hosts the "Working with Antigravity" brief), but **that was
+  the wrong target** — corelib is an unrelated project; clavity content does not belong in its history.
+  The commit was reverted and force-removed from corelib's remote (no trace). **Correct destination is
+  still TBD** — do not assume corelib.
+- [ ] **Step 2: Port the capability-aware additions** into the chosen shared doc, generalized
+  (transport-agnostic; cross-reference clavity's `agy-capabilities.md` / `agy-test-suite.md`).
+- [ ] **Step 3: Commit** in whichever repo legitimately owns the shared brief.
 
-- [x] **Step 2: Port the capability-aware additions** — added a transport-agnostic "Driving
-  conventions — route by capability, shape by mode" subsection (route + which-model, the four per-mode
-  request templates, the top-4 "what Claude gets wrong", verified agy internals), **cross-referencing**
-  clavity's `agy-capabilities.md` / `agy-test-suite.md` rather than duplicating them.
-
-- [x] **Step 3: Committed** in corelib: `4f4b09a5` (`docs(agents): add capability-aware driving
-  conventions for Antigravity`); corelib's `format-lint` hook passed.
+> The capability-aware conventions currently live **only in clavity** (`agy-remote-control-protocol.md`
+> "Driving conventions"). That is a complete, working state; promotion is optional and on hold pending
+> the right destination.
 
 ---
 
