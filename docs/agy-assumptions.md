@@ -9,6 +9,11 @@ agy-facing), read this, re-verify the relevant assumption with the listed check,
 listed place. **Most breakages are fixable via an `AGY_*` env override or the responder skill — not
 Rust code.**
 
+> **Capability/routing profile:** for *what agy can do* and how to route work to it (strengths,
+> weaknesses, models, operational reach), see [`agy-capabilities.md`](agy-capabilities.md). It
+> cross-references the assumptions here; e.g. its Axis D resolves the workspace-write question in #8,
+> and its §G flags that agy v1.0.8's skills dynamic-reload may update assumption #6 below.
+
 ## Verified against (update this when you re-verify)
 
 - **Antigravity CLI:** 1.0.8 · model Gemini 3.1 Pro (High) · consumer OAuth via OS keyring
