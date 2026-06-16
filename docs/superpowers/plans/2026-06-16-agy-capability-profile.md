@@ -1,5 +1,9 @@
 # agy Capability Profile — Implementation Plan
 
+> **Status: ✅ EXECUTED 2026-06-16** — all tasks complete. #1 profile built/verified/agy-reviewed; #2
+> wording protocol extended + agy-verified; acceptance suite **10/10** live against agy 1.0.8; Task 9
+> promotion landed in `corelib/AGENTS.md` (`4f4b09a5`). Committed on clavity `main`.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended)
 > or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`)
 > syntax for tracking.
@@ -316,26 +320,23 @@ git add -A && git commit -m "docs(agy-protocol): fixes from live capability-awar
 
 ---
 
-## Task 9: Promote #2 to the global AGENTS.md (after local validation)
+## Task 9: Promote #2 to the global AGENTS.md (after local validation) — ✅ DONE 2026-06-16
 
 **Files:** Modify: the global AGENTS.md "Working with Antigravity" wording guidance (the shared
 upstream). Resolve its exact path at this task (the in-repo instance derives from
 `~/.claude/skills/token-discipline-installer/templates/AGENTS-antigravity-protocol.md`).
 
-- [ ] **Step 1: Locate the canonical global wording doc.**
+- [x] **Step 1: Locate the canonical global wording doc.** → `~/Development/Node/corelib/AGENTS.md`
+  (the "corelib AGENTS.md" the `agy-first-brainstorm.sh` hook cites; MarketMonitor/fincloud are
+  per-project instances). Confirmed with the user before editing.
 
-Run: `grep -rl "Working with Antigravity" ~/.claude ~/Development 2>/dev/null | grep -iE 'AGENTS' | head`
-Confirm with the user which file is the canonical upstream before editing.
+- [x] **Step 2: Port the capability-aware additions** — added a transport-agnostic "Driving
+  conventions — route by capability, shape by mode" subsection (route + which-model, the four per-mode
+  request templates, the top-4 "what Claude gets wrong", verified agy internals), **cross-referencing**
+  clavity's `agy-capabilities.md` / `agy-test-suite.md` rather than duplicating them.
 
-- [ ] **Step 2: Port the capability-aware additions** (the routing pointer + model-choice guidance)
-  into the global doc, generalized (link to a project's `agy-capabilities.md` rather than clavity's
-  path). Keep it provider-neutral.
-
-- [ ] **Step 3: Commit (in whichever repo owns the global doc).**
-
-```bash
-git -C <repo-of-global-AGENTS> add <path> && git -C <repo-of-global-AGENTS> commit -m "docs: capability-aware routing in Working-with-Antigravity (promoted from clavity)"
-```
+- [x] **Step 3: Committed** in corelib: `4f4b09a5` (`docs(agents): add capability-aware driving
+  conventions for Antigravity`); corelib's `format-lint` hook passed.
 
 ---
 
