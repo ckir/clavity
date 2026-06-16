@@ -1,10 +1,6 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-.pytest_cache/
-.ruff_cache/
+# Rust
+/target
+**/*.rs.bk
 
-# claudavity/agy bridge runtime artifacts (if a target repo is worked in-place)
+# agy/claudavity runtime artifacts (if a target repo is worked in-place)
 .agent/

@@ -2,8 +2,8 @@
 
 The procedure Claude follows to drive the live, signed-in `agy` session in the same folder.
 Transport is the **agentmemory signal bus** (Claude's own `memory_signal_send` / `memory_signal_read`
-MCP tools) for payloads; the **doorbell** (`agy_tmux.py`) wakes agy. Pure conventions live in
-`agy_bus.py`; psmux primitives in `agy_tmux.py`. See the design spec at
+MCP tools) for payloads; the **doorbell** (`clavity ring`) wakes agy. The `clavity` binary provides
+the psmux/state plumbing and the bus id convention (`clavity req-id`). See the design spec at
 `docs/superpowers/specs/2026-06-16-agy-remote-control-design.md`.
 
 > **Correctness rests on the bus, not the TUI.** State detection (idle/busy) is best-effort and
@@ -11,31 +11,30 @@ MCP tools) for payloads; the **doorbell** (`agy_tmux.py`) wakes agy. Pure conven
 > safely queued and processed as the next turn.
 
 ## Preconditions (bootstrap — one human step per session)
-1. A human has started the session, signed in, in the target folder. Easiest is the launcher
-   (on PATH at `C:\!PORTABLES\!BIN\`, source in this repo): **`start-claudavity.ps1 <folder>`** —
-   it starts agy in the `claude_agy` psmux session (skip-permissions) *and* Claude Code in the same
-   folder. Manual equivalent: `C:\!PORTABLES\!BIN\tmux.exe new-session -s claude_agy -c <folder>`
-   then `agy --dangerously-skip-permissions` (or `agy --continue`).
-2. Verify reachability: `uv run python agy_tmux.py state` → expect `idle`/`busy` (not `dead`).
-   If `dead`, ask the human to bootstrap; do not proceed.
+1. A human has started the session, signed in, in the target folder. Easiest is **`clavity start
+   <folder>`** — it starts agy in the `claude_agy` psmux session (skip-permissions) *and* Claude
+   Code in the same folder. Manual equivalent: `<psmux> new-session -s claude_agy -c <folder>` then
+   `agy --dangerously-skip-permissions` (or `agy --continue`).
+2. Verify reachability: `clavity state` → expect `idle`/`busy` (not `dead`). If `dead`, ask the
+   human to bootstrap; do not proceed.
 
 ## Send a request and await the reply
-1. **Mint id + envelope** (`agy_bus`): `req_id = new_req_id()`;
-   `content = make_request(req_id, "<self-contained instruction for agy>")`.
+1. **Mint id + envelope:** `clavity req-id "<self-contained instruction for agy>"` prints the full
+   `[req_id=<id>] <instruction>` content (or `clavity req-id` for a bare id).
 2. **Put it on the bus:** call `memory_signal_send(from="claude", to="agy", type="request",
-   content=content)`. **Record the returned signal `id`** (`request_signal_id`) — it is the robust
-   correlation key.
-3. **Ring the doorbell:** `uv run python agy_tmux.py ring` (idle-gated; sends the canonical
-   doorbell). The doorbell carries no payload — agy reads the request from its inbox.
+   content=<envelope>)`. **Record the returned signal `id`** (`request_signal_id`) — it is the
+   robust correlation key.
+3. **Ring the doorbell:** `clavity ring` (idle-gated; sends the canonical doorbell). The doorbell
+   carries no payload — agy reads the request from its inbox.
 4. **Await the response** (bounded loop, e.g. ≤ `timeout` seconds, poll every ~2–3 s):
    - `memory_signal_read(agentId="claude", unreadOnly="true")` — **only your own inbox** (reading
      another agent's inbox consumes its unread state).
-   - Find the match with `agy_bus.match_response(signals, req_id, request_signal_id)` — matches on
-     `replyTo == request_signal_id` (robust) or the `req_id` echoed in `content` (fallback).
-   - On match → return it. On no match → liveness-check `agy_tmux.py state`; if `dead`, abort with
+   - A signal matches when `replyTo == request_signal_id` (robust) or the `req_id` appears in its
+     `content` (fallback — agy may echo it bare or tagged).
+   - On match → return it. On no match → liveness-check `clavity state`; if `dead`, abort with
      "agy session down — re-bootstrap"; else keep waiting until the deadline.
-5. **On timeout:** capture context with `uv run python agy_tmux.py capture` (what agy was doing) and
-   report a typed timeout. Do not silently assume failure.
+5. **On timeout:** capture context with `clavity capture` (what agy was doing) and report a typed
+   timeout. Do not silently assume failure.
 
 ## Cancel an in-flight task
 - Send `memory_signal_send(from="claude", to="agy", type="alert", content="[req_id=<id>] cancel")`

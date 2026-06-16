@@ -13,11 +13,14 @@ It combines two off-the-shelf channels:
   (`memory_signal_send` / `memory_signal_read`), addressed `claude` ↔ `agy`.
 
 `agy` sleeps at its prompt for free between doorbells. The only manual step is a one-time-per-session
-bootstrap: start `agy` inside a named `psmux` session (the included launcher does this).
+bootstrap, which `clavity start` does for you.
+
+clavity is a **single self-contained Rust binary** — no runtime, no interpreter, no scripts. Drop
+`clavity.exe` on your `PATH` next to `tmux.exe`/`psmux.exe`.
 
 > **Not** a re-spawning bridge. If you want the isolated, one-shot "delegate a task to a throwaway
-> headless sub-agent" pattern, that's a different tool. clavity is about driving the *real, running*
-> `agy` you already have open.
+> headless sub-agent" pattern, that's a different tool. clavity drives the *real, running* `agy` you
+> already have open.
 
 ---
 
@@ -32,7 +35,7 @@ bootstrap: start `agy` inside a named `psmux` session (the included launcher doe
          │ 1. memory_signal_send(to=agy, type=request, <payload>)     │
          │ ───────────────────────────────────────────►  agentmemory  │
          │                                                signal bus    │
-         │ 2. psmux send-keys -t claude_agy "<doorbell>" Enter         │
+         │ 2. clavity ring   (psmux send-keys "<doorbell>")            │
          │ ───────────────────────────────────────────────────────────►  (wakes agy)
          │                                                              │ 3. read own inbox
          │                                                              │ 4. git stash checkpoint
@@ -41,30 +44,47 @@ bootstrap: start `agy` inside a named `psmux` session (the included launcher doe
          ▼                                                              ▼ 7. return to idle (free)
 ```
 
-The whole design — including the empirical spikes it rests on (bus round-trip, `send-keys` wake,
-idle/busy detection, doorbell-while-busy queueing, the pwsh shell reality) — is written up in
+The full design — including the empirical spikes it rests on (bus round-trip, `send-keys` wake,
+idle/busy detection, doorbell-while-busy queueing, the pwsh shell reality) — is in
 [`docs/superpowers/specs/2026-06-16-agy-remote-control-design.md`](docs/superpowers/specs/2026-06-16-agy-remote-control-design.md).
 The Claude-side procedure is in
 [`docs/agy-remote-control-protocol.md`](docs/agy-remote-control-protocol.md).
 
-## Components
+## The `clavity` binary
 
-| File | Role |
+| Subcommand | Role |
 | --- | --- |
-| `agy_tmux.py` | **C3** — psmux primitives: `has_session`, `capture`, footer/activity state detection (`idle`/`busy`/`dead`), `send_keys`, idle-gated `ring_doorbell`; plus a `state`/`capture`/`wait-idle`/`ring` CLI. |
-| `agy_bus.py` | **C5** — pure agentmemory-bus conventions: request-id minting, the `[req_id=...]` envelope, response correlation (`replyTo`-preferred, content-echo fallback). |
-| `agy_skills/claudavity-responder/SKILL.md` | **C2** — the `agy`-side responder skill: read inbox → non-intrusive `git stash` checkpoint → act → reply → return to idle. Install into agy's skills dir. |
-| `start-claudavity.ps1` | One-shot launcher: starts `agy` in a `psmux` session **and** Claude Code in the same folder. |
-| `docs/` | Protocol runbook + full design spec. |
+| `clavity state` | Print pane state: `idle` / `busy` / `dead`. |
+| `clavity capture` | Print the visible pane content (for observing agy live). |
+| `clavity wait-idle [--timeout N]` | Block until agy is idle (exit 0) or timeout (exit 1). |
+| `clavity ring [--no-idle-gate] [--doorbell S]` | Idle-gate, then send the doorbell to wake agy. |
+| `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
+| `clavity start [FOLDER] [-- claude flags…]` | Launch agy (in a psmux session) **and** Claude Code in the same folder. |
+
+Internally: `src/tmux.rs` (**C3** — psmux primitives + footer/activity state detection) and
+`src/bus.rs` (**C5** — the bus id/envelope conventions). The `agy`-side responder skill is
+`agy_skills/claudavity-responder/SKILL.md` (**C2/C4** — read inbox → non-intrusive `git stash`
+checkpoint → act → reply → return to idle).
+
+stdout carries machine-readable results; diagnostics go to stderr via `tracing`
+(`RUST_LOG=clavity=debug` for verbose).
 
 ## Prerequisites
 
-- **Windows** (this is psmux/PowerShell-oriented; `agy`'s shell tool runs **pwsh**).
+- **Windows** (psmux/PowerShell-oriented; `agy`'s shell tool runs **pwsh**).
 - **[Claude Code](https://claude.com/claude-code)** with the **agentmemory** MCP server configured
   (provides `memory_signal_send` / `memory_signal_read`).
 - **`agy`** (Antigravity CLI), signed in, also with agentmemory available.
 - **[psmux](https://github.com/psmux/psmux)** (ships as `psmux`/`pmux`/`tmux`).
-- **[uv](https://docs.astral.sh/uv/)** for running the tests.
+- **Rust** (`cargo`) to build.
+
+## Build & install
+
+```bash
+cargo build --release
+# put the binary on PATH, e.g. next to your psmux:
+cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"
+```
 
 ## Setup
 
@@ -78,15 +98,15 @@ The Claude-side procedure is in
 
 2. **Launch both agents in a folder** (run from your normal pwsh so `agy` is signed in):
    ```pwsh
-   start-claudavity.ps1 C:\path\to\project          # folder
-   start-claudavity.ps1 C:\path\to\project --resume # extra args forward to claude
+   clavity start C:\path\to\project                 # folder
+   clavity start C:\path\to\project --resume        # extra args forward to claude
    ```
    The first non-dash argument is the folder; everything else is forwarded to `claude`. agy's own
    flags come from `$env:AGY_START_ARGS` (default `--dangerously-skip-permissions`). Session name
    defaults to `claude_agy` (override via `$env:AGY_SESSION`); psmux path via `$env:AGY_TMUX_BIN`.
 
-3. From Claude, drive agy by following the protocol runbook: put a request on the bus, ring the
-   doorbell (`uv run python agy_tmux.py ring`), and await the reply. Watch agy live anytime:
+3. From Claude, drive agy via the protocol runbook: put a request on the bus, `clavity ring`, then
+   await the reply on the bus. Watch agy live anytime:
    ```pwsh
    tmux attach -t claude_agy   # detach with Ctrl-b d
    ```
@@ -94,8 +114,8 @@ The Claude-side procedure is in
 ## Tests
 
 ```bash
-uv run pytest -q          # pure-logic unit tests (state classifier, activity, bus conventions)
-uv run ruff check .
+cargo test          # pure-logic unit tests (state classifier, activity detection, bus conventions)
+cargo clippy --all-targets
 ```
 
 The unit tests pin the verified behavior; the end-to-end behavior (doorbell → checkpoint → reply)

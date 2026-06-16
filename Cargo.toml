@@ -1,0 +1,20 @@
+[package]
+name = "clavity"
+version = "0.1.0"
+edition = "2021"
+description = "A remote control for Antigravity (agy): Claude drives a live agy session in the same folder via a psmux doorbell + the agentmemory signal bus."
+license = "MIT"
+repository = "https://github.com/ckir/clavity"
+
+[[bin]]
+name = "clavity"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+strip = true
+lto = true
