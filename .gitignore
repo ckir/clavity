@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# claudavity/agy bridge runtime artifacts (if a target repo is worked in-place)
+.agent/
