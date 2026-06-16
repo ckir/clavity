@@ -38,11 +38,12 @@ Data flow: **research → #1 capability profile → cited by #2 (how to ask) →
 
 ## 3. #1 — The capability profile (`docs/agy-capabilities.md`)
 
-Framed as a **routing tool**, not a CLI manual. **agy is a *dynamic platform*, not a static model**
-(its own framing, [bus]): effective capability = *baseline reasoning + native tools + currently-loaded
-skills & MCP servers*. So the profile must capture **how to check what's loaded now** (not just a
-frozen list), and treat the loaded toolset as part of the capability surface. Sections are the axes
-that decide *what to hand agy*:
+Framed as a **routing tool**, not a CLI manual. **agy is a *dynamic, multi-model platform*, not a
+static model** (its own framing, [bus]): effective capability = *the active model + baseline
+orchestration + native tools + currently-loaded skills & MCP servers*. So the profile must capture
+**how to check what's active/loaded now** (selected model, skills, MCP — not just a frozen list) and
+treat that configuration as part of the capability surface. Sections are the axes that decide *what to
+hand agy — and on which model*:
 
 - **A. Strengths (route toward).** Classes of work agy does reliably — e.g. critical review &
   verification; generative/divergent design input; well-scoped code generation; `[bus]` strict
@@ -55,8 +56,14 @@ that decide *what to hand agy*:
   **worktree/gitignore-blind until it actively probes** (`list_dir`/`grep_search`) & wrong-folder
   reads; **open-ended discovery in large trees burns context fast** (tool-call response volume);
   backend-overload mid-turn aborts.
-- **C. Reasoning profile.** Underlying model **user-configurable** (currently Gemini 3.1 Pro High), a
-  **separate context window** from Claude's, depth, sequential/local bias.
+- **C. Reasoning profile & model selection (a primary lever).** agy is a **multi-model router across
+  providers**, not a single model — so "agy's capability" is really *agy's orchestration + native
+  tools + the **active model**'s capability*. The selected model + its reasoning-effort tier is the
+  **dominant capability dial**. Available in this install (`[local]`, the `/model` menu):
+  Gemini 3.5 Flash (Low/Medium/High), Gemini 3.1 Pro (Low / **High — current**), Claude Sonnet 4.6
+  (Thinking), Claude Opus 4.6 (Thinking), GPT-OSS 120B (Medium). The profile must give a **per-model
+  capability note** (what each is good/cheap/strong at) so a delegation can pick the right one. Also:
+  a **separate context window** from Claude's; sequential/local bias.
 - **D. Operational reach (what it can act on).** File writes — **`[conflict]`**: `[corpus]`/empirical
   (`agy-assumptions.md #8`) observed writes rejected outside cwd (artifact-path rule → shell fallback),
   but `[bus]` agy claims native tools (`write_to_file`, `replace_file_content`,
@@ -67,9 +74,14 @@ that decide *what to hand agy*:
 - **E. Control surface that changes capability.** Model selection (`--model` / `models`), **which
   skills/MCP servers are loaded (= which tools agy has — the dynamic part of the profile)**,
   permissions mode — **only** insofar as they bound what's delegable.
-- **F. Routing: agy vs a Claude subagent.** When agy is the right pick (an *independent second-model*
-  perspective: divergent review, generative design partner) vs when a Claude subagent is better
-  (mechanical sweeps, well-specified implementation per Claude's own tiering rules).
+- **F. Routing: whether agy, and on which model.** Two linked decisions: (i) **agy vs a Claude
+  subagent** — agy is the right pick for an *independent second-model* perspective (divergent review,
+  generative design partner), while a Claude subagent is better for mechanical sweeps / well-specified
+  implementation (Claude's own tiering rules); and (ii) **which model to set agy to** for the task
+  (deep review/reasoning → Opus 4.6 Thinking or Gemini 3.1 Pro High; bulk/cheap/mechanical → Flash
+  Low/Medium; open-weight/cost-sensitive → GPT-OSS 120B). Note the redundancy guard: don't route to
+  *agy-on-a-weak-model* what you'd keep on Claude; agy's value is often the *different* provider's
+  perspective (e.g. a Gemini or GPT-OSS second opinion on Claude-authored work).
 - **G. Version & drift.** `Verified against: agy <version>`; changelog-tracked capability changes.
 
 **Provenance on every claim** (the central risk is "true upstream, wrong for our version"):
@@ -100,10 +112,13 @@ enumeration of the loaded toolset matters — but the *baseline* surface comes f
 - **Pass 1 — Web research (parallel, delegated; PRIMARY).** One research subagent per area (lower
   tier; high-volume/low-judgment fan-out). Seed known URLs (`antigravity.google/docs/*`, the Google
   codelab, `agy changelog`) **and** community/user findings (StackOverflow, GitHub issues, guides) +
-  free search. Strict dispatch contract: deliver **atomic, source-cited facts** + an explicit
-  "couldn't confirm" list; **do not invent**, never reshape a flag/path/command, paste exact strings,
-  no elided enumerations; return raw findings, not prose. (agy being closed-source, the web + corpus
-  are how we learn the baseline capability surface — there is no code to read.)
+  free search. **Include a per-model capability sweep** for the models agy can run — Gemini 3.5 Flash,
+  Gemini 3.1 Pro, Claude Sonnet 4.6, Claude Opus 4.6, GPT-OSS 120B (strengths, reasoning depth, speed/
+  cost, context, tool-use) — so Axis C can advise model choice per task. Strict dispatch contract:
+  deliver **atomic, source-cited facts** + an explicit "couldn't confirm" list; **do not invent**,
+  never reshape a flag/path/command, paste exact strings, no elided enumerations; return raw findings,
+  not prose. (agy being closed-source, the web + corpus are how we learn the baseline capability
+  surface — there is no code to read.)
 - **Pass 2 — Local introspection (main thread; config + behavior only).** Bounded to what's readable
   without source: `agy --help`, `--version`, `models`, `changelog`; inspect **config files** under
   `~/.gemini/antigravity-cli/` (skills, `cli.log`), `~/.gemini/config/`, `~/.gemini/skills/`; and
