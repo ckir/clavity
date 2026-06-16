@@ -5,7 +5,9 @@ Confirms that clavity's **capability profile** ([`agy-capabilities.md`](agy-capa
 after an `agy update`. agy is a live, closed-source, frequently-updated peer model — an upgrade can
 silently change behavior, so re-run this and update the profile/assumptions on any drift.
 
-- **Last run:** 2026-06-16 · **agy 1.0.8** · model **Gemini 3.1 Pro (High)** · **result: 6/6 PASS.**
+- **Last run:** 2026-06-16 · **agy 1.0.8** · model **Gemini 3.1 Pro (High)** · Parts 1–2 (Tests A–F):
+  **6/6 PASS**. Part 3 (Tests G–J): **added 2026-06-16** (params verified in agy's logs during the
+  creative-review fold); **run on the next cycle.**
 - Replies are natural language → **human-judged** against each PASS criterion (not auto-asserted).
 - Pair with the refresh runbook in `agy-capabilities.md` §"Refresh after an `agy update`".
 
@@ -120,6 +122,74 @@ assumption #6** in `agy-assumptions.md` and the profile §G.
 outside**, the default changed (or `allowNonWorkspaceAccess` is on) → re-check Axis D + assumption #8.
 
 ---
+
+## Part 3 — Throughput & concurrency behaviors (agy's verified internals)
+
+Covers the additions from agy's creative review (params confirmed in agy's own transcript/message
+logs). Tests G/H/I are observable; J is a self-report confirmation (softer).
+
+### Test G — Concurrent tool execution  ·  validates: parallel tool calls when targets are front-loaded
+```bash
+./target/debug/clavity ask --review-only "### Goal
+Report the line count of each of these three files, then state HOW you fetched them.
+### Files in Scope
+src/membus.rs, src/bus.rs, src/main.rs
+### Invariants to Verify
+1. Give the line count of all three files.
+2. Explicitly state whether you issued the three reads as PARALLEL/concurrent tool calls or sequentially.
+### Guardrails
+Verdict only — do NOT edit any file." --timeout 200
+```
+**PASS if:** agy returns all three line counts in one turn **and** reports it read them **concurrently**
+(front-loaded targets → parallel). Soft: relies on agy's self-report, corroborated by single-turn completion.
+
+### Test H — Synchronous override for a quick command  ·  validates: `WaitMsBeforeAsync` sync path
+```bash
+./target/debug/clavity ask "### Command
+cargo --version
+### Working Directory
+The clavity repo.
+### Mode
+Orchestration mode — but run this SYNCHRONOUSLY: set a high WaitMsBeforeAsync (~5000ms) so you do NOT
+drop it to the background, and return the command output INLINE in this same reply. Do not edit files." --timeout 150
+```
+**PASS if:** agy returns the `cargo --version` output **inline in the reply** (synchronous — no separate
+async-wakeup round-trip), demonstrating the `WaitMsBeforeAsync` sync override.
+
+### Test I — Single-call multi-edit (no same-file parallel edits)  ·  validates: safe multi_replace
+```bash
+# pre-create a throwaway with three distinct markers:
+printf '# multi-edit scratch\nline one: TOKEN_A\nfiller\nline two: TOKEN_B\nfiller\nline three: TOKEN_C\n' > docs/agy-multiedit-scratch.md
+./target/debug/clavity ask "### Goal
+Make three scattered edits to one file in a SINGLE multi_replace_file_content call.
+### Files to Edit
+docs/agy-multiedit-scratch.md (already exists).
+### Reference Context
+Replace TOKEN_A -> DONE_A, TOKEN_B -> DONE_B, TOKEN_C -> DONE_C (exact string matches).
+### Verification Steps
+Use ONE multi_replace_file_content call with three chunks — do NOT parallelize edit calls on this file.
+After editing, confirm all three changed and report.
+### Mode
+Implementation mode. Edit directly; run the verification before reporting done." --timeout 200
+# verify on disk, then clean up:
+grep -c -E 'DONE_A|DONE_B|DONE_C' docs/agy-multiedit-scratch.md   # expect 3
+grep -c -E 'TOKEN_[ABC]' docs/agy-multiedit-scratch.md            # expect 0
+rm -f docs/agy-multiedit-scratch.md
+```
+**PASS if (verify on disk):** all three `DONE_A/B/C` present, no `TOKEN_*` left, file intact (not
+corrupted/duplicated) — confirming a single multi-chunk edit, no same-file race.
+
+### Test J — Bounding timer for long ops  ·  validates: `schedule`/`TimerCondition` (self-report)
+```bash
+./target/debug/clavity ask "### Command
+Launch a short background task: a ~10s sleep that then echoes DONE-J.
+### Mode
+Orchestration mode. Launch it as a background task AND set a bounding wake/schedule timer (TimerCondition)
+so it cannot hang forever. Report the TimerCondition value you used and the task's result on the bus." --timeout 180
+```
+**PASS if:** agy reports launching the background task, **setting a bounding timer** (names a
+`TimerCondition` value), and the task result (`DONE-J`). Soft: self-report; cross-check the transcript
+(`~/.gemini/antigravity-cli/brain/<conv>/.system_generated/logs/transcript.jsonl`) for `TimerCondition`.
 
 ## Scoring & follow-up
 
