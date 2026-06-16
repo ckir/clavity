@@ -174,8 +174,9 @@ clavity ask --review-only "review src/foo.rs vs the spec; verdict only, no edits
 
 No polling, no pane-scraping: `ask` correlates the reply by signal id + the `[req_id=..]` echo and
 returns its content directly (exit 1 on timeout). To block on a reply for a request you sent via the
-MCP tool yourself, use `clavity await-reply --req-id <id>`. The agentmemory daemon is reached over its
-REST API (default `http://127.0.0.1:3111`, override with `AGENTMEMORY_URL`).
+MCP tool yourself, use `clavity await-reply --req-id <id> --thread-id <thr>` (pass the `threadId` from
+your `memory_signal_send` response — it scopes the read to that thread). The agentmemory daemon is
+reached over its REST API (default `http://127.0.0.1:3111`, override with `AGENTMEMORY_URL`).
 
 > **After launch, give agy a moment.** It loads its MCP servers (agentmemory included) a few seconds
 > after starting, and `clavity state` can read `idle` before that finishes. Gate your first task on
@@ -207,7 +208,7 @@ Plain `claude` sessions print nothing, so it's inert outside clavity.
 | `clavity ring [--no-idle-gate] [--doorbell S] [--idle-timeout N]` | Idle-gate, then send the doorbell. |
 | `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
 | `clavity ask "<INSTRUCTION>" [--review-only] [--no-ring] [--to A] [--type T] [--timeout N]` | **One-shot round-trip:** mint a req-id, send the request on the bus, ring, block for agy's correlated reply, print its content. Exit 0 reply / 1 timeout / 2 daemon-unreachable. `--review-only` prepends the no-edit banner. |
-| `clavity await-reply --req-id ID [--timeout N] [--poll-interval MS]` | Block until agy's reply correlated to `ID` lands; print its content (exit 1 on timeout). For a request you sent yourself via the MCP tool. |
+| `clavity await-reply --req-id ID --thread-id THR [--timeout N] [--poll-interval MS]` | Block until agy's reply correlated to `ID` lands; print its content (exit 1 on timeout). For a request you sent yourself via the MCP tool — pass the `threadId` from that send's response (`--thread-id` is **required**; the read is scoped to that thread so it never consumes unrelated inbox unread). |
 | `clavity ping [--timeout N]` | Readiness round-trip: send `[ping]`, ring, block for agy's `READY`. |
 | `clavity info` | Print the detected platform + effective configuration (diagnostic). |
 | `clavity doctor` | Preflight: check tmux/claude/agy are on `PATH` and the session is reachable. |

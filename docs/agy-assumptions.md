@@ -62,15 +62,20 @@ launch. (The conversation-switch/`--add-dir` reload path was not exercised — i
 ### How `await-reply` / `ask` read without clobbering inboxes (read-state decision)
 
 The read endpoint **consumes** (`readAt`) any unread signal whose `to` equals the queried `agentId`,
-and there is **no peek flag**. clavity resolves this by reading as **`agentId=claude` scoped by
-`threadId`** (the thread is known because `ask` *sent* the request and got the `threadId` back): this
-consumes **only the awaited reply** in that thread, never agy's request (it is `to=agy`, untouched)
-and never unrelated inbox traffic. Correlation matches on `replyTo == <request signal id>` **OR**
-`[req_id=<ID>]` embedded in `content` (`bus::extract_req_id`). `await-reply` returns the reply
-`content` directly, so it is **authoritative** — when you use it, do **not** also
-`memory_signal_read(agentId=claude)` the same reply (the direct return replaces that second read). A
-fully non-mutating alternative exists (read `agentId=agy`, get the reply via sender-match) but it risks
-consuming agy's *unread request* if clavity polls before agy reads it, so it is not used.
+and there is **no peek flag**. clavity resolves this by **always reading `agentId=claude` scoped by
+`threadId`** — so the consume hits **only the awaited reply** in that thread, never agy's request (it
+is `to=agy`, untouched) and never unrelated inbox traffic. Both commands have the threadId: `ask`
+*sent* the request and got it back; **`await-reply` takes a required `--thread-id`** (the master passes
+the `threadId` from its own `memory_signal_send` response). **There is no unscoped path** — no thread,
+no read. Correlation matches on `replyTo == <request signal id>` **OR** `[req_id=<ID>]` in `content`
+(`bus::extract_req_id`). The reply `content` is returned directly, so it is **authoritative** — do
+**not** also `memory_signal_read(agentId=claude)` the same reply (the direct return replaces it).
+
+> Two alternatives were rejected (agy design consult, 2026-06-17): clavity-side **thread discovery**
+> and a **sender-view poll** (`agentId=agy`) both require an *unscoped* `agentId=agy` read, which marks
+> *all* unread `to=agy` signals read — if clavity polls before agy's own `unreadOnly` read, it
+> **consumes agy's pending request** and the round-trip hangs. Passing the threadId the master already
+> has avoids touching agy's inbox entirely.
 
 ## Transient runtime gotchas (agy/backend behavior, not config)
 

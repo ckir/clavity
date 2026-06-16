@@ -99,6 +99,10 @@ enum Cmd {
         /// The request id to correlate on (matches `[req_id=..]` in the reply, or its `replyTo`)
         #[arg(long = "req-id")]
         req_id: String,
+        /// The request's thread id (from the `memory_signal_send` response). REQUIRED: the read is
+        /// scoped to this thread so it consumes only the awaited reply, never unrelated inbox unread.
+        #[arg(long = "thread-id")]
+        thread_id: String,
         /// Seconds to wait before giving up (exit 1 on timeout)
         #[arg(long, default_value_t = 120.0)]
         timeout: f64,
@@ -248,9 +252,15 @@ fn main() {
         }
         Some(Cmd::AwaitReply {
             req_id,
+            thread_id,
             timeout,
             poll_interval,
-        }) => await_reply(&req_id, dur(timeout), Duration::from_millis(poll_interval)),
+        }) => await_reply(
+            &req_id,
+            &thread_id,
+            dur(timeout),
+            Duration::from_millis(poll_interval),
+        ),
         Some(Cmd::Ask {
             instruction,
             to,
@@ -420,16 +430,18 @@ fn start(session: &str, args: Vec<String>) -> i32 {
 /// `await-reply`: block until agy's reply correlated to `req_id` lands; print its content to stdout
 /// (exit 0) or note the timeout on stderr (exit 1). Exit 2 if the daemon is unreachable.
 ///
-/// Standalone (no known request signal id / thread), so it correlates purely on the `[req_id=..]`
-/// echo in the reply and reads the master's whole inbox — it is **authoritative** (consuming): don't
-/// also `memory_signal_read(agentId=claude)` the same reply.
-fn await_reply(req_id: &str, timeout: Duration, poll: Duration) -> i32 {
+/// `thread_id` is **required** (the master has it from the `memory_signal_send` response): the read is
+/// scoped to that thread, so it consumes only the awaited reply — never agy's pending request nor
+/// unrelated unread in the master's inbox. (There is no unscoped path: no thread id, no read.) The
+/// reply is returned directly, so it is **authoritative** — don't also `memory_signal_read` the same
+/// reply. Correlates on the `[req_id=..]` echo within the thread.
+fn await_reply(req_id: &str, thread_id: &str, timeout: Duration, poll: Duration) -> i32 {
     let bus = membus::MemBus::from_env();
     if let Err(e) = bus.health() {
         eprintln!("{e}");
         return 2;
     }
-    match bus.await_reply(MASTER_AGENT, req_id, None, None, timeout, poll) {
+    match bus.await_reply(MASTER_AGENT, req_id, None, Some(thread_id), timeout, poll) {
         Ok(content) => {
             print!("{content}");
             if !content.ends_with('\n') {

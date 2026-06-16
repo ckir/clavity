@@ -85,6 +85,7 @@ enum Reply {
 struct State {
     sent: Vec<String>, // recorded POST bodies
     get_count: usize,  // GET /signals polls seen
+    gets: Vec<String>, // recorded GET /signals paths (with query) — to assert thread-scoping
     last_req_id: Option<String>,
     last_sig_id: Option<String>,
 }
@@ -173,6 +174,7 @@ fn handle(
     if method == "GET" && path.starts_with("/agentmemory/signals") {
         let mut st = state.lock().unwrap();
         st.get_count += 1;
+        st.gets.push(path.to_string());
         let n = st.get_count;
         let reached = |after: usize| n >= after;
         let body = match reply {
@@ -242,13 +244,15 @@ fn clavity_bus(url: &str) -> Command {
 }
 
 #[test]
-fn await_reply_returns_content_on_req_id_match() {
-    let (url, _state) = start_fake_bus(Reply::FixedReqIdAfter(2, "req-abc".into()));
+fn await_reply_returns_content_and_is_thread_scoped() {
+    let (url, state) = start_fake_bus(Reply::FixedReqIdAfter(2, "req-abc".into()));
     let out = clavity_bus(&url)
         .args([
             "await-reply",
             "--req-id",
             "req-abc",
+            "--thread-id",
+            "thr_test",
             "--timeout",
             "10",
             "--poll-interval",
@@ -267,6 +271,35 @@ fn await_reply_returns_content_on_req_id_match() {
         "stdout: {}",
         String::from_utf8_lossy(&out.stdout)
     );
+    // Safety: EVERY inbox read must be scoped to the given threadId (so it can't consume unrelated
+    // unread in claude's inbox) and read as agentId=claude. (ROADMAP acceptance: unrelated unread survives.)
+    let st = state.lock().unwrap();
+    assert!(!st.gets.is_empty(), "expected at least one GET /signals");
+    for g in &st.gets {
+        assert!(
+            g.contains("threadId=thr_test"),
+            "read NOT thread-scoped: {g}"
+        );
+        assert!(g.contains("agentId=claude"), "read not as claude: {g}");
+    }
+}
+
+#[test]
+fn await_reply_requires_thread_id() {
+    let (url, _state) = start_fake_bus(Reply::Never);
+    let out = clavity_bus(&url)
+        .args(["await-reply", "--req-id", "req-x"]) // no --thread-id
+        .output()
+        .expect("run await-reply");
+    assert!(
+        !out.status.success(),
+        "expected failure when --thread-id is omitted (the unsafe unscoped path is dropped)"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("thread-id"),
+        "stderr should mention the missing --thread-id: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 #[test]
@@ -277,6 +310,8 @@ fn await_reply_times_out_with_exit_1() {
             "await-reply",
             "--req-id",
             "req-nope",
+            "--thread-id",
+            "thr_test",
             "--timeout",
             "1",
             "--poll-interval",

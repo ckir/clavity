@@ -167,8 +167,11 @@ never agy's request or unrelated inbox traffic. The reply `content` is returned 
 > (the direct return replaces that read).
 
 **Just want to block for a reply you've already sent** (e.g. you sent via the MCP tool and need to
-wait)? Use `clavity await-reply --req-id <id> [--timeout N]` — it blocks until the correlated reply
-arrives and prints its content (exit 1 on timeout).
+wait)? Use `clavity await-reply --req-id <id> --thread-id <thr> [--timeout N]` — it blocks until the
+correlated reply arrives and prints its content (exit 1 on timeout). **`--thread-id` is required:**
+pass the `threadId` from your `memory_signal_send` response so the read is scoped to that thread (it
+then consumes only your reply — never agy's pending request or unrelated inbox unread). There is no
+unscoped path.
 
 **On timeout:** capture context with `clavity capture` (what agy was doing) and report a typed
 timeout. Do not silently assume failure. If the pane shows a transient backend error (e.g. agy's
@@ -176,7 +179,7 @@ timeout. Do not silently assume failure. If the pane shows a transient backend e
 req-id; the old request was likely consumed when agy read its inbox, so re-ringing alone won't
 re-surface it). (See `docs/agy-assumptions.md` → "Transient runtime gotchas".)
 
-> **Manual fallback** (bus or `ask` unavailable): `clavity req-id "<instruction>"` → `memory_signal_send(from="claude", to="agy", type="request", content=<envelope>)` (record the returned signal `id`) → `clavity ring` → `clavity await-reply --req-id <id>`.
+> **Manual fallback** (bus or `ask` unavailable): `clavity req-id "<instruction>"` → `memory_signal_send(from="claude", to="agy", type="request", content=<envelope>)` (record the returned signal's `id` **and `threadId`**) → `clavity ring` → `clavity await-reply --req-id <id> --thread-id <threadId>`.
 
 ### REVIEW-ONLY banner (the `--review-only` convention)
 

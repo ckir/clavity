@@ -208,21 +208,27 @@ unread `to=claude` signal, so this can **consume unrelated replies** sitting in 
 hiding them from the master's own later `memory_signal_read`. (Documented today as "authoritative —
 don't also MCP-read"; the footgun remains for unrelated traffic.)
 
-**Proposed fix — discover the thread, then scope.** Before polling the inbox, do a **non-consuming
-sender-side read** to find the master's *outbound* request and learn its thread:
-1. Query the daemon for messages involving `claude` and find the **outbound request** (`from=claude`)
-   whose `content` carries `[req_id=<ID>]`; read its `threadId`. (A sender-side match does not mark the
-   master's *inbound* replies read — but **scope the discovery read carefully** so it doesn't itself
-   consume any `to=claude` unread; e.g. filter to `from=claude` outbound only, or read by a
-   already-known thread. This subtlety is the crux — verify against the daemon's read semantics in
-   `agy-assumptions.md` #13.)
-2. Then poll `agentId=claude&threadId=<discovered>` — the consume is now scoped to exactly that thread,
-   giving standalone `await-reply` the same safety the composite `ask` already has.
+**RESOLVED 2026-06-17 → Option D (pass the threadId; don't discover it).** An agy design consult
+rejected the original "discover the thread" idea (and a sender-view variant) as **fatally racy**: both
+require an **unscoped `agentId=agy` read**, which marks *all* unread `to=agy` signals read — if clavity
+polls in the window between the ring and agy's own `unreadOnly` MCP read, it **consumes agy's pending
+request**, so agy never processes it and the master hangs. Verified against the daemon semantics
+(`agy-assumptions.md` #13); not a small race (clavity polls within ~1s; agy wakes in seconds).
 
-**Acceptance:** standalone `await-reply` consumes only its own thread's reply, never unrelated unread;
-`ask` behavior unchanged; covered by a fake-endpoint test (unrelated `to=claude` unread survives an
-`await-reply` for a different `req_id`).
+The fix instead leans on a fact we already have: **`memory_signal_send` returns the created signal,
+including its `threadId`** (Step 0), so **the master already knows the thread**. So:
+1. `clavity await-reply` takes a **required `--thread-id <THR>`** (alongside `--req-id`). The master
+   passes the `threadId` it received from its own send.
+2. clavity polls `agentId=claude&threadId=<THR>` — scoped to exactly that thread, consuming only the
+   awaited reply; it touches **neither agy's inbox nor unrelated `to=claude` messages**. Same safety as
+   the composite `ask`.
+3. **The unsafe unscoped path is dropped** — `--thread-id` is required (no thread, no read), so there
+   is no footgun to document.
 
-**Rejected alternative (needs upstream change):** a daemon `GET /agentmemory/signals?peek=true` flag
-that disables `readAt` marking — clean, but requires an **agentmemory** change (out of clavity's
-control); revisit only if the daemon adds it.
+**Acceptance:** `await-reply` errors if `--thread-id` is missing; every inbox read it issues is
+`agentId=claude&threadId=<THR>`-scoped (fake-endpoint test asserts the recorded GETs carry the
+threadId); times out exit 1; `ask` unchanged.
+
+**Rejected alternatives:** (a) clavity-side thread *discovery* — racy, see above; (b) a daemon
+`GET /agentmemory/signals?peek=true` no-consume flag — clean but needs an **agentmemory** upstream
+change (out of clavity's control); revisit only if the daemon adds it.
