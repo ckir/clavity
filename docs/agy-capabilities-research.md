@@ -70,7 +70,38 @@ MarketMonitor memories `feedback_agy_review_wording.md`, `project_antigravity_pr
 
 ## Pass 1 — web (`[doc]`)
 
-_(agent in flight: quirks/user-findings. CLI/config, skills/MCP/TUI, per-model landed below.)_
+_(all 4 agents landed: CLI/config, skills/MCP/TUI, per-model, quirks/user-findings.)_
+
+### Quirks & real-world user findings (Agent D; routing-relevant distillation)
+
+- `[doc]` **Headless `-p`/`--print` drops stdout in any non-TTY** (pipe/redirect/subprocess/CI): exit 0,
+  empty output, round-trip actually ran (`text_drip.go` non-TTY flush bug, issue #76, open). PowerShell
+  `Start-Process` w/ redirected streams **hangs**. → **Confirms clavity assumption #1** (why we drive
+  the live pane). Workarounds: `script`/`unbuffer` PTY wrappers, or read the transcript file (below).
+  `--output-format json` **does not exist**. Use `agy --version` (bare `agy version` can hang). Source: gh #76, #7.
+- `[doc]` **Auth is fragile:** macOS keyring 1s-timeout → falls back to fresh OAuth (issue #85);
+  Linux/WSL needs `org.freedesktop.secrets` D-Bus or re-login every session (#57). Confirms/qualifies
+  assumption #9 (keyring auth). **[conflict]** on API-key env support: Agent A said `ANTIGRAVITY_API_KEY`/
+  `GEMINI_API_KEY` accepted (issue #78); Agent D said OAuth-only, key support is an *open request* (#78).
+  → mark **unconfirmed** (do not rely on API-key auth).
+- `[doc]` **Quota/backend is a real routing risk:** opaque quota (`/usage` shows trend, not balance);
+  **5-hour sprint + weekly baseline caps**; multi-day lockouts; HTTP 503 `MODEL_CAPACITY_EXHAUSTED`
+  outages across all models (hours–weeks). Blind retry on 429 worsens cooldown. → **Confirms clavity's
+  "backend-overload aborts turn" gotcha**; agy may be unavailable for extended periods. Source: discuss.ai.google.dev; gh.
+- `[doc]` **Workspace write quirks:** rejects any path with a **dot-prefixed ancestor dir**
+  (`"is hidden: ignore uri"`, issue #20) → falls back to `~/.gemini/antigravity-cli/scratch`
+  (clavity-relevant: a cwd under a `.`-dir breaks agy writes). `--dangerously-skip-permissions` +
+  `--sandbox` can write **outside** the workspace (security bug #36) — another Axis D widening path.
+- `[doc]` **Strengths (user-reported):** strong contextual inference from CWD; transparent step-by-step
+  reasoning; non-blocking async sub-agents (`/tasks`); fast Go startup; `/export` to the desktop app;
+  **one user ran agy headless as a sub-agent inside Claude Code** (HN). Source: howtogeek; dev.to; HN.
+- `[doc]` **Weaknesses (user-reported):** **"plausible code with subtle bugs — review before
+  production"**; no manual `/compact` (auto only); no persistent processes across sessions; ~23–25k
+  tokens of system prompt/tools burned on turn 1; max **512 tool calls** (Gemini, v1.0.7). Source: dev.to; gh; HN.
+- `[doc]` **Headless-output workaround (useful):** the model response persists at
+  `~/.gemini/antigravity-cli/brain/<conv-uuid>/.system_generated/logs/transcript.jsonl` (last
+  `source=MODEL,status=DONE,type=PLANNER_RESPONSE`) — undocumented internal, version-fragile. Source: gh; antigravitylab.
+- `[doc]` Telemetry is **opt-in by default** (collected unless disabled) — privacy note for sensitive repos. Source: agentpedia; discuss.ai.google.dev.
 
 ### Skills / MCP / sub-agents / TUI (Agent B; routing-relevant distillation)
 
