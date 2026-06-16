@@ -70,8 +70,110 @@ MarketMonitor memories `feedback_agy_review_wording.md`, `project_antigravity_pr
 
 ## Pass 1 — web (`[doc]`)
 
-_(pending — 4 parallel research agents in flight: CLI/config, skills/MCP/TUI, per-model sweep, quirks/user-findings)_
+_(agent in flight: quirks/user-findings. CLI/config, skills/MCP/TUI, per-model landed below.)_
+
+### Skills / MCP / sub-agents / TUI (Agent B; routing-relevant distillation)
+
+- `[doc]` **Sub-agent orchestration (key reach):** `/agent [task] "prompt"` spawns an **async sub-agent**;
+  `/agents` panel shows status (running/done/killed) + full per-agent transcript; async sub-agent
+  **diffs post back to the main conversation when finished** (matches `[bus]` reactive-async claim).
+  `/teamwork-preview` orchestrates a multi-agent team (**Worker / Reviewer / Critic / Auditor**) —
+  observability still "basic" (issue #301). Source: dev.to/arindam_1729; datacamp; github issue #301.
+- `[doc]` **Skills load by semantic match on the `SKILL.md` `description`** (not by slash name); dirs:
+  `~/.gemini/skills/` (shared) vs `~/.gemini/antigravity-cli/skills/` (CLI-only) vs workspace
+  `.agents/skills/`. **v1.0.8 release note: "Fixed dynamic reloading of custom skills … instantly
+  discovered … upon conversation switch or `/add-dir`."** → **may update agy-assumptions #6** (which says
+  skills are cached per-session and need a restart); re-verify. Source: codelabs; github releases (1.0.8).
+- `[doc]` **TUI idle footer** confirmed form: `? for shortcuts        <Model> (<tier>)` — corroborates
+  clavity's idle-marker assumption #3 (`? for shortcuts`). Status bar shows active model + token usage +
+  running sub-agents; `/statusline` customizes it. Source: medium tutorial-series; dev.to.
+- `[doc]` **MCP config gotchas:** remote servers use `"serverUrl"` (NOT `url`/`httpUrl`) — wrong key =
+  **silent failure** surfacing only on tool call; workspace `.agents/mcp_config.json` may be silently
+  ignored (issue #60 — only HOME-level reliably spawns servers); `env` var substitution is buggy.
+  Source: medium configuring-mcp; inventivehq; github issue #60.
+- `[doc]` `settings.json` keys: `colorScheme, editor, enableTerminalSandbox, model, notifications,
+  permissions, runningLightSpeed, trustedWorkspaces`. Source: antigravitylab.net.
+- `[doc]` COULD NOT CONFIRM: exact busy-footer text/spinner; skills cache-invalidation lifecycle;
+  skills discovery priority order; extra SKILL.md frontmatter fields.
+
+### CLI & config surface (Agent A; representative cites — full set in transcript)
+
+- `[doc]` Binary is **`agy`**, written in **Go**; installed to `~/.local/bin/agy` (mac/Linux) /
+  `%LOCALAPPDATA%\Antigravity\` (Win). Source: inventivehq.com; agentpedia.codes.
+- `[doc]` **Launch flags:** `-p`/`--print`/`--prompt` (non-interactive single prompt), `-i`
+  (`--prompt-interactive`), `-c`/`--continue`, `--conversation <id>`, `--add-dir` (repeatable — add
+  dirs to workspace), `--model`, `--dangerously-skip-permissions`, `--sandbox`, `--print-timeout`
+  (default `5m0s`), `--log-file`, `--version`, `--help`. Source: codelabs; hermes-agent docs; dev.to.
+- `[doc]` **Subcommands:** `changelog`, `help`, `install` (`--dir/--skip-aliases/--skip-path`),
+  `models`, `plugin`/`plugins` (list/import/install/uninstall/enable/disable/validate/link),
+  `update`. `agy plugin import gemini` migrates Gemini-CLI extensions. Source: CHANGELOG; hermes-agent.
+- `[doc]` **Permission modes:** `request-review` (default), `proceed-in-sandbox`, `always-proceed`,
+  `strict` (**read-only**). Source: medium.com/google-cloud tutorial-series.
+- `[doc]` **Slash commands** (capability/control-relevant): `/model`, `/mcp`, `/skills`, `/agents`,
+  **`/agent [task] [prompt]` — dispatch an async sub-agent**, `/tasks` (inspect/kill background tasks),
+  `/context`, `/usage`, `/permissions`, `/fast` (skip planning), `/grill-me` (asks clarifying Qs
+  first), `/goal`, `/schedule`, `/rewind`, `/fork`, `/export` (push to Antigravity 2.0 desktop), `!`
+  (shell mode). Source: codelabs; antigravitylab.net; datacamp; dev.to.
+- `[doc]` **Config layout** (confirms `[local]`): `~/.gemini/` root; `~/.gemini/antigravity-cli/`
+  (`settings.json`, `keybindings.json`, `plugins/`, `skills/` = global CLI-only skills, `cache/`,
+  `log/`); `~/.gemini/config/mcp_config.json` (global MCP); `~/.gemini/skills/` (**shared** across
+  Antigravity tools); workspace `.agents/` (`mcp_config.json`, `skills/`, `hooks.json`, `hooks/`).
+  Context files: `GEMINI.md` > `AGENTS.md`; `.antigravity.md` also seen. Source: medium configuring-mcp;
+  migrating-to-antigravity-cli; agentpedia user-rules.
+- `[doc]` **agy has its OWN hooks system** (`PreToolUse`/`PostToolUse`/`PreInvocation`/`PostInvocation`/
+  `Stop`; workspace `.agents/hooks.json` + global `~/.gemini/config/hooks.json`). Source: danicat.dev.
+- `[doc]` **`allowNonWorkspaceAccess`** settings.json key (+ `trustedWorkspaces[]`, `--add-dir`) — **the
+  knob that widens file access beyond the workspace.** *Resolves the Axis D `[conflict]`:* workspace-
+  restricted by default (matches `[corpus]`/#8), but native tools can write wider when this is enabled
+  / dirs are added / mode is `always-proceed`. Source: hermes-agent docs.
+- `[doc]` **Auth:** browser Google OAuth stored in OS keyring; `ANTIGRAVITY_API_KEY` / `GEMINI_API_KEY`
+  env; `/logout`. Source: hermes-agent; issue #78; agentpedia.
+- `[doc]` **Default model at launch = Gemini 3.5 Flash (High)** (this agy is user-set to Gemini 3.1 Pro
+  High). Source: datacamp.com/tutorial/antigravity-cli.
+- `[doc]` COULD NOT CONFIRM: discrete `agy auth`/`agy config`/`agy tasks` subcommands (single low-conf
+  source); `.antigravity.md` vs `GEMINI.md` precedence (sources disagree); some hook event names.
+
+### Per-model capability sweep (routing-relevant distillation; full cites in Agent C transcript)
+
+- `[doc]` **Gemini 3.5 Flash** (L/M/H thinking; default medium) — high-efficiency multimodal, "optimized
+  for coding proficiency and parallel agentic execution loops" + sub-agent deployment; 1M ctx, 65k out;
+  cheap ($1.50/$9 per 1M). **Route to:** fast/cheap agentic loops, parallel fan-out, simpler coding.
+  Source: ai.google.dev/gemini-api/docs/interactions/whats-new-gemini-3.5; openrouter.ai/google/gemini-3.5-flash
+- `[doc]` **Gemini 3.1 Pro** (native L/M/H, default **high**; OpenAI-compat exposes **Low/High** — matches
+  this agy's menu) — top-tier reasoning (ARC-AGI-2 77.1%; SWE-bench ~80.6% *secondary*), 1M ctx, concise
+  output, **high latency to first token (~23s)**, "somewhat expensive" ($2/$12, more >200k). **Route to:**
+  hardest reasoning/code/agentic, deep review. **This is agy's current/default model.**
+  Source: ai.google.dev/gemini-api/docs/gemini-3; artificialanalysis.ai/models/gemini-3-1-pro-preview
+- `[doc]` **Claude Sonnet 4.6 (Thinking)** — "best combination of speed and intelligence," adaptive
+  thinking (low/med/high/max), 1M ctx, 64k out, $3/$15; SWE-bench ~79.6% *secondary*. **Route to:** fast,
+  strong general coding/review. Source: platform.claude.com/docs/en/about-claude/models/overview
+- `[doc]` **Claude Opus 4.6 (Thinking)** — legacy flagship tier, adaptive thinking, 1M ctx, **128k out**,
+  moderate latency, $5/$25 (priciest here). **Route to:** deepest reasoning/design review among the
+  Claude options. Source: platform.claude.com/docs/en/about-claude/models/overview
+- `[doc]` **GPT-OSS 120B (Medium)** — open-weight MoE (~120B total / 5.1B active), **text-only**, 131k
+  ctx, **very fast (~354 t/s)**, very cheap; strong math (AIME'25 93.4%) but **weaker coding (#97) &
+  agentic (#106)** ranks; no safety RLHF; **knowledge cutoff Jun 2024**. **Route to:** cheap/fast
+  math/reasoning second opinion; **avoid** for top-tier coding/agentic. Source:
+  developers.openai.com/api/docs/models/gpt-oss-120b; designforonline.com/ai-models/openai-gpt-oss-120b
+- `[doc]` Caveats (Agent C "could not confirm"): several 3.1 Pro/Sonnet benchmark numbers are from
+  secondary aggregators, not primary; GPT-OSS pricing sources conflict. Treat benchmarks as indicative.
 
 ## Pass 3 — bus self-report (`[bus]`, cross-check)
 
-_(pending — `clavity ask` self-report round-trip in flight)_
+_The dedicated self-report `clavity ask` **timed out** (agy busy; idle-gate timeout, 200s). These
+`[bus]` facts are from agy's earlier divergent spec-review round-trip (same session). Re-ask when agy
+is idle to enrich._
+
+- `[bus]` Self-describes as a **dynamic platform**: capability = baseline + native tools + currently-
+  loaded skills/MCP (not a static model).
+- `[bus]` Strengths: strict multi-step **protocol adherence**; precise **non-contiguous native edits**
+  (`multi_replace_file_content`); **native reactive async task management** — woken when a background
+  shell task finishes, no polling (efficient for long orchestrations).
+- `[bus]` Weaknesses: **worktree-blind until it actively probes** (`list_dir`/`grep_search`); open-ended
+  discovery in large trees **burns context fast**.
+- `[bus]` Operational: the **agentmemory MCP** is a core capability (save/recall durable cross-agent
+  context) to route to.
+- `[bus]` **Axis D claim:** native tools (`write_to_file`/`replace_file_content`/`multi_replace_file_content`)
+  write **anywhere OS perms allow**, not only the workspace. **Conflicts with `[corpus]`/#8 (workspace-
+  only).** → **RESOLVED by `[doc]`:** the `allowNonWorkspaceAccess` setting / `--add-dir` /
+  `trustedWorkspaces` gate this — restricted by default, wider when enabled. Both are right, config-dependent.
