@@ -69,6 +69,9 @@ treat picking it (and its model) like choosing a subagent tier:
 - Prefer Markdown sections: `### Goal`, `### Files in scope`, `### Verification`, `### Guardrails`.
 - **Carry your own context** — you and agy have *separate* context windows. If you just read a long
   log, paste the relevant stack trace into the request; agy can't see what you saw.
+- **Front-load ALL targets to trigger parallelism** — agy can run tool calls concurrently in a turn
+  (read N files / search M terms at once). List every file/term upfront ("read `a.rs`, `b.rs`, `c.rs`")
+  rather than dribbling them — assuming sequential work throttles its throughput.
 - For analysis/review only, say it outright: **"Just REPLY on the bus — do NOT write or edit files."**
   agy's default bias is to start coding. For scripts, say whether to *write* or *run* them.
 
@@ -98,6 +101,12 @@ use its sections. (Source: agy self-report, 2026-06-16; cross-ref capability pro
   Sections: `### Command` · `### Working Directory` · `### Success Criteria`. e.g. **"Launch `cargo test`
   as an async background task; rely on your reactive wakeup when it finishes; do not poll; report the failed
   test names."** Include required env + exact cwd.
+  - **Slow vs quick:** for a genuinely slow task (build/test suite) use the async/wakeup flow above; for a
+    *quick* command (fast linter, syntax check) tell agy to run it **synchronously** — it controls this via
+    its `RUN_COMMAND` `WaitMsBeforeAsync` (ms; e.g. "wait ~5000ms before backgrounding"), avoiding a
+    needless wakeup round-trip.
+  - **Bound long tasks:** for a long background task or sub-agent, ask agy to set a wake/`schedule`
+    bounding timer (its `TimerCondition` param) so a silently-dead task doesn't hang forever.
 
 ### What Claude most often gets wrong (agy's top 3 — fix these)
 
@@ -107,6 +116,10 @@ use its sections. (Source: agy self-report, 2026-06-16; cross-ref capability pro
    the relevant trace/snippet/types into the request payload; never "fix the error we just saw".
 3. **"Find bugs" unscoped discovery.** agy is worktree-blind; this burns its context on dozens of
    `list_dir`/`view_file` calls. Give specific files **and** specific invariants to check.
+4. **Parallelizing edits to the same file.** agy *can* run tools concurrently (good — front-load
+   targets, see DO), but **multiple edit calls against the same file race and corrupt it.** For several
+   scattered edits in one file, tell agy to use a **single `multi_replace_file_content` call with
+   multiple chunks**, not parallel edit calls. (agy self-report; sound concurrency guard.)
 
 **Scoping:** one focused task, or a few closely-related ones ("add endpoints A, B, C to `api.rs`").
 Don't batch disparate/complex work or anything touching >5 files — split into sequential phases

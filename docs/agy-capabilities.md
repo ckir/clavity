@@ -32,7 +32,15 @@
 - **Reactive async shell execution** `[verified: bus + doc]` — agy can background a slow shell command
   (full test suite, build, long pipeline), **sleep, and be reactively woken when it finishes — no
   polling, no context/token burn** (`/tasks` monitors/cancels). A real routing differentiator: hand agy
-  slow *local* pipelines you'd otherwise babysit, not just LLM work.
+  slow *local* pipelines you'd otherwise babysit, not just LLM work. Sync vs async is controlled by the
+  `RUN_COMMAND` tool's **`WaitMsBeforeAsync`** param (ms; `[local]` — observed `"5000"`): a high value
+  runs a *quick* command synchronously; a low value backgrounds it. Long background tasks can be bounded
+  with a wake/`schedule` timer (`TimerCondition` param, `[local]`; value `"never"` observed, agy also
+  cites `"any"`) so a silently-dead task doesn't hang forever.
+- **Concurrent tool execution in a turn** `[verified: bus + doc]` — agy can run multiple tool calls in
+  parallel (e.g. read 5 files / search 3 terms at once), not strictly one-at-a-time. Front-loading all
+  targets in the request lets it parallelize — assuming sequential throttles its throughput. (Caveat:
+  do **not** parallelize *edits to the same file* — see Axis B / the protocol's "what Claude gets wrong".)
 - **Strong contextual inference from CWD** `[doc/user]` — infers the codebase/tooling from the working
   dir; fast Go startup, low memory `[doc/user]`.
 
