@@ -37,22 +37,35 @@ Data flow: **research → #1 capability profile → cited by #2 (how to ask) →
 
 ## 3. #1 — The capability profile (`docs/agy-capabilities.md`)
 
-Framed as a **routing tool**, not a CLI manual. Sections are the axes that decide *what to hand agy*:
+Framed as a **routing tool**, not a CLI manual. **agy is a *dynamic platform*, not a static model**
+(its own framing, [bus]): effective capability = *baseline reasoning + native tools + currently-loaded
+skills & MCP servers*. So the profile must capture **how to check what's loaded now** (not just a
+frozen list), and treat the loaded toolset as part of the capability surface. Sections are the axes
+that decide *what to hand agy*:
 
 - **A. Strengths (route toward).** Classes of work agy does reliably — e.g. critical review &
-  verification; generative/divergent design input; well-scoped code generation — each with a
-  **calibration note** (how reliable, observed hit/miss where known).
+  verification; generative/divergent design input; well-scoped code generation; `[bus]` strict
+  multi-step **protocol adherence**, precise non-contiguous **native edits**
+  (`multi_replace_file_content`), and **native async/reactive task management** (woken when a
+  background shell task finishes — no polling; good for long orchestrations) — each with a
+  **calibration note** (how reliable, observed hit/miss where known; `[bus]` claims to be verified).
 - **B. Weaknesses & failure modes (route away / guardrail).** Open-ended "find bugs" → over-escalation
   & hallucination; cross-graph cascade and concurrency interleavings (reasons locally/sequentially);
-  worktree/gitignore-blindness & wrong-folder reads; backend-overload mid-turn aborts.
-- **C. Reasoning profile.** Underlying model (Gemini 3.1 Pro High), a **separate context window** from
-  Claude's, depth, sequential/local bias.
-- **D. Operational reach (what it can act on).** Workspace-only file writes (artifact-path rule + shell
-  fallback), shell (pwsh), MCP tool access, sub-agents (`/agents`), git checkpoints, headless/print
-  behavior.
-- **E. Control surface that changes capability.** Model selection (`--model` / `models`), which
-  skills/MCP servers are loaded (= which tools agy has), permissions mode — **only** insofar as they
-  bound what's delegable.
+  **worktree/gitignore-blind until it actively probes** (`list_dir`/`grep_search`) & wrong-folder
+  reads; **open-ended discovery in large trees burns context fast** (tool-call response volume);
+  backend-overload mid-turn aborts.
+- **C. Reasoning profile.** Underlying model **user-configurable** (currently Gemini 3.1 Pro High), a
+  **separate context window** from Claude's, depth, sequential/local bias.
+- **D. Operational reach (what it can act on).** File writes — **`[conflict]`**: `[corpus]`/empirical
+  (`agy-assumptions.md #8`) observed writes rejected outside cwd (artifact-path rule → shell fallback),
+  but `[bus]` agy claims native tools (`write_to_file`, `replace_file_content`,
+  `multi_replace_file_content`) write anywhere OS perms allow. **Resolve by triangulation; do not
+  assert either until reconciled.** Plus: shell (pwsh), the **agentmemory MCP** (save/recall durable
+  cross-agent context — a core collaboration capability to route to), other MCP tools, sub-agents
+  (`/agents`), git checkpoints, headless/print behavior.
+- **E. Control surface that changes capability.** Model selection (`--model` / `models`), **which
+  skills/MCP servers are loaded (= which tools agy has — the dynamic part of the profile)**,
+  permissions mode — **only** insofar as they bound what's delegable.
 - **F. Routing: agy vs a Claude subagent.** When agy is the right pick (an *independent second-model*
   perspective: divergent review, generative design partner) vs when a Claude subagent is better
   (mechanical sweeps, well-specified implementation per Claude's own tiering rules).
@@ -67,23 +80,32 @@ carry their **calibration source** (e.g. "`[corpus]` over-escalates on open disc
 
 ## 4. Research execution (Hybrid — passes + synthesis)
 
-The research *produces* #1. Output is the capability profile, not raw trivia.
+The research *produces* #1. Output is the capability profile, not raw trivia. **Source priority
+(agy's own [bus] caution, accepted):** agy is local-first and dynamic, so its *capabilities* are
+ground-truthed **locally** — `[local]` + `[corpus]` + `[bus]` are **primary** for capability/routing
+claims; the **web sweep is secondary**, scoped to the *stable product surface* (documented flags,
+subcommands, the published feature set), **not** used to infer what agy can do here. Web claims about
+capability that aren't confirmed locally are marked `[doc]` + "unconfirmed."
 
-- **Pass 0 — Harvest the existing corpus (main thread).** Seed from the user's validated knowledge:
-  `~/.claude/skills/token-discipline-installer/templates/AGENTS-antigravity-protocol.md`; the
-  `feedback_agy_review_wording.md` / `project_antigravity_protocol.md` /
+- **Pass 0 — Harvest the existing corpus (main thread; PRIMARY).** Seed from the user's validated
+  knowledge: `~/.claude/skills/token-discipline-installer/templates/AGENTS-antigravity-protocol.md`;
+  the `feedback_agy_review_wording.md` / `project_antigravity_protocol.md` /
   `feedback_agy_consult_before_user.md` memories; the `agy-first-brainstorm.sh` hook; and clavity's
-  own `agy-assumptions.md` / protocol doc / responder skill. Much of B/F is already here.
-- **Pass 1 — Web sweep (parallel, delegated).** One research subagent per capability axis (lower tier;
-  high-volume/low-judgment fan-out). Strict dispatch contract: scope to its axis; seed known URLs
-  (`antigravity.google/docs/*`, the Google codelab, community guides) + free search; deliver **atomic,
-  source-cited facts** + an explicit "couldn't confirm" list; **do not invent**, never reshape a
-  flag/path/command, paste exact strings, no elided enumerations; return raw findings, not prose.
-- **Pass 2 — Local introspection (main thread; ground truth).** `agy --help`, `--version`, `models`,
-  `changelog`; inspect `~/.gemini/antigravity-cli/` (skills, `cli.log`), `~/.gemini/config/`,
-  `~/.gemini/skills/`.
-- **Pass 3 — agy self-report (main thread; via the bus).** `clavity ask` agy (two-mode: ask it to
-  describe its own strengths/limits/reach) — dogfooding clavity; treat as one source, cross-check.
+  own `agy-assumptions.md` / protocol doc / responder skill. Much of A/B/F is already here.
+- **Pass 1 — Local introspection (main thread; PRIMARY, ground truth).** `agy --help`, `--version`,
+  `models`, `changelog`; inspect `~/.gemini/antigravity-cli/` (skills, `cli.log`), `~/.gemini/config/`,
+  `~/.gemini/skills/`; and **enumerate the currently-loaded skills + MCP servers** (the dynamic part
+  of the profile, per §3).
+- **Pass 2 — agy self-report (main thread; PRIMARY, via the bus).** `clavity ask` agy (two-mode: ask
+  it to describe its own strengths/limits/reach) — dogfooding clavity; treat as one source,
+  cross-check (it overstates reach — see Axis D conflict).
+- **Pass 3 — Web sweep (parallel, delegated; SECONDARY — stable product surface only).** One research
+  subagent per documented area (lower tier; high-volume/low-judgment fan-out). Strict dispatch
+  contract: scope to the *documented* surface; seed known URLs (`antigravity.google/docs/*`, the
+  Google codelab, community guides) + free search; deliver **atomic, source-cited facts** + an
+  explicit "couldn't confirm" list; **do not invent**, never reshape a flag/path/command, paste exact
+  strings, no elided enumerations; return raw findings, not prose. Capability inferences from the web
+  are flagged unconfirmed until `[local]`/`[bus]` corroborates.
 - **Synthesis & cross-verify (main thread).** Merge the four sources into the profile, tag each claim,
   promote agreements to `[verified]`, surface disagreements as `[conflict]`. "Verify inversely to
   tier": lower-tier web findings checked harder; any routing-critical claim confirmed against
