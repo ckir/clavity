@@ -68,4 +68,10 @@ round-trip** — agy can only reply once agentmemory is loaded:
   `capture-pane` to watch live.
 - **Failover:** if the bus or psmux is unavailable, fall back to the file relay
   (`CLAUDE-TO-ANTIGRAVITY.md` / `ANTIGRAVITY-TO-CLAUDE.md`, human-couriered).
+- **agy writes within its workspace.** agy's native file-creation tool only accepts paths **inside
+  its working folder** (its cwd — the folder `clavity start <folder>` launched it in). Paths outside
+  are rejected (`not a valid artifact path; artifacts must be in …/brain/…`) and only work if agy
+  falls back to its shell. So **frame requests to operate on the launch folder**; for anything
+  outside it, tell agy explicitly to write via its shell. (Observed in agy's logs during the project
+  audit, which targeted a different folder than agy's cwd.)
 - This runbook can later be promoted to a harness skill so Claude invokes it automatically.
