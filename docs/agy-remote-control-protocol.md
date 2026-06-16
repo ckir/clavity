@@ -54,9 +54,12 @@ round-trip** — agy can only reply once agentmemory is loaded:
    timeout. Do not silently assume failure.
 
 ## Cancel an in-flight task
-- Send `memory_signal_send(from="claude", to="agy", type="alert", content="[req_id=<id>] cancel")`
-  (the responder checks for an `alert`/cancel at the top of its turn), and/or interrupt the pane:
-  `tmux send-keys -t claude_agy C-c`.
+- **`clavity cancel`** interrupts agy's *current* turn (sends `Escape` — agy's busy footer reads
+  "esc to cancel"). This is the way to stop work already in progress.
+- Also post `memory_signal_send(from="claude", to="agy", type="alert", content="[req_id=<id>] cancel")`
+  so the responder skips the task if it hasn't started — but the responder only reads the bus at the
+  **start** of a turn, so a mid-task alert isn't seen until the turn ends. Hence `clavity cancel` for
+  in-progress work; the `alert` for not-yet-started work.
 
 ## Notes
 - **Payloads always go on the bus**, never in the doorbell — keeps `send-keys` to a short, fixed,

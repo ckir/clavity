@@ -196,6 +196,19 @@ pub fn send_keys(session: &str, text: &str, enter: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Send a single named key (e.g. `C-u`, `Escape`, `Enter`) to the pane — interpreted as a key,
+/// not literal text.
+pub fn send_key(session: &str, key: &str) -> Result<(), String> {
+    let o = run_psmux(&["send-keys", "-t", session, key])?;
+    if !o.status.success() {
+        return Err(format!(
+            "send-keys {key} failed: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
 /// Create a detached session whose pane starts in `dir`.
 pub fn new_session_detached(session: &str, dir: &str) -> Result<(), String> {
     let o = run_psmux(&["new-session", "-d", "-s", session, "-c", dir])?;
@@ -246,6 +259,9 @@ pub fn ring(
             Err(e) => return Err(e),
         }
     }
+    // Clear any leftover/partial input on the prompt line first, so the doorbell lands clean and
+    // isn't appended to stray text or swallowed by a prompt. Best-effort.
+    let _ = send_key(session, "C-u");
     send_keys(session, doorbell, true)
 }
 

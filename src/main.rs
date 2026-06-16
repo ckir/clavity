@@ -21,6 +21,10 @@ use clap::{Parser, Subcommand};
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
+/// The agy-side responder skill, embedded at build time so `start` can install/refresh it into the
+/// user's agy skills dir (keeps the installed skill in lockstep with the binary).
+const RESPONDER_SKILL: &str = include_str!("../agy_skills/claudavity-responder/SKILL.md");
+
 #[derive(Parser)]
 #[command(
     name = "clavity",
@@ -80,6 +84,8 @@ enum Cmd {
     Info,
     /// Preflight: check tmux/claude/agy are on PATH and the session is reachable
     Doctor,
+    /// Interrupt agy's current turn by sending the cancel key (Escape) to the pane
+    Cancel,
     /// Start agy (in a psmux session) AND Claude Code in the same folder (the default action)
     Start {
         /// First non-dash arg is the folder; everything else is forwarded to `claude`
@@ -193,6 +199,18 @@ fn main() {
             0
         }
         Some(Cmd::Doctor) => doctor(&session),
+        Some(Cmd::Cancel) => match tmux::send_key(&session, "Escape") {
+            // agy's busy footer reads "esc to cancel", so Escape interrupts the current turn.
+            // (Posting a cancel `alert` on the bus is Claude's job — it has the bus tools.)
+            Ok(()) => {
+                println!("cancel sent (Escape) to '{session}'");
+                0
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        },
     };
     std::process::exit(code);
 }
@@ -218,6 +236,10 @@ fn start(session: &str, args: Vec<String>) -> i32 {
             folder.display()
         );
     }
+
+    // Keep the agy-side responder skill current (best-effort) before launching, so the agy we
+    // start reads the up-to-date skill on its first doorbell.
+    install_skill();
 
     let agy_args = tmux::agy_start_args();
 
@@ -250,6 +272,29 @@ fn start(session: &str, args: Vec<String>) -> i32 {
             eprintln!("failed to launch claude: {e}");
             1
         }
+    }
+}
+
+/// Best-effort: write/refresh the embedded responder skill into the user's agy skills dir, so the
+/// launched agy loads the current version and the manual copy step isn't needed. Never blocks the
+/// launch. (The GEMINI.md pointer remains a one-time manual step — see the README.)
+fn install_skill() {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from);
+    let Some(home) = home else {
+        warn!("can't locate home dir; skipping responder-skill install");
+        return;
+    };
+    let dir = home.join(".gemini/antigravity-cli/skills/claudavity-responder");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        warn!("couldn't create skill dir {}: {e}", dir.display());
+        return;
+    }
+    let path = dir.join("SKILL.md");
+    match std::fs::write(&path, RESPONDER_SKILL) {
+        Ok(()) => info!("responder skill refreshed -> {}", path.display()),
+        Err(e) => warn!("couldn't write responder skill {}: {e}", path.display()),
     }
 }
 

@@ -113,15 +113,21 @@ cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"   # Windows
 
 ### 3. Install the agy-side responder skill
 
+**`clavity start` auto-installs/refreshes this skill** into `~/.gemini/antigravity-cli/skills/` on
+every launch (it's embedded in the binary), so you normally don't copy it by hand. You do still need
+a **one-time pointer in your `GEMINI.md`** so agy reliably invokes it — exact text is in the
+[design spec](docs/superpowers/specs/2026-06-16-agy-remote-control-design.md).
+
+The responder makes a **non-intrusive `git stash` checkpoint** before editing the live tree, then
+replies on the bus; a `[ping]`-only request is fast-pathed (READY, no checkpoint). On Windows its
+checkpoint command is **PowerShell** (agy's shell is pwsh). To install it manually anyway:
 ```pwsh
 Copy-Item -Recurse agy_skills/claudavity-responder `
   "$HOME/.gemini/antigravity-cli/skills/claudavity-responder"
 ```
 
-Add a short pointer to it in your `GEMINI.md` so agy reliably honors the protocol (the exact pointer
-text is in the [design spec](docs/superpowers/specs/2026-06-16-agy-remote-control-design.md)). The
-responder makes a **non-intrusive `git stash` checkpoint** before editing the live tree, then replies
-on the bus. On Windows its checkpoint command is **PowerShell** (agy's shell is pwsh).
+> **Note:** agy reads the skill once per session and caches it, so a *running* agy won't see skill
+> edits until its next restart.
 
 ### 4. Launch both agents in a folder
 
@@ -173,6 +179,7 @@ clavity state                                       # idle | busy | dead
 | `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
 | `clavity info` | Print the detected platform + effective configuration (diagnostic). |
 | `clavity doctor` | Preflight: check tmux/claude/agy are on `PATH` and the session is reachable. |
+| `clavity cancel` | Interrupt agy's current turn (sends Escape to the pane; pair with a bus `alert` from Claude). |
 | `clavity --session NAME …` | Target a non-default psmux session (global flag). |
 
 **Output discipline:** results go to **stdout** (machine-readable: `idle`, pane text, ids);

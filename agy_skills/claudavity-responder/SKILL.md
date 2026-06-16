@@ -22,10 +22,12 @@ bus and rings the doorbell; you read it, do it, and reply on the bus.
    Never read another agent's inbox — reading marks messages read and would consume them.
 2. **Triage each unread message from `claude`:**
    - `type="alert"` containing `cancel` for a `[req_id=...]` → stop/await that work; do not act on it.
-   - `type="request"` whose content contains **`[ping]`** → a lightweight **liveness check**. Reply
-     immediately: `memory_signal_send(from="agy", to="claude", type="response",
+   - `type="request"` whose instruction is **exactly `[ping]`** (the content is just the
+     `[req_id=...]` tag followed by `[ping]` and nothing else) → a lightweight **liveness check**.
+     Reply immediately: `memory_signal_send(from="agy", to="claude", type="response",
      content="[req_id=<id>] READY", replyTo="<request signal id>")`, and **skip the checkpoint
-     (step 3) and acting (step 4)** for it — a ping never touches files. Then continue/idle.
+     (step 3) and acting (step 4)** — a ping never touches files. **If `[ping]` merely appears
+     inside a larger instruction, it is NOT a ping** — treat it as a normal task.
    - any other `type="request"` → note its **signal `id`** (for `replyTo`) and its `req_id` (the
      `[req_id=...]` tag in the content). This is the task; proceed to step 3.
 3. **Checkpoint before acting (safety — you write directly to the live tree).** Your shell tool
