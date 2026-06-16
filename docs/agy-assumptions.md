@@ -54,12 +54,15 @@ so a stuck or wrong reply doesn't get mistaken for a clavity failure.
     read its inbox *before* erroring, your request was already consumed (marked read), so a bare
     re-`ring` finds nothing — you must **re-send** the request signal (fresh `req_id`), not just ring.
 
-- **A long agy session can serve stale reads.** A long-running agy session sometimes returns
-  **cached/older file content**, producing false-negative reviews (e.g. "you didn't edit X / file
-  ends at line N" when the on-disk file is current). **Always verify agy's claims against disk**
-  (`wc -l`, `grep`); to get a clean read, tell agy to **re-read fresh** (ask it to report the file's
-  line count as proof) or **restart agy** (`clavity stop` then `clavity start`). Both observed during
-  this project's doc reviews.
+- **agy reads files relative to its OWN working folder — even when given an absolute path.** When
+  asked to review files that live in a *different* repo, agy may open its **cwd's** copy instead. If
+  its cwd holds a stale/sibling copy (e.g. the original **claudavity** project still has pre-extraction
+  copies of clavity's docs), it reviews the **wrong file** and reports false negatives ("you didn't
+  edit X / file ends at line N"). Root-caused this session: agy (cwd = `claudavity`) reviewed
+  claudavity's old copies, not clavity's — confirmed by agy itself once it re-read with the line count
+  as proof. **Fixes, best first:** run agy with **cwd = the target repo**; otherwise give **absolute
+  paths** *and* make agy **prove it read the right file** (have it report the line count); or remove
+  stale sibling copies. Always verify agy's file claims against disk (`wc -l`, `grep`).
 
 ## All the knobs (so a fix is usually config, not code)
 
