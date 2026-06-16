@@ -35,13 +35,13 @@ bus and rings the doorbell; you read it, do it, and reply on the bus.
    parse). Run this as ONE command — do **not** split it (`git stash create` alone prints a sha
    but stores nothing; the `git stash store` half is what persists it, so both must run together):
    ```powershell
-   $snap = git stash create "claudavity pre <req_id>"; if ($snap) { git stash store -m "claudavity pre <req_id>" $snap; "checkpoint=$snap" } else { "checkpoint=clean@$(git rev-parse --short HEAD)" }
+   if (git rev-parse --is-inside-work-tree 2>$null) { $snap = git stash create "claudavity pre <req_id>"; if ($snap) { git stash store -m "claudavity pre <req_id>" $snap; "checkpoint=$snap" } else { $h = (git rev-parse --short HEAD 2>$null); if ($h) { "checkpoint=clean@$h" } else { "checkpoint=clean@no-commits" } } } else { "checkpoint=none (not a git repo)" }
    ```
    This snapshots the current tracked state into a recoverable restore point **without** touching
-   your working tree or index. **Then verify it persisted:** `git stash list` must show
-   `claudavity pre <req_id>` (unless the tree was clean). Do not proceed until verified — never
-   claim a checkpoint you did not confirm. If the folder is not a git repo, record
-   `checkpoint=none (not a git repo)` and continue.
+   your working tree or index, and handles the non-repo and fresh-repo (no commits) cases itself.
+   **Then verify it persisted:** `git stash list` must show `claudavity pre <req_id>` (unless the
+   tree was clean / not a repo). Do not proceed until verified — never claim a checkpoint you did
+   not confirm.
 4. **Do exactly what the request asks** — in the live folder, nothing more. No incidental
    refactors or unrelated edits.
 5. **Reply on the bus with a NON-EMPTY summary:** `memory_signal_send(from="agy", to="claude",

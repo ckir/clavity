@@ -180,6 +180,7 @@ clavity state                                       # idle | busy | dead
 | `clavity info` | Print the detected platform + effective configuration (diagnostic). |
 | `clavity doctor` | Preflight: check tmux/claude/agy are on `PATH` and the session is reachable. |
 | `clavity cancel` | Interrupt agy's current turn (sends Escape to the pane; pair with a bus `alert` from Claude). |
+| `clavity stop` | Tear down the agy session (kill the psmux session) so it doesn't orphan. |
 | `clavity --session NAME …` | Target a non-default psmux session (global flag). |
 
 **Output discipline:** results go to **stdout** (machine-readable: `idle`, pane text, ids);

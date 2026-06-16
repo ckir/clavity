@@ -253,6 +253,18 @@ pub fn send_key(session: &str, key: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Kill the psmux session (tears down agy and any attached watch tab).
+pub fn kill_session(session: &str) -> Result<(), String> {
+    let o = run_psmux(&["kill-session", "-t", session])?;
+    if !o.status.success() {
+        return Err(format!(
+            "kill-session failed for {session:?}: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
 /// Create a detached session whose pane starts in `dir`.
 pub fn new_session_detached(session: &str, dir: &str) -> Result<(), String> {
     let o = run_psmux(&["new-session", "-d", "-s", session, "-c", dir])?;

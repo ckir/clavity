@@ -86,6 +86,8 @@ enum Cmd {
     Doctor,
     /// Interrupt agy's current turn by sending the cancel key (Escape) to the pane
     Cancel,
+    /// Tear down the agy session (kill the psmux session) so it doesn't orphan
+    Stop,
     /// Start agy (in a psmux session) AND Claude Code in the same folder (the default action)
     Start {
         /// First non-dash arg is the folder; everything else is forwarded to `claude`
@@ -211,6 +213,23 @@ fn main() {
                 1
             }
         },
+        Some(Cmd::Stop) => {
+            if !tmux::has_session(&session) {
+                println!("no session '{session}' to stop");
+                0
+            } else {
+                match tmux::kill_session(&session) {
+                    Ok(()) => {
+                        println!("stopped session '{session}'");
+                        0
+                    }
+                    Err(e) => {
+                        eprintln!("{e}");
+                        1
+                    }
+                }
+            }
+        }
     };
     std::process::exit(code);
 }
@@ -285,8 +304,11 @@ fn start(session: &str, args: Vec<String>) -> i32 {
     }
 
     // 2) Claude Code in the same folder (foreground), forwarding any extra flags.
+    //    Resolve via `which` so an npm-style `claude.cmd`/`.bat` wrapper works too — Rust's
+    //    Command only auto-appends `.exe`, not the rest of PATHEXT.
+    let claude = which("claude").unwrap_or_else(|| PathBuf::from("claude"));
     info!("launching claude in {}", folder.display());
-    match Command::new("claude")
+    match Command::new(&claude)
         .current_dir(&folder)
         .args(&claude_args)
         .status()
@@ -316,6 +338,10 @@ fn install_skill() {
         return;
     }
     let path = dir.join("SKILL.md");
+    // Skip the write if it's already current — avoids mtime churn that wakes IDE indexers / file watchers.
+    if std::fs::read_to_string(&path).is_ok_and(|c| c == RESPONDER_SKILL) {
+        return;
+    }
     match std::fs::write(&path, RESPONDER_SKILL) {
         Ok(()) => info!("responder skill refreshed -> {}", path.display()),
         Err(e) => warn!("couldn't write responder skill {}: {e}", path.display()),
@@ -333,7 +359,9 @@ fn open_watch_tab(session: &str) {
     ) {
         return;
     }
-    let attach = format!("{} attach -t {session}", tmux::psmux_bin());
+    // Use the PowerShell call operator so a tmux path with spaces (e.g. C:\Program Files\…) is run
+    // as one command, not parsed as `C:\Program` + args.
+    let attach = format!("& '{}' attach -t {session}", tmux::psmux_bin());
     let spawned = Command::new("wt")
         .args([
             "new-tab",
