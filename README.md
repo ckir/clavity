@@ -59,7 +59,7 @@ The Claude-side procedure is in
 | `clavity wait-idle [--timeout N]` | Block until agy is idle (exit 0) or timeout (exit 1). |
 | `clavity ring [--no-idle-gate] [--doorbell S]` | Idle-gate, then send the doorbell to wake agy. |
 | `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
-| `clavity start [FOLDER] [-- claude flags…]` | Launch agy (in a psmux session) **and** Claude Code in the same folder. |
+| `clavity start [FOLDER] [claude flags…]` | Launch agy (in a psmux session) **and** Claude Code in the same folder. Also the **default** action — bare `clavity [FOLDER] [flags…]` runs this. |
 
 Internally: `src/tmux.rs` (**C3** — psmux primitives + footer/activity state detection) and
 `src/bus.rs` (**C5** — the bus id/envelope conventions). The `agy`-side responder skill is
@@ -96,10 +96,13 @@ cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"
    (See the design spec for the exact GEMINI.md pointer text. The responder runs `agy`'s shell —
    which is **pwsh** — so its checkpoint command is PowerShell, not bash.)
 
-2. **Launch both agents in a folder** (run from your normal pwsh so `agy` is signed in):
+2. **Launch both agents in a folder** (run from your normal pwsh so `agy` is signed in). `start` is
+   the default action, so you can omit it:
    ```pwsh
-   clavity start C:\path\to\project                 # folder
-   clavity start C:\path\to\project --resume        # extra args forward to claude
+   clavity C:\path\to\project              # folder (bare = start)
+   clavity -c                              # current folder; forwards `-c` (continue) to claude
+   clavity C:\path\to\project --resume     # folder + flags forwarded to claude
+   clavity start C:\path                   # explicit form, identical to the above
    ```
    The first non-dash argument is the folder; everything else is forwarded to `claude`. agy's own
    flags come from `$env:AGY_START_ARGS` (default `--dangerously-skip-permissions`). Session name

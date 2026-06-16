@@ -2,8 +2,9 @@
 //!
 //! Claude drives agy on demand via a psmux "doorbell" (`send-keys`) + the agentmemory signal
 //! bus. This single binary provides the psmux/state plumbing (`state`, `capture`, `wait-idle`,
-//! `ring`), the bus id convention (`req-id`), and a one-shot launcher (`start`) that brings up
-//! agy in a psmux session *and* Claude Code in the same folder.
+//! `ring`), the bus id convention (`req-id`), and a one-shot launcher (`start`, also the default
+//! when no subcommand is given) that brings up agy in a psmux session *and* Claude Code in the
+//! same folder.
 //!
 //! stdout carries machine-readable results (state / pane text / ids); diagnostics go to stderr
 //! via `tracing` (control verbosity with `RUST_LOG`, e.g. `RUST_LOG=clavity=debug`).
@@ -23,15 +24,21 @@ use tracing_subscriber::EnvFilter;
 #[command(
     name = "clavity",
     version,
-    about = "Remote control for a live Antigravity (agy) session in the same folder."
+    about = "Remote control for a live Antigravity (agy) session in the same folder.",
+    args_conflicts_with_subcommands = true
 )]
 struct Cli {
-    #[command(subcommand)]
-    cmd: Cmd,
-
     /// psmux session name (overrides $AGY_SESSION; default "claude_agy")
     #[arg(long, global = true)]
     session: Option<String>,
+
+    #[command(subcommand)]
+    cmd: Option<Cmd>,
+
+    /// No subcommand = `start`: first non-dash arg is the folder, the rest forward to `claude`
+    /// (e.g. `clavity -c`, `clavity C:\path --resume`).
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    start_args: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -61,7 +68,7 @@ enum Cmd {
         /// If given, print the full `[req_id=..] <instruction>` envelope instead of a bare id
         instruction: Option<String>,
     },
-    /// Start agy (in a psmux session) AND Claude Code in the same folder
+    /// Start agy (in a psmux session) AND Claude Code in the same folder (the default action)
     Start {
         /// First non-dash arg is the folder; everything else is forwarded to `claude`
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -87,11 +94,14 @@ fn main() {
     let session = cli.session.unwrap_or_else(tmux::session);
 
     let code = match cli.cmd {
-        Cmd::State => {
+        // No subcommand → `start` in the current folder (e.g. `clavity -c`).
+        None => start(&session, cli.start_args),
+        Some(Cmd::Start { args }) => start(&session, args),
+        Some(Cmd::State) => {
             println!("{}", tmux::pane_state(&session).as_str());
             0
         }
-        Cmd::Capture => match tmux::capture(&session) {
+        Some(Cmd::Capture) => match tmux::capture(&session) {
             Ok(t) => {
                 print!("{t}");
                 0
@@ -101,7 +111,7 @@ fn main() {
                 1
             }
         },
-        Cmd::WaitIdle { timeout } => {
+        Some(Cmd::WaitIdle { timeout }) => {
             match tmux::wait_idle(&session, dur(timeout), Duration::from_secs(1)) {
                 Ok(true) => {
                     println!("idle");
@@ -117,11 +127,11 @@ fn main() {
                 }
             }
         }
-        Cmd::Ring {
+        Some(Cmd::Ring {
             doorbell,
             no_idle_gate,
             idle_timeout,
-        } => {
+        }) => {
             let db = doorbell.unwrap_or_else(tmux::doorbell);
             match tmux::ring(&session, &db, !no_idle_gate, dur(idle_timeout)) {
                 Ok(()) => {
@@ -134,7 +144,7 @@ fn main() {
                 }
             }
         }
-        Cmd::ReqId { instruction } => {
+        Some(Cmd::ReqId { instruction }) => {
             let id = bus::new_req_id();
             match instruction {
                 Some(text) => println!("{}", bus::make_request(&id, &text)),
@@ -142,7 +152,6 @@ fn main() {
             }
             0
         }
-        Cmd::Start { args } => start(&session, args),
     };
     std::process::exit(code);
 }
@@ -204,5 +213,69 @@ fn start(session: &str, args: Vec<String>) -> i32 {
             eprintln!("failed to launch claude: {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(args).expect("should parse")
+    }
+
+    #[test]
+    fn bare_dash_c_routes_to_start_forwarding_to_claude() {
+        let c = parse(&["clavity", "-c"]);
+        assert!(c.cmd.is_none());
+        assert_eq!(c.start_args, vec!["-c".to_string()]);
+    }
+
+    #[test]
+    fn folder_then_flags_routes_to_start() {
+        let c = parse(&["clavity", "C:/x", "-c", "--model", "opus"]);
+        assert!(c.cmd.is_none());
+        assert_eq!(
+            c.start_args,
+            vec![
+                "C:/x".to_string(),
+                "-c".to_string(),
+                "--model".to_string(),
+                "opus".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn bare_clavity_is_start_with_no_args() {
+        let c = parse(&["clavity"]);
+        assert!(c.cmd.is_none());
+        assert!(c.start_args.is_empty());
+    }
+
+    #[test]
+    fn explicit_start_subcommand_still_works() {
+        let c = parse(&["clavity", "start", "C:/x", "--resume"]);
+        match c.cmd {
+            Some(Cmd::Start { args }) => {
+                assert_eq!(args, vec!["C:/x".to_string(), "--resume".to_string()])
+            }
+            _ => panic!("expected Start"),
+        }
+    }
+
+    #[test]
+    fn named_subcommands_still_parse() {
+        assert!(matches!(parse(&["clavity", "state"]).cmd, Some(Cmd::State)));
+        assert!(matches!(
+            parse(&["clavity", "req-id"]).cmd,
+            Some(Cmd::ReqId { .. })
+        ));
+    }
+
+    #[test]
+    fn global_session_flag_parses() {
+        let c = parse(&["clavity", "--session", "foo", "state"]);
+        assert_eq!(c.session.as_deref(), Some("foo"));
     }
 }
