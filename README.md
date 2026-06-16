@@ -210,6 +210,10 @@ All optional; sensible defaults. Environment variables:
   architecture and the empirical spikes it rests on (bus round-trip, `send-keys` wake, idle/busy
   detection, doorbell-while-busy queueing, the pwsh shell reality, the safety checkpoint).
 - **[Protocol runbook](docs/agy-remote-control-protocol.md)** — the exact Claude-side procedure.
+- **[agy assumptions & re-verification playbook](docs/agy-assumptions.md)** — the external `agy` /
+  `psmux` / `agentmemory` behaviors clavity depends on (footer markers, pwsh shell, skill caching,
+  headless-print hang, …), the versions verified against, and **how to re-verify/fix after an agy
+  update**. Read this first if something breaks.
 
 ---
 
