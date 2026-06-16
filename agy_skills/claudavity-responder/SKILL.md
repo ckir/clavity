@@ -44,11 +44,22 @@ bus and rings the doorbell; you read it, do it, and reply on the bus.
    not confirm.
 4. **Do exactly what the request asks** — in the live folder, nothing more. No incidental
    refactors or unrelated edits.
-5. **Reply on the bus with a NON-EMPTY summary:** `memory_signal_send(from="agy", to="claude",
-   type="response", content="[req_id=<id>] done: <one line on what you actually did>;
-   checkpoint=<sha|clean|none>", replyTo="<request signal id>")`.
-   **Always set `replyTo`, echo the `req_id`, AND include the checkpoint value** — never reply
-   with just the bare `[req_id=...]` tag. Claude correlates on `replyTo` or the echoed id.
+5. **Reply on the bus** with `memory_signal_send(from="agy", to="claude", type="response",
+   replyTo="<request signal id>", content=<envelope>)`, where `<envelope>` is:
+   ```
+   [req_id=<id>] done: <one-line summary>
+   checkpoint=<sha|clean|none>
+
+   ### Changes Made
+   - <files changed + what you did>
+   ### Verification
+   - <commands you ran + their outcomes>
+   ### Notes/Issues
+   - <warnings, follow-ups, or blockers — or "none">
+   ```
+   On failure, lead with `[req_id=<id>] failed: <reason>` instead of `done:`. **Always set `replyTo`,
+   echo the `req_id`, and include the `checkpoint=` value** — never reply with just the bare tag.
+   Claude correlates on `replyTo` or the echoed id. (A `[ping]` is the exception — see step 2.)
 6. **For long tasks, post progress:** `memory_signal_send(from="agy", to="claude",
    type="info", content="[req_id=<id>] <progress note>")` as you go.
 7. **Return to idle.** Do NOT start a self-polling loop or a recurring schedule — Claude rings

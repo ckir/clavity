@@ -35,6 +35,49 @@ round-trip** — agy can only reply once agentmemory is loaded:
 (The human equivalent, in the watch tab, is typing `list your active mcp servers` and seeing
 `agentmemory` listed.)
 
+## Driving conventions (agy's stated preferences)
+
+agy defined these — follow them when phrasing requests for best results.
+
+**Request shape — DO:**
+- Lead with a clear **imperative goal** ("Implement X in `src/y.rs`").
+- List the **exact file paths in scope** (saves agy searching).
+- Give a **Definition of Done / how to verify** (e.g. "verify with `cargo test --test foo`") — agy is
+  biased toward acting and verifying.
+- State **guardrails** explicitly ("Do NOT modify `src/legacy.rs`").
+- Prefer Markdown sections: `### Goal`, `### Files in scope`, `### Verification`, `### Guardrails`.
+- **Carry your own context** — you and agy have *separate* context windows. If you just read a long
+  log, paste the relevant stack trace into the request; agy can't see what you saw.
+- For analysis/review only, say it outright: **"Just REPLY on the bus — do NOT write or edit files."**
+  agy's default bias is to start coding. For scripts, say whether to *write* or *run* them.
+
+**AVOID:**
+- Vague scope ("fix the bug") — give the error/trace or the precise behavior mismatch.
+- Guessing **line numbers** — agy's edit tools need exact string matches; point to function/class names.
+- Interactive confirmations ("does this make sense?") — agy can't chat; it replies only when done or blocked.
+
+**Scoping:** one focused task, or a few closely-related ones ("add endpoints A, B, C to `api.rs`").
+Don't batch disparate/complex work or anything touching >5 files — split into sequential phases
+(rule of thumb: one focused PR's worth per request).
+
+**Clarify / cancel:** agy reads the bus **only at the start of a turn** — it cannot ingest new
+instructions mid-turn. To pivot: `clavity cancel` (Escape) + an `alert` `[req_id=…] cancel`, let it
+return to idle, then send the new request.
+
+**Reply envelope** agy returns (`type=response`, `replyTo` = your request's signal id):
+```
+[req_id=<id>] done: <one-line summary>
+checkpoint=<sha|clean|none>
+
+### Changes Made
+- <files changed + what>
+### Verification
+- <commands run + outcomes>
+### Notes/Issues
+- <warnings / follow-ups / blockers>
+```
+On failure it leads with `[req_id=<id>] failed: <reason>`. A `[ping]` gets just `[req_id=<id>] READY`.
+
 ## Send a request and await the reply
 1. **Mint id + envelope:** `clavity req-id "<self-contained instruction for agy>"` prints the full
    `[req_id=<id>] <instruction>` content (or `clavity req-id` for a bare id).
