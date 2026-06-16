@@ -44,6 +44,22 @@ moment and retry. Once `READY` arrives, agy + its bus are live.
 
 agy defined these — follow them when phrasing requests for best results.
 
+**Route by capability first.** Before phrasing an ask, consult the capability profile
+([`agy-capabilities.md`](agy-capabilities.md)) to decide **whether** to delegate to agy at all,
+**what** to delegate, and **which model** to set it to — agy is an external, multi-model platform, so
+treat picking it (and its model) like choosing a subagent tier:
+- **Route toward agy** for an *independent second-model* perspective: divergent review, generative
+  design input, a different provider's opinion on Claude's work, or non-blocking async orchestration
+  (profile §A/§F). **Keep on Claude** mechanical sweeps / well-specified implementation (§F redundancy
+  guard — don't hand agy-on-a-weak-model what Claude should just do).
+- **Pick the model for the task** (§C): deep review/reasoning → Opus 4.6 Thinking or Gemini 3.1 Pro
+  High; bulk/cheap/parallel → Flash Low/Med; cost-sensitive second opinion → GPT-OSS 120B (not top
+  coding/agentic). Set it with `--model` / `/model`.
+- **Respect the weaknesses** (§B): seed specific invariants instead of open "find bugs" (it
+  over-escalates); supply whole-graph context for cross-file/concurrency work (it reasons locally);
+  always verify its file/line claims against disk (worktree-blind); and account for quota/backend
+  lockouts on critical-path work (keep a Claude fallback).
+
 **Request shape — DO:**
 - Lead with a clear **imperative goal** ("Implement X in `src/y.rs`").
 - List the **exact file paths in scope** (saves agy searching).
