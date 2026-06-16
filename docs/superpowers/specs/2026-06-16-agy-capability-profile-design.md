@@ -27,9 +27,10 @@ defines a small, surgical extension to #2 and only *references* #3.
   `agy-assumptions.md`; provenance-tagged, version-pinned, refreshable. Not a skill — a skill is for
   "how to act" (that's #2).
 - **#2 — Wording protocol (EXTEND existing): `docs/agy-remote-control-protocol.md` → "Driving
-  conventions".** clavity's local "how to ask agy in its language" (canonical upstream: the global
-  AGENTS.md "Working with Antigravity" wording guidance). Extend it to (a) **link to #1** and (b) add
-  *capability-aware* asking (route per the profile). The wording **discipline** lives here, not in #1.
+  conventions".** clavity's local "how to ask agy in its language." Extend it to (a) **link to #1**
+  and (b) add *capability-aware* asking (route per the profile). The wording **discipline** lives
+  here, not in #1. **Local-first, then promote:** validate the additions locally in clavity, then
+  promote them up to the global AGENTS.md "Working with Antigravity" (the shared upstream) — §5.
 - **#3 — When-gate (UNCHANGED): `~/.claude/hooks/agy-first-brainstorm.sh`.** The user's policy for
   when to consult agy automatically before presenting to the user. Referenced from #2; **not edited**.
 
@@ -81,31 +82,36 @@ carry their **calibration source** (e.g. "`[corpus]` over-escalates on open disc
 ## 4. Research execution (Hybrid — passes + synthesis)
 
 The research *produces* #1. Output is the capability profile, not raw trivia. **Source priority
-(agy's own [bus] caution, accepted):** agy is local-first and dynamic, so its *capabilities* are
-ground-truthed **locally** — `[local]` + `[corpus]` + `[bus]` are **primary** for capability/routing
-claims; the **web sweep is secondary**, scoped to the *stable product surface* (documented flags,
-subcommands, the published feature set), **not** used to infer what agy can do here. Web claims about
-capability that aren't confirmed locally are marked `[doc]` + "unconfirmed."
+(agy is closed-source — this overrides agy's own "demote the web" advice):** Claude **cannot study
+agy's code** to learn its capabilities, and local introspection sees only **configuration files +
+observable behavior**, not the implementation. So the **web is a PRIMARY avenue** — official docs
+(`antigravity.google/docs`, the Google codelab, `agy changelog`) **plus real user findings**
+(StackOverflow, GitHub issues, community guides) — alongside the **user's validated corpus**. **Local
+introspection** (config files + observed behavior) grounds *which* capabilities are actually
+loaded/configured here; the **bus self-report** is **cross-check only** (agy overstates — see Axis D).
+agy's valid point still holds: effective capability = baseline + currently-loaded skills/MCP, so local
+enumeration of the loaded toolset matters — but the *baseline* surface comes from web + corpus.
 
 - **Pass 0 — Harvest the existing corpus (main thread; PRIMARY).** Seed from the user's validated
   knowledge: `~/.claude/skills/token-discipline-installer/templates/AGENTS-antigravity-protocol.md`;
   the `feedback_agy_review_wording.md` / `project_antigravity_protocol.md` /
   `feedback_agy_consult_before_user.md` memories; the `agy-first-brainstorm.sh` hook; and clavity's
   own `agy-assumptions.md` / protocol doc / responder skill. Much of A/B/F is already here.
-- **Pass 1 — Local introspection (main thread; PRIMARY, ground truth).** `agy --help`, `--version`,
-  `models`, `changelog`; inspect `~/.gemini/antigravity-cli/` (skills, `cli.log`), `~/.gemini/config/`,
-  `~/.gemini/skills/`; and **enumerate the currently-loaded skills + MCP servers** (the dynamic part
-  of the profile, per §3).
-- **Pass 2 — agy self-report (main thread; PRIMARY, via the bus).** `clavity ask` agy (two-mode: ask
-  it to describe its own strengths/limits/reach) — dogfooding clavity; treat as one source,
-  cross-check (it overstates reach — see Axis D conflict).
-- **Pass 3 — Web sweep (parallel, delegated; SECONDARY — stable product surface only).** One research
-  subagent per documented area (lower tier; high-volume/low-judgment fan-out). Strict dispatch
-  contract: scope to the *documented* surface; seed known URLs (`antigravity.google/docs/*`, the
-  Google codelab, community guides) + free search; deliver **atomic, source-cited facts** + an
-  explicit "couldn't confirm" list; **do not invent**, never reshape a flag/path/command, paste exact
-  strings, no elided enumerations; return raw findings, not prose. Capability inferences from the web
-  are flagged unconfirmed until `[local]`/`[bus]` corroborates.
+- **Pass 1 — Web research (parallel, delegated; PRIMARY).** One research subagent per area (lower
+  tier; high-volume/low-judgment fan-out). Seed known URLs (`antigravity.google/docs/*`, the Google
+  codelab, `agy changelog`) **and** community/user findings (StackOverflow, GitHub issues, guides) +
+  free search. Strict dispatch contract: deliver **atomic, source-cited facts** + an explicit
+  "couldn't confirm" list; **do not invent**, never reshape a flag/path/command, paste exact strings,
+  no elided enumerations; return raw findings, not prose. (agy being closed-source, the web + corpus
+  are how we learn the baseline capability surface — there is no code to read.)
+- **Pass 2 — Local introspection (main thread; config + behavior only).** Bounded to what's readable
+  without source: `agy --help`, `--version`, `models`, `changelog`; inspect **config files** under
+  `~/.gemini/antigravity-cli/` (skills, `cli.log`), `~/.gemini/config/`, `~/.gemini/skills/`; and
+  **enumerate the currently-loaded skills + MCP servers** (the dynamic part of the profile, §3).
+  Confirms what's loaded/configured + observed behavior here — **not** the implementation.
+- **Pass 3 — agy self-report (main thread; via the bus; CROSS-CHECK).** `clavity ask` agy (two-mode)
+  to describe its own strengths/limits/reach — dogfooding clavity; one source, **cross-checked** (it
+  overstates reach — see Axis D conflict).
 - **Synthesis & cross-verify (main thread).** Merge the four sources into the profile, tag each claim,
   promote agreements to `[verified]`, surface disagreements as `[conflict]`. "Verify inversely to
   tier": lower-tier web findings checked harder; any routing-critical claim confirmed against
@@ -122,8 +128,13 @@ wording preferences). Extend it minimally to:
    hyperbolic priming, front-load context (agy is worktree-blind / separate context), and the
    delegation boundary — each cross-referenced to the relevant profile axis.
 
-The wording **discipline stays here** (not duplicated into #1). The canonical upstream remains the
-global AGENTS.md "Working with Antigravity"; this is clavity's local, bus-transport instance.
+The wording **discipline stays here** (not duplicated into #1).
+
+**Local-first, then promote.** Extend and validate the wording protocol **locally** in clavity first
+(the bus-transport instance, where we can dogfood `clavity ask` against the live agy). Once it proves
+out, **promote the capability-aware additions up to the global AGENTS.md "Working with Antigravity"**
+(the canonical upstream all projects share). Test local → promote global; don't edit the global until
+the local version is validated.
 
 ## 6. #3 — The when-gate (reference only)
 
@@ -141,11 +152,12 @@ routing, note it and cross-link `agy-assumptions.md`. Mirrors `agy-assumptions.m
 ## 8. Success criteria
 
 - `docs/agy-capabilities.md` exists as a **routing-oriented** profile (axes A–G), not a CLI dump.
-- Every claim is provenance-tagged; **no untagged claims**; routing-critical claims are `[verified]`,
-  `[local]`, or `[corpus]`; capability claims carry a calibration source. `[conflict]` items listed.
+- Every claim is provenance-tagged; **no untagged claims**; routing-critical claims are `[verified]`
+  (cross-checked) or grounded in `[corpus]`/`[local]`; web-only `[doc]` capability claims are marked
+  "unconfirmed"; capability claims carry a calibration source. `[conflict]` items listed.
 - A `Verified against: agy <version>` header + a runnable refresh procedure are present.
 - #2's "Driving conventions" links to #1 and is capability-aware; the wording discipline is **not**
-  duplicated into #1.
+  duplicated into #1; capability-aware additions validated locally first, then promoted to global.
 - #1 links to (does not duplicate) `agy-assumptions.md`, the protocol doc, and references the hook.
 - Spot-check: a few routing-relevant claims (a strength, a weakness, an operational limit) hold up
   against the installed agy / the corpus evidence.
@@ -153,16 +165,20 @@ routing, note it and cross-link `agy-assumptions.md`. Mirrors `agy-assumptions.m
 ## 9. Out of scope (YAGNI)
 
 - The Antigravity **IDE/desktop** app — CLI (`agy`) only.
-- **Editing** the wording protocol beyond the surgical #2 extension, or **editing** the hook (#3).
+- Studying agy's **source code** — it is **closed-source**; we learn capabilities from web + corpus +
+  config files + observed behavior + agy's (cross-checked) self-report, never from its implementation.
+- **Editing** the wording protocol beyond the #2 extension (local) + its promotion to global, or
+  **editing** the hook (#3).
 - A standalone "driving-agy" skill — superseded by the doc (#1) + extended protocol (#2).
 - Automated/scheduled re-research — the refresh (§7) is a manual runbook.
 
 ## 10. Risks
 
-- **Sparse/contradictory web coverage** for a young tool → triangulation + `[conflict]` tagging +
-  `[local]`/`[corpus]` authority for our version.
+- **Closed-source + sparse/contradictory web coverage** for a young tool → no code to read, so lean on
+  *multiple* web sources (official docs **and** user findings) + corpus + observed behavior;
+  triangulate; `[conflict]` tag; `[local]`/`[corpus]` win for our version.
 - **Capability claims are softer than facts** (e.g. "good at X") → require a calibration source; prefer
-  `[corpus]` observed behavior over `[doc]` marketing claims.
+  `[corpus]` observed behavior and corroborated user findings over `[doc]` marketing claims.
 - **Profile drifts as agy updates** → provenance + `Verified against` pin make staleness visible; §7
   refresh.
 - **agy mis-reports its own strengths** → `[bus]` is one source, cross-checked against `[corpus]`/`[local]`.
