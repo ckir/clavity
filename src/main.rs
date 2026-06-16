@@ -10,6 +10,7 @@
 //! via `tracing` (control verbosity with `RUST_LOG`, e.g. `RUST_LOG=clavity=debug`).
 
 mod bus;
+mod platform;
 mod tmux;
 
 use std::path::PathBuf;
@@ -68,6 +69,8 @@ enum Cmd {
         /// If given, print the full `[req_id=..] <instruction>` envelope instead of a bare id
         instruction: Option<String>,
     },
+    /// Print the detected platform + effective configuration (a diagnostic)
+    Info,
     /// Start agy (in a psmux session) AND Claude Code in the same folder (the default action)
     Start {
         /// First non-dash arg is the folder; everything else is forwarded to `claude`
@@ -152,6 +155,18 @@ fn main() {
             }
             0
         }
+        Some(Cmd::Info) => {
+            let os = platform::current();
+            println!("os             = {}", os.name());
+            println!("agy_shell      = {}", os.agy_shell());
+            println!("session        = {session}");
+            println!("tmux_bin       = {}", tmux::psmux_bin());
+            println!("doorbell       = {}", tmux::doorbell());
+            println!("idle_marker    = {}", tmux::idle_marker());
+            println!("busy_marker    = {}", tmux::busy_marker());
+            println!("agy_start_args = {}", tmux::agy_start_args());
+            0
+        }
     };
     std::process::exit(code);
 }
@@ -178,8 +193,7 @@ fn start(session: &str, args: Vec<String>) -> i32 {
         );
     }
 
-    let agy_args = std::env::var("AGY_START_ARGS")
-        .unwrap_or_else(|_| "--dangerously-skip-permissions".to_string());
+    let agy_args = tmux::agy_start_args();
 
     // 1) agy in a detached psmux session (idempotent: reuse if already up).
     if tmux::has_session(session) {

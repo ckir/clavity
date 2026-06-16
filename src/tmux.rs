@@ -39,12 +39,19 @@ pub fn doorbell() -> String {
     })
 }
 
-fn idle_marker() -> String {
+/// Footer text meaning agy is idle. Override with `AGY_IDLE_MARKER`.
+pub fn idle_marker() -> String {
     std::env::var("AGY_IDLE_MARKER").unwrap_or_else(|_| "? for shortcuts".to_string())
 }
 
-fn busy_marker() -> String {
+/// Footer text meaning agy is busy. Override with `AGY_BUSY_MARKER`.
+pub fn busy_marker() -> String {
     std::env::var("AGY_BUSY_MARKER").unwrap_or_else(|_| "esc to cancel".to_string())
+}
+
+/// Flags `start` passes to `agy`. Override with `AGY_START_ARGS`.
+pub fn agy_start_args() -> String {
+    std::env::var("AGY_START_ARGS").unwrap_or_else(|_| "--dangerously-skip-permissions".to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,7 +201,9 @@ pub fn wait_idle(session: &str, timeout: Duration, poll: Duration) -> Result<boo
         match pane_state(session) {
             PaneState::Idle => return Ok(true),
             PaneState::Dead => {
-                return Err(format!("session {session:?} is gone while waiting for idle"))
+                return Err(format!(
+                    "session {session:?} is gone while waiting for idle"
+                ))
             }
             PaneState::Busy => {}
         }
@@ -216,7 +225,9 @@ pub fn ring(
     if idle_gate {
         match wait_idle(session, idle_timeout, Duration::from_secs(1)) {
             Ok(true) => {}
-            Ok(false) => warn!("idle gate timed out; ringing anyway (doorbell-while-busy is queued)"),
+            Ok(false) => {
+                warn!("idle gate timed out; ringing anyway (doorbell-while-busy is queued)")
+            }
             Err(e) => return Err(e),
         }
     }
