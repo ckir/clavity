@@ -19,9 +19,10 @@ use std::time::{Duration, Instant};
 
 use tracing::{debug, warn};
 
-/// The psmux/tmux binary. Override with `AGY_TMUX_BIN`.
+/// The psmux/tmux binary, resolved on `PATH` (ships as `psmux`/`pmux`/`tmux`). Override with
+/// `AGY_TMUX_BIN` if it lives somewhere not on `PATH`.
 pub fn psmux_bin() -> String {
-    std::env::var("AGY_TMUX_BIN").unwrap_or_else(|_| r"C:\!PORTABLES\!BIN\tmux.exe".to_string())
+    std::env::var("AGY_TMUX_BIN").unwrap_or_else(|_| "tmux".to_string())
 }
 
 /// The psmux session hosting the live, signed-in agy. Override with `AGY_SESSION`.
