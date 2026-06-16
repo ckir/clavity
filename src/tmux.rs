@@ -90,6 +90,50 @@ pub fn has_session(session: &str) -> bool {
     }
 }
 
+/// The pane's current foreground command (e.g. `agy` or `pwsh`), or None.
+pub fn pane_command(session: &str) -> Option<String> {
+    let o = run_psmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        session,
+        "#{pane_current_command}",
+    ])
+    .ok()?;
+    if o.status.success() {
+        Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+    } else {
+        None
+    }
+}
+
+/// True iff `agy` is the session's running foreground process. A session can outlive agy (when
+/// agy exits, the pane falls back to its shell), so `has_session` alone isn't enough to know agy
+/// is up.
+pub fn agy_running(session: &str) -> bool {
+    pane_command(session)
+        .map(|c| c.to_ascii_lowercase().contains("agy"))
+        .unwrap_or(false)
+}
+
+/// True iff the session has at least one attached client (i.e. a visible terminal/tab is showing it).
+pub fn is_attached(session: &str) -> bool {
+    match run_psmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        session,
+        "#{session_attached}",
+    ]) {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .trim()
+            .parse::<u32>()
+            .map(|n| n > 0)
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
 /// Return the visible pane content. Err if the session is gone / capture fails.
 pub fn capture(session: &str) -> Result<String, String> {
     let o = run_psmux(&["capture-pane", "-p", "-t", session])?;
