@@ -211,11 +211,8 @@ fn start(session: &str, args: Vec<String>) -> i32 {
             eprintln!("failed to launch agy in psmux: {e}");
             return 1;
         }
-        info!(
-            "agy starting in psmux '{session}' at {} (watch: {} attach -t {session})",
-            folder.display(),
-            tmux::psmux_bin()
-        );
+        info!("agy starting in psmux '{session}' at {}", folder.display());
+        open_watch_tab(session);
     }
 
     // 2) Claude Code in the same folder (foreground), forwarding any extra flags.
@@ -230,6 +227,37 @@ fn start(session: &str, args: Vec<String>) -> i32 {
             eprintln!("failed to launch claude: {e}");
             1
         }
+    }
+}
+
+/// Open a visible terminal tab attached to the psmux session so the human can SEE agy and answer
+/// its (frequent) auth/login prompts. Best-effort: on any failure it logs how to attach manually
+/// and never blocks the launch. Disable with `AGY_WATCH=0`. Uses Windows Terminal (`wt`); on other
+/// terminals/platforms it falls back to the manual-attach hint.
+fn open_watch_tab(session: &str) {
+    if matches!(
+        std::env::var("AGY_WATCH").as_deref(),
+        Ok("0") | Ok("false") | Ok("no")
+    ) {
+        return;
+    }
+    let attach = format!("{} attach -t {session}", tmux::psmux_bin());
+    let spawned = Command::new("wt")
+        .args([
+            "new-tab",
+            "--title",
+            &format!("agy:{session}"),
+            "pwsh",
+            "-NoExit",
+            "-Command",
+            &attach,
+        ])
+        .spawn();
+    match spawned {
+        Ok(_) => {
+            info!("opened a watch tab attached to '{session}' (answer agy's auth prompts there)")
+        }
+        Err(e) => warn!("couldn't open a watch tab ({e}); watch agy manually with:  {attach}"),
     }
 }
 

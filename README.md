@@ -136,7 +136,9 @@ clavity start C:\path                # explicit form, identical
 ```
 
 The first non-dash argument is the folder; everything else is forwarded verbatim to `claude`.
-Watch agy live anytime: `tmux attach -t claude_agy` (detach with `Ctrl-b d`).
+**On first launch a visible "watch" tab opens** (Windows Terminal) attached to agy, so you can
+answer agy's auth/login prompts — it asks fairly often. Disable with `AGY_WATCH=0`. You can also
+attach manually anytime: `tmux attach -t claude_agy` (detach with `Ctrl-b d`).
 
 ### 5. Drive agy from Claude
 
@@ -183,6 +185,7 @@ All optional; sensible defaults. Environment variables:
 | `AGY_TMUX_BIN` | `tmux` (resolved on `PATH`) | psmux/tmux binary; set only if it isn't on `PATH`. |
 | `AGY_DOORBELL` | _canonical line_ | The single-line wake string the responder skill keys on. |
 | `AGY_START_ARGS` | `--dangerously-skip-permissions` | Flags `start` passes to `agy`. |
+| `AGY_WATCH` | _enabled_ | On first launch, `start` opens a visible terminal tab (Windows Terminal) attached to agy so you can answer its auth/login prompts. Set `0`/`false`/`no` to disable. |
 | `AGY_IDLE_MARKER` | `? for shortcuts` | Footer text meaning agy is idle. |
 | `AGY_BUSY_MARKER` | `esc to cancel` | Footer text meaning agy is busy. |
 | `RUST_LOG` | `clavity=info` | Log verbosity, e.g. `RUST_LOG=clavity=debug`. |
