@@ -94,7 +94,10 @@ On failure it leads with `[req_id=<id>] failed: <reason>`. A `[ping]` gets just 
    - On match → return it. On no match → liveness-check `clavity state`; if `dead`, abort with
      "agy session down — re-bootstrap"; else keep waiting until the deadline.
 5. **On timeout:** capture context with `clavity capture` (what agy was doing) and report a typed
-   timeout. Do not silently assume failure.
+   timeout. Do not silently assume failure. If the pane shows a transient backend error (e.g. agy's
+   "high traffic" message), agy aborted to idle with no reply — wait ~1 min, **re-send** the request
+   (it was likely consumed when agy read its inbox, so a bare re-`ring` won't re-surface it), then
+   `clavity ring` again. (See `docs/agy-assumptions.md` → "Transient runtime gotchas".)
 
 ## Cancel an in-flight task
 - **`clavity cancel`** interrupts agy's *current* turn (sends `Escape` — agy's busy footer reads

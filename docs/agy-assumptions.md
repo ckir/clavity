@@ -41,6 +41,26 @@ Rust code.**
 | 10 | **agentmemory bus**: `memory_signal_send`/`memory_signal_read`; reading an agent's inbox **consumes its unread**; `threadId` filter exists; types `info/request/response/alert`; agentIds `claude`/`agy` | The entire data channel | A bus ping round-trip (playbook #3) | Conventions live in `src/bus.rs` + the protocol doc; read by `threadId` to avoid consuming unrelated unread |
 | 11 | **A psmux session outlives agy** — agy is launched into a pwsh pane, so when agy exits the pane falls back to the shell and the **session persists with no agy** | Why `start` checks `agy_running` (pane's `#{pane_current_command}`), not just `has_session`, before reusing; and re-attaches a watch tab via `#{session_attached}` | `tmux display-message -p -t <s> '#{pane_current_command}'` → `agy` vs `pwsh`; `'#{session_attached}'` → `1`/`0` | `start` relaunches agy in a stale session and reuses only a live one (`src/main.rs`) |
 
+## Transient runtime gotchas (agy/backend behavior, not config)
+
+These are **not** clavity bugs — they're how the live agy / its model backend behave. Recognize them
+so a stuck or wrong reply doesn't get mistaken for a clavity failure.
+
+- **Backend overload aborts the turn.** agy's model backend (Gemini) can return
+  `⚠ Our servers are experiencing high traffic right now, please try again in a minute` and **abort
+  mid-turn**, returning agy to idle with **no bus reply**. Your `await` just times out.
+  - **Diagnose:** `clavity capture` — the error shows in the pane; agy is `idle`, not `dead`.
+  - **Recover:** wait ~1 min, then **re-send the request and `clavity ring` again**. Note: if agy
+    read its inbox *before* erroring, your request was already consumed (marked read), so a bare
+    re-`ring` finds nothing — you must **re-send** the request signal (fresh `req_id`), not just ring.
+
+- **A long agy session can serve stale reads.** A long-running agy session sometimes returns
+  **cached/older file content**, producing false-negative reviews (e.g. "you didn't edit X / file
+  ends at line N" when the on-disk file is current). **Always verify agy's claims against disk**
+  (`wc -l`, `grep`); to get a clean read, tell agy to **re-read fresh** (ask it to report the file's
+  line count as proof) or **restart agy** (`clavity stop` then `clavity start`). Both observed during
+  this project's doc reviews.
+
 ## All the knobs (so a fix is usually config, not code)
 
 `AGY_SESSION`, `AGY_TMUX_BIN`, `AGY_DOORBELL`, `AGY_IDLE_MARKER`, `AGY_BUSY_MARKER`, `AGY_START_ARGS`,
