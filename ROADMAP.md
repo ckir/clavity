@@ -189,3 +189,40 @@ fast-path content (the responder skill already fast-paths `[ping]` → `READY`, 
 4. `ask` (+ `--review-only`, + tests) — depends on send capability.
 5. `ping` (thin wrapper).
 6. Docs sweep (README, protocol runbook, agy-assumptions, bus.rs comment).
+
+---
+
+## Follow-ups (captured post-implementation)
+
+### Pre-flight thread discovery for standalone `await-reply` (agy's idea, 2026-06-16)
+
+> Source: agy, generative-mode round during the capability-profile test suite (Test C). Captured here
+> as a future enhancement, not yet implemented.
+
+**Friction.** `clavity ask` is safe because it *sent* the request itself, so it knows the `threadId`
+and scopes its consuming read to that one thread (never touches unrelated unread). But **standalone
+`clavity await-reply --req-id <ID>`** — used when the master sent the request via its own MCP
+`memory_signal_send`, so clavity does *not* know the `threadId` — currently reads `agentId=claude`
+with **no `threadId` scope**. The agentmemory daemon's read **consumes** (marks `readAt`) any returned
+unread `to=claude` signal, so this can **consume unrelated replies** sitting in the master's inbox,
+hiding them from the master's own later `memory_signal_read`. (Documented today as "authoritative —
+don't also MCP-read"; the footgun remains for unrelated traffic.)
+
+**Proposed fix — discover the thread, then scope.** Before polling the inbox, do a **non-consuming
+sender-side read** to find the master's *outbound* request and learn its thread:
+1. Query the daemon for messages involving `claude` and find the **outbound request** (`from=claude`)
+   whose `content` carries `[req_id=<ID>]`; read its `threadId`. (A sender-side match does not mark the
+   master's *inbound* replies read — but **scope the discovery read carefully** so it doesn't itself
+   consume any `to=claude` unread; e.g. filter to `from=claude` outbound only, or read by a
+   already-known thread. This subtlety is the crux — verify against the daemon's read semantics in
+   `agy-assumptions.md` #13.)
+2. Then poll `agentId=claude&threadId=<discovered>` — the consume is now scoped to exactly that thread,
+   giving standalone `await-reply` the same safety the composite `ask` already has.
+
+**Acceptance:** standalone `await-reply` consumes only its own thread's reply, never unrelated unread;
+`ask` behavior unchanged; covered by a fake-endpoint test (unrelated `to=claude` unread survives an
+`await-reply` for a different `req_id`).
+
+**Rejected alternative (needs upstream change):** a daemon `GET /agentmemory/signals?peek=true` flag
+that disables `readAt` marking — clean, but requires an **agentmemory** change (out of clavity's
+control); revisit only if the daemon adds it.
