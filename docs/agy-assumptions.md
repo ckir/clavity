@@ -90,6 +90,19 @@ so a stuck or wrong reply doesn't get mistaken for a clavity failure.
     read its inbox *before* erroring, your request was already consumed (marked read), so a bare
     re-`ring` finds nothing — you must **re-send** the request signal (fresh `req_id`), not just ring.
 
+- **The agentmemory daemon (`:3111`) can flap up/down within seconds.** Observed **2026-06-17**: during
+  one live test the daemon went up → down → up → down across consecutive `ping`/`ask` calls (seconds
+  apart). When down, the REST health check fails (`os error 10060`, connection timeout) and
+  `ask`/`await-reply`/`ping` **fail-fast with exit 2 and `agentmemory daemon unreachable at …`** — by
+  design (the `MemBus::health()` preflight), **not a hang and not a clavity bug**. The same process
+  also serves agy's MCP bus, so a flap can disrupt agy mid-turn too.
+  - **Diagnose:** `curl http://127.0.0.1:3111/agentmemory/health` a few times — alternating `200` /
+    timeout confirms flapping (vs. steadily down = daemon dead/restarting).
+  - **Recover:** it usually self-heals in seconds; just **retry** when health returns `200` (a short
+    probe-until-200 loop before the call works well). If it stays down, restart the agentmemory daemon.
+  - Related: the daemon being **load-bearing** for `ask`/`await-reply`/`ping` is assumption #13;
+    capability profile §B lists quota/backend lockouts as a routing risk.
+
 - **agy reads files relative to its OWN working folder — even when given an absolute path.** When
   asked to review files that live in a *different* repo, agy may open its **cwd's** copy instead. If
   its cwd holds a stale/sibling copy (e.g. the original **claudavity** project still has pre-extraction
