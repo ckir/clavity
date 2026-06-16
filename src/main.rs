@@ -46,8 +46,15 @@ struct Cli {
 enum Cmd {
     /// Print pane state: idle | busy | dead
     State,
-    /// Print the visible pane content
-    Capture,
+    /// Print the pane content (full scrollback history by default)
+    Capture {
+        /// Limit to the last N lines of scrollback (default: full history)
+        #[arg(long)]
+        lines: Option<usize>,
+        /// Only the visible viewport (no scrollback)
+        #[arg(long)]
+        viewport: bool,
+    },
     /// Block until agy is idle; exit 0 if idle, 1 on timeout
     WaitIdle {
         #[arg(long, default_value_t = 120.0)]
@@ -106,16 +113,32 @@ fn main() {
             println!("{}", tmux::pane_state(&session).as_str());
             0
         }
-        Some(Cmd::Capture) => match tmux::capture(&session) {
-            Ok(t) => {
-                print!("{t}");
-                0
+        Some(Cmd::Capture { lines, viewport }) => {
+            let res = if viewport {
+                tmux::capture(&session)
+            } else {
+                tmux::capture_scrollback(&session)
+            };
+            match res {
+                Ok(t) => {
+                    match lines {
+                        // Last N lines of whatever was captured (full scrollback or viewport).
+                        Some(n) => {
+                            let v: Vec<&str> = t.lines().collect();
+                            for line in &v[v.len().saturating_sub(n)..] {
+                                println!("{line}");
+                            }
+                        }
+                        None => print!("{t}"),
+                    }
+                    0
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    1
+                }
             }
-            Err(e) => {
-                eprintln!("{e}");
-                1
-            }
-        },
+        }
         Some(Cmd::WaitIdle { timeout }) => {
             match tmux::wait_idle(&session, dur(timeout), Duration::from_secs(1)) {
                 Ok(true) => {

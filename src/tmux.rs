@@ -102,6 +102,21 @@ pub fn capture(session: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
+/// Capture the pane including the full scrollback history (`capture-pane -p -S -`). Used by the
+/// `capture` subcommand for observability — *not* by state detection, which wants only the viewport.
+/// (Tailing to the last N lines is done by the caller, since `-S -n` means "start n lines above the
+/// viewport", not "last n lines".)
+pub fn capture_scrollback(session: &str) -> Result<String, String> {
+    let o = run_psmux(&["capture-pane", "-p", "-S", "-", "-t", session])?;
+    if !o.status.success() {
+        return Err(format!(
+            "capture-pane failed for session {session:?}: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&o.stdout).into_owned())
+}
+
 /// Pure classifier: map captured pane text to a state via footer markers.
 ///
 /// BUSY takes precedence over IDLE: while agy works, the input line still shows a `>`

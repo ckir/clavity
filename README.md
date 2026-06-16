@@ -167,7 +167,7 @@ clavity state                                       # idle | busy | dead
 | `clavity [FOLDER] [claude flags…]` | **Default** = `start`. Launch agy (psmux) + Claude Code in the folder. |
 | `clavity start [FOLDER] [claude flags…]` | Explicit form of the above. |
 | `clavity state` | Print pane state: `idle` / `busy` / `dead`. |
-| `clavity capture` | Print the visible pane content (observe agy live). |
+| `clavity capture [--lines N] [--viewport]` | Print agy's pane — **full scrollback** by default, last `N` lines with `--lines`, or just the visible viewport with `--viewport`. |
 | `clavity wait-idle [--timeout N]` | Block until idle (exit 0) or timeout (exit 1). |
 | `clavity ring [--no-idle-gate] [--doorbell S] [--idle-timeout N]` | Idle-gate, then send the doorbell. |
 | `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
