@@ -152,7 +152,9 @@ write `clavity C:\proj --resume`, **not** `clavity --resume C:\proj` (there the 
 and `C:\proj` would be passed to claude).
 **On first launch a visible "watch" tab opens** (Windows Terminal) attached to agy, so you can
 answer agy's auth/login prompts — it asks fairly often. Disable with `AGY_WATCH=0`. You can also
-attach manually anytime: `tmux attach -t claude_agy` (detach with `Ctrl-b d`).
+attach manually anytime: `tmux attach -t claude_agy`. To hide agy while keeping it alive, **detach**
+with `Ctrl-b d` — **closing** the tab tears down the whole session (the next `clavity start`/`-c` is
+then a fresh launch).
 
 ### 5. Drive agy from Claude
 
