@@ -5,9 +5,9 @@ Confirms that clavity's **capability profile** ([`agy-capabilities.md`](agy-capa
 after an `agy update`. agy is a live, closed-source, frequently-updated peer model — an upgrade can
 silently change behavior, so re-run this and update the profile/assumptions on any drift.
 
-- **Last run:** 2026-06-16 · **agy 1.0.8** · model **Gemini 3.1 Pro (High)** · Parts 1–2 (Tests A–F):
-  **6/6 PASS**. Part 3 (Tests G–J): **added 2026-06-16** (params verified in agy's logs during the
-  creative-review fold); **run on the next cycle.**
+- **Last run:** 2026-06-16 · **agy 1.0.8** · model **Gemini 3.1 Pro (High)** · **10/10 PASS** —
+  Parts 1–2 (A–F) 6/6, Part 3 (G–J) 4/4. (Test J confirmed `TimerCondition: any` live; G's line counts
+  verified on disk modulo the +1 editor-vs-`wc -l` convention.)
 - Replies are natural language → **human-judged** against each PASS criterion (not auto-asserted).
 - Pair with the refresh runbook in `agy-capabilities.md` §"Refresh after an `agy update`".
 
