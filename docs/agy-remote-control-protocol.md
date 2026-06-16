@@ -66,8 +66,9 @@ round-trip** — agy can only reply once agentmemory is loaded:
   escaping-safe line (verified: special chars survive, but the bus avoids the question entirely).
 - **Long tasks:** the responder emits `type="info"` progress signals; surface them, or
   `capture-pane` to watch live.
-- **Failover:** if the bus or psmux is unavailable, fall back to the file relay
-  (`CLAUDE-TO-ANTIGRAVITY.md` / `ANTIGRAVITY-TO-CLAUDE.md`, human-couriered).
+- **Failover:** if the bus or psmux is unavailable, fall back to relaying between Claude and agy **by
+  hand** — paste messages into agy's watch tab and paste its replies back. Slower, but dependency-free.
+- **Teardown:** `clavity stop` kills the psmux session when you're done, so agy doesn't orphan.
 - **agy writes within its workspace.** agy's native file-creation tool only accepts paths **inside
   its working folder** (its cwd — the folder `clavity start <folder>` launched it in). Paths outside
   are rejected (`not a valid artifact path; artifacts must be in …/brain/…`) and only work if agy

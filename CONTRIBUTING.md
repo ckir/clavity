@@ -77,7 +77,7 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
    - `accept_proof.txt` exists with the expected content;
    - `git stash list` shows a `claudavity pre <req_id>` entry (the safety checkpoint **persisted**);
    - the dirty `README.md` is **untouched** (the checkpoint is non-intrusive).
-5. **Cleanup:** exit agy, then remove the temp repo.
+5. **Cleanup:** `clavity stop` (kills the agy session), then remove the temp repo.
 
 ## Porting to Linux / macOS
 

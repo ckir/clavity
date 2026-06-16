@@ -115,8 +115,13 @@ cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"   # Windows
 
 **`clavity start` auto-installs/refreshes this skill** into `~/.gemini/antigravity-cli/skills/` on
 every launch (it's embedded in the binary), so you normally don't copy it by hand. You do still need
-a **one-time pointer in your `GEMINI.md`** so agy reliably invokes it — exact text is in the
-[design spec](docs/superpowers/specs/2026-06-16-agy-remote-control-design.md).
+a **one-time pointer in your `~/.gemini/GEMINI.md`** so agy reliably invokes it — add something like:
+
+> When you see the line `claudavity: check your inbox and act on any request from claude, then reply
+> on the bus.` (or are told to check claudavity/claude signals), invoke the **`claudavity-responder`**
+> skill and follow it: read **only your own** inbox (`memory_signal_read agentId="agy"
+> unreadOnly="true"`), checkpoint, do the request, and reply on the bus. A request whose instruction
+> is exactly `[ping]` → reply `[req_id=…] READY` immediately (no checkpoint).
 
 The responder makes a **non-intrusive `git stash` checkpoint** before editing the live tree, then
 replies on the bus; a `[ping]`-only request is fast-pathed (READY, no checkpoint). On Windows its
@@ -151,6 +156,14 @@ attach manually anytime: `tmux attach -t claude_agy` (detach with `Ctrl-b d`).
 Follow the [protocol runbook](docs/agy-remote-control-protocol.md): mint a request, put it on the
 bus, ring the doorbell, await the reply.
 
+```bash
+clavity req-id "refactor foo() to return Result"   # -> [req_id=req-..] refactor ...
+# (Claude) memory_signal_send(from=claude, to=agy, type=request, content=<that envelope>)
+clavity ring                                        # wake agy
+clavity state                                       # idle | busy | dead
+# (Claude) memory_signal_read(agentId=claude, unreadOnly=true)  -> agy's reply
+```
+
 > **After launch, give agy a moment.** It loads its MCP servers (agentmemory included) a few seconds
 > after starting, and `clavity state` can read `idle` before that finishes. Gate your first task on a
 > **bus readiness ping** (ping → `clavity ring` → wait for the reply, retry) — see the runbook. The
@@ -166,14 +179,6 @@ injects a note telling Claude it has a live agy peer and how to drive it (so you
 } ] } ] } }
 ```
 Plain `claude` sessions print nothing, so it's inert outside clavity.
-
-```bash
-clavity req-id "refactor foo() to return Result"   # -> [req_id=req-..] refactor ...
-# (Claude) memory_signal_send(from=claude, to=agy, type=request, content=<that envelope>)
-clavity ring                                        # wake agy
-clavity state                                       # idle | busy | dead
-# (Claude) memory_signal_read(agentId=claude, unreadOnly=true)  -> agy's reply
-```
 
 ---
 
@@ -263,7 +268,7 @@ cargo fmt --all --check
 | `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions (Unix arms are scaffolding). |
 | `src/bin/fake_tmux.rs`, `tests/integration.rs` | Test-only fake psmux + integration tests (CI, no live agy). |
 | `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill. |
-| `docs/` | Protocol runbook + design spec. |
+| `docs/` | Protocol runbook, design spec, and the [agy-assumptions](docs/agy-assumptions.md) playbook. |
 
 ---
 

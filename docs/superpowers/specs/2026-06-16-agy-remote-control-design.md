@@ -1,7 +1,20 @@
 # Design: agy Remote Control (tmux-doorbell + agentmemory bus)
 
 - **Date:** 2026-06-16
-- **Status:** Approved design — ready for implementation planning
+- **Status:** **Shipped** — implemented as the standalone Rust `clavity` binary in this repo. This
+  document is the original design + rationale (kept for the "why"); the architecture below is what got
+  built. Deltas from the design as written:
+  - **Rust, not Python.** C1's "skill + thin script" shipped as the `clavity` CLI
+    (`state`/`capture`/`wait-idle`/`ring`/`req-id`/`info`/`doctor`/`cancel`/`stop`/`start`) + the
+    Claude-side [protocol runbook](../../agy-remote-control-protocol.md); C3 → `src/tmux.rs`,
+    C5 → `src/bus.rs`, C2/C4 → `agy_skills/claudavity-responder/SKILL.md`.
+  - **Bootstrap is automated.** `clavity start` launches agy in the psmux session, opens a visible
+    watch tab, auto-installs the responder skill, and exports `CLAVITY_SESSION`. The "manual bootstrap"
+    wording below is the fallback, not the norm.
+  - **Separate repo.** Extracted standalone from the original **claudavity** project, where `server.py` /
+    `delegate_to_antigravity` (referenced below) still live — they are **not** in this repo.
+  - **Added since:** the `[ping]` readiness fast-path, `clavity cancel`/`stop`, full-scrollback
+    `capture`, reuse-or-relaunch of a live/stale session, and a SessionStart hook for auto-detection.
 - **Author:** Claude (with divergent review from the live `agy` session, and live empirical spikes)
 
 ## 1. Summary
@@ -138,7 +151,8 @@ payload rides the bus**. This sidesteps multi-line/escaping limits entirely.
   `replyTo` threading, and a small envelope convention inside `content` (e.g. a request id) so
   responses can be correlated even across new threads.
 
-`delegate_to_antigravity` and `server.py` are **left untouched** and remain available alongside.
+`delegate_to_antigravity` and `server.py` live in the original **claudavity** project (a sibling repo)
+and are untouched — they are **not** part of this standalone `clavity` repo. (See the Status note above.)
 
 ## 5. Protocols
 
@@ -166,9 +180,10 @@ Each request `content` carries a short `req_id`. The `response`/`info` `content`
   to watch live.
 
 ### 5.5 Session lifecycle
-- **Bootstrap (manual, once):** human runs
-  `C:\!PORTABLES\!BIN\tmux.exe new-session -s claude_agy` then `agy --continue` (or `agy -i`) in the
-  target folder, signed in.
+- **Bootstrap (once per session):** normally **`clavity start <folder>`** does this — launches agy in
+  the `claude_agy` psmux session (+ watch tab) and Claude in the folder. Manual fallback: human runs
+  `<psmux> new-session -s claude_agy -c <folder>` then `agy --dangerously-skip-permissions` (or
+  `agy --continue`), signed in.
 - **Steady state:** fully autonomous request/response via doorbell+bus; `agy` idle (free) between.
 - **Recovery:** if C1's await times out and `capture-pane` shows the session dead/missing, C1
   surfaces "agy session down — please re-bootstrap." Failure is **visible**, never silent.
@@ -200,9 +215,10 @@ Each request `content` carries a short `req_id`. The `response`/`info` `content`
 
 ## 8. Failover
 
-The pre-existing **file relay** (`CLAUDE-TO-ANTIGRAVITY.md` / `ANTIGRAVITY-TO-CLAUDE.md`, human-couriered)
-remains the documented failover for when the bus or tmux is unavailable. It is slower and manual but
-dependency-free.
+If the bus or psmux is unavailable, fall back to relaying between Claude and agy **by hand** (paste in
+agy's watch tab). Slower but dependency-free. (The original claudavity project used dedicated
+`CLAUDE-TO-ANTIGRAVITY.md` / `ANTIGRAVITY-TO-CLAUDE.md` relay files; the standalone clavity keeps it
+generic, since those files aren't in this repo.)
 
 ## 9. Testing strategy
 
