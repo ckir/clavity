@@ -1,22 +1,16 @@
-# clavity — a remote control for Antigravity (agy)
+# clavity
 
-**clavity** lets [Claude Code](https://claude.com/claude-code) drive a **live, signed-in
-[Antigravity](https://pypi.org/project/google-antigravity/) (`agy`) CLI session running in the same
-folder** — an ongoing, bidirectional, stateful collaboration where `agy` works directly in the live
-working tree as a peer. No headless re-spawning, no polling, no idle token cost.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-blue.svg)
 
-It combines two off-the-shelf channels:
+**A remote control for [Antigravity](https://pypi.org/project/google-antigravity/) (`agy`).**
+clavity lets [Claude Code](https://claude.com/claude-code) drive a **live, signed-in `agy` session
+running in the same folder** — an ongoing, bidirectional, stateful collaboration where `agy` works
+directly in the live working tree as a peer. No headless re-spawning, no polling, no idle token cost.
 
-- **Doorbell (wake):** Claude injects a short instruction into `agy`'s real terminal via
-  [`psmux`](https://github.com/psmux/psmux) `send-keys`, waking the live session **on demand**.
-- **Bus (data):** structured request/response payloads travel over the **agentmemory** signal bus
-  (`memory_signal_send` / `memory_signal_read`), addressed `claude` ↔ `agy`.
-
-`agy` sleeps at its prompt for free between doorbells. The only manual step is a one-time-per-session
-bootstrap, which `clavity start` does for you.
-
-clavity is a **single self-contained Rust binary** — no runtime, no interpreter, no scripts. Drop
-`clavity.exe` on your `PATH` next to `tmux.exe`/`psmux.exe`.
+It is a **single self-contained Rust binary** — no runtime, no interpreter, no scripts — that you
+drop on your `PATH` next to `tmux`/`psmux`.
 
 > **Not** a re-spawning bridge. If you want the isolated, one-shot "delegate a task to a throwaway
 > headless sub-agent" pattern, that's a different tool. clavity drives the *real, running* `agy` you
@@ -24,7 +18,29 @@ clavity is a **single self-contained Rust binary** — no runtime, no interprete
 
 ---
 
+## Contents
+
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Command reference](#command-reference)
+- [Configuration](#configuration)
+- [Design docs](#design-docs)
+- [Platform support](#platform-support)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
 ## How it works
+
+clavity combines two off-the-shelf channels:
+
+- **Doorbell (wake):** Claude injects a short instruction into `agy`'s real terminal via
+  [`psmux`](https://github.com/psmux/psmux) `send-keys`, waking the live session **on demand**.
+- **Bus (data):** structured request/response payloads travel over the **agentmemory** signal bus
+  (`memory_signal_send` / `memory_signal_read`), addressed `claude` ↔ `agy`.
+
+`agy` sleeps at its prompt for free between doorbells; Claude only wakes it when there is work.
 
 ```
                        same folder (live working tree)
@@ -44,91 +60,182 @@ clavity is a **single self-contained Rust binary** — no runtime, no interprete
          ▼                                                              ▼ 7. return to idle (free)
 ```
 
-The full design — including the empirical spikes it rests on (bus round-trip, `send-keys` wake,
-idle/busy detection, doorbell-while-busy queueing, the pwsh shell reality) — is in
-[`docs/superpowers/specs/2026-06-16-agy-remote-control-design.md`](docs/superpowers/specs/2026-06-16-agy-remote-control-design.md).
-The Claude-side procedure is in
-[`docs/agy-remote-control-protocol.md`](docs/agy-remote-control-protocol.md).
+State detection is defense-in-depth and never load-bearing: correctness rests on the bus and on
+`has-session`; a doorbell sent while agy is busy is safely queued and processed as the next turn.
 
-## The `clavity` binary
+---
 
-| Subcommand | Role |
-| --- | --- |
-| `clavity state` | Print pane state: `idle` / `busy` / `dead`. |
-| `clavity capture` | Print the visible pane content (for observing agy live). |
-| `clavity wait-idle [--timeout N]` | Block until agy is idle (exit 0) or timeout (exit 1). |
-| `clavity ring [--no-idle-gate] [--doorbell S]` | Idle-gate, then send the doorbell to wake agy. |
-| `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
-| `clavity start [FOLDER] [claude flags…]` | Launch agy (in a psmux session) **and** Claude Code in the same folder. Also the **default** action — bare `clavity [FOLDER] [flags…]` runs this. |
+## Quick start
 
-Internally: `src/tmux.rs` (**C3** — psmux primitives + footer/activity state detection) and
-`src/bus.rs` (**C5** — the bus id/envelope conventions). The `agy`-side responder skill is
-`agy_skills/claudavity-responder/SKILL.md` (**C2/C4** — read inbox → non-intrusive `git stash`
-checkpoint → act → reply → return to idle).
+### Prerequisites
 
-stdout carries machine-readable results; diagnostics go to stderr via `tracing`
-(`RUST_LOG=clavity=debug` for verbose).
-
-## Prerequisites
-
-- **Windows** (psmux/PowerShell-oriented; `agy`'s shell tool runs **pwsh**).
 - **[Claude Code](https://claude.com/claude-code)** with the **agentmemory** MCP server configured
   (provides `memory_signal_send` / `memory_signal_read`).
-- **`agy`** (Antigravity CLI), signed in, also with agentmemory available.
+- **`agy`** (Antigravity CLI), signed in, with agentmemory available too.
 - **[psmux](https://github.com/psmux/psmux)** (ships as `psmux`/`pmux`/`tmux`).
-- **Rust** (`cargo`) to build.
+- **Rust** (`cargo`) to build — or grab a release binary.
+- Currently **Windows** (see [Platform support](#platform-support)).
 
-## Build & install
+### 1. Build & install
 
 ```bash
 cargo build --release
-# put the binary on PATH, e.g. next to your psmux:
-cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"
+# put it on PATH, e.g. next to your psmux:
+cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"   # Windows
+# cp target/release/clavity   ~/.local/bin/            # elsewhere
 ```
 
-## Setup
+### 2. Install the agy-side responder skill
 
-1. **Install the responder skill** into agy's skills dir, and add a pointer in your `GEMINI.md`:
-   ```pwsh
-   Copy-Item -Recurse agy_skills/claudavity-responder `
-     "$HOME/.gemini/antigravity-cli/skills/claudavity-responder"
-   ```
-   (See the design spec for the exact GEMINI.md pointer text. The responder runs `agy`'s shell —
-   which is **pwsh** — so its checkpoint command is PowerShell, not bash.)
+```pwsh
+Copy-Item -Recurse agy_skills/claudavity-responder `
+  "$HOME/.gemini/antigravity-cli/skills/claudavity-responder"
+```
 
-2. **Launch both agents in a folder** (run from your normal pwsh so `agy` is signed in). `start` is
-   the default action, so you can omit it:
-   ```pwsh
-   clavity C:\path\to\project              # folder (bare = start)
-   clavity -c                              # current folder; forwards `-c` (continue) to claude
-   clavity C:\path\to\project --resume     # folder + flags forwarded to claude
-   clavity start C:\path                   # explicit form, identical to the above
-   ```
-   The first non-dash argument is the folder; everything else is forwarded to `claude`. agy's own
-   flags come from `$env:AGY_START_ARGS` (default `--dangerously-skip-permissions`). Session name
-   defaults to `claude_agy` (override via `$env:AGY_SESSION`); psmux path via `$env:AGY_TMUX_BIN`.
+Add a short pointer to it in your `GEMINI.md` so agy reliably honors the protocol (the exact pointer
+text is in the [design spec](docs/superpowers/specs/2026-06-16-agy-remote-control-design.md)). The
+responder makes a **non-intrusive `git stash` checkpoint** before editing the live tree, then replies
+on the bus. On Windows its checkpoint command is **PowerShell** (agy's shell is pwsh).
 
-3. From Claude, drive agy via the protocol runbook: put a request on the bus, `clavity ring`, then
-   await the reply on the bus. Watch agy live anytime:
-   ```pwsh
-   tmux attach -t claude_agy   # detach with Ctrl-b d
-   ```
+### 3. Launch both agents in a folder
 
-## Tests
+Run from your normal shell so `agy` inherits your signed-in session. `start` is the default action,
+so you can omit it:
+
+```pwsh
+clavity C:\path\to\project           # folder (bare = start)
+clavity -c                           # current folder; forwards -c (continue) to claude
+clavity C:\path\to\project --resume  # folder + flags forwarded to claude
+clavity start C:\path                # explicit form, identical
+```
+
+The first non-dash argument is the folder; everything else is forwarded verbatim to `claude`.
+Watch agy live anytime: `tmux attach -t claude_agy` (detach with `Ctrl-b d`).
+
+### 4. Drive agy from Claude
+
+Follow the [protocol runbook](docs/agy-remote-control-protocol.md): mint a request, put it on the
+bus, ring the doorbell, await the reply.
 
 ```bash
-cargo test          # pure-logic unit tests (state classifier, activity detection, bus conventions)
-cargo clippy --all-targets
+clavity req-id "refactor foo() to return Result"   # -> [req_id=req-..] refactor ...
+# (Claude) memory_signal_send(from=claude, to=agy, type=request, content=<that envelope>)
+clavity ring                                        # wake agy
+clavity state                                       # idle | busy | dead
+# (Claude) memory_signal_read(agentId=claude, unreadOnly=true)  -> agy's reply
 ```
 
-The unit tests pin the verified behavior; the end-to-end behavior (doorbell → checkpoint → reply)
-was validated live against a real `agy` session and is documented in the spec.
+---
 
-## Status
+## Command reference
 
-Built and verified end-to-end against a live `agy` session, including the autonomous safety
-checkpoint. Windows-first; the bus/skill pieces are portable, the psmux/pwsh pieces are not.
+| Command | Description |
+| --- | --- |
+| `clavity [FOLDER] [claude flags…]` | **Default** = `start`. Launch agy (psmux) + Claude Code in the folder. |
+| `clavity start [FOLDER] [claude flags…]` | Explicit form of the above. |
+| `clavity state` | Print pane state: `idle` / `busy` / `dead`. |
+| `clavity capture` | Print the visible pane content (observe agy live). |
+| `clavity wait-idle [--timeout N]` | Block until idle (exit 0) or timeout (exit 1). |
+| `clavity ring [--no-idle-gate] [--doorbell S] [--idle-timeout N]` | Idle-gate, then send the doorbell. |
+| `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
+| `clavity --session NAME …` | Target a non-default psmux session (global flag). |
+
+**Output discipline:** results go to **stdout** (machine-readable: `idle`, pane text, ids);
+diagnostics go to **stderr** via `tracing`. So tools can parse stdout cleanly.
+
+---
+
+## Configuration
+
+All optional; sensible defaults. Environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AGY_SESSION` | `claude_agy` | psmux session name hosting the live agy. |
+| `AGY_TMUX_BIN` | `tmux` (resolved on `PATH`) | psmux/tmux binary; set only if it isn't on `PATH`. |
+| `AGY_DOORBELL` | _canonical line_ | The single-line wake string the responder skill keys on. |
+| `AGY_START_ARGS` | `--dangerously-skip-permissions` | Flags `start` passes to `agy`. |
+| `AGY_IDLE_MARKER` | `? for shortcuts` | Footer text meaning agy is idle. |
+| `AGY_BUSY_MARKER` | `esc to cancel` | Footer text meaning agy is busy. |
+| `RUST_LOG` | `clavity=info` | Log verbosity, e.g. `RUST_LOG=clavity=debug`. |
+
+---
+
+## Design docs
+
+- **[Design spec](docs/superpowers/specs/2026-06-16-agy-remote-control-design.md)** — the full
+  architecture and the empirical spikes it rests on (bus round-trip, `send-keys` wake, idle/busy
+  detection, doorbell-while-busy queueing, the pwsh shell reality, the safety checkpoint).
+- **[Protocol runbook](docs/agy-remote-control-protocol.md)** — the exact Claude-side procedure.
+
+---
+
+## Platform support
+
+| Platform | Status |
+| --- | --- |
+| Windows | ✅ Built and verified end-to-end against a live `agy` (incl. the autonomous safety checkpoint). |
+| Linux / macOS | 🚧 Wanted — see the porting guide under [Contributing](#contributing). The Rust code is largely portable; the platform-specific parts are small and called out. |
+
+---
+
+## Contributing
+
+Contributions welcome — especially **Linux/macOS support**.
+
+### Project layout
+
+| Path | Role |
+| --- | --- |
+| `src/main.rs` | clap CLI, dispatch, and the `start` launcher. |
+| `src/tmux.rs` | **C3** — psmux primitives + pane-state detection (footer markers + marker-free activity fallback). Pure functions are unit-tested. |
+| `src/bus.rs` | **C5** — agentmemory-bus conventions: request-id minting + the `[req_id=..]` envelope. |
+| `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill (read inbox → checkpoint → act → reply). |
+| `docs/` | Protocol runbook + design spec. |
+
+### Dev loop
+
+```bash
+cargo test                  # pure-logic unit tests (run anywhere, no live agy needed)
+cargo clippy --all-targets  # must be clean
+cargo build --release
+```
+
+### Conventions
+
+- **stdout = results, stderr = diagnostics.** Keep machine-readable output on stdout; use `tracing`
+  (not `println!`) for logs so callers can parse `clavity state` / `clavity capture` / `clavity req-id`.
+- Keep the pure logic (`classify_pane`, `changed`, the bus helpers) pure and unit-tested; live I/O
+  goes through thin wrappers.
+- Match the existing module docs/comment style.
+
+### Porting to Linux / macOS
+
+The binary is mostly portable already; here's the concrete checklist:
+
+1. **tmux binary** — clavity resolves `tmux` on `PATH` on every platform (override with
+   `AGY_TMUX_BIN`). Verify real tmux accepts the same verbs clavity uses: `has-session -t`,
+   `capture-pane -p -t`, `send-keys -t -l` (+ `Enter`), `new-session -d -s -c`. (They are standard tmux.)
+2. **agy's shell differs** — on Windows agy runs **pwsh**; on Linux it's typically **bash/sh**. The
+   responder skill's checkpoint command is written in PowerShell. Add a bash variant (or make it
+   shell-detecting) in `agy_skills/claudavity-responder/SKILL.md`. **This is the main porting
+   touch-point, and it lives in the skill, not the Rust code.**
+3. **Footer markers** — agy's TUI strings (`? for shortcuts` / `esc to cancel`) come from the app, so
+   they should be the same; if a build differs, they're overridable via `AGY_IDLE_MARKER` /
+   `AGY_BUSY_MARKER`, and the marker-free activity fallback works regardless.
+4. **`claude` / `agy` discovery** — `start` spawns them via `PATH` using `std::process::Command`,
+   which is cross-platform; no change expected.
+5. **Verify live** — start `agy` inside a real tmux session, then check: `clavity state` reads
+   idle/busy correctly, `clavity ring` wakes agy, and a doorbell sent while busy is queued (not
+   interleaved). Update the [Platform support](#platform-support) table and add a CI job if you can.
+
+### Pull requests
+
+Fork, branch, make `cargo test` + `cargo clippy --all-targets` pass, and open a PR describing what
+you changed and how you verified it (especially any live-agy behavior).
+
+---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE) © Costas Kirgoussios
