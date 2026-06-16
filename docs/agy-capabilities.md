@@ -29,6 +29,10 @@
 - **Async sub-agent orchestration** `[verified: bus + doc]` — `/agent` spawns non-blocking sub-agents,
   `/agents` monitors them, `/teamwork-preview` runs a Worker/Reviewer/Critic/Auditor team; diffs post
   back to the main thread; reactive (no polling). Strong for long, parallel orchestrations.
+- **Reactive async shell execution** `[verified: bus + doc]` — agy can background a slow shell command
+  (full test suite, build, long pipeline), **sleep, and be reactively woken when it finishes — no
+  polling, no context/token burn** (`/tasks` monitors/cancels). A real routing differentiator: hand agy
+  slow *local* pipelines you'd otherwise babysit, not just LLM work.
 - **Strong contextual inference from CWD** `[doc/user]` — infers the codebase/tooling from the working
   dir; fast Go startup, low memory `[doc/user]`.
 
@@ -76,12 +80,15 @@ from Claude's; sequential/local reasoning bias.
 ## D. Operational reach (what it can act on)
 
 - **Shell:** PowerShell (pwsh) on Windows `[corpus #5]`; `!` toggles a shell mode in the TUI `[doc]`.
-- **File writes** `[verified — resolves the old conflict]`: native tools (`write_to_file`,
-  `replace_file_content`, `multi_replace_file_content`) write within the **workspace by default**
-  (outside paths rejected → shell/scratch fallback, `[corpus]`/#8) — **but the scope widens** via the
-  `allowNonWorkspaceAccess` setting, `--add-dir`, `trustedWorkspaces[]`, or (insecurely)
-  `--sandbox --dangerously-skip-permissions` `[doc #36]`. So both the `[corpus]` "workspace-only" and
-  the `[bus]` "writes anywhere" claims are right — **it's config-dependent**. Default = workspace-only.
+- **File writes** `[verified — resolves the old conflict]`: two levels. *Model-level*, agy's native
+  tools (`write_to_file`, `replace_file_content`, `multi_replace_file_content`) are **path-agnostic**
+  (absolute path + OS permissions — "I don't experience a sandbox", `[bus]`). *Wrapper-level*, the
+  Antigravity CLI **gates** it: **workspace-only by default** (outside paths rejected → shell/scratch
+  fallback, `[corpus]`/#8), **widened** by `allowNonWorkspaceAccess`, `--add-dir`, `trustedWorkspaces[]`,
+  or (insecurely) `--sandbox --dangerously-skip-permissions` `[doc #36]`. Net: **default = workspace-only;
+  config-dependent beyond that** — both the `[corpus]` and `[bus]` views reconcile at the wrapper.
+- **Background shell** `[verified: bus + doc]`: can run slow commands async and be reactively woken on
+  completion (`/tasks`) — see Axis A "Reactive async shell execution".
 - **MCP tools** `[local]`: **agentmemory** (durable cross-agent save/recall — the clavity bus), **serena**
   (LSP/symbol tools), **agy-mcp-bridge** (`delegate_to_antigravity`). Remote MCP uses `"serverUrl"`
   (wrong key = silent failure) `[doc]`.
