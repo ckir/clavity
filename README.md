@@ -70,10 +70,13 @@ State detection is defense-in-depth and never load-bearing: correctness rests on
 
 ### Prerequisites
 
-- **[Claude Code](https://claude.com/claude-code)** with the **agentmemory** MCP server configured
-  (provides `memory_signal_send` / `memory_signal_read`).
-- **`agy`** (Antigravity CLI), signed in, with agentmemory available too.
-- **[psmux](https://github.com/psmux/psmux)** (ships as `psmux`/`pmux`/`tmux`).
+- **[agentmemory](https://www.npmjs.com/package/@agentmemory/agentmemory) MCP server** — the shared
+  signal bus (`memory_signal_send` / `memory_signal_read`) that **both** Claude and agy connect to.
+  This is clavity's data channel; **nothing works without it.** Configure the *same* agentmemory
+  store as an MCP server in **both** Claude Code and agy (it runs a shared daemon, default `:3111`).
+- **[Claude Code](https://claude.com/claude-code)** — the master agent, with agentmemory configured.
+- **`agy`** (Antigravity CLI) — signed in, with agentmemory configured too.
+- **[psmux](https://github.com/psmux/psmux)** (ships as `psmux`/`pmux`/`tmux`) on your `PATH`.
 - **Rust** (`cargo`) to build — or grab a release binary.
 - Currently **Windows** (see [Platform support](#platform-support)).
 
