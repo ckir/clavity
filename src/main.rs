@@ -310,6 +310,8 @@ fn start(session: &str, args: Vec<String>) -> i32 {
     info!("launching claude in {}", folder.display());
     match Command::new(&claude)
         .current_dir(&folder)
+        // Mark this Claude as clavity-launched so a SessionStart hook can detect the agy peer.
+        .env("CLAVITY_SESSION", session)
         .args(&claude_args)
         .status()
     {
