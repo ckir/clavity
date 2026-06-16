@@ -128,10 +128,12 @@ from Claude's; sequential/local reasoning bias.
 ## G. Version & drift
 
 - **Verified against agy 1.0.8** (`agy --version`), active model Gemini 3.1 Pro (High), `[local]` 2026-06-16.
-- Recent relevant changelog: v1.0.8 **skills dynamic reload** (instantly discovered on conversation
-  switch / `--add-dir`) — **may update empirical assumption #6** (which says skills are cached per
-  session and need a restart); re-verify and reconcile `agy-assumptions.md`. v1.0.7: 512 tool-call cap,
-  configurable MCP launch timeout. v1.0.6: sandbox-flag propagation in headless mode. `[doc]`
+- Recent relevant changelog: v1.0.8 **skills dynamic reload** — **re-verified `[local]` 2026-06-16:
+  this is autocomplete discovery on conversation-switch / `--add-dir`, NOT re-reading edited skill
+  content on a plain doorbell, so empirical assumption #6 (skills cached per session; edits need a
+  restart) STILL HOLDS** for clavity's usage (test: edited `[ping]` reply to a marker, pinged the
+  running session, got plain `READY`). v1.0.7: 512 tool-call cap, configurable MCP launch timeout.
+  v1.0.6: sandbox-flag propagation in headless mode. `[doc]`/`[local]`
 - Changelog source: `github.com/google-antigravity/antigravity-cli` (CHANGELOG / releases).
 - Open `[conflict]`/unconfirmed to watch: API-key auth (#78); whether the headless `-p` stdout bug (#76)
   is fixed post-1.0.8.
