@@ -40,8 +40,8 @@ struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
 
-    /// No subcommand = `start`: first non-dash arg is the folder, the rest forward to `claude`
-    /// (e.g. `clavity -c`, `clavity C:\path --resume`).
+    /// No subcommand = `start`: the first arg is the folder unless it starts with `-`; the rest
+    /// forward to `claude` (e.g. `clavity -c`, `clavity C:\path --resume`).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     start_args: Vec<String>,
 }
@@ -90,7 +90,7 @@ enum Cmd {
     Stop,
     /// Start agy (in a psmux session) AND Claude Code in the same folder (the default action)
     Start {
-        /// First non-dash arg is the folder; everything else is forwarded to `claude`
+        /// The first arg is the folder unless it starts with `-`; everything else forwards to `claude`
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -236,7 +236,7 @@ fn main() {
 
 /// Launch agy (detached in psmux) + Claude Code (foreground) in the same folder.
 fn start(session: &str, args: Vec<String>) -> i32 {
-    // First non-dash arg is the folder; everything else is forwarded to claude.
+    // The first arg is the folder unless it starts with '-'; otherwise cwd, and all args forward to claude.
     let (folder, claude_args): (PathBuf, Vec<String>) = match args.split_first() {
         Some((first, rest)) if !first.starts_with('-') => (PathBuf::from(first), rest.to_vec()),
         _ => (

@@ -146,15 +146,23 @@ clavity C:\path\to\project --resume  # folder + flags forwarded to claude
 clavity start C:\path                # explicit form, identical
 ```
 
-The first non-dash argument is the folder; everything else is forwarded verbatim to `claude`.
+The folder must be the **first** argument and must not start with `-`. If it's omitted — or the first
+argument is a flag — the **current** folder is used and every argument is forwarded to `claude`. So
+write `clavity C:\proj --resume`, **not** `clavity --resume C:\proj` (there the folder would be cwd
+and `C:\proj` would be passed to claude).
 **On first launch a visible "watch" tab opens** (Windows Terminal) attached to agy, so you can
 answer agy's auth/login prompts — it asks fairly often. Disable with `AGY_WATCH=0`. You can also
 attach manually anytime: `tmux attach -t claude_agy` (detach with `Ctrl-b d`).
 
 ### 5. Drive agy from Claude
 
-Follow the [protocol runbook](docs/agy-remote-control-protocol.md): mint a request, put it on the
-bus, ring the doorbell, await the reply.
+**You don't run these commands — Claude does.** In the Claude Code chat, just ask Claude to drive
+agy; it has the agentmemory bus tools and invokes `clavity` itself. For that, **Claude needs to know
+the protocol**: point it at [`docs/agy-remote-control-protocol.md`](docs/agy-remote-control-protocol.md)
+(or install that as a Claude skill/command). The optional SessionStart hook below injects a one-line
+reminder, but the full procedure lives in the runbook.
+
+Under the hood, Claude mints a request, puts it on the bus, rings the doorbell, and awaits the reply:
 
 ```bash
 clavity req-id "refactor foo() to return Result"   # -> [req_id=req-..] refactor ...
