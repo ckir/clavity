@@ -1,5 +1,6 @@
 # clavity
 
+[![CI](https://github.com/ckir/clavity/actions/workflows/ci.yml/badge.svg)](https://github.com/ckir/clavity/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-blue.svg)
@@ -138,6 +139,7 @@ clavity state                                       # idle | busy | dead
 | `clavity wait-idle [--timeout N]` | Block until idle (exit 0) or timeout (exit 1). |
 | `clavity ring [--no-idle-gate] [--doorbell S] [--idle-timeout N]` | Idle-gate, then send the doorbell. |
 | `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
+| `clavity info` | Print the detected platform + effective configuration (diagnostic). |
 | `clavity --session NAME …` | Target a non-default psmux session (global flag). |
 
 **Output discipline:** results go to **stdout** (machine-readable: `idle`, pane text, ids);
@@ -175,7 +177,8 @@ All optional; sensible defaults. Environment variables:
 | Platform | Status |
 | --- | --- |
 | Windows | ✅ Built and verified end-to-end against a live `agy` (incl. the autonomous safety checkpoint). |
-| Linux / macOS | 🚧 Wanted — see the porting guide under [Contributing](#contributing). The Rust code is largely portable; the platform-specific parts are small and called out. |
+| Linux | 🚧 **Compiles + unit-tests in CI** on `ubuntu-latest` (a Linux binary is built as a CI artifact), but the live end-to-end path is **unverified**. See the porting guide under [Contributing](#contributing). |
+| macOS | 🚧 Wanted — should be close to Linux; unverified. |
 
 ---
 
@@ -190,6 +193,7 @@ Contributions welcome — especially **Linux/macOS support**.
 | `src/main.rs` | clap CLI, dispatch, and the `start` launcher. |
 | `src/tmux.rs` | **C3** — psmux primitives + pane-state detection (footer markers + marker-free activity fallback). Pure functions are unit-tested. |
 | `src/bus.rs` | **C5** — agentmemory-bus conventions: request-id minting + the `[req_id=..]` envelope. |
+| `src/platform.rs` | OS detection + per-OS assumptions (the **platform seam**). Windows is live; the Unix arms are untested scaffolding for a port. |
 | `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill (read inbox → checkpoint → act → reply). |
 | `docs/` | Protocol runbook + design spec. |
 
@@ -211,7 +215,8 @@ cargo build --release
 
 ### Porting to Linux / macOS
 
-The binary is mostly portable already; here's the concrete checklist:
+The binary is mostly portable already; OS-specific assumptions are centralized in
+[`src/platform.rs`](src/platform.rs) (run `clavity info` to see them). Here's the concrete checklist:
 
 1. **tmux binary** — clavity resolves `tmux` on `PATH` on every platform (override with
    `AGY_TMUX_BIN`). Verify real tmux accepts the same verbs clavity uses: `has-session -t`,
