@@ -77,6 +77,37 @@ treat picking it (and its model) like choosing a subagent tier:
 - Guessing **line numbers** — agy's edit tools need exact string matches; point to function/class names.
 - Interactive confirmations ("does this make sense?") — agy can't chat; it replies only when done or blocked.
 
+### Per-mode request templates (agy's stated preferences)
+
+agy works best when the request is shaped to the task **mode**. Pick the mode, state it explicitly, and
+use its sections. (Source: agy self-report, 2026-06-16; cross-ref capability profile §A/§B/§F.)
+
+- **Critical review / red-team** — *"Just REPLY on the bus — do NOT edit"* (or the REVIEW-ONLY banner).
+  Sections: `### Goal` · `### Files in Scope` (exact paths) · `### Invariants to Verify` · `### Guardrails`.
+  Tell agy *what to check against*, not "find bugs": e.g. **"Verify these 3 invariants; if they hold,
+  say 'No issues found'; ignore style nits"** (open "find any bugs" → hallucinated over-escalation, §B).
+- **Generative / divergent design** — *"Brainstorming mode. High-level architecture. No implementation code."*
+  Sections: `### Current Design` · `### The Problem/Limitation` · `### Options Already Explored` ·
+  `### Desired Output`. Paste the core interface/types inline; list discarded ideas so agy won't re-propose
+  them. Ask **"Propose 2 alternatives to [Problem], simpler/stronger than [Current]"**, not "make this better".
+- **Scoped implementation** — *"Implementation mode. Edit files directly; run the verification command before reporting done."*
+  Sections: `### Goal` · `### Files to Edit` · `### Reference Context` · `### Verification Steps`. Provide
+  interfaces/types from *other* files agy must interact with but not edit (saves discovery calls). Target by
+  **function name / exact snippet, never line numbers** (its edit tools need exact string matches).
+- **Async shell orchestration** — *"Orchestration mode. Launch the background task and await your reactive wakeup."*
+  Sections: `### Command` · `### Working Directory` · `### Success Criteria`. e.g. **"Launch `cargo test`
+  as an async background task; rely on your reactive wakeup when it finishes; do not poll; report the failed
+  test names."** Include required env + exact cwd.
+
+### What Claude most often gets wrong (agy's top 3 — fix these)
+
+1. **Line numbers instead of snippets.** agy's `multi_replace_file_content` needs *exact string matches*;
+   line numbers drift and the edit fails. Give function names or exact snippets to target.
+2. **Assuming shared context.** Separate context windows — agy is blind to what Claude just read. Paste
+   the relevant trace/snippet/types into the request payload; never "fix the error we just saw".
+3. **"Find bugs" unscoped discovery.** agy is worktree-blind; this burns its context on dozens of
+   `list_dir`/`view_file` calls. Give specific files **and** specific invariants to check.
+
 **Scoping:** one focused task, or a few closely-related ones ("add endpoints A, B, C to `api.rs`").
 Don't batch disparate/complex work or anything touching >5 files — split into sequential phases
 (rule of thumb: one focused PR's worth per request).
