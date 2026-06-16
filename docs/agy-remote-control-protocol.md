@@ -197,10 +197,12 @@ above. The wording is stored as a constant in `src/main.rs` (`REVIEW_ONLY_BANNER
 - **Failover:** if the bus or psmux is unavailable, fall back to relaying between Claude and agy **by
   hand** — paste messages into agy's watch tab and paste its replies back. Slower, but dependency-free.
 - **Teardown:** `clavity stop` kills the psmux session when you're done, so agy doesn't orphan.
-- **agy writes within its workspace.** agy's native file-creation tool only accepts paths **inside
-  its working folder** (its cwd — the folder `clavity start <folder>` launched it in). Paths outside
-  are rejected (`not a valid artifact path; artifacts must be in …/brain/…`) and only work if agy
-  falls back to its shell. So **frame requests to operate on the launch folder**; for anything
-  outside it, tell agy explicitly to write via its shell. (Observed in agy's logs during the project
-  audit, which targeted a different folder than agy's cwd.)
+- **agy's file-write scope is config-gated (default = workspace-only).** agy's native edit tools are
+  themselves path-agnostic (absolute path + OS permissions), but the Antigravity CLI **wrapper gates
+  writes to the workspace by default** — outside paths are rejected (observed: `artifacts must be in
+  …/brain/…`, project-audit logs; empirical assumption #8). So by default, **frame requests against
+  the launch folder.** To let agy write *outside* it, **widen the wrapper** — enable
+  `allowNonWorkspaceAccess`, pass `--add-dir`, or add to `trustedWorkspaces[]` — rather than forcing a
+  shell fallback (shell is the last resort, not the fix). Full reconciliation: capability profile
+  **Axis D** ([`agy-capabilities.md`](agy-capabilities.md)).
 - This runbook can later be promoted to a harness skill so Claude invokes it automatically.
