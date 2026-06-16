@@ -7,6 +7,27 @@
 
 ---
 
+## ✅ STATUS: COMPLETE (2026-06-17)
+
+Everything below is **shipped and on `main`** (`ckir/clavity`). Summary:
+
+- **Theme 1 — blocking round-trips:** `ask` (+ `--review-only`/`--no-ring`), `await-reply`, `ping`,
+  the `src/membus.rs` agentmemory daemon REST client, and the hermetic fake-endpoint test harness —
+  all delivered. Step 0 (daemon API discovery) recorded in `agy-assumptions.md` #13.
+- **Theme 2 — protocol & docs hygiene:** pane-scrape/poll-loop deprecated; REVIEW-ONLY banner
+  codified; README / protocol runbook / `agy-assumptions.md` / `bus.rs` comment all updated.
+- **Acceptance criteria (1–4):** all met — one-shot `ask` round-trip verified live; no path requires
+  `capture | grep` or a hand-rolled poll loop; existing commands unchanged with the full suite green
+  (`cargo test` / `clippy -D warnings` / `fmt --check`); docs updated.
+- **Follow-up — pre-flight thread discovery:** resolved as **Option D** (`await-reply --thread-id`,
+  thread-scoped; unsafe unscoped path dropped) after an agy design consult; tested + live-validated.
+
+Beyond this ROADMAP, the same effort produced the **agy capability profile** + capability-aware
+**wording protocol** + a re-runnable **acceptance suite** (see `docs/agy-capabilities.md`,
+`docs/agy-remote-control-protocol.md`, `docs/agy-test-suite.md`). No open items remain.
+
+---
+
 ## Theme 1 — First-class blocking round-trips (the big one)
 
 ### The friction (observed)
