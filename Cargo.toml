@@ -26,6 +26,11 @@ test-fakes = []
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Blocking HTTP client for the agentmemory daemon (src/membus.rs). default-features=false drops the
+# TLS stack: clavity only ever talks plain HTTP to a localhost daemon, so no rustls/native-tls needed.
+ureq = { version = "2", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [profile.release]
 strip = true

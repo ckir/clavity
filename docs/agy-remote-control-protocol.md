@@ -23,14 +23,19 @@ the psmux/state plumbing and the bus id convention (`clavity req-id`). See the d
 `clavity state` reaching `idle` does **not** mean agy can use the bus yet: after launch agy takes a
 few seconds to load its MCP servers (agentmemory included), and its idle prompt can appear *before*
 that finishes. There is no reliable pane marker for "MCP ready", so gate first contact on a **bus
-round-trip** — agy can only reply once agentmemory is loaded:
+round-trip** — agy can only reply once agentmemory is loaded. Use the one-shot command:
 
-1. `memory_signal_send(from=claude, to=agy, type=request, content="[req_id=<id>] [ping]")`. The
-   `[ping]` marker triggers the responder's **fast-path**: agy replies `[req_id=<id>] READY`
-   immediately, skipping the checkpoint and any file work (a ping never touches files).
-2. `clavity ring`.
-3. Poll `memory_signal_read(agentId=claude, unreadOnly=true)` for the matching reply; if none within
-   ~10s, `clavity ring` again (retry a few times). Once the `READY` pong arrives, agy + its bus are live.
+```bash
+clavity ping            # send [ping] + ring + block for READY; prints "[req_id=…] READY", exit 0
+```
+
+`ping` mints the id, sends `[req_id=<id>] [ping]`, rings, and blocks until the reply lands (exit 1 on
+timeout). The `[ping]` marker triggers the responder's **fast-path**: agy replies `READY` immediately,
+skipping the checkpoint and any file work. If `ping` exits non-zero, agy's bus isn't up yet — wait a
+moment and retry. Once `READY` arrives, agy + its bus are live.
+
+> The old manual form (`memory_signal_send … [ping]` → `clavity ring` → poll `memory_signal_read`) is
+> still valid as a fallback, but `clavity ping` collapses it into one call with no polling.
 
 (The human equivalent, in the watch tab, is typing `list your active mcp servers` and seeing
 `agentmemory` listed.)
@@ -78,26 +83,56 @@ checkpoint=<sha|clean|none>
 ```
 On failure it leads with `[req_id=<id>] failed: <reason>`. A `[ping]` gets just `[req_id=<id>] READY`.
 
-## Send a request and await the reply
-1. **Mint id + envelope:** `clavity req-id "<self-contained instruction for agy>"` prints the full
-   `[req_id=<id>] <instruction>` content (or `clavity req-id` for a bare id).
-2. **Put it on the bus:** call `memory_signal_send(from="claude", to="agy", type="request",
-   content=<envelope>)`. **Record the returned signal `id`** (`request_signal_id`) — it is the
-   robust correlation key.
-3. **Ring the doorbell:** `clavity ring` (idle-gated; sends the canonical doorbell). The doorbell
-   carries no payload — agy reads the request from its inbox.
-4. **Await the response** (bounded loop, e.g. ≤ `timeout` seconds, poll every ~2–3 s):
-   - `memory_signal_read(agentId="claude", unreadOnly="true")` — **only your own inbox** (reading
-     another agent's inbox consumes its unread state).
-   - A signal matches when `replyTo == request_signal_id` (robust) or the `req_id` appears in its
-     `content` (fallback — agy may echo it bare or tagged).
-   - On match → return it. On no match → liveness-check `clavity state`; if `dead`, abort with
-     "agy session down — re-bootstrap"; else keep waiting until the deadline.
-5. **On timeout:** capture context with `clavity capture` (what agy was doing) and report a typed
-   timeout. Do not silently assume failure. If the pane shows a transient backend error (e.g. agy's
-   "high traffic" message), agy aborted to idle with no reply — wait ~1 min, **re-send** the request
-   (it was likely consumed when agy read its inbox, so a bare re-`ring` won't re-surface it), then
-   `clavity ring` again. (See `docs/agy-assumptions.md` → "Transient runtime gotchas".)
+## Send a request and await the reply — `clavity ask`
+
+The whole round-trip is **one command**: mint id → send on the bus → ring → block for the correlated
+reply → print its `content` (exit 0). Exit 1 on timeout, 2 if the agentmemory daemon is unreachable.
+
+```bash
+clavity ask "<self-contained instruction for agy>"              # default: to=agy, type=request, rings
+clavity ask --review-only "<review/red-team request>"           # prepend the no-edit banner (below)
+clavity ask --no-ring "<instruction>"                           # agy is mid-turn; don't ring
+clavity ask --timeout 300 "<long task>"                         # widen the deadline
+```
+
+`ask` correlates the reply by `replyTo` (it knows the request's signal id, since it sent it) **and**
+by the `[req_id=…]` echo, scoped to the request's thread — so it consumes only the awaited reply,
+never agy's request or unrelated inbox traffic. The reply `content` is returned directly.
+
+> **Do NOT detect replies by pane-scraping or hand-rolled polling.** Specifically: do **not**
+> `clavity capture | grep <req_id>` in a timer loop, and do **not** hand-roll a
+> `memory_signal_read(agentId=claude, unreadOnly=true)` poll loop to find the reply. Both are fragile
+> (racing pane redraws / consuming unrelated unread). `clavity ask` (or `await-reply`) is the one true
+> path and is **authoritative** — when you use it, don't *also* `memory_signal_read` the same reply
+> (the direct return replaces that read).
+
+**Just want to block for a reply you've already sent** (e.g. you sent via the MCP tool and need to
+wait)? Use `clavity await-reply --req-id <id> [--timeout N]` — it blocks until the correlated reply
+arrives and prints its content (exit 1 on timeout).
+
+**On timeout:** capture context with `clavity capture` (what agy was doing) and report a typed
+timeout. Do not silently assume failure. If the pane shows a transient backend error (e.g. agy's
+"high traffic" message), agy aborted to idle with no reply — wait ~1 min, then **re-`ask`** (a fresh
+req-id; the old request was likely consumed when agy read its inbox, so re-ringing alone won't
+re-surface it). (See `docs/agy-assumptions.md` → "Transient runtime gotchas".)
+
+> **Manual fallback** (bus or `ask` unavailable): `clavity req-id "<instruction>"` → `memory_signal_send(from="claude", to="agy", type="request", content=<envelope>)` (record the returned signal `id`) → `clavity ring` → `clavity await-reply --req-id <id>`.
+
+### REVIEW-ONLY banner (the `--review-only` convention)
+
+For review / red-team delegations where agy must **not** edit or commit, `clavity ask --review-only`
+prepends this canonical banner to the instruction (agy honors it, replying `Changes Made: None`):
+
+```
+╔══════════════════════════════════════════════╗
+║  REVIEW ONLY — DO NOT EDIT, DO NOT COMMIT.    ║
+║  No file writes. No git stage/commit/push.    ║
+║  Output is a written verdict ONLY.            ║
+╚══════════════════════════════════════════════╝
+```
+
+This is the easy, consistent form of the "Just REPLY on the bus — do NOT write or edit files" rule
+above. The wording is stored as a constant in `src/main.rs` (`REVIEW_ONLY_BANNER`); keep the two in sync.
 
 ## Cancel an in-flight task
 - **`clavity cancel`** interrupts agy's *current* turn (sends `Escape` — agy's busy footer reads

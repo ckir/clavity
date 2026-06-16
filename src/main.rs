@@ -10,6 +10,7 @@
 //! via `tracing` (control verbosity with `RUST_LOG`, e.g. `RUST_LOG=clavity=debug`).
 
 mod bus;
+mod membus;
 mod platform;
 mod tmux;
 
@@ -24,6 +25,19 @@ use tracing_subscriber::EnvFilter;
 /// The agy-side responder skill, embedded at build time so `start` can install/refresh it into the
 /// user's agy skills dir (keeps the installed skill in lockstep with the binary).
 const RESPONDER_SKILL: &str = include_str!("../agy_skills/claudavity-responder/SKILL.md");
+
+/// Canonical REVIEW-ONLY banner prepended to a request's instruction by `ask --review-only`. This
+/// is the no-edit/no-commit contract agy honors for review / red-team delegations (it replies
+/// `Changes Made: None`). Keep this wording in sync with the protocol runbook.
+const REVIEW_ONLY_BANNER: &str = "\
+╔══════════════════════════════════════════════╗
+║  REVIEW ONLY — DO NOT EDIT, DO NOT COMMIT.    ║
+║  No file writes. No git stage/commit/push.    ║
+║  Output is a written verdict ONLY.            ║
+╚══════════════════════════════════════════════╝";
+
+/// The master's bus agentId — clavity runs alongside this Claude, so it sends as / reads for `claude`.
+const MASTER_AGENT: &str = "claude";
 
 #[derive(Parser)]
 #[command(
@@ -79,6 +93,50 @@ enum Cmd {
     ReqId {
         /// If given, print the full `[req_id=..] <instruction>` envelope instead of a bare id
         instruction: Option<String>,
+    },
+    /// Block until agy's reply correlated to a req-id lands on the bus; print its content
+    AwaitReply {
+        /// The request id to correlate on (matches `[req_id=..]` in the reply, or its `replyTo`)
+        #[arg(long = "req-id")]
+        req_id: String,
+        /// Seconds to wait before giving up (exit 1 on timeout)
+        #[arg(long, default_value_t = 120.0)]
+        timeout: f64,
+        /// Poll interval in milliseconds (clavity-side; the master's prompt cache is irrelevant)
+        #[arg(long = "poll-interval", default_value_t = 1200)]
+        poll_interval: u64,
+    },
+    /// One-shot round-trip: mint a req-id, send the request, ring, await the reply, print it
+    Ask {
+        /// The instruction for agy
+        instruction: String,
+        /// Recipient agentId (default: agy)
+        #[arg(long, default_value = "agy")]
+        to: String,
+        /// Signal type (default: request)
+        #[arg(long = "type", default_value = "request")]
+        msg_type: String,
+        /// Seconds to wait for the reply before giving up (exit 1 on timeout)
+        #[arg(long, default_value_t = 120.0)]
+        timeout: f64,
+        /// Poll interval in milliseconds while awaiting the reply
+        #[arg(long = "poll-interval", default_value_t = 1200)]
+        poll_interval: u64,
+        /// Prepend the strict REVIEW-ONLY banner (no edits / no commits — verdict only)
+        #[arg(long = "review-only")]
+        review_only: bool,
+        /// Don't ring the doorbell (agy is already mid-turn / will pick up the queued request)
+        #[arg(long = "no-ring")]
+        no_ring: bool,
+    },
+    /// Readiness round-trip: send `[ping]`, ring, await agy's `READY` reply
+    Ping {
+        /// Seconds to wait for `READY` before giving up (exit 1 on timeout)
+        #[arg(long, default_value_t = 30.0)]
+        timeout: f64,
+        /// Poll interval in milliseconds while awaiting the reply
+        #[arg(long = "poll-interval", default_value_t = 1000)]
+        poll_interval: u64,
     },
     /// Print the detected platform + effective configuration (a diagnostic)
     Info,
@@ -188,6 +246,42 @@ fn main() {
             }
             0
         }
+        Some(Cmd::AwaitReply {
+            req_id,
+            timeout,
+            poll_interval,
+        }) => await_reply(&req_id, dur(timeout), Duration::from_millis(poll_interval)),
+        Some(Cmd::Ask {
+            instruction,
+            to,
+            msg_type,
+            timeout,
+            poll_interval,
+            review_only,
+            no_ring,
+        }) => ask(
+            &session,
+            &to,
+            &msg_type,
+            &instruction,
+            review_only,
+            no_ring,
+            dur(timeout),
+            Duration::from_millis(poll_interval),
+        ),
+        Some(Cmd::Ping {
+            timeout,
+            poll_interval,
+        }) => ask(
+            &session,
+            "agy",
+            "request",
+            "[ping]",
+            false,
+            false,
+            dur(timeout),
+            Duration::from_millis(poll_interval),
+        ),
         Some(Cmd::Info) => {
             let os = platform::current();
             println!("os             = {}", os.name());
@@ -318,6 +412,105 @@ fn start(session: &str, args: Vec<String>) -> i32 {
         Ok(s) => s.code().unwrap_or(0),
         Err(e) => {
             eprintln!("failed to launch claude: {e}");
+            1
+        }
+    }
+}
+
+/// `await-reply`: block until agy's reply correlated to `req_id` lands; print its content to stdout
+/// (exit 0) or note the timeout on stderr (exit 1). Exit 2 if the daemon is unreachable.
+///
+/// Standalone (no known request signal id / thread), so it correlates purely on the `[req_id=..]`
+/// echo in the reply and reads the master's whole inbox — it is **authoritative** (consuming): don't
+/// also `memory_signal_read(agentId=claude)` the same reply.
+fn await_reply(req_id: &str, timeout: Duration, poll: Duration) -> i32 {
+    let bus = membus::MemBus::from_env();
+    if let Err(e) = bus.health() {
+        eprintln!("{e}");
+        return 2;
+    }
+    match bus.await_reply(MASTER_AGENT, req_id, None, None, timeout, poll) {
+        Ok(content) => {
+            print!("{content}");
+            if !content.ends_with('\n') {
+                println!();
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            1
+        }
+    }
+}
+
+/// `ask` / `ping`: the one-shot round-trip — mint a req-id, send the request on the bus, ring the
+/// doorbell (unless `no_ring`), block for the correlated reply, and print its content.
+///
+/// Returns the reply on stdout (exit 0); exit 1 on timeout, 2 if the daemon is unreachable, 3 if the
+/// send or ring fails. Because `ask` sent the request itself it knows the signal id + thread id, so
+/// the await is scoped to that thread and correlates on `replyTo` too — it consumes only this reply.
+#[allow(clippy::too_many_arguments)]
+fn ask(
+    session: &str,
+    to: &str,
+    msg_type: &str,
+    instruction: &str,
+    review_only: bool,
+    no_ring: bool,
+    timeout: Duration,
+    poll: Duration,
+) -> i32 {
+    let bus = membus::MemBus::from_env();
+    if let Err(e) = bus.health() {
+        eprintln!("{e}");
+        return 2;
+    }
+
+    let req_id = bus::new_req_id();
+    let payload = if review_only {
+        format!("{REVIEW_ONLY_BANNER}\n\n{instruction}")
+    } else {
+        instruction.to_string()
+    };
+    let content = bus::make_request(&req_id, &payload);
+
+    let sent = match bus.send(MASTER_AGENT, to, msg_type, &content, None) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("send failed: {e}");
+            return 3;
+        }
+    };
+    info!(
+        "sent {req_id} to {to} (signal {}, thread {:?})",
+        sent.id, sent.thread_id
+    );
+
+    if !no_ring {
+        if let Err(e) = tmux::ring(session, &tmux::doorbell(), true, dur(120.0)) {
+            eprintln!("ring failed: {e}");
+            return 3;
+        }
+    }
+
+    match bus.await_reply(
+        MASTER_AGENT,
+        &req_id,
+        Some(&sent.id),
+        sent.thread_id.as_deref(),
+        timeout,
+        poll,
+    ) {
+        Ok(content) => {
+            print!("{content}");
+            if !content.ends_with('\n') {
+                println!();
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("{e}");
             1
         }
     }

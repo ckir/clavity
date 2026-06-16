@@ -13,8 +13,22 @@
 use std::env;
 
 fn main() {
-    let sub = env::args().nth(1).unwrap_or_default();
+    let args: Vec<String> = env::args().skip(1).collect();
+    let sub = args.first().cloned().unwrap_or_default();
     let state = env::var("FAKE_TMUX_STATE").unwrap_or_else(|_| "idle".to_string());
+
+    // If FAKE_TMUX_LOG is set, append this invocation's argv so a test can assert what clavity
+    // called (e.g. that `ring` issued a `send-keys`, or that `--no-ring` issued none).
+    if let Ok(path) = env::var("FAKE_TMUX_LOG") {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(f, "{}", args.join(" "));
+        }
+    }
 
     match sub.as_str() {
         "has-session" => {

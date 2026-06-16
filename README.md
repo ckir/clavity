@@ -164,20 +164,23 @@ the protocol**: point it at [`docs/agy-remote-control-protocol.md`](docs/agy-rem
 (or install that as a Claude skill/command). The optional SessionStart hook below injects a one-line
 reminder, but the full procedure lives in the runbook.
 
-Under the hood, Claude mints a request, puts it on the bus, rings the doorbell, and awaits the reply:
+Under the hood it's **one command** — `clavity ask` mints the request, puts it on the bus, rings the
+doorbell, blocks for agy's correlated reply, and prints it:
 
 ```bash
-clavity req-id "refactor foo() to return Result"   # -> [req_id=req-..] refactor ...
-# (Claude) memory_signal_send(from=claude, to=agy, type=request, content=<that envelope>)
-clavity ring                                        # wake agy
-clavity state                                       # idle | busy | dead
-# (Claude) memory_signal_read(agentId=claude, unreadOnly=true)  -> agy's reply
+clavity ask "refactor foo() to return Result"          # -> agy's reply on stdout, exit 0
+clavity ask --review-only "review src/foo.rs vs the spec; verdict only, no edits"
 ```
 
+No polling, no pane-scraping: `ask` correlates the reply by signal id + the `[req_id=..]` echo and
+returns its content directly (exit 1 on timeout). To block on a reply for a request you sent via the
+MCP tool yourself, use `clavity await-reply --req-id <id>`. The agentmemory daemon is reached over its
+REST API (default `http://127.0.0.1:3111`, override with `AGENTMEMORY_URL`).
+
 > **After launch, give agy a moment.** It loads its MCP servers (agentmemory included) a few seconds
-> after starting, and `clavity state` can read `idle` before that finishes. Gate your first task on a
-> **bus readiness ping** (ping → `clavity ring` → wait for the reply, retry) — see the runbook. The
-> manual equivalent is typing `list your active mcp servers` in the watch tab and seeing `agentmemory`.
+> after starting, and `clavity state` can read `idle` before that finishes. Gate your first task on
+> **`clavity ping`** (one call: send `[ping]`, ring, block for `READY`) and retry until it exits 0 —
+> see the runbook. The manual equivalent is typing `list your active mcp servers` in the watch tab.
 
 **Optional — auto-detect clavity sessions.** `clavity start` exports `CLAVITY_SESSION=<session>` to the
 Claude it launches. Add a **SessionStart hook** to `~/.claude/settings.json` that, when that var is set,
@@ -203,6 +206,9 @@ Plain `claude` sessions print nothing, so it's inert outside clavity.
 | `clavity wait-idle [--timeout N]` | Block until idle (exit 0) or timeout (exit 1). |
 | `clavity ring [--no-idle-gate] [--doorbell S] [--idle-timeout N]` | Idle-gate, then send the doorbell. |
 | `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
+| `clavity ask "<INSTRUCTION>" [--review-only] [--no-ring] [--to A] [--type T] [--timeout N]` | **One-shot round-trip:** mint a req-id, send the request on the bus, ring, block for agy's correlated reply, print its content. Exit 0 reply / 1 timeout / 2 daemon-unreachable. `--review-only` prepends the no-edit banner. |
+| `clavity await-reply --req-id ID [--timeout N] [--poll-interval MS]` | Block until agy's reply correlated to `ID` lands; print its content (exit 1 on timeout). For a request you sent yourself via the MCP tool. |
+| `clavity ping [--timeout N]` | Readiness round-trip: send `[ping]`, ring, block for agy's `READY`. |
 | `clavity info` | Print the detected platform + effective configuration (diagnostic). |
 | `clavity doctor` | Preflight: check tmux/claude/agy are on `PATH` and the session is reachable. |
 | `clavity cancel` | Interrupt agy's current turn (sends Escape to the pane; pair with a bus `alert` from Claude). |
@@ -227,6 +233,8 @@ All optional; sensible defaults. Environment variables:
 | `AGY_WATCH` | _enabled_ | On first launch, `start` opens a visible terminal tab (Windows Terminal) attached to agy so you can answer its auth/login prompts. Set `0`/`false`/`no` to disable. |
 | `AGY_IDLE_MARKER` | `? for shortcuts` | Footer text meaning agy is idle. |
 | `AGY_BUSY_MARKER` | `esc to cancel` | Footer text meaning agy is busy. |
+| `AGENTMEMORY_URL` | `http://127.0.0.1:3111` | agentmemory daemon REST base URL — used by `ask` / `await-reply` / `ping`. |
+| `AGENTMEMORY_SECRET` | _none_ | Bearer token for the daemon; sent only when set (the daemon requires it only when it too has a secret configured). |
 | `RUST_LOG` | `clavity=info` | Log verbosity, e.g. `RUST_LOG=clavity=debug`. |
 
 ---
@@ -274,7 +282,8 @@ cargo fmt --all --check
 | --- | --- |
 | `src/main.rs` | clap CLI, dispatch, `start` launcher, `doctor`/`info`. |
 | `src/tmux.rs` | **C3** — psmux primitives + pane-state detection. |
-| `src/bus.rs` | **C5** — agentmemory-bus conventions (req-id + `[req_id=..]` envelope). |
+| `src/bus.rs` | **C5** — agentmemory-bus conventions (req-id + `[req_id=..]` envelope; pure, no I/O). |
+| `src/membus.rs` | **C5′** — agentmemory daemon REST client (the bus I/O for `ask`/`await-reply`/`ping`). |
 | `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions (Unix arms are scaffolding). |
 | `src/bin/fake_tmux.rs`, `tests/integration.rs` | Test-only fake psmux + integration tests (CI, no live agy). |
 | `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill. |

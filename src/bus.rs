@@ -1,9 +1,13 @@
 //! agentmemory signal-bus conventions (component C5).
 //!
-//! The bus is driven by the MCP tools `memory_signal_send` / `memory_signal_read`, which only
-//! the agent runtime (Claude / agy) can call — not this binary. This module holds the *pure*
-//! conventions both sides agree on: request-id minting and the request `content` envelope.
-//! `clavity req-id [instruction]` exposes them so Claude mints ids consistently.
+//! This module holds the *pure* conventions both sides agree on: request-id minting and the request
+//! `content` envelope. It does **no I/O** — `clavity req-id [instruction]` exposes the conventions so
+//! Claude mints ids consistently, and `membus::MemBus::await_reply` reuses [`extract_req_id`] to
+//! correlate replies.
+//!
+//! The bus is normally driven by the MCP tools `memory_signal_send` / `memory_signal_read` (called
+//! by the agent runtime, Claude / agy). clavity *also* speaks to the agentmemory daemon directly for
+//! blocking round-trips — but that I/O lives in `src/membus.rs`; this module stays pure conventions.
 //!
 //! Correlation contract (see the C2 responder skill): Claude sends a `request` whose content
 //! starts with `[req_id=...]`; agy replies setting `replyTo` to the request's signal id and
@@ -39,9 +43,8 @@ pub fn make_request(req_id: &str, instruction: &str) -> String {
     format!("[req_id={req_id}] {instruction}")
 }
 
-/// Return the `req_id` embedded in a message content, or None. (Reference parser, mirrored by
-/// the agy-side skill; kept for spec parity and tests.)
-#[allow(dead_code)]
+/// Return the `req_id` embedded in a message content, or None. (Mirrored by the agy-side skill;
+/// used by `membus::MemBus::await_reply` to correlate a reply back to its request.)
 pub fn extract_req_id(content: &str) -> Option<String> {
     let start = content.find("[req_id=")? + "[req_id=".len();
     let rest = &content[start..];
