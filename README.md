@@ -156,6 +156,17 @@ bus, ring the doorbell, await the reply.
 > **bus readiness ping** (ping → `clavity ring` → wait for the reply, retry) — see the runbook. The
 > manual equivalent is typing `list your active mcp servers` in the watch tab and seeing `agentmemory`.
 
+**Optional — auto-detect clavity sessions.** `clavity start` exports `CLAVITY_SESSION=<session>` to the
+Claude it launches. Add a **SessionStart hook** to `~/.claude/settings.json` that, when that var is set,
+injects a note telling Claude it has a live agy peer and how to drive it (so you don't have to remind it):
+```json
+{ "hooks": { "SessionStart": [ { "hooks": [ {
+  "type": "command", "shell": "bash",
+  "command": "if [ -n \"$CLAVITY_SESSION\" ]; then printf 'clavity: live agy peer in psmux session %s — drive via clavity req-id|ring + memory_signal_send/read; readiness: [ping].' \"$CLAVITY_SESSION\"; fi"
+} ] } ] } }
+```
+Plain `claude` sessions print nothing, so it's inert outside clavity.
+
 ```bash
 clavity req-id "refactor foo() to return Result"   # -> [req_id=req-..] refactor ...
 # (Claude) memory_signal_send(from=claude, to=agy, type=request, content=<that envelope>)
