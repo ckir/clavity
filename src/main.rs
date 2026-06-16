@@ -265,7 +265,11 @@ fn start(session: &str, args: Vec<String>) -> i32 {
             eprintln!("failed to relaunch agy in psmux: {e}");
             return 1;
         }
-        open_watch_tab(session);
+        // Only open a watch tab if the session isn't already showing somewhere (avoids a duplicate
+        // when agy was exited but its tab left open).
+        if !tmux::is_attached(session) {
+            open_watch_tab(session);
+        }
     } else {
         let dir = folder.to_string_lossy().to_string();
         if let Err(e) = tmux::new_session_detached(session, &dir) {
