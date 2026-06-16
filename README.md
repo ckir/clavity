@@ -145,6 +145,11 @@ attach manually anytime: `tmux attach -t claude_agy` (detach with `Ctrl-b d`).
 Follow the [protocol runbook](docs/agy-remote-control-protocol.md): mint a request, put it on the
 bus, ring the doorbell, await the reply.
 
+> **After launch, give agy a moment.** It loads its MCP servers (agentmemory included) a few seconds
+> after starting, and `clavity state` can read `idle` before that finishes. Gate your first task on a
+> **bus readiness ping** (ping → `clavity ring` → wait for the reply, retry) — see the runbook. The
+> manual equivalent is typing `list your active mcp servers` in the watch tab and seeing `agentmemory`.
+
 ```bash
 clavity req-id "refactor foo() to return Result"   # -> [req_id=req-..] refactor ...
 # (Claude) memory_signal_send(from=claude, to=agy, type=request, content=<that envelope>)

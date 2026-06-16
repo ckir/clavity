@@ -18,6 +18,21 @@ the psmux/state plumbing and the bus id convention (`clavity req-id`). See the d
 2. Verify reachability: `clavity state` → expect `idle`/`busy` (not `dead`). If `dead`, ask the
    human to bootstrap; do not proceed.
 
+## Readiness — agy's MCP servers load lazily after launch
+
+`clavity state` reaching `idle` does **not** mean agy can use the bus yet: after launch agy takes a
+few seconds to load its MCP servers (agentmemory included), and its idle prompt can appear *before*
+that finishes. There is no reliable pane marker for "MCP ready", so gate first contact on a **bus
+round-trip** — agy can only reply once agentmemory is loaded:
+
+1. `memory_signal_send(from=claude, to=agy, type=request, content="[req_id=<id>] readiness probe — reply with [req_id=<id>] READY")`.
+2. `clavity ring`.
+3. Poll `memory_signal_read(agentId=claude, unreadOnly=true)` for the matching reply; if none within
+   ~10s, `clavity ring` again (retry a few times). Once the `READY` pong arrives, agy + its bus are live.
+
+(The human equivalent, in the watch tab, is typing `list your active mcp servers` and seeing
+`agentmemory` listed.)
+
 ## Send a request and await the reply
 1. **Mint id + envelope:** `clavity req-id "<self-contained instruction for agy>"` prints the full
    `[req_id=<id>] <instruction>` content (or `clavity req-id` for a bare id).
