@@ -4,3 +4,6 @@
 
 # agy/claudavity runtime artifacts (if a target repo is worked in-place)
 .agent/
+
+# Tool caches
+.serena/
