@@ -80,7 +80,29 @@ State detection is defense-in-depth and never load-bearing: correctness rests on
 - **Rust** (`cargo`) to build — or grab a release binary.
 - Currently **Windows** (see [Platform support](#platform-support)).
 
-### 1. Build & install
+### 1. Wire up the agentmemory bus (both agents)
+
+clavity's data channel is the shared agentmemory store, so the **same** MCP server must be
+registered in **both** Claude Code and agy, pointing at the same daemon (default `:3111`). The
+reference setup on a working machine:
+
+**Claude Code** — `claude mcp add agentmemory -s user -- npx @agentmemory/agentmemory mcp`, i.e. in
+`~/.claude.json` under `mcpServers`:
+```json
+"agentmemory": { "type": "stdio", "command": "npx", "args": ["@agentmemory/agentmemory", "mcp"] }
+```
+
+**agy** — in `~/.gemini/config/mcp_config.json` under `mcpServers` (on Windows a bare `npx` must be
+launched via `cmd /c`):
+```json
+"agentmemory": { "command": "cmd", "args": ["/c", "npx", "@agentmemory/agentmemory", "mcp"] }
+```
+
+Restart each agent after editing its config. Verify Claude sees the bus (the
+`memory_signal_send` / `memory_signal_read` tools are available); `clavity doctor` does not check
+this, so confirm it once during setup.
+
+### 2. Build & install
 
 ```bash
 cargo build --release
@@ -89,7 +111,7 @@ cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"   # Windows
 # cp target/release/clavity   ~/.local/bin/            # elsewhere
 ```
 
-### 2. Install the agy-side responder skill
+### 3. Install the agy-side responder skill
 
 ```pwsh
 Copy-Item -Recurse agy_skills/claudavity-responder `
@@ -101,7 +123,7 @@ text is in the [design spec](docs/superpowers/specs/2026-06-16-agy-remote-contro
 responder makes a **non-intrusive `git stash` checkpoint** before editing the live tree, then replies
 on the bus. On Windows its checkpoint command is **PowerShell** (agy's shell is pwsh).
 
-### 3. Launch both agents in a folder
+### 4. Launch both agents in a folder
 
 Run from your normal shell so `agy` inherits your signed-in session. `start` is the default action,
 so you can omit it:
@@ -116,7 +138,7 @@ clavity start C:\path                # explicit form, identical
 The first non-dash argument is the folder; everything else is forwarded verbatim to `claude`.
 Watch agy live anytime: `tmux attach -t claude_agy` (detach with `Ctrl-b d`).
 
-### 4. Drive agy from Claude
+### 5. Drive agy from Claude
 
 Follow the [protocol runbook](docs/agy-remote-control-protocol.md): mint a request, put it on the
 bus, ring the doorbell, await the reply.
