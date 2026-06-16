@@ -25,7 +25,9 @@ few seconds to load its MCP servers (agentmemory included), and its idle prompt 
 that finishes. There is no reliable pane marker for "MCP ready", so gate first contact on a **bus
 round-trip** — agy can only reply once agentmemory is loaded:
 
-1. `memory_signal_send(from=claude, to=agy, type=request, content="[req_id=<id>] readiness probe — reply with [req_id=<id>] READY")`.
+1. `memory_signal_send(from=claude, to=agy, type=request, content="[req_id=<id>] [ping]")`. The
+   `[ping]` marker triggers the responder's **fast-path**: agy replies `[req_id=<id>] READY`
+   immediately, skipping the checkpoint and any file work (a ping never touches files).
 2. `clavity ring`.
 3. Poll `memory_signal_read(agentId=claude, unreadOnly=true)` for the matching reply; if none within
    ~10s, `clavity ring` again (retry a few times). Once the `READY` pong arrives, agy + its bus are live.

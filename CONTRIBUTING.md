@@ -99,6 +99,9 @@ The binary is mostly portable; OS-specific assumptions are centralized in `src/p
   (not `println!`) for logs, so callers can parse `clavity state` / `capture` / `req-id` / `info`.
 - Keep pure logic pure and unit-tested; live I/O goes through thin wrappers.
 - Match the existing module-doc/comment style.
+- **Editing `claudavity-responder/SKILL.md` takes effect on agy's *next restart*.** agy reads the
+  skill once per session (on its first doorbell) and caches it — a running agy will not pick up skill
+  edits mid-session. After changing the skill, restart agy (`clavity -c`) to load it, then re-verify.
 
 ## Pull requests
 
