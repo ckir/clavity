@@ -13,7 +13,7 @@ mod bus;
 mod platform;
 mod tmux;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
@@ -71,6 +71,8 @@ enum Cmd {
     },
     /// Print the detected platform + effective configuration (a diagnostic)
     Info,
+    /// Preflight: check tmux/claude/agy are on PATH and the session is reachable
+    Doctor,
     /// Start agy (in a psmux session) AND Claude Code in the same folder (the default action)
     Start {
         /// First non-dash arg is the folder; everything else is forwarded to `claude`
@@ -167,6 +169,7 @@ fn main() {
             println!("agy_start_args = {}", tmux::agy_start_args());
             0
         }
+        Some(Cmd::Doctor) => doctor(&session),
     };
     std::process::exit(code);
 }
@@ -227,6 +230,70 @@ fn start(session: &str, args: Vec<String>) -> i32 {
             eprintln!("failed to launch claude: {e}");
             1
         }
+    }
+}
+
+/// Resolve an executable: an explicit path is checked as-is; a bare name is searched on `PATH`
+/// (with Windows executable extensions). Returns the resolved path if found.
+fn which(name: &str) -> Option<PathBuf> {
+    let p = Path::new(name);
+    if p.is_absolute() || name.contains('/') || name.contains('\\') {
+        return if p.is_file() {
+            Some(p.to_path_buf())
+        } else {
+            None
+        };
+    }
+    let exts: &[&str] = if cfg!(windows) {
+        &["", ".exe", ".cmd", ".bat"]
+    } else {
+        &[""]
+    };
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        for ext in exts {
+            let cand = dir.join(format!("{name}{ext}"));
+            if cand.is_file() {
+                return Some(cand);
+            }
+        }
+    }
+    None
+}
+
+/// Preflight check: are the external tools on PATH, and is the session reachable?
+fn doctor(session: &str) -> i32 {
+    let tmux = tmux::psmux_bin();
+    let checks = [
+        ("tmux/psmux", tmux.as_str()),
+        ("claude", "claude"),
+        ("agy", "agy"),
+    ];
+    let mut missing = false;
+    for (label, name) in checks {
+        match which(name) {
+            Some(p) => println!("[ ok ]  {label:<11} {}", p.display()),
+            None => {
+                println!("[MISS]  {label:<11} not found on PATH (looked for '{name}')");
+                missing = true;
+            }
+        }
+    }
+
+    let state = tmux::pane_state(session);
+    if state == tmux::PaneState::Dead {
+        println!(
+            "[warn]  session     '{session}' = dead (start one with `clavity start <folder>`)"
+        );
+    } else {
+        println!("[ ok ]  session     '{session}' = {}", state.as_str());
+    }
+
+    if missing {
+        eprintln!("doctor: one or more tools are missing from PATH");
+        1
+    } else {
+        0
     }
 }
 

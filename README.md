@@ -140,6 +140,7 @@ clavity state                                       # idle | busy | dead
 | `clavity ring [--no-idle-gate] [--doorbell S] [--idle-timeout N]` | Idle-gate, then send the doorbell. |
 | `clavity req-id [INSTRUCTION]` | Mint a request id, or wrap an instruction in the `[req_id=..]` envelope. |
 | `clavity info` | Print the detected platform + effective configuration (diagnostic). |
+| `clavity doctor` | Preflight: check tmux/claude/agy are on `PATH` and the session is reachable. |
 | `clavity --session NAME …` | Target a non-default psmux session (global flag). |
 
 **Output discipline:** results go to **stdout** (machine-readable: `idle`, pane text, ids);
@@ -184,60 +185,29 @@ All optional; sensible defaults. Environment variables:
 
 ## Contributing
 
-Contributions welcome — especially **Linux/macOS support**.
+Contributions welcome — **especially Linux/macOS support**. See **[CONTRIBUTING.md](CONTRIBUTING.md)**
+for the full guide: dev setup, the two test tiers (hermetic + the **live acceptance runbook**), the
+Linux/macOS **porting checklist**, conventions, and PR expectations.
+
+Quick loop:
+
+```bash
+cargo test --all --features test-fakes                          # unit + integration (fake psmux)
+cargo clippy --all-targets --features test-fakes -- -D warnings
+cargo fmt --all --check
+```
 
 ### Project layout
 
 | Path | Role |
 | --- | --- |
-| `src/main.rs` | clap CLI, dispatch, and the `start` launcher. |
-| `src/tmux.rs` | **C3** — psmux primitives + pane-state detection (footer markers + marker-free activity fallback). Pure functions are unit-tested. |
-| `src/bus.rs` | **C5** — agentmemory-bus conventions: request-id minting + the `[req_id=..]` envelope. |
-| `src/platform.rs` | OS detection + per-OS assumptions (the **platform seam**). Windows is live; the Unix arms are untested scaffolding for a port. |
-| `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill (read inbox → checkpoint → act → reply). |
+| `src/main.rs` | clap CLI, dispatch, `start` launcher, `doctor`/`info`. |
+| `src/tmux.rs` | **C3** — psmux primitives + pane-state detection. |
+| `src/bus.rs` | **C5** — agentmemory-bus conventions (req-id + `[req_id=..]` envelope). |
+| `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions (Unix arms are scaffolding). |
+| `src/bin/fake_tmux.rs`, `tests/integration.rs` | Test-only fake psmux + integration tests (CI, no live agy). |
+| `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill. |
 | `docs/` | Protocol runbook + design spec. |
-
-### Dev loop
-
-```bash
-cargo test                  # pure-logic unit tests (run anywhere, no live agy needed)
-cargo clippy --all-targets  # must be clean
-cargo build --release
-```
-
-### Conventions
-
-- **stdout = results, stderr = diagnostics.** Keep machine-readable output on stdout; use `tracing`
-  (not `println!`) for logs so callers can parse `clavity state` / `clavity capture` / `clavity req-id`.
-- Keep the pure logic (`classify_pane`, `changed`, the bus helpers) pure and unit-tested; live I/O
-  goes through thin wrappers.
-- Match the existing module docs/comment style.
-
-### Porting to Linux / macOS
-
-The binary is mostly portable already; OS-specific assumptions are centralized in
-[`src/platform.rs`](src/platform.rs) (run `clavity info` to see them). Here's the concrete checklist:
-
-1. **tmux binary** — clavity resolves `tmux` on `PATH` on every platform (override with
-   `AGY_TMUX_BIN`). Verify real tmux accepts the same verbs clavity uses: `has-session -t`,
-   `capture-pane -p -t`, `send-keys -t -l` (+ `Enter`), `new-session -d -s -c`. (They are standard tmux.)
-2. **agy's shell differs** — on Windows agy runs **pwsh**; on Linux it's typically **bash/sh**. The
-   responder skill's checkpoint command is written in PowerShell. Add a bash variant (or make it
-   shell-detecting) in `agy_skills/claudavity-responder/SKILL.md`. **This is the main porting
-   touch-point, and it lives in the skill, not the Rust code.**
-3. **Footer markers** — agy's TUI strings (`? for shortcuts` / `esc to cancel`) come from the app, so
-   they should be the same; if a build differs, they're overridable via `AGY_IDLE_MARKER` /
-   `AGY_BUSY_MARKER`, and the marker-free activity fallback works regardless.
-4. **`claude` / `agy` discovery** — `start` spawns them via `PATH` using `std::process::Command`,
-   which is cross-platform; no change expected.
-5. **Verify live** — start `agy` inside a real tmux session, then check: `clavity state` reads
-   idle/busy correctly, `clavity ring` wakes agy, and a doorbell sent while busy is queued (not
-   interleaved). Update the [Platform support](#platform-support) table and add a CI job if you can.
-
-### Pull requests
-
-Fork, branch, make `cargo test` + `cargo clippy --all-targets` pass, and open a PR describing what
-you changed and how you verified it (especially any live-agy behavior).
 
 ---
 
