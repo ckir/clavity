@@ -149,5 +149,7 @@ from Claude's; sequential/local reasoning bias.
 4. Update changed claims, re-tag provenance, bump the `Verified against` header + the active model.
 5. If a capability change alters **routing** (Axis F) or contradicts an empirical assumption, update
    here **and** cross-link/fix [`agy-assumptions.md`](agy-assumptions.md).
+6. **Re-run the acceptance suite** [`agy-test-suite.md`](agy-test-suite.md) — the four mode-template
+   tests + the skill-cache (#6) and write-scope (Axis D) re-verifications — and log the result there.
 
 > Evidence trail with full citations: [`agy-capabilities-research.md`](agy-capabilities-research.md).
