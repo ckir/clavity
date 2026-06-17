@@ -37,44 +37,35 @@ artifact**: this work adds packaging around it, not changes to it.
 
 ## 3. Verified facts — the keyboard-lock root cause
 
-*(Sources: user's firsthand observation of the lock + the post-kill escape flush, 2026-06-17;
-agy consult `req-djbj3rtx2als`; v1 `src/main.rs`/`src/tmux.rs` inspection.)*
+*(Sources: live diagnosis 2026-06-17 — psmux `escape-time` inspection + a one-Esc `/mcp`-close
+test; earlier user observations; agy consult `req-djbj3rtx2als`; v1 `src/main.rs`/`src/tmux.rs`.)*
 
-**The lock lives in clavity's own plumbing — the interactive `tmux attach` in the watch tab — not
-in agy.** Mechanism:
+**The dominant cause is psmux's `escape-time` default — not the attach.** psmux/tmux defaults
+`escape-time` to **500 ms**: every bare **Esc** is held ~half a second while psmux waits to see if
+it's the start of an escape sequence (arrow/function keys). Inside a psmux session that makes Esc
+feel **dropped/laggy** — you cannot Esc out of agy's popups/states — which is the bulk of what felt
+like a "keyboard lock." **Fix: `escape-time 10`.** *Verified live 2026-06-17: with `escape-time 10`,
+a single Esc closes agy's `/mcp` popup that previously needed multiple tries or hung.* Because the
+value is read at **session creation**, it must be set **before** the session exists — via
+`~/.tmux.conf` (the server reads it at startup) **or** by clavity setting it just before
+`new-session` (the v1 patch).
 
-- v1's `open_watch_tab` opens a Windows Terminal tab running an **interactive `tmux attach -t
-  claude_agy`** (so the user can answer agy's frequent auth prompts). A tmux **client takes over
-  the host terminal**: it puts the user's terminal into **raw mode** (local echo + line editing
-  disabled) and drives it with control sequences. So while attached, the terminal the user types
-  into is under **psmux's** control — keystrokes are captured, not echoed = the **keyboard lock**.
-- agy, inside the pane, *additionally* runs its own full-screen TUI in raw mode — but the terminal
-  the **user** physically interacts with is the **tmux client** terminal, whose mode is set by the
-  attach. A `send-keys` doorbell into the same pane compounds the collision.
-- **The escape sequences seen after hard-killing agy came from "our side", not agy** — a killed
-  process emits nothing. With agy's process gone, **psmux (still alive) redrew the pane (now a
-  shell) and emitted control sequences to the attached terminal**, and the tmux client kept the
-  terminal in raw mode until detached. *(User correction; supersedes the earlier "agy TUI teardown"
-  hypothesis.)*
-- agy has **no `--no-tui`/`--plain`/`TERM=dumb`** continuous mode (only `--print` one-shot), so
-  switching agy out of TUI mode is not an option *(agy consult)* — but it is also **not necessary**,
-  because the capture happens at the **tmux-attach** layer, which clavity fully controls.
-- `clavity capture` uses `capture-pane -p` (it shells out — **no attach**), so observation never
-  captures the user's terminal; the lock is purely about the **interactive attach**.
+**Secondary, smaller contributors** (matter far less once `escape-time` is fixed):
+- The watch tab's **interactive `tmux attach`** puts the user's terminal into raw mode; if the user
+  actively *types* there while agy holds the terminal, keystrokes are swallowed. Mitigated by
+  **`AGY_WATCH=0`** + observing via `clavity capture` (which shells out via `capture-pane -p` —
+  **no attach**, so observation is always lock-free).
+- A **hard-kill** of agy (or the `/mcp` *restart* deadlock) leaves the attached terminal stranded in
+  raw + mouse-tracking mode → moving the mouse spews `[…M` reports (emitted by the un-reset terminal,
+  not the dead agy). Reset with the mouse-mode-disable sequence, or just open a fresh shell.
+- agy has **no `--no-tui`/`--plain`** continuous mode (only `--print` one-shot) *(agy consult)* —
+  irrelevant now, since the fix is at the psmux layer, which clavity controls.
 
-**Conclusion:** the keyboard lock is caused by the **interactive `tmux attach` watch tab (clavity's
-plumbing)**, which raw-modes the user's terminal. Zero-code-change mitigation: run with
-**`AGY_WATCH=0`** (no auto-attached watch tab) → the user's terminal is never captured by tmux → no
-lock; observe agy via `clavity capture`, and `tmux attach` **manually only to answer an auth
-prompt**, then detach (`Ctrl-b d`). (A read-only watch tab via `tmux attach -r`, or a terminal
-reset on detach, are possible future v1 improvements — explicitly out of scope here to keep v1
-frozen.)
-
-**Recovery if a terminal does lock:** run **`clavity cancel`** (server-side Escape via
-`send-keys`) — or any `clavity` command — from a **different, non-attached shell** to drive/unstick
-agy. The send-keys path goes through the psmux *server* and reaches agy even when the user's
-attached client terminal is raw-mode-locked. *(Verified live 2026-06-17: two `clavity cancel`
-Escapes cleared a stuck `/mcp` modal that the user's own Esc could not reach.)*
+**Conclusion:** ship `escape-time 10` as required setup — clavity sets it on session creation (the
+v1 patch), and the plugin also documents the `~/.tmux.conf` snippet. With that, the live driving
+model is smooth; the attach/mouse-leak items become minor `AGY_WATCH=0`-style edge cases, and
+**`clavity cancel`** (server-side Esc from another shell) remains the recovery if a client terminal
+ever wedges.
 
 ---
 
