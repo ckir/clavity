@@ -25,16 +25,31 @@ the bundled **clavity-driving** skill (`clavity ping` for readiness, `clavity as
 round-trip). agy uses the bundled **claudavity-responder** skill to react to the doorbell and
 reply on the bus.
 
-## ⚠️ Keyboard lock — read this
-clavity v1's auto-attached "watch tab" runs an **interactive `tmux attach`**, which puts YOUR
-terminal into raw mode (no echo) — your keystrokes get swallowed by agy, a "keyboard lock". A
-hard-kill of agy leaves psmux redrawing escape sequences to the attached terminal. To avoid it:
-- **Run with `AGY_WATCH=0`** (no auto-attach). Observe agy with `clavity capture`; `tmux attach
-  -t claude_agy` MANUALLY only to answer an auth prompt, then detach (`Ctrl-b d`).
-- **Recovery if locked:** from a DIFFERENT (non-attached) shell, run `clavity cancel` (sends
-  Escape to agy). The send-keys path reaches agy through the psmux server even when your client
-  terminal is raw-mode-locked.
-- For a fully lock-free experience, use **clavity v2**.
+## ⚠️ Keyboard lock & escape-sequence spew — read this
+clavity v1's auto-attached "watch tab" runs an **interactive `tmux attach`**, which makes tmux take
+over YOUR terminal: it enables **raw mode** (no echo — your keystrokes get swallowed by agy = the
+"keyboard lock") and **mouse-tracking mode** (`\e[?1000h` / `?1003h` / `?1006h`). On a clean
+detach/exit tmux resets these — but a **hard-kill** of agy, or agy's `/mcp` reload **deadlocking**
+(`"loading already in progress"`), skips the cleanup and **strands your terminal in those modes**.
+Symptom: moving the mouse spews escape sequences like `[555;115;1M[555;114;1M…` — those are
+**mouse-movement reports your un-reset terminal is emitting** (not agy, which is already gone).
+
+**Avoid it (recommended default):**
+- **Run agy with `AGY_WATCH=0`** — no `tmux attach` on your terminal, so tmux never puts it into
+  raw/mouse mode and nothing can leak. Observe agy with `clavity capture`; `tmux attach -t
+  claude_agy` MANUALLY only to answer an auth prompt, then detach (`Ctrl-b d`).
+
+**Recovery if your terminal is already stranded:**
+- **Unstick agy** from a DIFFERENT (non-attached) shell: `clavity cancel` sends Escape through the
+  psmux *server*, reaching agy even when your client terminal is locked. (Escape **cannot** close a
+  *deadlocked* `/mcp` reload — that needs an agy restart.)
+- **Reset your terminal** — disable mouse-reporting + exit alt-screen (pwsh):
+  ```powershell
+  [Console]::Write("`e[?1000l`e[?1002l`e[?1003l`e[?1006l`e[?1015l`e[?1049l")
+  ```
+  …or simply **close the tab and open a fresh shell**.
+
+For a fully lock-free experience (no live TUI, no watch tab, no `/mcp`), use **clavity v2**.
 
 ## Platforms
 Windows: ✅ verified end-to-end. Linux: 🚧 compiles in CI, runtime unverified. macOS: 🚧 unverified.
