@@ -41,7 +41,8 @@ accident.
 | D1 | **Skills-only dual-plugin** (no binary, no MCP config, no hooks) | The store already exists + is shared; only a skill is needed. Distributing it as an installable skill (vs a buried doc) is the suite's purpose. |
 | D2 | **Tag = concept `common` + a `[common]` content prefix + the repo name** | A searchable marker that flags a memory as cross-agent, scoped per project **without** relying on agentmemory's per-session `project` id matching between the two agents. |
 | D3 | **Proactive recall on start/handoff** | Shared memory is worthless if neither agent looks; the skill makes querying `[common]` notes a startup/handoff step. |
-| D4 | **Light fixed format** | So a note from the other agent is immediately usable. |
+| D4 | **Light fixed format** (incl. a `Status:` field) | So a note from the other agent is immediately usable, and stale handoffs are visible. |
+| D5 | **Proactive recall needs a one-line global rule** in each agent's instructions (agy: `~/.gemini/GEMINI.md`; Claude: `CLAUDE.md`) | agy ground-truthed (`req-djbootj52zmw`): installing the skill does **not** auto-trigger recall; only a global rule guarantees "search `[common]` at task start." Same pattern as the clavity responder's GEMINI.md pointer. |
 
 ---
 
@@ -62,13 +63,16 @@ Both agents, via the bundled `commonmemory` skill:
 
 **Light format:**
 ```
-[common] (<repo>) — <what> · Why: <why> · Next: <next step / for whom>
+[common] (<repo>) — <what> · Why: <why> · Status: <done | in-progress | blocked> · Next: <next step / for whom>
 ```
 
 **Recalling — proactively, before acting:**
 - At **session start** and when **picking up handed-off work**, run
   `memory_smart_search query="[common] <repo>"` (and/or `memory_recall`) and read the other agent's
   notes **before** starting, so you don't re-explain or re-discover.
+- **Mind staleness** — agentmemory is append-mostly, so superseded `[common]` notes linger. Prefer
+  the **most recent** note (check its timestamp), trust the `Status:` field, and don't act on an old
+  handoff. *(agy spec review `req-djbootj52zmw`.)*
 
 **Guardrails the skill states:**
 - Tag `[common]` **only** for genuinely cross-agent-relevant notes (avoid flooding the shared pool).
@@ -89,6 +93,11 @@ plugins/commonmemory/
 ```
 - **No** `.mcp.json` / `mcp_config.json` (no server), **no** binary, **no** hooks.
 - Both manifests carry `name: "commonmemory"`, a `version`, and `description`.
+- The README documents a **one-line global rule** to paste into each agent's instructions for D5
+  (`~/.gemini/GEMINI.md` for agy — inside its `<user_rules>` block; `CLAUDE.md` for Claude), e.g.
+  *"At the start of a task, `memory_smart_search` for `[common] <repo>` notes before acting."* The
+  plugin MAY also ship an agy-side `rules/commonmemory.md` (agy reads `rules/`) as
+  belt-and-suspenders — verify in the plan whether agy's plugin `rules/` auto-applies.
 
 ---
 
@@ -121,10 +130,11 @@ shared memory store.)
 ---
 
 ## 9. Risks
-- **Advisory, not enforced** — skills guide; they don't guarantee. Both agents must actually *invoke*
-  the convention (consistent with how agy needs its `GEMINI.md` pointer for the clavity responder —
-  reliable auto-invocation may want a one-line pointer in `CLAUDE.md` / `GEMINI.md`; flagged for the
-  plan).
+- **Advisory, not enforced** — skills guide; they don't guarantee. **Proactive recall** in particular
+  does **not** fire from the installed skill alone — it is made reliable by the **required global
+  rule** (D5): one line in `~/.gemini/GEMINI.md` (agy) and `CLAUDE.md` (Claude). agy confirmed this
+  is necessary, not optional (`req-djbootj52zmw`). Saving/tagging is still advisory (the agent must
+  choose to record a `[common]` note).
 - **Shared-pool noise** — over-tagging `[common]` dilutes value; mitigated by the §4 guardrail.
 - **agentmemory dependency** — the one external dependency; if its memory API changes, the tool calls
   in the skill need re-verification (same `agy-assumptions` discipline as the rest of the suite).
