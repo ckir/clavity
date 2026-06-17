@@ -1,5 +1,0 @@
-{
-  "name": "clavity",
-  "version": "0.2.0",
-  "description": "Bidirectional Claude<->Antigravity bridge: ask_agy delegates to a headless agy."
-}

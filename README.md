@@ -1,20 +1,14 @@
 # clavity
 
-A Cargo workspace that produces **universal, dual-installable plugins** for agent
-collaboration between **Claude Code** and **Antigravity (`agy`)**. One generated
-plugin directory installs in *both* CLIs:
+A collection of **plugins that facilitate collaboration between
+[Claude Code](https://claude.com/claude-code) and [Antigravity](https://antigravity.google)
+(`agy`)**, packaged as **universal dual-plugins** — one directory that installs in **both** CLIs:
 
-    claude plugin install ./dist/<plugin>
-    agy    plugin install ./dist/<plugin>
+    claude plugin install ./plugins/<name>
+    agy    plugin install ./plugins/<name>
 
-> **Status: skeleton.** This tree lays out the structure, sample configs, and stubs.
-> Real implementation (`mcp-core`, the `xtask` packager, and the first plugins) lands
-> incrementally. The previous single-binary `clavity` is preserved on the **`v1`** branch.
-
-## How a universal plugin works
-
-The two CLIs read **disjoint filenames**, so both manifest sets coexist in one directory
-while skills, hook scripts, and the server binary are shared:
+The two CLIs read **disjoint filenames**, so both manifest sets coexist in one directory while
+`skills/` and other assets are shared:
 
 | Concern | Claude reads | agy reads |
 | --- | --- | --- |
@@ -22,31 +16,29 @@ while skills, hook scripts, and the server binary are shared:
 | MCP config | `.mcp.json` | `mcp_config.json` |
 | Hooks | `hooks/hooks.json` | `hooks.json` |
 
-See [`docs/plugin-formats.md`](docs/plugin-formats.md) for the verified formats and
-[`samples/scaffold/`](samples/scaffold/) for a fully-assembled example.
+See [`docs/plugin-formats.md`](docs/plugin-formats.md) for the verified format reference.
+
+## Plugins
+
+- **[`clavity-classic`](plugins/clavity-classic/)** — the original clavity (**v1**): Claude drives a
+  live, signed-in `agy` peer in the same folder over a **psmux doorbell** + the **agentmemory bus**.
+  The v1 Rust binary lives on the **`v1`** branch
+  (`cargo install --git https://github.com/ckir/clavity --branch v1`). See its
+  [README](plugins/clavity-classic/README.md) — note the one-line `escape-time` setup that makes the
+  live driving smooth.
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
-| `crates/mcp-core/` | shared MCP server primitives (stdio JSON-RPC, stderr-only logging) |
-| `plugins/<name>/` | one plugin: `plugin.toml` SSOT + bin crate + shared `skills/ rules/ hooks/` |
-| `xtask/` | packager: generate both hosts' files from `plugin.toml` -> `dist/<plugin>/` |
-| `samples/` | assembled reference output (committed; `dist/` itself is gitignored) |
-| `docs/` | design spec, implementation plan, verified plugin-formats reference |
+| `plugins/<name>/` | a universal dual-plugin (both manifest sets + `skills/`, ± a server) |
+| `docs/plugin-formats.md` | verified Claude + agy plugin-format reference |
+| `docs/agy-*.md`, `docs/superpowers/` | agy behavior/assumptions references + design specs & plans |
 
-## Build (planned)
-
-    cargo run -p xtask -- package <plugin> [--mode universal|split]
-
-Produces `dist/<plugin>/` (pre-built binary + both manifest sets + shared payload),
-installable by both CLIs.
-
-## Planned plugins
-
-- **`clavity`** — bidirectional Claude<->agy collaboration (psmux doorbell + agentmemory bus); role assigned per project.
-- **`commonmemory`** — shared memory between Claude and agy via the existing agentmemory daemon (config-only).
+## Adding a plugin
+Create `plugins/<name>/` with both manifest sets (`.claude-plugin/plugin.json` + root
+`plugin.json`), any `skills/`, and a `README.md`, following `docs/plugin-formats.md`.
+`clavity-classic` is the working example.
 
 ## License
-
-[MIT](LICENSE) (c) Costas Kirgoussios
+[MIT](LICENSE) © Costas Kirgoussios

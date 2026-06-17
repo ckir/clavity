@@ -1,5 +1,0 @@
-{
-  "name": "scaffold",
-  "version": "0.1.0",
-  "description": "Dual-compat scaffold plugin: installs in both Claude Code and Antigravity."
-}
