@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "mcp>=1.2",
     "google-antigravity",
+    "python-dotenv>=1.0",
 ]
 
 [project.scripts]

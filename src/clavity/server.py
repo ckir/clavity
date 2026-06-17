@@ -13,6 +13,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from .agy import AgyError, run_agy
+from .config import load_env
 
 ASK_AGY = Tool(
     name="ask_agy",
@@ -63,4 +64,5 @@ async def _run() -> None:
 
 
 def main() -> None:
+    load_env()
     anyio.run(_run)

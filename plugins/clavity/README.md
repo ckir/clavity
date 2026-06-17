@@ -7,7 +7,9 @@ headless Antigravity (agy) sub-agent running in the current project folder.
 ## Prerequisites
 - The `clavity` Python package installed so `clavity-mcp` is on PATH:
   `uv tool install --editable /path/to/clavity`
-- A non-interactive agy credential: set `GEMINI_API_KEY` in the environment.
+- A non-interactive agy credential: `GEMINI_API_KEY`. Provide it any of these ways
+  (real shell env wins): export it, put it in a project-local `.env` (see
+  `.env.example`), or in `~/.clavity/.env`. clavity loads `.env` at startup.
 
 ## Install
 Installs in BOTH CLIs from this one directory (disjoint manifest filenames coexist):

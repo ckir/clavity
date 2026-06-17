@@ -10,6 +10,7 @@ import shutil
 import sys
 
 from .auth import AuthError, resolve_api_key
+from .config import load_env
 
 
 def doctor() -> int:
@@ -28,6 +29,7 @@ def doctor() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_env()
     parser = argparse.ArgumentParser(prog="clavity")
     sub = parser.add_subparsers(dest="cmd")
     sub.add_parser("doctor", help="check claude on PATH + agy credential")
