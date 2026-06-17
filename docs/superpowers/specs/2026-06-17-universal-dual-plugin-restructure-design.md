@@ -22,7 +22,7 @@ claude plugin install /path/to/<plugin>
 agy    plugin install /path/to/<plugin>
 ```
 
-The current `clavity` code is **preserved on a `v1` branch for reference only** and is
+The current `clavity` code is **preserved on a `clavity-classic` branch for reference only** and is
 not carried forward; `main` is rebuilt fresh around the universal-plugin model. We stay
 in **Rust**.
 
@@ -53,14 +53,13 @@ bridge.
    CLIs accept) and the **`xtask` packager**.
 3. Deliver a minimal **dual-compat scaffold plugin** that installs cleanly in *both* CLIs,
    proving the packaging before real capability is built on it.
-4. Preserve v1.
+4. Preserve the original code.
 
 **Non-goals (deferred to their own spec → plan cycles):**
 
-- Full design/implementation of `clavity` v2 (bidirectional collaboration).
 - Full design/implementation of `commonmemory`.
-- Cross-platform (Linux/macOS) plugin distribution — Windows `.exe` first (matches v1's
-  verified platform).
+- Cross-platform (Linux/macOS) plugin distribution — Windows `.exe` first (matches the original
+  code's verified platform).
 
 ---
 
@@ -123,7 +122,7 @@ tolerance; if either CLI starts erroring on unrecognized sibling files, `split` 
 ## 4. Architecture — repo structure
 
 ```
-clavity/                          # repo (fresh main; old code on the v1 branch)
+clavity/                          # repo (fresh main; old code on the clavity-classic branch)
 ├── Cargo.toml                    # [workspace] members = crates/*, plugins/*, xtask
 ├── crates/
 │   └── mcp-core/                 # SHARED lib: stdio JSON-RPC loop, protocol types,
@@ -137,7 +136,7 @@ clavity/                          # repo (fresh main; old code on the v1 branch)
 │   │   ├── skills/<skill>/SKILL.md   # shared payload, copied verbatim
 │   │   ├── rules/<rule>.md           # shared payload (agy native; mirrored to Claude skill)
 │   │   └── hooks/<script>.ps1        # shared hook scripts
-│   ├── clavity/                  # v2 (bidirectional) — own spec, later
+│   ├── clavity-classic/          # live-agy remote control — own spec, later
 │   └── commonmemory/             # config-only (NO Cargo.toml/src bin crate) — own spec, later
 ├── xtask/                        # `cargo xtask package <plugin> [--mode ...]`
 └── dist/                         # GENERATED, gitignored — the installable payload
@@ -224,20 +223,18 @@ where, in **both** CLIs:
    Claude-mirrored skill, per the §5 mode decision).
 5. No stdout-pollution transport failure on either host.
 
-This proves all four component types and the packaging before `clavity` v2 and
+This proves all four component types and the packaging before `clavity-classic` and
 `commonmemory` build on it.
 
 ---
 
 ## 7. Suite members (structure drivers; designed later)
 
-- **`clavity` (v2)** — **bidirectional** Claude↔agy collaboration over the psmux doorbell +
-  agentmemory bus. Not master→peer: *either* agent can drive and *either* can respond;
-  the role is **assigned per project** (config), not baked into the package. Because both
-  hosts want the same capability, the shared `skills/` (driver + responder playbooks) is
-  genuinely shared — which is why the **universal single-dir** model fits. Mechanics
-  (symmetric doorbell so each agent is wakeable by the other, per-project role config) are
-  this plugin's own spec.
+- **`clavity-classic`** — Claude drives a live, signed-in agy peer over the psmux doorbell +
+  agentmemory bus; agy runs the responder skill. It packages the original `clavity` binary as a
+  universal dual-plugin. Because both hosts share the driver + responder playbooks, the shared
+  `skills/` is genuinely shared — which is why the **universal single-dir** model fits. Its own
+  spec.
 - **`commonmemory`** — **config-only plugin (no binary).** It reuses the **existing
   agentmemory daemon** both agents already connect to. Minimal sound shape *(agy consult)*:
   (a) shared skills encoding shared-memory conventions, (b) manifest configuration wiring
@@ -246,9 +243,9 @@ This proves all four component types and the packaging before `clavity` v2 and
 
 ---
 
-## 8. v1 preservation
-Branch `v1` off the current `main` (preserving full history + current code), push it, then
-rebuild `main` fresh. Both branches retain history; v1 is reference-only.
+## 8. Original-code preservation
+Branch `clavity-classic` off the current `main` (preserving full history + current code), push it,
+then rebuild `main` fresh. Both branches retain history; `clavity-classic` is reference-only.
 
 ---
 

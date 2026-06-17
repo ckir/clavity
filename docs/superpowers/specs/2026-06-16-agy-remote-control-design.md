@@ -211,7 +211,7 @@ Each request `content` carries a short `req_id`. The `response`/`info` `content`
 - No headless `agy --print` driving (proven to hang).
 - No `agy` self-polling loop (doorbell removes the need; avoids idle token cost + the wake paradox).
 - No change to `delegate_to_antigravity` (kept as-is for isolated, one-shot, scoped tasks).
-- No multi-folder/multi-session fan-out in v1 (single `claude_agy` session per folder).
+- No multi-folder/multi-session fan-out in clavity-classic (single `claude_agy` session per folder).
 
 ## 8. Failover
 
@@ -232,13 +232,13 @@ generic, since those files aren't in this repo.)
 ## 10. Open questions / future work
 
 - **True automation of bootstrap:** can the human-start step be scripted reliably while preserving
-  `agy`'s signed-in env? (Out of scope for v1; one manual start is acceptable.)
+  `agy`'s signed-in env? (Out of scope for clavity-classic; one manual start is acceptable.)
 - **Multi-agent / multi-folder** addressing on the bus (more agentIds, per-folder sessions).
 - **Richer envelope** (typed task schema) if free-text requests prove ambiguous.
 - **psmux-specific efficiency (documented in psmux `--help`, not yet verified):** `set-hook` /
   `show-hooks` (e.g. a `pane-died` hook for instant dead-session detection without polling),
   `wait-for` / `wait` (event-based turn-completion signaling instead of bus polling), and
-  `monitor-activity` / `monitor-silence`. Not adopted in v1 because the costly polling was *agy's*
+  `monitor-activity` / `monitor-silence`. Not adopted in clavity-classic because the costly polling was *agy's*
   LLM turns (eliminated by the doorbell); Claude-side bus reads are cheap. Revisit only if profiling
   shows Claude-side polling matters.
 

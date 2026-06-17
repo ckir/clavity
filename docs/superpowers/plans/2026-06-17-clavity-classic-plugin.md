@@ -1,16 +1,16 @@
-# clavity-classic — v1 Plugin Packaging Implementation Plan
+# clavity-classic — Plugin Packaging Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Package clavity **v1** (the Rust psmux+bus remote-control) as `clavity-classic`, a universal dual-plugin (installable by both `claude plugin install` and `agy plugin install`) that ships the two skills + both manifests + a README, with the binary delivered via `cargo install --git`.
+**Goal:** Package the `clavity` binary (the Rust psmux+bus remote-control) as `clavity-classic`, a universal dual-plugin (installable by both `claude plugin install` and `agy plugin install`) that ships the two skills + both manifests + a README, with the binary delivered via `cargo install --git`.
 
-**Architecture:** A skills-only plugin directory (`plugins/clavity-classic/`) — no MCP server, no bundled binary. The agy-side `claudavity-responder` skill is copied verbatim from the `v1` branch; the Claude-side `clavity-driving` skill is a focused distillation of v1's protocol runbook; both hosts' manifests coexist via disjoint filenames. v1's code stays frozen.
+**Architecture:** A skills-only plugin directory (`plugins/clavity-classic/`) — no MCP server, no bundled binary. The agy-side `claudavity-responder` skill is copied verbatim from the `clavity-classic` branch; the Claude-side `clavity-driving` skill is a focused distillation of the binary's protocol runbook; both hosts' manifests coexist via disjoint filenames. The binary's code stays frozen.
 
 **Tech Stack:** Markdown skills, JSON manifests. No build/test toolchain (content packaging). Validation via `python`/`json` parse + the two CLIs' `plugin install`.
 
-**Spec:** `docs/superpowers/specs/2026-06-17-clavity-classic-v1-plugin-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-17-clavity-classic-plugin-design.md`
 
-**Source note:** v1 content lives on the **`v1` git branch** (not the working tree), so the responder skill is pulled with `git show v1:<path>`.
+**Source note:** the binary's content lives on the **`clavity-classic` git branch** (not the working tree), so the responder skill is pulled with `git show clavity-classic:<path>`.
 
 ---
 
@@ -20,8 +20,8 @@
 |---|---|
 | `plugins/clavity-classic/.claude-plugin/plugin.json` | Claude Code manifest (name/version/description) |
 | `plugins/clavity-classic/plugin.json` | Antigravity manifest (same fields; disjoint filename) |
-| `plugins/clavity-classic/skills/claudavity-responder/SKILL.md` | agy responder — copied verbatim from `v1` |
-| `plugins/clavity-classic/skills/clavity-driving/SKILL.md` | Claude driving protocol — distilled from v1 |
+| `plugins/clavity-classic/skills/claudavity-responder/SKILL.md` | agy responder — copied verbatim from `clavity-classic` |
+| `plugins/clavity-classic/skills/clavity-driving/SKILL.md` | Claude driving protocol — distilled from the clavity-classic branch |
 | `plugins/clavity-classic/README.md` | prerequisites, install, the lock caveat + recovery, platforms |
 
 ---
@@ -33,9 +33,9 @@
 
 - [ ] **Step 1: Verify state**
 
-Run: `git rev-parse --abbrev-ref HEAD` (any branch is fine for this packaging work) and confirm the v1 source exists:
-Run: `git cat-file -e v1:agy_skills/claudavity-responder/SKILL.md && echo OK`
-Expected: prints `OK`. If it errors, STOP and report `STATE_MISMATCH: v1 responder skill not found`.
+Run: `git rev-parse --abbrev-ref HEAD` (any branch is fine for this packaging work) and confirm the clavity-classic source exists:
+Run: `git cat-file -e clavity-classic:agy_skills/claudavity-responder/SKILL.md && echo OK`
+Expected: prints `OK`. If it errors, STOP and report `STATE_MISMATCH: clavity-classic responder skill not found`.
 
 - [ ] **Step 2: Write the Claude manifest**
 
@@ -44,7 +44,7 @@ Expected: prints `OK`. If it errors, STOP and report `STATE_MISMATCH: v1 respond
 {
   "name": "clavity-classic",
   "version": "0.1.0",
-  "description": "clavity v1: Claude drives a live agy peer via a psmux doorbell + the agentmemory bus."
+  "description": "clavity-classic: Claude drives a live agy peer via a psmux doorbell + the agentmemory bus."
 }
 ```
 
@@ -55,16 +55,16 @@ Expected: prints `OK`. If it errors, STOP and report `STATE_MISMATCH: v1 respond
 {
   "name": "clavity-classic",
   "version": "0.1.0",
-  "description": "clavity v1: Claude drives a live agy peer via a psmux doorbell + the agentmemory bus."
+  "description": "clavity-classic: Claude drives a live agy peer via a psmux doorbell + the agentmemory bus."
 }
 ```
 
-- [ ] **Step 4: Copy the responder skill VERBATIM from the v1 branch**
+- [ ] **Step 4: Copy the responder skill VERBATIM from the clavity-classic branch**
 
-Run (PowerShell), creating the dir then writing the file from the v1 branch:
+Run (PowerShell), creating the dir then writing the file from the clavity-classic branch:
 ```
 New-Item -ItemType Directory -Force plugins/clavity-classic/skills/claudavity-responder | Out-Null
-git show v1:agy_skills/claudavity-responder/SKILL.md | Set-Content -Encoding utf8 plugins/clavity-classic/skills/claudavity-responder/SKILL.md
+git show clavity-classic:agy_skills/claudavity-responder/SKILL.md | Set-Content -Encoding utf8 plugins/clavity-classic/skills/claudavity-responder/SKILL.md
 ```
 Then verify it is non-empty and starts with frontmatter:
 Run: `Get-Content plugins/clavity-classic/skills/claudavity-responder/SKILL.md -TotalCount 3`
@@ -79,7 +79,7 @@ Expected: `json ok`.
 
 ```bash
 git add plugins/clavity-classic/.claude-plugin plugins/clavity-classic/plugin.json plugins/clavity-classic/skills/claudavity-responder
-git commit -m "feat(clavity-classic): manifests + responder skill (copied from v1)"
+git commit -m "feat(clavity-classic): manifests + responder skill (copied from the clavity-classic branch)"
 ```
 
 ---
@@ -89,7 +89,7 @@ git commit -m "feat(clavity-classic): manifests + responder skill (copied from v
 **Files:**
 - Create: `plugins/clavity-classic/skills/clavity-driving/SKILL.md`
 
-- [ ] **Step 1: Write the driving skill** (distilled from v1's `docs/agy-remote-control-protocol.md`)
+- [ ] **Step 1: Write the driving skill** (distilled from the clavity-classic branch's `docs/agy-remote-control-protocol.md`)
 
 `plugins/clavity-classic/skills/clavity-driving/SKILL.md`:
 ```markdown
@@ -98,7 +98,7 @@ name: clavity-driving
 description: Use to drive a live agy peer via the clavity CLI — readiness ping, request shaping, per-mode templates, and cancel/recover.
 ---
 
-# Driving agy with clavity (v1)
+# Driving agy with clavity
 
 Claude drives a live, signed-in `agy` peer in the same folder. Payloads travel over the
 **agentmemory signal bus** (your `memory_signal_send` / `memory_signal_read` tools); the
@@ -165,7 +165,7 @@ Expected: line 1 is `---`, line 2 starts `name: clavity-driving`.
 
 ```bash
 git add plugins/clavity-classic/skills/clavity-driving
-git commit -m "feat(clavity-classic): Claude-side clavity-driving skill (distilled from v1)"
+git commit -m "feat(clavity-classic): Claude-side clavity-driving skill (distilled from the clavity-classic branch)"
 ```
 
 ---
@@ -179,19 +179,18 @@ git commit -m "feat(clavity-classic): Claude-side clavity-driving skill (distill
 
 `plugins/clavity-classic/README.md`:
 ```markdown
-# clavity-classic (universal dual-plugin) — v1 live-agy remote control
+# clavity-classic (universal dual-plugin) — live-agy remote control
 
-Packages clavity **v1**: Claude drives a live, signed-in **agy** peer in the same folder over a
+Packages the `clavity` binary: Claude drives a live, signed-in **agy** peer in the same folder over a
 **psmux doorbell** + the **agentmemory bus**. Installs in BOTH Claude Code and Antigravity from
 one directory.
 
-> **Most users want clavity v2 instead** — it is spawn-on-demand and **lock-free**. Use
-> clavity-classic only if you specifically want to drive a *persistent live* agy session and
-> accept the keyboard-lock trade-off below.
+> clavity-classic drives a *persistent live* agy — and with the one-line `escape-time` setup it's
+> smooth (the old "keyboard lock" turned out to be a psmux default, now fixed).
 
 ## Prerequisites (out-of-band — an advanced power-user workflow)
-1. **The `clavity` binary** (builds for your platform from the v1 branch):
-   `cargo install --git https://github.com/ckir/clavity --branch v1`
+1. **The `clavity` binary** (builds for your platform from the clavity-classic branch):
+   `cargo install --git https://github.com/ckir/clavity --branch clavity-classic`
 2. **psmux** (`psmux` / `pmux` / `tmux`) on your PATH.
 3. **agentmemory** MCP server configured in BOTH Claude Code and agy (the shared bus).
 
@@ -207,7 +206,7 @@ round-trip). agy uses the bundled **claudavity-responder** skill to react to the
 reply on the bus.
 
 ## ⚠️ Keyboard lock — read this
-clavity v1's auto-attached "watch tab" runs an **interactive `tmux attach`**, which puts YOUR
+clavity-classic's auto-attached "watch tab" runs an **interactive `tmux attach`**, which puts YOUR
 terminal into raw mode (no echo) — your keystrokes get swallowed by agy, a "keyboard lock". A
 hard-kill of agy leaves psmux redrawing escape sequences to the attached terminal. To avoid it:
 - **Run with `AGY_WATCH=0`** (no auto-attach). Observe agy with `clavity capture`; `tmux attach
@@ -215,7 +214,6 @@ hard-kill of agy leaves psmux redrawing escape sequences to the attached termina
 - **Recovery if locked:** from a DIFFERENT (non-attached) shell, run `clavity cancel` (sends
   Escape to agy). The send-keys path reaches agy through the psmux server even when your client
   terminal is raw-mode-locked.
-- For a fully lock-free experience, use **clavity v2**.
 
 ## Platforms
 Windows: ✅ verified end-to-end. Linux: 🚧 compiles in CI, runtime unverified. macOS: 🚧 unverified.
@@ -268,8 +266,8 @@ claude plugin install ./plugins/clavity-classic    # accepted; both skills disco
 agy    plugin install ./plugins/clavity-classic    # accepted; claudavity-responder discoverable
 ```
 Confirm each CLI accepts the install and lists the skills. (Full driving — `clavity ask` round-trip —
-additionally needs the v1 binary + psmux + agentmemory per the README; that is v1's existing live
-runbook, not re-tested here.)
+additionally needs the clavity binary + psmux + agentmemory per the README; that is the clavity
+binary's existing live runbook, not re-tested here.)
 
 - [ ] **Step 5: Commit any recorded notes (if a NOTES/results file was added); otherwise nothing to commit**
 
@@ -288,10 +286,11 @@ git commit -m "fix(clavity-classic): adjust manifest per live plugin-install acc
 Step 4; §4.2 driving skill distilled → Task 2; §5 prereqs + §3 lock caveat + recovery + §7 platforms
 → Task 3 README; §6 install → Task 3 + Task 4; §8 packaging acceptance → Task 4. **D2** (`cargo
 install --git` delivery) is documentation-only and lands in the README (Task 3) — no build step, by
-design. **D4** (v1 frozen) is honored — no task touches v1's code; the responder ships verbatim.
+design. **D4** (the binary frozen) is honored — no task touches the clavity binary's code; the
+responder ships verbatim.
 
 **Placeholder scan:** none — every file's full content is inline; the responder is a verbatim
-`git show` copy (its content is the v1 artifact, intentionally not duplicated here).
+`git show` copy (its content is the clavity-classic branch artifact, intentionally not duplicated here).
 
 **Type consistency:** the plugin name `clavity-classic` and version `0.1.0` match across both
 manifests (Task 1) and the README (Task 3); skill `name:` values (`clavity-driving`) match their
