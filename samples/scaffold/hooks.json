@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"./hooks/on-start.ps1\"",
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}

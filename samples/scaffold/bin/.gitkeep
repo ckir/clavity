@@ -1,0 +1,2 @@
+# The pre-built scaffold-server.exe is copied here by `cargo xtask package`.
+# Committed empty placeholder so the directory exists in the sample.

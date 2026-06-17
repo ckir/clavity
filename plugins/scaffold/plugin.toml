@@ -1,0 +1,16 @@
+[plugin]
+name = "scaffold"
+version = "0.1.0"
+description = "Dual-compat scaffold plugin: installs in both Claude Code and Antigravity."
+
+[mcp]
+server_name = "scaffold"
+crate = "scaffold-server"
+binary = "scaffold-server.exe"
+
+[[hook]]
+event = "SessionStart"
+script = "hooks/on-start.ps1"
+
+[[rule]]
+file = "rules/no-secrets.md"

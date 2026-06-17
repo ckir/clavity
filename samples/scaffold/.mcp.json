@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "scaffold": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/scaffold-server.exe",
+      "args": []
+    }
+  }
+}
