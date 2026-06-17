@@ -20,8 +20,8 @@
 |---|---|
 | `pyproject.toml` | uv project `clavity`; console scripts `clavity`, `clavity-mcp`; deps |
 | `src/clavity/__init__.py` | package marker + version |
-| `src/clavity/auth.py` | `resolve_credential()` — non-interactive agy credential → env dict |
-| `src/clavity/agy.py` | `run_agy()` + isolated `_invoke_sdk()` — headless agy via the SDK |
+| `src/clavity/auth.py` | `resolve_api_key()` — return the `GEMINI_API_KEY` (or raise `AuthError`) |
+| `src/clavity/agy.py` | `async run_agy()` + isolated `async _invoke_sdk()` — headless agy via the SDK |
 | `src/clavity/server.py` | MCP server: `ask_agy` tool (entry point `clavity-mcp`) |
 | `src/clavity/cli.py` | launcher: `clavity doctor` / `clavity info` (entry point `clavity`) |
 | `tests/test_auth.py` `tests/test_agy.py` `tests/test_server.py` `tests/test_cli.py` | unit tests |
@@ -153,7 +153,11 @@ git commit -m "docs: pin google-antigravity SDK surface for the agy spawn-driver
 
 ---
 
-## Task 3: `auth.py` — resolve a non-interactive credential (TDD)
+## Task 3: `auth.py` — resolve the GEMINI_API_KEY (TDD)
+
+> Corrected per the Task 2 spike (`docs/agy-sdk-notes.md` §4): the SDK reads **only**
+> `GEMINI_API_KEY` (or an explicit `api_key=`). `GOOGLE_API_KEY` and service-account ADC are
+> **not** used by `google-antigravity==0.1.3`, so auth resolves a single `GEMINI_API_KEY` string.
 
 **Files:**
 - Create: `src/clavity/auth.py`, `tests/test_auth.py`
@@ -163,29 +167,21 @@ git commit -m "docs: pin google-antigravity SDK surface for the agy spawn-driver
 `tests/test_auth.py`:
 ```python
 import pytest
-from clavity.auth import resolve_credential, AuthError
+from clavity.auth import resolve_api_key, AuthError
 
 
-def test_prefers_gemini_api_key():
-    env = {"GEMINI_API_KEY": "k1", "GOOGLE_API_KEY": "k2"}
-    assert resolve_credential(env) == {"GEMINI_API_KEY": "k1"}
+def test_returns_gemini_api_key():
+    assert resolve_api_key({"GEMINI_API_KEY": "k1"}) == "k1"
 
 
-def test_falls_back_to_google_api_key():
-    env = {"GOOGLE_API_KEY": "k2"}
-    assert resolve_credential(env) == {"GOOGLE_API_KEY": "k2"}
-
-
-def test_service_account_path_when_present(tmp_path):
-    sa = tmp_path / "sa.json"
-    sa.write_text("{}")
-    env = {"GOOGLE_APPLICATION_CREDENTIALS": str(sa)}
-    assert resolve_credential(env) == {"GOOGLE_APPLICATION_CREDENTIALS": str(sa)}
-
-
-def test_raises_when_no_credential():
+def test_raises_when_missing():
     with pytest.raises(AuthError):
-        resolve_credential({})
+        resolve_api_key({})
+
+
+def test_raises_when_blank():
+    with pytest.raises(AuthError):
+        resolve_api_key({"GEMINI_API_KEY": ""})
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -197,11 +193,12 @@ Expected: FAIL — `ModuleNotFoundError: clavity.auth`.
 
 `src/clavity/auth.py`:
 ```python
-"""Resolve a non-interactive credential for the headless agy SDK (spec §8.2).
+"""Resolve the GEMINI_API_KEY for non-interactive agy auth (spec §8.2).
 
-Precedence: GEMINI_API_KEY, then GOOGLE_API_KEY, then a service-account JSON at
-GOOGLE_APPLICATION_CREDENTIALS. (Reusing the interactive OAuth refresh_token is a
-verify-at-impl alternative; not implemented here.)
+The google-antigravity SDK (==0.1.3) reads GEMINI_API_KEY from the environment, or
+accepts an explicit api_key= on LocalAgentConfig — see docs/agy-sdk-notes.md §4.
+GOOGLE_API_KEY and service-account ADC are NOT used by this SDK. (Reusing the
+interactive OAuth refresh_token is a verify-at-impl alternative; not implemented here.)
 """
 
 from __future__ import annotations
@@ -213,31 +210,27 @@ class AuthError(RuntimeError):
     """No usable non-interactive agy credential was found."""
 
 
-def resolve_credential(env: dict[str, str] | None = None) -> dict[str, str]:
+def resolve_api_key(env: dict[str, str] | None = None) -> str:
     env = os.environ if env is None else env
-    if env.get("GEMINI_API_KEY"):
-        return {"GEMINI_API_KEY": env["GEMINI_API_KEY"]}
-    if env.get("GOOGLE_API_KEY"):
-        return {"GOOGLE_API_KEY": env["GOOGLE_API_KEY"]}
-    sa = env.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if sa and os.path.exists(sa):
-        return {"GOOGLE_APPLICATION_CREDENTIALS": sa}
-    raise AuthError(
-        "No non-interactive agy credential found. Set GEMINI_API_KEY (or GOOGLE_API_KEY, "
-        "or GOOGLE_APPLICATION_CREDENTIALS pointing at a service-account JSON)."
-    )
+    key = env.get("GEMINI_API_KEY")
+    if not key:
+        raise AuthError(
+            "No GEMINI_API_KEY set. The google-antigravity SDK requires it for "
+            "non-interactive auth (set GEMINI_API_KEY, or pass api_key=)."
+        )
+    return key
 ```
 
 - [ ] **Step 4: Run to verify pass**
 
 Run: `uv run pytest tests/test_auth.py -q`
-Expected: PASS (4 tests).
+Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/clavity/auth.py tests/test_auth.py
-git commit -m "feat(auth): resolve non-interactive agy credential"
+git commit -m "feat(auth): resolve GEMINI_API_KEY for non-interactive agy auth"
 ```
 
 ---
@@ -256,27 +249,31 @@ import clavity.agy as agy
 from clavity.agy import run_agy, AgyError
 
 
-def test_empty_task_raises():
+async def test_empty_task_raises():
     with pytest.raises(AgyError):
-        run_agy("   ")
+        await run_agy("   ")
 
 
-def test_success_returns_output(monkeypatch):
-    monkeypatch.setattr(agy, "resolve_credential", lambda: {"GEMINI_API_KEY": "k"})
-    monkeypatch.setattr(agy, "_invoke_sdk", lambda task, cwd, cred_env: f"did: {task}")
-    result = run_agy("review foo.py", cwd="/tmp/proj")
+async def test_success_returns_output(monkeypatch):
+    monkeypatch.setattr(agy, "resolve_api_key", lambda: "k")
+
+    async def fake_invoke(task, cwd, api_key):
+        return f"did: {task}"
+
+    monkeypatch.setattr(agy, "_invoke_sdk", fake_invoke)
+    result = await run_agy("review foo.py", cwd="/tmp/proj")
     assert result == {"ok": True, "output": "did: review foo.py"}
 
 
-def test_sdk_failure_becomes_agyerror(monkeypatch):
-    monkeypatch.setattr(agy, "resolve_credential", lambda: {"GEMINI_API_KEY": "k"})
+async def test_sdk_failure_becomes_agyerror(monkeypatch):
+    monkeypatch.setattr(agy, "resolve_api_key", lambda: "k")
 
-    def boom(task, cwd, cred_env):
+    async def boom(task, cwd, api_key):
         raise RuntimeError("sdk exploded")
 
     monkeypatch.setattr(agy, "_invoke_sdk", boom)
     with pytest.raises(AgyError) as exc:
-        run_agy("x")
+        await run_agy("x")
     assert "sdk exploded" in str(exc.value)
 ```
 
@@ -292,49 +289,47 @@ Expected: FAIL — `ModuleNotFoundError: clavity.agy`.
 """Delegate a task to a fresh headless agy sub-agent via the google-antigravity SDK.
 
 The SDK surface is isolated in `_invoke_sdk` so (a) tests can mock it and (b) the
-exact API lives in one place. The body below MUST match docs/agy-sdk-notes.md
-(plan Task 2 spike); if they differ, the notes win.
+exact API lives in one place. The body below matches docs/agy-sdk-notes.md
+(google-antigravity==0.1.3); if the SDK changes, the notes win.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-from .auth import resolve_credential
+from .auth import resolve_api_key
 
 
 class AgyError(RuntimeError):
     """A headless agy delegation failed."""
 
 
-def _invoke_sdk(task: str, cwd: str, cred_env: dict[str, str]) -> str:
-    """Run agy headlessly and return its final text output. Verify the SDK call
-    against docs/agy-sdk-notes.md (Task 2)."""
-    from google_antigravity import Agent, AgentConfig  # verify names in Task 2
+async def _invoke_sdk(task: str, cwd: str, api_key: str) -> str:
+    """Run a headless agy one-shot in `cwd` and return its final text.
 
-    previous = {k: os.environ.get(k) for k in cred_env}
-    os.environ.update(cred_env)
-    try:
-        agent = Agent(AgentConfig(working_directory=cwd))
-        return agent.chat(task)
-    finally:
-        for key, old in previous.items():
-            if old is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = old
+    Real API per docs/agy-sdk-notes.md: `from google.antigravity import Agent,
+    LocalAgentConfig`; `Agent` is an async context manager; `chat()` and
+    `response.text()` are coroutines; `workspaces=[cwd]` sets the file scope;
+    `policies=[]` is read-only (no writes without confirm — safe for Phase 1
+    review/analysis delegation).
+    """
+    from google.antigravity import Agent, LocalAgentConfig
+
+    config = LocalAgentConfig(workspaces=[cwd], api_key=api_key, policies=[])
+    async with Agent(config) as agent:
+        response = await agent.chat(task)
+        return await response.text()
 
 
-def run_agy(task: str, cwd: str | None = None) -> dict:
+async def run_agy(task: str, cwd: str | None = None) -> dict:
     """Delegate `task` to a fresh headless agy in `cwd`. Returns
     {"ok": True, "output": <str>} or raises AgyError."""
     if not task.strip():
         raise AgyError("empty task")
     cwd = cwd or str(Path.cwd())
-    cred_env = resolve_credential()
+    api_key = resolve_api_key()
     try:
-        output = _invoke_sdk(task, cwd, cred_env)
+        output = await _invoke_sdk(task, cwd, api_key)
     except Exception as exc:  # noqa: BLE001 — surface any SDK failure uniformly
         raise AgyError(f"agy delegation failed: {exc}") from exc
     return {"ok": True, "output": output}
@@ -363,20 +358,20 @@ git commit -m "feat(agy): headless agy spawn-driver over the SDK (isolated, stab
 
 `tests/test_server.py`:
 ```python
-import pytest
 import clavity.server as srv
 
 
-@pytest.mark.asyncio
 async def test_handle_ask_agy_returns_output(monkeypatch):
-    monkeypatch.setattr(srv, "run_agy", lambda task: {"ok": True, "output": f"ran {task}"})
+    async def fake_run(task):
+        return {"ok": True, "output": f"ran {task}"}
+
+    monkeypatch.setattr(srv, "run_agy", fake_run)
     text = await srv.handle_ask_agy({"task": "review foo"})
     assert text == "ran review foo"
 
 
-@pytest.mark.asyncio
 async def test_handle_ask_agy_reports_error(monkeypatch):
-    def boom(task):
+    async def boom(task):
         raise srv.AgyError("no creds")
 
     monkeypatch.setattr(srv, "run_agy", boom)
@@ -431,10 +426,10 @@ ASK_AGY = Tool(
 
 
 async def handle_ask_agy(arguments: dict) -> str:
-    """Run the agy delegation off the event loop; return text (or an ERROR: line)."""
+    """Await the (async) agy delegation; return its text (or an ERROR: line)."""
     task = arguments.get("task", "")
     try:
-        result = await anyio.to_thread.run_sync(run_agy, task)
+        result = await run_agy(task)
     except AgyError as exc:
         return f"ERROR: {exc}"
     return result["output"]
@@ -504,7 +499,7 @@ import clavity.cli as cli
 
 
 def test_doctor_ok_when_credential_present(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "resolve_credential", lambda: {"GEMINI_API_KEY": "k"})
+    monkeypatch.setattr(cli, "resolve_api_key", lambda: "k")
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/claude")
     assert cli.main(["doctor"]) == 0
 
@@ -513,7 +508,7 @@ def test_doctor_fails_without_credential(monkeypatch):
     def raise_auth():
         raise cli.AuthError("missing")
 
-    monkeypatch.setattr(cli, "resolve_credential", raise_auth)
+    monkeypatch.setattr(cli, "resolve_api_key", raise_auth)
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/claude")
     assert cli.main(["doctor"]) == 1
 
@@ -543,7 +538,7 @@ import argparse
 import shutil
 import sys
 
-from .auth import AuthError, resolve_credential
+from .auth import AuthError, resolve_api_key
 
 
 def doctor() -> int:
@@ -552,7 +547,7 @@ def doctor() -> int:
         print("MISSING: claude not on PATH", file=sys.stderr)
         ok = False
     try:
-        resolve_credential()
+        resolve_api_key()
         print("agy credential: OK")
     except AuthError as exc:
         print(f"agy credential: {exc}", file=sys.stderr)
@@ -690,7 +685,7 @@ Record results. If `ask_agy` errors, check `clavity doctor`, the credential, and
 
 **Placeholder scan:** none — every code step has complete code; the one SDK uncertainty is isolated in `_invoke_sdk` and explicitly gated on the Task 2 spike (`docs/agy-sdk-notes.md` as oracle), not left vague.
 
-**Type consistency:** `run_agy(task, cwd=None) -> {"ok","output"}` defined in Task 4 and consumed identically in Task 5; `resolve_credential(env=None) -> dict` defined in Task 3 and used in Tasks 4/6; `AgyError`/`AuthError` raised and imported consistently; entry points `clavity`/`clavity-mcp` match `pyproject.toml` (Task 1) and the `.mcp.json` command (Task 7).
+**Type consistency:** `async run_agy(task, cwd=None) -> {"ok","output"}` defined in Task 4 and awaited in Task 5's `handle_ask_agy`; `resolve_api_key(env=None) -> str` defined in Task 3 and used in Tasks 4/6; `async _invoke_sdk(task, cwd, api_key)` matches `docs/agy-sdk-notes.md`; `AgyError`/`AuthError` raised and imported consistently; entry points `clavity`/`clavity-mcp` match `pyproject.toml` (Task 1) and the `.mcp.json` command (Task 7).
 
 ---
 
