@@ -1,8 +1,8 @@
-# clavity
+# clavity — tools for collaboration between the Claude Code CLI and the Antigravity (`agy`) CLI
 
-A collection of **plugins that facilitate collaboration between
+A collection of **tools that facilitate collaboration between
 [Claude Code](https://claude.com/claude-code) and [Antigravity](https://antigravity.google)
-(`agy`)**, packaged as **universal dual-plugins** — one directory that installs in **both** CLIs:
+(`agy`)**, shipped as **universal dual-plugins** — one directory that installs in **both** CLIs:
 
     claude plugin install ./plugins/<name>
     agy    plugin install ./plugins/<name>
@@ -20,12 +20,16 @@ See [`docs/plugin-formats.md`](docs/plugin-formats.md) for the verified format r
 
 ## Plugins
 
-- **[`clavity-classic`](plugins/clavity-classic/)** — the original clavity (**v1**): Claude drives a
-  live, signed-in `agy` peer in the same folder over a **psmux doorbell** + the **agentmemory bus**.
-  The v1 Rust binary lives on the **`v1`** branch
+- **[`clavity-classic`](plugins/clavity-classic/)** — Claude drives a live, signed-in `agy` peer in
+  the same folder over a **psmux doorbell** + the **agentmemory bus** (review, second opinions,
+  delegated work). Its `clavity` binary builds from the `v1` branch
   (`cargo install --git https://github.com/ckir/clavity --branch v1`). See its
   [README](plugins/clavity-classic/README.md) — note the one-line `escape-time` setup that makes the
   live driving smooth.
+- **[`commonmemory`](plugins/commonmemory/)** — a shared cross-agent memory convention. Claude and
+  `agy` already share the **agentmemory** store, and this skills-only plugin teaches them to tag
+  `[common]` notes (handoffs, decisions, gotchas, fixed bugs) and proactively recall them. See its
+  [README](plugins/commonmemory/README.md).
 
 ## Layout
 
@@ -38,7 +42,7 @@ See [`docs/plugin-formats.md`](docs/plugin-formats.md) for the verified format r
 ## Adding a plugin
 Create `plugins/<name>/` with both manifest sets (`.claude-plugin/plugin.json` + root
 `plugin.json`), any `skills/`, and a `README.md`, following `docs/plugin-formats.md`.
-`clavity-classic` is the working example.
+`clavity-classic` and `commonmemory` are the working examples.
 
 ## License
 [MIT](LICENSE) © Costas Kirgoussios
