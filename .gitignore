@@ -1,9 +1,6 @@
-# Rust
 /target
-**/*.rs.bk
-
-# agy/claudavity runtime artifacts (if a target repo is worked in-place)
-.agent/
-
-# Tool caches
-.serena/
+/dist
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
