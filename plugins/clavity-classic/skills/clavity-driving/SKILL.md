@@ -3,7 +3,7 @@ name: clavity-driving
 description: Use to drive a live agy peer via the clavity CLI — readiness ping, request shaping, per-mode templates, and cancel/recover.
 ---
 
-# Driving agy with clavity (v1)
+# Driving agy with clavity
 
 Claude drives a live, signed-in `agy` peer in the same folder. Payloads travel over the
 **agentmemory signal bus** (your `memory_signal_send` / `memory_signal_read` tools); the

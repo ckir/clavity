@@ -22,8 +22,8 @@ See [`docs/plugin-formats.md`](docs/plugin-formats.md) for the verified format r
 
 - **[`clavity-classic`](plugins/clavity-classic/)** — Claude drives a live, signed-in `agy` peer in
   the same folder over a **psmux doorbell** + the **agentmemory bus** (review, second opinions,
-  delegated work). Its `clavity` binary builds from the `v1` branch
-  (`cargo install --git https://github.com/ckir/clavity --branch v1`). See its
+  delegated work). Its `clavity` binary builds from the `clavity-classic` branch
+  (`cargo install --git https://github.com/ckir/clavity --branch clavity-classic`). See its
   [README](plugins/clavity-classic/README.md) — note the one-line `escape-time` setup that makes the
   live driving smooth.
 - **[`commonmemory`](plugins/commonmemory/)** — a shared cross-agent memory convention. Claude and

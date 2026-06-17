@@ -39,6 +39,6 @@ Save one when you have:
 ```
 memory_save(
   concepts="common, clavity, escape-time",
-  content="[common] (clavity) — psmux escape-time default 500ms is the keyboard-lock cause; set 10. · Why: a bare Esc is held ~500ms. · Status: done · Next: rebuild the v1 binary so clavity start sets it."
+  content="[common] (clavity) — psmux escape-time default 500ms is the keyboard-lock cause; set 10. · Why: a bare Esc is held ~500ms. · Status: done · Next: rebuild the clavity-classic binary so clavity start sets it."
 )
 ```

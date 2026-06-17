@@ -1,12 +1,11 @@
-# clavity-classic (universal dual-plugin) — v1 live-agy remote control
+# clavity-classic (universal dual-plugin) — live-agy remote control
 
-Packages clavity **v1**: Claude drives a live, signed-in **agy** peer in the same folder over a
+Packages the `clavity` binary: Claude drives a live, signed-in **agy** peer in the same folder over a
 **psmux doorbell** + the **agentmemory bus**. Installs in BOTH Claude Code and Antigravity from one
 directory.
 
-> Want a fully hands-off, spawn-on-demand agy instead? See **clavity v2**. clavity-classic drives a
-> *persistent live* agy — and with the one-line `escape-time` setup (step 4) it's smooth (the old
-> "keyboard lock" turned out to be a psmux default, now fixed).
+> clavity-classic drives a *persistent live* agy — and with the one-line `escape-time` setup (step 4)
+> it's smooth (the old "keyboard lock" turned out to be a psmux default, now fixed).
 
 ## Quickstart (from zero)
 There's no marketplace listing yet, so you install from a local clone of this repo.
@@ -14,7 +13,7 @@ There's no marketplace listing yet, so you install from a local clone of this re
 **1. Repo + the `clavity` binary**
 ```bash
 git clone https://github.com/ckir/clavity && cd clavity
-cargo install --git https://github.com/ckir/clavity --branch v1   # puts `clavity` on PATH
+cargo install --git https://github.com/ckir/clavity --branch clavity-classic   # puts `clavity` on PATH
 ```
 
 **2. psmux** — install a tmux/psmux build; ensure `tmux` (or `psmux` / `pmux`) is on your PATH.
@@ -90,6 +89,7 @@ Windows: ✅ verified end-to-end. Linux: 🚧 compiles in CI, runtime unverified
 - `tmux.conf` — the `escape-time` snippet
 - `.claude-plugin/plugin.json` + `plugin.json` — Claude + agy manifests
 
-> **Note (v1 source):** the `clavity` binary now sets `escape-time 10` itself on session creation
-> (v1 branch). After you rebuild it (`cargo install … --branch v1 --force`), step 4's `~/.tmux.conf`
-> becomes optional belt-and-suspenders.
+> **Note (binary source):** the `clavity` binary now sets `escape-time 10` itself on session creation
+> (the `clavity-classic` branch). After you rebuild it
+> (`cargo install … --branch clavity-classic --force`), step 4's `~/.tmux.conf` becomes optional
+> belt-and-suspenders.
