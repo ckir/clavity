@@ -111,6 +111,13 @@ without collision:
 Shared (compatible across both): `skills/`, `rules/` (agy; Claude via mirror), `hooks/`
 scripts, `bin/`.
 
+**Load-bearing assumption (state explicitly; re-verify — agy consult):** each CLI
+**silently ignores the other's host-specific files** in a shared dir — agy ignores
+`.claude-plugin/` + `.mcp.json` + `hooks/hooks.json`; Claude ignores root `plugin.json` +
+`mcp_config.json` + `hooks.json`. The entire universal-dir model rests on this mutual
+tolerance; if either CLI starts erroring on unrecognized sibling files, `split` mode
+(§4.3) becomes mandatory.
+
 ---
 
 ## 4. Architecture — repo structure
@@ -181,23 +188,44 @@ not now.
 automatic context injection. At package time the xtask emits each `rules/*.md` as a
 Claude-side skill so both hosts honor the constraints. agy consumes `rules/` natively.
 
+**Double-load hazard (agy spec review):** in a single universal dir, agy would load **both**
+the native `rules/` *and* the mirrored skill in `skills/` — duplicating that context.
+Resolution depends on packaging mode:
+- **split mode** — clean: the agy dist ships native `rules/` (always-on injection) and
+  **not** the mirrored skill; the Claude dist ships the mirrored skill and no `rules/`.
+- **universal mode** — to avoid the agy double-load, ship **only the mirrored skill** (both
+  hosts use it on-demand) and **omit native `rules/`** from the universal dir — accepting
+  that agy loses always-on injection for on-demand skill invocation. (Alternative: keep
+  `rules/` and exclude the mirror for agy *iff* agy supports per-host skill exclusion —
+  re-verify; see §10.)
+
+Because this interacts with the packaging-mode default (deferred), the rules-handling
+choice is finalized alongside that default after the scaffold is live-tested.
+
 ---
 
 ## 6. First deliverable — the dual-compat scaffold plugin
-`plugins/scaffold/`: a minimal plugin that exercises every part of the structure.
+`plugins/scaffold/`: a minimal plugin that exercises **all four component types** so the
+acceptance proves the *whole* packaging contract, not just MCP+skills *(agy spec review)*.
 - A trivial **MCP server** (built on `mcp-core`) exposing one "hello" tool; logs to stderr
   only.
-- One shared **`SKILL.md`**.
+- One shared **`SKILL.md`** (skill).
+- One trivial **hook** (e.g. a `SessionStart`/lifecycle hook that emits a marker).
+- One trivial **rule** (constraint markdown) → mirrored to a Claude skill per §5.
 - A `plugin.toml` from which the xtask generates **both** hosts' manifests/mcp/hooks.
 
-**Acceptance:** `cargo xtask package scaffold` produces a `dist/scaffold/` that:
-1. `claude plugin install dist/scaffold` accepts; Claude lists the MCP server + skill and
-   the hello tool responds.
-2. `agy plugin install dist/scaffold` accepts; agy lists the MCP server + skill and the
-   hello tool responds.
-3. No stdout-pollution transport failure on either host.
+**Acceptance:** `cargo xtask package scaffold` produces an installable `dist/scaffold/`
+where, in **both** CLIs:
+1. Install is accepted (`claude plugin install dist/scaffold`; `agy plugin install
+   dist/scaffold`).
+2. **MCP** — the server + skill are listed and the hello tool responds.
+3. **Hook** — the lifecycle hook fires (its marker is observed).
+4. **Rule** — the rule is actively injected into context (agy native `rules/` and/or the
+   Claude-mirrored skill, per the §5 mode decision).
+5. No stdout-pollution transport failure on either host.
 
-This proves the packaging before `clavity` v2 and `commonmemory` build on it.
+This proves all four component types and the packaging before `clavity` v2 and
+`commonmemory` build on it.
 
 ---
 
@@ -237,13 +265,18 @@ rebuild `main` fresh. Both branches retain history; v1 is reference-only.
 ## 10. Open items — re-verify against the live CLIs
 These rest on the agy peer consult and may shift on a CLI update; confirm during scaffold
 implementation:
-1. agy `plugin.json` required fields are exactly `name`/`version`/`description` (no others).
+1. agy `plugin.json` required fields — `name`/`version`/`description` confirmed; **also
+   check whether `author` (or any other field) is strictly required** *(agy flagged it
+   might be)*.
 2. agy launches the MCP server with **CWD = plugin root** (so `./bin/<n>.exe` resolves).
 3. agy hooks file is exactly `hooks.json` at root with the expected schema.
 4. `claude plugin install <local path>` accepts a local dir (vs marketplace-only) and
    discovers `.mcp.json` + `skills/` + `hooks/hooks.json` without manifest registration.
-5. Whether agy honors a Claude-mirrored rules-skill cleanly (no duplicate-skill collision
-   when both `rules/` and the mirrored skill ship in one universal dir).
+5. **Mutual file-tolerance** (§3): each CLI silently ignores the other's host-specific
+   sibling files in a shared dir. If violated, `split` mode is mandatory.
+6. **rules double-load** (§5): in a universal dir agy loads *both* `rules/` and the
+   mirrored skill. Confirm whether agy can exclude a skill per-host; if not, the
+   universal-mode rules approach (skill-only, drop `rules/`) stands.
 
 ---
 
@@ -253,4 +286,6 @@ implementation:
 - **stdout pollution** — a stray `println!`/panic-to-stdout breaks MCP transport silently;
   mitigated by routing all output through `mcp-core` stderr helpers + a test guard.
 - **Platform** — `dist/` ships a Windows `.exe`; non-Windows hosts need a per-platform
-  build (deferred).
+  build (deferred). Note *(agy spec review)*: agy's install does **not** `chmod +x`
+  pre-built binaries on Unix, so the Unix port must set the exec bit in the xtask (or
+  document a post-install step) — tracked for the cross-platform work.
