@@ -42,9 +42,20 @@ Self-test result: `INIT_CAP_DECLARED: True`, `CHANNEL_PUSH_EMITTED: True`.
 `session._write_stream`; isolate it behind a `push_channel(session, content, meta)` helper so that
 single internal dependency lives in one place and is easy to fix if the SDK changes.
 
-## Half B — does an idle Claude actually wake? ⏳ PENDING (needs a live Claude)
-Requires a live Claude Code launched with the research-preview channels dev flag. Procedure +
-pass/fail in `spike/channel/README.md`. This is the load-bearing assumption for the whole
-agy→Claude direction — confirm it before committing to the Phase 2 plan.
+## Half B — does an idle Claude actually wake? ✅ PASS (live, 2026-06-17)
+A live Claude Code session launched with `--dangerously-load-development-channels
+server:channel-probe` registered the channel (banner: *"Channels (experimental) messages from
+server:channel-probe inject directly in this session"*), received the probe's pushed
+`notifications/claude/channel` event **with no user input**, and **autonomously replied
+`CHANNEL-WAKE-OK`**.
 
-**RESULT: pending** — update this line with PASS/FAIL + Claude version after running the live test.
+**RESULT: ✅ PASS.** Idle channel-wake works. The whole v2 Phase 2 agy→Claude direction is viable
+— driven from a **Python** `claude/channel` server. Both §8.1 unknowns are resolved: Python (Half A)
++ idle-wake (Half B).
+
+### Implications for Phase 2
+- The **channel-driver is Python** (a stdio MCP server declaring `claude/channel`, pushing events
+  from the clavity daemon's `→claude` queue).
+- Caveats to carry into the plan: it's **research-preview** (Claude `--channels` / dev flag,
+  v2.1.80+, Team/Enterprise admin enable), and the push uses the private `session._write_stream`
+  (isolate behind a helper).
