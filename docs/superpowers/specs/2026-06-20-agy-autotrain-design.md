@@ -198,6 +198,33 @@ everyday driving  ──(agy-learn: sanitise→classify→tag)──▶  knowled
 - Packaging → **new dual-plugin** (distributable via GitHub).
 - Binary → **out of scope**; compose existing commands.
 
+## Agreed additions (agy consult round 3 — folded in)
+
+agy reviewed the final design, agreed, and contributed four improvements (Claude concurs; all folded):
+
+1. **Promotion rubric (curation-fatigue guard).** `agy-curate` promotes inbox→canonical only when:
+   a *Heuristic* has **≥2 independent observations across different sessions**; an *Empirical
+   Assumption* has a **100% pass** in the `verify/` harness. Everything else stays in the inbox or is
+   dropped. (Resolves "who decides verified-enough.")
+2. **Structured Abstraction Schema (sanitisation).** `agy-learn` does not free-text "strip nouns"; it
+   emits three rigid fields and stores only the third: `[Abstract Context Pattern]` /
+   `[Observed Agent Behavior]` / `[General Rule]`. Isolating the rule field structurally cuts project
+   nouns. The inbox bullet is the `[General Rule]` (+ provenance/class tags).
+3. **Driving-protocol additions** (the core goal — encoded in `driving-agy`):
+   - **Phase isolation** — never mix research and implementation in one payload; tag
+     `[PHASE: EXPLORATION]` vs `[PHASE: EXECUTION]` (mixing fills agy's context with raw search output
+     and degrades the build).
+   - **Mandatory checkpoints** — a delegated *mutating* payload must instruct agy to create a
+     recoverable checkpoint (`git stash`/temp branch) before touching the live tree.
+4. **Two force-multipliers:**
+   - **Anti-Pattern Registry** — a knowledge category capturing *how the driver breaks agy*
+     (prompting anti-patterns, e.g. "long checklist without intermediate checkpoints → a step silently
+     skipped"). `agy-learn` targets these explicitly; they are the fastest driving-protocol gains.
+   - **Golden-Header Compiler** — `agy-curate` compiles the top Empirical Assumptions + Anti-Patterns
+     into a dense `knowledge/golden-header.md`, and `driving-agy` **auto-prepends it to every
+     `clavity ask`**. The loop thus continuously rewrites the executable prompt that drives agy —
+     active, not a passive wiki. (Still no binary: the skill concatenates the header in the payload.)
+
 ## Evidence (this design is grounded in real driving, generalised here)
 
 Observations that seeded the design — already in project-agnostic form, ready as the inbox's first
