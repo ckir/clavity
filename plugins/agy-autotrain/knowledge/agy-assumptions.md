@@ -16,11 +16,12 @@ Rust code.**
 
 ## Verified against (update this when you re-verify)
 
-- **Antigravity CLI:** 1.0.8 · model Gemini 3.1 Pro (High) · consumer OAuth via OS keyring
+- **Antigravity CLI:** 1.0.10 · model Gemini 3.1 Pro (High) · consumer OAuth via OS keyring
+  (driving-protocol assumptions A1–A5 re-verified against 1.0.10 via the agy-autotrain harness, 2026-06-20)
 - **psmux:** v3.3.5 ("tmux alternative" for Windows), ships as `psmux`/`pmux`/`tmux`
 - **agentmemory:** 0.9.26 (daemon) · iii-engine 0.11.2 · REST API on `127.0.0.1:3111`
 - **OS:** Windows 11 · agy's shell tool: **PowerShell (pwsh)**
-- **Date:** 2026-06-16
+- **Date:** 2026-06-20 (clavity-internals table last re-verified 2026-06-16; driving-protocol §verified 2026-06-20)
 
 ## Quick re-verification playbook (run these first)
 
@@ -76,6 +77,40 @@ no read. Correlation matches on `replyTo == <request signal id>` **OR** `[req_id
 > *all* unread `to=agy` signals read — if clavity polls before agy's own `unreadOnly` read, it
 > **consumes agy's pending request** and the round-trip hangs. Passing the threadId the master already
 > has avoids touching agy's inbox entirely.
+
+## Driving-protocol assumptions (agy-autotrain harness — verified against agy 1.0.10, 2026-06-20)
+
+How the peer responds to *how the driver frames a payload*. Each is gated by a probe in
+[`../verify/assertions.md`](../verify/assertions.md); promote/keep only on a harness PASS.
+
+- **A1 — Honors a loud REVIEW-ONLY banner.** A consult opened with an enumerated no-edit/no-commit
+  banner returns a verdict and makes no edits. `[verified]`
+- **A2 — Latency is BIMODAL / payload-bound, not a constant.** Focused, bounded asks (one question,
+  artifact by filepath, scoped) return in a short window (~45–90s) and a sync call does NOT time out
+  — re-confirmed 2026-06-20 (two focused sync probes returned well inside 150s/200s caps). Only
+  deep-generative mega-payloads — or asks fired while the peer is mid-turn — reach minute-scale; use
+  async for those. A reply can still land AFTER a sync timeout: recover it from the bus. `[verified]`
+- **A3 — Replies on a NEW bus thread per request.** Correlate by `req_id` / `replyTo`, never by the
+  request's own thread id. `[verified]`
+- **A4 — Phase isolation respected.** `[PHASE: EXPLORATION]` + propose-only → proposal only, no edits
+  (target tree stays clean). `[verified]`
+- **A5 — Checkpoint-before-mutation obeyed.** A `[PHASE: EXECUTION]` mutating delegation that orders a
+  recoverable checkpoint first → the peer creates a branch/stash that predates the edit (reversible).
+  `[verified]`
+
+### Failure modes — driver anti-patterns (how NOT to prompt the peer)
+
+- A review/consult sent **without** a loud, enumerated REVIEW-ONLY banner → the peer **executes** the
+  task instead of reviewing it. Always banner + forbidden-actions list + explicit "permission to pass."
+- **Mixing exploration and execution** in one payload degrades the build (context fills with raw search
+  output). One phase per payload.
+- **Delegating a mutating task without ordering a pre-change checkpoint** risks unrecoverable edits.
+- Asking the peer to **"find bugs"** open-endedly → over-escalation/hallucination. Seed the specific
+  invariants to confirm/refute and grant "no must-fix is valid" (it **verifies >> discovers**).
+- When the driver's **GLOBAL/top-priority config** prescribes the low-level transport primitives as the
+  primary way to reach the peer, that OVERRIDES the one-front-door abstraction (instruction priority:
+  user-config > skills) and reproduces the leak even with the abstraction installed — reconcile global
+  config to defer to the front door.
 
 ## Transient runtime gotchas (agy/backend behavior, not config)
 

@@ -7,15 +7,17 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
-- [anti-pattern] A review/consult request sent WITHOUT a loud, enumerated REVIEW-ONLY (no-edit/no-commit) banner makes agy drift into *executing* the task instead of reviewing it. `[corpus]` · 2026-06-20
-- [assumption] agy reliably honors a loud REVIEW-ONLY banner with an explicit forbidden-actions list — it makes no edits and returns a verdict. `[corpus]` · 2026-06-20
-- [assumption] agy's first-token latency for a deep consult is minute-scale (~9–10 min); a synchronous blocking driver call commonly hits its timeout even though agy did reply — the reply is still on the bus and is recoverable. `[corpus]` · 2026-06-20
-- [assumption] agy replies on a NEW bus thread per request; correlate the reply by req-id / replyTo, never by the request's own thread id. `[corpus]` · 2026-06-20
-- [heuristic] agy verifies far better than it discovers: when seeded with specific invariants on a real review it surfaces multiple genuine must-fix defects, including subtle concurrency/idempotency and error-handling hazards. `[corpus]` · 2026-06-20
-- [anti-pattern] Mixing exploration and execution in a single payload degrades the build (agy's context fills with raw search output) — isolate phases explicitly. `[corpus]` · 2026-06-20
-- [assumption] A delegated mutating task should instruct agy to make a recoverable checkpoint (stash/branch) before touching the live tree. `[corpus]` · 2026-06-20
-- [assumption] Across five consecutive deep design consults, EVERY synchronous driver call timed out at its cap (~9–10 min) yet every reply still landed on the bus — for deep/generative consults, asynchronous invocation (or sync purely as a fire-and-recover-from-bus) is mandatory, not optional. `[corpus]` (N=5) · 2026-06-20
-- [DRIFT-CORRECTION supersedes the two latency lines above] Latency is BIMODAL / payload-bound, NOT a ~9–10 min constant. Same-session follow-up measurements: FOCUSED, bounded asks (one question, artifact sent by filepath, scope-limited) returned in ~45–90s (measured 46s, ~60s; N≈4) and the synchronous call did NOT time out. The earlier "every sync call times out at ~9–10 min (N=5)" reflected the worst case only: deep-generative mega-payloads (critique+generate+pressure-test in one shot) AND back-to-back firing (the doorbell idle-gate serializes a 2nd ask behind a still-running 1st). Corrected rule: sync `clavity ask` is fine for focused asks; reserve async (fire→work→await-reply) for deep/generative ones. Reducers: tighten/decompose the ask; filepath-not-payload; never fire while the peer is busy; lower the await poll-interval. `[corpus]` (N≈4 focused) · 2026-06-20
-- [heuristic] On a design consult that asks BOTH "pressure-test this" AND "what's missing / simpler / stronger", agy reliably returns adopted, high-leverage additions across rounds — always pair a critique request with an explicit generative ask. `[corpus]` · 2026-06-20
-- [assumption] A dispatched subagent (sub-context) CAN execute the self-contained driver→peer round-trip CLI (binary on PATH) and reach the live peer session — verified via the binary's state/doctor checks from inside a subagent. The MCP signal-bus path is main-thread-only (subagents lack MCP), so the self-contained CLI call is what makes the peer subagent-accessible; the subagent must be told to use it (the front-door skill does not auto-load in sub-contexts). `[corpus]` · 2026-06-20
-- [anti-pattern] When the driver's GLOBAL/top-priority instructions prescribe the low-level transport primitives as the primary way to reach the peer, they OVERRIDE the high-level one-front-door abstraction (instruction priority: user-config > skills) — reproducing the abstraction leak even with the abstraction installed. Reconcile global config to defer to the front door. `[corpus]` · 2026-06-20
+_(empty — drained 2026-06-20 by agy-curate)_
+
+<!-- Drain log 2026-06-20 (agy 1.0.10):
+  - A1/A3 (banner-honored, new-thread) → promoted to agy-assumptions.md "Driving-protocol assumptions".
+  - A2 + DRIFT-CORRECTION + "block resolved" latency lines → reconciled into ONE bimodal A2 assumption
+    (the two superseded ~9–10 min lines dropped; the leftover sync caveat in driving-agy/SKILL.md fixed).
+  - A4 (phase isolation) + A5 (checkpoint-before-mutation) → harness probes run & PASS (assertions.md),
+    then promoted to "Driving-protocol assumptions".
+  - Anti-patterns (no-banner→executes, mix-phases, no-checkpoint, find-bugs-open-ended, global-config-
+    overrides-front-door) → "Failure modes — driver anti-patterns" in agy-assumptions.md.
+  - Heuristics (verifies>>discovers, critique+generative pairing) → already canonical in capabilities §A
+    (reinforced, no dup).
+  - Subagent-CAN-reach-peer-via-CLI → capabilities §F routing.
+  - golden-header.md recompiled + version-stamped. -->

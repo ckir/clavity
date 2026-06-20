@@ -132,10 +132,15 @@ from Claude's; sequential/local reasoning bias.
    **GPT-OSS 120B** (not top coding/agentic); fast strong general → **Sonnet 4.6**.
 3. **Availability check.** Before a time-sensitive delegation, account for quota/backend risk (Axis B):
    agy can be rate-limited or 503-locked for hours–days. Keep a Claude fallback for critical-path work.
+4. **A Claude subagent CAN reach the peer** `[corpus]` — via the self-contained driver→peer CLI (binary
+   on PATH); the MCP signal-bus path is **main-thread-only** (subagents lack the MCP tools), so the CLI
+   front door is what makes the peer subagent-accessible. The front-door skill does not auto-load in a
+   sub-context, so the subagent must be **told** to use the CLI in its dispatch prompt.
 
 ## G. Version & drift
 
-- **Verified against agy 1.0.8** (`agy --version`), active model Gemini 3.1 Pro (High), `[local]` 2026-06-16.
+- **Verified against agy 1.0.10** (`agy --version` / pane banner), active model Gemini 3.1 Pro (High),
+  `[local]` 2026-06-20 — driving-protocol probes A1–A5 all PASS via the harness. (Prior: 1.0.8, 2026-06-16.)
 - Recent relevant changelog: v1.0.8 **skills dynamic reload** — **re-verified `[local]` 2026-06-16:
   this is autocomplete discovery on conversation-switch / `--add-dir`, NOT re-reading edited skill
   content on a plain doorbell, so empirical assumption #6 (skills cached per session; edits need a

@@ -14,10 +14,12 @@ an independent review / second opinion / generative design partner, just call ag
 Two invocation shapes — both are plain Bash calls you make directly:
 
 - **Sync (simple, blocking):**
-  `clavity ask "<payload>" --timeout 580`
-  Returns agy's reply on stdout. Use for short consults. **Caveat (verified):** agy's first token is
-  *minute-scale* (~9–10 min is normal), so a sync call **often times out at the cap even though agy
-  replied** — the reply is still on the bus; recover it (see Recovery).
+  `clavity ask "<payload>" --timeout 200`
+  Returns agy's reply on stdout. **Fine for focused asks** — latency is bimodal/payload-bound: a
+  focused, bounded ask (one question, artifact by filepath, scoped) returns in ~45–90s and does NOT
+  time out (re-verified agy 1.0.10, 2026-06-20). Only deep-generative mega-payloads — or an ask fired
+  while agy is still mid-turn (the doorbell idle-gate serializes them) — reach minute-scale; use async
+  for those. Either way a reply can land AFTER a sync timeout: it's on the bus, recover it (see Recovery).
 
 - **Async (preferred for anything non-trivial — don't burn wall-clock blocking):**
   1. `req=$(clavity req-id "agy consult")` — mint an id.
