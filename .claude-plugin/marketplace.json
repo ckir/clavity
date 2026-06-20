@@ -1,0 +1,15 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "clavity",
+  "owner": {
+    "name": "ckir",
+    "url": "https://github.com/ckir/clavity"
+  },
+  "plugins": [
+    {
+      "name": "agy-autotrain",
+      "source": "./plugins/agy-autotrain",
+      "description": "Drive the agy peer like a model and auto-train clavity's agy knowledge from everyday usage (capture -> curate -> verify -> golden-header)."
+    }
+  ]
+}
