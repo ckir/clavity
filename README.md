@@ -2,10 +2,16 @@
 
 A collection of **tools that facilitate collaboration between
 [Claude Code](https://claude.com/claude-code) and [Antigravity](https://antigravity.google)
-(`agy`)**, shipped as **universal dual-plugins** — one directory that installs in **both** CLIs:
+(`agy`)**, shipped as **universal dual-plugins** — one directory that installs in **both** CLIs.
+Claude installs from a marketplace (this repo ships a `.claude-plugin/marketplace.json`); `agy`
+installs from the path directly:
 
-    claude plugin install ./plugins/<name>
-    agy    plugin install ./plugins/<name>
+    # Claude (marketplace)
+    claude plugin marketplace add github:ckir/clavity   # or a local path to this repo
+    claude plugin install <name>@clavity
+
+    # agy (path)
+    agy plugin install ./plugins/<name>
 
 The two CLIs read **disjoint filenames**, so both manifest sets coexist in one directory while
 `skills/` and other assets are shared:
@@ -30,6 +36,10 @@ See [`docs/plugin-formats.md`](docs/plugin-formats.md) for the verified format r
   `agy` already share the **agentmemory** store, and this skills-only plugin teaches them to tag
   `[common]` notes (handoffs, decisions, gotchas, fixed bugs) and proactively recall them. See its
   [README](plugins/commonmemory/README.md).
+- **[`agy-autotrain`](plugins/agy-autotrain/)** — gives Claude **one front door to drive `agy` like a
+  model** (`clavity ask`, no human `/command`) and **auto-trains** clavity's agy knowledge from everyday
+  usage (capture → curate → verify → golden-header, project-agnostic). Ships a portable agy instruction
+  manual + a live verification harness. See its [README](plugins/agy-autotrain/README.md).
 
 ## Layout
 
