@@ -16,7 +16,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="Protos\clavity.proto" GrpcServices="Client" />
+    <!-- "Both": Client stub for the real LsClient + Server base so the in-proc FAKE LS (integration
+         tests) can implement LanguageServerServiceBase. The shipped Cli/Ls just ignore the server base. -->
+    <Protobuf Include="Protos\clavity.proto" GrpcServices="Both" />
   </ItemGroup>
 
 </Project>

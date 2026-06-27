@@ -12,6 +12,13 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <!-- Host an in-proc FAKE LS (Kestrel h2c) for transport integration tests — the .NET analog of
+         clavity-classic's test-fakes feature. Not shipped; lives only in this test project. -->
+    <PackageReference Include="Grpc.AspNetCore.Server" Version="2.80.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
