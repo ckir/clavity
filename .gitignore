@@ -7,3 +7,12 @@ __pycache__/
 .agent/
 .serena/
 .env
+
+# BundleCodeBase.ps1 output (repo-bundle text for agy upload)
+/clavity.txt
+
+# .NET build output
+[Bb]in/
+[Oo]bj/
+artifacts/
+*.user

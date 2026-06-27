@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Clavity.Cli/Clavity.Cli.csproj" />
+    <Project Path="src/Clavity.Ls.Proto/Clavity.Ls.Proto.csproj" />
+    <Project Path="src/Clavity.Ls/Clavity.Ls.csproj" />
+    <Project Path="src/Clavity.Mcp/Clavity.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Clavity.Integration.Tests/Clavity.Integration.Tests.csproj" />
+    <Project Path="tests/Clavity.Live.Acceptance/Clavity.Live.Acceptance.csproj" />
+    <Project Path="tests/Clavity.Ls.Tests/Clavity.Ls.Tests.csproj" />
+  </Folder>
+</Solution>
