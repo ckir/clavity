@@ -1,0 +1,4 @@
+# Golden wire-capture oracles must never be line-ending normalized (they contain raw protobuf
+# bytes, incl. 0x0a). Without this, autocrlf would corrupt them on checkout.
+*.bin binary
+tests/Clavity.Ls.Tests/TestData/** binary
