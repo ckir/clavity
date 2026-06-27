@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+// EMPIRICALLY-DERIVED contract for Antigravity's local Language Server.
+//
+// Service name + method are REAL (extracted from agy.exe strings):
+//   /exa.language_server_pb.LanguageServerService/GetConversationMetadata
+// Message FIELD NUMBERS are VERIFIED against a live relay capture (agy 1.0.11) — the golden bytes
+// in tests/Clavity.Ls.Tests/TestData pin them. Message and field NAMES are reconstructed from the
+// wire (agentapi renders JSON, not the wire), so names may not match agy's real .proto; only the
+// field numbers + wire types are load-bearing. This is version-fragile — re-verify on agy updates.
+//
+// Scope: only GetConversationMetadata is defined (the one RPC whose wire we captured). The other
+// LanguageServerService RPCs (SendUserCascadeMessage, WaitForConversationFullyIdle, GetCascadeTrajectory)
+// are added per-task as their wire is captured (plan T5/T7) — not guessed here.
+
+package exa.language_server_pb;
+
+option csharp_namespace = "Clavity.Ls.Proto";
+
+service LanguageServerService {
+  rpc GetConversationMetadata(GetConversationMetadataRequest) returns (GetConversationMetadataResponse);
+}
+
+message GetConversationMetadataRequest {
+  string conversation_id = 1;
+}
+
+// Top-level response. field 1 carries the metadata object directly (verified: response gRPC message
+// begins 0a a1 05 = field 1, len 673). agentapi's JSON labels an extra "conversationMetadata"/"metadata"
+// nesting that does not correspond to separate wire levels here.
+message GetConversationMetadataResponse {
+  Metadata metadata = 1;
+}
+
+message Metadata {
+  repeated Workspace workspaces = 1;
+  // 2 = created_at (Timestamp) — skipped (unknown field), not asserted.
+  string initialization_state_id = 3;
+  // 4/5 = parent ids — skipped.
+  string root_conversation_id = 6;
+  repeated string workspace_uris = 7;
+  // 15, 18, ... = mendel experiment ids / project id — skipped.
+}
+
+message Workspace {
+  string workspace_folder_absolute_uri = 1;
+  string git_root_absolute_uri = 2;
+  Repository repository = 3;
+  string branch_name = 4;
+}
+
+message Repository {
+  string computed_name = 1;
+  string git_origin_url = 2;
+}
