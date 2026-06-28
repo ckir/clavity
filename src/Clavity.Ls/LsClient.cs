@@ -35,5 +35,14 @@ public sealed class LsClient : IDisposable
         return response.Metadata;
     }
 
+    /// <summary>Read a cascade's full trajectory (transcript). The conversation id is accepted as the cascade id.</summary>
+    public async Task<CascadeTrajectory> GetCascadeTrajectoryAsync(string cascadeId, CancellationToken cancellationToken = default)
+    {
+        var response = await _client.GetCascadeTrajectoryAsync(
+            new GetCascadeTrajectoryRequest { CascadeId = cascadeId },
+            cancellationToken: cancellationToken);
+        return response.Trajectory;
+    }
+
     public void Dispose() => _channel.Dispose();
 }
