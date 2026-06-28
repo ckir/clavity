@@ -71,6 +71,17 @@ public class AgyAskIntegrationTests
             }
             return new WaitForConversationFullyIdleResponse { TimedOut = false };
         }
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            var resp = new GetAllCascadeTrajectoriesResponse();
+            resp.TrajectorySummaries[_cascadeId] = new CascadeTrajectorySummary
+            {
+                LastModifiedTime = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+            };
+            return Task.FromResult(resp);
+        }
     }
 
     private static async Task<WebApplication> StartFakeAsync(FakeAskLs fake)
@@ -93,7 +104,6 @@ public class AgyAskIntegrationTests
     {
         var dir = Path.Combine(Path.GetTempPath(), "clavity-agyask-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "aaaaaaaa-0000-0000-0000-000000000000.db"), "");
         cliLog = Path.Combine(dir, "cli.log");
         File.WriteAllText(cliLog,
             $"I0628 09:29:34.284332 16268 server.go:517] Language server listening on random port at {port - 1} for HTTPS (gRPC)\n" +
@@ -111,7 +121,7 @@ public class AgyAskIntegrationTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, ConversationsDir = dir });
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             var bounded = await view.AskAsync("please do X");
 
             Assert.Equal("please do X", fake.LastSentText);
@@ -134,7 +144,7 @@ public class AgyAskIntegrationTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, ConversationsDir = dir });
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             await Assert.ThrowsAsync<TimeoutException>(
                 () => view.AskAsync("hello", timeout: TimeSpan.FromMilliseconds(200)));
         }

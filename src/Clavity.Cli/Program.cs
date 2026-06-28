@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Clavity.Ls;
 using Clavity.Mcp;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +12,6 @@ if (args.Contains("--mcp"))
     var options = new AgyViewOptions
     {
         CliLogPath = Path.Combine(agyDir, "cli.log"),
-        ConversationsDir = Path.Combine(agyDir, "conversations"),
     };
 
     var builder = Host.CreateApplicationBuilder(args);
@@ -28,4 +28,66 @@ if (args.Contains("--mcp"))
     return;
 }
 
-Console.WriteLine("clavity — usage: clavity --mcp   (MCP stdio server exposing agy_look / agy_status)");
+// `clavity start <folder> [claude-args...]` — open a visible human-owned agy tab + launch Claude in <folder>.
+if (args.Length > 0 && args[0] == "start")
+{
+    var rest = args.Skip(1).ToArray();
+    string folder;
+    string[] claudeArgs;
+    if (rest.Length > 0 && !rest[0].StartsWith('-'))
+    {
+        folder = Path.GetFullPath(rest[0]);
+        claudeArgs = rest.Skip(1).ToArray();
+    }
+    else
+    {
+        folder = Directory.GetCurrentDirectory();
+        claudeArgs = rest;
+    }
+
+    if (!Directory.Exists(Path.Combine(folder, ".git")))
+        Console.Error.WriteLine($"clavity: warning — {folder} is not a git repository.");
+
+    var agyHome = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
+
+    var plan = Launcher.Build(new LaunchOptions
+    {
+        Folder = folder,
+        ClaudeArgs = claudeArgs,
+        ProjectId = TryReadProjectId(agyHome),
+        AgyLogFilePath = Path.Combine(agyHome, "cli.log"),
+        SkipPermissions = false,
+    });
+
+    Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
+    Spawn(plan.ClaudeLaunch, wait: true); // Claude runs in the foreground.
+    return;
+
+    static void Spawn(LaunchCommand cmd, bool wait)
+    {
+        var psi = new ProcessStartInfo(cmd.FileName)
+        {
+            WorkingDirectory = cmd.WorkingDirectory,
+            UseShellExecute = false,
+        };
+        foreach (var arg in cmd.Arguments)
+            psi.ArgumentList.Add(arg);
+        foreach (var (key, value) in cmd.Environment)
+            psi.Environment[key] = value;
+        var process = Process.Start(psi);
+        if (wait)
+            process?.WaitForExit();
+    }
+
+    static string? TryReadProjectId(string agyHome)
+    {
+        var path = Path.Combine(agyHome, "cache", "default_project_id.txt");
+        if (!File.Exists(path))
+            return null;
+        var id = File.ReadAllText(path).Trim();
+        return id.Length > 0 ? id : null;
+    }
+}
+
+Console.WriteLine("clavity — usage: clavity start <folder> [claude-args...]   |   clavity --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
