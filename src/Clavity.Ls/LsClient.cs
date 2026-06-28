@@ -75,5 +75,24 @@ public sealed class LsClient : IDisposable
         return response.TimedOut;
     }
 
+    /// <summary>
+    /// List the top-level conversations this LS instance knows (map key = conversation id). The multi-session
+    /// convId resolver: each agy instance's LS reports only its own conversations. (GetBrowserOpenConversation
+    /// is desktop-UI-only and errors on a CLI agy — E2-verified — so it is NOT used.)
+    /// </summary>
+    public async Task<IReadOnlyList<CascadeConversation>> GetAllCascadeTrajectoriesAsync(
+        bool excludeSubtrajectories = true, CancellationToken cancellationToken = default)
+    {
+        var response = await _client.GetAllCascadeTrajectoriesAsync(
+            new GetAllCascadeTrajectoriesRequest { ExcludeSubtrajectories = excludeSubtrajectories },
+            cancellationToken: cancellationToken);
+
+        return response.TrajectorySummaries
+            .Select(kvp => new CascadeConversation(
+                kvp.Key,
+                kvp.Value.LastModifiedTime?.ToDateTimeOffset()))
+            .ToList();
+    }
+
     public void Dispose() => _channel.Dispose();
 }
