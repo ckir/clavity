@@ -23,9 +23,10 @@ public static class LogRetention
                 if (nowUtc - File.GetLastWriteTimeUtc(path) > maxAge)
                     File.Delete(path);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // A live agy may hold its log open — skip it.
+                // A live agy may hold its log open, or perms may deny deletion — skip it. Pruning a stale
+                // background log must never abort `clavity start`.
             }
         }
     }
