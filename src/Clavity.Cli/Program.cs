@@ -29,7 +29,7 @@ if (args.Contains("--mcp"))
     return;
 }
 
-// `clavity start <folder> [claude-args...]` — open a visible human-owned agy tab + launch Claude in <folder>.
+// `clavity start <folder> [claude-args...]` — open a visible human-owned agy tab (per-session LS log) + launch Claude.
 if (args.Length > 0 && args[0] == "start")
 {
     var rest = args.Skip(1).ToArray();
@@ -53,13 +53,18 @@ if (args.Length > 0 && args[0] == "start")
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
 
     var sessionId = Guid.NewGuid().ToString("D");
+    var logsDir = Path.Combine(agyHome, "logs");
+    Directory.CreateDirectory(logsDir); // idempotent + concurrency-safe (spec §11a).
+    LogRetention.Prune(logsDir, LogRetention.DefaultMaxAge, DateTime.UtcNow);
+    var agyLogPath = Path.Combine(logsDir, $"clavity-{sessionId}.log");
+
     var plan = Launcher.Build(new LaunchOptions
     {
         Folder = folder,
         SessionId = sessionId,
         ClaudeArgs = claudeArgs,
         ProjectId = TryReadProjectId(agyHome),
-        AgyLogFilePath = Path.Combine(agyHome, "cli.log"),
+        AgyLogFilePath = agyLogPath,
         SkipPermissions = false,
     });
 
