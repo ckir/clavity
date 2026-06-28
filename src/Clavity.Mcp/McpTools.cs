@@ -33,6 +33,16 @@ public class McpTools
         {
             return JsonSerializer.Serialize(await action());
         }
+        catch (AgyModalHangException ex)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                status = "possible_modal",
+                operation = ex.Report.Operation,
+                elapsedSeconds = ex.Report.Elapsed.TotalSeconds,
+                hint = ex.Report.Hint,
+            });
+        }
         catch (AgyConversationPendingException ex)
         {
             return JsonSerializer.Serialize(new { status = "waiting_for_human", message = ex.Message });

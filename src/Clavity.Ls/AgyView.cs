@@ -25,11 +25,13 @@ public sealed class AgyView
 {
     private readonly AgyViewOptions _options;
     private readonly IListeningPorts _listening;
+    private readonly IModalGuard _modalGuard;
 
-    public AgyView(AgyViewOptions options, IListeningPorts? listening = null)
+    public AgyView(AgyViewOptions options, IListeningPorts? listening = null, IModalGuard? modalGuard = null)
     {
         _options = options;
         _listening = listening ?? new SystemListeningPorts();
+        _modalGuard = modalGuard ?? new SurfacingModalGuard();
     }
 
     /// <summary>Look at the active conversation's trajectory, bounded to <paramref name="budgetChars"/>.</summary>
@@ -79,8 +81,8 @@ public sealed class AgyView
             catch (Exception ex) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested
                 && ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
             {
-                throw new TimeoutException(
-                    $"agy conversation did not go idle within {(timeout ?? DefaultIdleWaitTimeout)}.");
+                throw new AgyModalHangException(
+                    _modalGuard.OnLsTimeout("WaitForConversationFullyIdle", timeout ?? DefaultIdleWaitTimeout));
             }
 
             var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);

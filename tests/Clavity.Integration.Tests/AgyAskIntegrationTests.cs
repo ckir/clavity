@@ -145,8 +145,10 @@ public class AgyAskIntegrationTests
         try
         {
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
-            await Assert.ThrowsAsync<TimeoutException>(
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(
                 () => view.AskAsync("hello", timeout: TimeSpan.FromMilliseconds(200)));
+            Assert.Equal("WaitForConversationFullyIdle", ex.Report.Operation);
+            Assert.False(string.IsNullOrWhiteSpace(ex.Report.Hint));
         }
         finally
         {
