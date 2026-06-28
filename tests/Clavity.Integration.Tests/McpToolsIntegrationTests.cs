@@ -127,16 +127,24 @@ public class McpToolsIntegrationTests
         await using var app = await StartFakeAsync(fake);
         var cliLog = WriteCliLog(PortOf(app));
 
-        var view = new AgyView(new AgyViewOptions
+        var dir = Path.GetDirectoryName(cliLog)!;
+        try
         {
-            CliLogPath = cliLog,
-            BootRaceTimeout = TimeSpan.FromMilliseconds(300),
-            BootRacePollInterval = TimeSpan.FromMilliseconds(50),
-        });
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromMilliseconds(300),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
 
-        var json = await McpTools.AgyLook(view);
+            var json = await McpTools.AgyLook(view);
 
-        using var doc = JsonDocument.Parse(json);
-        Assert.Equal("waiting_for_human", doc.RootElement.GetProperty("status").GetString());
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal("waiting_for_human", doc.RootElement.GetProperty("status").GetString());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 }
