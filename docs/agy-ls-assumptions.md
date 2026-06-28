@@ -78,3 +78,26 @@ Key facts:
 live LS (Tier B, §3 above).
 
 **Re-verify:** the Tier-A `LsChannelIntegrationTests` (CI) plus the §3 live run.
+
+## 5. Multi-session identity + conversation resolution (verified live 2026-06-29, agy 1.0.11)
+
+For N concurrent Claude⇄agy pairs (design: `docs/superpowers/specs/2026-06-28-multi-session-design.md`):
+
+- **E1 — per-session `--log-file` is honored.** Launching `agy --log-file <path>` writes the
+  `Language server listening on random port at <N>` lines to THAT file, not the global
+  `~/.gemini/antigravity-cli/cli.log`. So each pair discovers its OWN LS port from its own log.
+  *Verified:* a second agy launched with `--log-file …\clavity-e1.log` wrote gRPC 53498 / HTTP 53499 there
+  while the global cli.log was untouched. Concurrent instances on the shared tree coexist fine.
+- **E2 — `GetAllCascadeTrajectories{exclude_subtrajectories:true}` is the conversation-id resolver**, per-LS-instance
+  (each LS reports only its own conversations). Response: `map<string, CascadeTrajectorySummary> trajectory_summaries`
+  (key = conversation UUID; value has `summary`, `step_count`, `last_modified_time` = field 3, a
+  `google.protobuf.Timestamp`). `GetBrowserOpenConversation` is desktop-UI-only and ERRORS on a CLI agy — NOT used.
+- **E3 — conversations are created LAZILY.** A freshly launched agy with no interaction returns an EMPTY map (`{}`);
+  a conversation appears only after the human interacts. ⇒ callers must treat an empty map as "wait for the human"
+  (a suspension, `AgyConversationPendingException`), not a retryable error or a failure.
+- **`last_modified_time` is populated** (e.g. consult-peer conv `4da94044-…` → `2026-06-28T21:45:15Z`), so the
+  >1-conversation tiebreaker (pick most-recently-modified; maps are UNORDERED on the wire) is sound.
+
+**Re-verify:** golden `tests/Clavity.Ls.Tests/TestData/GetAllCascadeTrajectories.bin` + `GetAllCascadeTrajectoriesGoldenTests`
+(CI); for E1/E3, launch a second `agy --log-file <tmp>` and `grpcurl -plaintext -import-path <dir> -proto <minimal>
+-d '{"exclude_subtrajectories":true}' 127.0.0.1:<httpPort> exa.language_server_pb.LanguageServerService/GetAllCascadeTrajectories`.
