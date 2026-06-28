@@ -52,9 +52,11 @@ if (args.Length > 0 && args[0] == "start")
     var agyHome = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
 
+    var sessionId = Guid.NewGuid().ToString("D");
     var plan = Launcher.Build(new LaunchOptions
     {
         Folder = folder,
+        SessionId = sessionId,
         ClaudeArgs = claudeArgs,
         ProjectId = TryReadProjectId(agyHome),
         AgyLogFilePath = Path.Combine(agyHome, "cli.log"),

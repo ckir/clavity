@@ -18,10 +18,12 @@ public sealed record LaunchPlan(LaunchCommand AgyTab, LaunchCommand ClaudeLaunch
 public sealed class LaunchOptions
 {
     public required string Folder { get; init; }
+    /// <summary>Pre-minted per-session id (GUID "D"), threaded into Claude as CLAVITY_SESSION_ID.</summary>
+    public required string SessionId { get; init; }
     public IReadOnlyList<string> ClaudeArgs { get; init; } = Array.Empty<string>();
     /// <summary>Resolved ANTIGRAVITY_PROJECT_ID, or null/empty to omit it.</summary>
     public string? ProjectId { get; init; }
-    /// <summary>Where agy should write its log, for deterministic LS port discovery.</summary>
+    /// <summary>Per-session agy log path; baked into the agy tab as <c>--log-file</c> and exported as CLAVITY_AGY_LOG.</summary>
     public required string AgyLogFilePath { get; init; }
     /// <summary>Opt-in <c>--dangerously-skip-permissions</c> on the agy tab (spec §4: NOT default).</summary>
     public bool SkipPermissions { get; init; }
@@ -29,18 +31,15 @@ public sealed class LaunchOptions
 
 /// <summary>
 /// PURE builder for <c>clavity start &lt;folder&gt;</c>: produces the exact commands to (1) open a visible,
-/// human-owned agy tab in Windows Terminal and (2) launch Claude Code in the foreground — with no process
-/// spawned (the Cli does that). The agy tab's env is BAKED INTO the pwsh -Command script because Windows
-/// Terminal's single-instance delegation does not propagate the launcher's process env into the new tab
-/// (verified via agy consult 2026-06-28).
+/// human-owned agy tab with a PER-SESSION <c>--log-file</c> and (2) launch Claude with the per-session identity
+/// in its environment. No process is spawned here (the Cli does that). The agy tab's env is BAKED INTO the
+/// pwsh -Command script because Windows Terminal's single-instance delegation does not propagate the launcher's
+/// process env into the new tab (verified via agy consult 2026-06-28).
 /// </summary>
 public static class Launcher
 {
-    /// <summary>A known, harmless CSRF token — agy does NOT enforce it (spec §6); set to future-proof.</summary>
+    /// <summary>A known, harmless CSRF token — agy does NOT enforce it (spec §12 T1); set to future-proof.</summary>
     public const string CsrfToken = "clavity";
-
-    /// <summary>Env var marking a Claude session as clavity-launched (read by a SessionStart hook).</summary>
-    public const string LaunchedMarker = "CLAVITY_LAUNCHED";
 
     public static LaunchPlan Build(LaunchOptions options)
     {
@@ -64,13 +63,16 @@ public static class Launcher
             WorkingDirectory: options.Folder,
             Environment: agyEnv);
 
+        // The per-session identity Claude (and its clavity --mcp child) reads. CLAVITY_AGY_LOG presence implies
+        // clavity-launched — the bare CLAVITY_LAUNCHED marker is dropped (spec §4).
         var claudeLaunch = new LaunchCommand(
             FileName: "claude",
             Arguments: options.ClaudeArgs.ToArray(),
             WorkingDirectory: options.Folder,
             Environment: new SortedDictionary<string, string>(StringComparer.Ordinal)
             {
-                [LaunchedMarker] = "1",
+                [AgyEnvironment.LogPathVar] = options.AgyLogFilePath,
+                [AgyEnvironment.SessionIdVar] = options.SessionId,
             });
 
         return new LaunchPlan(agyTab, claudeLaunch);
