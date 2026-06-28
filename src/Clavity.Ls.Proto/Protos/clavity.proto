@@ -17,11 +17,14 @@ package exa.language_server_pb;
 
 option csharp_namespace = "Clavity.Ls.Proto";
 
+import "google/protobuf/timestamp.proto";
+
 service LanguageServerService {
   rpc GetConversationMetadata(GetConversationMetadataRequest) returns (GetConversationMetadataResponse);
   rpc GetCascadeTrajectory(GetCascadeTrajectoryRequest) returns (GetCascadeTrajectoryResponse);
   rpc SendUserCascadeMessage(SendUserCascadeMessageRequest) returns (SendUserCascadeMessageResponse);
   rpc WaitForConversationFullyIdle(WaitForConversationFullyIdleRequest) returns (WaitForConversationFullyIdleResponse);
+  rpc GetAllCascadeTrajectories(GetAllCascadeTrajectoriesRequest) returns (GetAllCascadeTrajectoriesResponse);
 }
 
 message GetConversationMetadataRequest {
@@ -125,4 +128,21 @@ message WaitForConversationFullyIdleRequest {
 
 message WaitForConversationFullyIdleResponse {
   bool timed_out = 1;
+}
+
+// --- GetAllCascadeTrajectories (multi-session): the conversation ids this LS instance knows. Used to resolve
+// the per-pair conversation id from the LS (not from disk). PARTIAL — CascadeTrajectorySummary models only the
+// tiebreaker timestamp. Field numbers from jkfujinami/antigravity-grpc-schemas; pinned by a live golden.
+message GetAllCascadeTrajectoriesRequest {
+  bool exclude_subtrajectories = 1;
+}
+
+message GetAllCascadeTrajectoriesResponse {
+  // map KEY = conversation id; VALUE = its summary. Top-level trajectories only when exclude_subtrajectories.
+  map<string, CascadeTrajectorySummary> trajectory_summaries = 1;
+}
+
+message CascadeTrajectorySummary {            // partial of exa.jetski_cortex_pb.CascadeTrajectorySummary
+  // 1 = summary, 2 = step_count — skipped (not needed).
+  google.protobuf.Timestamp last_modified_time = 3;   // >1-conversation tiebreaker (spec §6).
 }
