@@ -161,6 +161,19 @@ Three channels, by risk:
 - T5–T7 (read/ask path) are unaffected in shape; AgyView gains the LS-based conversation resolution + retry in
   front of them.
 
+## 13. Notes for the implementation plan (agy plan-readiness round — directives, not spec changes)
+- **E1 is Step 1.** Live-verify agy honors a *per-session* `--log-file` (writes the "listening on random port"
+  line there) BEFORE writing launcher code — the whole port-discovery hinges on it; if it fails, revise §3.
+- **Retire `ConversationLocator` atomically with the rework:** switch `AgyView` to `LsClient.GetAllCascadeTrajectories`
+  AND update the T5/T6 tests that reference `ConversationLocator` in the SAME step — don't leave the suite broken.
+- **Pin these concrete values in the plan** (spec deliberately left them to the plan): boot-race timeout +
+  poll interval (e.g. ~10 s total / ~500 ms); log retention age (e.g. 7 days); `sessionId` GUID format
+  (`"D"` — dashed, path-safe); the exact `CascadeTrajectorySummary` timestamp field for the >1 tiebreaker
+  (golden-pin it; e.g. an `updated_at`-equivalent).
+- **Suggested task order:** E1 spike → proto add (`GetAllCascadeTrajectories`) + golden → `LsClient` method →
+  `AgyView` (retry-once + per-call resolve) → retire `ConversationLocator` + fix T5/T6 → rework T8
+  (`Launcher`/`Cli start` identity) + tests → `Cli --mcp` env consumption → integration tests.
+
 ## 12. Security / threat model (agy round-4 security lens)
 The agy LS is **unauthenticated on 127.0.0.1** and the agy tree is **shared across pairs** — the trust boundary
 is the **OS user account**, not the pair.
