@@ -72,6 +72,9 @@ public class LsClientIntegrationTests
         Assert.Equal(2, conversations.Count);
         Assert.Contains(conversations, c => c.ConversationId == "conv-older");
         Assert.Contains(conversations, c => c.ConversationId == "conv-newer");
+        // The last_modified_time mapping is load-bearing for the >1-conversation tiebreaker (Task 4); pin it.
+        Assert.Equal(new DateTimeOffset(2026, 6, 28, 0, 0, 0, TimeSpan.Zero),
+            conversations.Single(c => c.ConversationId == "conv-newer").LastModifiedUtc);
     }
 
     [Fact]
