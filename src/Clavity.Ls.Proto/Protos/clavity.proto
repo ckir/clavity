@@ -19,6 +19,7 @@ option csharp_namespace = "Clavity.Ls.Proto";
 
 service LanguageServerService {
   rpc GetConversationMetadata(GetConversationMetadataRequest) returns (GetConversationMetadataResponse);
+  rpc GetCascadeTrajectory(GetCascadeTrajectoryRequest) returns (GetCascadeTrajectoryResponse);
 }
 
 message GetConversationMetadataRequest {
@@ -52,4 +53,38 @@ message Workspace {
 message Repository {
   string computed_name = 1;
   string git_origin_url = 2;
+}
+
+// --- GetCascadeTrajectory (T6): the agentic transcript for a cascade. PARTIAL — only the fields BoundedView
+// reads are modeled; protobuf skips the rest (same discipline as the metadata subset above). Field NUMBERS are
+// verified against the captured golden tests/Clavity.Ls.Tests/TestData/GetCascadeTrajectory.bin AND the public
+// schema (memory agy-ls-proto-public-sources): response top-level = gemini_coder.Trajectory + counts. The
+// trajectory/step INTERNAL names are reconstructed from the wire (only numbers are load-bearing).
+message GetCascadeTrajectoryRequest {
+  string cascade_id = 1;
+  // 2 = verbosity (ClientTrajectoryVerbosity) — omitted; agy returns the full trajectory without it.
+}
+
+message GetCascadeTrajectoryResponse {
+  CascadeTrajectory trajectory = 1;            // public: gemini_coder.Trajectory
+  // 2 = status (exa.cortex_pb.CascadeRunStatus) — skipped (unknown field).
+  uint32 num_total_steps = 3;
+  uint32 num_total_generator_metadata = 4;
+  uint32 num_total_executor_metadata = 5;
+}
+
+message CascadeTrajectory {                     // partial of gemini_coder.Trajectory
+  string cascade_id = 1;
+  repeated CascadeStep steps = 2;
+  // 3 = generator metadata (repeated), 4/6/7/8/9 = other — skipped.
+}
+
+message CascadeStep {                           // partial
+  // 1 = step kind, 4 = ?, 5 = step metadata (ids/timestamps/run-status) — skipped.
+  CascadeUserInput user_input = 19;             // present only on user-message steps.
+}
+
+message CascadeUserInput {                      // partial — step field 19
+  string text = 2;
+  // 3 = { 1: formatted text }, 4, 12 = other — skipped.
 }
