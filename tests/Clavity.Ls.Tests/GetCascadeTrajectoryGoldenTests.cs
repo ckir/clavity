@@ -20,6 +20,7 @@ public class GetCascadeTrajectoryGoldenTests
         Assert.NotNull(resp.Trajectory);
         Assert.Equal("f8f914bd-dd32-4b37-9d64-e6473a422b25", resp.Trajectory.CascadeId);
         Assert.Equal(18, resp.Trajectory.Steps.Count);
+        Assert.Equal(14, resp.Trajectory.Steps[0].Kind);
 
         var firstUser = resp.Trajectory.Steps[0].UserInput;
         Assert.NotNull(firstUser);

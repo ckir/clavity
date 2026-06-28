@@ -80,7 +80,8 @@ message CascadeTrajectory {                     // partial of gemini_coder.Traje
 }
 
 message CascadeStep {                           // partial
-  // 1 = step kind, 4 = ?, 5 = step metadata (ids/timestamps/run-status) — skipped.
+  int32 kind = 1;                               // step-kind enum (verified: 14=user input, others assistant/tool).
+  // 4 = ?, 5 = step metadata (ids/timestamps/run-status) — skipped.
   CascadeUserInput user_input = 19;             // present only on user-message steps.
 }
 
