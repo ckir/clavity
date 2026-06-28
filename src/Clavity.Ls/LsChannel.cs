@@ -10,7 +10,7 @@ namespace Clavity.Ls;
 /// <remarks>
 /// The <c>Http2UnencryptedSupport</c> AppContext switch must be set before the underlying
 /// <see cref="SocketsHttpHandler"/> issues its first request; doing it in the static constructor
-/// guarantees that, since the switch is set before <see cref="ForHttpPort"/> creates any handler.
+/// guarantees that, since the switch is set before <see cref="ForHttpPort(int)"/> creates any handler.
 /// </remarks>
 public static class LsChannel
 {
@@ -20,7 +20,14 @@ public static class LsChannel
     }
 
     /// <summary>Open an h2c gRPC channel to <c>127.0.0.1:&lt;httpPort&gt;</c> (the LS HTTP/h2c port).</summary>
-    public static GrpcChannel ForHttpPort(int httpPort)
+    public static GrpcChannel ForHttpPort(int httpPort) => ForHttpPort(httpPort, null);
+
+    /// <summary>
+    /// Overload that lets a caller wrap the h2c handler with a <see cref="DelegatingHandler"/> (e.g. a
+    /// trailer-observing handler in live acceptance tests). The h2c configuration is identical to the
+    /// one-arg overload, so the channel's wire setup stays a single source of truth.
+    /// </summary>
+    public static GrpcChannel ForHttpPort(int httpPort, DelegatingHandler? observer)
     {
         var handler = new SocketsHttpHandler
         {
@@ -31,8 +38,15 @@ public static class LsChannel
             KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
         };
 
+        HttpMessageHandler effective = handler;
+        if (observer is not null)
+        {
+            observer.InnerHandler = handler;
+            effective = observer;
+        }
+
         return GrpcChannel.ForAddress(
             $"http://127.0.0.1:{httpPort}",
-            new GrpcChannelOptions { HttpHandler = handler });
+            new GrpcChannelOptions { HttpHandler = effective });
     }
 }

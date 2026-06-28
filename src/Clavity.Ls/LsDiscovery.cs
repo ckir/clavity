@@ -105,4 +105,18 @@ public static class LsDiscovery
                 "the agy session likely exited — relaunch agy.");
         return ep;
     }
+
+    /// <summary>
+    /// Read agy's cli.log text from disk. A LIVE agy keeps cli.log open for writing, so the plain
+    /// <see cref="File.ReadAllText(string)"/> (which opens with <see cref="FileShare.Read"/>) fails with
+    /// a sharing violation against a running session. This opens with <see cref="FileShare.ReadWrite"/>,
+    /// the only way to read the log of an active agy. EMPIRICALLY-DERIVED, verified live (agy 1.0.11) —
+    /// see docs/agy-ls-assumptions.md.
+    /// </summary>
+    public static string ReadCliLogText(string cliLogPath)
+    {
+        using var stream = new FileStream(cliLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
 }

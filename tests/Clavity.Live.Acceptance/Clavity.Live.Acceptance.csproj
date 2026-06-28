@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Clavity.Ls\Clavity.Ls.csproj" />
+    <ProjectReference Include="..\..\src\Clavity.Ls.Proto\Clavity.Ls.Proto.csproj" />
   </ItemGroup>
 
 </Project>
