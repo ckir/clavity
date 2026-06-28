@@ -45,7 +45,9 @@ clavity start <folder>
             └─ Claude spawns `clavity --mcp` (inherits env)
                   MCP/AgyView:
                     port   ← parse <logPath> (existing parser; unique path = unambiguous)
-                    convId ← LS GetBrowserOpenConversation (the human's visible tab) — single RPC per call
+                    convId ← LS GetAllCascadeTrajectories(exclude_subtrajectories=true) — the instance's
+                             top-level conversation (single RPC per call; most-recent if >1).
+                             [GetBrowserOpenConversation is desktop-UI-only — UNUSABLE for a CLI agy, E2-verified]
                     boot race: a bounded RETRY/POLL runs ONCE to establish the connection
                                (log has the port line + LS reachable); NOT on every tool call.
 ```
@@ -62,32 +64,34 @@ clavity start <folder>
 | `Launcher` / `LaunchOptions` | Take a pre-minted `SessionId` + `AgyLogFilePath` (per-session). Agy-tab script bakes env + `--log-file <perSessionPath>`. Claude env = `CLAVITY_SESSION_ID` + `CLAVITY_AGY_LOG` (no PID — §3). **Drop** the bare `CLAVITY_LAUNCHED` marker — presence of `CLAVITY_AGY_LOG` implies clavity-launched. |
 | `Clavity.Cli` (`start`) | Mint `sessionId` (GUID) + log path (`logs/clavity-<sid>.log`); ensure `logs/` exists; spawn the agy tab; spawn Claude with the identity env. (No agy PID captured — the `wt.exe` PID is not agy's; §3.) |
 | `Clavity.Cli` (`--mcp`) | Build `AgyViewOptions.CliLogPath` from `CLAVITY_AGY_LOG` when set; else fall back to the global `cli.log` (single-instance back-compat). |
-| `LsClient` | Add `GetBrowserOpenConversationAsync()` (new partial proto messages; field numbers from `jkfujinami/antigravity-grpc-schemas`, golden-verified). If E2 shows it's UI-fragile (empty without tab focus), fall back to a non-UI RPC (`GetStatus` / `GetAllCascadeTrajectories` latest-active). |
-| `AgyView` | Resolve conversation id via `GetBrowserOpenConversationAsync` (not `ConversationLocator`) when env identity is present — a **single RPC per call** (cheap; tracks the human's current tab), NOT a per-call retry loop. The bounded retry/poll runs **once**, at connection establishment (boot race); normal calls are single round-trips. |
+| `LsClient` | Add `GetAllCascadeTrajectoriesAsync(excludeSubtrajectories=true)` → the instance's top-level conversation id(s) (new partial proto; field numbers from `jkfujinami/antigravity-grpc-schemas`, golden-verified). **E2-verified primary** convId resolver. (`GetBrowserOpenConversation` is desktop-UI-only and ERRORS on a CLI agy — NOT used.) |
+| `AgyView` | Resolve conversation id via `GetAllCascadeTrajectoriesAsync` (not `ConversationLocator`) when env identity is present — a **single RPC per call** (cheap), NOT a per-call retry loop; if >1 top-level conversation, pick the **most-recently-active**. The bounded retry/poll runs **once**, at connection establishment (boot race); normal calls are single round-trips. |
 | `LsDiscovery` | Unchanged parse logic; add a `DiscoverActiveWithRetry`-style bounded poll used **once** at connection establishment (or do the retry in `AgyView`). No PID/`GetExtendedTcpTable` fallback (§3). |
 | `ConversationLocator` | **Removed** from the conversation-resolution path — newest-`.db` is unsafe once instances share `conversations/` (agy round-2 Gap 2). BOTH per-pair and fallback resolve convId via the LS; the only difference is which `cli.log` (per-session vs global) yields the port. Deleted in the plan; T5/T6 references updated. |
-| `clavity.proto` | Add `GetBrowserOpenConversationRequest/Response` (partial — just the conversation-id field). |
+| `clavity.proto` | Add `GetAllCascadeTrajectoriesRequest{bool exclude_subtrajectories=1}` + `GetAllCascadeTrajectoriesResponse{map<string,CascadeTrajectorySummary> trajectory_summaries=1}` (map KEY = conversation id; `CascadeTrajectorySummary` modeled just enough for the most-recent tiebreaker — pin its timestamp field at impl). |
 
 ## 5. Data flow (per-pair, happy path)
 1. `clavity start` mints identity, spawns agy (per-session log) + Claude (identity in env).
 2. Claude → `clavity --mcp` inherits `CLAVITY_AGY_LOG`/`CLAVITY_SESSION_ID`.
 3. Tool call (`agy_look`/`agy_ask`): retry/poll until `<logPath>` has the port line and the LS answers →
-   port; `GetBrowserOpenConversation` → convId; then existing read/ask path (T5–T7) over that port/convId.
+   port; `GetAllCascadeTrajectories(exclude_subtrajectories=true)` → convId (most-recent if >1); then the
+   existing read/ask path (T5–T7) over that port/convId.
 
 ## 6. Error handling
 - **Boot race (agy slower than Claude):** bounded retry/poll on (a) log-file existence + port line, (b) LS
-  reachability, (c) `GetBrowserOpenConversation` returning a non-empty id. Exceed the bound → a clear
+  reachability, (c) `GetAllCascadeTrajectories` returning a non-empty map. Exceed the bound → a clear
   `LsDiscoveryException`/timeout surfaced to Claude (ties to T9 ModalGuard), never a silent hang.
-- **No conversation yet (lazy creation, E3):** if `GetBrowserOpenConversation` is empty before the human's
-  first interaction, retry within the boot bound; past it, return a typed result that **explicitly instructs
-  Claude to WAIT for the human and NOT auto-retry in a loop** — a ModalGuard-style suspension, not a retryable
-  error (agy audit Gap 4).
-- **UI-fragile conversation RPC (E2):** if `GetBrowserOpenConversation` is empty without UI focus, use the
-  non-UI fallback RPC named in §4 (agy audit Gap 3).
+- **No conversation yet (lazy creation, E3):** if `GetAllCascadeTrajectories` returns an EMPTY map before the
+  human's first interaction, retry within the boot bound; past it, return a typed result that **explicitly
+  instructs Claude to WAIT for the human and NOT auto-retry in a loop** — a ModalGuard-style suspension, not a
+  retryable error (agy audit Gap 4).
+- **Multiple top-level conversations:** if the instance has >1 (human used `/fork` or started a new one), pick
+  the **most-recently-active by the summary's timestamp field** — NOT by map iteration order (protobuf maps are
+  UNORDERED on the wire; agy contract round, CRITICAL). A single conversation is the norm for a fresh per-pair launch.
 - **`--log-file` unhonored (E1 fails):** revisit per §3 (have agy write its OWN PID to the log) — never the
   `wt` PID. An empirical contingency, not a shipped fallback.
 - **No env identity (`CLAVITY_AGY_LOG` unset):** single-instance fallback — parse the port from the GLOBAL
-  `cli.log` and resolve convId from the **LS** (`GetBrowserOpenConversation`), exactly like the per-pair path.
+  `cli.log` and resolve convId from the **LS** (`GetAllCascadeTrajectories`), exactly like the per-pair path.
   It does NOT use newest-`.db` (unsafe once multiple agy share `conversations/` — agy round-2 Gap 2). Assumes a
   single live agy; inherently ambiguous if several run without identity (that's what the identity env is for).
 
@@ -108,7 +112,7 @@ Three channels, by risk:
 - **Unit (Launcher):** agy-tab argv bakes `--log-file <perSessionPath>` + env; Claude env carries
   `CLAVITY_SESSION_ID` + `CLAVITY_AGY_LOG`; per-session log path derives from sessionId. (Revises the held
   T8 tests.)
-- **Integration (fake LS):** AgyView resolves convId via `GetBrowserOpenConversation` (fake returns an id)
+- **Integration (fake LS):** AgyView resolves convId via `GetAllCascadeTrajectories` (fake returns a map)
   then drives; discovery **retry** (fake LS becomes reachable only after N polls → call succeeds, not hangs);
   env-identity path selection (CLAVITY_AGY_LOG → that log) vs single-instance fallback; **empty convId →
   the wait/suspension result (assert NO auto-retry loop)**; subsequent calls are single round-trips (no
@@ -117,12 +121,14 @@ Three channels, by risk:
 
 ## 9. Empirical items to verify live (plan spikes)
 - **E1:** agy honors `--log-file <path>` and writes the "listening on random port at <N>" line there.
-- **E2:** `GetBrowserOpenConversation` request/response field shape; returns the human-tab conversation id for
-  that instance (golden-pin like T2/T6) — and crucially: (a) is it **non-empty WITHOUT active UI focus / tab
-  hydration** (agy round-1 Gap 3); (b) is the value **PER-LS-INSTANCE or a GLOBAL desktop-UI state** (agy
-  round-4 Threat 3)? If global (returns the same conv for every instance), it is UNUSABLE for multi-pair and the
-  non-UI per-instance fallback RPC (`GetStatus`/`GetAllCascadeTrajectories` scoped to that port) becomes the
-  **primary** convId source. This gates the whole identity scheme — verify FIRST.
+- **E2 — ✅ RESOLVED LIVE (2026-06-28, agy 1.0.11, LS HTTP 54543 via grpcurl + minimal proto):**
+  `GetBrowserOpenConversation` ERRORS on a CLI agy (`Unknown: "no browser open conversation request found"`) —
+  it is desktop-UI-only, UNUSABLE for our case. **`GetAllCascadeTrajectories{exclude_subtrajectories:true}`
+  WORKS** and returns the instance's top-level conversation id (live: one entry, `4da94044-…`), **per-LS-instance**
+  (each LS knows its own). ⇒ It is the **primary** convId resolver; `GetBrowserOpenConversation` is dropped.
+  Wire: request `{bool exclude_subtrajectories=1}`, response
+  `map<string, jetski_cortex.CascadeTrajectorySummary> trajectory_summaries=1` (key = conversation id).
+  **Remaining:** pin the summary's timestamp field for the >1 tiebreaker (impl detail, golden-pinnable).
 - **E3:** WHEN the conversation is created (process start vs first message) → calibrates retry/empty handling.
 - **E4 (only if E1 fails):** confirm agy can write its OWN PID into the `--log-file` (the `wt` PID is unusable,
   §3) to re-enable a PID→port path if ever needed. Not built unless E1 fails.
@@ -166,8 +172,9 @@ is the **OS user account**, not the pair.
   default perms could let other local users read it / hijack the LS. **MITIGATE:** create `logs/` and each
   `clavity-<sid>.log` with **current-user-only** ACL (Windows: restrict to the owner). Env-var visibility to
   child processes is **accepted** (that's how identity is threaded).
-- **T3 [LOW data / HIGH if global] UI-coupled convId** — see E2(b): if `GetBrowserOpenConversation` is a global
-  desktop-UI state it returns the wrong pair's conv. Mitigated by the E2-verified per-instance fallback.
+- **T3 [RESOLVED] UI-coupled convId** — E2 live-confirmed `GetBrowserOpenConversation` is desktop-UI-only
+  (errors on a CLI agy); we use the per-instance `GetAllCascadeTrajectories` instead, so there is no global-UI
+  cross-talk vector at all.
 - **T4 [HIGH] Consult-bus is a cross-project SECURITY boundary, not just correctness.** A compromised pair can
   read another pair's `clavity ask` consults off the shared agentmemory bus. **ACCEPT now (documented
   limitation)** but this **makes A4 (consults-over-LS) mandatory** before running concurrent pairs that handle
