@@ -11,8 +11,8 @@ namespace Clavity.Integration.Tests;
 
 // T4 (integration, CI): AgyView end-to-end against an in-proc fake LS — resolve convId via
 // GetAllCascadeTrajectories (not disk), discover LS (synthetic cli.log naming the fake port),
-// GetCascadeTrajectory -> BoundedView. Includes boot-race retry + pending tests.
-public class AgyViewIntegrationTests
+// GetCascadeTrajectory -> BoundedView. Includes boot-race retry + pending + >1-conversation tiebreak tests.
+public class AgyViewIntegrationTests : IDisposable
 {
     private sealed class FakeLs : LanguageServerService.LanguageServerServiceBase
     {
@@ -60,7 +60,45 @@ public class AgyViewIntegrationTests
             });
     }
 
-    private static async Task<WebApplication> StartFakeAsync(FakeLs fake)
+    // Serves TWO top-level conversations with distinct last_modified_time, and echoes the REQUESTED cascade id
+    // back in the trajectory — so a test can assert WHICH conversation AgyView resolved (the most-recent one).
+    private sealed class TwoConversationFakeLs : LanguageServerService.LanguageServerServiceBase
+    {
+        public const string OlderId = "older-conversation";
+        public const string NewerId = "newer-conversation";
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            var resp = new GetAllCascadeTrajectoriesResponse();
+            resp.TrajectorySummaries[OlderId] = new CascadeTrajectorySummary
+            {
+                LastModifiedTime = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(
+                    new DateTimeOffset(2026, 6, 27, 0, 0, 0, TimeSpan.Zero)),
+            };
+            resp.TrajectorySummaries[NewerId] = new CascadeTrajectorySummary
+            {
+                LastModifiedTime = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(
+                    new DateTimeOffset(2026, 6, 28, 0, 0, 0, TimeSpan.Zero)),
+            };
+            return Task.FromResult(resp);
+        }
+
+        public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
+            GetCascadeTrajectoryRequest request, ServerCallContext context)
+            => Task.FromResult(new GetCascadeTrajectoryResponse
+            {
+                NumTotalSteps = 1,
+                Trajectory = new CascadeTrajectory
+                {
+                    CascadeId = request.CascadeId, // echo the id AgyView asked for
+                    Steps = { new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = "x" } } },
+                },
+            });
+    }
+
+    private static async Task<WebApplication> StartFakeAsync<T>(T fake)
+        where T : LanguageServerService.LanguageServerServiceBase
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(o => o.ConfigureEndpointDefaults(lo => lo.Protocols = HttpProtocols.Http2));
@@ -69,23 +107,36 @@ public class AgyViewIntegrationTests
         builder.Services.AddGrpc();
         builder.Services.AddSingleton(fake);
         var app = builder.Build();
-        app.MapGrpcService<FakeLs>();
+        app.MapGrpcService<T>();
         await app.StartAsync();
         return app;
     }
 
     private static int PortOf(WebApplication app) => new Uri(app.Urls.Single()).Port;
 
+    private readonly List<string> _tempDirs = new();
+
     // Writes a throwaway cli.log naming the fake's port; returns the cli.log path. No conversations dir/.db needed.
-    private static string WriteCliLog(int port)
+    // The temp dir is tracked and removed in Dispose so test runs don't accumulate directories.
+    private string WriteCliLog(int port)
     {
         var dir = Path.Combine(Path.GetTempPath(), "clavity-agyview-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
+        _tempDirs.Add(dir);
         var cliLog = Path.Combine(dir, "cli.log");
         File.WriteAllText(cliLog,
             $"I0628 09:29:34.284332 16268 server.go:517] Language server listening on random port at {port - 1} for HTTPS (gRPC)\n" +
             $"I0628 09:29:34.290337 16268 server.go:525] Language server listening on random port at {port} for HTTP\n");
         return cliLog;
+    }
+
+    public void Dispose()
+    {
+        foreach (var dir in _tempDirs)
+        {
+            try { Directory.Delete(dir, true); }
+            catch (IOException) { /* best-effort cleanup */ }
+        }
     }
 
     [Fact]
@@ -139,5 +190,19 @@ public class AgyViewIntegrationTests
         });
 
         await Assert.ThrowsAsync<AgyConversationPendingException>(() => view.LookAsync());
+    }
+
+    [Fact]
+    public async Task LookAsync_resolves_the_most_recently_modified_conversation_when_more_than_one()
+    {
+        // Two top-level conversations; AgyView must pick the one with the later last_modified_time (maps are
+        // UNORDERED on the wire, so this guards against relying on iteration order — spec §6).
+        await using var app = await StartFakeAsync(new TwoConversationFakeLs());
+        var cliLog = WriteCliLog(PortOf(app));
+
+        var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+        var bounded = await view.LookAsync();
+
+        Assert.Equal(TwoConversationFakeLs.NewerId, bounded.CascadeId);
     }
 }

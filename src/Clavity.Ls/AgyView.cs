@@ -112,14 +112,23 @@ public sealed class AgyView
                 var conversations = await client.GetAllCascadeTrajectoriesAsync(
                     excludeSubtrajectories: true, cancellationToken);
                 if (conversations.Count > 0)
-                    return (client, SelectMostRecent(conversations));
+                {
+                    var owned = client;
+                    client = null; // hand ownership to the caller — the finally must NOT dispose it.
+                    return (owned, SelectMostRecent(conversations));
+                }
 
                 reachedLsButEmpty = true; // LS up, but no conversation yet (E3).
-                client.Dispose();
             }
-            catch (LsDiscoveryException) { client?.Dispose(); }  // log/port not ready, or port not listening yet.
-            catch (IOException) { client?.Dispose(); }           // cli.log not present yet.
-            catch (RpcException) { client?.Dispose(); }          // LS not answering yet.
+            catch (LsDiscoveryException) { }  // log/port not ready, or port not listening yet.
+            catch (IOException) { }           // cli.log not present yet.
+            catch (RpcException) { }          // LS not answering yet.
+            finally
+            {
+                // Dispose on every non-handoff exit: retry, empty map, OR an unhandled throw (e.g. cancellation
+                // surfaced as OperationCanceledException, which is NOT in the catch list) — so the client never leaks.
+                client?.Dispose();
+            }
 
             if (DateTime.UtcNow >= deadline)
             {
