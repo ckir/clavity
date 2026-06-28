@@ -11,7 +11,8 @@ if (args.Contains("--mcp"))
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
     var options = new AgyViewOptions
     {
-        CliLogPath = Path.Combine(agyDir, "cli.log"),
+        CliLogPath = AgyEnvironment.ResolveCliLogPath(
+            Environment.GetEnvironmentVariable(AgyEnvironment.LogPathVar), agyDir),
     };
 
     var builder = Host.CreateApplicationBuilder(args);

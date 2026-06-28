@@ -5,28 +5,37 @@ using ModelContextProtocol.Server;
 
 namespace Clavity.Mcp;
 
-/// <summary>MCP tools exposing a read-only, size-bounded "look" at the live agy session over its Language Server.</summary>
+/// <summary>MCP tools exposing a read-only, size-bounded "look" + an "ask" over agy's Language Server.</summary>
 [McpServerToolType]
 public class McpTools
 {
     [McpServerTool(Name = "agy_look"), Description("Look at the active agy conversation's cascade trajectory as a size-bounded JSON summary (no verbose ids).")]
     public static async Task<string> AgyLook(AgyView view, CancellationToken cancellationToken = default)
-    {
-        var bounded = await view.LookAsync(cancellationToken: cancellationToken);
-        return JsonSerializer.Serialize(bounded);
-    }
+        => await RunAsync(() => view.LookAsync(cancellationToken: cancellationToken));
 
     [McpServerTool(Name = "agy_status"), Description("Report the active agy conversation's status: cascade id, total steps, and whether the look was truncated.")]
     public static async Task<string> AgyStatus(AgyView view, CancellationToken cancellationToken = default)
-    {
-        var bounded = await view.LookAsync(cancellationToken: cancellationToken);
-        return JsonSerializer.Serialize(new { bounded.CascadeId, bounded.TotalSteps, bounded.Truncated });
-    }
+        => await RunAsync(async () =>
+        {
+            var bounded = await view.LookAsync(cancellationToken: cancellationToken);
+            return (object)new { bounded.CascadeId, bounded.TotalSteps, bounded.Truncated };
+        });
 
     [McpServerTool(Name = "agy_ask"), Description("Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and posts a visible message in the user's agy.")]
     public static async Task<string> AgyAsk(AgyView view, string message, CancellationToken cancellationToken = default)
+        => await RunAsync(() => view.AskAsync(message, cancellationToken: cancellationToken));
+
+    // Serialize the result, or — when agy has no conversation yet — a typed "waiting" object that tells Claude to
+    // wait for the human and NOT auto-retry (spec §6).
+    private static async Task<string> RunAsync<T>(Func<Task<T>> action)
     {
-        var bounded = await view.AskAsync(message, cancellationToken: cancellationToken);
-        return JsonSerializer.Serialize(bounded);
+        try
+        {
+            return JsonSerializer.Serialize(await action());
+        }
+        catch (AgyConversationPendingException ex)
+        {
+            return JsonSerializer.Serialize(new { status = "waiting_for_human", message = ex.Message });
+        }
     }
 }
