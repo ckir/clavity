@@ -22,4 +22,11 @@ public class McpTools
         var bounded = await view.LookAsync(cancellationToken: cancellationToken);
         return JsonSerializer.Serialize(new { bounded.CascadeId, bounded.TotalSteps, bounded.Truncated });
     }
+
+    [McpServerTool(Name = "agy_ask"), Description("Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and posts a visible message in the user's agy.")]
+    public static async Task<string> AgyAsk(AgyView view, string message, CancellationToken cancellationToken = default)
+    {
+        var bounded = await view.AskAsync(message, cancellationToken: cancellationToken);
+        return JsonSerializer.Serialize(bounded);
+    }
 }

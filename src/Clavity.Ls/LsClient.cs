@@ -44,5 +44,36 @@ public sealed class LsClient : IDisposable
         return response.Trajectory;
     }
 
+    /// <summary>
+    /// Send a user message into the cascade. The response is EMPTY by contract — the reply is NOT returned
+    /// here; read it back via <see cref="GetCascadeTrajectoryAsync"/> after
+    /// <see cref="WaitForConversationFullyIdleAsync"/>. ⚠ LIVE this consumes quota and injects a visible
+    /// message; only the fake LS exercises it before T10.
+    /// </summary>
+    public async Task SendUserCascadeMessageAsync(string cascadeId, string text, CancellationToken cancellationToken = default)
+    {
+        var request = new SendUserCascadeMessageRequest { CascadeId = cascadeId };
+        request.Items.Add(new TextOrScopeItem { Text = text });
+        await _client.SendUserCascadeMessageAsync(request, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>Block until the conversation is fully idle (or the wait times out). Returns true if it timed out.</summary>
+    public async Task<bool> WaitForConversationFullyIdleAsync(
+        string conversationId,
+        int inactivityTimeoutSeconds,
+        int stabilizationDurationSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _client.WaitForConversationFullyIdleAsync(
+            new WaitForConversationFullyIdleRequest
+            {
+                ConversationId = conversationId,
+                InactivityTimeoutSeconds = inactivityTimeoutSeconds,
+                StabilizationDurationSeconds = stabilizationDurationSeconds,
+            },
+            cancellationToken: cancellationToken);
+        return response.TimedOut;
+    }
+
     public void Dispose() => _channel.Dispose();
 }

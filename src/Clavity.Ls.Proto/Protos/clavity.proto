@@ -9,9 +9,9 @@ syntax = "proto3";
 // wire (agentapi renders JSON, not the wire), so names may not match agy's real .proto; only the
 // field numbers + wire types are load-bearing. This is version-fragile — re-verify on agy updates.
 //
-// Scope: only GetConversationMetadata is defined (the one RPC whose wire we captured). The other
-// LanguageServerService RPCs (SendUserCascadeMessage, WaitForConversationFullyIdle, GetCascadeTrajectory)
-// are added per-task as their wire is captured (plan T5/T7) — not guessed here.
+// Scope: GetConversationMetadata (T5) and GetCascadeTrajectory (T6) from wire capture. SendUserCascadeMessage
+// and WaitForConversationFullyIdle were added in T7 from the public schema (jkfujinami/antigravity-grpc-schemas);
+// field numbers verified against that schema. The other LanguageServerService RPCs are added per-task as needed.
 
 package exa.language_server_pb;
 
@@ -20,6 +20,8 @@ option csharp_namespace = "Clavity.Ls.Proto";
 service LanguageServerService {
   rpc GetConversationMetadata(GetConversationMetadataRequest) returns (GetConversationMetadataResponse);
   rpc GetCascadeTrajectory(GetCascadeTrajectoryRequest) returns (GetCascadeTrajectoryResponse);
+  rpc SendUserCascadeMessage(SendUserCascadeMessageRequest) returns (SendUserCascadeMessageResponse);
+  rpc WaitForConversationFullyIdle(WaitForConversationFullyIdleRequest) returns (WaitForConversationFullyIdleResponse);
 }
 
 message GetConversationMetadataRequest {
@@ -88,4 +90,39 @@ message CascadeStep {                           // partial
 message CascadeUserInput {                      // partial — step field 19
   string text = 2;
   // 3 = { 1: formatted text }, 4, 12 = other — skipped.
+}
+
+// --- SendUserCascadeMessage (T7): post a user message into a cascade. Field numbers verified against the
+// public antigravity schema (jkfujinami/antigravity-grpc-schemas). PARTIAL — only the fields we set/need are
+// modeled. ⚠ LIVE this RPC consumes quota AND injects a visible message into the user's agy; only the in-proc
+// fake LS exercises it before T10.
+message TextOrScopeItem {                       // partial of exa.codeium_common_pb.TextOrScopeItem
+  oneof chunk {
+    string text = 1;
+    // 2 = ContextScopeItem item — skipped (we only send plain text).
+  }
+}
+
+message SendUserCascadeMessageRequest {         // partial
+  string cascade_id = 1;
+  repeated TextOrScopeItem items = 2;
+  // 3 metadata, 4/5/17/19 configs, 6..23 others — skipped (not set).
+  bool blocking = 8;
+}
+
+// EMPTY by contract: the reply is NOT returned here. Read it via GetCascadeTrajectory after
+// WaitForConversationFullyIdle.
+message SendUserCascadeMessageResponse {
+}
+
+// --- WaitForConversationFullyIdle (T7): block until the conversation stops producing steps.
+message WaitForConversationFullyIdleRequest {
+  string conversation_id = 1;
+  int32 inactivity_timeout_seconds = 2;
+  int32 stabilization_duration_seconds = 3;
+  bool return_on_executor_error = 4;
+}
+
+message WaitForConversationFullyIdleResponse {
+  bool timed_out = 1;
 }
