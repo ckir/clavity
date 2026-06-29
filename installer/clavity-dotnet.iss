@@ -43,7 +43,9 @@ Source: "..\plugins\commonmemory\*"; DestDir: "{app}\plugins\commonmemory"; Flag
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce
-; Phase 4 (Task 4.2) appends two default-OFF add-on tasks here: install-agy-autotrain, install-commonmemory.
+; Optional add-ons (default OFF) — plain-English, value-driven labels (spec UX).
+Name: "install-agy-autotrain"; Description: "Install agy-autotrain — lets the AI permanently learn your project's rules and stop repeating mistakes"; Flags: unchecked
+Name: "install-commonmemory"; Description: "Install commonmemory — a shared notebook so Claude and agy share facts (needs the agentmemory MCP server)"; Flags: unchecked
 
 [Registry]
 ; Per-user PATH APPEND (never prepend) when the task is selected (security: PATH hygiene).
@@ -140,6 +142,19 @@ end;
 
 { --- Install: register the plugin AFTER files are placed, and SURFACE a failure (UX: no false "Success"). --- }
 
+procedure InstallAddon(const Name: string);
+var
+  ResultCode: Integer;
+begin
+  { Install one optional add-on plugin from {app}\plugins\<Name> via clavity-ls (gated by the [Tasks] checkbox). }
+  if not Exec(ExpandConstant('{app}\{#ExeName}'), 'install --agent all --plugin ' + Name, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    MsgBox('Could not install the ' + Name + ' add-on. Install it later with:' + #13#10 +
+      '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK)
+  else if ResultCode <> 0 then
+    MsgBox('The ' + Name + ' add-on reported a problem (exit code ' + IntToStr(ResultCode) + '). Re-run:' + #13#10 +
+      '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
@@ -152,6 +167,16 @@ begin
     else if ResultCode <> 0 then
       MsgBox('clavity-ls plugin registration reported a problem (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
         'Open a terminal and re-run:  clavity-ls install --agent all', mbError, MB_OK);
+    { Optional add-ons — install each ticked one (default OFF). }
+    if WizardIsTaskSelected('install-agy-autotrain') then InstallAddon('agy-autotrain');
+    if WizardIsTaskSelected('install-commonmemory') then
+    begin
+      InstallAddon('commonmemory');
+      { commonmemory has a runtime dependency on the agentmemory MCP server — be honest, do not auto-install it. }
+      MsgBox('commonmemory was registered, but it needs the agentmemory MCP server to actually work.' + #13#10 +
+        'If you have not installed agentmemory yet, install it separately — until then the shared notebook stays inactive.',
+        mbInformation, MB_OK);
+    end;
   end
   else if CurStep = ssDone then
     MsgBox('clavity-dotnet is installed. Open a terminal (PowerShell) and run:' + #13#10 +
@@ -213,7 +238,33 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+  Header, Backup: string;
 begin
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep = usUninstall then
+  begin
+    { Remove the optional add-ons from the agents too (best-effort — they may not be installed; not gated). }
+    if FileExists(ExpandConstant('{app}\{#ExeName}')) then
+    begin
+      Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all --plugin agy-autotrain', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all --plugin commonmemory', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+    { Zombie-header fix (spec data-lifecycle): when KEEPING data (not --purge-data), rename golden-header.md ->
+      .backup so a future reinstall does not auto-inject frozen wisdom. .backup does NOT auto-restore. Skipped on
+      purge (the whole .clavity dir is deleted by clavity-ls --purge-data). NOTE: honors only the default path,
+      not a CLAVITY_GOLDEN_HEADER override (rare edge). }
+    if not RemoveConfig then
+    begin
+      Header := ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md');
+      Backup := Header + '.backup';
+      if FileExists(Header) then
+      begin
+        DeleteFile(Backup);
+        RenameFile(Header, Backup);
+      end;
+    end;
+  end
+  else if CurUninstallStep = usPostUninstall then
     RemoveFromUserPath(ExpandConstant('{app}'));
 end;
