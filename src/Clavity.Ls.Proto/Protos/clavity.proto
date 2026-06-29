@@ -85,14 +85,20 @@ message CascadeTrajectory {                     // partial of gemini_coder.Traje
 }
 
 message CascadeStep {                           // partial
-  int32 kind = 1;                               // step-kind enum (verified: 14=user input, others assistant/tool).
+  int32 kind = 1;                               // step-kind enum (verified: 14=user input, 15=assistant output).
   // 4 = ?, 5 = step metadata (ids/timestamps/run-status) — skipped.
-  CascadeUserInput user_input = 19;             // present only on user-message steps.
+  CascadeUserInput user_input = 19;             // present only on user-message steps (kind 14).
+  CascadeAssistantOutput assistant_output = 20; // present on assistant-message steps (kind 15); wire-verified.
 }
 
 message CascadeUserInput {                      // partial — step field 19
   string text = 2;
   // 3 = { 1: formatted text }, 4, 12 = other — skipped.
+}
+
+message CascadeAssistantOutput {                // partial — step field 20 (assistant reply; wire-verified 2026-06-30)
+  string text = 1;                              // the assistant's reply prose
+  // 3 = reasoning/thinking, 6 = bot id, 8 = duplicate rendered text, 14 = encoded model output — skipped.
 }
 
 // --- SendUserCascadeMessage (T7): post a user message into a cascade. Field numbers verified against the

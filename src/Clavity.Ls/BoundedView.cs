@@ -30,7 +30,12 @@ public static class BoundedView
 
         foreach (var step in trajectory.Steps)
         {
-            string? text = step.UserInput is { } ui && ui.Text.Length > 0 ? ui.Text : null;
+            // Surface the step's prose: user-message text (field 19) OR assistant-reply text (field 20).
+            // Before this, only user_input was read, so agy's replies (kind 15) came back null.
+            string? text =
+                step.UserInput is { } ui && ui.Text.Length > 0 ? ui.Text
+                : step.AssistantOutput is { } ao && ao.Text.Length > 0 ? ao.Text
+                : null;
             if (text is not null && text.Length > MaxStepTextChars)
                 text = string.Concat(text.AsSpan(0, MaxStepTextChars), "…");
 

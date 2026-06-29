@@ -15,6 +15,22 @@ public class BoundedViewTests
     }
 
     [Fact]
+    public void Assistant_step_reply_text_is_surfaced_not_just_user_input()
+    {
+        // Regression: agy's reply (kind 15) carries prose in assistant_output (field 20), NOT user_input (19).
+        // BoundedView previously read only user_input, so replies came back null.
+        var t = new CascadeTrajectory { CascadeId = "c0" };
+        t.Steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = "hi" } });
+        t.Steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = "Hello! How can I help?" } });
+
+        var v = BoundedView.Summarize(t);
+
+        Assert.Equal("hi", v.Steps[0].Text);
+        Assert.Equal(15, v.Steps[1].Kind);
+        Assert.Equal("Hello! How can I help?", v.Steps[1].Text);
+    }
+
+    [Fact]
     public void Small_trajectory_is_preserved_untruncated()
     {
         var v = BoundedView.Summarize(Traj("c1", (14, "hello"), (15, "world")));
