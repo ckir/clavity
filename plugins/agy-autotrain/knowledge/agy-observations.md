@@ -7,7 +7,8 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
-_(empty — drained 2026-06-20 by agy-curate)_
+- [anti-pattern] Rubber-stamping the peer reviewer's adversarial findings propagates its confident-FALSE claims: it reliably surfaces real author blind-spots the author cannot see in their own work, but it also asserts non-facts — especially "API/command X does not exist" — against available evidence (observed asserting the same false absence twice across rounds). Fold every finding through independent verification; never accept an existence/absence claim unchecked.  ·  `[corpus]` · 2026-06-29
+- [heuristic] Rotating the reviewer persona across rounds (correctness → contract/ops → security → UX → feasibility) surfaces progressively DISTINCT real flaws; returns diminish and go negative once the reviewer starts repeating an already-refuted claim — stop there.  ·  `[corpus]` · 2026-06-29
 
 <!-- Drain log 2026-06-20 (agy 1.0.10):
   - A1/A3 (banner-honored, new-thread) → promoted to agy-assumptions.md "Driving-protocol assumptions".
