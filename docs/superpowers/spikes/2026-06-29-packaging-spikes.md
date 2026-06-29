@@ -92,8 +92,12 @@ dotnet publish src/Clavity.Cli -c Release -r win-x64 --self-contained true \
 
 **Conclusion:** **True single-file is viable** (confirms the managed-`Grpc.Net.Client` hypothesis — no
 `Grpc.Core`-style native lib to self-extract). The `.pdb` files are debug symbols, not runtime deps; CI
-ships only `clavity-ls.exe`. ⇒ Task 1.1 keeps the single-file props in the csproj; the installer `[Files]`
-ships exactly one binary.
+ships only `clavity-ls.exe`. ⇒ the installer `[Files]` ships exactly one binary.
+
+> **Update (Task 1.1 review, agy req-djlhqhnmpxsg):** the single-file / `SelfContained` / `RuntimeIdentifier`
+> props are passed on the **CI `dotnet publish` command line (Task 3.3)**, NOT pinned in the csproj — pinning
+> them there forces a win-x64 restore (breaks the Linux/macOS porting build) and copies the self-contained
+> runtime on every local Debug build. Only `<AssemblyName>clavity-ls</AssemblyName>` lives in the csproj.
 
 ## Spike 0.4 — agent-detection heuristic
 
