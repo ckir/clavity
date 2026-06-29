@@ -14,6 +14,9 @@ public sealed class AgyViewOptions
 
     /// <summary>Delay between boot-race polls.</summary>
     public TimeSpan BootRacePollInterval { get; init; } = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Resolved golden-header path to read+prepend per ask; null disables injection (tests / no add-on).</summary>
+    public string? GoldenHeaderPath { get; init; }
 }
 
 /// <summary>
@@ -69,7 +72,9 @@ public sealed class AgyView
             // Step count BEFORE sending — everything appended after this index is the reply to our message.
             var before = (await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken)).Steps.Count;
 
-            await client.SendUserCascadeMessageAsync(conversationId, message, cancellationToken);
+            var header = _options.GoldenHeaderPath is null ? null : GoldenHeader.TryRead(_options.GoldenHeaderPath);
+            var outgoing = GoldenHeader.Apply(header, message);
+            await client.SendUserCascadeMessageAsync(conversationId, outgoing, cancellationToken);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(timeout ?? DefaultIdleWaitTimeout);

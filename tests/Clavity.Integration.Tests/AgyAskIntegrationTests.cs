@@ -135,6 +135,29 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task AskAsync_prepends_golden_header_to_the_sent_message()
+    {
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), Array.Empty<CascadeStep>());
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        var headerPath = Path.Combine(dir, "golden-header.md");
+        File.WriteAllText(headerPath, "DRIVING RULE: scope to judgment");
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderPath = headerPath });
+            await view.AskAsync("please review");
+
+            Assert.StartsWith("DRIVING RULE: scope to judgment", fake.LastSentText);
+            Assert.Contains("please review", fake.LastSentText);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public async Task AskAsync_throws_TimeoutException_when_conversation_never_goes_idle()
     {
         // Idle delay far exceeds the client timeout -> the client-side guard must cancel the wait.

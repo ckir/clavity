@@ -13,6 +13,9 @@ if (args.Contains("--mcp"))
     {
         CliLogPath = AgyEnvironment.ResolveCliLogPath(
             Environment.GetEnvironmentVariable(AgyEnvironment.LogPathVar), agyDir),
+        GoldenHeaderPath = GoldenHeader.ResolvePath(
+            Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
     };
 
     var builder = Host.CreateApplicationBuilder(args);
