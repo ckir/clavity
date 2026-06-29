@@ -16,10 +16,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>clavity-ls</AssemblyName>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <!-- Single-file / self-contained / RID props are passed on the CI `dotnet publish` command line
+         (Task 3.3), NOT pinned here: in the csproj they would force win-x64 restore (breaking the
+         documented Linux/macOS porting build) and copy the self-contained runtime on every local
+         Debug build. Spike 0.3 proved the publish-time flags yield a non-extracting single-file exe. -->
   </PropertyGroup>
 
 </Project>
