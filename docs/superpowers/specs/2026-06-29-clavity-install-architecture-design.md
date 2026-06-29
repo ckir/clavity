@@ -187,6 +187,29 @@ uninstall) → binary removed, PATH cleaned, optional data purge.
 - **Live smoke (manual, gated)** — `clavity-ls start <project>` launches a working pair (as clavity-classic
   is verified end-to-end today).
 
+## Security (supply-chain & installer) — folded from AGY-AFTER round 3
+
+- **Bootstrap trust (HIGH).** The `irm … | iex` URL MUST pin an **immutable git tag**, never a mutable
+  branch; `install.ps1` stays minimal to keep the audit surface small.
+- **Release-asset integrity (CRITICAL).** `install.ps1` at the pinned tag **hard-codes the SHA-256** of the
+  expected `…-setup.exe`, downloads it, and **verifies the hash — aborting on mismatch before execution**, so
+  a compromised GitHub Release asset can't yield silent RCE. (Stricter than aidesktop's bootstrap, which does
+  not hash-check.)
+- **Code-signing (HIGH, UX).** CI **Authenticode-signs** both `clavity-ls.exe` and `…-setup.exe`; an unsigned
+  exe gets Mark-of-the-Web → SmartScreen/Defender hard-block. If no cert is available, the spec explicitly
+  accepts the SmartScreen warning as an unmitigated UX risk and documents the bypass.
+- **PATH (MEDIUM).** Inno **APPENDS** `{app}` to HKCU `Path` (never prepend — avoids command/DLL hijack);
+  `{app}` holds only `clavity-ls.exe` + the plugin subfolder (minimal DLL-hijack surface).
+- **Agent-config writes (MEDIUM).** `clavity-ls install` mutates agent JSON config; it MUST use **atomic
+  write (temp-file + rename) + defensive JSON parse**, and enforce it runs as the **logged-in user** (never
+  elevated — no SYSTEM-owned files written into the user profile; `PrivilegesRequired=lowest` aids this).
+- **.NET single-file extraction (HIGH).** Standard `PublishSingleFile` may extract native libs to a
+  hijackable `%TEMP%\.net\…`. Build with **NativeAOT *if the gRPC/Grpc.Net.Client/protobuf/MCP-SDK stack
+  permits*** (VERIFY — AOT reflection limits may rule it out); else use true single-file with **native-lib
+  extraction disabled** (or a secured extract dir).
+- **Mutex/registry forgeability (LOW — accepted).** A same-user process can forge the exclusion registry key
+  or hold `Global\ClavityMcpRunning` to block installs — local DoS only, no escalation; accepted.
+
 ## Scope / non-goals / sequencing
 
 - **In scope (build now):** the chooser; the clavity-dotnet Inno installer; the bundled clavity-dotnet
