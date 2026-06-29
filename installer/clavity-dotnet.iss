@@ -10,7 +10,7 @@
 ; manifest's ./plugins/<name> source paths. claude installs via the marketplace; agy installs the local dir.
 
 #define AppName "clavity-dotnet"
-#define AppVersion "0.1.3"
+#define AppVersion "0.1.4"
 #define ExeName "clavity-ls.exe"
 
 [Setup]

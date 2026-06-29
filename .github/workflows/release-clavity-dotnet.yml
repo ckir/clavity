@@ -79,7 +79,7 @@ jobs:
           if (-not (Test-Path "$app\plugins\commonmemory")) { throw "plugins\commonmemory (add-on) not shipped" }
 
           $arp = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -eq "clavity-dotnet" }
+            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }  # Inno DisplayName = "clavity-dotnet version X.Y.Z"
           if (-not $arp) { throw "Add/Remove Programs key not present after install" }
 
           $userPath = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
@@ -95,7 +95,7 @@ jobs:
 
           if (Test-Path "$app\clavity-ls.exe") { throw "clavity-ls.exe still present after uninstall" }
           $arp2 = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
-            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -eq "clavity-dotnet" }
+            Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }  # Inno DisplayName = "clavity-dotnet version X.Y.Z"
           if ($arp2) { throw "Add/Remove Programs key still present after uninstall" }
           $userPath2 = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
           if ($userPath2 -like "*$app*") { throw "PATH entry not removed after uninstall" }
