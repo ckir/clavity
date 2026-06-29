@@ -150,7 +150,7 @@ Rationale: these are the commands that *actively drive or re-poll remote CI* —
 
 **State — session-scoped counter:**
 
-- Base dir: `BASE="${TMPDIR:-${TEMP:-/tmp}}/claude-tool-breaker"`; `mkdir -p "$BASE"`. **All path expansions are double-quoted** (Windows `TEMP` contains spaces) — INV-1 depends on it.
+- Base dir: `BASE="${TMPDIR:-/tmp}/claude-tool-breaker"`; `mkdir -p "$BASE"`. (`/tmp` is a clean POSIX dir under Git Bash — `$TEMP` is empty/`TMPDIR`-unset there and carries backslashes + spaces; `/tmp` sidesteps both.) **All path expansions are double-quoted** — INV-1 depends on it.
 - Key: `sid=$(jq -r '.session_id // "default"')`; counter file `"$BASE/$sid.count"`.
 - On a **matching** command: read current count (default 0), increment, **write atomically** (write to `"$BASE/$sid.count.tmp.$$"` then `mv -f` over the target) so concurrent shell-tool invocations cannot corrupt the file.
 - On a **non-matching** command: do nothing, `exit 0` silent.
