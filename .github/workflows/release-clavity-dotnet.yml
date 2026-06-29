@@ -1,0 +1,65 @@
+name: release-clavity-dotnet
+
+# Release-only CI (user decision 2026-06-29): there is NO continuous .NET build/test workflow on this branch;
+# the .NET gate stays local. This workflow runs ONLY on a version tag and produces the version-pinned artifacts.
+on:
+  push:
+    tags:
+      - 'clavity-dotnet-v*'
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create the GitHub Release + upload assets
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish clavity-ls (non-extracting single-file)
+        shell: pwsh
+        run: |
+          # Single-file flags live on the publish command line (NOT the csproj) so local Debug builds + the
+          # Linux/macOS porting build stay framework-dependent (Task 1.1 review). Spike 0.3 proved no %TEMP%\.net
+          # extraction with IncludeNativeLibrariesForSelfExtract=false.
+          dotnet publish src/Clavity.Cli -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false `
+            -o publish
+          if (-not (Test-Path publish/clavity-ls.exe)) { throw "publish/clavity-ls.exe was not produced" }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer (ISCC)
+        shell: pwsh
+        run: |
+          # ISCC resolves the .iss [Files] relative to installer/: ..\publish\clavity-ls.exe (above),
+          # ..\.claude-plugin\marketplace.json + ..\plugins\<name> (checked out). Output -> ..\dist (OutputDir).
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc installer/clavity-dotnet.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path dist/clavity-dotnet-setup.exe)) { throw "dist/clavity-dotnet-setup.exe was not produced" }
+
+      - name: Compute SHA-256 companion (D2)
+        shell: pwsh
+        run: |
+          # sha256sum-style "<hash>  <filename>"; install/clavity-install.ps1 parses the first whitespace token.
+          $h = (Get-FileHash dist/clavity-dotnet-setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  clavity-dotnet-setup.exe" | Set-Content -Path dist/clavity-dotnet-setup.exe.sha256 -Encoding ascii
+
+      - name: Publish release assets (setup exe + .sha256 companion)
+        uses: softprops/action-gh-release@v2
+        with:
+          # Unsigned (owner decision - document SmartScreen). Both the setup exe AND its .sha256 companion are
+          # published so install/clavity-install.ps1 can verify integrity before running.
+          files: |
+            dist/clavity-dotnet-setup.exe
+            dist/clavity-dotnet-setup.exe.sha256
