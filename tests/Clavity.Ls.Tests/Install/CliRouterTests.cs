@@ -56,4 +56,31 @@ public sealed class CliRouterTests
         Assert.Empty(runner.Calls);
         Assert.Contains("No compatible agent", sw.ToString());
     }
+
+    [Fact]
+    public void IsInstalled_does_not_false_match_a_substring_plugin_name()
+    {
+        var detection = new AgentDetection(onPath: _ => true, dirExists: _ => false); // both present
+        var sw = new StringWriter();
+        // Each agent's `plugin list` reports a DIFFERENT plugin whose name CONTAINS the query as a substring.
+        ProcessRunner run = (exe, args) => new ProcessOutcome(0, "uncommonmemory\nclavity-dotnet");
+
+        var rc = CliRouter.Run(new[] { "is-installed", "commonmemory" }, sw, detection, run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+
+        Assert.NotEqual(0, rc); // 'commonmemory' is NOT installed; 'uncommonmemory' must not false-match
+        Assert.Contains("not installed", sw.ToString());
+    }
+
+    [Fact]
+    public void IsInstalled_matches_an_exact_plugin_token()
+    {
+        var detection = new AgentDetection(onPath: n => n == "agy", dirExists: _ => false); // only agy
+        var sw = new StringWriter();
+        ProcessRunner run = (exe, args) => new ProcessOutcome(0, "{ \"imports\": [ { \"name\": \"commonmemory\" } ] }");
+
+        var rc = CliRouter.Run(new[] { "is-installed", "commonmemory" }, sw, detection, run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+
+        Assert.Equal(0, rc);
+        Assert.Contains("is installed", sw.ToString());
+    }
 }
