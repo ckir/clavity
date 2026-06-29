@@ -854,7 +854,7 @@ if (Clavity.Ls.Install.CliRouter.IsInstallerVerb(args))
 
 - [ ] **Step 1: Hold the named mutex for the host lifetime.** At the top of the `--mcp` block, before building the host:
 ```csharp
-    using var liveSessionMutex = new System.Threading.Mutex(initiallyOwned: true, @"Global\ClavityMcpRunning", out _);
+    using var liveSessionMutex = new System.Threading.Mutex(initiallyOwned: true, @"Local\ClavityMcpRunning", out _);
 ```
 (The installer's `PrepareToInstall` detects this held mutex — Component B/D — without WMI.)
 
@@ -881,7 +881,7 @@ No target files exist yet; authored from the verified `aidesktop` references. Sp
   - `[Run]` + exit-code check: run `{app}\clavity-ls.exe install --agent all --plugin "{app}\plugin"` and **check its exit code in `[Code]` via `Exec`** (UX "visible install-step failure"), not fire-and-forget, so a failed plugin/MCP registration shows an error + log path rather than false "Success".
   - `[Code]`:
     - `InitializeSetup()` — mutual-exclusion refusal (Component E): detect (a) the OTHER variant's `HKCU\…\Uninstall\clavity-classic` key AND (b) a cargo-classic `clavity.exe` on PATH distinct from `clavity-ls` and/or classic skills in the agent dirs. On hit: `MsgBox` printing the **exact path** of the offending binary + how to remove it (UX "actionable exclusion message"), then `Result := False`.
-    - `PrepareToInstall()` — if `Global\ClavityMcpRunning` is held, abort with *"close your active Claude pairing session first."* Do NOT taskkill a live `--mcp`.
+    - `PrepareToInstall()` — if `Local\ClavityMcpRunning` is held, abort with *"close your active Claude pairing session first."* Do NOT taskkill a live `--mcp`.
     - `InitializeUninstall()` — run `clavity-ls uninstall --agent all` via `Exec`; **if non-zero, `Result := False`** to cancel before any file deletion (Component B; `[UninstallRun]` cannot abort). `--force`/second-confirm escape. Host the purge prompt.
     - `CurUninstallStepChanged(usPostUninstall)` — `RemoveFromUserPath('{app}')` (verbatim from flaui-mcp.iss).
   - `InfoAfterFile` / final message: *"Open a terminal and run `clavity-ls start C:\path\to\project`."* (UX "next-step prompt").
@@ -901,7 +901,7 @@ Run (if Inno installed): `ISCC.exe installer/clavity-dotnet.iss` → produces `d
   - Prompt `classic` / `dotnet`.
   - **Dual mutual-exclusion pre-check** (Component A/E): read `HKCU\…\Uninstall\clavity-classic` / `…\clavity-dotnet` AND probe for a cargo `clavity.exe`; warn+exit before download if the other variant is present.
   - Resolve the GitHub Release (`-Version latest` default; pinned tag otherwise), find asset `clavity-<variant>-setup.exe`.
-  - **SHA-256 verification (security §release-asset integrity):** hard-code the expected hash for the pinned tag, download, `Get-FileHash -Algorithm SHA256`, **abort on mismatch before running**.
+  - **SHA-256 verification (security §release-asset integrity — D2 RESOLVED: companion-asset):** download the CI-published companion `clavity-<variant>-setup.exe.sha256` from the SAME release, then download the exe, `Get-FileHash -Algorithm SHA256`, **abort on mismatch before running**. (Threat model: guards partial/corrupt downloads + a single swapped asset; a fully compromised Release could rewrite both, so integrity ultimately rests on the immutable pinned tag + GitHub/TLS trust — documented, accepted.) ⇒ Task 3.3 CI MUST emit the `.sha256` companion asset.
   - Run interactive by default; `-Silent` → `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`.
   - Docs note: "run in **PowerShell**, not cmd.exe" (UX "two entry paths").
 
@@ -914,7 +914,7 @@ Run (if Inno installed): `ISCC.exe installer/clavity-dotnet.iss` → produces `d
 **Files:**
 - Create: `.github/workflows/release-clavity-dotnet.yml`
 
-- [ ] **Step 1: Author the workflow** (windows runner): on a version tag — `dotnet publish src/Clavity.Cli -c Release -r win-x64` with the single-file flags Spike 0.3 confirmed → `publish/clavity-ls.exe`; `ISCC.exe installer/clavity-dotnet.iss` → `dist/clavity-dotnet-setup.exe`; compute its SHA-256; publish the setup exe as a Release asset and surface the hash (so `install.ps1` at the matching tag can pin it). **No signing** (owner decision — ship unsigned).
+- [ ] **Step 1: Author the workflow** (windows runner): on a version tag — `dotnet publish src/Clavity.Cli -c Release -r win-x64` with the single-file flags Spike 0.3 confirmed → `publish/clavity-ls.exe`; `ISCC.exe installer/clavity-dotnet.iss` → `dist/clavity-dotnet-setup.exe`; compute its SHA-256 and write it to `dist/clavity-dotnet-setup.exe.sha256`; **publish BOTH the setup exe AND the `.sha256` companion as Release assets** (D2 — `install.ps1` downloads+verifies the companion). **No signing** (owner decision — ship unsigned).
 
 - [ ] **Step 2: Commit** — `ci(packaging): build + publish clavity-dotnet-setup.exe as a Release asset`.
 
@@ -1026,18 +1026,14 @@ BINDING on the cited task. Two spec-touching items are PENDING USER (see end).
   so Add/Remove Programs can still clean the directory — only run the abort-on-nonzero `Exec` gate when the
   exe exists.
 
-**PENDING USER (spec-touching — agy challenged a settled decision; your call):**
-- **D1 — mutex scope `Global\` vs `Local\` (spec install-arch Component B/D says `Global\ClavityMcpRunning`).**
-  agy argues `Local\` is safer under `PrivilegesRequired=lowest` (avoids cross-session ACL `UnauthorizedAccess`)
-  and sufficient since installer + `--mcp` share the user session. My read: `Global\` create+open works for the
-  same non-elevated user (agy's "guaranteed crash" is overstated), but `Local\` is the better-scoped default.
-  Low-risk either way.
-- **D2 — release-hash pinning is impossible as the spec wrote it.** The spec says `install.ps1` "hard-codes the
-  SHA-256" at the pinned tag — but CI computes the hash AFTER tagging (chicken-and-egg). Options: **(a)** CI
-  uploads a companion `…-setup.exe.sha256` asset and `install.ps1` downloads+verifies it (simple, but a fully
-  compromised Release rewrites both — integrity then rests on the immutable tag + GitHub/TLS trust); **(b)**
-  two-phase release: CI computes the hash, commits it back into `install.ps1`, THEN publishes (true pin, more
-  CI machinery). Affects Tasks 3.2/3.3.
+**RESOLVED USER decisions (2026-06-29):**
+- **D1 — mutex scope = `Local\ClavityMcpRunning`** (deviation from install-arch Component B/D's `Global\`,
+  user-approved). Better-scoped to the user logon session under `PrivilegesRequired=lowest`; avoids any
+  cross-session ACL risk. Folded into Task 2.4 + Task 3.1 `PrepareToInstall`.
+- **D2 — release-hash pin = companion `.sha256` asset** (resolves the spec's impossible "hard-code the hash at
+  the tag" — CI computes the hash after tagging). CI emits `clavity-<variant>-setup.exe.sha256`; `install.ps1`
+  downloads + verifies it. Accepted threat-model limit: a fully compromised Release rewrites both → integrity
+  rests on the immutable pinned tag + GitHub/TLS trust (documented). Folded into Tasks 3.2 + 3.3.
 
 ## Self-review notes (author)
 
