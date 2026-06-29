@@ -972,6 +972,12 @@ Run (if Inno installed): `ISCC.exe installer/clavity-dotnet.iss` → produces `d
 - **Task 7.6 — Agent plugin auto-update skew VERIFY** (confirm Claude/agy do not auto-update a locally path-installed plugin away from the version-pinned `{app}` exe). install-arch Risks.
 - **NativeAOT** — stretch goal only; ruled infeasible for now by the gRPC/protobuf/MCP reflection stack (feasibility round 5).
 
+**Out of scope (decided 2026-06-29):** a continuous .NET **build/test** CI workflow for this branch. CI here is
+**release-only** (Tasks 3.3/3.4 build + publish the version-pinned artifacts). The .NET build/test gate stays
+LOCAL (`dotnet build -c Release` + `dotnet test --filter "Category!=LiveAgy"`), matching how this increment has
+been validated; the existing `.github/workflows/ci.yml` remains Rust/`main`-only. (User decision — do NOT add a
+`ci-dotnet.yml`.)
+
 ---
 
 ## Review fixes — folded from agy 3-lens audit (2026-06-29)
