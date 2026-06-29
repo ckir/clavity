@@ -41,6 +41,7 @@ public static class CliRouter
             if (verb == "uninstall")
             {
                 output.WriteLine("clavity-ls: no compatible agent present — nothing to uninstall.");
+                if (purgeData) PurgeData(logsDir, clavityDataDir, output);   // still honor --purge-data (capstone review)
                 return 0;
             }
             output.WriteLine("clavity-ls: No compatible agent (Claude Code / agy) found — install Claude Code or agy first.");
@@ -68,8 +69,9 @@ public static class CliRouter
             {
                 var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
                 var ok = true;
-                foreach (var a in present)
+                foreach (var a in Enum.GetValues<Agent>())
                 {
+                    if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
                     var r = PluginInstaller.Uninstall(a, pluginName, run);
                     ok &= r.Ok;
                     output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
@@ -160,12 +162,18 @@ public static class CliRouter
             if (p is null) return new ProcessOutcome(127, $"could not start {fileName}");
             // Drain BOTH pipes concurrently to avoid the classic synchronous double-read deadlock: a verbose
             // stderr from a Node-based agent CLI can fill the OS pipe buffer while we block reading stdout
-            // (agy review req-djljg6vwdpkk).
+            // (agy review req-djljg6vwdpkk). The reads run while we wait, so the child never blocks on a full pipe.
             var stdoutTask = p.StandardOutput.ReadToEndAsync();
             var stderrTask = p.StandardError.ReadToEndAsync();
+            // Bounded wait: a Node agent CLI that blocks on auth / an interactive prompt must NOT freeze the
+            // installer forever — kill it and report a timeout (capstone review).
+            if (!p.WaitForExit(60_000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+                return new ProcessOutcome(124, $"{fileName} timed out after 60s");
+            }
             var stdout = stdoutTask.GetAwaiter().GetResult();
             var stderr = stderrTask.GetAwaiter().GetResult();
-            p.WaitForExit();
             return new ProcessOutcome(p.ExitCode, stdout + stderr);
         }
         catch (Exception e)

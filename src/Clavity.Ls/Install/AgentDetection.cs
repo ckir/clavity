@@ -62,6 +62,10 @@ public sealed class AgentDetection
                 UseShellExecute = false,
             });
             if (p is null) return false;
+            // Drain both pipes (async, discarded) so a verbose error path can't fill a buffer and stall the wait
+            // — only the exit code is needed (capstone review).
+            _ = p.StandardOutput.ReadToEndAsync();
+            _ = p.StandardError.ReadToEndAsync();
             p.WaitForExit(3000);
             return p.HasExited && p.ExitCode == 0;
         }

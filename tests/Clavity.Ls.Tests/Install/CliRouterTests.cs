@@ -126,6 +126,29 @@ public sealed class CliRouterTests
     }
 
     [Fact]
+    public void Uninstall_with_zero_agents_still_purges_data_when_requested()
+    {
+        // Capstone fix: zero agents present must NOT skip --purge-data (else a 'delete data' uninstall on a
+        // machine whose agents were already removed would silently leave .clavity behind).
+        var dataDir = Path.Combine(Path.GetTempPath(), "clavity-data-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDir); File.WriteAllText(Path.Combine(dataDir, "golden-header.md"), "wisdom");
+        try
+        {
+            var detection = new AgentDetection(onPath: _ => false, dirExists: _ => false); // none present
+            var sw = new StringWriter();
+            var rc = CliRouter.Run(new[] { "uninstall", "--purge-data" }, sw, detection, new FakeRunner().Run,
+                @"C:\app", @"C:\app\plugins\clavity-dotnet", logsDir: null, clavityDataDir: dataDir);
+
+            Assert.Equal(0, rc);
+            Assert.False(Directory.Exists(dataDir)); // purge ran despite zero agents
+        }
+        finally
+        {
+            if (Directory.Exists(dataDir)) Directory.Delete(dataDir, true);
+        }
+    }
+
+    [Fact]
     public void Uninstall_with_purge_data_deletes_both_logs_and_clavity_data()
     {
         var logsDir = Path.Combine(Path.GetTempPath(), "clavity-logs-" + Guid.NewGuid().ToString("N"));

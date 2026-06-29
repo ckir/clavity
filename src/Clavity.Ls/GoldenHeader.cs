@@ -26,7 +26,9 @@ public static class GoldenHeader
     /// Content to inject, or null when absent / empty / over-cap. Never throws on IO.
     /// F13: absent/empty is a SILENT null (add-on simply not installed); over-cap returns null AND emits a
     /// visible warning via <paramref name="warn"/> so a user whose oversized hand-edit deactivated injection
-    /// is told why.
+    /// is told why. NOTE: this does NOT validate the .sha256 sidecar — active tamper-detection (warn/refuse on a
+    /// sidecar mismatch) is the explicitly DEFERRED follow-on (packaging Task 7.4); today the sidecar is written
+    /// but not read.
     /// </summary>
     public static string? TryRead(string path, Action<string>? warn = null)
     {
