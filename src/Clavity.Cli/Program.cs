@@ -41,6 +41,11 @@ if (args.Length > 0 && args[0] == "curate-commit")
     return CliVerbs.CurateCommit(headerPath, Console.In, Console.Error);
 }
 
+if (Clavity.Ls.Install.CliRouter.IsInstallerVerb(args))
+{
+    return Clavity.Ls.Install.CliRouter.Run(args, Console.Out);
+}
+
 // `clavity start <folder> [claude-args...]` — open a visible human-owned agy tab (per-session LS log) + launch Claude.
 if (args.Length > 0 && args[0] == "start")
 {
