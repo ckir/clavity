@@ -53,6 +53,39 @@ model for the task (`--model`): deep reasoning → a Thinking/High model; bulk �
   reactive wakeup; do not poll." Sections: `### Command` · `### Working Directory` ·
   `### Success Criteria`.
 
+## Task-assignment protocol — what stops agy misfiring
+
+agy is bold and acts on what you give it. Frame the task precisely:
+
+- **Review / red-team / consult → loud REVIEW-ONLY banner.** Open the payload with a 🛑 banner that
+  forbids edits/commits and **enumerates** the forbidden actions (no file writes, no git, no bridge
+  task). Without it, agy will *execute* a task you meant as a review. End with explicit permission to
+  return "no blockers."
+- **Phase isolation.** Never mix research and implementation in one payload. Tag
+  `[PHASE: EXPLORATION]` (gather/opine, no build) **or** `[PHASE: EXECUTION]` (build to a spec) — mixing
+  fills agy's context with raw search output and degrades the build.
+- **Mandatory checkpoint for mutating delegations.** If you delegate a task that changes files, the
+  payload must instruct agy to make a recoverable checkpoint (`git stash` / temp branch) **before**
+  touching the tree.
+- **Delegated implementation → name the oracle + the done-condition + "no scope creep."** Seed the
+  exact invariants/tests that define correct; tell it to STOP and report rather than adapt on a mismatch.
+- **Seed invariants, don't ask it to "find bugs."** agy verifies far better than it discovers; give it
+  the specific things to confirm/refute and permission that "no must-fix is valid."
+
+<!-- KEEP IN SYNC WITH clavity-ls-driving (plugins/clavity-dotnet/skills/clavity-ls-driving/SKILL.md) -->
+
+## Prepend the golden header (manual — until the classic binary injects it)
+
+Before sending any payload, prepend the contents of `%USERPROFILE%\.clavity\golden-header.md` (the
+compiled agy-driving wisdom) when that file exists; if it is absent or empty, silently skip it (the
+agy-autotrain add-on simply isn't installed). Do this **manually**: unlike the dotnet `clavity-ls`
+binary — which auto-injects — the classic `clavity` binary does not yet read the header, so the skill
+prepends it. (This manual step is removed once the classic binary injects on its own in a later release.)
+
+If the human asks you to permanently remember a project rule and no `agy-curate` skill is present,
+permanent learning needs the **agy-autotrain** add-on — tell them to re-run the clavity installer and
+tick it.
+
 ## 6. Clarify / cancel / recover
 - agy reads the bus only at the START of a turn — it can't ingest new instructions mid-turn.
   To pivot: `clavity cancel` (Escape) + an `alert` `[req_id=…] cancel`, let it idle, then resend.

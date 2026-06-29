@@ -1,5 +1,7 @@
-<!-- COMPILED by agy-curate from the canonical manual. Auto-prepended to every `clavity ask`.
-     Keep dense + decision-changing only. If empty/absent, driving-agy silently omits it.
+<!-- COMPILED by agy-curate, committed to the shared %USERPROFILE%\.clavity\golden-header.md via
+     `clavity-ls curate-commit`, and prepended to every ask by the binary (classic: the clavity-driving
+     skill prepends it manually until the classic binary injects it).
+     Keep dense + decision-changing only. If empty/absent, injection silently omits it.
      Verified against agy 1.0.10 (Gemini 3.1 Pro High), 2026-06-20 — harness probes A1–A5 all PASS. -->
 
 [⚠️ CRITICAL ANTI-PATTERNS — how NOT to drive agy]

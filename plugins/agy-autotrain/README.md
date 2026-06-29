@@ -1,26 +1,28 @@
-# agy-autotrain — drive agy like a model, and learn from every call
+# agy-autotrain — learn from every agy call, and keep the driving sharp
 
-A universal dual-plugin (Claude + agy) that does two things, with **no binary changes** (it composes
-the existing `clavity` commands + markdown):
+An **optional** dual-plugin (Claude + agy) add-on for the agy-driving **learning loop**, with **no binary
+changes** (it composes the existing `clavity` commands + markdown). It is the driving-PERFECTION loop:
+everyday usage teaches it, and the distilled wisdom flows back into every call.
 
-1. **One front door to agy.** A `driving-agy` skill so Claude calls the agy peer itself — via
-   `clavity ask` (sync) or send + `clavity await-reply` (async) — *without the human typing any
-   command*. It encodes the task-assignment protocol that stops agy misfiring (REVIEW-ONLY banner,
-   phase isolation, mandatory pre-mutation checkpoint, seed-the-invariants) and auto-prepends the
-   compiled `golden-header.md` to every payload.
-2. **Auto-training knowledge loop.** Everyday usage teaches it: **capture → curate → verify → compile**,
-   then promote project-local → global.
+> **Driving itself lives in the CORE plugins, not here.** The task-assignment protocol that stops agy
+> misfiring (REVIEW-ONLY banner, phase isolation, mandatory pre-mutation checkpoint, seed-the-invariants)
+> ships in the core driving skills — `clavity-driving` (classic) and `clavity-ls-driving` (dotnet) — so you
+> can drive agy with or without this add-on. agy-autotrain adds only the *learning* on top.
+
+What this add-on does: **capture → curate → verify → compile**, then promote project-local → global, and
+emit a compiled `golden-header.md` that the binary (dotnet `clavity-ls`) prepends to every ask — or that the
+classic `clavity-driving` skill prepends manually until the classic binary injects it.
 
 ## The loop
 
 ```
-drive agy (driving-agy) ──learn──▶ knowledge/agy-observations.md   (inbox: sanitised general rules)
-        ▲                                      │
-        │ golden-header.md (auto-prepended)    │ periodic
-        │                                      ▼
- knowledge/golden-header.md ◀──compile── agy-curate ──promote(rubric)──▶ knowledge/agy-capabilities.md
-                                              │                              + agy-assumptions.md (canonical)
-                                              └──verify (synthetic clavity ask)──▶ verify/assertions.md
+drive agy (core driving skill) ──learn──▶ knowledge/agy-observations.md   (inbox: sanitised general rules)
+        ▲                                          │
+        │ golden-header (injected by the binary)   │ periodic
+        │                                          ▼
+ shared golden-header.md ◀──compile+commit── agy-curate ──promote(rubric)──▶ knowledge/agy-capabilities.md
+   (%USERPROFILE%\.clavity\)                       │                              + agy-assumptions.md (canonical)
+                                                   └──verify (synthetic clavity ask)──▶ verify/assertions.md
 ```
 
 - **Capture** (`agy-learn`): the moment you learn something general about agy, a Structured Abstraction
@@ -28,7 +30,8 @@ drive agy (driving-agy) ──learn──▶ knowledge/agy-observations.md   (in
   appended to the inbox. Fast, live, project-agnostic.
 - **Curate** (`agy-curate`): drains the inbox into the canonical manual under a promotion rubric
   (heuristic ≥2 cross-session obs; empirical = 100% harness pass — physically run the probe), dedupes/
-  prunes/resolves drift, recompiles the golden header, empties the inbox.
+  prunes/resolves drift, recompiles the golden header and **commits it via the binary** (`clavity-ls
+  curate-commit`), empties the inbox.
 - **Verify** (`verify/`): each Empirical Assumption has a synthetic `clavity ask` probe + pass/fail.
 - **Knowledge** (`knowledge/`): the canonical `agy-capabilities.md` / `agy-assumptions.md` travel *inside*
   the plugin, so it ships as a portable, standalone "agy instruction manual."
@@ -38,12 +41,11 @@ drive agy (driving-agy) ──learn──▶ knowledge/agy-observations.md   (in
 ```
 agy-autotrain/
   .claude-plugin/plugin.json · plugin.json   # dual manifests
-  skills/driving-agy/        # the front door + task-assignment protocol + golden-header prepend
   skills/agy-learn/          # capture (sanitise → inbox)
-  skills/agy-curate/         # curate (promote/verify/recompile/empty)
+  skills/agy-curate/         # curate (promote/verify/recompile → curate-commit)
   knowledge/agy-capabilities.md · agy-assumptions.md   # canonical manual (portable)
   knowledge/agy-observations.md   # inbox (raw, project-agnostic)
-  knowledge/golden-header.md      # compiled, auto-prepended to every ask
+  knowledge/golden-header.md      # the compiled header source (committed to the shared path by agy-curate)
   verify/assertions.md · run-verification.md   # the live test harness
 ```
 
@@ -54,8 +56,8 @@ claude plugin install ./plugins/agy-autotrain
 agy    plugin install ./plugins/agy-autotrain
 ```
 
-Then drive: when you want a second opinion/review, just call `clavity ask` (the `driving-agy` skill
-guides it). When you learn something about agy, run `agy-learn`. Periodically run `agy-curate`.
+Driving needs only the core plugin; install this add-on when you also want agy to *learn*. When you learn
+something about agy, run `agy-learn`; periodically run `agy-curate` to compile + commit the golden header.
 
 ## Scope
 
