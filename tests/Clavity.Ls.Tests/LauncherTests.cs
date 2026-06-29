@@ -1,9 +1,24 @@
+using System.Text;
 using Clavity.Ls;
 
 namespace Clavity.Ls.Tests;
 
 public class LauncherTests
 {
+    /// <summary>Decode the agy-tab pwsh script from the base64 <c>-EncodedCommand</c> argument (UTF-16LE).</summary>
+    private static string DecodeScript(LaunchPlan plan) =>
+        Encoding.Unicode.GetString(Convert.FromBase64String(plan.AgyTab.Arguments[6]));
+
+    [Fact]
+    public void AgyTab_arguments_contain_no_semicolon_so_wt_does_not_split_the_command()
+    {
+        // Regression (v0.1.4 launch bug): Windows Terminal treats ';' in its command line as a tab/pane
+        // separator. A raw ';' in any wt argument shatters the launch into broken sub-tabs and agy never
+        // starts. The script must be passed base64-encoded (-EncodedCommand), which has no ';'.
+        var plan = Launcher.Build(Opts());
+        Assert.All(plan.AgyTab.Arguments, arg => Assert.DoesNotContain(";", arg));
+    }
+
     private static LaunchOptions Opts(
         string folder = @"C:\work\repo",
         string sessionId = "11111111-2222-3333-4444-555555555555",
@@ -28,11 +43,11 @@ public class LauncherTests
 
         Assert.Equal("wt", plan.AgyTab.FileName);
         Assert.Equal(
-            new[] { "new-tab", "--startingDirectory", @"C:\work\repo", "pwsh", "-NoExit", "-Command" },
+            new[] { "new-tab", "--startingDirectory", @"C:\work\repo", "pwsh", "-NoExit", "-EncodedCommand" },
             plan.AgyTab.Arguments.Take(6));
         Assert.Equal(@"C:\work\repo", plan.AgyTab.WorkingDirectory);
 
-        var script = plan.AgyTab.Arguments[6];
+        var script = DecodeScript(plan);
         Assert.Equal(
             "$env:ANTIGRAVITY_CSRF_TOKEN='clavity'; $env:ANTIGRAVITY_PROJECT_ID='proj-123'; " +
             @"agy --log-file 'C:\Users\u\.gemini\antigravity-cli\logs\clavity-11111111-2222-3333-4444-555555555555.log'",
@@ -44,7 +59,7 @@ public class LauncherTests
     {
         var plan = Launcher.Build(Opts(projectId: null));
 
-        var script = plan.AgyTab.Arguments[6];
+        var script = DecodeScript(plan);
         Assert.DoesNotContain("ANTIGRAVITY_PROJECT_ID", script);
         Assert.StartsWith("$env:ANTIGRAVITY_CSRF_TOKEN='clavity'; agy --log-file ", script);
     }
@@ -52,15 +67,15 @@ public class LauncherTests
     [Fact]
     public void SkipPermissions_appends_flag_only_when_opted_in()
     {
-        Assert.DoesNotContain("--dangerously-skip-permissions", Launcher.Build(Opts()).AgyTab.Arguments[6]);
-        Assert.EndsWith(" --dangerously-skip-permissions", Launcher.Build(Opts(skipPermissions: true)).AgyTab.Arguments[6]);
+        Assert.DoesNotContain("--dangerously-skip-permissions", DecodeScript(Launcher.Build(Opts())));
+        Assert.EndsWith(" --dangerously-skip-permissions", DecodeScript(Launcher.Build(Opts(skipPermissions: true))));
     }
 
     [Fact]
     public void Env_values_are_single_quoted_with_embedded_quotes_doubled()
     {
         var plan = Launcher.Build(Opts(logFile: @"C:\o'brien\clavity.log"));
-        Assert.Contains(@"agy --log-file 'C:\o''brien\clavity.log'", plan.AgyTab.Arguments[6]);
+        Assert.Contains(@"agy --log-file 'C:\o''brien\clavity.log'", DecodeScript(plan));
     }
 
     [Fact]

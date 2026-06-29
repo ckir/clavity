@@ -53,12 +53,20 @@ public static class Launcher
 
         var script = BuildAgyTabScript(agyEnv, options.AgyLogFilePath, options.SkipPermissions);
 
+        // Windows Terminal treats ';' in its command line as a tab/pane separator and re-parses GetCommandLineW
+        // itself, so a structured-argv inline `-Command "...; ...; agy ..."` is still shattered into broken
+        // sub-tabs (agy never launches — the v0.1.4 bug). Base64-encode the script as UTF-16LE and pass it via
+        // pwsh `-EncodedCommand`: base64's alphabet has no ';', so wt cannot split it, and pwsh decodes and runs
+        // the identical script. (Preferred over `\;` escaping — fragile through argv quoting — and over a temp
+        // `-File` script — extra lifecycle. Keeps this builder pure.)
+        var encodedScript = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+
         var agyTab = new LaunchCommand(
             FileName: "wt",
             Arguments: new[]
             {
                 "new-tab", "--startingDirectory", options.Folder,
-                "pwsh", "-NoExit", "-Command", script,
+                "pwsh", "-NoExit", "-EncodedCommand", encodedScript,
             },
             WorkingDirectory: options.Folder,
             Environment: agyEnv);
