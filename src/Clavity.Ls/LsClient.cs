@@ -52,7 +52,20 @@ public sealed class LsClient : IDisposable
     /// </summary>
     public async Task SendUserCascadeMessageAsync(string cascadeId, string text, CancellationToken cancellationToken = default)
     {
-        var request = new SendUserCascadeMessageRequest { CascadeId = cascadeId };
+        var request = new SendUserCascadeMessageRequest
+        {
+            CascadeId = cascadeId,
+            // The live LS rejects a send with no model ("neither PlanModel nor RequestedModel specified") AND
+            // rejects model aliases ("aliases are no longer supported"), so we set a CONCRETE model id:
+            // Gemini 3.1 Pro (High) = agy's default per its model_config_manager log.
+            CascadeConfig = new CascadeConfig
+            {
+                PlannerConfig = new CascadePlannerConfig
+                {
+                    RequestedModel = new ModelOrAlias { Model = Model.Gemini31ProHigh },
+                },
+            },
+        };
         request.Items.Add(new TextOrScopeItem { Text = text });
         await _client.SendUserCascadeMessageAsync(request, cancellationToken: cancellationToken);
     }

@@ -109,13 +109,45 @@ message TextOrScopeItem {                       // partial of exa.codeium_common
 message SendUserCascadeMessageRequest {         // partial
   string cascade_id = 1;
   repeated TextOrScopeItem items = 2;
-  // 3 metadata, 4/5/17/19 configs, 6..23 others — skipped (not set).
+  // 3 metadata, 4 experiment_config, 17/19 other configs, 6..23 others — skipped (not set).
+  CascadeConfig cascade_config = 5;             // carries the model spec; REQUIRED live (see below).
   bool blocking = 8;
 }
 
 // EMPTY by contract: the reply is NOT returned here. Read it via GetCascadeTrajectory after
 // WaitForConversationFullyIdle.
 message SendUserCascadeMessageResponse {
+}
+
+// --- Model spec for SendUserCascadeMessage (T10): the LIVE LS REJECTS a send with no model
+// ("failed to construct executor: neither PlanModel nor RequestedModel specified") — the in-proc fake
+// never enforced this, so it surfaced only on the live write. Partial models of exa.cortex_pb.CascadeConfig /
+// CascadePlannerConfig and exa.codeium_common_pb.ModelOrAlias / ModelAlias — ONLY the path we set:
+//   cascade_config.planner_config.requested_model.alias = MODEL_ALIAS_RECOMMENDED.
+// Field numbers raw-byte-verified against the agy-1.0.11-matched jkfujinami revision 753169f. Wire-compatible
+// despite the local package (protobuf encodes field numbers + wire types, not type names).
+message CascadeConfig {                          // partial of exa.cortex_pb.CascadeConfig
+  CascadePlannerConfig planner_config = 1;
+}
+
+message CascadePlannerConfig {                   // partial of exa.cortex_pb.CascadePlannerConfig
+  // 1 = Model plan_model — requested_model alone satisfies the live "specify a model" check.
+  ModelOrAlias requested_model = 15;
+}
+
+message ModelOrAlias {                           // partial of exa.codeium_common_pb.ModelOrAlias
+  oneof choice {
+    Model model = 1;                             // concrete id; 1.0.11 REJECTS the alias path live
+    // 2 = ModelAlias alias — live error: "model aliases are no longer supported".
+  }
+}
+
+enum Model {                                     // partial of exa.codeium_common_pb.Model
+  MODEL_UNSPECIFIED = 0;
+  // 1037 = key "gemini-3.1-pro-high" / label "Gemini 3.1 Pro (High)" — the user-selected model for the seeded
+  // conversation. Concrete value REQUIRED (1.0.11 dropped aliases). The int is the agy-1.0.11 REGISTRY id read
+  // live via GetAvailableModels — NOT jkfujinami's enum (whose 353=Riftrunner gave "unknown model key" live).
+  MODEL_GEMINI_3_1_PRO_HIGH = 1037;
 }
 
 // --- WaitForConversationFullyIdle (T7): block until the conversation stops producing steps.

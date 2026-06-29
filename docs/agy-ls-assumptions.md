@@ -101,3 +101,29 @@ For N concurrent Claude⇄agy pairs (design: `docs/superpowers/specs/2026-06-28-
 **Re-verify:** golden `tests/Clavity.Ls.Tests/TestData/GetAllCascadeTrajectories.bin` + `GetAllCascadeTrajectoriesGoldenTests`
 (CI); for E1/E3, launch a second `agy --log-file <tmp>` and `grpcurl -plaintext -import-path <dir> -proto <minimal>
 -d '{"exclude_subtrajectories":true}' 127.0.0.1:<httpPort> exa.language_server_pb.LanguageServerService/GetAllCascadeTrajectories`.
+
+## 6. SendUserCascadeMessage requires a CONCRETE model (T10, live-verified 2026-06-29, agy 1.0.11)
+
+A live `SendUserCascadeMessage` with no model is REJECTED at executor construction:
+`failed to construct executor: neither PlanModel nor RequestedModel specified`. The in-proc fake LS never enforced
+this, so it surfaced only on the first live write. The model must be set at:
+`SendUserCascadeMessageRequest.cascade_config(5) → CascadeConfig.planner_config(1) → CascadePlannerConfig.requested_model(15)
+→ ModelOrAlias.model(1)` (all field numbers from the agy-1.0.11-matched jkfujinami revision `753169f`, raw-byte verified).
+
+Two further live gotchas:
+- **Model ALIASES are rejected:** `requested_model.alias = MODEL_ALIAS_RECOMMENDED` → `model aliases are no longer
+  supported`. A concrete `Model` enum value is required.
+- **The `Model` enum INTS are version-specific to the running agy, NOT jkfujinami's enum.** jkfujinami's
+  `MODEL_GOOGLE_GEMINI_RIFTRUNNER_THINKING_HIGH = 353` gave `unknown model key …: model not found` live. The
+  authoritative ids come from the LS itself: `GetAvailableModels` → `FetchAvailableModelsResponse.models`
+  (`map<key, ModelDetails>`, each `ModelDetails{ display_name=1, model=15 }`). Live, key `gemini-3.1-pro-high` /
+  display `Gemini 3.1 Pro (High)` = **1037**, which clavity now sends. ⚠ This int is HARD-CODED in `clavity.proto`
+  (`Model.MODEL_GEMINI_3_1_PRO_HIGH = 1037`); if agy renumbers or that model is unavailable, re-read it via
+  `GetAvailableModels`. A future enhancement should resolve the model dynamically (e.g. `default_agent_model_id` or
+  the conversation's own model) instead of hard-coding.
+
+**Re-verify (live, gated):** `tests/Clavity.Live.Acceptance/AgyAskLiveTests.cs` (Skip by default) drives the full
+production `AgyView.AskAsync` round-trip; run with `CLAVITY_LIVE_AGY=1` + `CLAVITY_LIVE_CLILOG=<per-session log>`
+and `--filter Category=LiveAgy` against a seeded, idle agy conversation. PASS = our message lands as a `kind=14`
+user step and agy appends ≥1 reply step. To re-read model ids: `grpcurl -plaintext -import-path <dir> -proto <minimal>
+-d '{}' 127.0.0.1:<httpPort> exa.language_server_pb.LanguageServerService/GetAvailableModels`.
