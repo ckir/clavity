@@ -210,6 +210,34 @@ uninstall) → binary removed, PATH cleaned, optional data purge.
 - **Mutex/registry forgeability (LOW — accepted).** A same-user process can forge the exclusion registry key
   or hold `Global\ClavityMcpRunning` to block installs — local DoS only, no escalation; accepted.
 
+## User experience (naive-user journey) — folded from AGY-AFTER round 4
+
+The goal is "simple for a non-technical Windows user," so these are requirements, not nice-to-haves:
+
+- **Two entry paths (HIGH).** Primary for non-technical users = a **direct `…-setup.exe` download** from the
+  GitHub Releases page (double-click). The `irm … | iex` one-liner is the power-user path, and docs MUST say
+  "run this in **PowerShell**" (it syntax-errors if pasted into `cmd.exe`).
+- **Zero-agent guard (HIGH).** `clavity-ls install` detects agents; if **neither** Claude Code nor agy is
+  found it returns non-zero and the installer shows *"No compatible agent (Claude Code / agy) found — install
+  one first,"* instead of reporting success over a silent no-op.
+- **Next-step prompt (MEDIUM).** On completion the installer shows (Inno `InfoAfterFile` / a final message)
+  the exact next command: *"Open a terminal and run `clavity-ls start C:\path\to\project`."*
+- **Actionable exclusion message (CRITICAL — the cargo-classic dead-end).** When a legacy `clavity.exe` with
+  **no Add/Remove Programs entry** is detected, the refusal MUST print **its exact path** and how to remove it
+  (delete the file + its PATH entry) — never a bare "uninstall it first" that sends the user to an empty
+  Add/Remove Programs list. May optionally offer to remove it.
+- **Visible install-step failure (HIGH).** The installer runs `clavity-ls install` via `Exec` in `[Code]` and
+  **checks the exit code**; on failure it shows a visible error + a log path — never "Success" over a broken
+  plugin/MCP registration. (Same idiom as the uninstall gate.)
+- **Seamless upgrade (MEDIUM).** Re-running the installer upgrades in place; if a pair is live
+  (`Global\ClavityMcpRunning` held) it shows a clear *"close any terminal running clavity, then retry"* message,
+  not a cryptic file-in-use error.
+- **Per-agent skill scoping (MEDIUM — VERIFY).** Prefer Claude loading only `clavity-ls-driving` and agy only
+  `clavity-ls-pairing`. Verify whether the dual-plugin format can scope skills per agent (Claude vs agy
+  manifest); if not, rely on contextual skill invocation (clavity-classic already ships both skills to both
+  CLIs and works in practice) and document the consideration. (Clutter risk, not hard breakage — Claude won't
+  *invoke* a pairing skill.)
+
 ## Scope / non-goals / sequencing
 
 - **In scope (build now):** the chooser; the clavity-dotnet Inno installer; the bundled clavity-dotnet
