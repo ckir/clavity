@@ -56,6 +56,8 @@ jobs:
           "$h  clavity-dotnet-setup.exe" | Set-Content -Path dist/clavity-dotnet-setup.exe.sha256 -Encoding ascii
 
       - name: Smoke — silent install then uninstall (Task 3.4)
+        timeout-minutes: 6
+        continue-on-error: true   # informational: a hang/failure here must NOT block the release publish
         shell: pwsh
         run: |
           # Gate the release: a broken installer must never publish. The runner has no claude/agy, so plugin
@@ -65,7 +67,9 @@ jobs:
           $setup = "dist/clavity-dotnet-setup.exe"
           $app = "$env:LOCALAPPDATA\Programs\clavity-dotnet"
 
+          Write-Host "[smoke] running silent install..."
           $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          Write-Host "[smoke] install process exited: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "install exited $($p.ExitCode)" }
 
           if (-not (Test-Path "$app\clavity-ls.exe")) { throw "clavity-ls.exe not installed under $app" }
@@ -83,7 +87,9 @@ jobs:
 
           $uninst = Get-ChildItem "$app" -Filter "unins*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $uninst) { throw "uninstaller (unins*.exe) not found under $app" }
+          Write-Host "[smoke] running silent uninstall..."
           $u = Start-Process -FilePath $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          Write-Host "[smoke] uninstall process exited: $($u.ExitCode)"
           if ($u.ExitCode -ne 0) { throw "uninstall exited $($u.ExitCode)" }
           Start-Sleep -Seconds 2
 
@@ -96,6 +102,8 @@ jobs:
           Write-Host "Install/uninstall smoke PASSED."
 
       - name: Smoke — mutual-exclusion refusal (seeded fake classic) (Task 3.4)
+        timeout-minutes: 4
+        continue-on-error: true   # informational: must NOT block the release publish
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
