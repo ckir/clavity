@@ -66,4 +66,47 @@ public class BoundedViewTests
         Assert.NotNull(v.Steps[0].Text);
         Assert.True(v.Steps[0].Text!.Length <= BoundedView.MaxStepTextChars + 1);
     }
+
+    [Fact]
+    public void Ask_caps_allow_a_full_long_reply_uncapped_below_the_ask_per_step_limit()
+    {
+        // A 5000-char reply exceeds the LOOK 1000 cap but is under the ASK 16000 cap → must come back whole.
+        var t = new CascadeTrajectory { CascadeId = "c" };
+        t.Steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = new string('z', 5000) } });
+
+        var v = BoundedView.Summarize(t, BoundedView.AskBudgetChars, BoundedView.AskMaxStepChars, newestFirst: true);
+
+        Assert.Equal(5000, v.Steps[0].Text!.Length);
+        Assert.False(v.Truncated);
+    }
+
+    [Fact]
+    public void Ask_newestFirst_keeps_the_final_reply_when_budget_is_tight()
+    {
+        // Older noisy step would overflow the budget in forward order, dropping the real answer.
+        // newestFirst must KEEP the final reply and drop the older step instead.
+        var t = new CascadeTrajectory { CascadeId = "c" };
+        t.Steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = new string('x', 8000) } });
+        t.Steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = "THE ANSWER" } });
+
+        var v = BoundedView.Summarize(t, budgetChars: 8000, maxStepChars: 16000, newestFirst: true);
+
+        Assert.Contains(v.Steps, s => s.Text == "THE ANSWER");
+        Assert.True(v.Truncated);
+    }
+
+    [Fact]
+    public void Ask_newestFirst_returns_kept_steps_in_chronological_order()
+    {
+        var t = new CascadeTrajectory { CascadeId = "c" };
+        t.Steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = "first" } });
+        t.Steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = "second" } });
+
+        var v = BoundedView.Summarize(t, BoundedView.AskBudgetChars, BoundedView.AskMaxStepChars, newestFirst: true);
+
+        Assert.Equal(2, v.Steps.Count);
+        Assert.Equal("first", v.Steps[0].Text);
+        Assert.Equal("second", v.Steps[1].Text);
+        Assert.False(v.Truncated);
+    }
 }

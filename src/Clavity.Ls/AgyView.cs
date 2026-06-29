@@ -62,7 +62,7 @@ public sealed class AgyView
     /// </summary>
     public async Task<BoundedTrajectory> AskAsync(
         string message,
-        int budgetChars = BoundedView.DefaultBudgetChars,
+        int budgetChars = BoundedView.AskBudgetChars,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -93,7 +93,7 @@ public sealed class AgyView
             var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
             var reply = new CascadeTrajectory { CascadeId = full.CascadeId };
             reply.Steps.AddRange(full.Steps.Skip(before));
-            return BoundedView.Summarize(reply, budgetChars);
+            return BoundedView.Summarize(reply, budgetChars, BoundedView.AskMaxStepChars, newestFirst: true);
         }
     }
 

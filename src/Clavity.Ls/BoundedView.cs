@@ -21,23 +21,34 @@ public static class BoundedView
 {
     public const int DefaultBudgetChars = 8000;
     public const int MaxStepTextChars = 1000;
+    /// <summary>Generous total budget for an <c>agy_ask</c> reply (the reply is a small delta you want whole).</summary>
+    public const int AskBudgetChars = 32_000;
+    /// <summary>Per-step cap for an <c>agy_ask</c> reply — large enough for a full prose answer, still bounds a runaway step.</summary>
+    public const int AskMaxStepChars = 16_000;
 
-    public static BoundedTrajectory Summarize(CascadeTrajectory trajectory, int budgetChars = DefaultBudgetChars)
+    public static BoundedTrajectory Summarize(
+        CascadeTrajectory trajectory,
+        int budgetChars = DefaultBudgetChars,
+        int maxStepChars = MaxStepTextChars,
+        bool newestFirst = false)
     {
+        var ordered = newestFirst
+            ? Enumerable.Reverse(trajectory.Steps).ToList()
+            : trajectory.Steps.ToList();
+
         var steps = new List<BoundedStep>();
         var used = 0;
         var truncated = false;
 
-        foreach (var step in trajectory.Steps)
+        foreach (var step in ordered)
         {
             // Surface the step's prose: user-message text (field 19) OR assistant-reply text (field 20).
-            // Before this, only user_input was read, so agy's replies (kind 15) came back null.
             string? text =
                 step.UserInput is { } ui && ui.Text.Length > 0 ? ui.Text
                 : step.AssistantOutput is { } ao && ao.Text.Length > 0 ? ao.Text
                 : null;
-            if (text is not null && text.Length > MaxStepTextChars)
-                text = string.Concat(text.AsSpan(0, MaxStepTextChars), "…");
+            if (text is not null && text.Length > maxStepChars)
+                text = string.Concat(text.AsSpan(0, maxStepChars), "…");
 
             var cost = text?.Length ?? 0;
             if (used + cost > budgetChars)
@@ -52,6 +63,10 @@ public static class BoundedView
 
         if (steps.Count < trajectory.Steps.Count)
             truncated = true;
+
+        // Restore chronological order when we filled from the newest end (agy_ask).
+        if (newestFirst)
+            steps.Reverse();
 
         return new BoundedTrajectory(trajectory.CascadeId, trajectory.Steps.Count, steps, truncated);
     }
