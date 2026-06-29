@@ -51,11 +51,13 @@ public static class CliRouter
         {
             case "install":
             {
+                var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
+                var dir = PluginDirFor(pluginName, pluginDir);
                 var ok = true;
                 foreach (var a in Enum.GetValues<Agent>())
                 {
                     if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
-                    var r = PluginInstaller.Install(a, marketplaceRoot, pluginDir, run);
+                    var r = PluginInstaller.Install(a, pluginName, marketplaceRoot, dir, run);
                     ok &= r.Ok;
                     output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
                 }
@@ -64,10 +66,11 @@ public static class CliRouter
 
             case "uninstall":
             {
+                var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
                 var ok = true;
                 foreach (var a in present)
                 {
-                    var r = PluginInstaller.Uninstall(a, run);
+                    var r = PluginInstaller.Uninstall(a, pluginName, run);
                     ok &= r.Ok;
                     output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
                 }
@@ -97,6 +100,21 @@ public static class CliRouter
                 output.WriteLine("usage: clavity-ls [install | uninstall | is-installed <plugin>]");
                 return 2;
         }
+    }
+
+    private static string? OptionValue(string[] args, string name)
+    {
+        var i = Array.FindIndex(args, a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
+        return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+    }
+
+    /// <summary>The install dir for a plugin: the core pluginDir as-is, else a sibling under the same plugins/ root.</summary>
+    private static string PluginDirFor(string pluginName, string corePluginDir)
+    {
+        if (string.Equals(pluginName, PluginInstaller.PluginName, StringComparison.OrdinalIgnoreCase))
+            return corePluginDir;
+        var pluginsRoot = Path.GetDirectoryName(corePluginDir.TrimEnd(Path.DirectorySeparatorChar));
+        return pluginsRoot is null ? corePluginDir : Path.Combine(pluginsRoot, pluginName);
     }
 
     /// <summary>`--purge-data`: remove clavity's own data — the per-session logs dir (Task 2.3) AND

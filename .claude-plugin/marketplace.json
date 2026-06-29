@@ -15,6 +15,11 @@
       "name": "clavity-dotnet",
       "source": "./plugins/clavity-dotnet",
       "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask)."
+    },
+    {
+      "name": "commonmemory",
+      "source": "./plugins/commonmemory",
+      "description": "Optional add-on: a shared notebook so Claude and agy share facts across the pairing."
     }
   ]
 }

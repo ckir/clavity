@@ -31,6 +31,21 @@ public sealed class CliRouterTests
     }
 
     [Fact]
+    public void Install_with_plugin_option_installs_the_named_add_on_from_its_sibling_dir()
+    {
+        var detection = new AgentDetection(onPath: _ => true, dirExists: _ => false); // both present
+        var runner = new FakeRunner();
+        var sw = new StringWriter();
+
+        var rc = CliRouter.Run(new[] { "install", "--plugin", "agy-autotrain" }, sw, detection, runner.Run,
+            @"C:\app", @"C:\app\plugins\clavity-dotnet");
+
+        Assert.Equal(0, rc);
+        Assert.Contains(runner.Calls, c => c.Exe == "claude" && c.Args.Contains("install agy-autotrain@clavity"));
+        Assert.Contains(runner.Calls, c => c.Exe == "agy" && c.Args.Contains(@"plugin install C:\app\plugins\agy-autotrain"));
+    }
+
+    [Fact]
     public void Install_with_only_one_agent_present_does_not_fail_or_call_the_absent_agent()
     {
         var detection = new AgentDetection(onPath: n => n == "claude", dirExists: _ => false); // only claude
