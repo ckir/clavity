@@ -7,7 +7,7 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
-- [anti-pattern] Rubber-stamping the peer reviewer's adversarial findings propagates its confident-FALSE claims: it reliably surfaces real author blind-spots the author cannot see in their own work, but it also asserts non-facts — especially "API/command X does not exist" — against available evidence (observed asserting the same false absence twice across rounds). Fold every finding through independent verification; never accept an existence/absence claim unchecked.  ·  `[corpus]` · 2026-06-29
+- [anti-pattern] Asking the peer agent to ASSERT verifiable EXTERNAL facts it cannot observe (does a CLI command/flag/file exist, exact API/wire shapes) makes it CONFABULATE confidently — the wrong answer is a DRIVING fault (bad question framing), not the agent being unreliable. It is a reasoning/judgment engine, not a fact oracle: scope questions to JUDGMENT / design / red-teaming (its strength) and FEED the ground truth (paste the --help, the file, the schema) instead of asking it to recall. It still reliably surfaces real author blind-spots — keep using it for that — but verify any bare factual claim it volunteers.  ·  `[corpus]` · 2026-06-29
 - [heuristic] Rotating the reviewer persona across rounds (correctness → contract/ops → security → UX → feasibility) surfaces progressively DISTINCT real flaws; returns diminish and go negative once the reviewer starts repeating an already-refuted claim — stop there.  ·  `[corpus]` · 2026-06-29
 
 <!-- Drain log 2026-06-20 (agy 1.0.10):
