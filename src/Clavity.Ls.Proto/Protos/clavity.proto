@@ -122,8 +122,9 @@ message SendUserCascadeMessageResponse {
 // --- Model spec for SendUserCascadeMessage (T10): the LIVE LS REJECTS a send with no model
 // ("failed to construct executor: neither PlanModel nor RequestedModel specified") — the in-proc fake
 // never enforced this, so it surfaced only on the live write. Partial models of exa.cortex_pb.CascadeConfig /
-// CascadePlannerConfig and exa.codeium_common_pb.ModelOrAlias / ModelAlias — ONLY the path we set:
-//   cascade_config.planner_config.requested_model.alias = MODEL_ALIAS_RECOMMENDED.
+// CascadePlannerConfig and exa.codeium_common_pb.ModelOrAlias / Model — ONLY the path we set:
+//   cascade_config.planner_config.requested_model.model = MODEL_GEMINI_3_1_PRO_HIGH (a CONCRETE id; the
+//   alias path is rejected live — see below).
 // Field numbers raw-byte-verified against the agy-1.0.11-matched jkfujinami revision 753169f. Wire-compatible
 // despite the local package (protobuf encodes field numbers + wire types, not type names).
 message CascadeConfig {                          // partial of exa.cortex_pb.CascadeConfig
