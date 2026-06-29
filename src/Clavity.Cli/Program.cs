@@ -98,4 +98,4 @@ if (args.Length > 0 && args[0] == "start")
     }
 }
 
-Console.WriteLine("clavity — usage: clavity start <folder> [claude-args...]   |   clavity --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
+Console.WriteLine("clavity-ls — usage: clavity-ls start <folder> [claude-args...]   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
