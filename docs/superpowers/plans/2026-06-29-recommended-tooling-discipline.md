@@ -142,13 +142,13 @@ while IFS= read -r entry; do
       [ -z "$p" ] && continue
       ep=$(expand_path "$p")
       if [ -f "$ep" ]; then present=yes; break; fi
-    done < <(printf '%s' "$entry" | jq -r '(.file_exists) | if type=="array" then .[] elif type=="string" then . else empty end' 2>/dev/null)
+    done < <(printf '%s' "$entry" | jq -r '(.file_exists) | if type=="array" then .[] elif type=="string" then . else empty end' 2>/dev/null | tr -d '\r')
   fi
 
   if [ "$present" = no ]; then
     missing="${missing}  • ${name} — ${why}.   Install: ${install}"$'\n'
   fi
-done < <(jq -c '.[]' "$manifest" 2>/dev/null)
+done < <(jq -c '.[]' "$manifest" 2>/dev/null | tr -d '\r')   # jq on Git Bash emits CRLF; strip \r so test -f paths aren't corrupted
 
 if [ -n "$missing" ]; then
   msg="RIGHT-TOOL check — this project recommends tools that appear MISSING locally. Installing them now can prevent slow workarounds:"$'\n'"${missing}(Hooks never auto-install; run the command yourself, or ask the user.)"
