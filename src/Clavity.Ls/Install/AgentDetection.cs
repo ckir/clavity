@@ -50,28 +50,27 @@ public sealed class AgentDetection
         };
     }
 
-    /// <summary>Windows PATH probe: `where &lt;exe&gt;` exits 0 when the executable is on PATH.</summary>
+    /// <summary>PATH probe — scans PATH + PATHEXT IN-PROCESS (no `where` subprocess). Spawning a child with
+    /// redirected handles inside the installer's hidden, non-interactive Exec deadlocked the silent install (agy
+    /// consult req-djlnh6yfta8k); an in-process scan has no handle/console/teardown risk and is faster.</summary>
     private static bool OnRealPath(string exe)
     {
-        try
+        var dirs = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        var exts = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.BAT;.CMD")
+            .Split(';', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var dir in dirs)
         {
-            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("where", exe)
+            var d = dir.Trim().Trim('"');
+            if (d.Length == 0) continue;
+            try
             {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            });
-            if (p is null) return false;
-            // Drain both pipes (async, discarded) so a verbose error path can't fill a buffer and stall the wait
-            // — only the exit code is needed (capstone review).
-            _ = p.StandardOutput.ReadToEndAsync();
-            _ = p.StandardError.ReadToEndAsync();
-            p.WaitForExit(3000);
-            return p.HasExited && p.ExitCode == 0;
+                if (File.Exists(Path.Combine(d, exe))) return true;            // already carries an extension
+                foreach (var ext in exts)
+                    if (File.Exists(Path.Combine(d, exe + ext))) return true;  // exe + each PATHEXT
+            }
+            catch { /* skip a malformed PATH entry */ }
         }
-        catch
-        {
-            return false;
-        }
+        return false;
     }
 }
