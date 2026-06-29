@@ -1,0 +1,12 @@
+[
+  {
+    "name": "ISCC (Inno Setup Compiler)",
+    "why": "compile + smoke-test installer/clavity-dotnet.iss locally instead of via remote release CI",
+    "in_path": "ISCC.exe",
+    "file_exists": [
+      "$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe",
+      "C:/Program Files (x86)/Inno Setup 6/ISCC.exe"
+    ],
+    "install": "winget install --id JRSoftware.InnoSetup"
+  }
+]
