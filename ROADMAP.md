@@ -1,255 +1,147 @@
 # clavity ROADMAP
 
-> Provenance: authored from a real driving session (Claude driving `agy` through clavity,
-> 2026-06-16) — 6 review/red-team round-trips (a readiness ping, three spec reviews, two
-> convergent gates). The items below are the concrete frictions hit in that session, written
-> so they can be implemented in a separate session without further context.
+> **Live roadmap — reconciled 2026-06-30.** This file is the single forward-looking source of truth.
+> It supersedes the original 2026-06-16 driving-session roadmap (now folded into **§ Shipped — history**
+> below). Detail for each item lives in `docs/superpowers/specs/` + `docs/superpowers/plans/`; this file
+> tracks **what is done** and **what is next, in order**.
 
 ---
 
-## ✅ STATUS: COMPLETE (2026-06-17)
+## What clavity is now
 
-Everything below is **shipped and on `main`** (`ckir/clavity`). Summary:
+clavity pairs **Claude** with a live **Antigravity (`agy`)** peer. It ships in **two variants**:
 
-- **Theme 1 — blocking round-trips:** `ask` (+ `--review-only`/`--no-ring`), `await-reply`, `ping`,
-  the `src/membus.rs` agentmemory daemon REST client, and the hermetic fake-endpoint test harness —
-  all delivered. Step 0 (daemon API discovery) recorded in `agy-assumptions.md` #13.
-- **Theme 2 — protocol & docs hygiene:** pane-scrape/poll-loop deprecated; REVIEW-ONLY banner
-  codified; README / protocol runbook / `agy-assumptions.md` / `bus.rs` comment all updated.
-- **Acceptance criteria (1–4):** all met — one-shot `ask` round-trip verified live; no path requires
-  `capture | grep` or a hand-rolled poll loop; existing commands unchanged with the full suite green
-  (`cargo test` / `clippy -D warnings` / `fmt --check`); docs updated.
-- **Follow-up — pre-flight thread discovery:** resolved as **Option D** (`await-reply --thread-id`,
-  thread-scoped; unsafe unscoped path dropped) after an agy design consult; tested + live-validated.
+- **clavity-dotnet** — .NET 10, binary **`clavity-ls`**, drives agy over its **Language Server** (gRPC/h2c)
+  via the `agy_look` / `agy_status` / `agy_ask` MCP tools. **SHIPPED**: one-command Windows installer
+  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.7**.
+- **clavity-classic** — Rust, binary **`clavity`**, drives agy over **psmux** + the **agentmemory signal bus**
+  (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives on the **`clavity-classic`
+  branch**. Today it installs via `cargo install --git … --branch clavity-classic` (needs the Rust toolchain).
+  **An installer for it is the #1 forward item.**
 
-Beyond this ROADMAP, the same effort produced the **agy capability profile** + capability-aware
-**wording protocol** + a re-runnable **acceptance suite** (see `docs/agy-capabilities.md`,
-`docs/agy-remote-control-protocol.md`, `docs/agy-test-suite.md`). No open items remain.
+Optional opt-in add-ons (installer checkboxes): **agy-autotrain** (the agy-driving-perfection learning loop) and
+**commonmemory** (shared Claude⇄agy notebook over agentmemory).
+
+The two variants are **mutually exclusive** on a machine (the installers refuse to co-install).
 
 ---
 
-## Theme 1 — First-class blocking round-trips (the big one)
+## ✅ Shipped
 
-### The friction (observed)
+### clavity-dotnet — releases
+- **v0.1.0–v0.1.4** — packaging: Inno installer + PowerShell chooser + release CI + silent install/uninstall
+  CI smoke; mutual-exclusion guard; per-user (`%LOCALAPPDATA%` + HKCU), unsigned. (v0.1.1–v0.1.4 were
+  installer-hang fixes culminating in a fully CI-green silent lifecycle — the lesson that birthed local-ISCC
+  verification, now standard.)
+- **v0.1.5** — agy-tab launch fix: `wt` split `;` in the inline pwsh script → base64 `pwsh -EncodedCommand`.
+- **v0.1.6** — `agy_ask`/`agy_look` decode agy's **reply prose** (modeled `CascadeAssistantOutput`, trajectory
+  field 20.1; `BoundedView` reads assistant text, not just user input).
+- **v0.1.7** — `agy_ask` returns agy's **full reply**: differentiated view caps (LOOK keeps the 8 KB/1 KB glance;
+  ASK uses 32 KB total / 16 KB per-step) + **newest-first fill** so a noisy delta can't re-truncate the answer.
+  (Closed the 1 000-char/step `BoundedView` cap that truncated long design consults.)
 
-The delegation loop today is **send → ring → (figure out the reply yourself)**. There is no
-first-class "wait for agy's correlated reply" step, so the master (Claude) is forced into one of two
-poor patterns:
-
-1. **Poll `memory_signal_read(agentId=claude, unreadOnly=true)` in a loop** — N MCP calls, manual
-   timing, easy to read too early (empty) or too late.
-2. **Scrape agy's pane**: `clavity capture | grep <req_id>` in a timer loop. This was the actual
-   workaround used. It is fragile — it matches terminal text, races pane redraws, and depends on the
-   reply being *visible* in the viewport.
-
-`clavity wait-idle` does **not** solve this: it blocks on **pane idle** (agy stopped typing), not on
-a **correlated bus reply landing**. So there is no reliable, low-overhead "block until agy answers
-request X, then give me the answer" primitive. Each round-trip this session cost a ~2-minute wait
-plus hand-rolled polling overhead.
-
-### The goal
-
-The master issues **one** call per delegation and gets the reply **content** back, with a timeout —
-no polling, no pane-scraping.
-
-### Core architectural decision — DO THIS FIRST
-
-clavity is currently **bus-agnostic by design** — `src/bus.rs` (lines 3–5) states the bus is driven
-by the MCP tools `memory_signal_send` / `memory_signal_read`, "which only the agent runtime
-(Claude / agy) can call — **not this binary**." bus.rs holds only *pure conventions* (req-id minting,
-the `[req_id=..]` envelope).
-
-To wait on (and optionally send) bus messages, **clavity must become a direct client of the
-agentmemory daemon** — the shared store both agents' MCP servers connect to (README: it runs a
-shared daemon, default `:3111`). This is a deliberate reversal of the "never touches the bus" stance
-and **must be recorded** in `docs/agy-assumptions.md` as a new, load-bearing external dependency.
-
-#### Step 0 — discover the agentmemory daemon API (UNKNOWN — verify before building anything)
-
-Do **not** guess the API. First determine how to read/write signals out-of-band from the MCP tools:
-
-- Inspect `@agentmemory/agentmemory`: does the daemon expose an HTTP/REST or WebSocket API on
-  `:3111` for listing/sending signals? Look for routes like
-  `GET /signals?to=claude&unreadOnly=true` and `POST /signals`.
-- Decision tree:
-  - **HTTP/WS API exists** → clavity speaks it directly (preferred; simplest).
-  - **Only stdio MCP exists** → either (a) clavity spawns `npx @agentmemory/agentmemory mcp` as a
-    child and speaks MCP JSON-RPC to call `memory_signal_read` / `memory_signal_send`; or
-    (b) read the daemon's backing store directly (SQLite/JSON file) for **reads only** (sends still
-    need the API/MCP). Prefer (a).
-- Record in `docs/agy-assumptions.md`: daemon port/discovery (env override? default 3111?), any auth,
-  and the **exact signal schema** — confirmed fields: `id`, `from`, `to`, `type`
-  (info|request|response|alert|handoff), `content`, `replyTo`, `threadId`, `readAt`, `createdAt`.
-
-Until Step 0 is resolved the commands below cannot be built. New I/O lives in a **new module
-`src/membus.rs`** (the agentmemory daemon client); `bus.rs` stays pure-conventions.
-
-### New commands
-
-> Insertion points: `enum Cmd` at `src/main.rs:50`; dispatch `match cli.cmd` at `src/main.rs:116`.
-> Follow the existing exit-code discipline (machine output → stdout; diagnostics → stderr via
-> `tracing`; meaningful exit codes).
-
-#### `clavity await-reply --req-id <ID> [--timeout SECONDS] [--poll-interval MS]`
-
-Block until a bus signal addressed to the master (`to=claude`) correlated to `<ID>` arrives; print
-its `content` to **stdout**; exit `0`. On timeout, exit `1` (note on stderr).
-
-- **Correlation:** match `replyTo == <request's signal id>` **OR** `content` contains
-  `[req_id=<ID>]`. The master usually does not know the request's signal id, so correlate primarily
-  on the embedded `req_id` — **reuse `bus::extract_req_id`** (already in the binary, currently
-  `#[allow(dead_code)]` — this makes it live) and add a `replyTo` check.
-- **Return content directly** so the master needs no second `memory_signal_read`.
-- **Read-state semantics:** do NOT mark-read in a way that hides the reply from the master's own MCP
-  inbox. Prefer a **non-mutating** read (filter without marking read); OR document that `await-reply`
-  is authoritative and the master must not also `memory_signal_read` the same id. Decide per Step 0
-  capabilities and document it.
-- **Polling:** long-poll server-side if the API supports it; otherwise poll every `--poll-interval`
-  (default ~1000–1500 ms — this is clavity-side, so the master's prompt cache is irrelevant).
-
-#### `clavity ask "<INSTRUCTION>" [--to AGENT] [--type TYPE] [--timeout N] [--review-only] [--no-ring]`
-
-The composite one-shot round-trip = **mint req-id + send request on the bus + ring + await-reply +
-print reply**. Collapses today's 4-step dance into one call. This is THE ergonomic win:
-
-```
-clavity ask --review-only "review docs/specs/foo.md against the code; verify, don't redesign…"
-# → prints agy's verdict, or exits 1 on --timeout
-```
-
-- Requires daemon **send** capability (Step 0). If out-of-band send proves impossible, ship
-  `await-reply` alone and keep send on the master's MCP tool (document that `ask` needs the send path).
-- `--to` default `agy`; `--type` default `request`.
-- `--no-ring` for cases where agy is already mid-turn / will pick up the queued doorbell.
-- Output: reply `content` on stdout; exit `0` reply / `1` timeout.
-
-#### `--review-only` flag (on `ask`)
-
-Prepend the **strict REVIEW-ONLY banner** to the request content. This convention was used every
-round this session and agy honored it (replied `Changes Made: None (Review only)`); encoding it as a
-flag makes the no-edit/no-commit contract one keystroke and consistent. Store the banner as a
-constant. Canonical text:
-
-```
-╔══════════════════════════════════════════════╗
-║  REVIEW ONLY — DO NOT EDIT, DO NOT COMMIT.    ║
-║  No file writes. No git stage/commit/push.    ║
-║  Output is a written verdict ONLY.            ║
-╚══════════════════════════════════════════════╝
-```
-
-#### (optional) `clavity ping [--timeout N]`
-
-Readiness round-trip: send `[ping]` + ring + await `READY`/`pong`. Turns the README "give agy a
-moment / gate on a bus-readiness ping" guidance into one command. Implement as `ask` with the ping
-fast-path content (the responder skill already fast-paths `[ping]` → `READY`, no checkpoint).
+### clavity-dotnet — engineering increments (all merged to `main`)
+- **.NET port, increment 1 (T1–T10)** — LS discovery, h2c framing (live-proven + CI-pinned), `LsClient`,
+  the `agy_look`/`agy_status`/`agy_ask` MCP surface, live write path (model-id reverse-engineered).
+- **Multi-session pairing** — N independent Claude⇄agy pairs in a shared agy tree; per-session `--log-file`→port
+  discovery, identity via `CLAVITY_AGY_LOG`/`CLAVITY_SESSION_ID`, convId from the LS (ConversationLocator retired),
+  log retention, ModalGuard. Live-proven with two concurrent agy instances.
+- **Product-structure refactors** — golden-header injection moved skill→binary (`clavity-ls curate-commit` writes,
+  the binary reads+prepends per ask); anti-misfire driving protocol merged into the core driving skills;
+  `driving-agy` deleted; bundled `clavity-dotnet` plugin + marketplace entry.
+- **RIGHT-TOOL tooling discipline** — declarative `.claude/recommended-tools.json` + SessionStart presence-check
+  hook + remote-iteration circuit-breaker (ISCC declared; local installer verification is now standard).
 
 ---
 
-## Theme 2 — Protocol & docs hygiene
+## ▶ Forward backlog (in priority order)
 
-- **Deprecate pane-scraping for reply detection** in `docs/agy-remote-control-protocol.md`: tell the
-  master to use `clavity ask` / `await-reply`, and explicitly **NOT** to `clavity capture | grep` or
-  hand-roll a `memory_signal_read` poll loop to find replies.
-- **Codify the REVIEW-ONLY banner** in the protocol runbook as the canonical wording for review /
-  red-team delegations (with the `--review-only` flag as the easy path).
-- **README**: add `await-reply` / `ask` / `ping` to the command table; replace the manual 4-step
-  "Drive agy from Claude" example with the single `clavity ask` call.
-- **`docs/agy-assumptions.md`**: add the agentmemory daemon API as a new dependency (port, schema,
-  re-verify procedure after an agentmemory update) — it becomes load-bearing, unlike today.
-- **`src/bus.rs`** doc comment: update the "not this binary" claim once `membus.rs` exists (the
-  *conventions* stay pure; the new module does the I/O).
+### 1. clavity-classic installer — **#1 PRIORITY** (Option A: full shippable, dotnet parity)
 
----
+Ship `clavity-classic-setup.exe` so a user installs classic with **no Rust toolchain**, with feature parity to
+dotnet. Decided scope: **Option A (full shippable artifact)**; build order **7.3 → 7.8 → 7.1 → 7.2** (feature
+parity first, locally testable; then the prebuilt artifact; then the installer authored against the *real* CI
+artifacts; then release CI only after the installer is proven locally). agy-consulted + user-approved 2026-06-30.
 
-## Tests (mirror the existing two tiers)
+- **7.3 — Rust golden-header injection.** Mirror the dotnet `GoldenHeader` in the Rust crate (resolve
+  `%USERPROFILE%\.clavity\golden-header.md` via `dirs::home_dir`, read+cap+prepend in `clavity ask`; add
+  `clavity curate-commit`). **Ship-blocker:** `driving-agy` was deleted, so classic has *no* injection until this
+  lands. The Rust source is on the `clavity-classic` branch → author against that branch (PLAN-vs-SPEC: line-level
+  plan only against code you can read there).
+- **7.8 — prebuild the Rust `clavity.exe` on CI.** A release-CI job `cargo build --release` on a Windows runner
+  (then Linux/macOS per the porting guide), published as a Release asset — removes the user-side Rust requirement
+  and is the build prerequisite for 7.1/7.2.
+- **7.1 — the Inno installer.** Ship the prebuilt binary + register the agentmemory MCP, the GEMINI.md doorbell
+  rule, and `tmux.conf` (+ the **agy-mcp-bridge** *only if* the bridge fork below resolves to include it — it is
+  NOT a fixed 7.1 requirement); slot into the existing chooser. **Mutual exclusion:** the released dotnet installer
+  (v0.1.7) ALREADY detects classic — `InitializeSetup` refuses if the `clavity` stem is on PATH (`ClassicClavityOnPath`)
+  or `HKCU\Software\clavity\classic` is set (`ClassicRegistered`) — so 7.1 needs **no dotnet-side patch**: it must
+  (a) put `clavity.exe` on PATH and (b) SET `HKCU\Software\clavity\classic` so that existing detection fires, and
+  itself refuse if dotnet's ARP key / `clavity-ls` is present. Live-test BOTH directions before merge.
+  AGY-AFTER-audited constraints (packaging plan Task 7.1).
+- **7.2 — `clavity-classic-setup.exe` release CI** (mirror `release-clavity-dotnet.yml`).
 
-- Hermetic unit/integration tests for the daemon client against a **fake agentmemory endpoint** —
-  same spirit as `src/bin/fake_tmux.rs` + `tests/integration.rs`. A tiny in-process HTTP (or stdio)
-  stub that returns a canned `response` signal after K polls. Assert:
-  - `await-reply` blocks then returns the stub's `content`; correlation matches on `req_id` and on
-    `replyTo`.
-  - `await-reply` exits `1` on `--timeout`.
-  - `ask` sends the correct envelope (req-id present; banner prepended iff `--review-only`), rings
-    (unless `--no-ring`), and returns the stubbed reply.
-  - Gate behind a test feature (extend the existing `test-fakes`).
-- Keep green: `cargo test --all --features test-fakes`,
-  `cargo clippy --all-targets --features test-fakes -- -D warnings`, `cargo fmt --all --check`.
+- **OPEN FORK — agy-mcp-bridge runtime (`delegate_to_antigravity`).** The bridge is `claudavity/server.py` (uv/
+  Python), so a clean install needs a runtime. Options surfaced (agy-consulted 2026-06-30): **(a) defer the bridge**
+  and ship the core installer without it (treat it as a later opt-in add-on — post-migration it's the legacy/
+  optional feature); **(b) port the bridge to a small Rust binary** (native parity, no Python/PyInstaller — agy's
+  idea; real porting work); **(c) PyInstaller standalone exe** (no rewrite; PyInstaller flakiness risk);
+  **(d) declare a Python/uv prerequisite** (leaky, fastest). **Decision deferred** to the classic-installer design
+  session, but **MUST be resolved BEFORE 7.1 is authored** — Inno can only pack what the fork settles (the bridge's
+  presence in 7.1 is contingent on it). Also required if the bridge ships: the agy-side `claudavity-responder`
+  skill + the psmux/bus substrate, and NO dev-`.env` leak.
 
----
+### 2. `clavity --restart-agy` (classic) — 7.7
+Agy-only restart: tear down + relaunch ONLY the agy psmux session under the same `--session`, WITHOUT co-launching
+a new Claude (today only `clavity start` relaunches, which orphans the driving session). Re-run agy's exact launch
++ confirm readiness via a `ping`. Surfaced 2026-06-29 when an agy MCP hang forced a full teardown mid-session.
 
-## Non-goals / risks
+### 3. Golden-header tamper-detection — 7.4
+Compare `golden-header.md` to its `.sha256` sidecar at read-time; LOUD plain-English warning on external change,
+subtle active-marker otherwise. Honest threat model: the sidecar defends accidental corruption / naive hand-edits
+only (same-user adversary rewrites both — the accepted same-user boundary). Staged after the injection MVP.
 
-- **True push** to Claude Code (no hook to inject a notification mid-turn) — long-poll `await-reply`
-  is the pragmatic equivalent. Don't chase push.
-- **Don't make the daemon client mandatory** for the existing commands — `start` / `ring` / `state` /
-  `capture` / `doctor` must keep working with zero bus access (setup & diagnostics).
-- **Read-state drift** between clavity reads and the master's MCP reads — resolve per Step 0; default
-  to non-mutating reads + return-content-directly.
-- **agentmemory API instability** across versions — the reason it must live in `agy-assumptions.md`
-  with a re-verify step.
+### 4. Dynamic send-model resolution (dotnet) — T10 follow-up
+`AgyView` hard-codes the send model id (`MODEL_GEMINI_3_1_PRO_HIGH = 1037`); the enum ints are version-specific to
+the running agy. Resolve dynamically (`GetAvailableModels` `default_agent_model_id`, or the conversation's own
+model) so a model/version change can't break the live write. User-accepted as deferred (pre-1.0 scope; the paired
+agy uses its default model).
 
----
+### 5. Packaging verifications — 7.5 / 7.6
+- **7.5** — confirm the dual-plugin format scopes `clavity-ls-driving` to Claude and `clavity-ls-pairing` to agy
+  (else rely on contextual invocation + document).
+- **7.6** — confirm Claude/agy don't auto-update a locally path-installed plugin away from the version-pinned
+  `{app}` binary.
 
-## Acceptance criteria
-
-1. `clavity ask --review-only "<spec review request>"` performs a full round-trip and prints agy's
-   verdict in **one** invocation, honoring `--timeout` (exit `1` on timeout).
-2. No protocol path requires `clavity capture | grep` or a hand-rolled `memory_signal_read` poll loop
-   for reply detection.
-3. Existing commands behave unchanged; `cargo test` / `clippy -D warnings` / `fmt --check` all green.
-4. README, protocol runbook, and `agy-assumptions.md` updated to match.
-
----
-
-## Suggested sequencing
-
-1. **Step 0** (discover agentmemory daemon API) → record in `agy-assumptions.md`.
-2. `src/membus.rs` client + fake endpoint test harness.
-3. `await-reply` (+ tests).
-4. `ask` (+ `--review-only`, + tests) — depends on send capability.
-5. `ping` (thin wrapper).
-6. Docs sweep (README, protocol runbook, agy-assumptions, bus.rs comment).
+### Stretch (not planned)
+- **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
+  changes.
 
 ---
 
-## Follow-ups (captured post-implementation)
+## Non-goals / accepted limitations
 
-### Pre-flight thread discovery for standalone `await-reply` (agy's idea, 2026-06-16)
+- **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
+  pragmatic equivalent. Don't chase push.
+- **Signed installers** — shipped unsigned (owner decision); SmartScreen warning documented.
+- **Release-asset integrity** — companion `.sha256` + immutable pinned tag + GitHub/TLS trust; a fully compromised
+  Release rewrites both (documented, accepted).
+- **Same-user trust boundary** — `%USERPROFILE%`-scoped data; same-user TOCTOU accepted (cross-user/elevation
+  mitigated). DPAPI/signing out of scope for this threat model.
+- **Migrating classic → dotnet regresses `delegate_to_antigravity`** — dotnet provides `agy_ask` (consults), not
+  autonomous code-delegation. Valid only while clavity-classic stays a maintained variant (which item 1 assumes).
+- **No continuous .NET build/test CI** on `main` — CI here is **release-only**; the .NET gate stays local
+  (`dotnet build -c Release` + `dotnet test --filter "Category!=LiveAgy"`). `ci.yml` remains Rust/`main`-only.
 
-> Source: agy, generative-mode round during the capability-profile test suite (Test C). Captured here
-> as a future enhancement, not yet implemented.
+---
 
-**Friction.** `clavity ask` is safe because it *sent* the request itself, so it knows the `threadId`
-and scopes its consuming read to that one thread (never touches unrelated unread). But **standalone
-`clavity await-reply --req-id <ID>`** — used when the master sent the request via its own MCP
-`memory_signal_send`, so clavity does *not* know the `threadId` — currently reads `agentId=claude`
-with **no `threadId` scope**. The agentmemory daemon's read **consumes** (marks `readAt`) any returned
-unread `to=claude` signal, so this can **consume unrelated replies** sitting in the master's inbox,
-hiding them from the master's own later `memory_signal_read`. (Documented today as "authoritative —
-don't also MCP-read"; the footgun remains for unrelated traffic.)
+## Shipped — history (original 2026-06-16 roadmap)
 
-**RESOLVED 2026-06-17 → Option D (pass the threadId; don't discover it).** An agy design consult
-rejected the original "discover the thread" idea (and a sender-view variant) as **fatally racy**: both
-require an **unscoped `agentId=agy` read**, which marks *all* unread `to=agy` signals read — if clavity
-polls in the window between the ring and agy's own `unreadOnly` MCP read, it **consumes agy's pending
-request**, so agy never processes it and the master hangs. Verified against the daemon semantics
-(`agy-assumptions.md` #13); not a small race (clavity polls within ~1s; agy wakes in seconds).
-
-The fix instead leans on a fact we already have: **`memory_signal_send` returns the created signal,
-including its `threadId`** (Step 0), so **the master already knows the thread**. So:
-1. `clavity await-reply` takes a **required `--thread-id <THR>`** (alongside `--req-id`). The master
-   passes the `threadId` it received from its own send.
-2. clavity polls `agentId=claude&threadId=<THR>` — scoped to exactly that thread, consuming only the
-   awaited reply; it touches **neither agy's inbox nor unrelated `to=claude` messages**. Same safety as
-   the composite `ask`.
-3. **The unsafe unscoped path is dropped** — `--thread-id` is required (no thread, no read), so there
-   is no footgun to document.
-
-**Acceptance:** `await-reply` errors if `--thread-id` is missing; every inbox read it issues is
-`agentId=claude&threadId=<THR>`-scoped (fake-endpoint test asserts the recorded GETs carry the
-threadId); times out exit 1; `ask` unchanged.
-
-**Rejected alternatives:** (a) clavity-side thread *discovery* — racy, see above; (b) a daemon
-`GET /agentmemory/signals?peek=true` no-consume flag — clean but needs an **agentmemory** upstream
-change (out of clavity's control); revisit only if the daemon adds it.
+> Provenance: authored from a real driving session (Claude driving `agy` through clavity, 2026-06-16) — 6
+> review/red-team round-trips. It defined **Theme 1 (first-class blocking round-trips)** and **Theme 2 (protocol &
+> docs hygiene)**, both **COMPLETE 2026-06-17** on `ckir/clavity`: `ask` (+ `--review-only`/`--no-ring`),
+> `await-reply` (resolved to thread-scoped Option D), `ping`, the `membus`/agentmemory daemon client, the
+> hermetic fake-endpoint harness, the deprecation of pane-scraping, and the codified REVIEW-ONLY banner. That
+> effort also produced the agy capability profile + capability-aware wording protocol + the re-runnable acceptance
+> suite (`docs/agy-capabilities.md`, `docs/agy-remote-control-protocol.md`, `docs/agy-test-suite.md`). Everything
+> in this section is shipped; it is kept for provenance only.
