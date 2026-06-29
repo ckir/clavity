@@ -1,5 +1,5 @@
 {
   "name": "clavity-dotnet",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge: drive agy with the agy_look / agy_status / agy_ask MCP tools, and (for agy) a tempered LS-pairing etiquette skill."
 }

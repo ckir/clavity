@@ -10,7 +10,7 @@
 ; manifest's ./plugins/<name> source paths. claude installs via the marketplace; agy installs the local dir.
 
 #define AppName "clavity-dotnet"
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 #define ExeName "clavity-ls.exe"
 
 [Setup]
@@ -70,23 +70,61 @@ end;
 
 { --- Component E: refuse to install if the CLASSIC variant is present (mutual exclusion). --- }
 
-function ClassicClavityOnPath(var FoundPath: string; var ProbeRan: Boolean): Boolean;
+function ClassicClavityOnPath(var FoundPath: string): Boolean;
 var
-  ResultCode: Integer;
-  Lines: TArrayOfString;
-  TmpFile: string;
+  PathExt, Dir, Ext, Rest, Exts, Candidate: string;
+  SemiPos: Integer;
 begin
+  { In-process PATH scan — NO `where` subprocess. Spawning a child with redirected handles inside the installer's
+    hidden, non-interactive Exec deadlocked the silent install (agy consults req-djlnh6yfta8k / req-djlo798boabs;
+    the latter confirmed via CI log that the hang was this very `where clavity` Exec). The .NET side was fixed the
+    same way (AgentDetection.OnRealPath). An in-process scan can't fail to launch, so there is no "probe failed"
+    case to handle. Matches the EXACT `clavity` stem (the classic Rust binary) + each PATHEXT, NOT `clavity-ls.exe`. }
   Result := False;
   FoundPath := '';
-  { `where clavity` matches the EXACT `clavity` stem (the classic Rust binary), NOT our `clavity-ls.exe`. }
-  TmpFile := ExpandConstant('{tmp}\clavity_where.txt');
-  ProbeRan := Exec(ExpandConstant('{cmd}'), '/C where clavity > "' + TmpFile + '" 2>nul', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  if ProbeRan then
+  PathExt := GetEnv('PATHEXT');
+  if PathExt = '' then PathExt := '.EXE;.BAT;.CMD';
+  Rest := GetEnv('PATH');
+  while (Rest <> '') and (not Result) do
   begin
-    if (ResultCode = 0) and LoadStringsFromFile(TmpFile, Lines) and (GetArrayLength(Lines) > 0) then
+    SemiPos := Pos(';', Rest);
+    if SemiPos > 0 then
     begin
-      FoundPath := Trim(Lines[0]);
-      Result := FoundPath <> '';
+      Dir := Copy(Rest, 1, SemiPos - 1);
+      Rest := Copy(Rest, SemiPos + 1, Length(Rest));
+    end
+    else
+    begin
+      Dir := Rest;
+      Rest := '';
+    end;
+    Dir := Trim(Dir);
+    if (Length(Dir) >= 2) and (Dir[1] = '"') and (Dir[Length(Dir)] = '"') then
+      Dir := Copy(Dir, 2, Length(Dir) - 2);
+    if Dir <> '' then
+    begin
+      if Dir[Length(Dir)] <> '\' then Dir := Dir + '\';
+      Exts := PathExt;
+      while (Exts <> '') and (not Result) do
+      begin
+        SemiPos := Pos(';', Exts);
+        if SemiPos > 0 then
+        begin
+          Ext := Copy(Exts, 1, SemiPos - 1);
+          Exts := Copy(Exts, SemiPos + 1, Length(Exts));
+        end
+        else
+        begin
+          Ext := Exts;
+          Exts := '';
+        end;
+        Candidate := Dir + 'clavity' + Ext;
+        if FileExists(Candidate) then
+        begin
+          FoundPath := Candidate;
+          Result := True;
+        end;
+      end;
     end;
   end;
 end;
@@ -100,10 +138,9 @@ end;
 function InitializeSetup(): Boolean;
 var
   FoundPath: string;
-  ProbeRan: Boolean;
 begin
   Result := True;
-  if ClassicClavityOnPath(FoundPath, ProbeRan) then
+  if ClassicClavityOnPath(FoundPath) then
   begin
     MsgBox('clavity (classic) is already installed at:' + #13#10 + FoundPath + #13#10#13#10 +
       'clavity-dotnet and clavity classic cannot be installed together. Remove the classic install first ' +
@@ -111,17 +148,6 @@ begin
       mbCriticalError, MB_OK);
     Result := False;
     exit;
-  end;
-  if not ProbeRan then
-  begin
-    { Probe couldn't run — let the user decide rather than silently risk a dual-install (agy review req-djljyi3pj7e8). }
-    if MsgBox('Could not verify whether classic clavity is already installed (the check could not run).' + #13#10 +
-      'Installing both variants together can corrupt your setup. Install anyway?',
-      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDNO then
-    begin
-      Result := False;
-      exit;
-    end;
   end;
   if ClassicRegistered() then
   begin
