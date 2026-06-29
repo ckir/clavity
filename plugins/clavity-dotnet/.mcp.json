@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "clavity-ls": { "command": "clavity-ls", "args": ["--mcp"] }
+  }
+}

@@ -10,6 +10,11 @@
       "name": "agy-autotrain",
       "source": "./plugins/agy-autotrain",
       "description": "Drive the agy peer like a model and auto-train clavity's agy knowledge from everyday usage (capture -> curate -> verify -> golden-header)."
+    },
+    {
+      "name": "clavity-dotnet",
+      "source": "./plugins/clavity-dotnet",
+      "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask)."
     }
   ]
 }
