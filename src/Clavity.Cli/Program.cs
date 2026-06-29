@@ -7,6 +7,10 @@ using Microsoft.Extensions.Logging;
 
 if (args.Contains("--mcp"))
 {
+    // Hold a named mutex for the host's lifetime so the installer's PrepareToInstall can detect a live
+    // pairing session (Component B/D) without WMI. Local\ scopes it to this logon session (D1).
+    using var liveSessionMutex = new System.Threading.Mutex(initiallyOwned: true, @"Local\ClavityMcpRunning", out _);
+
     var agyDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
     var options = new AgyViewOptions
