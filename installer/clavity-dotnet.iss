@@ -10,7 +10,7 @@
 ; manifest's ./plugins/<name> source paths. claude installs via the marketplace; agy installs the local dir.
 
 #define AppName "clavity-dotnet"
-#define AppVersion "0.1.2"
+#define AppVersion "0.1.3"
 #define ExeName "clavity-ls.exe"
 
 [Setup]
@@ -142,17 +142,17 @@ begin
   Result := True;
   if ClassicClavityOnPath(FoundPath) then
   begin
-    MsgBox('clavity (classic) is already installed at:' + #13#10 + FoundPath + #13#10#13#10 +
+    SuppressibleMsgBox('clavity (classic) is already installed at:' + #13#10 + FoundPath + #13#10#13#10 +
       'clavity-dotnet and clavity classic cannot be installed together. Remove the classic install first ' +
       '(run `cargo uninstall clavity`, or use its uninstaller), then run this setup again.',
-      mbCriticalError, MB_OK);
+      mbCriticalError, MB_OK, IDOK);
     Result := False;
     exit;
   end;
   if ClassicRegistered() then
   begin
-    MsgBox('clavity (classic) is registered on this machine. Uninstall it first, then run this setup again.',
-      mbCriticalError, MB_OK);
+    SuppressibleMsgBox('clavity (classic) is registered on this machine. Uninstall it first, then run this setup again.',
+      mbCriticalError, MB_OK, IDOK);
     Result := False;
   end;
 end;
@@ -174,11 +174,11 @@ var
 begin
   // Install one optional add-on plugin from the app's plugins dir via clavity-ls (gated by the [Tasks] checkbox).
   if not Exec(ExpandConstant('{app}\{#ExeName}'), 'install --agent all --plugin ' + Name, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    MsgBox('Could not install the ' + Name + ' add-on. Install it later with:' + #13#10 +
-      '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK)
+    SuppressibleMsgBox('Could not install the ' + Name + ' add-on. Install it later with:' + #13#10 +
+      '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK, IDOK)
   else if ResultCode <> 0 then
-    MsgBox('The ' + Name + ' add-on reported a problem (exit code ' + IntToStr(ResultCode) + '). Re-run:' + #13#10 +
-      '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK);
+    SuppressibleMsgBox('The ' + Name + ' add-on reported a problem (exit code ' + IntToStr(ResultCode) + '). Re-run:' + #13#10 +
+      '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK, IDOK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -188,25 +188,25 @@ begin
   if CurStep = ssPostInstall then
   begin
     if not Exec(ExpandConstant('{app}\{#ExeName}'), 'install --agent all', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      MsgBox('clavity-ls could not be launched to register the plugin. Finish manually by running:' + #13#10 +
-        ExpandConstant('{app}\{#ExeName}') + ' install --agent all', mbError, MB_OK)
+      SuppressibleMsgBox('clavity-ls could not be launched to register the plugin. Finish manually by running:' + #13#10 +
+        ExpandConstant('{app}\{#ExeName}') + ' install --agent all', mbError, MB_OK, IDOK)
     else if ResultCode <> 0 then
-      MsgBox('clavity-ls plugin registration reported a problem (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
-        'Open a terminal and re-run:  clavity-ls install --agent all', mbError, MB_OK);
+      SuppressibleMsgBox('clavity-ls plugin registration reported a problem (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
+        'Open a terminal and re-run:  clavity-ls install --agent all', mbError, MB_OK, IDOK);
     { Optional add-ons — install each ticked one (default OFF). }
     if WizardIsTaskSelected('install_agy_autotrain') then InstallAddon('agy-autotrain');
     if WizardIsTaskSelected('install_commonmemory') then
     begin
       InstallAddon('commonmemory');
       { commonmemory has a runtime dependency on the agentmemory MCP server — be honest, do not auto-install it. }
-      MsgBox('commonmemory was registered, but it needs the agentmemory MCP server to actually work.' + #13#10 +
+      SuppressibleMsgBox('commonmemory was registered, but it needs the agentmemory MCP server to actually work.' + #13#10 +
         'If you have not installed agentmemory yet, install it separately — until then the shared notebook stays inactive.',
-        mbInformation, MB_OK);
+        mbInformation, MB_OK, IDOK);
     end;
   end
   else if CurStep = ssDone then
-    MsgBox('clavity-dotnet is installed. Open a terminal (PowerShell) and run:' + #13#10 +
-      '  clavity-ls start C:\path\to\your\project', mbInformation, MB_OK);
+    SuppressibleMsgBox('clavity-dotnet is installed. Open a terminal (PowerShell) and run:' + #13#10 +
+      '  clavity-ls start C:\path\to\your\project', mbInformation, MB_OK, IDOK);
 end;
 
 { --- Uninstall: gate on the agent-removal exit code BEFORE any files are deleted (Component B; [UninstallRun] can't abort). --- }
@@ -222,8 +222,8 @@ begin
     mid-uninstall on the locked binary, leaving a partial/broken uninstall (agy review req-djljyi3pj7e8). }
   if CheckForMutexes('Local\ClavityMcpRunning') then
   begin
-    MsgBox('A live Claude pairing session (clavity-ls --mcp) is running. Close it before uninstalling clavity-dotnet.',
-      mbError, MB_OK);
+    SuppressibleMsgBox('A live Claude pairing session (clavity-ls --mcp) is running. Close it before uninstalling clavity-dotnet.',
+      mbError, MB_OK, IDOK);
     Result := False;
     exit;
   end;
@@ -232,8 +232,9 @@ begin
   if not FileExists(ExePath) then
     exit;
 
-  RemoveConfig := MsgBox('Also remove clavity''s data (the .clavity folder in your profile: the golden-header)?' + #13#10 +
-    'Choose No to keep it for a future reinstall.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+  { Silent uninstall defaults to KEEPING data (IDNO) — never delete user data without an explicit answer. }
+  RemoveConfig := SuppressibleMsgBox('Also remove clavity''s data (the .clavity folder in your profile: the golden-header)?' + #13#10 +
+    'Choose No to keep it for a future reinstall.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
 
   if RemoveConfig then
     Params := 'uninstall --agent all --purge-data'
@@ -242,13 +243,13 @@ begin
 
   if not Exec(ExePath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    Result := MsgBox('Could not run clavity-ls to remove the plugin from your agents. Uninstall anyway?',
-      mbError, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+    Result := SuppressibleMsgBox('Could not run clavity-ls to remove the plugin from your agents. Uninstall anyway?',
+      mbError, MB_YESNO or MB_DEFBUTTON2, IDYES) = IDYES;
     exit;
   end;
   if ResultCode <> 0 then
-    Result := MsgBox('Removing the clavity plugin from one or more agents FAILED (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
-      'Uninstall anyway (the plugin stays registered in that agent)?', mbError, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+    Result := SuppressibleMsgBox('Removing the clavity plugin from one or more agents FAILED (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
+      'Uninstall anyway (the plugin stays registered in that agent)?', mbError, MB_YESNO or MB_DEFBUTTON2, IDYES) = IDYES;
 end;
 
 procedure RemoveFromUserPath(const Dir: string);
