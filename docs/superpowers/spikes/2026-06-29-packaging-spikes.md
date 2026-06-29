@@ -31,6 +31,47 @@ that delete, per variant:
   follow-on **Task 7.3**. Until 7.3 lands, classic keeps its current manual-prepend skill instruction
   (folded fixes F1/F2): the Phase 1 auto-inject note + `curate-commit` repoint are **dotnet-only**.
 
+## Spike 0.2 — plugin-install invocation + copy-vs-reference
+
+**Question:** Exact non-interactive install/uninstall syntax per agent, and does each agent COPY the plugin
+into its own store or REFERENCE the source path? (Determines whether `{app}\plugin` is canonical or a dead
+staging dir, and the uninstall ordering for Tasks 2.2/2.3/3.1.)
+
+**Method:** `claude plugin --help` / `agy plugin --help`; then a live throwaway round-trip on agy:
+`agy plugin install ./plugins/commonmemory` → inspect `~/.gemini` → `agy plugin uninstall commonmemory`.
+
+**Findings — invocation:**
+- **claude** — `claude plugin install <plugin>` is **marketplace-based** (`<plugin>@<marketplace>`),
+  `--scope user` default (also `project`/`local`); uninstall = `claude plugin uninstall|remove <plugin>`;
+  marketplaces managed via `claude plugin marketplace …`. (Prior-session fact re-confirmed: copies into
+  `~/.claude/plugins/cache/<marketplace>/<plugin>/`.)
+- **agy** — `agy plugin install <target>` accepts a **local directory** (error on a non-dir target: *"install
+  target must be a directory"*) OR `plugin@marketplace`; uninstall = `agy plugin uninstall <name>`;
+  `agy plugin list` emits JSON (`imports[]` with `name`/`source`/`importedAt`/`components`).
+
+**Findings — copy-vs-reference (LIVE, 2026-06-29):**
+- `agy plugin install ./plugins/commonmemory` reported `[ok] commonmemory · skills: 1 processed` and added an
+  `imports[]` entry `{name: commonmemory, source: antigravity, components: [skills]}`.
+- The plugin landed at `C:\Users\user\.gemini\config\plugins\commonmemory\` with `LinkType` = **null** (NOT a
+  symlink/junction) and a **full file copy** (`plugin.json`, `README.md`, `.claude-plugin/plugin.json`,
+  `rules/commonmemory.md`, `skills/commonmemory/SKILL.md`). ⇒ **agy COPIES** the source dir into its store.
+- `agy plugin uninstall commonmemory` **removed** `~/.gemini/config/plugins/commonmemory` (gone); the repo
+  source `./plugins/commonmemory` was untouched.
+
+**Conclusion / implications:**
+- **Both agents COPY** the plugin into their own store (claude → `~/.claude/plugins/cache/…`,
+  agy → `~/.gemini/config/plugins/<name>/`). Therefore the installer's `{app}\plugin` is a **staging dir**:
+  removing the binary / `{app}` does NOT break either agent's installed copy.
+- **Uninstall MUST invoke each agent's native `plugin uninstall`** to remove the agent-side copy — deleting
+  `{app}\plugin` alone leaves orphaned copies. This is exactly why Task 3.1's `InitializeUninstall` runs
+  `clavity-ls uninstall --agent all` (which shells the per-agent `plugin uninstall`) BEFORE any file deletion.
+- **`clavity-ls install` (Task 2.2) per agent:** agy = `agy plugin install "{app}\plugin"` (local dir, COPY);
+  claude = marketplace flow (`claude plugin marketplace add …` then `claude plugin install <plugin>@<mp>
+  --scope user`). **OPEN for Task 2.2 (verify-at-impl, not probed — would mutate claude config):** the exact
+  claude local-marketplace incantation on the END-USER machine (no repo root) — likely ship a minimal
+  `marketplace.json` at `{app}` (or `{app}\plugin`) and `claude plugin marketplace add "{app}"`, then install
+  `clavity-dotnet@clavity`. Pin this when implementing Task 2.2 against `claude plugin marketplace --help`.
+
 ## Spike 0.3 — non-extracting single-file publish
 
 **Question:** Does a single-file self-contained publish extract native libs to `%TEMP%\.net\` at runtime
