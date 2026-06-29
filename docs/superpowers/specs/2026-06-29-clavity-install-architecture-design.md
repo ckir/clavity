@@ -195,11 +195,10 @@ uninstall) → binary removed, PATH cleaned, optional data purge.
   expected `…-setup.exe`, downloads it, and **verifies the hash — aborting on mismatch before execution**, so
   a compromised GitHub Release asset can't yield silent RCE. (Stricter than aidesktop's bootstrap, which does
   not hash-check.)
-- **Code-signing (HIGH, UX) — cost-gated.** CI **Authenticode-signs** both `clavity-ls.exe` and `…-setup.exe`
-  IF a cert is provisioned; an unsigned exe gets Mark-of-the-Web → SmartScreen/Defender hard-block. ⚠ Signing
-  certs cost money + an HSM/token (EV) — **absent a cert already provisioned in CI (confirm with the owner),
-  the documented SmartScreen-bypass is the DEFAULT, not a fallback.** Decide signing-vs-document before the
-  release pipeline is built.
+- **Code-signing — DECIDED (owner, 2026-06-29): ship UNSIGNED.** No cert; CI does NOT Authenticode-sign.
+  Users get Mark-of-the-Web → a SmartScreen/Defender warning on first run; the README + installer page
+  **document the bypass** ("More info → Run anyway"). Signing can be added later if a cert is ever
+  provisioned. (HIGH UX cost knowingly accepted as the free option.)
 - **PATH (MEDIUM).** Inno **APPENDS** `{app}` to HKCU `Path` (never prepend — avoids command/DLL hijack);
   `{app}` holds only `clavity-ls.exe` + the plugin subfolder (minimal DLL-hijack surface).
 - **Agent-config writes (MEDIUM).** `clavity-ls install` mutates agent JSON config; it MUST use **atomic
@@ -270,7 +269,8 @@ first:
    (config paths like `%USERPROFILE%\.gemini\config`, presence of the CLI on PATH, etc.) — currently
    underspecified.
 
-Also a non-spike decision for the owner: **code-signing cert yes/no** (gates the security/UX story).
+Owner decision (RESOLVED 2026-06-29): **no code-signing cert — ship unsigned + document the SmartScreen
+bypass** (see Security).
 
 ## Risks
 
