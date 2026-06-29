@@ -44,8 +44,8 @@ Source: "..\plugins\commonmemory\*"; DestDir: "{app}\plugins\commonmemory"; Flag
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce
 ; Optional add-ons (default OFF) — plain-English, value-driven labels (spec UX).
-Name: "install-agy-autotrain"; Description: "Install agy-autotrain — lets the AI permanently learn your project's rules and stop repeating mistakes"; Flags: unchecked
-Name: "install-commonmemory"; Description: "Install commonmemory — a shared notebook so Claude and agy share facts (needs the agentmemory MCP server)"; Flags: unchecked
+Name: "install_agy_autotrain"; Description: "Install agy-autotrain — lets the AI permanently learn your project's rules and stop repeating mistakes"; Flags: unchecked
+Name: "install_commonmemory"; Description: "Install commonmemory — a shared notebook so Claude and agy share facts (needs the agentmemory MCP server)"; Flags: unchecked
 
 [Registry]
 ; Per-user PATH APPEND (never prepend) when the task is selected (security: PATH hygiene).
@@ -168,8 +168,8 @@ begin
       MsgBox('clavity-ls plugin registration reported a problem (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
         'Open a terminal and re-run:  clavity-ls install --agent all', mbError, MB_OK);
     { Optional add-ons — install each ticked one (default OFF). }
-    if WizardIsTaskSelected('install-agy-autotrain') then InstallAddon('agy-autotrain');
-    if WizardIsTaskSelected('install-commonmemory') then
+    if WizardIsTaskSelected('install_agy_autotrain') then InstallAddon('agy-autotrain');
+    if WizardIsTaskSelected('install_commonmemory') then
     begin
       InstallAddon('commonmemory');
       { commonmemory has a runtime dependency on the agentmemory MCP server — be honest, do not auto-install it. }
