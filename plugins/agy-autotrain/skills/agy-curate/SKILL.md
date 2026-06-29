@@ -32,15 +32,40 @@ Deliberate and offline. This is the optimiser of the loop. Inputs: `../../knowle
   If a probe **fails**, that is drift: keep/return the item to the inbox, fix the canonical claim, and
   update its probe alongside.
 
-## Recompile the golden header
+## Recompile + commit the golden header (via the binary, never a raw edit)
 
-Rewrite `../../knowledge/golden-header.md` from the now-current canonical docs — dense, payload-ready:
+Compile the dense, payload-ready header from the now-current canonical docs:
 
 1. **`[⚠️ CRITICAL ANTI-PATTERNS]` at the very top** — the failure modes the driver must avoid (extracted
    and front-loaded; knowing how *not* to prompt agy is the most actionable context).
 2. The handful of load-bearing **Empirical Assumptions** (banner-honored, latency, new-thread replies,
    checkpoint discipline).
-3. Keep it short — it is prepended to *every* `clavity ask`; trim anything not decision-changing.
+3. Keep it short — it is prepended to *every* ask; trim anything not decision-changing.
+
+Then **commit it through the binary** so it lands at the resolved shared path
+(`%USERPROFILE%\.clavity\golden-header.md`) with an atomic write + a `.sha256` tamper sidecar — only the
+binary knows `CLAVITY_GOLDEN_HEADER`. **Pipe the header via STDIN, never as a shell argument** (a multi-line
+markdown header blows past command-line quoting/length limits):
+
+    # dotnet variant — the binary is `clavity-ls`:
+    clavity-ls curate-commit < compiled-header.md      # or: printf '%s' "$header" | clavity-ls curate-commit
+
+    # classic variant — the Rust `clavity curate-commit` verb does not exist yet (lands in a later release);
+    # until then BRIDGE by writing the SAME shared path directly (create the .clavity dir if absent):
+    #   %USERPROFILE%\.clavity\golden-header.md
+
+Do NOT edit a plugin-local `golden-header.md` as the live header — the in-repo `../../knowledge/golden-header.md`
+is only the compiled SOURCE/record; the binary reads the shared path.
+
+**Variant-agnostic ONLY.** The header carries cross-cutting agy *reasoning* wisdom (anti-patterns,
+load-bearing assumptions) — forbid BOTH project nouns AND variant-specific driving mechanics (e.g. `agy_ask`
+argument shaping vs `clavity ask` flags). Those belong in the per-variant core driving skill, not the shared
+header.
+
+**Anti-poisoning circuit-breaker.** You (the curator) are the gate, not a transcriber. Critically evaluate
+each candidate before compiling it into a law that shapes every future ask: REJECT a self-reported "learning"
+that is unverified, over-general, or a one-off impression — a wrong heuristic frozen into the header poisons
+every downstream call. When in doubt, leave it in the inbox.
 
 ## Finish
 
