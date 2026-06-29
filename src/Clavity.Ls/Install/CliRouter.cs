@@ -17,14 +17,17 @@ public static class CliRouter
     {
         var root = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
         var pluginDir = Path.Combine(root, "plugins", "clavity-dotnet");
-        return Run(args, output, AgentDetection.ForThisMachine(), RealRunner, root, pluginDir);
+        var logsDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli", "logs");
+        return Run(args, output, AgentDetection.ForThisMachine(), RealRunner, root, pluginDir, logsDir);
     }
 
-    /// <summary>Testable entry: injected detection + runner + paths.</summary>
+    /// <summary>Testable entry: injected detection + runner + paths (logsDir null ⇒ --purge-data has nothing to remove).</summary>
     public static int Run(string[] args, TextWriter output, AgentDetection detection, ProcessRunner run,
-                          string marketplaceRoot, string pluginDir)
+                          string marketplaceRoot, string pluginDir, string? logsDir = null)
     {
         var verb = args.Length > 0 ? args[0].ToLowerInvariant() : "";
+        var purgeData = Array.Exists(args, a => string.Equals(a, "--purge-data", StringComparison.OrdinalIgnoreCase));
         var present = detection.Present();
 
         if (present.Count == 0)
@@ -57,6 +60,7 @@ public static class CliRouter
                     ok &= r.Ok;
                     output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
                 }
+                if (purgeData) PurgeData(logsDir, output);
                 return ok ? 0 : 1;   // non-zero if ANY agent's removal failed (the Inno uninstall gate depends on this)
             }
 
@@ -81,6 +85,23 @@ public static class CliRouter
             default:
                 output.WriteLine("usage: clavity-ls [install | uninstall | is-installed <plugin>]");
                 return 2;
+        }
+    }
+
+    /// <summary>`--purge-data`: remove clavity's own data. Task 2.3 = the per-session logs dir; Task 4.1 extends
+    /// this to %USERPROFILE%\.clavity (golden-header data). Best-effort — never throws (a failed purge must not
+    /// fail the uninstall).</summary>
+    private static void PurgeData(string? logsDir, TextWriter output)
+    {
+        if (string.IsNullOrEmpty(logsDir) || !Directory.Exists(logsDir)) return;
+        try
+        {
+            Directory.Delete(logsDir, recursive: true);
+            output.WriteLine($"[purge] removed {logsDir}");
+        }
+        catch (Exception e)
+        {
+            output.WriteLine($"[purge] could not remove {logsDir}: {e.Message}");
         }
     }
 

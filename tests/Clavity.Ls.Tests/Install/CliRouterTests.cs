@@ -83,4 +83,40 @@ public sealed class CliRouterTests
         Assert.Equal(0, rc);
         Assert.Contains("is installed", sw.ToString());
     }
+
+    [Fact]
+    public void Uninstall_returns_nonzero_when_an_agent_removal_fails()
+    {
+        var detection = new AgentDetection(onPath: _ => true, dirExists: _ => false); // both present
+        var runner = new FakeRunner { ExitCode = 1 }; // every native plugin-uninstall "fails"
+        var sw = new StringWriter();
+
+        var rc = CliRouter.Run(new[] { "uninstall" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+
+        Assert.NotEqual(0, rc); // the Inno InitializeUninstall gate depends on a non-zero exit on failure
+    }
+
+    [Fact]
+    public void Uninstall_with_purge_data_deletes_the_logs_dir()
+    {
+        var logsDir = Path.Combine(Path.GetTempPath(), "clavity-purge-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(logsDir);
+        File.WriteAllText(Path.Combine(logsDir, "clavity-x.log"), "log");
+        try
+        {
+            var detection = new AgentDetection(onPath: n => n == "agy", dirExists: _ => false); // only agy
+            var runner = new FakeRunner(); // ExitCode 0 = uninstall succeeds
+            var sw = new StringWriter();
+
+            var rc = CliRouter.Run(new[] { "uninstall", "--purge-data" }, sw, detection, runner.Run,
+                @"C:\app", @"C:\app\plugins\clavity-dotnet", logsDir);
+
+            Assert.Equal(0, rc);
+            Assert.False(Directory.Exists(logsDir)); // logs purged
+        }
+        finally
+        {
+            if (Directory.Exists(logsDir)) Directory.Delete(logsDir, true);
+        }
+    }
 }
