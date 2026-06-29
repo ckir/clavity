@@ -29,7 +29,16 @@ if (args.Contains("--mcp"))
         .WithTools<McpTools>();
 
     await builder.Build().RunAsync();
-    return;
+    return 0;
+}
+
+// `clavity-ls curate-commit` — atomically write the compiled golden-header (read from stdin) to the shared path.
+if (args.Length > 0 && args[0] == "curate-commit")
+{
+    var headerPath = GoldenHeader.ResolvePath(
+        Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    return CliVerbs.CurateCommit(headerPath, Console.In, Console.Error);
 }
 
 // `clavity start <folder> [claude-args...]` — open a visible human-owned agy tab (per-session LS log) + launch Claude.
@@ -73,7 +82,7 @@ if (args.Length > 0 && args[0] == "start")
 
     Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.
     Spawn(plan.ClaudeLaunch, wait: true); // Claude runs in the foreground.
-    return;
+    return 0;
 
     static void Spawn(LaunchCommand cmd, bool wait)
     {
@@ -102,3 +111,4 @@ if (args.Length > 0 && args[0] == "start")
 }
 
 Console.WriteLine("clavity-ls — usage: clavity-ls start <folder> [claude-args...]   |   clavity-ls --mcp   (MCP stdio server: agy_look / agy_status / agy_ask)");
+return 0;
