@@ -32,6 +32,13 @@ public static class CliRouter
 
         if (present.Count == 0)
         {
+            // Uninstall with no agents present = nothing to remove = success (so the Inno uninstall gate, which
+            // aborts on a non-zero exit, proceeds cleanly). Install/is-installed still report the missing-agent error.
+            if (verb == "uninstall")
+            {
+                output.WriteLine("clavity-ls: no compatible agent present — nothing to uninstall.");
+                return 0;
+            }
             output.WriteLine("clavity-ls: No compatible agent (Claude Code / agy) found — install Claude Code or agy first.");
             return 3;
         }

@@ -97,6 +97,20 @@ public sealed class CliRouterTests
     }
 
     [Fact]
+    public void Uninstall_with_zero_agents_succeeds_because_nothing_to_remove()
+    {
+        var detection = new AgentDetection(onPath: _ => false, dirExists: _ => false); // none present
+        var runner = new FakeRunner();
+        var sw = new StringWriter();
+
+        var rc = CliRouter.Run(new[] { "uninstall" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+
+        Assert.Equal(0, rc); // the Inno uninstall gate must NOT abort when there are no agents
+        Assert.Empty(runner.Calls); // no native uninstall attempted
+        Assert.Contains("nothing to uninstall", sw.ToString());
+    }
+
+    [Fact]
     public void Uninstall_with_purge_data_deletes_the_logs_dir()
     {
         var logsDir = Path.Combine(Path.GetTempPath(), "clavity-purge-" + Guid.NewGuid().ToString("N"));
