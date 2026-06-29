@@ -2,3 +2,7 @@
 # bytes, incl. 0x0a). Without this, autocrlf would corrupt them on checkout.
 *.bin binary
 tests/Clavity.Ls.Tests/TestData/** binary
+
+# Shell scripts (e.g. shipped plugin hooks) must stay LF on every platform — a CRLF *.sh
+# fails on Linux/macOS with "bad interpreter". Keeps the portable hooks runnable cross-OS.
+*.sh text eol=lf
