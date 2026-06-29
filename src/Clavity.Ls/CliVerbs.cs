@@ -35,5 +35,13 @@ public static class CliVerbs
             error.WriteLine($"curate-commit: {ex.Message}; nothing written.");
             return 2;
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Environmental write failure (disk full, read-only path, bad CLAVITY_GOLDEN_HEADER). Report cleanly
+            // instead of dumping a raw stack trace — agy-curate invokes this verb, and a stack trace would clutter
+            // the agent's context (agy review req-djlih4srlzr0).
+            error.WriteLine($"curate-commit: cannot write golden-header to {resolvedPath}: {ex.Message}");
+            return 1;
+        }
     }
 }

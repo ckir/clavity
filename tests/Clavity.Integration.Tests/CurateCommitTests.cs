@@ -28,4 +28,20 @@ public sealed class CurateCommitTests : IDisposable
         Assert.False(File.Exists(path));
         Assert.Contains("cap", err.ToString(), StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void CurateCommit_returns_nonzero_and_reports_cleanly_when_the_write_path_is_unusable()
+    {
+        // Parent is a FILE, so GoldenHeader.Commit's Directory.CreateDirectory throws IOException — the verb must
+        // report it cleanly (no uncaught stack trace) and return non-zero (agy review req-djlih4srlzr0).
+        var blocker = Path.Combine(_dir, "blocker");
+        File.WriteAllText(blocker, "i am a file, not a directory");
+        var unwritable = Path.Combine(blocker, "golden-header.md");
+        var err = new StringWriter();
+
+        var rc = CliVerbs.CurateCommit(unwritable, new StringReader("rules"), err);
+
+        Assert.NotEqual(0, rc);
+        Assert.Contains("curate-commit", err.ToString());
+    }
 }
