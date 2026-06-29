@@ -195,18 +195,22 @@ uninstall) → binary removed, PATH cleaned, optional data purge.
   expected `…-setup.exe`, downloads it, and **verifies the hash — aborting on mismatch before execution**, so
   a compromised GitHub Release asset can't yield silent RCE. (Stricter than aidesktop's bootstrap, which does
   not hash-check.)
-- **Code-signing (HIGH, UX).** CI **Authenticode-signs** both `clavity-ls.exe` and `…-setup.exe`; an unsigned
-  exe gets Mark-of-the-Web → SmartScreen/Defender hard-block. If no cert is available, the spec explicitly
-  accepts the SmartScreen warning as an unmitigated UX risk and documents the bypass.
+- **Code-signing (HIGH, UX) — cost-gated.** CI **Authenticode-signs** both `clavity-ls.exe` and `…-setup.exe`
+  IF a cert is provisioned; an unsigned exe gets Mark-of-the-Web → SmartScreen/Defender hard-block. ⚠ Signing
+  certs cost money + an HSM/token (EV) — **absent a cert already provisioned in CI (confirm with the owner),
+  the documented SmartScreen-bypass is the DEFAULT, not a fallback.** Decide signing-vs-document before the
+  release pipeline is built.
 - **PATH (MEDIUM).** Inno **APPENDS** `{app}` to HKCU `Path` (never prepend — avoids command/DLL hijack);
   `{app}` holds only `clavity-ls.exe` + the plugin subfolder (minimal DLL-hijack surface).
 - **Agent-config writes (MEDIUM).** `clavity-ls install` mutates agent JSON config; it MUST use **atomic
   write (temp-file + rename) + defensive JSON parse**, and enforce it runs as the **logged-in user** (never
   elevated — no SYSTEM-owned files written into the user profile; `PrivilegesRequired=lowest` aids this).
 - **.NET single-file extraction (HIGH).** Standard `PublishSingleFile` may extract native libs to a
-  hijackable `%TEMP%\.net\…`. Build with **NativeAOT *if the gRPC/Grpc.Net.Client/protobuf/MCP-SDK stack
-  permits*** (VERIFY — AOT reflection limits may rule it out); else use true single-file with **native-lib
-  extraction disabled** (or a secured extract dir).
+  hijackable `%TEMP%\.net\…`. **Realistic plan (per round-5 feasibility): true single-file with native-lib
+  extraction disabled** (`IncludeNativeLibrariesForSelfExtract` off / no-extract config). NativeAOT is the
+  *ideal* but is almost certainly **infeasible** here — `Grpc.Net.Client` + `Google.Protobuf` + the MCP SDK
+  rely heavily on runtime reflection and are AOT-hostile. Treat AOT as a stretch goal, the non-extracting
+  single-file as the plan (spike it — see Gating spikes).
 - **Mutex/registry forgeability (LOW — accepted).** A same-user process can forge the exclusion registry key
   or hold `Global\ClavityMcpRunning` to block installs — local DoS only, no escalation; accepted.
 
@@ -250,15 +254,33 @@ The goal is "simple for a non-technical Windows user," so these are requirements
   (Windows-first, matching the project's verified surface); the T10 hard-coded-model follow-on; any change
   to the LS bridge's runtime behavior.
 
+## Gating spikes (the plan's first tasks — de-risk before building)
+
+Round-5 feasibility confirmed the Inno `[Code]` mechanisms are buildable (`Exec`+`InitializeUninstall`
+abort, `CheckForMutexes`, `SetupMutex`, append-PATH, PATH-split detection). Three unknowns MUST be spiked
+first:
+
+1. **Plugin-install invocation + copy-vs-reference** — for BOTH `claude` and `agy`: the exact non-interactive
+   command to install a plugin from a local path, and whether it COPIES into the agent store or REFERENCES the
+   source dir. Determines `clavity-ls install`'s shape and uninstall ordering. (Existence is established; usage
+   is the unknown.)
+2. **Non-extracting single-file publish** — prove `clavity-ls.exe` builds as one file that does NOT extract
+   native libs to `%TEMP%` (NativeAOT almost certainly ruled out by the gRPC/protobuf/MCP stack).
+3. **Agent detection heuristic** — define exactly how `clavity-ls install --agent all` detects Claude / agy
+   (config paths like `%USERPROFILE%\.gemini\config`, presence of the CLI on PATH, etc.) — currently
+   underspecified.
+
+Also a non-spike decision for the owner: **code-signing cert yes/no** (gates the security/UX story).
+
 ## Risks
 
-- **Plugin-install semantics (GATING first task)** — before the `clavity-ls install` subcommand is built,
-  probe the live CLIs for: (i) exact `claude plugin install` / `agy plugin install` invocation, and
-  (ii) **copy-vs-reference** — does `plugin install <path>` COPY the plugin into the agent's store or
-  REFERENCE `{app}\plugin`? If it references, deleting `{app}` breaks the plugin (uninstall must order
-  around it); if it copies, `{app}\plugin` is a dead staging dir. This determines uninstall correctness.
-  (Note: `agy plugin install/uninstall` DOES exist — confirmed via `agy --help` and the repo README; an
-  AGY-AFTER claim that agy lacks `plugin install` was incorrect and is disregarded.)
+- **Plugin-install semantics (GATING — see Gating spikes)** — `plugin install` exact usage + copy-vs-reference
+  determines uninstall correctness and whether `{app}\plugin` is canonical or a dead staging dir. (Note:
+  `claude plugin install` AND `agy plugin install` DO exist — evidenced by this repo's READMEs
+  (`claude plugin install ./plugins/clavity-classic`, `agy plugin install …`), the live `agy --help`
+  (`plugin … install, uninstall`), and Claude Code's own plugin/marketplace support. AGY-AFTER rounds 1 and 5
+  claimed otherwise — **incorrect, disregarded.** The spike verifies *exact invocation*, not *existence*; only
+  if a spike proves a command truly absent does the fallback — atomic JSON-config mutation — apply.)
 - **Coupling to the .NET branch** — the `clavity-ls` rename lands on `clavity-dotnet`; the installer work
   is gated on that rename existing.
 - **Policy vs coexistence** — mutual exclusion deliberately overrides the rename's coexistence capability;
