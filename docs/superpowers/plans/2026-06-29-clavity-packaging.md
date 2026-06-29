@@ -974,6 +974,71 @@ Run (if Inno installed): `ISCC.exe installer/clavity-dotnet.iss` → produces `d
 
 ---
 
+## Review fixes — folded from agy 3-lens audit (2026-06-29)
+
+Three rotating-lens AGY-AFTER rounds (correctness req-djld9dcdoxa0 · feasibility req-djldawg5j278 ·
+security req-djldcby46ckk). All 15 findings were assessed (not rubber-stamped); the clean fixes below are
+BINDING on the cited task. Two spec-touching items are PENDING USER (see end).
+
+**Correctness / sequencing (round 1):**
+- **F1 (Task 1.5) — classic injection regression.** Do NOT add the "injection is automatic — do not prepend"
+  note to the **classic** `clavity-driving` in this plan: classic's binary injection is the off-branch
+  Task 7.3, so the note would strand classic with no injection. In Phase 1, the auto-inject note + the
+  curate-commit repoint are **dotnet-only**; classic keeps its current manual-prepend skill instruction
+  until Task 7.3 lands. The anti-misfire protocol MERGE (pure markdown) still applies to BOTH variants.
+- **F2 (Task 1.6) — classic curate-commit not yet real.** The `clavity curate-commit` (Rust) verb does not
+  exist until Task 7.3. So Task 1.6 repoints `agy-curate` to `clavity-ls curate-commit` for the **dotnet**
+  variant only; the classic branch of agy-curate keeps the raw-file-write instruction as a bridge until 7.3.
+- **F4 (Task 1.5) — opt-out UX fallback (spec UX §graceful-opt-out).** BOTH core driving skills MUST include:
+  *"Permanent learning needs the agy-autotrain add-on — re-run the clavity installer and tick it,"* shown when
+  the user asks Claude to permanently remember a rule and no `agy-curate` is present.
+- **F5 (Tasks 1.4/1.6) — curate-commit must NOT take content as a shell arg.** A multi-line markdown header
+  blows past shell quoting + command-line length limits. `curate-commit` reads content from **stdin** (or a
+  `--file <path>` arg); agy-curate PIPES the compiled header via stdin. The `args[1]` content form is dropped.
+
+**Feasibility / Windows / test-realism (round 2):**
+- **F7 (Task 1.2) — sidecar non-atomicity.** Write the `.sha256` sidecar BEFORE moving the header into place,
+  and (Task 7.4) treat a missing/mismatched sidecar conservatively (recompute, do not alarm) so a crash
+  mid-commit can't manufacture a false tamper alert.
+- **F8 (Task 1.4) — no process-wide env mutation in tests.** `CliVerbs.CurateCommit` takes the **resolved
+  path** (or a path-resolver `Func`) as a parameter; `Program.cs` resolves it from `CLAVITY_GOLDEN_HEADER`.
+  Tests pass the path directly — they never call `Environment.SetEnvironmentVariable` (xUnit parallel-safe).
+- **F9 (Task 4.2 + Task 2.2) — Inno cannot know real install state.** `{app}\optional-plugins` existence is a
+  false proxy (it is always present — staging). Add a `clavity-ls is-installed <plugin>` verb (Task 2.2) that
+  queries the agent; Inno `InitializeWizard` `Exec`s it and reads the exit code to set the upgrade checkbox.
+- **F10 (Task 1.4) — top-level return.** MANDATORY (not "if the compiler objects"): convert every bare
+  `return;` in `Program.cs` to `return 0;` and end the file with `return 0;`, so `Main` infers `int`.
+
+**Security / supply-chain / contract (round 3):**
+- **F12 (Task 1.4) — bounded stdin read.** Read stdin with a hard 16 KB ceiling (reject on overflow); never
+  `ReadToEnd()` unbounded (OOM DoS).
+- **F13 (Task 1.2) — over-cap is LOUD, absent is SILENT.** `TryRead` must distinguish: absent/empty → silent
+  no-op; over-cap (or, in 7.4, tamper-mismatch) → return null AND emit a visible warning, so a user whose
+  17 KB hand-edit deactivated injection is told why. (Split the return into a small result or a caller-side
+  warn hook; the size-cap semantics then MATCH the producer, which throws on over-cap commit.)
+- **F14 (Task 7.4) — state the sidecar's real strength.** The `.sha256` sidecar (same dir, same perms) defends
+  against accidental corruption / naive hand-edits ONLY — a same-user adversary rewrites both. This is
+  CONSISTENT with the spec's accepted "same-user execution = game over" model; Task 7.4 must SAY so and not
+  oversell tamper resistance (DPAPI/signing is out of scope for the accepted threat model). The "subtle active
+  marker" (spec security) lives here too — a small prefix, NOT a per-ask banner.
+- **F15 (Task 3.1) — uninstaller must not brick.** `InitializeUninstall` checks
+  `FileExists({app}\clavity-ls.exe)` FIRST; if the exe is gone (AV/manual delete), fail-OPEN (`Result := True`)
+  so Add/Remove Programs can still clean the directory — only run the abort-on-nonzero `Exec` gate when the
+  exe exists.
+
+**PENDING USER (spec-touching — agy challenged a settled decision; your call):**
+- **D1 — mutex scope `Global\` vs `Local\` (spec install-arch Component B/D says `Global\ClavityMcpRunning`).**
+  agy argues `Local\` is safer under `PrivilegesRequired=lowest` (avoids cross-session ACL `UnauthorizedAccess`)
+  and sufficient since installer + `--mcp` share the user session. My read: `Global\` create+open works for the
+  same non-elevated user (agy's "guaranteed crash" is overstated), but `Local\` is the better-scoped default.
+  Low-risk either way.
+- **D2 — release-hash pinning is impossible as the spec wrote it.** The spec says `install.ps1` "hard-codes the
+  SHA-256" at the pinned tag — but CI computes the hash AFTER tagging (chicken-and-egg). Options: **(a)** CI
+  uploads a companion `…-setup.exe.sha256` asset and `install.ps1` downloads+verifies it (simple, but a fully
+  compromised Release rewrites both — integrity then rests on the immutable tag + GitHub/TLS trust); **(b)**
+  two-phase release: CI computes the hash, commits it back into `install.ps1`, THEN publishes (true pin, more
+  CI machinery). Affects Tasks 3.2/3.3.
+
 ## Self-review notes (author)
 
 - **Spec coverage:** install-arch Components A–E → Tasks 3.2, 3.1, 1.7, 2.2/2.3, 3.1(InitializeSetup). product-structure Refactors 1–5 → Tasks 1.2/1.3/1.4 (injection+curate-commit), 1.5 (driving merge), 1.6 (strip autotrain), 4.2 (checkboxes), 1.3 (dotnet injection point). Security/UX/data-lifecycle → Tasks 1.2 (cap), 3.1/3.2 (signing-unsigned, SHA-256, exclusion message, visible failure), 4.1/4.2 (purge, .backup, upgrade). Tamper-detection deferred to 7.4 (explicit).
