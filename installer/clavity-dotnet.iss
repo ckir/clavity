@@ -146,7 +146,7 @@ procedure InstallAddon(const Name: string);
 var
   ResultCode: Integer;
 begin
-  { Install one optional add-on plugin from {app}\plugins\<Name> via clavity-ls (gated by the [Tasks] checkbox). }
+  // Install one optional add-on plugin from the app's plugins dir via clavity-ls (gated by the [Tasks] checkbox).
   if not Exec(ExpandConstant('{app}\{#ExeName}'), 'install --agent all --plugin ' + Name, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
     MsgBox('Could not install the ' + Name + ' add-on. Install it later with:' + #13#10 +
       '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK)
