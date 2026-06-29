@@ -17,14 +17,18 @@ public static class CliRouter
     {
         var root = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
         var pluginDir = Path.Combine(root, "plugins", "clavity-dotnet");
-        var logsDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli", "logs");
-        return Run(args, output, AgentDetection.ForThisMachine(), RealRunner, root, pluginDir, logsDir);
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var logsDir = Path.Combine(home, ".gemini", "antigravity-cli", "logs");
+        // CLAVITY_DATA_DIR overrides the golden-header data dir (default %USERPROFILE%\.clavity) — used by tests.
+        var dataDir = Environment.GetEnvironmentVariable("CLAVITY_DATA_DIR");
+        if (string.IsNullOrWhiteSpace(dataDir)) dataDir = Path.Combine(home, ".clavity");
+        return Run(args, output, AgentDetection.ForThisMachine(), RealRunner, root, pluginDir, logsDir, dataDir);
     }
 
-    /// <summary>Testable entry: injected detection + runner + paths (logsDir null ⇒ --purge-data has nothing to remove).</summary>
+    /// <summary>Testable entry: injected detection + runner + paths (logsDir/clavityDataDir null ⇒ --purge-data
+    /// has nothing to remove for that target).</summary>
     public static int Run(string[] args, TextWriter output, AgentDetection detection, ProcessRunner run,
-                          string marketplaceRoot, string pluginDir, string? logsDir = null)
+                          string marketplaceRoot, string pluginDir, string? logsDir = null, string? clavityDataDir = null)
     {
         var verb = args.Length > 0 ? args[0].ToLowerInvariant() : "";
         var purgeData = Array.Exists(args, a => string.Equals(a, "--purge-data", StringComparison.OrdinalIgnoreCase));
@@ -67,7 +71,7 @@ public static class CliRouter
                     ok &= r.Ok;
                     output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
                 }
-                if (purgeData) PurgeData(logsDir, output);
+                if (purgeData) PurgeData(logsDir, clavityDataDir, output);
                 return ok ? 0 : 1;   // non-zero if ANY agent's removal failed (the Inno uninstall gate depends on this)
             }
 
@@ -95,20 +99,26 @@ public static class CliRouter
         }
     }
 
-    /// <summary>`--purge-data`: remove clavity's own data. Task 2.3 = the per-session logs dir; Task 4.1 extends
-    /// this to %USERPROFILE%\.clavity (golden-header data). Best-effort — never throws (a failed purge must not
-    /// fail the uninstall).</summary>
-    private static void PurgeData(string? logsDir, TextWriter output)
+    /// <summary>`--purge-data`: remove clavity's own data — the per-session logs dir (Task 2.3) AND
+    /// %USERPROFILE%\.clavity (golden-header data, Task 4.1). Best-effort — never throws (a failed purge must not
+    /// fail the uninstall). A PLAIN uninstall (no --purge-data) PRESERVES both for a future reinstall.</summary>
+    private static void PurgeData(string? logsDir, string? clavityDataDir, TextWriter output)
     {
-        if (string.IsNullOrEmpty(logsDir) || !Directory.Exists(logsDir)) return;
+        DeleteDirBestEffort(logsDir, output);
+        DeleteDirBestEffort(clavityDataDir, output);
+    }
+
+    private static void DeleteDirBestEffort(string? dir, TextWriter output)
+    {
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
         try
         {
-            Directory.Delete(logsDir, recursive: true);
-            output.WriteLine($"[purge] removed {logsDir}");
+            Directory.Delete(dir, recursive: true);
+            output.WriteLine($"[purge] removed {dir}");
         }
         catch (Exception e)
         {
-            output.WriteLine($"[purge] could not remove {logsDir}: {e.Message}");
+            output.WriteLine($"[purge] could not remove {dir}: {e.Message}");
         }
     }
 

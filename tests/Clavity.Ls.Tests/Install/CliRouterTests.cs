@@ -111,6 +111,51 @@ public sealed class CliRouterTests
     }
 
     [Fact]
+    public void Uninstall_with_purge_data_deletes_both_logs_and_clavity_data()
+    {
+        var logsDir = Path.Combine(Path.GetTempPath(), "clavity-logs-" + Guid.NewGuid().ToString("N"));
+        var dataDir = Path.Combine(Path.GetTempPath(), "clavity-data-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(logsDir); File.WriteAllText(Path.Combine(logsDir, "clavity-x.log"), "log");
+        Directory.CreateDirectory(dataDir); File.WriteAllText(Path.Combine(dataDir, "golden-header.md"), "wisdom");
+        try
+        {
+            var detection = new AgentDetection(onPath: n => n == "agy", dirExists: _ => false);
+            var sw = new StringWriter();
+            var rc = CliRouter.Run(new[] { "uninstall", "--purge-data" }, sw, detection, new FakeRunner().Run,
+                @"C:\app", @"C:\app\plugins\clavity-dotnet", logsDir, dataDir);
+
+            Assert.Equal(0, rc);
+            Assert.False(Directory.Exists(logsDir));   // logs purged
+            Assert.False(Directory.Exists(dataDir));   // .clavity (golden-header) purged
+        }
+        finally
+        {
+            foreach (var d in new[] { logsDir, dataDir }) if (Directory.Exists(d)) Directory.Delete(d, true);
+        }
+    }
+
+    [Fact]
+    public void Uninstall_without_purge_data_preserves_clavity_data()
+    {
+        var dataDir = Path.Combine(Path.GetTempPath(), "clavity-data-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDir); File.WriteAllText(Path.Combine(dataDir, "golden-header.md"), "wisdom");
+        try
+        {
+            var detection = new AgentDetection(onPath: n => n == "agy", dirExists: _ => false);
+            var sw = new StringWriter();
+            var rc = CliRouter.Run(new[] { "uninstall" }, sw, detection, new FakeRunner().Run,
+                @"C:\app", @"C:\app\plugins\clavity-dotnet", logsDir: null, clavityDataDir: dataDir);
+
+            Assert.Equal(0, rc);
+            Assert.True(Directory.Exists(dataDir));    // plain uninstall PRESERVES .clavity
+        }
+        finally
+        {
+            if (Directory.Exists(dataDir)) Directory.Delete(dataDir, true);
+        }
+    }
+
+    [Fact]
     public void Uninstall_with_purge_data_deletes_the_logs_dir()
     {
         var logsDir = Path.Combine(Path.GetTempPath(), "clavity-purge-" + Guid.NewGuid().ToString("N"));
