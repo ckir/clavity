@@ -53,3 +53,24 @@ dotnet publish src/Clavity.Cli -c Release -r win-x64 --self-contained true \
 `Grpc.Core`-style native lib to self-extract). The `.pdb` files are debug symbols, not runtime deps; CI
 ships only `clavity-ls.exe`. ⇒ Task 1.1 keeps the single-file props in the csproj; the installer `[Files]`
 ships exactly one binary.
+
+## Spike 0.4 — agent-detection heuristic
+
+**Question:** How does `clavity-ls install` decide an agent (Claude Code / agy) is "present"?
+
+**Method (read-only):** `(Get-Command claude).Source` / `(Get-Command agy).Source`; `Test-Path` the config dirs.
+
+**Findings (this install, 2026-06-29):**
+- `claude` CLI = `C:\Users\user\.local\bin\claude.exe` (on PATH).
+- `agy` CLI = `C:\Users\user\AppData\Local\agy\bin\agy.exe` (on PATH).
+- Config dirs all exist: `~/.claude` = True, `~/.gemini` = True, `~/.gemini/config` = True.
+
+**Conclusion / rule for `AgentDetection` (Task 2.1):** an agent is **present iff (its CLI resolves on PATH)
+OR (its config dir exists)** — the OR keeps detection robust if a user has the config but the CLI is not yet
+on the current PATH (or vice-versa). Probes:
+- **Claude:** PATH `claude` **OR** `Test-Path ~/.claude`.
+- **agy:** PATH `agy` **OR** `Test-Path ~/.gemini` (the `~/.gemini/config` subdir also exists but `~/.gemini`
+  is the stabler root).
+
+The detection is injected (`Func<string,bool> onPath`, `Func<string,bool> dirExists`) so unit tests never
+depend on the real machine.
