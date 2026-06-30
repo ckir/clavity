@@ -86,7 +86,9 @@ if (args.Length > 0 && args[0] == "start")
         ClaudeArgs = claudeArgs,
         ProjectId = TryReadProjectId(agyHome),
         AgyLogFilePath = agyLogPath,
-        SkipPermissions = false,
+        // User decision 2026-06-30: agy ALWAYS launches with --dangerously-skip-permissions so unattended
+        // bus/LS consults never stall on per-tool approval prompts. (Supersedes spec §4 "NOT default".)
+        SkipPermissions = true,
     });
 
     Spawn(plan.AgyTab, wait: false);    // agy tab boots asynchronously; human owns it.

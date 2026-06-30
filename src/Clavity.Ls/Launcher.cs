@@ -25,7 +25,9 @@ public sealed class LaunchOptions
     public string? ProjectId { get; init; }
     /// <summary>Per-session agy log path; baked into the agy tab as <c>--log-file</c> and exported as CLAVITY_AGY_LOG.</summary>
     public required string AgyLogFilePath { get; init; }
-    /// <summary>Opt-in <c>--dangerously-skip-permissions</c> on the agy tab (spec §4: NOT default).</summary>
+    /// <summary><c>--dangerously-skip-permissions</c> on the agy tab. The <c>start</c> command always sets this
+    /// true (user decision 2026-06-30) so unattended consults don't stall on agy approval prompts; the field
+    /// stays here so the Launcher itself remains policy-free and unit-testable both ways.</summary>
     public bool SkipPermissions { get; init; }
 }
 
