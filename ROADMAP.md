@@ -16,8 +16,9 @@ clavity pairs **Claude** with a live **Antigravity (`agy`)** peer. It ships in *
   (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.8**.
 - **clavity-classic** — Rust, binary **`clavity`**, drives agy over **psmux** + the **agentmemory signal bus**
   (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives on the **`clavity-classic`
-  branch**. Today it installs via `cargo install --git … --branch clavity-classic` (needs the Rust toolchain).
-  **An installer for it is the #1 forward item** (design + plan complete — see § 1).
+  branch**. **SHIPPED**: one-command Windows installer (`clavity-classic-setup.exe` + `.sha256`), per-user,
+  mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI. Current release **v0.1.0**. (Also
+  buildable from source via `cargo install --git … --branch clavity-classic`.)
 
 Optional opt-in add-ons (installer checkboxes, **clavity-dotnet only**): **agy-autotrain** (the
 agy-driving-perfection learning loop) and **commonmemory** (shared Claude⇄agy notebook over agentmemory). These
@@ -44,6 +45,24 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 - **v0.1.8** — agy always launches with `--dangerously-skip-permissions` (the paired agy is driven headless, so
   its interactive permission prompts would otherwise stall the bus round-trip).
 
+### clavity-classic — releases
+- **v0.1.0** — first packaged release: no-Rust-toolchain Windows installer (`clavity-classic-setup.exe` +
+  `.sha256`) + release CI. The **golden-header injection** epic (Spec A) + the **Option A installer** (Spec B),
+  build order **7.3 → 7.8 → 7.1 → 7.2**, all shipped:
+  - **7.3** golden-header injection in the Rust crate (`src/golden_header.rs`; `clavity curate-commit`; doctor status).
+  - **7.8** shared build recipe (`scripts/build-classic-release.ps1`): `cargo build --release --locked` + staged
+    bridge runtime whitelist, hard `.env`-leak assertion.
+  - **7.1** Inno installer (`installer/clavity-classic.iss`, **Option A — minimal/honest**): binary→PATH, HKCU
+    mutual-exclusion marker + bidirectional refuse vs dotnet, opt-in `agy-mcp-bridge` add-on (uv prereq, `.env`
+    hard-excluded), responder-skill teardown, golden-header zombie rename, informed `.env` keep/purge,
+    guided-manual wiring docs. Plan got a 4-lens AGY-AFTER (13 defects folded); the ISCC compile + a re-tag CI
+    fix were caught by the local/CI gates, not review.
+  - **7.2** release CI (`release-clavity-classic.yml`): 4-way version triangulation, tag-lineage guard, blocking
+    timeout-bounded smokes (install/uninstall, mutual-exclusion, `.env`-exclusion), atomic publish.
+  - **Bridge hardening** (`bd8ec8f`): `server.py` scrubs host AI keys from the delegated sub-agent's env
+    (confused-deputy fix) and passes the Gemini key explicitly to the SDK. (Residual: the closed `localharness`
+    re-export is inconclusive but mitigated — sub-agent `run_command` is blocked in the current headless posture.)
+
 ### clavity-dotnet — engineering increments (all merged to `main`)
 - **.NET port, increment 1 (T1–T10)** — LS discovery, h2c framing (live-proven + CI-pinned), `LsClient`,
   the `agy_look`/`agy_status`/`agy_ask` MCP surface, live write path (model-id reverse-engineered).
@@ -60,75 +79,29 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 
 ## ▶ Forward backlog (in priority order)
 
-### 1. clavity-classic installer — **#1 PRIORITY** (Option A: minimal/honest, matches classic's architecture)
-
-Ship `clavity-classic-setup.exe` so a user installs classic with **no Rust toolchain**. **Scope redecided
-2026-06-30 (Option A — minimal/honest):** plan-grounding against the real `clavity-classic` source showed classic
-**deliberately uses manual wiring** and lacks dotnet-style install machinery (no `install` verb; agentmemory over
-**REST** not MCP; GEMINI.md pointer **manual by design**; no plugin tree/add-ons; no `tmux.conf`). So the installer
-ships what exists and surfaces the rest as **guided-manual** — it does NOT mirror dotnet's zero-touch registration
-(building those new Rust verbs = "Option B" packaging-driven scope creep, **rejected**; agy-consulted +
-user-approved). Build order **7.3 ✅ → 7.8 ✅ → 7.1 → 7.2**.
-
-Design = `docs/superpowers/specs/2026-06-30-clavity-classic-packaging-design.md` (Option A reconciliation block);
-implementation plan = `docs/superpowers/plans/2026-06-30-clavity-classic-packaging-plan.md` (Tasks 0–6,
-AGY-AFTER round-1 reviewed; release/ops round pending agy availability).
-
-- **7.3 — Rust golden-header injection. ✅ DONE — merged to `clavity-classic` (`dea8f87`), rust-reviewed APPROVE.**
-  Mirrors dotnet `GoldenHeader` (`src/golden_header.rs`): resolves `%USERPROFILE%\.clavity\golden-header.md` via
-  **`std::env::var_os("USERPROFILE")→HOME`** (NOT the `dirs` crate — no dep added), read+cap+prepend per
-  `clavity ask`, `clavity curate-commit` writes the header + atomic `.sha256` sidecar; `clavity doctor` reports
-  golden-hdr status. *(dotnet-parity follow-ups noted in § 6.)*
-- **7.8 — prebuild + stage the Rust `clavity.exe`. ✅ DONE — `scripts/build-classic-release.ps1`** (the shared
-  recipe, run locally AND in 7.2 CI): `cargo build --release --locked` → stages `clavity.exe` + the bridge
-  **runtime whitelist** (incl. `SKILL.md`) into `publish/`, with a hard `.env`-leak assertion. No cross-repo
-  fetch — the bridge is vendored in-branch at `agy-mcp-bridge/` (canonical home).
-- **7.1 — the Inno installer (`installer/clavity-classic.iss`, greenfield, Option A).** Real jobs: `clavity.exe`
-  →PATH; **SET `HKCU\Software\clavity\classic`** so the shipped dotnet installer's existing `ClassicRegistered`
-  detection fires (no dotnet-side patch); **refuse** if `clavity-ls` is on PATH or dotnet's ARP key is present
-  (live-test BOTH directions); the **opt-in `agy-mcp-bridge`** add-on (Python/uv prereq, default OFF, `uv sync
-  --frozen` warmup, `.env` hard-excluded); responder-skill teardown on uninstall; golden-header zombie rename;
-  **informed `.env` keep/purge**. **Guided-manual (NOT installer-automated):** the agentmemory MCP, the GEMINI.md
-  doorbell pointer, and the bridge MCP registration — surfaced via shipped docs + a loud final-wizard summary
-  (editing user-owned agent config from an installer is too brittle — agy security/contract round). Full task
-  breakdown + the complete `.iss` in the packaging plan.
-- **7.2 — `clavity-classic-setup.exe` release CI** (`release-clavity-classic.yml`, greenfield; mirrors
-  `release-clavity-dotnet.yml`): tag `clavity-classic-v*`, single checkout, 4-way version triangulation,
-  tag-lineage guard, pinned toolchain + Inno + `windows-2022`, **blocking** timeout-bounded smokes
-  (install/uninstall, mutual-exclusion, `.env`-exclusion), `concurrency` guard, upload-artifact then atomic
-  gh-release. Authored in the plan; awaits the local ISCC gate before the first tag.
-
-- **✅ BRIDGE FORK RESOLVED (user 2026-06-30): (d) Python/uv prerequisite.** Ship `agy-mcp-bridge` as an **opt-in,
-  default-OFF** add-on declaring a Python ≥3.10 + uv prereq (no PyInstaller, no Rust port — the `google-antigravity`
-  SDK is Python-only). Source is vendored in-branch at `agy-mcp-bridge/` (no upstream, no drift). **Security
-  hardening landed @`bd8ec8f`:** `server.py` scrubs host AI-platform keys (`GEMINI_API_KEY` et al.) from the env
-  before spawning the delegated sub-agent (confused-deputy fix) and passes the key explicitly to the SDK. *(One
-  residual: whether the closed `localharness` binary re-exports the key into its shells needs a live delegation to
-  confirm — tracked.)*
-
-### 2. `clavity --restart-agy` (classic) — 7.7
+### 1. `clavity --restart-agy` (classic) — 7.7
 Agy-only restart: tear down + relaunch ONLY the agy psmux session under the same `--session`, WITHOUT co-launching
 a new Claude (today only `clavity start` relaunches, which orphans the driving session). Re-run agy's exact launch
 + confirm readiness via a `ping`. Surfaced 2026-06-29 when an agy MCP hang forced a full teardown mid-session.
 
-### 3. Golden-header tamper-detection — 7.4
+### 2. Golden-header tamper-detection — 7.4
 Compare `golden-header.md` to its `.sha256` sidecar at read-time; LOUD plain-English warning on external change,
 subtle active-marker otherwise. Honest threat model: the sidecar defends accidental corruption / naive hand-edits
 only (same-user adversary rewrites both — the accepted same-user boundary). Staged after the injection MVP.
 
-### 4. Dynamic send-model resolution (dotnet) — T10 follow-up
+### 3. Dynamic send-model resolution (dotnet) — T10 follow-up
 `AgyView` hard-codes the send model id (`MODEL_GEMINI_3_1_PRO_HIGH = 1037`); the enum ints are version-specific to
 the running agy. Resolve dynamically (`GetAvailableModels` `default_agent_model_id`, or the conversation's own
 model) so a model/version change can't break the live write. User-accepted as deferred (pre-1.0 scope; the paired
 agy uses its default model).
 
-### 5. Packaging verifications — 7.5 / 7.6
+### 4. Packaging verifications — 7.5 / 7.6
 - **7.5** — confirm the dual-plugin format scopes `clavity-ls-driving` to Claude and `clavity-ls-pairing` to agy
   (else rely on contextual invocation + document).
 - **7.6** — confirm Claude/agy don't auto-update a locally path-installed plugin away from the version-pinned
   `{app}` binary.
 
-### 6. dotnet golden-header parity follow-ups
+### 5. dotnet golden-header parity follow-ups
 The classic 7.3 implementation (`src/golden_header.rs`) is now the canonical golden-header behavior; two dotnet
 divergences were found during the Spec A capstone and are tracked as **dotnet-side code fixes** (they do not
 affect the packaging `.iss`/CI contracts):
