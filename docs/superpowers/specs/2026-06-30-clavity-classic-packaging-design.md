@@ -121,11 +121,20 @@ proven hardening (in-process PATH scan, no `where` subprocess, suppressible msgb
 - `addtopath` (checkedonce) — append `{app}` to HKCU `Path` (the in-place `NeedsAddPath` append-never-prepend
   logic, verbatim from dotnet).
 - **Set the mutual-exclusion marker:** write `HKCU\Software\clavity\classic` (a `[Registry]` key) so the
-  **already-shipped dotnet installer refuses** (its `ClassicRegistered()` reads exactly this key,
-  `clavity-dotnet.iss:135`). No dotnet-side patch is needed — this is the classic side honoring the existing
-  contract. Remove the key on uninstall.
+  **already-shipped dotnet installer refuses**. **Exact contract (verified against the oracle):**
+  `clavity-dotnet.iss:135` is `Result := RegKeyExists(HKCU, 'Software\clavity\classic')` — it checks **KEY
+  EXISTENCE, not a value**. So the classic `[Registry]` entry only has to MATERIALIZE the key (`Root: HKCU;
+  Subkey: "Software\clavity\classic"`; a `ValueType: none` entry, or any value, creates it) — no specific
+  `ValueName`/`ValueData` is required by the oracle. (An API-contract round flagged a missing value shape; that
+  was a false alarm — `RegKeyExists` is satisfied by an empty key. Still, pin it explicitly so the `.iss` author
+  knows the contract is key-existence.) Create it with `Flags: uninsdeletekey` so it is removed on uninstall. No
+  dotnet-side patch is needed — this is the classic side honoring the existing contract.
 - **Register the classic runtime** at `ssPostInstall` (mirror dotnet's `CurStepChanged`): register the
   **agentmemory MCP** with the agent(s), install the GEMINI.md **doorbell** rule, and place **`tmux.conf`**.
+  **The doorbell line is a strict wire contract** (API-contract round): it MUST be byte-identical to the literal
+  the Rust crate's `ring`/parser listens for — pin it to the crate's **canonical doorbell constant** (the same
+  one `clavity ring`'s `$AGY_DOORBELL` default uses), NOT a re-typed string that could drift a character and make
+  agy's signal silently ignored. The plan resolves the exact literal from the `clavity-classic` source.
   Surface any failure with a suppressible msgbox + the manual re-run command (no false "Success") — same UX
   contract as dotnet's plugin registration.
   - **MERGE, never blind-overwrite the user's global config (agy security round, 2026-06-30).** `GEMINI.md`
@@ -248,6 +257,11 @@ native port is real rewrite work out of scope for shipping. uv is the fastest, l
   Enforce with explicit Inno `[Files]` `Excludes: ".env,.venv,__pycache__,.agent,*.pyc"` AND a stage-time copy
   filter in 7.8 that whitelists only the files above. The `.env` leak is the highest-severity packaging risk —
   the spec freezes it as a hard exclusion + a CI assertion (see 7.2 smoke).
+- **Task label states the VALUE, not just the cost (UX round):** the `install_bridge` `[Tasks]` label/description
+  must first say **what the bridge gives you** — *autonomous code-delegation: let Claude hand off a coding task
+  for Antigravity to do in an isolated worktree (`delegate_to_antigravity`)* — THEN the prerequisite. A label that
+  states only "needs Python/uv" with no value proposition makes operators skip a major capability out of
+  confusion (they can't tell what they'd be enabling). Default-OFF is right, but the choice must be *informed*.
 - **Prerequisite handling:** the bridge `[Tasks]` checkbox label states plainly it needs **Python ≥3.10 + uv**;
   at `ssPostInstall`, if `install_bridge` is ticked, detect `uv` on PATH (in-process, no subprocess hang risk)
   and:
@@ -272,20 +286,40 @@ native port is real rewrite work out of scope for shipping. uv is the fastest, l
 - **First-run secret setup:** the user copies `.env.example` → `.env` and pastes their `GEMINI_API_KEY`
   (the SDK does NOT reuse agy's OAuth — documented in `.env.example`). The installer does NOT prompt for or
   store the key (no secret in the installer or registry).
+- **Upgrade-with-deselection cleanup (UX round — zombie-state).** Inno does NOT delete previously-installed
+  files when a task is **unchecked on an in-place upgrade** — it just skips updating them. So an operator who
+  upgrades and unticks `install_bridge` (mental model: "I unchecked it, so it's gone") is left with a **zombie
+  `{app}\agy-mcp-bridge` tree + an orphaned bridge MCP registration** that now points at maybe-stale files. The
+  `[Code]` MUST detect bridge **deselection on upgrade** (task previously installed, now unchecked) and actively
+  tear it down — remove the bridge dir (honoring the same `.env` keep/purge prompt) and **unregister the bridge
+  MCP** — so the unchecked state actually means uninstalled. (The regenerable `.venv`/caches go unconditionally.)
 - **First-run DISCOVERABILITY (don't strand the operator at a closed wizard).** The bridge add-on is inert until
   the user does an ordered set of manual steps (install uv → `uv sync --frozen` → copy `.env.example`→`.env` →
   paste `GEMINI_API_KEY`), and after the wizard closes they would otherwise have to *hunt* for
   `{app}\agy-mcp-bridge`. So: (1) the final wizard page offers an **"Open the bridge configuration folder"**
-  checkbox (Inno `[Run]` `Flags: postinstall shellexec skipifsilent` → `explorer.exe {app}\agy-mcp-bridge`); (2)
-  the bridge `[Tasks]`/inactive msgboxes print the **absolute `{app}\agy-mcp-bridge` path** and the **ordered
-  step list**; (3) a short **`README-FIRST.md`** ships in the bridge dir with the same steps. **The steps must
-  include HOW to open a terminal in that folder** (the `[Run]` checkbox opens it in Explorer — a GUI window, not
-  a shell — so "run `uv sync`" is a dead end without it; e.g. "type `cmd` in the Explorer address bar and press
-  Enter", or Shift+right-click → *Open in Terminal*). The goal: the operator never meets a silently-dead MCP
-  tool later because they didn't know a setup step existed.
+  checkbox (Inno `[Run]` `Flags: postinstall shellexec skipifsilent` → `explorer.exe {app}\agy-mcp-bridge`)
+  — **gated `Tasks: install_bridge`** (UX round): a user who left the bridge OFF must NOT see this checkbox; if
+  shown+checked it opens a non-existent/empty folder; (2) the bridge `[Tasks]`/inactive msgboxes print the
+  **absolute `{app}\agy-mcp-bridge` path** and the **ordered step list**; (3) a short **`README-FIRST.md`** ships
+  in the bridge dir with the same steps. **The steps must include HOW to open a terminal in that folder** (the
+  `[Run]` checkbox opens it in Explorer — a GUI window, not a shell — so "run `uv sync`" is a dead end without
+  it; e.g. "type `cmd` in the Explorer address bar and press Enter", or Shift+right-click → *Open in Terminal*).
+  **README-FIRST must also (UX round):** (a) give the exact `.env` setup as a copy command —
+  `Copy-Item .env.example .env` — NOT "rename in Explorer" (Explorer blocks creating dot-leading filenames); and
+  (b) **warn NOT to run `start-claudavity.ps1` manually** — the MCP server is launched in the background by the
+  host agent (`uv … run server.py`); running the script by hand is a false affordance that just hangs the
+  terminal. *(If `start-claudavity.ps1` has no operator-facing purpose, the plan may instead drop it from the
+  shipped `[Files]` whitelist — resolve its role against the bridge code.)* The goal: the operator never meets a
+  silently-dead MCP tool later because they didn't know a setup step existed.
 - **MCP registration (MUST be gated on `install_bridge`):** register the bridge as an MCP server with the
   agent(s) the same mechanism the runtime registration uses, pointing at `uv run … server.py` in
-  `{app}\agy-mcp-bridge`. **This registration fires ONLY when the `install_bridge` task is selected** — the
+  `{app}\agy-mcp-bridge`. **DIRECTORY-ANCHOR the launch command (API-contract round, BLOCKER):** an MCP client
+  does NOT guarantee the server's `cwd` — it typically launches in the user's active workspace. A bare
+  `uv run … server.py` would then look for `pyproject.toml`/`.venv` in the WRONG dir (wrong/no Python env) and
+  miss `{app}\agy-mcp-bridge\.env` (no `GEMINI_API_KEY` loaded) — a silent runtime failure. So register it with
+  an **absolute** working dir + script path, e.g. `uv --directory "{app}\agy-mcp-bridge" run "{app}\agy-mcp-bridge\server.py"`,
+  and `server.py` MUST load `.env` (and `SKILL.md`) **relative to `__file__`, never `cwd`** (SKILL.md already is;
+  confirm `.env`/`load_dotenv` is too — a bridge-code check). **This registration fires ONLY when the `install_bridge` task is selected** — the
   bridge is opt-in default-OFF, so registering it unconditionally would inject a `delegate_to_antigravity` tool
   whose `server.py` was never installed, giving opted-out users a dead/cryptically-failing MCP tool. Gate it
   (and remove the registration on uninstall). Exact command resolved in the plan against `server.py`'s entry
