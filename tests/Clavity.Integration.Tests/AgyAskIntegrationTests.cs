@@ -67,7 +67,7 @@ public class AgyAskIntegrationTests
             await Task.Delay(_idleDelay, context.CancellationToken);
             lock (_gate)
             {
-                _steps.Add(new CascadeStep { Kind = 15, UserInput = new CascadeUserInput { Text = _replyText } });
+                _steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = _replyText } });
             }
             return new WaitForConversationFullyIdleResponse { TimedOut = false };
         }
@@ -112,7 +112,7 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
-    public async Task AskAsync_sends_message_waits_for_idle_and_returns_reply_steps()
+    public async Task AskAsync_returns_answer_from_the_trailing_assistant_step()
     {
         var initial = new[] { new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = "original" } } };
         var fake = new FakeAskLs("conv-1", "agy reply here", TimeSpan.FromMilliseconds(50), initial);
@@ -122,11 +122,12 @@ public class AgyAskIntegrationTests
         try
         {
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
-            var bounded = await view.AskAsync("please do X");
+            var reply = await view.AskAsync("please do X");
 
             Assert.Equal("please do X", fake.LastSentText);
-            Assert.Equal(2, bounded.Steps.Count); // [our user step, agy reply] — the delta after the pre-send count
-            Assert.Contains(bounded.Steps, s => s.Text == "agy reply here");
+            Assert.Equal("agy reply here", reply.Answer);  // the trailing assistant step
+            Assert.Equal("conv-1", reply.CascadeId);
+            Assert.NotEmpty(reply.Activity);               // complete record: our user step + the assistant reply
         }
         finally
         {

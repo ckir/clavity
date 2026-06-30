@@ -30,6 +30,10 @@ public sealed class AgyView
     private readonly IListeningPorts _listening;
     private readonly IModalGuard _modalGuard;
 
+    // CascadeId-keyed in-flight tracker: an ask in flight for conversation A must NOT make a status check on idle
+    // conversation B report "working" (multi-session contamination). Keyed by conversation id, not view-global.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _inFlight = new();
+
     public AgyView(AgyViewOptions options, IListeningPorts? listening = null, IModalGuard? modalGuard = null)
     {
         _options = options;
@@ -60,9 +64,8 @@ public sealed class AgyView
     /// idle-wait (ties to T9 ModalGuard) — on expiry a <see cref="TimeoutException"/> is thrown. ⚠ This is a WRITE:
     /// live it consumes quota and posts a visible message; live use is gated to T10.
     /// </summary>
-    public async Task<BoundedTrajectory> AskAsync(
+    public async Task<AskReply> AskAsync(
         string message,
-        int budgetChars = BoundedView.AskBudgetChars,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -74,27 +77,53 @@ public sealed class AgyView
 
             var header = _options.GoldenHeaderPath is null ? null : GoldenHeader.TryRead(_options.GoldenHeaderPath);
             var outgoing = GoldenHeader.Apply(header, message);
-            await client.SendUserCascadeMessageAsync(conversationId, outgoing, cancellationToken);
 
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(timeout ?? DefaultIdleWaitTimeout);
+            _inFlight[conversationId] = 1;
             try
             {
-                await client.WaitForConversationFullyIdleAsync(
-                    conversationId, IdleInactivityTimeoutSeconds, IdleStabilizationSeconds, timeoutCts.Token);
-            }
-            catch (Exception ex) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested
-                && ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
-            {
-                throw new AgyModalHangException(
-                    _modalGuard.OnLsTimeout("WaitForConversationFullyIdle", timeout ?? DefaultIdleWaitTimeout));
-            }
+                await client.SendUserCascadeMessageAsync(conversationId, outgoing, cancellationToken);
 
-            var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
-            var reply = new CascadeTrajectory { CascadeId = full.CascadeId };
-            reply.Steps.AddRange(full.Steps.Skip(before));
-            return BoundedView.Summarize(reply, budgetChars, BoundedView.AskMaxStepChars, newestFirst: true);
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(timeout ?? DefaultIdleWaitTimeout);
+                try
+                {
+                    await client.WaitForConversationFullyIdleAsync(
+                        conversationId, IdleInactivityTimeoutSeconds, IdleStabilizationSeconds, timeoutCts.Token);
+                }
+                catch (Exception ex) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested
+                    && ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
+                {
+                    var diag = await BuildTimeoutDiagnosticAsync(client, conversationId, before, cancellationToken);
+                    throw new AgyModalHangException(
+                        _modalGuard.OnLsTimeout("WaitForConversationFullyIdle", timeout ?? DefaultIdleWaitTimeout), diag);
+                }
+
+                var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
+                var delta = full.Steps.Skip(before).ToList();
+                return BoundedView.ProjectAskReply(full.CascadeId, delta);
+            }
+            finally
+            {
+                _inFlight.TryRemove(conversationId, out _);
+            }
         }
+    }
+
+    /// <summary>On idle-wait timeout, capture WHERE agy stopped: agy-produced step count (discounting our injected
+    /// user step), and the last step's kind/class/summary — so the consumer can tell a slow tool from a true hang.</summary>
+    private static async Task<TimeoutDiagnostic> BuildTimeoutDiagnosticAsync(
+        LsClient client, string conversationId, int before, CancellationToken ct)
+    {
+        var full = await client.GetCascadeTrajectoryAsync(conversationId, ct);
+        var total = full.Steps.Count;
+        var newAgy = Math.Max(0, total - (before + 1)); // +1 discounts our injected Kind-14 user step.
+        var last = total > 0 ? full.Steps[^1] : null;
+        var lastKind = last?.Kind ?? 0;
+        string? summary = last is null ? null
+            : (last.UserInput is { } u && u.Text.Length > 0 ? u.Text
+               : last.AssistantOutput is { } a && a.Text.Length > 0 ? a.Text : null);
+        if (summary is { Length: > 500 } s) summary = s[..500];
+        return new TimeoutDiagnostic(total, newAgy, lastKind, StepKind.Class(lastKind), summary);
     }
 
     /// <summary>

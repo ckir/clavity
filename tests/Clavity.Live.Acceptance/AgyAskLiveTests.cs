@@ -39,13 +39,14 @@ public class AgyAskLiveTests
         var reply = await view.AskAsync(message, timeout: TimeSpan.FromSeconds(120));
 
         _out.WriteLine($"cascade id: {reply.CascadeId}");
-        _out.WriteLine($"new steps (delta after send): {reply.TotalSteps}");
-        foreach (var s in reply.Steps)
-            _out.WriteLine($"  kind={s.Kind} text={(s.Text is null ? "<null>" : s.Text)}");
+        _out.WriteLine($"answer: {reply.Answer ?? "<null>"}");
+        _out.WriteLine($"activity ({reply.Activity.Count}):");
+        foreach (var a in reply.Activity)
+            _out.WriteLine($"  kind={a.Kind} label={a.Label} summary={(a.Summary is null ? "<null>" : a.Summary)}");
 
         Assert.False(string.IsNullOrEmpty(reply.CascadeId));
-        Assert.Contains(reply.Steps, s => s.Text == message);   // our message landed as a user step.
-        Assert.True(reply.TotalSteps >= 2,                       // agy appended a reply beyond our message.
-            $"expected >= 2 new steps (our message + agy reply); got {reply.TotalSteps}");
+        Assert.Contains(reply.Activity, a => a.Summary == message); // our message landed as a user step.
+        Assert.False(string.IsNullOrEmpty(reply.Answer),            // agy replied with trailing assistant prose.
+            "expected a trailing assistant answer; got none");
     }
 }

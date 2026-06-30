@@ -6,5 +6,10 @@ namespace Clavity.Ls;
 public sealed class AgyModalHangException : TimeoutException
 {
     public ModalGuardReport Report { get; }
-    public AgyModalHangException(ModalGuardReport report) : base(report.Hint) => Report = report;
+
+    /// <summary>Where agy was when the wait expired (slow tool vs hang) — null when not computed.</summary>
+    public TimeoutDiagnostic? Diagnostic { get; }
+
+    public AgyModalHangException(ModalGuardReport report, TimeoutDiagnostic? diagnostic = null) : base(report.Hint)
+        => (Report, Diagnostic) = (report, diagnostic);
 }
