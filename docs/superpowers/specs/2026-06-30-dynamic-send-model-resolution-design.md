@@ -32,10 +32,11 @@ the cascade trajectory clavity already fetches (spike-confirmed) — falling bac
   see spike).
 - **Model the `model` id fields as `int32`, NOT the `Model` enum** (both in `ModelDetails.model = 15` and in the
   send-side `ModelOrAlias.model`). enum and int32 are wire-compatible (both varints), and an `int32` carries a
-  dynamically-resolved, possibly-unnamed id with no enum cast/open-enum ambiguity. This RETIRES the hard-coded
-  `Model.Gemini31ProHigh` enum value — `LsClient.cs:65` becomes `Model = <resolved int>`. (proto3 enums are open
-  and Google.Protobuf *does* preserve unknown ints, so the enum would also work — but `int32` is the clearer type
-  for a value we never name in source.)
+  dynamically-resolved, possibly-unnamed id with no enum cast/open-enum ambiguity. `LsClient.cs:65` becomes
+  `Model = <resolved int>` — the runtime value comes from the LS. (proto3 enums are open and Google.Protobuf *does*
+  preserve unknown ints, so the enum would also work — but `int32` is the clearer type for a value we never name in
+  source.) **Keep the literal `1037` as a single named const** — NOT load-bearing on the happy path, but the
+  deepest legacy fallback for an older agy lacking `GetAvailableModels` (resolution step 3).
 - **Field numbers + the exact response shape are verified against a live wire capture** (golden `.bin`, mirroring
   the existing `GetConversationMetadata` / `GetCascadeTrajectory` goldens) — NOT guessed. The plan captures it.
 
@@ -56,16 +57,30 @@ the cascade trajectory clavity already fetches (spike-confirmed) — falling bac
      the existing trajectory-reader in the plan.)
    - If the walk finds NO non-zero model in any step → treat as a brand-new conversation → the default fallback
      (step 2).
-2. **Fallback — no prior model in the trajectory** (a brand-new conversation, first send, before any step has
-   run) → use agy's **default** model: `GetAvailableModels` → `default_agent_model_id` (a string **key**) →
-   the `models` map → its concrete `model` int. *(There is no "explicitly-set-but-unresolvable silent-downgrade"
-   risk on the primary path — the trajectory's model is by-definition a value the conversation actually ran. The
-   only edge is a model since DEPRECATED out of the catalog → see Validate.)*
-3. **Validate (deprecation guard):** before sending, confirm the chosen int is still present in the live
-   `GetAvailableModels` map. If the trajectory's model was since removed → **loud error** ("the conversation's
-   model is no longer available — pick another in agy"), never a silent substitution.
-4. **Set the resolved `int32`** on `requested_model.model` (the field is now `int32`, see modeling above) — the
-   runtime value comes from the LS, never a source constant.
+2. **Fallback — no prior model in the trajectory** (a brand-new conversation, before any step has run) → use agy's
+   **default** model: `GetAvailableModels` → `default_agent_model_id` (a string **key**) → the `models` map → its
+   concrete `model` int.
+3. **Last-ditch — older agy / catalog unreachable (R3-D2 backward-compat).** The PRIMARY trajectory path does NOT
+   call `GetAvailableModels`, so it works on any agy that serves trajectories. But step 2 (default) and step 4
+   (validate) DO. If `GetAvailableModels` is `UNIMPLEMENTED`/unreachable (an older agy predating it) AND there is
+   no trajectory model, fall back to the **retained legacy constant `1037`** — kept ONLY as the deepest fallback
+   (the `int32` modeling still stands; we just don't DELETE the literal) — and log a warning. This keeps clavity
+   working across agy versions rather than bricking on a missing RPC. (A hard cutover that *requires* the RPC is
+   the alternative — rejected; graceful degradation is cheap.)
+4. **Validate (deprecation guard).** Before sending, confirm the chosen int is present in the live
+   `GetAvailableModels` map (skipped gracefully if `GetAvailableModels` is unreachable, per step 3). If the
+   trajectory's model was since removed → **loud error**, and the message MUST tell the operator how to escape the
+   **deadlock** (R3-D1): *"The conversation's model is no longer available. In agy, pick a new model AND send a
+   message so the conversation records it, then retry."* — because clavity reads the last **executed** model
+   (Accepted limitation), merely changing the dropdown WITHOUT sending re-reads the old model and fails again.
+5. **Set the resolved `int32`** on `requested_model.model` (the field is `int32`, see modeling above), and **LOG
+   the resolved int + its SOURCE** (`trajectory` / `default` / `legacy-1037`) before sending (R3-D6 observability)
+   — so ops can see which model each drive used and via which path (debugging a downstream quota/model failure).
+
+**Plumbing (R3-D5).** The resolver needs the trajectory, which `LsClient.cs:65` (a low-level gRPC wrapper) does
+NOT hold — the trajectory is fetched by the higher-level drive orchestrator. Compute the resolved int WHERE the
+trajectory is in scope (the orchestrator) and **plumb it down as a new parameter** into the `SendUserCascadeMessage`
+client call; the plan picks the exact seam (and whether the resolver is a small unit the orchestrator calls).
 
 ### Caching & latency — RESOLVED (zero added round-trip)
 - The conversation's model is read from the **trajectory clavity already fetches every drive** → **no extra RPC**
@@ -105,19 +120,25 @@ is `0` for an alias-driven step. See the resolution algorithm.)*
 
 ## Error handling
 
-- `GetAvailableModels` fails / empty → surface a clear, actionable error on the send (mirror the existing
-  live-write error surfacing). Never crash the driver.
-- The resolution ladder — **conversation-model if set → default if truly unset → loud error if a model was
-  explicitly chosen but is unresolvable (or the catalog is empty)** — guarantees we either send a
-  *currently-valid* id or fail loudly with a useful message. Never a silent wrong/stale id, and never a silent
-  downgrade of a deliberate user choice (D2).
+- The full ladder (resolution steps 1-5): **trajectory model if any step has one → default
+  (`default_agent_model_id`) for a new conversation → legacy `1037` if `GetAvailableModels` is unreachable on an
+  older agy → loud, deadlock-aware error if the chosen model is deprecated out of the catalog.** It always sends a
+  *currently-valid* id or fails loudly with an actionable message; never a silent wrong/stale id or silent
+  downgrade. Never crashes the driver.
+- `GetAvailableModels` transport failure is **distinguished from `UNIMPLEMENTED`**: a transient failure on a
+  capable agy → retry/clear error; `UNIMPLEMENTED` (older agy) → the legacy-`1037` degradation (step 3), not a
+  fatal error.
 
 ## Testing
 
-- **Golden wire bytes** for `GetAvailableModels` captured from a live LS (like `TestData/GetCascadeTrajectory.bin`)
-  — pins the field numbers/shape against silent proto drift.
-- **In-proc fake LS** returns a representative map (a couple of models + a default) so the resolution + send path
-  is exercised hermetically in CI.
+- **Golden wire bytes** for `GetAvailableModels` (R3-D4 — clavity has **no existing call site**, so the author
+  can't piggyback a dump-line: capture it by invoking the RPC against a live agy via `grpcurl` or a throwaway test
+  harness, then commit the `.bin` like `TestData/GetCascadeTrajectory.bin`). Pins field numbers/shape vs proto
+  drift. The trajectory golden already exists; the plan also **re-captures it / synthesizes one carrying populated
+  `generator_model` steps** for the resolver tests.
+- **In-proc fake LS** must serve BOTH (R3-D3): a `GetAvailableModels` map (a couple of models + a default) AND a
+  `GetCascadeTrajectory` whose steps carry **non-zero `generator_model`** — otherwise the resolver always falls
+  through to the default and the PRIMARY trajectory path is never exercised in CI. Seed it explicitly.
 - **Unit tests** for the resolver (trajectory-int path): newest step has a non-zero `generator_model` → that int;
   last step is a non-LLM/alias step (model `0`) but an earlier step has a model → the **walk skips the zeros** and
   returns the earlier int; NO step has a non-zero model → default (`default_agent_model_id` → map → int); default
