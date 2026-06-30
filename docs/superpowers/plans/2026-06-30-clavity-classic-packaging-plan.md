@@ -417,7 +417,9 @@ begin
   end;
   { No ssDone MsgBox: a final modal listing mandatory steps gets double-Enter-dismissed and is uncopyable. The
     manual-wiring handoff is the [Run] "View the required manual wiring steps (MUST READ)" checkbox on the
-    Finished page, which opens the persistent, copyable {app}\MANUAL-SETUP.md. }
+    Finished page, which opens the persistent, copyable MANUAL-SETUP.md in the app folder.
+    (Do NOT write an Inno {app}-style constant inside a Pascal { } comment — the brace starts a constant and
+    breaks the comment; ISCC errors "Syntax error". Caught by the local ISCC gate, not by review.) }
 end;
 
 function InitializeUninstall(): Boolean;
