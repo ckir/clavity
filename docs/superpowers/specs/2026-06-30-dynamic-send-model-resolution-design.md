@@ -64,18 +64,26 @@ the cascade trajectory clavity already fetches (spike-confirmed) — falling bac
    call `GetAvailableModels`, so it works on any agy that serves trajectories. But step 2 (default) and step 4
    (validate) DO. If `GetAvailableModels` is `UNIMPLEMENTED`/unreachable (an older agy predating it) AND there is
    no trajectory model, fall back to the **retained legacy constant `1037`** — kept ONLY as the deepest fallback
-   (the `int32` modeling still stands; we just don't DELETE the literal) — and log a warning. This keeps clavity
-   working across agy versions rather than bricking on a missing RPC. (A hard cutover that *requires* the RPC is
-   the alternative — rejected; graceful degradation is cheap.)
+   (the `int32` modeling still stands; we just don't DELETE the literal). This keeps clavity working across agy
+   versions rather than bricking on a missing RPC. (A hard cutover that *requires* the RPC is the alternative —
+   rejected; graceful degradation is cheap.) **Print a LOUD, user-facing terminal warning when this fires**
+   (R4-D3) — not just a trace log — e.g. `[clavity] WARNING: agy is outdated (no GetAvailableModels); driving with
+   legacy model 1037, which may NOT be your conversation's model. Update agy.` — so an operator on an older agy
+   isn't silently driven on `1037` while believing their selected model is active.
 4. **Validate (deprecation guard).** Before sending, confirm the chosen int is present in the live
    `GetAvailableModels` map (skipped gracefully if `GetAvailableModels` is unreachable, per step 3). If the
    trajectory's model was since removed → **loud error**, and the message MUST tell the operator how to escape the
    **deadlock** (R3-D1): *"The conversation's model is no longer available. In agy, pick a new model AND send a
    message so the conversation records it, then retry."* — because clavity reads the last **executed** model
    (Accepted limitation), merely changing the dropdown WITHOUT sending re-reads the old model and fails again.
-5. **Set the resolved `int32`** on `requested_model.model` (the field is `int32`, see modeling above), and **LOG
-   the resolved int + its SOURCE** (`trajectory` / `default` / `legacy-1037`) before sending (R3-D6 observability)
-   — so ops can see which model each drive used and via which path (debugging a downstream quota/model failure).
+5. **Set the resolved `int32`** on `requested_model.model` (the field is `int32`, see modeling above), and surface
+   the model on TWO channels (R3-D6 + R4-D1/2):
+   - **Trace log** the resolved int + its SOURCE (`trajectory` / `default` / `legacy-1037`) — for ops debugging a
+     downstream quota/model failure.
+   - **User-facing terminal line** before the cascade starts — e.g. `[clavity] driving with model <int>
+     (source: trajectory)` — so the human at the terminal can SEE which model is about to drive and `Ctrl+C` if a
+     surprise model is active (R4-D2: the "last-executed model" proxy can inherit an expensive/cheap model from a
+     prior manual turn → silent quota burn on the next multi-step drive if invisible).
 
 **Plumbing (R3-D5).** The resolver needs the trajectory, which `LsClient.cs:65` (a low-level gRPC wrapper) does
 NOT hold — the trajectory is fetched by the higher-level drive orchestrator. Compute the resolved int WHERE the
@@ -146,6 +154,16 @@ is `0` for an alias-driven step. See the resolution algorithm.)*
   never sent.
 - **Live-acceptance** (`Category=LiveAgy`, excluded from CI): the dynamically-resolved id is accepted by a real
   `SendUserCascadeMessage` (the failure this whole item prevents).
+
+## Operator communication — the behavior change (R4-D4)
+
+This silently changes a long-standing contract: today clavity **always** drives with `gemini-3.1-pro-high`
+regardless of the agy UI; after this it **follows the conversation's last-executed model**. Operators have a mental
+model of clavity's "stubbornness" (e.g. leaving the UI on a cheap model for manual chat, trusting clavity to use
+the heavy one) — so an uncommunicated switch will read as "clavity's logic broke." **Deliverable:** a user-facing
+note in the release notes / `clavity-dotnet` README — boldly: *"clavity now drives with the model your conversation
+last used, instead of always forcing Gemini 3.1 Pro. Check the `[clavity] driving with model …` line."* Pair it
+with the per-drive terminal line (resolution step 5) so the new behavior is self-evident in use.
 
 ## Out of scope
 
