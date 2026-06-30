@@ -1,0 +1,367 @@
+# clavity-classic packaging — installer + prebuild + release CI (7.8 / 7.1 / 7.2) — design
+
+> **Spec B of the clavity-classic installer epic** (see ROADMAP.md §1; Spec A is the golden-header
+> **injection** prerequisite, `2026-06-30-clavity-classic-injection-design.md`). Forward-writable SPEC — the
+> Rust source lives on the `clavity-classic` branch and the prebuilt `clavity.exe` does not exist yet, so
+> line-level `.iss`/workflow detail lands in the implementation plan authored against the **real** CI
+> artifacts. This spec defines intent + contracts, mirroring the **proven, shipped** dotnet packaging
+> (`installer/clavity-dotnet.iss` + `.github/workflows/release-clavity-dotnet.yml` on `main`) as the oracle.
+
+**Goal:** Ship `clavity-classic-setup.exe` so a user installs the Rust **clavity** (classic) variant with **no
+Rust toolchain**, at feature parity with dotnet: the prebuilt binary on PATH, the agentmemory MCP + GEMINI.md
+doorbell + `tmux.conf` registered, the optional add-ons, and the `delegate_to_antigravity` bridge as a
+**Python/uv prerequisite** (user-decided 2026-06-30). Mutually exclusive with the dotnet install in both
+directions.
+
+**Why after Spec A:** classic has **no golden-header injection** until 7.3 lands (the `driving-agy` skill that
+carried it was deleted). Shipping packaging first would deploy a product regressed vs. its own past and vs.
+dotnet. Build order is therefore **7.3 (Spec A) → 7.0 (publish claudavity) → 7.8 → 7.1 → 7.2**: feature parity
+first (locally testable); then **7.0** — publish claudavity to GitHub with a pinned tag, the precondition for any
+cross-repo bridge fetch (see *Bridge packaging*); then the prebuilt artifact (7.8, which fetches that pinned
+bridge tag), then the installer authored against the *real* artifacts (7.1), then release CI only once the
+installer is proven locally (7.2 — RIGHT-TOOL: ISCC local verify before any remote tag).
+
+**Tech:** Inno Setup 6 (ISCC), GitHub Actions (`windows-latest`), `cargo build --release` (the `clavity` crate
+on `clavity-classic`), `uv` (bridge runtime prereq), PowerShell (CI glue). Local gate = ISCC + a silent
+install/uninstall smoke, exactly as dotnet.
+
+---
+
+## Component 7.8 — prebuild + stage the Rust `clavity.exe` (build recipe, run locally AND in CI)
+
+The **build recipe** that produces the classic binary + staged bridge so the user never needs `cargo`. It is
+**not CI-only**: the SAME recipe runs **locally** to populate `publish/` so 7.1's `clavity-classic.iss` can be
+authored and ISCC-verified on this machine (RIGHT-TOOL gate, before any tag), **and** runs inside 7.2's release
+workflow to produce the shipped artifact. The `.iss` `[Files]` packs *this* recipe's output (`publish/`). Authoring
+7.1 locally therefore requires running 7.8 locally first — including a **local `git clone` of the pinned
+claudavity tag** to stage the bridge (the same multi-repo fetch CI does), so the local `publish/agy-mcp-bridge/`
+exists before ISCC compiles. (This mirrors dotnet, where `dotnet publish` → ISCC runs locally before the tag
+triggers the identical CI build — no circular dependency: the recipe is the shared unit, not a CI-only job.)
+
+- **Source:** the `clavity` crate on the **`clavity-classic` branch** (NOT `main`). The release workflow checks
+  out that branch's tag (see 7.2).
+- **Build:** `cargo build --release` on `windows-latest` → `target/release/clavity.exe`. Assert the exe exists
+  (mirror the dotnet `if (-not (Test-Path …)) { throw }` guard). Strip/verify it is a single self-contained exe
+  (Rust statically links the CRT by default with the MSVC toolchain; confirm no extra runtime DLLs are needed —
+  if any are, they ship alongside in `[Files]`).
+- **Stage for ISCC** at a path the `.iss` resolves relative to `installer/` — mirror dotnet's `..\publish\`
+  convention (e.g. stage to `publish/clavity.exe`) so both installers share one layout idiom.
+- **Fetch + stage the bridge (multi-repo checkout):** a second `actions/checkout` (locally: a `git clone`) pulls
+  the **pinned `claudavity` tag** (`repository:`+`ref:`, see *Bridge packaging*) into a sub-path. **The staging
+  SOURCE is the fetched claudavity checkout ROOT** (claudavity is now its own repo — there is no longer an
+  in-repo `agy-mcp-bridge/` subdirectory to copy *from*; that path existed only under the abandoned vendor
+  layout). Copy only the whitelisted files (`server.py`, `agy_*.py`, `isolation.py`, `telemetry.py`,
+  `pyproject.toml`, `uv.lock`, `start-claudavity.ps1`, `.env.example`, and the responder skill — no
+  `.env`/`.venv`/caches) from that root into the staging DEST `publish/agy-mcp-bridge/`, keeping ISCC's `[Files]`
+  source layout uniform. It is a cross-repo fetch (the cost of keeping claudavity as the upstream single source
+  of truth) — the fetched tree never contains the dev `.env` (gitignored upstream), so staging cannot leak it.
+- **Cross-platform:** Windows is the shipping target now; Linux/macOS prebuild follows the porting guide
+  (`CONTRIBUTING.md`) as a later increment — **out of scope here** (Windows installer only).
+
+> **PLAN-vs-SPEC:** the exact `cargo` invocation, the crate's bin name, and any required side-by-side DLLs are
+> verified against the `clavity-classic` branch when the plan is authored — not fabricated here.
+
+---
+
+## Component 7.1 — the Inno installer (`installer/clavity-classic.iss`)
+
+Mirror `clavity-dotnet.iss` structure; the deltas below are what makes it the *classic* installer. Reuse every
+proven hardening (in-process PATH scan, no `where` subprocess, suppressible msgboxes, fail-open uninstall).
+
+### Identity & layout
+- **New, distinct `AppId` GUID** — MUST differ from the dotnet `{B7E4B2A1-…}` so the two never share an
+  uninstall identity. Generate one fresh; freeze it (never change across releases).
+- `AppName=clavity-classic`, `#define ExeName "clavity.exe"`, `OutputBaseFilename=clavity-classic-setup`,
+  `OutputDir=..\dist`.
+- `DefaultDirName={localappdata}\Programs\clavity-classic`, `PrivilegesRequired=lowest`, `x64compatible`,
+  `ChangesEnvironment=yes`.
+- **`SetupMutex=ClavitySetupMutex`** — reuse the **same** shared mutex name as dotnet (`.iss:34`). This is the
+  cross-installer guard that blocks a concurrent classic+dotnet setup race; it only works if both installers
+  name it identically.
+
+### Files
+- `Source: "..\publish\clavity.exe"; DestDir: "{app}"` (+ any required side-by-side DLLs from 7.8).
+- The agy-driving plugin tree + marketplace manifest for the **classic** variant (the `clavity-classic`
+  driving/pairing skills), shipped under `{app}` the same way dotnet ships its plugin — exact plugin names
+  resolved against the `clavity-classic` branch in the plan.
+- Optional add-ons **agy-autotrain** + **commonmemory** shipped (gated by `[Tasks]`), identical to dotnet.
+- **The bridge tree** (claudavity) — see *Bridge packaging* below; shipped under `{app}\agy-mcp-bridge`, gated
+  by its own `[Tasks]` checkbox, with `.env` / `.venv` / caches **excluded**.
+
+### Tasks / Registry / runtime registration
+- `addtopath` (checkedonce) — append `{app}` to HKCU `Path` (the in-place `NeedsAddPath` append-never-prepend
+  logic, verbatim from dotnet).
+- **Set the mutual-exclusion marker:** write `HKCU\Software\clavity\classic` (a `[Registry]` key) so the
+  **already-shipped dotnet installer refuses** (its `ClassicRegistered()` reads exactly this key,
+  `clavity-dotnet.iss:135`). No dotnet-side patch is needed — this is the classic side honoring the existing
+  contract. Remove the key on uninstall.
+- **Register the classic runtime** at `ssPostInstall` (mirror dotnet's `CurStepChanged`): register the
+  **agentmemory MCP** with the agent(s), install the GEMINI.md **doorbell** rule, and place **`tmux.conf`**.
+  Surface any failure with a suppressible msgbox + the manual re-run command (no false "Success") — same UX
+  contract as dotnet's plugin registration.
+
+### Mutual exclusion (classic refuses dotnet) — `[Code]`
+Mirror dotnet's `InitializeSetup`, inverted:
+- Refuse if **`clavity-ls`** is on PATH (in-process PATHEXT scan for the `clavity-ls` stem — reuse dotnet's
+  `ClassicClavityOnPath` scanner, retargeted; **NOT** the bare `clavity` stem, which is *our own* binary).
+- Refuse if **dotnet's ARP key** is present (its Inno uninstall key / `DisplayName like "clavity-dotnet*"`),
+  i.e. dotnet is installed. Use the same registry-scan shape dotnet uses to find the classic ARP key.
+- Each refusal → a `SuppressibleMsgBox(mbCriticalError)` naming how to remove the other variant, then
+  `Result := False`. **Live-test BOTH directions before merge** (install classic→dotnet refuses; install
+  dotnet→classic refuses).
+- `PrepareToInstall` / `InitializeUninstall`: if classic holds a live-session mutex analogous to dotnet's
+  `Local\ClavityMcpRunning`, gate on it the same way; otherwise omit (classic's psmux/bus model may have no
+  equivalent single-process lock — resolved in the plan against the branch).
+
+### Uninstall
+Mirror dotnet: unregister the MCP/doorbell/add-ons (best-effort, fail-open if the exe is gone — dotnet F15),
+remove the PATH entry (`RemoveFromUserPath`), delete `HKCU\Software\clavity\classic`, and honor the
+keep-vs-purge data prompt (default KEEP). If classic also reads
+the shared `%USERPROFILE%\.clavity\golden-header.md` (it will, after 7.3), apply the **same zombie-header
+rename-to-`.backup` on keep** that dotnet does (`clavity-dotnet.iss:280-293`) so a reinstall doesn't auto-inject
+frozen wisdom.
+
+- **Clean up the bridge's post-install artifacts (`[UninstallDelete]`) — informed, split by sensitivity.** Inno's
+  uninstaller only removes files it *installed*; the bridge's **`.env` (live `GEMINI_API_KEY`)**, `.venv/`,
+  `__pycache__/`, and `.agent/` are all generated *after* install (by the user copying `.env.example` and by
+  `uv sync`), so a plain uninstall **strands `{app}\agy-mcp-bridge` as a zombie directory** — including, if left,
+  the user's live API key. Handle the two classes differently (user decision 2026-06-30):
+  - **`.venv/`, `__pycache__/`, `.agent/` (regenerable, no secret):** `[UninstallDelete]` removes them
+    **unconditionally** — they carry no user intent and are trivially rebuilt by `uv sync`.
+  - **`.env` (live secret + user-intent-bearing):** deletion is **gated on the existing keep-vs-purge data
+    prompt**, default **KEEP**. To avoid keep-vs-purge *dissonance* (a user ticking "keep my data" but the key
+    vanishing — the failure mode if `.env` were force-purged), the **prompt explicitly enumerates BOTH data
+    classes it governs** — the **golden-header wisdom** AND the **bridge API key (`.env`)** — so KEEP and PURGE
+    each mean exactly one unambiguous thing across both. The prompt names "your stored API key" specifically, so
+    the choice is *informed* (this is what resolves the original zombie concern — *surfacing* the key, not
+    force-deleting it). On *purge*, the `.env` and the now-empty `{app}\agy-mcp-bridge` dir are removed; on
+    *keep*, the `.env` stays and the uninstall summary states the key was retained. (Note: a normal same-AppId
+    in-place **upgrade** does not run the uninstaller, so this prompt only fires on a real uninstall — no
+    mid-upgrade key loss.)
+  Verify both branches (purge-removes-key, keep-retains-key) in the local uninstall smoke.
+- **Remove the responder skill — directive MUST match the install mechanism (no orphan).** B1 places
+  `claudavity-responder` in an agy discovery root under `~/.gemini/…`. *If* it is installed via Inno `[Files]`
+  (static dest), the uninstaller auto-removes it. *But if* it is placed by `[Code]`/PowerShell at
+  `ssPostInstall` (likely, since the exact per-agent discovery path is resolved at runtime), **Inno has no record
+  of it and the uninstaller will orphan it.** The plan MUST therefore pair any dynamic skill-copy with an
+  explicit teardown — a `[UninstallDelete]` entry (or `[Code]` `usUninstall` cleanup) targeting the **same
+  resolved `~/.gemini/…` path** — and the local uninstall smoke asserts the skill dir is gone. (Same rule applies
+  to any other artifact placed dynamically outside `{app}`.)
+
+---
+
+## Bridge packaging (the `delegate_to_antigravity` runtime) — Python/uv prerequisite
+
+**Decision (user, 2026-06-30):** ship the bridge as an **opt-in add-on** that **declares a Python/uv
+prerequisite** — do NOT bundle a Python runtime, do NOT PyInstaller, do NOT rewrite in Rust. Rationale (survey
++ web-verified 2026-06-30): the bridge (`claudavity`) depends on the **`google-antigravity` SDK**, which is
+**Python-only** (no Go/C# drop-in exists) and drives a **bundled Go harness over a protobuf WebSocket**, so a
+native port is real rewrite work out of scope for shipping. uv is the fastest, least-leaky path.
+
+> **agy on record (2026-06-29):** recommended PyInstaller over uv-prereq, calling uv-prereq a "leaky
+> abstraction that will lead to user friction." **User overrode** to uv-prereq (their call). agy's *valid*
+> sub-findings from that review are folded in below: the `.env` secret-leak (→ hard exclusion + CI assertion),
+> the responder-skill omission (→ shipped), and the elevation/profile hazard (→ mitigated by
+> `PrivilegesRequired=lowest` + HKCU-only registration; the installer never runs elevated, so the per-user
+> `~/.claude.json` / agent config is written to the *executing* user's profile, not an Administrator profile).
+
+- **Source location — claudavity stays a SEPARATE published repo; CI fetches a pinned tag (user decision,
+  2026-06-30 — REVERSES the earlier vendor choice; aligns with agy's review verdict).** The bridge source is
+  **NOT** vendored into `clavity-classic`. Instead, `claudavity` is published as its own GitHub repository and
+  `release-clavity-classic.yml` performs a **multi-repo checkout** — a second `actions/checkout` with
+  `repository: <owner>/claudavity` and `ref: <full-commit-SHA>` into a sub-path — then stages only the
+  whitelisted bridge files into `publish/agy-mcp-bridge/`. **Pin by the full immutable commit SHA, NOT a bare
+  tag** — git tags are mutable / force-movable, so an upstream-repo compromise could re-point a tag to a
+  poisoned commit and CI would blindly package it; a 40-hex SHA cannot be silently moved. Record the SHA in the
+  classic repo (a `BRIDGE_VERSION` file the workflow reads; a human-readable tag name MAY accompany it for
+  reference, but the SHA is the integrity pin and is what `ref:` uses). **Bridge updates are deliberately
+  coupled to a classic release** — bumping `BRIDGE_VERSION` requires cutting a new `clavity-classic-v*` tag (no
+  out-of-band bridge hotfix). This is an accepted tradeoff: it buys atomic, predictable, integrity-pinned
+  deploys at the cost of a full installer release for any bridge change. So the build is reproducible **and**
+  claudavity remains the single source of truth: no split-brain (devs hotfix upstream, not a divergent in-repo
+  copy), no manual `uv.lock` re-sync, no repo bloat. The dev **`.env` is never in the fetched checkout** (it is
+  gitignored in claudavity and only whitelisted files are staged), so the secret boundary holds at the *fetch*
+  step as well as the *packaging* step — and, structurally, no bridge `.env` can ever leak *from the Rust repo*
+  because the bridge files are never committed there.
+  - **PRECONDITION — new task 7.0 (publish claudavity):** `claudavity` is currently a **local-only** repo
+    (`~/Development/Rust/claudavity`), so `actions/checkout repository:` cannot fetch it yet. Before 7.2 can run,
+    claudavity must be (a) pushed to a GitHub repo, (b) given at least one **pinned release tag**, and (c) made
+    readable by the classic release workflow (public, or a token/`repo` scope if private). Publishing is an
+    **outward-facing action** (owner decides repo name + visibility) — gate it on explicit owner go-ahead; it is
+    sequenced **before** 7.2 and **after** the bridge's own `.gitignore` is confirmed to exclude `.env`/secrets.
+  - Forks considered: **vendor-in-branch** (the prior choice — reversed here because in-repo copies drift and
+    devs inevitably hotfix the wrong tree) and **git-submodule** (rejected for recursion/auth friction). agy's
+    bus verdict independently recommended this CI-fetch approach.
+
+- **What ships** (under `{app}\agy-mcp-bridge`, gated by an `install_bridge` `[Tasks]` checkbox, default OFF):
+  the bridge sources (`server.py`, `agy_tmux.py`, `agy_bus.py`, `isolation.py`, `telemetry.py`,
+  `pyproject.toml`, `uv.lock`), `start-claudavity.ps1`, and **`.env.example`**.
+- **The agy-side responder skill — installed into a REAL agy skill-discovery root, NOT under `{app}`.** The
+  responder (`claudavity-responder`) is required for the bridge round-trip (the agy peer runs it), but agy does
+  **not** auto-discover skills under an arbitrary `{app}\…\agy_skills\` directory. **Verified on this machine
+  (2026-06-30):** agy's live skill roots are `~/.gemini/config/plugins/<plugin>/skills/`, `~/.gemini/skills/`,
+  `~/.gemini/antigravity-cli/skills/`, and `~/.gemini/extensions/…/skills/` — and the *non-existent* paths agy's
+  bus review named (`~/.gemini/config/skills`, `skills.json`) are NOT roots. The installer MUST place the
+  responder where agy will load it, mirroring how the **clavity-dotnet** agy-facing skill ships today (verified
+  at `~/.gemini/config/plugins/clavity-dotnet/skills/`): deliver `claudavity-responder` as/into a plugin under
+  `~/.gemini/config/plugins/<classic-plugin>/skills/` (or `~/.gemini/skills/claudavity-responder/`). Exact
+  mechanism (which agent profile, copy vs. plugin-manifest registration) is resolved in the plan against the
+  classic branch's existing plugin-delivery code — but the **placement contract is fixed: a real discovery
+  root, not `{app}`.** Remove it on uninstall.
+- **What MUST NOT ship (secret boundary):** the dev **`.env`** (holds `GEMINI_API_KEY`), `.venv/`,
+  `__pycache__/`, `.agent/` (telemetry.db, worktrees, server.log), `.ruff_cache`, `.serena`, `.playwright-cli`.
+  Enforce with explicit Inno `[Files]` `Excludes: ".env,.venv,__pycache__,.agent,*.pyc"` AND a stage-time copy
+  filter in 7.8 that whitelists only the files above. The `.env` leak is the highest-severity packaging risk —
+  the spec freezes it as a hard exclusion + a CI assertion (see 7.2 smoke).
+- **Prerequisite handling:** the bridge `[Tasks]` checkbox label states plainly it needs **Python ≥3.10 + uv**;
+  at `ssPostInstall`, if `install_bridge` is ticked, detect `uv` on PATH (in-process, no subprocess hang risk)
+  and:
+  - present, → run **`uv sync --frozen`** in `{app}\agy-mcp-bridge` to materialize `.venv` from `uv.lock`
+    (best-effort; surface failure with the manual command, never block the install). **`--frozen` is required:**
+    a bare `uv sync` may silently *re-resolve* and fetch newer PyPI packages if `uv.lock` is out of sync with
+    `pyproject.toml`, defeating the release-vetted pinning and opening a supply-chain hole at install time;
+    `--frozen` uses the lockfile exactly and errors instead of drifting (the same flag applies to the deferred
+    warmup case below);
+  - absent, → a suppressible msgbox: the bridge is installed but **inactive** until the user installs uv
+    (`https://docs.astral.sh/uv/`) **and runs `uv sync` in `{app}\agy-mcp-bridge` BEFORE first use** — be
+    honest, mirror dotnet's commonmemory "registered but needs agentmemory" honesty pattern
+    (`clavity-dotnet.iss:200-204`). **Why the explicit `uv sync` step matters (cold-start timeout):** the MCP
+    server is registered as `uv run … server.py`. If uv arrives *after* install and the user never runs
+    `uv sync`, the **first** MCP tool call triggers an implicit cold sync — downloading the Python toolchain +
+    all deps — which routinely **exceeds the MCP startup/timeout window** and fails cryptically (the agent sees
+    a dead tool, not a "still downloading" signal). So the warmup is a required step, not a nicety: the msgbox
+    states it, `.env.example`/README repeat it, and the install-time `uv sync` (the *present* branch above) is
+    what spares the on-time installer from ever hitting this. (A future hardening option — wrap the MCP launch
+    in a `uv sync && uv run` warmup script so the first call self-heals — is noted for the plan, not required
+    for 7.1.)
+- **First-run secret setup:** the user copies `.env.example` → `.env` and pastes their `GEMINI_API_KEY`
+  (the SDK does NOT reuse agy's OAuth — documented in `.env.example`). The installer does NOT prompt for or
+  store the key (no secret in the installer or registry).
+- **First-run DISCOVERABILITY (don't strand the operator at a closed wizard).** The bridge add-on is inert until
+  the user does an ordered set of manual steps (install uv → `uv sync --frozen` → copy `.env.example`→`.env` →
+  paste `GEMINI_API_KEY`), and after the wizard closes they would otherwise have to *hunt* for
+  `{app}\agy-mcp-bridge`. So: (1) the final wizard page offers an **"Open the bridge configuration folder"**
+  checkbox (Inno `[Run]` `Flags: postinstall shellexec skipifsilent` → `explorer.exe {app}\agy-mcp-bridge`); (2)
+  the bridge `[Tasks]`/inactive msgboxes print the **absolute `{app}\agy-mcp-bridge` path** and the **ordered
+  step list**; (3) a short **`README-FIRST.md`** ships in the bridge dir with the same steps. The goal: the
+  operator never meets a silently-dead MCP tool later because they didn't know a setup step existed.
+- **MCP registration:** register the bridge as an MCP server with the agent(s) the same mechanism the runtime
+  registration uses, pointing at `uv run … server.py` in `{app}\agy-mcp-bridge`. Exact command resolved in the
+  plan against `server.py`'s entry contract.
+- **State discoverability via `clavity doctor` (extend the existing verb).** So the operator can confirm "did it
+  work?" without launching an agent and waiting for a downstream failure, `clavity doctor` (Spec A extends it for
+  golden-header status) ALSO reports the **install/runtime state**: which variant owns `HKCU\Software\clavity\classic`
+  (and whether dotnet's marker/ARP is present), and **bridge readiness** — `uv` on PATH, `.venv` present/synced,
+  `.env` present (key set, **never printed**), and the MCP registration in place. Each line is a clear OK / NEEDS-X
+  with the remediation. This is the single "is my install healthy?" surface; failure is reported, not silent.
+
+> Migrating classic→dotnet still regresses `delegate_to_antigravity` (dotnet has no autonomous code-delegation,
+> only `agy_ask` consults) — a documented Non-goal (ROADMAP). The bridge add-on keeps it available for classic.
+
+---
+
+## Component 7.2 — `release-clavity-classic.yml` (mirror `release-clavity-dotnet.yml`)
+
+Release-only CI (no continuous build on `main`; the classic gate is `cargo test` local + this tag job).
+
+- **Trigger:** `push: tags: ['clavity-classic-v*']` (distinct from dotnet's `clavity-dotnet-v*`/`v*` — do NOT
+  reuse the bare `v*` glob, which dotnet already claims). `permissions: contents: write`.
+- **Checkout (multi-repo):** `actions/checkout` for the **`clavity-classic`** tag (the Rust crate) **plus** a
+  second `actions/checkout` for the **pinned `claudavity` commit SHA** (the bridge, into a sub-path; SHA read
+  from the classic repo's `BRIDGE_VERSION`). The workflow file lives on whatever branch CI reads it from
+  (resolved in the plan); the *sources it builds* are the classic-branch crate + the pinned claudavity tag.
+  **Cross-repo auth:** the default `GITHUB_TOKEN` is scoped to the *workflow's own* repo and will silently fail
+  to fetch a **private** claudavity. If claudavity is private, the second checkout MUST pass an explicit
+  `token: ${{ secrets.CLAUDAVITY_RO_PAT }}` (a read-only PAT / fine-grained token / deploy key with `contents:read`
+  on claudavity); if claudavity is **public**, the default token suffices and no secret is needed. 7.0 decides
+  public-vs-private; this step wires whichever it is.
+- **Version triangulation (assert BEFORE building):** the classic version lives in four places — the triggering
+  git tag `clavity-classic-vX.Y.Z`, `Cargo.toml`, the `.iss` `AppVersion`, and `plugin.json`. A first CI step
+  **parses the tag and asserts all four match** (hard-fail the job on mismatch). Without this, CI could publish a
+  `v0.2.0` release carrying a `v0.1.0` binary/installer — downgrade-guard and cache-poisoning hazard. (dotnet
+  bumps these by hand today; this assertion is a classic improvement worth backporting.)
+- **Pinned, reproducible toolchains (local↔CI parity):** do NOT float toolchains. Pin the Rust toolchain
+  (`rust-toolchain.toml` on the classic branch), build with **`cargo build --release --locked`** (enforce
+  `Cargo.lock`, no silent dep bump), and **pin the Inno Setup version** (`choco install innosetup --version=<X>`,
+  not latest). This keeps the local ISCC gate and CI building the *same* installer and makes a tag rebuildable
+  later (functionally reproducible — not claiming bit-identical, which needs deeper determinism work). Same
+  `windows-latest` image class as the local Windows dev box.
+- **Build + package steps:** 7.8 recipe (`cargo build --release --locked` + multi-repo bridge fetch at the
+  pinned SHA + stage to `publish/`) → `cargo test` gate → pinned ISCC compiles `installer\clavity-classic.iss`
+  (assert `dist\clavity-classic-setup.exe`) → SHA-256 companion in the **exact** `"<hash>  clavity-classic-setup.exe"`
+  format.
+- **Smokes are BLOCKING gates, not `continue-on-error` (regression must NOT ship):** the earlier draft marked the
+  smokes `continue-on-error: true` to dodge runner hangs — that is wrong: it would let a catastrophic installer
+  regression (crash, broken PATH, **or a `.env`/secret leak**) be treated as success and published. Instead each
+  smoke is a **hard gate** bounded by `timeout-minutes` (so a *hang* fails fast rather than blocking forever):
+  - **install/uninstall lifecycle** (silent) — install succeeds, files/PATH/marker land, uninstall reverses them. **BLOCKING.**
+  - **mutual-exclusion** — seed a fake `clavity-ls` on PATH or the dotnet ARP key; assert the installer **refuses**. **BLOCKING.**
+  - **`.env`-exclusion** — after a silent install with the bridge task ticked, assert `{app}\agy-mcp-bridge\.env`
+    does **NOT** exist. **BLOCKING** — the secret-boundary regression guard is the *last* thing that should be advisory.
+  - Only genuinely **agent-dependent** steps (MCP/doorbell registration, which no-op on an agent-less runner) are
+    tolerant/skipped — and they assert "skipped because no agent," not silent success.
+  - **Coverage gap (documented):** a silent CI install exercises only the **default** keep-vs-purge `.env` branch
+    (KEEP) and cannot drive the interactive dialog. The **local manual uninstall gate (RIGHT-TOOL, pre-tag) MUST
+    exercise BOTH `.env` branches (keep-retains-key, purge-removes-key)** and PATH-append idempotency on reinstall
+    — these are not CI-coverable and are the local gate's responsibility.
+- **Publish:** `softprops/action-gh-release@v2` attaches the setup exe + `.sha256` to one release entity
+  (multi-asset publish is atomic — no exe-without-hash window).
+- **Unsigned** (owner decision; SmartScreen documented), same as dotnet.
+
+---
+
+## Security / threat model
+
+- **Secret boundary (bridge `.env`)** — the only new high-severity surface, guarded at **three** points: (1) it
+  is gitignored upstream so it is **never in the fetched claudavity checkout**; (2) **hard-excluded** from
+  `[Files]` + the stage-time whitelist, with a CI smoke asserting its absence in the installed tree; (3) on
+  uninstall, any post-install `.env` the *user* created is surfaced by an **informed keep-vs-purge prompt** (the
+  prompt names the stored API key; default KEEP) so it is never *silently* stranded — the user knowingly keeps or
+  purges it (see Uninstall). Only `.env.example` ships. The installer never reads/stores the key.
+- **Runtime secret hygiene (bridge key never logged)** — the bridge runs with the live `GEMINI_API_KEY` in
+  memory; standard Python tracebacks, a `server.log`, telemetry payloads, or the agent transcript can casually
+  capture environment variables and write the key to disk. The bridge (claudavity) MUST **mask/scrub
+  `GEMINI_API_KEY` from all logs, crash dumps, exception output, and telemetry**. Because claudavity is now a
+  separate repo (task 7.0), this is a **claudavity hardening item verified BEFORE publishing** (a 7.0 gate) and
+  is restated here as the packaging-side secret-boundary requirement — the installer ships the bridge, so it
+  owns surfacing the requirement even though the fix lives in claudavity's code.
+- **Mutual exclusion** — bidirectional and contract-bound: classic SETS `HKCU\Software\clavity\classic` (dotnet
+  reads it) and REFUSES on `clavity-ls`/dotnet-ARP; shared `SetupMutex` blocks the concurrent-setup race.
+  **Residual (deliberate-bypass, accepted):** the guard is *install-time* (PATH/ARP scan). A user who actively
+  circumvents (rename the dotnet dir → install classic → restore dotnet) could co-install both and race the same
+  bus. The accidental case is covered; the deliberate case is out of the primary threat model. **Optional
+  defense-in-depth follow-up (both variants):** have the runtime binary re-check the opposing variant's HKCU
+  marker at startup and refuse — noted, not required for 7.1 (dotnet has no such cross-variant runtime check
+  today either; parity, not regression).
+- **PATH hygiene** — append-never-prepend (verbatim dotnet `NeedsAddPath`), removed on uninstall.
+- **Same-user boundary** — `%USERPROFILE%`/`{localappdata}`-scoped, per-user (HKCU), unsigned; same-user TOCTOU
+  accepted (inherited from the dotnet threat model, unchanged).
+- **uv prerequisite** — the bridge runs user-supplied Python in the user's own profile; no elevation, no
+  system-wide install. `uv sync` resolves from the pinned `uv.lock` (no floating deps at install time).
+
+---
+
+## Testing
+
+- **Local (the gate — RIGHT-TOOL):** ISCC compiles `clavity-classic.iss`; a manual silent install/uninstall on
+  this machine asserts the full file/PATH/marker/ARP lifecycle AND both mutual-exclusion directions AND the
+  `.env` absence — BEFORE any tag is pushed. No remote-CI iteration to find installer bugs (remote-iteration
+  breaker).
+- **CI smokes** (7.2 above): install/uninstall lifecycle, mutual-exclusion refusal, `.env`-exclusion — **BLOCKING
+  gates** (a real regression fails the job and BLOCKS publish), each bounded by `timeout-minutes` so a runner
+  *hang* fails fast instead of blocking forever. Only the agent-dependent MCP/doorbell registration steps are
+  tolerant (and assert "skipped — no agent," not silent success). CI's silent install covers only the default
+  (KEEP) `.env` branch — the interactive keep/purge branches + PATH-append idempotency are the **local** gate's job.
+- **Classic unit/integration:** `cargo test --all --features test-fakes` (the crate's existing gate) stays green
+  on the `clavity-classic` branch — unchanged by packaging.
+
+---
+
+## Out of scope (this spec)
+
+- The Rust golden-header **injection** (`clavity curate-commit` + per-ask prepend) — that is **Spec A** (7.3),
+  the prerequisite landing before this.
+- Linux/macOS installers / prebuild — Windows only here; cross-platform follows the porting guide later.
+- A native (Rust/Go) bridge port — explicitly rejected (Python-only SDK); uv-prereq is the decided runtime.
+- Golden-header tamper-detection (7.4), `--restart-agy` (7.7), dynamic model resolution — separate backlog items.
+- Any change to the dotnet installer — it is the frozen oracle; the marker/mutex/sha256 contracts conform to it.
