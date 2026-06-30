@@ -11,8 +11,9 @@
 > injection is **merged to `clavity-classic` (`dea8f87`)**, rust-reviewed (APPROVE). The build order's first
 > item is complete and **Spec B is now the active epic**; next actionable = **7.8 (prebuild)**.
 > **BRIDGE SOURCE = VENDORED IN-BRANCH (user re-decision 2026-06-30, (iii)→(i)).** The claudavity bridge
-> runtime is now **vendored at `agy-mcp-bridge/` on `clavity-classic`** (commit `b795c4b`, pinned upstream
-> `fae54fa`; see `agy-mcp-bridge/VENDORED-FROM.md`). This **removes task 7.0** (publish claudavity) and the
+> source now lives **canonically in-branch at `agy-mcp-bridge/` on `clavity-classic`** (commit `b795c4b`; it
+> originated from the **now-frozen claudavity prototype** @`fae54fa`, kept only for reference — there is **no
+> upstream, no re-sync, no drift**; see `agy-mcp-bridge/VENDORED-FROM.md`). This **removes task 7.0** (publish claudavity) and the
 > multi-repo CI fetch / `CLAUDAVITY_RO_PAT` — CI is now a **single checkout**. Build order is **7.3 ✅ → 7.8 →
 > 7.1 → 7.2**. The `.env` secret boundary is *stronger* under vendoring: the live key is never copied (only
 > `.env.example`), and an `agy-mcp-bridge/.gitignore` guards a future `uv sync` from committing it.
@@ -67,9 +68,10 @@ triggers the identical CI build — no circular dependency: the recipe is the sh
   if any are, they ship alongside in `[Files]`).
 - **Stage for ISCC** at a path the `.iss` resolves relative to `installer/` — mirror dotnet's `..\publish\`
   convention (e.g. stage to `publish/clavity.exe`) so both installers share one layout idiom.
-- **Stage the bridge (vendored in-branch — NO fetch):** the bridge runtime is already vendored on
-  `clavity-classic` at **`agy-mcp-bridge/`** (pinned upstream `fae54fa`; `agy-mcp-bridge/VENDORED-FROM.md` records
-  the pin + re-sync process). Staging is a plain copy of that in-branch dir into the ISCC source layout
+- **Stage the bridge (in-branch source — NO fetch):** the bridge source lives in-branch on
+  `clavity-classic` at **`agy-mcp-bridge/`** (the canonical home; `agy-mcp-bridge/VENDORED-FROM.md` records its
+  provenance — originated from the now-frozen claudavity prototype @`fae54fa`). Staging is a plain copy of that
+  in-branch dir into the ISCC source layout
   (`publish/agy-mcp-bridge/`) — **no second `actions/checkout`, no `git clone`, no cross-repo auth** (the appeal
   of the vendor choice). The vendored tree holds only the whitelist (`server.py`, `agy_bus.py`, `agy_tmux.py`,
   `isolation.py`, `telemetry.py`, `pyproject.toml`, `uv.lock`, `start-claudavity.ps1`, `.env.example`, `LICENSE`)
@@ -186,27 +188,25 @@ native port is real rewrite work out of scope for shipping. uv is the fastest, l
 > `PrivilegesRequired=lowest` + HKCU-only registration; the installer never runs elevated, so the per-user
 > `~/.claude.json` / agent config is written to the *executing* user's profile, not an Administrator profile).
 
-- **Source location — claudavity is VENDORED in-branch at `agy-mcp-bridge/` (user re-decision 2026-06-30 —
-  re-reverses to the original vendor choice, for single-checkout CI).** The bridge source **IS** vendored into
-  `clavity-classic` (committed `b795c4b`): the whitelisted runtime files live at `agy-mcp-bridge/`, pinned to
-  upstream **claudavity `fae54fa`**, recorded in `agy-mcp-bridge/VENDORED-FROM.md`. CI/ISCC stage straight from
-  that in-branch dir — **single `actions/checkout`, no cross-repo fetch, no auth, no `BRIDGE_VERSION` /
-  `actions/checkout repository:`**. **claudavity remains the upstream single source of truth; the in-branch tree
-  is exactly that — a COPY.** The accepted cost of vendoring (vs the separate-repo fetch) is **drift
-  discipline**: bugs are fixed UPSTREAM in claudavity, then re-vendored per `VENDORED-FROM.md` (re-copy the
-  whitelist **including `uv.lock` VERBATIM — never run `uv lock` in the vendor dir, which re-resolves against
-  PyPI and breaks the pin**, bump the recorded SHA, cut a new `clavity-classic-v*` release). Bridge updates
-  remain deliberately coupled to a classic release (no out-of-band hotfix). **Secret boundary holds at the
-  vendor step:** the dev `.env` was never copied (only `.env.example`), and `agy-mcp-bridge/.gitignore` blocks a
-  future `uv sync` from committing `.env`/`.venv` — so no bridge `.env` can ever land in the Rust repo.
-  - **No task 7.0.** Because the bridge is vendored, there is **no "publish claudavity" precondition** — the
-    earlier (iii) plan's outward-facing 7.0 (push claudavity to GitHub + pinned tag + read access) is **dropped**.
-    Build order is **7.3 ✅ → 7.8 → 7.1 → 7.2**.
-  - Forks considered: **separate-published-repo + CI fetch (iii)** (agy's earlier preference + a prior interim
-    choice — set aside here: it added an outward-facing publish gate (the dropped 7.0) + cross-repo auth/PAT for
-    marginal anti-drift benefit on a **solo-owned, co-developed, local-only** bridge) and **git-submodule**
-    (rejected for recursion/auth friction). **Vendor-in-branch wins on CI simplicity** for this project's actual
-    shape; the drift risk is mitigated by the documented `VENDORED-FROM.md` re-sync discipline.
+- **Source location — the bridge source lives CANONICALLY in-branch at `agy-mcp-bridge/` on `clavity-classic`
+  (user decision 2026-06-30).** `agy-mcp-bridge/` (committed `b795c4b`) **IS** the bridge source and its active
+  development home. It originated as a snapshot of the **claudavity prototype** (`~/Development/Rust/claudavity`
+  @ `fae54fa`), which is now **frozen/deprecated and kept only for reference** — it is NOT an upstream to track.
+  Provenance is recorded in `agy-mcp-bridge/VENDORED-FROM.md`. CI/ISCC stage straight from this in-branch dir —
+  **single `actions/checkout`, no cross-repo fetch, no auth, no `BRIDGE_VERSION` / `actions/checkout
+  repository:`**. **There is no upstream, therefore no drift and no re-sync:** bridge bugs are fixed **here**, in
+  `agy-mcp-bridge/`, like any other in-repo code, and deps are managed here (`uv lock` updates `uv.lock` normally
+  when `pyproject.toml` changes). Bridge changes ride a `clavity-classic-v*` release with the rest of the crate.
+  **Secret boundary:** the dev `.env` was never copied (only `.env.example`), and `agy-mcp-bridge/.gitignore`
+  blocks `uv sync` from ever committing `.env`/`.venv` — so no bridge `.env` can land in the Rust repo.
+  - **No task 7.0.** With the source in-branch there is **no "publish claudavity" precondition** — the earlier
+    (iii) plan's outward-facing 7.0 (push claudavity to GitHub + pinned tag + read access) is **dropped**. Build
+    order is **7.3 ✅ → 7.8 → 7.1 → 7.2**.
+  - History (superseded): an interim plan (iii) kept claudavity as a separate published repo with CI fetching a
+    pinned SHA; a brief intermediate framing kept claudavity as the *upstream* single-source-of-truth with the
+    in-branch dir a re-synced copy. Both are **superseded** — `agy-mcp-bridge/` is simply the canonical home now,
+    which removes the drift concern entirely (there is no second tree to diverge). The earlier alternatives
+    (git-submodule; the separate-repo fetch) were set aside for CI/auth friction with no remaining upside.
 
 - **What ships** (under `{app}\agy-mcp-bridge`, gated by an `install_bridge` `[Tasks]` checkbox, default OFF):
   the bridge sources (`server.py`, `agy_tmux.py`, `agy_bus.py`, `isolation.py`, `telemetry.py`,
@@ -333,11 +333,10 @@ Release-only CI (no continuous build on `main`; the classic gate is `cargo test`
 - **Runtime secret hygiene (bridge key never logged)** — the bridge runs with the live `GEMINI_API_KEY` in
   memory; standard Python tracebacks, a `server.log`, telemetry payloads, or the agent transcript can casually
   capture environment variables and write the key to disk. The bridge (claudavity) MUST **mask/scrub
-  `GEMINI_API_KEY` from all logs, crash dumps, exception output, and telemetry**. The fix lives in claudavity's
-  code (the upstream single source of truth); verify it **upstream BEFORE (re-)vendoring** — a vendor-step gate,
-  re-confirmed at each re-sync per `agy-mcp-bridge/VENDORED-FROM.md`. It is restated here as the packaging-side
-  secret-boundary requirement: the installer ships the (vendored) bridge, so it owns surfacing the requirement
-  even though the code fix is upstream.
+  `GEMINI_API_KEY` from all logs, crash dumps, exception output, and telemetry**. The fix lives in the bridge
+  source — now maintained in-tree at `agy-mcp-bridge/` — so it is an ordinary in-repo code requirement verified
+  there (no separate upstream). It is restated here as the packaging-side secret-boundary requirement: the
+  installer ships the bridge, so it owns surfacing the requirement.
 - **Mutual exclusion** — bidirectional and contract-bound: classic SETS `HKCU\Software\clavity\classic` (dotnet
   reads it) and REFUSES on `clavity-ls`/dotnet-ARP; shared `SetupMutex` blocks the concurrent-setup race.
   **Residual (deliberate-bypass, accepted):** the guard is *install-time* (PATH/ARP scan). A user who actively
