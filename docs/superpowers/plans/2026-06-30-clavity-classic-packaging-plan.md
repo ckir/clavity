@@ -120,12 +120,14 @@ zero-touch dotnet variant) — finish these one-time steps, then `clavity start`
 **Claude Code:**
     claude mcp add agentmemory -s user -- npx @agentmemory/agentmemory mcp
 
-**agy** — add to `~/.gemini/config/mcp_config.json` under `mcpServers` (Windows needs `cmd /c` for a bare `npx`):
+**agy** — add to `%USERPROFILE%\.gemini\config\mcp_config.json` (i.e. `C:\Users\<You>\.gemini\config\...`) under
+`mcpServers` (Windows needs `cmd /c` for a bare `npx`):
     "agentmemory": { "command": "cmd", "args": ["/c", "npx", "@agentmemory/agentmemory", "mcp"] }
 Restart each agent after editing. (Even the dotnet variant requires this — agentmemory is a separate
 prerequisite, not something either installer registers.)
 
-## 2. Add the claudavity doorbell pointer to `~/.gemini/GEMINI.md` (one-time)
+## 2. Add the claudavity doorbell pointer to `%USERPROFILE%\.gemini\GEMINI.md` (one-time)
+(That's `C:\Users\<You>\.gemini\GEMINI.md` — paste the path into Explorer's address bar to get there.)
 
 Append this block (re-running is harmless — it's idempotent guidance, not config):
     <!-- clavity-classic doorbell (safe to keep) -->
@@ -150,14 +152,20 @@ This folder is the opt-in bridge. It is INACTIVE until you finish these steps **
 1. Install uv if you don't have it: https://docs.astral.sh/uv/
 2. Materialize the environment from the pinned lockfile (do NOT use a bare `uv sync` — it may re-resolve):
        uv sync --frozen
-3. Create your secret file (copy, do NOT rename in Explorer — it blocks dot-leading names):
-       Copy-Item .env.example .env
+   *(If the installer already ran this for you during setup — it does when uv was already installed — you can
+   skip this step.)*
+3. Create your secret file (use `copy`, which works in both cmd and PowerShell; do NOT rename in Explorer — it
+   blocks dot-leading names):
+       copy .env.example .env
    then open `.env` and paste your `GEMINI_API_KEY` (the SDK does NOT reuse agy's OAuth login).
 4. Register the bridge MCP with your agent, DIRECTORY-ANCHORED so it finds its env + `.env` regardless of the
-   agent's working directory (paste into the agent's MCP config, adjusting the path):
+   agent's working directory (paste into the agent's MCP config, adjusting the path). **Use FORWARD slashes** in
+   the path — a Windows path with single `\` backslashes is INVALID JSON (e.g. `\U` is a bad escape) and will
+   corrupt your agent config:
        "agy-bridge": { "command": "uv",
-         "args": ["--directory", "<THIS FOLDER>", "run", "<THIS FOLDER>\\server.py"] }
-   Replace `<THIS FOLDER>` with this directory's absolute path (shown in the Explorer address bar).
+         "args": ["--directory", "C:/Users/<You>/AppData/Local/Programs/clavity-classic/agy-mcp-bridge",
+                  "run", "C:/Users/<You>/AppData/Local/Programs/clavity-classic/agy-mcp-bridge/server.py"] }
+   Replace the path with THIS directory's absolute path (shown in the Explorer address bar), converting `\` to `/`.
 
 > Do NOT run `start-claudavity.ps1` by hand — the MCP server is launched in the background by the host agent;
 > running it manually just hangs the terminal.
@@ -244,7 +252,11 @@ Root: HKCU; Subkey: "Software\clavity\classic"; ValueType: string; ValueName: "v
   ValueData: "classic"; Flags: uninsdeletekey
 
 [Run]
-; Final wizard page: open the bridge folder for manual setup (gated; skipped on silent installs).
+; Final wizard page (Option A: classic needs manual wiring — open the doc so the steps aren't lost in a dismissed
+; modal). notepad.exe is always present + renders .md as text; ungated (core wiring applies without the bridge).
+Filename: "notepad.exe"; Parameters: """{app}\MANUAL-SETUP.md"""; \
+  Description: "View the required manual wiring steps (MUST READ)"; Flags: postinstall skipifsilent
+; Open the bridge folder for manual setup (gated; skipped on silent installs).
 Filename: "{app}\agy-mcp-bridge"; Description: "Open the bridge setup folder (finish setup per README-FIRST.md)"; \
   Flags: postinstall shellexec skipifsilent; Tasks: install_bridge
 
@@ -387,8 +399,13 @@ begin
       BridgeDir := ExpandConstant('{app}\agy-mcp-bridge');
       if StemOnPath('uv', UvPath) then
       begin
-        { Materialize .venv from the pinned lockfile; --frozen errors instead of silently re-resolving (supply-chain). }
-        if (not Exec(UvPath, 'sync --frozen', BridgeDir, SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+        { Materialize .venv from the pinned lockfile; --frozen errors instead of silently re-resolving (supply-chain).
+          The Exec BLOCKS the wizard UI for 10-30s+ (uv fetches the toolchain + deps). Set the status caption FIRST
+          (so the frozen page explains itself) and SW_SHOW uv's console (live progress) so the operator doesn't
+          assume a hang and kill the installer mid-sync — which would corrupt the bridge env. }
+        WizardForm.StatusLabel.Caption := 'Installing the bridge''s Python dependencies (uv sync) — up to a minute...';
+        WizardForm.StatusLabel.Update;
+        if (not Exec(UvPath, 'sync --frozen', BridgeDir, SW_SHOW, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
           SuppressibleMsgBox('The bridge was installed but `uv sync` did not complete. Open a terminal in:' + #13#10 +
             BridgeDir + #13#10 + 'and run:  uv sync --frozen', mbError, MB_OK, IDOK);
       end
@@ -397,14 +414,10 @@ begin
           'and run `uv sync --frozen` in:' + #13#10 + BridgeDir + #13#10 + 'BEFORE first use. See README-FIRST.md there.',
           mbInformation, MB_OK, IDOK);
     end;
-  end
-  else if CurStep = ssDone then
-    SuppressibleMsgBox('clavity-classic is installed. IMPORTANT: classic needs one-time MANUAL wiring (see ' +
-      'MANUAL-SETUP.md in ' + ExpandConstant('{app}') + '):' + #13#10 +
-      '  1. Register the agentmemory MCP in BOTH Claude and agy.' + #13#10 +
-      '  2. Add the claudavity doorbell pointer to ~/.gemini/GEMINI.md (one-time).' + #13#10 +
-      '  3. Then run:  clavity start C:\path\to\your\project',
-      mbInformation, MB_OK, IDOK);
+  end;
+  { No ssDone MsgBox: a final modal listing mandatory steps gets double-Enter-dismissed and is uncopyable. The
+    manual-wiring handoff is the [Run] "View the required manual wiring steps (MUST READ)" checkbox on the
+    Finished page, which opens the persistent, copyable {app}\MANUAL-SETUP.md. }
 end;
 
 function InitializeUninstall(): Boolean;
@@ -523,9 +536,13 @@ if ($userPath -notlike "*$app*") { throw "PATH not added" }
 Set-Content "$app\agy-mcp-bridge\.env" "GEMINI_API_KEY=smoke-fake"   # simulate user post-install setup
 $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select -First 1
 # /SUPPRESSMSGBOXES makes the keep/purge prompt take its default (KEEP / IDNO).
-$u = Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-if ($u.ExitCode -ne 0) { throw "uninstall exit $($u.ExitCode)" }
-if (Test-Path "$app\clavity.exe") { throw "clavity.exe still present" }
+Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+# Inno's silent uninstaller relaunches itself from %TEMP% and the stub returns immediately, so -Wait does NOT
+# mean "done". Poll a completion SIGNAL (the installed exe is gone) with a timeout — robust to the temp-RENAMED
+# worker process (matching a process NAME would miss it). Only THEN assert + clean up (no racing the deleter).
+$deadline = (Get-Date).AddSeconds(30)
+while ((Test-Path "$app\clavity.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+if (Test-Path "$app\clavity.exe") { throw "uninstall did not complete within 30s" }
 if (-not (Test-Path "$app\agy-mcp-bridge\.env")) { throw "KEEP branch FAILED — .env was deleted" }
 if (Test-Path "$HOME\.gemini\antigravity-cli\skills\claudavity-responder") { throw "responder skill orphaned" }
 "KEEP-branch + responder-teardown PASSED"; Remove-Item "$app" -Recurse -Force -EA SilentlyContinue
@@ -542,11 +559,18 @@ Expected: purge removes the key; the API-key line appears only when `.env` exist
 
 ```pwsh
 $app = "$env:LOCALAPPDATA\Programs\clavity-classic"
+# Step 4 mutates $env:PATH — RESTORE it (and remove the fake dir) in a finally, or it poisons Step 5's reinstall
+# (the fake clavity-ls would still be on PATH, tripping the exclusion guard and falsely failing Step 5).
+$oldPath = $env:PATH
 $fake = "$env:TEMP\fakels"; New-Item $fake -ItemType Directory -Force | Out-Null
-Set-Content "$fake\clavity-ls.exe" "x"; $env:PATH = "$fake;$env:PATH"
-$p = Start-Process "dist/clavity-classic-setup.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-if ($p.ExitCode -eq 0 -and (Test-Path "$app\clavity.exe")) { throw "refusal FAILED (clavity-ls on PATH)" }
-"refuse-on-clavity-ls PASSED"
+try {
+  Set-Content "$fake\clavity-ls.exe" "x"; $env:PATH = "$fake;$env:PATH"
+  $p = Start-Process "dist/clavity-classic-setup.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+  if ($p.ExitCode -eq 0 -and (Test-Path "$app\clavity.exe")) { throw "refusal FAILED (clavity-ls on PATH)" }
+  "refuse-on-clavity-ls PASSED"
+} finally {
+  $env:PATH = $oldPath; Remove-Item $fake -Recurse -Force -EA SilentlyContinue
+}
 ```
 Then install the real dotnet setup and attempt the classic install → assert refusal via `DotnetArpPresent`
 (manual). The reverse (dotnet refuses when the classic marker exists) is the dotnet oracle's own smoke (unchanged).
@@ -641,7 +665,10 @@ jobs:
         shell: pwsh
         run: |
           $h = (Get-FileHash dist/clavity-classic-setup.exe -Algorithm SHA256).Hash.ToLower()
-          "$h  clavity-classic-setup.exe" | Set-Content dist/clavity-classic-setup.exe.sha256 -Encoding ascii
+          # Write LF, NOT Set-Content's CRLF (measured: Set-Content appends 0x0D,0x0A). A CRLF .sha256 makes GNU
+          # `sha256sum -c` parse the filename with a trailing \r -> "No such file or directory". WriteAllText emits
+          # exact bytes (no BOM, LF only). Two spaces between hash and filename (sha256sum format).
+          [IO.File]::WriteAllText("$PWD/dist/clavity-classic-setup.exe.sha256", "$h  clavity-classic-setup.exe`n")
 
       - name: Smoke — install/uninstall lifecycle (BLOCKING)
         timeout-minutes: 6   # a HANG fails fast; a real regression must NOT publish.
@@ -653,14 +680,16 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
           if (-not (Test-Path "$app\clavity.exe")) { throw "clavity.exe missing" }
           if (-not (Test-Path "$app\agy-mcp-bridge\SKILL.md")) { throw "bridge SKILL.md missing" }
-          $arp = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -EA SilentlyContinue |
-            Where-Object { (Get-ItemProperty $_.PSPath -EA SilentlyContinue).DisplayName -like "clavity-classic*" }
-          if (-not $arp) { throw "ARP key missing" }
+          # Assert the EXACT Inno ARP key ({AppId}_is1), not a DisplayName wildcard (which can match a sibling
+          # product and yield a truthy array, defeating the precision of the test).
+          $arpKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{B59E963B-BE49-47B2-8CAB-5A3417D775C3}_is1"
+          if (-not (Test-Path $arpKey)) { throw "ARP key missing (exact AppId _is1)" }
           $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select -First 1
-          $u = Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($u.ExitCode -ne 0) { throw "uninstall exit $($u.ExitCode)" }
-          Start-Sleep 2
-          if (Test-Path "$app\clavity.exe") { throw "clavity.exe present after uninstall" }
+          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+          # -Wait returns when Inno's stub exits, not when deletion finishes — poll a completion signal + timeout.
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path "$app\clavity.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path "$app\clavity.exe") { throw "uninstall did not complete within 30s" }
           "lifecycle smoke PASSED"
 
       - name: Smoke — mutual-exclusion refusal (BLOCKING)
