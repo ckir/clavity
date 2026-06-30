@@ -87,7 +87,7 @@ public static class BoundedView
         {
             if (delta[i].Kind != StepKind.AssistantKind) break;
             var t = delta[i].AssistantOutput?.Text;
-            if (string.IsNullOrEmpty(t)) break;
+            if (string.IsNullOrEmpty(t)) continue; // skip an empty-text assistant step; don't end the run on it
             trailing.Add(t);
         }
         trailing.Reverse();

@@ -37,6 +37,14 @@ public class AskReplyProjectionTests
     }
 
     [Fact]
+    public void Empty_text_assistant_step_mid_run_is_skipped_not_a_run_terminator()
+    {
+        // An empty-text Kind-15 step (agy emits these) must NOT end the trailing run and drop the earlier prose.
+        var r = Project(Tool(), Asst("part 1"), Asst(""), Asst("part 2"));
+        Assert.Equal("part 1\npart 2", r.Answer);
+    }
+
+    [Fact]
     public void Over_cap_answer_sets_AnswerTruncated_only()
     {
         var big = new string('x', BoundedView.AskMaxStepChars + 50);
