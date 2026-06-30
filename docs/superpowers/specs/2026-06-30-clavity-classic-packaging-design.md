@@ -30,11 +30,46 @@
 >   before-move/non-atomic vs classic's after-move/atomic — both are dotnet *code* parity fixes, tracked apart
 >   from packaging (they do not affect the `.iss`/CI contracts here).
 
+> **⚠️ OPTION A RECONCILIATION — SCOPE CORRECTED 2026-06-30 (plan-grounding, agy-consulted, user-approved).**
+> Authoring the implementation plan against the **real** `clavity-classic` source revealed that 7.1 below was
+> written assuming **dotnet-parity install machinery the classic binary DOES NOT HAVE.** Verified facts:
+> classic has **no `install`/`uninstall` CLI verb**; it does **not register an MCP** (it speaks to the
+> agentmemory daemon directly over **REST**, and registering the agentmemory MCP is a **manual both-agents**
+> step — see `README.md` §1, and note even **dotnet** treats agentmemory as a *separate manual prerequisite*,
+> `clavity-dotnet.iss:202`); the **GEMINI.md** pointer is **manual by design** (`src/main.rs:638`); there is
+> **no `tmux.conf`** and **no plugin tree / `marketplace.json` / agy-autotrain+commonmemory plugins** for
+> classic; the only auto-registration is the **responder skill** that `clavity start` writes to
+> `~/.gemini/antigravity-cli/skills/claudavity-responder/` (`install_skill()`, `src/main.rs:639`) — a side
+> effect of `start`, not a verb. **DECISION (user 2026-06-30): Option A — minimal/honest installer matching
+> classic's actual architecture.** What this CHANGES below (these amendments are AUTHORITATIVE; the original
+> 7.1/bridge prose is kept for history but superseded where it conflicts):
+> - **No new Rust verbs** (Option B rejected as packaging-driven scope creep — agy + LEAD concur).
+> - **The installer does NOT edit the user's agent config files.** agentmemory-MCP registration, the GEMINI.md
+>   doorbell pointer, **AND the bridge MCP registration** are all **guided-manual**, surfaced via a loud
+>   `README-FIRST.md` + a final-wizard summary page with the exact copy-paste commands/snippets (incl. the
+>   directory-anchored `uv --directory "{app}\agy-mcp-bridge" run "…\server.py"` for the bridge). Rationale
+>   (agy security/contract round): installer-side PowerShell `ConvertFrom/ConvertTo-Json` round-trips reformat
+>   and can corrupt user-owned JSONC config, and surgical uninstall reversal is brittle — too high-risk for an
+>   installer. **This DEMOTES the bridge-packaging "installer auto-registers the bridge MCP (directory-anchored,
+>   BLOCKER)" requirement to guided-manual** (the one material spec change Option A forces).
+> - **DROP** the plugin tree + `marketplace.json` + agy-autotrain/commonmemory `[Tasks]` add-ons (do not exist
+>   for classic) and the `tmux.conf` placement (none exists).
+> - **The installer's grounded jobs:** `clavity.exe`→`{app}` + HKCU PATH append; set `HKCU\Software\clavity\classic`
+>   marker; bidirectional mutual-exclusion refuse; ship the opt-in **bridge add-on**; a loud manual-wiring
+>   summary. **Uninstall:** reverse PATH/marker, **tear down the responder skill** at the `~/.gemini/…` path
+>   (`[UninstallDelete]` — it is clavity's artifact even though `start` wrote it), the golden-header zombie
+>   rename-on-keep, and the bridge `.env` keep/purge prompt. `clavity doctor` extension for install/bridge
+>   readiness is **optional Rust polish, not required for 7.1**.
+> - **UX:** classic is "bring your own wiring," NOT dotnet's zero-touch — the wizard MUST be loud about the
+>   remaining manual steps or dotnet-crossover users will think it failed.
+
 **Goal:** Ship `clavity-classic-setup.exe` so a user installs the Rust **clavity** (classic) variant with **no
-Rust toolchain**, at feature parity with dotnet: the prebuilt binary on PATH, the agentmemory MCP + GEMINI.md
-doorbell + `tmux.conf` registered, the optional add-ons, and the `delegate_to_antigravity` bridge as a
-**Python/uv prerequisite** (user-decided 2026-06-30). Mutually exclusive with the dotnet install in both
-directions.
+Rust toolchain**: the prebuilt binary on PATH, the responder skill auto-placed by `clavity start`, the optional
+`delegate_to_antigravity` bridge as a **Python/uv** add-on, and **guided-manual** wiring (agentmemory MCP +
+GEMINI.md pointer + bridge MCP) surfaced honestly — matching classic's deliberate manual-wiring architecture
+(Option A, user-decided 2026-06-30). Mutually exclusive with the dotnet install in both directions. *(Earlier
+"feature parity with dotnet … MCP + GEMINI.md + tmux.conf registered, optional add-ons" framing is superseded by
+the Option A reconciliation above.)*
 
 **Why after Spec A:** classic had **no golden-header injection** until 7.3 landed (the `driving-agy` skill that
 carried it was deleted). Shipping packaging first would have deployed a product regressed vs. its own past and
