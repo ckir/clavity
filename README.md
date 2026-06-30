@@ -77,8 +77,13 @@ agent first. The installer is **unsigned** for now, so Windows SmartScreen may w
 - **`clavity --mcp`** is the MCP server Claude spawns. It discovers that session's LS from the log,
   resolves the active conversation **from the LS** (not from disk), and exposes three tools:
   - **`agy_look`** — a size-bounded, id-free summary of the active conversation's trajectory.
-  - **`agy_status`** — cascade id, total step count, and whether the look was truncated.
-  - **`agy_ask`** — send a message and return `agy`'s reply once the conversation goes idle. This is a
+  - **`agy_status`** — a pre-fire check reporting whether the active conversation is `idle | working |
+    unknown` (deadline-bounded idle probe; `unknown` on any RPC error — never a false `idle`), plus
+    cascade id and step count.
+  - **`agy_ask`** — send a message and return `agy`'s reply once the conversation goes idle, as a typed
+    `{ Answer?, Activity[], AnswerTruncated, ActivityTruncated }`: `Answer` is the trailing assistant
+    prose (absent if the turn ended on a tool/error — read `Activity`). On a stall it returns a
+    `possible_modal` status carrying a `diagnostic` (where `agy` was — slow tool vs hang). This is a
     live **write** (consumes quota, posts a visible message); it is verified by a gated live-acceptance
     test rather than in CI.
 - **Multi-session:** N independent Claude⇄agy pairs run concurrently — each Claude drives its **own**
