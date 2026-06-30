@@ -1,4 +1,5 @@
 using Clavity.Ls.Proto;
+using Grpc.Core;
 using Grpc.Net.Client;
 
 namespace Clavity.Ls;
@@ -27,7 +28,7 @@ public sealed class LsClient : IDisposable
     }
 
     /// <summary>Read a conversation's metadata (workspaces, repo/branch, ids).</summary>
-    public async Task<Metadata> GetConversationMetadataAsync(string conversationId, CancellationToken cancellationToken = default)
+    public async Task<Clavity.Ls.Proto.Metadata> GetConversationMetadataAsync(string conversationId, CancellationToken cancellationToken = default)
     {
         var response = await _client.GetConversationMetadataAsync(
             new GetConversationMetadataRequest { ConversationId = conversationId },
@@ -86,6 +87,38 @@ public sealed class LsClient : IDisposable
             },
             cancellationToken: cancellationToken);
         return response.TimedOut;
+    }
+
+    /// <summary>Probe idle/working: wait for full idle with a REALISTIC inactivity window, but bound the CALL with
+    /// a short client <paramref name="deadline"/>. Returns "idle" if the wait resolves inside the deadline,
+    /// "working" if the deadline cancels it first, "unknown" on any RPC error. (Spec: realistic inactivity, the
+    /// deadline is the probe budget — never shrink inactivity, which would falsely read inter-step gaps as idle.)</summary>
+    public async Task<string> ProbeIdleAsync(string conversationId, int inactivitySeconds, TimeSpan deadline,
+        CancellationToken cancellationToken = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(deadline);
+        try
+        {
+            await _client.WaitForConversationFullyIdleAsync(
+                new WaitForConversationFullyIdleRequest
+                {
+                    ConversationId = conversationId,
+                    InactivityTimeoutSeconds = inactivitySeconds,
+                    StabilizationDurationSeconds = 0,
+                },
+                cancellationToken: cts.Token);
+            return "idle";
+        }
+        catch (Exception ex) when (cts.IsCancellationRequested && !cancellationToken.IsCancellationRequested
+            && ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
+        {
+            return "working";
+        }
+        catch (RpcException)
+        {
+            return "unknown";
+        }
     }
 
     /// <summary>

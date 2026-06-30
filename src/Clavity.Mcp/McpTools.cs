@@ -13,13 +13,9 @@ public class McpTools
     public static async Task<string> AgyLook(AgyView view, CancellationToken cancellationToken = default)
         => await RunAsync(() => view.LookAsync(cancellationToken: cancellationToken));
 
-    [McpServerTool(Name = "agy_status"), Description("Report the active agy conversation's status: cascade id, total steps, and whether the look was truncated.")]
+    [McpServerTool(Name = "agy_status"), Description("Report whether the active agy conversation is idle, working, or unknown (pre-fire check), plus cascade id and step count.")]
     public static async Task<string> AgyStatus(AgyView view, CancellationToken cancellationToken = default)
-        => await RunAsync(async () =>
-        {
-            var bounded = await view.LookAsync(cancellationToken: cancellationToken);
-            return (object)new { bounded.CascadeId, bounded.TotalSteps, bounded.Truncated };
-        });
+        => await RunAsync(() => view.StatusAsync(cancellationToken));
 
     [McpServerTool(Name = "agy_ask"), Description("Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and posts a visible message in the user's agy.")]
     public static async Task<string> AgyAsk(AgyView view, string message, CancellationToken cancellationToken = default)

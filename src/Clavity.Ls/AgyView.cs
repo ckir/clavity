@@ -57,6 +57,27 @@ public sealed class AgyView
     public static readonly TimeSpan DefaultIdleWaitTimeout = TimeSpan.FromSeconds(120);
     private const int IdleInactivityTimeoutSeconds = 30;
     private const int IdleStabilizationSeconds = 2;
+    private const int ProbeDeadlineMs = 300;
+
+    /// <summary>Report agy busy/idle for the pre-fire check. Local fast-path: if THIS view has an ask in flight for
+    /// the resolved conversation, return "working" without touching the network (sidesteps overlap + multi-session
+    /// contamination, keyed by CascadeId). Else probe; an RPC error ⇒ "unknown" (fail-safe, never a false idle).</summary>
+    public async Task<AgyStatus> StatusAsync(CancellationToken cancellationToken = default)
+    {
+        var (client, conversationId) = await ConnectAndResolveAsync(cancellationToken);
+        using (client)
+        {
+            var traj = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
+            var lastKind = traj.Steps.Count > 0 ? traj.Steps[^1].Kind : 0;
+
+            if (_inFlight.ContainsKey(conversationId))
+                return new AgyStatus(conversationId, traj.Steps.Count, "working", lastKind);
+
+            var state = await client.ProbeIdleAsync(
+                conversationId, IdleInactivityTimeoutSeconds, TimeSpan.FromMilliseconds(ProbeDeadlineMs), cancellationToken);
+            return new AgyStatus(conversationId, traj.Steps.Count, state, lastKind);
+        }
+    }
 
     /// <summary>
     /// Send <paramref name="message"/> to the active conversation, wait for it to go idle, then return the NEW

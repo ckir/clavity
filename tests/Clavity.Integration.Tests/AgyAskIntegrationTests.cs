@@ -203,4 +203,34 @@ public class AgyAskIntegrationTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public async Task StatusAsync_reports_idle_when_probe_returns_fast()
+    {
+        var fake = new FakeAskLs("conv-1", "x", TimeSpan.Zero, Array.Empty<CascadeStep>()); // idle resolves immediately
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var st = await view.StatusAsync();
+            Assert.Equal("idle", st.State);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task StatusAsync_reports_working_when_probe_outlasts_the_deadline()
+    {
+        var fake = new FakeAskLs("conv-1", "x", TimeSpan.FromSeconds(5), Array.Empty<CascadeStep>()); // never idle in 300ms
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var st = await view.StatusAsync();
+            Assert.Equal("working", st.State);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
