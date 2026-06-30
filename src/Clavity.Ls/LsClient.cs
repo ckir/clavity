@@ -11,20 +11,32 @@ namespace Clavity.Ls;
 /// </summary>
 public sealed class LsClient : IDisposable
 {
+    /// <summary>Defensive client-side deadline for the SHORT unary calls (metadata / trajectory / send / list). A peer
+    /// that connects then HANGS must not block a one-shot round-trip forever — without it the <c>AskAsync</c>
+    /// <c>finally</c> that clears the in-flight marker would never run, and every later status check would falsely
+    /// report "working". NOT applied to the idle-wait RPCs, which are intentionally long and bounded by their OWN
+    /// caller deadline (<see cref="ProbeIdleAsync"/>'s 300ms; <c>AgyView.AskAsync</c>'s idle-wait CTS).</summary>
+    public const int DefaultCallDeadlineSeconds = 30;
+
     private readonly GrpcChannel _channel;
     private readonly LanguageServerService.LanguageServerServiceClient _client;
+    private readonly TimeSpan _callDeadline;
 
-    public LsClient(GrpcChannel channel)
+    public LsClient(GrpcChannel channel, TimeSpan? callDeadline = null)
     {
         _channel = channel;
         _client = new LanguageServerService.LanguageServerServiceClient(channel);
+        _callDeadline = callDeadline ?? TimeSpan.FromSeconds(DefaultCallDeadlineSeconds);
     }
 
+    /// <summary>A fresh absolute deadline (UTC) for one unary call, computed at call time.</summary>
+    private DateTime NextCallDeadline() => DateTime.UtcNow + _callDeadline;
+
     /// <summary>Discover the active LS from cli.log text (liveness-checked) and open an h2c channel to it.</summary>
-    public static LsClient Connect(string cliLogText, IListeningPorts listening)
+    public static LsClient Connect(string cliLogText, IListeningPorts listening, TimeSpan? callDeadline = null)
     {
         var endpoint = LsDiscovery.DiscoverActive(cliLogText, listening);
-        return new LsClient(LsChannel.ForHttpPort(endpoint.HttpPort));
+        return new LsClient(LsChannel.ForHttpPort(endpoint.HttpPort), callDeadline);
     }
 
     /// <summary>Read a conversation's metadata (workspaces, repo/branch, ids).</summary>
@@ -32,6 +44,7 @@ public sealed class LsClient : IDisposable
     {
         var response = await _client.GetConversationMetadataAsync(
             new GetConversationMetadataRequest { ConversationId = conversationId },
+            deadline: NextCallDeadline(),
             cancellationToken: cancellationToken);
         return response.Metadata;
     }
@@ -41,6 +54,7 @@ public sealed class LsClient : IDisposable
     {
         var response = await _client.GetCascadeTrajectoryAsync(
             new GetCascadeTrajectoryRequest { CascadeId = cascadeId },
+            deadline: NextCallDeadline(),
             cancellationToken: cancellationToken);
         return response.Trajectory;
     }
@@ -68,7 +82,7 @@ public sealed class LsClient : IDisposable
             },
         };
         request.Items.Add(new TextOrScopeItem { Text = text });
-        await _client.SendUserCascadeMessageAsync(request, cancellationToken: cancellationToken);
+        await _client.SendUserCascadeMessageAsync(request, deadline: NextCallDeadline(), cancellationToken: cancellationToken);
     }
 
     /// <summary>Block until the conversation is fully idle (or the wait times out). Returns true if it timed out.</summary>
@@ -131,6 +145,7 @@ public sealed class LsClient : IDisposable
     {
         var response = await _client.GetAllCascadeTrajectoriesAsync(
             new GetAllCascadeTrajectoriesRequest { ExcludeSubtrajectories = excludeSubtrajectories },
+            deadline: NextCallDeadline(),
             cancellationToken: cancellationToken);
 
         return response.TrajectorySummaries

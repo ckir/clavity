@@ -38,6 +38,32 @@ public class LsClientIntegrationTests
         }
     }
 
+    // A peer that CONNECTS then never answers a unary call — exercises the defensive client-side call deadline.
+    private sealed class HangingLanguageServer : LanguageServerService.LanguageServerServiceBase
+    {
+        public override async Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
+            GetCascadeTrajectoryRequest request, ServerCallContext context)
+        {
+            // Far longer than the test's call deadline; cooperatively cancels when the deadline aborts the call.
+            await Task.Delay(TimeSpan.FromSeconds(30), context.CancellationToken);
+            return new GetCascadeTrajectoryResponse();
+        }
+    }
+
+    private static async Task<WebApplication> StartHangingLsAsync()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.ConfigureKestrel(o => o.ConfigureEndpointDefaults(lo => lo.Protocols = HttpProtocols.Http2));
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.AddGrpc();
+        builder.Services.AddSingleton<HangingLanguageServer>();
+        var app = builder.Build();
+        app.MapGrpcService<HangingLanguageServer>();
+        await app.StartAsync();
+        return app;
+    }
+
     private static async Task<WebApplication> StartFakeLsAsync(GetConversationMetadataResponse response)
     {
         var builder = WebApplication.CreateBuilder();
@@ -75,6 +101,23 @@ public class LsClientIntegrationTests
         // The last_modified_time mapping is load-bearing for the >1-conversation tiebreaker (Task 4); pin it.
         Assert.Equal(new DateTimeOffset(2026, 6, 28, 0, 0, 0, TimeSpan.Zero),
             conversations.Single(c => c.ConversationId == "conv-newer").LastModifiedUtc);
+    }
+
+    [Fact]
+    public async Task A_hung_unary_call_fails_fast_with_DeadlineExceeded_instead_of_blocking_forever()
+    {
+        // Finding (e): a connected-but-hung peer must not block a one-shot round-trip forever (else AskAsync's
+        // in-flight cleanup never runs). The client deadline must turn the hang into a prompt DeadlineExceeded.
+        await using var app = await StartHangingLsAsync();
+        var port = PortOf(app);
+        using var ls = LsClient.Connect(CliLogFor(port), new SystemListeningPorts(), TimeSpan.FromMilliseconds(250));
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ex = await Assert.ThrowsAsync<RpcException>(() => ls.GetCascadeTrajectoryAsync("conv-x"));
+        sw.Stop();
+
+        Assert.Equal(StatusCode.DeadlineExceeded, ex.StatusCode);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"call should fail fast on the deadline, took {sw.Elapsed}");
     }
 
     [Fact]
