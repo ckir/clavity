@@ -73,8 +73,10 @@ triggers the identical CI build — no circular dependency: the recipe is the sh
   provenance — originated from the now-frozen claudavity prototype @`fae54fa`). Staging is a plain copy of that
   in-branch dir into the ISCC source layout
   (`publish/agy-mcp-bridge/`) — **no second `actions/checkout`, no `git clone`, no cross-repo auth** (the appeal
-  of the vendor choice). The vendored tree holds only the whitelist (`server.py`, `agy_bus.py`, `agy_tmux.py`,
-  `isolation.py`, `telemetry.py`, `pyproject.toml`, `uv.lock`, `start-claudavity.ps1`, `.env.example`, `LICENSE`)
+  of the in-branch source). The staged runtime whitelist (`scripts/build-classic-release.ps1`) is `server.py`,
+  `agy_bus.py`, `agy_tmux.py`, `isolation.py`, `telemetry.py`, `SKILL.md` (runtime — injected by `server.py`),
+  `pyproject.toml`, `uv.lock`, `start-claudavity.ps1`, `.env.example`, `LICENSE` (the dir also holds dev-only
+  tests + `lefthook.yml`, which the recipe does NOT stage)
   and **never the dev `.env`** (not vendored; `agy-mcp-bridge/.gitignore` also blocks a future `uv sync` from
   committing it), so staging cannot leak the secret. The responder skill is NOT under `agy-mcp-bridge/` — it
   already lives at `agy_skills/claudavity-responder/SKILL.md` (embedded in the binary).
@@ -210,7 +212,9 @@ native port is real rewrite work out of scope for shipping. uv is the fastest, l
 
 - **What ships** (under `{app}\agy-mcp-bridge`, gated by an `install_bridge` `[Tasks]` checkbox, default OFF):
   the bridge sources (`server.py`, `agy_tmux.py`, `agy_bus.py`, `isolation.py`, `telemetry.py`,
-  `pyproject.toml`, `uv.lock`), `start-claudavity.ps1`, and **`.env.example`**.
+  `pyproject.toml`, `uv.lock`), **`SKILL.md`** (a RUNTIME file — `server.py` loads it as `CANONICAL_SKILL` and
+  injects it into every spawned sub-agent; it MUST ship beside `server.py`), `start-claudavity.ps1`, and
+  **`.env.example`**. (The dev test suite + `lefthook.yml` live in `agy-mcp-bridge/` but are NOT shipped.)
 - **The agy-side responder skill — installed into a REAL agy skill-discovery root, NOT under `{app}`.** The
   responder (`claudavity-responder`) is required for the bridge round-trip (the agy peer runs it), but agy does
   **not** auto-discover skills under an arbitrary `{app}\…\agy_skills\` directory. **Verified on this machine
