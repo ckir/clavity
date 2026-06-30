@@ -41,11 +41,21 @@ the cascade trajectory clavity already fetches (spike-confirmed) — falling bac
 
 ### Resolution algorithm (at send time, in the send path that today sets `RequestedModel`)
 1. **Primary — the conversation's own model (SPIKE RESOLVED: read it from the trajectory).** clavity already
-   fetches `GetCascadeTrajectory` every drive. The **most-recent step's** `CortexStepMetadata.requested_model`
-   (field 13 → `ModelOrAlias.model`, an **int**) is the concrete model the conversation has been using.
-   **Reflect that int** straight into the send's `requested_model.model` — it is a live-valid id from the SAME
-   agy, so it needs **no `GetAvailableModels` map lookup** and is renumber-proof by construction.
-   (`generator_model` = field 11 is an equivalent secondary source; prefer `requested_model` = what was asked.)
+   fetches `GetCascadeTrajectory` every drive. **Walk the steps NEWEST-FIRST and take the first step bearing a
+   non-zero concrete model.** Per step, read `CortexStepMetadata.generator_model` (field 11 — the concrete int
+   agy's backend ACTUALLY ran; always resolved, never an alias), falling back within the step to
+   `requested_model` (field 13 → `ModelOrAlias.model` = field 1) only when *it* is non-zero. **Reflect that int**
+   into the send's `requested_model.model` — a live-valid id from the SAME agy (no `GetAvailableModels` lookup;
+   renumber-proof).
+   - **Prefer `generator_model` over `requested_model`** (D1): `requested_model` is a `ModelOrAlias` whose `model`
+     int is `0` when the step was driven by an ALIAS — reading that `0` would falsely fail the deprecation
+     validate. `generator_model` is the resolved concrete id.
+   - **Skip zero-model steps** (D2): non-LLM steps (tool / command / code-action / user-message) carry no model
+     (proto3 default `0` / `MODEL_UNSPECIFIED`). Do NOT treat `0` as a model — keep walking. (Step order: repeated
+     fields preserve append order ⇒ `steps` is chronological/oldest-first ⇒ iterate from the end; CONFIRM against
+     the existing trajectory-reader in the plan.)
+   - If the walk finds NO non-zero model in any step → treat as a brand-new conversation → the default fallback
+     (step 2).
 2. **Fallback — no prior model in the trajectory** (a brand-new conversation, first send, before any step has
    run) → use agy's **default** model: `GetAvailableModels` → `default_agent_model_id` (a string **key**) →
    the `models` map → its concrete `model` int. *(There is no "explicitly-set-but-unresolvable silent-downgrade"
@@ -64,6 +74,13 @@ the cascade trajectory clavity already fetches (spike-confirmed) — falling bac
 - `GetAvailableModels` is needed ONLY for the **default fallback** (new conversations) and the **deprecation
   validation** → **cache it per `LsClient`/LS session**; refresh on a miss / send rejection.
 
+### Accepted limitation (D3 — pending UI switch)
+The trajectory records what **executed**, not what is **pending**. If the operator switches the model dropdown in
+the agy UI but has NOT yet sent, that intent lives only in the UI's local state — and the spike confirmed it is
+**not** exposed over the LS (no model field in `GetConversationMetadata`). So clavity enforces the model of the
+last **executed** step; an unsent UI dropdown change is inherently invisible to clavity and is ignored until the
+next executed step makes it real. **Accepted** — clavity drives via the LS, which has no pending-UI surface.
+
 ## Task-1 spike — ✅ RESOLVED (2026-06-30; `protoc --decode_raw` of the captured trajectory golden)
 
 Decoded the existing 433 KB golden `tests/Clavity.Ls.Tests/TestData/GetCascadeTrajectory.bin` (raw wire — no
@@ -80,9 +97,11 @@ guessing) and cross-checked the public `exa.cortex_pb` schema. Both questions an
   concrete proof the hard-code can be the WRONG model for a conversation, not merely a future renumber risk.
 
 ⇒ The **primary "conversation's own model" design STANDS** (no degradation to default needed). The line-level
-plan is **UNBLOCKED**. Residual plan-time detail (small): pick `requested_model` (13) over `generator_model` (11)
-as the source; model field 13 / `ModelOrAlias` in the partial proto + pin a fresh golden for the resolver tests;
-confirm "most-recent step" selection (walk steps newest-first for the first one bearing a `requested_model`).
+plan is **UNBLOCKED**. Residual plan-time detail (small): model `generator_model` (field 11) + `requested_model`
+(13)/`ModelOrAlias` in the partial proto; pin a fresh golden for the resolver tests; confirm trajectory step order
+against the existing trajectory-reader (so "newest-first" walks the right direction). *(Source-field preference
+resolved in round 2: prefer `generator_model` — the always-concrete int — over `requested_model`, whose `model`
+is `0` for an alias-driven step. See the resolution algorithm.)*
 
 ## Error handling
 
@@ -99,8 +118,11 @@ confirm "most-recent step" selection (walk steps newest-first for the first one 
   — pins the field numbers/shape against silent proto drift.
 - **In-proc fake LS** returns a representative map (a couple of models + a default) so the resolution + send path
   is exercised hermetically in CI.
-- **Unit tests** for the resolver: conversation-key present → its id; key missing → default; default missing →
-  loud error; an id absent from the live map → revalidate/fallback, never sent.
+- **Unit tests** for the resolver (trajectory-int path): newest step has a non-zero `generator_model` → that int;
+  last step is a non-LLM/alias step (model `0`) but an earlier step has a model → the **walk skips the zeros** and
+  returns the earlier int; NO step has a non-zero model → default (`default_agent_model_id` → map → int); default
+  also absent / catalog empty → loud error; the chosen int is absent from the live map (deprecated) → loud error,
+  never sent.
 - **Live-acceptance** (`Category=LiveAgy`, excluded from CI): the dynamically-resolved id is accepted by a real
   `SendUserCascadeMessage` (the failure this whole item prevents).
 
