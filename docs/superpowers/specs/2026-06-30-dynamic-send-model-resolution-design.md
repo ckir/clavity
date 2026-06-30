@@ -6,9 +6,9 @@
 > authored there AFTER the Task-1 spike (below) resolves where the conversation's model is exposed.
 
 **Goal:** Stop hard-coding the agy send-model id so an agy model-renumber can't **silently** break clavity's live
-write. Resolve the model **at send time** to **the conversation's own selected model** (faithful-peer behavior),
-falling back to agy's **default** model — both via the LS's authoritative `GetAvailableModels`, never a baked-in
-int.
+write. Resolve the model **at send time** to **the conversation's own model** (faithful-peer behavior) — read from
+the cascade trajectory clavity already fetches (spike-confirmed) — falling back to agy's **default** model (via
+`GetAvailableModels`) for a brand-new conversation. Never a baked-in int.
 
 ## Background (verified against the `clavity-dotnet` branch)
 
@@ -40,53 +40,49 @@ int.
   the existing `GetConversationMetadata` / `GetCascadeTrajectory` goldens) — NOT guessed. The plan captures it.
 
 ### Resolution algorithm (at send time, in the send path that today sets `RequestedModel`)
-1. **Primary — the conversation's own model.** Read the conversation's currently-selected model. The spike (below)
-   decides its FORM:
-   - **If exposed as the concrete int** → reflect it straight into `requested_model.model` (it is, by definition,
-     a currently-valid id for the running agy — no map lookup needed for the primary path).
-   - **If exposed as a stable key** → look the key up in the `GetAvailableModels` map → its current `model` int.
-2. **The fallback split (NO silent downgrade).** Distinguish two cases, because conflating them violates user
-   intent:
-   - **Truly UNSET** (e.g. a brand-new conversation with no model chosen) → use agy's **default** model. *(How the
-     default is identified — a `default_agent_model_id` field, a flag in `ModelDetails`, or the LS's own default —
-     the spike confirms; `docs/agy-ls-assumptions.md:122` names `default_agent_model_id`.)*
-   - **EXPLICITLY set but unresolvable** (the user chose model X, but X is absent from the live map — desync /
-     deprecation) → **hard-fail loudly** with a clear "your selected model X is no longer available — pick another
-     in agy" message. Do **NOT** silently substitute the default — that would downgrade a deliberate choice.
-3. **Validate:** the id finally sent MUST be present in the live `GetAvailableModels` map — never send a
-   stale/unknown id. The reflect-the-int primary path still validates against the map (catches a model that
-   vanished between the conversation read and the send).
+1. **Primary — the conversation's own model (SPIKE RESOLVED: read it from the trajectory).** clavity already
+   fetches `GetCascadeTrajectory` every drive. The **most-recent step's** `CortexStepMetadata.requested_model`
+   (field 13 → `ModelOrAlias.model`, an **int**) is the concrete model the conversation has been using.
+   **Reflect that int** straight into the send's `requested_model.model` — it is a live-valid id from the SAME
+   agy, so it needs **no `GetAvailableModels` map lookup** and is renumber-proof by construction.
+   (`generator_model` = field 11 is an equivalent secondary source; prefer `requested_model` = what was asked.)
+2. **Fallback — no prior model in the trajectory** (a brand-new conversation, first send, before any step has
+   run) → use agy's **default** model: `GetAvailableModels` → `default_agent_model_id` (a string **key**) →
+   the `models` map → its concrete `model` int. *(There is no "explicitly-set-but-unresolvable silent-downgrade"
+   risk on the primary path — the trajectory's model is by-definition a value the conversation actually ran. The
+   only edge is a model since DEPRECATED out of the catalog → see Validate.)*
+3. **Validate (deprecation guard):** before sending, confirm the chosen int is still present in the live
+   `GetAvailableModels` map. If the trajectory's model was since removed → **loud error** ("the conversation's
+   model is no longer available — pick another in agy"), never a silent substitution.
 4. **Set the resolved `int32`** on `requested_model.model` (the field is now `int32`, see modeling above) — the
    runtime value comes from the LS, never a source constant.
 
-### Caching & the per-send latency cost (acknowledged)
-- The `GetAvailableModels` map changes rarely → **cache it per `LsClient`/LS session**; refresh on a resolution
-  miss or a send rejection. Avoids an RPC per drive for the model *catalog*.
-- **The conversation's own model CANNOT be cached** — the user may switch models in the agy UI between any two
-  sends, so the primary-model read must happen **per send**. This is an accepted, deliberate cost. **Mitigation
-  to check in the plan:** if the send path *already* fetches `GetConversationMetadata` per send (for convId/state),
-  the model read **piggybacks on that existing call** — zero added round-trip. If it does not, the design accepts
-  one extra metadata RPC immediately before each `SendUserCascadeMessage`.
+### Caching & latency — RESOLVED (zero added round-trip)
+- The conversation's model is read from the **trajectory clavity already fetches every drive** → **no extra RPC**
+  for the primary path. (The spike's feared per-send `GetConversationMetadata` call is moot — the model isn't in
+  metadata anyway, and the trajectory read already happens.)
+- `GetAvailableModels` is needed ONLY for the **default fallback** (new conversations) and the **deprecation
+  validation** → **cache it per `LsClient`/LS session**; refresh on a miss / send rejection.
 
-## Task-1 spike (GATE — resolved before the line-level plan)
+## Task-1 spike — ✅ RESOLVED (2026-06-30; `protoc --decode_raw` of the captured trajectory golden)
 
-The spike must answer **TWO** things (not one):
-1. **WHERE** is the conversation's currently-selected model exposed? Candidates: `GetConversationMetadataResponse`
-   (today modeled PARTIAL — may carry it unmodeled), the cascade trajectory, or a dedicated field.
-2. **AS WHAT FORM** — a stable string **key** (`"gemini-3.1-pro-high"`) or the concrete **int** id? This changes
-   the algorithm: an **int** is reflected straight back (no `GetAvailableModels` map lookup on the primary path —
-   it stays needed only for the default fallback + final validation); a **key** needs the map lookup.
+Decoded the existing 433 KB golden `tests/Clavity.Ls.Tests/TestData/GetCascadeTrajectory.bin` (raw wire — no
+guessing) and cross-checked the public `exa.cortex_pb` schema. Both questions answered:
 
-Inspect a **live** LS response (raw wire / the public `exa.language_server_pb` schema). Outcomes:
-- **Discoverable (key or int)** → the primary ("conversation's own model") design stands; model the field per its
-  form.
-- **Not discoverable at all** → the design **degrades cleanly to "agy's default model" as primary** (still
-  dynamic, still renumber-proof) — the user-chosen behavior was conversation-model *with a default fallback*, so
-  this is the fallback promoted, not a redesign. (Note: in this degraded mode the D2 explicit-vs-unset split is
-  moot — there is no per-conversation choice to honor — so there's no silent-downgrade risk.)
+- **WHERE — the cascade trajectory (NOT metadata).** `GetConversationMetadata`'s `CortexTrajectoryMetadata` has
+  **no model field** (all fields enumerated). The model lives on each step: `CortexStepMetadata.requested_model`
+  (field 13 → `ModelOrAlias.model` = field 1), `CortexStepMetadata.generator_model` (field 11), and
+  `ChatModelMetadata.model` (field 3) — all **populated** in the captured data.
+- **AS WHAT FORM — a concrete `int`.** Decode showed `11: 1016` (9×) and `13 { 1: 1016 }` (29×). So the primary
+  path **reflects the int**; `GetAvailableModels` is needed only for the new-conversation default + the
+  deprecation guard.
+- **Why it matters:** the captured conversation ran model **`1016`**, while the source hard-code is **`1037`** —
+  concrete proof the hard-code can be the WRONG model for a conversation, not merely a future renumber risk.
 
-This spike is the only thing gating line-level planning; everything else (the `GetAvailableModels` modeling +
-resolution + validation + fallback-to-default) is authorable now.
+⇒ The **primary "conversation's own model" design STANDS** (no degradation to default needed). The line-level
+plan is **UNBLOCKED**. Residual plan-time detail (small): pick `requested_model` (13) over `generator_model` (11)
+as the source; model field 13 / `ModelOrAlias` in the partial proto + pin a fresh golden for the resolver tests;
+confirm "most-recent step" selection (walk steps newest-first for the first one bearing a `requested_model`).
 
 ## Error handling
 
