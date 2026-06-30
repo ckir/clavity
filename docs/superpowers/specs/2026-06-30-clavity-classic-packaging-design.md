@@ -110,8 +110,12 @@ proven hardening (in-process PATH scan, no `where` subprocess, suppressible msgb
   driving/pairing skills), shipped under `{app}` the same way dotnet ships its plugin — exact plugin names
   resolved against the `clavity-classic` branch in the plan.
 - Optional add-ons **agy-autotrain** + **commonmemory** shipped (gated by `[Tasks]`), identical to dotnet.
-- **The bridge tree** (claudavity) — see *Bridge packaging* below; shipped under `{app}\agy-mcp-bridge`, gated
-  by its own `[Tasks]` checkbox, with `.env` / `.venv` / caches **excluded**.
+- **The bridge tree** (`Source: "..\publish\agy-mcp-bridge\*"` with `recursesubdirs`) — see *Bridge packaging*
+  below; shipped under `{app}\agy-mcp-bridge`, gated by its own `[Tasks]` checkbox, with `.env` / `.venv` /
+  caches **excluded**. **This tree MUST include `SKILL.md`** — the sub-agent execution protocol `server.py`
+  injects at runtime (`CANONICAL_SKILL`, loaded from its own dir). It is runtime-critical, NOT docs: the bridge
+  silently misbehaves without it. The 7.8 recipe already stages it into `publish\agy-mcp-bridge\`; pack that
+  staged dir **recursively** so `SKILL.md` (and any future runtime file) cannot be omitted from the installer.
 
 ### Tasks / Registry / runtime registration
 - `addtopath` (checkedonce) — append `{app}` to HKCU `Path` (the in-place `NeedsAddPath` append-never-prepend
