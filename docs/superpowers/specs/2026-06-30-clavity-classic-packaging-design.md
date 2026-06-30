@@ -7,15 +7,32 @@
 > artifacts. This spec defines intent + contracts, mirroring the **proven, shipped** dotnet packaging
 > (`installer/clavity-dotnet.iss` + `.github/workflows/release-clavity-dotnet.yml` on `main`) as the oracle.
 
+> **STATUS — reconciled 2026-06-30 (Spec A landed).** The 7.3 prerequisite is **DONE**: golden-header
+> injection is **merged to `clavity-classic` (`dea8f87`)**, rust-reviewed (APPROVE). The build order's first
+> item is complete and **Spec B is now the active epic**; next actionable = **7.0 (publish claudavity)**.
+> **Concrete symbols the plan may now reference (no longer speculative):**
+> - **`clavity curate-commit`** — the stdin write verb (atomic header + `.sha256` sidecar). Exists on the branch.
+> - **Header path** resolved via **`std::env::var_os("USERPROFILE")` → `HOME`** (NOT the `dirs` crate — the
+>   roadmap's earlier "`dirs::home_dir`" wording is superseded; no `dirs` dep was added), default
+>   `%USERPROFILE%\.clavity\golden-header.md`, overridable via `CLAVITY_GOLDEN_HEADER`.
+> - **`clavity doctor`** already prints a **`golden-hdr`** status line (path + Active/none/disabled + sidecar
+>   present/MISSING); 7.1's `doctor` bridge-readiness lines extend the SAME verb (below).
+> - **Sidecar** = `<path>.sha256`, 64 lowercase-hex, no trailing newline; classic reads `golden-header.md` per ask.
+> - **Separate dotnet-side follow-ups (NOT Spec B scope):** the capstone confirmed dotnet `GoldenHeader.Apply`
+>   uses full-Unicode `TrimEnd()` vs classic's canonical ASCII-only set, and dotnet writes the sidecar
+>   before-move/non-atomic vs classic's after-move/atomic — both are dotnet *code* parity fixes, tracked apart
+>   from packaging (they do not affect the `.iss`/CI contracts here).
+
 **Goal:** Ship `clavity-classic-setup.exe` so a user installs the Rust **clavity** (classic) variant with **no
 Rust toolchain**, at feature parity with dotnet: the prebuilt binary on PATH, the agentmemory MCP + GEMINI.md
 doorbell + `tmux.conf` registered, the optional add-ons, and the `delegate_to_antigravity` bridge as a
 **Python/uv prerequisite** (user-decided 2026-06-30). Mutually exclusive with the dotnet install in both
 directions.
 
-**Why after Spec A:** classic has **no golden-header injection** until 7.3 lands (the `driving-agy` skill that
-carried it was deleted). Shipping packaging first would deploy a product regressed vs. its own past and vs.
-dotnet. Build order is therefore **7.3 (Spec A) → 7.0 (publish claudavity) → 7.8 → 7.1 → 7.2**: feature parity
+**Why after Spec A:** classic had **no golden-header injection** until 7.3 landed (the `driving-agy` skill that
+carried it was deleted). Shipping packaging first would have deployed a product regressed vs. its own past and
+vs. dotnet. **7.3 is now DONE** (merged `dea8f87`). Build order is **7.3 ✅ (Spec A) → 7.0 (publish claudavity) →
+7.8 → 7.1 → 7.2**: feature parity
 first (locally testable); then **7.0** — publish claudavity to GitHub with a pinned tag, the precondition for any
 cross-repo bridge fetch (see *Bridge packaging*); then the prebuilt artifact (7.8, which fetches that pinned
 bridge tag), then the installer authored against the *real* artifacts (7.1), then release CI only once the
@@ -116,8 +133,8 @@ Mirror dotnet's `InitializeSetup`, inverted:
 ### Uninstall
 Mirror dotnet: unregister the MCP/doorbell/add-ons (best-effort, fail-open if the exe is gone — dotnet F15),
 remove the PATH entry (`RemoveFromUserPath`), delete `HKCU\Software\clavity\classic`, and honor the
-keep-vs-purge data prompt (default KEEP). If classic also reads
-the shared `%USERPROFILE%\.clavity\golden-header.md` (it will, after 7.3), apply the **same zombie-header
+keep-vs-purge data prompt (default KEEP). Classic **now reads**
+the shared `%USERPROFILE%\.clavity\golden-header.md` (post-7.3, `dea8f87`), so apply the **same zombie-header
 rename-to-`.backup` on keep** that dotnet does (`clavity-dotnet.iss:280-293`) so a reinstall doesn't auto-inject
 frozen wisdom.
 
@@ -360,7 +377,7 @@ Release-only CI (no continuous build on `main`; the classic gate is `cargo test`
 ## Out of scope (this spec)
 
 - The Rust golden-header **injection** (`clavity curate-commit` + per-ask prepend) — that is **Spec A** (7.3),
-  the prerequisite landing before this.
+  **DONE** (merged `dea8f87`); it landed before this and is the prerequisite Spec B builds on.
 - Linux/macOS installers / prebuild — Windows only here; cross-platform follows the porting guide later.
 - A native (Rust/Go) bridge port — explicitly rejected (Python-only SDK); uv-prereq is the decided runtime.
 - Golden-header tamper-detection (7.4), `--restart-agy` (7.7), dynamic model resolution — separate backlog items.
