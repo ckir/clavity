@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [clavity-classic]
   pull_request:
+    branches: [clavity-classic]
 
 env:
   CARGO_TERM_COLOR: always
