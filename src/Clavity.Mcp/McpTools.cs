@@ -41,6 +41,7 @@ public class McpTools
                 operation = ex.Report.Operation,
                 elapsedSeconds = ex.Report.Elapsed.TotalSeconds,
                 hint = ex.Report.Hint,
+                diagnostic = ex.Diagnostic,   // where agy stopped: slow tool vs hang (null if not computed).
             });
         }
         catch (AgyConversationPendingException ex)

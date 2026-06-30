@@ -179,4 +179,28 @@ public class AgyAskIntegrationTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public async Task AskAsync_timeout_diagnostic_reports_no_agy_progress_when_it_never_moved()
+    {
+        // 10s idle delay ≫ the 200ms client timeout, so when the wait is cancelled only OUR injected user step
+        // exists — agy produced nothing ⇒ NewAgySteps == 0, last step is our Kind-14 ⇒ LastStepClass "user".
+        var fake = new FakeAskLs("conv-1", "never", TimeSpan.FromSeconds(10), Array.Empty<CascadeStep>());
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(
+                () => view.AskAsync("hello", timeout: TimeSpan.FromMilliseconds(200)));
+            Assert.NotNull(ex.Diagnostic);
+            Assert.Equal(0, ex.Diagnostic!.NewAgySteps);
+            Assert.Equal("user", ex.Diagnostic.LastStepClass);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
