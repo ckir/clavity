@@ -27,6 +27,9 @@ public static class BoundedView
     public const int AskMaxStepChars = 16_000;
     /// <summary>Per-step cap for an <c>ActivityItem.Summary</c> (a terse "what agy did", never a tool's full output).</summary>
     public const int ActivitySummaryChars = 200;
+    /// <summary>Max number of <c>ActivityItem</c>s in an <c>agy_ask</c> reply. The char budget alone does NOT bound a
+    /// peer that emits a huge COUNT of zero-text steps (each costs 0 chars) — cap the count so the JSON stays small.</summary>
+    public const int MaxActivitySteps = 500;
 
     public static BoundedTrajectory Summarize(
         CascadeTrajectory trajectory,
@@ -115,7 +118,7 @@ public static class BoundedView
         var costs = all.Select(a => a.Summary?.Length ?? 0).ToList();
         var total = costs.Sum();
         var start = 0;
-        while (total > remaining && start < all.Count)
+        while ((total > remaining || all.Count - start > MaxActivitySteps) && start < all.Count)
         {
             total -= costs[start];
             start++;

@@ -45,6 +45,16 @@ public class AskReplyProjectionTests
     }
 
     [Fact]
+    public void A_huge_count_of_zero_text_steps_is_capped_by_step_count_not_just_chars()
+    {
+        // Zero-text steps cost 0 chars, so the char budget never trims them — the COUNT cap must, preserving the tail.
+        var steps = Enumerable.Range(0, BoundedView.MaxActivitySteps + 50).Select(_ => Tool()).ToArray();
+        var r = Project(steps);
+        Assert.True(r.ActivityTruncated);
+        Assert.Equal(BoundedView.MaxActivitySteps, r.Activity.Count);
+    }
+
+    [Fact]
     public void Over_cap_answer_sets_AnswerTruncated_only()
     {
         var big = new string('x', BoundedView.AskMaxStepChars + 50);
