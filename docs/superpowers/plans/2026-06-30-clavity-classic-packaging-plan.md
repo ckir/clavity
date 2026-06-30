@@ -650,16 +650,21 @@ jobs:
       - name: Test gate
         run: cargo test --all --features test-fakes
 
-      - name: Install Inno Setup (PINNED)
+      - name: Locate Inno Setup (windows-2022 ships it preinstalled; the STATIC image pins the version)
+        id: inno
         shell: pwsh
-        run: choco install innosetup --version=6.2.2 --no-progress -y   # pin, not latest (local<->CI parity).
+        run: |
+          # windows-2022 already has Inno Setup 6.x — do NOT choco-pin a downgrade (it errors "a newer version is
+          # already installed"). The static image IS the version pin. Only install if absent; discover the path.
+          $iscc = Get-ChildItem "C:\Program Files*\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup --no-progress -y; $iscc = Get-ChildItem "C:\Program Files*\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          if (-not $iscc) { throw "ISCC.exe not found (no preinstall, install failed)" }
+          "iscc=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Build installer (ISCC)
         shell: pwsh
         run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found" }
-          & $iscc installer/clavity-classic.iss
+          & "${{ steps.inno.outputs.iscc }}" installer/clavity-classic.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
           if (-not (Test-Path dist/clavity-classic-setup.exe)) { throw "setup.exe not produced" }
 
