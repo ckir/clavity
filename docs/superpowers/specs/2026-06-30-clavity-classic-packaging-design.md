@@ -128,6 +128,12 @@ proven hardening (in-process PATH scan, no `where` subprocess, suppressible msgb
   **agentmemory MCP** with the agent(s), install the GEMINI.md **doorbell** rule, and place **`tmux.conf`**.
   Surface any failure with a suppressible msgbox + the manual re-run command (no false "Success") — same UX
   contract as dotnet's plugin registration.
+  - **MERGE, never blind-overwrite the user's global config (agy security round, 2026-06-30).** `GEMINI.md`
+    (the user's global agy instructions) and `tmux.conf` are user-owned files that often already exist with
+    bespoke content. The doorbell rule MUST be added as a **marked, idempotent block** (append/merge — re-running
+    is a no-op, not a duplicate) — NOT a wholesale file overwrite, which would destroy the user's own agy
+    instructions/config. On uninstall, remove **only** clavity's marked block, leaving the rest intact. (Verify
+    dotnet does the same; if it blind-overwrites, that's a dotnet parity bug to fix, not a pattern to mirror.)
 
 ### Mutual exclusion (classic refuses dotnet) — `[Code]`
 Mirror dotnet's `InitializeSetup`, inverted:
@@ -322,8 +328,10 @@ Release-only CI (no continuous build on `main`; the classic gate is `cargo test`
   (`rust-toolchain.toml` on the classic branch), build with **`cargo build --release --locked`** (enforce
   `Cargo.lock`, no silent dep bump), and **pin the Inno Setup version** (`choco install innosetup --version=<X>`,
   not latest). This keeps the local ISCC gate and CI building the *same* installer and makes a tag rebuildable
-  later (functionally reproducible — not claiming bit-identical, which needs deeper determinism work). Same
-  `windows-latest` image class as the local Windows dev box.
+  later (functionally reproducible — not claiming bit-identical, which needs deeper determinism work). **Pin the
+  runner to a STATIC OS image (`runs-on: windows-2022`), NOT `windows-latest`** (agy release-eng round): the
+  rolling image silently updates MSVC / linker / Windows SDK, so rebuilding a historic tag months later would use
+  a different build environment and break the reproducibility claim. Match the local Windows dev box's class.
 - **Build + package steps:** 7.8 recipe (`cargo build --release --locked` + stage the in-branch vendored
   `agy-mcp-bridge/` → `publish/`) → `cargo test` gate → pinned ISCC compiles `installer\clavity-classic.iss`
   (assert `dist\clavity-classic-setup.exe`) → SHA-256 companion in the **exact** `"<hash>  clavity-classic-setup.exe"`
@@ -342,8 +350,23 @@ Release-only CI (no continuous build on `main`; the classic gate is `cargo test`
     (KEEP) and cannot drive the interactive dialog. The **local manual uninstall gate (RIGHT-TOOL, pre-tag) MUST
     exercise BOTH `.env` branches (keep-retains-key, purge-removes-key)** and PATH-append idempotency on reinstall
     — these are not CI-coverable and are the local gate's responsibility.
-- **Publish:** `softprops/action-gh-release@v2` attaches the setup exe + `.sha256` to one release entity
+- **Publish:** first **`actions/upload-artifact`** the `setup.exe` + `.sha256` (so a transient GitHub Release
+  API failure doesn't lose the built assets with the ephemeral runner — operators can recover/inspect without a
+  non-deterministic rebuild), THEN `softprops/action-gh-release@v2` attaches both to one release entity
   (multi-asset publish is atomic — no exe-without-hash window).
+- **Pipeline resilience (agy release-eng round, 2026-06-30):**
+  - **`concurrency` guard:** set `concurrency: { group: release-${{ github.ref }}, cancel-in-progress: true }`.
+    A deleted-and-force-pushed tag (common, to fix a late typo) otherwise spawns two jobs racing on the publish
+    step — the `.exe` from one runner and the `.sha256` from another — silently breaking the atomic-publish claim.
+  - **Tag-lineage guard (wrong-branch):** version triangulation catches a version mismatch but NOT a
+    `clavity-classic-v*` tag accidentally pushed onto **`main`** (the dotnet branch) with a coinciding version —
+    CI would then build the wrong code. A fast pre-flight step MUST assert the tag's commit is on / an ancestor
+    of **`clavity-classic`** (`git merge-base --is-ancestor <tag> clavity-classic`); hard-fail otherwise.
+  - **Yank / rollback procedure (how to UN-ship):** there is no `cargo yank` for a standalone GitHub binary
+    release, so define the manual rollback for a catastrophic-bad installer: mark the GitHub Release as
+    **deleted/draft**, destroy the tag, and **roll FORWARD** with a patched `clavity-classic-vX.Y.(Z+1)` — never
+    silently leave a known-bad `setup.exe` downloadable while a fix is authored. (dotnet likely has the same gap;
+    backport.)
 - **Unsigned** (owner decision; SmartScreen documented), same as dotnet.
 
 ---
@@ -359,10 +382,19 @@ Release-only CI (no continuous build on `main`; the classic gate is `cargo test`
   purges it (see Uninstall). Only `.env.example` ships. The installer never reads/stores the key.
 - **Runtime secret hygiene (bridge key never logged)** — the bridge runs with the live `GEMINI_API_KEY` in
   memory; standard Python tracebacks, a `server.log`, telemetry payloads, or the agent transcript can casually
-  capture environment variables and write the key to disk. The bridge (claudavity) MUST **mask/scrub
-  `GEMINI_API_KEY` from all logs, crash dumps, exception output, and telemetry**. The fix lives in the bridge
-  source — now maintained in-tree at `agy-mcp-bridge/` — so it is an ordinary in-repo code requirement verified
-  there (no separate upstream). It is restated here as the packaging-side secret-boundary requirement: the
+  capture environment variables and write the key to disk. The bridge MUST **mask/scrub `GEMINI_API_KEY` from
+  all logs, crash dumps, exception output, and telemetry**.
+  - **Sub-agent environment inheritance (HIGH — agy security round, 2026-06-30):** `delegate_to_antigravity`
+    spawns a headless sub-agent in a worktree, and that child process (plus every shell command IT runs)
+    **inherits `server.py`'s environment**, which holds the live `GEMINI_API_KEY`. A delegated task on a
+    malicious repo (a poisoned build step) or a prompt-injected master could exfiltrate the key, or simply have
+    the sub-agent `cat` the `.env` — masking *logs* does not protect the live execution shell (a confused-deputy
+    escalation). **The bridge MUST strip `GEMINI_API_KEY` (and any other host secret) from the environment it
+    passes to the spawned sub-agent** — the sub-agent uses its own agy auth and has no need for the bridge's
+    key. This is a **bridge-code hardening** in `agy-mcp-bridge/server.py` (the spawn-env construction);
+    surfaced here because the installer ships the capability. The fix lives in the bridge source — now
+    maintained in-tree at `agy-mcp-bridge/` — so it is an ordinary in-repo code requirement verified there (no
+    separate upstream). It is restated here as the packaging-side secret-boundary requirement: the
   installer ships the bridge, so it owns surfacing the requirement.
 - **Mutual exclusion** — bidirectional and contract-bound: classic SETS `HKCU\Software\clavity\classic` (dotnet
   reads it) and REFUSES on `clavity-ls`/dotnet-ARP; shared `SetupMutex` blocks the concurrent-setup race.
