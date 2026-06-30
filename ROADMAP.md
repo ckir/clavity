@@ -13,14 +13,16 @@ clavity pairs **Claude** with a live **Antigravity (`agy`)** peer. It ships in *
 
 - **clavity-dotnet** — .NET 10, binary **`clavity-ls`**, drives agy over its **Language Server** (gRPC/h2c)
   via the `agy_look` / `agy_status` / `agy_ask` MCP tools. **SHIPPED**: one-command Windows installer
-  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.7**.
+  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.8**.
 - **clavity-classic** — Rust, binary **`clavity`**, drives agy over **psmux** + the **agentmemory signal bus**
   (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives on the **`clavity-classic`
   branch**. Today it installs via `cargo install --git … --branch clavity-classic` (needs the Rust toolchain).
-  **An installer for it is the #1 forward item.**
+  **An installer for it is the #1 forward item** (design + plan complete — see § 1).
 
-Optional opt-in add-ons (installer checkboxes): **agy-autotrain** (the agy-driving-perfection learning loop) and
-**commonmemory** (shared Claude⇄agy notebook over agentmemory).
+Optional opt-in add-ons (installer checkboxes, **clavity-dotnet only**): **agy-autotrain** (the
+agy-driving-perfection learning loop) and **commonmemory** (shared Claude⇄agy notebook over agentmemory). These
+are dotnet **plugins**; classic has no plugin tree, so its installer (Option A) ships **only** the opt-in
+`agy-mcp-bridge` add-on, not these.
 
 The two variants are **mutually exclusive** on a machine (the installers refuse to co-install).
 
@@ -39,6 +41,8 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 - **v0.1.7** — `agy_ask` returns agy's **full reply**: differentiated view caps (LOOK keeps the 8 KB/1 KB glance;
   ASK uses 32 KB total / 16 KB per-step) + **newest-first fill** so a noisy delta can't re-truncate the answer.
   (Closed the 1 000-char/step `BoundedView` cap that truncated long design consults.)
+- **v0.1.8** — agy always launches with `--dangerously-skip-permissions` (the paired agy is driven headless, so
+  its interactive permission prompts would otherwise stall the bus round-trip).
 
 ### clavity-dotnet — engineering increments (all merged to `main`)
 - **.NET port, increment 1 (T1–T10)** — LS discovery, h2c framing (live-proven + CI-pinned), `LsClient`,
@@ -56,40 +60,51 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 
 ## ▶ Forward backlog (in priority order)
 
-### 1. clavity-classic installer — **#1 PRIORITY** (Option A: full shippable, dotnet parity)
+### 1. clavity-classic installer — **#1 PRIORITY** (Option A: minimal/honest, matches classic's architecture)
 
-Ship `clavity-classic-setup.exe` so a user installs classic with **no Rust toolchain**, with feature parity to
-dotnet. Decided scope: **Option A (full shippable artifact)**; build order **7.3 → 7.8 → 7.1 → 7.2** (feature
-parity first, locally testable; then the prebuilt artifact; then the installer authored against the *real* CI
-artifacts; then release CI only after the installer is proven locally). agy-consulted + user-approved 2026-06-30.
+Ship `clavity-classic-setup.exe` so a user installs classic with **no Rust toolchain**. **Scope redecided
+2026-06-30 (Option A — minimal/honest):** plan-grounding against the real `clavity-classic` source showed classic
+**deliberately uses manual wiring** and lacks dotnet-style install machinery (no `install` verb; agentmemory over
+**REST** not MCP; GEMINI.md pointer **manual by design**; no plugin tree/add-ons; no `tmux.conf`). So the installer
+ships what exists and surfaces the rest as **guided-manual** — it does NOT mirror dotnet's zero-touch registration
+(building those new Rust verbs = "Option B" packaging-driven scope creep, **rejected**; agy-consulted +
+user-approved). Build order **7.3 ✅ → 7.8 ✅ → 7.1 → 7.2**.
 
-- **7.3 — Rust golden-header injection.** Mirror the dotnet `GoldenHeader` in the Rust crate (resolve
-  `%USERPROFILE%\.clavity\golden-header.md` via `dirs::home_dir`, read+cap+prepend in `clavity ask`; add
-  `clavity curate-commit`). **Ship-blocker:** `driving-agy` was deleted, so classic has *no* injection until this
-  lands. The Rust source is on the `clavity-classic` branch → author against that branch (PLAN-vs-SPEC: line-level
-  plan only against code you can read there).
-- **7.8 — prebuild the Rust `clavity.exe` on CI.** A release-CI job `cargo build --release` on a Windows runner
-  (then Linux/macOS per the porting guide), published as a Release asset — removes the user-side Rust requirement
-  and is the build prerequisite for 7.1/7.2.
-- **7.1 — the Inno installer.** Ship the prebuilt binary + register the agentmemory MCP, the GEMINI.md doorbell
-  rule, and `tmux.conf` (+ the **agy-mcp-bridge** *only if* the bridge fork below resolves to include it — it is
-  NOT a fixed 7.1 requirement); slot into the existing chooser. **Mutual exclusion:** the released dotnet installer
-  (v0.1.7) ALREADY detects classic — `InitializeSetup` refuses if the `clavity` stem is on PATH (`ClassicClavityOnPath`)
-  or `HKCU\Software\clavity\classic` is set (`ClassicRegistered`) — so 7.1 needs **no dotnet-side patch**: it must
-  (a) put `clavity.exe` on PATH and (b) SET `HKCU\Software\clavity\classic` so that existing detection fires, and
-  itself refuse if dotnet's ARP key / `clavity-ls` is present. Live-test BOTH directions before merge.
-  AGY-AFTER-audited constraints (packaging plan Task 7.1).
-- **7.2 — `clavity-classic-setup.exe` release CI** (mirror `release-clavity-dotnet.yml`).
+Design = `docs/superpowers/specs/2026-06-30-clavity-classic-packaging-design.md` (Option A reconciliation block);
+implementation plan = `docs/superpowers/plans/2026-06-30-clavity-classic-packaging-plan.md` (Tasks 0–6,
+AGY-AFTER round-1 reviewed; release/ops round pending agy availability).
 
-- **OPEN FORK — agy-mcp-bridge runtime (`delegate_to_antigravity`).** The bridge is `claudavity/server.py` (uv/
-  Python), so a clean install needs a runtime. Options surfaced (agy-consulted 2026-06-30): **(a) defer the bridge**
-  and ship the core installer without it (treat it as a later opt-in add-on — post-migration it's the legacy/
-  optional feature); **(b) port the bridge to a small Rust binary** (native parity, no Python/PyInstaller — agy's
-  idea; real porting work); **(c) PyInstaller standalone exe** (no rewrite; PyInstaller flakiness risk);
-  **(d) declare a Python/uv prerequisite** (leaky, fastest). **Decision deferred** to the classic-installer design
-  session, but **MUST be resolved BEFORE 7.1 is authored** — Inno can only pack what the fork settles (the bridge's
-  presence in 7.1 is contingent on it). Also required if the bridge ships: the agy-side `claudavity-responder`
-  skill + the psmux/bus substrate, and NO dev-`.env` leak.
+- **7.3 — Rust golden-header injection. ✅ DONE — merged to `clavity-classic` (`dea8f87`), rust-reviewed APPROVE.**
+  Mirrors dotnet `GoldenHeader` (`src/golden_header.rs`): resolves `%USERPROFILE%\.clavity\golden-header.md` via
+  **`std::env::var_os("USERPROFILE")→HOME`** (NOT the `dirs` crate — no dep added), read+cap+prepend per
+  `clavity ask`, `clavity curate-commit` writes the header + atomic `.sha256` sidecar; `clavity doctor` reports
+  golden-hdr status. *(dotnet-parity follow-ups noted in § 6.)*
+- **7.8 — prebuild + stage the Rust `clavity.exe`. ✅ DONE — `scripts/build-classic-release.ps1`** (the shared
+  recipe, run locally AND in 7.2 CI): `cargo build --release --locked` → stages `clavity.exe` + the bridge
+  **runtime whitelist** (incl. `SKILL.md`) into `publish/`, with a hard `.env`-leak assertion. No cross-repo
+  fetch — the bridge is vendored in-branch at `agy-mcp-bridge/` (canonical home).
+- **7.1 — the Inno installer (`installer/clavity-classic.iss`, greenfield, Option A).** Real jobs: `clavity.exe`
+  →PATH; **SET `HKCU\Software\clavity\classic`** so the shipped dotnet installer's existing `ClassicRegistered`
+  detection fires (no dotnet-side patch); **refuse** if `clavity-ls` is on PATH or dotnet's ARP key is present
+  (live-test BOTH directions); the **opt-in `agy-mcp-bridge`** add-on (Python/uv prereq, default OFF, `uv sync
+  --frozen` warmup, `.env` hard-excluded); responder-skill teardown on uninstall; golden-header zombie rename;
+  **informed `.env` keep/purge**. **Guided-manual (NOT installer-automated):** the agentmemory MCP, the GEMINI.md
+  doorbell pointer, and the bridge MCP registration — surfaced via shipped docs + a loud final-wizard summary
+  (editing user-owned agent config from an installer is too brittle — agy security/contract round). Full task
+  breakdown + the complete `.iss` in the packaging plan.
+- **7.2 — `clavity-classic-setup.exe` release CI** (`release-clavity-classic.yml`, greenfield; mirrors
+  `release-clavity-dotnet.yml`): tag `clavity-classic-v*`, single checkout, 4-way version triangulation,
+  tag-lineage guard, pinned toolchain + Inno + `windows-2022`, **blocking** timeout-bounded smokes
+  (install/uninstall, mutual-exclusion, `.env`-exclusion), `concurrency` guard, upload-artifact then atomic
+  gh-release. Authored in the plan; awaits the local ISCC gate before the first tag.
+
+- **✅ BRIDGE FORK RESOLVED (user 2026-06-30): (d) Python/uv prerequisite.** Ship `agy-mcp-bridge` as an **opt-in,
+  default-OFF** add-on declaring a Python ≥3.10 + uv prereq (no PyInstaller, no Rust port — the `google-antigravity`
+  SDK is Python-only). Source is vendored in-branch at `agy-mcp-bridge/` (no upstream, no drift). **Security
+  hardening landed @`bd8ec8f`:** `server.py` scrubs host AI-platform keys (`GEMINI_API_KEY` et al.) from the env
+  before spawning the delegated sub-agent (confused-deputy fix) and passes the key explicitly to the SDK. *(One
+  residual: whether the closed `localharness` binary re-exports the key into its shells needs a live delegation to
+  confirm — tracked.)*
 
 ### 2. `clavity --restart-agy` (classic) — 7.7
 Agy-only restart: tear down + relaunch ONLY the agy psmux session under the same `--session`, WITHOUT co-launching
@@ -113,6 +128,15 @@ agy uses its default model).
 - **7.6** — confirm Claude/agy don't auto-update a locally path-installed plugin away from the version-pinned
   `{app}` binary.
 
+### 6. dotnet golden-header parity follow-ups
+The classic 7.3 implementation (`src/golden_header.rs`) is now the canonical golden-header behavior; two dotnet
+divergences were found during the Spec A capstone and are tracked as **dotnet-side code fixes** (they do not
+affect the packaging `.iss`/CI contracts):
+- **`GoldenHeader.Apply` trim charset** — dotnet uses full-Unicode `TrimEnd()`; classic (canonical) trims an
+  **ASCII-only** whitespace set. Align dotnet to ASCII-only.
+- **Sidecar write order/atomicity** — dotnet writes the `.sha256` sidecar **before** the target rename and
+  non-atomically; classic writes it **after** the rename, atomically. Align dotnet to after-move/atomic.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
@@ -130,8 +154,11 @@ agy uses its default model).
   mitigated). DPAPI/signing out of scope for this threat model.
 - **Migrating classic → dotnet regresses `delegate_to_antigravity`** — dotnet provides `agy_ask` (consults), not
   autonomous code-delegation. Valid only while clavity-classic stays a maintained variant (which item 1 assumes).
-- **No continuous .NET build/test CI** on `main` — CI here is **release-only**; the .NET gate stays local
-  (`dotnet build -c Release` + `dotnet test --filter "Category!=LiveAgy"`). `ci.yml` remains Rust/`main`-only.
+- **No continuous .NET build/test CI** on `main` — the .NET release gate stays local (`dotnet build -c Release` +
+  `dotnet test --filter "Category!=LiveAgy"`); dotnet packaging ships via the release-only
+  `release-clavity-dotnet.yml`. The continuous `ci.yml` (cargo fmt/clippy/test/build) now **targets the
+  `clavity-classic` branch** (where the Rust crate lives) on both branches — it was retargeted off `main` (which
+  has no `Cargo.toml`) so it stops false-failing and actually gates the Rust crate.
 
 ---
 
