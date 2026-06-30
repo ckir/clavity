@@ -159,10 +159,13 @@ frozen wisdom.
     **unconditionally** — they carry no user intent and are trivially rebuilt by `uv sync`.
   - **`.env` (live secret + user-intent-bearing):** deletion is **gated on the existing keep-vs-purge data
     prompt**, default **KEEP**. To avoid keep-vs-purge *dissonance* (a user ticking "keep my data" but the key
-    vanishing — the failure mode if `.env` were force-purged), the **prompt explicitly enumerates BOTH data
-    classes it governs** — the **golden-header wisdom** AND the **bridge API key (`.env`)** — so KEEP and PURGE
-    each mean exactly one unambiguous thing across both. The prompt names "your stored API key" specifically, so
-    the choice is *informed* (this is what resolves the original zombie concern — *surfacing* the key, not
+    vanishing — the failure mode if `.env` were force-purged), the **prompt enumerates the data classes it
+    actually governs** — **always** the **golden-header wisdom**, and — **ONLY when the bridge was installed** —
+    the **bridge API key (`.env`)**. **The API-key line MUST be conditional** (gate on
+    `WizardIsTaskSelected('install_bridge')` at install time / on `.env` existing at uninstall time): the bridge
+    is opt-in default-OFF, so a user who never enabled it must NOT see a prompt threatening to delete an API key
+    they never provided (a false alarm). When the bridge IS present, naming "your stored API key" makes the
+    choice *informed* (this is what resolves the original zombie concern — *surfacing* the key, not
     force-deleting it). On *purge*, the `.env` and the now-empty `{app}\agy-mcp-bridge` dir are removed; on
     *keep*, the `.env` stays and the uninstall summary states the key was retained. (Note: a normal same-AppId
     in-place **upgrade** does not run the uninstaller, so this prompt only fires on a real uninstall — no
@@ -204,7 +207,10 @@ native port is real rewrite work out of scope for shipping. uv is the fastest, l
   `agy-mcp-bridge/`, like any other in-repo code, and deps are managed here (`uv lock` updates `uv.lock` normally
   when `pyproject.toml` changes). Bridge changes ride a `clavity-classic-v*` release with the rest of the crate.
   **Secret boundary:** the dev `.env` was never copied (only `.env.example`), and `agy-mcp-bridge/.gitignore`
-  blocks `uv sync` from ever committing `.env`/`.venv` — so no bridge `.env` can land in the Rust repo.
+  blocks `uv sync` / local bridge runs from ever committing the secret OR the regenerable runtime artifacts —
+  it lists `.env`, `.venv/`, `__pycache__/`, `*.pyc`, `.agent/`, `.pytest_cache/`, `.ruff_cache/`,
+  `.playwright-cli/`, `.serena/`, `server.log` (already committed) — so neither the bridge `.env` nor dev cruft
+  can land in the Rust repo.
   - **No task 7.0.** With the source in-branch there is **no "publish claudavity" precondition** — the earlier
     (iii) plan's outward-facing 7.0 (push claudavity to GitHub + pinned tag + read access) is **dropped**. Build
     order is **7.3 ✅ → 7.8 → 7.1 → 7.2**.
@@ -266,11 +272,18 @@ native port is real rewrite work out of scope for shipping. uv is the fastest, l
   `{app}\agy-mcp-bridge`. So: (1) the final wizard page offers an **"Open the bridge configuration folder"**
   checkbox (Inno `[Run]` `Flags: postinstall shellexec skipifsilent` → `explorer.exe {app}\agy-mcp-bridge`); (2)
   the bridge `[Tasks]`/inactive msgboxes print the **absolute `{app}\agy-mcp-bridge` path** and the **ordered
-  step list**; (3) a short **`README-FIRST.md`** ships in the bridge dir with the same steps. The goal: the
-  operator never meets a silently-dead MCP tool later because they didn't know a setup step existed.
-- **MCP registration:** register the bridge as an MCP server with the agent(s) the same mechanism the runtime
-  registration uses, pointing at `uv run … server.py` in `{app}\agy-mcp-bridge`. Exact command resolved in the
-  plan against `server.py`'s entry contract.
+  step list**; (3) a short **`README-FIRST.md`** ships in the bridge dir with the same steps. **The steps must
+  include HOW to open a terminal in that folder** (the `[Run]` checkbox opens it in Explorer — a GUI window, not
+  a shell — so "run `uv sync`" is a dead end without it; e.g. "type `cmd` in the Explorer address bar and press
+  Enter", or Shift+right-click → *Open in Terminal*). The goal: the operator never meets a silently-dead MCP
+  tool later because they didn't know a setup step existed.
+- **MCP registration (MUST be gated on `install_bridge`):** register the bridge as an MCP server with the
+  agent(s) the same mechanism the runtime registration uses, pointing at `uv run … server.py` in
+  `{app}\agy-mcp-bridge`. **This registration fires ONLY when the `install_bridge` task is selected** — the
+  bridge is opt-in default-OFF, so registering it unconditionally would inject a `delegate_to_antigravity` tool
+  whose `server.py` was never installed, giving opted-out users a dead/cryptically-failing MCP tool. Gate it
+  (and remove the registration on uninstall). Exact command resolved in the plan against `server.py`'s entry
+  contract.
 - **State discoverability via `clavity doctor` (extend the existing verb).** So the operator can confirm "did it
   work?" without launching an agent and waiting for a downstream failure, `clavity doctor` (Spec A extends it for
   golden-header status) ALSO reports the **install/runtime state**: which variant owns `HKCU\Software\clavity\classic`
@@ -299,6 +312,12 @@ Release-only CI (no continuous build on `main`; the classic gate is `cargo test`
   **parses the tag and asserts all four match** (hard-fail the job on mismatch). Without this, CI could publish a
   `v0.2.0` release carrying a `v0.1.0` binary/installer — downgrade-guard and cache-poisoning hazard. (dotnet
   bumps these by hand today; this assertion is a classic improvement worth backporting.)
+  - **Also fold in the vendored bridge:** `agy-mcp-bridge/pyproject.toml`'s `version` is now a co-released
+    in-branch component, so add it to the same parity assert (a 5th place) so the bridge can't silently drift
+    from the release. *Severity note (LEAD vs agy):* agy rated this MAJOR; I rate it **consistency-hygiene, not
+    correctness** — nothing consumes that version (the bridge isn't published to PyPI, it runs via `uv run
+    server.py`), so a mismatch breaks nothing functionally. It's cheap and matches the spec's own triangulation
+    rigor, so include it; just bump `pyproject.toml` with the others each release.
 - **Pinned, reproducible toolchains (local↔CI parity):** do NOT float toolchains. Pin the Rust toolchain
   (`rust-toolchain.toml` on the classic branch), build with **`cargo build --release --locked`** (enforce
   `Cargo.lock`, no silent dep bump), and **pin the Inno Setup version** (`choco install innosetup --version=<X>`,
