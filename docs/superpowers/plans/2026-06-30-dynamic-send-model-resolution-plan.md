@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stop hard-coding the agy send-model id (`LsClient.cs:65`) so an agy model-renumber can't silently break clavity's live write — resolve the model at send time to the conversation's own last-executed model (read from the trajectory clavity already fetches), falling back to agy's default for a new conversation.
+> **⚠ REBASED 2026-07-01 onto `main@2a682c6`** (the consumer-experience trio merged after this plan was first written @914d5db). The trio reshaped the two integration points this plan patches, so line citations + the pasted "existing code" blocks below were re-pinned to current `main`. The two load-bearing changes a worker MUST honor: (1) `LsClient.SendUserCascadeMessageAsync` now carries a **defensive `deadline: NextCallDeadline()`** on the inner `_client.SendUserCascadeMessageAsync` call (finding (e)) — Task 3 Step 2's rewrite PRESERVES it; do NOT drop it. (2) `AgyView.AskAsync` now returns `AskReply` and wraps the send in an `_inFlight` try/finally — so Task 3 Step 5 is now **two edits** (capture+resolve before the try; pass `model` to the send inside the try), not one block. Re-verify every citation against the live file before editing (PLAN-discipline).
+
+**Goal:** Stop hard-coding the agy send-model id (`LsClient.cs:80`) so an agy model-renumber can't silently break clavity's live write — resolve the model at send time to the conversation's own last-executed model (read from the trajectory clavity already fetches), falling back to agy's default for a new conversation.
 
 **Architecture:** Two independent capabilities. **(A) The primary path** models the per-step model metadata in the proto, adds a pure `SendModelResolver` that walks the already-fetched trajectory newest-first, and plumbs the resolved `int` from `AgyView.AskAsync` down into `LsClient.SendUserCascadeMessageAsync` — **zero new RPC, fully CI-testable, renumber-proof.** **(B) The fallback + validation path** adds the `GetAvailableModels` RPC (needed only for a brand-new conversation's default and the deprecation guard) — its field numbers come from the public schema and are pinned by a **live-captured golden**, so it is the only part with a live-agy dependency. Tasks 1–3 (A) deliver the core fix and can land alone; Tasks 4–6 (B) layer on the default/validation and are gated on the live capture.
 
@@ -139,11 +141,11 @@ message ModelDetails {
 Run: `dotnet test tests/Clavity.Ls.Tests/Clavity.Ls.Tests.csproj --filter "FullyQualifiedName~GetCascadeTrajectoryGoldenTests"`
 Expected: PASS — the real captured wire parses `generator_model = 1016` / `requested_model.model = 1016` on the last step and `0` on the first.
 
-- [ ] **Step 5: Confirm the existing send still compiles (the int32 change touches `LsClient.cs:65`)**
+- [ ] **Step 5: Confirm the existing send still compiles (the int32 change touches `LsClient.cs:80`)**
 
-`LsClient.cs:65` currently sets `Model = Model.Gemini31ProHigh` where `Model` is the enum value. With `ModelOrAlias.model` now `int32`, the assignment `Model = Model.Gemini31ProHigh` no longer compiles (enum → int needs a cast). Task 3 rewrites this line; for now, to keep the build green between tasks, change it to the cast form:
+`LsClient.cs:80` currently sets `Model = Model.Gemini31ProHigh` where `Model` is the enum value. With `ModelOrAlias.model` now `int32`, the assignment `Model = Model.Gemini31ProHigh` no longer compiles (enum → int needs a cast). Task 3 rewrites this line; for now, to keep the build green between tasks, change it to the cast form:
 
-In `src/Clavity.Ls/LsClient.cs:65`, change:
+In `src/Clavity.Ls/LsClient.cs:80`, change:
 ```csharp
                     RequestedModel = new ModelOrAlias { Model = Model.Gemini31ProHigh },
 ```
@@ -155,7 +157,7 @@ to:
 - [ ] **Step 6: Build the whole solution to confirm nothing else referenced the enum field**
 
 Run: `dotnet build -c Release`
-Expected: BUILD SUCCEEDED. (Grep confirmed `Model.Gemini31ProHigh` / `ModelOrAlias.Model` is referenced ONLY at `LsClient.cs:65`.)
+Expected: BUILD SUCCEEDED. (Grep confirmed `Model.Gemini31ProHigh` / `ModelOrAlias.Model` is referenced ONLY at `LsClient.cs:80`.)
 
 - [ ] **Step 7: Commit**
 
@@ -355,8 +357,8 @@ git commit -m "feat(ls): pure SendModelResolver — newest-first trajectory walk
 
 **Files:**
 - Create: `src/Clavity.Ls/AgyModelUnavailableException.cs`
-- Modify: `src/Clavity.Ls/LsClient.cs:53-71`
-- Modify: `src/Clavity.Ls/AgyView.cs:7-20` (options), `:63-98` (AskAsync)
+- Modify: `src/Clavity.Ls/LsClient.cs:68-86`
+- Modify: `src/Clavity.Ls/AgyView.cs:7-20` (options), `:88-131` (AskAsync)
 - Test: `tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`
 
 **Oracle:** spec "Plumbing (R3-D5)", "Resolution algorithm" steps 3–5, "Operator communication". **Constraint:** stdout is the MCP channel (`Program.cs:26`) — all diagnostics go to **stderr**.
@@ -381,7 +383,7 @@ public sealed class AgyModelUnavailableException(string message) : Exception(mes
 
 - [ ] **Step 2: Add the `requestedModel` parameter to the send + the legacy const**
 
-In `src/Clavity.Ls/LsClient.cs`, replace `SendUserCascadeMessageAsync` (lines 53–71):
+In `src/Clavity.Ls/LsClient.cs`, replace `SendUserCascadeMessageAsync` (lines 68–86). **Keep the `deadline: NextCallDeadline()` arg on the inner call (finding (e)) — the only change is the new `requestedModel` parameter replacing the hard-code:**
 
 ```csharp
     /// <summary>The deepest legacy fallback model id — used ONLY when the conversation has no prior model AND agy
@@ -410,7 +412,7 @@ In `src/Clavity.Ls/LsClient.cs`, replace `SendUserCascadeMessageAsync` (lines 53
             },
         };
         request.Items.Add(new TextOrScopeItem { Text = text });
-        await _client.SendUserCascadeMessageAsync(request, cancellationToken: cancellationToken);
+        await _client.SendUserCascadeMessageAsync(request, deadline: NextCallDeadline(), cancellationToken: cancellationToken);
     }
 ```
 
@@ -438,7 +440,9 @@ In `src/Clavity.Ls/AgyView.cs`, add to `AgyViewOptions` (after line 19, the `Gol
 
 - [ ] **Step 5: Resolve + plumb + surface in `AskAsync` (Task-3 form: trajectory ➜ legacy)**
 
-In `src/Clavity.Ls/AgyView.cs`, in `AskAsync`, replace the pre-send block (lines 72–77) — capture the full trajectory (already fetched), resolve, plumb, surface:
+In `src/Clavity.Ls/AgyView.cs`, in `AskAsync`, this is now **two edits** (the trio split the pre-send capture from the send, which sits inside the `_inFlight` try/finally).
+
+**Edit 5a** — replace the capture/header block (current lines 96–100, from the `// Step count BEFORE sending` comment through `var outgoing = ...`) so it captures the FULL trajectory once (reused for both the reply delimiter and the model) and resolves the model:
 
 ```csharp
             // Full pre-send trajectory: its Count delimits the reply, AND it carries the conversation's model.
@@ -449,7 +453,12 @@ In `src/Clavity.Ls/AgyView.cs`, in `AskAsync`, replace the pre-send block (lines
 
             var header = _options.GoldenHeaderPath is null ? null : GoldenHeader.TryRead(_options.GoldenHeaderPath);
             var outgoing = GoldenHeader.Apply(header, message);
-            await client.SendUserCascadeMessageAsync(conversationId, outgoing, model, cancellationToken);
+```
+
+**Edit 5b** — inside the `try` (current line 105), pass the resolved `model` to the send:
+
+```csharp
+                await client.SendUserCascadeMessageAsync(conversationId, outgoing, model, cancellationToken);
 ```
 
 Then add the resolver method to `AgyView` (Task-3 form — no catalog yet; Task 5 replaces it):
@@ -478,7 +487,7 @@ Then add the resolver method to `AgyView` (Task-3 form — no catalog yet; Task 
 
 - [ ] **Step 6: Update the fake LS + add the plumbing tests (write the failing tests)**
 
-In `tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`, give `FakeAskLs` a `LastSentModel` and record it. Replace the `SendUserCascadeMessage` override (lines 52–61):
+In `tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`, give `FakeAskLs` a `LastSentModel` and record it. Replace the `SendUserCascadeMessage` override (lines 52–60):
 
 ```csharp
         public int? LastSentModel { get; private set; }
