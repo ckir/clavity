@@ -161,5 +161,19 @@ public sealed class LsClient : IDisposable
             .ToList();
     }
 
+    /// <summary>The live model catalog, UNWRAPPED from the RPC's wrapper: key → details (concrete id) + the default
+    /// key. The renumber authority. The wire nests the catalog at field 1 of <c>GetAvailableModelsResponse</c>
+    /// (live-verified, agy 1.0.11) — we hand back the inner catalog so <see cref="SendModelResolver"/> sees a flat
+    /// map + default. Defensively deadline-bounded like the other short unary calls (finding (e)).</summary>
+    public async Task<Clavity.Ls.Proto.FetchAvailableModelsResponse> GetAvailableModelsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _client.GetAvailableModelsAsync(
+            new Clavity.Ls.Proto.FetchAvailableModelsRequest(),
+            deadline: NextCallDeadline(),
+            cancellationToken: cancellationToken);
+        return response.AvailableModels ?? new Clavity.Ls.Proto.FetchAvailableModelsResponse();
+    }
+
     public void Dispose() => _channel.Dispose();
 }

@@ -25,6 +25,7 @@ service LanguageServerService {
   rpc SendUserCascadeMessage(SendUserCascadeMessageRequest) returns (SendUserCascadeMessageResponse);
   rpc WaitForConversationFullyIdle(WaitForConversationFullyIdleRequest) returns (WaitForConversationFullyIdleResponse);
   rpc GetAllCascadeTrajectories(GetAllCascadeTrajectoriesRequest) returns (GetAllCascadeTrajectoriesResponse);
+  rpc GetAvailableModels(FetchAvailableModelsRequest) returns (GetAvailableModelsResponse);
 }
 
 message GetConversationMetadataRequest {
@@ -170,21 +171,29 @@ enum Model {                                     // partial of exa.codeium_commo
 }
 
 // --- GetAvailableModels messages (the live model catalog — the renumber authority). PARTIAL — only the read
-// fields. The RPC + client method + golden land in Task 4; the message TYPES are defined here so the resolver
-// (Task 2) compiles. Field numbers from the public schema, PINNED by tests/.../TestData/GetAvailableModels.bin.
-// The map KEY (e.g. "gemini-3.1-pro-high") is stable across agy versions; the `model` int is the CURRENT id.
+// fields. Field numbers LIVE-VERIFIED (agy 1.0.11) by protoc --decode_raw of the captured golden
+// tests/.../TestData/GetAvailableModels.bin. IMPORTANT SHAPE: the RPC response WRAPS the catalog one level deep
+// — top-level field 1 is the catalog message (NOT a flat map at the top, as the public schema suggested). The
+// map KEY (e.g. "gemini-3.1-pro-high") is stable across agy versions; the `model` int (field 15) is the CURRENT id.
 message FetchAvailableModelsRequest {
   // No fields set by clavity.
 }
 
+// The RPC's actual top-level response: the catalog nested at field 1 (live-verified wrapper).
+message GetAvailableModelsResponse {
+  FetchAvailableModelsResponse available_models = 1;
+}
+
+// The catalog itself (the wrapper's field-1 message): the models map + agy's default key. `LsClient` unwraps
+// GetAvailableModelsResponse and hands THIS to SendModelResolver.
 message FetchAvailableModelsResponse {
-  map<string, ModelDetails> models = 1;
-  string default_agent_model_id = 2;
+  map<string, ModelDetails> models = 1;         // wire: wrapper field 1 (map entry key=1, value=2).
+  string default_agent_model_id = 2;            // wire: wrapper field 2 (a key present in `models`).
 }
 
 message ModelDetails {
-  string display_name = 1;
-  int32 model = 15;
+  string display_name = 1;                       // wire: field 1.
+  int32 model = 15;                              // wire: field 15 — the CURRENT concrete model id.
 }
 
 // --- WaitForConversationFullyIdle (T7): block until the conversation stops producing steps.
