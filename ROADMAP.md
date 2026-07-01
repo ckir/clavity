@@ -13,7 +13,7 @@ clavity pairs **Claude** with a live **Antigravity (`agy`)** peer. It ships in *
 
 - **clavity-dotnet** — .NET 10, binary **`clavity-ls`**, drives agy over its **Language Server** (gRPC/h2c)
   via the `agy_look` / `agy_status` / `agy_ask` MCP tools. **SHIPPED**: one-command Windows installer
-  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.8**.
+  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.9**.
 - **clavity-classic** — Rust, binary **`clavity`**, drives agy over **psmux** + the **agentmemory signal bus**
   (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives on the **`clavity-classic`
   branch**. **SHIPPED**: one-command Windows installer (`clavity-classic-setup.exe` + `.sha256`), per-user,
@@ -44,6 +44,11 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
   (Closed the 1 000-char/step `BoundedView` cap that truncated long design consults.)
 - **v0.1.8** — agy always launches with `--dangerously-skip-permissions` (the paired agy is driven headless, so
   its interactive permission prompts would otherwise stall the bus round-trip).
+- **v0.1.9** — dynamic send-model resolution: `agy_ask` drives with the conversation's **own last-used model**
+  (read from the trajectory step-metadata) → agy's catalog **default** for a brand-new conversation → legacy `1037`
+  fallback; a model deprecated out of the live catalog stops the drive with an actionable error, and the chosen
+  model + source is surfaced on stderr. Ends the hard-coded-model silent-break (agy model renumbers no longer
+  mis-drive the peer).
 
 ### clavity-classic — releases
 - **v0.1.0** — first packaged release: no-Rust-toolchain Windows installer (`clavity-classic-setup.exe` +
