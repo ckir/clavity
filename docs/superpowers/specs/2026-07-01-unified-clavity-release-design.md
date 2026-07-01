@@ -126,6 +126,13 @@ branches at arbitrary points, so the SHAs are the proof of what shipped.
   whichever ships first (the script update or `clavity-v1`) must not break the other. It MUST try the umbrella
   release + versioned, variant-prefixed asset names AND fall back to the legacy per-variant releases + un-versioned
   `clavity-<variant>-setup.exe`. (Verify its current asset-match + latest-release logic at plan time.)
+- **`README.md` update (final deliverable — owner-requested):** the README's `## Install (one command)` section
+  (and the `## clavity-dotnet` section) describe the release/asset model, so they must be updated to the umbrella
+  model — the single `clavity` release, both variants' versioned installers, and the (now variant-aware) install
+  one-liner. **Also fix the STALE note** at README ~L45-47 that claims the classic variant is "a planned follow-on"
+  installed via `cargo` — classic already ships a packaged `clavity-classic-setup.exe` (v0.1.0), and the umbrella
+  release makes both installers first-class. This is the LAST plan task (do it after the workflows + `install.ps1`
+  land, so the docs match shipped behavior).
 
 ## Testing
 
