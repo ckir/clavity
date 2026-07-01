@@ -89,6 +89,14 @@ agent first. The installer is **unsigned** for now, so Windows SmartScreen may w
 - **Multi-session:** N independent Claude⇄agy pairs run concurrently — each Claude drives its **own**
   `agy` instance, isolated by that instance's per-session Language Server.
 
+> **Behavior change (dynamic send-model):** `agy_ask` now drives with **the model your conversation last
+> used**, instead of always forcing one baked-in model. Watch the `clavity: driving with model <id>
+> (source: …)` line on stderr each drive — `source: trajectory` is your conversation's own model,
+> `default` is `agy`'s default for a brand-new conversation, `legacy` means `agy` is too old to report
+> its model catalog (update `agy`). If a model you removed in `agy` is still the conversation's
+> last-executed model, the drive stops with an actionable error — in `agy`, pick a new model **and send a
+> message**, then retry.
+
 The Language Server contract is **empirically derived** (`agy` ships no public schema for it) and
 version-fragile; every load-bearing assumption — and how to re-verify it — lives in
 [`docs/agy-ls-assumptions.md`](docs/agy-ls-assumptions.md). The solution (`clavity.slnx`) is split into

@@ -115,15 +115,30 @@ Two further live gotchas:
   supported`. A concrete `Model` enum value is required.
 - **The `Model` enum INTS are version-specific to the running agy, NOT jkfujinami's enum.** jkfujinami's
   `MODEL_GOOGLE_GEMINI_RIFTRUNNER_THINKING_HIGH = 353` gave `unknown model key …: model not found` live. The
-  authoritative ids come from the LS itself: `GetAvailableModels` → `FetchAvailableModelsResponse.models`
-  (`map<key, ModelDetails>`, each `ModelDetails{ display_name=1, model=15 }`). Live, key `gemini-3.1-pro-high` /
-  display `Gemini 3.1 Pro (High)` = **1037**, which clavity now sends. ⚠ This int is HARD-CODED in `clavity.proto`
-  (`Model.MODEL_GEMINI_3_1_PRO_HIGH = 1037`); if agy renumbers or that model is unavailable, re-read it via
-  `GetAvailableModels`. A future enhancement should resolve the model dynamically (e.g. `default_agent_model_id` or
-  the conversation's own model) instead of hard-coding.
+  authoritative ids come from the LS itself: `GetAvailableModels`. Live, key `gemini-3.1-pro-high` / display
+  `Gemini 3.1 Pro (High)` = **1037**. `1037` is now only the LEGACY FALLBACK const (`Model.MODEL_GEMINI_3_1_PRO_HIGH`),
+  used solely when a brand-new conversation has no model AND agy is too old to serve `GetAvailableModels`.
+
+- **`GetAvailableModels` response is WRAPPED one level deep (live-verified 2026-07-01, agy 1.0.11).** The RPC returns
+  `GetAvailableModelsResponse { FetchAvailableModelsResponse available_models = 1; }` — the catalog is NOT flat at the
+  top level (the public schema suggested flat; the live wire wraps it). The catalog =
+  `FetchAvailableModelsResponse { map<string, ModelDetails> models = 1; string default_agent_model_id = 2; }`, each
+  `ModelDetails { display_name = 1; int32 model = 15; }`. Live default key `gemini-3.5-flash-low` → **1020**. Pinned by
+  `tests/Clavity.Ls.Tests/TestData/GetAvailableModels.bin` + `GetAvailableModelsGoldenTests`; `LsClient.GetAvailableModelsAsync`
+  unwraps to the inner catalog.
+
+- **The conversation's model lives on the TRAJECTORY steps, not in metadata (dynamic send-model, live-verified
+  2026-07-01).** `GetConversationMetadata` carries NO model field; each `CascadeStep` carries it on its step-metadata
+  (field 5 = `CortexStepMetadata`): `generator_model` (field 11, the resolved concrete int agy actually ran) and
+  `requested_model` (field 13 → `ModelOrAlias.model` = field 1). Non-LLM steps (tool/command/user-message) carry model
+  `0`. Verified by `protoc --decode_raw` of `tests/Clavity.Ls.Tests/TestData/GetCascadeTrajectory.bin`: the captured
+  conversation ran model `1016` while the old hard-code was `1037` — proof the hard-code could be the WRONG model.
+  clavity now drives dynamically (`SendModelResolver` reads the trajectory newest-first → agy's default for a new
+  conversation → legacy `1037`); the field numbers are pinned by `GetCascadeTrajectoryGoldenTests`.
 
 **Re-verify (live, gated):** `tests/Clavity.Live.Acceptance/AgyAskLiveTests.cs` (Skip by default) drives the full
-production `AgyView.AskAsync` round-trip; run with `CLAVITY_LIVE_AGY=1` + `CLAVITY_LIVE_CLILOG=<per-session log>`
+production `AgyView.AskAsync` round-trip (and `SendModelResolutionLiveTests.cs` proves the dynamically-resolved id is
+accepted by a real send); run with `CLAVITY_LIVE_AGY=1` + `CLAVITY_LIVE_CLILOG=<per-session log>`
 and `--filter Category=LiveAgy` against a seeded, idle agy conversation. PASS = our message lands as a `kind=14`
 user step and agy appends ≥1 reply step. To re-read model ids: `grpcurl -plaintext -import-path <dir> -proto <minimal>
 -d '{}' 127.0.0.1:<httpPort> exa.language_server_pb.LanguageServerService/GetAvailableModels`.
