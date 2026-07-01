@@ -86,9 +86,20 @@ message CascadeTrajectory {                     // partial of gemini_coder.Traje
 
 message CascadeStep {                           // partial
   int32 kind = 1;                               // step-kind enum (verified: 14=user input, 15=assistant output).
-  // 4 = ?, 5 = step metadata (ids/timestamps/run-status) — skipped.
+  // 4 = ?, present on most steps — skipped.
+  CortexStepMetadata metadata = 5;              // ids/timestamps/run-status AND the per-step model (11/13).
   CascadeUserInput user_input = 19;             // present only on user-message steps (kind 14).
   CascadeAssistantOutput assistant_output = 20; // present on assistant-message steps (kind 15); wire-verified.
+}
+
+// PARTIAL of the step-metadata sub-message (CascadeStep field 5). Only the model fields are modeled; protobuf
+// skips the rest. Field numbers raw-byte-verified against TestData/GetCascadeTrajectory.bin (protoc --decode_raw:
+// "11: 1016" and "13 { 1: 1016 }" inside the field-5 block). generator_model is the CONCRETE int agy's backend
+// actually ran (always resolved, never an alias); requested_model is what was asked (its model is 0 for an
+// alias-driven step). Non-LLM steps (tool/command/user-message) omit both (proto3 default 0).
+message CortexStepMetadata {                    // partial of exa.cortex_pb.CortexStepMetadata
+  int32 generator_model = 11;                   // resolved concrete model id; 0 on non-LLM steps.
+  ModelOrAlias requested_model = 13;            // requested model; .model is 0 when driven by an alias.
 }
 
 message CascadeUserInput {                      // partial — step field 19
@@ -144,7 +155,8 @@ message CascadePlannerConfig {                   // partial of exa.cortex_pb.Cas
 
 message ModelOrAlias {                           // partial of exa.codeium_common_pb.ModelOrAlias
   oneof choice {
-    Model model = 1;                             // concrete id; 1.0.11 REJECTS the alias path live
+    int32 model = 1;                             // concrete id (int32, not the Model enum — see plan). 1.0.11
+                                                 // REJECTS the alias path live.
     // 2 = ModelAlias alias — live error: "model aliases are no longer supported".
   }
 }
@@ -155,6 +167,24 @@ enum Model {                                     // partial of exa.codeium_commo
   // conversation. Concrete value REQUIRED (1.0.11 dropped aliases). The int is the agy-1.0.11 REGISTRY id read
   // live via GetAvailableModels — NOT jkfujinami's enum (whose 353=Riftrunner gave "unknown model key" live).
   MODEL_GEMINI_3_1_PRO_HIGH = 1037;
+}
+
+// --- GetAvailableModels messages (the live model catalog — the renumber authority). PARTIAL — only the read
+// fields. The RPC + client method + golden land in Task 4; the message TYPES are defined here so the resolver
+// (Task 2) compiles. Field numbers from the public schema, PINNED by tests/.../TestData/GetAvailableModels.bin.
+// The map KEY (e.g. "gemini-3.1-pro-high") is stable across agy versions; the `model` int is the CURRENT id.
+message FetchAvailableModelsRequest {
+  // No fields set by clavity.
+}
+
+message FetchAvailableModelsResponse {
+  map<string, ModelDetails> models = 1;
+  string default_agent_model_id = 2;
+}
+
+message ModelDetails {
+  string display_name = 1;
+  int32 model = 15;
 }
 
 // --- WaitForConversationFullyIdle (T7): block until the conversation stops producing steps.

@@ -27,5 +27,17 @@ public class GetCascadeTrajectoryGoldenTests
         Assert.Equal(
             "claudavity: check your inbox and act on any request from claude, then reply on the bus.",
             firstUser.Text);
+
+        // The newest (last) step is an assistant step carrying the conversation's concrete model on its
+        // step-metadata (CascadeStep field 5 = CortexStepMetadata). protoc --decode_raw of the golden shows
+        // generator_model (11) = 1016 and requested_model (13).model (1) = 1016 on the last step.
+        var last = resp.Trajectory.Steps[^1];
+        Assert.Equal(15, last.Kind);
+        Assert.NotNull(last.Metadata);
+        Assert.Equal(1016, last.Metadata.GeneratorModel);
+        Assert.Equal(1016, last.Metadata.RequestedModel.Model);
+
+        // The first step is a user-input step (kind 14) — a non-LLM step carries no model (proto3 default 0).
+        Assert.Equal(0, resp.Trajectory.Steps[0].Metadata.GeneratorModel);
     }
 }

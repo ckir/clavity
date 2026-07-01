@@ -79,7 +79,7 @@ public sealed class LsClient : IDisposable
             {
                 PlannerConfig = new CascadePlannerConfig
                 {
-                    RequestedModel = new ModelOrAlias { Model = Model.Gemini31ProHigh },
+                    RequestedModel = new ModelOrAlias { Model = (int)Model.Gemini31ProHigh },
                 },
             },
         };
