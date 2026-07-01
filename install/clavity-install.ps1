@@ -50,6 +50,17 @@ function Get-ReleaseAsset {
     $asset
 }
 
+function Get-VariantSetupAsset {
+    param([Parameter(Mandatory)] $Release, [Parameter(Mandatory)][string] $Variant)
+    # Matches BOTH the umbrella versioned name (clavity-<variant>-setup-<ver>.exe) and the legacy un-versioned
+    # name (clavity-<variant>-setup.exe), so this script works whether it or the first umbrella release ships
+    # first (deployment-order race). Variant-scoped, so it selects the correct exe out of the umbrella bundle.
+    $pattern = "^clavity-$Variant-setup(-.+)?\.exe$"
+    $asset = $Release.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
+    if (-not $asset) { throw "No clavity-$Variant setup asset found in release '$($Release.tag_name)'." }
+    $asset
+}
+
 function Assert-Sha256 {
     param([Parameter(Mandatory)][string] $FilePath, [Parameter(Mandatory)][string] $ExpectedHex)
     $expected = $ExpectedHex.Trim().ToLower()
@@ -69,15 +80,13 @@ function Install-Clavity {
 
     Assert-NoConflictingVariant -Variant $Variant
 
-    $setupName = "clavity-$Variant-setup.exe"
-    $shaName   = "$setupName.sha256"
-
     Write-Host "Resolving clavity-$Variant release ($Version)..."
     $release = Resolve-ClavityRelease -Owner $Owner -Repo $Repo -Version $Version
-    $asset    = Get-ReleaseAsset -Release $release -Name $setupName
-    $shaAsset = Get-ReleaseAsset -Release $release -Name $shaName   # D2: the integrity companion is mandatory
+    # Version-tolerant, variant-scoped match: handles both the umbrella (versioned) and legacy (un-versioned) names.
+    $asset    = Get-VariantSetupAsset -Release $release -Variant $Variant
+    $shaAsset = Get-ReleaseAsset -Release $release -Name "$($asset.name).sha256"   # D2: the integrity companion is mandatory
 
-    $dest = Join-Path $env:TEMP $setupName
+    $dest = Join-Path $env:TEMP $asset.name
     Write-Host "Downloading $($asset.name) ($($release.tag_name))..."
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $dest -Headers @{ "User-Agent" = "clavity-installer" }
 
