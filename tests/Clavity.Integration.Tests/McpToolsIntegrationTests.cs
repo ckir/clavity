@@ -133,7 +133,9 @@ public class McpToolsIntegrationTests
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                BootRaceTimeout = TimeSpan.FromMilliseconds(300),
+                // Realistic budget (finding B): the boot call is now deadline-bounded, so a small budget would
+                // deadline-kill the cold first call before the empty map returns. 5s lets the LS prove reachable.
+                BootRaceTimeout = TimeSpan.FromSeconds(5),
                 BootRacePollInterval = TimeSpan.FromMilliseconds(50),
             });
 

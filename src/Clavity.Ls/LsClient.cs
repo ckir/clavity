@@ -29,8 +29,10 @@ public sealed class LsClient : IDisposable
         _callDeadline = callDeadline ?? TimeSpan.FromSeconds(DefaultCallDeadlineSeconds);
     }
 
-    /// <summary>A fresh absolute deadline (UTC) for one unary call, computed at call time.</summary>
-    private DateTime NextCallDeadline() => DateTime.UtcNow + _callDeadline;
+    /// <summary>A fresh absolute deadline (UTC) for one unary call, computed at call time. <paramref name="over"/>
+    /// lets a CALLER tighten the bound for one call (e.g. the boot race clamps to its remaining budget) without
+    /// changing the client-wide default.</summary>
+    private DateTime NextCallDeadline(TimeSpan? over = null) => DateTime.UtcNow + (over ?? _callDeadline);
 
     /// <summary>Discover the active LS from cli.log text (liveness-checked) and open an h2c channel to it.</summary>
     public static LsClient Connect(string cliLogText, IListeningPorts listening, TimeSpan? callDeadline = null)
@@ -141,11 +143,12 @@ public sealed class LsClient : IDisposable
     /// is desktop-UI-only and errors on a CLI agy — E2-verified — so it is NOT used.)
     /// </summary>
     public async Task<IReadOnlyList<CascadeConversation>> GetAllCascadeTrajectoriesAsync(
-        bool excludeSubtrajectories = true, CancellationToken cancellationToken = default)
+        bool excludeSubtrajectories = true, CancellationToken cancellationToken = default,
+        TimeSpan? deadlineOverride = null)
     {
         var response = await _client.GetAllCascadeTrajectoriesAsync(
             new GetAllCascadeTrajectoriesRequest { ExcludeSubtrajectories = excludeSubtrajectories },
-            deadline: NextCallDeadline(),
+            deadline: NextCallDeadline(deadlineOverride),
             cancellationToken: cancellationToken);
 
         return response.TrajectorySummaries

@@ -97,6 +97,17 @@ public class AgyViewIntegrationTests : IDisposable
             });
     }
 
+    // A peer whose LS connects but whose GetAllCascadeTrajectories never answers — the connected-but-hung case.
+    private sealed class HangingMapFakeLs : LanguageServerService.LanguageServerServiceBase
+    {
+        public override async Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), context.CancellationToken); // far past any boot budget
+            return new GetAllCascadeTrajectoriesResponse();
+        }
+    }
+
     private static async Task<WebApplication> StartFakeAsync<T>(T fake)
         where T : LanguageServerService.LanguageServerServiceBase
     {
@@ -185,11 +196,40 @@ public class AgyViewIntegrationTests : IDisposable
         var view = new AgyView(new AgyViewOptions
         {
             CliLogPath = cliLog,
-            BootRaceTimeout = TimeSpan.FromMilliseconds(300),
+            // Realistic budget: the boot call is now deadline-bounded (finding B), so a small budget would
+            // deadline-kill the cold-channel call (a fresh channel is built per poll) before it returns the empty
+            // map. 5s gives ample margin over cold establishment, so the "reachable-but-empty → pending" path is
+            // what's actually exercised (the default-budget test proves establishment is well under that).
+            BootRaceTimeout = TimeSpan.FromSeconds(5),
             BootRacePollInterval = TimeSpan.FromMilliseconds(50),
         });
 
         await Assert.ThrowsAsync<AgyConversationPendingException>(() => view.LookAsync());
+    }
+
+    [Fact]
+    public async Task LookAsync_honors_the_boot_race_budget_when_GetAllCascadeTrajectories_hangs()
+    {
+        // Round-3 finding B: a connected-but-hung peer must not block on the client's 30s default deadline —
+        // the boot race bounds the call to its OWN (shorter) remaining budget and fails within it.
+        await using var app = await StartFakeAsync(new HangingMapFakeLs());
+        var cliLog = WriteCliLog(PortOf(app));
+
+        var view = new AgyView(new AgyViewOptions
+        {
+            CliLogPath = cliLog,
+            // Budget large enough to establish the channel + reach the hanging handler, so the bound (not an
+            // establishment failure) is what ends the call.
+            BootRaceTimeout = TimeSpan.FromSeconds(5),
+            BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+        });
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await Assert.ThrowsAsync<LsDiscoveryException>(() => view.LookAsync());
+        sw.Stop();
+        // Pre-fix this blocks ~30s (the call's own deadline); the fix bounds it to ~the boot budget. The <12s
+        // threshold sits well below 30s so it fails only if the deadline bound is missing.
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(12), $"boot race must fail within ~its budget, took {sw.Elapsed}");
     }
 
     [Fact]

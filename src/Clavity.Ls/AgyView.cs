@@ -166,8 +166,14 @@ public sealed class AgyView
             try
             {
                 client = LsClient.Connect(LsDiscovery.ReadCliLogText(_options.CliLogPath), _listening);
+                // Bound THIS call to the boot race's REMAINING budget — otherwise a connected-but-hung peer would
+                // block on the client's default 30s deadline and blow past the (shorter) boot-race budget. The
+                // resulting DeadlineExceeded flows through the RpcException catch below; the returned client keeps
+                // its normal per-call deadline for everything after connect.
+                var remaining = deadline - DateTime.UtcNow;
+                if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
                 var conversations = await client.GetAllCascadeTrajectoriesAsync(
-                    excludeSubtrajectories: true, cancellationToken);
+                    excludeSubtrajectories: true, cancellationToken, deadlineOverride: remaining);
                 if (conversations.Count > 0)
                 {
                     var owned = client;
