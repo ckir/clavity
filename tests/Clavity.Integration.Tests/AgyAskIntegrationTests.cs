@@ -327,4 +327,52 @@ public class AgyAskIntegrationTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public async Task AskAsync_throws_loud_deadlock_error_when_the_conversations_model_was_removed()
+    {
+        // Trajectory says the conversation ran 9999, but the live catalog no longer lists it (deprecated).
+        var initial = new[]
+        {
+            new CascadeStep { Kind = 15, Metadata = new CortexStepMetadata { GeneratorModel = 9999 } },
+        };
+        var catalog = new FetchAvailableModelsResponse { DefaultAgentModelId = "k" };
+        catalog.Models["k"] = new ModelDetails { Model = 1037 };       // 9999 is NOT present
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial, catalog);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var ex = await Assert.ThrowsAsync<AgyModelUnavailableException>(() => view.AskAsync("go"));
+            Assert.Contains("pick a new model AND send a message", ex.Message);
+            Assert.Null(fake.LastSentModel);                          // never sent.
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task AskAsync_throws_when_new_conversation_and_catalog_has_no_default()
+    {
+        var emptyCatalog = new FetchAvailableModelsResponse();        // reachable, but no default / no models
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), Array.Empty<CascadeStep>(), emptyCatalog);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var ex = await Assert.ThrowsAsync<AgyModelUnavailableException>(() => view.AskAsync("go"));
+            Assert.Contains("no default model", ex.Message);
+            Assert.Null(fake.LastSentModel);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
