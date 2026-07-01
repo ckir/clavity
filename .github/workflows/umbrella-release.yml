@@ -1,0 +1,115 @@
+name: umbrella-release
+
+# THE single release entry point. A serial clavity-v<N> tag bundles both variants' installers into one
+# GitHub Release named "clavity". Only this workflow produces releases going forward.
+on:
+  push:
+    tags:
+      - 'clavity-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Serial umbrella tag for the release (e.g. clavity-v2) — REQUIRED on dispatch; a dispatch has no triggering tag.'
+        required: true
+        type: string
+      classic_ref:
+        description: 'classic-branch commit SHA to bundle (blank = current clavity-classic tip)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write   # publish job creates the Release + uploads assets
+
+concurrency:
+  # A publish pipeline creates a release object then uploads 4 assets sequentially (not atomic). Never cancel a
+  # run mid-upload (would leave a PARTIAL public release) — queue instead.
+  group: release-clavity
+  cancel-in-progress: false
+
+jobs:
+  resolve-classic:
+    # Pin the classic commit ONCE, at cut time, so a re-run weeks later rebuilds the SAME snapshot.
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.r.outputs.sha }}
+    steps:
+      - id: r
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.classic_ref }}" ]; then
+            sha="${{ github.event.inputs.classic_ref }}"
+          else
+            sha=$(git ls-remote https://github.com/${{ github.repository }} refs/heads/clavity-classic | cut -f1)
+          fi
+          if [ -z "$sha" ]; then echo "::error::could not resolve clavity-classic SHA"; exit 1; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "resolved classic sha=$sha"
+
+  dotnet:
+    uses: ./.github/workflows/build-dotnet.yml   # FILE ref = this tag's main commit (dotnet is already pinned by the tag)
+
+  classic:
+    needs: resolve-classic
+    # NOTE: owner/repo is HARDCODED — GitHub Actions forbids expressions like ${{ github.repository }} in `uses:`.
+    # A fork therefore calls THIS upstream reusable workflow (documented limitation, not worked around).
+    uses: ckir/clavity/.github/workflows/build-classic.yml@clavity-classic
+    with:
+      ref: ${{ needs.resolve-classic.outputs.sha }}   # CODE checkout is PINNED to the resolved SHA
+
+  publish:
+    needs: [dotnet, classic]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download dotnet installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.dotnet.outputs.artifact-name }}
+          path: dist-dotnet
+
+      - name: Download classic installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.classic.outputs.artifact-name }}
+          path: dist-classic
+
+      - name: Assemble release assets + notes
+        id: notes
+        shell: bash
+        run: |
+          # Effective umbrella tag: the triggering tag on push; the required `tag` input on dispatch (a dispatch
+          # has no triggering tag, so github.ref_name would wrongly be 'main').
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.ref_name }}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          mkdir -p out
+          cp dist-dotnet/* out/
+          cp dist-classic/* out/
+          echo "assets in release:"; ls -1 out
+          cat > body.md <<EOF
+          # clavity $TAG
+
+          | variant | version | source |
+          |---------|---------|--------|
+          | dotnet  | ${{ needs.dotnet.outputs.version }}  | main@${{ needs.dotnet.outputs.sha }} |
+          | classic | ${{ needs.classic.outputs.version }} | clavity-classic@${{ needs.classic.outputs.sha }} |
+
+          The two variants are **mutually exclusive** on a machine — install ONE. Installers are **unsigned**
+          (Windows SmartScreen may warn on first run: *More info -> Run anyway*). Verify each \`.sha256\` against
+          its \`.exe\` before running.
+          EOF
+          echo "wrote body.md"
+
+      - name: Publish ONE clavity release (both installers)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}   # explicit: correct on BOTH tag-push and dispatch (no ref tag)
+          name: clavity ${{ steps.notes.outputs.tag }}
+          body_path: body.md
+          files: |
+            out/clavity-dotnet-setup-*.exe
+            out/clavity-dotnet-setup-*.exe.sha256
+            out/clavity-classic-setup-*.exe
+            out/clavity-classic-setup-*.exe.sha256
