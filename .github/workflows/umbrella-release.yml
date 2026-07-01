@@ -106,7 +106,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.notes.outputs.tag }}   # explicit: correct on BOTH tag-push and dispatch (no ref tag)
-          name: clavity ${{ steps.notes.outputs.tag }}
+          name: ${{ steps.notes.outputs.tag }}        # e.g. "clavity-v1" — the umbrella IS the clavity release (avoid doubling "clavity")
           body_path: body.md
           files: |
             out/clavity-dotnet-setup-*.exe

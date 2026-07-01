@@ -80,6 +80,24 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
    - the dirty `README.md` is **untouched** (the checkpoint is non-intrusive).
 5. **Cleanup:** `clavity stop` (kills the agy session), then remove the temp repo.
 
+## Releasing (umbrella)
+
+Releases are produced **only** by pushing a serial umbrella tag `clavity-v<N>` (e.g. `clavity-v1`,
+`clavity-v2`), which triggers `.github/workflows/umbrella-release.yml`. That one release, named
+`clavity`, bundles both variants' version-stamped installers (`clavity-dotnet-setup-<ver>.exe` and
+`clavity-classic-setup-<ver>.exe`, each with a `.sha256`).
+
+Bump each variant's version in its own `installer/*.iss` `#define AppVersion` (dotnet on `main`; classic
+on the `clavity-classic` branch, kept in sync with `Cargo.toml` + `agy-mcp-bridge/pyproject.toml`) before
+cutting. To pin an exact classic commit, run the workflow via `workflow_dispatch` supplying the required
+`tag` (the serial `clavity-v<N>`) and the `classic_ref` SHA (a dispatch has no triggering tag, so `tag`
+is mandatory there).
+
+**Deprecated tags (no-ops):** the legacy `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags no
+longer trigger anything — the per-variant release workflows were retired. Pushing one produces **no
+release** (a silent "ghost" tag). The historical per-variant releases and their tags are kept as frozen
+history.
+
 ## Porting to Linux / macOS
 
 The binary is mostly portable; OS-specific assumptions are centralized in `src/platform.rs` (see
