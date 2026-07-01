@@ -26,15 +26,18 @@ See [`docs/plugin-formats.md`](docs/plugin-formats.md) for the verified format r
 
 ## Install (one command)
 
-The **`clavity-dotnet`** variant ships a one-command Windows installer. Run this in **PowerShell**
-(not `cmd.exe`):
+Both variants ship a one-command Windows installer, bundled in a single **`clavity`** GitHub Release.
+Run this in **PowerShell** (not `cmd.exe`):
 
     irm https://raw.githubusercontent.com/ckir/clavity/main/install/clavity-install.ps1 | iex
 
-It resolves the latest version-pinned setup from GitHub Releases, **verifies its SHA-256** against the
-companion checksum, runs it, and registers the `clavity-ls` plugin into whichever agents it finds
-(Claude Code / `agy`) — adding `clavity-ls` to your PATH. Optional add-ons (`agy-autotrain`,
-`commonmemory`) are opt-in checkboxes. Then start a paired session:
+It prompts for the variant (**dotnet** or **classic**; pass `-Variant dotnet`/`-Variant classic` to skip
+the prompt), resolves the latest `clavity` release from GitHub Releases, **verifies the installer's
+SHA-256** against its companion checksum, and runs it. The **dotnet** installer registers the `clavity-ls`
+plugin into whichever agents it finds (Claude Code / `agy`) and adds `clavity-ls` to your PATH; its
+optional add-ons (`agy-autotrain`, `commonmemory`) are opt-in checkboxes. The **classic** installer adds
+`clavity` to your PATH with an opt-in `agy-mcp-bridge` add-on and guided manual wiring. The two variants are
+**mutually exclusive** — install one. Then start a paired session:
 
     clavity-ls start C:\path\to\your\project
 
@@ -42,15 +45,17 @@ To remove it, use **Add/Remove Programs** — the uninstaller cleanly de-registe
 agent first. The installer is **unsigned** for now, so Windows SmartScreen may warn on first run
 (choose *More info → Run anyway*).
 
-> The packaged installer currently covers **clavity-dotnet**. The **clavity-classic** (Rust) variant
-> installs via `cargo install --git https://github.com/ckir/clavity --branch clavity-classic` for now;
-> a packaged classic installer is a planned follow-on.
+> Both variants are packaged. Each `clavity` release bundles a version-stamped
+> `clavity-dotnet-setup-<ver>.exe` and `clavity-classic-setup-<ver>.exe` (each with a `.sha256`
+> companion). The **clavity-classic** (Rust) variant can also still be built from source via
+> `cargo install --git https://github.com/ckir/clavity --branch clavity-classic`.
 
 ## Plugins
 
 - **[`clavity-classic`](plugins/clavity-classic/)** — Claude drives a live, signed-in `agy` peer in
   the same folder over a **psmux doorbell** + the **agentmemory bus** (review, second opinions,
-  delegated work). Its `clavity` binary builds from the `clavity-classic` branch
+  delegated work). Its `clavity` binary ships in the packaged `clavity-classic-setup.exe` (in every
+  `clavity` release) and can also be built from the `clavity-classic` branch
   (`cargo install --git https://github.com/ckir/clavity --branch clavity-classic`). See its
   [README](plugins/clavity-classic/README.md) — note the one-line `escape-time` setup that makes the
   live driving smooth.
