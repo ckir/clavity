@@ -33,6 +33,7 @@ public class AgyAskIntegrationTests
         }
 
         public string? LastSentText { get; private set; }
+        public int? LastSentModel { get; private set; }
 
         public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
             GetCascadeTrajectoryRequest request, ServerCallContext context)
@@ -55,6 +56,7 @@ public class AgyAskIntegrationTests
             lock (_gate)
             {
                 LastSentText = request.Items.Count > 0 ? request.Items[0].Text : null;
+                LastSentModel = request.CascadeConfig?.PlannerConfig?.RequestedModel?.Model;
                 _steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = LastSentText ?? "" } });
             }
             return Task.FromResult(new SendUserCascadeMessageResponse());
@@ -232,5 +234,59 @@ public class AgyAskIntegrationTests
             Assert.Equal("working", st.State);
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_sends_the_conversations_own_model_from_the_trajectory()
+    {
+        var initial = new[]
+        {
+            new CascadeStep
+            {
+                Kind = 15,
+                Metadata = new CortexStepMetadata { GeneratorModel = 1016 },
+                UserInput = new CascadeUserInput { Text = "prior assistant turn" },
+            },
+        };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        var diagnostics = new StringWriter();
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = diagnostics });
+            await view.AskAsync("please do X");
+
+            Assert.Equal(1016, fake.LastSentModel);                       // the conversation's model, not 1037.
+            Assert.Contains("driving with model 1016 (source: trajectory)", diagnostics.ToString());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task AskAsync_falls_back_to_legacy_model_for_a_new_conversation()
+    {
+        // No prior model in the trajectory -> the Task-3 fallback is the legacy const (Tasks 4-6 add the default).
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), Array.Empty<CascadeStep>());
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        var diagnostics = new StringWriter();
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = diagnostics });
+            await view.AskAsync("hi");
+
+            Assert.Equal(LsClient.LegacyFallbackModelId, fake.LastSentModel);
+            Assert.Contains("source: legacy", diagnostics.ToString());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 }

@@ -17,6 +17,10 @@ public sealed class AgyViewOptions
 
     /// <summary>Resolved golden-header path to read+prepend per ask; null disables injection (tests / no add-on).</summary>
     public string? GoldenHeaderPath { get; init; }
+
+    /// <summary>Where operator-facing diagnostics go. Default = stderr (stdout is the MCP protocol channel, so
+    /// it must NOT carry log lines). Tests inject a StringWriter to assert the surfaced model line.</summary>
+    public TextWriter Diagnostics { get; init; } = Console.Error;
 }
 
 /// <summary>
@@ -93,8 +97,11 @@ public sealed class AgyView
         var (client, conversationId) = await ConnectAndResolveAsync(cancellationToken);
         using (client)
         {
-            // Step count BEFORE sending — everything appended after this index is the reply to our message.
-            var before = (await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken)).Steps.Count;
+            // Full pre-send trajectory: its Count delimits the reply, AND it carries the conversation's model.
+            var beforeTrajectory = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
+            var before = beforeTrajectory.Steps.Count;
+
+            var model = ResolveSendModel(beforeTrajectory);
 
             var header = _options.GoldenHeaderPath is null ? null : GoldenHeader.TryRead(_options.GoldenHeaderPath);
             var outgoing = GoldenHeader.Apply(header, message);
@@ -102,7 +109,7 @@ public sealed class AgyView
             _inFlight[conversationId] = 1;
             try
             {
-                await client.SendUserCascadeMessageAsync(conversationId, outgoing, cancellationToken);
+                await client.SendUserCascadeMessageAsync(conversationId, outgoing, model, cancellationToken);
 
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutCts.CancelAfter(timeout ?? DefaultIdleWaitTimeout);
@@ -217,4 +224,24 @@ public sealed class AgyView
                 .OrderByDescending(c => c.LastModifiedUtc ?? DateTimeOffset.MinValue)
                 .ThenBy(c => c.ConversationId, StringComparer.Ordinal)
                 .First().ConversationId;
+
+    /// <summary>
+    /// Resolve the concrete send-model: the conversation's own last-executed model from the trajectory, else the
+    /// retained legacy fallback. (Tasks 4–6 insert agy's default + the deprecation guard between these.) Surfaces
+    /// the chosen id + source on stderr so the operator can SEE which model is about to drive and Ctrl+C on a
+    /// surprise.
+    /// </summary>
+    private int ResolveSendModel(CascadeTrajectory trajectory)
+    {
+        if (SendModelResolver.ResolveFromTrajectory(trajectory) is int t)
+        {
+            Surface(t, ModelSource.Trajectory);
+            return t;
+        }
+        Surface(LsClient.LegacyFallbackModelId, ModelSource.Legacy);
+        return LsClient.LegacyFallbackModelId;
+    }
+
+    private void Surface(int model, ModelSource source) => _options.Diagnostics.WriteLine(
+        $"clavity: driving with model {model} (source: {source.ToString().ToLowerInvariant()})");
 }

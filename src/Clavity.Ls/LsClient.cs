@@ -61,25 +61,28 @@ public sealed class LsClient : IDisposable
         return response.Trajectory;
     }
 
+    /// <summary>The deepest legacy fallback model id — used ONLY when the conversation has no prior model AND agy
+    /// is too old to serve GetAvailableModels. Named here so the literal 1037 lives in exactly one place.</summary>
+    public const int LegacyFallbackModelId = (int)Model.Gemini31ProHigh;
+
     /// <summary>
-    /// Send a user message into the cascade. The response is EMPTY by contract — the reply is NOT returned
-    /// here; read it back via <see cref="GetCascadeTrajectoryAsync"/> after
-    /// <see cref="WaitForConversationFullyIdleAsync"/>. ⚠ LIVE this consumes quota and injects a visible
-    /// message; only the fake LS exercises it before T10.
+    /// Send a user message into the cascade with an explicitly-resolved <paramref name="requestedModel"/>. The
+    /// live LS rejects a no-model send and rejects aliases, so the caller resolves a CONCRETE id (the
+    /// conversation's own model, agy's default, or the legacy fallback). The response is EMPTY by contract — read
+    /// the reply via <see cref="GetCascadeTrajectoryAsync"/> after <see cref="WaitForConversationFullyIdleAsync"/>.
+    /// ⚠ LIVE this consumes quota and injects a visible message.
     /// </summary>
-    public async Task SendUserCascadeMessageAsync(string cascadeId, string text, CancellationToken cancellationToken = default)
+    public async Task SendUserCascadeMessageAsync(
+        string cascadeId, string text, int requestedModel, CancellationToken cancellationToken = default)
     {
         var request = new SendUserCascadeMessageRequest
         {
             CascadeId = cascadeId,
-            // The live LS rejects a send with no model ("neither PlanModel nor RequestedModel specified") AND
-            // rejects model aliases ("aliases are no longer supported"), so we set a CONCRETE model id:
-            // Gemini 3.1 Pro (High) = agy's default per its model_config_manager log.
             CascadeConfig = new CascadeConfig
             {
                 PlannerConfig = new CascadePlannerConfig
                 {
-                    RequestedModel = new ModelOrAlias { Model = (int)Model.Gemini31ProHigh },
+                    RequestedModel = new ModelOrAlias { Model = requestedModel },
                 },
             },
         };
