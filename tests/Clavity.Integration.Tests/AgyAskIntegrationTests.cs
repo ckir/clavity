@@ -23,13 +23,17 @@ public class AgyAskIntegrationTests
         private readonly string _cascadeId;
         private readonly string _replyText;
         private readonly TimeSpan _idleDelay;
+        private readonly FetchAvailableModelsResponse? _catalog;
 
-        public FakeAskLs(string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial)
+        public FakeAskLs(
+            string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial,
+            FetchAvailableModelsResponse? catalog = null)
         {
             _cascadeId = cascadeId;
             _replyText = replyText;
             _idleDelay = idleDelay;
             _steps = new List<CascadeStep>(initial);
+            _catalog = catalog;
         }
 
         public string? LastSentText { get; private set; }
@@ -83,6 +87,14 @@ public class AgyAskIntegrationTests
                 LastModifiedTime = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
             };
             return Task.FromResult(resp);
+        }
+
+        public override Task<GetAvailableModelsResponse> GetAvailableModels(
+            FetchAvailableModelsRequest request, ServerCallContext context)
+        {
+            if (_catalog is null)
+                throw new RpcException(new Status(StatusCode.Unimplemented, "older agy"));
+            return Task.FromResult(new GetAvailableModelsResponse { AvailableModels = _catalog });
         }
     }
 
@@ -283,6 +295,32 @@ public class AgyAskIntegrationTests
 
             Assert.Equal(LsClient.LegacyFallbackModelId, fake.LastSentModel);
             Assert.Contains("source: legacy", diagnostics.ToString());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task AskAsync_uses_agy_default_for_a_new_conversation_when_catalog_is_available()
+    {
+        // Default key maps to 1042 (NOT LegacyFallbackModelId/1037), so a pass proves the default path ran.
+        var catalog = new FetchAvailableModelsResponse { DefaultAgentModelId = "gemini-3.1-flash" };
+        catalog.Models["gemini-3.1-pro-high"] = new ModelDetails { Model = 1037 };
+        catalog.Models["gemini-3.1-flash"] = new ModelDetails { Model = 1042 };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), Array.Empty<CascadeStep>(), catalog);
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        var diagnostics = new StringWriter();
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = diagnostics });
+            await view.AskAsync("first message");
+
+            Assert.Equal(1042, fake.LastSentModel);                  // agy's default, resolved from the catalog.
+            Assert.Contains("source: default", diagnostics.ToString());
         }
         finally
         {

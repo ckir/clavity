@@ -101,7 +101,7 @@ public sealed class AgyView
             var beforeTrajectory = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
             var before = beforeTrajectory.Steps.Count;
 
-            var model = ResolveSendModel(beforeTrajectory);
+            var model = await ResolveSendModelAsync(client, beforeTrajectory, cancellationToken);
 
             var header = _options.GoldenHeaderPath is null ? null : GoldenHeader.TryRead(_options.GoldenHeaderPath);
             var outgoing = GoldenHeader.Apply(header, message);
@@ -109,7 +109,15 @@ public sealed class AgyView
             _inFlight[conversationId] = 1;
             try
             {
-                await client.SendUserCascadeMessageAsync(conversationId, outgoing, model, cancellationToken);
+                try
+                {
+                    await client.SendUserCascadeMessageAsync(conversationId, outgoing, model, cancellationToken);
+                }
+                catch (RpcException)
+                {
+                    InvalidateCatalog();   // a stale cache may have approved a now-deprecated id; refresh next ask.
+                    throw;
+                }
 
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutCts.CancelAfter(timeout ?? DefaultIdleWaitTimeout);
@@ -225,22 +233,86 @@ public sealed class AgyView
                 .ThenBy(c => c.ConversationId, StringComparer.Ordinal)
                 .First().ConversationId;
 
+    // Catalog cache: AgyView is a process-lifetime singleton (Program.cs:29) while LsClient is per-ask, so the
+    // per-LS-session model catalog is memoized HERE. Fetched once; self-heals via InvalidateCatalog() on a model
+    // rejection (Spec: "refresh on a miss / send rejection"). Failures are NOT cached (only a successful catalog).
+    private FetchAvailableModelsResponse? _catalogCache;
+    private readonly SemaphoreSlim _catalogGate = new(1, 1);
+
+    private async Task<FetchAvailableModelsResponse> GetCatalogAsync(LsClient client, CancellationToken ct)
+    {
+        if (_catalogCache is { } cached) return cached;
+        await _catalogGate.WaitAsync(ct);
+        try { return _catalogCache ??= await client.GetAvailableModelsAsync(ct); }
+        finally { _catalogGate.Release(); }
+    }
+
+    private void InvalidateCatalog() => _catalogCache = null;
+
     /// <summary>
-    /// Resolve the concrete send-model: the conversation's own last-executed model from the trajectory, else the
-    /// retained legacy fallback. (Tasks 4–6 insert agy's default + the deprecation guard between these.) Surfaces
-    /// the chosen id + source on stderr so the operator can SEE which model is about to drive and Ctrl+C on a
-    /// surprise.
+    /// Resolve the concrete send-model (spec resolution ladder): (1) the conversation's own last-executed model
+    /// from the trajectory — validated against the cached catalog; (2) agy's default for a brand-new conversation;
+    /// (3) the retained legacy const when agy is too old to serve GetAvailableModels (LOUD warning). The PRIMARY
+    /// trajectory model is never overridden by a catalog hiccup (renumber-proof); the catalog (cached) is consulted
+    /// only for validation + the new-conversation default. Surfaces the chosen id + source on stderr.
     /// </summary>
-    private int ResolveSendModel(CascadeTrajectory trajectory)
+    private async Task<int> ResolveSendModelAsync(LsClient client, CascadeTrajectory trajectory, CancellationToken ct)
     {
         if (SendModelResolver.ResolveFromTrajectory(trajectory) is int t)
         {
+            // Deprecation guard against the cached catalog. UNIMPLEMENTED (older agy) -> skip silently; a TRANSIENT
+            // failure -> skip but WARN (don't fail a known-good same-agy id on an optional-RPC hiccup — finding #2).
+            try
+            {
+                var catalog = await GetCatalogAsync(client, ct);
+                if (!SendModelResolver.IsInCatalog(t, catalog))
+                    throw new AgyModelUnavailableException(DeprecatedModelHint);
+            }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented) { /* older agy: no catalog. */ }
+            catch (RpcException)
+            {
+                _options.Diagnostics.WriteLine(
+                    "clavity: WARNING — could not reach agy's model catalog to validate; proceeding with the " +
+                    $"conversation's model {t}.");
+            }
             Surface(t, ModelSource.Trajectory);
             return t;
         }
-        Surface(LsClient.LegacyFallbackModelId, ModelSource.Legacy);
-        return LsClient.LegacyFallbackModelId;
+
+        // No prior model — a brand-new conversation needs agy's default, so the catalog is REQUIRED here.
+        FetchAvailableModelsResponse catalog2;
+        try
+        {
+            catalog2 = await GetCatalogAsync(client, ct);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
+        {
+            _options.Diagnostics.WriteLine(
+                $"clavity: WARNING — agy is outdated (no GetAvailableModels); driving with legacy model " +
+                $"{LsClient.LegacyFallbackModelId}, which may NOT be your conversation's model. Update agy.");
+            Surface(LsClient.LegacyFallbackModelId, ModelSource.Legacy);
+            return LsClient.LegacyFallbackModelId;
+        }
+        catch (RpcException ex)   // transient on a capable agy -> clear, non-crashing error (Spec: never crash).
+        {
+            throw new AgyModelUnavailableException(
+                $"Could not reach agy's model catalog to pick a default for this new conversation ({ex.StatusCode}). " +
+                "Retry once agy is responsive.");
+        }
+
+        if (SendModelResolver.ResolveDefault(catalog2) is int d)
+        {
+            Surface(d, ModelSource.Default);
+            return d;
+        }
+        throw new AgyModelUnavailableException(
+            "agy returned no default model and the conversation has no prior model. In agy, select a model and " +
+            "send a message, then retry.");
     }
+
+    private const string DeprecatedModelHint =
+        "The conversation's model is no longer available. In agy, pick a new model AND send a message so the " +
+        "conversation records it, then retry.";
 
     private void Surface(int model, ModelSource source) => _options.Diagnostics.WriteLine(
         $"clavity: driving with model {model} (source: {source.ToString().ToLowerInvariant()})");
