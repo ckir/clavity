@@ -73,13 +73,16 @@ public sealed class AgyView
         {
             var traj = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
             var lastKind = traj.Steps.Count > 0 ? traj.Steps[^1].Kind : 0;
+            // Report the REAL cascade id (traj.CascadeId), NOT the conversation id — the field is named
+            // CascadeId and AskAsync fills its CascadeId from the same trajectory, so status.CascadeId now
+            // string-equals ask.CascadeId and a consumer can correlate a pre-fire status with its ask.
 
             if (_inFlight.ContainsKey(conversationId))
-                return new AgyStatus(conversationId, traj.Steps.Count, "working", lastKind);
+                return new AgyStatus(traj.CascadeId, traj.Steps.Count, "working", lastKind);
 
             var state = await client.ProbeIdleAsync(
                 conversationId, IdleInactivityTimeoutSeconds, TimeSpan.FromMilliseconds(ProbeDeadlineMs), cancellationToken);
-            return new AgyStatus(conversationId, traj.Steps.Count, state, lastKind);
+            return new AgyStatus(traj.CascadeId, traj.Steps.Count, state, lastKind);
         }
     }
 
