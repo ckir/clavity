@@ -79,22 +79,35 @@ public static class BoundedView
     /// <summary>
     /// Project a reply delta into an <see cref="AskReply"/>. Answer = the trailing CONTIGUOUS run of assistant
     /// (Kind-15) steps, joined chronologically, capped at <see cref="AskMaxStepChars"/> (Answer claims the budget
-    /// FIRST). Activity = EVERY delta step summarized — head-truncated (oldest dropped) to the remaining budget so
-    /// the tail (where failures surface) survives.
+    /// FIRST). A delta that ends on a NON-assistant (tool) step still yields a null Answer BY DESIGN ("failure not
+    /// hidden" — don't present pre-tool prose as a complete answer when the turn ended on a tool step). Activity =
+    /// EVERY delta step summarized — head-truncated (oldest dropped) to the remaining budget so the tail survives.
+    /// FALLBACK RESCUE: when Answer is null ONLY because a tool step trailed the prose, the last assistant run is
+    /// NOT truncated to <see cref="ActivitySummaryChars"/> in Activity — it gets the Answer budget instead, so a
+    /// tool-terminated turn's prose survives intact and the consumer needs no re-ask.
     /// </summary>
     public static AskReply ProjectAskReply(string cascadeId, IReadOnlyList<CascadeStep> delta)
     {
-        // 1. Trailing contiguous assistant run → Answer.
+        // 1. Find the LAST contiguous assistant run, skipping any trailing non-assistant (tool) steps.
+        //    end = index of the last assistant step; runStart = first index of its contiguous run.
+        int end = delta.Count - 1;
+        while (end >= 0 && delta[end].Kind != StepKind.AssistantKind) end--;
+        int runStart = end + 1; // no assistant step ⇒ runStart(0) > end(-1) ⇒ empty run
         var trailing = new List<string>();
-        for (var i = delta.Count - 1; i >= 0; i--)
+        for (var i = end; i >= 0; i--)
         {
             if (delta[i].Kind != StepKind.AssistantKind) break;
+            runStart = i;
             var t = delta[i].AssistantOutput?.Text;
             if (string.IsNullOrEmpty(t)) continue; // skip an empty-text assistant step; don't end the run on it
             trailing.Add(t);
         }
         trailing.Reverse();
-        string? answer = trailing.Count == 0 ? null : string.Join("\n", trailing);
+
+        // Answer = the run ONLY when it is TRAILING (the delta ends on assistant prose). A trailing tool step
+        // yields a null Answer BY DESIGN — see the class summary and AskReplyProjectionTests ("failure not hidden").
+        bool runIsTrailing = end == delta.Count - 1 && trailing.Count > 0;
+        string? answer = runIsTrailing ? string.Join("\n", trailing) : null;
         var answerTruncated = false;
         if (answer is not null && answer.Length > AskMaxStepChars)
         {
@@ -102,15 +115,23 @@ public static class BoundedView
             answerTruncated = true;
         }
 
+        // Rescue: null Answer caused ONLY by a trailing tool step ⇒ don't truncate that last assistant run to 200
+        // in Activity; give its steps the Answer budget so the prose is not lost. (When the run IS the Answer, its
+        // Activity copy stays terse — the prose already lives in Answer, so a full second copy would double the cost.)
+        bool rescueRun = !runIsTrailing && trailing.Count > 0;
+
         // 2. Complete activity record (every step), each summarized.
-        static string? Summary(CascadeStep s)
+        string? Summary(int idx, CascadeStep s)
         {
             var t = s.UserInput is { } u && u.Text.Length > 0 ? u.Text
                   : s.AssistantOutput is { } a && a.Text.Length > 0 ? a.Text
                   : null;
-            return t is null ? null : t.Length > ActivitySummaryChars ? t[..ActivitySummaryChars] : t;
+            if (t is null) return null;
+            int cap = rescueRun && idx >= runStart && idx <= end && s.Kind == StepKind.AssistantKind
+                ? AskMaxStepChars : ActivitySummaryChars;
+            return t.Length > cap ? t[..cap] : t;
         }
-        var all = delta.Select(s => new ActivityItem(s.Kind, StepKind.Label(s.Kind), Summary(s))).ToList();
+        var all = delta.Select((s, idx) => new ActivityItem(s.Kind, StepKind.Label(s.Kind), Summary(idx, s))).ToList();
 
         // 3. Activity gets the remaining budget; drop from the HEAD until it fits (preserve the tail).
         var remaining = AskBudgetChars - (answer?.Length ?? 0);

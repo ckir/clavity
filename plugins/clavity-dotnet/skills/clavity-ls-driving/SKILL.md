@@ -19,6 +19,13 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
   continue the agy session; do NOT loop-retry.
 - **`possible_modal`** — the idle-wait hit the client timeout; agy may have a blocking modal open. Surface it
   to the human; do not assume a silent failure or retry blindly.
+- **`Answer == null` — NOT empty, NOT an error.** `Answer` is only set when agy's turn ends on assistant
+  prose. When agy *tool-terminates* a turn (writes its verdict, then does a trailing tool step like a memory
+  write and yields), the delta ends on a non-assistant step and `Answer` is null **by design** ("failure not
+  hidden" — the tool step could have failed). The prose is NOT lost: read the **last assistant (Kind-15) step
+  in `Activity`** — the projection gives that step the full Answer budget, so a tool-terminated verdict survives
+  intact. Do **not** treat null `Answer` as "no reply" and do **not** blindly re-ask; only re-ask if `Activity`
+  has no assistant step, or `ActivityTruncated` is true and the tail you need was dropped.
 
 ## Task-assignment protocol — what stops agy misfiring
 
