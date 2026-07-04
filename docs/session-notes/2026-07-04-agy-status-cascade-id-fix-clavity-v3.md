@@ -60,9 +60,9 @@ need the integration/live harness (`AgyViewIntegrationTests` / `AgyStatusProbeLi
   release reads) + `plugins/clavity-dotnet/plugin.json` + its `.claude-plugin/plugin.json`. Commit `bd53158`.
 - SKILL: commit `6c4cef9` (initial) then `858746b` (made version-agnostic — dropped the version stamps).
 - Pushed `main` (`ae978bf..858746b`); tagged **`clavity-v3`** (serial, after `clavity-v2`) → `umbrella-release.yml`
-  run **`28708988067`** (verify SUCCESS + the GitHub Release `clavity-v3` is live with the 4 assets:
-  `clavity-dotnet-setup-0.1.11.exe` (+`.sha256`, contains the fix) and `clavity-classic-setup-*.exe` (+`.sha256`,
-  rebundled unchanged)).
+  run **`28708988067`** = **SUCCESS**. GitHub Release **`clavity-v3`** is **LIVE** (not draft), confirmed with 4
+  assets: `clavity-dotnet-setup-0.1.11.exe` (+`.sha256`, contains the fix) and `clavity-classic-setup-0.1.0.exe`
+  (+`.sha256`, rebundled unchanged).
 - **Release mechanism reminder (unchanged):** the ONLY release path is pushing a serial `clavity-v<N>` tag; it
   builds dotnet from `main` and rebundles classic from the `clavity-classic` branch tip. Bump the dotnet version
   in `installer/clavity-dotnet.iss` before tagging.
