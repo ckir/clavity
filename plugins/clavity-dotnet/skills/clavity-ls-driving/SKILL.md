@@ -9,10 +9,8 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
 
 - **`agy_look`** — read the active conversation's bounded trajectory. No quota; safe to call freely.
 - **`agy_status`** — lightweight liveness pre-fire check; returns `{ CascadeId, TotalSteps, State, LastStepKind }`.
-  Its `CascadeId` is the session's cascade id — the **same** id `agy_ask` returns for that session (v0.1.11+), so
-  you can correlate a pre-fire `agy_status` with the `agy_ask` you then send. (Before v0.1.11 `agy_status`
-  returned the *conversation* id here, which never matched `agy_ask.CascadeId`; on an old build do not read that
-  mismatch as a lost/misrouted reply.)
+  Its `CascadeId` is the session's cascade id — the **same** id `agy_ask` returns for that session, so you can
+  correlate a pre-fire `agy_status` with the `agy_ask` you then send.
 - **`agy_ask`** — send a message and return agy's reply. **This is a quota-consuming WRITE** that posts a
   human-visible message in agy's tab. Use it for an independent second-model review / generative design
   partner — not for chatter. Prefer `agy_look` when you only need to observe.
@@ -26,8 +24,8 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
   surface a "hang": re-check `agy_status` and compare `TotalSteps` to before you fired — if it advanced, agy is
   working, so wait, don't retry. A reply produced *after* the timeout is **not** auto-redelivered: retrieve it
   with a minimal follow-up `agy_ask` ("resend your last result") once agy is idle, and correlate by content (or
-  by `CascadeId`, v0.1.11+). Never blindly re-fire the original ask. Keep single asks small/pure-text to stay
-  inside the wait window.
+  by `CascadeId`). Never blindly re-fire the original ask. Keep single asks small/pure-text to stay inside the
+  wait window.
 - **`Answer == null` — NOT empty, NOT an error.** `Answer` is only set when agy's turn ends on assistant
   prose. When agy *tool-terminates* a turn (writes its verdict, then does a trailing tool step like a memory
   write and yields), the delta ends on a non-assistant step and `Answer` is null **by design** ("failure not
