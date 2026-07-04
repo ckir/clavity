@@ -30,6 +30,32 @@ public class AskReplyProjectionTests
     }
 
     [Fact]
+    public void Trailing_tool_step_keeps_null_Answer_but_recovers_the_full_last_prose_in_Activity()
+    {
+        // The "failure not hidden" signal (null Answer) is preserved, but the last assistant run is NOT
+        // truncated to the 200-char Activity cap — it gets the Answer budget so a tool-terminated turn's
+        // verdict survives intact and the consumer needs no re-ask (the bug this fix targets).
+        var longProse = new string('z', 4000); // >> ActivitySummaryChars: would be lost under the flat cap
+        var r = Project(Asst(longProse), Tool());
+        Assert.Null(r.Answer);                                            // signal preserved
+        var lastAsst = r.Activity.Last(a => a.Kind == StepKind.AssistantKind);
+        Assert.Equal(4000, lastAsst.Summary!.Length);                     // full prose recovered, not clipped to 200
+        Assert.False(r.ActivityTruncated);
+    }
+
+    [Fact]
+    public void Answered_turn_keeps_Activity_copy_terse_no_double_budget()
+    {
+        // When the run IS the Answer, its Activity copy must stay at the 200 cap — the prose already lives in
+        // Answer, so a full second copy would double the char cost.
+        var longProse = new string('q', 4000);
+        var r = Project(Asst(longProse));
+        Assert.Equal(longProse, r.Answer);
+        var asst = r.Activity.Single(a => a.Kind == StepKind.AssistantKind);
+        Assert.Equal(BoundedView.ActivitySummaryChars, asst.Summary!.Length); // terse, not rescued
+    }
+
+    [Fact]
     public void Trailing_contiguous_assistant_run_joins()
     {
         var r = Project(Tool(), Asst("part 1"), Asst("part 2"));
