@@ -1,4 +1,21 @@
-# clavity ROADMAP
+# clavity umbrella — ROADMAP
+
+> **Umbrella roadmap.** This repository is a **host for several independently-released tools** under the
+> `clavity` brand. Each tool follows one pattern — code on its own branch; a plugin under
+> `plugins/<tool>/` on `main`; an Inno-Setup installer; its own `<tool>-v<N>` release lineage — see
+> [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md). This file carries an umbrella overview, a tool
+> index, and one roadmap section per hosted tool.
+
+## Hosted tools
+| Tool | What it is | Release lineage |
+|------|-----------|-----------------|
+| [`clavity`](#clavity) | Pairs Claude with a live Antigravity (`agy`) peer (dotnet + classic variants). | `clavity-v<N>` |
+
+*(New tools add a row here and a `# <tool>` section below during onboarding — see the playbook, Phase B.)*
+
+---
+
+# clavity
 
 > **Live roadmap — reconciled 2026-06-30.** This file is the single forward-looking source of truth.
 > It supersedes the original 2026-06-16 driving-session roadmap (now folded into **§ Shipped — history**
