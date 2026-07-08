@@ -1,7 +1,10 @@
-name: umbrella-release
+name: release-clavity
 
-# THE single release entry point. A serial clavity-v<N> tag bundles both variants' installers into one
-# GitHub Release named "clavity". Only this workflow produces releases going forward.
+# The clavity PRODUCT release (one of several tools in this umbrella repo — NOT the only release). A
+# serial clavity-v<N> tag bundles clavity's two mutually-exclusive variants' installers into one GitHub
+# Release named "clavity". Other tools release independently via their own release-<tool>.yml (see
+# docs/hosting-a-tool.md). The file keeps its umbrella-release.yml name to avoid doc-drift (it is
+# referenced by name in CONTRIBUTING.md and build-dotnet.yml).
 on:
   push:
     tags:
