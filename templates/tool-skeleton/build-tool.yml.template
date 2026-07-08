@@ -1,0 +1,93 @@
+name: build-<TOOL-ID>
+
+# Reusable build+package block for the <TOOL-ID> release, minus publish. Lives ON THE TOOL BRANCH with
+# the code (D7). Called by release-<TOOL-ID>.yml and runnable via workflow_dispatch.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Tool-branch commit to build (SHA-pinned by the caller; blank = default ref).'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+      sha:
+        value: ${{ jobs.build.outputs.sha }}
+      artifact-name:
+        value: ${{ jobs.build.outputs.artifact-name }}
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit/branch to build (blank = the branch this run is on).'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      sha: ${{ steps.sha.outputs.sha }}   # the ACTUAL built commit — NOT github.sha, which is the caller's
+                                           # tag-on-main commit, not the tool code checked out below.
+      artifact-name: <TOOL-ID>-installer
+    steps:
+      # SHA-pinned tool-branch checkout. A NAKED checkout would fetch the CALLER's ref (the tag on main),
+      # NOT the tool's code, which lives on the branch (D7) — the build would run against the wrong tree.
+      # The release orchestration passes the resolved SHA; a blank ref (standalone dispatch on the branch)
+      # falls back to the default ref.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Record the built commit
+        id: sha
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # FILL(per-tool): install the tool's build toolchain (e.g. actions/setup-* / rustup / dtolnay).
+
+      - name: Extract version from .iss
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path installer/<TOOL-ID>.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "TOOL_VER=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # FILL(per-tool): build the binary into publish/<BINARY> per the tool's build recipe.
+
+      # OPEN QUESTION (D7 / docs/hosting-a-tool.md): a code-on-branch tool that ALSO ships a plugin must
+      # stage plugins/<TOOL-ID>/ (which lives on main) HERE before ISCC. Decide the mechanism during
+      # onboarding — do NOT leave unresolved for a plugin-shipping tool.
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer (ISCC)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc installer/<TOOL-ID>.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          $setup = "dist/<TOOL-ID>-setup-$env:TOOL_VER.exe"
+          if (-not (Test-Path $setup)) { throw "$setup was not produced" }
+
+      - name: Compute SHA-256 companion
+        shell: pwsh
+        run: |
+          $name = "<TOOL-ID>-setup-$env:TOOL_VER.exe"
+          $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+          "$h  $name" | Set-Content -Path "dist/$name.sha256" -Encoding ascii
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: <TOOL-ID>-installer
+          path: |
+            dist/<TOOL-ID>-setup-*.exe
+            dist/<TOOL-ID>-setup-*.exe.sha256

@@ -1,0 +1,67 @@
+; Inno Setup script for <TOOL-ID>. Build: ISCC.exe installer\<TOOL-ID>.iss
+; Expects (produced by the tool's build recipe / build-<TOOL-ID>.yml):
+;   ..\publish\<BINARY>   — the tool's single-file binary
+; If <TOOL-ID> ALSO ships a plugin, staging plugins\<TOOL-ID>\ here is the D7 open question —
+; see docs/hosting-a-tool.md before wiring it.
+
+#define AppName "<TOOL-ID>"
+#define AppVersion "<VERSION>"
+#define ExeName "<BINARY>"
+
+[Setup]
+; Stable AppId so upgrades replace in place — GENERATE A FRESH GUID per tool (never reuse another tool's).
+AppId={{REPLACE-WITH-A-FRESH-GUID}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppPublisher=clavity
+DefaultDirName={localappdata}\Programs\<TOOL-ID>
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+OutputBaseFilename=<TOOL-ID>-setup-{#AppVersion}
+OutputDir=..\dist
+Compression=lzma2
+SolidCompression=yes
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+ChangesEnvironment=yes
+
+[Files]
+Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
+
+[Tasks]
+Name: "addtopath"; Description: "Add <TOOL-ID> to PATH"; Flags: checkedonce
+
+[Registry]
+Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
+  ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
+
+[Code]
+function NeedsAddPath(Param: string): Boolean;
+var
+  OrigPath: string;
+begin
+  if not RegQueryStringValue(HKCU, 'Environment', 'Path', OrigPath) then
+  begin
+    Result := True;
+    exit;
+  end;
+  Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
+end;
+
+procedure RemoveFromUserPath(const Dir: string);
+var
+  Path: string;
+begin
+  if not RegQueryStringValue(HKCU, 'Environment', 'Path', Path) then
+    exit;
+  StringChangeEx(Path, ';' + Dir, '', True);
+  StringChangeEx(Path, Dir + ';', '', True);
+  StringChangeEx(Path, Dir, '', True);
+  RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+    RemoveFromUserPath(ExpandConstant('{app}'));
+end;

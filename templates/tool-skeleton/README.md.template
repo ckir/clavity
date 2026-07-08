@@ -1,0 +1,17 @@
+# <TOOL-ID>
+
+<DESCRIPTION>
+
+## Install
+Ships in the `clavity` umbrella. Install via the `<TOOL-ID>-v<N>` GitHub Release installer
+(`<TOOL-ID>-setup-<VERSION>.exe`), or add the plugin from this repo's marketplace.
+
+## What it provides
+- Binary `<BINARY>` on your PATH; the plugin runs `<BINARY> serve` as an MCP server.
+<!-- FILL: list the tool's MCP tools / skills. -->
+
+## Configuration
+<!-- FILL: env vars / flags the .mcp.json env block must carry, or "none". -->
+
+## Uninstall
+Windows Add/Remove Programs (removes the binary + its PATH entry).

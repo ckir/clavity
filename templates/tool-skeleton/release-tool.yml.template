@@ -1,0 +1,92 @@
+name: release-<TOOL-ID>
+
+# THE release entry point for the <TOOL-ID> tool. A <TOOL-ID>-v<N> tag builds the installer and publishes
+# the tool's OWN GitHub Release (per-tool lineage, D2). Lives on MAIN (orchestration); reaches the tool's
+# code + build block on its branch via uses: ...@<BRANCH-REF> (D7).
+on:
+  push:
+    tags:
+      - '<TOOL-ID>-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. <TOOL-ID>-v1) — REQUIRED on dispatch (a dispatch has no triggering tag).'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-<TOOL-ID>
+  cancel-in-progress: false
+
+jobs:
+  resolve-ref:
+    # Pin the tool-branch commit ONCE at cut time (D7 SHA-pin) so a re-run weeks later rebuilds the SAME
+    # snapshot.
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.r.outputs.sha }}
+    steps:
+      - id: r
+        shell: bash
+        run: |
+          sha=$(git ls-remote https://github.com/${{ github.repository }} refs/heads/<BRANCH-REF> | cut -f1)
+          if [ -z "$sha" ]; then echo "::error::could not resolve <BRANCH-REF> SHA"; exit 1; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve-ref
+    # Cross-branch: the reusable build block FILE is loaded from the tool branch tip (D7). owner/repo is
+    # HARDCODED — Actions forbids expressions in `uses:` (a fork calls this upstream, as build-classic does).
+    # The CODE checkout is SHA-pinned separately via the `ref` input below (§6 @ref discipline).
+    uses: ckir/clavity/.github/workflows/build-<TOOL-ID>.yml@<BRANCH-REF>
+    with:
+      ref: ${{ needs.resolve-ref.outputs.sha }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact-name }}
+          path: dist
+
+      - name: Assemble release notes
+        id: notes
+        shell: bash
+        env:
+          # Pass the dispatch-supplied tag via env, NOT inline ${{…}} interpolation, so a crafted
+          # workflow_dispatch input cannot inject shell (Actions script-injection hardening). ref_name on a
+          # tag push is constrained by the tag ruleset, so it stays inline.
+          TAG_INPUT: ${{ github.event.inputs.tag }}
+        run: |
+          TAG="$TAG_INPUT"
+          if [ -z "$TAG" ]; then TAG="${{ github.ref_name }}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          cat > body.md <<EOF
+          # <TOOL-ID> $TAG
+
+          | tool | version | source |
+          |------|---------|--------|
+          | <TOOL-ID> | ${{ needs.build.outputs.version }} | <BRANCH-REF>@${{ needs.build.outputs.sha }} |
+
+          Installer is **unsigned** (Windows SmartScreen may warn: *More info -> Run anyway*).
+          Verify the \`.sha256\` against the \`.exe\` before running.
+          EOF
+
+      - name: Publish the <TOOL-ID> release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: ${{ steps.notes.outputs.tag }}
+          body_path: body.md
+          make_latest: false   # D2/§6: only the clavity flagship claims the "Latest" badge
+          files: |
+            dist/<TOOL-ID>-setup-*.exe
+            dist/<TOOL-ID>-setup-*.exe.sha256

@@ -1,0 +1,5 @@
+    {
+      "name": "<TOOL-ID>",
+      "source": "./plugins/<TOOL-ID>",
+      "description": "<DESCRIPTION>"
+    }

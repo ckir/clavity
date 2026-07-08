@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "<TOOL-ID>": { "command": "<BINARY>", "args": ["serve"] }
+  }
+}
