@@ -80,6 +80,12 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
    - the dirty `README.md` is **untouched** (the checkpoint is non-intrusive).
 5. **Cleanup:** `clavity stop` (kills the agy session), then remove the temp repo.
 
+## Hosting a new tool
+
+`clavity` is an umbrella repo that hosts several independently-released tools. To add one, follow the
+onboarding playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md) (code on a branch; plugin under
+`plugins/<tool>/` on `main`; per-tool `<tool>-v<N>` release lineage).
+
 ## Releasing (umbrella)
 
 Releases are produced **only** by pushing a serial umbrella tag `clavity-v<N>` (e.g. `clavity-v1`,
