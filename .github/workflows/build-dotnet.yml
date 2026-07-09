@@ -16,6 +16,9 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: clavity-dotnet
     outputs:
       version: ${{ steps.ver.outputs.version }}
       sha: ${{ github.sha }}
@@ -59,6 +62,18 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
+      - name: Generate flat install manifest (4 bundled plugins; EXCLUDE mutually-exclusive classic)
+        shell: pwsh
+        run: |
+          $root = Get-Content ../.claude-plugin/marketplace.json -Raw | ConvertFrom-Json
+          $bundled = $root.plugins | Where-Object { $_.name -ne 'clavity-classic' }
+          foreach ($p in $bundled) { $p.source = "./plugins/$($p.name)" }
+          $root.plugins = $bundled
+          $root | ConvertTo-Json -Depth 10 | Set-Content installer/marketplace.install.json -Encoding utf8
+          if ($bundled.Count -ne 4) { throw "expected 4 bundled plugins, got $($bundled.Count)" }
+          if (($bundled | Where-Object { $_.source -notmatch '^\./plugins/' }).Count -ne 0) { throw "flat manifest has a non-flat source" }
+          Write-Host "generated installer/marketplace.install.json with 4 flat sources (classic excluded)"
+
       - name: Build installer (ISCC)
         shell: pwsh
         run: |
@@ -92,6 +107,9 @@ jobs:
 
           if (-not (Test-Path "$app\clavity-ls.exe")) { throw "clavity-ls.exe not installed under $app" }
           if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
+          $installedManifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
+          if ($installedManifest.plugins.Count -ne 4) { throw "installed marketplace.json has $($installedManifest.plugins.Count) plugins, expected 4 (classic excluded)" }
+          if (($installedManifest.plugins | Where-Object { $_.source -notmatch '^\./plugins/' }).Count -ne 0) { throw "installed marketplace.json has a non-flat plugin source" }
           if (-not (Test-Path "$app\plugins\clavity-dotnet")) { throw "plugins\clavity-dotnet not installed" }
           if (-not (Test-Path "$app\plugins\agy-autotrain")) { throw "plugins\agy-autotrain (add-on) not shipped" }
           if (-not (Test-Path "$app\plugins\commonmemory")) { throw "plugins\commonmemory (add-on) not shipped" }
@@ -143,7 +161,7 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dotnet-installer
+          name: dotnet-installer   # umbrella-release depends on this exact name — do NOT change
           path: |
-            dist/clavity-dotnet-setup-*.exe
-            dist/clavity-dotnet-setup-*.exe.sha256
+            clavity-dotnet/dist/clavity-dotnet-setup-*.exe
+            clavity-dotnet/dist/clavity-dotnet-setup-*.exe.sha256

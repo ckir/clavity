@@ -1,0 +1,111 @@
+name: build-ghidrust
+
+# Reusable build+package block for the ghidrust release, minus publish. Called by release-ghidrust.yml
+# and runnable via workflow_dispatch. Monorepo consolidation: code now lives under ghidrust/ on main;
+# the checkout is naked (no branch/SHA pin) and the job runs from that folder.
+on:
+  workflow_call:
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+      sha:
+        value: ${{ jobs.build.outputs.sha }}
+      artifact-name:
+        value: ${{ jobs.build.outputs.artifact-name }}
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ghidrust
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      sha: ${{ steps.sha.outputs.sha }}
+      artifact-name: ghidrust-installer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the built commit
+        id: sha
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install build tools (just, nextest, cargo-deny)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-deny
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ghidrust
+
+      - name: Extract version from .iss
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path installer/ghidrust.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "TOOL_VER=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Lint gate
+        shell: bash
+        run: just lint
+
+      - name: Test gate (live-worker tests self-skip without GHIDRUST_E2E)
+        shell: bash
+        run: just test
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --release -p ghidrust-mcp
+
+      - name: Stage binary into publish/
+        shell: bash
+        run: |
+          mkdir -p publish
+          cp target/release/ghidrust.exe publish/ghidrust.exe
+
+      - name: --help smoke (usage + exit 0)
+        shell: bash
+        run: |
+          # Guard that the shipped binary answers --help with usage and exit 0. ghidrust prints usage to
+          # stderr; capture combined streams so the check stays robust regardless of which stream carries it.
+          if ! out=$(./publish/ghidrust.exe --help 2>&1); then
+            echo "ghidrust --help exited non-zero"; echo "$out"; exit 1
+          fi
+          [ -n "$out" ] || { echo "ghidrust --help produced no output"; exit 1; }
+          echo "ghidrust --help OK:"; echo "$out"
+
+      # Two-channel delivery: the installer ships ONLY the binary; the plugin is marketplace-delivered on
+      # main. No plugins/ staging here — D7 cross-branch bundling does not apply (see the onboarding spec).
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer (ISCC)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc installer/ghidrust.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          $setup = "dist/ghidrust-setup-$env:TOOL_VER.exe"
+          if (-not (Test-Path $setup)) { throw "$setup was not produced" }
+
+      - name: Compute SHA-256 companion
+        shell: pwsh
+        run: |
+          $name = "ghidrust-setup-$env:TOOL_VER.exe"
+          $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+          "$h  $name" | Set-Content -Path "dist/$name.sha256" -Encoding ascii
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghidrust-installer
+          path: |
+            ghidrust/dist/ghidrust-setup-*.exe
+            ghidrust/dist/ghidrust-setup-*.exe.sha256

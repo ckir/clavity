@@ -1,0 +1,139 @@
+name: build-classic
+
+# Reusable build+smoke half of the classic release, minus the publish step. Called by umbrella-release.yml
+# and runnable in isolation via workflow_dispatch. Monorepo consolidation: code now lives under
+# clavity-classic/ on main; the checkout is naked (no branch/SHA pin) and the job runs from that folder.
+on:
+  workflow_call:
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+      sha:
+        value: ${{ jobs.build.outputs.sha }}
+      artifact-name:
+        value: ${{ jobs.build.outputs.artifact-name }}
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022   # STATIC image (not -latest): keep MSVC/SDK stable so a historic build stays reproducible.
+    defaults:
+      run:
+        working-directory: clavity-classic
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      sha: ${{ steps.head.outputs.sha }}
+      artifact-name: classic-installer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record built commit
+        id: head
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Version consistency (Cargo.toml == .iss == bridge) + emit output
+        id: ver
+        shell: pwsh
+        run: |
+          # No tag to triangulate against in a reusable build; assert the three in-repo versions agree instead.
+          $cargo  = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          $iss    = (Select-String -Path installer/clavity-classic.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
+          $bridge = (Select-String -Path agy-mcp-bridge/pyproject.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          "cargo=$cargo iss=$iss bridge=$bridge"
+          if (($cargo -ne $iss) -or ($cargo -ne $bridge)) { throw "version mismatch (Cargo=$cargo iss=$iss bridge=$bridge must all agree)" }
+          "version=$iss" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "CLAVITY_VER=$iss" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - uses: dtolnay/rust-toolchain@stable   # rust-toolchain.toml pins the actual channel; this provides the harness.
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: clavity-classic
+
+      - name: Build + stage (the 7.8 recipe)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File scripts/build-classic-release.ps1
+          if (-not (Test-Path publish/clavity.exe)) { throw "publish/clavity.exe not produced" }
+          if (Test-Path publish/agy-mcp-bridge/.env) { throw "SECURITY: .env staged" }
+
+      - name: Test gate
+        run: cargo test --all --features test-fakes
+
+      - name: Locate Inno Setup
+        id: inno
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files*\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup --no-progress -y; $iscc = Get-ChildItem "C:\Program Files*\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          if (-not $iscc) { throw "ISCC.exe not found (no preinstall, install failed)" }
+          "iscc=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build installer (ISCC)
+        shell: pwsh
+        run: |
+          & "${{ steps.inno.outputs.iscc }}" installer/clavity-classic.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+          $setup = "dist/clavity-classic-setup-$env:CLAVITY_VER.exe"
+          if (-not (Test-Path $setup)) { throw "$setup not produced" }
+
+      - name: SHA-256 companion
+        shell: pwsh
+        run: |
+          $name = "clavity-classic-setup-$env:CLAVITY_VER.exe"
+          $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+          # LF, two spaces, no BOM (GNU sha256sum -c compatible); matches the original release workflow exactly.
+          [IO.File]::WriteAllText("$PWD/dist/$name.sha256", "$h  $name`n")
+
+      - name: Smoke — install/uninstall lifecycle (BLOCKING)
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = "dist/clavity-classic-setup-$env:CLAVITY_VER.exe"; $app = "$env:LOCALAPPDATA\Programs\clavity-classic"
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=addtopath,install_bridge" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
+          if (-not (Test-Path "$app\clavity.exe")) { throw "clavity.exe missing" }
+          if (-not (Test-Path "$app\agy-mcp-bridge\SKILL.md")) { throw "bridge SKILL.md missing" }
+          $arpKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{B59E963B-BE49-47B2-8CAB-5A3417D775C3}_is1"
+          if (-not (Test-Path $arpKey)) { throw "ARP key missing (exact AppId _is1)" }
+          $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
+          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path "$app\clavity.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path "$app\clavity.exe") { throw "uninstall did not complete within 30s" }
+          "lifecycle smoke PASSED"
+
+      - name: Smoke — mutual-exclusion refusal (BLOCKING)
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $app = "$env:LOCALAPPDATA\Programs\clavity-classic"
+          $fake = "$env:TEMP\fakels"; New-Item $fake -ItemType Directory -Force | Out-Null
+          Set-Content "$fake\clavity-ls.exe" "x"; $env:PATH = "$fake;$env:PATH"
+          $p = Start-Process "dist/clavity-classic-setup-$env:CLAVITY_VER.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -eq 0 -and (Test-Path "$app\clavity.exe")) { throw "refusal FAILED" }
+          "mutual-exclusion smoke PASSED"
+
+      - name: Smoke — .env exclusion (BLOCKING — secret-boundary guard)
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $app = "$env:LOCALAPPDATA\Programs\clavity-classic"
+          $p = Start-Process "dist/clavity-classic-setup-$env:CLAVITY_VER.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=addtopath,install_bridge" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
+          if (Test-Path "$app\agy-mcp-bridge\.env") { throw "SECURITY: .env shipped in installed tree" }
+          $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
+          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+          ".env-exclusion smoke PASSED"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: classic-installer
+          path: |
+            clavity-classic/dist/clavity-classic-setup-*.exe
+            clavity-classic/dist/clavity-classic-setup-*.exe.sha256
