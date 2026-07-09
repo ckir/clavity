@@ -10,9 +10,10 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: 'ghidrust-branch commit SHA to check out + test (the exact snapshot the build job built).'
-        required: true
+        description: 'Optional commit SHA to check out + test (blank = default checkout of the triggering commit on main).'
+        required: false
         type: string
+        default: ''
 
 jobs:
   e2e:
@@ -76,6 +77,7 @@ jobs:
 
       - name: Build fixture + analyze headless
         shell: pwsh
+        working-directory: ghidrust
         run: |
           $ErrorActionPreference = 'Stop'
           clang --version   # fixture needs clang's debug info so named types reach Ghidra (README §1); fail loud if absent
@@ -93,6 +95,7 @@ jobs:
       - name: Live E2E smoke — attach + read + durable write
         timeout-minutes: 10
         shell: pwsh
+        working-directory: ghidrust
         env:
           GHIDRUST_E2E: '1'
           GHIDRUST_FIXTURE_PROJECT_NAME: fixtureproj

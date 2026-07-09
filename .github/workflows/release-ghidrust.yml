@@ -2,8 +2,8 @@ name: release-ghidrust
 
 # STANDALONE ghidrust release — the DISPATCH-ONLY escape hatch. The CANONICAL path is the umbrella
 # clavity-v<N> release (umbrella-release.yml), which now bundles ghidrust-setup alongside dotnet + classic.
-# Use this only to cut a standalone ghidrust-v<N> without a full clavity cut. Lives on MAIN; reaches the
-# tool's code + build block on its branch via uses: ...@ghidrust (D7); shares the live-E2E gate via
+# Use this only to cut a standalone ghidrust-v<N> without a full clavity cut. Lives on MAIN; builds the
+# tool from its subfolder on main via ./.github/workflows/build-ghidrust.yml; shares the live-E2E gate via
 # e2e-ghidrust.yml. The `push: tags: ghidrust-v*` trigger was REMOVED so a stray tag cannot fire a
 # split-brain out-of-band release.
 on:
@@ -22,37 +22,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  resolve-ref:
-    # Pin the tool-branch commit ONCE at cut time (D7 SHA-pin) so a re-run weeks later rebuilds the SAME
-    # snapshot.
-    runs-on: ubuntu-latest
-    outputs:
-      sha: ${{ steps.r.outputs.sha }}
-    steps:
-      - id: r
-        shell: bash
-        run: |
-          sha=$(git ls-remote https://github.com/${{ github.repository }} refs/heads/ghidrust | cut -f1)
-          if [ -z "$sha" ]; then echo "::error::could not resolve ghidrust SHA"; exit 1; fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
   build:
-    needs: resolve-ref
-    # Cross-branch: the reusable build block FILE is loaded from the tool branch tip (D7). owner/repo is
-    # HARDCODED — Actions forbids expressions in `uses:` (a fork calls this upstream, as build-classic does).
-    # The CODE checkout is SHA-pinned separately via the `ref` input below (§6 @ref discipline).
-    uses: ckir/clavity/.github/workflows/build-ghidrust.yml@ghidrust
-    with:
-      ref: ${{ needs.resolve-ref.outputs.sha }}
+    uses: ./.github/workflows/build-ghidrust.yml
 
   e2e:
-    # Live pre-publish gate (B), now a SHARED reusable workflow (e2e-ghidrust.yml) so this path and the
+    # Live pre-publish gate (B), a SHARED reusable workflow (e2e-ghidrust.yml) so this path and the
     # umbrella use ONE definition. `needs: build` so a broken build never pays the ~573 MB Ghidra download;
-    # also needs resolve-ref for the SHA-pinned source checkout the reusable workflow consumes.
-    needs: [resolve-ref, build]
+    # both tools now build from the same main checkout, so no ref pass-through is needed.
+    needs: [build]
     uses: ./.github/workflows/e2e-ghidrust.yml
-    with:
-      ref: ${{ needs.resolve-ref.outputs.sha }}
 
   publish:
     needs: [build, e2e]
@@ -83,7 +61,7 @@ jobs:
 
           | tool | version | source |
           |------|---------|--------|
-          | ghidrust | ${{ needs.build.outputs.version }} | ghidrust@${{ needs.build.outputs.sha }} |
+          | ghidrust | ${{ needs.build.outputs.version }} | main@${{ needs.build.outputs.sha }} |
 
           Installer is **unsigned** (Windows SmartScreen may warn: *More info -> Run anyway*).
           Verify the \`.sha256\` against the \`.exe\` before running.
