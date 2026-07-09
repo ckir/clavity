@@ -77,6 +77,12 @@ clutters Releases). Enforce BOTH:
 1. A GitHub **repo ruleset** on tags rejecting any tag not matching `^(clavity|<tool-id>|…)-v[0-9]+` at
    push time. Extending the alternation for a new tool is an **admin-only** action and MUST land before
    that tool's first `<tool-id>-v1` push (Phase C) — otherwise the push is rejected.
+   > **Plan gate (verified 2026-07-09):** the name-pattern ruleset rule (`tag_name_pattern`) is a
+   > **GitHub Enterprise Cloud** feature — `POST /repos/…/rulesets` returns `422 Invalid rule
+   > 'tag_name_pattern'` on Free/Pro/Team plans (a parameterless tag ruleset still works; only the
+   > pattern rule is gated). On a non-Enterprise plan, **Layer 2 is the floor** — Layer 1 is unavailable,
+   > so an optional reactive substitute is a tag-push CI job that fails when the tag doesn't match the
+   > namespace regex.
 2. Each release workflow triggers only on its own `<tool-id>-v*` prefix.
 
 ## De-listing / sunsetting a tool
