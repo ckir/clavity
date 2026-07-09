@@ -240,7 +240,13 @@ pre-push:
 pre-commit:
   commands:
     ruff:
-      glob: "clavity-classic/agy-mcp-bridge/**/*.py"   # scoped to the bridge — a bare **/*.py at repo root would sweep other tools' Python through the bridge's ruff env
+      # Two patterns, not one: lefthook's doublestar treats a bare "**/*.py" as requiring 1+ path
+      # segments, so it matches only nested files (tests/*.py) and SKIPS top-level bridge files
+      # (server.py, agy_bus.py, ...). Corrected during execution — verified empirically. The scoping
+      # to the bridge path still prevents a bare repo-root **/*.py from sweeping other tools' Python.
+      glob:
+        - "clavity-classic/agy-mcp-bridge/*.py"
+        - "clavity-classic/agy-mcp-bridge/**/*.py"
       run: uv run --project clavity-classic/agy-mcp-bridge ruff check --fix {staged_files} && uv run --project clavity-classic/agy-mcp-bridge ruff format {staged_files}
       stage_fixed: true
 ```
