@@ -1,0 +1,22 @@
+# clavity-dotnet dev recipes. Run standalone, or via the root justfile's `dotnet::` module.
+# ci-dotnet.yml gates ONLY build + test (no formatter/analyzer), so `lint` == compile. `dotnet format`
+# is exposed under `fmt` only and is intentionally OUT of the lint/pre-push path.
+
+default:
+    @just --list
+
+# Lint gate: compile (the only automated ci-dotnet gate short of tests). Catches compile breaks pre-push.
+lint:
+    dotnet build
+
+# Unit + integration tests (ci-dotnet: `dotnet test tests/Clavity.Ls.Tests`).
+test:
+    dotnet test tests/Clavity.Ls.Tests
+
+# Build.
+build:
+    dotnet build
+
+# Auto-format (mutating; NOT enforced by CI or pre-push).
+fmt:
+    dotnet format
