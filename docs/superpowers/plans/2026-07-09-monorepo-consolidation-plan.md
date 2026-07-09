@@ -1000,3 +1000,9 @@ The `archive/clavity-classic` + `archive/ghidrust` tags (pushed in Task 0) keep 
 ## Sequencing note
 
 This plan lands the **monorepo tree + CI rewiring** ONLY. The **decoupled-installers** plan (5 standalone installers, removing the interim cross-plugin `.iss` bundling) is authored SEPARATELY against this final tree — its O4 (agy-autotrain/commonmemory placement) and O5 (dotnet on main) forks are already resolved here (all products are folders on `main`). Do not interleave the two.
+
+## Post-migration follow-ons (owner-decided — do NOT fold into this plan)
+
+- **ghidrust toolchain bump to 1.96.0 (owner 2026-07-09; agy + main-thread concur Option B).** This migration vendors ghidrust AS-IS (`channel = "stable"` / `rust-version = "1.82"`) so the lossless-move diff gate (Task 4/Step 5) stays mathematically pure. AFTER the migration merges, a tiny ISOLATED atomic commit on the monorepo tree rewrites `ghidrust/rust-toolchain.toml` to `channel = "1.96.0"` (hard-pin, matching `clavity-classic`), then runs `(cd ghidrust && just lint && just test && cargo build --release -p ghidrust-mcp)` and fixes any NEW `clippy -D warnings` lints surfaced by the float→pin jump — all in that one commit, so build-risk is isolated from structural risk and `git bisect` stays clean. Consequence to fold at that time: the spec's C2 "incompatible toolchains" rationale weakens (both Rust tools then share 1.96.0), but the two-independent-workspaces decision STILL stands on the other grounds (MIT vs PolyForm licenses, separate `Cargo.lock`/crate graphs) — update only the rationale line, not the decision.
+- **dev-tooling unification** (`just`/`lefthook` unify-at-root vs per-tool) — its own brainstorm→spec after the migration lands (already queued).
+- **decoupled-installers** — rebased onto this tree (above).
