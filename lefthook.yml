@@ -1,0 +1,28 @@
+# clavity monorepo git hooks (lefthook). Install once per clone: `lefthook install`.
+#
+# pre-push: full lint gate across every tool (mirrors each tool's CI lint) — catches fmt/clippy/compile
+#   breaks locally BEFORE a CI bounce, which matters in an agent-driven repo. Requires each tool's lint
+#   tools; for ghidrust run `just ghidrust::setup` once (cargo-nextest + cargo-deny). No Rust/.NET
+#   pre-commit friction.
+#
+# pre-commit: Python-bridge hygiene, folded here from the former clavity-classic/lefthook.yml — ruff
+#   check --fix + format on staged Python files only (pure Rust/.NET commits untouched). lint + format
+#   run as ONE sequential command on purpose: both rewrite staged files, so parallel runs race.
+pre-push:
+  commands:
+    lint:
+      run: just lint
+pre-commit:
+  commands:
+    ruff:
+      # Two patterns, not one: lefthook's doublestar treats a bare "**/*.py" as requiring 1+
+      # path segments before the filename, so it does NOT match top-level files directly in
+      # agy-mcp-bridge/ (server.py, agy_bus.py, telemetry.py, ...) — only nested ones (tests/*.py).
+      # Verified empirically: "clavity-classic/agy-mcp-bridge/**/*.py" alone skipped a staged
+      # top-level probe file (lefthook reported "no files for inspection"); adding the sibling
+      # "*.py" pattern below fixed it (probe was reformatted as expected).
+      glob:
+        - "clavity-classic/agy-mcp-bridge/*.py"
+        - "clavity-classic/agy-mcp-bridge/**/*.py"
+      run: uv run --project clavity-classic/agy-mcp-bridge ruff check --fix {staged_files} && uv run --project clavity-classic/agy-mcp-bridge ruff format {staged_files}
+      stage_fixed: true
