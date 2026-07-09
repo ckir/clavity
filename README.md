@@ -3,27 +3,39 @@
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 
-**clavity** is a host for several tools that pair AI coding agents with live peers. The umbrella
-`clavity-v<N>` release is the **canonical** download and bundles every tool's installer in one place; this
-repo is the shared home for their plugins, docs, and release machinery.
+**clavity** is a host for several tools that pair AI coding agents with live peers. This is the
+umbrella repo — a monorepo with one top-level folder per product, each independently built/tested,
+plus the shared release machinery that bundles them into one umbrella download. The umbrella
+`clavity-v<N>` release is the **canonical** download and bundles every product's installer in one
+place.
 
-## Tools hosted here
+## Products
 
-| Tool | What it is | Docs | Release lineage |
-|------|-----------|------|-----------------|
-| **clavity** | Pairs [Claude Code](https://claude.com/claude-code) with [Antigravity (`agy`)](https://antigravity.google) — `.NET` + `classic` variants, plus `agy-autotrain` / `commonmemory` add-ons. | [README-CLAVITY.md](README-CLAVITY.md) | `clavity-v<N>` |
-| **ghidrust** | Drives a persistent headless Ghidra JVM — 19 reverse-engineering tools over MCP (attach + decompile + durable edits). | [plugins/ghidrust/README.md](plugins/ghidrust/README.md) | `clavity-v<N>` (umbrella; standalone `ghidrust-v<N>` is dispatch-only) |
+| Product | Folder | Build |
+|---------|--------|-------|
+| clavity-dotnet | clavity-dotnet/ | cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests |
+| clavity-classic | clavity-classic/ | cd clavity-classic && cargo test --all --features test-fakes |
+| ghidrust | ghidrust/ | cd ghidrust && just test |
+| agy-autotrain | agy-autotrain/ | (plugin only) |
+| commonmemory | commonmemory/ | (plugin only) |
 
-## Adding a tool
+- **clavity-dotnet** / **clavity-classic** — two variants that pair [Claude Code](https://claude.com/claude-code)
+  with [Antigravity (`agy`)](https://antigravity.google). See [clavity-dotnet/README.md](clavity-dotnet/README.md)
+  for install & usage (the installer lets you choose the **.NET** (Primary) or **Classic** (Failover)
+  host variant, and opt in to `agy-autotrain` / `commonmemory` extras).
+- **ghidrust** — drives a persistent headless Ghidra JVM: 19 reverse-engineering tools over MCP
+  (attach + decompile + durable edits). See [ghidrust/README.md](ghidrust/README.md).
+- **agy-autotrain** / **commonmemory** — plugin-only add-ons (no standalone build); installed alongside
+  clavity via the umbrella installer.
 
-New tools follow one repeatable pattern (code on a branch; plugin under `plugins/<tool>/` on `main`; an
-Inno-Setup installer; its own release lineage). See the playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md).
+## Adding a product
+
+New products follow one repeatable pattern (its own top-level folder; an Inno-Setup installer; its own
+release lineage bundled into the umbrella release). See the playbook:
+[`docs/hosting-a-tool.md`](docs/hosting-a-tool.md).
 
 ## License
 
 This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial
-use (personal, academic, non-profit). See [LICENSE](LICENSE).
-
----
-
-> **Looking for clavity install & usage?** It moved to **[README-CLAVITY.md](README-CLAVITY.md)**.
+use (personal, academic, non-profit). See [LICENSE](LICENSE). **clavity-classic** ships under its own
+**MIT** license — see [clavity-classic/LICENSE](clavity-classic/LICENSE).

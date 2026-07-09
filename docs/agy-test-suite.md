@@ -18,7 +18,8 @@ silently change behavior, so re-run this and update the profile/assumptions on a
 2. **Windows binary-lock gotcha (Test B):** driving agy to run `cargo` while `clavity.exe` is running
    locks `target/debug/clavity.exe` (`Access denied, os error 5`). Always run agy-driven cargo with a
    separate target dir: `$env:CARGO_TARGET_DIR="target/agytest"` (clean it up after).
-3. Build the driver if needed: `cargo build` (do this when `clavity.exe` is NOT mid-drive).
+3. Build the driver if needed (from `clavity-classic/`): `cargo build` (do this when `clavity.exe` is
+   NOT mid-drive).
 
 ---
 
@@ -47,7 +48,7 @@ found` (or names a *specific* invariant failure) — **no** unrelated nits / hal
 ./target/debug/clavity ask "### Command
 cargo test --all --features test-fakes   (set env CARGO_TARGET_DIR=target/agytest to avoid the locked clavity.exe)
 ### Working Directory
-The clavity repo (your current working folder).
+clavity-classic/ (inside the clavity repo — your current working folder).
 ### Success Criteria
 All tests pass. Report the total passed and any FAIL names.
 ### Mode

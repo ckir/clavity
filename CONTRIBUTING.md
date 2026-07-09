@@ -5,9 +5,11 @@ the project is Windows-verified today.
 
 ## Dev setup
 
+This file covers the **clavity-classic** (Rust) variant; run everything below from `clavity-classic/`.
 You need [Rust](https://www.rust-lang.org/tools/install) (stable). Then:
 
 ```bash
+cd clavity-classic
 cargo build                              # debug build
 cargo test                               # hermetic unit tests (no live agy needed)
 cargo test --all --features test-fakes   # unit + integration tests (uses a fake psmux)
@@ -26,7 +28,7 @@ clavity doctor   # preflight: are tmux/claude/agy on PATH, is the session reacha
 ```
 
 > **If something agy-facing breaks (likely after an agy/psmux update):** start with
-> [`plugins/agy-autotrain/knowledge/agy-assumptions.md`](plugins/agy-autotrain/knowledge/agy-assumptions.md)
+> [`agy-autotrain/knowledge/agy-assumptions.md`](agy-autotrain/knowledge/agy-assumptions.md)
 > (the canonical manual; `docs/agy-assumptions.md` is now a pointer to it) — it lists every external
 > behavior clavity relies on, how each was verified, and how to re-verify/fix (usually an `AGY_*` override
 > or a skill tweak, not Rust). Update its "verified against" versions when you confirm things on a new agy.
@@ -46,8 +48,8 @@ clavity doctor   # preflight: are tmux/claude/agy on PATH, is the session reacha
 
 ## Two test tiers
 
-1. **Hermetic (CI):** `cargo test --all --features test-fakes` — pure logic + the binary driven
-   against `fake_tmux`. No agy/claude/psmux required. **All PRs must keep these green.**
+1. **Hermetic (CI):** `cargo test --all --features test-fakes` (from `clavity-classic/`) — pure logic +
+   the binary driven against `fake_tmux`. No agy/claude/psmux required. **All PRs must keep these green.**
 2. **Live acceptance (manual):** the real end-to-end loop against a running `agy`. Required when you
    touch behavior that the fakes can't cover (the doorbell, the checkpoint, a platform port).
 
@@ -129,8 +131,9 @@ The binary is mostly portable; OS-specific assumptions are centralized in `src/p
    should match across platforms; if a build differs, they're overridable via `AGY_IDLE_MARKER` /
    `AGY_BUSY_MARKER`, and the marker-free activity fallback works regardless.
 4. **`claude` / `agy` discovery** — `start` spawns them via `PATH`; cross-platform already.
-5. **Verify** — run `cargo test --all --features test-fakes`, then the live acceptance runbook on your
-   OS. Update the platform-support table in the README and, ideally, the CI matrix.
+5. **Verify** — run `cargo test --all --features test-fakes` (from `clavity-classic/`), then the live
+   acceptance runbook on your OS. Update the platform-support table in the README and, ideally, the CI
+   matrix.
 
 ## Conventions
 
@@ -144,6 +147,7 @@ The binary is mostly portable; OS-specific assumptions are centralized in `src/p
 
 ## Pull requests
 
-Fork → branch → make `cargo test --all --features test-fakes`, `cargo clippy --all-targets
---features test-fakes -- -D warnings`, and `cargo fmt --all --check` all pass → open a PR. In the
-description, say **how you verified** — unit only, or the live acceptance runbook (and on which OS).
+Fork → branch → in `clavity-classic/`, make `cargo test --all --features test-fakes`, `cargo clippy
+--all-targets --features test-fakes -- -D warnings`, and `cargo fmt --all --check` all pass → open a
+PR. In the description, say **how you verified** — unit only, or the live acceptance runbook (and on
+which OS).

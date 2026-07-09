@@ -1,7 +1,55 @@
 [
   {
+    "name": "cargo",
+    "why": "Rust toolchain — builds and tests the Rust workspaces (clavity-classic, ghidrust; each pinned via its own rust-toolchain.toml).",
+    "install": "https://rustup.rs",
+    "in_path": "cargo"
+  },
+  {
+    "name": "cargo-nextest",
+    "why": "Primary test runner — faster and clearer than `cargo test`, used for the ghidrust integration suite.",
+    "install": "cargo install cargo-nextest --locked",
+    "in_path": "cargo-nextest"
+  },
+  {
+    "name": "cargo-deny",
+    "why": "Supply-chain gate — license, security-advisory, and dependency-ban checks (deny.toml).",
+    "install": "cargo install cargo-deny --locked",
+    "in_path": "cargo-deny"
+  },
+  {
+    "name": "just",
+    "why": "Cross-platform task runner — recipes for fetch-Ghidra, run-integration, release orchestration.",
+    "install": "cargo install just --locked",
+    "in_path": "just"
+  },
+  {
+    "name": "lefthook",
+    "why": "Git hooks — fast gate (fmt/clippy/unit) pre-commit, full gate (integration) pre-push.",
+    "install": "cargo install lefthook  (or: winget install evilmartians.lefthook)",
+    "in_path": "lefthook"
+  },
+  {
+    "name": "java (JDK 21)",
+    "why": "Ghidra 12.1.2 runtime dependency — the headless worker JVM. Must be JDK 21 (application.java.min=21).",
+    "install": "https://adoptium.net/temurin/releases/?version=21",
+    "in_path": "java"
+  },
+  {
+    "name": "Ghidra 12.1.2",
+    "why": "The reverse-engineering engine ghidrust's worker drives via analyzeHeadless. Located by GHIDRA_INSTALL_DIR.",
+    "install": "https://github.com/NationalSecurityAgency/ghidra/releases  (unzip; set GHIDRA_INSTALL_DIR)",
+    "file_exists": "C:/Users/user/Development/Java/ghidra_12.1.2_PUBLIC/support/analyzeHeadless.bat"
+  },
+  {
+    "name": "npx (Node) — MCP Inspector",
+    "why": "Dev-only: manual tool-surface harness (`npx @modelcontextprotocol/inspector`) to test tools/schemas without an agent. Not a runtime dependency.",
+    "install": "https://nodejs.org",
+    "in_path": "npx"
+  },
+  {
     "name": "ISCC (Inno Setup Compiler)",
-    "why": "compile + smoke-test installer/clavity-dotnet.iss locally instead of via remote release CI",
+    "why": "compile + smoke-test a product installer .iss (clavity-dotnet, clavity-classic, ghidrust) locally instead of via remote release CI",
     "in_path": "ISCC.exe",
     "file_exists": [
       "$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe",

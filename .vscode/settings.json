@@ -1,0 +1,6 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "clavity-classic/Cargo.toml",
+    "ghidrust/Cargo.toml"
+  ]
+}
