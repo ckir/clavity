@@ -19,6 +19,7 @@ AppId={{B7E4B2A1-9C3D-4F5E-8A1B-2C3D4E5F6A7B}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=clavity
+LicenseFile=..\LICENSE
 DefaultDirName={localappdata}\Programs\clavity-dotnet
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
