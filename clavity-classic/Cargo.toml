@@ -1,0 +1,38 @@
+[package]
+name = "clavity"
+version = "0.1.0"
+edition = "2021"
+description = "A remote control for Antigravity (agy): Claude drives a live agy session in the same folder via a psmux doorbell + the agentmemory signal bus."
+license = "MIT"
+repository = "https://github.com/ckir/clavity"
+default-run = "clavity"
+
+[[bin]]
+name = "clavity"
+path = "src/main.rs"
+
+# Test-only fake psmux used by tests/integration.rs (so the subprocess/state layer can be
+# exercised in CI without a real agy/psmux). Built only with `--features test-fakes`, so it
+# is never shipped in a normal release build or `cargo install`.
+[[bin]]
+name = "fake_tmux"
+path = "src/bin/fake_tmux.rs"
+required-features = ["test-fakes"]
+
+[features]
+test-fakes = []
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Blocking HTTP client for the agentmemory daemon (src/membus.rs). default-features=false drops the
+# TLS stack: clavity only ever talks plain HTTP to a localhost daemon, so no rustls/native-tls needed.
+ureq = { version = "2", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[profile.release]
+strip = true
+lto = true

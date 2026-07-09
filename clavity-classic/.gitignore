@@ -1,0 +1,12 @@
+# Rust
+/target
+**/*.rs.bk
+
+# agy/claudavity runtime artifacts (if a target repo is worked in-place)
+.agent/
+
+# Tool caches
+.serena/
+/publish
+# Installer build output (staged setup.exe + sha256)
+/dist

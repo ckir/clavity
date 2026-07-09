@@ -1,0 +1,19 @@
+[project]
+name = "agy-mcp-bridge"
+version = "0.1.0"
+description = "MCP Bridge for Claude CLI to Antigravity Daemon"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "google-antigravity",
+    "aiosqlite",
+    "pydantic",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.16",
+    "lefthook>=2.1.9",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]

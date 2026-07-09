@@ -11,8 +11,8 @@ __pycache__/
 # BundleCodeBase.ps1 output (repo-bundle text for agy upload)
 /clavity.txt
 
-# .NET build output
-[Bb]in/
-[Oo]bj/
-artifacts/
-*.user
+# NOTE: .NET build-output rules ([Bb]in/, [Oo]bj/, artifacts/, *.user) moved to
+# clavity-dotnet/.gitignore during the monorepo consolidation. They were UNANCHORED
+# here and leaked into the Rust tools' src/bin/ dirs, silently dropping real binary
+# targets (e.g. clavity-classic/src/bin/fake_tmux.rs). Each product folder now owns
+# its own build-output ignore rules.

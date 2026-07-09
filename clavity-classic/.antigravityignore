@@ -1,0 +1,27 @@
+# Version control
+.git/
+
+# Cargo build artifacts
+target/
+**/*.rs.bk
+
+# IDE and tool configs/caches
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Secrets and local environments
+.env
+.env.local
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# Agent/AI tools data
+.gemini/
+.serena/
