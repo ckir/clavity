@@ -36,14 +36,14 @@ SetupMutex=ClavitySetupMutex
 
 [Files]
 Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\.claude-plugin\marketplace.json"; DestDir: "{app}\.claude-plugin"; Flags: ignoreversion
-Source: "..\plugins\clavity-dotnet\*"; DestDir: "{app}\plugins\clavity-dotnet"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
+Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity-dotnet"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Optional add-ons: shipped so the marketplace resolves, but only INSTALLED if the Phase 4 [Tasks] are ticked.
-Source: "..\plugins\agy-autotrain\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\plugins\commonmemory\*"; DestDir: "{app}\plugins\commonmemory"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\agy-autotrain\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\commonmemory\*"; DestDir: "{app}\plugins\commonmemory"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; ghidrust: staged so the bundled marketplace's ./plugins/ghidrust entry resolves (else it dangles). Claude
 ; installs it from the marketplace; the ghidrust.exe binary ships separately via the ghidrust-v<N> installer (D7).
-Source: "..\plugins\ghidrust\*"; DestDir: "{app}\plugins\ghidrust"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\ghidrust\plugin\*"; DestDir: "{app}\plugins\ghidrust"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce

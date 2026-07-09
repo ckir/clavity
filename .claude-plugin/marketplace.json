@@ -8,22 +8,27 @@
   "plugins": [
     {
       "name": "agy-autotrain",
-      "source": "./plugins/agy-autotrain",
+      "source": "./agy-autotrain",
       "description": "Drive the agy peer like a model and auto-train clavity's agy knowledge from everyday usage (capture -> curate -> verify -> golden-header)."
     },
     {
       "name": "clavity-dotnet",
-      "source": "./plugins/clavity-dotnet",
+      "source": "./clavity-dotnet/plugin",
       "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask)."
     },
     {
+      "name": "clavity-classic",
+      "source": "./clavity-classic/plugin",
+      "description": "clavity-classic: Claude drives a live agy peer via a psmux doorbell + the agentmemory bus."
+    },
+    {
       "name": "commonmemory",
-      "source": "./plugins/commonmemory",
+      "source": "./commonmemory",
       "description": "Optional add-on: a shared notebook so Claude and agy share facts across the pairing."
     },
     {
       "name": "ghidrust",
-      "source": "./plugins/ghidrust",
+      "source": "./ghidrust/plugin",
       "description": "Drive a persistent headless Ghidra JVM from your agent: 19 reverse-engineering tools (decompile, navigate, durable rename/type/prototype writes) over MCP."
     }
   ]
