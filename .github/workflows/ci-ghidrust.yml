@@ -1,0 +1,31 @@
+name: ci-ghidrust
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ghidrust/**'
+      - '.github/workflows/ci-ghidrust.yml'
+      - '.github/workflows/build-ghidrust.yml'
+      - '.github/workflows/e2e-ghidrust.yml'
+  pull_request:
+    paths:
+      - 'ghidrust/**'
+      - '.github/workflows/ci-ghidrust.yml'
+      - '.github/workflows/build-ghidrust.yml'
+      - '.github/workflows/e2e-ghidrust.yml'
+jobs:
+  check:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ghidrust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-deny
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ghidrust
+      - run: just lint
+      - run: just test   # live-worker tests self-skip without GHIDRUST_E2E
