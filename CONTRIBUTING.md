@@ -90,8 +90,17 @@ onboarding playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md) (code on
 
 Releases are produced **only** by pushing a serial umbrella tag `clavity-v<N>` (e.g. `clavity-v1`,
 `clavity-v2`), which triggers `.github/workflows/umbrella-release.yml`. That one release, named
-`clavity`, bundles both variants' version-stamped installers (`clavity-dotnet-setup-<ver>.exe` and
-`clavity-classic-setup-<ver>.exe`, each with a `.sha256`).
+`clavity`, is the **canonical** download and bundles every tool's version-stamped installer, each with a
+`.sha256`: `clavity-dotnet-setup-<ver>.exe`, `clavity-classic-setup-<ver>.exe`, and
+`ghidrust-setup-<ver>.exe` (ghidrust is gated by its live-E2E before publish, so a broken ghidrust blocks
+the whole release). The standalone `release-ghidrust.yml` (`ghidrust-v<N>`) remains a **dispatch-only**
+escape hatch for a ghidrust patch without a full clavity cut.
+
+**Repo topology (why the asymmetry):** `main` houses the orchestration + the flagship **aggregator**
+(`dotnet` — its installer bundles the shared `marketplace.json` + all plugin dirs, which are umbrella-scoped
+and live on `main`). Independent binaries (`classic`, `ghidrust`) live on their own branches to prevent
+cross-contamination, and are SHA-pinned at cut time via `resolve-*`. `dotnet` needs no pin — the
+`clavity-v<N>` tag is on `main`, so it already pins `dotnet` deterministically.
 
 Bump each variant's version in its own `installer/*.iss` `#define AppVersion` (dotnet on `main`; classic
 on the `clavity-classic` branch, kept in sync with `Cargo.toml` + `agy-mcp-bridge/pyproject.toml`) before

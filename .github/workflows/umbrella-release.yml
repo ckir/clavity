@@ -60,8 +60,39 @@ jobs:
     with:
       ref: ${{ needs.resolve-classic.outputs.sha }}   # CODE checkout is PINNED to the resolved SHA
 
+  resolve-ghidrust:
+    # Pin the ghidrust tool-branch commit ONCE at cut time (mirrors resolve-classic / D7 SHA-pin).
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.r.outputs.sha }}
+    steps:
+      - id: r
+        shell: bash
+        run: |
+          sha=$(git ls-remote https://github.com/${{ github.repository }} refs/heads/ghidrust | cut -f1)
+          if [ -z "$sha" ]; then echo "::error::could not resolve ghidrust SHA"; exit 1; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "resolved ghidrust sha=$sha"
+
+  ghidrust:
+    needs: resolve-ghidrust
+    # owner/repo HARDCODED (Actions forbids expressions in `uses:`); CODE checkout SHA-pinned via ref (D7).
+    uses: ckir/clavity/.github/workflows/build-ghidrust.yml@ghidrust
+    with:
+      ref: ${{ needs.resolve-ghidrust.outputs.sha }}
+
+  e2e-ghidrust:
+    # BLOCKING live-E2E gate — the flagship vouches for the ghidrust it ships (shared reusable workflow, one
+    # definition with release-ghidrust.yml). `needs: ghidrust` so a broken build skips the ~573 MB Ghidra
+    # download; passes the SAME SHA-pinned source the build built.
+    needs: [resolve-ghidrust, ghidrust]
+    uses: ./.github/workflows/e2e-ghidrust.yml
+    with:
+      ref: ${{ needs.resolve-ghidrust.outputs.sha }}
+
   publish:
-    needs: [dotnet, classic]
+    # Atomic all-or-nothing: a broken/failed-E2E ghidrust blocks the whole clavity release (no continue-on-error).
+    needs: [dotnet, classic, ghidrust, e2e-ghidrust]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -78,6 +109,12 @@ jobs:
           name: ${{ needs.classic.outputs.artifact-name }}
           path: dist-classic
 
+      - name: Download ghidrust installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.ghidrust.outputs.artifact-name }}
+          path: dist-ghidrust
+
       - name: Assemble release assets + notes
         id: notes
         shell: bash
@@ -90,22 +127,24 @@ jobs:
           mkdir -p out
           cp dist-dotnet/* out/
           cp dist-classic/* out/
+          cp dist-ghidrust/* out/
           echo "assets in release:"; ls -1 out
           cat > body.md <<EOF
           # clavity $TAG
 
-          | variant | version | source |
-          |---------|---------|--------|
-          | dotnet  | ${{ needs.dotnet.outputs.version }}  | main@${{ needs.dotnet.outputs.sha }} |
-          | classic | ${{ needs.classic.outputs.version }} | clavity-classic@${{ needs.classic.outputs.sha }} |
+          | component | version | source |
+          |-----------|---------|--------|
+          | clavity-dotnet  | ${{ needs.dotnet.outputs.version }}  | main@${{ needs.dotnet.outputs.sha }} |
+          | clavity-classic | ${{ needs.classic.outputs.version }} | clavity-classic@${{ needs.classic.outputs.sha }} |
+          | ghidrust        | ${{ needs.ghidrust.outputs.version }} | ghidrust@${{ needs.ghidrust.outputs.sha }} |
 
-          The two variants are **mutually exclusive** on a machine — install ONE. Installers are **unsigned**
-          (Windows SmartScreen may warn on first run: *More info -> Run anyway*). Verify each \`.sha256\` against
-          its \`.exe\` before running.
+          **clavity-dotnet** and **clavity-classic** are the two **mutually exclusive** clavity variants — install
+          ONE. **ghidrust** is a separate tool (install alongside either). Installers are **unsigned** (Windows
+          SmartScreen may warn on first run: *More info -> Run anyway*). Verify each \`.sha256\` against its \`.exe\`.
           EOF
           echo "wrote body.md"
 
-      - name: Publish ONE clavity release (both installers)
+      - name: Publish ONE clavity release (all installers)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.notes.outputs.tag }}   # explicit: correct on BOTH tag-push and dispatch (no ref tag)
@@ -116,3 +155,5 @@ jobs:
             out/clavity-dotnet-setup-*.exe.sha256
             out/clavity-classic-setup-*.exe
             out/clavity-classic-setup-*.exe.sha256
+            out/ghidrust-setup-*.exe
+            out/ghidrust-setup-*.exe.sha256
