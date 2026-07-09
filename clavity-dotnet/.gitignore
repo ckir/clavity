@@ -1,0 +1,10 @@
+# .NET build output (re-anchored at clavity-dotnet/ depth)
+/publish
+/dist
+[Bb]in/
+[Oo]bj/
+artifacts/
+*.user
+TestResults/
+# build-generated flat install manifest (Task 5/Step 2b) — never committed
+/installer/marketplace.install.json
