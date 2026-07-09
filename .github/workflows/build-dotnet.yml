@@ -44,6 +44,17 @@ jobs:
             -o publish
           if (-not (Test-Path publish/clavity-ls.exe)) { throw "publish/clavity-ls.exe was not produced" }
 
+      - name: --help smoke (usage + exit 0)
+        shell: pwsh
+        run: |
+          # Guard that the shipped binary answers --help with usage and exit 0. clavity-ls prints usage to
+          # stdout via the unrecognized-arg fall-through; capture combined streams so the check stays robust
+          # if that ever moves to stderr.
+          $out = & "./publish/clavity-ls.exe" --help 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "clavity-ls --help exited $LASTEXITCODE" }
+          if ([string]::IsNullOrWhiteSpace($out)) { throw "clavity-ls --help produced no output" }
+          Write-Host "clavity-ls --help OK:`n$out"
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
