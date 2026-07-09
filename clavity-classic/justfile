@@ -1,0 +1,22 @@
+# clavity-classic dev recipes. Run standalone, or via the root justfile's `classic::` module.
+# Recipes MIRROR ci-classic.yml exactly (Format + Clippy + Test + Build). Do not add stricter gates.
+
+default:
+    @just --list
+
+# Lint gate: format check + clippy with test-fakes (ci-classic "Format" + "Clippy" steps).
+lint:
+    cargo fmt --all --check
+    cargo clippy --all-targets --features test-fakes -- -D warnings
+
+# Hermetic unit tests (ci-classic "Test" step).
+test:
+    cargo test --all --features test-fakes
+
+# Release build — no test-fakes, so the fake psmux never ships (ci-classic "Build (release)" step).
+build:
+    cargo build --release
+
+# Auto-format (mutating).
+fmt:
+    cargo fmt --all
