@@ -1,0 +1,42 @@
+[package]
+name = "ghidrust-mcp"
+version = "1.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "ghidrust"
+path = "src/main.rs"
+
+[lib]
+name = "ghidrust"
+path = "src/lib.rs"
+
+[dependencies]
+ghidra-ipc = { path = "../ghidra-ipc" }
+ghidra-worker-ctl = { path = "../ghidra-worker-ctl" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+sha2 = { workspace = true }
+rmcp = { version = "0.8", features = ["server", "transport-io", "macros"] }
+tracing-appender = "0.2"
+lru = "0.18"
+
+[target.'cfg(windows)'.dependencies.windows]
+workspace = true
+features = ["Win32_Security_Authorization"]
+
+[dev-dependencies]
+uuid = { workspace = true }
+ghidra-ipc = { path = "../ghidra-ipc" }
+ghidra-worker-ctl = { path = "../ghidra-worker-ctl" }
+tokio = { version = "1", features = ["full"] }
+# In-process rmcp client (protocol.rs). Adds only "client" (dep:tokio-stream) on top of the main
+# ["server","transport-io","macros"] set above; resolver = "2" (workspace root) keeps dev-dependency
+# feature unification scoped to test/dev targets, so this does not reach the `ghidrust` release binary.
+rmcp = { version = "0.8", features = ["client"] }

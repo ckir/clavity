@@ -1,0 +1,51 @@
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    # RUSTSEC-2024-0436: `paste` is unmaintained (not a vulnerability). It is pulled in
+    # transitively by rmcp-macros (rmcp 0.8.5's proc-macro crate), which we do not control.
+    # No safe upgrade exists per the advisory; the only escape is a major rmcp version bump,
+    # which is out of scope for Task 1 (rmcp is deliberately pinned at 0.8 here to pin the API
+    # surface). Revisit when M1a/M-later re-evaluates the rmcp major version.
+    "RUSTSEC-2024-0436",
+    # RUSTSEC-2026-0189: DNS-rebinding vulnerability in rmcp's Streamable HTTP *server*
+    # transport (missing Host-header validation) prior to 1.4.0. ghidrust-mcp enables only
+    # the `server`, `transport-io`, `macros` rmcp features (stdio transport) — the advisory
+    # text explicitly states "non-HTTP transports such as stdio and child-process transports
+    # are not affected." We do not enable transport-streamable-http-server. Upgrading to
+    # rmcp >=1.4.0 is a major-version bump out of scope for Task 1 (which pins 0.8 to lock the
+    # API surface for Tasks 12-15); revisit if/when a streamable-http transport is ever added.
+    "RUSTSEC-2026-0189",
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# Our own workspace crates are PolyForm-Noncommercial-1.0.0 (a deliberate non-OSI license) and are
+# never published (publish = false). `private.ignore` skips the license check for those unpublished
+# crates ONLY; every third-party dependency is still held to the permissive `allow` list below.
+# (Safe because crates.io packages cannot set publish = false, and `unknown-git = "deny"` bans the
+# other way a third-party crate could carry publish = false — so only our path crates are skipped.)
+private = { ignore = true }
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Internal path dependencies (our own workspace crates) carry no version and would otherwise be
+# flagged as wildcards. This permits unversioned PATH deps while still denying registry wildcards.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

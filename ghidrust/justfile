@@ -1,0 +1,32 @@
+# Cross-platform task recipes. Run `just` to list.
+default:
+    @just --list
+
+# Install the dev CLI tools this repo's recipes assume (idempotent).
+setup:
+    cargo install cargo-nextest --locked
+    cargo install cargo-deny --locked
+    cargo install cargo-insta --locked
+
+# Fast unit tests (pure Rust, no Ghidra).
+test:
+    cargo nextest run --workspace
+
+# Full suite incl. integration tests needing a real Ghidra + JDK 21.
+# Requires GHIDRA_INSTALL_DIR set to a Ghidra 12.1.2 install.
+test-all:
+    cargo nextest run --workspace --run-ignored all
+
+# Lint gate: format check + clippy (deny warnings) + supply-chain.
+lint:
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo deny check
+
+# Auto-format.
+fmt:
+    cargo fmt --all
+
+# Build everything.
+build:
+    cargo build --workspace

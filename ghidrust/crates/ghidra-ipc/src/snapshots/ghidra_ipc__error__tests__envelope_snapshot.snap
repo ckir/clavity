@@ -1,0 +1,11 @@
+---
+source: crates/ghidra-ipc/src/error.rs
+expression: env
+---
+{
+  "error": {
+    "code": "DECOMPILE_TIMEOUT",
+    "message": "decompile of FUN_00401230 timed out",
+    "suggested_action": "decompilation exceeded the time budget; raise the timeout or treat the function as opaque"
+  }
+}
