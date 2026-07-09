@@ -15,20 +15,21 @@ contains `{app}\plugins\{clavity-dotnet,agy-autotrain,commonmemory,ghidrust}`.)
 
 ## Goal (user-approved)
 
-Every plugin/tool ships its **own decoupled installer**; no installer bundles another's plugin. The two clavity
-tool installers **offer** the other plugins as **opt-in** checkboxes that **download + launch the standalone
-installer at runtime**. Internet-at-install is acceptable. Moving tool code onto per-tool branches is acceptable.
-All installers publish to **one** canonical umbrella release (**3a**).
+Every plugin/tool ships its **own fully-standalone installer**; no installer bundles or references another. There are
+**NO opt-ins** (decision 2026-07-09) — no in-installer checkboxes, no runtime download/launch of siblings. Each
+installer does exactly one thing. The user composes what they want by choosing which installers to run from the
+release page — the **palette IS the release page**. Moving tool code onto per-tool branches is acceptable. All
+installers publish to **one** canonical umbrella release (**3a**).
 
 ## The five installers
 
-| Installer | Installs | Self-registers plugin? | Offers opt-ins |
-|-----------|----------|------------------------|----------------|
-| `clavity-dotnet-setup` | `clavity-ls.exe` (→PATH) + **clavity-dotnet** plugin | yes | agy-autotrain, commonmemory, ghidrust |
-| `clavity-classic-setup` | classic binary (→PATH) + **clavity-classic** plugin | yes | agy-autotrain, commonmemory, ghidrust |
-| `ghidrust-setup` | `ghidrust.exe` (→PATH) + **ghidrust** plugin | yes | — |
-| `agy-autotrain-setup` | **agy-autotrain** plugin (plugin-only) | yes | — |
-| `commonmemory-setup` | **commonmemory** plugin (plugin-only) | yes | — |
+| Installer | Installs | Self-registers its plugin? |
+|-----------|----------|----------------------------|
+| `clavity-dotnet-setup` | `clavity-ls.exe` (→PATH) + **clavity-dotnet** plugin | yes |
+| `clavity-classic-setup` | classic binary (→PATH) + **clavity-classic** plugin | yes |
+| `ghidrust-setup` | `ghidrust.exe` (→PATH) + **ghidrust** plugin | yes |
+| `agy-autotrain-setup` | **agy-autotrain** plugin (plugin-only) | yes |
+| `commonmemory-setup` | **commonmemory** plugin (plugin-only) | yes |
 
 ## Components
 
@@ -45,17 +46,11 @@ Plugin-only installers (`agy-autotrain`, `commonmemory`) do exactly this with no
 **Open (plan): O1** — factor the registration `[Code]` into a shared `.iss` include (DRY across 5 installers)
 vs a tiny shared `plugin-register.exe` helper. Lean: shared `[Code]` include (no new binary, no coupling).
 
-### C2 — Opt-in download+launch (clavity-dotnet / clavity-classic)
-Each opt-in is an Inno `[Tasks]` checkbox (unchecked by default). When ticked, `[Code]` at `ssPostInstall`:
-1. downloads the sibling installer from **this release** —
-   `https://github.com/ckir/clavity/releases/download/<TAG>/<sibling>-setup-<VER>.exe`;
-2. runs it silently (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`), which self-registers per C1;
-3. ghidrust opt-in = the FULL `ghidrust-setup` (binary + plugin), per user decision.
-
-The clavity installer must know `<TAG>` + each sibling `<VER>` at build time → the umbrella build injects them via
-ISCC `/D` (the release tag + sibling versions resolved at cut time). Download mechanism: Inno's
-`InnoDownloadPlugin` (idp) or an `Exec` of `curl.exe`/`Invoke-WebRequest`. **Open (plan): O2** — pick idp vs
-Exec-curl; handle offline gracefully (skip with a clear message, since internet is "OK" not "required-hard").
+### C2 — (REMOVED) No opt-ins
+Opt-in download+launch was REMOVED (decision 2026-07-09). No installer fetches, references, or launches any sibling.
+This eliminates the entire runtime-download attack surface (TOCTOU, same-release hash-theatre, effective-tag/404) and
+drops the `/D` tag+version injection and the idp/curl download mechanism. The clavity tool installers install ONLY
+their own binary + own plugin; the user runs whatever other installers they want from the release page.
 
 ### C3 — No cross-plugin bundling; marketplace split
 - `clavity-dotnet.iss` `[Files]` drops `agy-autotrain`, `commonmemory`, `ghidrust` staging — keeps ONLY
@@ -71,7 +66,6 @@ Exec-curl; handle offline gracefully (skip with a clear message, since internet 
   agy-autotrain@<branch>, commonmemory@<branch>);
 - ghidrust keeps its BLOCKING `e2e-ghidrust` gate (shared reusable workflow, already built);
 - `publish` needs ALL build+gate jobs → atomic 10-asset release (5 `.exe` + 5 `.sha256`) + notes table.
-- clavity-dotnet/classic builds receive the `/D<TAG>`/sibling-versions for C2.
 - **Open (plan): O4** — agy-autotrain/commonmemory currently live on `main` as plugin dirs. Move each to its own
   branch (user OK'd) for symmetry, or keep on main and build from there? Plugin-only tools have no compile step,
   so a branch is optional. Lean: keep on `main` (they're pure plugin content, no binary) unless a reason emerges.
@@ -86,26 +80,21 @@ this one adds installers; the other governs where each version lives.
 
 ## Release artifact layout (approved)
 
-One `clavity-v<N>` release, 10 assets:
+One `clavity-v<N>` release, 10 assets — the palette; the user runs whichever they want:
 ```
-clavity-dotnet-setup-0.1.13.exe (+.sha256)   ce+ opt-ins: agy-autotrain, commonmemory, ghidrust
-clavity-classic-setup-0.1.0.exe (+.sha256)   + same opt-ins
-ghidrust-setup-1.0.0.exe        (+.sha256)   binary + plugin
+clavity-dotnet-setup-0.1.13.exe (+.sha256)   clavity-ls binary + clavity-dotnet plugin
+clavity-classic-setup-0.1.0.exe (+.sha256)   classic binary + clavity-classic plugin
+ghidrust-setup-1.0.0.exe        (+.sha256)   ghidrust binary + ghidrust plugin
 agy-autotrain-setup-0.1.2.exe   (+.sha256)   plugin only
 commonmemory-setup-0.1.0.exe    (+.sha256)   plugin only
 ```
 
 ## Error handling
 
-- **Opt-in download fails / offline** → skip that opt-in with a clear logged message; the primary tool install
-  still succeeds (internet is "OK", not a hard requirement) — never fail the whole install on an opt-in fetch.
-- **Sibling installer silent-run fails** → surface a non-fatal warning; the user can run the standalone later.
-- **Agent registration fails** (claude/agy) → the installer's own plugin registration failing IS fatal for that
-  installer (its job); an OPT-IN's registration failing is non-fatal (it's a convenience).
-- **Checksum** of a downloaded sibling → verify the `.sha256` before launching. NOTE (AGY-AFTER R1): the sibling's
-  `.sha256` lives in the SAME release, so this only catches a CORRUPTED download (transport integrity) — it is NOT
-  supply-chain protection (an attacker who can overwrite the release overwrites both). Real integrity would need
-  Authenticode signing (out of scope — installers are unsigned). Frame it as transport-integrity only.
+- **Agent registration fails** (claude/agy) → the installer's OWN plugin registration failing IS fatal for that
+  installer (that is its whole job) — report clearly and abort the install cleanly.
+- **No agent detected** (neither Claude Code nor agy) → clear message + non-zero exit (as today).
+- (No download/opt-in error paths — those were removed with the opt-ins.)
 
 ## Testing
 
@@ -125,28 +114,17 @@ commonmemory-setup-0.1.0.exe    (+.sha256)   plugin only
   marketplace.json` + `{app}\plugins` never clobber each other. The three tool installers are ALREADY distinct
   (`{localappdata}\Programs\{clavity-dotnet,ghidrust,clavity-classic}` — verified); the two new plugin-only installers
   MUST get their own (`…\Programs\agy-autotrain`, `…\commonmemory`).
-- **Sibling download → secured per-user temp, not `%TEMP%`.** Download the opt-in sibling into an installer-created,
-  ACL-restricted dir, then verify+launch. NOTE: agy flagged this as an LPE via a TOCTOU swap, but all installers are
-  `PrivilegesRequired=lowest` (verified) — NOT elevated — so a swapped payload runs at the SAME user level (no
-  privilege escalation). Severity is "same-user integrity," not LPE; the secured-temp + verify is still correct hygiene.
-- **Opt-in `<TAG>` = the EFFECTIVE release tag, with a guard.** The `/D`-injected tag must be the release tag
-  (`inputs.tag` on dispatch, the pushed tag otherwise) — NOT `github.ref_name` (which is `main` on dispatch → the
-  opt-in URL `…/releases/download/main/…` 404s at runtime). If the effective tag isn't `clavity-v*`, the installer
-  DISABLES the opt-ins (a non-release/test build yields a working primary install with opt-ins greyed out, never a
-  broken download). The tag IS known at build time (it triggered the run) even though the release publishes after
-  the build — the URL resolves at INSTALL time, which is post-publish.
 - **Uninstall is per-installer (by design, document it).** Opt-in-installed tools register as SEPARATE Add/Remove
   entries; uninstalling `clavity-dotnet` does NOT remove tools you opted into. This is the intended decoupling, not a
   bug — the release notes + each installer's finish page must say "each tool uninstalls independently."
 
 ## UX — the release as a palette (user requirement)
 
-The user picks components like a **palette**: the single `clavity-v<N>` release page is a menu of standalone
-installers ("choose your tool(s)"), and each clavity tool installer presents the add-ons as a clear opt-in palette
-("choose your plugins") rather than a hidden default. Concretely: (a) release notes lead with a short "pick what you
-want" table mapping each installer → what it gives you; (b) the `[Tasks]` page groups the opt-ins under a labelled
-"Optional plugins" heading with one-line value descriptions (already the style of the current add-on tasks); (c) no
-component is force-installed beyond the tool the user chose to run. The palette feel is the acceptance test for the
+The user composes via a **palette = the release page**: the single `clavity-v<N>` page is a menu of standalone
+installers, each doing exactly one thing ("pick what you want, run those"). Concretely: (a) release notes lead with a
+short table mapping each installer → what it gives you + when you'd want it; (b) each installer's own finish page
+states plainly what it installed and what it did NOT (so the user knows to grab siblings from the same page); (c)
+nothing is force-installed beyond the installer the user chose to run. The palette feel is the acceptance test for the
 UX seat.
 
 ## Out of scope (now)
@@ -157,6 +135,6 @@ UX seat.
 
 ## Open items (all → plan)
 
-O1 registration: shared `[Code]` include vs helper exe. O2 download: idp vs Exec-curl + offline handling.
-O3 scoped manifests: generate vs hand-maintain. O4 agy-autotrain/commonmemory: branch vs main. O5 dotnet-on-main
-vs dotnet-branch now that it no longer aggregates. O6 the `<TAG>`/sibling-version `/D` injection mechanics for C2.
+O1 registration: shared `[Code]` include vs helper exe. O3 scoped manifests: generate vs hand-maintain.
+O4 agy-autotrain/commonmemory: branch vs main. O5 dotnet-on-main vs dotnet-branch now that it no longer aggregates.
+(O2 download + O6 tag-injection removed with the opt-ins.)
