@@ -34,6 +34,20 @@ New products follow one repeatable pattern (its own top-level folder; an Inno-Se
 release lineage bundled into the umbrella release). See the playbook:
 [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md).
 
+## Dev workflow
+
+This monorepo uses a two-tier [`just`](https://github.com/casey/just) task runner. From the repo root:
+
+- `just test` — run every tool's tests · `just lint` — every tool's CI lint gate · `just build` · `just fmt`
+- One tool only: `just classic::test`, `just dotnet::lint`, `just ghidrust::build`, …
+
+Each tool's recipes mirror its CI gate exactly. First-time ghidrust setup (installs `cargo-nextest` +
+`cargo-deny`): `just ghidrust::setup`.
+
+Git hooks are managed by [`lefthook`](https://github.com/evilmartians/lefthook) — run `lefthook install`
+once per clone. **pre-push** runs `just lint` (catches fmt/clippy/compile breaks before CI); **pre-commit**
+runs `ruff` on staged Python (the agy bridge) only.
+
 ## License
 
 This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial
