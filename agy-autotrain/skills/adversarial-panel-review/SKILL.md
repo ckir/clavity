@@ -48,7 +48,10 @@ one, with a single-line PANEL VERDICT summarizing the round's outcome.
 For a high-leverage artifact only, route the artifact to the live agy peer for an independent second-model
 panel. Precheck that agy is idle (`agy_status`) before sending, then send the review request via `agy_ask`
 using filepath transport: the payload carries the artifact's path plus the panel instructions, not the
-artifact's full text — agy reads the named file itself off the shared filesystem. The already-folded ledger
+artifact's full text — agy reads the named file itself off the shared filesystem. Bind the scope in the
+payload: instruct agy to review ONLY this artifact, to assume the surrounding codebase context is correct,
+and to do no global discovery — this keeps the escalation round from sprawling into an open-ended codebase
+exploration. The already-folded ledger
 from Step 4, by contrast, has no file backing it and must be inlined as text into the payload.
 
 Every round's `agy_ask` payload inlines the full compact panel protocol (seat list, the "no new findings,
