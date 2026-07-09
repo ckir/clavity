@@ -1,0 +1,5 @@
+{
+  "name": "ghidrust",
+  "version": "1.0.0",
+  "description": "Drive a persistent headless Ghidra JVM from your agent: 19 reverse-engineering tools (decompile, navigate, and durable rename/comment/set-datatype/set-prototype/set-local writes) over MCP."
+}
