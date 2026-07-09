@@ -10,7 +10,7 @@
 ; manifest's ./plugins/<name> source paths. claude installs via the marketplace; agy installs the local dir.
 
 #define AppName "clavity-dotnet"
-#define AppVersion "0.1.12"
+#define AppVersion "0.1.13"
 #define ExeName "clavity-ls.exe"
 
 [Setup]
@@ -41,6 +41,9 @@ Source: "..\plugins\clavity-dotnet\*"; DestDir: "{app}\plugins\clavity-dotnet"; 
 ; Optional add-ons: shipped so the marketplace resolves, but only INSTALLED if the Phase 4 [Tasks] are ticked.
 Source: "..\plugins\agy-autotrain\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\plugins\commonmemory\*"; DestDir: "{app}\plugins\commonmemory"; Flags: ignoreversion recursesubdirs createallsubdirs
+; ghidrust: staged so the bundled marketplace's ./plugins/ghidrust entry resolves (else it dangles). Claude
+; installs it from the marketplace; the ghidrust.exe binary ships separately via the ghidrust-v<N> installer (D7).
+Source: "..\plugins\ghidrust\*"; DestDir: "{app}\plugins\ghidrust"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce
