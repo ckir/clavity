@@ -12,6 +12,7 @@ the shared home for their plugins, docs, and release machinery.
 | Tool | What it is | Docs | Release lineage |
 |------|-----------|------|-----------------|
 | **clavity** | Pairs [Claude Code](https://claude.com/claude-code) with [Antigravity (`agy`)](https://antigravity.google) — `.NET` + `classic` variants, plus `agy-autotrain` / `commonmemory` add-ons. | [README-CLAVITY.md](README-CLAVITY.md) | `clavity-v<N>` |
+| **ghidrust** | Drives a persistent headless Ghidra JVM — 19 reverse-engineering tools over MCP (attach + decompile + durable edits). | [plugins/ghidrust/README.md](plugins/ghidrust/README.md) | `ghidrust-v<N>` |
 
 ## Adding a tool
 

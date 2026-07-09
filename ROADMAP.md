@@ -10,6 +10,7 @@
 | Tool | What it is | Release lineage |
 |------|-----------|-----------------|
 | [`clavity`](#clavity) | Pairs Claude with a live Antigravity (`agy`) peer (dotnet + classic variants). | `clavity-v<N>` |
+| [`ghidrust`](#ghidrust) | Drives a persistent headless Ghidra JVM — 19 reverse-engineering tools over MCP (v1.0 attaches to an analyzed project). | `ghidrust-v<N>` |
 
 *(New tools add a row here and a `# <tool>` section below during onboarding — see the playbook, Phase B.)*
 
@@ -167,3 +168,25 @@ affect the packaging `.iss`/CI contracts):
 > effort also produced the agy capability profile + capability-aware wording protocol + the re-runnable acceptance
 > suite (`docs/agy-capabilities.md`, `docs/agy-remote-control-protocol.md`, `docs/agy-test-suite.md`). Everything
 > in this section is shipped; it is kept for provenance only.
+
+---
+
+# ghidrust
+
+> Reverse-engineering MCP server: attaches a persistent **headless Ghidra JVM** to an AI agent and exposes
+> **19 tools** (14 read/nav + 5 durable writes) over MCP stdio. Pure-Rust single binary `ghidrust`.
+
+## What ghidrust is now
+**SHIPPED — v1.0.0.** `ghidrust serve` attaches to a **pre-analyzed, GUI-closed** Ghidra project and drives
+it: decompile/navigate (`inspect_function`, `get_disassembly`, `get_xrefs`, …) plus durable, CAS-guarded
+writes saved to disk (`rename`, `comment`, `set_datatype`, `set_prototype`, `set_local`). Delivered
+two-channel: `ghidrust-setup-<VERSION>.exe` installs the binary→PATH; the plugin (skill + `.mcp.json`) ships
+via the marketplace. Runtime prereqs: Ghidra 12.1.2 + JDK 21.
+
+## ▶ Forward backlog (v1.1)
+- **`import_binary`** — create a project + import/analyze a binary (removes the "pre-analyze in the GUI"
+  constraint) — the headline v1.1 feature.
+- **Smart-server onboarding** — self-registering binary (`ghidrust register`), agent-driven lazy config (a
+  `configure_ghidrust` MCP tool), and JIT MCP diagnostics (`ghidrust doctor` in the boot path turning bad
+  config / open-GUI into actionable agent prompts). Requires new binary code (out of the v1.0 packaging).
+- **Lazy-boot worker** re-architecture (paired with `import_binary`).
