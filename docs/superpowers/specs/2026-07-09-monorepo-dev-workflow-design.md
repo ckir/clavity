@@ -59,9 +59,12 @@ work from the repo root while tool-specific build logic stays encapsulated per-t
 for clavity-dotnet and clavity-classic; ghidrust already has one. A root `lefthook.yml` runs each tool's
 `just lint` (fmt/clippy and the .NET equivalent) on **pre-push only** — catching malformed pushes locally before
 they burn a CI bounce, which matters in an agent-driven repo where an agent may push unformatted code.
-Pre-*push* (not pre-commit) keeps commit-time friction at zero. **No pre-commit hooks.** (Decided via the
-AGY-AFTER panel on 2026-07-09: the initial "no git hooks at all" call was revised to add pre-push lint after the
-UX/operator seat flagged the agent-push-loop cost; cascade `e350f145`.)
+Pre-*push* (not pre-commit) keeps commit-time friction at zero. **No NEW Rust/.NET pre-commit hooks** — the one
+pre-existing `pre-commit` hook (the `agy-mcp-bridge` Python `ruff` check under `clavity-classic/`) is RETAINED and
+folded into the root `lefthook.yml`; it fires only on staged Python, so Rust/.NET commits stay friction-free.
+(Decided via the AGY-AFTER panel on 2026-07-09: the initial "no git hooks at all" call was revised to add
+pre-push lint after the UX/operator seat flagged the agent-push-loop cost; the retained-Python-pre-commit
+clarification came from the item-1 plan review; cascade `e350f145`.)
 
 ### K5 — Installers: fully decoupled + uninstall parity
 Each tool ships its OWN standalone installer that self-registers only its own plugin (per the refreshed
