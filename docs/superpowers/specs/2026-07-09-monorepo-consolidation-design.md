@@ -61,7 +61,7 @@ main/
 **Rejected alternative:** `git filter-repo --to-subdirectory-filter` per branch to preserve `git blame` across the move. Higher effort/risk (SHA rewrite, fiddly merges) for archaeology the owner does not need; agy concurred it was a "nightmare."
 
 ### C2 — Two independent Cargo workspaces (do NOT merge)
-The two Rust tools have incompatible build settings (verified): classic is toolchain-pinned `1.96.0` / MIT / single-package; ghidrust is `stable`+`rust-version 1.82` / PolyForm-Noncommercial / a 3-crate workspace. A single root workspace would force one toolchain and one license across both — wrong. Keep **two** workspaces, each rooted in its folder with its own `rust-toolchain.toml` + `Cargo.lock`. This is what makes the monorepo safe; it is NOT a reason to avoid the monorepo.
+The two Rust tools have independent build settings (verified): classic is toolchain-pinned `1.96.0` / MIT / single-package; ghidrust is a 3-crate workspace / PolyForm-Noncommercial, vendored at migration time on `stable` (+ `rust-version 1.82` MSRV) and **hard-pinned to `1.96.0` in a post-migration follow-on** so both Rust tools now share the same toolchain. Even with matching toolchains the decision stands: a single root workspace would force one **license** and one **`Cargo.lock`/crate-graph** across both (MIT vs PolyForm-NC; single-package vs 3-crate) — wrong. Keep **two** workspaces, each rooted in its folder with its own `rust-toolchain.toml` + `Cargo.lock`. This is what makes the monorepo safe; it is NOT a reason to avoid the monorepo.
 
 ### C3 — IDE / toolchain coexistence
 - `.vscode/settings.json`: `rust-analyzer.linkedProjects = ["clavity-classic/Cargo.toml", "ghidrust/Cargo.toml"]` so both Rust workspaces resolve without thrash.
