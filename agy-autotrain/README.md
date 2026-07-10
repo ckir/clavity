@@ -37,14 +37,9 @@ drive agy (core driving skill) ──learn──▶ knowledge/agy-observations.m
 - **Knowledge** (`knowledge/`): the canonical `agy-capabilities.md` / `agy-assumptions.md` travel *inside*
   the plugin, so it ships as a portable, standalone "agy instruction manual."
 
-## Review discipline — `adversarial-panel-review`
-
-Alongside the learning loop, the plugin ships the **`adversarial-panel-review`** skill: convene an
-adversarial multi-seat panel to tear down a spec, plan, or other high-leverage artifact *before* acting on
-it — a palette of expert seats (each hunting a different defect-class), a live-agy escalation round,
-fold-with-verification, and a one-line PANEL VERDICT. It codifies the **AGY-AFTER** team-panel review
-discipline. Invoke it explicitly ("convene a panel review on `<file>`"); the AGY-AFTER reminder only points
-at it — it never auto-runs a review on its own.
+The `adversarial-panel-review` skill (AGY-AFTER team-panel review) and its PostToolUse reminder hook now
+ship with each driver's own plugin (`clavity-dotnet/plugin`, `clavity-classic/plugin`) instead of here —
+agy-autotrain retains only the learning loop (learn/curate/verify + the observations inbox).
 
 ## Layout
 
@@ -53,7 +48,6 @@ agy-autotrain/
   .claude-plugin/plugin.json · plugin.json   # dual manifests
   skills/agy-learn/          # capture (sanitise → inbox)
   skills/agy-curate/         # curate (promote/verify/recompile → curate-commit)
-  skills/adversarial-panel-review/   # AGY-AFTER: adversarial panel to tear down a spec/plan before acting
   knowledge/agy-capabilities.md · agy-assumptions.md   # canonical manual (portable)
   knowledge/agy-observations.md   # inbox (raw, project-agnostic)
   knowledge/golden-header.md      # the compiled header source (committed to the shared path by agy-curate)

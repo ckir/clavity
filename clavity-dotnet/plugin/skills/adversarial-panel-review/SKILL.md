@@ -48,15 +48,16 @@ one, with a single-line PANEL VERDICT summarizing the round's outcome.
 
 ### Step 2 — agy escalation (high-leverage)
 For a high-leverage artifact only, route the artifact to the live agy peer for an independent second-model
-panel. Precheck that agy is idle (`agy_status`) before sending, then send the review request via `agy_ask`
-using filepath transport: the payload carries the artifact's path plus the panel instructions, not the
+panel. Precheck the peer is idle, then send the review request over your driver's review-ask transport using
+filepath transport (clavity-dotnet: the `agy_ask` MCP tool, after an `agy_status` idle-check; clavity-classic:
+`clavity ask --review-only`): the payload carries the artifact's path plus the panel instructions, not the
 artifact's full text — agy reads the named file itself off the shared filesystem. The already-folded ledger
 from Step 4, by contrast, has no file backing it and must be inlined as text into the payload. Bind the
 scope in the payload as well: instruct agy to review ONLY this artifact, to assume the surrounding codebase
 context is correct, and to do no global discovery — this keeps the escalation round from sprawling into an
 open-ended codebase exploration.
 
-Every round's `agy_ask` payload inlines the full compact panel protocol (seat list, the "no new findings,
+Every round's review-ask payload inlines the full compact panel protocol (seat list, the "no new findings,
 not padding" rule, the verdict format) — never an abbreviated pointer back to an earlier round. Do this on
 every round, not just the first, because agy's own working context can be compacted or truncated mid-review,
 so a shorthand reference to "the protocol from round 1" can point at something agy no longer has. Sending the
@@ -118,7 +119,7 @@ genuinely needs one).
 
 In every round, paste the running "already-folded — do-NOT-re-raise" ledger so each seat is hunting a new
 defect-class rather than re-deriving something already settled. When the round is an agy escalation, this
-ledger must be serialized directly into the `agy_ask` payload text itself, not merely held in your own
+ledger must be serialized directly into the review-ask payload text itself, not merely held in your own
 working context — agy's context can be truncated over a long review, and a fresh cascade carries nothing
 forward, so relying on agy to remember earlier rounds unaided is not safe.
 

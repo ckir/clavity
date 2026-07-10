@@ -2,6 +2,11 @@
 
 Prior version history lives in `git log`; this changelog starts at 0.1.3.
 
+## 0.1.4
+- Move the `adversarial-panel-review` skill (de-transported) + AGY-AFTER hook into each driver's plugin —
+  the panel discipline is now driver-native. agy-autotrain retains the learning loop (learn/curate/verify +
+  observations inbox). (The agnostic manuals + golden-header baseline move to the driver seed in Phase 3.)
+
 ## 0.1.3
 - Add the **`adversarial-panel-review`** skill — convene an adversarial multi-seat panel to tear down a
   spec, plan, or other high-leverage artifact before it is acted on: a palette of distinct expert seats

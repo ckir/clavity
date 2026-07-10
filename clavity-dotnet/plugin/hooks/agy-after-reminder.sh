@@ -4,7 +4,7 @@
 # reminder to route the FINISHED artifact through an adversarial panel BEFORE presenting
 # it to the user — the complement to AGY-FIRST (forks). The full procedure lives in the
 # `adversarial-panel-review` skill (this hook only POINTS at it; it never runs the panel).
-# Ships with the agy-autotrain plugin, so it installs/uninstalls with the plugin and leaves
+# Ships with this driver's plugin, so it installs/uninstalls with the plugin and leaves
 # no residue in the user's CLAUDE.md. Fail-open: any error → exit 0. Suppressed by a
 # `.no-agy` kill-switch (cwd or ~/.claude), matching the other agy-weave hooks.
 set +e
