@@ -309,7 +309,8 @@ In `GoldenHeader.cs`: replace `ResolvePath` (lines 20-23) and `TryRead` (lines 3
         // it already contains the old baseline + learned rules. Until GROWTH exists, inject the legacy file
         // ALONE; do NOT concatenate it with the new SEED, or the baseline is injected twice. This still
         // preserves the upgrading user's wisdom (A1). agy-curate migrates it to growth.md on its next run and
-        // renames the legacy file (T9), after which this branch stops firing.
+        // (T9). Once growth.md exists this branch no longer fires; the legacy file is LEFT in place as a
+        // harmless fallback (not renamed — that would break the classic failover, panel agy-R3-c).
         if (growth is null)
         {
             var legacy = TryReadFile(Path.Combine(dir, LegacyFileName), warn);
@@ -555,19 +556,23 @@ Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversi
 
 - [ ] **Step 2: Seed `golden-header.seed.md` via standard PowerShell (owner constraint — always available; no binary dependency at install)**
 
-Seeding is now just placing a file (split files removed all region surgery), so use **standard Windows PowerShell** (always present) rather than the just-installed binary (avoids the AV/redist "binary won't run" risk). In `CurStepChanged`, `ssPostInstall`, AFTER the `install --agent all` Exec and BEFORE the optional add-on block, create `%USERPROFILE%\.clavity` if absent and copy the bundled baseline to `golden-header.seed.md`, replacing it (installer owns SEED) and never touching `growth.md`. Non-blocking. Declare `PsCmd, SrcPath: String;` in the procedure's `var` block:
+Seeding is now just placing a file (split files removed all region surgery), so use **standard Windows PowerShell** (always present) rather than the just-installed binary (avoids the AV/redist "binary won't run" risk). In `CurStepChanged`, `ssPostInstall`, AFTER the `install --agent all` Exec and BEFORE the optional add-on block, create `%USERPROFILE%\.clavity` if absent and copy the bundled baseline to `golden-header.seed.md`, replacing it (installer owns SEED) and never touching `growth.md`. Non-blocking. Declare `PsCmd, SrcPath, DestDir: String;` in the procedure's `var` block:
 
 ```pascal
     { Phase 3: seed golden-header.seed.md from the bundled baseline with standard PowerShell (always available;
       no dependency on the just-installed binary running). Overwrites SEED only; never touches GROWTH. }
     SrcPath := ExpandConstant('{app}\seed\golden-header.md');
-    { panel R2-1: double any single-quote so a username like O'Brien can't break the PS single-quoted literal. }
+    { panel agy-R3-a: resolve the profile via Inno's {%USERPROFILE} (same as the zombie-header rename below),
+      NOT PowerShell's $env:USERPROFILE — under any elevation the two can differ, silently seeding the wrong
+      profile. Inno's constant matches the interactive install user consistently. }
+    DestDir := ExpandConstant('{%USERPROFILE}\.clavity');
+    { panel R2-1: double any single-quote so a username like O'Brien can't break the PS single-quoted literals. }
     StringChangeEx(SrcPath, '''', '''''', True);
+    StringChangeEx(DestDir, '''', '''''', True);
     PsCmd :=
-      '$d = Join-Path $env:USERPROFILE ''.clavity'';' +
-      'New-Item -ItemType Directory -Force -Path $d | Out-Null;' +
+      'New-Item -ItemType Directory -Force -Path ''' + DestDir + ''' | Out-Null;' +
       'Copy-Item -LiteralPath ''' + SrcPath + ''' ' +
-      '-Destination (Join-Path $d ''golden-header.seed.md'') -Force';
+      '-Destination ''' + DestDir + '\golden-header.seed.md'' -Force';
     { -Command (inline) is not governed by execution policy, so no -ExecutionPolicy flag is needed (panel R2-2). }
     if not Exec('powershell.exe', '-NoProfile -Command "' + PsCmd + '"',
                 '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
@@ -633,7 +638,8 @@ Change the skill so it:
 3. **No manual editing:** remove the "promote into capabilities/assumptions" instructions — those files are SEED. The verify harness still gates testable assumptions before they enter GROWTH.
 4. **Fix the stale classic note:** the classic `clavity curate-commit` verb **exists and is tested** (`clavity-classic/src/main.rs`); delete the "does not exist yet / bridge by writing the shared path directly" text.
 5. **Loud-guide:** if no clavity binary is on PATH, still write `golden-header.growth.md` and emit a **non-blocking** warning ("no clavity driver detected; the learned header won't be injected until a driver is installed") — do NOT hard-fail.
-6. **Legacy cleanup (panel F7):** when migrating (a flat `%USERPROFILE%\.clavity\golden-header.md` existed and was read as the GROWTH floor), after `growth.md` is written, rename the legacy flat file to `golden-header.md.migrated` — so it can never resurrect stale content if `growth.md` is later removed (the binary's read prefers split files, but only while `growth.md` exists).
+6. **Do NOT rename/remove the legacy flat file (panel agy-R3-c — supersedes the earlier F7 rename).** Leave `%USERPROFILE%\.clavity\golden-header.md` in place. Renaming it to `.migrated` would **break the `clavity-classic` failover**, which cannot read split files until its release-gate parity lands — a failover install would find no header it understands. It is also unnecessary: the binary's read-precedence already prevents any resurrection/double-header (GROWTH present → legacy ignored; GROWTH absent → legacy read *alone*, R2-agy-1). The legacy file stays a harmless, always-readable fallback for both variants.
+7. **GROWTH budget vs SEED (panel R3-1):** the binary injects `seed+growth` only if their **combined** size ≤ the 16 KB cap (else it degrades to SEED-only, F2). So compile GROWTH to fit the **remaining** budget — approximately `16 KB minus the current size of `golden-header.seed.md`` — not the full 16 KB. A `growth.md` that fits the per-file cap but overflows the combined cap is written successfully yet **never injected** (silently degraded every read). Keep GROWTH lean and check the seed size when compiling.
 
 - [ ] **Step 2: Verify the reference paths resolve and no stale content remains**
 
