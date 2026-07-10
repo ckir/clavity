@@ -1,9 +1,13 @@
 # Cohesive Distribution Model — Design
 
 **Date:** 2026-07-11
-**Status:** design — owner-approved model (2026-07-11); AGY-AFTER adversarial-panel **round 1 folded** (solo panel
-F1–F4 + agy escalation cascade `0d033d59`: idempotent-upgrade, `-LiteralPath` seeding, PATH false-positive folded;
-agy's "malformed marketplace CLI" claim refuted by the `PluginInstaller.cs` oracle); pending user review → plan.
+**Status:** design — owner-approved model (2026-07-11); AGY-AFTER adversarial-panel **rounds 1–2 folded** (agy cascade
+`0d033d59`). R1: idempotent-upgrade, `-LiteralPath` seeding, install rollback, structural local-only, PATH
+false-positive, teardown scope; agy's "malformed marketplace CLI" claim refuted by the `PluginInstaller.cs` oracle.
+R2: cross-member `~/.clavity` data-ownership (driver purge must not delete agy-autotrain `growth.md`), decoupled
+per-member republish (no blocking sibling gate), manifest path/source contract, rollback exception-safety, upgrade
+hygiene, repo-root manifest relocation; agy's ghidrust-seeds-golden-header example refuted (ghidrust has none). Owner
+directed "go for green" — running rounds to a no-live-challenge pass.
 **Supersedes / resets:** all prior distribution decisions for the umbrella repo, including
 `2026-07-09-per-plugin-decoupled-installers-design.md` (whose download/opt-in mechanics and marketplace-split
 details are re-derived from scratch here) and the *Distribution* phase (Component 3 / Acceptance #6) of
@@ -92,9 +96,27 @@ silently roll the successful one back without saying so. "No agent detected at a
 Plugin-only members (agy-autotrain, commonmemory) do exactly this with **no binary step** — their `.exe` is small
 (plugin assets + registration logic only).
 
-**Install-time rollback (folded).** If a step **after** a successful plugin registration fails (binary unpack, PATH,
-a second agent), the installer must **deregister** what it registered (plugin uninstall + `marketplace remove`) before
-aborting — otherwise a failed *install* leaves the same dangling-marketplace state C6 guards against on *uninstall*.
+**Install-time rollback (folded), best-effort and exception-safe (folded R2 — Cascade).** If a step **after** a
+successful plugin registration fails (binary unpack, PATH, a second agent), the installer must **deregister** what it
+registered (plugin uninstall + `marketplace remove`) before aborting — otherwise a failed *install* leaves the same
+dangling-marketplace state C6 guards against on *uninstall*. The rollback MUST track **which** agents actually
+registered (deregister only those), and **swallow every teardown error** — an unhandled exception in an Inno `[Code]`
+rollback halts mid-cleanup and re-creates the exact dangling state it exists to prevent. Rollback is best-effort:
+report if it cannot fully reverse, never throw.
+
+**Scoped-manifest path/source contract (BLOCKING — folded R2, Activation Auditor).** For `plugin install <plugin>@<mkt>`
+to resolve, each installer MUST place its scoped manifest at exactly `{app}\.claude-plugin\marketplace.json` and list
+the plugin with `source: ./plugins/<name>` matching where it staged the plugin (`{app}\plugins\<name>`). A path/source
+mismatch resolves nothing → C1's fatal-abort fires on every install. The scoped-manifest generator (O3) owns this shape.
+
+**Upgrade hygiene (folded R2 — State Corruptor).** Inno `ignoreversion` overwrites but never **deletes** files a newer
+plugin version dropped. On a re-run/upgrade the installer must clear `{app}\plugins\<name>` before re-staging (or the
+marketplace re-reads orphaned files). Pairs with the idempotent-registration rule above.
+
+**Concurrent installs (folded R2 — State Corruptor).** The five installers share no setup mutex (unlike today's single
+`ClavitySetupMutex`), yet each `claude plugin marketplace add` mutates Claude's **global** config. The plan must
+confirm the claude/agy CLIs serialize their own config writes; if not, add a shared cross-installer setup mutex so two
+simultaneous installs cannot tear Claude's config. **Open (plan) O6.**
 
 **Open (plan) O1** — factor the registration `[Code]` into a shared `.iss` include (DRY across five installers) vs a
 tiny shared helper `.exe`. Lean: shared `[Code]` include. This is also the **mitigation for the 1→5 decentralization
@@ -133,7 +155,8 @@ zero-install discovery — acceptable in exchange for ironclad version parity an
 
 ### C4 — Golden-header baseline seed → installer payload (not the plugin)
 
-A binary member carries a small **data** file its binary reads at runtime — the golden-header baseline
+The two **agy-driver** binary members — clavity-dotnet and clavity-classic **only** (ghidrust has **no** golden-header;
+it is a Ghidra RE tool) — carry a small **data** file their binary reads at runtime: the golden-header baseline
 (`seed/golden-header.md`). It is neither an agent plugin asset nor the binary. It ships in the **installer's file
 payload** and is seeded to a stable user-profile path (`%USERPROFILE%\.clavity\golden-header.seed.md`) via standard
 PowerShell post-install (as today; unconditional — the SEED ships even without the agy-autotrain add-on).
@@ -175,6 +198,16 @@ errors on every future plugin operation. Each installer's uninstall therefore:
 - tolerates a missing exe/dir (fail-open so Add/Remove Programs can still complete);
 - (dotnet/classic) preserves the existing zombie-header backup of `~/.clavity` files when keeping user data.
 
+**Shared `~/.clavity` state is owned per-file, never blind-deleted (folded R2 — Axiom Breaker).** `~/.clavity` is
+shared state written by more than one member: a driver seeds `golden-header.seed.md`; agy-autotrain writes
+`golden-header.growth.md`. Because the installers are standalone and disjoint, teardown must respect ownership rather
+than wipe the shared dir: a **driver** uninstall/purge removes only **driver-owned** files (`seed.md`, its `.sha256`,
+the legacy flat file) — it must **not** delete agy-autotrain-owned `golden-header.growth.md`; `growth.md` is removed
+only when **agy-autotrain** is uninstalled. This is the split-file ownership already defined in the seed/auto-split
+spec; the cohesion model must not regress it into a blind `~/.clavity` delete that rips out a sibling's data. The seed
+file itself is teardown-managed **by the binary** (`clavity-ls uninstall --purge-data` / the zombie-header backup),
+**not** by Inno's `[Files]` uninstall tracking (it was written out-of-band to the profile, so `[Files]` never sees it).
+
 ### C7 — Dependency blindness is a runtime concern, not an install-time one (agy failure-mode A3)
 
 A standalone `agy-autotrain` cannot verify at install time that a driver (dotnet or classic) is present. It does
@@ -192,7 +225,13 @@ siblings from the same page). Nothing is force-installed beyond the installer th
 - Binary members build their binary, embed it, ISCC the installer, run a per-installer install/uninstall smoke.
 - Plugin-only members have no compile step; their installer just packages the plugin + registration `[Code]`.
 - ghidrust keeps its BLOCKING `e2e-ghidrust` live gate.
-- `publish` needs all build+gate jobs → an atomic 10-asset release.
+- **Release coupling — decoupled by design (folded R2 — Activation Auditor).** A *full* umbrella build publishes all
+  10 assets together, but a single member MUST be independently re-buildable and re-publishable onto the **existing**
+  `clavity-v<N>` release via a per-member `workflow_dispatch`, so one member's blocking gate (e.g. a flaky
+  `e2e-ghidrust` network fetch) cannot freeze an unrelated `clavity-dotnet` / `agy-autotrain` hotfix. The umbrella
+  release is the stable *catalog* (one page, cohesive), **not** an all-or-nothing publish barrier — otherwise the
+  atomic-publish requirement re-couples exactly the members this design decouples. (Owner-delegated call, 2026-07-11:
+  "go for green" — resolved toward per-member republish rather than a blocking all-5 gate.)
 
 **Open (plan) O4** — agy-autotrain / commonmemory currently live on `main` as plugin dirs. Keep building them from
 `main` (pure plugin content, no binary → a branch is optional) unless a reason emerges. **O5** — with the dotnet
@@ -228,6 +267,10 @@ enumerate that teardown so the new and old cannot coexist and contradict:
   single-member assertion + the C9 unique-name / C6 no-dangling checks.
 - **New installers:** `agy-autotrain` and `commonmemory` gain their own plugin-only installers (they have none today);
   `ghidrust`'s installer gains local plugin self-registration (today it ships binary-only, plugin via remote marketplace).
+- **Relocate the repo-root marketplace manifest (folded R2 — required by C3/E).** The existing
+  `.claude-plugin/marketplace.json` at the repo root is publicly `marketplace add`-able and so defeats local-only;
+  move the full member list to the non-addable build source (`build/members.json`) and re-point `build-dotnet.yml`'s
+  scoped-manifest generation at it. Leaving the root manifest in place silently re-opens the version-skew path.
 
 ## Failure modes (agy consult) and disposition
 
@@ -243,6 +286,11 @@ enumerate that teardown so the new and old cannot coexist and contradict:
 | E | Local-only defeated by a public repo-root addable manifest | Mitigated — C3 keeps the build source non-addable (not a root `.claude-plugin/marketplace.json`) |
 | F | claude/agy plugin CLI drift breaks all five installers at once | Accepted + mitigated — C1/O1 shared include keeps the contract in one editable place; PluginInstaller.cs is the named oracle |
 | G | Mutual-exclusion PATH false-positive traps a per-user install | Accepted (low) — C5 prefers the per-user registry marker; PATH hit advisory |
+| H | Driver purge blind-deletes agy-autotrain's `growth.md` (sibling data) | Blocking requirement — C6 per-file ownership (driver removes `seed.md` only) |
+| I | Blocking sibling gate freezes an unrelated member's hotfix | Mitigated — C8 per-member republish onto the rolling umbrella release |
+| J | Scoped manifest path/source mismatch → every install fatally aborts | Blocking requirement — C1 manifest path/source contract |
+| K | Rollback throws mid-cleanup → dangling state it meant to prevent | Mitigated — C1 rollback is per-agent-tracked + exception-swallowing |
+| L | Upgrade orphans stale plugin files / concurrent installs tear Claude config | Mitigated — C1 upgrade-clean + O6 concurrent-install serialization |
 
 ## Error handling
 
@@ -290,7 +338,12 @@ enumerate that teardown so the new and old cannot coexist and contradict:
 8. **Re-running an installer over an existing install upgrades in place** — idempotent registration does not abort on
    an already-added marketplace / already-installed plugin.
 9. Registration runs per detected agent independently; a partial (one-agent) failure is reported, not silently
-   dropped, and does not leave a half-registered install without rollback.
+   dropped, and does not leave a half-registered install without rollback (rollback is per-agent-scoped and cannot
+   itself throw the installer into a dangling state).
+10. Uninstalling a driver removes only driver-owned `~/.clavity` files (`seed.md` + sidecar + legacy flat); a
+    co-installed agy-autotrain's `golden-header.growth.md` survives (removed only by agy-autotrain's own uninstall).
+11. A single member can be rebuilt and republished onto the existing `clavity-v<N>` release without any sibling's
+    build/gate passing (no blocking sibling freezes an unrelated hotfix).
 
 ## Open items (all → plan)
 
@@ -298,3 +351,5 @@ enumerate that teardown so the new and old cannot coexist and contradict:
 - **O3** scoped manifests: generate from repo-root full manifest vs hand-maintain (lean: generate).
 - **O4** agy-autotrain / commonmemory build source: `main` vs own branch (lean: `main`).
 - **O5** dotnet on `main` vs a `dotnet` branch now that it no longer aggregates (explicit call in the plan).
+- **O6** concurrent-install serialization: confirm the claude/agy CLIs lock their own global config, else add a shared
+  cross-installer setup mutex.
