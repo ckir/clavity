@@ -10,7 +10,10 @@
 
 **Scope (locked; confirm at review gate):**
 - This is the **full atomic bundle** the Phase-2 panel deferred: data move + installer seeding + binary split API + `agy-curate` EXTEND, all landing together (a partial move orphans `agy-curate`).
-- **dotnet-only.** Classic (`clavity-classic/src/golden_header.rs`, `clavity-classic/installer/clavity-classic.iss`) is **NOT touched here**. Its read-path parity is a **RELEASE GATE** (see the closing section): a failover install reads the same `%USERPROFILE%\.clavity\` and must understand split files before any public release, else it drives blind.
+- **dotnet-only.** Classic (`clavity-classic/src/golden_header.rs`, `clavity-classic/installer/clavity-classic.iss`) is **NOT touched here**. Its parity is a **RELEASE GATE** (see the closing section): a failover install reads the same `%USERPROFILE%\.clavity\` and must, before any public release, (a) read split files, (b) ship the seed manual+baseline, and (c) reconcile the `CLAVITY_GOLDEN_HEADER` contract (see next bullet), else it drives blind.
+- **`CLAVITY_GOLDEN_HEADER` contract change (panel F3).** This plan changes the override from a **file path** to a **directory** in dotnet. Classic still reads it as a **file** (`golden_header.rs:25`), so post-change the same env var means different things across variants. Mitigation in this plan (T5): if the override is file-shaped (has an extension / names an existing file), the binary **warns** rather than silently treating a file as a directory. Full reconciliation (classic adopting dir semantics) is a release-gate item, NOT built here.
+
+**Execution note (panel F1 — build-ordering):** Tasks **T3, T4 and T5 MUST be dispatched to a single subagent as ONE unit** and reviewed only after T5. Removing `ResolvePath`/`TryRead` (T3) intentionally red-breaks the build until T5 rewires the callers, so a per-task "tests pass" gate is unachievable mid-sequence. Do NOT dispatch them separately under subagent-driven-development.
 
 ---
 
@@ -75,15 +78,21 @@ git mv agy-autotrain/knowledge/agy-capabilities.md  seed/agy-capabilities.md
 git mv agy-autotrain/knowledge/golden-header.md      seed/golden-header.md
 ```
 
-- [ ] **Step 2: Verify the inbox stayed and the three moved**
+- [ ] **Step 2: Scrub the baseline's version stamp + stale comment (panel F9 — else acceptance #2 goes RED)**
+
+`seed/golden-header.md` currently opens with an HTML comment carrying a version stamp (`Verified against agy 1.0.10 … A1–A5 all PASS`) and a stale flat-path/classic note — Phase 1 scrubbed `assumptions`/`capabilities` but never this compiled header. This file is seeded verbatim into `golden-header.seed.md` and injected into every ask, so the stamp both wastes tokens and violates the version-agnostic-seed principle (acceptance #2 greps this file for version stamps). Rewrite the opening comment to be version-agnostic and split-file-aware — remove the `Verified against agy 1.0.10 …` line entirely and the `committed to … golden-header.md` / `classic: the clavity-driving skill prepends it manually` phrasing; keep only a short "compiled SEED baseline; injected as the SEED region; keep dense/decision-changing" note. Do NOT touch the `[⚠️ CRITICAL ANTI-PATTERNS]` / `[LOAD-BEARING ASSUMPTIONS]` body (that is the decision-changing content).
+
+Verify: `rg -i "verified against|1\.0\.[0-9]|Gemini 3|golden-header\.md|clavity-driving skill prepends" seed/golden-header.md` → **no matches**.
+
+- [ ] **Step 3: Verify the inbox stayed and the three moved**
 
 Run: `ls seed/ && ls agy-autotrain/knowledge/`
 Expected: `seed/` has the 3 files; `agy-autotrain/knowledge/` has ONLY `agy-observations.md`.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add -A && git commit -m "feat(seed): move agy manual + golden-header baseline to top-level seed/"
+git add -A && git commit -m "feat(seed): move agy manual + golden-header baseline to seed/; scrub baseline version stamp"
 ```
 
 ---
@@ -95,9 +104,11 @@ git add -A && git commit -m "feat(seed): move agy manual + golden-header baselin
 - [ ] **Step 1: Enumerate the referrers (the worklist)**
 
 ```bash
-rg -l "agy-autotrain/knowledge/(agy-assumptions|agy-capabilities|golden-header)\.md|knowledge/(agy-assumptions|agy-capabilities|golden-header)\.md" --glob '!seed/**'
+rg -l "(agy-autotrain/knowledge/|knowledge/|plugins/agy-autotrain/knowledge/)(agy-assumptions|agy-capabilities|golden-header)\.md" --glob '!seed/**'
 ```
-Also check the relative forms used inside `agy-curate` and the two driver `CLAUDE.md`s (`../agy-autotrain/knowledge/agy-assumptions.md`). Expected referrers include: `clavity-dotnet/CLAUDE.md`, `clavity-classic/CLAUDE.md`, `clavity-classic/README.md`, `clavity-classic/CONTRIBUTING.md`, `clavity-classic/docs/agy-remote-control-protocol.md`, `clavity-classic/docs/agy-test-suite.md`, `clavity-classic/src/membus.rs` (doc-comments), `agy-autotrain/skills/agy-curate/SKILL.md`. (`agy-observations.md` referrers must be LEFT untouched — that file did not move.)
+Also check the relative forms used inside `agy-curate` and the two driver `CLAUDE.md`s (`../agy-autotrain/knowledge/agy-assumptions.md`). Expected **live** referrers to repoint: `clavity-dotnet/CLAUDE.md`, `clavity-classic/CLAUDE.md`, `clavity-classic/README.md`, `clavity-classic/CONTRIBUTING.md`, `clavity-classic/docs/agy-remote-control-protocol.md`, `clavity-classic/docs/agy-test-suite.md`, `clavity-classic/src/membus.rs` (doc-comments), `agy-autotrain/skills/agy-curate/SKILL.md`, **and the live `docs/` breadcrumb stubs `docs/agy-assumptions.md` + `docs/agy-capabilities.md` if present** (panel F5 — these point at the moved file via the `plugins/agy-autotrain/knowledge/…` install form and must be repointed to `../seed/…`).
+
+**Do NOT repoint historical records** — `docs/superpowers/{plans,specs,spikes}/**` and `ROADMAP.md` prose reference the old path *as of their writing* and are frozen history (same rule as Phase 2's ROADMAP handling). Leave them. (`agy-observations.md` referrers must also be LEFT untouched — that file did not move.)
 
 - [ ] **Step 2: Deterministic repoint rule**
 
@@ -109,12 +120,13 @@ For each referrer, compute the correct relative path from the referrer's directo
 
 Edit each link. Do NOT touch `agy-observations.md` links. Do NOT change any prose meaning — link targets only.
 
-- [ ] **Step 3: Verify zero stale links remain (grep oracle)**
+- [ ] **Step 3: Verify zero stale LIVE links remain (grep oracle)**
 
 ```bash
-rg "agy-autotrain/knowledge/(agy-assumptions|agy-capabilities|golden-header)\.md|knowledge/(agy-assumptions|agy-capabilities|golden-header)\.md" --glob '!docs/superpowers/**'
+rg "(agy-autotrain/knowledge/|plugins/agy-autotrain/knowledge/|[^-]knowledge/)(agy-assumptions|agy-capabilities|golden-header)\.md" \
+  --glob '!docs/superpowers/plans/**' --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/spikes/**' --glob '!ROADMAP.md'
 ```
-Expected: **no matches** (every referrer now points at `seed/`). Cross-check with the Grep tool (this shell's `grep -E` false-cleans on `](`-adjacent CRLF patterns — use `rg` without `-E`, or the Grep tool).
+Expected: **no matches** — every LIVE referrer (including `docs/agy-assumptions.md`) now points at `seed/`; only frozen historical prose (plans/specs/spikes/ROADMAP) is excluded, and that is deliberate. Cross-check with the Grep tool (this shell's `grep -E` false-cleans on `](`-adjacent CRLF patterns — use `rg` without `-E`, or the Grep tool).
 
 - [ ] **Step 4: Commit**
 
@@ -185,14 +197,14 @@ public void TryReadCombined_ignores_legacy_when_split_files_present()
 }
 
 [Fact]
-public void TryReadCombined_returns_null_and_warns_when_combined_over_cap()
+public void TryReadCombined_drops_growth_but_keeps_seed_when_combined_over_cap()
 {
-    var half = new string('a', (GoldenHeader.MaxBytes / 2) + 1);
-    File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), half);
-    File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), half);
+    // Each region is under the per-file cap, but their sum is over it. Degrade to SEED, do NOT drop everything.
+    File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+    File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), new string('a', GoldenHeader.MaxBytes));
     string? warned = null;
-    Assert.Null(GoldenHeader.TryReadCombined(_dir, w => warned = w));
-    Assert.NotNull(warned);
+    Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir, w => warned = w));
+    Assert.NotNull(warned);   // the drop-GROWTH warning fired
 }
 ```
 
@@ -253,12 +265,15 @@ In `GoldenHeader.cs`: replace `ResolvePath` (lines 20-23) and `TryRead` (lines 3
 
         var combined = Join(seed, growth);
         if (combined is null) return null;
-        if (Encoding.UTF8.GetByteCount(combined) > MaxBytes)
-        {
-            warn?.Invoke($"combined golden-header at {dir} exceeds the {MaxBytes}B cap — injection skipped");
-            return null;
-        }
-        return combined;
+        if (Encoding.UTF8.GetByteCount(combined) <= MaxBytes) return combined;
+
+        // Combined over cap: degrade gracefully (panel F2) — keep the driver's SEED baseline and drop GROWTH,
+        // rather than silently losing the whole header as GROWTH accretes. TryReadFile already caps each region
+        // at MaxBytes, so SEED alone always fits; the final null is defensive only.
+        warn?.Invoke($"combined golden-header at {dir} exceeds the {MaxBytes}B cap — dropping GROWTH, keeping SEED");
+        if (seed is not null && Encoding.UTF8.GetByteCount(seed) <= MaxBytes) return seed;
+        warn?.Invoke($"golden-header at {dir} exceeds the {MaxBytes}B cap — injection skipped");
+        return null;
     }
 
     private static string? Join(string? seed, string? growth)
@@ -350,19 +365,32 @@ Expected: the `AgyViewOptions` property, `AgyView.cs:109`, `Program.cs:20`. If a
 
 In `AgyViewOptions` (wherever declared): rename the `string? GoldenHeaderPath` property to `string? GoldenHeaderDir` (same nullability/shape — a directory now, not a file).
 
-- [ ] **Step 3: Update the inject call site (`AgyView.cs:109`)**
+- [ ] **Step 3: Update the inject call site (`AgyView.cs:109`) — pass a stderr warn (panel F2)**
+
+The current call passes NO `warn`, so an over-cap header vanishes silently. Route the warning to stderr (stdout is the MCP channel; stderr is where logs go — see `Program.cs:27`), matching classic's `eprintln!` (`main.rs:531`):
 
 ```csharp
-            var header = _options.GoldenHeaderDir is null ? null : GoldenHeader.TryReadCombined(_options.GoldenHeaderDir);
+            var header = _options.GoldenHeaderDir is null
+                ? null
+                : GoldenHeader.TryReadCombined(_options.GoldenHeaderDir, m => Console.Error.WriteLine($"clavity: {m}"));
             var outgoing = GoldenHeader.Apply(header, message);
 ```
 
-- [ ] **Step 4: Update the MCP host resolution (`Program.cs:20-22`)**
+- [ ] **Step 4: Update the MCP host resolution (`Program.cs:20-22`) — resolve dir + warn on a file-shaped override (panel F3)**
 
 ```csharp
         GoldenHeaderDir = GoldenHeader.ResolveDir(
             Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+```
+Immediately after building `options`, add a one-time compatibility warning (the override is now a directory, but classic still treats it as a file — a user who set it to a file path must be told):
+
+```csharp
+    var ghOverride = Environment.GetEnvironmentVariable(GoldenHeader.PathVar);
+    if (!string.IsNullOrWhiteSpace(ghOverride) && (File.Exists(ghOverride) || Path.HasExtension(ghOverride)))
+        Console.Error.WriteLine(
+            $"clavity: {GoldenHeader.PathVar} now names a DIRECTORY, but '{ghOverride}' looks like a file — " +
+            "point it at the .clavity directory instead.");
 ```
 
 - [ ] **Step 5: Build + run the full Ls test suite, then commit T3–T5 together**
@@ -638,6 +666,7 @@ Change the skill so it:
 3. **No manual editing:** remove the "promote into capabilities/assumptions" instructions — those files are SEED. The verify harness still gates testable assumptions before they enter GROWTH.
 4. **Fix the stale classic note:** the classic `clavity curate-commit` verb **exists and is tested** (`clavity-classic/src/main.rs`); delete the "does not exist yet / bridge by writing the shared path directly" text.
 5. **Loud-guide:** if no clavity binary is on PATH, still write `golden-header.growth.md` and emit a **non-blocking** warning ("no clavity driver detected; the learned header won't be injected until a driver is installed") — do NOT hard-fail.
+6. **Legacy cleanup (panel F7):** when migrating (a flat `%USERPROFILE%\.clavity\golden-header.md` existed and was read as the GROWTH floor), after `growth.md` is written, rename the legacy flat file to `golden-header.md.migrated` — so it can never resurrect stale content if `growth.md` is later removed (the binary's read prefers split files, but only while `growth.md` exists).
 
 - [ ] **Step 2: Verify the reference paths resolve and no stale content remains**
 
@@ -666,23 +695,31 @@ Expected: PASS.
 - [ ] **Step 2: Map each spec acceptance to evidence (spec #1–#5)**
 
 - #1 fresh install → SEED injected: `seed-header` writes `golden-header.seed.md`; `TryReadCombined` injects it (T7 + T3 tests).
-- #2 seed has no version stamp / no transport mechanics: `rg -i "verified against|1\.0\.[0-9]|agy_ask|psmux|clavity ask" seed/agy-assumptions.md seed/agy-capabilities.md seed/golden-header.md` → expected **no matches** (Phase-1 already scrubbed; confirm the move preserved that).
+- #2 seed has no version stamp / no transport mechanics: `rg -i "verified against|\b(agy |gemini )?[0-9]+\.[0-9]+(\.[0-9]+)?\b|Gemini [0-9]|agy_ask|psmux|clavity ask" seed/agy-assumptions.md seed/agy-capabilities.md seed/golden-header.md` → expected **no matches** (Phase-1 scrubbed assumptions/capabilities; T1 Step 2 scrubbed the baseline — panel F8 broadened the stamp pattern beyond `1.0.x`). Manually eyeball any numeric hit for a false positive before declaring RED.
 - #3 curate writes GROWTH without altering SEED; inject = SEED+GROWTH: `CommitGrowth`/`TryReadCombined` tests (T3, T4, T6).
 - #4 re-install rewrites SEED, GROWTH intact; curate idempotent; legacy migrated: `CommitSeed` leaves GROWTH (T4); GROWTH regenerated wholesale (T9 doc); legacy fallback (T3).
 - #5 no driver: `agy-learn` captures, `agy-curate` non-blocking warning (T9 doc).
 
-- [ ] **Step 3: Grep gate — no orphaned references**
+- [ ] **Step 3: Grep gate — no orphaned LIVE references (panel F5 — do NOT blanket-exclude docs/)**
 
 ```bash
-rg "agy-autotrain/knowledge/(agy-assumptions|agy-capabilities|golden-header)\.md" --glob '!docs/**'
+rg "(agy-autotrain/knowledge/|plugins/agy-autotrain/knowledge/|[^-]knowledge/)(agy-assumptions|agy-capabilities|golden-header)\.md" \
+  --glob '!docs/superpowers/plans/**' --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/spikes/**' --glob '!ROADMAP.md'
 ```
-Expected: **no matches**. Use the Grep tool to cross-check (grep -E CRLF quirk).
+Expected: **no matches** (live `docs/agy-assumptions.md` breadcrumb included in the scan; only frozen history excluded). Use the Grep tool to cross-check (grep -E CRLF quirk).
+
+- [ ] **Step 3b: Installer bundles the baseline (panel F4)**
+
+Confirm the release build actually ships `seed/golden-header.md` into the ISCC context: `rg -n "seed" .github/workflows/build-dotnet.yml` and verify either the CI checks out the full repo (so `..\..\seed\golden-header.md` resolves) OR add an explicit stage/verify step mirroring the existing `plugins\agy-autotrain` presence check (`build-dotnet.yml:114`). A missing baseline at compile time = a silent empty-header install. If CI needs a new staging/verify line, add it here.
 
 - [ ] **Step 4: Installer live-compile (if ISCC available) + RELEASE-GATE note**
 
 If ISCC is on PATH: `ISCC.exe clavity-dotnet\installer\clavity-dotnet.iss` → compiles clean. If not, record as an owner live-acceptance item.
 
-**RELEASE GATE (do NOT skip — carry to memory):** this branch changes the on-disk `%USERPROFILE%\.clavity\` layout for dotnet only. **A public release MUST NOT ship until `clavity-classic` reads the split files too** (`golden_header.rs::read_header` gains SEED+GROWTH concat + legacy fallback; `clavity-classic.iss` seeds `seed.md`; classic tests). Otherwise a failover from dotnet→classic reads the absent flat `golden-header.md` and drives blind. That classic-parity work is a **separate plan** (dotnet-first discipline: prove on primary, port the proven pattern to the failover).
+**RELEASE GATE (do NOT skip — carry to memory):** this branch changes the on-disk `%USERPROFILE%\.clavity\` layout for dotnet only. **A public release MUST NOT ship until `clavity-classic` reaches parity** — a separate plan (dotnet-first discipline: prove on primary, port the proven pattern to the failover) covering, at minimum:
+1. **Read parity** — `golden_header.rs::read_header` gains SEED+GROWTH concat + legacy-flat fallback + graceful SEED-preserving over-cap degradation (mirror T3); classic tests. Otherwise a failover dotnet→classic reads the absent flat `golden-header.md` and drives blind.
+2. **Seed the SEED** — `clavity-classic.iss` ships `seed/golden-header.md` and seeds `golden-header.seed.md` (classic ships no data today), AND ships the seed manual so a classic-only failover has the manual at all (panel F6 — the move takes the manual out of agy-autotrain, which classic never shipped either, so this is new coverage, not a regression, but the failover still needs it).
+3. **Env reconciliation (panel F3)** — classic's `CLAVITY_GOLDEN_HEADER` adopts **directory** semantics to match dotnet, so the override means the same thing across variants.
 
 - [ ] **Step 5:** Hand off to `superpowers:finishing-a-development-branch` (owner picks merge/PR/keep; NO push — owner holds all pushes).
 
