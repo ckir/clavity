@@ -4,7 +4,7 @@
 
 **Goal:** Replace the single flat `%USERPROFILE%\.clavity\golden-header.md` with two independently-owned files — `golden-header.seed.md` (driver-owned) + `golden-header.growth.md` (agy-curate-owned) — that the clavity-dotnet binary concatenates SEED-then-GROWTH at read, dissolving the region read-modify-write and clobber risks structurally.
 
-**Architecture:** The binary keeps its tested atomic-write primitive (`GoldenHeader.Commit`) and gains a thin split layer: read = `TryReadCombined(dir)` (SEED+GROWTH concat, legacy-flat fallback, cap on the combined); write = `CommitSeed(dir,…)` / `CommitGrowth(dir,…)`. The installer seeds `seed.md` by invoking a new `clavity-ls seed-header <baseline>` verb (the existing "installer Execs the binary" seam), keeping the read path pure. `agy-curate` becomes EXTEND-only: it writes `growth.md` and reads the runtime SEED as a driver-owned floor. The golden-header **baseline** moves to a new top-level `seed/` (binary-injected → installer-seeded); the **manuals** (`agy-assumptions`/`agy-capabilities`, agent reference) move to each driver's `plugin/knowledge/` and travel with the marketplace plugin (M3 — the Phase-2 delivery-channel split).
+**Architecture:** The binary keeps its tested atomic-write primitive (`GoldenHeader.Commit`) and gains a thin split layer: read = `TryReadCombined(dir)` (SEED+GROWTH concat, legacy-flat fallback, cap on the combined); write = `CommitSeed(dir,…)` / `CommitGrowth(dir,…)`. The installer seeds `golden-header.seed.md` with a standard **PowerShell** copy of the bundled baseline (always available; no dependency on the just-installed binary), keeping the binary's read path pure. `agy-curate` becomes EXTEND-only: it writes `growth.md` and reads the runtime SEED as a driver-owned floor. The golden-header **baseline** moves to a new top-level `seed/` (binary-injected → installer-seeded); the **manuals** (`agy-assumptions`/`agy-capabilities`, agent reference) move to each driver's `plugin/knowledge/` and travel with the marketplace plugin (M3 — the Phase-2 delivery-channel split).
 
 **Tech Stack:** C# (.NET, `Clavity.Ls`/`Clavity.Cli`), xUnit, Inno-Setup (Pascal), Markdown skills.
 
@@ -15,7 +15,7 @@
 
 **Execution note (panel F1 — build-ordering):** Tasks **T3, T4 and T5 MUST be dispatched to a single subagent as ONE unit** and reviewed only after T5. Removing `ResolvePath`/`TryRead` (T3) intentionally red-breaks the build until T5 rewires the callers, so a per-task "tests pass" gate is unachievable mid-sequence. Do NOT dispatch them separately under subagent-driven-development.
 
-**PORTABILITY GUARDRAIL (owner constraint — end-user machines).** The `rg` / `test -f` / bash commands in this plan are **dev-time verification on the maintainer's box** (which has the portable toolchain) — they are fine there. But **nothing that runs on an END-USER machine may depend on non-standard Windows commands**: the installer `[Code]`/`[Run]` steps, every post-install `Exec`, and the shipped binary itself may use ONLY Inno-Setup built-ins (`Exec`, `FileExists`, `RenameFile`, `DeleteFile`, …) + the shipped `clavity-ls.exe` + the binary's own .NET file APIs. No `rg`/`fd`/bash/`where`/portable-toolchain calls in shipped artifacts. (The existing `.iss` already honors this — its classic-detection is an in-process PATH scan, not a `where` spawn.) T8 additions comply (they only `Exec clavity-ls seed-header` + use `RenameFile`).
+**PORTABILITY GUARDRAIL (owner constraint — end-user machines).** The `rg` / `test -f` / bash commands in this plan are **dev-time verification on the maintainer's box** (which has the portable toolchain) — they are fine there. But **nothing that runs on an END-USER machine may depend on non-standard Windows commands**: the installer `[Code]`/`[Run]` steps, every post-install `Exec`, and the shipped binary itself may use ONLY Inno-Setup built-ins (`Exec`, `FileExists`, `RenameFile`, `DeleteFile`, …) + the shipped `clavity-ls.exe` + the binary's own .NET file APIs. No `rg`/`fd`/bash/`where`/portable-toolchain calls in shipped artifacts. (The existing `.iss` already honors this — its classic-detection is an in-process PATH scan, not a `where` spawn.) T8 additions comply: they seed via `powershell.exe` (always present) + use Inno `RenameFile`; no `rg`/bash/portable-toolchain in shipped steps.
 
 **Manual home (owner fork resolved → M3).** The agy manuals (`agy-assumptions.md`/`agy-capabilities.md`) are **agent reference** (agy-curate no longer reads them under EXTEND), so they ship in the **driver plugin(s)** — `clavity-dotnet/plugin/knowledge/` + `clavity-classic/plugin/knowledge/`, byte-identical + sync-checked (the Phase-2 delivery-channel pattern) — NOT in `seed/`. Only the **golden-header baseline** (binary-injected) moves to `seed/` and is installer-seeded. This is portability-neutral (the installer already ships the plugin tree via `recursesubdirs`; no new command).
 
@@ -32,11 +32,11 @@
 | referrers (each driver `CLAUDE.md` → its own `plugin/knowledge/`; classic docs/src; `docs/` breadcrumbs) | Repointed (T2) |
 | `clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs` | Split layer added; `ResolvePath`→`ResolveDir`; `TryRead`→`TryReadFile`(private)+`TryReadCombined`; `CommitSeed`/`CommitGrowth` (T3, T4) |
 | `clavity-dotnet/src/Clavity.Ls/AgyView.cs:109` + `AgyViewOptions` | `GoldenHeaderPath`→`GoldenHeaderDir`; combined read (T5) |
-| `clavity-dotnet/src/Clavity.Cli/Program.cs:20-22,40-46` | Resolve dir; `curate-commit`→GROWTH; new `seed-header` verb (T5, T6, T7) |
-| `clavity-dotnet/src/Clavity.Ls/CliVerbs.cs` | `CurateCommit`→dir/GROWTH; new `SeedHeader` (T6, T7) |
+| `clavity-dotnet/src/Clavity.Cli/Program.cs:20-22,40-46` | Resolve dir; `curate-commit`→GROWTH (T5, T6) |
+| `clavity-dotnet/src/Clavity.Ls/CliVerbs.cs` | `CurateCommit`→dir/GROWTH (T6) |
 | `clavity-dotnet/tests/Clavity.Ls.Tests/GoldenHeaderTests.cs` | Rewritten for split (T3, T4) |
-| `clavity-dotnet/tests/Clavity.Integration.Tests/CurateCommitTests.cs` + new `SeedHeaderTests.cs` | GROWTH + seed verb (T6, T7) |
-| `clavity-dotnet/installer/clavity-dotnet.iss` | Ship `seed/golden-header.md`; post-install `seed-header` Exec; zombie-header rename → both split files (T8) |
+| `clavity-dotnet/tests/Clavity.Integration.Tests/CurateCommitTests.cs` | GROWTH target (T6) |
+| `clavity-dotnet/installer/clavity-dotnet.iss` | Ship `seed/golden-header.md`; post-install **PowerShell** seed of `golden-header.seed.md`; zombie-header rename → split files (T8) |
 | `agy-autotrain/skills/agy-curate/SKILL.md` | Rewritten EXTEND model; inputs → `seed/`; fix stale classic note (T9) |
 
 **Oracles (correct behavior is defined by):** the existing tests in `GoldenHeaderTests.cs` / `CurateCommitTests.cs` (extended here) and the spec acceptance criteria #1–#5 in `docs/superpowers/specs/2026-07-10-agy-autotrain-seed-and-auto-split-design.md`.
@@ -519,111 +519,11 @@ git add -A && git commit -m "feat(curate-commit): write the GROWTH region file, 
 
 ---
 
-### Task 7: New `seed-header` verb (TDD)
+### Task 7: (REMOVED) — seeding is done by the installer via PowerShell, not a binary verb
 
-**Files:**
-- Modify: `clavity-dotnet/src/Clavity.Ls/CliVerbs.cs` (new `SeedHeader`)
-- Modify: `clavity-dotnet/src/Clavity.Cli/Program.cs` (dispatch, after the `curate-commit` block)
-- Test: `clavity-dotnet/tests/Clavity.Integration.Tests/SeedHeaderTests.cs` (new)
+**Owner constraint fold.** The installer seeds `golden-header.seed.md` with standard Windows PowerShell (T8 Step 2), not a `clavity-ls seed-header` verb — seeding is a plain file copy now that split files removed all region surgery, and PowerShell is always available (no dependency on the just-installed binary running). So **no `seed-header` verb, no `SeedHeader` in `CliVerbs.cs`, no `SeedHeaderTests.cs`, no `Program.cs` dispatch** are added.
 
-- [ ] **Step 1: Write the failing tests (new file `SeedHeaderTests.cs`)**
-
-```csharp
-using Clavity.Ls;
-namespace Clavity.Integration.Tests;
-
-public sealed class SeedHeaderTests : IDisposable
-{
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "clavity-sh-" + Guid.NewGuid());
-    public SeedHeaderTests() => Directory.CreateDirectory(_dir);
-    public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
-
-    [Fact]
-    public void SeedHeader_writes_seed_file_from_source_leaving_growth_absent()
-    {
-        var src = Path.Combine(_dir, "baseline.md");
-        File.WriteAllText(src, "BASELINE SEED");
-        var rc = CliVerbs.SeedHeader(_dir, src, TextWriter.Null);
-        Assert.Equal(0, rc);
-        Assert.Equal("BASELINE SEED", File.ReadAllText(Path.Combine(_dir, GoldenHeader.SeedFileName)));
-        Assert.False(File.Exists(Path.Combine(_dir, GoldenHeader.GrowthFileName)));
-    }
-
-    [Fact]
-    public void SeedHeader_returns_nonzero_when_source_missing()
-    {
-        var rc = CliVerbs.SeedHeader(_dir, Path.Combine(_dir, "nope.md"), TextWriter.Null);
-        Assert.NotEqual(0, rc);
-        Assert.False(File.Exists(Path.Combine(_dir, GoldenHeader.SeedFileName)));
-    }
-
-    [Fact]
-    public void SeedHeader_returns_nonzero_when_source_arg_null()
-        => Assert.NotEqual(0, CliVerbs.SeedHeader(_dir, null, TextWriter.Null));
-}
-```
-
-- [ ] **Step 2: Run to verify failure**
-
-Run: `cd clavity-dotnet && dotnet test tests/Clavity.Integration.Tests`
-Expected: FAIL — `SeedHeader` does not exist.
-
-- [ ] **Step 3: Implement `SeedHeader` in `CliVerbs.cs`**
-
-```csharp
-    /// <summary>
-    /// `seed-header &lt;source&gt;` — read a bundled baseline file and atomically write it to the SEED region file
-    /// (golden-header.seed.md) under <paramref name="dir"/>. Invoked by the driver installer post-install. Never
-    /// touches GROWTH. Returns 0 on success; non-zero (with a clean stderr line) on a missing/unreadable source or
-    /// an over-cap baseline.
-    /// </summary>
-    public static int SeedHeader(string dir, string? source, TextWriter error)
-    {
-        if (string.IsNullOrWhiteSpace(source) || !File.Exists(source))
-        {
-            error.WriteLine($"seed-header: baseline source not found: {source ?? "<none>"}; nothing written.");
-            return 1;
-        }
-        try
-        {
-            var content = File.ReadAllText(source);
-            GoldenHeader.CommitSeed(dir, content);
-            return 0;
-        }
-        catch (InvalidOperationException ex)   // over-cap baseline
-        {
-            error.WriteLine($"seed-header: {ex.Message}; nothing written.");
-            return 2;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            error.WriteLine($"seed-header: cannot write SEED region to {dir}: {ex.Message}");
-            return 1;
-        }
-    }
-```
-
-- [ ] **Step 4: Dispatch in `Program.cs`** (insert immediately after the `curate-commit` block, before the `CliRouter.IsInstallerVerb` check):
-
-```csharp
-// `clavity-ls seed-header <baseline>` — seed the SEED region from a bundled baseline (installer post-install).
-if (args.Length > 0 && args[0] == "seed-header")
-{
-    var dir = GoldenHeader.ResolveDir(
-        Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-    return CliVerbs.SeedHeader(dir, args.Length > 1 ? args[1] : null, Console.Error);
-}
-```
-
-- [ ] **Step 5: Run to verify pass, then commit**
-
-Run: `cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Integration.Tests`
-Expected: PASS.
-
-```bash
-git add -A && git commit -m "feat(seed-header): add installer-facing verb to seed the SEED region from a baseline"
-```
+`GoldenHeader.CommitSeed(dir, content)` (T4) is **retained** — the T4 tests use it to verify the file-ownership invariant (writing SEED leaves GROWTH untouched and vice-versa), which is a real property worth pinning even though production seeding goes through PowerShell. The binary's production responsibilities remain: read (`TryReadCombined`, T3/T5) and GROWTH write (`curate-commit`→`CommitGrowth`, T6).
 
 ---
 
@@ -640,22 +540,27 @@ Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversi
 ```
 (Path from `clavity-dotnet/installer/` → repo-root `seed/`. Unconditional — NOT gated by `install_agy_autotrain`; the SEED must ship even without the AUTO add-on.)
 
-- [ ] **Step 2: Seed the SEED region post-install (non-blocking)**
+- [ ] **Step 2: Seed `golden-header.seed.md` via standard PowerShell (owner constraint — always available; no binary dependency at install)**
 
-In `CurStepChanged`, `ssPostInstall`, AFTER the existing `install --agent all` Exec (line 194-199) and BEFORE the optional add-on block (line 200), add:
+Seeding is now just placing a file (split files removed all region surgery), so use **standard Windows PowerShell** (always present) rather than the just-installed binary (avoids the AV/redist "binary won't run" risk). In `CurStepChanged`, `ssPostInstall`, AFTER the `install --agent all` Exec and BEFORE the optional add-on block, create `%USERPROFILE%\.clavity` if absent and copy the bundled baseline to `golden-header.seed.md`, replacing it (installer owns SEED) and never touching `growth.md`. Non-blocking. Declare `PsCmd: String;` in the procedure's `var` block:
 
 ```pascal
-    { Phase 3: seed the SEED region of the golden header from the bundled baseline (region-free split file;
-      the binary owns the write so the installer does no Pascal file surgery). Non-blocking on failure. }
-    if not Exec(ExpandConstant('{app}\{#ExeName}'),
-                'seed-header "' + ExpandConstant('{app}\seed\golden-header.md') + '"',
+    { Phase 3: seed golden-header.seed.md from the bundled baseline with standard PowerShell (always available;
+      no dependency on the just-installed binary running). Overwrites SEED only; never touches GROWTH. }
+    PsCmd :=
+      '$d = Join-Path $env:USERPROFILE ''.clavity'';' +
+      'New-Item -ItemType Directory -Force -Path $d | Out-Null;' +
+      'Copy-Item -LiteralPath ''' + ExpandConstant('{app}\seed\golden-header.md') + ''' ' +
+      '-Destination (Join-Path $d ''golden-header.seed.md'') -Force';
+    if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "' + PsCmd + '"',
                 '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      SuppressibleMsgBox('Could not seed the golden-header baseline. The AI will still work; seed it later with:' + #13#10 +
-        '  clavity-ls seed-header "' + ExpandConstant('{app}\seed\golden-header.md') + '"', mbInformation, MB_OK, IDOK)
+      SuppressibleMsgBox('Could not seed the golden-header baseline. The AI still works; seed it later by copying' + #13#10 +
+        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md', mbInformation, MB_OK, IDOK)
     else if ResultCode <> 0 then
       SuppressibleMsgBox('Seeding the golden-header baseline reported a problem (exit code ' + IntToStr(ResultCode) + ').',
         mbInformation, MB_OK, IDOK);
 ```
+(Inno Pascal quoting: `''` inside a `'…'` literal is one literal `'`, so PowerShell receives single-quoted args — `LiteralPath` handles spaces in the user profile path. `-NoProfile` dodges a slow/broken user profile; `-Command` is unaffected by execution policy but `-ExecutionPolicy Bypass` is belt-and-suspenders.)
 
 - [ ] **Step 3: Update the zombie-header uninstall rename to the split files**
 
@@ -694,7 +599,7 @@ Expected: the `.iss` compiles with no Pascal errors. If ISCC is not available in
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat(installer): ship seed baseline + seed-header post-install; back up both split files on uninstall"
+git add -A && git commit -m "feat(installer): ship seed baseline + PowerShell-seed golden-header.seed.md; back up split files on uninstall"
 ```
 
 ---
@@ -739,7 +644,7 @@ Expected: PASS.
 
 - [ ] **Step 2: Map each spec acceptance to evidence (spec #1–#5)**
 
-- #1 fresh install → SEED injected + has the manual: `seed-header` writes `golden-header.seed.md`, `TryReadCombined` injects it (T7 + T3 tests); the manuals ship in the driver plugin tree (`.iss` `[Files] ..\plugin\*` `recursesubdirs` — already ships the plugin, now including `plugin/knowledge/`), so a driver-without-agy-autotrain still has them (M3).
+- #1 fresh install → SEED injected + has the manual: the installer's PowerShell step (T8) writes `golden-header.seed.md`, `TryReadCombined` injects it (T3 tests); the manuals ship in the driver plugin tree (`.iss` `[Files] ..\plugin\*` `recursesubdirs` — already ships the plugin, now including `plugin/knowledge/`), so a driver-without-agy-autotrain still has them (M3).
 - #2 seed has no version stamp / no transport mechanics: `rg -i "verified against|\b(agy |gemini )?[0-9]+\.[0-9]+(\.[0-9]+)?\b|Gemini [0-9]|agy_ask|psmux|clavity ask" seed/golden-header.md clavity-dotnet/plugin/knowledge/agy-assumptions.md clavity-dotnet/plugin/knowledge/agy-capabilities.md` → expected **no matches** (classic mirror is byte-identical; Phase-1 scrubbed the manuals; T1 Step 2 scrubbed the baseline — panel F8 broadened the pattern beyond `1.0.x`). Eyeball any numeric hit for a false positive before declaring RED.
 - #3 curate writes GROWTH without altering SEED; inject = SEED+GROWTH: `CommitGrowth`/`TryReadCombined` tests (T3, T4, T6).
 - #4 re-install rewrites SEED, GROWTH intact; curate idempotent; legacy migrated: `CommitSeed` leaves GROWTH (T4); GROWTH regenerated wholesale (T9 doc); legacy fallback (T3).
@@ -763,7 +668,7 @@ If ISCC is on PATH: `ISCC.exe clavity-dotnet\installer\clavity-dotnet.iss` → c
 
 **RELEASE GATE (do NOT skip — carry to memory):** this branch changes the on-disk `%USERPROFILE%\.clavity\` layout for dotnet only. **A public release MUST NOT ship until `clavity-classic` reaches parity** — a separate plan (dotnet-first discipline: prove on primary, port the proven pattern to the failover) covering, at minimum:
 1. **Read parity** — `golden_header.rs::read_header` gains SEED+GROWTH concat + legacy-flat fallback + graceful SEED-preserving over-cap degradation (mirror T3); classic tests. Otherwise a failover dotnet→classic reads the absent flat `golden-header.md` and drives blind.
-2. **Seed the baseline** — `clavity-classic.iss` ships `seed/golden-header.md` and seeds `golden-header.seed.md` via a classic `seed-header` verb (classic ships no baseline data today). The manuals are already covered under M3 — they live in `clavity-classic/plugin/knowledge/` and travel with the marketplace plugin install, so a classic failover has the manual without any `.iss` change (panel F6 resolved by M3).
+2. **Seed the baseline** — `clavity-classic.iss` ships `seed/golden-header.md` and seeds `golden-header.seed.md` via the same **PowerShell** copy dotnet uses (classic ships no baseline data today). The manuals are already covered under M3 — they live in `clavity-classic/plugin/knowledge/` and travel with the marketplace plugin install, so a classic failover has the manual without any `.iss` change (panel F6 resolved by M3).
 3. **Env reconciliation (panel F3)** — classic's `CLAVITY_GOLDEN_HEADER` adopts **directory** semantics to match dotnet, so the override means the same thing across variants.
 
 - [ ] **Step 5:** Hand off to `superpowers:finishing-a-development-branch` (owner picks merge/PR/keep; NO push — owner holds all pushes).
@@ -772,7 +677,7 @@ If ISCC is on PATH: `ISCC.exe clavity-dotnet\installer\clavity-dotnet.iss` → c
 
 ## Self-review checklist (run before handing to execution)
 
-1. **Spec coverage:** Components 1 (data move: T1/T2), 2 (split files + read/write/curate: T3–T7, T9), installer (T8); acceptance #1–#5 mapped in T10. ✔
+1. **Spec coverage:** Components 1 (data move: T1/T2), 2 (split files + read/write/curate: T3–T6, T9), installer + PowerShell seed (T8); acceptance #1–#5 mapped in T10. ✔ (T7 removed — seeding is PowerShell.)
 2. **No placeholders:** every code step has complete code. ✔
-3. **Type consistency:** filenames `golden-header.seed.md`/`golden-header.growth.md`/`golden-header.md` used identically across T3–T8; `CurateCommit(dir,…)`/`SeedHeader(dir,source,error)`/`CommitSeed(dir,…)`/`CommitGrowth(dir,…)` consistent. ✔
+3. **Type consistency:** filenames `golden-header.seed.md`/`golden-header.growth.md`/`golden-header.md` used identically across T3–T8; `CurateCommit(dir,…)`/`CommitSeed(dir,…)`/`CommitGrowth(dir,…)` consistent (no `SeedHeader` verb — seeding is PowerShell). ✔
 4. **Build-ordering hazard:** T3/T4 break the build (remove `ResolvePath`/`TryRead`); T5 restores it and is the single commit point for T3–T5. Called out explicitly. ✔
