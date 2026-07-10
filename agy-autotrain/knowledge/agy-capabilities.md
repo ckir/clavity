@@ -1,7 +1,6 @@
 # agy capability profile — what agy can do, and how to route to it
 
-> **Verified against: agy 1.0.8** · active model here: **Gemini 3.1 Pro (High)** (launch default is
-> Gemini 3.5 Flash (High) `[doc]`). Provenance-tagged: `[corpus]` user's validated knowledge ·
+> Provenance-tagged: `[corpus]` user's validated knowledge ·
 > `[doc]` web (docs + user findings) · `[local]` this install · `[bus]` agy self-report · `[verified]`
 > ≥2 sources agree · `[conflict]` sources disagree (`[local]`/`[corpus]` win for our version).
 >
@@ -15,13 +14,13 @@
 
 ## A. Strengths (route toward)
 
-- **Critical review & verification** `[verified: corpus + doc/user]` — agy **verifies far better than it
-  discovers**. Calibration: on a real review its 🔴 "must-fix" tier ran ~2-real / 1-misscoped, one real
-  find with a wrong first rationale `[corpus]`. → seed the specific invariants to confirm/refute.
+- **Critical review & verification** `[verified: corpus + doc/user]` — agy **verifies far better than it discovers**.
+  Calibration: on a real review its 🔴 "must-fix" tier ran ~2-real / 1-misscoped, one real find with a
+  wrong first rationale `[corpus]`. → seed the specific invariants to confirm/refute.
 - **Generative / divergent design input** `[corpus]` — its highest-value contribution; always pair the
   critique with a "what's missing / simpler / stronger?" ask (the two-mode rule).
-- **Independent second-model perspective** `[local + doc]` — agy can run a *different provider's* model
-  (Gemini / Claude / GPT-OSS), so it's a genuine outside view on Claude-authored work (Axis C/F).
+- **Independent second-model perspective** `[local + doc]` — agy can run a *different provider's* model,
+  so it's a genuine outside view on Claude-authored work (Axis C/F).
 - **Strict multi-step protocol adherence** `[bus]` (e.g. the claudavity responder) — reliable at
   following an exact, ordered procedure.
 - **Precise non-contiguous native edits** `[bus]` (`multi_replace_file_content`) — good for surgical
@@ -56,7 +55,7 @@
 - **Plausible code with subtle bugs** `[doc/user]` — "review before production"; never merge agy code
   unreviewed.
 - **Context burn** `[doc]` — open discovery is expensive; ~23–25k tokens of system prompt/tools on turn
-  1; hard cap **512 tool calls** per turn (Gemini, v1.0.7).
+  1; a hard cap on tool calls per turn (model-dependent — check the live config).
 - **Quota / backend availability is a real routing risk** `[verified: corpus gotcha + doc]` — opaque
   quota (`/usage` = trend, not balance), **5-hour sprint + weekly caps**, multi-day lockouts, and
   HTTP 503 `MODEL_CAPACITY_EXHAUSTED` outages (hours–weeks) that **abort a turn with no bus reply**.
@@ -71,19 +70,12 @@
 ## C. Reasoning profile & model selection
 
 agy is a **multi-model router across providers**; the active model + reasoning tier is the dominant
-capability dial. Models available here `[local]` (the `/model` menu) and when to pick each `[doc]`:
-
-| Model (tier) | Pick it for | Notes |
-|---|---|---|
-| **Gemini 3.1 Pro (High)** — *current/default here* | hardest reasoning / code / agentic; deep review | top-tier (ARC-AGI-2 77.1%); concise; **~23s to first token** (high latency); pricier |
-| Gemini 3.1 Pro (Low) | the above, lower latency/cost | OpenAI-compat exposes Low/High (matches this menu) |
-| Gemini 3.5 Flash (High/Med/Low) | fast/cheap agentic loops, parallel fan-out, simpler coding | "optimized for parallel agentic execution"; 1M ctx; cheap |
-| Claude Sonnet 4.6 (Thinking) | fast, strong general coding/review | "best speed+intelligence balance"; 1M ctx |
-| Claude Opus 4.6 (Thinking) | deepest reasoning/design review (of the Claude options) | priciest; 128k output; moderate latency |
-| GPT-OSS 120B (Medium) | cheap/fast math/reasoning second opinion | **avoid for top-tier coding (#97) / agentic (#106)**; text-only; cutoff Jun 2024 |
-
-Benchmarks above are indicative (several `[doc]` from secondary aggregators). Separate context window
-from Claude's; sequential/local reasoning bias.
+capability dial. The principle: **route by task shape** — deepest-reasoning / hardest-code work wants
+the top reasoning tier (slower, pricier); cheap-parallel work (agentic fan-out, simple coding loops)
+wants the fast/cheap tier; a cost-sensitive second opinion (e.g. on math/reasoning, not top-tier coding
+or agentic work) wants the cheapest general-purpose tier. The concrete roster and its tiers change
+under you — check the live `/model` menu before delegating rather than assuming a fixed lineup.
+Separate context window from Claude's; sequential/local reasoning bias.
 
 ## D. Operational reach (what it can act on)
 
@@ -111,7 +103,7 @@ from Claude's; sequential/local reasoning bias.
 - **Model** `[verified: local + doc]` — `--model` / `/model` (persists); the biggest lever (Axis C).
 - **Loaded skills & MCP** `[verified: local + doc]` — the *dynamic* toolset: skills in `~/.gemini/skills/` (shared),
   `~/.gemini/antigravity-cli/skills/` (CLI-only), workspace `.agents/skills/`; servers in
-  `~/.gemini/config/mcp_config.json`. Inspect live with `/skills` and `/mcp`. v1.0.8 reloads skills on
+  `~/.gemini/config/mcp_config.json`. Inspect live with `/skills` and `/mcp`. agy reloads skills on
   conversation switch / `--add-dir` `[doc]`.
 - **Permission mode** `[doc]`: `request-review` (default) · `proceed-in-sandbox` · `always-proceed` ·
   `strict` (read-only); `--dangerously-skip-permissions` for full autonomy; fine-grained
@@ -127,9 +119,10 @@ from Claude's; sequential/local reasoning bias.
    orchestration. Use a **Claude subagent** for mechanical sweeps / well-specified implementation
    (Claude's own tiering rules). **Redundancy guard:** don't route to *agy-on-a-weak-model* what Claude
    should just keep — agy's value is the *different* perspective + parallel async, not raw horsepower.
-2. **Which model to set agy to** (Axis C): deep review/reasoning → **Opus 4.6 Thinking** or **Gemini
-   3.1 Pro High**; bulk/cheap/parallel → **Flash Low/Med**; cost-sensitive math/second-opinion →
-   **GPT-OSS 120B** (not top coding/agentic); fast strong general → **Sonnet 4.6**.
+2. **Which model to set agy to** (Axis C): deep review/reasoning → the top reasoning-tier model
+   available; bulk/cheap/parallel → the fast/cheap tier; cost-sensitive math/second-opinion → the
+   cheapest general-purpose model (not top-tier coding/agentic); fast strong general work → the
+   balanced mid-tier model. Check the live `/model` menu for the current roster.
 3. **Availability check.** Before a time-sensitive delegation, account for quota/backend risk (Axis B):
    agy can be rate-limited or 503-locked for hours–days. Keep a Claude fallback for critical-path work.
 4. **A Claude subagent CAN reach the peer** `[corpus]` — via the self-contained driver→peer CLI (binary
@@ -137,32 +130,7 @@ from Claude's; sequential/local reasoning bias.
    front door is what makes the peer subagent-accessible. The front-door skill does not auto-load in a
    sub-context, so the subagent must be **told** to use the CLI in its dispatch prompt.
 
-## G. Version & drift
-
-- **Verified against agy 1.0.10** (`agy --version` / pane banner), active model Gemini 3.1 Pro (High),
-  `[local]` 2026-06-20 — driving-protocol probes A1–A5 all PASS via the harness. (Prior: 1.0.8, 2026-06-16.)
-- Recent relevant changelog: v1.0.8 **skills dynamic reload** — **re-verified `[local]` 2026-06-16:
-  this is autocomplete discovery on conversation-switch / `--add-dir`, NOT re-reading edited skill
-  content on a plain doorbell, so empirical assumption #6 (skills cached per session; edits need a
-  restart) STILL HOLDS** for clavity's usage (test: edited `[ping]` reply to a marker, pinged the
-  running session, got plain `READY`). v1.0.7: 512 tool-call cap, configurable MCP launch timeout.
-  v1.0.6: sandbox-flag propagation in headless mode. `[doc]`/`[local]`
-- Changelog source: `github.com/google-antigravity/antigravity-cli` (CHANGELOG / releases).
-- Open `[conflict]`/unconfirmed to watch: API-key auth (#78); whether the headless `-p` stdout bug (#76)
-  is fixed post-1.0.8.
-
 ## Refresh after an `agy update`
 
-1. `agy changelog` (or the GitHub CHANGELOG) → diff against the pinned **1.0.8**; note added/removed
-   flags, subcommands, models, permission modes.
-2. Re-run local introspection: `agy --version`, the `/model` menu, `/mcp`, `/skills`, and the
-   `~/.gemini/` config layout (the *dynamic* toolset).
-3. Targeted web re-check of `antigravity.google/docs` + the changelog + recent issues for capability
-   changes (esp. headless, auth, quota, model lineup).
-4. Update changed claims, re-tag provenance, bump the `Verified against` header + the active model.
-5. If a capability change alters **routing** (Axis F) or contradicts an empirical assumption, update
-   here **and** cross-link/fix [`agy-assumptions.md`](agy-assumptions.md).
-6. **Re-run the acceptance suite** [`agy-test-suite.md`](agy-test-suite.md) — the four mode-template
-   tests + the skill-cache (#6) and write-scope (Axis D) re-verifications — and log the result there.
-
-> Evidence trail with full citations: [`agy-capabilities-research.md`](agy-capabilities-research.md).
+Refreshing this knowledge is the AUTO layer's job (observe → capture → curate), not a manual version
+chase — see the `agy-learn`/curation tooling rather than hand-editing a version stamp here.
