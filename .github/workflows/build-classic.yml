@@ -96,6 +96,10 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
           if (-not (Test-Path "$app\clavity.exe")) { throw "clavity.exe missing" }
           if (-not (Test-Path "$app\agy-mcp-bridge\SKILL.md")) { throw "bridge SKILL.md missing" }
+          if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.seed.md")) { throw "golden-header.seed.md not seeded" }
+          $seeded = Get-Content -Raw "$env:USERPROFILE\.clavity\golden-header.seed.md"
+          $bundled = Get-Content -Raw "$app\seed\golden-header.md"
+          if ($seeded -ne $bundled) { throw "seeded golden-header.seed.md != bundled baseline" }
           $arpKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{B59E963B-BE49-47B2-8CAB-5A3417D775C3}_is1"
           if (-not (Test-Path $arpKey)) { throw "ARP key missing (exact AppId _is1)" }
           $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
