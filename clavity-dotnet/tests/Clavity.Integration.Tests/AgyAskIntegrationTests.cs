@@ -156,11 +156,11 @@ public class AgyAskIntegrationTests
 
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
-        var headerPath = Path.Combine(dir, "golden-header.md");
-        File.WriteAllText(headerPath, "DRIVING RULE: scope to judgment");
+        var headerFile = Path.Combine(dir, GoldenHeader.SeedFileName);
+        File.WriteAllText(headerFile, "DRIVING RULE: scope to judgment");
         try
         {
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderPath = headerPath });
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderDir = dir });
             await view.AskAsync("please review");
 
             Assert.StartsWith("DRIVING RULE: scope to judgment", fake.LastSentText);

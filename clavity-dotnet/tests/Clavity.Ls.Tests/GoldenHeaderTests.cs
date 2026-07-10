@@ -10,60 +10,75 @@ public sealed class GoldenHeaderTests : IDisposable
     public void Dispose() { try { Directory.Delete(_dir, recursive: true); } catch { } }
 
     [Fact]
-    public void ResolvePath_uses_env_override_when_set()
+    public void ResolveDir_uses_env_override_when_set()
+        => Assert.Equal(@"D:\x", GoldenHeader.ResolveDir(@"D:\x", @"C:\Users\u"));
+
+    [Fact]
+    public void ResolveDir_falls_back_to_userprofile_dot_clavity_when_blank()
+        => Assert.Equal(Path.Combine(@"C:\Users\u", ".clavity"), GoldenHeader.ResolveDir("  ", @"C:\Users\u"));
+
+    [Fact]
+    public void TryReadCombined_returns_null_when_dir_empty()
+        => Assert.Null(GoldenHeader.TryReadCombined(_dir));
+
+    [Fact]
+    public void TryReadCombined_returns_seed_alone_when_only_seed_present()
     {
-        Assert.Equal(@"C:\custom\h.md", GoldenHeader.ResolvePath(@"C:\custom\h.md", @"C:\Users\u"));
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+        Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir));
     }
 
     [Fact]
-    public void ResolvePath_falls_back_to_userprofile_dot_clavity_when_env_blank()
+    public void TryReadCombined_returns_growth_alone_when_only_growth_present()
     {
-        Assert.Equal(
-            Path.Combine(@"C:\Users\u", ".clavity", "golden-header.md"),
-            GoldenHeader.ResolvePath("   ", @"C:\Users\u"));
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH");
+        Assert.Equal("GROWTH", GoldenHeader.TryReadCombined(_dir));
     }
 
     [Fact]
-    public void TryRead_returns_null_when_absent()
-        => Assert.Null(GoldenHeader.TryRead(Path.Combine(_dir, "nope.md")));
-
-    [Fact]
-    public void TryRead_returns_null_when_empty_or_whitespace()
+    public void TryReadCombined_concatenates_seed_then_growth_blank_line_separated()
     {
-        var p = Path.Combine(_dir, "h.md");
-        File.WriteAllText(p, "   \n  ");
-        Assert.Null(GoldenHeader.TryRead(p));
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED\n");
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH\n");
+        Assert.Equal("SEED\n\nGROWTH", GoldenHeader.TryReadCombined(_dir));
     }
 
     [Fact]
-    public void TryRead_returns_content_when_present()
+    public void TryReadCombined_falls_back_to_legacy_flat_file_as_growth()
     {
-        var p = Path.Combine(_dir, "h.md");
-        File.WriteAllText(p, "RULE: be precise");
-        Assert.Equal("RULE: be precise", GoldenHeader.TryRead(p));
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "LEGACY");
+        Assert.Equal("LEGACY", GoldenHeader.TryReadCombined(_dir));
     }
 
     [Fact]
-    public void TryRead_returns_null_when_over_cap()
+    public void TryReadCombined_injects_legacy_ALONE_not_concatenated_with_seed()
     {
-        var p = Path.Combine(_dir, "h.md");
-        File.WriteAllText(p, new string('x', GoldenHeader.MaxBytes + 1));
-        Assert.Null(GoldenHeader.TryRead(p));
+        // Upgrade case (panels A1 + R2-agy-1): installer seeded SEED, user's legacy flat file already contains the
+        // OLD baseline + their wisdom, no growth.md yet. Inject legacy alone — concatenating with the new SEED
+        // would inject the baseline twice.
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "OLD-BASELINE\n\nLEARNED");
+        Assert.Equal("OLD-BASELINE\n\nLEARNED", GoldenHeader.TryReadCombined(_dir));
     }
 
     [Fact]
-    public void TryRead_warns_on_over_cap_but_is_silent_when_absent()
+    public void TryReadCombined_ignores_legacy_once_growth_file_present()
     {
-        var p = Path.Combine(_dir, "big.md");
-        File.WriteAllText(p, new string('x', GoldenHeader.MaxBytes + 1));
-        var warnings = new List<string>();
-        Assert.Null(GoldenHeader.TryRead(p, warnings.Add));
-        Assert.Single(warnings);
-        Assert.Contains("cap", warnings[0], StringComparison.OrdinalIgnoreCase);
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH");
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "LEGACY");
+        Assert.Equal("SEED\n\nGROWTH", GoldenHeader.TryReadCombined(_dir));
+    }
 
-        warnings.Clear();
-        Assert.Null(GoldenHeader.TryRead(Path.Combine(_dir, "absent.md"), warnings.Add));
-        Assert.Empty(warnings);
+    [Fact]
+    public void TryReadCombined_drops_growth_but_keeps_seed_when_combined_over_cap()
+    {
+        // Each region is under the per-file cap, but their sum is over it. Degrade to SEED, do NOT drop everything.
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), new string('a', GoldenHeader.MaxBytes));
+        string? warned = null;
+        Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.NotNull(warned);   // the drop-GROWTH warning fired
     }
 
     [Fact]
@@ -82,7 +97,7 @@ public sealed class GoldenHeaderTests : IDisposable
     {
         var p = Path.Combine(_dir, "sub", "golden-header.md");
         GoldenHeader.Commit(p, "compiled wisdom");
-        Assert.Equal("compiled wisdom", GoldenHeader.TryRead(p));
+        Assert.Equal("compiled wisdom", File.ReadAllText(p));
     }
 
     [Fact]
@@ -99,5 +114,32 @@ public sealed class GoldenHeaderTests : IDisposable
     {
         var p = Path.Combine(_dir, "h.md");
         Assert.Throws<InvalidOperationException>(() => GoldenHeader.Commit(p, new string('x', GoldenHeader.MaxBytes + 1)));
+    }
+
+    [Fact]
+    public void CommitGrowth_writes_growth_file_only_and_leaves_seed_untouched()
+    {
+        GoldenHeader.CommitSeed(_dir, "SEED");
+        GoldenHeader.CommitGrowth(_dir, "GROWTH");
+        Assert.Equal("SEED", File.ReadAllText(Path.Combine(_dir, GoldenHeader.SeedFileName)));
+        Assert.Equal("GROWTH", File.ReadAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName)));
+    }
+
+    [Fact]
+    public void CommitSeed_writes_seed_file_only_and_leaves_growth_untouched()
+    {
+        GoldenHeader.CommitGrowth(_dir, "GROWTH");
+        GoldenHeader.CommitSeed(_dir, "SEED");
+        Assert.Equal("GROWTH", File.ReadAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName)));
+        Assert.Equal("SEED", File.ReadAllText(Path.Combine(_dir, GoldenHeader.SeedFileName)));
+    }
+
+    [Fact]
+    public void CommitSeed_writes_per_file_sidecar()
+    {
+        GoldenHeader.CommitSeed(_dir, "SEED");
+        var sidecar = Path.Combine(_dir, GoldenHeader.SeedFileName) + ".sha256";
+        Assert.True(File.Exists(sidecar));
+        Assert.Equal(GoldenHeader.Sha256Hex("SEED"), File.ReadAllText(sidecar));
     }
 }

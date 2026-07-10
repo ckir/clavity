@@ -17,10 +17,16 @@ if (args.Contains("--mcp"))
     {
         CliLogPath = AgyEnvironment.ResolveCliLogPath(
             Environment.GetEnvironmentVariable(AgyEnvironment.LogPathVar), agyDir),
-        GoldenHeaderPath = GoldenHeader.ResolvePath(
+        GoldenHeaderDir = GoldenHeader.ResolveDir(
             Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
     };
+
+    var ghOverride = Environment.GetEnvironmentVariable(GoldenHeader.PathVar);
+    if (!string.IsNullOrWhiteSpace(ghOverride) && (File.Exists(ghOverride) || Path.HasExtension(ghOverride)))
+        Console.Error.WriteLine(
+            $"clavity: {GoldenHeader.PathVar} now names a DIRECTORY, but '{ghOverride}' looks like a file — " +
+            "point it at the .clavity directory instead.");
 
     var builder = Host.CreateApplicationBuilder(args);
     // stdout is the MCP protocol channel — all logs must go to stderr.
@@ -39,10 +45,10 @@ if (args.Contains("--mcp"))
 // `clavity-ls curate-commit` — atomically write the compiled golden-header (read from stdin) to the shared path.
 if (args.Length > 0 && args[0] == "curate-commit")
 {
-    var headerPath = GoldenHeader.ResolvePath(
+    var dir = GoldenHeader.ResolveDir(
         Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-    return CliVerbs.CurateCommit(headerPath, Console.In, Console.Error);
+    return CliVerbs.CurateCommit(dir, Console.In, Console.Error);
 }
 
 if (Clavity.Ls.Install.CliRouter.IsInstallerVerb(args))

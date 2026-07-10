@@ -15,8 +15,8 @@ public sealed class AgyViewOptions
     /// <summary>Delay between boot-race polls.</summary>
     public TimeSpan BootRacePollInterval { get; init; } = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>Resolved golden-header path to read+prepend per ask; null disables injection (tests / no add-on).</summary>
-    public string? GoldenHeaderPath { get; init; }
+    /// <summary>Resolved golden-header directory to read+prepend per ask; null disables injection (tests / no add-on).</summary>
+    public string? GoldenHeaderDir { get; init; }
 
     /// <summary>Where operator-facing diagnostics go. Default = stderr (stdout is the MCP protocol channel, so
     /// it must NOT carry log lines). Tests inject a StringWriter to assert the surfaced model line.</summary>
@@ -106,7 +106,9 @@ public sealed class AgyView
 
             var model = await ResolveSendModelAsync(client, beforeTrajectory, cancellationToken);
 
-            var header = _options.GoldenHeaderPath is null ? null : GoldenHeader.TryRead(_options.GoldenHeaderPath);
+            var header = _options.GoldenHeaderDir is null
+                ? null
+                : GoldenHeader.TryReadCombined(_options.GoldenHeaderDir, m => Console.Error.WriteLine($"clavity: {m}"));
             var outgoing = GoldenHeader.Apply(header, message);
 
             _inFlight[conversationId] = 1;
