@@ -2,6 +2,8 @@
 
 **Status:** design (brainstormed 2026-07-10; four AGY-FIRST consult rounds + one AGY-AFTER panel folded across the
 distribution sub-question; owner-confirmed the seed/auto split, the extend model, and the version-agnostic seed).
+Component 2 **revised 2026-07-10** to the **split-file** golden-header model (a further AGY-FIRST consult; owner-ratified)
+— superseding the earlier single-file two-region design and dissolving the region-aware read-modify-write risk.
 
 **One-line:** Split today's agy-autotrain into a **SEED** (curated, version-/driver-agnostic agy knowledge + driving
 know-how that ships *inside* the clavity driver installer, so a fresh install drives agy well) and an **AUTO** add-on
@@ -76,67 +78,70 @@ once, in the seed; the two driving skills stop duplicating it.
 **Delivery channel — split the seed by artifact TYPE (do not ship agent artifacts via the binary installer):**
 - **Binary-consumed data** — the golden-header **baseline** and the agy manual (`agy-assumptions.md`/`agy-capabilities.md`
   as reference). The driver *binary* reads these; the Inno installer ships them as data files. Their lifecycle is
-  managed by the SEED/GROWTH regions (below), not the plugin system.
+  managed by the SEED/GROWTH split files (below), not the plugin system.
 - **Agent plugin artifacts** — the `adversarial-panel-review` **skill** and the AGY-AFTER **hook** are discovered by the
   agent's plugin ecosystem, NOT read by the binary. Shipping them through the .exe installer would recreate the exact
   installer-ships-a-plugin **downgrade trap this design bans** (Component 3). They therefore ship in the **driver's
   marketplace plugin** (the `clavity-dotnet` / `clavity-classic` plugin — where the driving-protocol skills already
   live), which has a clean marketplace lifecycle. "Ships with the driver" = with the driver's *plugin*, not its .exe.
 
-### 2. `agy-curate` becomes EXTEND, not OWNER — the merge-without-clobber
+### 2. `agy-curate` becomes EXTEND, not OWNER — split files, assemble-at-read
 
-The injected golden header lives at the shared path (`%USERPROFILE%\.clavity\golden-header.md`) and has **two
-delimited regions**, each with a single owner:
+**Two separate files, each with exactly one writer** (an AGY-FIRST consult surfaced this and the owner ratified it,
+superseding the earlier single-file two-region design). Under the shared path `%USERPROFILE%\.clavity\`:
 
 ```
-<!-- <<< SEED (managed by the clavity driver — replaced on driver update; do not edit) >>> -->
-   ...baseline agy rules shipped with the driver...
-<!-- <<< END SEED >>> -->
-<!-- <<< GROWTH (managed by agy-curate — appended from learning; do not edit) >>> -->
-   ...rules promoted from everyday use...
-<!-- <<< END GROWTH >>> -->
+golden-header.seed.md     ← written ONLY by the driver install/update (from its bundled baseline)
+golden-header.growth.md   ← written ONLY by agy-curate (rules promoted from learning)
 ```
 
-The markers are **HTML comments**, not `#` Markdown headings: the whole file is injected into every agy request, so a
-`#`-prefixed marker would become a loud H1 ("do not edit") that pollutes the peer's context and wastes tokens. HTML
-comments carry the delimiter for the two writers while staying low-signal in the injected prompt.
+The driver binary, on every ask, **reads both files and concatenates them SEED-then-GROWTH** (blank-line separated),
+then injects the result. Each writer does a whole-file **atomic** write (temp → rename) of **its own file only**.
 
-- **Driver install/update** writes/replaces **only the SEED region** (from its bundled baseline). It never touches
-  GROWTH — so re-running the driver installer cannot clobber accumulated learning (this is the fix for the
-  reinstall-downgrade trap identified earlier).
-- **`agy-curate`** reads the SEED region as the floor, promotes rules from the inbox, and writes **only the GROWTH
-  region** (deduped against SEED — a promoted rule already stated in SEED is dropped; a genuinely new/updated
-  observation is appended with provenance).
-- **The driver injects the whole file.** With no agy-autotrain, GROWTH is absent/empty and the driver injects SEED
-  alone — still competent.
+**Why split, not one file with regions:** two uncoordinated lifecycle actors (an OS installer and an async curator
+skill) sharing one mutable file forces a region-aware read-modify-write, whose correctness is the whole game — a naive
+overwrite clobbers the other owner's region, and two writers racing on one file can lose an update even with atomic
+renames. Splitting the storage makes the clobber **structurally impossible** rather than correctness-dependent: there
+is no shared mutable file, so there is no region parser, no read-modify-write, and no cross-writer lock to get right.
+The injected bytes are identical to the single-file design (concatenation reproduces SEED-then-GROWTH).
 
-On driver install the installer **seeds the shared path** (writes the SEED region if absent, or replaces the existing
-SEED region if the bundled baseline is newer), leaving any GROWTH region intact.
+- **No region markers.** The file boundary *is* the delimiter — no HTML-comment (or `#`-heading) SEED/GROWTH markers are
+  needed inside the content, so nothing marker-shaped pollutes the injected prompt. (A file may optionally carry a
+  one-line human-facing top comment naming its owner; it is not load-bearing and is subject to the size cap like any
+  other content.)
+- **Assemble at read.** The binary reads `golden-header.seed.md` (or empty if absent) and `golden-header.growth.md` (or
+  empty if absent), concatenates SEED-then-GROWTH, applies the existing 16 KB cap to the **combined** result, and
+  prepends. Neither file present ⇒ no header (the existing clean no-op; the add-on is simply not installed).
+- **Driver install/update** writes only `golden-header.seed.md`. It never touches `growth.md`, so re-running the
+  installer cannot clobber accumulated learning (this is the fix for the reinstall-downgrade trap identified earlier).
+- **`agy-curate`** reads `seed.md` as the floor for dedup, promotes rules from the inbox, and writes only
+  `golden-header.growth.md` — **regenerated wholesale** each run (idempotent; no duplicate rules accreting), deduped
+  against SEED so a promoted rule already stated in SEED is dropped. It never touches `seed.md`.
+- **Degradation.** With no driver, `seed.md` is absent and `agy-curate` still writes `growth.md` alone. With no
+  agy-autotrain, `growth.md` is absent and the driver injects SEED alone — still competent.
 
-**Merge requirements & risks (the load-bearing, riskiest part — surfaced by the panel):**
-- **Region-aware read-modify-write, not overwrite.** The installer must parse the existing shared file, replace *only*
-  the SEED region, and re-emit GROWTH untouched. A naive whole-file overwrite reintroduces the very clobber this design
-  exists to prevent. In Inno-Setup this is Pascal-script region editing — non-trivial; its complexity/feasibility is a
-  first-class implementation risk to prototype early.
-- **Atomic writes + single-writer discipline.** Two owners write one file (installer SEED, `agy-curate` GROWTH). Each
-  write must be atomic (temp-file → rename) and should treat the file as single-writer at a time, so a driver install
-  running concurrently with a curate cannot tear the file or drop a region.
-- **GROWTH is regenerated wholesale, never appended incrementally** — so re-running `agy-curate` is idempotent (no
-  duplicate rules accreting across runs); dedup runs against both SEED and the freshly-regenerated GROWTH.
-- **Migration from today's flat header.** Existing installs have a single flat golden-header with no region markers.
-  The first driver version that adopts this must migrate: treat a marker-less existing file as legacy GROWTH (preserve
-  it) and write the SEED region around it, OR define a one-time conversion. A region-unaware *old* driver injecting a
-  new regioned file still works (it injects the whole file), so the risk is one-directional (new writers must tolerate
-  a legacy flat file); make that explicit.
-- **Orphaned GROWTH / absent SEED.** `agy-curate` may run before any driver is installed (capture works standalone), so
-  the shared file can hold a GROWTH region with **no SEED**. Both writers must tolerate this: `agy-curate` treats an
-  absent SEED as an empty floor and emits a GROWTH-only file; a later driver install must inject its SEED region into a
-  file that already has GROWTH-but-no-SEED. (This is the same read-modify-write robustness as migration.)
-- **Installer file ownership/ACLs.** The installer seeds a file under `%USERPROFILE%\.clavity\` that `agy-curate` later
-  rewrites as a **standard user**. Verify the driver installer runs **per-user / non-elevated** (its target is
-  `AppData\Local\Programs`, which normally does *not* require elevation) — in which case ownership is correct by
-  construction. If any install path runs **elevated**, it must seed the shared file with the interactive user's
-  ownership/ACLs, or a later standard-user `agy-curate` write fails with Access-Denied and silently breaks learning.
+**Residual robustness requirements (much smaller than the single-file design — most risks are now structural):**
+- **Atomic per-file write.** Each writer's single-file write is still atomic (temp → rename) so a reader never sees a
+  torn file. No cross-writer lock is needed — the two writers target different files and cannot race.
+- **Migration from today's flat header (one-directional).** Existing installs have a single flat `golden-header.md`.
+  The binary tolerates it on read: if `golden-header.seed.md`/`golden-header.growth.md` are both absent but a legacy
+  flat `golden-header.md` exists, inject the legacy file (treat its content as GROWTH). `agy-curate` migrates it
+  **automatically** on its next run — reads the legacy flat file as the GROWTH floor and writes `golden-header.growth.md`
+  — with **no user action** (not "rename it yourself"). A new installer writing `seed.md` next to a legacy flat file is
+  safe (the binary prefers `seed.md`+`growth.md` when present; the flat file is a fallback only). The one-directional
+  risk to make explicit: an *old* driver binary reads only the flat `golden-header.md` and will not see the new split
+  files — acceptable because the binary and its installer ship together in one release, so this skew only arises if the
+  data is updated without the binary.
+- **`.sha256` sidecar becomes per-file.** Each writer sidecars its own file (`golden-header.seed.md.sha256`,
+  `golden-header.growth.md.sha256`). Active validation remains the deferred follow-on (today sidecars are written, not
+  read).
+- **`CLAVITY_GOLDEN_HEADER` override.** Today it names one file; under split it should resolve a **directory** (default
+  `%USERPROFILE%\.clavity\`) so a test/CI can redirect both files together. Exact override shape is a plan detail.
+- **Installer file ownership/ACLs.** The installer writes `seed.md` under `%USERPROFILE%\.clavity\` that `agy-curate`
+  later writes alongside as a **standard user**. Verify the driver installer runs **per-user / non-elevated** (its
+  target is `AppData\Local\Programs`, which normally does *not* require elevation) — in which case ownership is correct
+  by construction. If any install path runs **elevated**, it must create the directory / `seed.md` with the interactive
+  user's ownership, or a later standard-user `agy-curate` write fails with Access-Denied and silently breaks learning.
 
 ### 3. Distribution & discovery (folds in the earlier distribution decision)
 
@@ -155,7 +160,7 @@ SEED region if the bundled baseline is newer), leaving any GROWTH region intact.
 - `agy-learn` (capture → append to the inbox) needs no driver and always works.
 - `agy-curate` needs the driver's SEED to extend and the driver to inject the result. With **no driver detected**
   (checkable signal: the clavity binary on `PATH`), it does **not** hard-fail and is **not** a hard block: it still
-  writes the GROWTH region if it can, and emits a **non-blocking warning** — *"no clavity driver detected; the learned
+  writes `golden-header.growth.md` if it can, and emits a **non-blocking warning** — *"no clavity driver detected; the learned
   header won't be injected until a driver is installed."* (Non-blocking, per the AGY-AFTER panel finding: a `PATH`
   false-negative must not lock the user out of a file write that is otherwise harmless.)
 - The panel discipline no longer lives here (it moved to the SEED), so agy-autotrain-without-a-driver has no panel
@@ -175,21 +180,22 @@ SEED region if the bundled baseline is newer), leaving any GROWTH region intact.
 2. **Seed extraction** — move the scrubbed knowledge + golden-header baseline + `adversarial-panel-review` + AGY-AFTER
    hook into a single-sourced seed built into each driver package; **thin `clavity-ls-driving` + `clavity-driving` to
    transport-only + a pointer to the seed** (remove the duplicated agnostic protocol/panel know-how).
-3. **Curate-extend** — implement the SEED/GROWTH delimited regions; make the driver install seed the SEED region and
-   `agy-curate` own only GROWTH; dedupe growth against seed.
+3. **Curate-extend** — implement the split files: the driver install writes `golden-header.seed.md`, `agy-curate` owns
+   only `golden-header.growth.md`, the binary assembles SEED-then-GROWTH at read; dedupe growth against seed; auto-migrate
+   a legacy flat `golden-header.md` as GROWTH.
 4. **Distribution** — driver README + installer post-install advertisement (verified install command); agy-autotrain's
    loud-guide warning; confirm agy-autotrain's marketplace listing/description as the AUTO add-on.
 
 ## Acceptance
 
-1. A fresh clavity driver install (no agy-autotrain) drives agy competently: it has the manual, injects the SEED golden
-   header, and can form review panels — all from the seed.
+1. A fresh clavity driver install (no agy-autotrain) drives agy competently: it has the manual, injects the
+   `golden-header.seed.md` header, and can form review panels — all from the seed.
 2. The seed contains no agy-version stamp and no driver-transport mechanics (grep-checkable).
-3. Installing agy-autotrain and running `agy-curate` appends a GROWTH region without altering SEED; the driver injects
-   SEED+GROWTH.
-4. Re-running the driver installer replaces SEED and leaves GROWTH intact (no learning lost); re-running `agy-curate`
-   is idempotent (GROWTH regenerated wholesale, no duplicate rules). A pre-existing *flat* (marker-less) header is
-   migrated without data loss (its content preserved as GROWTH under a fresh SEED region).
+3. Installing agy-autotrain and running `agy-curate` writes `golden-header.growth.md` without altering
+   `golden-header.seed.md`; the driver injects SEED-then-GROWTH concatenated.
+4. Re-running the driver installer rewrites `seed.md` and leaves `growth.md` intact (no learning lost); re-running
+   `agy-curate` is idempotent (`growth.md` regenerated wholesale, no duplicate rules). A pre-existing *flat*
+   `golden-header.md` is migrated without data loss (its content preserved as GROWTH), with no user action required.
 5. agy-autotrain with no driver present: `agy-learn` captures; `agy-curate` emits the non-blocking warning (no crash,
    no hard block).
 6. The driver installers advertise agy-autotrain (conditional wording) but do not ship the plugin; the marketplace is
