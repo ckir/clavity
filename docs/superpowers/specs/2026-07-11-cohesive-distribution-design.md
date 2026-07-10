@@ -1,7 +1,9 @@
 # Cohesive Distribution Model — Design
 
 **Date:** 2026-07-11
-**Status:** design — owner-approved model (2026-07-11); pending spec self-review + AGY-AFTER panel + user review → plan.
+**Status:** design — owner-approved model (2026-07-11); AGY-AFTER adversarial-panel **round 1 folded** (solo panel
+F1–F4 + agy escalation cascade `0d033d59`: idempotent-upgrade, `-LiteralPath` seeding, PATH false-positive folded;
+agy's "malformed marketplace CLI" claim refuted by the `PluginInstaller.cs` oracle); pending user review → plan.
 **Supersedes / resets:** all prior distribution decisions for the umbrella repo, including
 `2026-07-09-per-plugin-decoupled-installers-design.md` (whose download/opt-in mechanics and marketplace-split
 details are re-derived from scratch here) and the *Distribution* phase (Component 3 / Acceptance #6) of
@@ -66,15 +68,38 @@ Each member's AI assets are a plugin folder embedded in its installer. On instal
 1. stages the plugin folder → `{app}\plugins\<name>`;
 2. writes a scoped `marketplace.json` (see C9) listing **only** `<name>`, under a **unique** marketplace name;
 3. registers against each detected agent, mirroring today's `PluginInstaller` behavior but inline and per-installer:
-   - **Claude Code:** `claude plugin marketplace add {app} --scope user` → `claude plugin install <name>@<unique-mkt> --scope user`;
-   - **agy:** `agy plugin install {app}\plugins\<name>`.
+   - **Claude Code:** `claude plugin marketplace add <app> --scope user` → `claude plugin install <plugin>@<unique-mkt> --scope user`;
+   - **agy:** `agy plugin install <app>\plugins\<name>`.
+
+**Named oracle for the exact commands (BLOCKING for the plan):** `clavity-dotnet/src/Clavity.Ls/Install/PluginInstaller.cs`
+(`Install` / `Uninstall`, lines 17–45). The plan MUST copy these argument vectors **verbatim** — do not guess a
+signature. Verified there: `marketplace add` takes the **path** as its positional arg (there is **no** marketplace-name
+positional — the name is read from the manifest's own top-level `name`); `plugin install` takes `<plugin-name>@<marketplace-name>`;
+agy takes the local plugin dir; uninstall is `claude|agy plugin uninstall <plugin-name>`. (An adversarial review claimed the
+`marketplace add` signature was malformed and required a name positional — **refuted by this oracle**.)
+
+**Idempotent re-run / upgrade (BLOCKING — folded).** A user re-runs an installer to upgrade in place, so registration
+MUST be idempotent: an already-added marketplace or already-installed plugin is a **success**, not a fatal error. The
+current `PluginInstaller` treats a non-zero `marketplace add` as fatal (`PluginInstaller.cs:23`) with no
+already-registered tolerance — the plan must add that tolerance (detect/ignore "already exists", or remove-then-add),
+or an upgrade abort traps the user on the stale version.
+
+**Per-agent semantics (folded).** Detection can find Claude, agy, both, or neither. Register each detected agent
+**independently** and report per-agent; treat the install as failed only if **every** detected agent's registration
+fails (a genuine no-op install) — a partial success (Claude ok, agy fails) reports the failure but does **not**
+silently roll the successful one back without saying so. "No agent detected at all" is a clear message + non-zero exit.
 
 Plugin-only members (agy-autotrain, commonmemory) do exactly this with **no binary step** — their `.exe` is small
-(plugin assets + registration logic only). Registration failure is **fatal for that installer** (registering its own
-plugin is the installer's whole job): report clearly and abort cleanly.
+(plugin assets + registration logic only).
+
+**Install-time rollback (folded).** If a step **after** a successful plugin registration fails (binary unpack, PATH,
+a second agent), the installer must **deregister** what it registered (plugin uninstall + `marketplace remove`) before
+aborting — otherwise a failed *install* leaves the same dangling-marketplace state C6 guards against on *uninstall*.
 
 **Open (plan) O1** — factor the registration `[Code]` into a shared `.iss` include (DRY across five installers) vs a
-tiny shared helper `.exe`. Lean: shared `[Code]` include (no new binary, no runtime coupling).
+tiny shared helper `.exe`. Lean: shared `[Code]` include. This is also the **mitigation for the 1→5 decentralization
+cost** (F3): C1 moves the claude/agy CLI contract from one place (`PluginInstaller`) into five installers, so an upstream
+CLI drift breaks all five at once — a single shared include keeps the command strings in **one** editable place.
 
 ### C2 — Binaries embedded, not downloaded
 
@@ -89,8 +114,16 @@ There is **no** user-facing remote marketplace. `claude plugin marketplace add c
 install path and is not advertised anywhere (README, release notes, finish pages). The only way to obtain a member is
 to download and run its installer from the release page.
 
-The repo-root `.claude-plugin/marketplace.json` (the full five-member list) is retained **only as an internal build
-artifact** — the single source we slice the per-installer scoped manifests from (C9). It is not a user channel.
+**"Local-only" must be STRUCTURAL, not just unadvertised (folded — F1).** `ckir/clavity` is a public repo; if a valid
+`marketplace.json` sits at the repo root under `.claude-plugin/`, `claude plugin marketplace add ckir/clavity` **works
+for anyone regardless of advertising** — so merely "not documenting it" leaves the exact version-skew door this reset
+closes wide open, and an acceptance test that only reviews docs would false-GREEN. Therefore the internal build source
+that we slice the per-installer scoped manifests from is **NOT** a Claude-addable `.claude-plugin/marketplace.json` at
+the repo root: keep the full five-member list as a plain build data file (e.g. `build/members.json`, or inline in
+`umbrella-release.yml`) that is **not** a valid marketplace manifest at an addable path. If a repo-root
+`.claude-plugin/marketplace.json` must exist for another reason, the spec must say so and explicitly own the residual
+latent remote path rather than claiming skew is impossible. Acceptance #3 is testable accordingly (assert no addable
+root marketplace manifest resolves).
 
 **Why local-only (agy's call, owner-ratified):** a member's binary and its companion plugin always arrive together,
 from one `.exe`, at one version, so the binary↔plugin execution contract can never skew. Offering a remote backdoor
@@ -111,6 +144,13 @@ to the user profile gives the binary a stable, OS-native path fully decoupled fr
 matches the split-file SEED/GROWTH design already implemented (`golden-header.seed.md` written by the installer;
 `golden-header.growth.md` written by agy-curate; binary assembles SEED-then-GROWTH at read).
 
+**Bracket-/quote-safe path handling (BLOCKING — folded, Boundary Smuggler).** All path-bound PowerShell in the seeding
+step MUST treat the profile path literally: use `-LiteralPath` on **every** path cmdlet (`New-Item`, `Test-Path`,
+`Copy-Item` source **and** any destination resolution), plus the existing single-quote doubling. A profile such as
+`C:\Users\J[x]` makes `[` a globbing wildcard for non-literal cmdlets, so a bare `New-Item -Path` silently fails to
+create `~/.clavity` and the seed is dropped. (The shipped code already uses `-LiteralPath` on the `Copy-Item` source
+but **not** on `New-Item -Path` — the plan must close that gap for all five path uses.)
+
 ### C5 — Mutual exclusion (dotnet XOR classic)
 
 The dotnet and classic installers keep the existing mutual-exclusion refusal: each aborts at `InitializeSetup` if the
@@ -118,6 +158,12 @@ other variant is detected (in-process PATH scan for the `clavity` stem; the `Sof
 marker). This is another reason the model is **five standalone installers, not one master installer with checkboxes**:
 a single installer would have to enforce radio-button exclusivity between two of its own driver checkboxes, which is
 clumsier than two installers that refuse each other.
+
+**Known limitation (folded — low severity, Cascade).** The PATH-scan can false-positive on a `clavity` entry the
+current user cannot remove (another user's profile on the machine PATH, or a stray manual entry) → a per-user install
+of the other variant refuses and the standard user may lack rights to clear the blocker. The per-user
+`HKCU\Software\clavity\<variant>` registry marker is the sounder, self-scoped signal; the plan should prefer it and
+treat a PATH-only hit as advisory. Documented as an accepted edge, not blocking.
 
 ### C6 — Uninstall robustness; no dangling marketplaces (agy failure-mode A1)
 
@@ -157,23 +203,46 @@ branch for symmetry; flag for an explicit call in the plan, not decided here.
 
 `PluginInstaller` today uses a single const `MarketplaceName = "clavity"`. If all five installers register a local
 marketplace under the **same** name, the last install **steals the namespace** and silently breaks every previously
-installed member's plugin resolution. Therefore each installer's scoped manifest and its `plugin marketplace
-add`/`install <name>@<mkt>` MUST use a **unique** marketplace name — e.g. `clavity-dotnet`, `clavity-classic`,
-`clavity-ghidrust`, `clavity-agy-autotrain`, `clavity-commonmemory`. Each installer also keeps a **distinct**
-`DefaultDirName` (`…\Programs\<member>`) so their `{app}\.claude-plugin\marketplace.json` + `{app}\plugins` never
-clobber each other.
+installed member's plugin resolution. The **unique thing is the scoped `marketplace.json`'s top-level `name` field**
+(verified oracle: `claude plugin install <plugin>@<name>` resolves the manifest's `name`, `PluginInstaller.cs:25`) —
+**not** the plugin name, which stays the member's real name. Each installer's scoped manifest MUST carry a **unique**
+top-level `name` — e.g. `clavity-dotnet`, `clavity-classic`, `clavity-ghidrust`, `clavity-agy-autotrain`,
+`clavity-commonmemory` — and its `plugin install <plugin>@<that-name>` must match. Each installer also keeps a
+**distinct** `DefaultDirName` (`…\Programs\<member>`) so their `{app}\.claude-plugin\marketplace.json` + `{app}\plugins`
+never clobber each other.
 
 **Open (plan) O3** — generate the scoped 1-entry manifests (with the rewritten unique `name`) from the repo-root full
 manifest via a small build step, vs hand-maintain five files. Prefer **generate** to avoid drift.
+
+### C10 — Migration / teardown of the current bundled model (IN SCOPE — folded, F4)
+
+This design does not just *add* five installers — it **removes** the current bundled machinery, and the plan must
+enumerate that teardown so the new and old cannot coexist and contradict:
+
+- **`clavity-dotnet.iss`:** delete the opt-in add-on `[Tasks]` (`install_agy_autotrain`, `install_commonmemory`),
+  the `InstallAddon` calls + the uninstall `--plugin agy-autotrain|commonmemory` deregistration, and the cross-plugin
+  `[Files]` staging of `agy-autotrain` / `commonmemory` / `ghidrust` under `{app}\plugins`. It keeps only its **own**
+  plugin + binary + seed.
+- **`build-dotnet.yml`:** remove the flat 4-plugin `marketplace.install.json` generation and the smoke assertions that
+  the sibling plugins are bundled under `{app}\plugins` (`agy-autotrain`, `commonmemory`, `ghidrust`); replace with the
+  single-member assertion + the C9 unique-name / C6 no-dangling checks.
+- **New installers:** `agy-autotrain` and `commonmemory` gain their own plugin-only installers (they have none today);
+  `ghidrust`'s installer gains local plugin self-registration (today it ships binary-only, plugin via remote marketplace).
 
 ## Failure modes (agy consult) and disposition
 
 | # | Failure mode | Disposition |
 |---|---|---|
-| A1 | Dangling local marketplace after failed uninstall / manual delete | Mitigated — C6 (deregister marketplace on uninstall; fail-open) |
+| A1 | Dangling local marketplace after failed **uninstall** / manual delete | Mitigated — C6 (deregister marketplace on uninstall; fail-open) |
+| A1′ | Dangling marketplace after a failed **install** (register-then-fail, no rollback) | Mitigated — C1 install-time rollback (deregister before abort) |
 | A2 | Cross-member update drift (dotnet v2 + agy-autotrain v1) | Accepted — low-stakes by design: plugins are variant-agnostic; the binary↔*own*-plugin contract can't skew (C3). Not the master-installer's problem to solve here. |
 | A3 | Dependency blindness (agy-autotrain needs a driver) | Handled at runtime — C7 loud-guide warning |
-| B | Marketplace-name collision steals the namespace | Blocking requirement — C9 unique name per installer |
+| B | Marketplace-name collision steals the namespace | Blocking requirement — C9 unique top-level manifest `name` per installer |
+| C | Re-run/upgrade abort on idempotent "already registered" | Blocking requirement — C1 idempotent registration |
+| D | `[`/`'` in profile path breaks PowerShell seeding (globbing) | Blocking requirement — C4 `-LiteralPath` on all path cmdlets |
+| E | Local-only defeated by a public repo-root addable manifest | Mitigated — C3 keeps the build source non-addable (not a root `.claude-plugin/marketplace.json`) |
+| F | claude/agy plugin CLI drift breaks all five installers at once | Accepted + mitigated — C1/O1 shared include keeps the contract in one editable place; PluginInstaller.cs is the named oracle |
+| G | Mutual-exclusion PATH false-positive traps a per-user install | Accepted (low) — C5 prefers the per-user registry marker; PATH hit advisory |
 
 ## Error handling
 
@@ -209,13 +278,19 @@ manifest via a small build step, vs hand-maintain five files. Prefer **generate*
 2. Running any member's installer registers that member's plugin from a **local** scoped marketplace under a
    **unique** name, with no network access required; binary members also place their binary on PATH, all from the
    embedded payload.
-3. No installer bundles, downloads, or launches another member; there is no user-facing remote marketplace path.
+3. No installer bundles, downloads, or launches another member; **no addable Claude marketplace manifest resolves at
+   the repo root** (`marketplace add ckir/clavity` finds nothing) — local-only is structural, not documentation.
 4. Uninstalling a member deregisters its plugin, removes its marketplace entry (no dangling path), strips its PATH
-   entry, and leaves other members untouched.
+   entry, and leaves other members untouched. A **failed install** likewise leaves no dangling marketplace (rollback).
 5. dotnet and classic still refuse to co-install.
-6. The golden-header seed is installer-seeded to `~/.clavity/golden-header.seed.md`; agy-autotrain with no driver
-   present still installs and captures, warning (non-blocking) that the header won't inject until a driver exists.
-7. The five scoped marketplace manifests carry five distinct marketplace names (CI-asserted).
+6. The golden-header seed is installer-seeded to `~/.clavity/golden-header.seed.md` (surviving a profile path
+   containing `[` `]` or `'`); agy-autotrain with no driver present still installs and captures, warning
+   (non-blocking) that the header won't inject until a driver exists.
+7. The five scoped marketplace manifests carry five distinct top-level `name`s (CI-asserted).
+8. **Re-running an installer over an existing install upgrades in place** — idempotent registration does not abort on
+   an already-added marketplace / already-installed plugin.
+9. Registration runs per detected agent independently; a partial (one-agent) failure is reported, not silently
+   dropped, and does not leave a half-registered install without rollback.
 
 ## Open items (all → plan)
 
