@@ -9,7 +9,9 @@ status=0
 for rel in \
   skills/adversarial-panel-review/SKILL.md \
   hooks/agy-after-reminder.sh \
-  hooks/hooks.json ; do
+  hooks/hooks.json \
+  knowledge/agy-assumptions.md \
+  knowledge/agy-capabilities.md ; do
   if ! diff -q "$D/$rel" "$C/$rel" >/dev/null 2>&1; then
     echo "SEED-DRIFT: $rel differs between clavity-dotnet/plugin and clavity-classic/plugin" >&2
     status=1
