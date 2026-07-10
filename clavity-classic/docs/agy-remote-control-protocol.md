@@ -45,7 +45,7 @@ moment and retry. Once `READY` arrives, agy + its bus are live.
 agy defined these — follow them when phrasing requests for best results.
 
 **Route by capability first.** Before phrasing an ask, consult the capability profile
-([`agy-capabilities.md`](agy-capabilities.md)) to decide **whether** to delegate to agy at all,
+([`../../agy-autotrain/knowledge/agy-capabilities.md`](../../agy-autotrain/knowledge/agy-capabilities.md)) to decide **whether** to delegate to agy at all,
 **what** to delegate, and **which model** to set it to — agy is an external, multi-model platform, so
 treat picking it (and its model) like choosing a subagent tier:
 - **Route toward agy** for an *independent second-model* perspective: divergent review, generative
@@ -177,7 +177,7 @@ unscoped path.
 timeout. Do not silently assume failure. If the pane shows a transient backend error (e.g. agy's
 "high traffic" message), agy aborted to idle with no reply — wait ~1 min, then **re-`ask`** (a fresh
 req-id; the old request was likely consumed when agy read its inbox, so re-ringing alone won't
-re-surface it). (See `docs/agy-assumptions.md` → "Transient runtime gotchas".)
+re-surface it). (See `../../agy-autotrain/knowledge/agy-assumptions.md` → "Transient runtime gotchas".)
 
 > **Manual fallback** (bus or `ask` unavailable): `clavity req-id "<instruction>"` → `memory_signal_send(from="claude", to="agy", type="request", content=<envelope>)` (record the returned signal's `id` **and `threadId`**) → `clavity ring` → `clavity await-reply --req-id <id> --thread-id <threadId>`.
 
@@ -220,5 +220,5 @@ above. The wording is stored as a constant in `src/main.rs` (`REVIEW_ONLY_BANNER
   the launch folder.** To let agy write *outside* it, **widen the wrapper** — enable
   `allowNonWorkspaceAccess`, pass `--add-dir`, or add to `trustedWorkspaces[]` — rather than forcing a
   shell fallback (shell is the last resort, not the fix). Full reconciliation: capability profile
-  **Axis D** ([`agy-capabilities.md`](agy-capabilities.md)).
+  **Axis D** ([`../../agy-autotrain/knowledge/agy-capabilities.md`](../../agy-autotrain/knowledge/agy-capabilities.md)).
 - This runbook can later be promoted to a harness skill so Claude invokes it automatically.
