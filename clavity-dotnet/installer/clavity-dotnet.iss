@@ -36,6 +36,9 @@ SetupMutex=ClavitySetupMutex
 
 [Files]
 Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Phase 3: the golden-header SEED baseline (installer-seeded into %USERPROFILE%\.clavity\golden-header.seed.md
+; post-install). Unconditional — the SEED must ship even without the agy-autotrain add-on.
+Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversion
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity-dotnet"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Optional add-ons: shipped so the marketplace resolves, but only INSTALLED if the Phase 4 [Tasks] are ticked.
@@ -188,6 +191,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
+  PsCmd, SrcPath, DestDir: String;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -197,6 +201,28 @@ begin
     else if ResultCode <> 0 then
       SuppressibleMsgBox('clavity-ls plugin registration reported a problem (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
         'Open a terminal and re-run:  clavity-ls install --agent all', mbError, MB_OK, IDOK);
+    { Phase 3: seed golden-header.seed.md from the bundled baseline with standard PowerShell (always available;
+      no dependency on the just-installed binary running). Overwrites SEED only; never touches GROWTH. }
+    SrcPath := ExpandConstant('{app}\seed\golden-header.md');
+    { panel agy-R3-a: resolve the profile via Inno's {%USERPROFILE} (same as the zombie-header rename below),
+      NOT PowerShell's $env:USERPROFILE — under any elevation the two can differ, silently seeding the wrong
+      profile. Inno's constant matches the interactive install user consistently. }
+    DestDir := ExpandConstant('{%USERPROFILE}\.clavity');
+    { panel R2-1: double any single-quote so a username like O'Brien can't break the PS single-quoted literals. }
+    StringChangeEx(SrcPath, '''', '''''', True);
+    StringChangeEx(DestDir, '''', '''''', True);
+    PsCmd :=
+      'New-Item -ItemType Directory -Force -Path ''' + DestDir + ''' | Out-Null;' +
+      'Copy-Item -LiteralPath ''' + SrcPath + ''' ' +
+      '-Destination ''' + DestDir + '\golden-header.seed.md'' -Force';
+    { -Command (inline) is not governed by execution policy, so no -ExecutionPolicy flag is needed (panel R2-2). }
+    if not Exec('powershell.exe', '-NoProfile -Command "' + PsCmd + '"',
+                '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      SuppressibleMsgBox('Could not seed the golden-header baseline. The AI still works; seed it later by copying' + #13#10 +
+        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md', mbInformation, MB_OK, IDOK)
+    else if ResultCode <> 0 then
+      SuppressibleMsgBox('Seeding the golden-header baseline reported a problem (exit code ' + IntToStr(ResultCode) + ').',
+        mbInformation, MB_OK, IDOK);
     { Optional add-ons — install each ticked one (default OFF). }
     if WizardIsTaskSelected('install_agy_autotrain') then InstallAddon('agy-autotrain');
     if WizardIsTaskSelected('install_commonmemory') then
@@ -237,7 +263,7 @@ begin
     exit;
 
   { Silent uninstall defaults to KEEPING data (IDNO) — never delete user data without an explicit answer. }
-  RemoveConfig := SuppressibleMsgBox('Also remove clavity''s data (the .clavity folder in your profile: the golden-header)?' + #13#10 +
+  RemoveConfig := SuppressibleMsgBox('Also remove clavity''s data (the .clavity folder in your profile: the golden-header seed + learned growth)?' + #13#10 +
     'Choose No to keep it for a future reinstall.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
 
   if RemoveConfig then
@@ -268,10 +294,21 @@ begin
   RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
 end;
 
+procedure BackupHeaderFile(const Header: string);
+var
+  Backup: string;
+begin
+  Backup := Header + '.backup';
+  if FileExists(Header) then
+  begin
+    DeleteFile(Backup);
+    RenameFile(Header, Backup);
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
-  Header, Backup: string;
 begin
   if CurUninstallStep = usUninstall then
   begin
@@ -281,19 +318,15 @@ begin
       Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all --plugin agy-autotrain', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all --plugin commonmemory', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
-    { Zombie-header fix (spec data-lifecycle): when KEEPING data (not --purge-data), rename golden-header.md ->
-      .backup so a future reinstall does not auto-inject frozen wisdom. .backup does NOT auto-restore. Skipped on
-      purge (the whole .clavity dir is deleted by clavity-ls --purge-data). NOTE: honors only the default path,
-      not a CLAVITY_GOLDEN_HEADER override (rare edge). }
+    { Zombie-header fix (spec data-lifecycle): when KEEPING data (not --purge-data), back up each golden-header
+      file (the SEED baseline + learned GROWTH, and any legacy flat file) -> .backup so a future reinstall does
+      not auto-inject frozen wisdom. .backup does NOT auto-restore. Skipped on purge (the whole .clavity dir is
+      deleted by clavity-ls --purge-data). NOTE: honors only the default path, not a CLAVITY_GOLDEN_HEADER override. }
     if not RemoveConfig then
     begin
-      Header := ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md');
-      Backup := Header + '.backup';
-      if FileExists(Header) then
-      begin
-        DeleteFile(Backup);
-        RenameFile(Header, Backup);
-      end;
+      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
+      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.growth.md'));
+      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
     end;
   end
   else if CurUninstallStep = usPostUninstall then
