@@ -78,16 +78,14 @@ the commit is idempotent:
     # dotnet variant — `clavity-ls curate-commit` writes golden-header.growth.md (SEED is left untouched):
     clavity-ls curate-commit < compiled-growth.md      # or: printf '%s' "$growth" | clavity-ls curate-commit
 
-    # classic variant — `clavity curate-commit` also exists and is tested, but clavity-classic is not yet
-    # split-file aware (its parity is release-gated), so until then it writes the legacy flat
-    # %USERPROFILE%\.clavity\golden-header.md — which the split-aware binary reads as a one-time migration
-    # fallback and a classic install reads directly:
+    # classic variant — `clavity curate-commit` writes golden-header.growth.md too (split-file parity landed;
+    # SEED is left untouched), identical to the dotnet variant:
     clavity curate-commit < compiled-growth.md
 
-`curate-commit` (dotnet) writes **only** `golden-header.growth.md`; it never touches the SEED. Do NOT edit the
-shared files by hand, and do **not rename or remove** a legacy flat `%USERPROFILE%\.clavity\golden-header.md` if
-one is present — the binary reads it as a migration fallback (GROWTH present → legacy ignored), and renaming it
-would break a clavity-classic failover that cannot yet read the split files.
+`curate-commit` (both variants) writes **only** `golden-header.growth.md`; it never touches the SEED. Do NOT edit
+the shared files by hand, and do **not rename or remove** a legacy flat `%USERPROFILE%\.clavity\golden-header.md`
+if one is present — the binary reads it as a one-time migration fallback (GROWTH present → legacy ignored), and
+renaming it would defeat that migration for an upgrading user.
 
 **No driver installed?** If no clavity binary is on PATH, still compile and write `golden-header.growth.md`
 (create the `.clavity` dir if absent) and emit a **non-blocking** warning — e.g. "no clavity driver detected;
