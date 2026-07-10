@@ -1,7 +1,7 @@
 # agy classic transport — psmux + agentmemory bus mechanics
 
 **This is the classic (psmux/bus) transport manual** — the driver-specific companion to the agnostic
-[`agy-autotrain/knowledge/agy-assumptions.md`](../../agy-autotrain/knowledge/agy-assumptions.md)
+[`../plugin/knowledge/agy-assumptions.md`](../plugin/knowledge/agy-assumptions.md)
 manual. That file states version-agnostic peer-truth about agy itself; this file states how
 **clavity-classic specifically** reaches agy — the psmux verbs, the agentmemory bus REST schema, the
 doorbell/footer-marker mechanics, and the env knobs that tune them. If clavity-classic misbehaves (or

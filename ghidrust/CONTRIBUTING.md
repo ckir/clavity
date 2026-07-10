@@ -26,7 +26,7 @@ clavity doctor   # preflight: are tmux/claude/agy on PATH, is the session reacha
 ```
 
 > **If something agy-facing breaks (likely after an agy/psmux update):** start with
-> [`plugins/agy-autotrain/knowledge/agy-assumptions.md`](plugins/agy-autotrain/knowledge/agy-assumptions.md)
+> [`../clavity-dotnet/plugin/knowledge/agy-assumptions.md`](../clavity-dotnet/plugin/knowledge/agy-assumptions.md)
 > (the canonical manual; `docs/agy-assumptions.md` is now a pointer to it) — it lists every external
 > behavior clavity relies on, how each was verified, and how to re-verify/fix (usually an `AGY_*` override
 > or a skill tweak, not Rust). Update its "verified against" versions when you confirm things on a new agy.

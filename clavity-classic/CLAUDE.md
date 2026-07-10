@@ -5,7 +5,7 @@ clavity drives a **live, external, frequently-updated** tool — Antigravity (`a
 not a stable contract**, so an agy / psmux / agentmemory update can silently change things and break it.
 
 **If clavity misbehaves, or before you change anything agy-facing, read
-[`../agy-autotrain/knowledge/agy-assumptions.md`](../agy-autotrain/knowledge/agy-assumptions.md) first.** It lists every load-bearing assumption
+[`plugin/knowledge/agy-assumptions.md`](plugin/knowledge/agy-assumptions.md) first.** It lists every load-bearing assumption
 (footer markers, agy's pwsh shell, skill caching, workspace-scoped writes, headless-print hanging,
 the bus, keyring auth, …), the versions verified against, **how each was verified**, and **how to
 re-verify and fix** — most breakages are fixable via an `AGY_*` env override or the responder skill,

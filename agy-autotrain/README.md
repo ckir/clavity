@@ -21,21 +21,23 @@ drive agy (core driving skill) ──learn──▶ knowledge/agy-observations.m
         ▲                                          │
         │ golden-header (injected by the binary)   │ periodic
         │                                          ▼
- shared golden-header.md ◀──compile+commit── agy-curate ──promote(rubric)──▶ knowledge/agy-capabilities.md
-   (%USERPROFILE%\.clavity\)                       │                              + agy-assumptions.md (canonical)
+ shared golden-header.growth.md ◀──compile+commit── agy-curate ──dedupe vs SEED floor──▶ (SEED is driver-owned,
+   (%USERPROFILE%\.clavity\ — GROWTH region)        │            NOT edited here: seed/golden-header.md baseline)
                                                    └──verify (synthetic clavity ask)──▶ verify/assertions.md
 ```
 
 - **Capture** (`agy-learn`): the moment you learn something general about agy, a Structured Abstraction
   Schema strips project nouns into a `[General Rule]`, classified `assumption | heuristic | anti-pattern`,
   appended to the inbox. Fast, live, project-agnostic.
-- **Curate** (`agy-curate`): drains the inbox into the canonical manual under a promotion rubric
-  (heuristic ≥2 cross-session obs; empirical = 100% harness pass — physically run the probe), dedupes/
-  prunes/resolves drift, recompiles the golden header and **commits it via the binary** (`clavity-ls
-  curate-commit`), empties the inbox.
+- **Curate** (`agy-curate`): drains the inbox into the **GROWTH region** of the shared golden-header under
+  a promotion rubric (heuristic ≥2 cross-session obs; empirical = 100% harness pass — physically run the
+  probe), deduped against the driver-owned SEED floor, and **commits it via the binary** (`clavity-ls
+  curate-commit` → `golden-header.growth.md`), empties the inbox. It never edits the SEED manuals.
 - **Verify** (`verify/`): each Empirical Assumption has a synthetic `clavity ask` probe + pass/fail.
-- **Knowledge** (`knowledge/`): the canonical `agy-capabilities.md` / `agy-assumptions.md` travel *inside*
-  the plugin, so it ships as a portable, standalone "agy instruction manual."
+- **Knowledge** (`knowledge/`): now holds ONLY the `agy-observations.md` capture inbox. The canonical
+  manuals (`agy-capabilities.md` / `agy-assumptions.md`) and the `golden-header.md` baseline are
+  **driver-owned SEED** — they ship in each driver's `plugin/knowledge/` and in top-level `seed/`
+  respectively (agy-curate reads them as a floor but never edits them).
 
 The `adversarial-panel-review` skill (AGY-AFTER team-panel review) and its PostToolUse reminder hook now
 ship with each driver's own plugin (`clavity-dotnet/plugin`, `clavity-classic/plugin`) instead of here —
@@ -48,9 +50,7 @@ agy-autotrain/
   .claude-plugin/plugin.json · plugin.json   # dual manifests
   skills/agy-learn/          # capture (sanitise → inbox)
   skills/agy-curate/         # curate (promote/verify/recompile → curate-commit)
-  knowledge/agy-capabilities.md · agy-assumptions.md   # canonical manual (portable)
-  knowledge/agy-observations.md   # inbox (raw, project-agnostic)
-  knowledge/golden-header.md      # the compiled header source (committed to the shared path by agy-curate)
+  knowledge/agy-observations.md   # inbox (raw, project-agnostic) — the ONLY knowledge file that stays here
   verify/assertions.md · run-verification.md   # the live test harness
 ```
 

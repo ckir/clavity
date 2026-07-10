@@ -7,7 +7,7 @@
 //! and *block until agy's correlated reply lands*, returning the reply content — no pane-scraping,
 //! no hand-rolled `memory_signal_read` poll loop.
 //!
-//! The API was verified live against agentmemory 0.9.26 (see `../../agy-autotrain/knowledge/agy-assumptions.md` #13):
+//! The API was verified live against agentmemory 0.9.26 (see `../plugin/knowledge/agy-assumptions.md` #13):
 //!   - `POST /agentmemory/signals/send`  body `{from,to,content,type?,replyTo?}` → `{success,signal}`
 //!   - `GET  /agentmemory/signals?agentId=&unreadOnly=&threadId=&limit=`        → `{success,signals}`
 //!   - `GET  /agentmemory/health`  (public)
@@ -16,7 +16,7 @@
 //! queried `agentId`, and there is no peek flag. So [`MemBus::await_reply`] reads as the master
 //! (`agentId=claude`) scoped by `threadId` when known: it consumes only the awaited reply, never
 //! agy's request (`to=agy`, untouched) nor unrelated inbox traffic. It is therefore *authoritative*
-//! — callers must not also `memory_signal_read` the same reply. See `../../agy-autotrain/knowledge/agy-assumptions.md`.
+//! — callers must not also `memory_signal_read` the same reply. See `../plugin/knowledge/agy-assumptions.md`.
 
 use std::time::{Duration, Instant};
 

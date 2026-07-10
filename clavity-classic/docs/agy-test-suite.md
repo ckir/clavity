@@ -1,6 +1,6 @@
 # agy acceptance test suite — re-run after an agy upgrade
 
-Confirms that clavity's **capability profile** ([`../../agy-autotrain/knowledge/agy-capabilities.md`](../../agy-autotrain/knowledge/agy-capabilities.md)) and
+Confirms that clavity's **capability profile** ([`../plugin/knowledge/agy-capabilities.md`](../plugin/knowledge/agy-capabilities.md)) and
 **wording protocol** ([`agy-remote-control-protocol.md`](agy-remote-control-protocol.md)) still hold
 after an `agy update`. agy is a live, closed-source, frequently-updated peer model — an upgrade can
 silently change behavior, so re-run this and update the profile/assumptions on any drift.
@@ -111,7 +111,7 @@ treated as hidden and rejected → falls back to scratch; agy issue #20).
 
 **PASS (assumption #6 still holds) if:** the reply is plain `READY` (skill was cached; edit not picked
 up). **If it returns `READY-RLD6`**, agy now hot-reloads skill content on a doorbell → **update
-assumption #6** in `../../agy-autotrain/knowledge/agy-assumptions.md` and the capability profile (`../../agy-autotrain/knowledge/agy-capabilities.md`).
+assumption #6** in `../plugin/knowledge/agy-assumptions.md` and the capability profile (`../plugin/knowledge/agy-capabilities.md`).
 
 ### Test F — File-write scope (Axis D)  ·  validates: default = workspace-only
 ```bash
@@ -194,7 +194,7 @@ so it cannot hang forever. Report the TimerCondition value you used and the task
 ## Scoring & follow-up
 
 - Record the run date + agy version + PASS/FAIL per test at the top of this file.
-- Any FAIL or behavior drift → update `../../agy-autotrain/knowledge/agy-capabilities.md` (re-tag the affected claim,
-  capture the drift via `agy-learn` for `agy-curate` to fold) and `../../agy-autotrain/knowledge/agy-assumptions.md`; if routing changes, update the protocol doc too.
+- Any FAIL or behavior drift → update `../plugin/knowledge/agy-capabilities.md` (re-tag the affected claim,
+  capture the drift via `agy-learn` for `agy-curate` to fold) and `../plugin/knowledge/agy-assumptions.md`; if routing changes, update the protocol doc too.
 - Apply review rigor to agy's self-reports here — it tends to **over-state** its write reach (Axis D);
   trust `[local]`/disk over `[bus]` claims.

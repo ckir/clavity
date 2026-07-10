@@ -262,14 +262,14 @@ All optional; sensible defaults. Environment variables:
 - **[Protocol runbook](docs/agy-remote-control-protocol.md)** — the exact Claude-side procedure,
   including the **capability-aware "Driving conventions"** (how to phrase requests in agy's language:
   the per-mode request templates + what to avoid).
-- **[agy capability profile](../agy-autotrain/knowledge/agy-capabilities.md)** — **what agy can do and how to route to it**
+- **[agy capability profile](plugin/knowledge/agy-capabilities.md)** — **what agy can do and how to route to it**
   (strengths, weaknesses, the multi-model table, operational reach), treating agy as an external peer
   model. Provenance-tagged and version-pinned; the live config is the truth, so re-derive it for your
   install via its refresh procedure. Pairs with the protocol runbook (how to ask).
 - **[agy acceptance test suite](docs/agy-test-suite.md)** — copy-pasteable `clavity ask` tests (the
   four request-mode templates + skill-cache and write-scope re-verifications) to **re-run after an
   `agy update`** and confirm the profile + protocol still hold.
-- **[agy assumptions & re-verification playbook](../agy-autotrain/knowledge/agy-assumptions.md)** — the external `agy` /
+- **[agy assumptions & re-verification playbook](plugin/knowledge/agy-assumptions.md)** — the external `agy` /
   `psmux` / `agentmemory` behaviors clavity depends on (footer markers, pwsh shell, skill caching,
   headless-print hang, the daemon REST API, …), the versions verified against, and **how to
   re-verify/fix after an agy update**. Read this first if something breaks.
@@ -311,7 +311,7 @@ cargo fmt --all --check
 | `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions (Unix arms are scaffolding). |
 | `src/bin/fake_tmux.rs`, `tests/integration.rs` | Test-only fake psmux + integration tests (CI, no live agy). |
 | `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill. |
-| `docs/` | Protocol runbook, [capability profile](../agy-autotrain/knowledge/agy-capabilities.md), [acceptance test suite](docs/agy-test-suite.md), design spec, and the [agy-assumptions](../agy-autotrain/knowledge/agy-assumptions.md) playbook. |
+| `docs/` | Protocol runbook, [capability profile](plugin/knowledge/agy-capabilities.md), [acceptance test suite](docs/agy-test-suite.md), design spec, and the [agy-assumptions](plugin/knowledge/agy-assumptions.md) playbook. |
 
 ---
 
