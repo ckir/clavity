@@ -7,7 +7,8 @@ everyday usage teaches it, and the distilled wisdom flows back into every call.
 > **Driving itself lives in the CORE plugins, not here.** The task-assignment protocol that stops agy
 > misfiring (REVIEW-ONLY banner, phase isolation, mandatory pre-mutation checkpoint, seed-the-invariants)
 > ships in the core driving skills — `clavity-driving` (classic) and `clavity-ls-driving` (dotnet) — so you
-> can drive agy with or without this add-on. agy-autotrain adds only the *learning* on top.
+> can drive agy with or without this add-on. agy-autotrain adds the *learning* loop — and the
+> `adversarial-panel-review` skill — on top.
 
 What this add-on does: **capture → curate → verify → compile**, then promote project-local → global, and
 emit a compiled `golden-header.md` that the binary (dotnet `clavity-ls`) prepends to every ask — or that the
@@ -36,6 +37,15 @@ drive agy (core driving skill) ──learn──▶ knowledge/agy-observations.m
 - **Knowledge** (`knowledge/`): the canonical `agy-capabilities.md` / `agy-assumptions.md` travel *inside*
   the plugin, so it ships as a portable, standalone "agy instruction manual."
 
+## Review discipline — `adversarial-panel-review`
+
+Alongside the learning loop, the plugin ships the **`adversarial-panel-review`** skill: convene an
+adversarial multi-seat panel to tear down a spec, plan, or other high-leverage artifact *before* acting on
+it — a palette of expert seats (each hunting a different defect-class), a live-agy escalation round,
+fold-with-verification, and a one-line PANEL VERDICT. It codifies the **AGY-AFTER** team-panel review
+discipline. Invoke it explicitly ("convene a panel review on `<file>`"); the AGY-AFTER reminder only points
+at it — it never auto-runs a review on its own.
+
 ## Layout
 
 ```
@@ -43,6 +53,7 @@ agy-autotrain/
   .claude-plugin/plugin.json · plugin.json   # dual manifests
   skills/agy-learn/          # capture (sanitise → inbox)
   skills/agy-curate/         # curate (promote/verify/recompile → curate-commit)
+  skills/adversarial-panel-review/   # AGY-AFTER: adversarial panel to tear down a spec/plan before acting
   knowledge/agy-capabilities.md · agy-assumptions.md   # canonical manual (portable)
   knowledge/agy-observations.md   # inbox (raw, project-agnostic)
   knowledge/golden-header.md      # the compiled header source (committed to the shared path by agy-curate)
@@ -52,8 +63,8 @@ agy-autotrain/
 ## Install
 
 ```
-claude plugin install ./plugins/agy-autotrain
-agy    plugin install ./plugins/agy-autotrain
+claude plugin install ./agy-autotrain
+agy    plugin install ./agy-autotrain
 ```
 
 Driving needs only the core plugin; install this add-on when you also want agy to *learn*. When you learn
