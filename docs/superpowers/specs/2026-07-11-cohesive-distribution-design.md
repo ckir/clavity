@@ -6,8 +6,9 @@
 false-positive, teardown scope; agy's "malformed marketplace CLI" claim refuted by the `PluginInstaller.cs` oracle.
 R2: cross-member `~/.clavity` data-ownership (driver purge must not delete agy-autotrain `growth.md`), decoupled
 per-member republish (no blocking sibling gate), manifest path/source contract, rollback exception-safety, upgrade
-hygiene, repo-root manifest relocation; agy's ghidrust-seeds-golden-header example refuted (ghidrust has none). Owner
-directed "go for green" — running rounds to a no-live-challenge pass.
+hygiene, repo-root manifest relocation; agy's ghidrust-seeds-golden-header example refuted (ghidrust has none).
+**R3 = GREEN** (agy green-confirmation, no live challenge; `PASS — GREEN. Proceed to plan.`). Final disposition:
+**GREEN** — ready for writing-plans.
 **Supersedes / resets:** all prior distribution decisions for the umbrella repo, including
 `2026-07-09-per-plugin-decoupled-installers-design.md` (whose download/opt-in mechanics and marketplace-split
 details are re-derived from scratch here) and the *Distribution* phase (Component 3 / Acceptance #6) of
