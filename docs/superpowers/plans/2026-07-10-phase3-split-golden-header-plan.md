@@ -4,7 +4,7 @@
 
 **Goal:** Replace the single flat `%USERPROFILE%\.clavity\golden-header.md` with two independently-owned files — `golden-header.seed.md` (driver-owned) + `golden-header.growth.md` (agy-curate-owned) — that the clavity-dotnet binary concatenates SEED-then-GROWTH at read, dissolving the region read-modify-write and clobber risks structurally.
 
-**Architecture:** The binary keeps its tested atomic-write primitive (`GoldenHeader.Commit`) and gains a thin split layer: read = `TryReadCombined(dir)` (SEED+GROWTH concat, legacy-flat fallback, cap on the combined); write = `CommitSeed(dir,…)` / `CommitGrowth(dir,…)`. The installer seeds `seed.md` by invoking a new `clavity-ls seed-header <baseline>` verb (the existing "installer Execs the binary" seam), keeping the read path pure. `agy-curate` becomes EXTEND-only: it writes `growth.md` and treats the SEED manual (now in top-level `seed/`) as driver-owned. The SEED baseline + manual move out of `agy-autotrain/knowledge/` into a new top-level `seed/`, shipped unconditionally by the driver installer.
+**Architecture:** The binary keeps its tested atomic-write primitive (`GoldenHeader.Commit`) and gains a thin split layer: read = `TryReadCombined(dir)` (SEED+GROWTH concat, legacy-flat fallback, cap on the combined); write = `CommitSeed(dir,…)` / `CommitGrowth(dir,…)`. The installer seeds `seed.md` by invoking a new `clavity-ls seed-header <baseline>` verb (the existing "installer Execs the binary" seam), keeping the read path pure. `agy-curate` becomes EXTEND-only: it writes `growth.md` and reads the runtime SEED as a driver-owned floor. The golden-header **baseline** moves to a new top-level `seed/` (binary-injected → installer-seeded); the **manuals** (`agy-assumptions`/`agy-capabilities`, agent reference) move to each driver's `plugin/knowledge/` and travel with the marketplace plugin (M3 — the Phase-2 delivery-channel split).
 
 **Tech Stack:** C# (.NET, `Clavity.Ls`/`Clavity.Cli`), xUnit, Inno-Setup (Pascal), Markdown skills.
 
@@ -15,15 +15,21 @@
 
 **Execution note (panel F1 — build-ordering):** Tasks **T3, T4 and T5 MUST be dispatched to a single subagent as ONE unit** and reviewed only after T5. Removing `ResolvePath`/`TryRead` (T3) intentionally red-breaks the build until T5 rewires the callers, so a per-task "tests pass" gate is unachievable mid-sequence. Do NOT dispatch them separately under subagent-driven-development.
 
+**PORTABILITY GUARDRAIL (owner constraint — end-user machines).** The `rg` / `test -f` / bash commands in this plan are **dev-time verification on the maintainer's box** (which has the portable toolchain) — they are fine there. But **nothing that runs on an END-USER machine may depend on non-standard Windows commands**: the installer `[Code]`/`[Run]` steps, every post-install `Exec`, and the shipped binary itself may use ONLY Inno-Setup built-ins (`Exec`, `FileExists`, `RenameFile`, `DeleteFile`, …) + the shipped `clavity-ls.exe` + the binary's own .NET file APIs. No `rg`/`fd`/bash/`where`/portable-toolchain calls in shipped artifacts. (The existing `.iss` already honors this — its classic-detection is an in-process PATH scan, not a `where` spawn.) T8 additions comply (they only `Exec clavity-ls seed-header` + use `RenameFile`).
+
+**Manual home (owner fork resolved → M3).** The agy manuals (`agy-assumptions.md`/`agy-capabilities.md`) are **agent reference** (agy-curate no longer reads them under EXTEND), so they ship in the **driver plugin(s)** — `clavity-dotnet/plugin/knowledge/` + `clavity-classic/plugin/knowledge/`, byte-identical + sync-checked (the Phase-2 delivery-channel pattern) — NOT in `seed/`. Only the **golden-header baseline** (binary-injected) moves to `seed/` and is installer-seeded. This is portability-neutral (the installer already ships the plugin tree via `recursesubdirs`; no new command).
+
 ---
 
 ## File Structure
 
 | File | Change |
 |---|---|
-| `seed/agy-assumptions.md`, `seed/agy-capabilities.md`, `seed/golden-header.md` | **Created** by moving out of `agy-autotrain/knowledge/` (T1) |
+| `seed/golden-header.md` | **Created** by moving the baseline out of `agy-autotrain/knowledge/`; scrubbed (T1) |
+| `clavity-dotnet/plugin/knowledge/agy-assumptions.md` + `agy-capabilities.md` | **Created** — manuals move here (agent reference); canonical dotnet copy (T1) |
+| `clavity-classic/plugin/knowledge/agy-assumptions.md` + `agy-capabilities.md` | **Created** — byte-identical mirror; added to `scripts/check-seed-artifacts-synced.sh` (T1) |
 | `agy-autotrain/knowledge/agy-observations.md` | Stays (AUTO inbox) |
-| referrers of the moved files (both `CLAUDE.md`s, classic docs, `agy-curate` inputs) | Repointed → `seed/` (T2) |
+| referrers (each driver `CLAUDE.md` → its own `plugin/knowledge/`; classic docs/src; `docs/` breadcrumbs) | Repointed (T2) |
 | `clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs` | Split layer added; `ResolvePath`→`ResolveDir`; `TryRead`→`TryReadFile`(private)+`TryReadCombined`; `CommitSeed`/`CommitGrowth` (T3, T4) |
 | `clavity-dotnet/src/Clavity.Ls/AgyView.cs:109` + `AgyViewOptions` | `GoldenHeaderPath`→`GoldenHeaderDir`; combined read (T5) |
 | `clavity-dotnet/src/Clavity.Cli/Program.cs:20-22,40-46` | Resolve dir; `curate-commit`→GROWTH; new `seed-header` verb (T5, T6, T7) |
@@ -64,19 +70,27 @@ Verify by reading, do NOT edit: `GoldenHeader.cs` has `ResolvePath`(20-23)/`TryR
 ### Task 1: Move the SEED data to `seed/`
 
 **Files:**
-- Move: `agy-autotrain/knowledge/agy-assumptions.md` → `seed/agy-assumptions.md`
-- Move: `agy-autotrain/knowledge/agy-capabilities.md` → `seed/agy-capabilities.md`
-- Move: `agy-autotrain/knowledge/golden-header.md` → `seed/golden-header.md`
+- Move: `agy-autotrain/knowledge/golden-header.md` → `seed/golden-header.md` (baseline; binary-injected)
+- Move: `agy-autotrain/knowledge/agy-assumptions.md` → `clavity-dotnet/plugin/knowledge/agy-assumptions.md` (manual; agent reference)
+- Move: `agy-autotrain/knowledge/agy-capabilities.md` → `clavity-dotnet/plugin/knowledge/agy-capabilities.md`
+- Copy (byte-identical mirror): the two manuals → `clavity-classic/plugin/knowledge/`
 - Keep: `agy-autotrain/knowledge/agy-observations.md` (AUTO inbox — do NOT move)
+- Modify: `scripts/check-seed-artifacts-synced.sh` (add the two manuals to the dotnet↔classic sync check)
 
-- [ ] **Step 1: Move the three files with git (preserves history)**
+- [ ] **Step 1: Move the baseline to `seed/`, the manuals to the driver plugins (M3)**
 
 ```bash
-mkdir -p seed
-git mv agy-autotrain/knowledge/agy-assumptions.md   seed/agy-assumptions.md
-git mv agy-autotrain/knowledge/agy-capabilities.md  seed/agy-capabilities.md
+mkdir -p seed clavity-dotnet/plugin/knowledge clavity-classic/plugin/knowledge
 git mv agy-autotrain/knowledge/golden-header.md      seed/golden-header.md
+git mv agy-autotrain/knowledge/agy-assumptions.md    clavity-dotnet/plugin/knowledge/agy-assumptions.md
+git mv agy-autotrain/knowledge/agy-capabilities.md   clavity-dotnet/plugin/knowledge/agy-capabilities.md
+cp clavity-dotnet/plugin/knowledge/agy-assumptions.md   clavity-classic/plugin/knowledge/agy-assumptions.md
+cp clavity-dotnet/plugin/knowledge/agy-capabilities.md  clavity-classic/plugin/knowledge/agy-capabilities.md
 ```
+
+- [ ] **Step 1b: Extend the sync-check to cover the manuals (byte-identical dotnet↔classic)**
+
+In `scripts/check-seed-artifacts-synced.sh`, add `knowledge/agy-assumptions.md` and `knowledge/agy-capabilities.md` to the list of files `diff -q`'d between `clavity-dotnet/plugin` and `clavity-classic/plugin` (alongside the existing `skills/adversarial-panel-review/SKILL.md`, `hooks/agy-after-reminder.sh`, `hooks/hooks.json`). Run `just seed-sync-check` → expected exit 0 (the two copies are identical).
 
 - [ ] **Step 2: Scrub the baseline's version stamp + stale comment (panel F9 — else acceptance #2 goes RED)**
 
@@ -84,15 +98,15 @@ git mv agy-autotrain/knowledge/golden-header.md      seed/golden-header.md
 
 Verify: `rg -i "verified against|1\.0\.[0-9]|Gemini 3|golden-header\.md|clavity-driving skill prepends" seed/golden-header.md` → **no matches**.
 
-- [ ] **Step 3: Verify the inbox stayed and the three moved**
+- [ ] **Step 4: Verify the layout**
 
-Run: `ls seed/ && ls agy-autotrain/knowledge/`
-Expected: `seed/` has the 3 files; `agy-autotrain/knowledge/` has ONLY `agy-observations.md`.
+Run: `ls seed/ && ls clavity-dotnet/plugin/knowledge/ && ls clavity-classic/plugin/knowledge/ && ls agy-autotrain/knowledge/`
+Expected: `seed/` has ONLY `golden-header.md`; each `plugin/knowledge/` has the two manuals; `agy-autotrain/knowledge/` has ONLY `agy-observations.md`. Then confirm the two plugin copies are byte-identical: `just seed-sync-check` → exit 0.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat(seed): move agy manual + golden-header baseline to seed/; scrub baseline version stamp"
+git add -A && git commit -m "feat(seed): baseline->seed/ (scrubbed); manuals->driver plugins + sync-check"
 ```
 
 ---
@@ -110,15 +124,17 @@ Also check the relative forms used in the two driver `CLAUDE.md`s (`../agy-autot
 
 **Do NOT repoint historical records** — `docs/superpowers/{plans,specs,spikes}/**` and `ROADMAP.md` prose reference the old path *as of their writing* and are frozen history (same rule as Phase 2's ROADMAP handling). Leave them. (`agy-observations.md` referrers must also be LEFT untouched — that file did not move.)
 
-- [ ] **Step 2: Deterministic repoint rule**
+- [ ] **Step 2: Deterministic repoint rule (M3 — manuals → each driver's OWN plugin; baseline → `seed/`)**
 
-For each referrer, compute the correct relative path from the referrer's directory to the repo-root `seed/<file>`. Examples:
-- `clavity-dotnet/CLAUDE.md` → `../seed/agy-assumptions.md`
-- `clavity-classic/CLAUDE.md` → `../seed/agy-assumptions.md`
-- `clavity-classic/docs/*.md`, `clavity-classic/src/membus.rs` → `../../seed/<file>`
-- `agy-autotrain/skills/agy-curate/SKILL.md` → `../../../seed/<file>` (for the 3 moved files ONLY; its `agy-observations.md` input stays `../../knowledge/agy-observations.md`)
+**Manuals** (`agy-assumptions.md`/`agy-capabilities.md`) — each referrer points at the copy in **its own variant's plugin**:
+- `clavity-dotnet/CLAUDE.md` → `plugin/knowledge/agy-assumptions.md`
+- `clavity-classic/CLAUDE.md`, `clavity-classic/README.md`, `clavity-classic/CONTRIBUTING.md` → `plugin/knowledge/<file>`
+- `clavity-classic/docs/*.md`, `clavity-classic/src/membus.rs` (doc-comments) → `../plugin/knowledge/<file>`
+- `docs/agy-assumptions.md` + `docs/agy-capabilities.md` (umbrella breadcrumbs) → `../clavity-dotnet/plugin/knowledge/<file>`
 
-Edit each link. Do NOT touch `agy-observations.md` links. Do NOT change any prose meaning — link targets only.
+**Baseline** (`golden-header.md`) — referrers point at `seed/golden-header.md` at the correct `../` depth for their directory.
+
+Do NOT touch `agy-observations.md` links (unmoved). `agy-autotrain/skills/agy-curate/SKILL.md` is handled in T9 (references removed, not repointed). Edit link targets only — no prose changes.
 
 - [ ] **Step 3: Verify zero stale LIVE links remain (grep oracle)**
 
@@ -130,13 +146,17 @@ Expected: **no matches** — every LIVE referrer (including `docs/agy-assumption
 
 - [ ] **Step 3b: Verify the NEW links actually RESOLVE (panel A3 — old-string-gone is not enough)**
 
-A repoint that drops the `../` depth prefix (e.g. writes `seed/agy-assumptions.md` from a `docs/` or `src/` file) passes Step 3 but leaves a broken link. For each markdown-link target you wrote, resolve it relative to its referrer's directory and confirm the file exists:
+A repoint that drops the `../` depth prefix (e.g. writes `plugin/knowledge/agy-assumptions.md` from a `docs/` or `src/` file that needs `../plugin/…`) passes Step 3 but leaves a broken link. For every link you wrote, resolve it relative to its referrer's directory and confirm the file exists:
 
 ```bash
-# For every "(…seed/<file>.md)" link, check the resolved path exists. Example spot-checks:
-test -f clavity-classic/docs/../../seed/agy-assumptions.md && echo OK:classic-docs
-test -f clavity-classic/src/../../seed/agy-assumptions.md  && echo OK:membus
-test -f agy-autotrain/skills/agy-curate/../../../seed/golden-header.md && echo OK:curate  # only if T9 keeps a repo link
+# Manuals (M3 — each variant's own plugin). Example spot-checks:
+test -f clavity-dotnet/plugin/knowledge/agy-assumptions.md                 && echo OK:dotnet-claude   # clavity-dotnet/CLAUDE.md
+test -f clavity-classic/plugin/knowledge/agy-assumptions.md                && echo OK:classic-readme  # clavity-classic/README.md
+test -f clavity-classic/docs/../plugin/knowledge/agy-assumptions.md        && echo OK:classic-docs
+test -f clavity-classic/src/../plugin/knowledge/agy-assumptions.md         && echo OK:membus
+test -f docs/../clavity-dotnet/plugin/knowledge/agy-assumptions.md         && echo OK:umbrella-breadcrumb
+# Baseline:
+test -f seed/golden-header.md                                              && echo OK:baseline
 ```
 Expected: every `OK:*` prints. Any link whose resolved path does not exist is a broken repoint — fix the `../` depth. (For `.rs` doc-comment links and `docs/` breadcrumbs, resolve from that file's own directory.)
 
@@ -719,8 +739,8 @@ Expected: PASS.
 
 - [ ] **Step 2: Map each spec acceptance to evidence (spec #1–#5)**
 
-- #1 fresh install → SEED injected: `seed-header` writes `golden-header.seed.md`; `TryReadCombined` injects it (T7 + T3 tests).
-- #2 seed has no version stamp / no transport mechanics: `rg -i "verified against|\b(agy |gemini )?[0-9]+\.[0-9]+(\.[0-9]+)?\b|Gemini [0-9]|agy_ask|psmux|clavity ask" seed/agy-assumptions.md seed/agy-capabilities.md seed/golden-header.md` → expected **no matches** (Phase-1 scrubbed assumptions/capabilities; T1 Step 2 scrubbed the baseline — panel F8 broadened the stamp pattern beyond `1.0.x`). Manually eyeball any numeric hit for a false positive before declaring RED.
+- #1 fresh install → SEED injected + has the manual: `seed-header` writes `golden-header.seed.md`, `TryReadCombined` injects it (T7 + T3 tests); the manuals ship in the driver plugin tree (`.iss` `[Files] ..\plugin\*` `recursesubdirs` — already ships the plugin, now including `plugin/knowledge/`), so a driver-without-agy-autotrain still has them (M3).
+- #2 seed has no version stamp / no transport mechanics: `rg -i "verified against|\b(agy |gemini )?[0-9]+\.[0-9]+(\.[0-9]+)?\b|Gemini [0-9]|agy_ask|psmux|clavity ask" seed/golden-header.md clavity-dotnet/plugin/knowledge/agy-assumptions.md clavity-dotnet/plugin/knowledge/agy-capabilities.md` → expected **no matches** (classic mirror is byte-identical; Phase-1 scrubbed the manuals; T1 Step 2 scrubbed the baseline — panel F8 broadened the pattern beyond `1.0.x`). Eyeball any numeric hit for a false positive before declaring RED.
 - #3 curate writes GROWTH without altering SEED; inject = SEED+GROWTH: `CommitGrowth`/`TryReadCombined` tests (T3, T4, T6).
 - #4 re-install rewrites SEED, GROWTH intact; curate idempotent; legacy migrated: `CommitSeed` leaves GROWTH (T4); GROWTH regenerated wholesale (T9 doc); legacy fallback (T3).
 - #5 no driver: `agy-learn` captures, `agy-curate` non-blocking warning (T9 doc).
@@ -743,7 +763,7 @@ If ISCC is on PATH: `ISCC.exe clavity-dotnet\installer\clavity-dotnet.iss` → c
 
 **RELEASE GATE (do NOT skip — carry to memory):** this branch changes the on-disk `%USERPROFILE%\.clavity\` layout for dotnet only. **A public release MUST NOT ship until `clavity-classic` reaches parity** — a separate plan (dotnet-first discipline: prove on primary, port the proven pattern to the failover) covering, at minimum:
 1. **Read parity** — `golden_header.rs::read_header` gains SEED+GROWTH concat + legacy-flat fallback + graceful SEED-preserving over-cap degradation (mirror T3); classic tests. Otherwise a failover dotnet→classic reads the absent flat `golden-header.md` and drives blind.
-2. **Seed the SEED** — `clavity-classic.iss` ships `seed/golden-header.md` and seeds `golden-header.seed.md` (classic ships no data today), AND ships the seed manual so a classic-only failover has the manual at all (panel F6 — the move takes the manual out of agy-autotrain, which classic never shipped either, so this is new coverage, not a regression, but the failover still needs it).
+2. **Seed the baseline** — `clavity-classic.iss` ships `seed/golden-header.md` and seeds `golden-header.seed.md` via a classic `seed-header` verb (classic ships no baseline data today). The manuals are already covered under M3 — they live in `clavity-classic/plugin/knowledge/` and travel with the marketplace plugin install, so a classic failover has the manual without any `.iss` change (panel F6 resolved by M3).
 3. **Env reconciliation (panel F3)** — classic's `CLAVITY_GOLDEN_HEADER` adopts **directory** semantics to match dotnet, so the override means the same thing across variants.
 
 - [ ] **Step 5:** Hand off to `superpowers:finishing-a-development-branch` (owner picks merge/PR/keep; NO push — owner holds all pushes).
