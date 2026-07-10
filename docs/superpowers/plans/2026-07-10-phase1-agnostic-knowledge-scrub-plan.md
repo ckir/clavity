@@ -55,6 +55,31 @@
 
 ---
 
+## Task 0: Baseline verification — BEFORE any file is mutated
+
+**Files:** none (verification only). **Critical ordering:** these checks are meaningless once Task 2 scrubs the canonical files, so they MUST run first.
+
+- [ ] **Step 1: Re-confirm the classic forks hold nothing unique** (guards against drift since planning). This CANNOT move later: after Task 2 sheds transport from the canonical, this diff would legitimately show the fork holding that transport and false-FAIL.
+```bash
+diff agy-autotrain/knowledge/agy-assumptions.md clavity-classic/docs/agy-assumptions.md | grep '^>' | grep -viE '1\.0\.8|2026-0' && echo "FAIL: assumptions fork has unique content — STOP" || echo "OK assumptions fork stale-only"
+diff agy-autotrain/knowledge/agy-capabilities.md clavity-classic/docs/agy-capabilities.md | grep '^>' | grep -viE '1\.0\.8|2026-0' && echo "FAIL: capabilities fork has unique content — STOP" || echo "OK capabilities fork stale-only"
+```
+Any FAIL → STOP, surface the unique content, do not delete anything.
+
+- [ ] **Step 2: Confirm the dotnet variant does NOT use the classic transport** (so relocating psmux/bus to classic-only docs is lossless — verified 2026-07-10).
+```bash
+grep -rliE 'psmux|send-keys|capture-pane|memory_signal|127\.0\.0\.1:3111' clavity-dotnet/src 2>/dev/null && echo "FAIL: dotnet uses classic transport — do NOT relocate to classic-only" || echo "OK dotnet does not use psmux/bus"
+```
+Expected "OK". A FAIL means the transport is shared and the relocation target is wrong.
+
+- [ ] **Step 3: Record the pre-scrub canonical line counts** (feeds the over-scrub guard in Tasks 2–3).
+```bash
+wc -l agy-autotrain/knowledge/agy-assumptions.md agy-autotrain/knowledge/agy-capabilities.md
+```
+Note: dotnet terms (`agy_ask`/`clavity-ls`/`agy_status`) are **expected-absent** from these files (verified 2026-07-10) — the Task-5 guard against them is a safety net; the contract's removal work is all *classic* transport.
+
+---
+
 ## Task 1: Create the classic transport doc + relocate driver-specific content out of `agy-assumptions.md`
 
 **Files:**
@@ -78,10 +103,14 @@ Expected: title line, "OK A1-A5 present", "OK dest absent". Any mismatch → STO
 A=agy-autotrain/knowledge/agy-assumptions.md; C=clavity-classic/docs/agy-classic-transport.md
 # driver-specific transport terms must be GONE from the agnostic file:
 grep -niE 'psmux|send-keys|capture-pane|footer marker|AGY_[A-Z]|src/(tmux|bus|membus|main|platform)\.rs|clavity (doctor|capture|ring|state|cancel|await-reply|ping)|127\.0\.0\.1:3111|agentmemory (bus|daemon)|memory_signal' "$A" && echo "FAIL: transport left in agnostic file" || echo "OK agnostic file has no transport"
-# and PRESENT in the classic doc (spot-check):
-for k in psmux 'send-keys' 'AGY_IDLE_MARKER' '127.0.0.1:3111'; do grep -qF "$k" "$C" && echo "OK relocated: $k" || echo "MISSING in classic doc: $k"; done
+# and PRESENT in the classic doc — one signature phrase per RELOCATE row (completeness, not just spot-check):
+for k in psmux 'send-keys' 'footer' 'AGY_IDLE_MARKER' 'Cancel key' 'QUEUED' '127.0.0.1:3111' 'memory_signal' 'pane_current_command' 'Closing agy' 'await-reply' 'AGY_TMUX_BIN'; do
+  grep -qiF "$k" "$C" && echo "OK relocated: $k" || echo "MISSING in classic doc: $k"; done
 ```
-Expected: "OK agnostic file has no transport" + all "OK relocated".
+Expected: "OK agnostic file has no transport" + all "OK relocated". A MISSING means a RELOCATE block was deleted from the
+agnostic file without landing in the classic doc (content loss) — restore it into the classic doc before proceeding.
+**Completeness intent:** every block removed from `agy-assumptions.md` must appear in `agy-classic-transport.md`; the
+list above is one signature per RELOCATE row so nothing is silently dropped.
 
 - [ ] **Step 5: No commit yet** (Task 2 finishes the assumptions scrub; single commit at Task 2 Step 4).
 
@@ -96,10 +125,13 @@ Expected: "OK agnostic file has no transport" + all "OK relocated".
 - [ ] **Step 3: Verify agnostic + no version stamps.**
 ```bash
 A=agy-autotrain/knowledge/agy-assumptions.md
-grep -niE '1\.0\.[0-9]+|verified against|2026-06|agentmemory 0\.9|psmux 3\.' "$A" && echo "FAIL: version/tool-version stamp remains" || echo "OK version-agnostic"
+grep -niE '1\.0\.[0-9]+|verified against|2026-0|agentmemory 0\.9|psmux 3\.' "$A" && echo "FAIL: version/tool-version stamp remains" || echo "OK version-agnostic"
 for k in 'REVIEW-ONLY' 'verifies' 'workspace' 'PowerShell'; do grep -qiF "$k" "$A" && echo "OK kept: $k" || echo "LOST agnostic content: $k"; done
+# Over-scrub guard: the agnostic file must still be substantial (not gutted). Compare to the Task-0 baseline count —
+# assumptions should retain the KEEP rows + A1-A5 + failure-modes (well over half of the ~164 original lines minus the ~50 relocated).
+test "$(wc -l < "$A")" -ge 70 && echo "OK not gutted ($(wc -l < "$A") lines)" || echo "FAIL suspiciously small — over-scrub?"
 ```
-Expected: "OK version-agnostic" + all "OK kept".
+Expected: "OK version-agnostic", all "OK kept", "OK not gutted".
 - [ ] **Step 4: Commit** (assumptions + the new classic transport doc together).
 ```bash
 git add agy-autotrain/knowledge/agy-assumptions.md clavity-classic/docs/agy-classic-transport.md
@@ -132,19 +164,14 @@ git commit -m "refactor(agy-autotrain): make agy-capabilities.md agnostic (drop 
 
 **Files:** Delete `clavity-classic/docs/agy-assumptions.md`, `clavity-classic/docs/agy-capabilities.md`; assess the 3 companions.
 
-- [ ] **Step 1: Re-confirm the forks hold nothing unique** (guard against drift since planning).
-```bash
-diff agy-autotrain/knowledge/agy-assumptions.md clavity-classic/docs/agy-assumptions.md | grep '^>' | grep -viE '1\.0\.8|2026-06-16' && echo "FAIL: fork has unique content — STOP" || echo "OK assumptions fork stale-only"
-diff agy-autotrain/knowledge/agy-capabilities.md clavity-classic/docs/agy-capabilities.md | grep '^>' | grep -viE '1\.0\.8|2026-06' && echo "FAIL: fork has unique content — STOP" || echo "OK capabilities fork stale-only"
-```
-Expected: both "OK …stale-only". Any FAIL → STOP and surface the unique content (do not delete).
+- [ ] **Step 1: The stale-only re-confirmation already ran in Task 0** (it MUST precede the Task-2 scrub, or it false-FAILs). Do NOT re-run the fork-vs-canonical diff here — the canonical has since been scrubbed, so it would now legitimately differ. If Task 0 Step 1 passed, proceed.
 
 - [ ] **Step 2: Delete the two stale forks + repoint any references.**
 ```bash
 grep -rln 'docs/agy-assumptions\.md\|docs/agy-capabilities\.md' clavity-classic 2>/dev/null   # find referrers first
 git rm clavity-classic/docs/agy-assumptions.md clavity-classic/docs/agy-capabilities.md
 ```
-Repoint any referrer (a `clavity-classic/CLAUDE.md` or README link) to the agnostic `agy-autotrain/knowledge/` manual + the new `agy-classic-transport.md`.
+Repoint any referrer (a `clavity-classic/CLAUDE.md` or README link) to the agnostic `agy-autotrain/knowledge/` manual + the new `agy-classic-transport.md`. **Link style:** use monorepo-relative paths from the referring file (e.g. `../../agy-autotrain/knowledge/agy-assumptions.md`), matching how existing cross-component links in the repo are written — do not introduce absolute GitHub URLs.
 
 - [ ] **Step 3: Resolve the 3 companion docs.** For `agy-capabilities-research.md`, `agy-remote-control-protocol.md`, `agy-test-suite.md`: keep in `clavity-classic/docs/` as classic reference for now (out of Phase 1's agnostic-scrub scope), but fix any links that pointed at the deleted forks. Do NOT fold them into the seed here — that is a later phase decision.
 
