@@ -221,12 +221,14 @@ public void TryReadCombined_falls_back_to_legacy_flat_file_as_growth()
 }
 
 [Fact]
-public void TryReadCombined_reads_legacy_as_growth_when_growth_absent_even_if_seed_present()
+public void TryReadCombined_injects_legacy_ALONE_not_concatenated_with_seed()
 {
-    // Upgrade case (panel A1): installer seeded SEED, user's legacy flat file holds their wisdom, no growth.md yet.
+    // Upgrade case (panels A1 + R2-agy-1): installer seeded SEED, user's legacy flat file already contains the
+    // OLD baseline + their wisdom, no growth.md yet. Inject legacy alone — concatenating with the new SEED
+    // would inject the baseline twice.
     File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
-    File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "LEGACY");
-    Assert.Equal("SEED\n\nLEGACY", GoldenHeader.TryReadCombined(_dir));
+    File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "OLD-BASELINE\n\nLEARNED");
+    Assert.Equal("OLD-BASELINE\n\nLEARNED", GoldenHeader.TryReadCombined(_dir));
 }
 
 [Fact]
@@ -302,23 +304,34 @@ In `GoldenHeader.cs`: replace `ResolvePath` (lines 20-23) and `TryRead` (lines 3
     {
         var seed = TryReadFile(SeedPath(dir), warn);
         var growth = TryReadFile(GrowthPath(dir), warn);
-        // Legacy flat file is the GROWTH floor whenever GROWTH is absent — even if the installer has already
-        // seeded SEED (panel A1). Gating on `seed is null` too would silently drop an upgrading user's
-        // accumulated wisdom the moment the installer wrote seed.md, before their next curate.
+
+        // Migration window (panels A1 + R2-agy-1): a pre-split flat golden-header.md is a COMPLETE header —
+        // it already contains the old baseline + learned rules. Until GROWTH exists, inject the legacy file
+        // ALONE; do NOT concatenate it with the new SEED, or the baseline is injected twice. This still
+        // preserves the upgrading user's wisdom (A1). agy-curate migrates it to growth.md on its next run and
+        // renames the legacy file (T9), after which this branch stops firing.
         if (growth is null)
-            growth = TryReadFile(Path.Combine(dir, LegacyFileName), warn);   // legacy flat → GROWTH floor
+        {
+            var legacy = TryReadFile(Path.Combine(dir, LegacyFileName), warn);
+            if (legacy is not null)
+                return WithinCap(legacy, dir, warn) ? legacy : null;
+        }
 
         var combined = Join(seed, growth);
         if (combined is null) return null;
-        if (Encoding.UTF8.GetByteCount(combined) <= MaxBytes) return combined;
+        if (WithinCap(combined, dir, warn)) return combined;
 
         // Combined over cap: degrade gracefully (panel F2) — keep the driver's SEED baseline and drop GROWTH,
-        // rather than silently losing the whole header as GROWTH accretes. TryReadFile already caps each region
-        // at MaxBytes, so SEED alone always fits; the final null is defensive only.
+        // rather than silently losing the whole header as GROWTH accretes.
         warn?.Invoke($"combined golden-header at {dir} exceeds the {MaxBytes}B cap — dropping GROWTH, keeping SEED");
-        if (seed is not null && Encoding.UTF8.GetByteCount(seed) <= MaxBytes) return seed;
+        return (seed is not null && Encoding.UTF8.GetByteCount(seed) <= MaxBytes) ? seed : null;
+    }
+
+    private static bool WithinCap(string s, string dir, Action<string>? warn)
+    {
+        if (Encoding.UTF8.GetByteCount(s) <= MaxBytes) return true;
         warn?.Invoke($"golden-header at {dir} exceeds the {MaxBytes}B cap — injection skipped");
-        return null;
+        return false;
     }
 
     private static string? Join(string? seed, string? growth)
@@ -542,17 +555,21 @@ Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversi
 
 - [ ] **Step 2: Seed `golden-header.seed.md` via standard PowerShell (owner constraint — always available; no binary dependency at install)**
 
-Seeding is now just placing a file (split files removed all region surgery), so use **standard Windows PowerShell** (always present) rather than the just-installed binary (avoids the AV/redist "binary won't run" risk). In `CurStepChanged`, `ssPostInstall`, AFTER the `install --agent all` Exec and BEFORE the optional add-on block, create `%USERPROFILE%\.clavity` if absent and copy the bundled baseline to `golden-header.seed.md`, replacing it (installer owns SEED) and never touching `growth.md`. Non-blocking. Declare `PsCmd: String;` in the procedure's `var` block:
+Seeding is now just placing a file (split files removed all region surgery), so use **standard Windows PowerShell** (always present) rather than the just-installed binary (avoids the AV/redist "binary won't run" risk). In `CurStepChanged`, `ssPostInstall`, AFTER the `install --agent all` Exec and BEFORE the optional add-on block, create `%USERPROFILE%\.clavity` if absent and copy the bundled baseline to `golden-header.seed.md`, replacing it (installer owns SEED) and never touching `growth.md`. Non-blocking. Declare `PsCmd, SrcPath: String;` in the procedure's `var` block:
 
 ```pascal
     { Phase 3: seed golden-header.seed.md from the bundled baseline with standard PowerShell (always available;
       no dependency on the just-installed binary running). Overwrites SEED only; never touches GROWTH. }
+    SrcPath := ExpandConstant('{app}\seed\golden-header.md');
+    { panel R2-1: double any single-quote so a username like O'Brien can't break the PS single-quoted literal. }
+    StringChangeEx(SrcPath, '''', '''''', True);
     PsCmd :=
       '$d = Join-Path $env:USERPROFILE ''.clavity'';' +
       'New-Item -ItemType Directory -Force -Path $d | Out-Null;' +
-      'Copy-Item -LiteralPath ''' + ExpandConstant('{app}\seed\golden-header.md') + ''' ' +
+      'Copy-Item -LiteralPath ''' + SrcPath + ''' ' +
       '-Destination (Join-Path $d ''golden-header.seed.md'') -Force';
-    if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "' + PsCmd + '"',
+    { -Command (inline) is not governed by execution policy, so no -ExecutionPolicy flag is needed (panel R2-2). }
+    if not Exec('powershell.exe', '-NoProfile -Command "' + PsCmd + '"',
                 '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       SuppressibleMsgBox('Could not seed the golden-header baseline. The AI still works; seed it later by copying' + #13#10 +
         ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md', mbInformation, MB_OK, IDOK)
