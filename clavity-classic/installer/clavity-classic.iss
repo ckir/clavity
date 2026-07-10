@@ -32,6 +32,10 @@ SetupMutex=ClavitySetupMutex
 
 [Files]
 Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Phase 3 parity: the golden-header SEED baseline. Installer seeds %USERPROFILE%\.clavity\golden-header.seed.md
+; post-install (via standard PowerShell). Unconditional — the SEED ships even without the agy-autotrain add-on.
+; Path is repo-root seed/ (from clavity-classic/installer/, ..\..\seed = repo root), same as the dotnet installer.
+Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversion
 ; Core guided-manual wiring doc — ALWAYS shipped.
 Source: "..\installer\clavity-classic-MANUAL-SETUP.md"; DestDir: "{app}"; DestName: "MANUAL-SETUP.md"; Flags: ignoreversion
 ; Opt-in bridge tree (gated). Staged WITHOUT the secret; exclude regenerable + secret artifacts defensively.
@@ -196,9 +200,34 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
   UvPath, BridgeDir: string;
+  PsCmd, SrcPath, DestDir: string;
 begin
   if CurStep = ssPostInstall then
   begin
+    { Phase 3 parity: seed golden-header.seed.md from the bundled baseline with standard PowerShell (always
+      available; no dependency on running the just-installed binary). Overwrites SEED only; never touches GROWTH.
+      Unconditional — runs regardless of the bridge task. }
+    SrcPath := ExpandConstant('{app}\seed\golden-header.md');
+    { panel agy-R3-a: resolve the profile via Inno's %USERPROFILE% env constant (same as the zombie-header rename
+      below), NOT PowerShell's $env:USERPROFILE — under any elevation the two can differ, silently seeding the wrong
+      profile. (Written percent-style here because a literal Inno brace-constant inside a Pascal comment would
+      prematurely close the comment.) }
+    DestDir := ExpandConstant('{%USERPROFILE}\.clavity');
+    { panel R2-1: double any single-quote so a username like O'Brien can't break the PS single-quoted literals. }
+    StringChangeEx(SrcPath, '''', '''''', True);
+    StringChangeEx(DestDir, '''', '''''', True);
+    PsCmd :=
+      'New-Item -ItemType Directory -Force -Path ''' + DestDir + ''' | Out-Null;' +
+      'Copy-Item -LiteralPath ''' + SrcPath + ''' ' +
+      '-Destination ''' + DestDir + '\golden-header.seed.md'' -Force';
+    { -Command (inline) is not governed by execution policy, so no -ExecutionPolicy flag is needed (panel R2-2). }
+    if not Exec('powershell.exe', '-NoProfile -Command "' + PsCmd + '"',
+                '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      SuppressibleMsgBox('Could not seed the golden-header baseline. clavity still works; seed it later by copying' + #13#10 +
+        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md', mbInformation, MB_OK, IDOK)
+    else if ResultCode <> 0 then
+      SuppressibleMsgBox('Seeding the golden-header baseline reported a problem (exit code ' + IntToStr(ResultCode) + ').',
+        mbInformation, MB_OK, IDOK);
     if WizardIsTaskSelected('install_bridge') then
     begin
       BridgeDir := ExpandConstant('{app}\agy-mcp-bridge');
@@ -236,7 +265,7 @@ begin
     so this is just the data keep/purge decision. Enumerate the data classes it governs so the choice is informed:
     golden-header ALWAYS; the bridge API key ONLY when a post-install .env exists (opt-in, default-OFF). }
   Prompt := 'Also remove clavity''s data?' + #13#10#13#10 +
-    '  - the golden-header wisdom (~\.clavity\golden-header.md)';
+    '  - the golden-header wisdom (~\.clavity\: the seed baseline + learned growth)';
   if FileExists(ExpandConstant('{app}\agy-mcp-bridge\.env')) then
     Prompt := Prompt + #13#10 + '  - your stored bridge API key (agy-mcp-bridge\.env)';
   Prompt := Prompt + #13#10#13#10 + 'Choose No to KEEP it for a future reinstall.';
@@ -256,23 +285,32 @@ begin
   RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
 end;
 
+procedure BackupHeaderFile(const Header: string);
+var
+  Backup: string;
+begin
+  Backup := Header + '.backup';
+  if FileExists(Header) then
+  begin
+    DeleteFile(Backup);
+    RenameFile(Header, Backup);
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  Header, Backup, BridgeDir, EnvFile: string;
+  BridgeDir, EnvFile: string;
 begin
   if CurUninstallStep = usUninstall then
   begin
-    { Zombie-header fix (mirror dotnet): when KEEPING, rename golden-header.md -> .backup so a reinstall does not
-      auto-inject frozen wisdom. Skipped on purge. Default path only (a CLAVITY_GOLDEN_HEADER override is rare). }
+    { Zombie-header fix (mirror dotnet): when KEEPING data (not purge), back up each golden-header file (the SEED
+      baseline + learned GROWTH + any legacy flat file) -> .backup so a reinstall does not auto-inject frozen
+      wisdom. .backup does NOT auto-restore. Skipped on purge. Default path only (CLAVITY_GOLDEN_HEADER override is rare). }
     if not RemoveConfig then
     begin
-      Header := ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md');
-      Backup := Header + '.backup';
-      if FileExists(Header) then
-      begin
-        DeleteFile(Backup);
-        RenameFile(Header, Backup);
-      end;
+      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
+      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.growth.md'));
+      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
     end;
     { Bridge .env (live secret): gated on the keep/purge answer. On purge, remove .env (regenerable
       .venv/__pycache__/.agent already go via [UninstallDelete]); on keep, leave it. }
