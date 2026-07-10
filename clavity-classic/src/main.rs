@@ -474,6 +474,23 @@ fn user_home() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+/// Mirror of dotnet `Program.cs:25-29`: `CLAVITY_GOLDEN_HEADER` now names a DIRECTORY. If the override
+/// is set and looks like a file (exists as a file, or has an extension), warn the user to point it at
+/// a directory instead — otherwise a stale file-path override silently disables the split-file read.
+fn warn_if_file_shaped_override(env_override: Option<&str>) {
+    if let Some(p) = env_override {
+        if !p.trim().is_empty() {
+            let path = Path::new(p);
+            if path.is_file() || path.extension().is_some() {
+                eprintln!(
+                    "clavity: CLAVITY_GOLDEN_HEADER now names a DIRECTORY, but '{p}' looks like a file — \
+                     point it at the .clavity directory instead."
+                );
+            }
+        }
+    }
+}
+
 /// Build the request payload: golden header (outermost) + (REVIEW-ONLY banner +) instruction.
 /// Pure + testable; `ask` resolves the `HeaderState` and passes it in.
 fn build_payload(
@@ -517,20 +534,16 @@ fn ask(
     let header = if inject_golden {
         match user_home() {
             Some(home) => {
-                let hdr_path = golden_header::resolve_path(
-                    std::env::var("CLAVITY_GOLDEN_HEADER").ok().as_deref(),
-                    &home,
-                );
-                golden_header::read_header(&hdr_path)
+                let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
+                warn_if_file_shaped_override(env_override.as_deref());
+                let dir = golden_header::resolve_dir(env_override.as_deref(), &home);
+                golden_header::read_combined(&dir, &mut |m: &str| eprintln!("clavity: {m}"))
             }
             None => golden_header::HeaderState::Absent, // no home -> silent, like install_skill's guard
         }
     } else {
         golden_header::HeaderState::Absent
     };
-    if let golden_header::HeaderState::Unusable { reason } = &header {
-        eprintln!("clavity: golden header disabled: {reason}");
-    }
     let payload = build_payload(review_only, instruction, &header);
     let content = bus::make_request(&req_id, &payload);
 
@@ -605,7 +618,8 @@ fn curate_commit() -> i32 {
         return 2;
     };
     let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
-    let path = golden_header::resolve_path(env_override.as_deref(), &home);
+    warn_if_file_shaped_override(env_override.as_deref());
+    let dir = golden_header::resolve_dir(env_override.as_deref(), &home);
     let via = if env_override
         .as_deref()
         .is_some_and(|p| !p.trim().is_empty())
@@ -614,19 +628,19 @@ fn curate_commit() -> i32 {
     } else {
         ""
     };
-    match golden_header::commit(&path, &content) {
+    match golden_header::commit_growth(&dir, &content) {
         Ok(()) => 0,
         Err(golden_header::CommitError::OverCap { actual, cap }) => {
             eprintln!(
-                "clavity curate-commit: {}{via} is {actual} bytes, over the {cap} cap",
-                path.display()
+                "clavity curate-commit: growth region in {}{via} is {actual} bytes, over the {cap} cap",
+                dir.display()
             );
             1
         }
         Err(golden_header::CommitError::Io(e)) => {
             eprintln!(
-                "clavity curate-commit: writing {}{via} failed: {e}",
-                path.display()
+                "clavity curate-commit: writing growth region in {}{via} failed: {e}",
+                dir.display()
             );
             2
         }
@@ -754,25 +768,23 @@ fn doctor(session: &str) -> i32 {
     match user_home() {
         Some(home) => {
             let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
-            let path = golden_header::resolve_path(env_override.as_deref(), &home);
-            match golden_header::read_header(&path) {
+            let dir = golden_header::resolve_dir(env_override.as_deref(), &home);
+            match golden_header::read_combined(&dir, &mut |m: &str| eprintln!("clavity: {m}")) {
                 golden_header::HeaderState::Active(h) => {
-                    let sidecar = golden_header::sidecar_path(&path).exists();
+                    let seed_sidecar =
+                        golden_header::sidecar_path(&golden_header::seed_path(&dir)).exists();
+                    let growth_sidecar =
+                        golden_header::sidecar_path(&golden_header::growth_path(&dir)).exists();
                     println!(
-                        "[ ok ]  golden-hdr  active ({} content bytes, sidecar {}) {}",
+                        "[ ok ]  golden-hdr  active ({} content bytes; seed sidecar {}, growth sidecar {}) {}",
                         h.len(),
-                        if sidecar { "present" } else { "MISSING" },
-                        path.display()
+                        if seed_sidecar { "present" } else { "absent" },
+                        if growth_sidecar { "present" } else { "absent" },
+                        dir.display()
                     );
                 }
                 golden_header::HeaderState::Absent => {
-                    println!("[ -- ]  golden-hdr  none ({})", path.display());
-                }
-                golden_header::HeaderState::Unusable { reason } => {
-                    println!(
-                        "[warn]  golden-hdr  disabled: {reason} ({})",
-                        path.display()
-                    );
+                    println!("[ -- ]  golden-hdr  none ({})", dir.display());
                 }
             }
         }
