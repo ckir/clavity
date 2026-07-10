@@ -106,7 +106,7 @@ git add -A && git commit -m "feat(seed): move agy manual + golden-header baselin
 ```bash
 rg -l "(agy-autotrain/knowledge/|knowledge/|plugins/agy-autotrain/knowledge/)(agy-assumptions|agy-capabilities|golden-header)\.md" --glob '!seed/**'
 ```
-Also check the relative forms used inside `agy-curate` and the two driver `CLAUDE.md`s (`../agy-autotrain/knowledge/agy-assumptions.md`). Expected **live** referrers to repoint: `clavity-dotnet/CLAUDE.md`, `clavity-classic/CLAUDE.md`, `clavity-classic/README.md`, `clavity-classic/CONTRIBUTING.md`, `clavity-classic/docs/agy-remote-control-protocol.md`, `clavity-classic/docs/agy-test-suite.md`, `clavity-classic/src/membus.rs` (doc-comments), `agy-autotrain/skills/agy-curate/SKILL.md`, **and the live `docs/` breadcrumb stubs `docs/agy-assumptions.md` + `docs/agy-capabilities.md` if present** (panel F5 — these point at the moved file via the `plugins/agy-autotrain/knowledge/…` install form and must be repointed to `../seed/…`).
+Also check the relative forms used in the two driver `CLAUDE.md`s (`../agy-autotrain/knowledge/agy-assumptions.md`). Expected **live** referrers to repoint: `clavity-dotnet/CLAUDE.md`, `clavity-classic/CLAUDE.md`, `clavity-classic/README.md`, `clavity-classic/CONTRIBUTING.md`, `clavity-classic/docs/agy-remote-control-protocol.md`, `clavity-classic/docs/agy-test-suite.md`, `clavity-classic/src/membus.rs` (doc-comments), **and the live `docs/` breadcrumb stubs `docs/agy-assumptions.md` + `docs/agy-capabilities.md` if present** (panel F5 — these point at the moved file via the `plugins/agy-autotrain/knowledge/…` install form and must be repointed to `../seed/…`). **`agy-autotrain/skills/agy-curate/SKILL.md` is NOT repointed here** — under the EXTEND model it stops reading the manuals entirely (its references are *removed*, not repointed, in T9).
 
 **Do NOT repoint historical records** — `docs/superpowers/{plans,specs,spikes}/**` and `ROADMAP.md` prose reference the old path *as of their writing* and are frozen history (same rule as Phase 2's ROADMAP handling). Leave them. (`agy-observations.md` referrers must also be LEFT untouched — that file did not move.)
 
@@ -127,6 +127,18 @@ rg "(agy-autotrain/knowledge/|plugins/agy-autotrain/knowledge/|[^-]knowledge/)(a
   --glob '!docs/superpowers/plans/**' --glob '!docs/superpowers/specs/**' --glob '!docs/superpowers/spikes/**' --glob '!ROADMAP.md'
 ```
 Expected: **no matches** — every LIVE referrer (including `docs/agy-assumptions.md`) now points at `seed/`; only frozen historical prose (plans/specs/spikes/ROADMAP) is excluded, and that is deliberate. Cross-check with the Grep tool (this shell's `grep -E` false-cleans on `](`-adjacent CRLF patterns — use `rg` without `-E`, or the Grep tool).
+
+- [ ] **Step 3b: Verify the NEW links actually RESOLVE (panel A3 — old-string-gone is not enough)**
+
+A repoint that drops the `../` depth prefix (e.g. writes `seed/agy-assumptions.md` from a `docs/` or `src/` file) passes Step 3 but leaves a broken link. For each markdown-link target you wrote, resolve it relative to its referrer's directory and confirm the file exists:
+
+```bash
+# For every "(…seed/<file>.md)" link, check the resolved path exists. Example spot-checks:
+test -f clavity-classic/docs/../../seed/agy-assumptions.md && echo OK:classic-docs
+test -f clavity-classic/src/../../seed/agy-assumptions.md  && echo OK:membus
+test -f agy-autotrain/skills/agy-curate/../../../seed/golden-header.md && echo OK:curate  # only if T9 keeps a repo link
+```
+Expected: every `OK:*` prints. Any link whose resolved path does not exist is a broken repoint — fix the `../` depth. (For `.rs` doc-comment links and `docs/` breadcrumbs, resolve from that file's own directory.)
 
 - [ ] **Step 4: Commit**
 
@@ -189,11 +201,21 @@ public void TryReadCombined_falls_back_to_legacy_flat_file_as_growth()
 }
 
 [Fact]
-public void TryReadCombined_ignores_legacy_when_split_files_present()
+public void TryReadCombined_reads_legacy_as_growth_when_growth_absent_even_if_seed_present()
 {
+    // Upgrade case (panel A1): installer seeded SEED, user's legacy flat file holds their wisdom, no growth.md yet.
     File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
     File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "LEGACY");
-    Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir));
+    Assert.Equal("SEED\n\nLEGACY", GoldenHeader.TryReadCombined(_dir));
+}
+
+[Fact]
+public void TryReadCombined_ignores_legacy_once_growth_file_present()
+{
+    File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+    File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH");
+    File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "LEGACY");
+    Assert.Equal("SEED\n\nGROWTH", GoldenHeader.TryReadCombined(_dir));
 }
 
 [Fact]
@@ -260,8 +282,11 @@ In `GoldenHeader.cs`: replace `ResolvePath` (lines 20-23) and `TryRead` (lines 3
     {
         var seed = TryReadFile(SeedPath(dir), warn);
         var growth = TryReadFile(GrowthPath(dir), warn);
-        if (seed is null && growth is null)
-            growth = TryReadFile(Path.Combine(dir, LegacyFileName), warn);   // legacy flat → GROWTH
+        // Legacy flat file is the GROWTH floor whenever GROWTH is absent — even if the installer has already
+        // seeded SEED (panel A1). Gating on `seed is null` too would silently drop an upgrading user's
+        // accumulated wisdom the moment the installer wrote seed.md, before their next curate.
+        if (growth is null)
+            growth = TryReadFile(Path.Combine(dir, LegacyFileName), warn);   // legacy flat → GROWTH floor
 
         var combined = Join(seed, growth);
         if (combined is null) return null;
@@ -661,7 +686,7 @@ git add -A && git commit -m "feat(installer): ship seed baseline + seed-header p
 - [ ] **Step 1: Repoint inputs and rewrite the promotion model**
 
 Change the skill so it:
-1. **Inputs:** inbox `../../knowledge/agy-observations.md` (unchanged); SEED floor `../../../seed/agy-capabilities.md` + `../../../seed/agy-assumptions.md` + baseline `../../../seed/golden-header.md` (READ-ONLY reference — the SEED manual is now **driver-owned**, refreshed only on a driver release; `agy-curate` does NOT edit it); probes `../../verify/assertions.md`.
+1. **Inputs:** inbox `../../knowledge/agy-observations.md` (unchanged); the **SEED floor for dedup = the RUNTIME shared file `%USERPROFILE%\.clavity\golden-header.seed.md`** (what the driver actually injects), NOT a repo-relative `../../../seed/` path — resolving the seed via a brittle relative path breaks once installed (agy-curate ships to `{app}\plugins\agy-autotrain\…`, where `../../../seed/` does not exist; this is exactly the panel A2 / Phase-2-deferred layout defect). Read the shared seed.md directly (default `%USERPROFILE%\.clavity\golden-header.seed.md`, honoring a `CLAVITY_GOLDEN_HEADER` **dir** override). Under the EXTEND model `agy-curate` does **not** read or edit the `agy-assumptions.md` / `agy-capabilities.md` manuals at all — they are driver-owned static SEED, refreshed only on a driver release. Probes stay at `../../verify/assertions.md`.
 2. **Output:** drain the inbox into the **GROWTH** region only — compile a dense header of newly-learned, verified rules and commit it via `clavity-ls curate-commit` (which now writes `golden-header.growth.md`). GROWTH is **deduped against the SEED baseline** (`seed/golden-header.md`): a rule already stated in SEED is dropped. GROWTH is **regenerated wholesale** each run (idempotent).
 3. **No manual editing:** remove the "promote into capabilities/assumptions" instructions — those files are SEED. The verify harness still gates testable assumptions before they enter GROWTH.
 4. **Fix the stale classic note:** the classic `clavity curate-commit` verb **exists and is tested** (`clavity-classic/src/main.rs`); delete the "does not exist yet / bridge by writing the shared path directly" text.
