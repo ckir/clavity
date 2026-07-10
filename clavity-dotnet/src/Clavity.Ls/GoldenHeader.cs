@@ -4,10 +4,12 @@ using System.Text;
 namespace Clavity.Ls;
 
 /// <summary>
-/// The shared, variant-agnostic golden-header (accumulated agy-driving wisdom). Read+prepended to every ask by
-/// the binary, written only by `clavity-ls curate-commit`. Path = %USERPROFILE%\.clavity\golden-header.md,
-/// overridable via CLAVITY_GOLDEN_HEADER. Reads NO-OP cleanly when the file is absent, empty, or over the size
-/// cap — that is what makes the agy-autotrain add-on optional.
+/// The shared, variant-agnostic golden-header (accumulated agy-driving wisdom), split into two independently-
+/// owned region files under %USERPROFILE%\.clavity\ (the DIRECTORY is overridable via CLAVITY_GOLDEN_HEADER):
+/// golden-header.seed.md (the driver-seeded baseline) + golden-header.growth.md (written by
+/// `clavity-ls curate-commit`). Read as SEED-then-GROWTH and prepended to every ask; a pre-split flat
+/// golden-header.md is read ALONE as a one-time migration fallback. Reads NO-OP cleanly when the files are
+/// absent, empty, or over the size cap — that is what makes the agy-autotrain add-on optional.
 /// </summary>
 public static class GoldenHeader
 {

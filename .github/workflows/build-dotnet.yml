@@ -115,6 +115,15 @@ jobs:
           if (-not (Test-Path "$app\plugins\commonmemory")) { throw "plugins\commonmemory (add-on) not shipped" }
           if (-not (Test-Path "$app\plugins\ghidrust")) { throw "plugins\ghidrust not shipped (bundled marketplace ./plugins/ghidrust entry would dangle)" }
 
+          # Phase 3: the post-install PowerShell step must seed golden-header.seed.md from the bundled baseline.
+          if (-not (Test-Path "$app\seed\golden-header.md")) { throw "bundled seed baseline not shipped under $app\seed" }
+          $seed = "$env:USERPROFILE\.clavity\golden-header.seed.md"
+          if (-not (Test-Path $seed)) { throw "golden-header.seed.md was not seeded to $seed" }
+          if ((Get-Content $seed -Raw) -ne (Get-Content "$app\seed\golden-header.md" -Raw)) {
+            throw "seeded golden-header.seed.md does not match the bundled baseline"
+          }
+          Write-Host "[smoke] golden-header.seed.md seeded and matches the bundled baseline."
+
           $arp = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
             Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "clavity-dotnet*" }
           if (-not $arp) { throw "Add/Remove Programs key not present after install" }
