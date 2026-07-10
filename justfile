@@ -21,3 +21,7 @@ build: dotnet::build classic::build ghidrust::build
 
 # Aggregate format across every tool (mutating).
 fmt: dotnet::fmt classic::fmt ghidrust::fmt
+
+# Verify the seed agent artifacts are byte-identical across the two driver plugins
+seed-sync-check:
+    bash scripts/check-seed-artifacts-synced.sh

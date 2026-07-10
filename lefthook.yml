@@ -12,6 +12,8 @@ pre-push:
   commands:
     lint:
       run: just lint
+    seed-sync:
+      run: just seed-sync-check
 pre-commit:
   commands:
     ruff:
