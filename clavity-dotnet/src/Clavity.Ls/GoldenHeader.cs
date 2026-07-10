@@ -62,12 +62,14 @@ public static class GoldenHeader
         var growth = TryReadFile(GrowthPath(dir), warn);
 
         // Migration window (panels A1 + R2-agy-1): a pre-split flat golden-header.md is a COMPLETE header —
-        // it already contains the old baseline + learned rules. Until GROWTH exists, inject the legacy file
-        // ALONE; do NOT concatenate it with the new SEED, or the baseline is injected twice. This still
-        // preserves the upgrading user's wisdom (A1). agy-curate migrates it to growth.md on its next run and
-        // (T9). Once growth.md exists this branch no longer fires; the legacy file is LEFT in place as a
-        // harmless fallback (not renamed — that would break the classic failover, panel agy-R3-c).
-        if (growth is null)
+        // it already contains the old baseline + learned rules. While NO growth file exists yet, inject the
+        // legacy file ALONE; do NOT concatenate it with the new SEED, or the baseline is injected twice. This
+        // preserves the upgrading user's wisdom (A1) until agy-curate folds it into growth.md on its next run
+        // (T9 migration step). Gate on the growth FILE's absence, not merely a null read: once a growth.md
+        // exists (even transiently empty/over-cap/unreadable) the migration is done, so prefer the fresh SEED
+        // over reverting to the stale legacy content. The legacy file is LEFT in place as a harmless fallback
+        // (not renamed — that would break the classic failover, panel agy-R3-c).
+        if (growth is null && !File.Exists(GrowthPath(dir)))
         {
             var legacy = TryReadFile(Path.Combine(dir, LegacyFileName), warn);
             if (legacy is not null)

@@ -47,8 +47,17 @@ driver-owned static SEED (they ship in each driver's `plugin/knowledge/`), refre
 
 ## Compile + commit the GROWTH region (via the binary, never a raw edit)
 
-Compile the dense, payload-ready GROWTH header from the verified, newly-learned inbox rules — the ones NOT
-already in the SEED floor:
+**Migrate a pre-split flat header first (one-time — preserves upgrading users' wisdom, spec Acceptance #4).**
+If a legacy flat `%USERPROFILE%\.clavity\golden-header.md` is present **and** no `golden-header.growth.md`
+exists yet, this is an upgrading user whose accumulated learned wisdom lives in that flat file. **Before
+compiling, read it and FOLD its learned rules into this first GROWTH compile** — dropping anything already
+stated in the SEED floor (the old baseline is now driver-owned SEED; keep only the user's learned additions).
+Once this run writes `golden-header.growth.md`, the binary stops reading the legacy file (read-precedence), so
+this fold is what keeps the wisdom alive — do it with **no user action required**. Leave the legacy file in
+place afterwards (do not rename it — panel agy-R3-c).
+
+Compile the dense, payload-ready GROWTH header from the verified, newly-learned inbox rules (plus any folded
+legacy wisdom above) — the ones NOT already in the SEED floor:
 
 1. **`[⚠️ CRITICAL ANTI-PATTERNS]` first** for any newly-learned failure modes — knowing how *not* to prompt
    agy is the most actionable context.

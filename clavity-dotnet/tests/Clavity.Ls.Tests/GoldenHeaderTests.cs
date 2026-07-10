@@ -71,6 +71,18 @@ public sealed class GoldenHeaderTests : IDisposable
     }
 
     [Fact]
+    public void TryReadCombined_prefers_seed_over_legacy_when_growth_file_exists_but_is_empty()
+    {
+        // SHOULD-FIX (final review): once a growth.md FILE exists the migration is done, even if that file is
+        // transiently empty. Must NOT revert to the stale legacy flat file (left on disk forever) — the fresh
+        // SEED baseline wins.
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "");   // present but empty
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.LegacyFileName), "STALE-LEGACY");
+        Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir));
+    }
+
+    [Fact]
     public void TryReadCombined_drops_growth_but_keeps_seed_when_combined_over_cap()
     {
         // Each region is under the per-file cap, but their sum is over it. Degrade to SEED, do NOT drop everything.

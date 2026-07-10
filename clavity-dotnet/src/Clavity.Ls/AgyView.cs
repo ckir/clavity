@@ -108,7 +108,7 @@ public sealed class AgyView
 
             var header = _options.GoldenHeaderDir is null
                 ? null
-                : GoldenHeader.TryReadCombined(_options.GoldenHeaderDir, m => Console.Error.WriteLine($"clavity: {m}"));
+                : GoldenHeader.TryReadCombined(_options.GoldenHeaderDir, m => _options.Diagnostics.WriteLine($"clavity: {m}"));
             var outgoing = GoldenHeader.Apply(header, message);
 
             _inFlight[conversationId] = 1;
