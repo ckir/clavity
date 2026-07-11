@@ -1,0 +1,103 @@
+name: build-agy-autotrain
+
+# Reusable build+smoke for the agy-autotrain installer. Plugin-only member — no compile step (O4:
+# builds from main, same as the plugin content itself already does).
+on:
+  workflow_call:
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+      sha:
+        value: ${{ jobs.build.outputs.sha }}
+      artifact-name:
+        value: ${{ jobs.build.outputs.artifact-name }}
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: agy-autotrain
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      sha: ${{ steps.sha.outputs.sha }}
+      artifact-name: agy-autotrain-installer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the built commit
+        id: sha
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract version from .iss
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path installer/agy-autotrain.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "TOOL_VER=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Generate scoped marketplace.json (O3)
+        shell: pwsh
+        run: ../scripts/generate-scoped-manifest.ps1 -MemberName agy-autotrain -OutFile installer/marketplace.install.json
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer (ISCC)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc installer/agy-autotrain.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          $setup = "dist/agy-autotrain-setup-$env:TOOL_VER.exe"
+          if (-not (Test-Path $setup)) { throw "$setup was not produced" }
+
+      - name: Compute SHA-256 companion
+        shell: pwsh
+        run: |
+          $name = "agy-autotrain-setup-$env:TOOL_VER.exe"
+          $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+          "$h  $name" | Set-Content -Path "dist/$name.sha256" -Encoding ascii
+
+      - name: Smoke — install/uninstall lifecycle + namespace + C6 growth ownership
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = "dist/agy-autotrain-setup-$env:TOOL_VER.exe"
+          $app = "$env:LOCALAPPDATA\Programs\agy-autotrain"
+
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
+          # Finding-5: re-run the SAME installer — idempotent upgrade (remove-then-add) must exit 0.
+          $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }
+          if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
+          $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
+          if ($manifest.name -ne 'clavity-agy-autotrain') { throw "expected marketplace name clavity-agy-autotrain, got $($manifest.name)" }
+          if ($manifest.plugins.Count -ne 1) { throw "expected 1 plugin in scoped manifest, got $($manifest.plugins.Count)" }
+          if ($manifest.plugins[0].source -ne './plugins/agy-autotrain') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
+          if (-not (Test-Path "$app\plugins\agy-autotrain\skills\agy-curate\SKILL.md")) { throw "plugin content not staged" }
+
+          # C6: pre-seed a fake growth.md and confirm a plain (keep-data) uninstall does NOT delete it.
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.clavity" | Out-Null
+          Set-Content "$env:USERPROFILE\.clavity\golden-header.growth.md" "fake learned wisdom"
+          $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
+          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md was deleted by a keep-data uninstall" }
+          "install/uninstall + namespace + C6 growth-ownership smoke PASSED"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agy-autotrain-installer
+          path: |
+            agy-autotrain/dist/agy-autotrain-setup-*.exe
+            agy-autotrain/dist/agy-autotrain-setup-*.exe.sha256
