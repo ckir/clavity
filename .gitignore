@@ -16,3 +16,20 @@ __pycache__/
 # here and leaked into the Rust tools' src/bin/ dirs, silently dropping real binary
 # targets (e.g. clavity-classic/src/bin/fake_tmux.rs). Each product folder now owns
 # its own build-output ignore rules.
+
+# Internal design provenance — excluded from the PUBLIC repo (kept locally, untracked).
+# Pre-push audit WS2 (docs/superpowers/specs/2026-07-11-pre-push-audit-design.md): these hold
+# in-flight TBDs, superseded-model narratives, and local-machine paths not fit for public.
+docs/superpowers/
+docs/session-notes/
+.clavity/
+
+# Secret-shaped / junk guards (defense-in-depth — no secret is tracked today, keep it that way)
+*.pem
+*.key
+*.log
+.env.local
+.DS_Store
+
+# Scratch dumps
+diff.txt

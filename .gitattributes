@@ -1,3 +1,7 @@
+# Shipped Bash hooks/scripts MUST stay LF: under core.autocrlf these get CRLF on checkout, and a
+# CRLF `\r` in a shebang/command breaks the hook on Linux/macOS (and Git-Bash). Force LF regardless.
+*.sh text eol=lf
+
 # Golden wire-capture oracles must never be line-ending normalized (they contain raw protobuf
 # bytes, incl. 0x0a). Without this, autocrlf would corrupt them on checkout.
 *.bin binary
