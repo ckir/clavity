@@ -33,7 +33,7 @@ public class McpToolsIntegrationTests
         {
             _cascadeId = cascadeId;
             _remainingEmptyPolls = emptyMapPolls;
-            _trajectory = new GetCascadeTrajectoryResponse();
+            _trajectory = new GetCascadeTrajectoryResponse { Trajectory = new CascadeTrajectory { CascadeId = cascadeId } };
         }
 
         public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
@@ -57,6 +57,30 @@ public class McpToolsIntegrationTests
         public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
             GetCascadeTrajectoryRequest request, ServerCallContext context)
             => Task.FromResult(_trajectory);
+
+        public override Task<GetAvailableModelsResponse> GetAvailableModels(
+            FetchAvailableModelsRequest request, ServerCallContext context)
+            => Task.FromResult(new GetAvailableModelsResponse
+            {
+                AvailableModels = new FetchAvailableModelsResponse
+                {
+                    DefaultAgentModelId = "key1",
+                    Models = { { "key1", new ModelDetails { Model = 1 } } }
+                }
+            });
+
+        public override Task<SendUserCascadeMessageResponse> SendUserCascadeMessage(
+            SendUserCascadeMessageRequest request, ServerCallContext context)
+        {
+            var text = request.Items.Count > 0 ? request.Items[0].Text : "";
+            _trajectory.Trajectory.Steps.Add(new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = text } });
+            _trajectory.Trajectory.Steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = "{\"status\": \"idle\"}" } });
+            return Task.FromResult(new SendUserCascadeMessageResponse());
+        }
+
+        public override Task<WaitForConversationFullyIdleResponse> WaitForConversationFullyIdle(
+            WaitForConversationFullyIdleRequest request, ServerCallContext context)
+            => Task.FromResult(new WaitForConversationFullyIdleResponse());
     }
 
     private static async Task<WebApplication> StartFakeAsync(GetCascadeTrajectoryResponse traj)
@@ -174,7 +198,7 @@ public class McpToolsIntegrationTests
             Assert.Equal(2, first.Content.Count);
             var firstText = Assert.IsType<TextContentBlock>(first.Content[0]).Text;
             var guidance = Assert.IsType<TextContentBlock>(first.Content[1]).Text;
-            Assert.Contains("\"waiting_for_human\"", firstText);  // fake ls empty answer is treated as waiting_for_human or AskReply JSON
+            Assert.Contains("\"Answer\"", firstText);                // block 0 is the AskReply JSON
             Assert.StartsWith(DriverCheatsheet.Label, guidance);      // block 1 is the labelled guidance
             Assert.Contains("Verify what it volunteers", guidance);   // baseline-floor content
 
