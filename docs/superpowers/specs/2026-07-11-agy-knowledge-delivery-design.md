@@ -1,9 +1,11 @@
 # Design spec — agy-autotrain knowledge **delivery** (close the consume-side gap)
 
 **Status:** GREEN — AGY-AFTER panel complete (6 rounds, ~25 findings folded, findings decayed 8→6→5→3→2→0-substantive;
-agy round-6 verdict `CONVERGED`). **+1 post-panel consumer-driven addition** (compaction resilience, §5.C-C /
-acceptance 4c) — a real correctness hole found via a consuming-agent negotiation with agy, small + additive (does not
-reopen the converged mechanism). Ready for `writing-plans`. **Date:** 2026-07-11.
+agy round-6 verdict `CONVERGED`). **+ compaction resilience** (§5.C-C / acceptance 4c) — a real
+correctness hole found via a consuming-agent negotiation with agy, then **re-greened** in a 2-round delta review
+(agy + claude-code-guide corrected it: `SessionStart(source=compact)` not `PreCompact`, session-keyed flag,
+source-gated clear, missing-file guard; agy verdict `DELTA CONVERGED — RE-GREEN`). Fully GREEN. Ready for
+`writing-plans`. **Date:** 2026-07-11.
 **Spans three products:** `agy-autotrain` (triage/curation) + **BOTH driver variants** `clavity-dotnet` and
 `clavity-classic` (each variant's own bridge quirk-fixes + point-of-use delivery). The two drivers are mutually
 exclusive but co-equal peers (see the cohesive-distribution work) — any driver-side fix MUST be variant-symmetric,
@@ -197,8 +199,11 @@ once-per-session appended block does NOT survive a mid-session context compactio
 server/binary "already delivered" flag stays set, and the driver drives the rest of the session BLIND (the exact
 failure this design exists to prevent). Fix, without reintroducing wallpaper for non-driving sessions:
 1. When the first-ask block fires, the ask machinery touches a **session-keyed drive-session flag**
-   `~/.clavity/.active-drive-session-<session_id>` (NOT a global path — two concurrent driver sessions sharing
-   `~/.clavity/` would clobber a global flag; re-green State Corruptor), marking "THIS session drove the peer."
+   `.active-drive-session-<session_id>` (NOT a global path — two concurrent driver sessions sharing `~/.clavity/`
+   would clobber a global flag; re-green State Corruptor), marking "THIS session drove the peer." **Hygiene
+   (re-green R2):** prefer a runtime-GC'd session-local scratch dir if the agent exposes one (free cleanup, perfect
+   isolation); otherwise keep it under `~/.clavity/` but have the `SessionStart(source=startup)` hook also sweep
+   stale `.active-drive-session-*` files (self-healing GC) so orphaned 0-byte dotfiles don't accumulate.
 2. A **`SessionStart` hook with matcher `compact`** (shipped with the driver plugin) re-injects the cheatsheet as
    `additionalContext` **iff** this session's flag is set. **It must be `SessionStart(source=compact)`, NOT
    `PreCompact`** — verified against Claude Code hook semantics: `PreCompact` additionalContext is fed to the
