@@ -10,3 +10,5 @@
 /publish
 # Installer build output (staged setup.exe + sha256)
 /dist
+# build-generated flat install manifest (Task 5/Step 2b) — never committed
+/installer/marketplace.install.json

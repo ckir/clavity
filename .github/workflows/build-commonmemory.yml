@@ -79,6 +79,7 @@ jobs:
           $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
           if ($manifest.name -ne 'clavity-commonmemory') { throw "expected marketplace name clavity-commonmemory, got $($manifest.name)" }
           if ($manifest.plugins.Count -ne 1) { throw "expected 1 plugin in scoped manifest, got $($manifest.plugins.Count)" }
+          if ($manifest.plugins[0].source -ne './plugins/commonmemory') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
           if (-not (Test-Path "$app\plugins\commonmemory\skills\commonmemory\SKILL.md")) { throw "plugin content not staged" }
 
           $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1

@@ -124,6 +124,7 @@ jobs:
           $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
           if ($manifest.name -ne 'clavity-ghidrust') { throw "expected marketplace name clavity-ghidrust (C9), got $($manifest.name)" }
           if ($manifest.plugins.Count -ne 1) { throw "expected 1 plugin, got $($manifest.plugins.Count)" }
+          if ($manifest.plugins[0].source -ne './plugins/ghidrust') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
           if (-not (Test-Path "$app\plugins\ghidrust")) { throw "plugins\ghidrust not staged" }
           $userPath = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
           if ($userPath -notlike "*$app*") { throw "PATH entry not added after install" }
