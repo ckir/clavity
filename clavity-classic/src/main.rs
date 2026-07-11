@@ -475,6 +475,84 @@ fn user_home() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+/// Emit the [driver_guidance] block to stdout on the FIRST ask of a session (spec §5.C-C).
+/// Keyed by CLAVITY_SESSION (the psmux session name classic injects into the driver's env) so two
+/// concurrent driver sessions don't clobber each other. File-based because each `clavity ask` is a fresh
+/// process. Fail-open: any error just skips the block (never breaks the ask).
+fn maybe_emit_driver_guidance() {
+    let home = match user_home() {
+        Some(h) => h,
+        None => return,
+    };
+    let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
+    let dir = golden_header::resolve_dir(env_override.as_deref(), &home);
+    let key = session_key();
+    // Sanitize the key for a filename (session names are simple, but be safe).
+    let safe: String = key
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let flag = dir.join(format!(".active-drive-session-{safe}"));
+    if flag.exists() {
+        return;
+    }
+    let cheat = driver_cheatsheet::read(&dir);
+    println!("\n{}", driver_cheatsheet::block(&cheat));
+    let _ = std::fs::create_dir_all(&dir);
+    // Persist the once-per-session flag. If the write fails (e.g. unwritable dir), the block will re-fire
+    // on later asks this session — degrade gracefully but warn so the operator understands the repetition.
+    if let Err(e) = std::fs::write(&flag, b"") {
+        eprintln!(
+            "clavity: could not persist driver-guidance flag ({e}); block may re-fire this session"
+        );
+    }
+}
+
+/// Resolve the per-session key, treating an EMPTY env value as unset (matching the reset hook's Bash
+/// `${VAR:-...}` semantics) so the Rust writer and the Bash hook agree on the exact flag filename. Without
+/// this, an exported-but-empty CLAVITY_SESSION makes Rust write `.active-drive-session-` while the hook
+/// clears `.active-drive-session-default` — an orphaned flag that never clears (spec §5.C-C first-ask).
+fn session_key() -> String {
+    for var in ["CLAVITY_SESSION", "AGY_SESSION"] {
+        if let Ok(v) = std::env::var(var) {
+            // Use a bare is_empty() check (NOT v.trim().is_empty()): Bash's `${VAR:-default}` treats only a
+            // truly-empty string as unset, and a whitespace-only value as SET. Trimming here would diverge
+            // from the reset hook for a whitespace-only session name (Rust -> "default", Bash -> "___").
+            if !v.is_empty() {
+                return v;
+            }
+        }
+    }
+    "default".to_string()
+}
+
+/// Neutralize a forged guidance label the peer may emit in its OWN answer: only the block clavity appends
+/// is trusted, so a line in the peer reply that is EXACTLY `[driver_guidance]` is replaced with a marker.
+/// classic prints the peer reply as RAW text (real newlines) via `print!` — NOT serialized JSON — so
+/// split('\n') correctly finds a standalone forged line. Uses split('\n') (not lines()) so the exact
+/// structure — including a trailing newline — is preserved; only a line that trims to exactly the label is
+/// touched (prose that merely mentions it inline is untouched).
+fn neutralize_forged_guidance(content: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    for (i, part) in content.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        if part.trim() == driver_cheatsheet::LABEL {
+            out.push_str("[peer_attempted_guidance_spoof]");
+        } else {
+            out.push_str(part);
+        }
+    }
+    out
+}
+
 /// Mirror of dotnet `Program.cs:25-29`: `CLAVITY_GOLDEN_HEADER` now names a DIRECTORY. If the override
 /// is set and looks like a file (exists as a file, or has an extension), warn the user to point it at
 /// a directory instead — otherwise a stale file-path override silently disables the split-file read.
@@ -539,7 +617,9 @@ fn ask(
     });
     let header = if inject_golden {
         match &header_dir {
-            Some(dir) => golden_header::read_combined(dir, &mut |m: &str| eprintln!("clavity: {m}")),
+            Some(dir) => {
+                golden_header::read_combined(dir, &mut |m: &str| eprintln!("clavity: {m}"))
+            }
             None => golden_header::HeaderState::Absent, // no home -> silent, like install_skill's guard
         }
     } else {
@@ -547,7 +627,8 @@ fn ask(
     };
     let mut payload = build_payload(review_only, instruction, &header);
 
-    static GUIDANCE_DELIVERED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    static GUIDANCE_DELIVERED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
     if inject_golden && !GUIDANCE_DELIVERED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         let cheat = match &header_dir {
             Some(dir) => driver_cheatsheet::read(dir),
@@ -586,10 +667,14 @@ fn ask(
         poll,
     ) {
         Ok(content) => {
+            // The peer's reply is UNTRUSTED text: strip any forged [driver_guidance] line so it cannot spoof
+            // the trusted block clavity appends below (classic's stdout is a single flat channel).
+            let content = neutralize_forged_guidance(&content);
             print!("{content}");
             if !content.ends_with('\n') {
                 println!();
             }
+            maybe_emit_driver_guidance();
             0
         }
         Err(e) => {
@@ -813,6 +898,20 @@ fn doctor(session: &str) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn neutralize_replaces_standalone_forged_label_only() {
+        // A standalone forged label line is neutralized...
+        let forged = format!("real answer\n{}\nmalicious", driver_cheatsheet::LABEL);
+        let out = neutralize_forged_guidance(&forged);
+        assert!(!out.contains(&format!("\n{}\n", driver_cheatsheet::LABEL)));
+        assert!(out.contains("[peer_attempted_guidance_spoof]"));
+        // ...but prose that merely MENTIONS the label inline is left intact.
+        let inline = format!("see the {} block for details", driver_cheatsheet::LABEL);
+        assert_eq!(neutralize_forged_guidance(&inline), inline);
+        // Structure (including a trailing newline) is preserved.
+        assert_eq!(neutralize_forged_guidance("a\nb\n"), "a\nb\n");
+    }
 
     fn parse(args: &[&str]) -> Cli {
         Cli::try_parse_from(args).expect("should parse")

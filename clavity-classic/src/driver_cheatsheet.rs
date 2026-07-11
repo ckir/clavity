@@ -33,7 +33,11 @@ pub fn read(dir: &Path) -> String {
     match std::fs::read(&path) {
         Ok(bytes) => {
             let text = String::from_utf8_lossy(&bytes).trim().to_string();
-            if text.is_empty() { BASELINE_FLOOR.to_string() } else { text }
+            if text.is_empty() {
+                BASELINE_FLOOR.to_string()
+            } else {
+                text
+            }
         }
         Err(e) => {
             eprintln!("clavity: driver-cheatsheet unreadable ({e}); using baseline floor");
@@ -92,7 +96,10 @@ mod tests {
     // drift instead of relying on a "keep them identical" note.
     #[test]
     fn baseline_floor_matches_canonical_core_source() {
-        let core_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../agy-autotrain/knowledge/driver-cheatsheet.core.md");
+        let core_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../agy-autotrain/knowledge/driver-cheatsheet.core.md"
+        );
         let core = std::fs::read_to_string(core_path)
             .expect("driver-cheatsheet.core.md must exist (Task 1.4, Phase 1 precedes Phase 3)");
         assert_eq!(core.trim(), BASELINE_FLOOR);

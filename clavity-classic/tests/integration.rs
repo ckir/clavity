@@ -456,3 +456,81 @@ fn ask_review_only_prepends_banner_and_no_ring_skips_doorbell() {
     );
     let _ = std::fs::remove_file(&log);
 }
+
+#[test]
+fn ask_appends_driver_guidance_on_first_call_only() {
+    // Unique per-test dir: std::process::id() alone is NOT unique across Rust's concurrent in-process
+    // tests (they share one PID), so include this test's own literal name to avoid clobbering another
+    // test's flag/cheatsheet dir. (Mirror the codebase's fresh_dir(name) idiom.)
+    let cheat_dir =
+        std::env::temp_dir().join(format!("clavity-dg-first-only-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&cheat_dir);
+    std::fs::create_dir_all(&cheat_dir).unwrap();
+    let log = std::env::temp_dir().join(format!("clavity_dg_{}.log", std::process::id()));
+
+    // Each `clavity ask` is a fresh process; use a fresh bus per call. Both share the SAME session key +
+    // golden-header dir, so the once-per-session flag logic is what's exercised.
+    let (url1, _s1) = start_fake_bus(Reply::EchoReqIdAfter(1));
+    let out1 = clavity_bus(&url1)
+        .args([
+            "ask",
+            "hello",
+            "--no-ring",
+            "--timeout",
+            "10",
+            "--poll-interval",
+            "150",
+        ])
+        .env("CLAVITY_SESSION", "dg-test-session")
+        .env("CLAVITY_GOLDEN_HEADER", &cheat_dir)
+        .env("FAKE_TMUX_STATE", "idle")
+        .env("FAKE_TMUX_LOG", &log)
+        .output()
+        .expect("run first ask");
+    assert!(
+        out1.status.success(),
+        "first ask failed: {}",
+        String::from_utf8_lossy(&out1.stderr)
+    );
+    let s1 = String::from_utf8_lossy(&out1.stdout);
+    assert!(
+        s1.contains("[driver_guidance]"),
+        "first ask should carry the block, got: {s1}"
+    );
+    assert!(
+        s1.contains("Verify what it volunteers"),
+        "block should carry baseline-floor content, got: {s1}"
+    );
+
+    // Second ask (same session key + dir) -> no block (once per session).
+    let (url2, _s2) = start_fake_bus(Reply::EchoReqIdAfter(1));
+    let out2 = clavity_bus(&url2)
+        .args([
+            "ask",
+            "again",
+            "--no-ring",
+            "--timeout",
+            "10",
+            "--poll-interval",
+            "150",
+        ])
+        .env("CLAVITY_SESSION", "dg-test-session")
+        .env("CLAVITY_GOLDEN_HEADER", &cheat_dir)
+        .env("FAKE_TMUX_STATE", "idle")
+        .env("FAKE_TMUX_LOG", &log)
+        .output()
+        .expect("run second ask");
+    assert!(
+        out2.status.success(),
+        "second ask failed: {}",
+        String::from_utf8_lossy(&out2.stderr)
+    );
+    let s2 = String::from_utf8_lossy(&out2.stdout);
+    assert!(
+        !s2.contains("[driver_guidance]"),
+        "second ask should omit the block, got: {s2}"
+    );
+
+    let _ = std::fs::remove_dir_all(&cheat_dir);
+    let _ = std::fs::remove_file(&log);
+}
