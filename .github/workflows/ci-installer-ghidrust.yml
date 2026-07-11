@@ -1,0 +1,28 @@
+name: ci-installer-ghidrust
+
+# Continuous installer coverage for the ghidrust member. build-ghidrust.yml's smoke is blocking and does
+# NOT download Ghidra (that is the separate release-only e2e-ghidrust.yml), so this is safe to run per-push.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ghidrust/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-ghidrust.yml'
+      - '.github/workflows/ci-installer-ghidrust.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+  pull_request:
+    paths:
+      - 'ghidrust/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-ghidrust.yml'
+      - '.github/workflows/ci-installer-ghidrust.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+
+concurrency:
+  group: ci-installer-ghidrust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    uses: ./.github/workflows/build-ghidrust.yml
