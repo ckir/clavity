@@ -1,0 +1,27 @@
+name: ci-installer-commonmemory
+
+# Continuous installer coverage for the commonmemory member (plugin-only; no ci-commonmemory.yml exists).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'commonmemory/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-commonmemory.yml'
+      - '.github/workflows/ci-installer-commonmemory.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+  pull_request:
+    paths:
+      - 'commonmemory/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-commonmemory.yml'
+      - '.github/workflows/ci-installer-commonmemory.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+
+concurrency:
+  group: ci-installer-commonmemory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    uses: ./.github/workflows/build-commonmemory.yml
