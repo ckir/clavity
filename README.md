@@ -58,5 +58,9 @@ runs `ruff` on staged Python (the agy bridge) only.
 ## License
 
 This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial
-use (personal, academic, non-profit). See [LICENSE](LICENSE). **clavity-classic** ships under its own
-**MIT** license — see [clavity-classic/LICENSE](clavity-classic/LICENSE).
+use (personal, academic, non-profit). See [LICENSE](LICENSE). All five products (clavity-dotnet,
+clavity-classic, ghidrust, agy-autotrain, commonmemory) ship under the same license.
+
+_Trademarks:_ Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of
+Anthropic; Ghidra is a trademark of the National Security Agency. This is an independent project — not
+affiliated with, endorsed by, or sponsored by Google, Anthropic, or the NSA.
