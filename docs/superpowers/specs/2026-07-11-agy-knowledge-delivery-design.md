@@ -1,7 +1,10 @@
 # Design spec — agy-autotrain knowledge **delivery** (close the consume-side gap)
 
 **Status:** DRAFT (pre-AGY-AFTER panel, pre-plan). **Date:** 2026-07-11.
-**Spans two products:** `agy-autotrain` (triage/curation) + `clavity-dotnet` (bridge quirk-fixes + point-of-use delivery).
+**Spans three products:** `agy-autotrain` (triage/curation) + **BOTH driver variants** `clavity-dotnet` and
+`clavity-classic` (each variant's own bridge quirk-fixes + point-of-use delivery). The two drivers are mutually
+exclusive but co-equal peers (see the cohesive-distribution work) — any driver-side fix MUST be variant-symmetric,
+or the un-fixed variant regresses relative to the other.
 
 ## 1. Problem
 
@@ -73,36 +76,52 @@ only `probabilistic` entries proceed to the audience split (peer → GROWTH as t
 This is the **anti-poisoning gate extended**: it already rejects unverified/over-general candidates; now it also
 rejects deterministic-workaround candidates by *class*.
 
-### C-B — retire the deterministic entries + fix the bridge (clavity-dotnet)
+### C-B — retire the deterministic entries + fix the bridge (BOTH variants)
 The three inbox entries (idle-wait timeout surfaces as `possible_modal` while the peer is still working; the
 trajectory-`look` view truncates the recent tail / can report a different conversation id; a timed-out reply parks
-and needs a resend to retrieve) are **deterministic**. Fix them in the bridge, then **retire the entries**:
-- `agy_ask`/`ask`: distinguish **working vs stuck** by the peer's **advancing step count** (poll step-delta) rather
-  than declaring `possible_modal` purely on an idle-wait elapsed timeout; only surface a modal/stuck signal when
-  steps are **not** advancing.
-- Parked-reply **auto-retrieval**: on the next bridge call, correlate and return the parked reply (by req-id /
-  content) instead of requiring a manual "resend your last result" turn.
-- (Optional) `agy_look`: expose a tail-anchored / less-truncated view for reading a just-completed reply, or
-  document that `ask` is the retrieval path and `look` is for trajectory inspection only.
-Once shipped, the corresponding knowledge entries are deleted from the inbox/manuals (immune-system principle, G3/G4).
+and needs a resend to retrieve) are **deterministic**. They were observed on the **dotnet LS/MCP** bridge, but the
+same *class* — waiting for a peer turn to go idle, and retrieving its reply — exists on the **classic** bridge
+(`clavity ask` / `clavity await-reply` over the psmux doorbell + agentmemory bus). **Per-variant step 0: measure
+which of the three quirks actually reproduces on each transport** (do not assume; some may be dotnet-MCP-only, e.g.
+the `agy_look` trajectory truncation has no classic analogue if classic has no trajectory-look surface). Then fix
+each reproduced quirk in that variant's own bridge, symmetric in intent:
+- **working vs stuck:** distinguish by the peer's **advancing step count / progress signal** rather than declaring
+  a modal/stuck state purely on an idle-wait elapsed timeout — dotnet: `agy_ask` uses the cascade step-delta;
+  classic: `clavity ask`/`await-reply` uses whatever equivalent progress signal the bus/psmux surface exposes.
+- **parked-reply auto-retrieval:** on the next bridge call, correlate and return the parked reply (by req-id /
+  content) instead of requiring a manual "resend your last result" turn — in each variant's retrieval path.
+- (dotnet, optional) `agy_look`: expose a tail-anchored / less-truncated view for reading a just-completed reply,
+  or document that `agy_ask` is the retrieval path and `agy_look` is for trajectory inspection only.
+Retire a knowledge entry only once the quirk is fixed on **every variant it reproduced on** and its retirement
+probe passes (F5) — a fix on one variant does not license deleting a rule the other variant still exhibits
+(immune-system principle, G3/G4).
 
-### C-C — driver cheatsheet, **push-delivered at point-of-use** (both products)
-The residual `probabilistic` driver knowledge (peer confabulation on external facts; leading-frame/hypothesis bias;
-"panel ≠ code-review gate"; verify-facts-it-volunteers; hold-your-ground framing for negotiation) is compiled by
-`agy-curate` into a **lean, curated cheatsheet — the 3–5 decision-changing rules, not a dump** (a static blob still
-becomes wallpaper if it is long).
-- **MCP transport (main-thread bridge tools):** embed the cheatsheet into the **tool schema descriptions** of the
+### C-C — driver cheatsheet, **push-delivered at point-of-use** (all three products)
+The residual `probabilistic` driver knowledge splits into a **variant-agnostic core** (peer psychology, identical
+for both drivers: confabulation on external facts; leading-frame/hypothesis bias; "panel ≠ code-review gate";
+verify-facts-it-volunteers; hold-your-ground framing) and a small **per-variant appendix** (mechanics true only of
+one transport). `agy-curate` compiles the core once into a **lean, curated cheatsheet — the 3–5 decision-changing
+rules, not a dump** (a static blob still becomes wallpaper if it is long); each variant appends its own mechanics.
+Delivery is per-variant because the two drivers have different Claude-facing transports:
+- **clavity-dotnet — MCP tools (model-read):** embed the cheatsheet into the **tool schema descriptions** of the
   bridge tools (`agy_ask`/`agy_look`/`agy_status`) in the clavity-dotnet MCP server. The model reads a tool's
-  description exactly when it is considering that tool → point-of-use push, no hook.
-- **CLI transport (`clavity ask`, used by subagents):** a bash command has no model-read description, so the
-  per-variant **driving skill** remains the home for the CLI path; keep the same curated cheatsheet content in sync
-  there (single source: `agy-curate` writes one artifact, both surfaces render it).
+  description exactly when it is considering that tool → point-of-use push, no hook. (Also render it in dotnet's
+  `clavity-ls-driving` skill for the subagent/CLI form.)
+- **clavity-classic — CLI only (`clavity ask` over psmux/bus):** a bash command has no model-read schema, so
+  classic's **`clavity-driving` skill** is the home. This is NOT a fallback — it is classic's primary and only
+  delivery surface, so it is first-class in scope. Because a skill is *pulled*, pair it with a bridge-tool-agnostic
+  **point-of-use nudge** for the CLI path (e.g. the front-door seam hook that already fires on agy-facing skills, or
+  a PreToolUse hook on the `clavity ask` bash pattern) so classic's driver is pushed the core, not relying on skill
+  recall — otherwise classic reintroduces the exact pull-model failure this spec exists to fix.
+**Single source (F1):** `agy-curate` writes ONE core-cheatsheet artifact; all surfaces render it — dotnet MCP tool
+descriptions, dotnet `clavity-ls-driving`, and classic `clavity-driving` — so the two variants never drift.
 
 ## 6. Design forks / open questions (for the AGY-AFTER panel to pressure)
 
-- **F1 — single source of the cheatsheet.** Where does the curated driver cheatsheet physically live so BOTH the
-  MCP tool-descriptions and the CLI driving skill render the same content without drift? (a curate-written file the
-  MCP server reads at startup to compose its tool descriptions vs. a build-time codegen step vs. hand-sync.)
+- **F1 — single source of the cheatsheet.** Where does the curated core cheatsheet physically live so ALL THREE
+  render surfaces stay in sync without drift — dotnet MCP tool-descriptions, dotnet `clavity-ls-driving`, and
+  classic `clavity-driving`? (a curate-written file each surface reads/renders vs. a build-time codegen step vs.
+  hand-sync — hand-sync across two separate product repos is the highest drift risk and probably disqualified.)
 - **F2 — tool-description size budget.** Embedding a cheatsheet in every bridge tool's description adds tokens to
   every session that lists the tools. What is the acceptable size, and does it go on all three tools or only
   `agy_ask` (the one with the failure modes)?
@@ -114,24 +133,40 @@ becomes wallpaper if it is long).
   a **tool/bridge** defect routes to fix-the-tool; peer-psychology with a driving mitigation stays a driver rule.)
 - **F5 — retirement safety.** Deleting a knowledge entry after a "fix" assumes the fix fully removes the failure.
   How do we gate retirement on evidence (a verify-harness probe that the quirk no longer reproduces) so we don't
-  delete a rule while the quirk still bites in some path?
+  delete a rule while the quirk still bites in some path — and, given two variants, on evidence from **each**
+  variant the quirk reproduced on (F6)?
+- **F6 — variant symmetry vs asymmetric transports.** The two drivers have genuinely different bridges (dotnet
+  gRPC LS/MCP with cascade step ids; classic psmux doorbell + agentmemory bus + CLI). Which of the three
+  deterministic quirks actually reproduce on classic (measure, don't assume)? Does classic even have a
+  trajectory-`look` analogue? And since classic's only delivery surface is a *pulled* skill, is a CLI-path
+  point-of-use push (seam hook / PreToolUse on `clavity ask`) mandatory for classic to reach parity with dotnet's
+  model-read tool descriptions — or is the driving skill's own front-door hook already sufficient?
 
 ## 7. Acceptance criteria (testable)
 
 1. `agy-curate/SKILL.md` documents the two-axis classification and the determinism-refusal gate; a deterministic
    candidate is demonstrably refused (dry-run over the current inbox re-classifies the three trigger entries as
    `driver/deterministic → fix-the-tool`).
-2. The bridge no longer reports `possible_modal` while the peer's step count is advancing (probe: a long peer turn
-   returns a working signal, not a modal signal, as long as steps climb).
-3. A timed-out reply is retrievable on the next bridge call without a hand-authored resend turn.
-4. The bridge `agy_ask` tool description contains the curated driver cheatsheet (≤ the F2 budget), sourced from the
-   single curate-written artifact (F1); the CLI driving skill renders the same content.
+2. For **every variant a quirk reproduced on**, that variant's bridge no longer reports a stuck/modal state while
+   the peer is progressing (probe per variant: a long peer turn returns a working signal, not a modal signal, as
+   long as the progress signal advances). Quirks measured NOT to reproduce on a variant are documented as such.
+3. A timed-out reply is retrievable on the next bridge call without a hand-authored resend turn — in **each**
+   variant's retrieval path that exhibited the parked-reply behavior.
+4. The curated core cheatsheet (≤ the F2 budget), from the single curate-written artifact (F1), is rendered on ALL
+   THREE surfaces with identical core content: dotnet `agy_ask` tool description, dotnet `clavity-ls-driving`, and
+   classic `clavity-driving`; classic's driver receives it via a point-of-use push, not skill-recall alone (F6).
 5. After C-B ships and its probe passes (F5), the three trigger entries are gone from the inbox/manuals and the
    base carries no `deterministic` driver entries.
 
 ## 8. Ownership summary
 
 - **agy-autotrain:** C-A (triage gate in `agy-curate/SKILL.md`), the audience/determinism tags in `agy-learn`, the
-  single curate-written driver-cheatsheet artifact, entry retirement (C-B second half).
-- **clavity-dotnet:** C-B bridge quirk-fixes (`agy_ask` working-vs-stuck + parked-reply auto-retrieve), C-C MCP
-  tool-description embedding; the per-variant driving skill renders the cheatsheet for the CLI path.
+  single curate-written **core** driver-cheatsheet artifact (F1), entry retirement (C-B second half, gated on
+  per-variant probes).
+- **clavity-dotnet:** its bridge quirk-fixes (`agy_ask` working-vs-stuck via cascade step-delta + parked-reply
+  auto-retrieve; optional `agy_look` tail view), C-C MCP tool-description embedding, and rendering the core in
+  `clavity-ls-driving`.
+- **clavity-classic:** its OWN bridge quirk-fixes where they reproduce (`clavity ask`/`await-reply` working-vs-stuck
+  via the bus/psmux progress signal + parked-reply auto-retrieve), rendering the core in `clavity-driving`, and a
+  CLI-path point-of-use push so the pulled skill isn't the only delivery (F6). First: **measure** which quirks
+  reproduce on classic before building fixes for ones that don't.
