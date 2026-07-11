@@ -1,6 +1,7 @@
 # Design spec — agy-autotrain knowledge **delivery** (close the consume-side gap)
 
-**Status:** DRAFT (pre-AGY-AFTER panel, pre-plan). **Date:** 2026-07-11.
+**Status:** GREEN — AGY-AFTER panel complete (6 rounds, ~25 findings folded, findings decayed 8→6→5→3→2→0-substantive;
+agy round-6 verdict `CONVERGED`). Ready for `writing-plans`. **Date:** 2026-07-11.
 **Spans three products:** `agy-autotrain` (triage/curation) + **BOTH driver variants** `clavity-dotnet` and
 `clavity-classic` (each variant's own bridge quirk-fixes + point-of-use delivery). The two drivers are mutually
 exclusive but co-equal peers (see the cohesive-distribution work) — any driver-side fix MUST be variant-symmetric,
@@ -307,9 +308,10 @@ and the hardenings are opt-in later, sized to real volume:
 4b. **Rollout:** retirement is conservative/manual — a workaround-rule stays until its fix is widely adopted; there
    is NO maintainer-side build-time version gate (that cannot protect end-users). A partially-updated end-user
    install (new cheatsheet, old bridge) never enters a blind window because the rule was not stripped early.
-5. Each fixed quirk has a **permanent CI regression test** in its owning product; only after that test is green +
-   committed (on every variant it reproduced on) are the trigger entries deleted from the inbox/manuals, leaving no
-   tool-fixable `deterministic` driver entries.
+5. Each fixed quirk has a **permanent CI regression test** in its owning product; a trigger entry is deleted only
+   when **both** gates hold — the test is green + committed (the fix works) AND the fix is widely adopted among
+   end-users (4b, no early strip) — on every variant it reproduced on, leaving no tool-fixable `deterministic`
+   driver entries.
 6. **No-drop:** a dry-run of the triage gate over the current inbox assigns every entry to exactly one of
    {golden-header GROWTH, driver cheatsheet, fix-the-tool backlog} — zero entries dropped.
 7. **Graceful degrade:** with the shared `driver-cheatsheet.md` absent, each driver still delivers its shipped
