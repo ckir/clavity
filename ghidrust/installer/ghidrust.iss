@@ -67,6 +67,15 @@ begin
     GhidraPage.Values[0] := Existing;
 end;
 
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  { The Ghidra dir is OPTIONAL (it can be set later via GHIDRA_INSTALL_DIR). On a silent install the input
+    field is empty, and Inno's TInputDirWizardPage would validate it ("You must enter a full path with drive
+    letter"), fail, and abort the whole install with EAbort -> exit 1. Skip the page when the install is
+    silent (unattended) so it proceeds; the driver can set GHIDRA_INSTALL_DIR later. }
+  Result := (PageID = GhidraPage.ID) and WizardSilent;
+end;
+
 function NeedsAddPath(Param: string): Boolean;
 var
   OrigPath: string;
