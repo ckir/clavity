@@ -3,14 +3,10 @@
 ;   ..\publish\clavity-ls.exe        — single-file publish of Clavity.Cli
 ;   ..\.claude-plugin\marketplace.json  — the marketplace root manifest (committed in-repo)
 ;   ..\plugins\clavity-dotnet\*       — the core plugin (referenced as ./plugins/clavity-dotnet by the manifest)
-;   ..\plugins\agy-autotrain\* , ..\plugins\commonmemory\*  — optional add-ons (shipped; install gated by Phase 4 [Tasks])
 ;
-; Layout note (2.2<->3.1 coupling): clavity-ls resolves marketplaceRoot = {app} and pluginDir =
-; {app}\plugins\clavity-dotnet. So the marketplace.json + the plugins/ tree ship UNDER {app}, matching the
-; manifest's ./plugins/<name> source paths. claude installs via the marketplace; agy installs the local dir.
 
 #define AppName "clavity-dotnet"
-#define AppVersion "0.1.13"
+#define AppVersion "0.1.14"
 #define ExeName "clavity-ls.exe"
 
 [Setup]
@@ -41,18 +37,9 @@ Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversion
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity-dotnet"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Optional add-ons: shipped so the marketplace resolves, but only INSTALLED if the Phase 4 [Tasks] are ticked.
-Source: "..\..\agy-autotrain\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\commonmemory\*"; DestDir: "{app}\plugins\commonmemory"; Flags: ignoreversion recursesubdirs createallsubdirs
-; ghidrust: staged so the bundled marketplace's ./plugins/ghidrust entry resolves (else it dangles). Claude
-; installs it from the marketplace; the ghidrust.exe binary ships separately via the ghidrust-v<N> installer (D7).
-Source: "..\..\ghidrust\plugin\*"; DestDir: "{app}\plugins\ghidrust"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce
-; Optional add-ons (default OFF) — plain-English, value-driven labels (spec UX).
-Name: "install_agy_autotrain"; Description: "Install agy-autotrain — lets the AI permanently learn your project's rules and stop repeating mistakes"; Flags: unchecked
-Name: "install_commonmemory"; Description: "Install commonmemory — a shared notebook so Claude and agy share facts (needs the agentmemory MCP server)"; Flags: unchecked
 
 [Registry]
 ; Per-user PATH APPEND (never prepend) when the task is selected (security: PATH hygiene).
@@ -60,6 +47,8 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
   ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
+#include "..\..\installer\_shared\golden-header-data.iss"
+
 var
   RemoveConfig: Boolean;
 
@@ -175,23 +164,9 @@ end;
 
 { --- Install: register the plugin AFTER files are placed, and SURFACE a failure (UX: no false "Success"). --- }
 
-procedure InstallAddon(const Name: string);
-var
-  ResultCode: Integer;
-begin
-  // Install one optional add-on plugin from the app's plugins dir via clavity-ls (gated by the [Tasks] checkbox).
-  if not Exec(ExpandConstant('{app}\{#ExeName}'), 'install --agent all --plugin ' + Name, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    SuppressibleMsgBox('Could not install the ' + Name + ' add-on. Install it later with:' + #13#10 +
-      '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK, IDOK)
-  else if ResultCode <> 0 then
-    SuppressibleMsgBox('The ' + Name + ' add-on reported a problem (exit code ' + IntToStr(ResultCode) + '). Re-run:' + #13#10 +
-      '  clavity-ls install --agent all --plugin ' + Name, mbError, MB_OK, IDOK);
-end;
-
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
-  PsCmd, SrcPath, DestDir: String;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -201,37 +176,17 @@ begin
     else if ResultCode <> 0 then
       SuppressibleMsgBox('clavity-ls plugin registration reported a problem (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
         'Open a terminal and re-run:  clavity-ls install --agent all', mbError, MB_OK, IDOK);
-    { Phase 3: seed golden-header.seed.md from the bundled baseline with standard PowerShell (always available;
-      no dependency on the just-installed binary running). Overwrites SEED only; never touches GROWTH. }
-    SrcPath := ExpandConstant('{app}\seed\golden-header.md');
-    { panel agy-R3-a: resolve the profile via Inno's {%USERPROFILE} (same as the zombie-header rename below),
-      NOT PowerShell's $env:USERPROFILE — under any elevation the two can differ, silently seeding the wrong
-      profile. Inno's constant matches the interactive install user consistently. }
-    DestDir := ExpandConstant('{%USERPROFILE}\.clavity');
-    { panel R2-1: double any single-quote so a username like O'Brien can't break the PS single-quoted literals. }
-    StringChangeEx(SrcPath, '''', '''''', True);
-    StringChangeEx(DestDir, '''', '''''', True);
-    PsCmd :=
-      'New-Item -ItemType Directory -Force -Path ''' + DestDir + ''' | Out-Null;' +
-      'Copy-Item -LiteralPath ''' + SrcPath + ''' ' +
-      '-Destination ''' + DestDir + '\golden-header.seed.md'' -Force';
-    { -Command (inline) is not governed by execution policy, so no -ExecutionPolicy flag is needed (panel R2-2). }
-    if not Exec('powershell.exe', '-NoProfile -Command "' + PsCmd + '"',
-                '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      SuppressibleMsgBox('Could not seed the golden-header baseline. The AI still works; seed it later by copying' + #13#10 +
-        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md', mbInformation, MB_OK, IDOK)
-    else if ResultCode <> 0 then
-      SuppressibleMsgBox('Seeding the golden-header baseline reported a problem (exit code ' + IntToStr(ResultCode) + ').',
-        mbInformation, MB_OK, IDOK);
-    { Optional add-ons — install each ticked one (default OFF). }
-    if WizardIsTaskSelected('install_agy_autotrain') then InstallAddon('agy-autotrain');
-    if WizardIsTaskSelected('install_commonmemory') then
+    { C4/O1: shared seeding function (installer/_shared/golden-header-data.iss) — -LiteralPath on
+      every path-bound cmdlet, including New-Item (the pre-cohesion gap). C1 install-time rollback:
+      a seed failure after a successful clavity-ls registration rolls that registration back rather
+      than leaving a half-installed plugin whose seed never landed. }
+    if not SeedGoldenHeader(ExpandConstant('{app}')) then
     begin
-      InstallAddon('commonmemory');
-      { commonmemory has a runtime dependency on the agentmemory MCP server — be honest, do not auto-install it. }
-      SuppressibleMsgBox('commonmemory was registered, but it needs the agentmemory MCP server to actually work.' + #13#10 +
-        'If you have not installed agentmemory yet, install it separately — until then the shared notebook stays inactive.',
-        mbInformation, MB_OK, IDOK);
+      Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      SuppressibleMsgBox('Could not seed the golden-header baseline, so the plugin registration was rolled ' +
+        'back. Re-run this setup. (You can also seed it manually later by copying' + #13#10 +
+        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md and ' +
+        'running:  clavity-ls install --agent all)', mbError, MB_OK, IDOK);
     end;
   end
   else if CurStep = ssDone then
@@ -294,18 +249,6 @@ begin
   RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
 end;
 
-procedure BackupHeaderFile(const Header: string);
-var
-  Backup: string;
-begin
-  Backup := Header + '.backup';
-  if FileExists(Header) then
-  begin
-    DeleteFile(Backup);
-    RenameFile(Header, Backup);
-  end;
-end;
-
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
@@ -324,9 +267,12 @@ begin
       deleted by clavity-ls --purge-data). NOTE: honors only the default path, not a CLAVITY_GOLDEN_HEADER override. }
     if not RemoveConfig then
     begin
-      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
-      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.growth.md'));
-      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
+      { C6: back up ONLY driver-owned files — seed.md + its .sha256 sidecar + the legacy flat file.
+        growth.md is agy-autotrain's file; touching it here was the pre-cohesion bug (Failure mode
+        H) this design fixes — it is removed/backed up ONLY by agy-autotrain's own uninstall. }
+      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
+      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md.sha256'));
+      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
     end;
   end
   else if CurUninstallStep = usPostUninstall then
