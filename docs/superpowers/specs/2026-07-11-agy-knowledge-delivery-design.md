@@ -192,16 +192,22 @@ Both read the same shared cheatsheet; once-per-session so it is not per-call wal
 `clavity-driving` / `clavity-ls-driving` **skill** remains the fuller pulled reference; the appended block is the
 pushed core reminder.
 
-**Compaction resilience (consumer-driven addition, post-panel; agy-negotiated 2026-07-11).** A once-per-session
-appended block does NOT survive a mid-session context compaction — the block is summarised away, the server/binary
-"already delivered" flag stays set, and the driver drives the rest of the session BLIND (the exact failure this
-design exists to prevent). Fix, without reintroducing wallpaper for non-driving sessions:
-1. When the first-ask block fires, the ask machinery also touches a **drive-session flag** `~/.clavity/.active-drive-
-   session` (cleared on `SessionStart`), marking "this session actually drove the peer."
-2. A **`PreCompact` hook** (shipped with the driver plugin) re-injects the cheatsheet as `additionalContext` **iff**
-   the flag is set — so re-delivery on compaction happens ONLY in sessions that touched the peer, never as spam in
-   sessions that didn't. This reuses the exact `SessionStart`/`PreCompact` hook + `additionalContext` pattern the
-   capture-nudge already uses in-repo (proven), and it is the reason the delivery is targeting-preserving.
+**Compaction resilience (consumer-driven addition, post-panel; agy-negotiated + re-green-corrected 2026-07-11).** A
+once-per-session appended block does NOT survive a mid-session context compaction — the block is summarised away, the
+server/binary "already delivered" flag stays set, and the driver drives the rest of the session BLIND (the exact
+failure this design exists to prevent). Fix, without reintroducing wallpaper for non-driving sessions:
+1. When the first-ask block fires, the ask machinery touches a **session-keyed drive-session flag**
+   `~/.clavity/.active-drive-session-<session_id>` (NOT a global path — two concurrent driver sessions sharing
+   `~/.clavity/` would clobber a global flag; re-green State Corruptor), marking "THIS session drove the peer."
+2. A **`SessionStart` hook with matcher `compact`** (shipped with the driver plugin) re-injects the cheatsheet as
+   `additionalContext` **iff** this session's flag is set. **It must be `SessionStart(source=compact)`, NOT
+   `PreCompact`** — verified against Claude Code hook semantics: `PreCompact` additionalContext is fed to the
+   summariser and destroyed, whereas `SessionStart(source=compact)` injects into the fresh post-compaction context.
+   Gated by the flag, re-delivery happens ONLY in sessions that touched the peer, never as spam.
+3. The SAME `SessionStart` hook reads `source` from its input and **clears the flag ONLY when `source == startup`**
+   (a genuine fresh start) — never on `compact`/`resume`, or it would destroy the very signal the re-injection reads.
+4. The hook **guards on the cheatsheet file existing** (`[ -f … ]`) before reading, so a missing file degrades to the
+   baseline floor and never aborts the compaction (re-green Cascade).
 (Negotiation note: the earlier "deliver via a PreToolUse hook BEFORE the first ask" idea was dropped — the guidance
 is predominantly *reaction* advice (verify volunteered facts, panel≠gate, read the idle-vs-modal signal), which the
 first-ask **output** block times correctly; a `SessionStart`-always push would be wallpaper in non-driving sessions.)
@@ -324,9 +330,11 @@ and the hardenings are opt-in later, sized to real volume:
 4b. **Rollout:** retirement is conservative/manual — a workaround-rule stays until its fix is widely adopted; there
    is NO maintainer-side build-time version gate (that cannot protect end-users). A partially-updated end-user
    install (new cheatsheet, old bridge) never enters a blind window because the rule was not stripped early.
-4c. **Compaction resilience:** in a session that has driven the peer (drive-session flag set), a `PreCompact` re-injects
-   the cheatsheet (probe: drive agy, force a compaction, confirm the `[driver_guidance]` content is present
-   post-compaction); a session that never drove the peer gets NO compaction injection (no wallpaper).
+4c. **Compaction resilience:** in a session that has driven the peer (session-keyed drive-session flag set), a
+   `SessionStart(source=compact)` hook re-injects the cheatsheet (probe: drive agy, force a compaction, confirm the
+   `[driver_guidance]` content is present POST-compaction — NOT a `PreCompact`, whose additionalContext is
+   summarised away); a session that never drove the peer gets NO compaction injection (no wallpaper); the flag is
+   cleared only on `source==startup`; two concurrent sessions do not clobber each other's flag (session-keyed).
 5. Each fixed quirk has a **permanent CI regression test** in its owning product; a trigger entry is deleted only
    when **both** gates hold — the test is green + committed (the fix works) AND the fix is widely adopted among
    end-users (4b, no early strip) — on every variant it reproduced on, leaving no tool-fixable `deterministic`
