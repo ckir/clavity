@@ -3,6 +3,24 @@
 Thanks for helping out! Contributions are very welcome — **especially Linux/macOS support**, since
 the project is Windows-verified today.
 
+> **Monorepo note:** this repo hosts five products (clavity-dotnet, clavity-classic, ghidrust,
+> agy-autotrain, commonmemory). The dev setup below is for **clavity-classic** (Rust); the other
+> members build per their own `CLAUDE.md` — e.g. `dotnet build && dotnet test tests/Clavity.Ls.Tests`
+> for clavity-dotnet, `just test` for ghidrust. See the root [README](README.md) dev-workflow
+> section, and run `lefthook install` once so the pre-commit / pre-push gates (via `just`) run
+> automatically.
+
+## Contributions & license (read before opening a PR)
+
+By contributing, you agree that your contributions are licensed under the project's **PolyForm
+Noncommercial License 1.0.0** — inbound = outbound, the same terms as the code you are modifying. Do
+not submit code you cannot license under those terms.
+
+Sign off every commit with the **Developer Certificate of Origin (DCO)**: add a
+`Signed-off-by: Your Name <you@example.com>` trailer to each commit message (`git commit -s`),
+certifying that you wrote the change, or otherwise have the right to submit it under the project
+license.
+
 ## Dev setup
 
 This file covers the **clavity-classic** (Rust) variant; run everything below from `clavity-classic/`.

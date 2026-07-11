@@ -1,0 +1,23 @@
+clavity
+Copyright (c) 2026 Costas Kirgoussios and the clavity authors.
+
+This project — all five products (clavity-dotnet, clavity-classic, ghidrust, agy-autotrain,
+commonmemory) — is licensed under the PolyForm Noncommercial License 1.0.0. The full terms are in
+the LICENSE file at the repository root (each product folder carries an identical copy).
+
+Trademarks
+----------
+"Antigravity" is a trademark of Google LLC. "Claude" and "Claude Code" are trademarks of Anthropic.
+"Ghidra" is a trademark of the National Security Agency. This is an independent project, not
+affiliated with, endorsed by, or sponsored by Google, Anthropic, or the NSA. These names are used
+only to identify the external tools this project interoperates with.
+
+Third-party components
+----------------------
+The source in this repository is first-party. clavity does not bundle Antigravity, Ghidra, or a JDK
+— those are supplied by the user at install time. Distributed binary artifacts (the built
+installers) statically link or package permissively-licensed third-party dependencies
+(MIT / Apache-2.0 / BSD / ISC — e.g. gRPC, Protobuf, the Rust and .NET crate/package ecosystems, and
+the Python MCP bridge's runtime dependencies). Those dependencies' own license and attribution
+notices accompany the binary distributions in which they ship. No copyleft (GPL / AGPL / LGPL)
+dependency is used.
