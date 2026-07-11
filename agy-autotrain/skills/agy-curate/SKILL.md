@@ -22,16 +22,38 @@ this skill reads as a floor but never edits.
 Under EXTEND you do **not** read or edit the `agy-assumptions.md` / `agy-capabilities.md` manuals — they are
 driver-owned static SEED (they ship in each driver's `plugin/knowledge/`), refreshed only on a driver release.
 
-## For each inbox entry — decide
+## For each inbox entry — decide (the two-axis triage gate)
 
-- **promote** — into the compiled GROWTH header, subject to the **promotion rubric** below, and only if the
-  rule is not already stated in the SEED floor (dedupe — see Inputs).
-- **reinforce** — already carried by a prior GROWTH run: GROWTH is regenerated wholesale each run, so just keep
-  the strongest phrasing when you recompile.
-- **contradict** — conflicts with a SEED claim: prefer **dropping** the candidate (SEED is the driver-owned
-  floor) unless you have strong, verified evidence agy's behavior actually changed for the current version; if
-  sources genuinely disagree, record a `[conflict]`.
-- **drop** — noise, too specific, duplicate, or already covered by SEED.
+Exhaustively sort every inbox entry into exactly ONE of the three bins (spec §5.C-A). Do not drop any entry.
+
+1. **`peer/probabilistic` → promote to the Golden-Header manual.**
+   This is durable peer psychology. Subject to the Promotion Rubric below. If promoted, it goes into the compiled `golden-header.growth.md`.
+2. **`driver/probabilistic` → the Driver Cheatsheet (carried until fixed).**
+   This is a bridge quirk requiring a human driving mitigation because it's not yet fixed in the tool. Append it to `%USERPROFILE%\.clavity\driver-cheatsheet.md` (or the runtime `CLAVITY_GOLDEN_HEADER` path) so it prepends to every session's first ask.
+3. **`driver/deterministic` → the Fix-the-tool backlog.**
+   This is a software defect fixable in the driver's execution path. **Schema gate:** you MUST write a `Steps to Reproduce` and a `Code-level Mitigation`. If you cannot name a code-level mitigation, it is NOT deterministic — re-tag it `probabilistic` and carry it as a Driver Cheatsheet rule instead. Write the backlog item as a new `.md` file in `docs/fix-the-tool-backlog/` (one file per entry).
+
+*(Note: `peer/deterministic` does not exist — models are not deterministic. Treat as `probabilistic`.)*
+
+**No-drop invariant:** Every entry in the inbox MUST land in one of these three bins. If it is noise, drop it, but deliberate entries must be routed.
+**Variant determinism:** A quirk may be deterministic on `clavity-dotnet` (a code fix exists) but probabilistic on `clavity-classic` (no code fix possible, driving mitigation required). Route per-variant.
+
+## Conservative-manual retirement (Driver Cheatsheet)
+
+Emitting a backlog item does NOT strip the corresponding rule from the driver cheatsheet. A carried
+workaround rule may be deleted only when **BOTH gates hold (spec §5.C-B + §5.C-D / acceptance 5):**
+1. a **permanent CI regression test** for the fixed quirk is **green AND committed** in the owning product,
+   on **every variant the quirk reproduced on** (the standing test is what auto-resurfaces the rule if an
+   agy update re-opens the quirk — deleting the rule without it would leave the driver blind on the next
+   drift); AND
+2. the fix is **widely adopted among end-users** (a rule costs ~1 line, so carrying it through the adoption
+   tail is cheap and safe).
+
+There is deliberately **no maintainer-side build-time version gate** (curate runs on the maintainer's box,
+which always has the newest driver, so a local check would ship a stripped cheatsheet that still bites a
+not-yet-updated end-user). Do not remove a carried rule as part of triage; retirement is a separate,
+deliberate, later decision — and this MVP does not retire any current entry (the fixes + CI tests are
+deferred; see "Deferred work").
 
 ## Promotion rubric (curation-fatigue guard — do not skip)
 
