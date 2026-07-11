@@ -10,6 +10,7 @@
 //! via `tracing` (control verbosity with `RUST_LOG`, e.g. `RUST_LOG=clavity=debug`).
 
 mod bus;
+mod driver_cheatsheet;
 mod golden_header;
 mod membus;
 mod platform;
@@ -531,20 +532,30 @@ fn ask(
     }
 
     let req_id = bus::new_req_id();
+    let header_dir = user_home().map(|home| {
+        let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
+        warn_if_file_shaped_override(env_override.as_deref());
+        golden_header::resolve_dir(env_override.as_deref(), &home)
+    });
     let header = if inject_golden {
-        match user_home() {
-            Some(home) => {
-                let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
-                warn_if_file_shaped_override(env_override.as_deref());
-                let dir = golden_header::resolve_dir(env_override.as_deref(), &home);
-                golden_header::read_combined(&dir, &mut |m: &str| eprintln!("clavity: {m}"))
-            }
+        match &header_dir {
+            Some(dir) => golden_header::read_combined(dir, &mut |m: &str| eprintln!("clavity: {m}")),
             None => golden_header::HeaderState::Absent, // no home -> silent, like install_skill's guard
         }
     } else {
         golden_header::HeaderState::Absent
     };
-    let payload = build_payload(review_only, instruction, &header);
+    let mut payload = build_payload(review_only, instruction, &header);
+
+    static GUIDANCE_DELIVERED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if inject_golden && !GUIDANCE_DELIVERED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        let cheat = match &header_dir {
+            Some(dir) => driver_cheatsheet::read(dir),
+            None => driver_cheatsheet::read(Path::new("")),
+        };
+        payload.push('\n');
+        payload.push_str(&driver_cheatsheet::block(&cheat));
+    }
     let content = bus::make_request(&req_id, &payload);
 
     let sent = match bus.send(MASTER_AGENT, to, msg_type, &content, None) {
