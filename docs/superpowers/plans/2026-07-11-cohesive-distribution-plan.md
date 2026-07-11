@@ -912,6 +912,25 @@ classic's today).
   ```
   After: (deleted)
 
+- [ ] **(Spec C10 completion — folded during execution @`f383a75`.)** Remove the uninstall-side
+      sibling deregistration too. Spec C10 (design line 262–264) requires deleting "the `InstallAddon`
+      calls **+ the uninstall `--plugin agy-autotrain|commonmemory` deregistration**"; the original
+      plan enumerated only the install-side calls. In `CurUninstallStepChanged`'s `usUninstall` branch,
+      delete the whole block (was ~258–263):
+
+  Before:
+  ```
+    { Remove the optional add-ons from the agents too (best-effort — they may not be installed; not gated). }
+    if FileExists(ExpandConstant('{app}\{#ExeName}')) then
+    begin
+      Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all --plugin agy-autotrain', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all --plugin commonmemory', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  ```
+  After: (deleted — those siblings own their own installers now; deregistering them here is a
+  cross-member ownership violation / Failure mode H. Keep `ResultCode` declared; it is still used
+  by the rollback Exec and `InitializeUninstall`.)
+
 - [ ] Add the shared include at the top of `[Code]` (after `var RemoveConfig: Boolean;`), and
       replace the inline seeding block (204–225) with a call to the shared function, wiring in the
       install-time rollback this design adds (a seed failure after a successful registration rolls
