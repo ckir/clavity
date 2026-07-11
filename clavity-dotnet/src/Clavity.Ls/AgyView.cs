@@ -38,6 +38,20 @@ public sealed class AgyView
     // conversation B report "working" (multi-session contamination). Keyed by conversation id, not view-global.
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _inFlight = new();
 
+    // Once-per-process guidance delivery (spec §5.C-C): the [driver_guidance] block is appended to the FIRST
+    // agy_ask of this server session only. AgyView is a process-lifetime singleton, so this flag IS session-scoped.
+    private int _guidanceDelivered; // 0 = not yet delivered
+
+    /// <summary>Return the labelled driver-guidance block on the FIRST call per process; null thereafter,
+    /// or when injection is disabled (GoldenHeaderDir null).</summary>
+    public string? TryTakeGuidanceBlock()
+    {
+        if (_options.GoldenHeaderDir is null) return null;
+        if (Interlocked.Exchange(ref _guidanceDelivered, 1) != 0) return null;
+        var cheat = DriverCheatsheet.Read(_options.GoldenHeaderDir, m => _options.Diagnostics.WriteLine($"clavity: {m}"));
+        return DriverCheatsheet.Block(cheat);
+    }
+
     public AgyView(AgyViewOptions options, IListeningPorts? listening = null, IModalGuard? modalGuard = null)
     {
         _options = options;

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Clavity.Ls;
 using Clavity.Ls.Proto;
 using Clavity.Mcp;
+using ModelContextProtocol.Protocol;
 using Grpc.Core;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -147,6 +148,45 @@ public class McpToolsIntegrationTests
         finally
         {
             Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task AgyAsk_first_call_appends_driver_guidance_block_then_omits_it()
+    {
+        var fake = new FakeLs(cascadeId: "cascade-1", emptyMapPolls: 0);
+        await using var app = await StartFakeAsync(fake);
+        var cliLog = WriteCliLog(PortOf(app));
+        var dir = Path.GetDirectoryName(cliLog)!;
+        
+        var cheatDir = Path.Combine(Path.GetTempPath(), "clavity-dg-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(cheatDir);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                GoldenHeaderDir = cheatDir
+            });
+
+            // First ask: two content blocks — the reply JSON, then the labelled guidance.
+            var first = await McpTools.AgyAsk(view, "hello");
+            Assert.Equal(2, first.Content.Count);
+            var firstText = Assert.IsType<TextContentBlock>(first.Content[0]).Text;
+            var guidance = Assert.IsType<TextContentBlock>(first.Content[1]).Text;
+            Assert.Contains("\"waiting_for_human\"", firstText);  // fake ls empty answer is treated as waiting_for_human or AskReply JSON
+            Assert.StartsWith(DriverCheatsheet.Label, guidance);      // block 1 is the labelled guidance
+            Assert.Contains("Verify what it volunteers", guidance);   // baseline-floor content
+
+            // Second ask: single block, no guidance (once per session).
+            var second = await McpTools.AgyAsk(view, "again");
+            Assert.Single(second.Content);
+            Assert.DoesNotContain(DriverCheatsheet.Label, Assert.IsType<TextContentBlock>(second.Content[0]).Text);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+            Directory.Delete(cheatDir, true);
         }
     }
 }

@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Text.Json;
 using Clavity.Ls;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace Clavity.Mcp;
@@ -18,8 +20,14 @@ public class McpTools
         => await RunAsync(() => view.StatusAsync(cancellationToken));
 
     [McpServerTool(Name = "agy_ask"), Description("Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and posts a visible message in the user's agy.")]
-    public static async Task<string> AgyAsk(AgyView view, string message, CancellationToken cancellationToken = default)
-        => await RunAsync(() => view.AskAsync(message, cancellationToken: cancellationToken));
+    public static async Task<CallToolResult> AgyAsk(AgyView view, string message, CancellationToken cancellationToken = default)
+    {
+        var json = await RunAsync(() => view.AskAsync(message, cancellationToken: cancellationToken));
+        var blocks = new List<ContentBlock> { new TextContentBlock { Text = json } };
+        var guidance = view.TryTakeGuidanceBlock();
+        if (guidance is not null) blocks.Add(new TextContentBlock { Text = guidance });
+        return new CallToolResult { Content = blocks };
+    }
 
     // Serialize the result, or — when agy has no conversation yet — a typed "waiting" object that tells Claude to
     // wait for the human and NOT auto-retry (spec §6).
