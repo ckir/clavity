@@ -1,12 +1,13 @@
 ; Inno Setup script for ghidrust. Build: ISCC.exe installer\ghidrust.iss
 ; Expects (produced by the tool's build recipe / build-ghidrust.yml):
 ;   ..\publish\ghidrust.exe   — the tool's single-file binary
-; Two-channel delivery (see docs/superpowers/specs/2026-07-09-ghidrust-onboarding-design.md): this installer
-; ships ONLY the binary. The plugin (skill + .mcp.json) is delivered via the marketplace on main — the
-; installer never stages plugins/, so there is no cross-branch bundling.
+; Cohesive distribution model (docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md,
+; supersedes the two-channel note this replaced): this installer ships BOTH the binary AND its own
+; plugin, self-registering a local scoped marketplace (clavity-ghidrust) against each detected
+; agent. There is no remote-marketplace delivery path anymore.
 
 #define AppName "ghidrust"
-#define AppVersion "1.0.0"
+#define AppVersion "1.1.0"
 #define ExeName "ghidrust.exe"
 
 [Setup]
@@ -26,9 +27,16 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ChangesEnvironment=yes
+; O6: shared with ALL FIVE member installers (was dotnet+classic only). Defensive default — this
+; plan could not live-verify whether the claude/agy CLIs serialize their own global-config writes
+; (that needs a live two-terminal test against the real CLI, out of scope for a static plan), so it
+; adds the cheap, already-proven mutex mechanism defensively rather than leaving the race open.
+SetupMutex=ClavitySetupMutex
 
 [Files]
 Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
+Source: "..\plugin\*"; DestDir: "{app}\plugins\ghidrust"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "addtopath"; Description: "Add ghidrust to PATH"; Flags: checkedonce
@@ -38,6 +46,8 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
   ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
+#include "..\..\installer\_shared\plugin-registration.iss"
+
 var
   GhidraPage: TInputDirWizardPage;
 
@@ -84,9 +94,18 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Dir: string;
+  RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded: Boolean;
+  RegReport: string;
 begin
   if CurStep = ssPostInstall then
   begin
+    { C1/C9: register the ghidrust plugin against every detected agent (ghidrust has no post-
+      registration step like the golden-header seed, so there is nothing here to roll back on —
+      see installer/_shared/plugin-registration.iss's RollbackMemberPlugin comment). }
+    RegisterMemberPlugin(ExpandConstant('{app}'), 'ghidrust', 'clavity-ghidrust',
+      RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded, RegReport);
+    ReportRegistrationOutcome(AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy, RegReport);
+
     Dir := Trim(GhidraPage.Values[0]);
     if Dir <> '' then
     begin
@@ -100,6 +119,8 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
+  if CurUninstallStep = usUninstall then
+    DeregisterMemberPluginOnUninstall('ghidrust', 'clavity-ghidrust');
   if CurUninstallStep = usPostUninstall then
     RemoveFromUserPath(ExpandConstant('{app}'));
 end;
