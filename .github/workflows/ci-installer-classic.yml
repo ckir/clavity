@@ -1,0 +1,28 @@
+name: ci-installer-classic
+
+# Continuous installer coverage for the classic member. build-classic.yml's smoke is already blocking,
+# so no fail_on_smoke input is needed.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'clavity-classic/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-classic.yml'
+      - '.github/workflows/ci-installer-classic.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+  pull_request:
+    paths:
+      - 'clavity-classic/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-classic.yml'
+      - '.github/workflows/ci-installer-classic.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+
+concurrency:
+  group: ci-installer-classic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    uses: ./.github/workflows/build-classic.yml
