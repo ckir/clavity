@@ -22,23 +22,42 @@ this skill reads as a floor but never edits.
 Under EXTEND you do **not** read or edit the `agy-assumptions.md` / `agy-capabilities.md` manuals — they are
 driver-owned static SEED (they ship in each driver's `plugin/knowledge/`), refreshed only on a driver release.
 
-## For each inbox entry — decide (the two-axis triage gate)
+## First-pass triage gate (run BEFORE deciding promote/reinforce/contradict/drop — spec §4/§5.C-A)
 
-Exhaustively sort every inbox entry into exactly ONE of the three bins (spec §5.C-A). Do not drop any entry.
+For EACH pending entry, in order:
 
-1. **`peer/probabilistic` → promote to the Golden-Header manual.**
-   This is durable peer psychology. Subject to the Promotion Rubric below. If promoted, it goes into the compiled `golden-header.growth.md`.
-2. **`driver/probabilistic` → the Driver Cheatsheet (carried until fixed).**
-   This is a bridge quirk requiring a human driving mitigation because it's not yet fixed in the tool. Append it to `%USERPROFILE%\.clavity\driver-cheatsheet.md` (or the runtime `CLAVITY_GOLDEN_HEADER` path) so it prepends to every session's first ask.
-3. **`driver/deterministic` → the Fix-the-tool backlog.**
-   This is a software defect fixable in the driver's execution path. **Schema gate:** you MUST write a `Steps to Reproduce` and a `Code-level Mitigation`. If you cannot name a code-level mitigation, it is NOT deterministic — re-tag it `probabilistic` and carry it as a Driver Cheatsheet rule instead. Write the backlog item as a new `.md` file in `docs/fix-the-tool-backlog/` (one file per entry).
+1. **Read the two-axis tag** (`(<audience>/<nature>)`, added by `agy-learn`). If an older entry lacks it,
+   assign it now: **audience** = does this shape the peer (`peer`) or how you drive it (`driver`)?
+   **nature** = a peer judgment tendency (`probabilistic`) or a reproducible tool/bridge behavior
+   (`deterministic`)?
 
-*(Note: `peer/deterministic` does not exist — models are not deterministic. Treat as `probabilistic`.)*
+2. **Route by the matrix (no entry is ever dropped — spec §4):**
+   | audience \ nature | probabilistic | deterministic |
+   |---|---|---|
+   | **peer** | → golden-header GROWTH (unchanged) | → golden-header GROWTH (a peer behavior is P's, not our code — never "fix the tool") |
+   | **driver** | → driver cheatsheet (§ "Compile the core driver-cheatsheet") | → **fix-the-tool backlog** *iff* tool-fixable, else → driver cheatsheet rule |
 
-**No-drop invariant:** Every entry in the inbox MUST land in one of these three bins. If it is noise, drop it, but deliberate entries must be routed.
-**Variant determinism:** A quirk may be deterministic on `clavity-dotnet` (a code fix exists) but probabilistic on `clavity-classic` (no code fix possible, driving mitigation required). Route per-variant.
+3. **The determinism refusal gate is MECHANICAL, not honor-system.** To route a `driver/deterministic`
+   entry to `fix-the-tool`, you MUST be able to fill BOTH blocks of the backlog schema
+   (`docs/fix-the-tool-backlog/_template.md`):
+   - **Steps to Reproduce** — the exact reproduction on the owning variant's bridge.
+   - **Code-level Mitigation** — the specific change to the bridge/tool *execution path* that removes it.
 
-## Conservative-manual retirement (Driver Cheatsheet)
+   If you CANNOT state a concrete **Code-level Mitigation** (the only fix is a *driving move*, e.g.
+   "feed the peer ground truth"), then by construction it is NOT tool-fixable → it stays a **driver
+   cheatsheet rule**, never a backlog item. Determinism is a PER-VARIANT judgment: the SAME observation
+   may be `fix-the-tool` on one variant (its transport exposes the needed signal) and a carried
+   `driver` cheatsheet rule on another (its transport cannot) — record which.
+
+4. **Emit the backlog item** for each tool-fixable `driver/deterministic` entry: one file per entry at
+   `docs/fix-the-tool-backlog/<slug>.md` from `_template.md` (append-only; never a single shared file —
+   offline curate runs on different branches would merge-conflict). Committing the file IS the routing;
+   automated ingest into a tracker is a phase-2 hardening, not required here.
+
+Only entries that survive the gate (peer entries, and `driver/probabilistic` + non-tool-fixable
+`driver/deterministic` entries) proceed to the promote/reinforce/contradict/drop decision below.
+
+### Retirement is conservative + manual (spec §5.C-D)
 
 Emitting a backlog item does NOT strip the corresponding rule from the driver cheatsheet. A carried
 workaround rule may be deleted only when **BOTH gates hold (spec §5.C-B + §5.C-D / acceptance 5):**
@@ -67,6 +86,23 @@ Write the compiled core to the shared runtime path so every driver surface reads
 `curate-commit` path if it grows a cheatsheet subcommand; otherwise write the file directly with an atomic
 rename. Do NOT lengthen it to cover per-variant transport mechanics — those belong in each variant's
 driving skill appendix, not the shared core.
+
+## For each inbox entry — decide
+
+Entries that survive the triage gate above (peer entries, and carried `driver` cheatsheet rules) get one of
+these dispositions. A `driver/deterministic` entry already routed to the fix-the-tool backlog is done — it
+does not re-enter here; a carried `driver` cheatsheet rule is appended to the cheatsheet, not GROWTH.
+
+- **promote** — into the compiled GROWTH header, subject to the **promotion rubric** below, and only if the
+  rule is not already stated in the SEED floor (dedupe — see Inputs).
+- **reinforce** — already carried by a prior GROWTH run: GROWTH is regenerated wholesale each run, so just keep
+  the strongest phrasing when you recompile.
+- **contradict** — conflicts with a SEED claim: prefer **dropping** the candidate (SEED is the driver-owned
+  floor) unless you have strong, verified evidence agy's behavior actually changed for the current version; if
+  sources genuinely disagree, record a `[conflict]`.
+- **drop** — noise, too specific, duplicate, or already covered by SEED. (Dropping a genuinely-noise candidate
+  here is a deliberate curation decision; it does not violate the triage gate's no-drop invariant, which
+  guarantees every observation is *routed and considered*, not silently lost.)
 
 ## Promotion rubric (curation-fatigue guard — do not skip)
 
@@ -137,6 +173,7 @@ downstream call. When in doubt, leave it in the inbox.
 
 ## Finish
 
-- **Empty the inbox** (entries are now in GROWTH or dropped) — reset `## Pending` to empty.
+- **Empty the inbox** (entries are now in GROWTH, the driver cheatsheet, the fix-the-tool backlog, or dropped) —
+  reset `## Pending` to empty.
 - If the loop has proven out in-project, this is the point to **promote** the skills + knowledge to the
   global config (the trial-then-globalise step).

@@ -24,31 +24,35 @@ fields and **store only the third**:
 If you cannot express a real `[General Rule]` without a project noun, **do not capture it.** An empty
 inbox beats a project journal.
 
-## Step 2 — Classify the entry (the two-axis tag)
+## Step 2 — Classify the entry
 
-Every entry must carry EXACTLY ONE tag from each axis (spec §5.C-A):
-1. **Target:** is this about the `peer` (model psychology/limits) or the `driver` (tools, bridge, UI)?
-2. **Determinism:** is this `probabilistic` (a tendency) or `deterministic` (a hard reproducible failure)?
+- **Empirical Assumption** — a *testable* constraint about agy (e.g. "honors a loud REVIEW-ONLY banner:
+  makes no edits"). These get a probe in `../../verify/assertions.md` and gate on the harness.
+- **Heuristic** — a soft routing/driving guideline (e.g. "agy verifies better than it discovers").
+- **Anti-Pattern** — a way *the driver* breaks agy (e.g. "a long checklist with no intermediate
+  checkpoints → agy silently skips a step"). The highest-value class: it sharpens the driving protocol.
 
-*Examples:*
-- `peer/probabilistic` → agy tends to agree with a leading question.
-- `driver/deterministic` → the VS Code extension truncates stdout at 8KB.
+### Also tag two axes (the triage inputs `agy-curate` reads — spec §4)
 
-Do NOT invent tags. The four valid combinations are exhaustively binned during curate triage:
-- `peer/probabilistic` → Golden-Header manual.
-- `peer/deterministic` → *Does not exist (models are not deterministic). Treat as probabilistic.*
-- `driver/probabilistic` → Driver Cheatsheet (carried until fixed).
-- `driver/deterministic` → Fix-the-tool backlog (not knowledge, fix it).
+- **Audience:** `peer` (shapes the agy peer's behavior → destined for the golden-header) ·
+  `driver` (shapes how *you* drive the peer → destined for the driver cheatsheet or a tool fix).
+- **Nature:** `probabilistic` (peer psychology / judgment tendency — NOT mechanically fixable) ·
+  `deterministic` (a reproducible tool/bridge behavior with a reproducible workaround — a software defect).
+
+If a `deterministic` observation's only mitigation is a *driving move* (not a code change), it is still a
+knowledge rule — `agy-curate` decides tool-fixability. Capture the axes; do not pre-judge the routing here.
 
 ## Step 3 — Append one bullet to the inbox
 
 Append to `../../knowledge/agy-observations.md` (create it with the header below if missing). One line:
 
 ```
-- [x] <target>/<determinism> · <General Rule>  ·  `[corpus]` · <YYYY-MM-DD> · agy <version-if-known>
+- [<class>] (<audience>/<nature>) <General Rule>  ·  `[corpus]` · <YYYY-MM-DD> · agy <version-if-known>
 ```
 
-Then return to your task immediately — do not curate now. The inbox is drained later by **agy-curate**.
+where `<class>` ∈ `assumption | heuristic | anti-pattern`, `<audience>` ∈ `peer | driver`,
+`<nature>` ∈ `probabilistic | deterministic`. Then return to your task immediately —
+do not curate now. The inbox is drained later by **agy-curate**.
 
 ## Inbox file header (create if missing)
 
