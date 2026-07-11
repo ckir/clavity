@@ -1,6 +1,6 @@
 [project]
 name = "agy-mcp-bridge"
-version = "0.1.1"
+version = "0.1.2"
 description = "MCP Bridge for Claude CLI to Antigravity Daemon"
 license = { text = "PolyForm-Noncommercial-1.0.0" }
 requires-python = ">=3.10"
