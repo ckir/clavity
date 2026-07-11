@@ -10,10 +10,17 @@ tag `[common]` notes, and proactively recall them on task start / handoff. No bi
 module → one shared store). Same setup as `clavity-classic` (see its README step 3). That is the
 only dependency.
 
-## Install (both CLIs, one directory)
+## Install
+**Recommended (end users):** run the standalone **commonmemory** installer
+(`commonmemory-setup-<ver>.exe`) from the [clavity release page](../../releases). It stages the
+plugin and registers it locally — a scoped `clavity-commonmemory` marketplace under its own install
+dir — against every detected agent (Claude Code / agy). No manual `plugin install`, and no remote
+marketplace: the plugin ships inside the installer.
+
+**From a clone (developers):** install this plugin folder directly into both CLIs:
 ```
-claude plugin install ./plugins/commonmemory
-agy    plugin install ./plugins/commonmemory
+claude plugin install ./commonmemory
+agy    plugin install ./commonmemory
 ```
 
 ## Required: turn on proactive recall (one line per agent)
