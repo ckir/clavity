@@ -70,6 +70,10 @@ jobs:
           if (-not $iscc) { throw "ISCC.exe not found (no preinstall, install failed)" }
           "iscc=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
+      - name: Generate scoped marketplace.json (O3, single member)
+        shell: pwsh
+        run: ../scripts/generate-scoped-manifest.ps1 -MemberName clavity-classic -OutFile installer/marketplace.install.json
+
       - name: Build installer (ISCC)
         shell: pwsh
         run: |
@@ -94,16 +98,30 @@ jobs:
           $setup = "dist/clavity-classic-setup-$env:CLAVITY_VER.exe"; $app = "$env:LOCALAPPDATA\Programs\clavity-classic"
           $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=addtopath,install_bridge" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
+          # Finding-5: re-run the SAME installer over the fresh install — idempotent upgrade must exit 0.
+          $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=addtopath,install_bridge" -Wait -PassThru
+          if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }
+          if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "scoped manifest missing after re-run install" }
           if (-not (Test-Path "$app\clavity.exe")) { throw "clavity.exe missing" }
           if (-not (Test-Path "$app\agy-mcp-bridge\SKILL.md")) { throw "bridge SKILL.md missing" }
           if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.seed.md")) { throw "golden-header.seed.md not seeded" }
           $seeded = Get-Content -Raw "$env:USERPROFILE\.clavity\golden-header.seed.md"
           $bundled = Get-Content -Raw "$app\seed\golden-header.md"
           if ($seeded -ne $bundled) { throw "seeded golden-header.seed.md != bundled baseline" }
+          if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
+          $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
+          if ($manifest.name -ne 'clavity-classic') { throw "expected marketplace name clavity-classic (C9), got $($manifest.name)" }
+          if ($manifest.plugins.Count -ne 1) { throw "expected 1 plugin in scoped manifest, got $($manifest.plugins.Count)" }
+          if ($manifest.plugins[0].source -ne './plugins/clavity-classic') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
+          if (-not (Test-Path "$app\plugins\clavity-classic")) { throw "plugins\clavity-classic not staged" }
+
+          # C6: pre-seed a fake growth.md and confirm a keep-data uninstall does NOT touch it.
+          Set-Content "$env:USERPROFILE\.clavity\golden-header.growth.md" "fake learned wisdom"
           $arpKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{B59E963B-BE49-47B2-8CAB-5A3417D775C3}_is1"
           if (-not (Test-Path $arpKey)) { throw "ARP key missing (exact AppId _is1)" }
           $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
           Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+          if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md deleted by a keep-data driver uninstall" }
           $deadline = (Get-Date).AddSeconds(30)
           while ((Test-Path "$app\clavity.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
           if (Test-Path "$app\clavity.exe") { throw "uninstall did not complete within 30s" }
