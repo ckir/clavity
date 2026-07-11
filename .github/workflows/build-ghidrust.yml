@@ -78,8 +78,12 @@ jobs:
           [ -n "$out" ] || { echo "ghidrust --help produced no output"; exit 1; }
           echo "ghidrust --help OK:"; echo "$out"
 
-      # Two-channel delivery: the installer ships ONLY the binary; the plugin is marketplace-delivered on
-      # main. No plugins/ staging here — D7 cross-branch bundling does not apply (see the onboarding spec).
+      - name: Generate scoped marketplace.json (O3, single member)
+        shell: pwsh
+        run: ../scripts/generate-scoped-manifest.ps1 -MemberName ghidrust -OutFile installer/marketplace.install.json
+
+      # Cohesive distribution model: the installer now ships its own plugin + a scoped local
+      # marketplace, self-registering it (supersedes the old "two-channel" remote-marketplace note).
 
       - name: Install Inno Setup
         shell: pwsh
@@ -101,6 +105,37 @@ jobs:
           $name = "ghidrust-setup-$env:TOOL_VER.exe"
           $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
           "$h  $name" | Set-Content -Path "dist/$name.sha256" -Encoding ascii
+
+      - name: Smoke — install/uninstall lifecycle + namespace (BLOCKING — first-ever for ghidrust)
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = "dist/ghidrust-setup-$env:TOOL_VER.exe"
+          $app = "$env:LOCALAPPDATA\Programs\ghidrust"
+
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
+          # Finding-5: re-run the SAME installer — idempotent upgrade (remove-then-add) must exit 0.
+          $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }
+          if (-not (Test-Path "$app\ghidrust.exe")) { throw "ghidrust.exe missing" }
+          if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
+          $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
+          if ($manifest.name -ne 'clavity-ghidrust') { throw "expected marketplace name clavity-ghidrust (C9), got $($manifest.name)" }
+          if ($manifest.plugins.Count -ne 1) { throw "expected 1 plugin, got $($manifest.plugins.Count)" }
+          if (-not (Test-Path "$app\plugins\ghidrust")) { throw "plugins\ghidrust not staged" }
+          $userPath = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
+          if ($userPath -notlike "*$app*") { throw "PATH entry not added after install" }
+
+          $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
+          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path "$app\ghidrust.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path "$app\ghidrust.exe") { throw "uninstall did not complete within 30s" }
+          $userPath2 = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
+          if ($userPath2 -like "*$app*") { throw "PATH entry not removed after uninstall" }
+          "install/uninstall + namespace smoke PASSED"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
