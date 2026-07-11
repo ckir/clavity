@@ -62,17 +62,9 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
-      - name: Generate flat install manifest (4 bundled plugins; EXCLUDE mutually-exclusive classic)
+      - name: Generate scoped marketplace.json (O3, single member)
         shell: pwsh
-        run: |
-          $root = Get-Content ../.claude-plugin/marketplace.json -Raw | ConvertFrom-Json
-          $bundled = $root.plugins | Where-Object { $_.name -ne 'clavity-classic' }
-          foreach ($p in $bundled) { $p.source = "./plugins/$($p.name)" }
-          $root.plugins = $bundled
-          $root | ConvertTo-Json -Depth 10 | Set-Content installer/marketplace.install.json -Encoding utf8
-          if ($bundled.Count -ne 4) { throw "expected 4 bundled plugins, got $($bundled.Count)" }
-          if (($bundled | Where-Object { $_.source -notmatch '^\./plugins/' }).Count -ne 0) { throw "flat manifest has a non-flat source" }
-          Write-Host "generated installer/marketplace.install.json with 4 flat sources (classic excluded)"
+        run: ../scripts/generate-scoped-manifest.ps1 -MemberName clavity-dotnet -OutFile installer/marketplace.install.json
 
       - name: Build installer (ISCC)
         shell: pwsh
@@ -108,12 +100,13 @@ jobs:
           if (-not (Test-Path "$app\clavity-ls.exe")) { throw "clavity-ls.exe not installed under $app" }
           if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
           $installedManifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
-          if ($installedManifest.plugins.Count -ne 4) { throw "installed marketplace.json has $($installedManifest.plugins.Count) plugins, expected 4 (classic excluded)" }
-          if (($installedManifest.plugins | Where-Object { $_.source -notmatch '^\./plugins/' }).Count -ne 0) { throw "installed marketplace.json has a non-flat plugin source" }
+          if ($installedManifest.name -ne 'clavity-dotnet') { throw "expected marketplace name clavity-dotnet (C9), got $($installedManifest.name)" }
+          if ($installedManifest.plugins.Count -ne 1) { throw "installed marketplace.json has $($installedManifest.plugins.Count) plugins, expected 1 (C10 teardown)" }
+          if ($installedManifest.plugins[0].source -ne './plugins/clavity-dotnet') { throw "unexpected plugin source $($installedManifest.plugins[0].source)" }
           if (-not (Test-Path "$app\plugins\clavity-dotnet")) { throw "plugins\clavity-dotnet not installed" }
-          if (-not (Test-Path "$app\plugins\agy-autotrain")) { throw "plugins\agy-autotrain (add-on) not shipped" }
-          if (-not (Test-Path "$app\plugins\commonmemory")) { throw "plugins\commonmemory (add-on) not shipped" }
-          if (-not (Test-Path "$app\plugins\ghidrust")) { throw "plugins\ghidrust not shipped (bundled marketplace ./plugins/ghidrust entry would dangle)" }
+          if (Test-Path "$app\plugins\agy-autotrain") { throw "C10 VIOLATION: sibling agy-autotrain still bundled" }
+          if (Test-Path "$app\plugins\commonmemory") { throw "C10 VIOLATION: sibling commonmemory still bundled" }
+          if (Test-Path "$app\plugins\ghidrust") { throw "C10 VIOLATION: sibling ghidrust still bundled" }
 
           # Phase 3: the post-install PowerShell step must seed golden-header.seed.md from the bundled baseline.
           if (-not (Test-Path "$app\seed\golden-header.md")) { throw "bundled seed baseline not shipped under $app\seed" }
@@ -146,6 +139,32 @@ jobs:
           $userPath2 = (Get-ItemProperty "HKCU:\Environment" -Name Path -ErrorAction SilentlyContinue).Path
           if ($userPath2 -like "*$app*") { throw "PATH entry not removed after uninstall" }
           Write-Host "Install/uninstall smoke PASSED."
+
+      - name: Smoke — C6 growth.md survives a keep-data uninstall + C1 idempotent re-run
+        timeout-minutes: 6
+        continue-on-error: true   # informational, matching the sibling smoke step's policy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = "dist/clavity-dotnet-setup-$env:CLAVITY_VER.exe"
+          $app = "$env:LOCALAPPDATA\Programs\clavity-dotnet"
+
+          Write-Host "[smoke] first install..."
+          $p1 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p1.ExitCode -ne 0) { throw "first install exited $($p1.ExitCode)" }
+
+          Write-Host "[smoke] re-running the SAME installer over the existing install (Acceptance #8)..."
+          $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p2.ExitCode -ne 0) { throw "re-run install exited $($p2.ExitCode) — idempotent upgrade must not abort" }
+          if (-not (Test-Path "$app\clavity-ls.exe")) { throw "clavity-ls.exe missing after re-run install" }
+
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.clavity" | Out-Null
+          Set-Content "$env:USERPROFILE\.clavity\golden-header.growth.md" "fake learned wisdom"
+          $uninst = Get-ChildItem "$app" -Filter "unins*.exe" | Select-Object -First 1
+          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+          Start-Sleep -Seconds 2
+          if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md deleted by a keep-data driver uninstall" }
+          Write-Host "C6 growth-ownership + C1 idempotent-upgrade smoke PASSED"
 
       - name: Smoke — mutual-exclusion refusal (seeded fake classic)
         timeout-minutes: 4
