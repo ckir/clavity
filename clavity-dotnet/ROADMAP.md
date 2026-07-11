@@ -133,6 +133,16 @@ affect the packaging `.iss`/CI contracts):
 - **Sidecar write order/atomicity** — dotnet writes the `.sha256` sidecar **before** the target rename and
   non-atomically; classic writes it **after** the rename, atomically. Align dotnet to after-move/atomic.
 
+### 6. agy-autotrain knowledge-delivery — driver-side effectiveness measure
+The agy-knowledge-delivery design (`docs/superpowers/specs/2026-07-11-agy-knowledge-delivery-design.md`, panel-GREEN)
+closes the driver-facing consume gap — it pushes a curated `[driver_guidance]` cheatsheet at drive-time. But it
+**delivers** knowledge without **validating** that driving actually improved (delivery ≠ outcome; a ≤150-tok block is
+a nudge, not enforcement). The peer side has a verify-harness (`agy-autotrain/verify/`); the driver side does not.
+Add a **driver-side effectiveness measure** — a probe / verify-harness confirming a delivered rule demonstrably
+changes driver behaviour on a known-failure scenario — so "delivers better driving" is substantiated, not assumed.
+Shares the same empirical-measurement question as the golden-header per-ask backlog stub
+(`docs/backlog/golden-header-per-ask-token-optimization.md`, the anti-drift trade-off). Owner-surfaced 2026-07-11.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
