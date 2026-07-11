@@ -1,0 +1,39 @@
+{
+  "$comment": "NOT a Claude marketplace manifest (C3) — a plain build-data source. Never place this file under any '.claude-plugin/' directory. Each installer's own scoped 1-entry marketplace.json is GENERATED from this by scripts/generate-scoped-manifest.ps1 (O3).",
+  "owner": {
+    "name": "ckir",
+    "url": "https://github.com/ckir/clavity"
+  },
+  "members": [
+    {
+      "name": "agy-autotrain",
+      "source": "./agy-autotrain",
+      "description": "Drive the agy peer like a model and auto-train clavity's agy knowledge from everyday usage (capture -> curate -> verify -> golden-header).",
+      "marketplaceName": "clavity-agy-autotrain"
+    },
+    {
+      "name": "clavity-dotnet",
+      "source": "./clavity-dotnet/plugin",
+      "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask).",
+      "marketplaceName": "clavity-dotnet"
+    },
+    {
+      "name": "clavity-classic",
+      "source": "./clavity-classic/plugin",
+      "description": "clavity-classic: Claude drives a live agy peer via a psmux doorbell + the agentmemory bus.",
+      "marketplaceName": "clavity-classic"
+    },
+    {
+      "name": "commonmemory",
+      "source": "./commonmemory",
+      "description": "Optional add-on: a shared notebook so Claude and agy share facts across the pairing.",
+      "marketplaceName": "clavity-commonmemory"
+    },
+    {
+      "name": "ghidrust",
+      "source": "./ghidrust/plugin",
+      "description": "Drive a persistent headless Ghidra JVM from your agent: 19 reverse-engineering tools (decompile, navigate, durable rename/type/prototype writes) over MCP.",
+      "marketplaceName": "clavity-ghidrust"
+    }
+  ]
+}
