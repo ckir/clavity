@@ -255,12 +255,6 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
-    { Remove the optional add-ons from the agents too (best-effort — they may not be installed; not gated). }
-    if FileExists(ExpandConstant('{app}\{#ExeName}')) then
-    begin
-      Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all --plugin agy-autotrain', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-      Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all --plugin commonmemory', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    end;
     { Zombie-header fix (spec data-lifecycle): when KEEPING data (not --purge-data), back up each golden-header
       file (the SEED baseline + learned GROWTH, and any legacy flat file) -> .backup so a future reinstall does
       not auto-inject frozen wisdom. .backup does NOT auto-restore. Skipped on purge (the whole .clavity dir is
