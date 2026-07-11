@@ -25,3 +25,21 @@ logs/
 # Agent/AI tools data
 .gemini/
 .serena/
+.agent/
+
+# Git Worktrees
+.worktrees/
+
+# Installer output
+dist/
+
+# .NET Build artifacts
+[Bb]in/
+[Oo]bj/
+artifacts/
+TestResults/
+
+# Python environments
+.venv/
+__pycache__/
+*.pyc
