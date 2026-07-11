@@ -248,7 +248,7 @@ $scoped = [ordered]@{
 $outDir = Split-Path -Parent $OutFile
 if ($outDir -and -not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
 $scoped | ConvertTo-Json -Depth 10 | Set-Content -Path $OutFile -Encoding utf8
-Write-Host "generated $OutFile: name=$($member.marketplaceName) plugin=$($member.name) source=./plugins/$($member.name)"
+Write-Host "generated ${OutFile}: name=$($member.marketplaceName) plugin=$($member.name) source=./plugins/$($member.name)"
 ```
 
 - [ ] **Test (CI):** exercised transitively by every build workflow that calls it (Tasks 4.1/4.2/
