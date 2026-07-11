@@ -1,0 +1,27 @@
+name: ci-installer-agy-autotrain
+
+# Continuous installer coverage for the agy-autotrain member (plugin-only; no ci-agy-autotrain.yml exists).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agy-autotrain/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-agy-autotrain.yml'
+      - '.github/workflows/ci-installer-agy-autotrain.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+  pull_request:
+    paths:
+      - 'agy-autotrain/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-agy-autotrain.yml'
+      - '.github/workflows/ci-installer-agy-autotrain.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+
+concurrency:
+  group: ci-installer-agy-autotrain-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    uses: ./.github/workflows/build-agy-autotrain.yml
