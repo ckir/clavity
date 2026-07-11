@@ -92,23 +92,25 @@ onboarding playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md) (code on
 
 Releases are produced **only** by pushing a serial umbrella tag `clavity-v<N>` (e.g. `clavity-v1`,
 `clavity-v2`), which triggers `.github/workflows/umbrella-release.yml`. That one release, named
-`clavity`, is the **canonical** download and bundles every tool's version-stamped installer, each with a
-`.sha256`: `clavity-dotnet-setup-<ver>.exe`, `clavity-classic-setup-<ver>.exe`, and
-`ghidrust-setup-<ver>.exe` (ghidrust is gated by its live-E2E before publish, so a broken ghidrust blocks
-the whole release). The standalone `release-ghidrust.yml` (`ghidrust-v<N>`) remains a **dispatch-only**
-escape hatch for a ghidrust patch without a full clavity cut.
+`clavity`, is the **canonical catalog page** for five INDEPENDENT installers (cohesive-distribution
+model, `docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md`): `clavity-dotnet-setup`,
+`clavity-classic-setup`, `ghidrust-setup`, `agy-autotrain-setup`, `commonmemory-setup` — each with its
+own `.sha256`. Each installer does exactly one member; none bundles or downloads another (there is no
+live remote marketplace channel). ghidrust is gated by its live-E2E before publish, so a broken ghidrust
+blocks a **full** umbrella cut — but NOT a single-member hotfix: see "Republishing one member" below.
 
-**Repo topology (why the asymmetry):** `main` houses the orchestration + the flagship **aggregator**
-(`dotnet` — its installer bundles the shared `marketplace.json` + all plugin dirs, which are umbrella-scoped
-and live on `main`). Independent binaries (`classic`, `ghidrust`) live on their own branches to prevent
-cross-contamination, and are SHA-pinned at cut time via `resolve-*`. `dotnet` needs no pin — the
-`clavity-v<N>` tag is on `main`, so it already pins `dotnet` deterministically.
+**Repo topology:** all five members live on `main` in this monorepo (one top-level folder each) — there
+is no branch-per-tool split. `main` also houses the orchestration (`umbrella-release.yml` +
+`build-<member>.yml` per member). A `clavity-v<N>` tag on `main` deterministically pins every member.
 
-Bump each variant's version in its own `installer/*.iss` `#define AppVersion` (dotnet on `main`; classic
-on the `clavity-classic` branch, kept in sync with `Cargo.toml` + `agy-mcp-bridge/pyproject.toml`) before
-cutting. To pin an exact classic commit, run the workflow via `workflow_dispatch` supplying the required
-`tag` (the serial `clavity-v<N>`) and the `classic_ref` SHA (a dispatch has no triggering tag, so `tag`
-is mandatory there).
+Bump each member's version in its own `installer/*.iss` `#define AppVersion` (all five on `main`;
+classic's is additionally kept in sync with `Cargo.toml` + `agy-mcp-bridge/pyproject.toml`) before
+cutting.
+
+**Republishing one member (Acceptance #11):** `republish-member.yml` (`workflow_dispatch`, inputs
+`tag=<existing clavity-v<N>>` + `member=<one of the five>`) rebuilds ONE member and republishes its 2
+assets onto an already-published `clavity-v<N>` release, without any sibling's build or gate (including
+ghidrust's live-E2E) running at all — a decoupled hotfix path, not a second release lineage.
 
 **Deprecated tags (no-ops):** the legacy `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags no
 longer trigger anything — the per-variant release workflows were retired. Pushing one produces **no
