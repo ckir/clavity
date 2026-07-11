@@ -117,7 +117,9 @@ re-captures the same quirks in a noise loop until the pipeline dies of neglect. 
 **mandatory**: a **SessionStart hook** warning when `agy-observations.md` exceeds N entries / an age threshold — the
 symmetric consume-side counterpart to the capture reminder. **R3: the nudge must ESCALATE/SNOOZE, not re-spam
 identically** every SessionStart (identical spam gets tuned out and the dev dodges curation permanently) — e.g.
-snooze for the session on acknowledgement, escalate wording as the inbox ages.
+snooze for the session on acknowledgement, escalate wording as the inbox ages. **R5: the snooze/escalation state
+lives OUTSIDE the repo tree** (e.g. under `~/.clavity/`), never as a tracked file — or it dirties `git status` and
+merge-conflicts across clones.
 
 ### C-B — retire the deterministic entries + fix the bridge (BOTH variants)
 The three inbox entries (idle-wait timeout surfaces as `possible_modal` while the peer is still working; the
@@ -187,17 +189,42 @@ Both read the same shared cheatsheet; once-per-session so it is not per-call wal
 `clavity-driving` / `clavity-ls-driving` **skill** remains the fuller pulled reference; the appended block is the
 pushed core reminder.
 
-### C-D — rollout / migration sequencing (R4, new — spans all three products)
-Three independently-updated products create a **blind window** (R4 Rollout + agy): if a user updates `agy-autotrain`
-and its curate strips a deterministic workaround from the cheatsheet — assuming it is fixed in code — but has NOT yet
-updated the driver whose bridge still has the bug, the bug bites with the workaround gone. Sequencing rules:
-1. **Bridge fixes ship FIRST** (in the driver product), before the curate change that would retire the matching rule.
-2. **Retirement is version-gated, not just CI-green (extends F5):** curate deletes a workaround-rule only after
-   confirming the **installed** driver is at/after the version that fixed the quirk (a runtime version check), not
-   merely that the fix exists in some repo. On an older installed bridge, the rule is KEPT.
-3. **Backward-compat for existing installs:** the new SessionStart curate-nudge hook, the shared cheatsheet file, and
-   the appended `[driver_guidance]` block must all no-op gracefully when absent/older — a partially-updated install
-   degrades to its baseline floor, never to a crash or a blind strip.
+### C-D — rollout / migration (R4→R5 — spans all three products)
+Three independently-updated products create a **blind window**: if `agy-autotrain` curate strips a workaround from
+the cheatsheet — assuming it is fixed in code — but the end-user has NOT updated the driver whose bridge still has
+the bug, the bug bites with the workaround gone.
+
+**A maintainer-side version check does NOT solve this (R5 Axiom — the version-gating illusion).** `agy-curate` runs on
+the *maintainer's* box to build a *globally distributed* cheatsheet; the maintainer's local check always passes (they
+have the newest driver), the rule ships stripped, and a not-yet-updated *end-user* still hits the window. You cannot
+protect end-users with a build-time check on the maintainer's machine.
+
+**Resolution (also the YAGNI-minimal answer): retirement is a CONSERVATIVE MANUAL maintainer decision, not automated
+version-gating.** Keep a workaround-rule in the cheatsheet until its fix is **widely adopted**; a rule costs ~1 line,
+so carrying it through the adoption tail is cheap and safe. Optional phase-2 hardening: the *driver binary* (on the
+end-user's box, at delivery time) filters rules tagged `applies-if-driver < vX` against ITS OWN installed version — a
+RUNTIME, end-user-side gate, never a build-time maintainer-side one. Sequencing floor: bridge fixes ship first; the
+new nudge hook / shared file / `[driver_guidance]` block all no-op gracefully when absent/older (degrade to the
+baseline floor, never crash or blind-strip).
+
+### C-E — minimal viable core vs optional hardenings (R5 YAGNI — tier the build)
+The problem was a handful of tool quirks; four review rounds accreted a lot of machinery. Tier it so the MVP is small
+and the hardenings are opt-in later, sized to real volume:
+
+**Minimal viable core (build first — this alone fixes the reported failure):**
+- Don't-carry-deterministic: the **rigid schema** gate (an entry that can't state a `Code-level Mitigation` is a
+  knowledge rule, not a tool fix) — trust the maintainer curator, no LLM reviewer yet.
+- **Labelled `[driver_guidance]` block** appended to the ask output once per session (both variants) + the shared
+  `driver-cheatsheet.md` + baseline floor.
+- The **mandatory curate-staleness nudge**.
+- Retirement = **conservative + manual** (keep until widely adopted).
+
+**Optional phase-2 hardenings (add only if the volume justifies them):**
+- The adversarial LLM second-reviewer (F7) — the schema gate is the 80%; add the reviewer only if gaming is observed.
+- CI-ingest of the backlog to a real tracker (F3) — a committed backlog file a maintainer reviews periodically
+  suffices at low volume; automate later.
+- The end-user-side runtime version-filter for retirement (C-D) — only if manual-conservative retirement proves
+  insufficient.
 
 ## 6. Design forks / open questions
 
@@ -242,12 +269,23 @@ updated the driver whose bridge still has the bug, the bug bites with the workar
   (the gaming target), batched into one pass — not the `deterministic` subset. (§5.C-A)
 - **CI-ingest idempotency — CLOSED:** CI never commits back to the repo; it creates issues keyed idempotently by
   entry slug/hash (off-repo state). (§5.C-A)
-- **Rollout blind-window — CLOSED (new §5.C-D):** bridge fixes ship first; retirement is **version-gated on the
-  installed driver**; partial updates degrade to the baseline floor. (§5.C-D)
+- **Rollout blind-window — (superseded by R5, see below).**
 
-### Still open after round 4
-- **None substantive.** Remaining items are implementation-sizing (exact N/age thresholds for the nudge, the
-  `[driver_guidance]` block's exact wording) — normal plan-level detail, not design blockers.
+### Resolved in panel round 5 (folded into §4–§5 above)
+- **Version-gating illusion — CLOSED (corrects R4/C-D):** a maintainer-side build-time version check can't protect
+  end-users (curate runs on the maintainer's box → always passes → ships a stripped cheatsheet). Retirement is
+  **conservative + manual** (keep the rule until the fix is widely adopted); an end-user-side RUNTIME filter is an
+  optional phase-2 hardening. (§5.C-D)
+- **YAGNI tiering — CLOSED:** explicit **minimal viable core** (schema gate + labelled-block delivery + nudge +
+  conservative-manual retirement) vs **optional phase-2 hardenings** (LLM second-reviewer, CI-ingest, runtime
+  version-filter) sized to real volume. (§5.C-E)
+- **§8 ownership contradiction — CLOSED:** §8 no longer says "tool-description embedding" (F8 banned it); it says the
+  labelled-block appending.
+- **Snooze-state location — CLOSED:** nudge escalate/snooze state lives outside the repo tree (`~/.clavity/`). (§5.C-A)
+
+### Still open after round 5
+- **None substantive.** Remaining are plan-level sizing (nudge N/age thresholds, block wording, the exact
+  wide-adoption bar for retirement) — implementation detail, not design blockers.
 
 ## 7. Acceptance criteria (testable)
 
@@ -266,9 +304,9 @@ updated the driver whose bridge still has the bug, the bug bites with the workar
    as a second `content` block on the `agy_ask` result, classic on `clavity ask` stdout (probe: the block is present
    on the first ask, absent on the second, and the model can distinguish it from the peer answer by its label).
    Content is identical across variants; with the file absent, each serves its shipped baseline floor.
-4b. **Rollout:** a workaround-rule is retired only when the **installed** driver reports a version ≥ the one that
-   fixed the quirk (probe: with an older bridge installed, curate KEEPS the rule); a partially-updated install
-   (new curate, old bridge) never enters a blind window.
+4b. **Rollout:** retirement is conservative/manual — a workaround-rule stays until its fix is widely adopted; there
+   is NO maintainer-side build-time version gate (that cannot protect end-users). A partially-updated end-user
+   install (new cheatsheet, old bridge) never enters a blind window because the rule was not stripped early.
 5. Each fixed quirk has a **permanent CI regression test** in its owning product; only after that test is green +
    committed (on every variant it reproduced on) are the trigger entries deleted from the inbox/manuals, leaving no
    tool-fixable `deterministic` driver entries.
@@ -283,10 +321,10 @@ updated the driver whose bridge still has the bug, the bug bites with the workar
 - **agy-autotrain:** C-A (triage gate in `agy-curate/SKILL.md`), the audience/determinism tags in `agy-learn`, the
   single curate-written **core** driver-cheatsheet artifact (F1), entry retirement (C-B second half, gated on
   per-variant probes).
-- **clavity-dotnet:** its bridge quirk-fixes (`agy_ask` working-vs-stuck via cascade step-delta + parked-reply
-  auto-retrieve; optional `agy_look` tail view), C-C MCP tool-description embedding, and rendering the core in
-  `clavity-ls-driving`.
-- **clavity-classic:** its OWN bridge quirk-fixes where they reproduce (`clavity ask`/`await-reply` working-vs-stuck
-  via the bus/psmux progress signal + parked-reply auto-retrieve), rendering the core in `clavity-driving`, and a
-  CLI-path point-of-use push so the pulled skill isn't the only delivery (F6). First: **measure** which quirks
-  reproduce on classic before building fixes for ones that don't.
+- **clavity-dotnet:** its bridge quirk-fixes (`agy_ask` working-vs-stuck via cascade step-delta + req-id-strict
+  parked-reply retrieval; optional `agy_look` tail view), the **`[driver_guidance]` block appended to the `agy_ask`
+  result** once per session (NOT tool-description embedding — F8), and rendering the core in `clavity-ls-driving`.
+- **clavity-classic:** its OWN bridge quirk-fixes WHERE THEY REPRODUCE (parked-reply retrieval; working-vs-stuck is
+  likely unimplementable → a configurable idle-wait + a carried driver rule, F6b), the **`[driver_guidance]` block
+  appended to `clavity ask` stdout** once per session, and rendering the core in `clavity-driving`. First: **measure**
+  which quirks reproduce on classic's screen-scrape transport before building fixes for ones that don't.
