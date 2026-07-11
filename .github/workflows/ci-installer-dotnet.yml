@@ -1,0 +1,33 @@
+name: ci-installer-dotnet
+
+# Continuous installer coverage for the dotnet member: compile the Inno installer + run the install/
+# uninstall smoke on every push[main]/PR that touches the member, the shared installer includes, its build
+# workflow, this file, or the manifest generator. Delegates to the existing reusable build-dotnet.yml.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'clavity-dotnet/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-dotnet.yml'
+      - '.github/workflows/ci-installer-dotnet.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+  pull_request:
+    # No `branches:` filter — fires on PRs into any base branch (matches existing ci-*.yml).
+    paths:
+      - 'clavity-dotnet/**'
+      - 'installer/_shared/**'
+      - '.github/workflows/build-dotnet.yml'
+      - '.github/workflows/ci-installer-dotnet.yml'
+      - 'scripts/generate-scoped-manifest.ps1'
+
+# Disposable CI run (never publishes) — cancel a superseded run rather than pile up on push-heavy main.
+concurrency:
+  group: ci-installer-dotnet-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    uses: ./.github/workflows/build-dotnet.yml
+    with:
+      fail_on_smoke: true   # dotnet ONLY: flip its 3 advisory smoke steps to blocking on CI (Option B).
