@@ -8,7 +8,7 @@
 ; agentmemory MCP or the GEMINI.md doorbell (guided-manual via the shipped docs + the Finished-page [Run]).
 
 #define AppName "clavity-classic"
-#define AppVersion "0.1.0"
+#define AppVersion "0.1.1"
 #define ExeName "clavity.exe"
 
 [Setup]
@@ -45,6 +45,8 @@ Source: "..\publish\agy-mcp-bridge\*"; DestDir: "{app}\agy-mcp-bridge"; \
 ; Bridge first-run doc (gated with the bridge).
 Source: "..\installer\clavity-classic-bridge-README-FIRST.md"; DestDir: "{app}\agy-mcp-bridge"; \
   DestName: "README-FIRST.md"; Flags: ignoreversion; Tasks: install_bridge
+Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
+Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity-classic"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity to PATH"; Flags: checkedonce
@@ -82,6 +84,9 @@ Type: filesandordirs; Name: "{app}\agy-mcp-bridge\__pycache__"
 Type: filesandordirs; Name: "{app}\agy-mcp-bridge\.agent"
 
 [Code]
+#include "..\..\installer\_shared\plugin-registration.iss"
+#include "..\..\installer\_shared\golden-header-data.iss"
+
 var
   RemoveConfig: Boolean;
 
@@ -95,62 +100,6 @@ begin
     exit;
   end;
   Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
-end;
-
-{ Generic in-process PATH scan for an exe stem (each PATHEXT) — NO `where` subprocess (it deadlocks a hidden,
-  non-interactive installer Exec; dotnet confirmed this via CI log). Returns the first match. }
-function StemOnPath(const Stem: string; var FoundPath: string): Boolean;
-var
-  PathExt, Dir, Ext, Rest, Exts, Candidate: string;
-  SemiPos: Integer;
-begin
-  Result := False;
-  FoundPath := '';
-  PathExt := GetEnv('PATHEXT');
-  if PathExt = '' then PathExt := '.EXE;.BAT;.CMD';
-  Rest := GetEnv('PATH');
-  while (Rest <> '') and (not Result) do
-  begin
-    SemiPos := Pos(';', Rest);
-    if SemiPos > 0 then
-    begin
-      Dir := Copy(Rest, 1, SemiPos - 1);
-      Rest := Copy(Rest, SemiPos + 1, Length(Rest));
-    end
-    else
-    begin
-      Dir := Rest;
-      Rest := '';
-    end;
-    Dir := Trim(Dir);
-    if (Length(Dir) >= 2) and (Dir[1] = '"') and (Dir[Length(Dir)] = '"') then
-      Dir := Copy(Dir, 2, Length(Dir) - 2);
-    if Dir <> '' then
-    begin
-      if Dir[Length(Dir)] <> '\' then Dir := Dir + '\';
-      Exts := PathExt;
-      while (Exts <> '') and (not Result) do
-      begin
-        SemiPos := Pos(';', Exts);
-        if SemiPos > 0 then
-        begin
-          Ext := Copy(Exts, 1, SemiPos - 1);
-          Exts := Copy(Exts, SemiPos + 1, Length(Exts));
-        end
-        else
-        begin
-          Ext := Exts;
-          Exts := '';
-        end;
-        Candidate := Dir + Stem + Ext;
-        if FileExists(Candidate) then
-        begin
-          FoundPath := Candidate;
-          Result := True;
-        end;
-      end;
-    end;
-  end;
 end;
 
 { dotnet sets no HKCU self-marker, so detect it by its Inno ARP uninstall key (DisplayName like 'clavity-dotnet*'). }
@@ -200,34 +149,27 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
   UvPath, BridgeDir: string;
-  PsCmd, SrcPath, DestDir: string;
+  RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded: Boolean;
+  RegReport: string;
 begin
   if CurStep = ssPostInstall then
   begin
-    { Phase 3 parity: seed golden-header.seed.md from the bundled baseline with standard PowerShell (always
-      available; no dependency on running the just-installed binary). Overwrites SEED only; never touches GROWTH.
-      Unconditional — runs regardless of the bridge task. }
-    SrcPath := ExpandConstant('{app}\seed\golden-header.md');
-    { panel agy-R3-a: resolve the profile via Inno's %USERPROFILE% env constant (same as the zombie-header rename
-      below), NOT PowerShell's $env:USERPROFILE — under any elevation the two can differ, silently seeding the wrong
-      profile. (Written percent-style here because a literal Inno brace-constant inside a Pascal comment would
-      prematurely close the comment.) }
-    DestDir := ExpandConstant('{%USERPROFILE}\.clavity');
-    { panel R2-1: double any single-quote so a username like O'Brien can't break the PS single-quoted literals. }
-    StringChangeEx(SrcPath, '''', '''''', True);
-    StringChangeEx(DestDir, '''', '''''', True);
-    PsCmd :=
-      'New-Item -ItemType Directory -Force -Path ''' + DestDir + ''' | Out-Null;' +
-      'Copy-Item -LiteralPath ''' + SrcPath + ''' ' +
-      '-Destination ''' + DestDir + '\golden-header.seed.md'' -Force';
-    { -Command (inline) is not governed by execution policy, so no -ExecutionPolicy flag is needed (panel R2-2). }
-    if not Exec('powershell.exe', '-NoProfile -Command "' + PsCmd + '"',
-                '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      SuppressibleMsgBox('Could not seed the golden-header baseline. clavity still works; seed it later by copying' + #13#10 +
-        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md', mbInformation, MB_OK, IDOK)
-    else if ResultCode <> 0 then
-      SuppressibleMsgBox('Seeding the golden-header baseline reported a problem (exit code ' + IntToStr(ResultCode) + ').',
-        mbInformation, MB_OK, IDOK);
+    { C1/C9: register the clavity-classic plugin against every detected agent — classic has no
+      own binary, so (unlike dotnet) it uses the shared Inno registration primitives directly. }
+    RegisterMemberPlugin(ExpandConstant('{app}'), 'clavity-classic', 'clavity-classic',
+      RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded, RegReport);
+    ReportRegistrationOutcome(AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy, RegReport);
+
+    { C4/O1: shared seeding function. C1 install-time rollback: a seed failure after a successful
+      registration rolls the registration back. Unconditional — runs regardless of the bridge task. }
+    if AnySucceeded and (not SeedGoldenHeader(ExpandConstant('{app}'))) then
+    begin
+      RollbackMemberPlugin('clavity-classic', 'clavity-classic', RegisteredClaude, RegisteredAgy);
+      SuppressibleMsgBox('Could not seed the golden-header baseline, so the plugin registration was rolled ' +
+        'back. Re-run this setup. (You can also seed it manually later by copying' + #13#10 +
+        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md)',
+        mbError, MB_OK, IDOK);
+    end;
     if WizardIsTaskSelected('install_bridge') then
     begin
       BridgeDir := ExpandConstant('{app}\agy-mcp-bridge');
@@ -285,18 +227,6 @@ begin
   RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Path);
 end;
 
-procedure BackupHeaderFile(const Header: string);
-var
-  Backup: string;
-begin
-  Backup := Header + '.backup';
-  if FileExists(Header) then
-  begin
-    DeleteFile(Backup);
-    RenameFile(Header, Backup);
-  end;
-end;
-
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   BridgeDir, EnvFile: string;
@@ -308,9 +238,10 @@ begin
       wisdom. .backup does NOT auto-restore. Skipped on purge. Default path only (CLAVITY_GOLDEN_HEADER override is rare). }
     if not RemoveConfig then
     begin
-      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
-      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.growth.md'));
-      BackupHeaderFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
+      { C6: back up ONLY driver-owned files — growth.md is agy-autotrain's, not touched here. }
+      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
+      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md.sha256'));
+      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
     end;
     { Bridge .env (live secret): gated on the keep/purge answer. On purge, remove .env (regenerable
       .venv/__pycache__/.agent already go via [UninstallDelete]); on keep, leave it. }
@@ -318,6 +249,7 @@ begin
     EnvFile := BridgeDir + '\.env';
     if RemoveConfig and FileExists(EnvFile) then
       DeleteFile(EnvFile);
+    DeregisterMemberPluginOnUninstall('clavity-classic', 'clavity-classic');
   end
   else if CurUninstallStep = usPostUninstall then
     RemoveFromUserPath(ExpandConstant('{app}'));
