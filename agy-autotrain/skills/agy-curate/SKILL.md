@@ -55,6 +55,19 @@ not-yet-updated end-user). Do not remove a carried rule as part of triage; retir
 deliberate, later decision — and this MVP does not retire any current entry (the fixes + CI tests are
 deferred; see "Deferred work").
 
+### Compile the core driver-cheatsheet (spec §5.C-C)
+
+The `driver/probabilistic` entries that survived the gate are the durable driver knowledge. Distil the
+variant-agnostic core (peer psychology — identical for both drivers) into a lean ≤ ~150-token / ~3-bullet
+cheatsheet. The canonical text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync there.
+
+Write the compiled core to the shared runtime path so every driver surface reads ONE file:
+`<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md`, using the SAME atomic
+`.tmp`→rename the golden-header uses (a reader must never see a half-written file). Prefer the binary's
+`curate-commit` path if it grows a cheatsheet subcommand; otherwise write the file directly with an atomic
+rename. Do NOT lengthen it to cover per-variant transport mechanics — those belong in each variant's
+driving skill appendix, not the shared core.
+
 ## Promotion rubric (curation-fatigue guard — do not skip)
 
 - A **Heuristic** promotes only with **≥2 independent observations across different sessions**
