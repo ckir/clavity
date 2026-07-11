@@ -115,7 +115,7 @@ end;
 
 { ---- register ONE agent's plugin. Idempotent BY CONSTRUCTION (Finding-4): best-effort remove of
   any prior registration (result swallowed), THEN add/install with normal exit-code handling. Returns
-  True on success. AppDir is the installer's {app}; PluginName/MarketplaceName are THIS installer's
+  True on success. AppDir is the installer's app directory; PluginName/MarketplaceName are THIS installer's
   own unique values (C9). ---- }
 function RegisterClaude(const AppDir, PluginName, MarketplaceName: string; var Detail: string): Boolean;
 var

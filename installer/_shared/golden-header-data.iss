@@ -1,12 +1,12 @@
 { ============================================================================
   installer/_shared/golden-header-data.iss
   Shared Inno [Code] primitives for the golden-header SEED baseline (C4) and per-file backup (C6).
-  #include INSIDE a [Code] section. Used by clavity-dotnet + clavity-classic (SeedGoldenHeader);
+  Meant to be #include'd INSIDE a [Code] section. Used by clavity-dotnet + clavity-classic (SeedGoldenHeader);
   BackupDataFile is additionally used by agy-autotrain for its OWN growth.md (never call it on a
   file the caller does not own — C6 per-file ownership).
 ============================================================================ }
 
-{ ---- C4 / Boundary-Smuggler (Failure mode D): seed {app}\seed\golden-header.md into
+{ ---- C4 / Boundary-Smuggler (Failure mode D): seed the app dir's seed\golden-header.md into
   %USERPROFILE%\.clavity\golden-header.seed.md. EVERY path-bound PowerShell cmdlet uses
   -LiteralPath — including New-Item, which the pre-cohesion code called with -Path (glob-
   vulnerable: a profile containing '[' silently fails to create ~/.clavity, dropping the seed). ---- }
