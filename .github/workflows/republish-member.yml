@@ -1,0 +1,95 @@
+name: republish-member
+
+# Decoupled per-member republish (Acceptance #11 / C8 "Release coupling — decoupled by design"):
+# rebuild ONE member and republish its 2 assets onto an EXISTING clavity-v<N> release, without any
+# sibling's build/gate passing. Use this for a hotfix on one member after umbrella-release.yml
+# already published that tag (e.g. a flaky e2e-ghidrust network fetch must not block an unrelated
+# dotnet-only fix from reaching the SAME release page).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing clavity-v<N> release tag to republish onto (e.g. clavity-v3) — REQUIRED.'
+        required: true
+        type: string
+      member:
+        description: 'Which member to rebuild and republish.'
+        required: true
+        type: choice
+        options:
+          - dotnet
+          - classic
+          - ghidrust
+          - agy-autotrain
+          - commonmemory
+
+permissions:
+  contents: write
+
+jobs:
+  dotnet:
+    if: inputs.member == 'dotnet'
+    uses: ./.github/workflows/build-dotnet.yml
+
+  classic:
+    if: inputs.member == 'classic'
+    uses: ./.github/workflows/build-classic.yml
+
+  ghidrust:
+    if: inputs.member == 'ghidrust'
+    uses: ./.github/workflows/build-ghidrust.yml
+
+  e2e-ghidrust:
+    # ghidrust keeps its BLOCKING live gate (C8) — but ONLY for a ghidrust republish; it never
+    # runs, and so never blocks, a dotnet/classic/agy-autotrain/commonmemory republish.
+    if: inputs.member == 'ghidrust'
+    needs: [ghidrust]
+    uses: ./.github/workflows/e2e-ghidrust.yml
+
+  agy-autotrain:
+    if: inputs.member == 'agy-autotrain'
+    uses: ./.github/workflows/build-agy-autotrain.yml
+
+  commonmemory:
+    if: inputs.member == 'commonmemory'
+    uses: ./.github/workflows/build-commonmemory.yml
+
+  publish:
+    # Finding-3 fold: GitHub Actions SKIPS a downstream job by default when ANY of its `needs`
+    # jobs was skipped — so with 5 of 6 build jobs skipped (only the selected member ran), the
+    # default condition would skip `publish` entirely and NOTHING would republish. The explicit
+    # `if:` below overrides that: run as long as the job wasn't cancelled and NONE of the needs
+    # actually FAILED (a skipped need is tolerated; a real failure of the one member that ran is
+    # not). Only the selected member's 2 assets are downloaded/published (see the `member` switch
+    # in the steps), so republishing one member never touches a sibling's assets.
+    needs: [dotnet, classic, ghidrust, e2e-ghidrust, agy-autotrain, commonmemory]
+    if: ${{ always() && !cancelled() && !contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Determine which build job ran + its artifact name
+        id: which
+        shell: bash
+        run: |
+          case "${{ inputs.member }}" in
+            dotnet)        echo "artifact=${{ needs.dotnet.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
+            classic)       echo "artifact=${{ needs.classic.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
+            ghidrust)      echo "artifact=${{ needs.ghidrust.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
+            agy-autotrain) echo "artifact=${{ needs.agy-autotrain.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
+            commonmemory)  echo "artifact=${{ needs.commonmemory.outputs.artifact-name }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Download the rebuilt installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.which.outputs.artifact }}
+          path: dist-member
+
+      - name: Republish onto the existing release (adds/overwrites only this member's 2 assets)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          files: |
+            dist-member/*
