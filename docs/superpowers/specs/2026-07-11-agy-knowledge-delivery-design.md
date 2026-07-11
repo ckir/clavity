@@ -1,7 +1,9 @@
 # Design spec — agy-autotrain knowledge **delivery** (close the consume-side gap)
 
 **Status:** GREEN — AGY-AFTER panel complete (6 rounds, ~25 findings folded, findings decayed 8→6→5→3→2→0-substantive;
-agy round-6 verdict `CONVERGED`). Ready for `writing-plans`. **Date:** 2026-07-11.
+agy round-6 verdict `CONVERGED`). **+1 post-panel consumer-driven addition** (compaction resilience, §5.C-C /
+acceptance 4c) — a real correctness hole found via a consuming-agent negotiation with agy, small + additive (does not
+reopen the converged mechanism). Ready for `writing-plans`. **Date:** 2026-07-11.
 **Spans three products:** `agy-autotrain` (triage/curation) + **BOTH driver variants** `clavity-dotnet` and
 `clavity-classic` (each variant's own bridge quirk-fixes + point-of-use delivery). The two drivers are mutually
 exclusive but co-equal peers (see the cohesive-distribution work) — any driver-side fix MUST be variant-symmetric,
@@ -190,6 +192,20 @@ Both read the same shared cheatsheet; once-per-session so it is not per-call wal
 `clavity-driving` / `clavity-ls-driving` **skill** remains the fuller pulled reference; the appended block is the
 pushed core reminder.
 
+**Compaction resilience (consumer-driven addition, post-panel; agy-negotiated 2026-07-11).** A once-per-session
+appended block does NOT survive a mid-session context compaction — the block is summarised away, the server/binary
+"already delivered" flag stays set, and the driver drives the rest of the session BLIND (the exact failure this
+design exists to prevent). Fix, without reintroducing wallpaper for non-driving sessions:
+1. When the first-ask block fires, the ask machinery also touches a **drive-session flag** `~/.clavity/.active-drive-
+   session` (cleared on `SessionStart`), marking "this session actually drove the peer."
+2. A **`PreCompact` hook** (shipped with the driver plugin) re-injects the cheatsheet as `additionalContext` **iff**
+   the flag is set — so re-delivery on compaction happens ONLY in sessions that touched the peer, never as spam in
+   sessions that didn't. This reuses the exact `SessionStart`/`PreCompact` hook + `additionalContext` pattern the
+   capture-nudge already uses in-repo (proven), and it is the reason the delivery is targeting-preserving.
+(Negotiation note: the earlier "deliver via a PreToolUse hook BEFORE the first ask" idea was dropped — the guidance
+is predominantly *reaction* advice (verify volunteered facts, panel≠gate, read the idle-vs-modal signal), which the
+first-ask **output** block times correctly; a `SessionStart`-always push would be wallpaper in non-driving sessions.)
+
 ### C-D — rollout / migration (R4→R5 — spans all three products)
 Three independently-updated products create a **blind window**: if `agy-autotrain` curate strips a workaround from
 the cheatsheet — assuming it is fixed in code — but the end-user has NOT updated the driver whose bridge still has
@@ -308,6 +324,9 @@ and the hardenings are opt-in later, sized to real volume:
 4b. **Rollout:** retirement is conservative/manual — a workaround-rule stays until its fix is widely adopted; there
    is NO maintainer-side build-time version gate (that cannot protect end-users). A partially-updated end-user
    install (new cheatsheet, old bridge) never enters a blind window because the rule was not stripped early.
+4c. **Compaction resilience:** in a session that has driven the peer (drive-session flag set), a `PreCompact` re-injects
+   the cheatsheet (probe: drive agy, force a compaction, confirm the `[driver_guidance]` content is present
+   post-compaction); a session that never drove the peer gets NO compaction injection (no wallpaper).
 5. Each fixed quirk has a **permanent CI regression test** in its owning product; a trigger entry is deleted only
    when **both** gates hold — the test is green + committed (the fix works) AND the fix is widely adopted among
    end-users (4b, no early strip) — on every variant it reproduced on, leaving no tool-fixable `deterministic`
