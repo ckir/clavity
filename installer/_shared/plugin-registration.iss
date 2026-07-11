@@ -292,6 +292,6 @@ begin
     SuppressibleMsgBox('Plugin registration failed for every detected agent:' + #13#10 + Report,
       mbError, MB_OK, IDOK)
   else if (ClaudePresent() and not RegisteredClaude) or (AgyPresent() and not RegisteredAgy) then
-    SuppressibleMsgBox('Plugin registered, but a partial failure occurred (not rolled back):' +
-      #13#10 + Report, mbInformation, MB_OK, IDOK);
+    SuppressibleMsgBox('Plugin registered, but a partial failure occurred (not rolled back):'
+      + #13#10 + Report, mbInformation, MB_OK, IDOK);
 end;
