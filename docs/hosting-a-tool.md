@@ -1,5 +1,15 @@
 # Hosting a tool in the `clavity` umbrella
 
+> **Superseded (2026-07-11) for packaging/distribution:** the branch-per-tool split, the
+> repo-root `.claude-plugin/marketplace.json` entry (step 6 below), and the per-tool remote
+> marketplace delivery this playbook describes are replaced by the cohesive distribution model —
+> see `docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md`. A new tool now gets its
+> own standalone installer (self-registering a local scoped marketplace, C1/C9) built from `main`,
+> not a `plugins/<tool-id>/` entry in a repo-root addable manifest. This file's non-distribution
+> guidance (ROADMAP/README indexing, `*.template` skeletons, tag-namespace protection) still
+> applies; its Phase B step 6 ("Add one entry to `.claude-plugin/marketplace.json`") does not — that
+> file no longer exists at the repo root (relocated to the non-addable `build/members.json`).
+
 `clavity` is an umbrella repo: it hosts several independently-released tools under one brand. This is
 the repo-side counterpart to a tool's own `HANDOFF.md` — the checklist to graft a new tool in.
 

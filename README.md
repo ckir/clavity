@@ -19,14 +19,21 @@ place.
 | agy-autotrain | agy-autotrain/ | (plugin only) |
 | commonmemory | commonmemory/ | (plugin only) |
 
-- **clavity-dotnet** / **clavity-classic** — two variants that pair [Claude Code](https://claude.com/claude-code)
-  with [Antigravity (`agy`)](https://antigravity.google). See [clavity-dotnet/README.md](clavity-dotnet/README.md)
-  for install & usage (the installer lets you choose the **.NET** (Primary) or **Classic** (Failover)
-  host variant, and opt in to `agy-autotrain` / `commonmemory` extras).
+- **clavity-dotnet** / **clavity-classic** — two **mutually exclusive** variants that pair
+  [Claude Code](https://claude.com/claude-code) with [Antigravity (`agy`)](https://antigravity.google);
+  install ONE, via its OWN standalone installer (**.NET** Primary or **Classic** Failover — see
+  [clavity-dotnet/README.md](clavity-dotnet/README.md)).
 - **ghidrust** — drives a persistent headless Ghidra JVM: 19 reverse-engineering tools over MCP
-  (attach + decompile + durable edits). See [ghidrust/README.md](ghidrust/README.md).
-- **agy-autotrain** / **commonmemory** — plugin-only add-ons (no standalone build); installed alongside
-  clavity via the umbrella installer.
+  (attach + decompile + durable edits), via its own standalone installer. See
+  [ghidrust/README.md](ghidrust/README.md).
+- **agy-autotrain** / **commonmemory** — plugin-only add-ons, each with its OWN standalone installer
+  (no binary; no bundling with any other member). `agy-autotrain` needs a clavity driver installed to
+  have somewhere to inject its learned header (a non-blocking runtime warning otherwise); `commonmemory`
+  needs the `agentmemory` MCP server to be useful.
+
+Every installer is independent — grab exactly the ones you want from the same
+[release page](../../releases). There is **no** live remote marketplace; every plugin ships locally
+inside its own installer.
 
 ## Adding a product
 
