@@ -256,7 +256,7 @@ All optional; sensible defaults. Environment variables:
 
 ## Design docs
 
-- **[Design spec](docs/superpowers/specs/2026-06-16-agy-remote-control-design.md)** — the full
+- **Design spec** _(internal design provenance — not published)_ — the full
   architecture and the empirical spikes it rests on (bus round-trip, `send-keys` wake, idle/busy
   detection, doorbell-while-busy queueing, the pwsh shell reality, the safety checkpoint).
 - **[Protocol runbook](docs/agy-remote-control-protocol.md)** — the exact Claude-side procedure,

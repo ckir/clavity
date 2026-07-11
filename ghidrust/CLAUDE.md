@@ -19,10 +19,3 @@ round-trip. agy's own logs live at `~/.gemini/antigravity-cli/` (`cli.log` + `lo
 Dev: `cargo test --all --features test-fakes`, `cargo clippy --all-targets --features test-fakes -- -D warnings`,
 `cargo fmt --all`. See `CONTRIBUTING.md` for the live acceptance runbook and the Linux/macOS porting guide.
 (The .NET `clavity-dotnet` variant — the `Clavity.Ls` MCP LS behind `agy_ask`/`agy_status`/`agy_look` — builds/tests with `dotnet build` / `dotnet test tests/Clavity.Ls.Tests`.)
-
-## Recent session notes
-_(dated — see ROADMAP/plugin.json for current version)_
-- [2026-07-04 — `Clavity.Ls` ask-Answer fix + `clavity-v2` release](docs/session-notes/2026-07-04-ls-ask-answer-fix-and-clavity-v2.md)
-  — fixed null `Answer` on a tool-terminated agy turn (`BoundedView.ProjectAskReply` now rescues the last
-  assistant run's full prose into `Activity` instead of clipping to 200); released as dotnet **0.1.10** / umbrella
-  tag **`clavity-v2`**. Includes the release runbook (serial `clavity-v<N>` tag; bump `installer/clavity-dotnet.iss`).

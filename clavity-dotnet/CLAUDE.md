@@ -22,7 +22,7 @@ Dev (run from this folder, `clavity-dotnet/`): `dotnet build`, `dotnet test test
 
 ## Recent session notes
 _(dated — see ROADMAP/plugin.json for current version)_
-- [2026-07-04 — `Clavity.Ls` ask-Answer fix + `clavity-v2` release](../docs/session-notes/2026-07-04-ls-ask-answer-fix-and-clavity-v2.md)
+- 2026-07-04 — `Clavity.Ls` ask-Answer fix + `clavity-v2` release
   — fixed null `Answer` on a tool-terminated agy turn (`BoundedView.ProjectAskReply` now rescues the last
   assistant run's full prose into `Activity` instead of clipping to 200); released as dotnet **0.1.10** / umbrella
   tag **`clavity-v2`**. Includes the release runbook (serial `clavity-v<N>` tag; bump `installer/clavity-dotnet.iss`).
