@@ -60,8 +60,15 @@ Routing matrix:
 
 | Audience \ Nature | probabilistic | deterministic |
 |---|---|---|
-| **peer** | golden-header GROWTH (today's path, unchanged) | **fix the tool** (backlog) — do not freeze into the header |
-| **driver** | **driver cheatsheet**, push-delivered (§5.C) | **fix the tool** (backlog) — do not carry as knowledge |
+| **peer** | golden-header GROWTH (today's path, unchanged) | golden-header GROWTH — a *peer* behavior is P's, not OUR code, so it is never "fix the tool" (R2 Axiom fix) |
+| **driver** | **driver cheatsheet**, push-delivered (§5.C) | **fix the tool** (backlog) **iff** fixable in our execution path — else a **driver cheatsheet** rule |
+
+**Determinism is a PER-VARIANT judgment (R2/F6b).** "Fixable in the software's execution path" can be TRUE on one
+variant and FALSE on the other: the working-vs-stuck quirk is fixable in the dotnet gRPC bridge (cascade step ids)
+but **structurally unimplementable on classic** (a psmux screen-scraper exposes no progress signal when the peer
+thinks silently). So the SAME observation routes `fix-the-tool` on dotnet AND stays a `driver-cheatsheet` rule on
+classic. Symmetry is a goal, not a guarantee — where a variant's transport cannot support the fix, it keeps the
+driver rule (and, e.g., a longer/configurable idle-wait), and that is an accepted, documented outcome, not a gap.
 
 The **determinism test** (R1/F4, refined — the triage gate's refusal criterion): *route to fix-the-tool ONLY when
 the defect is fixable **in the software's own execution path** (the bridge/tool code can be changed to remove it).*
@@ -80,21 +87,26 @@ today; driver-probabilistic → the cheatsheet, C-C). This is the **anti-poisoni
 rejects unverified/over-general candidates; now it also rejects tool-fixable deterministic-workaround candidates by
 *class*.
 
-**Backlog must not be a local black hole (R1/F3):** `agy-curate` runs offline on a user's machine, so a "loose repo
-issue note" silently dies there. The refused entry must become a **structured, durable record that reaches the
-maintainers** — the concrete mechanism is a fork (F3): a committed repo file the dev pushes, or an emitted GitHub
-issue — but NOT a file that never leaves the local `~/.clavity`.
+**Backlog = a committed repo file (R2/F3-form).** `agy-curate` runs offline on a user's box, so dynamic `gh` issue
+emission assumes network egress + an authenticated CLI + repo rights — an unverified chain that fails silently on
+diverse machines. The refused entry is instead appended to a **committed `fix-the-tool-backlog.md` in the repo**
+(hermetic — it rides the git commit/push the dev already does), NOT a file that never leaves `~/.clavity`.
 
-**The gate is instruction-only — a known weakness (R1, carried).** The existing anti-poisoning gate is *also* just
-an instruction, and poisoning happened anyway (the three deterministic entries were promoted-by-default). An
-instruction-only classifier is gameable (a curator takes the easy "probabilistic → promote" path to avoid filing
-tickets). Strengthen it with an objective signal, not prose alone — see F7.
+**The gate must be MECHANICAL, not honor-system (R2/F7).** An instruction to "classify objectively" is just another
+instruction — the existing anti-poisoning gate is prose-only and poisoning happened anyway (the three deterministic
+entries were promoted-by-default). Make the classification non-gameable: (1) a **rigid schema** — to route
+`deterministic → fix-the-tool` the curator MUST fill a `Steps to Reproduce` block AND a `Code-level Mitigation`
+block (an entry that cannot state a code-level mitigation is, by construction, a driver/peer knowledge rule, not a
+tool fix); and (2) an **adversarial second-reviewer step** in the curate procedure — a distinct reviewer pass that
+challenges the classification before it is committed (route it to the live peer, mirroring this very panel).
 
-**Delivery depends on curate being RUN — the unclosed forcing-function gap (R1, carried).** Capture is hook-driven
-(SessionStart/PreCompact); curate is "deliberate/offline, run when the inbox grows" with **no forcing function**. If
-curate lags, nothing is triaged or delivered and the whole fix is inert. Either add a curate-staleness nudge (a
-SessionStart hook when the inbox exceeds N entries / an age threshold) or ensure the shipped baseline floor degrades
-gracefully so curate-lag is not a hard failure — see F8-b.
+**Curate needs a MANDATORY run-forcing-function (R2/F8-b).** Capture is hook-driven (SessionStart/PreCompact); curate
+is "deliberate/offline, run when the inbox grows" with **no forcing function**. The baseline floor only prevents a
+crash — it does NOT prevent behavioral rot: if curate lags, the inbox silts, the driver runs on stale baseline rules
+while the peer drifts, and it re-captures the same quirks in a noise loop until the whole capture→curate→inject
+pipeline dies of neglect. So a curate-staleness nudge is **mandatory, not optional**: a **SessionStart hook that
+warns when `agy-observations.md` exceeds N entries (e.g. 10) or an age threshold (e.g. 7 days)** — the symmetric
+consume-side counterpart to the existing capture reminder. The baseline floor is a crash-guard, not a substitute.
 
 ### C-B — retire the deterministic entries + fix the bridge (BOTH variants)
 The three inbox entries (idle-wait timeout surfaces as `possible_modal` while the peer is still working; the
@@ -105,20 +117,32 @@ same *class* — waiting for a peer turn to go idle, and retrieving its reply �
 which of the three quirks actually reproduces on each transport** (do not assume; some may be dotnet-MCP-only, e.g.
 the `agy_look` trajectory truncation has no classic analogue if classic has no trajectory-look surface). Then fix
 each reproduced quirk in that variant's own bridge, symmetric in intent:
-- **working vs stuck:** distinguish by the peer's **advancing step count / progress signal** rather than declaring
-  a modal/stuck state purely on an idle-wait elapsed timeout — dotnet: `agy_ask` uses the cascade step-delta;
-  classic: `clavity ask`/`await-reply` uses whatever equivalent progress signal the bus/psmux surface exposes.
-- **parked-reply auto-retrieval:** on the next bridge call, correlate and return the parked reply (by req-id /
-  content) instead of requiring a manual "resend your last result" turn — in each variant's retrieval path.
-- (dotnet, optional) `agy_look`: expose a tail-anchored / less-truncated view for reading a just-completed reply,
-  or document that `agy_ask` is the retrieval path and `agy_look` is for trajectory inspection only.
+- **working vs stuck:** dotnet distinguishes by the cascade **step-delta** (a real progress signal). **classic
+  likely CANNOT (R2/F6b):** a psmux screen-scraper exposes no progress signal while the peer thinks silently, so
+  this fix is *structurally unimplementable* on classic's transport. Classic's answer is therefore NOT a bridge fix
+  but (a) a longer/configurable idle-wait to cut false-modal, and (b) **retain the working-vs-stuck rule as a
+  classic driver-cheatsheet entry** (per §4's per-variant determinism). Do not pretend symmetry where the transport
+  denies it.
+- **parked-reply auto-retrieval:** on the next bridge call, return the parked reply — but **strictly by req-id,
+  never by loose "next call / content" correlation (R2 State Corruptor):** if a *different* ask is fired before the
+  parked reply is retrieved, a loose correlation could hand Q1's answer back as Q2's. A non-matching next call must
+  NOT consume/return the parked reply.
+- (dotnet, optional) `agy_look`: expose a tail-anchored / less-truncated view, or document that `agy_ask` is the
+  retrieval path and `agy_look` is for trajectory inspection only.
+- **shared-file writes are atomic (R2 State Corruptor):** `agy-curate`'s write of `driver-cheatsheet.md` (and any
+  server re-read) uses `.tmp`→rename so a reader never sees a half-written file — the golden-header already does
+  this; state it as a requirement here too.
 **Retirement = convert the rule into a standing regression test, not a one-time probe (R1/F5).** When a quirk is
 fixed, add a **permanent CI regression test** to the owning product asserting the quirk stays fixed; delete the
 human-facing knowledge entry only once that test is green and committed. Because agy is empirically-derived and
 mutates (an agy update can re-open a "fixed" quirk), the standing test is what **auto-resurfaces** a regression —
 deleting the knowledge without it would leave the driver blind on the next drift. Retire only after the test passes
 on **every variant the quirk reproduced on** — a fix on one variant does not license deleting a rule the other
-still exhibits (immune-system principle, G3/G4).
+still exhibits (immune-system principle, G3/G4). **Caveat (R2/F6a):** a codified regression test on classic's
+psmux screen-scrape is inherently flaky (terminal dimensions, render speed, OS load) — a green run may be timing
+luck, not a real fix. So a classic test carries LOWER retirement confidence than a deterministic gRPC test; where
+classic can neither reliably fix nor reliably test a quirk (F6b), the honest outcome is to **keep** the classic
+driver rule rather than retire it on a flaky green.
 
 ### C-C — driver cheatsheet, **push-delivered at point-of-use** (all three products)
 The residual `probabilistic` driver knowledge splits into a **variant-agnostic core** (peer psychology, identical
@@ -135,20 +159,22 @@ binary so a MISSING/unreadable file degrades to a shipped default, never to sile
 the golden-header SEED-floor pattern.
 
 Delivery is per-variant because the two drivers have different Claude-facing transports:
-- **clavity-dotnet — MCP tools (model-read):** embed the cheatsheet into the tool schema description of **`agy_ask`
-  ONLY** (NOT `agy_look`/`agy_status` — that multiplies token bloat on every tool-list and causes context
-  blindness, R1/F2). **MCP lifecycle contract (R1, new):** tool descriptions are cached by the client at connect,
-  so a file update does NOT propagate until the MCP server re-reads it and emits `notifications/tools/list_changed`
-  (or is restarted). The server MUST re-read the shared file and re-emit `list_changed` when it changes, else the
-  driver sees a stale cheatsheet — specify this or document staleness-until-restart as an accepted limitation.
+- **clavity-dotnet — inject into the first `agy_ask` RESPONSE, not the tool description (R2/F8).** Embedding the
+  cheatsheet in the tool *description* is client-cached at connect and reload-fragile (a `FileSystemWatcher` +
+  `notifications/tools/list_changed` drops events and can fire on a partial write → a truncated cached schema).
+  Instead, the MCP server **prepends the cheatsheet to the result of the FIRST `agy_ask` call of a session**
+  (server-side once-per-session state) — always fresh (no schema cache), point-of-use, no reload contract, and it
+  reads the shared file at that moment (so an updated cheatsheet is picked up on the next session's first call).
+  Only `agy_ask` carries it (not `agy_look`/`agy_status`), and once per session so it is not per-call wallpaper.
 - **clavity-classic — CLI only (`clavity ask` over psmux/bus):** no model-read schema, so classic's
-  **`clavity-driving` skill** is the primary surface (first-class, not a fallback). Because a skill is *pulled*,
-  pair it with a **point-of-use push on the CLI path**: a **`PreToolUse` hook matching the `Bash` tool** that
-  regex-detects a `clavity ask` invocation and injects the core cheatsheet. (This IS possible — Claude Code
-  PreToolUse hooks fire on the Bash tool and can inspect the command; the repo's own `rtk hook claude` and
-  `remote-iteration-breaker.sh` are exactly Bash-PreToolUse hooks. The residual risk is *robustness*, see F6.) The
-  push MUST be **stateful — fire once per session/context, not every call** (R1 Activation) or it becomes the
-  wallpaper this spec forbids.
+  **`clavity-driving` skill** is the primary surface (first-class, not a fallback), paired with a **point-of-use
+  push on the CLI path** — a **`PreToolUse` hook matching the `Bash` tool** that detects a `clavity ask` invocation
+  and injects the core cheatsheet. (Possible — Claude Code PreToolUse hooks fire on the Bash tool and inspect the
+  command; the repo's own `rtk hook claude` / `remote-iteration-breaker.sh` are Bash-PreToolUse hooks.) **R2/F6c —
+  false-consumption hazard:** a naive "once-per-session flag set on first regex match" is toggled by a NON-real
+  invocation (`clavity ask --help`, or a subagent dry-run whose script merely CONTAINS the substring `clavity ask`),
+  suppressing the push before the real command runs. The detector MUST match an actual `clavity ask <prompt>`
+  invocation (not `--help`/`-h`, not a bare substring), and only then arm/consume the once-per-session state.
 
 ## 6. Design forks / open questions
 
@@ -164,42 +190,43 @@ Delivery is per-variant because the two drivers have different Claude-facing tra
 - **F5 (retirement safety) — CLOSED:** retirement = a **standing CI regression test** (auto-resurfaces on agy
   drift), per variant the quirk reproduced on; delete knowledge only once green+committed. (§5.C-B)
 
-### Still open (for round 2+ to pressure)
-- **F3-form — the exact backlog artifact:** a committed repo file the dev pushes vs. an emitted GitHub issue vs. a
-  section in each product's docs. (Constraint from R1: must escape the local machine.)
-- **F6 — classic-variant feasibility + robustness (the load-bearing open fork).** (a) Which of the three quirks
-  actually reproduce on classic's psmux-screen-scrape + request/reply-bus transport — established as a **codified
-  cross-transport integration test**, not an honor-system manual check (R1 Mechanism Gamer). (b) Does classic's
-  transport even EXPOSE a progress signal to distinguish working-vs-stuck? If psmux capture-pane + a request/reply
-  bus have no "steps advancing" analogue, the working-vs-stuck fix may be **unimplementable on classic**, and the
-  variant-symmetry promise needs a different classic answer (e.g. a longer/configurable idle-wait, or accept a
-  residual driver-rule for classic only). (c) The classic CLI-path push is a `Bash`-`PreToolUse` hook + regex —
-  **doable** (corrected in R1), but its robustness is unresolved: precise matching (avoid `ask-*`/spacing/variable
-  misfire) and once-per-session state.
-- **F7 — the triage gate is instruction-only (anti-gaming).** The existing anti-poisoning gate is prose-only and
-  poisoning happened anyway; the new determinism gate inherits that weakness. What OBJECTIVE signal makes
-  "deterministic → refuse" non-gameable rather than curator honor-system? (e.g. a checklist probe, a required
-  linked repro, a second-reviewer gate.)
-- **F8 — MCP reload contract:** does the clavity-dotnet MCP server actively re-read the shared cheatsheet file and
-  emit `notifications/tools/list_changed`, or is staleness-until-restart an accepted limitation? (§5.C-C names the
-  contract; the choice is open.)
-- **F8-b — curate has no run-forcing-function.** Capture is hook-driven; curate (hence all delivery) is manual and
-  can lag, leaving the fix inert. Add a curate-staleness nudge (SessionStart hook on inbox size/age) vs. rely on
-  the baseline floor to degrade gracefully — unresolved.
+### Resolved in panel round 2 (folded into §4–§5 above)
+- **F3-form — CLOSED:** a committed `fix-the-tool-backlog.md` in the repo (hermetic; dynamic `gh` issue emission
+  assumes network/auth/rights that fail silently offline). (§5.C-A)
+- **F6b — CLOSED (structural):** working-vs-stuck is unimplementable on classic's screen-scrape transport (no
+  progress signal) → classic keeps the driver rule + a configurable idle-wait; determinism is **per-variant**. (§4, §5.C-B)
+- **F6c — CLOSED:** the classic Bash-PreToolUse push must match a REAL `clavity ask <prompt>` invocation (not
+  `--help`, not a bare substring) before arming once-per-session state, else false positives consume the flag. (§5.C-C)
+- **F7 — CLOSED:** mechanical anti-gaming — a rigid `Steps to Reproduce` + `Code-level Mitigation` schema to route
+  `fix-the-tool`, plus an adversarial second-reviewer step in curate. (§5.C-A)
+- **F8 — CLOSED (better mechanism):** drop the tool-description embedding + `list_changed` reload contract entirely
+  — inject the cheatsheet into the FIRST `agy_ask` RESPONSE, server-side once-per-session (always fresh, no cache). (§5.C-C)
+- **F8-b — CLOSED:** a mandatory SessionStart curate-staleness nudge (inbox > N entries / age); the baseline floor
+  is a crash-guard, not a substitute. (§5.C-A)
+- **F6a — CLOSED (caveat):** classic scrape-based regression tests are inherently flaky → lower retirement
+  confidence; keep the classic driver rule rather than retire on a flaky green. (§5.C-B)
+
+### Still open after round 2
+- **F6a-impl — how to reduce classic test flakiness** (pin terminal dims / retries / a synthetic peer stub) so a
+  green classic run is trustworthy enough to retire on — or accept that classic quirks are never retired, only
+  carried. Small implementation fork, not a blocker.
 
 ## 7. Acceptance criteria (testable)
 
 1. `agy-curate/SKILL.md` documents the two-axis classification and the determinism-refusal gate; a deterministic
    candidate is demonstrably refused (dry-run over the current inbox re-classifies the three trigger entries as
    `driver/deterministic → fix-the-tool`).
-2. For **every variant a quirk reproduced on**, that variant's bridge no longer reports a stuck/modal state while
-   the peer is progressing (probe per variant: a long peer turn returns a working signal, not a modal signal, as
-   long as the progress signal advances). Quirks measured NOT to reproduce on a variant are documented as such.
-3. A timed-out reply is retrievable on the next bridge call without a hand-authored resend turn — in **each**
-   variant's retrieval path that exhibited the parked-reply behavior.
-4. The curated core cheatsheet (≤ the F2 budget), from the single curate-written artifact (F1), is rendered on ALL
-   THREE surfaces with identical core content: dotnet `agy_ask` tool description, dotnet `clavity-ls-driving`, and
-   classic `clavity-driving`; classic's driver receives it via a point-of-use push, not skill-recall alone (F6).
+2. **dotnet:** `agy_ask` no longer reports a modal/stuck state while the cascade step-delta advances (probe: a long
+   peer turn returns working, not modal). **classic:** where the progress signal is absent (F6b), the criterion is
+   instead a longer/configurable idle-wait AND the working-vs-stuck rule present in classic's cheatsheet — no false
+   claim of a bridge fix. Quirks measured NOT to reproduce on a variant are documented as such (codified test, F6a).
+3. A parked reply is retrievable on the next bridge call without a hand-authored resend — matched **strictly by
+   req-id**; a non-matching intervening call does NOT consume/return it (probe: fire Q2 before retrieving Q1's
+   parked reply → Q2 does not receive Q1's answer).
+4. The curated core cheatsheet (≤ ~150 tok) from the single shared `driver-cheatsheet.md` reaches the driver on
+   every variant: **dotnet** via first-`agy_ask`-response injection (server-side once-per-session, NOT the tool
+   description); **classic** via `clavity-driving` + a Bash-PreToolUse push armed only on a real `clavity ask`
+   invocation. Content is identical across surfaces; with the file absent, each serves its shipped baseline floor.
 5. Each fixed quirk has a **permanent CI regression test** in its owning product; only after that test is green +
    committed (on every variant it reproduced on) are the trigger entries deleted from the inbox/manuals, leaving no
    tool-fixable `deterministic` driver entries.
