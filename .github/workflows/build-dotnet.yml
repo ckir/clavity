@@ -4,6 +4,11 @@ name: build-dotnet
 # and runnable in isolation via workflow_dispatch.
 on:
   workflow_call:
+    inputs:
+      fail_on_smoke:
+        description: 'When true, a runtime install/uninstall smoke FAILURE fails the workflow (CI-gate posture). Release callers omit it -> default false -> smoke stays advisory and cannot wedge a publish.'
+        type: boolean
+        default: false
     outputs:
       version:
         value: ${{ jobs.build.outputs.version }}
@@ -85,7 +90,7 @@ jobs:
 
       - name: Smoke — silent install then uninstall
         timeout-minutes: 6
-        continue-on-error: true   # informational: a hang/failure here must NOT block the release publish
+        continue-on-error: ${{ !inputs.fail_on_smoke }}   # release: advisory (default false); ci-installer: blocking (fail_on_smoke=true)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -142,7 +147,7 @@ jobs:
 
       - name: Smoke — C6 growth.md survives a keep-data uninstall + C1 idempotent re-run
         timeout-minutes: 6
-        continue-on-error: true   # informational, matching the sibling smoke step's policy
+        continue-on-error: ${{ !inputs.fail_on_smoke }}   # matches the sibling smoke step's fail_on_smoke policy
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -168,7 +173,7 @@ jobs:
 
       - name: Smoke — mutual-exclusion refusal (seeded fake classic)
         timeout-minutes: 4
-        continue-on-error: true   # informational: must NOT block the release publish
+        continue-on-error: ${{ !inputs.fail_on_smoke }}   # release: advisory; ci-installer: blocking
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
