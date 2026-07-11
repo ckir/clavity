@@ -46,8 +46,10 @@ public sealed class DriverCheatsheetTests : IDisposable
     [Fact]
     public void BaselineFloor_matches_the_canonical_core_source()
     {
-        var core = File.ReadAllText(CoreSourcePath()).Trim();
-        Assert.Equal(core, DriverCheatsheet.BaselineFloor);
+        // Normalize CRLF -> LF: CI may check out the .md with Windows line endings, but BaselineFloor
+        // is an \n literal. Parity is about CONTENT, not the checkout's EOL artifact.
+        var core = File.ReadAllText(CoreSourcePath()).Replace("\r\n", "\n").Trim();
+        Assert.Equal(DriverCheatsheet.BaselineFloor, core);
     }
 
     // Locate agy-autotrain/knowledge/driver-cheatsheet.core.md via THIS test's compile-time source path

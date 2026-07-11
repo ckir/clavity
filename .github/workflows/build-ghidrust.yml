@@ -114,8 +114,13 @@ jobs:
           $setup = "dist/ghidrust-setup-$env:TOOL_VER.exe"
           $app = "$env:LOCALAPPDATA\Programs\ghidrust"
 
-          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
+          $log = "$env:RUNNER_TEMP\ghidrust-install.log"
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            Write-Host "===== ghidrust install.log (exit $($p.ExitCode)) ====="
+            if (Test-Path $log) { Get-Content $log } else { Write-Host "(no log produced)" }
+            throw "install exit $($p.ExitCode)"
+          }
           # Finding-5: re-run the SAME installer — idempotent upgrade (remove-then-add) must exit 0.
           $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }

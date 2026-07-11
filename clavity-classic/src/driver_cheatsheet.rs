@@ -102,6 +102,8 @@ mod tests {
         );
         let core = std::fs::read_to_string(core_path)
             .expect("driver-cheatsheet.core.md must exist (Task 1.4, Phase 1 precedes Phase 3)");
-        assert_eq!(core.trim(), BASELINE_FLOOR);
+        // Normalize CRLF -> LF: CI may check out the .md with Windows line endings, but BASELINE_FLOOR
+        // is an \n string literal. Parity is about CONTENT, not the checkout's EOL artifact.
+        assert_eq!(core.replace("\r\n", "\n").trim(), BASELINE_FLOOR);
     }
 }
