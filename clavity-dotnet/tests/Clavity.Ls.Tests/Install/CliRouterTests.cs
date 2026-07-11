@@ -73,6 +73,25 @@ public sealed class CliRouterTests
     }
 
     [Fact]
+    public void Install_with_mixed_per_agent_results_returns_zero_and_reports_both()
+    {
+        // C1 per-agent OR-semantics: install succeeds (exit 0) as long as AT LEAST ONE detected agent's
+        // registration succeeds; the FAILED agent is reported but does not fail the whole install (was
+        // exit 1 under the prior AND-semantics — this pins the new behavior).
+        var detection = new AgentDetection(onPath: _ => true, dirExists: _ => false); // both present
+        ProcessRunner run = (exe, args) =>
+            exe == "claude" ? new ProcessOutcome(0, "") : new ProcessOutcome(1, "boom");
+        var sw = new StringWriter();
+
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+
+        Assert.Equal(0, rc);
+        var text = sw.ToString();
+        Assert.Contains("] ok:", text);
+        Assert.Contains("] FAILED:", text);
+    }
+
+    [Fact]
     public void IsInstalled_does_not_false_match_a_substring_plugin_name()
     {
         var detection = new AgentDetection(onPath: _ => true, dirExists: _ => false); // both present

@@ -54,15 +54,26 @@ public static class CliRouter
             {
                 var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
                 var dir = PluginDirFor(pluginName, pluginDir);
-                var ok = true;
+                var anySucceeded = false;
+                var registeredCount = 0;
                 foreach (var a in Enum.GetValues<Agent>())
                 {
                     if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
                     var r = PluginInstaller.Install(a, pluginName, marketplaceRoot, dir, run);
-                    ok &= r.Ok;
+                    if (r.Ok) registeredCount++;
+                    anySucceeded |= r.Ok;
                     output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
                 }
-                return ok ? 0 : 1;
+                // C1 per-agent semantics: fail only if EVERY detected agent's registration failed
+                // (a genuine no-op install). A partial success is reported, not rolled back here.
+                if (!anySucceeded)
+                {
+                    output.WriteLine("clavity-ls: plugin registration failed for every detected agent.");
+                    return 1;
+                }
+                if (registeredCount < present.Count)
+                    output.WriteLine("clavity-ls: plugin registered for at least one agent; the FAILED agent(s) above were left as reported (not rolled back).");
+                return 0;
             }
 
             case "uninstall":
