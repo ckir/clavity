@@ -24,7 +24,7 @@ permanent-learning loop are the optional **agy-autotrain** add-on; this core plu
 
 ## Install
 
-```
-claude plugin marketplace add .        # this repo's marketplace.json
-claude plugin install clavity-dotnet@clavity
-```
+Ships via the `clavity-dotnet` standalone installer (`clavity-dotnet-setup-<VERSION>.exe`), which
+registers this plugin against a local, scoped marketplace for each detected agent (Claude Code / agy) —
+there is no remote marketplace to add. See [`clavity-dotnet/README.md`](../README.md) for the Quick
+Start.

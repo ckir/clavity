@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS  Download, SHA-256-verify, and run the clavity installer (dotnet or classic variant).
 .DESCRIPTION Run in PowerShell (NOT cmd.exe).
-.EXAMPLE   irm https://raw.githubusercontent.com/ckir/clavity/main/install/clavity-install.ps1 | iex
+.EXAMPLE   irm https://raw.githubusercontent.com/ckir/clavity/main/clavity-dotnet/install/clavity-install.ps1 | iex
 #>
 [CmdletBinding()]
 param(

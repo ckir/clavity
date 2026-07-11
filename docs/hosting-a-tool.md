@@ -26,7 +26,7 @@ the repo-side counterpart to a tool's own `HANDOFF.md` — the checklist to graf
   (`ghidrust`, `clavity-ls`) — never a generic `agent.exe` / `proxy.exe`.
 - **Docs beside the plugin (D4).** A new tool's docs go in `plugins/<tool-id>/README.md` (+ optional
   `plugins/<tool-id>/docs/`). Root `docs/` is umbrella-only. (`clavity` is the grandfathered exception,
-  D5 — its manual is the root `README-CLAVITY.md`.)
+  D5 — its manual is the root `README.md`.)
 - **`*.template` rule (D6).** Skeletons live in `templates/tool-skeleton/` with a `.template` suffix so
   no loader/globber ever ingests them as a live tool.
 - **Substitute EVERY placeholder (global precondition).** When you copy ANY `*.template`, replace ALL

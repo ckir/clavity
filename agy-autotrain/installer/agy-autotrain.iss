@@ -5,7 +5,7 @@
 ; against each detected agent (Claude Code / agy). No binary, no download, no remote marketplace.
 
 #define AppName "agy-autotrain"
-#define AppVersion "0.1.0"
+#define AppVersion "0.1.4"
 
 [Setup]
 AppId={{84B5A584-55BB-44DE-B53C-E6602880AE6B}

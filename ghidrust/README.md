@@ -1,28 +1,39 @@
-# clavity
+# ghidrust
 
-[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](../LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 
-**clavity** is a host for several independently-released tools that pair AI coding agents with live
-peers. Each hosted tool ships its own installer and its own `<tool>-v<N>` GitHub Release; this repo is
-the shared home for their plugins, docs, and release machinery.
+**ghidrust** attaches a persistent, headless Ghidra JVM to your AI agent and exposes it as an MCP
+tool/plugin: 19 reverse-engineering tools over MCP stdio — 14 read/navigate (decompile, disassemble,
+list symbols/strings/data/segments, resolve symbols, xrefs, read bytes, …) plus 5 durable writes saved
+to disk (`rename`, `comment`, `set_datatype`, `set_prototype`, `set_local`). It is a single pure-Rust
+binary; one part of the [`clavity`](../README.md) umbrella.
 
-## Tools hosted here
+ghidrust **attaches** to a Ghidra project you have already created and fully analyzed in the Ghidra
+GUI, then closed — it does not (yet) import or analyze binaries itself.
 
-| Tool | What it is | Docs | Release lineage |
-|------|-----------|------|-----------------|
-| **clavity** | Pairs [Claude Code](https://claude.com/claude-code) with [Antigravity (`agy`)](https://antigravity.google) — `.NET` + `classic` variants, plus `agy-autotrain` / `commonmemory` add-ons. | [README-CLAVITY.md](README-CLAVITY.md) | `clavity-v<N>` |
+## Prerequisites (you supply these — not bundled)
 
-## Adding a tool
+- **Ghidra 12.1.2** — set `GHIDRA_INSTALL_DIR` to its install root (the installer offers to set this
+  for you).
+- **JDK 21** — required by Ghidra 12.1.2 (`application.java.min=21`).
+- A Ghidra project, already analyzed and closed in the GUI.
 
-New tools follow one repeatable pattern (code on a branch; plugin under `plugins/<tool>/` on `main`; an
-Inno-Setup installer; its own release lineage). See the playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md).
+## Install
 
-## License
+Grab the standalone `ghidrust-setup-1.0.0` installer from the umbrella
+[release page](../../../releases) and run it. It installs the `ghidrust` binary to your PATH and
+registers the ghidrust plugin (locally, no remote marketplace) against each detected agent
+(Claude Code / agy).
 
-This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial
-use (personal, academic, non-profit). See [LICENSE](LICENSE).
+## Version & license
 
----
+Current version **1.0.0**. Licensed under the **PolyForm Noncommercial License 1.0.0** — free for
+non-commercial use (personal, academic, non-profit). See [LICENSE](../LICENSE).
 
-> **Looking for clavity install & usage?** It moved to **[README-CLAVITY.md](README-CLAVITY.md)**.
+## More detail
+
+- [`plugin/README.md`](plugin/README.md) — the full operator doc: what the plugin provides, required
+  configuration env vars, per-workspace `.mcp.json` setup, logs & quirks, and uninstall behavior.
+- [`skill/SKILL.md`](skill/SKILL.md) — the bundled agent-facing skill describing how to drive the
+  ghidrust tools.

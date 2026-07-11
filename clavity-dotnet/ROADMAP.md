@@ -1,5 +1,8 @@
 # clavity umbrella — ROADMAP
 
+> **Superseded (2026-07-11):** the branch-per-tool / `plugins/<tool>/` model described below was
+> replaced by the monorepo layout — see the root README.
+
 > **Umbrella roadmap.** This repository is a **host for several independently-released tools** under the
 > `clavity` brand. Each tool follows one pattern — code on its own branch; a plugin under
 > `plugins/<tool>/` on `main`; an Inno-Setup installer; its own `<tool>-v<N>` release lineage — see
@@ -31,11 +34,11 @@ clavity pairs **Claude** with a live **Antigravity (`agy`)** peer. It ships in *
 
 - **clavity-dotnet** — .NET 10, binary **`clavity-ls`**, drives agy over its **Language Server** (gRPC/h2c)
   via the `agy_look` / `agy_status` / `agy_ask` MCP tools. **SHIPPED**: one-command Windows installer
-  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.9**.
+  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.14**.
 - **clavity-classic** — Rust, binary **`clavity`**, drives agy over **psmux** + the **agentmemory signal bus**
   (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives on the **`clavity-classic`
   branch**. **SHIPPED**: one-command Windows installer (`clavity-classic-setup.exe` + `.sha256`), per-user,
-  mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI. Current release **v0.1.0**. (Also
+  mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI. Current release **v0.1.1**. (Also
   buildable from source via `cargo install --git … --branch clavity-classic`.)
 
 Optional opt-in add-ons (installer checkboxes, **clavity-dotnet only**): **agy-autotrain** (the

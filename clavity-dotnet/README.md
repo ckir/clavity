@@ -8,7 +8,7 @@ shipped as universal dual-plugins. It is one tool in the [`clavity` umbrella](RE
 Run this in **PowerShell** (not `cmd.exe`) to install:
 
 ```powershell
-irm https://raw.githubusercontent.com/ckir/clavity/main/install/clavity-install.ps1 | iex
+irm https://raw.githubusercontent.com/ckir/clavity/main/clavity-dotnet/install/clavity-install.ps1 | iex
 ```
 
 *Note: The installer is unsigned, so Windows SmartScreen may warn on first run (choose "More info" →
@@ -65,7 +65,7 @@ If you want to build your own dual-plugins or contribute to Clavity, this sectio
 
 | Path | Role |
 | --- | --- |
-| `plugins/<name>/` | A universal dual-plugin (contains both manifest sets + `skills/`, ± a server). |
+| `<product>/plugin/` | A universal dual-plugin (contains both manifest sets + `skills/`, ± a server). |
 | `docs/plugin-formats.md` | The verified Claude + Agy plugin-format reference. |
 | `docs/agy-*.md` | Agy behavior/assumptions references + design specs & plans. |
 
@@ -83,6 +83,6 @@ dotnet test -c Release --filter "Category!=LiveAgy"
 *(Live-agy tests are gated out of CI as they require a running instance).*
 
 ### Adding a Plugin
-1. Create `plugins/<name>/`.
+1. Create `<product>/plugin/`.
 2. Add both manifest sets and any `skills/` following `docs/plugin-formats.md`. (See `clavity-classic`
    and `commonmemory` as working examples).

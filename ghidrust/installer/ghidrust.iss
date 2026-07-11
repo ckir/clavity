@@ -7,7 +7,7 @@
 ; agent. There is no remote-marketplace delivery path anymore.
 
 #define AppName "ghidrust"
-#define AppVersion "1.1.0"
+#define AppVersion "1.0.0"
 #define ExeName "ghidrust.exe"
 
 [Setup]

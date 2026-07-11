@@ -13,7 +13,7 @@ There's no marketplace listing yet, so you install from a local clone of this re
 **1. Repo + the `clavity` binary**
 ```bash
 git clone https://github.com/ckir/clavity && cd clavity
-cargo install --git https://github.com/ckir/clavity --branch clavity-classic   # puts `clavity` on PATH
+cargo install --path clavity-classic   # puts `clavity` on PATH (or use the clavity-classic standalone installer)
 ```
 
 **2. psmux** — install a tmux/psmux build; ensure `tmux` (or `psmux` / `pmux`) is on your PATH.
@@ -40,8 +40,8 @@ Esc ~half a second, so you can't Esc out of agy's popups — that was the "lock"
 
 **5. Install the plugin in both CLIs** (from the repo root):
 ```bash
-claude plugin install ./plugins/clavity-classic
-agy    plugin install ./plugins/clavity-classic
+claude plugin install ./clavity-classic/plugin
+agy    plugin install ./clavity-classic/plugin
 ```
 Install only *stages* the skills — they register on each CLI's **next launch** (step 7 does that);
 restart a CLI you already have open.
