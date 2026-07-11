@@ -79,8 +79,8 @@ begin
       if FileExists(GrowthFile) then DeleteFile(GrowthFile);
       if FileExists(GrowthFile + '.sha256') then DeleteFile(GrowthFile + '.sha256');
     end;
-    { KEEP (RemoveGrowth=False): leave growth.md exactly where it is. It lives OUTSIDE {app}, so Inno
-      never auto-removes it, and (unlike a driver's seed.md) it is never re-seeded on install, so there
+    { KEEP (RemoveGrowth=False): leave growth.md exactly where it is. It lives outside the install dir,
+      so Inno never auto-removes it, and (unlike a driver's seed.md) it is never re-seeded on install, so
       is nothing to step aside for. Renaming it to .backup here would drop it from the driver's read
       path (~\.clavity\golden-header.growth.md) on a keep-data uninstall — silently losing the user's
       learned wisdom from the active path. So on keep, do nothing. }
