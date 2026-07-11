@@ -6,7 +6,7 @@
 ;
 
 #define AppName "clavity-dotnet"
-#define AppVersion "0.1.14"
+#define AppVersion "0.1.15"
 #define ExeName "clavity-ls.exe"
 
 [Setup]
@@ -176,18 +176,15 @@ begin
     else if ResultCode <> 0 then
       SuppressibleMsgBox('clavity-ls plugin registration reported a problem (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
         'Open a terminal and re-run:  clavity-ls install --agent all', mbError, MB_OK, IDOK);
-    { C4/O1: shared seeding function (installer/_shared/golden-header-data.iss) — -LiteralPath on
-      every path-bound cmdlet, including New-Item (the pre-cohesion gap). C1 install-time rollback:
-      a seed failure after a successful clavity-ls registration rolls that registration back rather
-      than leaving a half-installed plugin whose seed never landed. }
+    { C4/O1: shared seeding function (installer/_shared/golden-header-data.iss), now native FileCopy.
+      NON-FATAL: the plugin is registered and fully works without the pre-seeded baseline (agy-curate
+      writes the growth header on its first run). A seed hiccup must NOT roll back a good registration
+      (the old rollback is exactly what blocked a real user's install) — just surface the manual step. }
     if not SeedGoldenHeader(ExpandConstant('{app}')) then
-    begin
-      Exec(ExpandConstant('{app}\{#ExeName}'), 'uninstall --agent all', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-      SuppressibleMsgBox('Could not seed the golden-header baseline, so the plugin registration was rolled ' +
-        'back. Re-run this setup. (You can also seed it manually later by copying' + #13#10 +
-        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md and ' +
-        'running:  clavity-ls install --agent all)', mbError, MB_OK, IDOK);
-    end;
+      SuppressibleMsgBox('clavity-dotnet is installed and registered, but the golden-header baseline could ' +
+        'not be pre-seeded (non-blocking). Add it any time by copying' + #13#10 +
+        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md',
+        mbInformation, MB_OK, IDOK);
   end
   else if CurStep = ssDone then
     SuppressibleMsgBox('clavity-dotnet is installed. Open a terminal (PowerShell) and run:' + #13#10 +

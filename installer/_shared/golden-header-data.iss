@@ -12,23 +12,16 @@
   vulnerable: a profile containing '[' silently fails to create ~/.clavity, dropping the seed). ---- }
 function SeedGoldenHeader(const AppDir: string): Boolean;
 var
-  ResultCode: Integer;
-  PsCmd, SrcPath, DestDir: string;
+  DestDir: string;
 begin
-  SrcPath := AppDir + '\seed\golden-header.md';
+  { Native Inno file ops — NO PowerShell shell-out. The old code shelled out to powershell.exe to copy
+    the seed; it passed on the clean CI runner but FAILED on a real user box (the subprocess launch /
+    inline-command surface is environment-fragile: PATH/AV/language-mode/32-vs-64-bit powershell.exe).
+    ForceDirectories + FileCopy take LITERAL paths (no glob), so a profile whose name contains '[' is
+    still handled correctly — the sole reason PowerShell -LiteralPath was originally used. }
   DestDir := ExpandConstant('{%USERPROFILE}\.clavity');
-  { panel R2-1 (pre-existing, preserved): double any single-quote so a username like O'Brien can't
-    break the PS single-quoted literals. }
-  StringChangeEx(SrcPath, '''', '''''', True);
-  StringChangeEx(DestDir, '''', '''''', True);
-  PsCmd :=
-    'New-Item -ItemType Directory -Force -LiteralPath ''' + DestDir + ''' | Out-Null;' +
-    'Copy-Item -LiteralPath ''' + SrcPath + ''' ' +
-    '-Destination ''' + DestDir + '\golden-header.seed.md'' -Force';
-  { -Command (inline) is not governed by execution policy — no -ExecutionPolicy flag needed
-    (pre-existing rationale, preserved). }
-  Result := Exec('powershell.exe', '-NoProfile -Command "' + PsCmd + '"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  Result := ForceDirectories(DestDir)
+            and FileCopy(AppDir + '\seed\golden-header.md', DestDir + '\golden-header.seed.md', False);
 end;
 
 { ---- rename-to-.backup (never auto-restored) for exactly ONE file the CALLER owns. A driver

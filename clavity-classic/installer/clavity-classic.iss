@@ -8,7 +8,7 @@
 ; agentmemory MCP or the GEMINI.md doorbell (guided-manual via the shipped docs + the Finished-page [Run]).
 
 #define AppName "clavity-classic"
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 #define ExeName "clavity.exe"
 
 [Setup]
@@ -162,24 +162,15 @@ begin
 
     { C4/O1: seed the golden-header baseline UNCONDITIONALLY — it must NOT depend on whether an agent was
       detected/registered (the [Files] comment: "the SEED ships even without the agy-autotrain add-on"; a
-      no-agent box still gets the seed). Only the ROLLBACK is registration-conditional: if seeding fails
-      AND a registration succeeded, undo that registration. (Was gated on AnySucceeded, so a no-agent
-      install silently skipped seeding — the smoke's "golden-header.seed.md not seeded" failure.) }
+      no-agent box still gets the seed). NON-FATAL (parity with clavity-dotnet): the plugin is registered and
+      fully works without the pre-seeded baseline (agy-curate writes the growth header on its first run). A
+      seed hiccup must NOT roll back a good registration — that rollback is exactly what blocked a real user's
+      install on the dotnet side — so just surface the manual step. }
     if not SeedGoldenHeader(ExpandConstant('{app}')) then
-    begin
-      if AnySucceeded then
-      begin
-        RollbackMemberPlugin('clavity-classic', 'clavity-classic', RegisteredClaude, RegisteredAgy);
-        SuppressibleMsgBox('Could not seed the golden-header baseline, so the plugin registration was rolled ' +
-          'back. Re-run this setup. (You can also seed it manually later by copying' + #13#10 +
-          ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md)',
-          mbError, MB_OK, IDOK);
-      end
-      else
-        SuppressibleMsgBox('Could not seed the golden-header baseline. Re-run this setup, or seed it manually ' +
-          'by copying' + #13#10 + ExpandConstant('{app}\seed\golden-header.md') +
-          '  to  %USERPROFILE%\.clavity\golden-header.seed.md', mbError, MB_OK, IDOK);
-    end;
+      SuppressibleMsgBox('clavity-classic is installed and registered, but the golden-header baseline could ' +
+        'not be pre-seeded (non-blocking). Add it any time by copying' + #13#10 +
+        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md',
+        mbInformation, MB_OK, IDOK);
     if WizardIsTaskSelected('install_bridge') then
     begin
       BridgeDir := ExpandConstant('{app}\agy-mcp-bridge');
