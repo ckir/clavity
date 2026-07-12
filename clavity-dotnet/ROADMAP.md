@@ -38,7 +38,7 @@ clavity pairs **Claude** with a live **Antigravity (`agy`)** peer. It ships in *
 - **clavity-classic** — Rust, binary **`clavity`**, drives agy over **psmux** + the **agentmemory signal bus**
   (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives on the **`clavity-classic`
   branch**. **SHIPPED**: one-command Windows installer (`clavity-classic-setup.exe` + `.sha256`), per-user,
-  mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI. Current release **v0.1.1**. (Also
+  mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI. Current release **v0.1.2**. (Also
   buildable from source via `cargo install --git … --branch clavity-classic`.)
 
 Optional opt-in add-ons (installer checkboxes, **clavity-dotnet only**): **agy-autotrain** (the
