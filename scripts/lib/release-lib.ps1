@@ -62,3 +62,35 @@ function Get-BumpLevel([string[]]$subjects) {
     }
     return $level
 }
+
+function Step-SemverVersion([string]$current, [string]$level) {
+    if ($current -notmatch '^(\d+)\.(\d+)\.(\d+)$') { throw "not semver: $current" }
+    $maj=[int]$Matches[1]; $min=[int]$Matches[2]; $pat=[int]$Matches[3]
+    if ($maj -eq 0) {
+        # pre-1.0: breaking degrades to minor so a feat!/breaking never forces 1.0.0 (F3)
+        switch ($level) {
+            'breaking' { return "0.$($min+1).0" }
+            'minor'    { return "0.$($min+1).0" }
+            'patch'    { return "0.$min.$($pat+1)" }
+            default    { throw "no bump for level '$level'" }
+        }
+    }
+    switch ($level) {
+        'breaking' { return "$($maj+1).0.0" }
+        'minor'    { return "$maj.$($min+1).0" }
+        'patch'    { return "$maj.$min.$($pat+1)" }
+        default    { throw "no bump for level '$level'" }
+    }
+}
+
+function Read-IssVersion([string]$issPath) {
+    $c = Get-Content -Raw $issPath
+    if ($c -notmatch '#define AppVersion "([^"]+)"') { throw "no #define AppVersion in $issPath" }
+    return $Matches[1]
+}
+
+function Read-JsonVersion([string]$jsonPath) {
+    $c = Get-Content -Raw $jsonPath
+    if ($c -notmatch '(?m)^\s*"version"\s*:\s*"([^"]+)"') { throw "no top-level version in $jsonPath" }
+    return $Matches[1]
+}

@@ -30,3 +30,28 @@ Describe 'Test-Conventional' {
         Test-Conventional 'FEAT(a)!: x'     | Should -BeTrue
     }
 }
+
+Describe 'Step-SemverVersion (F3 pre-1.0 rule)' {
+    It '<1.0.0 never auto-crosses to 1.0.0' {
+        Step-SemverVersion '0.1.0' 'breaking' | Should -Be '0.2.0'
+        Step-SemverVersion '0.1.2' 'minor'    | Should -Be '0.2.0'
+        Step-SemverVersion '0.1.2' 'patch'    | Should -Be '0.1.3'
+    }
+    It '>=1.0.0 uses normal semver' {
+        Step-SemverVersion '1.0.0' 'breaking' | Should -Be '2.0.0'
+        Step-SemverVersion '1.4.2' 'minor'    | Should -Be '1.5.0'
+        Step-SemverVersion '1.4.2' 'patch'    | Should -Be '1.4.3'
+    }
+    It 'rejects a non-semver current' {
+        { Step-SemverVersion '1.2' 'patch' } | Should -Throw
+    }
+}
+
+Describe 'Read-IssVersion' {
+    It 'reads #define AppVersion' {
+        $f = New-TemporaryFile
+        Set-Content $f '#define AppVersion "0.4.1"' -NoNewline
+        Read-IssVersion $f | Should -Be '0.4.1'
+        Remove-Item $f
+    }
+}
