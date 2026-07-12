@@ -115,3 +115,11 @@ function Group-Notes([string[]]$subjects) {
     }
     return [pscustomobject]@{ Breaking=$breaking; Features=$features; Fixes=$fixes }
 }
+
+# Exhaustive split (F2): ghidrust/plugin/** = plugin; ANY other ghidrust/ path = binary.
+function Get-GhidrustChannel([string]$path) {
+    $p = $path -replace '\\', '/'
+    if ($p -like 'ghidrust/plugin/*') { return 'plugin' }
+    if ($p -like 'ghidrust/*')        { return 'binary' }
+    return $null
+}

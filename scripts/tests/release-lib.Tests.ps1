@@ -75,3 +75,18 @@ Describe 'Group-Notes (F10 grouping)' {
         $g.Fixes    | Should -Be @('fix: bug','revert: oops')
     }
 }
+
+Describe 'Get-GhidrustChannel (F2 exhaustive split)' {
+    It 'plugin path -> plugin' {
+        Get-GhidrustChannel 'ghidrust/plugin/plugin.json' | Should -Be 'plugin'
+        Get-GhidrustChannel 'ghidrust/plugin/skills/x/SKILL.md' | Should -Be 'plugin'
+    }
+    It 'every other ghidrust path -> binary (exhaustive default)' {
+        Get-GhidrustChannel 'ghidrust/installer/ghidrust.iss' | Should -Be 'binary'
+        Get-GhidrustChannel 'ghidrust/Cargo.lock'             | Should -Be 'binary'
+        Get-GhidrustChannel 'ghidrust/crates/core/src/lib.rs' | Should -Be 'binary'
+    }
+    It 'non-ghidrust path -> $null' {
+        Get-GhidrustChannel 'clavity-classic/Cargo.toml' | Should -BeNullOrEmpty
+    }
+}
