@@ -26,13 +26,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  guard:
+    # F15: a clavity-v* tag fires this workflow regardless of branch. Verify the tagged commit is
+    # reachable from origin/main BEFORE the heavy gate, so a stray/numeric tag on a dev branch cannot
+    # publish. fetch-depth: 0 is REQUIRED — the default shallow checkout has no origin/main to compare.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify tag is on main
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.ref_name }}"; fi
+          SHA="$(git rev-list -n1 "$TAG")"
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::tag $TAG ($SHA) is not reachable from origin/main — refusing to release."
+            exit 1
+          fi
+          echo "tag $TAG is on main ($SHA)"
+      - name: CC2 roster drift gate
+        # True CI enforcement of the release roster <-> build/members.json set-equality (option C,
+        # owner-ratified 2026-07-12). pwsh is preinstalled on ubuntu-latest runners. A drifted roster
+        # (a member in one but not the other) fails HERE, before any 573MB build or publish.
+        shell: bash
+        run: pwsh -File scripts/check-roster.ps1
+
   dotnet:
+    needs: [guard]
     uses: ./.github/workflows/build-dotnet.yml   # FILE ref = this tag's main commit (dotnet is already pinned by the tag)
 
   classic:
+    needs: [guard]
     uses: ./.github/workflows/build-classic.yml
 
   ghidrust:
+    needs: [guard]
     uses: ./.github/workflows/build-ghidrust.yml
 
   e2e-ghidrust:
@@ -43,9 +73,11 @@ jobs:
     uses: ./.github/workflows/e2e-ghidrust.yml
 
   agy-autotrain:
+    needs: [guard]
     uses: ./.github/workflows/build-agy-autotrain.yml
 
   commonmemory:
+    needs: [guard]
     uses: ./.github/workflows/build-commonmemory.yml
 
   publish:
