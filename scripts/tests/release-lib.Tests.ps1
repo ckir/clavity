@@ -55,3 +55,23 @@ Describe 'Read-IssVersion' {
         Remove-Item $f
     }
 }
+
+Describe 'Format-Sanitized (F14)' {
+    It 'clamps to one line, escapes table-breakers, strips control chars' {
+        Format-Sanitized "feat: a | b`nc"       | Should -Be 'feat: a \| b c'
+        Format-Sanitized "fix: `t tab`r end"    | Should -Match 'fix:'
+        (Format-Sanitized "x`nlie") -notmatch "`n" | Should -BeTrue
+    }
+    It 'escapes a leading HTML/comment opener' {
+        Format-Sanitized '<!-- sneaky' | Should -Be '&lt;!-- sneaky'
+    }
+}
+
+Describe 'Group-Notes (F10 grouping)' {
+    It 'routes ! to Breaking, feat to Features, fix/revert to Fixes' {
+        $g = Group-Notes @('feat!: big','feat: nice','fix: bug','revert: oops','chore: skip')
+        $g.Breaking | Should -Be @('feat!: big')
+        $g.Features | Should -Be @('feat: nice')
+        $g.Fixes    | Should -Be @('fix: bug','revert: oops')
+    }
+}

@@ -94,3 +94,24 @@ function Read-JsonVersion([string]$jsonPath) {
     if ($c -notmatch '(?m)^\s*"version"\s*:\s*"([^"]+)"') { throw "no top-level version in $jsonPath" }
     return $Matches[1]
 }
+
+function Format-Sanitized([string]$subject) {
+    $s = $subject -replace "[`r`n`t]", ' '          # newlines/tabs -> space (one line)
+    $s = $s -replace '[\x00-\x1F]', ''               # strip other control chars
+    $s = $s -replace '\|', '\|'                       # escape markdown table pipe
+    if ($s.StartsWith('<')) { $s = '&lt;' + $s.Substring(1) }  # neutralize a leading HTML/comment opener
+    return $s.Trim()
+}
+
+function Group-Notes([string[]]$subjects) {
+    $breaking=@(); $features=@(); $fixes=@()
+    foreach ($s in $subjects) {
+        if ($s -notmatch $script:ConvRe) { continue }
+        $type=$Matches['type'].ToLower(); $bang=$Matches.ContainsKey('bang')   # StrictMode-safe (plan-review R1)
+        $clean = Format-Sanitized $s
+        if ($bang) { $breaking += $clean }
+        elseif ($type -eq 'feat') { $features += $clean }
+        elseif ($type -eq 'fix' -or $type -eq 'revert') { $fixes += $clean }
+    }
+    return [pscustomobject]@{ Breaking=$breaking; Features=$features; Fixes=$fixes }
+}
