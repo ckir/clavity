@@ -87,6 +87,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout (for release-notes extraction)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download dotnet installer
         uses: actions/download-artifact@v4
         with:
@@ -153,6 +158,14 @@ jobs:
           There is **no** remote marketplace channel — every plugin ships locally inside its own installer.
           EOF
           echo "wrote body.md"
+          # CC1/TO2: the chore(release) commit body carries the aggregated notes. Extract to a FILE
+          # (never inline shell — the text is contributor-derived) and prepend to the catalog body.
+          git log -1 --format=%b "$TAG" > release-notes.md || true
+          if [ -s release-notes.md ]; then
+            { echo "## What changed"; echo; cat release-notes.md; echo; cat body.md; } > body.combined.md
+            mv body.combined.md body.md
+          fi
+          echo "final body.md assembled"
 
       - name: Publish ONE clavity release (all installers)
         uses: softprops/action-gh-release@v2
