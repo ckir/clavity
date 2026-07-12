@@ -10,6 +10,7 @@ on:
       - '.github/workflows/build-commonmemory.yml'
       - '.github/workflows/ci-installer-commonmemory.yml'
       - 'scripts/generate-scoped-manifest.ps1'
+      - 'scripts/check-versions.ps1'
   pull_request:
     paths:
       - 'commonmemory/**'
@@ -17,6 +18,7 @@ on:
       - '.github/workflows/build-commonmemory.yml'
       - '.github/workflows/ci-installer-commonmemory.yml'
       - 'scripts/generate-scoped-manifest.ps1'
+      - 'scripts/check-versions.ps1'
 
 concurrency:
   group: ci-installer-commonmemory-${{ github.ref }}

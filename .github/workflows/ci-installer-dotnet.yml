@@ -12,6 +12,7 @@ on:
       - '.github/workflows/build-dotnet.yml'
       - '.github/workflows/ci-installer-dotnet.yml'
       - 'scripts/generate-scoped-manifest.ps1'
+      - 'scripts/check-versions.ps1'
   pull_request:
     # No `branches:` filter — fires on PRs into any base branch (matches existing ci-*.yml).
     paths:
@@ -20,6 +21,7 @@ on:
       - '.github/workflows/build-dotnet.yml'
       - '.github/workflows/ci-installer-dotnet.yml'
       - 'scripts/generate-scoped-manifest.ps1'
+      - 'scripts/check-versions.ps1'
 
 # Disposable CI run (never publishes) — cancel a superseded run rather than pile up on push-heavy main.
 concurrency:

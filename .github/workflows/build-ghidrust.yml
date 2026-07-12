@@ -89,6 +89,10 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
+      - name: Version consistency (binary + plugin classes)
+        shell: pwsh
+        run: pwsh -File ../scripts/check-versions.ps1 ghidrust
+
       - name: Build installer (ISCC)
         shell: pwsh
         run: |

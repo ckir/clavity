@@ -32,18 +32,20 @@ jobs:
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Version consistency (Cargo.toml == .iss == bridge) + emit output
+      - name: Emit version output (from .iss)
         id: ver
         shell: pwsh
         run: |
-          # No tag to triangulate against in a reusable build; assert the three in-repo versions agree instead.
-          $cargo  = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-          $iss    = (Select-String -Path installer/clavity-classic.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
-          $bridge = (Select-String -Path agy-mcp-bridge/pyproject.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-          "cargo=$cargo iss=$iss bridge=$bridge"
-          if (($cargo -ne $iss) -or ($cargo -ne $bridge)) { throw "version mismatch (Cargo=$cargo iss=$iss bridge=$bridge must all agree)" }
+          $iss = (Select-String -Path installer/clavity-classic.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
           "version=$iss" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "CLAVITY_VER=$iss" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install uv (for uv.lock gate)
+        uses: astral-sh/setup-uv@v5
+
+      - name: Version consistency (all 7 sources)
+        shell: pwsh
+        run: pwsh -File ../scripts/check-versions.ps1 classic
 
       - uses: dtolnay/rust-toolchain@stable   # rust-toolchain.toml pins the actual channel; this provides the harness.
 

@@ -45,6 +45,10 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
+      - name: Version consistency
+        shell: pwsh
+        run: pwsh -File ../scripts/check-versions.ps1 commonmemory
+
       - name: Build installer (ISCC)
         shell: pwsh
         run: |

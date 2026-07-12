@@ -10,6 +10,7 @@ on:
       - '.github/workflows/build-agy-autotrain.yml'
       - '.github/workflows/ci-installer-agy-autotrain.yml'
       - 'scripts/generate-scoped-manifest.ps1'
+      - 'scripts/check-versions.ps1'
   pull_request:
     paths:
       - 'agy-autotrain/**'
@@ -17,6 +18,7 @@ on:
       - '.github/workflows/build-agy-autotrain.yml'
       - '.github/workflows/ci-installer-agy-autotrain.yml'
       - 'scripts/generate-scoped-manifest.ps1'
+      - 'scripts/check-versions.ps1'
 
 concurrency:
   group: ci-installer-agy-autotrain-${{ github.ref }}

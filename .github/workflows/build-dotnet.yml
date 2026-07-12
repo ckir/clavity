@@ -71,6 +71,10 @@ jobs:
         shell: pwsh
         run: ../scripts/generate-scoped-manifest.ps1 -MemberName clavity-dotnet -OutFile installer/marketplace.install.json
 
+      - name: Version consistency
+        shell: pwsh
+        run: pwsh -File ../scripts/check-versions.ps1 dotnet
+
       - name: Build installer (ISCC)
         shell: pwsh
         run: |
