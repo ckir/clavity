@@ -102,12 +102,14 @@ function Invoke-Main {
 
     # 9. Drain-log (append-only; carries the full sidecar so dropped/parked verbatim survive — F11).
     $logPath = Join-Path $RepoRoot 'docs/agy-drain-log.md'
-    if (-not (Test-Path $logPath)) { Set-Content -Path $logPath -Value '# agy drain log (append-only; installer-excluded)' }
+    # D2 (LF-write discipline): append via System.IO with explicit LF, matching drain-lib.ps1's writes.
+    # Set-Content/Add-Content would emit OS-native CRLF terminators, giving this committed, maintainer-diffed
+    # log mixed line endings across entries.
+    if (-not (Test-Path $logPath)) { [System.IO.File]::WriteAllText($logPath, "# agy drain log (append-only; installer-excluded)`n") }
     $utc = (Get-Date).ToUniversalTime().ToString('u')
     $header = "`n## drain $runId — $utc — SEED ${b0}B->${b1}B — verify-needed: $verifyNeeded"
     $sidecarPath = Join-Path $RepoRoot 'docs/agy-drain-proposal.md'
-    Add-Content -Path $logPath -Value $header
-    Add-Content -Path $logPath -Value (Get-SidecarRecoverySections $sidecarPath)   # R-V1: only Dropped/Parked (F11)
+    [System.IO.File]::AppendAllText($logPath, $header + "`n" + (Get-SidecarRecoverySections $sidecarPath) + "`n")   # R-V1: only Dropped/Parked (F11)
 
     # 10. Banners.
     Write-Host "drain-knowledge: done (run $runId). SEED ${b0}B -> ${b1}B, verify-needed: $verifyNeeded." -ForegroundColor Green
