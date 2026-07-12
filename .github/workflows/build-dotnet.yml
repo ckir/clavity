@@ -75,6 +75,9 @@ jobs:
         shell: pwsh
         run: pwsh -File ../scripts/check-versions.ps1 dotnet && pwsh -File ../scripts/check-versions.ps1 dotnet -Coverage
 
+      - name: SEED byte-budget gate
+        run: pwsh -File ../scripts/check-seed-budget.ps1
+
       - name: Build installer (ISCC)
         shell: pwsh
         run: |

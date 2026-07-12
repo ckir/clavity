@@ -53,6 +53,9 @@ jobs:
         shell: pwsh
         run: pwsh -File ../scripts/check-versions.ps1 classic && pwsh -File ../scripts/check-versions.ps1 classic -Coverage
 
+      - name: SEED byte-budget gate
+        run: pwsh -File ../scripts/check-seed-budget.ps1
+
       - name: Build + stage (the 7.8 recipe)
         shell: pwsh
         run: |
