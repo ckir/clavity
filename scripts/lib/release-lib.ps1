@@ -166,3 +166,20 @@ function Assert-RosterMatchesMembers([string]$MembersJsonPath) {
         throw $msg
     }
 }
+
+function Format-ReleaseNotes([object[]]$bumps) {
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($b in $bumps) {
+        $label = if ($b.Channel) { "$($b.Key) ($($b.Channel))" } else { $b.Key }
+        [void]$sb.AppendLine("## $label $($b.Current) -> $($b.Next)")
+        foreach ($grp in @('Breaking','Features','Fixes')) {
+            $items = $b.Notes.$grp
+            if ($items.Count) {
+                [void]$sb.AppendLine("### $grp")
+                foreach ($i in $items) { [void]$sb.AppendLine("- $i") }
+            }
+        }
+        [void]$sb.AppendLine('')
+    }
+    return $sb.ToString().TrimEnd()
+}

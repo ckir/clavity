@@ -90,3 +90,15 @@ Describe 'Get-GhidrustChannel (F2 exhaustive split)' {
         Get-GhidrustChannel 'clavity-classic/Cargo.toml' | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Format-ReleaseNotes (CC1 aggregated body)' {
+    It 'renders per-member grouped sections' {
+        $bump = [pscustomobject]@{ Key='classic'; Channel=$null; Current='0.1.2'; Next='0.2.0'; Level='minor';
+            Notes=[pscustomobject]@{ Breaking=@(); Features=@('feat: nice'); Fixes=@('fix: bug') } }
+        $md = Format-ReleaseNotes @($bump)
+        $md | Should -Match 'classic 0.1.2 -> 0.2.0'
+        $md | Should -Match '### Features'
+        $md | Should -Match 'feat: nice'
+        $md | Should -Match 'fix: bug'
+    }
+}
