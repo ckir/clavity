@@ -56,5 +56,17 @@
       "C:/Program Files (x86)/Inno Setup 6/ISCC.exe"
     ],
     "install": "winget install --id JRSoftware.InnoSetup"
+  },
+  {
+    "name": "uv",
+    "why": "Python bridge lockfile tool — check-versions.ps1 gates uv.lock via `uv lock --check`, and `just bump classic` runs `uv lock`. Also the installer's bridge-install runtime.",
+    "install": "https://docs.astral.sh/uv/getting-started/installation/  (or: winget install astral-sh.uv)",
+    "in_path": "uv"
+  },
+  {
+    "name": "cargo-edit",
+    "why": "Provides `cargo set-version`, used by `just bump` to move Cargo.toml + Cargo.lock in one step (classic + ghidrust binary). CI reads via `cargo metadata` and does NOT need this.",
+    "install": "cargo install cargo-edit --locked",
+    "in_path": "cargo-set-version"
   }
 ]
