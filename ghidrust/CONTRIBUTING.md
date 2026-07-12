@@ -93,11 +93,13 @@ Releases are produced **only** by pushing a serial umbrella tag `clavity-v<N>` (
 `clavity`, bundles both variants' version-stamped installers (`clavity-dotnet-setup-<ver>.exe` and
 `clavity-classic-setup-<ver>.exe`, each with a `.sha256`).
 
-Bump each variant's version in its own `installer/*.iss` `#define AppVersion` (dotnet on `main`; classic
-on the `clavity-classic` branch, kept in sync with `Cargo.toml` + `agy-mcp-bridge/pyproject.toml`) before
-cutting. To pin an exact classic commit, run the workflow via `workflow_dispatch` supplying the required
-`tag` (the serial `clavity-v<N>`) and the `classic_ref` SHA (a dispatch has no triggering tag, so `tag`
-is mandatory there).
+To cut a release, run **`just release`** from the repo root (preview first with `just release-dry`). It
+auto-derives each member's next version + CHANGELOG from that member's conventional commits, previews every
+member that will bump, and — on your typed confirmation and a green local pre-flight — pushes the serial
+`clavity-v<N>` tag that triggers `umbrella-release.yml`. Never hand-edit an `installer/*.iss` version:
+`just bump` (which `just release` drives for you) is the sole writer across all of a member's version
+sources. To run the workflow directly without a tag push, use `workflow_dispatch` supplying the `tag`
+input (the serial `clavity-v<N>`).
 
 **Deprecated tags (no-ops):** the legacy `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags no
 longer trigger anything — the per-variant release workflows were retired. Pushing one produces **no
