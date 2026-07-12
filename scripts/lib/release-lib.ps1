@@ -43,3 +43,22 @@ function Get-NextSerial {
     if ($serials.Count -eq 0) { return 1 }
     return ((($serials | Measure-Object -Maximum).Maximum) + 1)
 }
+
+# One trivial, case-insensitive regex. Breaking = the `!` token on ANY type (F10). F7: (?i).
+$script:ConvRe = '(?i)^(?<type>feat|fix|chore|ci|docs|refactor|test|perf|build|style|revert)(?:\((?<scope>[^)]+)\))?(?<bang>!)?:'
+
+function Test-Conventional([string]$subject) { return ($subject -match $script:ConvRe) }
+
+function Get-BumpLevel([string[]]$subjects) {
+    $level = 'none'
+    foreach ($s in $subjects) {
+        if ($s -notmatch $script:ConvRe) { continue }   # non-conventional never raises level (F4)
+        $type = $Matches['type'].ToLower()
+        # StrictMode-safe: the optional (?<bang>!) group may be absent from $Matches (plan-review R1).
+        $bang = $Matches.ContainsKey('bang')
+        if ($bang) { return 'breaking' }                # ! wins outright (F10)
+        if ($type -eq 'feat' -and $level -ne 'breaking') { $level = 'minor' }
+        elseif (($type -eq 'fix' -or $type -eq 'revert') -and $level -eq 'none') { $level = 'patch' }
+    }
+    return $level
+}
