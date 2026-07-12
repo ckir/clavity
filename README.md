@@ -48,6 +48,7 @@ This monorepo uses a two-tier [`just`](https://github.com/casey/just) task runne
 - `just test` — run every tool's tests · `just lint` — every tool's CI lint gate · `just build` · `just fmt`
 - One tool only: `just classic::test`, `just dotnet::lint`, `just ghidrust::build`, …
 - **Cut a release:** `just release` (preview with `just release-dry`) — auto-versions + changelogs every member with new conventional commits and publishes one `clavity-vN` umbrella release.
+- **Interactive menu:** `pwsh -File DevelopersCockpit.ps1` — a one-stop cockpit over the `just`/scripts/release tasks (delegates, never duplicates; ship actions owner-gated).
 
 Each tool's recipes mirror its CI gate exactly. First-time ghidrust setup (installs `cargo-nextest` +
 `cargo-deny`): `just ghidrust::setup`.

@@ -23,6 +23,11 @@ license.
 
 ## Dev setup
 
+**Developer cockpit (one-stop menu):** `pwsh -File DevelopersCockpit.ps1` opens an interactive menu over the
+everyday `just` / `scripts` / release tasks (build, test, lint, version-check, bump, tag & release — the
+ship/release actions owner-gated behind a typed confirmation). It **delegates** to those canonical tools,
+never duplicates them.
+
 This file covers the **clavity-classic** (Rust) variant; run everything below from `clavity-classic/`.
 You need [Rust](https://www.rust-lang.org/tools/install) (stable). Then:
 
