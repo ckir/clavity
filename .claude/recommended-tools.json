@@ -68,5 +68,11 @@
     "why": "Provides `cargo set-version`, used by `just bump` to move Cargo.toml + Cargo.lock in one step (classic + ghidrust binary). CI reads via `cargo metadata` and does NOT need this.",
     "install": "cargo install cargo-edit --locked",
     "in_path": "cargo-set-version"
+  },
+  {
+    "name": "Pester",
+    "why": "runs scripts/tests/*.Tests.ps1 for the drain gates",
+    "install": "Install-Module Pester -Scope CurrentUser -Force",
+    "in_path": false
   }
 ]

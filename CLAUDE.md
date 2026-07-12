@@ -20,6 +20,9 @@ the bus, keyring auth, …), the versions verified against, **how each was verif
 re-verify and fix** — most breakages are fixable via an `AGY_*` env override or the responder skill,
 not code.
 
+For the maintainer procedure that drains captured `agy-learn` observations into those manuals + the
+SEED, see [`docs/drain-knowledge-runbook.md`](docs/drain-knowledge-runbook.md).
+
 ## Products
 
 | Product | Folder | Build | Driving notes |
