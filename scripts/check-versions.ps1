@@ -127,6 +127,56 @@ function Assert-UvLock([hashtable]$src) {
     } finally { Pop-Location }
 }
 
+function Test-HasLiteralTomlVersion([string]$path, [string]$section) {
+    # True only if the file has a literal `[<section>]` table with a literal semver `version = "x.y.z"`
+    # before the next `[...]` header. Excludes workspace roots (no such table) and version.workspace crates.
+    if (-not (Test-Path $path)) { return $false }
+    $inSection = $false
+    foreach ($line in Get-Content $path) {
+        if ($line -match "^\[$section\]\s*$") { $inSection = $true; continue }
+        if ($inSection -and $line -match '^\[') { break }
+        if ($inSection -and $line -match '^version\s*=\s*"\d+\.\d+\.\d+"') { return $true }
+    }
+    return $false
+}
+
+function Invoke-Coverage([hashtable]$cfg) {
+    $folder = $cfg.Folder
+    $registered = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($f in $cfg.CoverageFiles) { [void]$registered.Add(($f -replace '\\', '/')) }
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail "required tool 'git' not found on PATH" }
+    # A bare directory pathspec recursively lists every tracked file under it (version-portable);
+    # avoid a `$folder/**` glob, whose `**` is not special in a plain git pathspec.
+    $tracked = & git -C $RepoRoot ls-files -- "$folder"
+    if ($LASTEXITCODE -ne 0) { Fail "git ls-files failed for $folder" }
+
+    # Exclude build/artifact/fixture dirs (spec): any path segment target|.venv|bin|obj|dist|publish|node_modules, or a /fixtures/ dir.
+    $excludeRe = '(^|/)(target|\.venv|bin|obj|dist|publish|node_modules)/|/fixtures/'
+
+    $unregistered = @()
+    foreach ($raw in $tracked) {
+        $rel = $raw -replace '\\', '/'
+        if ($rel -match $excludeRe) { continue }
+        $base = Split-Path $rel -Leaf
+        $isCandidate = switch -Regex ($base) {
+            '^plugin\.json$'    { $true;  break }
+            '\.iss$'            { $true;  break }
+            '^Cargo\.lock$'     { $true;  break }
+            '^uv\.lock$'        { $true;  break }
+            '^Cargo\.toml$'     { Test-HasLiteralTomlVersion (Join-Path $RepoRoot $rel) 'package'; break }
+            '^pyproject\.toml$' { Test-HasLiteralTomlVersion (Join-Path $RepoRoot $rel) 'project'; break }
+            default             { $false }
+        }
+        if ($isCandidate -and -not $registered.Contains($rel)) { $unregistered += $rel }
+    }
+
+    if ($unregistered.Count -gt 0) {
+        Fail "unregistered version-bearing file(s) — add to the check-versions.ps1 registry for '$Member':`n  $($unregistered -join "`n  ")"
+    }
+    Write-Host "check-versions: coverage OK ($Member) — every known version-file type is registered." -ForegroundColor Green
+}
+
 # --- per-member registry ---
 $Registry = @{
     'dotnet' = @{
