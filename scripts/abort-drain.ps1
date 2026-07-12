@@ -44,7 +44,15 @@ function Invoke-Main {
     # edit to a tracked file OUTSIDE the known outputs). Untracked strays outside the known output dirs are NOT
     # force-cleaned (never blind-delete unrelated files — [[feedback-targeted-git-restore]]); they are surfaced.
     & git -C $RepoRoot checkout -- . 2>$null                        # revert every tracked file to HEAD
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "abort-drain: 'git checkout -- .' FAILED (exit $LASTEXITCODE) — tree NOT reverted; staging ($staging) retained. Fix the repo and re-run." -ForegroundColor Red
+        exit 1
+    }
     & git -C $RepoRoot clean -fd -- (Get-DrainOutputPaths) 2>$null  # remove the drain's own untracked outputs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "abort-drain: 'git clean' FAILED (exit $LASTEXITCODE) — staging ($staging) retained. Fix the repo and re-run." -ForegroundColor Red
+        exit 1
+    }
     $strays = & git -C $RepoRoot status --porcelain
     if ($strays) {
         Write-Host "abort-drain: NOTE — file(s) still differ from HEAD (a possible curator stray outside the known outputs); review + remove by hand if unwanted:`n$strays" -ForegroundColor Yellow

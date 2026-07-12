@@ -47,4 +47,14 @@ Describe "abort-drain transaction (scratch repo)" {
         (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'DRAINED SEED (unwanted)'  # NOT reverted
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1                       # NOT deleted
     }
+
+    It "hard-fails (exit 1) and RETAINS staging when the git revert fails" {
+        $notRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("notrepo-" + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $notRepo | Out-Null
+        try {
+            & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $notRepo
+            $LASTEXITCODE | Should -Be 1
+            (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
+        } finally { Remove-Item -Recurse -Force $notRepo -ErrorAction SilentlyContinue }
+    }
 }
