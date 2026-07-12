@@ -127,6 +127,7 @@ public sealed class AgyView
             var header = _options.GoldenHeaderDir is null
                 ? null
                 : GoldenHeader.TryReadCombined(_options.GoldenHeaderDir, m => _options.Diagnostics.WriteLine($"clavity: {m}"));
+            // GoldenHeaderDir and EscalationIndex are INDEPENDENT toggles: the index rides along whenever set, even with no golden-header dir. To disable the index, leave EscalationIndex null (Program.cs sets both together in production).
             if (_options.EscalationIndex is { Length: > 0 } idx)                 // CF1 Option C (no-op when null)
                 header = string.IsNullOrEmpty(header) ? idx : header.TrimEnd() + "\n\n" + idx;
             var outgoing = GoldenHeader.Apply(header, message);

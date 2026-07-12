@@ -32,6 +32,27 @@ The maintainer loop is:
 `drain-knowledge` never commits on its own; the maintainer is always the one who decides whether a
 drain's output is good enough to land, by committing it (or not) between steps 1 and 2/3 above.
 
+## Security / trust model
+
+`just drain-knowledge` runs the curator as a **headless Claude session with
+`--dangerously-skip-permissions`**: by design (it must edit the manuals and SEED unattended, with no
+one present to click "approve"), that flag makes it auto-approve **every** tool call, including Bash —
+no prompting, no confirmation.
+
+That curator's *input* is the batch of `## Pending` observations captured by `agy-learn` — machine-local
+captures that are, from the drain's point of view, **untrusted**. The deterministic gates that run after
+the curator (the `[Core]` set-equality check, the SEED-budget check) and the human `git diff` review in
+the maintainer loop above all inspect the *resulting file contents* — they check what the curator wrote,
+not what it *did* while writing it. None of them defend against a prompt-injected observation that gets
+the curator to run an arbitrary tool (including shell) **during** the run, before any gate ever sees the
+output.
+
+**Practical consequence:** only drain observations you trust, on a machine you control. Treat
+`just drain-knowledge` as running trusted-but-unverified code over your own captures, not as a sandboxed
+or content-filtered pipeline. This is an accepted dev-only residual risk — the runbook is dev-facing only
+and the maintainer runs the drain deliberately, on their own box, over their own captures. A future
+hardening could scope the curator's allowed tools instead of granting it all of them.
+
 ## The pristine-tree precondition
 
 `just drain-knowledge` refuses to run if the working tree is dirty (`git status --porcelain` is

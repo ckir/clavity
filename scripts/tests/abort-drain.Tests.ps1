@@ -57,4 +57,18 @@ Describe "abort-drain transaction (scratch repo)" {
             (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
         } finally { Remove-Item -Recurse -Force $notRepo -ErrorAction SilentlyContinue }
     }
+
+    It "reverts even when the drain outputs were STAGED (reset --hard HEAD, not checkout-from-index)" {
+        Push-Location $script:Repo
+        git add 'seed/golden-header.md'      # maintainer staged the drain's edit before deciding to abort
+        Pop-Location
+        & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
+        $LASTEXITCODE | Should -Be 0
+        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'ORIGINAL SEED'
+        Push-Location $script:Repo
+        $st = git status --porcelain
+        Pop-Location
+        $st | Should -BeNullOrEmpty
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
+    }
 }

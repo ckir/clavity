@@ -43,9 +43,9 @@ function Invoke-Main {
     # files to HEAD is safe — the only tracked changes are this drain's — and complete (it also catches a curator
     # edit to a tracked file OUTSIDE the known outputs). Untracked strays outside the known output dirs are NOT
     # force-cleaned (never blind-delete unrelated files — [[feedback-targeted-git-restore]]); they are surfaced.
-    & git -C $RepoRoot checkout -- . 2>$null                        # revert every tracked file to HEAD
+    & git -C $RepoRoot reset --hard HEAD 2>$null                    # revert every tracked file to HEAD (index+worktree; handles staged outputs)
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "abort-drain: 'git checkout -- .' FAILED (exit $LASTEXITCODE) — tree NOT reverted; staging ($staging) retained. Fix the repo and re-run." -ForegroundColor Red
+        Write-Host "abort-drain: 'git reset --hard HEAD' FAILED (exit $LASTEXITCODE) — tree NOT reverted; staging ($staging) retained. Fix the repo and re-run." -ForegroundColor Red
         exit 1
     }
     & git -C $RepoRoot clean -fd -- (Get-DrainOutputPaths) 2>$null  # remove the drain's own untracked outputs
