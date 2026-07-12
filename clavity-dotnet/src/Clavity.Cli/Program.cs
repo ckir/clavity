@@ -13,6 +13,8 @@ if (args.Contains("--mcp"))
 
     var agyDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
+    var installRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+    var manualsDir = Path.Combine(installRoot, "plugins", "clavity-dotnet", "knowledge");
     var options = new AgyViewOptions
     {
         CliLogPath = AgyEnvironment.ResolveCliLogPath(
@@ -20,6 +22,7 @@ if (args.Contains("--mcp"))
         GoldenHeaderDir = GoldenHeader.ResolveDir(
             Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+        EscalationIndex = Clavity.Ls.EscalationIndex.Build(manualsDir),   // built ONCE here (R-V2)
     };
 
     var ghOverride = Environment.GetEnvironmentVariable(GoldenHeader.PathVar);

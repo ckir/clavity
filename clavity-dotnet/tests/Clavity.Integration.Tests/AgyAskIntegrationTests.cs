@@ -173,6 +173,39 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task Ask_appends_escalation_index_when_index_set()
+    {
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), Array.Empty<CascadeStep>());
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        var headerFile = Path.Combine(dir, GoldenHeader.SeedFileName);
+        File.WriteAllText(headerFile, "SEED-BODY");
+        var manualsDir = Directory.CreateTempSubdirectory().FullName;
+        var manualPath = Path.Combine(manualsDir, "agy-assumptions.md");
+        File.WriteAllText(manualPath, "detail");
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                GoldenHeaderDir = dir,
+                EscalationIndex = EscalationIndex.Build(manualsDir),   // built once, as Program.cs does
+            });
+            await view.AskAsync("please review");
+
+            Assert.Contains("SEED-BODY", fake.LastSentText);
+            Assert.Contains(manualPath, fake.LastSentText);      // absolute path, per CF1/F38
+            Assert.Contains("escalation index", fake.LastSentText, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+            Directory.Delete(manualsDir, true);
+        }
+    }
+
+    [Fact]
     public async Task AskAsync_throws_TimeoutException_when_conversation_never_goes_idle()
     {
         // Idle delay far exceeds the client timeout -> the client-side guard must cancel the wait.

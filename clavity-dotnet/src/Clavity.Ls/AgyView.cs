@@ -18,6 +18,10 @@ public sealed class AgyViewOptions
     /// <summary>Resolved golden-header directory to read+prepend per ask; null disables injection (tests / no add-on).</summary>
     public string? GoldenHeaderDir { get; init; }
 
+    /// <summary>The CF1 escalation-index block, prebuilt ONCE at server startup from the install's manuals dir
+    /// (Option C). Appended to every injected header; null disables it (tests / classic / manuals absent).</summary>
+    public string? EscalationIndex { get; init; }
+
     /// <summary>Where operator-facing diagnostics go. Default = stderr (stdout is the MCP protocol channel, so
     /// it must NOT carry log lines). Tests inject a StringWriter to assert the surfaced model line.</summary>
     public TextWriter Diagnostics { get; init; } = Console.Error;
@@ -123,6 +127,8 @@ public sealed class AgyView
             var header = _options.GoldenHeaderDir is null
                 ? null
                 : GoldenHeader.TryReadCombined(_options.GoldenHeaderDir, m => _options.Diagnostics.WriteLine($"clavity: {m}"));
+            if (_options.EscalationIndex is { Length: > 0 } idx)                 // CF1 Option C (no-op when null)
+                header = string.IsNullOrEmpty(header) ? idx : header.TrimEnd() + "\n\n" + idx;
             var outgoing = GoldenHeader.Apply(header, message);
 
             _inFlight[conversationId] = 1;
