@@ -51,3 +51,15 @@ abort-drain *args:
 # Accept a committed drain: prove the run-ID is committed + the tree is clean, then delete the staging snapshot.
 accept-drain *args:
     pwsh -File scripts/accept-drain.ps1 {{args}}
+
+# Run the pwsh unit tests for the release engine (pure-logic seam).
+test-scripts:
+    pwsh -c "Invoke-Pester scripts/tests -Output Detailed -CI"
+
+# Prepare + gate + push a live umbrella release (auto semver + CHANGELOG from conventional commits).
+release:
+    pwsh -File scripts/release.ps1
+
+# Preview what `just release` would do — compute + notes, NO writes/tag.
+release-dry:
+    pwsh -File scripts/release.ps1 -WhatIf
