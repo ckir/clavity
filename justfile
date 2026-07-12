@@ -37,3 +37,17 @@ bump-ghidrust channel version:
 # Check a member's version sources agree (dev-time gate mirror of CI).
 check-versions member:
     pwsh -File scripts/check-versions.ps1 {{member}}
+
+# Drain machine-local agy-learn captures into the shippable manuals + injected SEED (headless claude curator;
+# NO commit — review `git diff` then `just accept-drain` or `just abort-drain`). `*args` forwards flags such as
+# `-WhatIf` (dry-run) and `-InboxPath <path>` to the script (AB1: without `*args`, `just` rejects extra args).
+drain-knowledge *args:
+    pwsh -File scripts/drain-knowledge.ps1 {{args}}
+
+# Reject a pending drain: restore all outputs and re-queue the staged observations into the inbox.
+abort-drain *args:
+    pwsh -File scripts/abort-drain.ps1 {{args}}
+
+# Accept a committed drain: prove the run-ID is committed + the tree is clean, then delete the staging snapshot.
+accept-drain *args:
+    pwsh -File scripts/accept-drain.ps1 {{args}}
