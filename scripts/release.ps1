@@ -80,3 +80,29 @@ git commit -F $msgFile
 $commitRc = $LASTEXITCODE
 Remove-Item $msgFile
 if ($commitRc -ne 0) { Die "commit failed" }
+
+# --- Local pre-flight (fast gate; no E2E/ISCC) ---
+& pwsh -File (Join-Path $PSScriptRoot 'check-roster.ps1');   if ($LASTEXITCODE -ne 0) { Die "pre-flight: roster drift — release roster and build/members.json disagree (CC2 gate)" }
+& just test-scripts;                                  if ($LASTEXITCODE -ne 0) { Die "pre-flight: scripts tests failed" }
+& just lint;                                          if ($LASTEXITCODE -ne 0) { Die "pre-flight: lint failed" }
+& just test;                                          if ($LASTEXITCODE -ne 0) { Die "pre-flight: tests failed" }
+foreach ($key in ($script:Computed.Bumps.Key | Select-Object -Unique)) {
+    & pwsh -File (Join-Path $PSScriptRoot 'check-versions.ps1') $key;             if ($LASTEXITCODE -ne 0) { Die "pre-flight: check-versions $key failed" }
+    & pwsh -File (Join-Path $PSScriptRoot 'check-versions.ps1') $key -Coverage;   if ($LASTEXITCODE -ne 0) { Die "pre-flight: coverage $key failed" }
+}
+
+# --- Push sequence (F5): commit first; only then tag + push tag ---
+git push origin main
+if ($LASTEXITCODE -ne 0) { Die "push main rejected (raced?) — nothing tagged; fix and re-run." }
+git tag $script:Target
+git push origin $script:Target
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "release: COMMIT IS ON main BUT TAG PUSH FAILED — no release has fired." -ForegroundColor Red
+    Write-Host "release: run  git push origin $($script:Target)  to complete it." -ForegroundColor Red
+    exit 1
+}
+
+# --- Observability (F11/V2): print run URL, suggest non-blocking watch ---
+$repo = (gh repo view --json nameWithOwner -q .nameWithOwner 2>$null)
+Write-Host "release: tag $($script:Target) pushed. CI is gating + will auto-publish on green." -ForegroundColor Green
+if ($repo) { Write-Host "release: watch → https://github.com/$repo/actions   (or: gh run watch)" -ForegroundColor Green }
