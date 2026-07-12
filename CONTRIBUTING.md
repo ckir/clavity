@@ -119,6 +119,28 @@ ghidrust live-E2E) and auto-publishes on green. If CI fails the tag is "burned" 
 skips a number); fix and re-run. Never hand-edit a version — `just bump` remains the sole writer and
 `just release` drives it for you.
 
+That one release, named `clavity`, is the **canonical catalog page** for five INDEPENDENT installers
+(cohesive-distribution model, `docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md`):
+`clavity-dotnet-setup`, `clavity-classic-setup`, `ghidrust-setup`, `agy-autotrain-setup`,
+`commonmemory-setup` — each with its own `.sha256`. Each installer does exactly one member; none bundles
+or downloads another (there is no live remote marketplace channel). ghidrust is gated by its live-E2E
+before publish, so a broken ghidrust blocks a **full** umbrella cut — but NOT a single-member hotfix:
+see "Republishing one member" below.
+
+**Repo topology:** all five members live on `main` in this monorepo (one top-level folder each) — there
+is no branch-per-tool split. `main` also houses the orchestration (`umbrella-release.yml` +
+`build-<member>.yml` per member). A `clavity-v<N>` tag on `main` deterministically pins every member.
+
+**Republishing one member (Acceptance #11):** `republish-member.yml` (`workflow_dispatch`, inputs
+`tag=<existing clavity-v<N>>` + `member=<one of the five>`) rebuilds ONE member and republishes its 2
+assets onto an already-published `clavity-v<N>` release, without any sibling's build or gate (including
+ghidrust's live-E2E) running at all — a decoupled hotfix path, not a second release lineage.
+
+**Deprecated tags (no-ops):** the legacy `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags no
+longer trigger anything — the per-variant release workflows were retired. Pushing one produces **no
+release** (a silent "ghost" tag). The historical per-variant releases and their tags are kept as frozen
+history.
+
 ## Porting to Linux / macOS
 
 The binary is mostly portable; OS-specific assumptions are centralized in `src/platform.rs` (see
