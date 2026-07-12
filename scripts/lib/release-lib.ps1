@@ -141,3 +141,28 @@ function Get-ChannelSubjects([string]$Range, [string]$Channel) {
     }
     return $subjects
 }
+
+# CC2 drift gate (option C): the release roster ($Members.Marketplace) MUST equal, as a SET, the member
+# names in build/members.json. Bidirectional — any element in exactly one side fails. Keeps the two
+# schemas decoupled while making a forgotten registration a RED build, not a silent un-versioned ship.
+function Assert-RosterMatchesMembers([string]$MembersJsonPath) {
+    if (-not (Test-Path $MembersJsonPath)) { throw "check-roster: members.json not found: $MembersJsonPath" }
+    # Uniqueness guard (agy, goal-framed consult 2026-07-12): the set-equality gate below proves the member
+    # SET matches, but a copy-paste 6th row that satisfies name-equality while duplicating another row's
+    # Key/Root/Marketplace would bump the WRONG member's version. Assert every identifier is distinct first.
+    foreach ($field in 'Key','Root','Marketplace') {
+        $dupes = @(Get-Members | ForEach-Object { $_.$field } | Group-Object | Where-Object Count -gt 1 | ForEach-Object { $_.Name })
+        if ($dupes.Count) { throw "check-roster: duplicate `$Members.$field value(s): $($dupes -join ', ') — every roster row must be distinct." }
+    }
+    $json = Get-Content -Raw $MembersJsonPath | ConvertFrom-Json
+    $manifest = @($json.members | ForEach-Object { $_.name })
+    $roster   = @(Get-Members | ForEach-Object { $_.Marketplace })
+    $missingFromRoster   = @($manifest | Where-Object { $_ -notin $roster })   # in members.json, not registered for release
+    $missingFromManifest = @($roster   | Where-Object { $_ -notin $manifest }) # in release roster, not in the marketplace
+    if ($missingFromRoster.Count -or $missingFromManifest.Count) {
+        $msg = "check-roster: release roster and build/members.json disagree on the member set."
+        if ($missingFromRoster.Count)   { $msg += "`n  in members.json but NOT release-registered (add to `$Members in release-lib.ps1): $($missingFromRoster -join ', ')" }
+        if ($missingFromManifest.Count) { $msg += "`n  in the release roster but NOT in members.json (sunset? remove the `$Members row): $($missingFromManifest -join ', ')" }
+        throw $msg
+    }
+}
