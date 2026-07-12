@@ -50,4 +50,16 @@ Describe "accept-drain transaction (scratch repo)" {
         $LASTEXITCODE | Should -Be 1
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
+
+    It "hard-fails (exit 1) and RETAINS staging when 'git status' fails (corrupt index; F34 fail-closed)" {
+        Push-Location $script:Repo
+        Add-Content 'docs/agy-drain-log.md' '## drain RID9 — x — SEED 1B->1B — verify-needed: 0'
+        git add .; git commit -qm drained
+        Pop-Location
+        # Corrupt the index: `git show HEAD:` still resolves from the object DB, but `git status` needs the index and fails.
+        Set-Content -Path (Join-Path $script:Repo '.git/index') -Value 'garbage not an index' -NoNewline
+        & pwsh -File $script:Accept -InboxPath $script:Inbox -RepoRoot $script:Repo
+        $LASTEXITCODE | Should -Be 1
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
+    }
 }

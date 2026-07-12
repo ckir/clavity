@@ -41,6 +41,10 @@ function Invoke-Main {
     # clean whole tree ⟺ every file the curator touched — INCLUDING any hallucinated stray path outside the known
     # outputs — was committed. An allowlist-scoped check would let such a stray (or an uncommitted manual) slip past.
     $dirty = & git -C $RepoRoot status --porcelain
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "accept-drain: 'git status' FAILED (exit $LASTEXITCODE) — cannot confirm a clean tree; staging ($staging) retained. Fix the repo and re-run." -ForegroundColor Red
+        exit 1
+    }
     if ($dirty) {
         Write-Host "accept-drain: uncommitted drain outputs remain — commit them before accepting:`n$dirty" -ForegroundColor Red
         exit 1
