@@ -47,7 +47,7 @@ jobs:
 
       - name: Version consistency
         shell: pwsh
-        run: pwsh -File ../scripts/check-versions.ps1 commonmemory
+        run: pwsh -File ../scripts/check-versions.ps1 commonmemory && pwsh -File ../scripts/check-versions.ps1 commonmemory -Coverage
 
       - name: Build installer (ISCC)
         shell: pwsh

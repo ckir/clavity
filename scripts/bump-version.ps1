@@ -36,6 +36,9 @@ function Die([string]$m) { Write-Host "bump-version: $m" -ForegroundColor Red; e
 function Set-IssVersion([string]$relPath) {
     $p = Join-Path $RepoRoot $relPath
     $c = Get-Content -Raw $p
+    # -cnotmatch (case-sensitive) mirrors the case-sensitive [regex]::Replace below, so the guard fires
+    # exactly when the replace would no-op — closing the silent-no-op + false-success-line gap.
+    if ($c -cnotmatch '#define AppVersion "[^"]+"') { Die "no '#define AppVersion' line in $relPath" }
     $new = [regex]::Replace($c, '(#define AppVersion ")[^"]+(")', "`${1}$Version`${2}")
     if ($new -ne $c) { Set-Content -Path $p -Value $new -NoNewline }
     Write-Host "  iss  $relPath -> $Version"

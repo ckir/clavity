@@ -91,7 +91,7 @@ jobs:
 
       - name: Version consistency (binary + plugin classes)
         shell: pwsh
-        run: pwsh -File ../scripts/check-versions.ps1 ghidrust
+        run: pwsh -File ../scripts/check-versions.ps1 ghidrust && pwsh -File ../scripts/check-versions.ps1 ghidrust -Coverage
 
       - name: Build installer (ISCC)
         shell: pwsh

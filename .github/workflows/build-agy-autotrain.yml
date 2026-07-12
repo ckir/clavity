@@ -49,7 +49,7 @@ jobs:
 
       - name: Version consistency
         shell: pwsh
-        run: pwsh -File ../scripts/check-versions.ps1 agy-autotrain
+        run: pwsh -File ../scripts/check-versions.ps1 agy-autotrain && pwsh -File ../scripts/check-versions.ps1 agy-autotrain -Coverage
 
       - name: Build installer (ISCC)
         shell: pwsh

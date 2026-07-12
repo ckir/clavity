@@ -73,7 +73,7 @@ jobs:
 
       - name: Version consistency
         shell: pwsh
-        run: pwsh -File ../scripts/check-versions.ps1 dotnet
+        run: pwsh -File ../scripts/check-versions.ps1 dotnet && pwsh -File ../scripts/check-versions.ps1 dotnet -Coverage
 
       - name: Build installer (ISCC)
         shell: pwsh

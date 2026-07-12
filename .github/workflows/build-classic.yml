@@ -43,15 +43,15 @@ jobs:
       - name: Install uv (for uv.lock gate)
         uses: astral-sh/setup-uv@v5
 
-      - name: Version consistency (all 7 sources)
-        shell: pwsh
-        run: pwsh -File ../scripts/check-versions.ps1 classic
-
       - uses: dtolnay/rust-toolchain@stable   # rust-toolchain.toml pins the actual channel; this provides the harness.
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: clavity-classic
+
+      - name: Version consistency (all 7 sources)   # after rust-toolchain so cargo metadata parses with the pinned channel, not the runner's preinstalled cargo
+        shell: pwsh
+        run: pwsh -File ../scripts/check-versions.ps1 classic && pwsh -File ../scripts/check-versions.ps1 classic -Coverage
 
       - name: Build + stage (the 7.8 recipe)
         shell: pwsh
