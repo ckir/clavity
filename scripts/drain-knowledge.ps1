@@ -11,6 +11,7 @@
 #>
 [CmdletBinding(SupportsShouldProcess)]   # enables -WhatIf / -Confirm dry-run over the mutation block
 param(
+    [string]$RepoRoot,
     [string]$InboxPath,
     [switch]$SkipCurator
 )
@@ -18,7 +19,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
 . (Join-Path $PSScriptRoot 'drain-lib.ps1')   # param-less shared primitives — safe dot-source (F-P1)
 
 function Invoke-Curator([string]$StagingPath) {
@@ -60,6 +61,10 @@ function Invoke-Main {
     # uncommitted work (see [[feedback-targeted-git-restore]]) and (b) any file the curator creates — even a
     # hallucinated stray path OUTSIDE the known outputs — is attributable to this drain and visible before accept.
     $preDirty = & git -C $RepoRoot status --porcelain
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "drain-knowledge: 'git status' FAILED (exit $LASTEXITCODE) — cannot confirm a clean tree; refusing to drain. Fix the repo and re-run." -ForegroundColor Red
+        exit 4
+    }
     if ($preDirty) {
         Write-Host "drain-knowledge: working tree is NOT clean — commit or stash ALL changes before draining." -ForegroundColor Red
         Write-Host "The drain needs a pristine tree so its edits are cleanly reviewable and fully abortable.`n$preDirty" -ForegroundColor Red
