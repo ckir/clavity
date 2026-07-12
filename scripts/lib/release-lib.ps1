@@ -123,3 +123,21 @@ function Get-GhidrustChannel([string]$path) {
     if ($p -like 'ghidrust/*')        { return 'binary' }
     return $null
 }
+
+# For a ghidrust channel, return subjects of commits in $Range that touch that channel's paths.
+function Get-ChannelSubjects([string]$Range, [string]$Channel) {
+    # MUST Out-String first (plan-review R1): git log is a string[]; splitting the array on the %x1e record
+    # separator directly detaches each commit's subject from its following --name-only file lines, so the
+    # channel attribution silently finds no files and ghidrust never bumps. Join to one string first.
+    $raw = (git log $Range --format='%x1e%s%x00' --name-only -- 'ghidrust/' 2>$null | Out-String)
+    if (-not $raw) { return @() }
+    $subjects = @()
+    foreach ($rec in ($raw -split "`u{1e}" | Where-Object { $_ -ne '' })) {
+        $parts = $rec -split "`0", 2
+        $subject = $parts[0].Trim()
+        $files = @()
+        if ($parts.Count -gt 1) { $files = @($parts[1] -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }) }
+        foreach ($f in $files) { if ((Get-GhidrustChannel $f) -eq $Channel) { $subjects += $subject; break } }
+    }
+    return $subjects
+}
