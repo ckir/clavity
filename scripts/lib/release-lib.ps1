@@ -183,3 +183,24 @@ function Format-ReleaseNotes([object[]]$bumps) {
     }
     return $sb.ToString().TrimEnd()
 }
+
+# Prepend a dated section to <root>/CHANGELOG.md (create if absent). $DateStr passed in (scripts may
+# stamp time; keep the function pure/testable).
+function Update-Changelog([string]$repoRoot, [object]$bump, [string]$dateStr) {
+    $path = Join-Path $repoRoot (Join-Path $bump.Root 'CHANGELOG.md')
+    $label = if ($bump.Channel) { "$($bump.Key) ($($bump.Channel))" } else { $bump.Key }
+    $section = "## $($bump.Next) — $dateStr`n`n"
+    foreach ($grp in @('Breaking','Features','Fixes')) {
+        $items = $bump.Notes.$grp
+        if ($items.Count) { $section += "### $grp`n"; foreach ($i in $items) { $section += "- $i`n" }; $section += "`n" }
+    }
+    # Fallback H1 uses the member KEY, not $label — a ghidrust CHANGELOG is shared by both channels, so a
+    # channel-specific title ('# ghidrust (binary) changelog') would be permanently wrong (plan-review R2).
+    $existing = if (Test-Path $path) { Get-Content -Raw $path } else { "# $($bump.Key) changelog`n`n" }
+    # Inject AFTER the H1 title, not above it (plan-review R1: blind prepend pushes the `# … changelog`
+    # heading further down on every release).
+    if ($existing -match '(?s)^(#[^\n]*\n+)(.*)$') { $out = $Matches[1] + $section + $Matches[2] }
+    else                                          { $out = $section + $existing }
+    Set-Content -Path $path -Value $out -NoNewline
+    return $path
+}

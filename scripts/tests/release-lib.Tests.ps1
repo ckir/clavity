@@ -102,3 +102,15 @@ Describe 'Format-ReleaseNotes (CC1 aggregated body)' {
         $md | Should -Match 'fix: bug'
     }
 }
+
+Describe 'Update-Changelog' {
+    It 'creates and prepends newest-first' {
+        $root = New-TemporaryFile; Remove-Item $root; New-Item -ItemType Directory $root | Out-Null
+        $bump = [pscustomobject]@{ Key='classic'; Channel=$null; Root='m'; Next='0.2.0';
+            Notes=[pscustomobject]@{ Breaking=@(); Features=@('feat: x'); Fixes=@() } }
+        New-Item -ItemType Directory (Join-Path $root 'm') | Out-Null
+        $p = Update-Changelog $root $bump '2026-07-12'
+        (Get-Content -Raw $p) | Should -Match '## 0.2.0 — 2026-07-12'
+        Remove-Item -Recurse -Force $root
+    }
+}

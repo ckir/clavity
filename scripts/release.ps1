@@ -53,3 +53,30 @@ if ($answer -ne $target) { Write-Host "aborted." -ForegroundColor Yellow; exit 0
 
 # (bump/commit/pre-flight/push added in Tasks 8-9; stash $r + $target for them)
 $script:Computed = $r; $script:Target = $target
+
+$dateStr = (Get-Date -Format 'yyyy-MM-dd')
+foreach ($b in $script:Computed.Bumps) {
+    if ($b.Channel) { & just bump-ghidrust $b.Channel $b.Next }   # ghidrust per channel
+    else            { & just bump $b.Key $b.Next }
+    if ($LASTEXITCODE -ne 0) { Die "bump failed for $($b.Key) $($b.Channel)" }
+    [void](Update-Changelog $RepoRoot $b $dateStr)
+}
+
+# F13‴: stage tracked bump edits repo-wide (no path enumeration) + explicit changelog adds; never -am/-A.
+git add -u
+foreach ($root in ($script:Computed.Bumps.Root | Select-Object -Unique)) {
+    $cl = Join-Path $root 'CHANGELOG.md'
+    if (Test-Path $cl) { git add -- $cl }
+}
+
+# Subject = baseline anchor; body = aggregated notes (CC1). Write body to a temp file for -F to avoid
+# quoting hazards, then commit with -m subject -F bodyfile order preserved via two -F/-m? Use file for both.
+$members = ($script:Computed.Bumps | ForEach-Object { $l = if ($_.Channel) { "$($_.Key)/$($_.Channel)" } else { $_.Key }; "$l $($_.Next)" }) -join ', '
+$subject = "chore(release): $($script:Target) [$members]"
+$body    = Format-ReleaseNotes $script:Computed.Bumps
+$msgFile = New-TemporaryFile
+Set-Content -Path $msgFile -Value ("$subject`n`n$body") -NoNewline
+git commit -F $msgFile
+$commitRc = $LASTEXITCODE
+Remove-Item $msgFile
+if ($commitRc -ne 0) { Die "commit failed" }
