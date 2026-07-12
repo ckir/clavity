@@ -148,5 +148,7 @@ Then run the suite with:
 Invoke-Pester scripts/tests/
 ```
 
-Pester is registered in `.claude/recommended-tools.json` so a session's `SessionStart` tooling check
-surfaces it automatically when missing.
+Pester is a **manual dev prerequisite** — install it yourself. The `.claude/recommended-tools.json`
+entry documents Pester and its install command, but the `SessionStart` tooling check only presence-checks
+PATH executables and exact file paths; it cannot check for an installed PowerShell *module*, so it will
+NOT auto-remind you when Pester is missing.
