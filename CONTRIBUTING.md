@@ -106,39 +106,18 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
 onboarding playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md) (code on a branch; plugin under
 `plugins/<tool>/` on `main`; per-tool `<tool>-v<N>` release lineage).
 
-## Releasing (umbrella)
+## Releasing
 
-Releases are produced **only** by pushing a serial umbrella tag `clavity-v<N>` (e.g. `clavity-v1`,
-`clavity-v2`), which triggers `.github/workflows/umbrella-release.yml`. That one release, named
-`clavity`, is the **canonical catalog page** for five INDEPENDENT installers (cohesive-distribution
-model, `docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md`): `clavity-dotnet-setup`,
-`clavity-classic-setup`, `ghidrust-setup`, `agy-autotrain-setup`, `commonmemory-setup` — each with its
-own `.sha256`. Each installer does exactly one member; none bundles or downloads another (there is no
-live remote marketplace channel). ghidrust is gated by its live-E2E before publish, so a broken ghidrust
-blocks a **full** umbrella cut — but NOT a single-member hotfix: see "Republishing one member" below.
+To cut a live umbrella release, run:
 
-**Repo topology:** all five members live on `main` in this monorepo (one top-level folder each) — there
-is no branch-per-tool split. `main` also houses the orchestration (`umbrella-release.yml` +
-`build-<member>.yml` per member). A `clavity-v<N>` tag on `main` deterministically pins every member.
+    just release            # or: just release-dry  (preview only, no writes)
 
-Bump every member's version with `just bump <member> <version>` (ghidrust bumps per channel:
-`just bump-ghidrust <binary|plugin> <version>`) before cutting. One command rewrites **every** version
-source for that member — its `installer/*.iss` `#define AppVersion`, both `plugin.json`, and for classic
-also `Cargo.toml` + `Cargo.lock` + `agy-mcp-bridge/pyproject.toml` + `uv.lock` — then self-verifies with
-`scripts/check-versions.ps1`. That same gate runs in every `build-<member>.yml` (before ISCC) and in the
-lefthook `pre-push` hook, so a mismatched set of version files fails the build/push loudly. **Do NOT
-hand-edit an individual source** — a partial bump is exactly what the gate exists to catch. To check a
-member without bumping: `just check-versions <member>` (mirrors the CI gate).
-
-**Republishing one member (Acceptance #11):** `republish-member.yml` (`workflow_dispatch`, inputs
-`tag=<existing clavity-v<N>>` + `member=<one of the five>`) rebuilds ONE member and republishes its 2
-assets onto an already-published `clavity-v<N>` release, without any sibling's build or gate (including
-ghidrust's live-E2E) running at all — a decoupled hotfix path, not a second release lineage.
-
-**Deprecated tags (no-ops):** the legacy `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags no
-longer trigger anything — the per-variant release workflows were retired. Pushing one produces **no
-release** (a silent "ghost" tag). The historical per-variant releases and their tags are kept as frozen
-history.
+`just release` reads each member's conventional commits since the last release, auto-derives the next
+semver + CHANGELOG, previews every member that will bump, asks you to type the target `clavity-vN` to
+confirm, runs a fast local gate, then pushes the tag. Existing CI heavy-gates (all 5 builds + the
+ghidrust live-E2E) and auto-publishes on green. If CI fails the tag is "burned" (accepted — the sequence
+skips a number); fix and re-run. Never hand-edit a version — `just bump` remains the sole writer and
+`just release` drives it for you.
 
 ## Porting to Linux / macOS
 
