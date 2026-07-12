@@ -121,9 +121,14 @@ blocks a **full** umbrella cut — but NOT a single-member hotfix: see "Republis
 is no branch-per-tool split. `main` also houses the orchestration (`umbrella-release.yml` +
 `build-<member>.yml` per member). A `clavity-v<N>` tag on `main` deterministically pins every member.
 
-Bump each member's version in its own `installer/*.iss` `#define AppVersion` (all five on `main`;
-classic's is additionally kept in sync with `Cargo.toml` + `agy-mcp-bridge/pyproject.toml`) before
-cutting.
+Bump every member's version with `just bump <member> <version>` (ghidrust bumps per channel:
+`just bump-ghidrust <binary|plugin> <version>`) before cutting. One command rewrites **every** version
+source for that member — its `installer/*.iss` `#define AppVersion`, both `plugin.json`, and for classic
+also `Cargo.toml` + `Cargo.lock` + `agy-mcp-bridge/pyproject.toml` + `uv.lock` — then self-verifies with
+`scripts/check-versions.ps1`. That same gate runs in every `build-<member>.yml` (before ISCC) and in the
+lefthook `pre-push` hook, so a mismatched set of version files fails the build/push loudly. **Do NOT
+hand-edit an individual source** — a partial bump is exactly what the gate exists to catch. To check a
+member without bumping: `just check-versions <member>` (mirrors the CI gate).
 
 **Republishing one member (Acceptance #11):** `republish-member.yml` (`workflow_dispatch`, inputs
 `tag=<existing clavity-v<N>>` + `member=<one of the five>`) rebuilds ONE member and republishes its 2

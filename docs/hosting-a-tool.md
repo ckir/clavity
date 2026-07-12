@@ -70,6 +70,21 @@ The umbrella surface + the plugin.
    rejected and no release fires.
 8. Add a `# <tool-id>` section to `ROADMAP.md` and a row to its "Hosted tools" index; add a row to the
    root `README.md` "Tools hosted here" table linking `plugins/<tool-id>/README.md`.
+9. **Register the tool in the version-consistency gate** (`scripts/check-versions.ps1`). Add a
+   `$Registry['<tool-id>']` entry: an equality class (`Eq`) listing every version-bearing source — its
+   `installer/<tool-id>.iss` `#define AppVersion` (`Type='iss'`) and both `plugin.json` (`Type='json'`),
+   plus any `Cargo.toml`/`Cargo.lock` (`Type='cargo'`/`cargolock`) or `pyproject.toml`+`uv.lock`
+   (`Type='pyproject'` + a `uvlock` assert) the tool ships — and a matching `CoverageFiles` list of the
+   same paths (so `-Coverage` doesn't flag the new files as unregistered). Then: (a) add a
+   `Version consistency` step running
+   `pwsh -File ../scripts/check-versions.ps1 <tool-id> && pwsh -File ../scripts/check-versions.ps1 <tool-id> -Coverage`
+   immediately BEFORE the `Build installer (ISCC)` step in `build-<tool-id>.yml` (place it AFTER any
+   rust-toolchain setup so `cargo metadata` uses the pinned channel); (b) if the tool has a
+   `ci-installer-<tool-id>.yml` wrapper, add `- 'scripts/check-versions.ps1'` to BOTH its `paths:`
+   blocks; (c) add the tool to the `check-versions` command chain in `lefthook.yml`'s `pre-push`. Verify:
+   `pwsh -File scripts/check-versions.ps1 <tool-id> && pwsh -File scripts/check-versions.ps1 <tool-id> -Coverage`.
+   Thereafter bump only via `just bump <tool-id> <version>` — never hand-edit a single source. (Rationale
+   + registry topology: `docs/superpowers/specs/2026-07-12-version-bump-automation-design.md`.)
 
 ## Phase C — cut the release
 9. Push tag `<tool-id>-v1` **on `main`** (matching the `clavity-v<N>` precedent). The tag must land where
