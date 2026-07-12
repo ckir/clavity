@@ -21,25 +21,29 @@ function Get-Members { $script:Members }
 # regardless of the user's grep.patternType (^ anchors to line start; () are literal) — FI1'.
 # Match INSIDE the ForEach so $Matches is set in the same scope it is read (plan-review R1: relying on
 # $Matches leaking from a Where-Object into a downstream ForEach-Object is unreliable under StrictMode).
-function Get-Serials {
-    git tag --list 'clavity-v*' | ForEach-Object { if ($_ -match '^clavity-v([0-9]+)$') { [int]$Matches[1] } }
+# All git calls take an explicit $RepoRoot and use `git -C $RepoRoot` (agy-reviewed fix C, 2026-07-13):
+# the engine must never split its dependencies (file reads anchored to one repo, git sweep to cwd). Every
+# git op here targets the SAME repo the caller passes, so file reads and history can't diverge — and a
+# Pester test can point the whole engine at a throwaway repo via `-RepoRoot $TempRepo`.
+function Get-Serials([string]$RepoRoot) {
+    git -C $RepoRoot tag --list 'clavity-v*' | ForEach-Object { if ($_ -match '^clavity-v([0-9]+)$') { [int]$Matches[1] } }
 }
 
-function Get-BaselineSha {
-    $sha = git log --basic-regexp --grep='^chore(release): clavity-v' -n1 --format=%H 2>$null
+function Get-BaselineSha([string]$RepoRoot) {
+    $sha = git -C $RepoRoot log --basic-regexp --grep='^chore(release): clavity-v' -n1 --format=%H 2>$null
     if ($LASTEXITCODE -eq 0 -and $sha) { return $sha.Trim() }
     # bootstrap: last existing clavity-v* tag's commit, else '' (root — all history)
-    $serials = @(Get-Serials)
+    $serials = @(Get-Serials $RepoRoot)
     if ($serials.Count -gt 0) {
         $maxTag = 'clavity-v' + ($serials | Measure-Object -Maximum).Maximum
-        return (git rev-list -n1 $maxTag).Trim()
+        return (git -C $RepoRoot rev-list -n1 $maxTag).Trim()
     }
     return ''
 }
 
 # Next serial = max(N over ^clavity-v(N)$ tags) + 1 (burned serials never reused — FI4).
-function Get-NextSerial {
-    $serials = @(Get-Serials)
+function Get-NextSerial([string]$RepoRoot) {
+    $serials = @(Get-Serials $RepoRoot)
     if ($serials.Count -eq 0) { return 1 }
     return ((($serials | Measure-Object -Maximum).Maximum) + 1)
 }
@@ -125,11 +129,11 @@ function Get-GhidrustChannel([string]$path) {
 }
 
 # For a ghidrust channel, return subjects of commits in $Range that touch that channel's paths.
-function Get-ChannelSubjects([string]$Range, [string]$Channel) {
+function Get-ChannelSubjects([string]$Range, [string]$Channel, [string]$RepoRoot) {
     # MUST Out-String first (plan-review R1): git log is a string[]; splitting the array on the %x1e record
     # separator directly detaches each commit's subject from its following --name-only file lines, so the
     # channel attribution silently finds no files and ghidrust never bumps. Join to one string first.
-    $raw = (git log $Range --format='%x1e%s%x00' --name-only -- 'ghidrust/' 2>$null | Out-String)
+    $raw = (git -C $RepoRoot log $Range --format='%x1e%s%x00' --name-only -- 'ghidrust/' 2>$null | Out-String)
     if (-not $raw) { return @() }
     $subjects = @()
     foreach ($rec in ($raw -split "`u{1e}" | Where-Object { $_ -ne '' })) {

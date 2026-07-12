@@ -1,21 +1,27 @@
 #!/usr/bin/env pwsh
 [CmdletBinding()]
-param([switch]$BaselineOnly)
+# $RepoRoot is an explicit parameter defaulting to the script's own repo (self-anchoring — runs from
+# anywhere). Both the git sweep (via `git -C $RepoRoot`, see release-lib.ps1) and the version-file reads
+# below (Join-Path $RepoRoot ...) target this one root, so they can never diverge. A test points the whole
+# engine at a throwaway repo with `-RepoRoot $TempRepo` (agy-reviewed fix C, 2026-07-13).
+param(
+    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
+    [switch]$BaselineOnly
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $PSScriptRoot 'lib' 'release-lib.ps1')
 
-$baseline = Get-BaselineSha
+$baseline = Get-BaselineSha $RepoRoot
 if ($BaselineOnly) { return $baseline }
-$serial = Get-NextSerial
+$serial = Get-NextSerial $RepoRoot
 $range  = if ($baseline) { "$baseline..HEAD" } else { 'HEAD' }
 
 # Collect (subject, changed-paths) per commit ONCE, scoped per member below.
 function Get-CommitsTouching([string]$pathspec) {
     # Out-String first: `git log` is captured as a string[] (one element per line), so splitting the array
     # directly shatters multi-line records (plan-review R1). Join to one string, then split on NUL.
-    $out = (git log $range --format='%x00%s' -- $pathspec 2>$null | Out-String)
+    $out = (git -C $RepoRoot log $range --format='%x00%s' -- $pathspec 2>$null | Out-String)
     if (-not $out) { return @() }
     return @($out -split "`0" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
 }
@@ -25,7 +31,7 @@ foreach ($m in Get-Members) {
     if ($m.Ghidrust) {
         foreach ($ch in @('binary','plugin')) {
             # subjects for commits whose changed paths fall in this channel
-            $subjects = Get-ChannelSubjects -Range $range -Channel $ch
+            $subjects = Get-ChannelSubjects -Range $range -Channel $ch -RepoRoot $RepoRoot
             $conv = @($subjects | Where-Object { Test-Conventional $_ })
             $nc   = @($subjects | Where-Object { -not (Test-Conventional $_) })
             if ($nc.Count) { $nonConv += [pscustomobject]@{ Key="ghidrust ($ch)"; Subjects=$nc } }

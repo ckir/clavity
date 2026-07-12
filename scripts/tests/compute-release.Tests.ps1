@@ -23,7 +23,7 @@ Describe 'baseline resolution (B1prime/FI1prime)' {
             Commit 'chore(release): clavity-v7'          # the real last release prep
             $realSha = (git rev-parse HEAD)
             Commit 'docs: update the chore(release): clavity-v process'  # mentions the string, NOT a release
-            $found = & $script:Engine -BaselineOnly
+            $found = & $script:Engine -BaselineOnly -RepoRoot $repo
             $found | Should -Be $realSha
         } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
     }
@@ -39,7 +39,7 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
             git tag clavity-v7
             'x' | Set-Content 'clavity-classic/feature.txt'
             git add -A; git commit -q -m 'feat(classic): add feature'
-            $r = & $script:Engine
+            $r = & $script:Engine -RepoRoot $repo
             $r.Nothing | Should -BeFalse
             $r.Serial  | Should -Be 8
             $b = $r.Bumps | Where-Object Key -eq 'classic'
@@ -53,7 +53,7 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
             Set-Content 'commonmemory/installer/commonmemory.iss' '#define AppVersion "0.1.0"' -NoNewline
             git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
             'x' | Set-Content 'commonmemory/notes.txt'; git add -A; git commit -q -m 'chore(commonmemory): tidy'
-            (& $script:Engine).Nothing | Should -BeTrue
+            (& $script:Engine -RepoRoot $repo).Nothing | Should -BeTrue
         } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
     }
     It 'surfaces a non-conventional commit as a warning, not a bump' {
@@ -63,7 +63,7 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
             Set-Content 'commonmemory/installer/commonmemory.iss' '#define AppVersion "0.1.0"' -NoNewline
             git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
             'x' | Set-Content 'commonmemory/x.txt'; git add -A; git commit -q -m 'fixed the crash'
-            $r = & $script:Engine
+            $r = & $script:Engine -RepoRoot $repo
             ($r.NonConventional | Where-Object Key -eq 'commonmemory').Subjects | Should -Contain 'fixed the crash'
         } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
     }
