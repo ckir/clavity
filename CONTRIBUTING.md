@@ -105,6 +105,29 @@ the exact check used to verify Windows; reproduce it (adapt the shell to your OS
    - the dirty `README.md` is **untouched** (the checkpoint is non-intrusive).
 5. **Cleanup:** `clavity stop` (kills the agy session), then remove the temp repo.
 
+### Installer refuse-guard canary (real Claude Code)
+
+The install/uninstall **refuse guard** (Bug 2) detects a running Claude Code by the process name
+`claude.exe` (see [`docs/installer-assumptions.md`](docs/installer-assumptions.md)). CI can only prove
+the guard *logic* with a renamed `PING.EXE` stub — it has no authenticated Claude — so the real-Claude
+oracle is this manual canary. **Run it whenever bumping the supported Claude Code version** (guards
+against Anthropic renaming/repackaging the executable, which would silently no-op the guard):
+
+1. Launch real Claude Code; confirm the process is visible: `Get-Process claude` returns a process.
+2. Run a member installer silently and assert it **refuses**:
+   ```powershell
+   $p = Start-Process "<member>-setup-<ver>.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$env:TEMP\canary.log" -Wait -PassThru
+   if ($p.ExitCode -eq 0) { throw "guard FAILED: install exited 0 with Claude running" }
+   Select-String "$env:TEMP\canary.log" -Pattern 'Claude Code is running' -Quiet   # must be True
+   # and confirm nothing was installed under %LOCALAPPDATA%\Programs\<member>
+   ```
+3. **Quit Claude Code completely**, re-run the same installer, and assert it now **succeeds** and the
+   entry is enabled: `claude plugin list` shows `<plugin>@<marketplace>` (the new per-member marketplace,
+   not `@clavity`).
+
+If step 2 does not refuse, the process-name assumption has drifted — do **not** ship; fix the probe in
+`installer/_shared/claude-running.iss` + `CliRouter.cs` and re-verify.
+
 ## Hosting a new tool
 
 `clavity` is an umbrella repo that hosts several independently-released tools. To add one, follow the
