@@ -28,7 +28,8 @@ public static class CliRouter
     /// <summary>Testable entry: injected detection + runner + paths (logsDir/clavityDataDir null ⇒ --purge-data
     /// has nothing to remove for that target).</summary>
     public static int Run(string[] args, TextWriter output, AgentDetection detection, ProcessRunner run,
-                          string marketplaceRoot, string pluginDir, string? logsDir = null, string? clavityDataDir = null)
+                          string marketplaceRoot, string pluginDir, string? logsDir = null, string? clavityDataDir = null,
+                          Func<bool>? claudeRunning = null)
     {
         var verb = args.Length > 0 ? args[0].ToLowerInvariant() : "";
         var purgeData = Array.Exists(args, a => string.Equals(a, "--purge-data", StringComparison.OrdinalIgnoreCase));
@@ -53,6 +54,13 @@ public static class CliRouter
             case "install":
             {
                 var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
+                var isClaudeRunning = claudeRunning ?? ClaudeAppRunning;
+                if (present.Contains(Agent.Claude) && isClaudeRunning())
+                {
+                    output.WriteLine("clavity-ls: Claude Code is running — close Claude Code completely, then re-run. " +
+                        "A running Claude overwrites the plugin registration (leaving the bridge unregistered).");
+                    return 5;
+                }
                 var dir = PluginDirFor(pluginName, pluginDir);
                 var anySucceeded = false;
                 var registeredCount = 0;
@@ -114,6 +122,11 @@ public static class CliRouter
                 return 2;
         }
     }
+
+    /// <summary>True if a Claude Code process (claude.exe) is running — verified process name (spike Q1).
+    /// GetProcessesByName strips ".exe" and is case-insensitive. A running Claude reconciles its plugin
+    /// registry from settings.json and clobbers concurrent registration writes, so we refuse.</summary>
+    private static bool ClaudeAppRunning() => Process.GetProcessesByName("claude").Length > 0;
 
     private static string? OptionValue(string[] args, string name)
     {

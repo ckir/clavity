@@ -32,7 +32,8 @@ public sealed class CliRouterTests
         var runner = new FakeRunner();
         var sw = new StringWriter();
 
-        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet",
+            claudeRunning: () => false);
 
         Assert.Equal(0, rc);
         Assert.Contains(runner.Calls, c => c.Exe == "claude" && c.Args.Contains("marketplace add C:\\app"));
@@ -47,7 +48,8 @@ public sealed class CliRouterTests
         var runner = new FakeRunner();
         var sw = new StringWriter();
 
-        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet",
+            claudeRunning: () => false);
 
         Assert.Equal(0, rc);
         var legacyRemove = runner.Calls.FindIndex(c => c.Exe == "claude" && c.Args == "plugin marketplace remove clavity");
@@ -64,7 +66,7 @@ public sealed class CliRouterTests
         var sw = new StringWriter();
 
         var rc = CliRouter.Run(new[] { "install", "--plugin", "agy-autotrain" }, sw, detection, runner.Run,
-            @"C:\app", @"C:\app\plugins\clavity-dotnet");
+            @"C:\app", @"C:\app\plugins\clavity-dotnet", claudeRunning: () => false);
 
         Assert.Equal(0, rc);
         Assert.Contains(runner.Calls, c => c.Exe == "claude" && c.Args.Contains("install agy-autotrain@clavity"));
@@ -78,10 +80,26 @@ public sealed class CliRouterTests
         var runner = new FakeRunner();
         var sw = new StringWriter();
 
-        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet",
+            claudeRunning: () => false);
 
         Assert.Equal(0, rc);
         Assert.DoesNotContain(runner.Calls, c => c.Exe == "agy");
+    }
+
+    [Fact]
+    public void Install_refuses_when_claude_is_running()
+    {
+        var detection = new AgentDetection(onPath: n => n == "claude", dirExists: _ => false);
+        var runner = new FakeRunner();
+        var sw = new StringWriter();
+
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app",
+            @"C:\app\plugins\clavity-dotnet", logsDir: null, clavityDataDir: null, claudeRunning: () => true);
+
+        Assert.NotEqual(0, rc);
+        Assert.Empty(runner.Calls);                       // refuse BEFORE any registration write
+        Assert.Contains("close Claude Code", sw.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -105,7 +123,8 @@ public sealed class CliRouterTests
         var runner = new FakeRunner { DropInstall = true };
         var sw = new StringWriter();
 
-        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet",
+            claudeRunning: () => false);
 
         Assert.NotEqual(0, rc);
         Assert.Contains("read-back", sw.ToString());
@@ -129,7 +148,8 @@ public sealed class CliRouterTests
         };
         var sw = new StringWriter();
 
-        var rc = CliRouter.Run(new[] { "install" }, sw, detection, run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, run, @"C:\app", @"C:\app\plugins\clavity-dotnet",
+            claudeRunning: () => false);
 
         Assert.Equal(0, rc);
         var text = sw.ToString();
