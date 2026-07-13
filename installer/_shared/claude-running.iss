@@ -1,7 +1,7 @@
 { ============================================================================
   installer/_shared/claude-running.iss
   Shared refuse-guard detection: is Claude Code (claude.exe) currently running?
-  #include this in a member's [Code] section, then call ClaudeIsRunning() from InitializeSetup and abort
+  Include this file in a member's [Code] section, then call ClaudeIsRunning() from InitializeSetup and abort
   if True — a running Claude reconciles its plugin registry from settings.json and CLOBBERS the installer's
   registration writes (verified 2026-07-13 spike; agy-concurred fix). Process name = claude.exe (spike Q1).
 
