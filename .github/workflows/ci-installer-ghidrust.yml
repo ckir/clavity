@@ -12,6 +12,7 @@ on:
       - '.github/workflows/ci-installer-ghidrust.yml'
       - 'scripts/generate-scoped-manifest.ps1'
       - 'scripts/check-versions.ps1'
+      - 'scripts/ci/fake-claude/**'
   pull_request:
     paths:
       - 'ghidrust/**'
@@ -20,6 +21,7 @@ on:
       - '.github/workflows/ci-installer-ghidrust.yml'
       - 'scripts/generate-scoped-manifest.ps1'
       - 'scripts/check-versions.ps1'
+      - 'scripts/ci/fake-claude/**'
 
 concurrency:
   group: ci-installer-ghidrust-${{ github.ref }}
