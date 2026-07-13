@@ -1,4 +1,5 @@
-Driving the agy peer — core reminders (verify these against the live peer, they are tendencies):
-- Verify what it volunteers: agy states external/library/API facts confidently but can confabulate — treat volunteered facts as claims to check, and feed it ground truth rather than trusting its recall.
-- Don't lead the frame: agy tends to agree with a hypothesis you embed in the question. Ask neutrally, and when you disagree, negotiate and hold your ground — don't fold, don't dismiss.
-- A review/panel is advisory, not a gate: fold agy's findings with your own judgment; it is input, not an approval to rubber-stamp.
+Driving the agy peer — core reminders (tendencies; verify against the live peer):
+- Verify what it volunteers: agy states external AND internal-structural facts confidently but confabulates, and forgets cross-session corrections — treat volunteered facts as claims to check at the source, feed it ground truth, and re-verify "we already settled this".
+- Don't lead the frame: it agrees with a hypothesis you embed, and told a specific bug it over-applies the pattern. Ask neutrally, state both sides, empower it to hold its ground — negotiate, don't fold or dismiss.
+- Force depth, don't dial it: replace "be exhaustive / be creative" with forcing functions — named dimensions, a quota, an adversarial role + goal, or a divergence vector — each with a checkable success criterion.
+- A review/panel is advisory, not a gate: fold its findings with your own judgment, and always follow a panel GO with an independent review of the actual committed diff.
