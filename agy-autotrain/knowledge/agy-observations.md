@@ -7,6 +7,9 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
+- [assumption] (driver/deterministic) An oversized single-turn *reasoning* reply does NOT trip the idle-wait "false hang" — the peer goes idle normally, but the bounded transport truncates the delivered reply to its HEAD (a size flag signals the truncation). The hang/timeout failure mode is specific to bundled tool-actions or serialized deep consults, not a large single reply. Recover truncation by re-asking for ONLY the missing tail (decompose) or routing the reply through file transport; the full content exists peer-side and is fully recoverable.  ·  `[corpus]` · 2026-07-13 · agy 1.1.1
+
+<!-- drained 2026-07-13, then re-opened with 1 fresh capture (above) from the 2026-07-13 verify-harness re-run -->
 <!-- empty — drained 2026-07-13 (see drain log below) -->
 
 <!-- Drain log 2026-07-13 (agy peer; ~36 pending → compiled GROWTH + driver cheatsheet):
@@ -26,10 +29,13 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
   - Driver cheatsheet (driver-cheatsheet.core.md + shared %USERPROFILE%\.clavity\driver-cheatsheet.md,
     atomic): added "force depth, don't dial it" to the existing 3 (verify-volunteered-facts, don't-lead-frame,
     panel-advisory).
-  Empirical-assumption live synthetic probes DEFERRED (cost); promoted items are behavioral tendencies with
-  ≥2 cross-session observations (heuristic rubric) or reinforce already-verified SEED, several corroborated by
-  the drain session's direct live observation (idle-wait timeout + reply parked as Answer=null in Activity). No
-  rule retired (fixes + CI regression tests deferred per skill §5.C-D). -->
+  Empirical-assumption live synthetic probes EXECUTED 2026-07-13 vs live agy 1.1.1 (bridge clavity-dotnet
+  0.2.1, cascade 4764460f) — see verify/assertions.md: A2a bounded-ask-in-window PASS; A2b oversized→recoverable
+  PASS (mode refined — a single oversized *reasoning* reply returns idle but truncates to HEAD, does NOT hang;
+  hang is bundled/serialized-only; the refinement is re-captured to this inbox above for the next drain); A6
+  process-alive≠endpoint-reachable PARTIAL (positive confirmed live, alive-but-unreachable negative deferred).
+  Remaining promoted items are behavioral tendencies with ≥2 cross-session observations (heuristic rubric) or
+  reinforce already-verified SEED. No rule retired (fixes + CI regression tests deferred per skill §5.C-D). -->
 
 <!-- Drain log 2026-06-20 (agy 1.0.10):
   - A1/A3 (banner-honored, new-thread) → promoted to agy-assumptions.md "Driving-protocol assumptions".
