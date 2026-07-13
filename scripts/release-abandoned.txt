@@ -1,0 +1,11 @@
+# Retracted release serials — a COMPLETED clavity-v<N> release the maintainer DELETED from origin
+# (its tag + GitHub Release removed) to protect users from a broken artifact. One `clavity-v<N>` per line;
+# blank lines and `#` comments (full-line or inline) are ignored.
+#
+# These serials stay BURNED forever: `Get-NextSerial` unions this list with the git tags so the number is
+# never recomputed/reused even on a fresh clone whose origin has no tags (the "ghost-tag" collision), and
+# the F17 stuck-release guard treats a listed serial's missing remote tag as a deliberate retraction rather
+# than a failed tag-push. See scripts/lib/release-lib.ps1 (Get-AbandonedSerials / Get-NextSerial) and
+# scripts/release.ps1 (F17). Only add a serial here that was genuinely retracted from origin.
+#
+clavity-v9   # retracted 2026-07-13: shipped broken installers (marketplace-rename migration gap + install/uninstall clobber-race); fixed by the commits leading to clavity-v10.

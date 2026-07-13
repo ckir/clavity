@@ -41,9 +41,27 @@ function Get-BaselineSha([string]$RepoRoot) {
     return ''
 }
 
-# Next serial = max(N over ^clavity-v(N)$ tags) + 1 (burned serials never reused — FI4).
+# Retracted/abandoned serials — a COMPLETED clavity-v<N> release the maintainer DELETED from origin (tag +
+# GitHub release removed to protect users from a broken artifact). Recorded in scripts/release-abandoned.txt
+# (one `clavity-v<N>` per line; blank + `#`-comment lines — full-line OR inline — ignored). Two consumers:
+# (1) Get-NextSerial unions these so the serial stays BURNED everywhere — a fresh clone has NO local tag to
+# prove a retracted serial was ever used, so without this the watermark would silently reset and a burned
+# serial could be recomputed and REPUBLISHED (the "ghost-tag" collision); (2) the F17 stuck-release guard
+# uses it to tell a deliberate retraction (missing remote tag EXPECTED) apart from a genuinely stuck tag.
+function Get-AbandonedSerials([string]$RepoRoot) {
+    $f = Join-Path $RepoRoot 'scripts/release-abandoned.txt'
+    if (-not (Test-Path $f)) { return @() }
+    Get-Content $f | ForEach-Object {
+        $line = ($_ -split '#', 2)[0].Trim()   # strip an inline OR full-line comment, then trim
+        if ($line -and ($line -match '^clavity-v([0-9]+)$')) { [int]$Matches[1] }
+    }
+}
+
+# Next serial = max(N over ^clavity-v(N)$ tags AND retracted serials) + 1 (burned serials never reused —
+# FI4). Unioning the abandoned list keeps a retracted serial burned even on a fresh clone whose origin has
+# no tags (ghost-tag guard). Both sources emit [int]; @()-wrap makes the empty/single-item cases safe.
 function Get-NextSerial([string]$RepoRoot) {
-    $serials = @(Get-Serials $RepoRoot)
+    $serials = @(Get-Serials $RepoRoot) + @(Get-AbandonedSerials $RepoRoot)
     if ($serials.Count -eq 0) { return 1 }
     return ((($serials | Measure-Object -Maximum).Maximum) + 1)
 }

@@ -16,13 +16,19 @@ git diff --cached --quiet;if ($LASTEXITCODE -ne 0) { Die "staged changes present
 # Only a dangling un-pushed CHORE(RELEASE) commit blocks (plan-review R1) — un-pushed FEATURE commits are
 # the normal case (they get swept + pushed by this release). Spec precondition (c) is release-commit-scoped.
 if (git log 'origin/main..HEAD' --grep='^chore(release):' --oneline) { Die "un-pushed chore(release) commit on main — a prior release is half-finished; resolve first" }
-# F17: the last chore(release) commit must have a remote tag (else a prior tag-push failed / limbo)
+# F17: the last chore(release) commit must have a remote tag (else a prior tag-push failed / limbo) —
+# UNLESS the maintainer deliberately RETRACTED that serial (recorded in scripts/release-abandoned.txt), in
+# which case a missing remote tag is EXPECTED, not stuck. N is read from the immutable commit SUBJECT (not a
+# local git tag, which a retraction deletes), so this survives on a fresh clone.
 $lastRel = git log --basic-regexp --grep='^chore(release): clavity-v' -n1 --format=%s 2>$null
 if ($lastRel) {
     if ($lastRel -match '(clavity-v[0-9]+)') {
         $tag = $Matches[1]
+        $serial = [int]($tag -replace '^clavity-v','')
+        $abandoned = @(Get-AbandonedSerials $RepoRoot)
         $remote = git ls-remote --tags origin "refs/tags/$tag"
-        if (-not $remote) { Die "last release prep '$tag' has NO remote tag (stuck release). Run: git push origin $tag  — or reset to abandon." }
+        if (-not $remote -and ($serial -notin $abandoned)) { Die "last release prep '$tag' has NO remote tag (stuck release). Run: git push origin $tag  — or record it in scripts/release-abandoned.txt to abandon." }
+        elseif (-not $remote) { Write-Host "release: '$tag' was retracted (in scripts/release-abandoned.txt) — serial burned, proceeding." -ForegroundColor DarkGray }
     }
 }
 

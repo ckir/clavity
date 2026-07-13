@@ -23,6 +23,56 @@ Describe 'Get-BumpLevel (F7/F10)' {
     }
 }
 
+Describe 'Get-AbandonedSerials + Get-NextSerial (retracted-serial burn / ghost-tag guard)' {
+    BeforeAll {
+        function New-AbandonRepo {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("aban-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $dir 'scripts') | Out-Null
+            Push-Location $dir
+            git init -q; git config user.email t@t; git config user.name t; git config commit.gpgsign false
+            Pop-Location
+            return $dir
+        }
+        function Set-Abandon([string]$repo, [string]$content) {
+            Set-Content (Join-Path $repo 'scripts/release-abandoned.txt') $content
+        }
+    }
+    It '(a) parses clavity-vN lines, ignoring blanks and full-line # comments' {
+        $repo = New-AbandonRepo
+        try {
+            Set-Abandon $repo "# a comment`nclavity-v9`n`nclavity-v3`n# clavity-v99 disabled"
+            (Get-AbandonedSerials $repo | Sort-Object) | Should -Be @(3, 9)
+        } finally { Remove-Item -Recurse -Force $repo }
+    }
+    It '(b) returns empty when the file is absent' {
+        $repo = New-AbandonRepo
+        try { Get-AbandonedSerials $repo | Should -BeNullOrEmpty } finally { Remove-Item -Recurse -Force $repo }
+    }
+    It '(c) burns a retracted serial with NO git tags (fresh-clone ghost-tag guard)' {
+        $repo = New-AbandonRepo
+        try {
+            Set-Abandon $repo 'clavity-v9'          # no clavity-v* tags at all (mirrors a fresh clone)
+            Get-NextSerial $repo | Should -Be 10
+        } finally { Remove-Item -Recurse -Force $repo }
+    }
+    It '(d) takes the max across BOTH tags and the abandoned list' {
+        $repo = New-AbandonRepo
+        try {
+            Push-Location $repo; git commit -q --allow-empty -m seed; git tag clavity-v11; Pop-Location
+            Set-Abandon $repo 'clavity-v9'
+            Get-NextSerial $repo | Should -Be 12    # tag v11 wins over abandoned v9
+        } finally { Remove-Item -Recurse -Force $repo }
+    }
+    It '(e) strips an INLINE comment before matching (regression: swallow bug)' {
+        $repo = New-AbandonRepo
+        try {
+            Set-Abandon $repo 'clavity-v9   # retracted: broken installers'
+            Get-AbandonedSerials $repo | Should -Be 9
+        } finally { Remove-Item -Recurse -Force $repo }
+    }
+}
+
 Describe 'Test-Conventional' {
     It 'flags non-conforming subjects' {
         Test-Conventional 'fix: x'          | Should -BeTrue
