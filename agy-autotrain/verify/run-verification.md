@@ -28,6 +28,14 @@ For each row in `assertions.md`:
 - All relevant probes PASS → the assumption may be promoted/kept; refresh its "verified against" stamp.
 - Any FAIL → drift: hand the item back to `agy-curate` (return to inbox, fix the claim + probe).
 
+## Automated re-run reminder (version-gated)
+
+A committed SessionStart hook — `.claude/hooks/agy-verify-reminder.sh`, wired via `.claude/settings.json` —
+compares the live `agy --version` against the newest `agy X.Y.Z` stamp in `assertions.md` and, on a mismatch,
+surfaces a one-line reminder to re-run these probes. It is silent while the versions match, so **completing a
+pass re-stamps `assertions.md` with the current agy version, which in turn re-arms the reminder for the next
+bump.** (First session after adding it, Claude Code asks you to approve the new project hook command — one-time.)
+
 ## Notes
 
 - Run probes that place/cancel orders or mutate state ONLY against throwaway targets.
