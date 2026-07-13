@@ -1,4 +1,10 @@
 # agy-autotrain — changelog
+## 0.1.5 — 2026-07-13
+
+### Fixes
+- fix(installer): refuse uninstall while Claude Code is running (symmetric clobber guard)
+- fix(installer): refuse install in all 5 members while Claude Code is running (Bug 2 primary)
+
 
 Prior version history lives in `git log`; this changelog starts at 0.1.3.
 

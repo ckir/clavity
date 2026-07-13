@@ -1,13 +1,8 @@
-# classic changelog
+# ghidrust changelog
 
-## 0.1.4 — 2026-07-13
+## 1.0.1 — 2026-07-13
 
 ### Fixes
 - fix(installer): refuse uninstall while Claude Code is running (symmetric clobber guard)
 - fix(installer): refuse install in all 5 members while Claude Code is running (Bug 2 primary)
-
-## 0.1.3 — 2026-07-13
-
-### Fixes
-- fix(classic): sync stale bridge uv.lock to 0.1.2; correct ROADMAP classic release note
 

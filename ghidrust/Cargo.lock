@@ -378,7 +378,7 @@ dependencies = [
 
 [[package]]
 name = "ghidra-ipc"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "insta",
  "proptest",
@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "ghidra-worker-ctl"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "ghidra-ipc",
  "serde_json",
@@ -401,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "ghidrust-mcp"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "ghidra-ipc",
  "ghidra-worker-ctl",

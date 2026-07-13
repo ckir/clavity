@@ -6,7 +6,7 @@
 ; for this installer (be honest, do not auto-install it — matches the pre-cohesion add-on's UX).
 
 #define AppName "commonmemory"
-#define AppVersion "0.1.0"
+#define AppVersion "0.1.1"
 
 [Setup]
 AppId={{4EA2EF84-6B61-482C-A3CE-5CC0135BB553}
