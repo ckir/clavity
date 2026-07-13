@@ -122,6 +122,19 @@ var
   ResultCode: Integer;
   Output: string;
 begin
+  { Bug 2 (TOCTOU last-resort): PrepareToInstall is the teeth-ful gate; this covers the file-copy sliver.
+    Refusing here prevents the racy writes (no clobber) — it does not abort the install (ssPostInstall can't). }
+  if ClaudeIsRunning() then
+  begin
+    Detail := 'Claude Code is running — registration skipped to avoid clobbering it. Close Claude Code and re-run setup.';
+    Result := False;
+    exit;
+  end;
+  { Bug 1 (one-time migration): remove the pre-cohesive UNIFIED 'clavity' marketplace. The bare-name
+    `plugin uninstall` below already sweeps the old <PluginName>@clavity enabled entry; this clears the
+    dangling old marketplace. Runs BEFORE the new-name add. Hardcoded 'clavity' = the single pre-cohesive
+    shared name; result swallowed. }
+  ExecCaptured('claude', 'plugin marketplace remove clavity', '', ResultCode, Output);
   { remove-then-add: pre-clean any prior registration; a first-time install has nothing to remove,
     so the non-zero exit / launch failure here is IGNORED (not captured into Detail). }
   ExecCaptured('claude', 'plugin marketplace remove ' + MarketplaceName, '', ResultCode, Output);
@@ -147,6 +160,24 @@ begin
   if ResultCode <> 0 then
   begin
     Detail := 'plugin install failed: ' + Output;
+    Result := False;
+    exit;
+  end;
+  { Bug 2 backstop (read-back): confirm the EXACT <PluginName>@<MarketplaceName> entry landed. Spike Q3:
+    `plugin list` prints that form; a bare-name check would false-pass on an orphan <PluginName>@clavity.
+    Also check ExecCaptured's launch return, not just ResultCode, so a probe that fails to launch does not
+    false-pass. (The refuse guard in InitializeSetup is the PRIMARY Bug-2 fix; this catches a non-persisted
+    exit-0 install when Claude was NOT running.) }
+  if not ExecCaptured('claude', 'plugin list', '', ResultCode, Output) then
+  begin
+    Detail := 'read-back could not run `claude plugin list`: ' + Output;
+    Result := False;
+    exit;
+  end;
+  if (ResultCode <> 0) or (Pos(Lowercase(PluginName + '@' + MarketplaceName), Lowercase(Output)) = 0) then
+  begin
+    Detail := 'read-back FAILED: ' + PluginName + '@' + MarketplaceName + ' not present after install '
+      + '(close Claude Code and re-run — a running Claude overwrites the registration).';
     Result := False;
     exit;
   end;
