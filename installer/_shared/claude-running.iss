@@ -18,10 +18,10 @@ var
   Lines: TArrayOfString;
 begin
   Result := False;
-  { Use %TEMP% (GetEnv), NOT {tmp}: {tmp} may not be created yet in early hooks (InitializeSetup /
-    InitializeUninstall), which would make the redirection target a missing dir and the probe fail-OPEN
-    (silently return False), neutralizing the guard. %TEMP% is a standard env var present from process
-    start in every hook. }
+  { Use %TEMP% (GetEnv), NOT the Inno tmp constant: that dir may not be created yet in early hooks
+    (InitializeSetup / InitializeUninstall), which would make the redirection target a missing dir and the
+    probe fail-OPEN (silently return False), neutralizing the guard. %TEMP% is a standard env var present
+    from process start in every hook. }
   TmpDir := GetEnv('TEMP');
   if TmpDir = '' then TmpDir := GetEnv('TMP');
   TmpFile := TmpDir + '\clavity-claudecheck-' + IntToStr(Random(1000000)) + '.txt';
