@@ -174,6 +174,79 @@ jobs:
           $uninst = Get-ChildItem $app -Filter "unins*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($uninst) { Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null }
 
+      - name: "Smoke — Bug 2: refuse install while a claude.exe process is running"
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = "dist/ghidrust-setup-$env:TOOL_VER.exe"
+          $app = "$env:LOCALAPPDATA\Programs\ghidrust"
+          # A process literally named claude.exe (a renamed cmd that idles), so ClaudeIsRunning()/tasklist sees it.
+          $stubDir = Join-Path $env:RUNNER_TEMP "claude-stub"
+          New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
+          $stub = Join-Path $stubDir "claude.exe"
+          # Copy ping.exe DIRECTLY (not cmd.exe) so there is no child process to orphan — Stop-Process kills
+          # the single renamed process cleanly. tasklist/GetProcessesByName see it as claude.exe.
+          Copy-Item "$env:SystemRoot\System32\PING.EXE" $stub -Force
+          $proc = Start-Process $stub -ArgumentList "-n","120","127.0.0.1" -WindowStyle Hidden -PassThru
+          $log = "$env:RUNNER_TEMP\ghidrust-refuse.log"
+          try {
+            Start-Sleep -Seconds 1
+            $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$log" -Wait -PassThru
+            Write-Host "[refuse] installer exit $($p.ExitCode)"
+            if ($p.ExitCode -eq 0) { throw "REFUSE FAILED: install exited 0 despite a running claude.exe" }
+            if (Test-Path "$app\ghidrust.exe") { throw "REFUSE FAILED: files were installed despite a running claude.exe" }
+            # Assert the non-zero exit is SPECIFICALLY our refuse (not an unrelated installer crash) — the
+            # InitializeSetup MsgBox text is written to the Inno /LOG even under /SUPPRESSMSGBOXES.
+            if (-not (Test-Path $log)) { throw "no install log produced — cannot confirm the refuse path fired" }
+            if (-not (Select-String -Path $log -Pattern 'Claude Code is running' -Quiet)) {
+              throw "REFUSE unconfirmed: non-zero exit but the log has no 'Claude Code is running' refuse message (possible unrelated failure)"
+            }
+            Write-Host "Bug 2 refuse smoke PASSED (aborted non-zero via the refuse path; no files placed)."
+          }
+          finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: "Smoke — Bug 2 (symmetric): refuse UNINSTALL while a claude.exe process is running"
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = "dist/ghidrust-setup-$env:TOOL_VER.exe"
+          $app = "$env:LOCALAPPDATA\Programs\ghidrust"
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "setup for the uninstall smoke exited $($p.ExitCode)" }
+          $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
+          $stubDir = Join-Path $env:RUNNER_TEMP "claude-stub-uninst"
+          New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
+          $stub = Join-Path $stubDir "claude.exe"
+          Copy-Item "$env:SystemRoot\System32\PING.EXE" $stub -Force
+          $ulog = "$env:RUNNER_TEMP\ghidrust-uninst-refuse.log"
+          $proc = Start-Process $stub -ArgumentList "-n","120","127.0.0.1" -WindowStyle Hidden -PassThru
+          try {
+            Start-Sleep -Seconds 1
+            # Inno re-launches unins000 from %TEMP% and the wrapper returns INSTANTLY, so -Wait does not wait
+            # for the real uninstall. Poll until no unins* child remains before asserting (else a BROKEN guard
+            # false-passes on a timing race — the files just haven't been deleted yet).
+            Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$ulog" -Wait | Out-Null
+            $deadline = (Get-Date).AddSeconds(30)
+            while ((Get-Process "unins*" -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+            if (-not (Test-Path "$app\ghidrust.exe")) { throw "UNINSTALL REFUSE FAILED: files removed despite a running claude.exe" }
+            # Positive assertion (match the install smoke's rigor): the refuse message must be in the log.
+            if (-not (Test-Path $ulog) -or -not (Select-String -Path $ulog -Pattern 'Claude Code is running' -Quiet)) {
+              throw "UNINSTALL REFUSE unconfirmed: files present but no 'Claude Code is running' refuse message logged"
+            }
+            Write-Host "Bug 2 uninstall-refuse smoke PASSED (uninstaller refused via the guard; files survived)."
+          }
+          finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+            Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+            $d2 = (Get-Date).AddSeconds(30)
+            while ((Get-Process "unins*" -ErrorAction SilentlyContinue) -and (Get-Date) -lt $d2) { Start-Sleep -Milliseconds 250 }   # let cleanup finish
+          }
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
