@@ -72,6 +72,18 @@ begin
       'then the shared notebook stays inactive.', mbInformation, MB_OK, IDOK);
 end;
 
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  if ClaudeIsRunning() then
+  begin
+    SuppressibleMsgBox('Claude Code is running. Close it COMPLETELY before uninstalling — otherwise Claude '
+      + 'restores the plugin registration on exit and then loads deleted files. Quit Claude Code, then '
+      + 'uninstall again.', mbCriticalError, MB_OK, IDOK);
+    Result := False;
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then

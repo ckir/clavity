@@ -221,6 +221,14 @@ var
   Prompt: string;
 begin
   Result := True;
+  if ClaudeIsRunning() then
+  begin
+    SuppressibleMsgBox('Claude Code is running. Close it COMPLETELY before uninstalling — otherwise Claude '
+      + 'restores the plugin registration on exit and then loads deleted files. Quit Claude Code, then '
+      + 'uninstall again.', mbCriticalError, MB_OK, IDOK);
+    Result := False;
+    exit;
+  end;
   { Option A: no clavity uninstall verb to run and no live-session mutex (classic has no long-running --mcp host),
     so this is just the data keep/purge decision. Enumerate the data classes it governs so the choice is informed:
     golden-header ALWAYS; the bridge API key ONLY when a post-install .env exists (opt-in, default-OFF). }

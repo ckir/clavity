@@ -212,6 +212,14 @@ var
   ExePath: string;
 begin
   Result := True;
+  if ClaudeIsRunning() then
+  begin
+    SuppressibleMsgBox('Claude Code is running. Close it COMPLETELY before uninstalling — otherwise Claude '
+      + 'restores the plugin registration on exit and then loads deleted files. Quit Claude Code, then '
+      + 'uninstall again.', mbCriticalError, MB_OK, IDOK);
+    Result := False;
+    exit;
+  end;
   { Refuse if a live pairing session (clavity-ls --mcp) holds the exe — otherwise Exec + the file deletion break
     mid-uninstall on the locked binary, leaving a partial/broken uninstall (agy review req-djljyi3pj7e8). }
   if CheckForMutexes('Local\ClavityMcpRunning') then

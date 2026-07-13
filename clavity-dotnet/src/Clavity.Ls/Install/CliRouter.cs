@@ -87,6 +87,12 @@ public static class CliRouter
             case "uninstall":
             {
                 var pluginName = OptionValue(args, "--plugin") ?? PluginInstaller.PluginName;   // default = core
+                if (present.Contains(Agent.Claude) && (claudeRunning ?? ClaudeAppRunning)())
+                {
+                    output.WriteLine("clavity-ls: Claude Code is running — close it completely, then re-run. " +
+                        "Uninstalling now lets a running Claude restore a dangling registration on exit.");
+                    return 5;
+                }
                 var ok = true;
                 foreach (var a in Enum.GetValues<Agent>())
                 {

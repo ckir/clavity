@@ -191,9 +191,25 @@ public sealed class CliRouterTests
         var runner = new FakeRunner { ExitCode = 1 }; // every native plugin-uninstall "fails"
         var sw = new StringWriter();
 
-        var rc = CliRouter.Run(new[] { "uninstall" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+        var rc = CliRouter.Run(new[] { "uninstall" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet",
+            claudeRunning: () => false);
 
         Assert.NotEqual(0, rc); // the Inno InitializeUninstall gate depends on a non-zero exit on failure
+    }
+
+    [Fact]
+    public void Uninstall_refuses_when_claude_is_running()
+    {
+        var detection = new AgentDetection(onPath: n => n == "claude", dirExists: _ => false);
+        var runner = new FakeRunner();
+        var sw = new StringWriter();
+
+        var rc = CliRouter.Run(new[] { "uninstall" }, sw, detection, runner.Run, @"C:\app",
+            @"C:\app\plugins\clavity-dotnet", logsDir: null, clavityDataDir: null, claudeRunning: () => true);
+
+        Assert.NotEqual(0, rc);
+        Assert.Empty(runner.Calls);
+        Assert.Contains("Claude Code is running", sw.ToString());
     }
 
     [Fact]

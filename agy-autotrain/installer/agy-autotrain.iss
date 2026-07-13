@@ -79,6 +79,14 @@ end;
 function InitializeUninstall(): Boolean;
 begin
   Result := True;
+  if ClaudeIsRunning() then
+  begin
+    SuppressibleMsgBox('Claude Code is running. Close it COMPLETELY before uninstalling — otherwise Claude '
+      + 'restores the plugin registration on exit and then loads deleted files. Quit Claude Code, then '
+      + 'uninstall again.', mbCriticalError, MB_OK, IDOK);
+    Result := False;
+    exit;
+  end;
   { C6: this member owns growth.md — offer the same keep/purge choice the drivers offer for their
     own seed.md. Silent uninstall defaults to KEEP (IDNO) — never delete user data without an
     explicit answer. }
