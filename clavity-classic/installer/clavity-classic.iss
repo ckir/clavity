@@ -84,6 +84,7 @@ Type: filesandordirs; Name: "{app}\agy-mcp-bridge\__pycache__"
 Type: filesandordirs; Name: "{app}\agy-mcp-bridge\.agent"
 
 [Code]
+#include "..\..\installer\_shared\claude-running.iss"
 #include "..\..\installer\_shared\plugin-registration.iss"
 #include "..\..\installer\_shared\golden-header-data.iss"
 
@@ -128,6 +129,14 @@ var
   FoundPath: string;
 begin
   Result := True;
+  if ClaudeIsRunning() then
+  begin
+    SuppressibleMsgBox('Claude Code is running. Close it COMPLETELY before installing clavity-classic — a '
+      + 'running Claude overwrites the plugin registration and leaves it unregistered. Quit Claude Code, '
+      + 'then run this setup again.', mbCriticalError, MB_OK, IDOK);
+    Result := False;
+    exit;
+  end;
   { Refuse if dotnet's clavity-ls is on PATH (NOT the bare 'clavity' stem — that is OUR binary). }
   if StemOnPath('clavity-ls', FoundPath) then
   begin
@@ -143,6 +152,14 @@ begin
       mbCriticalError, MB_OK, IDOK);
     Result := False;
   end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if ClaudeIsRunning() then
+    Result := 'Claude Code is running. Close it completely, then run this setup again — a running Claude '
+      + 'overwrites the plugin registration and leaves it unregistered.';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

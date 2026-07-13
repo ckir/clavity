@@ -48,6 +48,7 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
 
 [Code]
 #include "..\..\installer\_shared\golden-header-data.iss"
+#include "..\..\installer\_shared\claude-running.iss"
 
 var
   RemoveConfig: Boolean;
@@ -136,6 +137,14 @@ var
   FoundPath: string;
 begin
   Result := True;
+  if ClaudeIsRunning() then
+  begin
+    SuppressibleMsgBox('Claude Code is running. Close it COMPLETELY before installing clavity-dotnet — a '
+      + 'running Claude overwrites the plugin registration and leaves it unregistered. Quit Claude Code, '
+      + 'then run this setup again.', mbCriticalError, MB_OK, IDOK);
+    Result := False;
+    exit;
+  end;
   if ClassicClavityOnPath(FoundPath) then
   begin
     SuppressibleMsgBox('clavity (classic) is already installed at:' + #13#10 + FoundPath + #13#10#13#10 +
@@ -159,7 +168,10 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
   if CheckForMutexes('Local\ClavityMcpRunning') then
-    Result := 'A live Claude pairing session (clavity-ls --mcp) is running. Close it, then run this setup again.';
+    Result := 'A live Claude pairing session (clavity-ls --mcp) is running. Close it, then run this setup again.'
+  else if ClaudeIsRunning() then
+    Result := 'Claude Code is running. Close it completely, then run this setup again — a running Claude '
+      + 'overwrites the plugin registration and leaves it unregistered.';
 end;
 
 { --- Install: register the plugin AFTER files are placed, and SURFACE a failure (UX: no false "Success"). --- }

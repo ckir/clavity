@@ -32,7 +32,28 @@ Source: "..\*"; DestDir: "{app}\plugins\commonmemory"; Flags: ignoreversion recu
   Excludes: "installer,dist,publish"
 
 [Code]
+#include "..\..\installer\_shared\claude-running.iss"
 #include "..\..\installer\_shared\plugin-registration.iss"
+
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  if ClaudeIsRunning() then
+  begin
+    SuppressibleMsgBox('Claude Code is running. Close it COMPLETELY before installing commonmemory — a '
+      + 'running Claude overwrites the plugin registration and leaves it unregistered. Quit Claude Code, '
+      + 'then run this setup again.', mbCriticalError, MB_OK, IDOK);
+    Result := False;
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if ClaudeIsRunning() then
+    Result := 'Claude Code is running. Close it completely, then run this setup again — a running Claude '
+      + 'overwrites the plugin registration and leaves it unregistered.';
+end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
