@@ -12,6 +12,10 @@ public static class PluginInstaller
     public const string MarketplaceName = "clavity-dotnet";
     public const string PluginName = "clavity-dotnet";
 
+    /// <summary>The pre-cohesive UNIFIED marketplace name every member shared before C9 switched to
+    /// per-member unique names. Deregistering it on install is the one-time Bug-1 migration.</summary>
+    public const string LegacyMarketplaceName = "clavity";
+
     /// <summary>Install <paramref name="pluginName"/> for one agent. Claude installs it from the
     /// marketplace at <paramref name="marketplaceRoot"/>; agy installs the local
     /// <paramref name="pluginDir"/>. C1 idempotent re-run made structural (Finding-4): before adding
@@ -26,6 +30,11 @@ public static class PluginInstaller
         switch (agent)
         {
             case Agent.Claude:
+                // Bug 1 (one-time migration): remove the pre-cohesive UNIFIED "clavity" marketplace. The
+                // bare-name `plugin uninstall` below already sweeps the old <plugin>@clavity enabled entry;
+                // this clears the dangling old marketplace. Runs BEFORE the new-name add so it cannot touch
+                // the new registration. Result swallowed (a fresh box has nothing to remove).
+                run("claude", new[] { "plugin", "marketplace", "remove", LegacyMarketplaceName });
                 // remove-then-add: swallow the pre-clean result (a first-time install has nothing to remove).
                 run("claude", new[] { "plugin", "marketplace", "remove", MarketplaceName });
                 var add = run("claude", new[] { "plugin", "marketplace", "add", marketplaceRoot, "--scope", "user" });

@@ -31,6 +31,22 @@ public sealed class CliRouterTests
     }
 
     [Fact]
+    public void Install_deregisters_the_legacy_unified_clavity_marketplace_before_registering_the_new_name()
+    {
+        var detection = new AgentDetection(onPath: n => n == "claude", dirExists: _ => false);
+        var runner = new FakeRunner();
+        var sw = new StringWriter();
+
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+
+        Assert.Equal(0, rc);
+        var legacyRemove = runner.Calls.FindIndex(c => c.Exe == "claude" && c.Args == "plugin marketplace remove clavity");
+        var newAdd = runner.Calls.FindIndex(c => c.Exe == "claude" && c.Args.StartsWith("plugin marketplace add"));
+        Assert.True(legacyRemove >= 0, "legacy 'marketplace remove clavity' not issued");
+        Assert.True(legacyRemove < newAdd, "legacy removal must precede the new-name add");
+    }
+
+    [Fact]
     public void Install_with_plugin_option_installs_the_named_add_on_from_its_sibling_dir()
     {
         var detection = new AgentDetection(onPath: _ => true, dirExists: _ => false); // both present
