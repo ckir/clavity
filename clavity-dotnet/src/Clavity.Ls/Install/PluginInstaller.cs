@@ -44,7 +44,16 @@ public static class PluginInstaller
                 var ins = run("claude", new[] { "plugin", "install", $"{pluginName}@{MarketplaceName}", "--scope", "user" });
                 if (ins.ExitCode != 0)
                     return new AgentResult(agent, false, $"install failed: {Clip(ins.Output)}");
-                return new AgentResult(agent, true, $"installed {pluginName}@{MarketplaceName}");
+                // Bug 2 backstop (read-back): confirm the EXACT <plugin>@<marketplace> entry landed (spike
+                // Q3: `plugin list` prints that form). A bare-name match would false-pass on an orphan
+                // <plugin>@clavity, so match the full token. A non-persisted exit-0 install fails loudly.
+                var list = run("claude", new[] { "plugin", "list" });
+                var wanted = $"{pluginName}@{MarketplaceName}";
+                if (list.ExitCode != 0 || !list.Output.Contains(wanted, StringComparison.OrdinalIgnoreCase))
+                    return new AgentResult(agent, false,
+                        $"read-back FAILED: {wanted} not present after install " +
+                        "(close Claude Code and re-run — a running Claude overwrites the registration)");
+                return new AgentResult(agent, true, $"installed {wanted}");
 
             case Agent.Agy:
                 run("agy", new[] { "plugin", "uninstall", pluginName });

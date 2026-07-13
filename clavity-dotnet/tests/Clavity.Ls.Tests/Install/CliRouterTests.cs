@@ -8,9 +8,19 @@ public sealed class CliRouterTests
     {
         public List<(string Exe, string Args)> Calls { get; } = new();
         public int ExitCode { get; set; }
+        // Read-back models `plugin list` echoing what was installed (as <plugin>@<marketplace>, the real
+        // format per spike Q3). DropInstall simulates an exit-0 install that did NOT persist.
+        public bool DropInstall { get; set; }
+        private readonly List<string> _installed = new();
         public ProcessOutcome Run(string exe, IReadOnlyList<string> args)
         {
             Calls.Add((exe, string.Join(" ", args)));
+            if (exe == "claude" && args.Count >= 3 && args[0] == "plugin" && args[1] == "install" && args[2].Contains('@'))
+            {
+                if (!DropInstall) _installed.Add(args[2]);   // record the full <plugin>@<marketplace> spec
+            }
+            if (exe == "claude" && args.Count >= 2 && args[0] == "plugin" && args[1] == "list")
+                return new ProcessOutcome(ExitCode, string.Join("\n", _installed));
             return new ProcessOutcome(ExitCode, "");
         }
     }
@@ -89,6 +99,20 @@ public sealed class CliRouterTests
     }
 
     [Fact]
+    public void Install_read_back_fails_when_the_entry_did_not_persist_after_an_exit_zero_install()
+    {
+        var detection = new AgentDetection(onPath: n => n == "claude", dirExists: _ => false);
+        var runner = new FakeRunner { DropInstall = true };
+        var sw = new StringWriter();
+
+        var rc = CliRouter.Run(new[] { "install" }, sw, detection, runner.Run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
+
+        Assert.NotEqual(0, rc);
+        Assert.Contains("read-back", sw.ToString());
+        Assert.Contains(runner.Calls, c => c.Exe == "claude" && c.Args == "plugin list");
+    }
+
+    [Fact]
     public void Install_with_mixed_per_agent_results_returns_zero_and_reports_both()
     {
         // C1 per-agent OR-semantics: install succeeds (exit 0) as long as AT LEAST ONE detected agent's
@@ -96,7 +120,13 @@ public sealed class CliRouterTests
         // exit 1 under the prior AND-semantics — this pins the new behavior).
         var detection = new AgentDetection(onPath: _ => true, dirExists: _ => false); // both present
         ProcessRunner run = (exe, args) =>
-            exe == "claude" ? new ProcessOutcome(0, "") : new ProcessOutcome(1, "boom");
+        {
+            // Claude's post-install read-back (`plugin list`) must echo the just-installed entry so this
+            // test's claude leg still counts as ok — the OR-semantics pin is about the AGY leg failing.
+            if (exe == "claude" && args.Count >= 2 && args[0] == "plugin" && args[1] == "list")
+                return new ProcessOutcome(0, "clavity-dotnet@clavity-dotnet");
+            return exe == "claude" ? new ProcessOutcome(0, "") : new ProcessOutcome(1, "boom");
+        };
         var sw = new StringWriter();
 
         var rc = CliRouter.Run(new[] { "install" }, sw, detection, run, @"C:\app", @"C:\app\plugins\clavity-dotnet");
