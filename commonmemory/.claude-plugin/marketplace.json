@@ -1,0 +1,12 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "clavity-commonmemory-dev",
+  "owner": { "name": "clavity" },
+  "plugins": [
+    {
+      "name": "commonmemory",
+      "source": ".",
+      "description": "Optional add-on: a shared notebook so Claude and agy share facts across the pairing."
+    }
+  ]
+}

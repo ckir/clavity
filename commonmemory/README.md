@@ -19,7 +19,8 @@ marketplace: the plugin ships inside the installer.
 
 **From a clone (developers):** install this plugin folder directly into both CLIs:
 ```
-claude plugin install ./commonmemory
+claude plugin marketplace add ./commonmemory
+claude plugin install commonmemory@clavity-commonmemory-dev
 agy    plugin install ./commonmemory
 ```
 
