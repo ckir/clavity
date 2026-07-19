@@ -1,0 +1,40 @@
+name: ci-member-docs
+
+# The member-docs floor gate. Separate from ci-scripts.yml on purpose: that workflow fires on
+# scripts/** and runs the whole Pester suite, but a missing member doc changes a MEMBER folder, so
+# ci-scripts would never fire on the case this guards. This job runs one script and takes seconds.
+# The gate script and the templates are in the path filter deliberately - without them, breaking the
+# gate itself is a change no CI run exercises.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*/README.md'
+      - '*/CHANGELOG.md'
+      - '*/plugin/README.md'
+      - 'build/members.json'
+      - 'scripts/check-member-docs.ps1'
+      - 'clavity-dotnet/templates/tool-skeleton/**'
+      - '.github/workflows/ci-member-docs.yml'
+  pull_request:
+    paths:
+      - '*/README.md'
+      - '*/CHANGELOG.md'
+      - '*/plugin/README.md'
+      - 'build/members.json'
+      - 'scripts/check-member-docs.ps1'
+      - 'clavity-dotnet/templates/tool-skeleton/**'
+      - '.github/workflows/ci-member-docs.yml'
+
+concurrency:
+  group: ci-member-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  member-docs:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Member docs floor gate
+        shell: powershell   # Windows PowerShell 5.1 - catches PS7-only syntax, same as ci-scripts.yml
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-member-docs.ps1

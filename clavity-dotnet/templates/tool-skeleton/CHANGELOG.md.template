@@ -1,0 +1,7 @@
+# <TOOL-ID> changelog
+
+<!-- `just release` prepends each new release section immediately after the H1 above.
+     Do NOT remove the H1 and do NOT demote it to `##`: scripts/lib/release-lib.ps1
+     injects using the regex `(?s)^(#[^\n]*\n+)(.*)$`, which also matches `##`, so a
+     demoted title makes the injector write the new release INSIDE the previous
+     release's body and silently reattribute its entries. -->

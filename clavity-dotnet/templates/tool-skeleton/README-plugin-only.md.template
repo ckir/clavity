@@ -1,0 +1,39 @@
+# <TOOL-ID>
+
+<One paragraph: what this does, who it is for, and that it is part of the clavity umbrella.>
+
+## How it works
+
+<Orientation. A member with no binary still has a mechanism — describe it.>
+
+## What's in here
+
+<The tools, skills, and knowledge files this plugin contributes.>
+
+## Install
+
+<How it gets registered, and where it lands once installed.>
+
+## Configuration
+
+<Environment variables, config files, and overrides.>
+
+## Platform support
+
+<Delete this section entirely if the member is genuinely portable.>
+
+## Troubleshooting
+
+<The failure modes an operator hits after install, and what to do about each.>
+
+## Docs
+
+<Link index: docs/ and any other files a reader may want.>
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). <One line only — delete this section if the member has no CONTRIBUTING.md.>
+
+## License
+
+<SPDX identifier and a link to LICENSE.>

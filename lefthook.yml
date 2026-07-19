@@ -16,6 +16,8 @@ pre-push:
       run: just seed-sync-check
     doc-stubs:
       run: just check-doc-stubs
+    member-docs:
+      run: just check-member-docs
     register-hash:
       run: just check-register-hash
     scripts-tests:

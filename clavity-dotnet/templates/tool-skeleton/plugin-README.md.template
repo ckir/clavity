@@ -1,0 +1,19 @@
+# <TOOL-ID> plugin
+
+<What this plugin provides to an agent, in one paragraph.>
+
+## What's in here
+
+<The tools, skills, and knowledge files it contributes.>
+
+## Install / registration
+
+<How it is registered, and where it lands in the install tree. Note: this file SHIPS with the installer; the member's root README does not.>
+
+## MCP configuration
+
+<Server wiring, environment, and the .mcp.json shape.>
+
+## Troubleshooting
+
+<The failure modes an operator hits after install, and what to do about each.>

@@ -1,17 +1,45 @@
 # <TOOL-ID>
 
-<DESCRIPTION>
+<One paragraph: what this does, who it is for, and that it is part of the clavity umbrella.>
 
-## Install
-Ships in the `clavity` umbrella. Install via the `<TOOL-ID>-v<N>` GitHub Release installer
-(`<TOOL-ID>-setup-<VERSION>.exe`), or add the plugin from this repo's marketplace.
+## How it works
 
-## What it provides
-- Binary `<BINARY>` on your PATH; the plugin runs `<BINARY> serve` as an MCP server.
-<!-- FILL: list the tool's MCP tools / skills. -->
+<Orientation only — at most one screen. Deeper design detail goes in docs/ and is linked from ## Docs.>
+
+## Quick start
+
+### Prerequisites
+
+<What the reader must already have installed.>
+
+### Install
+
+<Imperative steps to a working install.>
+
+### First run
+
+<The smallest command that proves it works, and the output they should see.>
+
+## Command reference
+
+<Every command, one line each. Rename this section to `## Usage` if the member has no CLI.>
 
 ## Configuration
-<!-- FILL: env vars / flags the .mcp.json env block must carry, or "none". -->
 
-## Uninstall
-Windows Add/Remove Programs (removes the binary + its PATH entry).
+<Environment variables, config files, and overrides.>
+
+## Platform support
+
+<Which platforms are verified, and which are untested.>
+
+## Docs
+
+<Link index: docs/, plugin/README.md, and any other files a reader may want.>
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). <One line only — never the guide itself.>
+
+## License
+
+<SPDX identifier and a link to LICENSE.>

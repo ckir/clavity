@@ -30,6 +30,10 @@ seed-sync-check:
 check-doc-stubs:
     pwsh -File scripts/check-doc-stubs.ps1
 
+# Verify every member has its required user-facing docs and a release-injectable CHANGELOG
+check-member-docs:
+    pwsh -File scripts/check-member-docs.ps1
+
 # Bump every version source for a member to <version>, then self-verify (dotnet/classic/agy-autotrain/commonmemory).
 bump member version:
     pwsh -File scripts/bump-version.ps1 {{member}} {{version}}
