@@ -1,5 +1,13 @@
 # clavity (.NET) — Increment-1 implementation plan
 
+> ## 🗄️ ARCHIVED — this plan is fully executed
+>
+> Increment 1 shipped long ago; this file is kept only as provenance for how the .NET rebuild was
+> sequenced. **Nothing here is actionable** — the tasks are done, and the line-level detail describes a
+> tree that has since moved on. For current behavior read the code under
+> [`../../clavity-dotnet/`](../../clavity-dotnet/); for the design rationale see the (also historical)
+> spec [`../clavity-dotnet-spec.md`](../clavity-dotnet-spec.md).
+
 > **Status:** PLAN (buildable now — every external contract it depends on is VERIFIED live against
 > agy 1.0.11, not guessed). Greenfield: no .NET code exists yet, so this plans **new files + ordered
 > build tasks + their tests**, not edits to existing lines.

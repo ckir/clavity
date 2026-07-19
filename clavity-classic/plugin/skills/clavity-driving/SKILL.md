@@ -104,15 +104,16 @@ keeps it honest:
 - **Verify, never rubber-stamp.** agy is bold and states confident false claims. Confirm any bare factual
   claim by measurement before acting, and fold agy's findings together with your OWN assessment.
 
-<!-- KEEP IN SYNC WITH clavity-ls-driving (plugins/clavity-dotnet/skills/clavity-ls-driving/SKILL.md) — task-assignment protocol + peer-decision-loop (transport idioms differ: classic uses `clavity ask`, dotnet uses `agy_ask`) -->
+<!-- KEEP IN SYNC WITH clavity-ls-driving (clavity-dotnet/plugin/skills/clavity-ls-driving/SKILL.md) — task-assignment protocol + peer-decision-loop (transport idioms differ: classic uses `clavity ask`, dotnet uses `agy_ask`) -->
 
-## Prepend the golden header (manual — until the classic binary injects it)
+## Injection is automatic — do NOT prepend the golden header yourself
 
-Before sending any payload, prepend the contents of `%USERPROFILE%\.clavity\golden-header.md` (the
-compiled agy-driving wisdom) when that file exists; if it is absent or empty, silently skip it (the
-agy-autotrain add-on simply isn't installed). Do this **manually**: unlike the dotnet `clavity-ls`
-binary — which auto-injects — the classic `clavity` binary does not yet read the header, so the skill
-prepends it. (This manual step is removed once the classic binary injects on its own in a later release.)
+The `clavity` binary reads the compiled agy-driving wisdom from `%USERPROFILE%\.clavity\` and prepends it
+to every `ask` for you. Do NOT read or prepend it manually — doing so double-injects the header. The header
+is split in two: `golden-header.seed.md` (driver-shipped baseline) and `golden-header.growth.md` (what the
+agy-autotrain learning loop has added); the binary combines them, and falls back to a legacy flat
+`golden-header.md` only for a one-time migration. If none are present (add-on not installed), the binary
+silently skips injection and you drive with this baseline protocol.
 
 If the human asks you to permanently remember a project rule and no `agy-curate` skill is present,
 permanent learning needs the **agy-autotrain** add-on — tell them to re-run the clavity installer and

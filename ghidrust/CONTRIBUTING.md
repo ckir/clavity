@@ -1,142 +1,81 @@
-# Contributing to clavity
+# Contributing to ghidrust
 
-Thanks for helping out! Contributions are very welcome — **especially Linux/macOS support**, since
-the project is Windows-verified today.
+ghidrust is one member of the [`clavity`](../README.md) umbrella monorepo. **Repo-wide policy —
+licensing and the DCO sign-off, the release process, and the dev cockpit — lives in the umbrella
+[`CONTRIBUTING.md`](../CONTRIBUTING.md); read that first.** This file covers only what is specific to
+ghidrust.
 
 ## Dev setup
 
-You need [Rust](https://www.rust-lang.org/tools/install) (stable). Then:
+You need [Rust](https://www.rust-lang.org/tools/install) stable (**MSRV 1.82**) and
+[`just`](https://github.com/casey/just). Run everything from `ghidrust/`:
 
 ```bash
-cargo build                              # debug build
-cargo test                               # hermetic unit tests (no live agy needed)
-cargo test --all --features test-fakes   # unit + integration tests (uses a fake psmux)
-cargo clippy --all-targets --features test-fakes -- -D warnings
-cargo fmt --all                          # format (CI checks `--check`)
-cargo build --release                    # the shippable single binary (no test fakes)
+just setup      # one-time: cargo-nextest, cargo-deny, cargo-insta
+just build      # cargo build --workspace
+just test       # fast tier: cargo nextest run --workspace
+just lint       # cargo fmt --check + clippy -D warnings + cargo deny check
+just fmt        # auto-format
 ```
 
-CI runs exactly these on `ubuntu-latest` and `windows-latest`.
+Run `just` with no arguments to list the recipes. Prefer them over raw `cargo` — they are what CI and
+the pre-push hook run, so a green `just lint && just test` is the same gate.
 
-### Diagnostics
-
-```bash
-clavity info     # detected platform + effective configuration
-clavity doctor   # preflight: are tmux/claude/agy on PATH, is the session reachable?
-```
-
-> **If something agy-facing breaks (likely after an agy/psmux update):** start with
-> [`../clavity-dotnet/plugin/knowledge/agy-assumptions.md`](../clavity-dotnet/plugin/knowledge/agy-assumptions.md)
-> (the canonical manual; `docs/agy-assumptions.md` is now a pointer to it) — it lists every external
-> behavior clavity relies on, how each was verified, and how to re-verify/fix (usually an `AGY_*` override
-> or a skill tweak, not Rust). Update its "verified against" versions when you confirm things on a new agy.
-
-## Project layout
-
-| Path | Role |
-| --- | --- |
-| `src/main.rs` | clap CLI, dispatch, `start` launcher, `doctor`/`info`, `which` PATH resolver. |
-| `src/tmux.rs` | **C3** — psmux primitives + pane-state detection (footer markers + activity fallback). |
-| `src/bus.rs` | **C5** — agentmemory-bus conventions (req-id + `[req_id=..]` envelope). |
-| `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions. The Unix arms are scaffolding. |
-| `src/bin/fake_tmux.rs` | Test-only fake psmux (built only with `--features test-fakes`). |
-| `tests/integration.rs` | Drives the real binary against `fake_tmux` (no live agy; runs in CI). |
-| `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill. |
-| `docs/` | Protocol runbook + design spec. |
+Run `lefthook install` once at the repo root so the pre-commit / pre-push gates fire automatically.
 
 ## Two test tiers
 
-1. **Hermetic (CI):** `cargo test --all --features test-fakes` — pure logic + the binary driven
-   against `fake_tmux`. No agy/claude/psmux required. **All PRs must keep these green.**
-2. **Live acceptance (manual):** the real end-to-end loop against a running `agy`. Required when you
-   touch behavior that the fakes can't cover (the doorbell, the checkpoint, a platform port).
+1. **Fast / hermetic — `just test`.** Pure Rust across all three crates. Starts no JVM and needs no
+   Ghidra. **All PRs must keep this green.**
+2. **Ghidra-backed — `just test-all`.** Adds the integration tests (`--run-ignored all`) that drive a
+   real headless Ghidra. Required when you touch the worker launch path, the IPC protocol, or any tool's
+   Ghidra-side behavior — the fast tier cannot cover those.
 
-## Live acceptance runbook
+### Setting up tier 2
 
-Needs the full environment: **Claude Code + agentmemory MCP, a signed-in `agy`, and psmux**. This is
-the exact check used to verify Windows; reproduce it (adapt the shell to your OS) to validate changes.
+`just test-all` needs a real toolchain on the box:
 
-1. **Throwaway repo with an uncommitted change** (so the stash checkpoint is exercised):
-   ```bash
-   mkdir /tmp/clavity_accept && cd /tmp/clavity_accept
-   git init -q && echo seed > README.md && git add -A && git commit -qm seed
-   printf '\ndirty\n' >> README.md      # uncommitted -> a real stash snapshot
-   ```
-2. **Bring up agy** in that folder inside the psmux session (e.g. `clavity start /tmp/clavity_accept`,
-   then leave agy running; drive it from your existing Claude session). Confirm with `clavity state`
-   (expect `idle`) and `clavity doctor`.
-3. **From Claude**, mint + send a request, then ring:
-   ```bash
-   clavity req-id "create accept_proof.txt containing exactly: ACCEPT-OK"
-   #   -> [req_id=req-…] create accept_proof.txt containing exactly: ACCEPT-OK
-   # Claude: memory_signal_send(from=claude, to=agy, type=request, content=<that envelope>)
-   #         (record the returned signal id)
-   clavity ring
-   ```
-4. **Await + verify** (Claude: `memory_signal_read(agentId=claude, unreadOnly=true)`), then check:
-   - the reply correlates (its `replyTo` is your request's signal id, or it echoes the `req_id`);
-   - `accept_proof.txt` exists with the expected content;
-   - `git stash list` shows a `claudavity pre <req_id>` entry (the safety checkpoint **persisted**);
-   - the dirty `README.md` is **untouched** (the checkpoint is non-intrusive).
-5. **Cleanup:** `clavity stop` (kills the agy session), then remove the temp repo.
+- **JDK 21.**
+- **Ghidra 12.1.2**, with **`GHIDRA_INSTALL_DIR`** set to the install root.
+- A Ghidra project that has been **created and fully analyzed in the Ghidra GUI, then closed.** ghidrust
+  attaches to an already-analyzed project; it does not import or analyze binaries itself, so a project
+  that was never analyzed will fail in ways that look like ghidrust bugs but are not.
 
-## Hosting a new tool
+If you cannot run tier 2 locally, say so explicitly in the PR description rather than implying full
+coverage — see "Pull requests" below.
 
-`clavity` is an umbrella repo that hosts several independently-released tools. To add one, follow the
-onboarding playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md) (code on a branch; plugin under
-`plugins/<tool>/` on `main`; per-tool `<tool>-v<N>` release lineage).
+## Project layout
 
-## Releasing (umbrella)
+There is **no `ghidrust/src/`** — this is a 3-crate workspace.
 
-Releases are produced **only** by pushing a serial umbrella tag `clavity-v<N>` (e.g. `clavity-v1`,
-`clavity-v2`), which triggers `.github/workflows/umbrella-release.yml`. That one release, named
-`clavity`, bundles both variants' version-stamped installers (`clavity-dotnet-setup-<ver>.exe` and
-`clavity-classic-setup-<ver>.exe`, each with a `.sha256`).
+| Path | Role |
+| --- | --- |
+| `crates/ghidrust-mcp/` | The shipped `ghidrust` binary and lib: the MCP server, the 19-tool surface, `rmcp` over stdio. |
+| `crates/ghidra-ipc/` | The Rust ↔ Ghidra-worker wire protocol — request/response types, error envelopes. Pure serde. |
+| `crates/ghidra-worker-ctl/` | Worker lifecycle: JVM launch, handshake, connection ownership, Job-Object containment. |
+| `plugin/` | The Claude plugin: manifest, `.mcp.json`, and the `ghidra-re-driver` skill. |
+| `installer/` | `ghidrust.iss` (Inno Setup) + the marketplace manifest. |
+| `deny.toml` | `cargo-deny` policy — licenses, advisories, bans, sources. |
 
-To cut a release, run **`just release`** from the repo root (preview first with `just release-dry`). It
-auto-derives each member's next version + CHANGELOG from that member's conventional commits, previews every
-member that will bump, and — on your typed confirmation and a green local pre-flight — pushes the serial
-`clavity-v<N>` tag that triggers `umbrella-release.yml`. Never hand-edit an `installer/*.iss` version:
-`just bump` (which `just release` drives for you) is the sole writer across all of a member's version
-sources. To run the workflow directly without a tag push, use `workflow_dispatch` supplying the `tag`
-input (the serial `clavity-v<N>`).
+## Things that will bite you
 
-**Deprecated tags (no-ops):** the legacy `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags no
-longer trigger anything — the per-variant release workflows were retired. Pushing one produces **no
-release** (a silent "ghost" tag). The historical per-variant releases and their tags are kept as frozen
-history.
-
-## Porting to Linux / macOS
-
-The binary is mostly portable; OS-specific assumptions are centralized in `src/platform.rs` (see
-`clavity info`). Checklist:
-
-1. **tmux binary** — clavity resolves `tmux` on `PATH` on every platform (override `AGY_TMUX_BIN`).
-   Verify real tmux accepts the verbs clavity uses: `has-session -t`, `capture-pane -p -t`,
-   `send-keys -t -l` (+ `Enter`), `new-session -d -s -c`. (All standard tmux.)
-2. **agy's shell differs** — Windows agy runs **pwsh**; Linux/macOS typically **bash/sh**. The
-   responder skill's checkpoint command is written in PowerShell. Add a shell-appropriate variant in
-   `agy_skills/claudavity-responder/SKILL.md`. **This is the main porting touch-point — it lives in
-   the skill, not the Rust code.** Update `platform::Os::agy_shell` if the assumption changes.
-3. **Footer markers** — agy's TUI strings (`? for shortcuts` / `esc to cancel`) come from the app and
-   should match across platforms; if a build differs, they're overridable via `AGY_IDLE_MARKER` /
-   `AGY_BUSY_MARKER`, and the marker-free activity fallback works regardless.
-4. **`claude` / `agy` discovery** — `start` spawns them via `PATH`; cross-platform already.
-5. **Verify** — run `cargo test --all --features test-fakes`, then the live acceptance runbook on your
-   OS. Update the platform-support table in the README and, ideally, the CI matrix.
-
-## Conventions
-
-- **stdout = results, stderr = diagnostics.** Keep machine-readable output on stdout; use `tracing`
-  (not `println!`) for logs, so callers can parse `clavity state` / `capture` / `req-id` / `info`.
-- Keep pure logic pure and unit-tested; live I/O goes through thin wrappers.
-- Match the existing module-doc/comment style.
-- **Editing `claudavity-responder/SKILL.md` takes effect on agy's *next restart*.** agy reads the
-  skill once per session (on its first doorbell) and caches it — a running agy will not pick up skill
-  edits mid-session. After changing the skill, restart agy (`clavity -c`) to load it, then re-verify.
+- **The wire format is snapshot-pinned.** `crates/ghidra-ipc/src/snapshots/` holds `insta` snapshots that
+  *are* the protocol oracle. Review changes with `cargo insta review` and never blanket-accept — an
+  accepted snapshot silently redefines the contract the Ghidra-side worker is written against.
+- **`cargo deny check` is part of `just lint`.** A new dependency can fail the gate on license or
+  advisory grounds while compiling perfectly. Read `deny.toml` before adding one. Existing advisory
+  exceptions are documented inline there with the reason each is out of scope.
+- **The JVM must not outlive its parent.** `crates/ghidra-worker-ctl/src/job_object.rs` puts the worker in
+  a Windows Job Object precisely so it dies with ghidrust. If you change spawn or teardown, verify no
+  orphan JVM survives a kill.
+- **IPC is loopback TCP on an ephemeral port** (`boot.rs`, `127.0.0.1:0`), not stdio or a named pipe.
+  The worker dials back and announces itself; the handshake is where port/PID mismatches surface.
+- **Writes are durable.** Five tools (`rename`, `comment`, `set_datatype`, `set_prototype`, `set_local`)
+  persist to the Ghidra project on disk. Test them against a throwaway project copy, not one you care about.
 
 ## Pull requests
 
-Fork → branch → make `cargo test --all --features test-fakes`, `cargo clippy --all-targets
---features test-fakes -- -D warnings`, and `cargo fmt --all --check` all pass → open a PR. In the
-description, say **how you verified** — unit only, or the live acceptance runbook (and on which OS).
+Fork → branch → make `just lint` and `just test` pass → open a PR. In the description, state **how you
+verified**: fast tier only, or the Ghidra-backed tier as well (and against which Ghidra and JDK). Sign
+off your commits per the DCO requirement in the umbrella
+[`CONTRIBUTING.md`](../CONTRIBUTING.md).

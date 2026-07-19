@@ -1,5 +1,24 @@
 # clavity (.NET) — design spec
 
+> ## ⚠️ HISTORICAL — superseded by the shipped code
+>
+> **This spec was written before any .NET code existed and has not been reconciled to what shipped.**
+> It is kept for the design rationale behind the gRPC-control-server approach, which is still the
+> architecture — but do not read it as a description of the current system.
+>
+> Known divergences from reality:
+> - Its status line below still says "the .NET code does not exist yet." It does — see
+>   [`../clavity-dotnet/`](../clavity-dotnet/).
+> - It predates the whole `Install/` subsystem (plugin registration, the shared PowerShell registrar)
+>   and says nothing about it.
+> - It pins agy **1.0.11**; the live peer has moved on since.
+>
+> **For current behavior, read the code and
+> [`../clavity-dotnet/README.md`](../clavity-dotnet/README.md).** For current agy assumptions, read
+> [`../clavity-dotnet/plugin/knowledge/agy-assumptions.md`](../clavity-dotnet/plugin/knowledge/agy-assumptions.md).
+> Its companion increment-1 plan is fully exhausted and archived at
+> [`archive/clavity-dotnet-increment1-plan.md`](archive/clavity-dotnet-increment1-plan.md).
+
 > **Status:** DRAFT spec (forward-writable; not a line-level plan — the .NET code does not exist yet).
 > **Authored:** 2026-06-27 · **Verified against:** Antigravity CLI (`agy`) **1.0.11**, Windows 11, pwsh.
 > **Review:** AGY-AFTER review done 2026-06-27 (web-Gemini relay). **Transport/control facts since
