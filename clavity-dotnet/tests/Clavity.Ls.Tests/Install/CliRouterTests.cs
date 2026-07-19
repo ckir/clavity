@@ -296,22 +296,26 @@ public sealed class CliRouterTests
             "@echo off\r\nif \"%1 %2\"==\"plugin list\" echo clavity-dotnet@clavity-dotnet\r\nexit /b 0\r\n");
         File.WriteAllText(Path.Combine(dir, "agy.cmd"), "@echo off\r\nexit /b 0\r\n");
         var oldPath = Environment.GetEnvironmentVariable("PATH");
-        var oldProfile = Environment.GetEnvironmentVariable("USERPROFILE");
         try
         {
-            // dir first so claude.cmd wins; System32 so cmd.exe/powershell child procs still resolve. Temp
-            // USERPROFILE so detection sees no real ~/.claude — claude is detected via the fake on PATH only.
-            Environment.SetEnvironmentVariable("PATH", dir + ";" + Environment.SystemDirectory);
-            Environment.SetEnvironmentVariable("USERPROFILE", dir);
+            // Prepend the fake-CLI dir to the REAL PATH so the fake agy.cmd wins over any real agy; KEEP the
+            // real USERPROFILE — register-plugin.ps1's Start-Job time-box needs a valid profile/APPDATA
+            // persistence path (a bare temp USERPROFILE breaks Start-Job: "The Persistence Path does not exist").
+            // Agent=agy + fake-first guarantees no real agent is ever touched.
+            Environment.SetEnvironmentVariable("PATH", dir + ";" + oldPath);
+            // Use the AGY leg (not claude): register-plugin.ps1's inner Test-ClaudeRunning guard
+            // (Get-Process -Name claude) fires whenever a real Claude Code process is live — e.g. when this
+            // suite runs interactively from inside Claude Code — and returns exit 3 for the claude leg. The
+            // agy leg has no such guard, so this deterministically proves the -File mechanism end-to-end
+            // (script parsed via -File, agent detected, vectors run through the fake, mapped exit + AGENT line).
             var outcome = PowerShellRegistrar.Stream(
-                new RegistrarRequest("install", "clavity-dotnet", "clavity-dotnet", dir, "claude"));
+                new RegistrarRequest("install", "clavity-dotnet", "clavity-dotnet", dir, "agy"));
             Assert.Equal(0, outcome.ExitCode);                 // single detected agent OK
-            Assert.Contains("AGENT claude OK", outcome.Output);
+            Assert.Contains("AGENT agy OK", outcome.Output);
         }
         finally
         {
             Environment.SetEnvironmentVariable("PATH", oldPath);
-            Environment.SetEnvironmentVariable("USERPROFILE", oldProfile);
             Directory.Delete(dir, true);
         }
     }
