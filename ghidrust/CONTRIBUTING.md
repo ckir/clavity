@@ -72,6 +72,17 @@ There is **no `ghidrust/src/`** — this is a 3-crate workspace.
   The worker dials back and announces itself; the handshake is where port/PID mismatches surface.
 - **Writes are durable.** Five tools (`rename`, `comment`, `set_datatype`, `set_prototype`, `set_local`)
   persist to the Ghidra project on disk. Test them against a throwaway project copy, not one you care about.
+- **The shipped skill is GENERATED — never hand-edit it.** `plugin/skills/ghidra-re-driver/SKILL.md` is
+  emitted from the binary, which embeds the canonical copy at `skill/SKILL.md`. Edit only the canonical
+  file, then regenerate:
+
+  ```bash
+  ghidrust skill --emit | awk '/^---/{p=1} p' > plugin/skills/ghidra-re-driver/SKILL.md
+  ```
+
+  The `awk` strips the binary's leading license/provenance comment so the YAML frontmatter is line 1 —
+  Claude Code will not register the skill otherwise. The license still travels with the plugin via
+  `NOTICE`.
 
 ## Pull requests
 

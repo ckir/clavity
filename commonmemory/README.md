@@ -13,16 +13,28 @@ tag `[common]` notes, and proactively recall them on task start / handoff. No bi
 
 See `skills/commonmemory/SKILL.md` for the full convention.
 
+## What's in here
+
+```
+commonmemory/
+  .claude-plugin/plugin.json · plugin.json   # dual manifests (Claude + agy)
+  skills/commonmemory/SKILL.md   # the shared-memory convention (read by both CLIs)
+  rules/commonmemory.md          # agy-native proactive-recall rule (Claude ignores it)
+```
+
 ## Install
 ### Prerequisite
-**agentmemory** MCP server configured in BOTH CLIs (the same global `@agentmemory/agentmemory`
-module → one shared store). Same setup as `clavity-classic` (see its README step 1). That is the
-only dependency.
+**agentmemory** MCP server configured in BOTH CLIs (the same global
+[`@agentmemory/agentmemory`](https://www.npmjs.com/package/@agentmemory/agentmemory) module → one
+shared store). Register the same agentmemory MCP server in both Claude Code and agy, pointing at the
+same daemon (default `:3111`). Nothing works without it — it is the shared data channel this
+plugin's convention runs over. That is the only dependency.
 
 **Recommended (end users):** run the standalone **commonmemory** installer
-(`commonmemory-setup-<ver>.exe`) from the [clavity release page](../../../releases). It stages the
-plugin and registers it locally — a scoped `clavity-commonmemory` marketplace under its own install
-dir — against every detected agent (Claude Code / agy). No manual `plugin install`, and no remote
+(`commonmemory-setup-<version>.exe`) from the
+[clavity release page](https://github.com/ckir/clavity/releases). It stages the plugin and
+registers it locally — a scoped `clavity-commonmemory` marketplace under its own install dir —
+against every detected agent (Claude Code / agy). No manual `plugin install`, and no remote
 marketplace: the plugin ships inside the installer.
 
 **From a clone (developers):** install this plugin folder directly into both CLIs:
@@ -46,7 +58,26 @@ the start of a task:
   `rules/`, the GEMINI.md edit is redundant — verify once.)
 - **Claude** — add the same one-line rule to your `CLAUDE.md` (project or user scope).
 
+## Troubleshooting
+
+- **`memory_smart_search` fails, or notes never show up.** The **agentmemory** MCP server is not
+  configured (or not running) in one or both CLIs — see Prerequisite above. Registration alone
+  does not install it; if you have not set up agentmemory yet, the shared notebook stays inactive
+  (source: `installer/commonmemory.iss` post-install message).
+- **Neither agent ever recalls `[common]` notes on its own.** The one-line rule under Configuration
+  is missing from that agent's global instructions — installing the plugin only makes the skill
+  available, it does not wire up proactive recall.
+- **Install/uninstall silently fails to (de)register the plugin.** Claude Code was running during
+  setup — it rewrites the plugin registration on its own startup/exit and overwrites what the
+  installer just did. Close Claude Code completely, then run the installer again (source:
+  `installer/commonmemory.iss`).
+
 ## Docs
 - `skills/commonmemory/SKILL.md` — the shared-memory convention (read by both CLIs)
 - `rules/commonmemory.md` — agy-native proactive-recall rule (Claude ignores it)
 - `.claude-plugin/plugin.json` + `plugin.json` — Claude + agy manifests
+
+## License
+
+[PolyForm Noncommercial License 1.0.0](LICENSE) (`PolyForm-Noncommercial-1.0.0`) — free for
+non-commercial use. See [NOTICE](NOTICE) for the copyright line.

@@ -77,16 +77,16 @@ State detection is defense-in-depth and never load-bearing: correctness rests on
 - **[Claude Code](https://claude.com/claude-code)** — the master agent, with agentmemory configured.
 - **`agy`** (Antigravity CLI) — signed in, with agentmemory configured too.
 - **[psmux](https://github.com/psmux/psmux)** (ships as `psmux`/`pmux`/`tmux`) on your `PATH`.
-- **Either** the [Windows installer](https://github.com/ckir/clavity/releases/latest) (no toolchain) **or**
-  **Rust** (`cargo`) to build from source.
-- Currently **Windows** (see [Platform support](#platform-support)).
+- **Either** the [Windows installer](https://github.com/ckir/clavity/releases/latest) (no toolchain)
+  **or** **Rust** (`cargo`) to build from source — currently **Windows** only (see
+  [Platform support](#platform-support)).
 
 ### 1. Wire up the agentmemory bus (both agents)
 
 Register the **same** agentmemory MCP server in **both** Claude Code and agy, pointing at the same
 daemon (default `:3111`). **Nothing works without it** — it is clavity's data channel.
 
-👉 **Config snippets for both agents, and how to verify:**
+**Config snippets for both agents, and how to verify:**
 [`plugin/README.md` § MCP configuration](plugin/README.md#mcp-configuration).
 
 ### 2. Install clavity
@@ -116,7 +116,7 @@ cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"   # Windows
 `clavity start` **auto-installs/refreshes** this skill on every launch, so you don't copy it by hand.
 You do need a **one-time pointer in `~/.gemini/GEMINI.md`** so agy reliably invokes it.
 
-👉 **The rule text to paste, plus the checkpoint behaviour and the skill-caching caveat:**
+**The rule text to paste, plus the checkpoint behaviour and the skill-caching caveat:**
 [`plugin/README.md` § agy's responder trigger](plugin/README.md#agys-responder-trigger-required-one-time).
 
 ### 4. Launch both agents in a folder
@@ -244,10 +244,11 @@ All optional; sensible defaults. Environment variables:
 - **[Protocol runbook](docs/agy-remote-control-protocol.md)** — the exact Claude-side procedure,
   including the **capability-aware "Driving conventions"** (how to phrase requests in agy's language:
   the per-mode request templates + what to avoid).
-- **[agy capability profile](plugin/knowledge/agy-capabilities.md)** — **what agy can do and how to route to it**
-  (strengths, weaknesses, the multi-model table, operational reach), treating agy as an external peer
-  model. Provenance-tagged and version-pinned; the live config is the truth, so re-derive it for your
-  install via its refresh procedure. Pairs with the protocol runbook (how to ask).
+- **[agy capability profile](plugin/knowledge/agy-capabilities.md)** — **what agy can do and how to
+  route to it** (strengths, weaknesses, the multi-model table, operational reach), treating agy as an
+  external peer model. Provenance-tagged and version-pinned; the live config is the truth, so
+  re-derive it for your install via its refresh procedure. Pairs with the protocol runbook (how to
+  ask).
 - **[agy acceptance test suite](docs/agy-test-suite.md)** — copy-pasteable `clavity ask` tests (the
   four request-mode templates + skill-cache and write-scope re-verifications) to **re-run after an
   `agy update`** and confirm the profile + protocol still hold.

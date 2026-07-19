@@ -1,6 +1,6 @@
 # Contributing to clavity
 
-Thanks for helping out! Contributions are very welcome — **especially Linux/macOS support**, since
+Thanks for helping out. Contributions are welcome — **especially Linux/macOS support**, since
 the project is Windows-verified today.
 
 ## Dev setup
