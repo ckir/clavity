@@ -7,7 +7,7 @@ through three MCP tools served by the `clavity-ls` binary:
 - **`agy_status`** — liveness + step count.
 - **`agy_ask`** — send a message and get agy's reply (a quota-consuming, human-visible WRITE).
 
-## What's inside
+## What's in here
 
 ```
 clavity-dotnet/
@@ -20,12 +20,10 @@ clavity-dotnet/
   knowledge/                                 # agy-assumptions.md + agy-capabilities.md — the agy-version-current manuals
 ```
 
-## Requires
+## Install / registration
 
-The `clavity-ls` binary on PATH (installed by the clavity installer). Golden-header injection + the
-permanent-learning loop are the optional **agy-autotrain** add-on; this core plugin works without it.
-
-## Install
+Requires the `clavity-ls` binary on PATH (installed by the clavity installer). Golden-header injection +
+the permanent-learning loop are the optional **agy-autotrain** add-on; this core plugin works without it.
 
 Ships via the `clavity-dotnet` standalone installer (`clavity-dotnet-setup-<VERSION>.exe`), which
 registers this plugin against a local, scoped marketplace for each detected agent (Claude Code / agy) —

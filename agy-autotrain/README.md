@@ -14,7 +14,7 @@ What this add-on does: **capture → curate → verify → compile**, then promo
 emit a compiled `golden-header.md` that the binary (dotnet `clavity-ls`) prepends to every ask — or that the
 classic `clavity-driving` skill prepends manually until the classic binary injects it.
 
-## The loop
+## How it works
 
 ```
 drive agy (core driving skill) ──learn──▶ knowledge/agy-observations.md   (inbox: sanitised general rules)
@@ -43,7 +43,13 @@ The `adversarial-panel-review` skill (AGY-AFTER team-panel review) and its PostT
 ship with each driver's own plugin (`clavity-dotnet/plugin`, `clavity-classic/plugin`) instead of here —
 agy-autotrain retains only the learning loop (learn/curate/verify + the observations inbox).
 
-## Layout
+### Scope
+
+Project-local first (prove the loop), then promote the skills + knowledge to the global config — the
+established trial-then-globalise pattern. Deferred (binary, out of scope): auto-telemetry footer on
+`clavity ask` + a `clavity log` history dump — revisit only with a compelling reason.
+
+## What's in here
 
 ```
 agy-autotrain/
@@ -63,9 +69,3 @@ agy    plugin install ./agy-autotrain
 
 Driving needs only the core plugin; install this add-on when you also want agy to *learn*. When you learn
 something about agy, run `agy-learn`; periodically run `agy-curate` to compile + commit the golden header.
-
-## Scope
-
-Project-local first (prove the loop), then promote the skills + knowledge to the global config — the
-established trial-then-globalise pattern. Deferred (binary, out of scope): auto-telemetry footer on
-`clavity ask` + a `clavity log` history dump — revisit only with a compelling reason.

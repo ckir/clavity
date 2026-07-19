@@ -12,28 +12,34 @@ binary; one part of the [`clavity`](../README.md) umbrella.
 ghidrust **attaches** to a Ghidra project you have already created and fully analyzed in the Ghidra
 GUI, then closed — it does not (yet) import or analyze binaries itself.
 
-## Prerequisites (you supply these — not bundled)
+## Quick start
+
+### Prerequisites
+
+You supply these — they are not bundled.
 
 - **Ghidra 12.1.2** — set `GHIDRA_INSTALL_DIR` to its install root (the installer offers to set this
   for you).
 - **JDK 21** — required by Ghidra 12.1.2 (`application.java.min=21`).
 - A Ghidra project, already analyzed and closed in the GUI.
 
-## Install
+### Install
 
 Grab the standalone `ghidrust-setup-1.0.1` installer from the umbrella
 [release page](../../../releases) and run it. It installs the `ghidrust` binary to your PATH and
 registers the ghidrust plugin (locally, no remote marketplace) against each detected agent
 (Claude Code / agy).
 
-## Version & license
+## Docs
 
-Current version **1.0.1**. Licensed under the **PolyForm Noncommercial License 1.0.0** — free for
-non-commercial use (personal, academic, non-profit). See [LICENSE](../LICENSE).
-
-## More detail
+Current version **1.0.1**.
 
 - [`plugin/README.md`](plugin/README.md) — the full operator doc: what the plugin provides, required
   configuration env vars, per-workspace `.mcp.json` setup, logs & quirks, and uninstall behavior.
 - [`skill/SKILL.md`](skill/SKILL.md) — the bundled agent-facing skill describing how to drive the
   ghidrust tools.
+
+## License
+
+Licensed under the **PolyForm Noncommercial License 1.0.0** — free for
+non-commercial use (personal, academic, non-profit). See [LICENSE](../LICENSE).

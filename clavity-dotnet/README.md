@@ -3,29 +3,7 @@
 Clavity pairs [Claude Code](https://claude.com/claude-code) with [Antigravity (`agy`)](https://antigravity.google),
 shipped as universal dual-plugins. It is one tool in the [`clavity` umbrella](../README.md).
 
-## Quick Start
-
-Run this in **PowerShell** (not `cmd.exe`) to install:
-
-```powershell
-irm https://raw.githubusercontent.com/ckir/clavity/main/clavity-dotnet/install/clavity-install.ps1 | iex
-```
-
-*Note: The installer is unsigned, so Windows SmartScreen may warn on first run (choose "More info" →
-"Run anyway"). The script resolves the latest GitHub release and verifies the installer's SHA-256
-automatically.*
-
-The installer will prompt you to choose between the **.NET** (Primary) or **Classic** (Failover) host
-variant, and allow you to opt-in to extras like `agy-autotrain` or `commonmemory`.
-
-Start a paired session:
-```powershell
-clavity-ls start C:\path\to\your\project
-```
-
-*(To uninstall, use Windows Add/Remove Programs. It cleanly de-registers the plugin from each agent).*
-
-## The Ecosystem
+## How it works
 
 Clavity is split into **Core Hosts** (the routing engines) and **Extra Plugins** (optional skills). The
 single installation script handles both.
@@ -57,7 +35,29 @@ single installation script handles both.
   Allows Claude to drive `agy` like a model (`clavity ask`) and auto-trains clavity's knowledge from
   everyday usage. It captures insights, verifies them, and compiles them into a project-agnostic manual.
 
-## Developer & Contributor Guide
+## Quick start
+
+Run this in **PowerShell** (not `cmd.exe`) to install:
+
+```powershell
+irm https://raw.githubusercontent.com/ckir/clavity/main/clavity-dotnet/install/clavity-install.ps1 | iex
+```
+
+*Note: The installer is unsigned, so Windows SmartScreen may warn on first run (choose "More info" →
+"Run anyway"). The script resolves the latest GitHub release and verifies the installer's SHA-256
+automatically.*
+
+The installer will prompt you to choose between the **.NET** (Primary) or **Classic** (Failover) host
+variant, and allow you to opt-in to extras like `agy-autotrain` or `commonmemory`.
+
+Start a paired session:
+```powershell
+clavity-ls start C:\path\to\your\project
+```
+
+*(To uninstall, use Windows Add/Remove Programs. It cleanly de-registers the plugin from each agent).*
+
+## Contributing
 
 If you want to build your own dual-plugins or contribute to Clavity, this section is for you.
 
