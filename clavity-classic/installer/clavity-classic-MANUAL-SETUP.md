@@ -32,4 +32,23 @@ The responder skill itself is auto-installed by `clavity start` — you do not c
 
 ## 3. Launch
 
-    clavity start C:\path\to\your\project
+Run from your normal shell so agy inherits your signed-in session.
+
+    clavity C:\path\to\your\project           # folder (bare = start)
+    clavity -c                                # current folder; forwards -c (continue) to claude
+    clavity C:\path\to\your\project --resume   # folder + flags forwarded to claude
+    clavity start C:\path\to\your\project      # explicit form, identical
+
+The folder must be the **first** argument and must not start with `-`. If it's omitted — or the
+first argument is a flag — the current folder is used and every argument is forwarded to `claude`.
+So write `clavity C:\proj --resume`, **not** `clavity --resume C:\proj`.
+
+**On first launch a visible watch tab opens** (Windows Terminal) attached to agy, so you can
+answer agy's auth/login prompts — it asks fairly often. Disable with `AGY_WATCH=0`. Attach
+manually anytime with `tmux attach -t claude_agy`. To hide agy while keeping it alive, **detach**
+with `Ctrl-b d` — **closing** the tab tears down the whole session (the next launch is then a
+fresh start).
+
+**Give agy a moment after launch.** It loads its MCP servers (agentmemory included) a few seconds
+after starting. Before driving it, gate on `clavity ping` (sends `[ping]`, rings the doorbell,
+blocks for agy's `READY` reply) and retry until it exits 0.
