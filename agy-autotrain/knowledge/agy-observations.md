@@ -1,13 +1,20 @@
 # agy observations inbox (raw, project-agnostic)
 
-Captured live by `agy-learn`; drained by `agy-curate` into the canonical manual
-(`agy-capabilities.md` / `agy-assumptions.md`) and recompiled into `golden-header.md`. One bullet per
+Captured live by `agy-learn`; drained by `agy-curate` into the GROWTH region of the shared
+golden-header (`golden-header.growth.md`) via `curate-commit`. The driver-owned SEED manuals
+(`agy-capabilities.md` / `agy-assumptions.md`) are never edited by this loop. One bullet per
 observation. Project nouns are forbidden here (Structured Abstraction Schema). Provenance tags:
 `[corpus]` observed live · `[doc]` from docs · `[local]` this install · `[verified]` ≥2 sources.
 
 ## Pending
 
-<!-- empty — drained 2026-07-19 (see drain log below) -->
+- [heuristic] (driver/probabilistic) `[corpus]` Asked for a TIGHT INLINE structured answer (N numbered items,
+  bounded sentences each), the peer instead WROTE the answer to a markdown file in its own private working
+  directory and replied inline with only a one-paragraph preamble plus a `file:///` pointer. The reply came back
+  idle and NOT truncated — so this is not the oversized-reply mode; it is the peer electing file transport for
+  multi-part structured output on its own. Driving implication: when you ask for a structured multi-item verdict,
+  expect to have to READ a returned path rather than parse the inline body, and budget a follow-up read; asking
+  for terseness does not prevent it. (1st observation — needs a 2nd before promotion per the heuristic rubric.)
 
 <!-- Drain log 2026-07-19 (agy peer; 2 pending → recompiled GROWTH + driver cheatsheet):
   1) [assumption] (driver/deterministic) oversized-REASONING-reply truncates-to-HEAD (NOT a hang) — REFINEMENT
