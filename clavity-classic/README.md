@@ -25,8 +25,8 @@ drop on your `PATH` next to `tmux`/`psmux`.
 - [Quick start](#quick-start)
 - [Command reference](#command-reference)
 - [Configuration](#configuration)
-- [Design docs](#design-docs)
 - [Platform support](#platform-support)
+- [Docs](#docs)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -83,25 +83,11 @@ State detection is defense-in-depth and never load-bearing: correctness rests on
 
 ### 1. Wire up the agentmemory bus (both agents)
 
-clavity's data channel is the shared agentmemory store, so the **same** MCP server must be
-registered in **both** Claude Code and agy, pointing at the same daemon (default `:3111`). The
-reference setup on a working machine:
+Register the **same** agentmemory MCP server in **both** Claude Code and agy, pointing at the same
+daemon (default `:3111`). **Nothing works without it** — it is clavity's data channel.
 
-**Claude Code** — `claude mcp add agentmemory -s user -- npx @agentmemory/agentmemory mcp`, i.e. in
-`~/.claude.json` under `mcpServers`:
-```json
-"agentmemory": { "type": "stdio", "command": "npx", "args": ["@agentmemory/agentmemory", "mcp"] }
-```
-
-**agy** — in `~/.gemini/config/mcp_config.json` under `mcpServers` (on Windows a bare `npx` must be
-launched via `cmd /c`):
-```json
-"agentmemory": { "command": "cmd", "args": ["/c", "npx", "@agentmemory/agentmemory", "mcp"] }
-```
-
-Restart each agent after editing its config. Verify Claude sees the bus (the
-`memory_signal_send` / `memory_signal_read` tools are available); `clavity doctor` does not check
-this, so confirm it once during setup.
+👉 **Config snippets for both agents, and how to verify:**
+[`plugin/README.md` § MCP configuration](plugin/README.md#mcp-configuration).
 
 ### 2. Install clavity
 
@@ -127,26 +113,11 @@ cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"   # Windows
 
 ### 3. Install the agy-side responder skill
 
-**`clavity start` auto-installs/refreshes this skill** into `~/.gemini/antigravity-cli/skills/` on
-every launch (it's embedded in the binary), so you normally don't copy it by hand. You do still need
-a **one-time pointer in your `~/.gemini/GEMINI.md`** so agy reliably invokes it — add something like:
+`clavity start` **auto-installs/refreshes** this skill on every launch, so you don't copy it by hand.
+You do need a **one-time pointer in `~/.gemini/GEMINI.md`** so agy reliably invokes it.
 
-> When you see the line `claudavity: check your inbox and act on any request from claude, then reply
-> on the bus.` (or are told to check claudavity/claude signals), invoke the **`claudavity-responder`**
-> skill and follow it: read **only your own** inbox (`memory_signal_read agentId="agy"
-> unreadOnly="true"`), checkpoint, do the request, and reply on the bus. A request whose instruction
-> is exactly `[ping]` → reply `[req_id=…] READY` immediately (no checkpoint).
-
-The responder makes a **non-intrusive `git stash` checkpoint** before editing the live tree, then
-replies on the bus; a `[ping]`-only request is fast-pathed (READY, no checkpoint). On Windows its
-checkpoint command is **PowerShell** (agy's shell is pwsh). To install it manually anyway:
-```pwsh
-Copy-Item -Recurse agy_skills/claudavity-responder `
-  "$HOME/.gemini/antigravity-cli/skills/claudavity-responder"
-```
-
-> **Note:** agy reads the skill once per session and caches it, so a *running* agy won't see skill
-> edits until its next restart.
+👉 **The rule text to paste, plus the checkpoint behaviour and the skill-caching caveat:**
+[`plugin/README.md` § agy's responder trigger](plugin/README.md#agys-responder-trigger-required-one-time).
 
 ### 4. Launch both agents in a folder
 
@@ -255,7 +226,17 @@ All optional; sensible defaults. Environment variables:
 
 ---
 
-## Design docs
+## Platform support
+
+| Platform | Status |
+| --- | --- |
+| Windows | ✅ Built and verified end-to-end against a live `agy` (incl. the autonomous safety checkpoint). |
+| Linux | 🚧 **Compiles + unit-tests in CI** on `ubuntu-latest` (a Linux binary is built as a CI artifact), but the live end-to-end path is **unverified**. See the porting guide under [Contributing](#contributing). |
+| macOS | 🚧 Wanted — should be close to Linux; unverified. |
+
+---
+
+## Docs
 
 - **Design spec** _(internal design provenance — not published)_ — the full
   architecture and the empirical spikes it rests on (bus round-trip, `send-keys` wake, idle/busy
@@ -277,44 +258,14 @@ All optional; sensible defaults. Environment variables:
 
 ---
 
-## Platform support
-
-| Platform | Status |
-| --- | --- |
-| Windows | ✅ Built and verified end-to-end against a live `agy` (incl. the autonomous safety checkpoint). |
-| Linux | 🚧 **Compiles + unit-tests in CI** on `ubuntu-latest` (a Linux binary is built as a CI artifact), but the live end-to-end path is **unverified**. See the porting guide under [Contributing](#contributing). |
-| macOS | 🚧 Wanted — should be close to Linux; unverified. |
-
----
-
 ## Contributing
 
 Contributions welcome — **especially Linux/macOS support**. See **[CONTRIBUTING.md](CONTRIBUTING.md)**
 for the full guide: dev setup, the two test tiers (hermetic + the **live acceptance runbook**), the
 Linux/macOS **porting checklist**, conventions, and PR expectations.
 
-Quick loop:
-
-```bash
-cargo test --all --features test-fakes                          # unit + integration (fake psmux)
-cargo clippy --all-targets --features test-fakes -- -D warnings
-cargo fmt --all --check
-```
-
-### Project layout
-
-| Path | Role |
-| --- | --- |
-| `src/main.rs` | clap CLI, dispatch, `start` launcher, `doctor`/`info`. |
-| `src/tmux.rs` | **C3** — psmux primitives + pane-state detection. |
-| `src/bus.rs` | **C5** — agentmemory-bus conventions (req-id + `[req_id=..]` envelope; pure, no I/O). |
-| `src/membus.rs` | **C5′** — agentmemory daemon REST client (the bus I/O for `ask`/`await-reply`/`ping`). |
-| `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions (Unix arms are scaffolding). |
-| `src/golden_header.rs` | The SEED/GROWTH golden-header read/write contract (mirrors dotnet `GoldenHeader.cs`). |
-| `src/driver_cheatsheet.rs` | Reads the `[driver_guidance]` core-reminder block + its compiled baseline floor. |
-| `src/bin/fake_tmux.rs`, `tests/integration.rs` | Test-only fake psmux + integration tests (CI, no live agy). |
-| `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill. |
-| `docs/` | Protocol runbook, [capability profile](plugin/knowledge/agy-capabilities.md), [acceptance test suite](docs/agy-test-suite.md), design spec, and the [agy-assumptions](plugin/knowledge/agy-assumptions.md) playbook. |
+The quick test loop, the **project layout** table, and the porting checklist all live there — this
+README does not duplicate them.
 
 ---
 
