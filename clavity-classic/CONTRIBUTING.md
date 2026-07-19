@@ -38,6 +38,8 @@ clavity doctor   # preflight: are tmux/claude/agy on PATH, is the session reacha
 | `src/tmux.rs` | **C3** — psmux primitives + pane-state detection (footer markers + activity fallback). |
 | `src/bus.rs` | **C5** — agentmemory-bus conventions (req-id + `[req_id=..]` envelope). |
 | `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions. The Unix arms are scaffolding. |
+| `src/golden_header.rs` | The SEED/GROWTH golden-header read/write contract (mirrors dotnet `GoldenHeader.cs`). |
+| `src/driver_cheatsheet.rs` | Reads the `[driver_guidance]` core-reminder block + its compiled baseline floor. |
 | `src/bin/fake_tmux.rs` | Test-only fake psmux (built only with `--features test-fakes`). |
 | `tests/integration.rs` | Drives the real binary against `fake_tmux` (no live agy; runs in CI). |
 | `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill. |

@@ -1,5 +1,5 @@
 {
   "name": "agy-autotrain",
   "version": "0.1.5",
-  "description": "Drive the agy peer like a model and auto-train clavity's agy knowledge from everyday usage: capture (sanitise to a general rule) -> curate (promote/dedupe into the canonical manual) -> verify (synthetic clavity ask) -> golden-header auto-prepended to every ask."
+  "description": "Drive the agy peer like a model and auto-train clavity's agy knowledge from everyday usage: capture (sanitise to a general rule) -> curate (promote/dedupe into the golden-header GROWTH region) -> verify (synthetic clavity ask) -> golden-header auto-prepended to every ask."
 }

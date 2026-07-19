@@ -177,7 +177,7 @@ unscoped path.
 timeout. Do not silently assume failure. If the pane shows a transient backend error (e.g. agy's
 "high traffic" message), agy aborted to idle with no reply — wait ~1 min, then **re-`ask`** (a fresh
 req-id; the old request was likely consumed when agy read its inbox, so re-ringing alone won't
-re-surface it). (See `docs/agy-assumptions.md` → "Transient runtime gotchas".)
+re-surface it). (See `clavity-dotnet/plugin/knowledge/agy-assumptions.md` → "Transient runtime gotchas".)
 
 > **Manual fallback** (bus or `ask` unavailable): `clavity req-id "<instruction>"` → `memory_signal_send(from="claude", to="agy", type="request", content=<envelope>)` (record the returned signal's `id` **and `threadId`**) → `clavity ring` → `clavity await-reply --req-id <id> --thread-id <threadId>`.
 

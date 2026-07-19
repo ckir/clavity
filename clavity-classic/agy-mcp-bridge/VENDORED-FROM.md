@@ -24,8 +24,7 @@ exactly these): `server.py`, `agy_bus.py`, `agy_tmux.py`, `isolation.py`, `telem
 
 **Dev-only** (present here for maintenance; NOT shipped — the build recipe excludes them): the test suite
 (`test_agy_bus.py`, `test_agy_tmux.py`, `test_client.py`, `test_isolation.py`, `real_test_client.py`,
-`tests/*.py`) and `lefthook.yml` (ruff pre-commit hooks — config only; not auto-wired at the Rust repo root,
-a dev who wants the Python hooks wires it).
+`tests/*.py`).
 
 ## Secret boundary
 

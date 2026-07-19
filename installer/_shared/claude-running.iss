@@ -6,8 +6,8 @@
   registration writes (verified 2026-07-13 spike; agy-concurred fix). Process name = claude.exe (spike Q1).
 
   Detection = `tasklist` via SAFE shell-file redirection (cmd /C tasklist ... > tmp 2>&1), the SAME
-  mechanism plugin-registration.iss's ExecCaptured uses — NOT in-process handle redirection, which
-  deadlocked the silent install (see plugin-registration.iss StemOnPath history). tasklist ships on every
+  mechanism the deleted plugin-registration.iss's ExecCaptured used — NOT in-process handle redirection,
+  which deadlocked the silent install (see path-scan.iss StemOnPath history). tasklist ships on every
   Windows. Fail-OPEN: if the probe cannot run, do NOT block the install (the read-back backstop + the
   owner canary cover the residual). Self-contained: depends on no other shared file.
 ============================================================================ }

@@ -1,7 +1,7 @@
 # clavity — pair Claude with a live agy peer
 
 Clavity pairs [Claude Code](https://claude.com/claude-code) with [Antigravity (`agy`)](https://antigravity.google),
-shipped as universal dual-plugins. It is one tool in the [`clavity` umbrella](README.md).
+shipped as universal dual-plugins. It is one tool in the [`clavity` umbrella](../README.md).
 
 ## Quick Start
 

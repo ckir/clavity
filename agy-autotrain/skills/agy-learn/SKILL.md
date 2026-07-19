@@ -59,7 +59,9 @@ do not curate now. The inbox is drained later by **agy-curate**.
 ```
 # agy observations inbox (raw, project-agnostic)
 
-Captured live by `agy-learn`; drained by `agy-curate` into the canonical manual. One bullet per
+Captured live by `agy-learn`; drained by `agy-curate` into the GROWTH region of the shared
+golden-header (`golden-header.growth.md`) via `curate-commit`. The driver-owned SEED manuals
+(`agy-capabilities.md` / `agy-assumptions.md`) are never edited by this loop. One bullet per
 observation. Project nouns are forbidden here (Structured Abstraction Schema). Provenance tags:
 `[corpus]` observed live · `[doc]` from docs · `[local]` this install · `[verified]` ≥2 sources.
 

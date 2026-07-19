@@ -7,12 +7,12 @@ tag `[common]` notes, and proactively recall them on task start / handoff. No bi
 
 ## Prerequisite
 **agentmemory** MCP server configured in BOTH CLIs (the same global `@agentmemory/agentmemory`
-module → one shared store). Same setup as `clavity-classic` (see its README step 3). That is the
+module → one shared store). Same setup as `clavity-classic` (see its README step 1). That is the
 only dependency.
 
 ## Install
 **Recommended (end users):** run the standalone **commonmemory** installer
-(`commonmemory-setup-<ver>.exe`) from the [clavity release page](../../releases). It stages the
+(`commonmemory-setup-<ver>.exe`) from the [clavity release page](../../../releases). It stages the
 plugin and registers it locally — a scoped `clavity-commonmemory` marketplace under its own install
 dir — against every detected agent (Claude Code / agy). No manual `plugin install`, and no remote
 marketplace: the plugin ships inside the installer.

@@ -45,7 +45,7 @@ You (Claude) drive a paired agy over its Language Server via three MCP tools exp
 
 ## Task-assignment protocol — what stops agy misfiring
 
-<!-- KEEP IN SYNC WITH clavity-driving (plugins/clavity-classic/skills/clavity-driving/SKILL.md) -->
+<!-- KEEP IN SYNC WITH clavity-driving (clavity-classic/plugin/skills/clavity-driving/SKILL.md) -->
 
 agy is bold and acts on what you give it. Frame the task precisely:
 

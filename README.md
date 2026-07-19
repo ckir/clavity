@@ -51,11 +51,13 @@ This monorepo uses a two-tier [`just`](https://github.com/casey/just) task runne
 - **Interactive menu:** `pwsh -File DevelopersCockpit.ps1` — a one-stop cockpit over the `just`/scripts/release tasks (delegates, never duplicates; ship actions owner-gated).
 
 Each tool's recipes mirror its CI gate exactly. First-time ghidrust setup (installs `cargo-nextest` +
-`cargo-deny`): `just ghidrust::setup`.
+`cargo-deny` + `cargo-insta`): `just ghidrust::setup`.
 
 Git hooks are managed by [`lefthook`](https://github.com/evilmartians/lefthook) — run `lefthook install`
-once per clone. **pre-push** runs `just lint` (catches fmt/clippy/compile breaks before CI); **pre-commit**
-runs `ruff` on staged Python (the agy bridge) only.
+once per clone. **pre-push** runs five gates: `just lint` (fmt/clippy/compile breaks), `just
+seed-sync-check` (seed-artifact drift), `just check-register-hash` (register-plugin hash drift), `just
+test-scripts` (the PowerShell script test suite), and `check-versions.ps1` per member (version-source
+drift) — all before CI; **pre-commit** runs `ruff` on staged Python (the agy bridge) only.
 
 ## License
 

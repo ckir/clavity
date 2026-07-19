@@ -8,10 +8,11 @@ design). **Scope:** cross-cutting — `clavity-dotnet` + `clavity-classic` (the 
 The golden-header (SEED+GROWTH, capped at 16 KB ≈ ~4k tokens) is **re-read and re-prepended on EVERY ask**, in both
 drivers:
 - **dotnet:** `clavity-dotnet/src/Clavity.Ls/AgyView.cs:18` documents the dir as "read+prepend **per ask**"; the send
-  path (`SendAsync`, ~lines 109–112) calls `GoldenHeader.TryReadCombined(...)` then `GoldenHeader.Apply(header,
+  path (`AskAsync`, ~lines 129–133) calls `GoldenHeader.TryReadCombined(...)` then `GoldenHeader.Apply(header,
   message)` on every ask — no once-per-conversation guard.
-- **classic:** `clavity-classic/src/main.rs` `ask` handler (~lines 536–547) calls `golden_header::read_combined(...)`
-  → `build_payload(...)` → `golden_header::apply(...)` on every `clavity ask` invocation.
+- **classic:** `clavity-classic/src/main.rs` `ask` handler (~lines 621–628) calls `golden_header::read_combined(...)`
+  (line 621) → `build_payload(...)` (line 628, which internally calls `golden_header::apply(...)` at line 585) on
+  every `clavity ask` invocation.
 
 Both drivers reuse a **persistent** conversation / psmux session, so the peer RETAINS prior turns — meaning the ~4 KB
 header is re-sent every turn even though the peer already has it from turn 1. Over a 20-ask conversation that is

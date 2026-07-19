@@ -87,10 +87,10 @@ should have parked a demotion. The hard budget gate lives in the release preflig
 |---|---|
 | `0` | No pending staging file (nothing to abort) — or a successful reject: tracked files reverted to `HEAD`, untracked drain outputs cleaned, staged observations re-queued into `## Pending`, staging file removed. |
 | `1` | The run-ID is **already in the committed** `docs/agy-drain-log.md` — aborting would re-queue already-shipped observations, so it refuses; use `just accept-drain` instead. |
-| `1` | `git checkout -- .` (the revert) failed — tree not reverted; staging retained so you can fix the repo and re-run. |
+| `1` | `git reset --hard HEAD` (the revert) failed — tree not reverted; staging retained so you can fix the repo and re-run. |
 | `1` | `git clean -fd` (removing the drain's untracked outputs) failed — staging retained; fix the repo and re-run. |
 
-(Both `git checkout` and `git clean` failures share exit `1`; the console message tells you which step
+(Both `git reset --hard HEAD` and `git clean` failures share exit `1`; the console message tells you which step
 failed.) After a successful revert+clean, `abort-drain` also surfaces (non-fatally) any file that still
 differs from `HEAD` — a possible curator stray outside the known output set — for you to review by hand.
 

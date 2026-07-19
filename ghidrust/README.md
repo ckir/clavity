@@ -21,14 +21,14 @@ GUI, then closed — it does not (yet) import or analyze binaries itself.
 
 ## Install
 
-Grab the standalone `ghidrust-setup-1.0.0` installer from the umbrella
+Grab the standalone `ghidrust-setup-1.0.1` installer from the umbrella
 [release page](../../../releases) and run it. It installs the `ghidrust` binary to your PATH and
 registers the ghidrust plugin (locally, no remote marketplace) against each detected agent
 (Claude Code / agy).
 
 ## Version & license
 
-Current version **1.0.0**. Licensed under the **PolyForm Noncommercial License 1.0.0** — free for
+Current version **1.0.1**. Licensed under the **PolyForm Noncommercial License 1.0.0** — free for
 non-commercial use (personal, academic, non-profit). See [LICENSE](../LICENSE).
 
 ## More detail

@@ -15,6 +15,9 @@ clavity-dotnet/
   .mcp.json                                  # registers the clavity-ls --mcp stdio server (Claude side)
   skills/clavity-ls-driving/                 # Claude: when to look vs ask + the anti-misfire protocol
   skills/clavity-ls-pairing/                 # agy: etiquette when LS-driven by a paired Claude
+  skills/adversarial-panel-review/           # Claude: adversarial multi-seat review of a finished spec/plan
+  hooks/                                     # PostToolUse reminder pointing finished specs/plans at the panel skill
+  knowledge/                                 # agy-assumptions.md + agy-capabilities.md — the agy-version-current manuals
 ```
 
 ## Requires

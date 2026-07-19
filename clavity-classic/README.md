@@ -228,6 +228,7 @@ Plain `claude` sessions print nothing, so it's inert outside clavity.
 | `clavity doctor` | Preflight: check tmux/claude/agy are on `PATH` and the session is reachable. |
 | `clavity cancel` | Interrupt agy's current turn (sends Escape to the pane; pair with a bus `alert` from Claude). |
 | `clavity stop` | Tear down the agy session (kill the psmux session) so it doesn't orphan. |
+| `clavity curate-commit` | Read the compiled golden header from stdin and atomically write it (+ a `.sha256` sidecar) to the resolved golden-header growth path — the write path `agy-curate` invokes. |
 | `clavity --session NAME …` | Target a non-default psmux session (global flag). |
 
 **Output discipline:** results go to **stdout** (machine-readable: `idle`, pane text, ids);
@@ -309,6 +310,8 @@ cargo fmt --all --check
 | `src/bus.rs` | **C5** — agentmemory-bus conventions (req-id + `[req_id=..]` envelope; pure, no I/O). |
 | `src/membus.rs` | **C5′** — agentmemory daemon REST client (the bus I/O for `ask`/`await-reply`/`ping`). |
 | `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions (Unix arms are scaffolding). |
+| `src/golden_header.rs` | The SEED/GROWTH golden-header read/write contract (mirrors dotnet `GoldenHeader.cs`). |
+| `src/driver_cheatsheet.rs` | Reads the `[driver_guidance]` core-reminder block + its compiled baseline floor. |
 | `src/bin/fake_tmux.rs`, `tests/integration.rs` | Test-only fake psmux + integration tests (CI, no live agy). |
 | `agy_skills/claudavity-responder/SKILL.md` | **C2/C4** — the agy-side responder skill. |
 | `docs/` | Protocol runbook, [capability profile](plugin/knowledge/agy-capabilities.md), [acceptance test suite](docs/agy-test-suite.md), design spec, and the [agy-assumptions](plugin/knowledge/agy-assumptions.md) playbook. |

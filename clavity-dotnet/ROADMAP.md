@@ -34,17 +34,18 @@ clavity pairs **Claude** with a live **Antigravity (`agy`)** peer. It ships in *
 
 - **clavity-dotnet** — .NET 10, binary **`clavity-ls`**, drives agy over its **Language Server** (gRPC/h2c)
   via the `agy_look` / `agy_status` / `agy_ask` MCP tools. **SHIPPED**: one-command Windows installer
-  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.1.15**.
+  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.2.1**.
 - **clavity-classic** — Rust, binary **`clavity`**, drives agy over **psmux** + the **agentmemory signal bus**
   (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives on the **`clavity-classic`
   branch**. **SHIPPED**: one-command Windows installer (`clavity-classic-setup.exe` + `.sha256`), per-user,
-  mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI. Current release **v0.1.2**. (Also
+  mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI. Current release **v0.1.4**. (Also
   buildable from source via `cargo install --git … --branch clavity-classic`.)
 
-Optional opt-in add-ons (installer checkboxes, **clavity-dotnet only**): **agy-autotrain** (the
-agy-driving-perfection learning loop) and **commonmemory** (shared Claude⇄agy notebook over agentmemory). These
-are dotnet **plugins**; classic has no plugin tree, so its installer (Option A) ships **only** the opt-in
-`agy-mcp-bridge` add-on, not these.
+Under the cohesive distribution model, **agy-autotrain** (the agy-driving-perfection learning loop) and
+**commonmemory** (shared Claude⇄agy notebook over agentmemory) are **not** dotnet installer checkboxes — each
+ships as its own standalone, plugin-only `Setup.exe` (own AppId, own scoped marketplace), installed
+independently of clavity-dotnet. Classic has no plugin tree, so its installer (Option A) ships **only** the
+opt-in `agy-mcp-bridge` add-on.
 
 The two variants are **mutually exclusive** on a machine (the installers refuse to co-install).
 

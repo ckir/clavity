@@ -55,7 +55,8 @@ Orchestration mode. Set CARGO_TARGET_DIR=target/agytest. Launch as an ASYNC BACK
 # afterwards: rm -rf target/agytest
 ```
 **PASS if:** agy launches it as a background task, reports back on reactive wakeup (not a poll loop),
-and the count matches the current suite (was **24 passed, 0 failed**). *(If agy first hits the
+and the reported count matches the **current** suite total — run `cargo test --all --features
+test-fakes` yourself first and compare against that, not a frozen number. *(If agy first hits the
 `clavity.exe` lock and self-diagnoses CARGO_TARGET_DIR, that's also a pass for diagnosis.)*
 
 ### Test C — Generative mode  ·  validates: concrete alternatives, not boilerplate
