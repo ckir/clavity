@@ -63,3 +63,11 @@ release:
 # Preview what `just release` would do — compute + notes, NO writes/tag.
 release-dry:
     pwsh -File scripts/release.ps1 -WhatIf
+
+# Regenerate the pinned SHA-256 of register-plugin.ps1 (uninstaller tamper check).
+sync-register-hash:
+    pwsh -File scripts/sync-register-hash.ps1
+
+# Fail if register-plugin-hash.iss drifted from register-plugin.ps1 (pre-push gate).
+check-register-hash:
+    pwsh -File scripts/check-register-hash-synced.ps1

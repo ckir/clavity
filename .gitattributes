@@ -10,3 +10,8 @@ tests/Clavity.Ls.Tests/TestData/** binary
 # Shell scripts (e.g. shipped plugin hooks) must stay LF on every platform — a CRLF *.sh
 # fails on Linux/macOS with "bad interpreter". Keeps the portable hooks runnable cross-OS.
 *.sh text eol=lf
+
+# Byte-determinism for the hash-pinned registrar: identical EOL in every checkout so the build-time SHA-256
+# pin (register-plugin-hash.iss) matches the packed bytes the uninstaller verifies (GetSHA256OfFile). See
+# docs/superpowers/plans/2026-07-19-installer-registration-convergence.md Task 5.
+installer/_shared/register-plugin.ps1 text eol=crlf
