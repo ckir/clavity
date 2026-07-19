@@ -1,5 +1,10 @@
 # Universal Dual-Plugin Restructure Implementation Plan
 
+> ## 🗄️ ARCHIVED — superseded, kept for provenance only
+>
+> Design artifact from the pre-monorepo clavity-classic tree, frozen by the 2026-07-09 vendor-in
+> (`63fbef8`). The work it describes has since shipped and been restructured. **Do not read it as a
+> description of the current tree.** Excluded from the docs-rationalize pass by `docs/docs-spec.md`.
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Restructure the repo into a Cargo workspace that produces a minimal "universal" plugin (`scaffold`) installable by **both** `claude plugin install` and `agy plugin install` from one generated directory.
@@ -8,7 +13,7 @@
 
 **Tech Stack:** Rust 2021, `serde` + `serde_json` (JSON), `toml` (plugin.toml), no async runtime. MCP over newline-delimited JSON-RPC 2.0 on stdio.
 
-**Spec:** `docs/superpowers/specs/2026-06-17-universal-dual-plugin-restructure-design.md`
+**Spec:** `2026-06-17-universal-dual-plugin-restructure-design.md`
 
 **Verified external formats** (Claude docs 2026-06-17 + agy peer consults `req-djbdx6998nv0` / `req-djbeby5zp30k` / `req-djbemw4gbpoo`):
 - Claude: `.claude-plugin/plugin.json` `{name,version,description}`; `.mcp.json` `mcpServers` with `${CLAUDE_PLUGIN_ROOT}` path var; `hooks/hooks.json`; `skills/<n>/SKILL.md`; no plugin `rules/`.

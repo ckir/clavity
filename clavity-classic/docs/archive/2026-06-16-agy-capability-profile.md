@@ -1,5 +1,10 @@
 # agy Capability Profile — Implementation Plan
 
+> ## 🗄️ ARCHIVED — superseded, kept for provenance only
+>
+> Design artifact from the pre-monorepo clavity-classic tree, frozen by the 2026-07-09 vendor-in
+> (`63fbef8`). The work it describes has since shipped and been restructured. **Do not read it as a
+> description of the current tree.** Excluded from the docs-rationalize pass by `docs/docs-spec.md`.
 > **Status 2026-06-16:** #1 profile + #2 wording protocol + acceptance suite (**10/10** live against
 > agy 1.0.8) complete on clavity `main`. **Task 9 (global promotion) NOT done** — a corelib attempt was
 > reverted as wrong-target (corelib is unrelated); the conventions live in clavity only, pending a
@@ -23,7 +28,7 @@ observed behavior), `[bus]` (agy's self-report; cross-check only) — synthesize
 **Tech Stack:** Markdown docs; `clavity ask` (bus round-trips to the live agy); the Agent tool for
 parallel web research; `WebSearch`/`WebFetch`; `Read`/`Glob`/`Grep` for corpus + config introspection.
 
-**Full design:** `docs/superpowers/specs/2026-06-16-agy-capability-profile-design.md` (read it first).
+**Full design:** `2026-06-16-agy-capability-profile-design.md` (read it first).
 
 ---
 

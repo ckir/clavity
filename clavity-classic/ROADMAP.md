@@ -23,7 +23,7 @@ Everything below is **shipped and on `main`** (`ckir/clavity`). Summary:
   thread-scoped; unsafe unscoped path dropped) after an agy design consult; tested + live-validated.
 
 Beyond this ROADMAP, the same effort produced the **agy capability profile** + capability-aware
-**wording protocol** + a re-runnable **acceptance suite** (see `docs/agy-capabilities.md`,
+**wording protocol** + a re-runnable **acceptance suite** (see `plugin/knowledge/agy-capabilities.md`,
 `docs/agy-remote-control-protocol.md`, `docs/agy-test-suite.md`). No open items remain.
 
 ---

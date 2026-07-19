@@ -19,19 +19,6 @@ drop on your `PATH` next to `tmux`/`psmux`.
 
 ---
 
-## Contents
-
-- [How it works](#how-it-works)
-- [Quick start](#quick-start)
-- [Command reference](#command-reference)
-- [Configuration](#configuration)
-- [Platform support](#platform-support)
-- [Docs](#docs)
-- [Contributing](#contributing)
-- [License](#license)
-
----
-
 ## How it works
 
 clavity combines two off-the-shelf channels:
@@ -41,28 +28,9 @@ clavity combines two off-the-shelf channels:
 - **Bus (data):** structured request/response payloads travel over the **agentmemory** signal bus
   (`memory_signal_send` / `memory_signal_read`), addressed `claude` ↔ `agy`.
 
-`agy` sleeps at its prompt for free between doorbells; Claude only wakes it when there is work.
-
-```
-                       same folder (live working tree)
-  ┌──────────────┐                                        ┌─────────────────────────────┐
-  │  Claude Code │                                        │  psmux session "claude_agy" │
-  │  (master)    │                                        │   └ live, signed-in agy     │
-  └──────┬───────┘                                        └───────────┬─────────────────┘
-         │ 1. memory_signal_send(to=agy, type=request, <payload>)     │
-         │ ───────────────────────────────────────────►  agentmemory  │
-         │                                                signal bus    │
-         │ 2. clavity ring   (psmux send-keys "<doorbell>")            │
-         │ ───────────────────────────────────────────────────────────►  (wakes agy)
-         │                                                              │ 3. read own inbox
-         │                                                              │ 4. git stash checkpoint
-         │                                                              │ 5. act in the LIVE folder
-         │ ◄───────────────────────────────────────────  bus  ◄────────┤ 6. reply (response/info)
-         ▼                                                              ▼ 7. return to idle (free)
-```
-
-State detection is defense-in-depth and never load-bearing: correctness rests on the bus and on
-`has-session`; a doorbell sent while agy is busy is safely queued and processed as the next turn.
+`agy` sleeps at its prompt for free between doorbells; Claude only wakes it when there is work. State
+detection is defense-in-depth and never load-bearing — correctness rests on the bus. Full protocol
+diagram and design detail: [`docs/how-it-works.md`](docs/how-it-works.md).
 
 ---
 
@@ -127,57 +95,35 @@ so you can omit it:
 ```pwsh
 clavity C:\path\to\project           # folder (bare = start)
 clavity -c                           # current folder; forwards -c (continue) to claude
-clavity C:\path\to\project --resume  # folder + flags forwarded to claude
-clavity start C:\path                # explicit form, identical
 ```
 
-The folder must be the **first** argument and must not start with `-`. If it's omitted — or the first
-argument is a flag — the **current** folder is used and every argument is forwarded to `claude`. So
-write `clavity C:\proj --resume`, **not** `clavity --resume C:\proj` (there the folder would be cwd
-and `C:\proj` would be passed to claude).
-**On first launch a visible "watch" tab opens** (Windows Terminal) attached to agy, so you can
-answer agy's auth/login prompts — it asks fairly often. Disable with `AGY_WATCH=0`. You can also
-attach manually anytime: `tmux attach -t claude_agy`. To hide agy while keeping it alive, **detach**
-with `Ctrl-b d` — **closing** the tab tears down the whole session (the next `clavity start`/`-c` is
-then a fresh launch).
+The folder must be the **first** argument (a leading flag means "current folder", and everything is
+forwarded to `claude` instead). On first launch a visible "watch" tab opens so you can answer agy's
+auth/login prompts; disable with `AGY_WATCH=0`. **Detach** with `Ctrl-b d` to hide it without killing
+the session — **closing** the tab tears the whole session down. Full command forms (`--resume` and
+other flag forwarding) and the attach/detach mechanics:
+[`docs/launching-and-driving-agy.md`](docs/launching-and-driving-agy.md).
 
 ### 5. Drive agy from Claude
 
 **You don't run these commands — Claude does.** In the Claude Code chat, just ask Claude to drive
 agy; it has the agentmemory bus tools and invokes `clavity` itself. For that, **Claude needs to know
 the protocol**: point it at [`docs/agy-remote-control-protocol.md`](docs/agy-remote-control-protocol.md)
-(or install that as a Claude skill/command). The optional SessionStart hook below injects a one-line
-reminder, but the full procedure lives in the runbook.
+(or install that as a Claude skill/command).
 
 Under the hood it's **one command** — `clavity ask` mints the request, puts it on the bus, rings the
 doorbell, blocks for agy's correlated reply, and prints it:
 
 ```bash
 clavity ask "refactor foo() to return Result"          # -> agy's reply on stdout, exit 0
-clavity ask --review-only "review src/foo.rs vs the spec; verdict only, no edits"
 ```
 
 No polling, no pane-scraping: `ask` correlates the reply by signal id + the `[req_id=..]` echo and
-returns its content directly (exit 1 on timeout). To block on a reply for a request you sent via the
-MCP tool yourself, use `clavity await-reply --req-id <id> --thread-id <thr>` (pass the `threadId` from
-your `memory_signal_send` response — it scopes the read to that thread). The agentmemory daemon is
-reached over its REST API (default `http://127.0.0.1:3111`, override with `AGENTMEMORY_URL`).
-
-> **After launch, give agy a moment.** It loads its MCP servers (agentmemory included) a few seconds
-> after starting, and `clavity state` can read `idle` before that finishes. Gate your first task on
-> **`clavity ping`** (one call: send `[ping]`, ring, block for `READY`) and retry until it exits 0 —
-> see the runbook. The manual equivalent is typing `list your active mcp servers` in the watch tab.
-
-**Optional — auto-detect clavity sessions.** `clavity start` exports `CLAVITY_SESSION=<session>` to the
-Claude it launches. Add a **SessionStart hook** to `~/.claude/settings.json` that, when that var is set,
-injects a note telling Claude it has a live agy peer and how to drive it (so you don't have to remind it):
-```json
-{ "hooks": { "SessionStart": [ { "hooks": [ {
-  "type": "command", "shell": "bash",
-  "command": "if [ -n \"$CLAVITY_SESSION\" ]; then printf 'clavity: live agy peer in psmux session %s — drive via clavity req-id|ring + memory_signal_send/read; readiness: [ping].' \"$CLAVITY_SESSION\"; fi"
-} ] } ] } }
-```
-Plain `claude` sessions print nothing, so it's inert outside clavity.
+returns its content directly (exit 1 on timeout). **After launch, give agy a moment** — it loads its
+MCP servers a few seconds after starting, so gate your first task on `clavity ping` and retry until it
+exits 0. Full detail — `await-reply`, the `AGENTMEMORY_URL` override, and an optional SessionStart
+hook that auto-primes Claude with a live-peer reminder:
+[`docs/launching-and-driving-agy.md`](docs/launching-and-driving-agy.md).
 
 ---
 
@@ -238,6 +184,11 @@ All optional; sensible defaults. Environment variables:
 
 ## Docs
 
+- **[How it works](docs/how-it-works.md)** — the full doorbell/bus architecture diagram and design
+  detail behind the summary above.
+- **[Launching and driving agy](docs/launching-and-driving-agy.md)** — the full launch-command
+  reference and Claude-driving walkthrough behind Quick start steps 4 and 5, including the optional
+  SessionStart hook.
 - **Design spec** _(internal design provenance — not published)_ — the full
   architecture and the empirical spikes it rests on (bus round-trip, `send-keys` wake, idle/busy
   detection, doorbell-while-busy queueing, the pwsh shell reality, the safety checkpoint).

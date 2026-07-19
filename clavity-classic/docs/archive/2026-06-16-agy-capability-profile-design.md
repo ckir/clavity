@@ -1,5 +1,10 @@
 # Design — agy capability profile (for delegation routing), and wiring it into how we ask
 
+> ## 🗄️ ARCHIVED — superseded, kept for provenance only
+>
+> Design artifact from the pre-monorepo clavity-classic tree, frozen by the 2026-07-09 vendor-in
+> (`63fbef8`). The work it describes has since shipped and been restructured. **Do not read it as a
+> description of the current tree.** Excluded from the docs-rationalize pass by `docs/docs-spec.md`.
 > Status: approved design (brainstormed 2026-06-16). Next step: implementation plan (writing-plans).
 > Supersedes the earlier `2026-06-16-driving-agy-skill-design.md`, which conflated three distinct
 > concerns into one skill.

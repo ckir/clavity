@@ -34,12 +34,12 @@ clavity pairs **Claude** with a live **Antigravity (`agy`)** peer. It ships in *
 
 - **clavity-dotnet** — .NET 10, binary **`clavity-ls`**, drives agy over its **Language Server** (gRPC/h2c)
   via the `agy_look` / `agy_status` / `agy_ask` MCP tools. **SHIPPED**: one-command Windows installer
-  (`clavity-dotnet-setup.exe`), Add/Remove-Programs uninstall, release CI. Current release **v0.2.1**.
+  (`clavity-dotnet-setup-<version>.exe`), Add/Remove-Programs uninstall, release CI.
 - **clavity-classic** — Rust, binary **`clavity`**, drives agy over **psmux** + the **agentmemory signal bus**
-  (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives on the **`clavity-classic`
-  branch**. **SHIPPED**: one-command Windows installer (`clavity-classic-setup.exe` + `.sha256`), per-user,
-  mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI. Current release **v0.1.4**. (Also
-  buildable from source via `cargo install --git … --branch clavity-classic`.)
+  (`clavity ask` / `await-reply` / `ping`, `delegate_to_antigravity`). Source lives at `clavity-classic/` on
+  `main` (monorepo). **SHIPPED**: one-command Windows installer (`clavity-classic-setup-<version>.exe` +
+  `.sha256`), per-user, mutual-exclusion with dotnet, opt-in `agy-mcp-bridge` add-on, release CI.
+  (Also buildable from source with `just build` in `clavity-classic/`.)
 
 Under the cohesive distribution model, **agy-autotrain** (the agy-driving-perfection learning loop) and
 **commonmemory** (shared Claude⇄agy notebook over agentmemory) are **not** dotnet installer checkboxes — each
@@ -164,11 +164,9 @@ Shares the same empirical-measurement question as the golden-header per-ask back
   mitigated). DPAPI/signing out of scope for this threat model.
 - **Migrating classic → dotnet regresses `delegate_to_antigravity`** — dotnet provides `agy_ask` (consults), not
   autonomous code-delegation. Valid only while clavity-classic stays a maintained variant (which item 1 assumes).
-- **No continuous .NET build/test CI** on `main` — the .NET release gate stays local (`dotnet build -c Release` +
-  `dotnet test --filter "Category!=LiveAgy"`); dotnet packaging ships via the release-only
-  `release-clavity-dotnet.yml`. The continuous `ci.yml` (cargo fmt/clippy/test/build) now **targets the
-  `clavity-classic` branch** (where the Rust crate lives) on both branches — it was retargeted off `main` (which
-  has no `Cargo.toml`) so it stops false-failing and actually gates the Rust crate.
+_(The former "no continuous .NET CI on `main`" limitation is resolved and has been removed: it described the
+pre-monorepo, branch-per-tool world. `.github/workflows/ci-dotnet.yml` now runs `dotnet build` + `dotnet test`
+on every push to `main`, and packaging ships via the unified `umbrella-release.yml` + `build-dotnet.yml`.)_
 
 ---
 

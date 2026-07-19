@@ -73,10 +73,17 @@ Two authorities this file defers to, and does not duplicate:
 - `seed/golden-header.md` — compiled SEED, written by `curate-commit`.
 - `scripts/drain-knowledge-prompt.md` — a prompt, functionally code.
 - `commonmemory/rules/commonmemory.md` — an agy rule file the agent consumes, not prose.
-- `docs/archive/**` — deliberately frozen historical artifacts.
+- `**/docs/archive/**` — deliberately frozen historical artifacts, at ANY depth. Matched with a leading
+  `**/` deliberately: a root-anchored `docs/archive/**` covers only the umbrella's copy and silently
+  leaves a member's `<member>/docs/archive/**` in scope. That exact root-anchoring bug is how
+  `clavity-classic/docs/superpowers/**` (5 files, 2,215 lines of superseded design docs) classified as
+  in-scope product documentation — the root `docs/superpowers/` is gitignored, but the member-nested
+  copy was tracked and matched nothing here. Those files now live in `clavity-classic/docs/archive/`.
 - `**/tests/fixtures/**` — test data.
 - `*/agy-mcp-bridge/VENDORED-FROM.md` — vendored provenance.
-- `docs/superpowers/**`, `.clavity/**` — working artifacts, not product docs.
+- `**/docs/superpowers/**`, `**/.clavity/**` — working artifacts, not product docs. Same leading-`**/`
+  reasoning as the archive entry above: the root copies are gitignored, so only a member-nested copy can
+  ever be tracked — and a root-anchored pattern is exactly what would miss it.
 - Vendored trees (`**/.venv/`, `**/node_modules/`).
 - **This file, `docs/docs-spec.md`** — it matches the in-scope `docs/**`, so without this line a docs
   pass could rewrite its own governing contract. Changed deliberately by the owner, never by a pass.

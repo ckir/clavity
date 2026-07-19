@@ -1,5 +1,10 @@
 # Universal Dual-Plugin Restructure — Design
 
+> ## 🗄️ ARCHIVED — superseded, kept for provenance only
+>
+> Design artifact from the pre-monorepo clavity-classic tree, frozen by the 2026-07-09 vendor-in
+> (`63fbef8`). The work it describes has since shipped and been restructured. **Do not read it as a
+> description of the current tree.** Excluded from the docs-rationalize pass by `docs/docs-spec.md`.
 **Date:** 2026-06-17
 **Status:** Approved (design); implementation plan pending.
 **Author:** Costas Kirgoussios (with Claude + agy consult)

@@ -20,9 +20,6 @@ LS-specific wire assumptions.
 
 Dev (run from this folder, `clavity-dotnet/`): `dotnet build`, `dotnet test tests/Clavity.Ls.Tests`.
 
-## Recent session notes
-_(dated — see ROADMAP/plugin.json for current version)_
-- 2026-07-04 — `Clavity.Ls` ask-Answer fix + `clavity-v2` release
-  — fixed null `Answer` on a tool-terminated agy turn (`BoundedView.ProjectAskReply` now rescues the last
-  assistant run's full prose into `Activity` instead of clipping to 200); released as dotnet **0.1.10** / umbrella
-  tag **`clavity-v2`**. Includes the release runbook (serial `clavity-v<N>` tag; bump `installer/clavity-dotnet.iss`).
+For what shipped when, read `CHANGELOG.md` and `ROADMAP.md` — they are generated/maintained and stay
+current. (A hand-written "recent session notes" section used to live here; it stopped being recent nine
+releases ago, which is exactly the rot this file cannot afford as auto-loaded agent context.)

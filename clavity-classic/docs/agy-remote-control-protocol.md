@@ -4,7 +4,8 @@ The procedure Claude follows to drive the live, signed-in `agy` session in the s
 Transport is the **agentmemory signal bus** (Claude's own `memory_signal_send` / `memory_signal_read`
 MCP tools) for payloads; the **doorbell** (`clavity ring`) wakes agy. The `clavity` binary provides
 the psmux/state plumbing and the bus id convention (`clavity req-id`). See the design spec at
-`docs/superpowers/specs/2026-06-16-agy-remote-control-design.md`.
+[`archive/2026-06-16-agy-remote-control-design.md`](archive/2026-06-16-agy-remote-control-design.md)
+(archived — it describes the original design, not necessarily the current tree).
 
 > **Correctness rests on the bus, not the TUI.** State detection (idle/busy) is best-effort and
 > never load-bearing — a misread only affects ordering, because a doorbell sent while agy is busy is

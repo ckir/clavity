@@ -27,8 +27,8 @@ SEED, see [`docs/drain-knowledge-runbook.md`](docs/drain-knowledge-runbook.md).
 
 | Product | Folder | Build | Driving notes |
 |---------|--------|-------|----------------|
-| clavity-dotnet | `clavity-dotnet/` | `cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests` | [clavity-dotnet/CLAUDE.md](clavity-dotnet/CLAUDE.md) |
-| clavity-classic | `clavity-classic/` | `cd clavity-classic && cargo test --all --features test-fakes` | [clavity-classic/CLAUDE.md](clavity-classic/CLAUDE.md) |
+| clavity-dotnet | `clavity-dotnet/` | `cd clavity-dotnet && just test` | [clavity-dotnet/CLAUDE.md](clavity-dotnet/CLAUDE.md) |
+| clavity-classic | `clavity-classic/` | `cd clavity-classic && just test` | [clavity-classic/CLAUDE.md](clavity-classic/CLAUDE.md) |
 | ghidrust | `ghidrust/` | `cd ghidrust && just test` | [ghidrust/CLAUDE.md](ghidrust/CLAUDE.md) |
 | agy-autotrain | `agy-autotrain/` | (plugin only) | — |
 | commonmemory | `commonmemory/` | (plugin only) | — |
