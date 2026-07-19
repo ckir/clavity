@@ -120,6 +120,39 @@ function Invoke-AgentCli {
     return @{ ExitCode = [int]$r.ExitCode; Output = [string]$r.Output }
 }
 
+function Install-ClaudePlugin {
+    param([string]$PluginName, [string]$MarketplaceName, [string]$AppDir)
+    # Inner TOCTOU guard: refuse (fail this agent) if Claude started after the outer gate.
+    if (Test-ClaudeRunning) {
+        return @{ Ok = $false; Reason = 'Claude Code is running — registration skipped to avoid clobbering it. Close Claude Code and re-run setup.' }
+    }
+    [void](Invoke-AgentCli 'claude' @('plugin', 'marketplace', 'remove', $script:LegacyMarketplaceName))  # 1 Bug-1
+    [void](Invoke-AgentCli 'claude' @('plugin', 'marketplace', 'remove', $MarketplaceName))                # 2 pre-clean
+    $add = Invoke-AgentCli 'claude' @('plugin', 'marketplace', 'add', $AppDir, '--scope', 'user')          # 3
+    if ($add.ExitCode -ne 0) { return @{ Ok = $false; Reason = "marketplace add failed: $(Format-Reason $add.Output)" } }
+    [void](Invoke-AgentCli 'claude' @('plugin', 'uninstall', $PluginName))                                 # 4 pre-clean
+    $ins = Invoke-AgentCli 'claude' @('plugin', 'install', "$PluginName@$MarketplaceName", '--scope', 'user')  # 5
+    if ($ins.ExitCode -ne 0) { return @{ Ok = $false; Reason = "install failed: $(Format-Reason $ins.Output)" } }
+    $list = Invoke-AgentCli 'claude' @('plugin', 'list')                                                   # 6 read-back
+    $wanted = "$PluginName@$MarketplaceName"
+    if ($list.ExitCode -ne 0) { return @{ Ok = $false; Reason = "read-back could not run 'claude plugin list': $(Format-Reason $list.Output)" } }
+    # Strict literal match (no regex) — replaces the brittle Pos() substring scrape (§3.2).
+    $hit = $list.Output | Select-String -SimpleMatch $wanted -Quiet
+    if (-not $hit) {
+        return @{ Ok = $false; Reason = "read-back FAILED: $wanted not present after install (close Claude Code and re-run — a running Claude overwrites the registration)" }
+    }
+    return @{ Ok = $true; Reason = "installed $wanted" }
+}
+
+function Install-AgyPlugin {
+    param([string]$PluginName, [string]$AppDir)
+    [void](Invoke-AgentCli 'agy' @('plugin', 'uninstall', $PluginName))
+    $pluginDir = Join-Path (Join-Path $AppDir 'plugins') $PluginName
+    $r = Invoke-AgentCli 'agy' @('plugin', 'install', $pluginDir)
+    if ($r.ExitCode -ne 0) { return @{ Ok = $false; Reason = "install failed: $(Format-Reason $r.Output)" } }
+    return @{ Ok = $true; Reason = "installed $PluginName from $pluginDir" }
+}
+
 # --- (verb functions + orchestrator added in Tasks 2-3) ---
 
 # main-guard: run only when invoked directly (NOT when dot-sourced by Pester — InvocationName is '.').
