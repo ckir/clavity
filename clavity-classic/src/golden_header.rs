@@ -67,6 +67,24 @@ fn strip_bom(s: &str) -> &str {
     s.strip_prefix('\u{feff}').unwrap_or(s)
 }
 
+/// Strip leading HTML comment blocks (`<!-- … -->`) plus the whitespace around them.
+/// `seed/golden-header.md` opens with a maintainer-facing note ("Keep dense + decision-changing
+/// only…") that is seeded VERBATIM into the runtime SEED region — without this, that note is
+/// injected into every ask as if it were driving guidance (294B of a 2067B SEED region when found).
+/// An UNTERMINATED `<!--` is left alone rather than swallowing the whole file. Uses ASCII_WS, not
+/// `str::trim`, for the same cross-variant determinism as `join`/`apply`. Mirrors dotnet
+/// `StripLeadingHtmlComments` exactly — including the `<!-->` case (no terminator after the opener).
+fn strip_leading_html_comments(s: &str) -> &str {
+    let mut rest = s.trim_start_matches(ASCII_WS);
+    while let Some(after_open) = rest.strip_prefix("<!--") {
+        match after_open.find("-->") {
+            Some(i) => rest = after_open[i + 3..].trim_start_matches(ASCII_WS),
+            None => break,
+        }
+    }
+    rest
+}
+
 /// One region file's content (BOM-stripped), or `None` if absent / empty / over-cap / unreadable /
 /// invalid-UTF-8. Mirrors dotnet `TryReadFile`: a present-but-oversize region WARNS and is SKIPPED
 /// (not loud), so the combined read degrades. The cap is checked on the raw on-disk bytes.
@@ -88,6 +106,7 @@ fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str)) -> Option<String> {
     }
     let text = String::from_utf8(bytes).ok()?;
     let text = strip_bom(&text);
+    let text = strip_leading_html_comments(text);
     if text.trim().is_empty() {
         None
     } else {
@@ -318,6 +337,63 @@ mod tests {
     fn read_combined_strips_bom_on_regions() {
         let dir = fresh_dir("bom");
         fs::write(dir.join(SEED_FILE), b"\xEF\xBB\xBFSEED").unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Active(ref s) if s == "SEED"
+        ));
+    }
+
+    #[test]
+    fn read_combined_strips_the_seeded_maintainer_comment() {
+        // The shipped seed/golden-header.md opens with a maintainer note; it must not reach the peer.
+        let dir = fresh_dir("comment");
+        fs::write(
+            dir.join(SEED_FILE),
+            b"<!-- Compiled SEED baseline for the golden-header.\n     Keep dense. -->\n\nSEED",
+        )
+        .unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Active(ref s) if s == "SEED"
+        ));
+    }
+
+    #[test]
+    fn read_combined_treats_a_comment_only_region_as_absent() {
+        let dir = fresh_dir("comment_only");
+        fs::write(dir.join(SEED_FILE), b"<!-- nothing but a note -->\n").unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Absent
+        ));
+    }
+
+    #[test]
+    fn read_combined_leaves_an_unterminated_comment_intact() {
+        // Never swallow the file on a malformed opener.
+        let dir = fresh_dir("unterminated");
+        fs::write(dir.join(SEED_FILE), b"<!-- oops no close\nSEED").unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Active(ref s) if s == "<!-- oops no close\nSEED"
+        ));
+    }
+
+    #[test]
+    fn read_combined_leaves_a_bare_short_opener_intact() {
+        // `<!-->` has no terminator AFTER the 4-char opener; both variants must leave it alone.
+        let dir = fresh_dir("short_opener");
+        fs::write(dir.join(SEED_FILE), b"<!-->SEED").unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Active(ref s) if s == "<!-->SEED"
+        ));
+    }
+
+    #[test]
+    fn read_combined_strips_a_bom_then_a_comment_together() {
+        let dir = fresh_dir("bom_comment");
+        fs::write(dir.join(SEED_FILE), b"\xEF\xBB\xBF<!-- note -->\nSEED").unwrap();
         assert!(matches!(
             read_combined(&dir, &mut |_: &str| {}),
             HeaderState::Active(ref s) if s == "SEED"

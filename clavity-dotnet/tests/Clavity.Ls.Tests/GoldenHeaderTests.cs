@@ -28,6 +28,39 @@ public sealed class GoldenHeaderTests : IDisposable
         Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir));
     }
 
+    // Parity block — mirrors clavity-classic golden_header.rs `read_combined_*` comment tests exactly.
+    // The shipped seed/golden-header.md opens with a maintainer note that must never reach the peer.
+
+    [Fact]
+    public void TryReadCombined_strips_the_seeded_maintainer_comment()
+    {
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName),
+            "<!-- Compiled SEED baseline for the golden-header.\n     Keep dense. -->\n\nSEED");
+        Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir));
+    }
+
+    [Fact]
+    public void TryReadCombined_treats_a_comment_only_region_as_absent()
+    {
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "<!-- nothing but a note -->\n");
+        Assert.Null(GoldenHeader.TryReadCombined(_dir));
+    }
+
+    [Fact]
+    public void TryReadCombined_leaves_an_unterminated_comment_intact()
+    {
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "<!-- oops no close\nSEED");
+        Assert.Equal("<!-- oops no close\nSEED", GoldenHeader.TryReadCombined(_dir));
+    }
+
+    [Fact]
+    public void TryReadCombined_leaves_a_bare_short_opener_intact()
+    {
+        // `<!-->` has no terminator AFTER the 4-char opener; both variants must leave it alone.
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "<!-->SEED");
+        Assert.Equal("<!-->SEED", GoldenHeader.TryReadCombined(_dir));
+    }
+
     [Fact]
     public void TryReadCombined_returns_growth_alone_when_only_growth_present()
     {

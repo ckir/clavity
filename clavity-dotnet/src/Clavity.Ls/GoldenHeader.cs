@@ -31,6 +31,31 @@ public static class GoldenHeader
     public static string SeedPath(string dir) => Path.Combine(dir, SeedFileName);
     public static string GrowthPath(string dir) => Path.Combine(dir, GrowthFileName);
 
+    /// <summary>
+    /// ASCII whitespace, a FIXED set identical cross-variant (space, tab, LF, VT, FF, CR) — mirrors Rust
+    /// <c>ASCII_WS</c>. Deliberately not <c>char.IsWhiteSpace</c>, which disagrees with Rust on obscure separators.
+    /// </summary>
+    private static readonly char[] AsciiWs = { ' ', '\t', '\n', '\v', '\f', '\r' };
+
+    /// <summary>
+    /// Strip leading HTML comment blocks (<c>&lt;!-- … --&gt;</c>) plus the whitespace around them. The seeded
+    /// golden-header opens with a maintainer-facing note that would otherwise be injected into every ask as if it
+    /// were driving guidance. An UNTERMINATED <c>&lt;!--</c> is left alone rather than swallowing the whole file.
+    /// Mirrors Rust <c>strip_leading_html_comments</c> exactly: the terminator search starts AFTER the 4-char
+    /// opener, so <c>&lt;!--&gt;</c> (no real terminator) is left intact on both variants.
+    /// </summary>
+    private static string StripLeadingHtmlComments(string s)
+    {
+        var rest = s.TrimStart(AsciiWs);
+        while (rest.StartsWith("<!--", StringComparison.Ordinal))
+        {
+            var end = rest.IndexOf("-->", 4, StringComparison.Ordinal);
+            if (end < 0) break;
+            rest = rest[(end + 3)..].TrimStart(AsciiWs);
+        }
+        return rest;
+    }
+
     /// <summary>One region file's content, or null if absent/empty/over-cap. IO-safe; over-cap warns.</summary>
     private static string? TryReadFile(string path, Action<string>? warn = null)
     {
@@ -44,7 +69,7 @@ public static class GoldenHeader
                 warn?.Invoke($"golden-header region at {path} is {len}B, over the {MaxBytes}B cap — skipped");
                 return null;
             }
-            var text = File.ReadAllText(path);
+            var text = StripLeadingHtmlComments(File.ReadAllText(path));
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
         catch (IOException) { return null; }
