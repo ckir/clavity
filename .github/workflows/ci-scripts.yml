@@ -1,0 +1,45 @@
+name: ci-scripts
+
+# Runs the pwsh/Pester unit suite (release-engine seam + register-plugin) + the hash-pin sync gate on every
+# push/PR touching the scripts or the shared installer registrar. Uses Windows PowerShell 5.1 (shell: powershell)
+# so PS7-only syntax in register-plugin.ps1 is caught (spec 5 conformance).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'installer/_shared/**'
+      - 'justfile'
+      - '.github/workflows/ci-scripts.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'installer/_shared/**'
+      - 'justfile'
+      - '.github/workflows/ci-scripts.yml'
+
+concurrency:
+  group: ci-scripts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scripts:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Pester v5
+        shell: powershell
+        run: Install-Module Pester -MinimumVersion 5.0.0 -Force -SkipPublisherCheck -Scope CurrentUser
+      - name: Hash-pin sync gate
+        shell: pwsh
+        run: pwsh -File scripts/check-register-hash-synced.ps1
+      - name: Pester (Windows PowerShell 5.1)
+        shell: powershell
+        # Import v5 explicitly so the built-in Pester 3.x on windows-latest cannot shadow it (F5).
+        # Assert >0 tests were DISCOVERED - Invoke-Pester exits 0 on zero-discovery (misnamed/misplaced file),
+        # a false green (B5). -PassThru + an explicit TotalCount check closes it.
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0 -Force
+          $r = Invoke-Pester scripts/tests -Output Detailed -PassThru
+          if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
+          if ($r.TotalCount -lt 60) { throw "only $($r.TotalCount) tests discovered - expected the full suite (>=60); a misnamed/misplaced *.Tests.ps1?" }
