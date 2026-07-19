@@ -6,7 +6,7 @@
 > **Umbrella roadmap.** This repository is a **host for several independently-released tools** under the
 > `clavity` brand. Each tool follows one pattern — code on its own branch; a plugin under
 > `plugins/<tool>/` on `main`; an Inno-Setup installer; its own `<tool>-v<N>` release lineage — see
-> [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md). This file carries an umbrella overview, a tool
+> [`docs/hosting-a-tool.md`](../docs/hosting-a-tool.md). This file carries an umbrella overview, a tool
 > index, and one roadmap section per hosted tool.
 
 ## Hosted tools

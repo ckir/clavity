@@ -11,7 +11,7 @@
   built. Deltas from the design as written:
   - **Rust, not Python.** C1's "skill + thin script" shipped as the `clavity` CLI
     (`state`/`capture`/`wait-idle`/`ring`/`req-id`/`info`/`doctor`/`cancel`/`stop`/`start`) + the
-    Claude-side [protocol runbook](../../agy-remote-control-protocol.md); C3 → `src/tmux.rs`,
+    Claude-side [protocol runbook](../agy-remote-control-protocol.md); C3 → `src/tmux.rs`,
     C5 → `src/bus.rs`, C2/C4 → `agy_skills/claudavity-responder/SKILL.md`.
   - **Bootstrap is automated.** `clavity start` launches agy in the psmux session, opens a visible
     watch tab, auto-installs the responder skill, and exports `CLAVITY_SESSION`. The "manual bootstrap"

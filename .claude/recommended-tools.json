@@ -74,5 +74,11 @@
     "why": "runs scripts/tests/*.Tests.ps1 for the drain gates",
     "install": "Install-Module Pester -Scope CurrentUser -Force",
     "in_path": false
+  },
+  {
+    "name": "mlc",
+    "why": "Markup link checker (becheran/mlc) - validates every relative link across the 46 in-scope docs. Config: .mlc.toml (offline, product docs only). Run: just check-links.",
+    "install": "cargo install mlc --locked",
+    "in_path": "mlc"
   }
 ]

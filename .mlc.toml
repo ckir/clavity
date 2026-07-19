@@ -1,0 +1,32 @@
+# markup link checker (becheran/mlc) — see `just check-links`.
+#
+# Scope: TRACKED PRODUCT DOCS ONLY. Everything ignored below is either not ours,
+# not tracked, or deliberately frozen — a link error in those is noise that would
+# train us to ignore the whole report.
+
+# Vendored / not our code.
+ignore-path = [
+  "clavity-classic/agy-mcp-bridge/.venv",
+  "node_modules",
+
+  # Gitignored working artifacts. They do not exist in a fresh clone, and they
+  # legitimately reference paths that only resolve on the maintainer's box.
+  "docs/superpowers",
+  ".clavity",
+
+  # Build output.
+  "commonmemory/dist",
+  "target",
+]
+
+# Offline by default: no network calls for external URLs. Two consequences worth
+# knowing before you "fix" a reported error:
+#
+# 1. GitHub-relative release links (`../../releases` from the root README,
+#    `../../../releases` from a member README) are CORRECT and resolve properly
+#    under GitHub rendering — the blob/<branch>/ prefix supplies the extra depth.
+#    An offline filesystem check cannot see that, so it reports them. Do NOT
+#    "fix" them into something that breaks on GitHub.
+# 2. Bracketed prose such as `[PHASE: EXECUTION]` or `[⚠️ CRITICAL ANTI-PATTERNS]`
+#    is parsed as a markdown reference link and warns. Those are labels, not links.
+offline = true
