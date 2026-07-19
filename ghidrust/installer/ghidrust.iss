@@ -133,7 +133,7 @@ begin
   begin
     { C1/C9: register the ghidrust plugin against every detected agent (ghidrust has no post-
       registration step like the golden-header seed, so there is nothing here to roll back on —
-      see installer/_shared/plugin-registration.iss's RollbackMemberPlugin comment). }
+      see installer/_shared/register-invoke.iss's RollbackMemberPlugin comment). }
     RegisterMemberPlugin(ExpandConstant('{app}'), 'ghidrust', 'clavity-ghidrust',
       RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded, RegReport);
     ReportRegistrationOutcome(AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy, RegReport);
