@@ -3,77 +3,55 @@
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 
-**clavity** is a host for several tools that pair AI coding agents with live peers. This is the
-umbrella repo — a monorepo with one top-level folder per product, each independently built/tested,
-plus the shared release machinery that bundles them into one umbrella download. The umbrella
-`clavity-v<N>` release is the **canonical** download and bundles every product's installer in one
-place.
+**clavity** is a suite of tools that expand the capabilities of AI coding agents like Claude Code and Antigravity (`agy`). 
 
-## Products
+Instead of your agent working alone in a vacuum, clavity provides bridges to let agents collaborate (like Claude driving a live `agy` peer), specialized tools (like a headless Ghidra bridge for reverse engineering), and plugins to help your agents share memory and learn from everyday usage.
 
-| Product | Folder | Build |
-|---------|--------|-------|
-| clavity-dotnet | clavity-dotnet/ | cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests |
-| clavity-classic | clavity-classic/ | cd clavity-classic && cargo test --all --features test-fakes |
-| ghidrust | ghidrust/ | cd ghidrust && just test |
-| agy-autotrain | agy-autotrain/ | (plugin only) |
-| commonmemory | commonmemory/ | (plugin only) |
+## Which product do I need?
 
-- **clavity-dotnet** / **clavity-classic** — two **mutually exclusive** variants that pair
-  [Claude Code](https://claude.com/claude-code) with [Antigravity (`agy`)](https://antigravity.google);
-  install ONE, via its OWN standalone installer (**.NET** Primary or **Classic** Failover — see
-  [clavity-dotnet/README.md](clavity-dotnet/README.md)).
-- **ghidrust** — drives a persistent headless Ghidra JVM: 19 reverse-engineering tools over MCP
-  (attach + decompile + durable edits), via its own standalone installer. See
-  [ghidrust/README.md](ghidrust/README.md).
-- **agy-autotrain** / **commonmemory** — plugin-only add-ons, each with its OWN standalone installer
-  (no binary; no bundling with any other member). `agy-autotrain` needs a clavity driver installed to
-  have somewhere to inject its learned header (a non-blocking runtime warning otherwise); `commonmemory`
-  needs the `agentmemory` MCP server to be useful.
+This repository contains five independent products. You only need to install the ones you actually want to use.
 
-Every installer is independent — grab exactly the ones you want from the same
-[release page](../../releases). There is **no** live remote marketplace; every plugin ships locally
-inside its own installer.
+### 1. I want Claude Code to drive a live `agy` peer
+These two tools are **mutually exclusive** — pick exactly one. They let Claude Code delegate tasks, get second opinions, or collaborate with `agy`.
 
-## Adding a product
+*   **[clavity-dotnet](clavity-dotnet/README.md) (Primary):** The modern .NET 10 rebuild. It turns `agy` into an interactive superpower for Claude via a local Language Server. Each Claude instance drives its own isolated `agy`.
+*   **[clavity-classic](clavity-classic/README.md) (Failover):** The original Rust-based bridge. It uses a psmux doorbell and the agentmemory bus to drive a live `agy` peer in the same folder. Use this as a fallback if the .NET version breaks.
 
-New products follow one repeatable pattern (its own top-level folder; an Inno-Setup installer; its own
-release lineage bundled into the umbrella release). See the playbook:
-[`docs/hosting-a-tool.md`](docs/hosting-a-tool.md).
+### 2. I want to reverse-engineer binaries with my agent
+*   **[ghidrust](ghidrust/README.md):** Attaches a persistent, headless Ghidra JVM to your agent. Exposes 19 reverse-engineering tools (decompile, navigate, and make durable edits) over MCP.
 
-## Dev workflow
+### 3. I want my agents to learn and share knowledge (Opt-in Add-ons)
+*   **[agy-autotrain](agy-autotrain/README.md):** Auto-trains clavity's `agy` knowledge from everyday usage. It captures insights, verifies them, and compiles them into a project-agnostic manual.
+*   **[commonmemory](commonmemory/README.md):** A shared cross-agent memory convention. Teaches Claude and `agy` to tag notes (decisions, gotchas, bug fixes) and proactively share context via the agentmemory bus.
 
-This monorepo uses a two-tier [`just`](https://github.com/casey/just) task runner. From the repo root:
+## How to get started
 
-- `just test` — run every tool's tests · `just lint` — every tool's CI lint gate · `just build` · `just fmt`
-- One tool only: `just classic::test`, `just dotnet::lint`, `just ghidrust::build`, …
-- **Cut a release:** `just release` (preview with `just release-dry`) — auto-versions + changelogs every member with new conventional commits and publishes one `clavity-vN` umbrella release.
-- **Interactive menu:** `pwsh -File DevelopersCockpit.ps1` — a one-stop cockpit over the `just`/scripts/release tasks (delegates, never duplicates; ship actions owner-gated).
+Every product ships locally inside its own standalone Windows installer. There is no live remote marketplace. 
 
-Each tool's recipes mirror its CI gate exactly. First-time ghidrust setup (installs `cargo-nextest` +
-`cargo-deny` + `cargo-insta`): `just ghidrust::setup`.
+1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release contains every product's installer in one place.
+2. Download the installer for the product you chose — assets are named
+   `<product>-setup-<version>.exe` (e.g. `clavity-dotnet-setup-0.2.1.exe`), each with a `.sha256`.
+3. Run it. It registers the product's plugin locally with every agent it detects (Claude Code and/or
+   `agy`). The three products that ship a binary — clavity-dotnet, clavity-classic, ghidrust — also put
+   it on your PATH; agy-autotrain and commonmemory are plugin-only and install nothing on PATH.
 
-Git hooks are managed by [`lefthook`](https://github.com/evilmartians/lefthook) — run `lefthook install`
-once per clone. **pre-push** runs seven gates, all before CI:
+## Developer workflow
 
-| Gate | Catches |
-|---|---|
-| `just lint` | fmt / clippy / compile breaks |
-| `just seed-sync-check` | seed-artifact drift between the two driver plugins |
-| `just check-doc-stubs` | a pointer stub re-fattened into duplicate content |
-| `just check-member-docs` | a member missing a required doc, or a CHANGELOG `just release` cannot inject into |
-| `just check-register-hash` | `register-plugin.ps1` hash-pin drift |
-| `just test-scripts` | the PowerShell/Pester script suite |
-| `check-versions.ps1` per member | version-source drift |
+If you want to build from source, add a new tool to the umbrella, or contribute to the project, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**pre-commit** runs `ruff` on staged Python (the agy bridge) only.
+We use a two-tier `just` task runner (`just test`, `just lint`, `just release`). Before you push, `lefthook` runs seven local gates to keep the `main` branch green:
+*   `just lint` (fmt / clippy / compile breaks)
+*   `just seed-sync-check` (seed-artifact drift between the two driver plugins)
+*   `just check-doc-stubs` (duplicate content checks)
+*   `just check-member-docs` (asserts required docs and CHANGELOG format)
+*   `just check-register-hash` (the registrar's hash pin has gone stale vs the script)
+*   `just test-scripts` (PowerShell/Pester script suite)
+*   `check-versions.ps1` per member (version-source drift)
+
+Pre-commit only runs `ruff` on staged Python files.
 
 ## License
 
-This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial
-use (personal, academic, non-profit). See [LICENSE](LICENSE). All five products (clavity-dotnet,
-clavity-classic, ghidrust, agy-autotrain, commonmemory) ship under the same license.
+This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free for non-commercial use (personal, academic, non-profit). See [LICENSE](LICENSE). All five products (clavity-dotnet, clavity-classic, ghidrust, agy-autotrain, commonmemory) ship under the same license.
 
-_Trademarks:_ Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of
-Anthropic; Ghidra is a trademark of the National Security Agency. This is an independent project — not
-affiliated with, endorsed by, or sponsored by Google, Anthropic, or the NSA.
+_Trademarks:_ Antigravity is a trademark of Google LLC; Claude and Claude Code are trademarks of Anthropic; Ghidra is a trademark of the National Security Agency. This is an independent project — not affiliated with, endorsed by, or sponsored by Google, Anthropic, or the NSA.
