@@ -3,30 +3,30 @@
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 
-**clavity** is a suite of tools that expand the capabilities of AI coding agents like Claude Code and Antigravity (`agy`). 
+**clavity** is a suite of tools that expand the capabilities of AI coding agents like Claude Code and Antigravity (`agy`).
 
-Instead of your agent working alone in a vacuum, clavity provides bridges to let agents collaborate (like Claude driving a live `agy` peer), specialized tools (like a headless Ghidra bridge for reverse engineering), and plugins to help your agents share memory and learn from everyday usage.
+It provides bridges that let agents collaborate, such as Claude driving a live `agy` peer. It includes specialized tools, like a headless Ghidra bridge for reverse engineering. It also offers plugins to help agents share memory and learn from everyday usage.
 
 ## Which product do I need?
 
 This repository contains five independent products. You only need to install the ones you actually want to use.
 
-### 1. I want Claude Code to drive a live `agy` peer
+### I want Claude Code to drive a live `agy` peer
 These two tools are **mutually exclusive** — pick exactly one. They let Claude Code delegate tasks, get second opinions, or collaborate with `agy`.
 
-*   **[clavity-dotnet](clavity-dotnet/README.md) (Primary):** The modern .NET 10 rebuild. It turns `agy` into an interactive superpower for Claude via a local Language Server. Each Claude instance drives its own isolated `agy`.
+*   **[clavity-dotnet](clavity-dotnet/README.md) (Primary):** The modern .NET 10 rebuild. It exposes `agy` to Claude as an MCP server via a local Language Server. Each Claude instance drives its own isolated `agy`.
 *   **[clavity-classic](clavity-classic/README.md) (Failover):** The original Rust-based bridge. It uses a psmux doorbell and the agentmemory bus to drive a live `agy` peer in the same folder. Use this as a fallback if the .NET version breaks.
 
-### 2. I want to reverse-engineer binaries with my agent
+### I want to reverse-engineer binaries with my agent
 *   **[ghidrust](ghidrust/README.md):** Attaches a persistent, headless Ghidra JVM to your agent. Exposes 19 reverse-engineering tools (decompile, navigate, and make durable edits) over MCP.
 
-### 3. I want my agents to learn and share knowledge (Opt-in Add-ons)
+### I want my agents to learn and share knowledge (Opt-in Add-ons)
 *   **[agy-autotrain](agy-autotrain/README.md):** Auto-trains clavity's `agy` knowledge from everyday usage. It captures insights, verifies them, and compiles them into a project-agnostic manual.
 *   **[commonmemory](commonmemory/README.md):** A shared cross-agent memory convention. Teaches Claude and `agy` to tag notes (decisions, gotchas, bug fixes) and proactively share context via the agentmemory bus.
 
 ## How to get started
 
-Every product ships locally inside its own standalone Windows installer. There is no live remote marketplace. 
+Every product ships locally inside its own standalone Windows installer. There is no live remote marketplace.
 
 1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release contains every product's installer in one place.
 2. Download the installer for the product you chose — assets are named
@@ -37,16 +37,20 @@ Every product ships locally inside its own standalone Windows installer. There i
 
 ## Developer workflow
 
-If you want to build from source, add a new tool to the umbrella, or contribute to the project, see [CONTRIBUTING.md](CONTRIBUTING.md).
+If you want to build from source or contribute to the project, see [CONTRIBUTING.md](CONTRIBUTING.md).
+To add a new tool to the umbrella, follow the [hosting playbook](docs/hosting-a-tool.md).
 
-We use a two-tier `just` task runner (`just test`, `just lint`, `just release`). Before you push, `lefthook` runs seven local gates to keep the `main` branch green:
-*   `just lint` (fmt / clippy / compile breaks)
-*   `just seed-sync-check` (seed-artifact drift between the two driver plugins)
-*   `just check-doc-stubs` (duplicate content checks)
-*   `just check-member-docs` (asserts required docs and CHANGELOG format)
-*   `just check-register-hash` (the registrar's hash pin has gone stale vs the script)
-*   `just test-scripts` (PowerShell/Pester script suite)
-*   `check-versions.ps1` per member (version-source drift)
+The repository uses a two-tier `just` task runner (`just test`, `just lint`, `just release`). Before push, `lefthook` runs seven local gates to keep the `main` branch green:
+
+| Gate | Catches |
+|---|---|
+| `just lint` | fmt / clippy / compile breaks |
+| `just seed-sync-check` | seed-artifact drift between the two driver plugins |
+| `just check-doc-stubs` | duplicate content in placeholder files |
+| `just check-member-docs` | missing required docs or bad CHANGELOG format |
+| `just check-register-hash` | stale tamper-check hash for the installer registrar |
+| `just test-scripts` | regressions in the PowerShell/Pester script suite |
+| `check-versions.ps1` | version-source drift within a member |
 
 Pre-commit only runs `ruff` on staged Python files.
 
