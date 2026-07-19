@@ -112,6 +112,9 @@ Thereafter bump **only** via `just bump <member> <version>`. Never hand-edit a v
 15. `DevelopersCockpit.ps1` — `$Buildable` (buildable members only), `$Versioned` (all), and
     `$BannerMembers`.
 16. Root [`README.md`](../README.md) product table and the root [`CLAUDE.md`](../CLAUDE.md) products table.
+17. **Documentation** — create the member's `README.md` and `CHANGELOG.md` (and `plugin/README.md` if it
+    is a code+plugin member) from the templates listed under "Per-member documentation" below.
+    `just check-member-docs` fails until they exist.
 
 **Verify the registration landed:**
 
@@ -121,6 +124,57 @@ pwsh -File scripts/check-versions.ps1 <member> -Coverage
 pwsh -File scripts/validate-members-manifest.ps1
 just test-scripts          # Pester, incl. the roster tests
 ```
+
+## Per-member documentation
+
+Every member carries the same required documents, so a reader moving between members can rely on it.
+
+| Doc | code+plugin | plugin-only | Audience |
+|---|---|---|---|
+| `README.md` | **required** | **required** | Repo reader — what it is, how to build/install, how to drive it |
+| `CHANGELOG.md` | **required** | **required** | History; also written by `just release` |
+| `plugin/README.md` | **required** | n/a — the root README doubles | Plugin mechanics; **ships with the installer** |
+| `CLAUDE.md` | optional | optional | The agent working in that folder |
+| `CONTRIBUTING.md` | optional | optional | Contributor — member-specific mechanics only |
+| `ROADMAP.md` | optional | optional | Forward backlog |
+| `docs/` | optional | optional | Design depth |
+
+The required floor is enforced by `scripts/check-member-docs.ps1` (`just check-member-docs`, wired to
+pre-push and `ci-member-docs.yml`). The optional files are convention — judgement, not a gate.
+
+Three rules carry the weight:
+
+- **`CLAUDE.md` is absent-or-correct, never copied.** A missing one is harmless; the umbrella
+  `CLAUDE.md` applies. A *wrong* one is actively harmful, because it is auto-loaded into agent context
+  for work in that directory. `ghidrust/CLAUDE.md` was once a verbatim copy of clavity-classic's and
+  poisoned every session opened there for weeks. **Never start from a sibling's copy.**
+- **A member `CONTRIBUTING.md` defers for policy.** Licensing, DCO, and the release process live in the
+  umbrella `CONTRIBUTING.md` and are never restated. The member file carries only its own toolchain,
+  test tiers, and failure modes.
+- **`README.md` is repo-facing; `plugin/README.md` ships.** Verified in
+  `clavity-classic/installer/clavity-classic.iss`: the installer ships `..\plugin\*` and a
+  purpose-written `MANUAL-SETUP.md`, and does **not** ship the member's root README at all. So deep
+  setup mechanics belong in `plugin/README.md`, where the installed operator will actually find them.
+
+### Section order
+
+Each document has a fixed section order. A member **omits** a section that does not apply rather than
+reordering or renaming it — that is what makes cross-member navigation work.
+
+**The templates are the single source of truth for that order. Copy the matching one and fill it in:**
+
+- [`clavity-dotnet/templates/tool-skeleton/README.md.template`](../clavity-dotnet/templates/tool-skeleton/README.md.template) — code+plugin member README
+- [`clavity-dotnet/templates/tool-skeleton/README-plugin-only.md.template`](../clavity-dotnet/templates/tool-skeleton/README-plugin-only.md.template) — plugin-only member README
+- [`clavity-dotnet/templates/tool-skeleton/plugin-README.md.template`](../clavity-dotnet/templates/tool-skeleton/plugin-README.md.template) — `plugin/README.md`
+- [`clavity-dotnet/templates/tool-skeleton/CHANGELOG.md.template`](../clavity-dotnet/templates/tool-skeleton/CHANGELOG.md.template) — `CHANGELOG.md`
+
+The order is deliberately **not** written out here. One canonical copy, in the templates, is the whole
+lesson of this repo applied to its own standard.
+
+> **Do not demote a CHANGELOG's `# title` to `##`.** `scripts/lib/release-lib.ps1` injects each release
+> after the leading H1 using `(?s)^(#[^\n]*\n+)(.*)$`. That regex also matches `##`, so a demoted title
+> makes the injector write the new release *inside* the previous release's body and silently
+> reattribute its entries. `just check-member-docs` rejects this.
 
 ## Cutting the release
 
