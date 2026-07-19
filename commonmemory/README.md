@@ -33,6 +33,8 @@ agy    plugin install ./commonmemory
 ```
 
 ## Configuration
+**Required — one line per agent. The plugin does not work without this.**
+
 Installing the plugin makes the skill *available* but does **not** make either agent auto-search on
 its own. Add a one-line rule to each agent's global instructions so they recall `[common]` notes at
 the start of a task:
