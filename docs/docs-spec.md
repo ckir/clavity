@@ -99,5 +99,10 @@ to any WRITER or auditor; without it `<member>` is undefined and they will guess
 
 **Route the WRITER in the SAME working tree the REVIEWER will measure.** Use the `agy_ask` MCP tool (or
 `clavity ask`), which acts on this tree. Do **not** use the `delegate_to_antigravity` bridge for a docs
-pass: it runs agy in an isolated git worktree and gates on committed changes there, so Phase 3 would
-measure the driver's tree, see the files unchanged, and pass a review of work it never looked at.
+pass. It runs agy in an isolated git worktree, so Phase 3 would measure the driver's tree, see the files
+unchanged, and pass a review of work it never looked at. The failure is worse than it sounds:
+`clavity-classic/agy-mcp-bridge/isolation.py:87` defines
+`cleanup_worktree(target_dir, task_id, success=False)` — **`success` defaults to False**, so a timed-out
+or unreported run discards the worktree entirely. A parked reply arriving later then reads as success
+over a tree that never received the work. Long agy turns time out routinely, so this is the common path,
+not the edge case.
