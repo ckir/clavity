@@ -1,15 +1,18 @@
 # docs-spec — clavity documentation convention
 
 The contract the `docs-rationalize` skill binds to. Human-facing docs are role-scoped and written in a
-terse, human, scannable voice. Per-member doc set and section order:
-[`hosting-a-tool.md` § Per-member documentation](hosting-a-tool.md#per-member-documentation).
+terse, human, scannable voice.
+
+Two authorities this file defers to, and does not duplicate:
+- **Which docs each member carries** — [`hosting-a-tool.md` § Per-member documentation](hosting-a-tool.md#per-member-documentation).
+- **Section order within a doc** — the templates in `clavity-dotnet/templates/tool-skeleton/`.
 
 ## Docs (audience → voice)
 
 | Doc | Audience | Voice |
 |---|---|---|
 | `README.md` | Orient, choose a product, get running — then route out (≤ ~90 lines) | terse-technical |
-| `<member>/README.md` | A repo reader evaluating or building that member. **Not** the installed operator — the installer ships `plugin/`, never this file | terse-technical |
+| `<member>/README.md` | A repo reader evaluating or building that member. For the **code+plugin** members (dotnet, classic, ghidrust) this file does **not** ship — their `.iss` ships `..\plugin\*`. For the **plugin-only** members (agy-autotrain, commonmemory) it **does** — their `.iss` ships `..\*` recursively, so write those two for an installed operator too | terse-technical |
 | `<member>/plugin/README.md` | The integrator wiring the plugin — **and the installed operator, because this file ships** | terse-technical |
 | `<member>/CONTRIBUTING.md` | A contributor to that member — its toolchain, test tiers, failure modes. Defers to umbrella `CONTRIBUTING.md` for licence/DCO/release | terse-technical |
 | `<member>/CLAUDE.md` | The agent working in that folder — load-bearing facts and traps only | terse, dense |
@@ -49,17 +52,21 @@ terse, human, scannable voice. Per-member doc set and section order:
 
 - **Any code, script, or workflow file** (`*.rs`, `*.cs`, `*.ps1`, `*.sh`, `*.yml`, `*.iss`) — a docs
   pass never edits the system it describes.
-- `LICENSE` (all six) — legal text.
-- `<member>/CHANGELOG.md` (all five) — injected by `just release`; the leading H1 is load-bearing.
+- `LICENSE`, `**/LICENSE` — legal text.
+- `**/CHANGELOG.md` — injected by `just release`; the leading H1 is load-bearing.
 - `agy-autotrain/knowledge/driver-cheatsheet.core.md` — pinned byte-identical across three files;
   editing it alone red-gates both test suites.
-- `*/plugin/knowledge/agy-*.md` — driver-owned SEED, refreshed by the `agy-curate` loop.
+- `**/knowledge/**` — driver-owned SEED manuals and the learning loop's working files, refreshed by
+  `agy-curate`. Matched on `knowledge/` at any depth deliberately: `*/plugin/knowledge/` would fire only
+  on the code+plugin shape and leave a plugin-only member's `<member>/knowledge/` unprotected.
 - The three pointer stubs (`docs/agy-assumptions.md`, `docs/agy-capabilities.md`,
   `clavity-classic/docs/agy-test-suite.md`) — `scripts/check-doc-stubs.ps1` fails if re-fattened.
 - Generated: `*/installer/marketplace.install.json`, `installer/_shared/register-plugin-hash.iss`.
-- **All `SKILL.md` files** (`*/skills/**/SKILL.md`, `*/skill/SKILL.md`, `*/agy_skills/**/SKILL.md`) —
-  behavioural contracts injected into agent context. Rewording them changes what an agent *does*, so
-  they are changed deliberately with their own review, never by a docs pass.
+- **Every `SKILL.md`, anywhere — `**/SKILL.md`** — behavioural contracts injected into agent
+  context. Rewording them changes what an agent *does*, so they are changed deliberately with their own
+  review, never by a docs pass. Match on the filename alone: an earlier version enumerated directory
+  shapes (`*/skills/**`, `*/skill/`, `*/agy_skills/**`) and silently missed 8 of 13 — every
+  `*/plugin/skills/**` file plus `clavity-classic/agy-mcp-bridge/SKILL.md`.
 - `agy-autotrain/knowledge/agy-observations.md` — the `agy-learn` capture inbox, drained by `agy-curate`.
 - `agy-autotrain/verify/*.md` — the probe harness; `assertions.md` records measured outcomes.
 - `agy-autotrain/docs/fix-the-tool-backlog/**` — generated from `_template.md`, append-only.
@@ -71,6 +78,8 @@ terse, human, scannable voice. Per-member doc set and section order:
 - `*/agy-mcp-bridge/VENDORED-FROM.md` — vendored provenance.
 - `docs/superpowers/**`, `.clavity/**` — working artifacts, not product docs.
 - Vendored trees (`**/.venv/`, `**/node_modules/`).
+- **This file, `docs/docs-spec.md`** — it matches the in-scope `docs/**`, so without this line a docs
+  pass could rewrite its own governing contract. Changed deliberately by the owner, never by a pass.
 
 **Exclusions win.** Where a path matches both the doc list and this list, it is out of scope — e.g.
 `ghidrust/crates/**/tests/fixtures/README.md` matches `<member>/README.md` by shape but is test data.
@@ -83,3 +92,12 @@ terse, human, scannable voice. Per-member doc set and section order:
 The WRITER and the REVIEWER are different contexts — non-negotiable. A context that reviews its own
 prose rubber-stamps its own confabulations. WRITER: the agy peer, else a fresh isolated subagent.
 REVIEWER: the driving session, verifying every changed claim by measurement.
+
+**`<member>` resolves against `build/members.json`** — the five entries there are the roster. A member's
+shape comes from its `source`: ending in `/plugin` = code+plugin, otherwise plugin-only. Hand the roster
+to any WRITER or auditor; without it `<member>` is undefined and they will guess.
+
+**Route the WRITER in the SAME working tree the REVIEWER will measure.** Use the `agy_ask` MCP tool (or
+`clavity ask`), which acts on this tree. Do **not** use the `delegate_to_antigravity` bridge for a docs
+pass: it runs agy in an isolated git worktree and gates on committed changes there, so Phase 3 would
+measure the driver's tree, see the files unchanged, and pass a review of work it never looked at.
