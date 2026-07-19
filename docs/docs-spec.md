@@ -14,8 +14,15 @@ terse, human, scannable voice. Per-member doc set and section order:
 | `<member>/CONTRIBUTING.md` | A contributor to that member — its toolchain, test tiers, failure modes. Defers to umbrella `CONTRIBUTING.md` for licence/DCO/release | terse-technical |
 | `<member>/CLAUDE.md` | The agent working in that folder — load-bearing facts and traps only | terse, dense |
 | `<member>/ROADMAP.md` | Outcomes, not intentions-as-facts (optional) | terse |
-| `docs/**` | Cross-cutting readers; umbrella-only. Member design lives in `<member>/docs/` | terse-technical |
+| `docs/**` | Cross-cutting readers; umbrella-only | terse-technical |
+| `<member>/docs/**` | That member's design/protocol depth — runbooks, transport notes, research logs | terse-technical; research logs may be long |
 | `CONTRIBUTING.md` | A new contributor | terse-technical |
+| `CLAUDE.md` (root) | The agent working anywhere in the repo — cross-cutting rules only | terse, dense |
+| `SECURITY.md` | Someone reporting a vulnerability | terse, unambiguous |
+| `CODE_OF_CONDUCT.md` | Participants | leave substance alone; formatting only |
+| `.github/pull_request_template.md` | A PR author's checklist | terse |
+| `.github/ISSUE_TEMPLATE/*.md` | A bug/feature reporter | terse |
+| `clavity-classic/installer/*MANUAL-SETUP.md`, `*README-FIRST.md` | **The installed operator** — these ship inside the installer | terse-technical, imperative |
 
 ## Voice / scannable rules
 
@@ -50,8 +57,26 @@ terse, human, scannable voice. Per-member doc set and section order:
 - The three pointer stubs (`docs/agy-assumptions.md`, `docs/agy-capabilities.md`,
   `clavity-classic/docs/agy-test-suite.md`) — `scripts/check-doc-stubs.ps1` fails if re-fattened.
 - Generated: `*/installer/marketplace.install.json`, `installer/_shared/register-plugin-hash.iss`.
+- **All `SKILL.md` files** (`*/skills/**/SKILL.md`, `*/skill/SKILL.md`, `*/agy_skills/**/SKILL.md`) —
+  behavioural contracts injected into agent context. Rewording them changes what an agent *does*, so
+  they are changed deliberately with their own review, never by a docs pass.
+- `agy-autotrain/knowledge/agy-observations.md` — the `agy-learn` capture inbox, drained by `agy-curate`.
+- `agy-autotrain/verify/*.md` — the probe harness; `assertions.md` records measured outcomes.
+- `agy-autotrain/docs/fix-the-tool-backlog/**` — generated from `_template.md`, append-only.
+- `seed/golden-header.md` — compiled SEED, written by `curate-commit`.
+- `scripts/drain-knowledge-prompt.md` — a prompt, functionally code.
+- `commonmemory/rules/commonmemory.md` — an agy rule file the agent consumes, not prose.
+- `docs/archive/**` — deliberately frozen historical artifacts.
+- `**/tests/fixtures/**` — test data.
+- `*/agy-mcp-bridge/VENDORED-FROM.md` — vendored provenance.
 - `docs/superpowers/**`, `.clavity/**` — working artifacts, not product docs.
 - Vendored trees (`**/.venv/`, `**/node_modules/`).
+
+**Exclusions win.** Where a path matches both the doc list and this list, it is out of scope — e.g.
+`ghidrust/crates/**/tests/fixtures/README.md` matches `<member>/README.md` by shape but is test data.
+
+> Every tracked `.md` is either named in the table above or excluded here. If a pass encounters one that
+> is neither, that is a spec gap — report it rather than guessing whether it is in scope.
 
 ## Roles
 
