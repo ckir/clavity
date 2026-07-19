@@ -46,6 +46,7 @@ Source: "..\publish\agy-mcp-bridge\*"; DestDir: "{app}\agy-mcp-bridge"; \
 Source: "..\installer\clavity-classic-bridge-README-FIRST.md"; DestDir: "{app}\agy-mcp-bridge"; \
   DestName: "README-FIRST.md"; Flags: ignoreversion; Tasks: install_bridge
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
+Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity-classic"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
@@ -85,7 +86,9 @@ Type: filesandordirs; Name: "{app}\agy-mcp-bridge\.agent"
 
 [Code]
 #include "..\..\installer\_shared\claude-running.iss"
-#include "..\..\installer\_shared\plugin-registration.iss"
+#include "..\..\installer\_shared\path-scan.iss"
+#include "..\..\installer\_shared\register-plugin-hash.iss"
+#include "..\..\installer\_shared\register-invoke.iss"
 #include "..\..\installer\_shared\golden-header-data.iss"
 
 var

@@ -28,12 +28,14 @@ SetupMutex=ClavitySetupMutex
 
 [Files]
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
+Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\*"; DestDir: "{app}\plugins\commonmemory"; Flags: ignoreversion recursesubdirs createallsubdirs; \
   Excludes: "installer,dist,publish,.claude-plugin"
 
 [Code]
 #include "..\..\installer\_shared\claude-running.iss"
-#include "..\..\installer\_shared\plugin-registration.iss"
+#include "..\..\installer\_shared\register-plugin-hash.iss"
+#include "..\..\installer\_shared\register-invoke.iss"
 
 function InitializeSetup(): Boolean;
 begin

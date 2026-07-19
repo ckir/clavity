@@ -36,6 +36,7 @@ SetupMutex=ClavitySetupMutex
 [Files]
 Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
+Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\plugin\*"; DestDir: "{app}\plugins\ghidrust"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
@@ -47,7 +48,8 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
 
 [Code]
 #include "..\..\installer\_shared\claude-running.iss"
-#include "..\..\installer\_shared\plugin-registration.iss"
+#include "..\..\installer\_shared\register-plugin-hash.iss"
+#include "..\..\installer\_shared\register-invoke.iss"
 
 var
   GhidraPage: TInputDirWizardPage;
