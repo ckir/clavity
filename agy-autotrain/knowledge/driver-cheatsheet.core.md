@@ -1,5 +1,5 @@
 Driving the agy peer — core reminders (tendencies; verify against the live peer):
 - Verify what it volunteers: agy states external AND internal-structural facts confidently but confabulates, and forgets cross-session corrections — treat volunteered facts as claims to check at the source, feed it ground truth, and re-verify "we already settled this".
-- Don't lead the frame: it agrees with a hypothesis you embed, and told a specific bug it over-applies the pattern. Ask neutrally, state both sides, empower it to hold its ground — negotiate, don't fold or dismiss.
+- Don't lead the frame: it agrees with a hypothesis you embed, and told a specific bug it over-applies the pattern. Ask neutrally, state both sides, empower it to hold its ground — negotiate, don't fold or dismiss: it concedes to a concretely-argued technical risk (named failure mode) but holds structural/architectural calls, so push for a synthesis rather than accepting its first verdict.
 - Force depth, don't dial it: replace "be exhaustive / be creative" with forcing functions — named dimensions, a quota, an adversarial role + goal, or a divergence vector — each with a checkable success criterion.
 - A review/panel is advisory, not a gate: fold its findings with your own judgment, and always follow a panel GO with an independent review of the actual committed diff.

@@ -7,10 +7,22 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
-- [assumption] (driver/deterministic) An oversized single-turn *reasoning* reply does NOT trip the idle-wait "false hang" — the peer goes idle normally, but the bounded transport truncates the delivered reply to its HEAD (a size flag signals the truncation). The hang/timeout failure mode is specific to bundled tool-actions or serialized deep consults, not a large single reply. Recover truncation by re-asking for ONLY the missing tail (decompose) or routing the reply through file transport; the full content exists peer-side and is fully recoverable.  ·  `[corpus]` · 2026-07-13 · agy 1.1.1
+<!-- empty — drained 2026-07-19 (see drain log below) -->
 
-<!-- drained 2026-07-13, then re-opened with 1 fresh capture (above) from the 2026-07-13 verify-harness re-run -->
-<!-- empty — drained 2026-07-13 (see drain log below) -->
+<!-- Drain log 2026-07-19 (agy peer; 2 pending → recompiled GROWTH + driver cheatsheet):
+  1) [assumption] (driver/deterministic) oversized-REASONING-reply truncates-to-HEAD (NOT a hang) — REFINEMENT
+     of the already-promoted oversized-turn anti-pattern. Not tool-fixable (recovery = decompose / file-transport,
+     a driving move) → NO fix-the-tool-backlog item. FOLDED into GROWTH: the last anti-pattern now distinguishes
+     the two modes OPPOSITELY (bundled-tool-action / serialized-deep-consult = false-hang; a single oversized
+     REASONING reply = returns idle + HEAD-truncated + tail-recoverable). Verified by the 2026-07-13 A2b probe
+     PASS + this session's clean bounded agy_ask consult (AnswerTruncated=false, idle, no hang).
+  2) [heuristic] (driver/probabilistic) negotiate-for-synthesis — agy concedes a concretely-argued technical
+     risk (named failure mode) but holds structural/architectural calls; push for convergence, don't accept its
+     first verdict. ≥2 obs (2026-07-15 + this session's Option-B fork consult where agy conceded the Access-Denied
+     runtime-write risk); corroborates the user's treat-agy-with-respect feedback. FOLDED into driver-cheatsheet
+     bullet #2 (extends the existing "negotiate, don't fold or dismiss"), synced to core + shared runtime path.
+  GROWTH committed via `clavity-ls curate-commit` (SEED 2067 + GROWTH 4755 = 6822 < 16KB; sha256 sidecar). No
+  rule retired; no Empirical Assumption newly promoted (entry 1 refined an already-promoted, probe-verified item). -->
 
 <!-- Drain log 2026-07-13 (agy peer; ~36 pending → compiled GROWTH + driver cheatsheet):
   Triage: nearly all entries are peer/probabilistic (peer psychology) or driver/probabilistic (driving
