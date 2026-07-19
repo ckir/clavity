@@ -14,6 +14,8 @@ pre-push:
       run: just lint
     seed-sync:
       run: just seed-sync-check
+    doc-stubs:
+      run: just check-doc-stubs
     register-hash:
       run: just check-register-hash
     scripts-tests:

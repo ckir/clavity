@@ -26,6 +26,10 @@ fmt: dotnet::fmt classic::fmt ghidrust::fmt
 seed-sync-check:
     bash scripts/check-seed-artifacts-synced.sh
 
+# Verify docs reduced to pointer stubs have not been re-fattened into duplicate content
+check-doc-stubs:
+    pwsh -File scripts/check-doc-stubs.ps1
+
 # Bump every version source for a member to <version>, then self-verify (dotnet/classic/agy-autotrain/commonmemory).
 bump member version:
     pwsh -File scripts/bump-version.ps1 {{member}} {{version}}

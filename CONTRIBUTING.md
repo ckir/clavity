@@ -130,9 +130,10 @@ If step 2 does not refuse, the process-name assumption has drifted — do **not*
 
 ## Hosting a new tool
 
-`clavity` is an umbrella repo that hosts several independently-released tools. To add one, follow the
-onboarding playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md) (code on a branch; plugin under
-`plugins/<tool>/` on `main`; per-tool `<tool>-v<N>` release lineage).
+`clavity` is an umbrella repo that hosts several independently-installable tools. To add one, follow the
+onboarding playbook: [`docs/hosting-a-tool.md`](docs/hosting-a-tool.md) (a top-level folder on `main`; a
+standalone installer; registration in `build/members.json` and the version/CI/release enumerations — the
+playbook's registration checklist is the part that bites).
 
 ## Releasing
 
