@@ -1,7 +1,7 @@
 # clavity
 
-[![CI](https://github.com/ckir/clavity/actions/workflows/ci.yml/badge.svg)](https://github.com/ckir/clavity/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/ckir/clavity/actions/workflows/ci-classic.yml/badge.svg)](https://github.com/ckir/clavity/actions/workflows/ci-classic.yml)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-blue.svg)
 
@@ -271,4 +271,7 @@ README does not duplicate them.
 
 ## License
 
-[MIT](LICENSE) © Costas Kirgoussios
+[PolyForm Noncommercial License 1.0.0](LICENSE) © Costas Kirgoussios — free for non-commercial use
+(personal, academic, non-profit). Matches `clavity-classic/Cargo.toml`'s
+`license = "PolyForm-Noncommercial-1.0.0"` and the umbrella
+[root README](../README.md#license); all five products ship under the same licence.

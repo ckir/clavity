@@ -54,10 +54,19 @@ Each tool's recipes mirror its CI gate exactly. First-time ghidrust setup (insta
 `cargo-deny` + `cargo-insta`): `just ghidrust::setup`.
 
 Git hooks are managed by [`lefthook`](https://github.com/evilmartians/lefthook) — run `lefthook install`
-once per clone. **pre-push** runs five gates: `just lint` (fmt/clippy/compile breaks), `just
-seed-sync-check` (seed-artifact drift), `just check-register-hash` (register-plugin hash drift), `just
-test-scripts` (the PowerShell script test suite), and `check-versions.ps1` per member (version-source
-drift) — all before CI; **pre-commit** runs `ruff` on staged Python (the agy bridge) only.
+once per clone. **pre-push** runs seven gates, all before CI:
+
+| Gate | Catches |
+|---|---|
+| `just lint` | fmt / clippy / compile breaks |
+| `just seed-sync-check` | seed-artifact drift between the two driver plugins |
+| `just check-doc-stubs` | a pointer stub re-fattened into duplicate content |
+| `just check-member-docs` | a member missing a required doc, or a CHANGELOG `just release` cannot inject into |
+| `just check-register-hash` | `register-plugin.ps1` hash-pin drift |
+| `just test-scripts` | the PowerShell/Pester script suite |
+| `check-versions.ps1` per member | version-source drift |
+
+**pre-commit** runs `ruff` on staged Python (the agy bridge) only.
 
 ## License
 
