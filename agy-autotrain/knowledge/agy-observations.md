@@ -8,6 +8,20 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
+- [anti-pattern] (peer/probabilistic) `[corpus]` The peer's UNSOLICITED SELF-CORRECTION channel is not more
+  reliable than the rest of its reply — it can be the *least* reliable part. Asked to verify claims against
+  files and report `CORRECTION: <what I got wrong>` on any divergence, the peer volunteered a confident
+  correction that INVERTED the true values: it attributed file A's real measurement to file B, and supplied
+  for file A a number matching no artifact in the tree. The driver's original framing had been correct. This
+  is dangerous precisely because a correction is socially framed as the peer having checked harder, so it
+  reads as higher-confidence than an ordinary assertion and invites the driver to overwrite a correct belief.
+  Driving implication: a `CORRECTION:` block is a CLAIM like any other and must be measured before folding —
+  and when the correction concerns a quantity, re-measure rather than reasoning about plausibility. When
+  challenged with the actual measurement the peer conceded immediately and its dependent conclusion changed
+  materially, so the correction had also propagated into a downstream design answer — re-ask any fork whose
+  premise the false correction touched, don't just discard the correction. (1st observation of the
+  correction-channel variant; the general confabulation pattern is already promoted.)
+
 - [heuristic] (driver/probabilistic) `[corpus]` Asked for a TIGHT INLINE structured answer (N numbered items,
   bounded sentences each), the peer instead WROTE the answer to a markdown file in its own private working
   directory and replied inline with only a one-paragraph preamble plus a `file:///` pointer. The reply came back
