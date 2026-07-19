@@ -4,6 +4,14 @@
     <ProjectReference Include="..\Clavity.Ls.Proto\Clavity.Ls.Proto.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The single registration source of truth (D2, Option B). Copied next to clavity-ls.exe so the CLI runs
+         it via -File from AppContext.BaseDirectory. The installer also ships it to {app} via [Files]. -->
+    <None Include="..\..\..\installer\_shared\register-plugin.ps1" Link="register-plugin.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

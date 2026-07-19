@@ -22,14 +22,15 @@ public static class CliRouter
         // CLAVITY_DATA_DIR overrides the golden-header data dir (default %USERPROFILE%\.clavity) — used by tests.
         var dataDir = Environment.GetEnvironmentVariable("CLAVITY_DATA_DIR");
         if (string.IsNullOrWhiteSpace(dataDir)) dataDir = Path.Combine(home, ".clavity");
-        return Run(args, output, AgentDetection.ForThisMachine(), RealRunner, root, pluginDir, logsDir, dataDir);
+        return Run(args, output, AgentDetection.ForThisMachine(), RealRunner, root, pluginDir, logsDir, dataDir,
+            streamer: PowerShellRegistrar.Stream);
     }
 
     /// <summary>Testable entry: injected detection + runner + paths (logsDir/clavityDataDir null ⇒ --purge-data
     /// has nothing to remove for that target).</summary>
     public static int Run(string[] args, TextWriter output, AgentDetection detection, ProcessRunner run,
                           string marketplaceRoot, string pluginDir, string? logsDir = null, string? clavityDataDir = null,
-                          Func<bool>? claudeRunning = null)
+                          Func<bool>? claudeRunning = null, PowerShellStreamer? streamer = null)
     {
         var verb = args.Length > 0 ? args[0].ToLowerInvariant() : "";
         var purgeData = Array.Exists(args, a => string.Equals(a, "--purge-data", StringComparison.OrdinalIgnoreCase));
@@ -61,13 +62,12 @@ public static class CliRouter
                         "A running Claude overwrites the plugin registration (leaving the bridge unregistered).");
                     return 5;
                 }
-                var dir = PluginDirFor(pluginName, pluginDir);
                 var anySucceeded = false;
                 var registeredCount = 0;
                 foreach (var a in Enum.GetValues<Agent>())
                 {
                     if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
-                    var r = PluginInstaller.Install(a, pluginName, marketplaceRoot, dir, run);
+                    var r = PluginInstaller.Install(a, pluginName, marketplaceRoot, streamer ?? PowerShellRegistrar.Stream);
                     if (r.Ok) registeredCount++;
                     anySucceeded |= r.Ok;
                     output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
@@ -97,7 +97,7 @@ public static class CliRouter
                 foreach (var a in Enum.GetValues<Agent>())
                 {
                     if (!present.Contains(a)) { output.WriteLine($"[{a}] skipped — not present on this machine"); continue; }
-                    var r = PluginInstaller.Uninstall(a, pluginName, run);
+                    var r = PluginInstaller.Uninstall(a, pluginName, streamer ?? PowerShellRegistrar.Stream);
                     ok &= r.Ok;
                     output.WriteLine($"[{a}] {(r.Ok ? "ok" : "FAILED")}: {r.Detail}");
                 }
@@ -138,15 +138,6 @@ public static class CliRouter
     {
         var i = Array.FindIndex(args, a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
-    }
-
-    /// <summary>The install dir for a plugin: the core pluginDir as-is, else a sibling under the same plugins/ root.</summary>
-    private static string PluginDirFor(string pluginName, string corePluginDir)
-    {
-        if (string.Equals(pluginName, PluginInstaller.PluginName, StringComparison.OrdinalIgnoreCase))
-            return corePluginDir;
-        var pluginsRoot = Path.GetDirectoryName(corePluginDir.TrimEnd(Path.DirectorySeparatorChar));
-        return pluginsRoot is null ? corePluginDir : Path.Combine(pluginsRoot, pluginName);
     }
 
     /// <summary>`--purge-data`: remove clavity's own data — the per-session logs dir (Task 2.3) AND

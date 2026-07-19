@@ -1,85 +1,38 @@
 namespace Clavity.Ls.Install;
 
-/// <summary>
-/// Installs / uninstalls the clavity-dotnet plugin for one agent via that agent's NATIVE plugin
-/// command. Claude is marketplace-based (add a marketplace root, then install plugin@marketplace);
-/// agy takes the local plugin directory. The runner is injected.
-/// C9: MarketplaceName is UNIQUE to this member — "clavity" would collide with every other
-/// installer's local marketplace and steal the namespace (Failure mode B).
-/// </summary>
+/// <summary>Thin wrapper (D2, Option B): registration logic lives in installer/_shared/register-plugin.ps1,
+/// run via -File by PowerShellRegistrar. This maps ONE agent's registrar exit code to an AgentResult.
+/// No CLI vectors here.</summary>
 public static class PluginInstaller
 {
     public const string MarketplaceName = "clavity-dotnet";
     public const string PluginName = "clavity-dotnet";
+    public const string LegacyMarketplaceName = "clavity";   // referenced only by register-plugin.ps1 now; kept for callers/tests
 
-    /// <summary>The pre-cohesive UNIFIED marketplace name every member shared before C9 switched to
-    /// per-member unique names. Deregistering it on install is the one-time Bug-1 migration.</summary>
-    public const string LegacyMarketplaceName = "clavity";
-
-    /// <summary>Install <paramref name="pluginName"/> for one agent. Claude installs it from the
-    /// marketplace at <paramref name="marketplaceRoot"/>; agy installs the local
-    /// <paramref name="pluginDir"/>. C1 idempotent re-run made structural (Finding-4): before adding
-    /// the marketplace / installing the plugin, best-effort REMOVE the prior registration and swallow
-    /// its result — so a re-run (upgrade in place) starts from a clean slate and the subsequent
-    /// add/install exit codes are treated normally (non-zero = a real failure). No output-substring
-    /// heuristic. Caveat: if the add/install fails right after the remove/uninstall, the prior
-    /// registration is gone and that surfaces as a reported registration failure (for dotnet/classic,
-    /// the install-time rollback path in Task 2.3/2.4 covers a later-step failure).</summary>
-    public static AgentResult Install(Agent agent, string pluginName, string marketplaceRoot, string pluginDir, ProcessRunner run)
+    public static AgentResult Install(Agent agent, string pluginName, string marketplaceRoot, PowerShellStreamer stream)
     {
-        switch (agent)
-        {
-            case Agent.Claude:
-                // Bug 1 (one-time migration): remove the pre-cohesive UNIFIED "clavity" marketplace. The
-                // bare-name `plugin uninstall` below already sweeps the old <plugin>@clavity enabled entry;
-                // this clears the dangling old marketplace. Runs BEFORE the new-name add so it cannot touch
-                // the new registration. Result swallowed (a fresh box has nothing to remove).
-                run("claude", new[] { "plugin", "marketplace", "remove", LegacyMarketplaceName });
-                // remove-then-add: swallow the pre-clean result (a first-time install has nothing to remove).
-                run("claude", new[] { "plugin", "marketplace", "remove", MarketplaceName });
-                var add = run("claude", new[] { "plugin", "marketplace", "add", marketplaceRoot, "--scope", "user" });
-                if (add.ExitCode != 0)
-                    return new AgentResult(agent, false, $"marketplace add failed: {Clip(add.Output)}");
-                run("claude", new[] { "plugin", "uninstall", pluginName });
-                var ins = run("claude", new[] { "plugin", "install", $"{pluginName}@{MarketplaceName}", "--scope", "user" });
-                if (ins.ExitCode != 0)
-                    return new AgentResult(agent, false, $"install failed: {Clip(ins.Output)}");
-                // Bug 2 backstop (read-back): confirm the EXACT <plugin>@<marketplace> entry landed (spike
-                // Q3: `plugin list` prints that form). A bare-name match would false-pass on an orphan
-                // <plugin>@clavity, so match the full token. A non-persisted exit-0 install fails loudly.
-                var list = run("claude", new[] { "plugin", "list" });
-                var wanted = $"{pluginName}@{MarketplaceName}";
-                if (list.ExitCode != 0 || !list.Output.Contains(wanted, StringComparison.OrdinalIgnoreCase))
-                    return new AgentResult(agent, false,
-                        $"read-back FAILED: {wanted} not present after install " +
-                        "(close Claude Code and re-run — a running Claude overwrites the registration)");
-                return new AgentResult(agent, true, $"installed {wanted}");
-
-            case Agent.Agy:
-                run("agy", new[] { "plugin", "uninstall", pluginName });
-                var r = run("agy", new[] { "plugin", "install", pluginDir });
-                if (r.ExitCode != 0)
-                    return new AgentResult(agent, false, $"install failed: {Clip(r.Output)}");
-                return new AgentResult(agent, true, $"installed {pluginName} from {pluginDir}");
-
-            default:
-                throw new ArgumentOutOfRangeException(nameof(agent));
-        }
+        var name = AgentName(agent);
+        var req = new RegistrarRequest("install", pluginName, MarketplaceName, marketplaceRoot, name);
+        var r = stream(req);
+        // Registrar exit for a single agent: 0 = ok; else fail (3 = failed, 4 = not detected, other = launch fail).
+        return new AgentResult(agent, r.ExitCode == 0, $"register-plugin.ps1 exit {r.ExitCode}: {Clip(r.Output)}");
     }
 
-    /// <summary>C6: deregister the plugin AND the scoped local marketplace, so no dangling registry
-    /// path survives an uninstall (Failure mode A1 — the pre-cohesion oracle only ever removed the
-    /// plugin, never the marketplace entry). Best-effort: a marketplace-remove failure does not
-    /// flip an otherwise-OK plugin uninstall to failure (uninstall stays fail-open, C6).</summary>
-    public static AgentResult Uninstall(Agent agent, string pluginName, ProcessRunner run)
+    public static AgentResult Uninstall(Agent agent, string pluginName, PowerShellStreamer stream)
     {
-        var exe = agent == Agent.Claude ? "claude" : "agy";
-        var r = run(exe, new[] { "plugin", "uninstall", pluginName });
-        if (agent == Agent.Claude)
-            run("claude", new[] { "plugin", "marketplace", "remove", MarketplaceName });
-        return new AgentResult(agent, r.ExitCode == 0,
-            r.ExitCode == 0 ? $"uninstalled {pluginName}" : $"uninstall failed: {Clip(r.Output)}");
+        var name = AgentName(agent);
+        var req = new RegistrarRequest("uninstall", pluginName, MarketplaceName, "", name);
+        var r = stream(req);
+        // Uninstall is fail-open in the .ps1 (missing agent = no-op success); non-zero only on a launch failure.
+        return new AgentResult(agent, r.ExitCode == 0 || r.ExitCode == 4, $"register-plugin.ps1 exit {r.ExitCode}: {Clip(r.Output)}");
     }
+
+    private static string AgentName(Agent agent) => agent switch
+    {
+        Agent.Claude => "claude",
+        Agent.Agy => "agy",
+        _ => throw new ArgumentOutOfRangeException(nameof(agent)),
+    };
 
     private static string Clip(string s) => string.IsNullOrEmpty(s) ? "(no output)" : (s.Length > 200 ? s[..200] : s);
 }

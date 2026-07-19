@@ -36,6 +36,7 @@ Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
 ; post-install). Unconditional — the SEED always ships with this installer.
 Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversion
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
+Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity-dotnet"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
