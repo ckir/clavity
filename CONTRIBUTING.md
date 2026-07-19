@@ -1,6 +1,6 @@
 # Contributing to clavity
 
-Thanks for helping out! Contributions are very welcome — **especially Linux/macOS support**, since
+Thanks for helping out. Contributions are very welcome — **especially Linux/macOS support**, since
 the project is Windows-verified today.
 
 > **Monorepo note:** this repo hosts five products (clavity-dotnet, clavity-classic, ghidrust,
@@ -63,6 +63,9 @@ clavity doctor   # preflight: are tmux/claude/agy on PATH, is the session reacha
 | `src/main.rs` | clap CLI, dispatch, `start` launcher, `doctor`/`info`, `which` PATH resolver. |
 | `src/tmux.rs` | **C3** — psmux primitives + pane-state detection (footer markers + activity fallback). |
 | `src/bus.rs` | **C5** — agentmemory-bus conventions (req-id + `[req_id=..]` envelope). |
+| `src/membus.rs` | **C5'** — agentmemory daemon REST client (blocking I/O for the bus). |
+| `src/golden_header.rs` | Shared, variant-agnostic golden-header contract (SEED-then-GROWTH). |
+| `src/driver_cheatsheet.rs` | Reads the shared driver-cheatsheet (degrading to a shipped baseline floor). |
 | `src/platform.rs` | **Platform seam** — OS detection + per-OS assumptions. The Unix arms are scaffolding. |
 | `src/bin/fake_tmux.rs` | Test-only fake psmux (built only with `--features test-fakes`). |
 | `tests/integration.rs` | Drives the real binary against `fake_tmux` (no live agy; runs in CI). |
@@ -141,15 +144,17 @@ To cut a live umbrella release, run:
 
     just release            # or: just release-dry  (preview only, no writes)
 
-`just release` reads each member's conventional commits since the last release, auto-derives the next
-semver + CHANGELOG, previews every member that will bump, asks you to type the target `clavity-vN` to
-confirm, runs a fast local gate, then pushes the tag. Existing CI heavy-gates (all 5 builds + the
-ghidrust live-E2E) and auto-publishes on green. If CI fails the tag is "burned" (accepted — the sequence
-skips a number); fix and re-run. Never hand-edit a version — `just bump` remains the sole writer and
-`just release` drives it for you.
+`just release` automates the release:
+- Reads conventional commits to auto-derive semver + CHANGELOG per member.
+- Previews the bump and asks you to type the target `clavity-vN` to confirm.
+- Runs a fast local gate, then pushes the tag.
+
+Existing CI heavy-gates (all 5 builds + ghidrust live-E2E) and auto-publishes on green. If CI fails,
+the tag is "burned" (skipped); fix and re-run. Never hand-edit a version — `just bump` remains the
+sole writer and `just release` drives it for you.
 
 That one release, named `clavity`, is the **canonical catalog page** for five INDEPENDENT installers
-(cohesive-distribution model, `docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md`):
+(cohesive-distribution model):
 `clavity-dotnet-setup`, `clavity-classic-setup`, `ghidrust-setup`, `agy-autotrain-setup`,
 `commonmemory-setup` — each with its own `.sha256`. Each installer does exactly one member; none bundles
 or downloads another (there is no live remote marketplace channel). ghidrust is gated by its live-E2E
@@ -160,10 +165,13 @@ see "Republishing one member" below.
 is no branch-per-tool split. `main` also houses the orchestration (`umbrella-release.yml` +
 `build-<member>.yml` per member). A `clavity-v<N>` tag on `main` deterministically pins every member.
 
-**Republishing one member (Acceptance #11):** `republish-member.yml` (`workflow_dispatch`, inputs
-`tag=<existing clavity-v<N>>` + `member=<one of the five>`) rebuilds ONE member and republishes its 2
-assets onto an already-published `clavity-v<N>` release, without any sibling's build or gate (including
-ghidrust's live-E2E) running at all — a decoupled hotfix path, not a second release lineage.
+**Republishing one member (Acceptance #11):** `republish-member.yml` (`workflow_dispatch`) is a
+decoupled hotfix path — rebuild ONE member and republish its 2 assets onto an already-published
+release:
+- `tag` — an existing `clavity-v<N>` release tag to republish onto.
+- `member` — a fixed choice of one: `dotnet`, `classic`, `ghidrust`, `agy-autotrain`, `commonmemory`.
+
+It runs without any sibling's build or gate (including ghidrust's live-E2E) running at all.
 
 **Deprecated tags (no-ops):** the legacy `v*`, `clavity-dotnet-v*`, and `clavity-classic-v*` tags no
 longer trigger anything — the per-variant release workflows were retired. Pushing one produces **no
