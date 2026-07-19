@@ -22,7 +22,7 @@ param(
     [string]$Agent = 'all'
 )
 
-# Dual-binding fallback (§3.4): the streaming (C#/stdin) path passes params as env vars, NOT named args;
+# Dual-binding fallback (S3.4): the streaming (C#/stdin) path passes params as env vars, NOT named args;
 # a PS 5.1 param() does not auto-populate from $env:, so bind explicitly when the named arg was omitted.
 if (-not $PluginName)      { $PluginName      = $env:CLAVITY_PLUGINNAME }
 if (-not $MarketplaceName) { $MarketplaceName = $env:CLAVITY_MARKETPLACENAME }
@@ -62,15 +62,15 @@ function Test-AgentPresent {
     return $false
 }
 
-# Inner running-Claude re-check (§3.3): PS-native, same public surface as the outer tasklist gate.
+# Inner running-Claude re-check (S3.3): PS-native, same public surface as the outer tasklist gate.
 function Test-ClaudeRunning {
     return [bool](Get-Process -Name claude -ErrorAction SilentlyContinue)
 }
 
 # Time-boxed agent-CLI call. Runs `& <exe> @args` INSIDE a background job so arg-array quoting is preserved
-# (injection-safe, §3.5) AND we get a kill handle for the time-box. Captures the child's own stdout/stderr
-# INTERNALLY (§3.1.1). Returns @{ ExitCode; Output }.
-# Tradeoff (agy review A1): Start-Job spawns a child powershell per call (~hundreds of ms). Accepted — it is
+# (injection-safe, S3.5) AND we get a kill handle for the time-box. Captures the child's own stdout/stderr
+# INTERNALLY (S3.1.1). Returns @{ ExitCode; Output }.
+# Tradeoff (agy review A1): Start-Job spawns a child powershell per call (~hundreds of ms). Accepted - it is
 # ~8 calls once per install, and a lighter System.Diagnostics.Process would lose ArgumentList under PS 5.1
 # (.NET Framework), re-introducing the manual arg-quoting bug the array form exists to avoid.
 function Invoke-AgentCli {
@@ -87,7 +87,7 @@ function Invoke-AgentCli {
         $ext = [System.IO.Path]::GetExtension($resolved.Source).ToLowerInvariant()
         if ($ext -eq '.cmd' -or $ext -eq '.bat') { $isShim = $true }
     }
-    # NOTE the (,$CliArgs) wrap — forces the array through -ArgumentList as ONE param (PS 5.1 unwraps a bare array).
+    # NOTE the (,$CliArgs) wrap - forces the array through -ArgumentList as ONE param (PS 5.1 unwraps a bare array).
     $job = Start-Job -ScriptBlock {
         param($JExe, $JArgs, $JIsShim)
         $ErrorActionPreference = 'Continue'
@@ -124,7 +124,7 @@ function Install-ClaudePlugin {
     param([string]$PluginName, [string]$MarketplaceName, [string]$AppDir)
     # Inner TOCTOU guard: refuse (fail this agent) if Claude started after the outer gate.
     if (Test-ClaudeRunning) {
-        return @{ Ok = $false; Reason = 'Claude Code is running — registration skipped to avoid clobbering it. Close Claude Code and re-run setup.' }
+        return @{ Ok = $false; Reason = 'Claude Code is running - registration skipped to avoid clobbering it. Close Claude Code and re-run setup.' }
     }
     [void](Invoke-AgentCli 'claude' @('plugin', 'marketplace', 'remove', $script:LegacyMarketplaceName))  # 1 Bug-1
     [void](Invoke-AgentCli 'claude' @('plugin', 'marketplace', 'remove', $MarketplaceName))                # 2 pre-clean
@@ -136,10 +136,10 @@ function Install-ClaudePlugin {
     $list = Invoke-AgentCli 'claude' @('plugin', 'list')                                                   # 6 read-back
     $wanted = "$PluginName@$MarketplaceName"
     if ($list.ExitCode -ne 0) { return @{ Ok = $false; Reason = "read-back could not run 'claude plugin list': $(Format-Reason $list.Output)" } }
-    # Strict literal match (no regex) — replaces the brittle Pos() substring scrape (§3.2).
+    # Strict literal match (no regex) - replaces the brittle Pos() substring scrape (S3.2).
     $hit = $list.Output | Select-String -SimpleMatch $wanted -Quiet
     if (-not $hit) {
-        return @{ Ok = $false; Reason = "read-back FAILED: $wanted not present after install (close Claude Code and re-run — a running Claude overwrites the registration)" }
+        return @{ Ok = $false; Reason = "read-back FAILED: $wanted not present after install (close Claude Code and re-run - a running Claude overwrites the registration)" }
     }
     return @{ Ok = $true; Reason = "installed $wanted" }
 }
@@ -211,7 +211,7 @@ function Invoke-Registration {
     return [PSCustomObject]@{ ExitCode = $code; AgentLines = $lines.ToArray() }
 }
 
-# main-guard: run only when invoked directly (NOT when dot-sourced by Pester — InvocationName is '.').
+# main-guard: run only when invoked directly (NOT when dot-sourced by Pester - InvocationName is '.').
 if ($MyInvocation.InvocationName -ne '.') {
     $verb = 'install'
     if ($Uninstall) { $verb = 'uninstall' }

@@ -1,6 +1,6 @@
 BeforeAll {
     # Dot-source: defines functions, does NOT run main (guarded by $MyInvocation.InvocationName -eq '.').
-    . (Join-Path $PSScriptRoot '..' '..' 'installer' '_shared' 'register-plugin.ps1')
+    . ([System.IO.Path]::Combine($PSScriptRoot, '..', '..', 'installer', '_shared', 'register-plugin.ps1'))
 }
 
 Describe 'Format-Reason' {
@@ -34,7 +34,7 @@ Describe 'Test-AgentPresent' {
     }
 }
 
-Describe 'Install-ClaudePlugin — vectors (golden parity vs PluginInstaller.cs)' {
+Describe 'Install-ClaudePlugin - vectors (golden parity vs PluginInstaller.cs)' {
     BeforeEach {
         $script:calls = New-Object System.Collections.Generic.List[object]
         Mock Test-ClaudeRunning { $false }
@@ -81,7 +81,7 @@ Describe 'Install-ClaudePlugin — vectors (golden parity vs PluginInstaller.cs)
     }
 }
 
-Describe 'Install-AgyPlugin — vectors' {
+Describe 'Install-AgyPlugin - vectors' {
     It 'uninstall-then-install the local plugin dir; non-zero install fails' {
         $script:calls = New-Object System.Collections.Generic.List[object]
         Mock Invoke-AgentCli { $script:calls.Add(($CliArgs -join ' ')); return @{ ExitCode = 0; Output = '' } }
@@ -91,7 +91,7 @@ Describe 'Install-AgyPlugin — vectors' {
     }
 }
 
-Describe 'Invoke-Registration — orchestration + exit codes' {
+Describe 'Invoke-Registration - orchestration + exit codes' {
     BeforeEach {
         Mock Test-ClaudeRunning { $false }
         Mock Install-ClaudePlugin { @{ Ok = $true;  Reason = 'installed x@m' } }
@@ -133,14 +133,23 @@ Describe 'Invoke-Registration — orchestration + exit codes' {
     }
 }
 
-Describe 'register-plugin.ps1 — exit code survives the -File wrapper (end-to-end)' {
-    It 'returns 4 with no agent present (real powershell -File invocation)' {
-        # Isolate: empty USERPROFILE-derived detection + empty PATH so no real claude/agy is found.
-        $tmpHome = Join-Path $TestDrive 'home'; New-Item -ItemType Directory -Path $tmpHome | Out-Null
-        $script = (Resolve-Path (Join-Path $PSScriptRoot '..' '..' 'installer' '_shared' 'register-plugin.ps1')).Path
-        $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $script -Install -PluginName x -MarketplaceName m -AppDir C:\a -Agent all 2>&1
-        # In a clean $TestDrive with no fake CLIs on PATH and default profile dirs, expect no-agent (4)
-        # OR all-fail (3) — assert it is a mapped non-success code, never 0/1.
-        $LASTEXITCODE | Should -BeIn @(2, 3, 4)
+Describe 'register-plugin.ps1 - exit code survives the -File wrapper (end-to-end)' {
+    It 'returns 4 with no agent present (real powershell -File invocation, hermetically isolated)' {
+        # GENUINE isolation: point the child's USERPROFILE at an empty temp dir AND blank its PATH so
+        # Test-AgentPresent finds neither a config dir (~/.claude, ~/.gemini) nor a CLI on PATH => it detects
+        # NOTHING => exit 4 and NO real agent CLI is ever invoked. This must never touch the dev box's real
+        # claude/agy registrations (the prior version left USERPROFILE/PATH unset and ran live vectors on a
+        # box with Claude installed). Launch powershell by FULL PATH so a blanked PATH cannot break the launch.
+        $tmpHome = Join-Path $TestDrive 'home'; New-Item -ItemType Directory -Path $tmpHome -Force | Out-Null
+        $script = (Resolve-Path ([System.IO.Path]::Combine($PSScriptRoot, '..', '..', 'installer', '_shared', 'register-plugin.ps1'))).Path
+        $pwshExe = (Get-Command powershell -CommandType Application | Select-Object -First 1).Source
+        $oldProfile = $env:USERPROFILE; $oldPath = $env:PATH
+        try {
+            $env:USERPROFILE = $tmpHome
+            $env:PATH = ''
+            $out = & $pwshExe -NoProfile -ExecutionPolicy Bypass -File $script -Install -PluginName x -MarketplaceName m -AppDir C:\a -Agent all 2>&1
+            $LASTEXITCODE | Should -Be 4   # deterministic: nothing detected, no real CLI touched
+        }
+        finally { $env:USERPROFILE = $oldProfile; $env:PATH = $oldPath }
     }
 }
