@@ -153,7 +153,63 @@ function Install-AgyPlugin {
     return @{ Ok = $true; Reason = "installed $PluginName from $pluginDir" }
 }
 
-# --- (verb functions + orchestrator added in Tasks 2-3) ---
+# Uninstall is fail-open: a missing agent CLI (command-not-found) is a successful no-op deregistration.
+function Uninstall-ClaudePlugin {
+    param([string]$PluginName, [string]$MarketplaceName)
+    [void](Invoke-AgentCli 'claude' @('plugin', 'uninstall', $PluginName))
+    [void](Invoke-AgentCli 'claude' @('plugin', 'marketplace', 'remove', $MarketplaceName))  # C6, fail-open
+    return @{ Ok = $true; Reason = "deregistered $PluginName" }
+}
+
+function Uninstall-AgyPlugin {
+    param([string]$PluginName)
+    [void](Invoke-AgentCli 'agy' @('plugin', 'uninstall', $PluginName))
+    return @{ Ok = $true; Reason = "deregistered $PluginName" }
+}
+
+function Invoke-Registration {
+    param(
+        [string]$Verb,          # 'install' | 'uninstall'
+        [string]$PluginName,
+        [string]$MarketplaceName,
+        [string]$AppDir,
+        [string]$AgentSel = 'all'
+    )
+    $targets = @('claude', 'agy')
+    if ($AgentSel -eq 'claude') { $targets = @('claude') }
+    elseif ($AgentSel -eq 'agy') { $targets = @('agy') }
+
+    $lines    = New-Object System.Collections.Generic.List[string]
+    $detected = 0
+    $okCount  = 0
+    foreach ($a in $targets) {
+        if (-not (Test-AgentPresent $a)) { continue }
+        $detected++
+        try {
+            if ($Verb -eq 'install') {
+                if ($a -eq 'claude') { $res = Install-ClaudePlugin -PluginName $PluginName -MarketplaceName $MarketplaceName -AppDir $AppDir }
+                else                 { $res = Install-AgyPlugin    -PluginName $PluginName -AppDir $AppDir }
+            }
+            else {
+                if ($a -eq 'claude') { $res = Uninstall-ClaudePlugin -PluginName $PluginName -MarketplaceName $MarketplaceName }
+                else                 { $res = Uninstall-AgyPlugin    -PluginName $PluginName }
+            }
+        }
+        catch {
+            # Fail-open on uninstall (missing agent CLI); a hard FAIL on install.
+            if ($Verb -eq 'uninstall') { $res = @{ Ok = $true;  Reason = "deregister no-op ($($_.Exception.Message))" } }
+            else                       { $res = @{ Ok = $false; Reason = "unexpected error: $(Format-Reason $_.Exception.Message)" } }
+        }
+        if ($res.Ok) { $okCount++; $lines.Add("AGENT $a OK") }
+        else         { $lines.Add("AGENT $a FAIL $(Format-Reason $res.Reason)") }
+    }
+
+    $code = 2                                   # partial
+    if ($detected -eq 0)          { $code = 4 } # none detected
+    elseif ($okCount -eq $detected) { $code = 0 } # all ok
+    elseif ($okCount -eq 0)         { $code = 3 } # all failed
+    return [PSCustomObject]@{ ExitCode = $code; AgentLines = $lines.ToArray() }
+}
 
 # main-guard: run only when invoked directly (NOT when dot-sourced by Pester — InvocationName is '.').
 if ($MyInvocation.InvocationName -ne '.') {

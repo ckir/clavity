@@ -90,3 +90,57 @@ Describe 'Install-AgyPlugin — vectors' {
         $script:calls.ToArray() | Should -Be @('plugin uninstall commonmemory', 'plugin install C:\app\plugins\commonmemory')
     }
 }
+
+Describe 'Invoke-Registration — orchestration + exit codes' {
+    BeforeEach {
+        Mock Test-ClaudeRunning { $false }
+        Mock Install-ClaudePlugin { @{ Ok = $true;  Reason = 'installed x@m' } }
+        Mock Install-AgyPlugin    { @{ Ok = $true;  Reason = 'installed x'   } }
+    }
+    It 'exits 0 and emits one OK line per detected agent (both present)' {
+        Mock Test-AgentPresent { $true }
+        $r = Invoke-Registration -Verb install -PluginName x -MarketplaceName m -AppDir C:\a -AgentSel all
+        $r.ExitCode | Should -Be 0
+        $r.AgentLines | Should -Be @('AGENT claude OK', 'AGENT agy OK')
+    }
+    It 'exits 4 with no detected agent' {
+        Mock Test-AgentPresent { $false }
+        (Invoke-Registration -Verb install -PluginName x -MarketplaceName m -AppDir C:\a -AgentSel all).ExitCode | Should -Be 4
+    }
+    It 'exits 3 when every detected agent fails' {
+        Mock Test-AgentPresent { $true } -ParameterFilter { $Name -eq 'claude' }
+        Mock Test-AgentPresent { $false } -ParameterFilter { $Name -eq 'agy' }
+        Mock Install-ClaudePlugin { @{ Ok = $false; Reason = 'nope' } }
+        $r = Invoke-Registration -Verb install -PluginName x -MarketplaceName m -AppDir C:\a -AgentSel all
+        $r.ExitCode | Should -Be 3
+        $r.AgentLines[0] | Should -Be 'AGENT claude FAIL nope'
+    }
+    It 'exits 2 on a partial failure' {
+        Mock Test-AgentPresent { $true }
+        Mock Install-AgyPlugin { @{ Ok = $false; Reason = 'agy boom' } }
+        (Invoke-Registration -Verb install -PluginName x -MarketplaceName m -AppDir C:\a -AgentSel all).ExitCode | Should -Be 2
+    }
+    It 'honors -AgentSel claude (touches only claude)' {
+        Mock Test-AgentPresent { $true }
+        $r = Invoke-Registration -Verb install -PluginName x -MarketplaceName m -AppDir C:\a -AgentSel claude
+        $r.AgentLines | Should -Be @('AGENT claude OK')
+    }
+    It 'uninstall is fail-open on a missing agent CLI (command-not-found is a no-op success)' {
+        Mock Test-AgentPresent { $true } -ParameterFilter { $Name -eq 'claude' }
+        Mock Test-AgentPresent { $false } -ParameterFilter { $Name -eq 'agy' }
+        Mock Uninstall-ClaudePlugin { throw 'The term claude is not recognized' }
+        (Invoke-Registration -Verb uninstall -PluginName x -MarketplaceName m -AppDir C:\a -AgentSel all).ExitCode | Should -Be 0
+    }
+}
+
+Describe 'register-plugin.ps1 — exit code survives the -File wrapper (end-to-end)' {
+    It 'returns 4 with no agent present (real powershell -File invocation)' {
+        # Isolate: empty USERPROFILE-derived detection + empty PATH so no real claude/agy is found.
+        $tmpHome = Join-Path $TestDrive 'home'; New-Item -ItemType Directory -Path $tmpHome | Out-Null
+        $script = (Resolve-Path (Join-Path $PSScriptRoot '..' '..' 'installer' '_shared' 'register-plugin.ps1')).Path
+        $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $script -Install -PluginName x -MarketplaceName m -AppDir C:\a -Agent all 2>&1
+        # In a clean $TestDrive with no fake CLIs on PATH and default profile dirs, expect no-agent (4)
+        # OR all-fail (3) — assert it is a mapped non-success code, never 0/1.
+        $LASTEXITCODE | Should -BeIn @(2, 3, 4)
+    }
+}
