@@ -207,8 +207,10 @@ public static class GoldenHeader
     /// sidecar. It exists to catch torn writes, filesystem corruption, and a hand-edited header that no
     /// longer matches what the tool committed; see <see cref="TryReadFile"/> for the read-side check).
     /// Enforces the size cap. Used by `clavity-ls curate-commit`; agy-curate INVOKES it (never raw-edits).
-    /// F7: the .sha256 sidecar is written BEFORE the header is moved into place, so a crash mid-commit cannot
-    /// leave a sidecar that falsely accuses an already-published header (Task 7.4 treats mismatch conservatively).
+    /// Sidecar-after-target-rename, mirroring Rust `commit`: the header is moved into place FIRST, and
+    /// only then is the sidecar written (also atomically, via its own tmp+rename) — so a failure between
+    /// the two leaves the OLD header and OLD sidecar mutually consistent, rather than a published sidecar
+    /// hash that accuses a header which was never actually replaced.
     /// </summary>
     public static void Commit(string path, string content)
     {
@@ -219,10 +221,16 @@ public static class GoldenHeader
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
+        // 1) header: tmp -> move over target (atomic).
         var tmp = path + ".tmp";
         File.WriteAllText(tmp, content);
-        File.WriteAllText(path + ".sha256", Sha256Hex(content));   // F7: sidecar BEFORE the move
         File.Move(tmp, path, overwrite: true);
+
+        // 2) sidecar (AFTER the target move succeeds): tmp -> move over the final sidecar path (atomic).
+        var sidecarPath = path + ".sha256";
+        var sidecarTmp = sidecarPath + ".tmp";
+        File.WriteAllText(sidecarTmp, Sha256Hex(content));
+        File.Move(sidecarTmp, sidecarPath, overwrite: true);
     }
 
     public static string Sha256Hex(string content) =>

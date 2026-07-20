@@ -173,6 +173,35 @@ public sealed class GoldenHeaderTests : IDisposable
     }
 
     [Fact]
+    public void Commit_over_existing_pair_leaves_header_and_sidecar_mutually_consistent()
+    {
+        // Pins the ordering fix: committing OVER an existing header+sidecar pair must leave the NEW
+        // sidecar matching the NEW header, so TryReadCombined's sidecar-integrity check does not drop
+        // the region. (Before the fix, the sidecar was written before the header move — still correct
+        // in the no-crash case, but the wrong order for the OLD-header/OLD-sidecar consistency the
+        // Rust oracle documents.)
+        var p = Path.Combine(_dir, GoldenHeader.SeedFileName);
+        GoldenHeader.Commit(p, "OLD");
+        GoldenHeader.Commit(p, "NEW");
+
+        Assert.Equal("NEW", File.ReadAllText(p));
+        Assert.Equal(GoldenHeader.Sha256Hex("NEW"), File.ReadAllText(p + ".sha256"));
+        Assert.Equal("NEW", GoldenHeader.TryReadCombined(_dir));
+    }
+
+    [Fact]
+    public void Commit_leaves_no_stray_tmp_file_behind()
+    {
+        // Pins the atomic-write requirement for BOTH the header and the sidecar: after Commit returns,
+        // no file whose name ends in ".tmp" should remain in the directory.
+        var p = Path.Combine(_dir, GoldenHeader.SeedFileName);
+        GoldenHeader.Commit(p, "SEED");
+
+        var strayTmp = Directory.GetFiles(_dir).Where(f => f.EndsWith(".tmp", StringComparison.Ordinal));
+        Assert.Empty(strayTmp);
+    }
+
+    [Fact]
     public void CommitGrowth_writes_growth_file_only_and_leaves_seed_untouched()
     {
         GoldenHeader.CommitSeed(_dir, "SEED");
