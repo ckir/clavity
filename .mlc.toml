@@ -17,10 +17,25 @@ ignore-path = [
   # Build output. NOTE: mlc's ignore-path matches a LITERAL path from the scan root — it is NOT a
   # glob. Measured: a bare "target" ignores only a root-level ./target (which never forms here, as
   # each member owns its own workspace), and "**/target" matches nothing at all. So every build dir
-  # must be enumerated by its real relative path. Add a line here when a new Rust member lands.
+  # must be enumerated by its real relative path, for EVERY member — Rust `target/` and .NET
+  # `bin/`+`obj/` alike. Add lines here whenever a new member or project lands.
   "commonmemory/dist",
   "clavity-classic/target",
   "ghidrust/target",
+  "clavity-dotnet/src/Clavity.Cli/bin",
+  "clavity-dotnet/src/Clavity.Cli/obj",
+  "clavity-dotnet/src/Clavity.Ls/bin",
+  "clavity-dotnet/src/Clavity.Ls/obj",
+  "clavity-dotnet/src/Clavity.Ls.Proto/bin",
+  "clavity-dotnet/src/Clavity.Ls.Proto/obj",
+  "clavity-dotnet/src/Clavity.Mcp/bin",
+  "clavity-dotnet/src/Clavity.Mcp/obj",
+  "clavity-dotnet/tests/Clavity.Integration.Tests/bin",
+  "clavity-dotnet/tests/Clavity.Integration.Tests/obj",
+  "clavity-dotnet/tests/Clavity.Live.Acceptance/bin",
+  "clavity-dotnet/tests/Clavity.Live.Acceptance/obj",
+  "clavity-dotnet/tests/Clavity.Ls.Tests/bin",
+  "clavity-dotnet/tests/Clavity.Ls.Tests/obj",
 ]
 
 # Offline by default: no network calls for external URLs. Two consequences worth

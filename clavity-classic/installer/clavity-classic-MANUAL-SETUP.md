@@ -9,6 +9,8 @@ zero-touch dotnet variant) — finish these one-time steps, then `clavity start`
 - **`agy`** (Antigravity CLI) — the paired agent, already installed and signed in.
 - **[psmux](https://github.com/psmux/psmux)** (ships as `psmux`/`pmux`/`tmux`) on your `PATH`. If it
   lives somewhere not on `PATH`, set `AGY_TMUX_BIN` to its full path instead.
+- **[Node.js](https://nodejs.org/)** (supplies `npx`) on your `PATH` — step 1 launches the agentmemory
+  bus with it. Nothing in this installer bundles it.
 
 ## 1. Register the agentmemory bus MCP in BOTH agents (clavity's data channel)
 

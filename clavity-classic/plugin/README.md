@@ -77,17 +77,22 @@ in **both** Claude Code and agy, pointing at the same daemon (default `:3111`). 
 global `@agentmemory/agentmemory` module, so they implicitly share one store — that shared store *is*
 the bus.
 
-**Claude Code** — `claude mcp add agentmemory -s user -- npx @agentmemory/agentmemory mcp`, i.e. in
+**Claude Code** — `claude mcp add agentmemory -s user -- npx -y @agentmemory/agentmemory mcp`, i.e. in
 `~/.claude.json` under `mcpServers`:
 ```json
-"agentmemory": { "type": "stdio", "command": "npx", "args": ["@agentmemory/agentmemory", "mcp"] }
+"agentmemory": { "type": "stdio", "command": "npx", "args": ["-y", "@agentmemory/agentmemory", "mcp"] }
 ```
 
 **agy** — in `~/.gemini/config/mcp_config.json` under `mcpServers` (on Windows a bare `npx` must be
 launched via `cmd /c`):
 ```json
-"agentmemory": { "command": "cmd", "args": ["/c", "npx", "@agentmemory/agentmemory", "mcp"] }
+"agentmemory": { "command": "cmd", "args": ["/c", "npx", "-y", "@agentmemory/agentmemory", "mcp"] }
 ```
+
+`-y` is required: these commands are the server's *launch* command, re-run on every agent start, so
+without it npx can block on its install prompt with no TTY to answer it. Note this resolves whatever
+version is currently published — it is deliberately unpinned so a bus fix reaches you, which also
+means you get whatever is live at that moment.
 
 Restart each agent after editing its config. Verify Claude sees the bus (the `memory_signal_send` /
 `memory_signal_read` tools are available); **`clavity doctor` does not check this**, so confirm it
