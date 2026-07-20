@@ -36,5 +36,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Member docs floor gate
-        shell: powershell   # Windows PowerShell 5.1 - catches PS7-only syntax, same as ci-scripts.yml
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-member-docs.ps1
+        # pwsh 7: check-member-docs.ps1 is a maintainer-only dev script and only ever runs under
+        # pwsh 7 (justfile, lefthook). It used to run under Windows PowerShell 5.1 "to catch PS7-only
+        # syntax" - but that contract belongs to the end-user installer surface, not here. Gating a
+        # dev script on 5.1 buys nothing and reports phantom failures; see ci-scripts.yml.
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/check-member-docs.ps1

@@ -1,8 +1,22 @@
 name: ci-scripts
 
-# Runs the pwsh/Pester unit suite (release-engine seam + register-plugin) + the hash-pin sync gate on every
-# push/PR touching the scripts or the shared installer registrar. Uses Windows PowerShell 5.1 (shell: powershell)
-# so PS7-only syntax in register-plugin.ps1 is caught (spec 5 conformance).
+# TWO CONTRACTS, TWO ENGINES - the split is by where the code actually RUNS, not by folder taste.
+#
+#   installer-5-1 - installer/_shared/register-plugin.ps1 runs on an END-USER Windows box, where only
+#     Windows PowerShell 5.1 is guaranteed. It and its suite are gated under `shell: powershell`, plus
+#     an ASCII gate: 5.1 reads a BOM-less .ps1 as ANSI/CP1252, so a stray em-dash mojibakes. Forbidding
+#     non-ASCII beats relying on a BOM surviving every editor - and a BOM on register-plugin.ps1 would
+#     break its SHA-256 hash pin (see check-register-hash-synced.ps1).
+#
+#   dev-scripts - scripts/** is maintainer-only and executes under pwsh 7. Gating it on 5.1 was a
+#     mis-scoped contract: it failed 9 containers on PS7-only syntax (3-positional-arg Join-Path, whose
+#     3rd arg is the PS7-only -AdditionalChildPath) while never exercising the end-user surface.
+#
+# register-plugin.Tests.ps1 runs in BOTH jobs on purpose: it must hold under either engine.
+#
+# NOTE: every `run:` block below is deliberately pure ASCII. Actions writes a run block to a BOM-less
+# temp .ps1, so non-ASCII in a `shell: powershell` block would hit the very bug the ASCII gate exists
+# to prevent.
 on:
   push:
     branches: [main]
@@ -23,23 +37,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  scripts:
+  installer-5-1:
+    name: installer contract (Windows PowerShell 5.1)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Pester v5
-        shell: powershell
-        run: Install-Module Pester -MinimumVersion 5.0.0 -Force -SkipPublisherCheck -Scope CurrentUser
+
+      - name: 5.1 domain must be pure ASCII
+        shell: pwsh
+        # Same script `just check-installer-ascii` runs locally, so this cannot drift from the local
+        # gate. Rationale for ASCII-over-BOM lives in the script header.
+        run: pwsh -File scripts/check-installer-ascii.ps1
+
       - name: Hash-pin sync gate
         shell: pwsh
         run: pwsh -File scripts/check-register-hash-synced.ps1
-      - name: Pester (Windows PowerShell 5.1)
+
+      - name: Install Pester v5
         shell: powershell
-        # Import v5 explicitly so the built-in Pester 3.x on windows-latest cannot shadow it (F5).
-        # Assert >0 tests were DISCOVERED - Invoke-Pester exits 0 on zero-discovery (misnamed/misplaced file),
-        # a false green (B5). -PassThru + an explicit TotalCount check closes it.
+        # Pin the v5 LINE. -MinimumVersion alone resolves to the newest version >= the floor, which
+        # silently installed Pester 6.0.1 - a different runner than these v5-style suites target.
+        # -ErrorAction Stop so a PSGallery blip fails here instead of falling through to Pester 3.4.0.
+        run: Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+
+      - name: Pester - register-plugin (Windows PowerShell 5.1)
+        shell: powershell
+        # Import explicitly so the Pester 3.4.0 built into Windows 5.1 cannot shadow v5.
         run: |
-          Import-Module Pester -MinimumVersion 5.0.0 -Force
+          Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force
+          $r = Invoke-Pester scripts/tests/register-plugin.Tests.ps1 -Output Detailed -PassThru
+          if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
+          # A container that fails DISCOVERY contributes 0 to FailedCount - that is how 9 broken files
+          # still produced a plausible-looking count. Assert every container actually ran.
+          $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
+          if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
+          if ($r.TotalCount -lt 15) { throw "only $($r.TotalCount) tests discovered - expected the register-plugin suite (>=15)" }
+
+  dev-scripts:
+    name: dev scripts (pwsh 7)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester v5
+        shell: pwsh
+        run: Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+
+      - name: Pester - full scripts suite (pwsh 7)
+        shell: pwsh
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force
           $r = Invoke-Pester scripts/tests -Output Detailed -PassThru
           if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
-          if ($r.TotalCount -lt 60) { throw "only $($r.TotalCount) tests discovered - expected the full suite (>=60); a misnamed/misplaced *.Tests.ps1?" }
+          $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
+          if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
+          if ($r.TotalCount -lt 100) { throw "only $($r.TotalCount) tests discovered - expected the full suite (>=100); a misnamed/misplaced *.Tests.ps1?" }

@@ -71,6 +71,12 @@ accept-drain *args:
 test-scripts:
     pwsh -c "Invoke-Pester scripts/tests -Output Detailed -CI"
 
+# Gate the Windows PowerShell 5.1 domain (the end-user installer surface) to pure ASCII.
+# ~6s, and the ONLY local check that can catch a CP1252 mangling: pwsh 7 defaults to UTF-8, so a
+# BOM-less non-ASCII .ps1 looks fine locally and only breaks on a stock 5.1 box.
+check-installer-ascii:
+    pwsh -File scripts/check-installer-ascii.ps1
+
 # Prepare + gate + push a live umbrella release (auto semver + CHANGELOG from conventional commits).
 release:
     pwsh -File scripts/release.ps1

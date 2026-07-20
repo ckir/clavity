@@ -26,6 +26,11 @@ pre-push:
       run: just check-member-docs
     register-hash:
       run: just check-register-hash
+    installer-ascii:
+      # ~6s, nearly all pwsh startup. Earns its place: pwsh 7 defaults to UTF-8, so a BOM-less
+      # non-ASCII .ps1 in the end-user installer surface is invisible to every OTHER local gate and
+      # only misbehaves on a stock Windows PowerShell 5.1 box.
+      run: just check-installer-ascii
     check-versions:
       run: pwsh -File scripts/check-versions.ps1 dotnet && pwsh -File scripts/check-versions.ps1 classic && pwsh -File scripts/check-versions.ps1 ghidrust && pwsh -File scripts/check-versions.ps1 agy-autotrain && pwsh -File scripts/check-versions.ps1 commonmemory
 pre-commit:
