@@ -62,6 +62,17 @@ public sealed class GoldenHeaderTests : IDisposable
     }
 
     [Fact]
+    public void TryReadCombined_treats_invalid_utf8_region_as_absent()
+    {
+        // Parity with Rust `String::from_utf8(bytes).ok()?` — invalid UTF-8 means the region is ABSENT
+        // (nothing injected), never an exception. This guards the dotnet bug this fix closes:
+        // File.ReadAllText decodes with U+FFFD replacement fallback, silently injecting garbled text
+        // instead of treating the region as absent.
+        File.WriteAllBytes(Path.Combine(_dir, GoldenHeader.SeedFileName), new byte[] { 0xFF, 0xFE, (byte)'S', (byte)'E', (byte)'E', (byte)'D' });
+        Assert.Null(GoldenHeader.TryReadCombined(_dir));
+    }
+
+    [Fact]
     public void TryReadCombined_returns_growth_alone_when_only_growth_present()
     {
         File.WriteAllText(Path.Combine(_dir, GoldenHeader.GrowthFileName), "GROWTH");

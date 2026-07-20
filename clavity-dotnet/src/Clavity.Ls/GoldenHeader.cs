@@ -38,6 +38,15 @@ public static class GoldenHeader
     private static readonly char[] AsciiWs = { ' ', '\t', '\n', '\v', '\f', '\r' };
 
     /// <summary>
+    /// Strip a single leading UTF-8 BOM (U+FEFF) — mirrors Rust <c>strip_bom</c>
+    /// (<c>s.strip_prefix('\u{feff}').unwrap_or(s)</c>): removes at most one leading occurrence, ordinal.
+    /// <c>File.ReadAllText</c> used to strip this for us automatically; now that we decode strictly via
+    /// <c>Encoding.GetString</c>, which does NOT strip a BOM, this keeps cross-variant parity.
+    /// </summary>
+    private static string StripBom(string s) =>
+        s.StartsWith("\uFEFF", StringComparison.Ordinal) ? s[1..] : s;
+
+    /// <summary>
     /// Strip leading HTML comment blocks (<c>&lt;!-- … --&gt;</c>) plus the whitespace around them. The seeded
     /// golden-header opens with a maintainer-facing note that would otherwise be injected into every ask as if it
     /// were driving guidance. An UNTERMINATED <c>&lt;!--</c> is left alone rather than swallowing the whole file.
@@ -56,7 +65,7 @@ public static class GoldenHeader
         return rest;
     }
 
-    /// <summary>One region file's content, or null if absent/empty/over-cap. IO-safe; over-cap warns.</summary>
+    /// <summary>One region file's content, or null if absent/empty/over-cap/invalid-UTF-8. IO-safe; over-cap warns.</summary>
     private static string? TryReadFile(string path, Action<string>? warn = null)
     {
         try
@@ -69,7 +78,17 @@ public static class GoldenHeader
                 warn?.Invoke($"golden-header region at {path} is {len}B, over the {MaxBytes}B cap — skipped");
                 return null;
             }
-            var text = StripLeadingHtmlComments(File.ReadAllText(path));
+            string text;
+            try
+            {
+                // Strict UTF-8, mirroring Rust's String::from_utf8(bytes).ok()? — invalid bytes mean the region is
+                // ABSENT. File.ReadAllText would silently substitute U+FFFD and inject the garbled text instead.
+                text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
+                    .GetString(File.ReadAllBytes(path));
+            }
+            catch (DecoderFallbackException) { return null; }
+            text = StripBom(text);
+            text = StripLeadingHtmlComments(text);
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
         catch (IOException) { return null; }

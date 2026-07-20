@@ -401,6 +401,19 @@ mod tests {
     }
 
     #[test]
+    fn read_combined_treats_invalid_utf8_region_as_absent() {
+        // Parity with dotnet `TryReadFile`'s strict-UTF8 decode (guards against .NET's default
+        // replacement-fallback silently decoding garbled text instead of treating the region as
+        // absent) — invalid bytes make the region ABSENT, mirroring `String::from_utf8(bytes).ok()?`.
+        let dir = fresh_dir("invalid-utf8");
+        fs::write(dir.join(SEED_FILE), b"\xFF\xFESEED").unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Absent
+        ));
+    }
+
+    #[test]
     fn read_combined_falls_back_to_legacy_flat_file_as_growth() {
         let dir = fresh_dir("legacy");
         fs::write(dir.join(LEGACY_FILE), b"LEGACY").unwrap();
