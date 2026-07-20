@@ -120,11 +120,15 @@ fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str)) -> Option<String> {
     // exactly as absent, accept. Sidecar present but mismatched = warn and degrade this region to
     // ABSENT, mirroring the over-cap path above.
     let sc_path = sidecar_path(path);
-    // Cap the sidecar BEFORE reading its bytes, mirroring the over-cap region-body check above — a
-    // sidecar too large to hold a plausible sha256 digest cannot be a valid one, so a huge `.sha256`
-    // file must not be read wholly into memory. Metadata-read failure (sidecar absent or otherwise
-    // unreadable) is NOT oversized here; it falls through to the `fs::read` below, which fails the
-    // same way and is already treated as absent/accept.
+    // Cap the sidecar from METADATA, before reading its bytes: a sidecar too large to hold a plausible
+    // sha256 digest cannot be a valid one, so a huge `.sha256` must not be read wholly into memory.
+    // NOTE this does NOT match the region-body check above, which reads the file first and only then
+    // compares `bytes.len()` — so an oversized REGION is still loaded into memory before it is rejected.
+    // dotnet checks `FileInfo.Length` first for BOTH (GoldenHeader.cs), and is the better shape; the
+    // region-body check here should follow, but that is a behavior change and is deliberately not made
+    // in the same edit as this comment. Do not "restore symmetry" by deleting this note.
+    // Metadata-read failure (sidecar absent or otherwise unreadable) is NOT oversized here; it falls
+    // through to the `fs::read` below, which fails the same way and is already treated as absent/accept.
     if let Ok(meta) = fs::metadata(&sc_path) {
         if meta.len() > MAX_SIDECAR_BYTES {
             warn(&format!(

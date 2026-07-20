@@ -2,8 +2,11 @@
   installer/_shared/golden-header-data.iss
   Shared Inno [Code] primitives for the golden-header SEED baseline (C4) and per-file backup (C6).
   Meant to be #include'd INSIDE a [Code] section. SeedGoldenHeader is used by clavity-dotnet +
-  clavity-classic. BackupDataFile has exactly TWO callers, both of them those same two members, both
-  backing up the seed baseline + its .sha256 + the pre-split flat file on a KEEP-data uninstall.
+  clavity-classic. BackupDataFile has exactly TWO callers, both of them those same two members, and both
+  back up exactly TWO files on a KEEP-data uninstall: the seed baseline and its .sha256. The pre-split
+  flat golden-header.md is deliberately NOT backed up — it is the user's own wisdom, is never re-seeded,
+  and renaming it would drop it out of the driver's migration read path; see the reasoning at the classic
+  member's keep branch. Do not "restore" it here without reading that first.
   agy-autotrain does NOT call it: it owns the learned growth file and deletes that directly on an
   explicit purge, keeping it untouched otherwise. (This header previously claimed agy-autotrain used
   BackupDataFile for growth.md, which was never true — a future editor must not assume growth.md goes
