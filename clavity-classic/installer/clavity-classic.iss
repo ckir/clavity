@@ -236,7 +236,9 @@ begin
     so this is just the data keep/purge decision. Enumerate the data classes it governs so the choice is informed:
     golden-header ALWAYS; the bridge API key ONLY when a post-install .env exists (opt-in, default-OFF). }
   Prompt := 'Also remove clavity''s data?' + #13#10#13#10 +
-    '  - the golden-header wisdom (~\.clavity\: the seed baseline + learned growth)';
+    '  - the golden-header seed baseline (~\.clavity\golden-header.seed.md, its .sha256, and any' + #13#10 +
+    '    pre-split golden-header.md). The learned growth file belongs to agy-autotrain and is' + #13#10 +
+    '    removed by that product''s own uninstaller, not this one.';
   if FileExists(ExpandConstant('{app}\agy-mcp-bridge\.env')) then
     Prompt := Prompt + #13#10 + '  - your stored bridge API key (agy-mcp-bridge\.env)';
   Prompt := Prompt + #13#10#13#10 + 'Choose No to KEEP it for a future reinstall.';
@@ -271,6 +273,17 @@ begin
       BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
       BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md.sha256'));
       BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
+    end
+    else
+    begin
+      { PURGE: actually delete what the prompt promised. The dotnet member delegates this to its
+        `clavity-ls uninstall --purge-data` call; classic ships no uninstall verb, so without these
+        deletes a user who explicitly consented to removal simply kept their data — the dialog was
+        making a promise no code kept. C6 ownership still applies: driver-owned files ONLY. The
+        learned growth file belongs to agy-autotrain and is purged by ITS uninstaller, not here. }
+      DeleteFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
+      DeleteFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md.sha256'));
+      DeleteFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
     end;
     { Bridge .env (live secret): gated on the keep/purge answer. On purge, remove .env (regenerable
       .venv/__pycache__/.agent already go via [UninstallDelete]); on keep, leave it. }

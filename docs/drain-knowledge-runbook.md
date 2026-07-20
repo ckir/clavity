@@ -71,9 +71,17 @@ maintainer decision, and both `accept-drain` and `abort-drain` key off it.
 Beside it the drain writes an **output manifest**, `agy-observations.staging.<runId>.outputs.txt`:
 one repo-relative path per line, listing every untracked file the curator created this run under the
 drain's output paths. It is derived, not declared — the drain snapshots `git ls-files --others` over
-those paths before and after the curator runs and takes the difference, so it stays correct even if
-the curator's prompt changes or it misreports what it wrote. In practice this only ever names files
-under `docs/fix-the-tool-backlog/`, whose slugs the curator picks per run.
+those paths before and after the curator runs and takes the difference, so it does not depend on the
+curator's prompt or on the curator reporting honestly. In practice this only ever names files under
+`docs/fix-the-tool-backlog/`, whose slugs the curator picks per run.
+
+Be precise about what that buys: the manifest records what **appeared during the curator's run**, which
+is not quite the same as what the curator **wrote**. The curator call takes roughly 30-60s, and anything
+else that creates a file under those paths in that window — an editor autosave, a second terminal, a
+concurrent script — is indistinguishable from curator output and lands in the manifest, after which
+`abort-drain` will delete it without complaint. The pristine-tree precondition only covers drain *start*.
+The window is narrow and needs concurrent activity on the same paths, but it is real: while a drain is
+running, do not create files under `docs/fix-the-tool-backlog/`.
 
 `abort-drain` needs it because its `git clean -fd` step deletes untracked files under those paths: the
 manifest is how it tells the curator's own new backlog file (safe to remove) from a note you dropped in

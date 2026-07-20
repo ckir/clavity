@@ -156,12 +156,17 @@ function Write-DrainOutputManifest([string]$ManifestPath, [string[]]$Paths) {
     # default — matches every other LF write in this file, D2). An empty set writes a truly empty file (0
     # bytes), which is a VALID manifest meaning "this run created no new untracked files" — distinct from the
     # file being ABSENT, which means "this run predates the manifest" (abort-drain.ps1 falls back on that).
+    # Written atomically (tmp + rename), matching the golden-header sidecar discipline in the same change
+    # set. This file is a TRUST BOUNDARY: abort-drain treats every path it names as safe to delete via
+    # `git clean -fd`, so a reader must never see it half-written. A truncated manifest would in fact fail
+    # SAFE today (an unmatched line simply is not recognised, so abort-drain refuses) — but a trust boundary
+    # should not depend on its failure mode happening to be the lucky one.
     $arr = @($Paths)
-    if ($arr.Count -eq 0) {
-        [System.IO.File]::WriteAllText($ManifestPath, '')
-    } else {
-        [System.IO.File]::WriteAllText($ManifestPath, (($arr -join "`n") + "`n"))
-    }
+    $body = ''
+    if ($arr.Count -gt 0) { $body = ($arr -join "`n") + "`n" }
+    $tmp = $ManifestPath + '.tmp'
+    [System.IO.File]::WriteAllText($tmp, $body)
+    Move-Item -LiteralPath $tmp -Destination $ManifestPath -Force
 }
 
 function Get-DrainOutputManifestEntries([string]$ManifestPath) {
