@@ -8,44 +8,6 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
-- [heuristic] (driver/probabilistic) `[corpus]` FILE-POINTED payloads and SUMMARY-FED payloads get materially
-  different quality out of the peer, and the difference shows up as WHAT IT FINDS, not as how confident it
-  sounds. Across one long review session the peer was asked the same class of question both ways. Fed a
-  written summary of the situation plus the driver's own measurements, it produced fluent answers that were
-  wrong three times — each time inferring a cause rather than checking it, and conceding immediately when
-  shown the measurement (once saying outright that it had inferred the failure cause instead of reading the
-  known errors). Pointed instead at named files with an instruction to quote what it actually opened, the
-  same peer found a real defect that an eight-seat internal review had missed across three rounds — one seat
-  had explicitly examined the relevant line and cleared it as safe without reading the next line.
-  Driving implications: (a) send PATHS, not conclusions — a peer handed your evidence agrees with your
-  evidence, so its agreement carries no information; (b) require it to cite what it opened, which makes the
-  inferred-not-read failure visible instead of invisible; (c) treat a run of concessions with no citations as
-  a SYMPTOM, not as verification — if the peer never surprises you, it is probably not reading. Note the cost:
-  file-pointed rounds are markedly slower (it spends steps reading), so a timeout is not evidence of a stuck
-  peer here. (1st observation of the find-rate difference stated as a comparison; the related "don't lead the
-  frame" and "verify what it volunteers" rules are already promoted, and this is the mechanism behind them —
-  needs a 2nd independent session before promoting past the driver cheatsheet.)
-
-- [assumption] (driver/deterministic) `[corpus]` An oversized reply can fail the ask transport OUTRIGHT — surfacing
-  as a tool ERROR, not as a truncated answer — while the peer has already completed the work in full. The error is
-  therefore not evidence the request was lost. Distinguish the two cases by STEP COUNT: a pre-ask reading vs a
-  post-error reading that has advanced (and returned to idle) proves the payload landed and was processed. The
-  recovery move is NOT to re-send the original request — that double-posts a visible message, burns quota, and makes
-  the peer redo the analysis — but to send a small follow-up that explicitly says the reply was lost in transport,
-  forbids redoing the work or re-reading files, and demands the SAME conclusions re-stated under a hard character
-  budget. This reliably retrieves the parked result. Note the trajectory read-back is not a substitute: it is
-  size-bounded and can be truncated to older steps, so it may show none of the relevant exchange even when the
-  reply exists. (Refines the already-promoted parked-reply-recovery rule, which covered the truncate-to-HEAD and
-  hang modes but not the hard transport-error mode nor the compact-restatement retrieval move.)
-  CORRECTION, same session, 2nd occurrence: a step-count advance proves ACTIVITY, not a usable result. On the
-  second occurrence the steps advanced by 9 and the peer returned to idle, yet the compact-restatement request
-  came back "NO PRIOR RESULT" — the peer had genuinely produced nothing to re-state. So treat the step delta as
-  "the payload landed", never as "the answer exists"; the restatement request MUST offer an explicit escape
-  hatch ("if you have no conclusions, reply exactly NO PRIOR RESULT") or you will mistake a fabricated
-  reconstruction for a recovered result. The durable FIX is upstream of recovery: state a hard character budget
-  in the ORIGINAL request ("under N characters; a longer reply fails my transport and is lost"). Re-sending with
-  that budget succeeded immediately where the unbounded request had failed twice.
-
 - [anti-pattern] (peer/probabilistic) `[corpus]` The peer's UNSOLICITED SELF-CORRECTION channel is not more
   reliable than the rest of its reply — it can be the *least* reliable part. Asked to verify claims against
   files and report `CORRECTION: <what I got wrong>` on any divergence, the peer volunteered a confident
