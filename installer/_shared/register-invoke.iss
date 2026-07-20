@@ -13,12 +13,38 @@
   (Inno constant names are written WITHOUT their surrounding braces in these comments on purpose.)
 ============================================================================ }
 
-{ ---- build the pinned 5.1 interpreter path via the sysnative constant (NOT sys): Inno's setup process is
-  32-bit, so the sys constant would resolve to SysWOW64 (32-bit PS under WOW64 redirection). sysnative is
-  unconditionally the native System32 and degrades safely on a true 32-bit OS (§3.5). ---- }
+{ ---- pinned Windows PowerShell 5.1 interpreter path.
+  CAUTION: never write an Inno constant brace-wrapped inside a Pascal comment - the closing brace ends
+  the comment early. Constants below are named WITHOUT braces on purpose.
+
+  MEASURED 2026-07-20 (CI run 29776324788, Inno 6.7.1, Windows 10.0.26100): this previously used the
+  sysnative constant, on the stated assumption that "Inno's setup process is 32-bit, so the sys constant
+  would resolve to SysWOW64". That assumption is not the whole story, and the code failed with:
+
+      register-plugin.ps1 [install ghidrust] exit=1 output:
+          The system cannot find the path specified.
+
+  WHY: Sysnative is a WOW64 VIRTUAL alias that exists strictly for 32-bit processes. We do not run
+  powershell.exe ourselves - we hand its path as a STRING to a separate cmd.exe (see ExecRegisterScript).
+  A Sysnative path is only meaningful inside the process that expanded it; the moment it crosses into a
+  process of different bitness (or one running with FS redirection disabled, as 64-bit install mode does)
+  that folder does not exist and cmd reports exactly the error above.
+
+  FIX: use the sys constant. The cmd constant (from COMSPEC) and sys are resolved under the SAME
+  redirection state as this process, so the interpreter and the shell that launches it agree BY
+  CONSTRUCTION - which is the invariant that was actually violated. Either bitness of Windows PowerShell
+  5.1 runs register-plugin.ps1 fine: it only shells out to the agent CLIs and touches paths under
+  localappdata, never under System32.
+
+  NOTE a FileExists check here canNOT validate the handoff: on a 32-bit process FileExists succeeds on
+  the Sysnative path while the 64-bit cmd still fails. The fallback below only covers a genuinely absent
+  sys copy; the resolved path is LOGGED at the call site so a future mismatch is never again an opaque
+  "path not found". ---- }
 function PwshExePath(): string;
 begin
-  Result := ExpandConstant('{sysnative}\WindowsPowerShell\v1.0\powershell.exe');
+  Result := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+  if not FileExists(Result) then
+    Result := ExpandConstant('{sysnative}\WindowsPowerShell\v1.0\powershell.exe');
 end;
 
 { ---- double a single trailing backslash before the closing quote: CommandLineToArgvW reads \" as an
@@ -93,6 +119,15 @@ begin
     its init 0 (§3.1.1). We treat any launch failure as total failure. AV scan-on-write can transiently lock
     the freshly-written .ps1 (or cmd/pwsh image) so the launch itself fails; retry ONLY the launch-False path
     (never a non-zero registrar exit, which is a real result) up to 3x with a short backoff (§7). }
+  { Log the RESOLVED interpreter path + whether we can see it. A WOW64/Sysnative mismatch shows up at the
+    far side as a bare "The system cannot find the path specified." with no indication of WHICH path, which
+    cost a full CI cycle to localise once already. See PwshExePath's note: Exists=Yes here does NOT prove
+    the launched cmd.exe can resolve it. }
+  if FileExists(PwshExePath()) then
+    Log('register-plugin.ps1 interpreter: ' + PwshExePath() + ' (Exists=Yes)')
+  else
+    Log('register-plugin.ps1 interpreter: ' + PwshExePath() + ' (Exists=NO - the launch will fail)');
+
   LaunchAttempt := 0;
   Launched := False;
   while (not Launched) and (LaunchAttempt < 3) do
