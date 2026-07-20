@@ -1,4 +1,9 @@
 # ghidrust changelog
+## 1.1.0 — 2026-07-20
+
+### Features
+- feat(installer): migrate 4 plugin-only members to register-plugin.ps1 (ship + shell + hash-pin)
+
 
 ## 1.0.1 — 2026-07-13
 

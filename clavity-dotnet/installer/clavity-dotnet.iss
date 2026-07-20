@@ -6,7 +6,7 @@
 ;
 
 #define AppName "clavity-dotnet"
-#define AppVersion "0.2.1"
+#define AppVersion "0.3.0"
 #define ExeName "clavity-ls.exe"
 
 [Setup]

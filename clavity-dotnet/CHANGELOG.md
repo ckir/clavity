@@ -1,5 +1,24 @@
 # dotnet changelog
 
+## 0.3.0 — 2026-07-20
+
+### Features
+- feat(panel): make the negotiation turn point at files, not at your evidence
+- feat(agy-autotrain): make the negotiate-with-agy reminder a forcing function
+- feat(golden-header): actually verify the .sha256 sidecar on read
+- feat(docs): roster-driven member-docs floor gate + section-order templates
+- feat(clavity-ls): run register-plugin.ps1 via -File (Option B) instead of embedded CLI vectors
+
+### Fixes
+- fix(installer): route the seed WRITER through the same resolved data dir
+- fix(installer): make "keep" and "remove" mean what the dialogs say
+- fix(installer): keep the inbox on uninstall; correct a false ordering claim
+- fix(golden-header): write the sidecar after the header move, atomically
+- fix(golden-header): close three cross-variant divergences found in round 3
+- fix(golden-header): decode strictly as UTF-8 so both variants agree
+- fix(golden-header): strip leading HTML comments from injected regions
+- fix(agy-autotrain): resync both BASELINE_FLOOR constants to driver-cheatsheet.core.md
+
 ## 0.2.1 — 2026-07-13
 
 ### Fixes

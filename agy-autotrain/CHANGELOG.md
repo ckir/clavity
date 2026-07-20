@@ -1,4 +1,17 @@
 # agy-autotrain — changelog
+## 0.2.0 — 2026-07-20
+
+### Features
+- feat(panel): make the negotiation turn point at files, not at your evidence
+- feat(agy-autotrain): make the negotiate-with-agy reminder a forcing function
+- feat(installer): migrate 4 plugin-only members to register-plugin.ps1 (ship + shell + hash-pin)
+
+### Fixes
+- fix(installer): make "keep" and "remove" mean what the dialogs say
+- fix(installer): keep the inbox on uninstall; correct a false ordering claim
+- fix(installer): stop the upgrade from destroying the capture inbox
+- fix(agy-autotrain): resync both BASELINE_FLOOR constants to driver-cheatsheet.core.md
+
 ## 0.1.5 — 2026-07-13
 
 ### Fixes
