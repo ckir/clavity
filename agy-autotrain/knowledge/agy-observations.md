@@ -8,6 +8,24 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
+- [heuristic] (driver/probabilistic) `[corpus]` FILE-POINTED payloads and SUMMARY-FED payloads get materially
+  different quality out of the peer, and the difference shows up as WHAT IT FINDS, not as how confident it
+  sounds. Across one long review session the peer was asked the same class of question both ways. Fed a
+  written summary of the situation plus the driver's own measurements, it produced fluent answers that were
+  wrong three times — each time inferring a cause rather than checking it, and conceding immediately when
+  shown the measurement (once saying outright that it had inferred the failure cause instead of reading the
+  known errors). Pointed instead at named files with an instruction to quote what it actually opened, the
+  same peer found a real defect that an eight-seat internal review had missed across three rounds — one seat
+  had explicitly examined the relevant line and cleared it as safe without reading the next line.
+  Driving implications: (a) send PATHS, not conclusions — a peer handed your evidence agrees with your
+  evidence, so its agreement carries no information; (b) require it to cite what it opened, which makes the
+  inferred-not-read failure visible instead of invisible; (c) treat a run of concessions with no citations as
+  a SYMPTOM, not as verification — if the peer never surprises you, it is probably not reading. Note the cost:
+  file-pointed rounds are markedly slower (it spends steps reading), so a timeout is not evidence of a stuck
+  peer here. (1st observation of the find-rate difference stated as a comparison; the related "don't lead the
+  frame" and "verify what it volunteers" rules are already promoted, and this is the mechanism behind them —
+  needs a 2nd independent session before promoting past the driver cheatsheet.)
+
 - [assumption] (driver/deterministic) `[corpus]` An oversized reply can fail the ask transport OUTRIGHT — surfacing
   as a tool ERROR, not as a truncated answer — while the peer has already completed the work in full. The error is
   therefore not evidence the request was lost. Distinguish the two cases by STEP COUNT: a pre-ask reading vs a

@@ -106,6 +106,15 @@ as "unverified" with no actual counter-argument) is acceptable — engage with g
 not the same thing as credulity. This one negotiation turn is a single extra exchange, not a full panel
 round: it does not consume or reset the round budget tracked in Step 4/Step 5.
 
+**Frame that counter-turn the way Step 2 frames the review: give it the FILE and LINE and ask what it
+measures there — do not paste your own measurement and invite it to concede.** A peer handed your evidence
+will agree with your evidence; a peer sent to the source can contradict you, which is the entire reason to
+ask a second model. This applies to every consult, not just a panel round: send paths, not conclusions. The
+failure mode is quiet and feels productive — you collect a string of concessions, each one confirming what
+you already believed, and mistake it for verification. Two signs you are in it: the peer concedes without
+citing anything it read, or its findings never surprise you. A peer that has actually opened the file will
+sometimes tell you the thing your own review missed.
+
 ### Step 4 — Additional rounds
 One panel round is the floor, not the ceiling — keep running additional rounds, folding valid findings
 between rounds, until a stop condition in Step 5 is met. Count rounds this way: Step 1's solo panel together
