@@ -189,7 +189,8 @@ begin
     if not SeedGoldenHeader(ExpandConstant('{app}')) then
       SuppressibleMsgBox('clavity-classic is installed and registered, but the golden-header baseline could ' +
         'not be pre-seeded (non-blocking). Add it any time by copying' + #13#10 +
-        ExpandConstant('{app}\seed\golden-header.md') + '  to  %USERPROFILE%\.clavity\golden-header.seed.md',
+        ExpandConstant('{app}\seed\golden-header.md') + '  to  ' +
+        GoldenHeaderDataDir() + '\golden-header.seed.md',
         mbInformation, MB_OK, IDOK);
     if WizardIsTaskSelected('install_bridge') then
     begin

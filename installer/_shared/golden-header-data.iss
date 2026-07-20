@@ -13,8 +13,22 @@
   Inno constant anywhere in here, or every installer build breaks.
 ============================================================================ }
 
-{ ---- C4 / Boundary-Smuggler (Failure mode D): seed the app dir's seed\golden-header.md into
-  %USERPROFILE%\.clavity\golden-header.seed.md. EVERY path-bound PowerShell cmdlet uses
+{ ---- The directory the golden-header files actually live in. CLAVITY_GOLDEN_HEADER (a DIRECTORY) wins
+  when set and non-blank, else the profile's .clavity — mirroring resolve_dir in golden_header.rs and
+  ResolveDir in GoldenHeader.cs.
+  EVERY path in this file must resolve through here — the WRITER as much as the delete/backup paths.
+  Routing only one side is worse than routing neither: with the seed written to the default dir and the
+  purge aiming at the override, a purge the user consented to silently removes nothing, and the seeded
+  baseline sits somewhere the runtime never reads. Declared FIRST so the writer below can use it. ---- }
+function GoldenHeaderDataDir(): string;
+begin
+  Result := Trim(ExpandConstant('{%CLAVITY_GOLDEN_HEADER|}'));
+  if Result = '' then
+    Result := ExpandConstant('{%USERPROFILE}\.clavity');
+end;
+
+{ ---- C4 / Boundary-Smuggler (Failure mode D): seed the app dir's seed\golden-header.md into the
+  resolved data dir as golden-header.seed.md. EVERY path-bound PowerShell cmdlet uses
   -LiteralPath — including New-Item, which the pre-cohesion code called with -Path (glob-
   vulnerable: a profile containing '[' silently fails to create ~/.clavity, dropping the seed). ---- }
 function SeedGoldenHeader(const AppDir: string): Boolean;
@@ -26,7 +40,7 @@ begin
     inline-command surface is environment-fragile: PATH/AV/language-mode/32-vs-64-bit powershell.exe).
     ForceDirectories + FileCopy take LITERAL paths (no glob), so a profile whose name contains '[' is
     still handled correctly — the sole reason PowerShell -LiteralPath was originally used. }
-  DestDir := ExpandConstant('{%USERPROFILE}\.clavity');
+  DestDir := GoldenHeaderDataDir();
   Result := ForceDirectories(DestDir)
             and FileCopy(AppDir + '\seed\golden-header.md', DestDir + '\golden-header.seed.md', False);
 end;
@@ -36,17 +50,6 @@ end;
   growth.md / growth.md.sha256. NEVER call this on a sibling's file (C6 — the exact bug this shared
   helper exists to make structurally impossible to repeat: the pre-cohesion dotnet/classic .iss
   each called their inline BackupHeaderFile on growth.md too, which is NOT theirs to touch). ---- }
-{ ---- The directory the golden-header files actually live in. CLAVITY_GOLDEN_HEADER (a DIRECTORY) wins
-  when set and non-blank, else the profile's .clavity — mirroring resolve_dir in golden_header.rs and
-  ResolveDir in GoldenHeader.cs. Uninstall paths MUST resolve through this rather than hardcoding the
-  default: a user with the override set otherwise gets silent no-ops, so a purge they consented to
-  removes nothing and a keep-time backup protects nothing. ---- }
-function GoldenHeaderDataDir(): string;
-begin
-  Result := Trim(ExpandConstant('{%CLAVITY_GOLDEN_HEADER|}'));
-  if Result = '' then
-    Result := ExpandConstant('{%USERPROFILE}\.clavity');
-end;
 
 procedure BackupDataFile(const Path: string);
 var
