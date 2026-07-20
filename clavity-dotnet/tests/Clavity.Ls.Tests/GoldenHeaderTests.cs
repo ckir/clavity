@@ -198,4 +198,61 @@ public sealed class GoldenHeaderTests : IDisposable
         Assert.True(File.Exists(sidecar));
         Assert.Equal(GoldenHeader.Sha256Hex("SEED"), File.ReadAllText(sidecar));
     }
+
+    [Fact]
+    public void TryReadCombined_accepts_when_sidecar_absent()
+    {
+        // Installer-seeded files ship with no sidecar (golden-header-data.iss writes none) — must not
+        // be rejected just because there's nothing to verify against.
+        File.WriteAllText(Path.Combine(_dir, GoldenHeader.SeedFileName), "SEED");
+        string? warned = null;
+        Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.Null(warned);
+    }
+
+    [Fact]
+    public void TryReadCombined_accepts_when_sidecar_matches()
+    {
+        var p = Path.Combine(_dir, GoldenHeader.SeedFileName);
+        File.WriteAllText(p, "SEED");
+        File.WriteAllText(p + ".sha256", GoldenHeader.Sha256Hex("SEED"));
+        string? warned = null;
+        Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.Null(warned);
+    }
+
+    [Fact]
+    public void TryReadCombined_accepts_a_bom_prefixed_sidecar()
+    {
+        // Cross-variant parity: File.ReadAllText strips the BOM here, but Rust's from_utf8_lossy does
+        // not and U+FEFF is not in ASCII_WS, so Rust needs an explicit strip_bom to agree. A sidecar
+        // saved by Notepad is exactly the hand-edit case this check exists for. Mirrors Rust
+        // `try_read_file_accepts_a_bom_prefixed_sidecar`.
+        var p = Path.Combine(_dir, GoldenHeader.SeedFileName);
+        File.WriteAllText(p, "SEED");
+        File.WriteAllText(p + ".sha256", ((char)0xFEFF).ToString() + GoldenHeader.Sha256Hex("SEED"));
+        string? warned = null;
+        Assert.Equal("SEED", GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.Null(warned);
+    }
+
+    [Fact]
+    public void TryReadCombined_treats_region_as_absent_when_sidecar_mismatches()
+    {
+        var p = Path.Combine(_dir, GoldenHeader.SeedFileName);
+        File.WriteAllText(p, "SEED");
+        File.WriteAllText(p + ".sha256", new string('0', 64));
+        string? warned = null;
+        Assert.Null(GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.NotNull(warned);
+    }
+
+    [Fact]
+    public void Commit_then_TryReadCombined_round_trips_through_sidecar_verification()
+    {
+        // Parity-critical: the writer (Commit) and the verifier (TryReadFile) must agree on what is
+        // hashed, or a header written by one variant would be silently dropped when read back.
+        GoldenHeader.CommitGrowth(_dir, "GROWTH");
+        Assert.Equal("GROWTH", GoldenHeader.TryReadCombined(_dir));
+    }
 }

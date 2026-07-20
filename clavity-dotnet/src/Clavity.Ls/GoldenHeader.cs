@@ -65,7 +65,10 @@ public static class GoldenHeader
         return rest;
     }
 
-    /// <summary>One region file's content, or null if absent/empty/over-cap/invalid-UTF-8. IO-safe; over-cap warns.</summary>
+    /// <summary>
+    /// One region file's content, or null if absent/empty/over-cap/invalid-UTF-8/sidecar-mismatched.
+    /// IO-safe; over-cap and sidecar-mismatch both warn and degrade the region to absent.
+    /// </summary>
     private static string? TryReadFile(string path, Action<string>? warn = null)
     {
         try
@@ -78,13 +81,42 @@ public static class GoldenHeader
                 warn?.Invoke($"golden-header region at {path} is {len}B, over the {MaxBytes}B cap — skipped");
                 return null;
             }
+            var bytes = File.ReadAllBytes(path);
+
+            // Sidecar INTEGRITY check — NOT a security control: anyone able to rewrite the header file
+            // can equally rewrite or delete the sidecar. It exists to catch torn writes, filesystem
+            // corruption, and a hand-edited header that no longer matches what the tool committed
+            // (mirrors Rust's read-side check in try_read_file). Hash the RAW bytes exactly as read from
+            // disk — BEFORE the BOM/comment strip below — since Commit hashed the raw bytes it wrote.
+            // Sidecar absent = ACCEPT unchanged: the installer's SeedGoldenHeader copies the seed file
+            // but writes no sidecar, so every fresh install legitimately has a sidecar-less SEED
+            // (installer/_shared/golden-header-data.iss). Sidecar unreadable = treat exactly as absent,
+            // accept. Sidecar present but mismatched = warn and degrade this region to ABSENT, mirroring
+            // the over-cap path above.
+            var sidecarPath = path + ".sha256";
+            try
+            {
+                if (File.Exists(sidecarPath))
+                {
+                    var expected = File.ReadAllText(sidecarPath).Trim(AsciiWs).ToLowerInvariant();
+                    var actual = Sha256Hex(bytes);
+                    if (expected != actual)
+                    {
+                        warn?.Invoke($"golden-header region at {path} did not match its .sha256 sidecar — skipped");
+                        return null;
+                    }
+                }
+            }
+            catch (IOException) { /* sidecar unreadable: treat exactly as absent, accept */ }
+            catch (UnauthorizedAccessException) { /* sidecar unreadable: treat exactly as absent, accept */ }
+
             string text;
             try
             {
                 // Strict UTF-8, mirroring Rust's String::from_utf8(bytes).ok()? — invalid bytes mean the region is
                 // ABSENT. File.ReadAllText would silently substitute U+FFFD and inject the garbled text instead.
                 text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
-                    .GetString(File.ReadAllBytes(path));
+                    .GetString(bytes);
             }
             catch (DecoderFallbackException) { return null; }
             text = StripBom(text);
@@ -149,7 +181,10 @@ public static class GoldenHeader
         string.IsNullOrEmpty(header) ? message : header.TrimEnd() + "\n\n" + message;
 
     /// <summary>
-    /// Atomic write of curated content to the resolved path (+ a .sha256 sidecar for tamper detection).
+    /// Atomic write of curated content to the resolved path (+ a .sha256 sidecar for INTEGRITY checking —
+    /// NOT a security control: anyone able to rewrite the header file can equally rewrite or delete the
+    /// sidecar. It exists to catch torn writes, filesystem corruption, and a hand-edited header that no
+    /// longer matches what the tool committed; see <see cref="TryReadFile"/> for the read-side check).
     /// Enforces the size cap. Used by `clavity-ls curate-commit`; agy-curate INVOKES it (never raw-edits).
     /// F7: the .sha256 sidecar is written BEFORE the header is moved into place, so a crash mid-commit cannot
     /// leave a sidecar that falsely accuses an already-published header (Task 7.4 treats mismatch conservatively).
@@ -171,6 +206,13 @@ public static class GoldenHeader
 
     public static string Sha256Hex(string content) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+
+    /// <summary>
+    /// Lowercase-hex SHA-256 of the exact RAW bytes (no string round-trip, which would corrupt
+    /// non-UTF8 input). Used by the read-side sidecar verification in <see cref="TryReadFile"/>.
+    /// </summary>
+    public static string Sha256Hex(byte[] bytes) =>
+        Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     /// <summary>agy-curate writes ONLY this. Never touches SEED.</summary>
     public static void CommitGrowth(string dir, string content) => Commit(GrowthPath(dir), content);

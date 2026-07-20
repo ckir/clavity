@@ -86,8 +86,9 @@ fn strip_leading_html_comments(s: &str) -> &str {
 }
 
 /// One region file's content (BOM-stripped), or `None` if absent / empty / over-cap / unreadable /
-/// invalid-UTF-8. Mirrors dotnet `TryReadFile`: a present-but-oversize region WARNS and is SKIPPED
-/// (not loud), so the combined read degrades. The cap is checked on the raw on-disk bytes.
+/// invalid-UTF-8 / sidecar-mismatched. Mirrors dotnet `TryReadFile`: a present-but-oversize region WARNS
+/// and is SKIPPED (not loud), so the combined read degrades; a present-but-mismatched `.sha256` sidecar
+/// degrades the same way. The cap is checked on the raw on-disk bytes.
 fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str)) -> Option<String> {
     let bytes = match fs::read(path) {
         Ok(b) => b,
@@ -104,6 +105,35 @@ fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str)) -> Option<String> {
         ));
         return None;
     }
+
+    // Sidecar INTEGRITY check — NOT a security control: anyone able to rewrite the header file can
+    // equally rewrite or delete the sidecar. It exists to catch torn writes, filesystem corruption, and
+    // a hand-edited header that no longer matches what the tool committed (mirrors dotnet's read-side
+    // check). Hash the RAW bytes exactly as read from disk — BEFORE the BOM/comment strip below — since
+    // `commit` hashed the raw bytes it wrote. Sidecar absent = ACCEPT unchanged: the installer's
+    // `SeedGoldenHeader` copies the seed file but writes no sidecar, so every fresh install legitimately
+    // has a sidecar-less SEED (installer/_shared/golden-header-data.iss). Sidecar unreadable = treat
+    // exactly as absent, accept. Sidecar present but mismatched = warn and degrade this region to
+    // ABSENT, mirroring the over-cap path above.
+    if let Ok(sidecar_bytes) = fs::read(sidecar_path(path)) {
+        // strip_bom BEFORE trimming: dotnet reads the sidecar with File.ReadAllText, which strips a BOM
+        // for us, and U+FEFF is NOT in ASCII_WS — so without this a BOM-prefixed sidecar (exactly what a
+        // hand-edit in Notepad produces, the case this check exists to catch) would be REJECTED here and
+        // ACCEPTED by dotnet. The two variants must reach the same verdict on the same bytes.
+        let sidecar_text = String::from_utf8_lossy(&sidecar_bytes);
+        let expected = strip_bom(&sidecar_text)
+            .trim_matches(ASCII_WS)
+            .to_ascii_lowercase();
+        let actual = sha256_hex(&bytes);
+        if expected != actual {
+            warn(&format!(
+                "golden-header region at {} did not match its .sha256 sidecar — skipped",
+                path.display()
+            ));
+            return None;
+        }
+    }
+
     let text = String::from_utf8(bytes).ok()?;
     let text = strip_bom(&text);
     let text = strip_leading_html_comments(text);
@@ -220,6 +250,11 @@ pub enum CommitError {
 /// Atomically write the header, THEN atomically write the sidecar (hashing the RAW written bytes).
 /// Sidecar-after-target-rename so a rename failure leaves the OLD header + OLD sidecar consistent.
 /// UTF-8 no-BOM (Rust `fs::write` never adds a BOM). Caps on byte length.
+///
+/// The sidecar is an INTEGRITY check, not a security control: anyone able to rewrite the header file
+/// can equally rewrite or delete the sidecar. It exists to catch torn writes, filesystem corruption,
+/// and a hand-edited header that no longer matches what the tool committed — see `try_read_file` for
+/// the read-side verification.
 pub fn commit(path: &Path, content: &str) -> Result<(), CommitError> {
     let bytes = content.as_bytes();
     if bytes.len() > MAX_BYTES {
@@ -560,5 +595,84 @@ mod tests {
             sidecar_path(p),
             PathBuf::from("C:/x/golden-header.growth.md.sha256")
         );
+    }
+
+    #[test]
+    fn try_read_file_accepts_when_sidecar_absent() {
+        // Installer-seeded files ship with no sidecar (golden-header-data.iss writes none) — must not
+        // be rejected just because there's nothing to verify against.
+        let dir = fresh_dir("sidecar-absent");
+        let path = dir.join(SEED_FILE);
+        fs::write(&path, b"SEED").unwrap();
+        let mut warned: Vec<String> = Vec::new();
+        assert_eq!(
+            try_read_file(&path, &mut |m| warned.push(m.to_string())),
+            Some("SEED".to_string())
+        );
+        assert!(warned.is_empty());
+    }
+
+    #[test]
+    fn try_read_file_accepts_when_sidecar_matches() {
+        let dir = fresh_dir("sidecar-match");
+        let path = dir.join(SEED_FILE);
+        fs::write(&path, b"SEED").unwrap();
+        fs::write(sidecar_path(&path), sha256_hex(b"SEED")).unwrap();
+        let mut warned: Vec<String> = Vec::new();
+        assert_eq!(
+            try_read_file(&path, &mut |m| warned.push(m.to_string())),
+            Some("SEED".to_string())
+        );
+        assert!(warned.is_empty());
+    }
+
+    #[test]
+    fn try_read_file_accepts_a_bom_prefixed_sidecar() {
+        // Cross-variant parity: dotnet reads the sidecar via File.ReadAllText, which strips a BOM, and
+        // U+FEFF is not in ASCII_WS. Without the strip_bom in try_read_file this file is REJECTED here
+        // and ACCEPTED by dotnet — and a Notepad-saved sidecar is exactly the hand-edit case the check
+        // is for. Mirrors dotnet `TryReadCombined_accepts_a_bom_prefixed_sidecar`.
+        let dir = fresh_dir("sidecar-bom");
+        let path = dir.join(SEED_FILE);
+        fs::write(&path, b"SEED").unwrap();
+        fs::write(
+            sidecar_path(&path),
+            format!("\u{feff}{}", sha256_hex(b"SEED")),
+        )
+        .unwrap();
+        let mut warned: Vec<String> = Vec::new();
+        assert_eq!(
+            try_read_file(&path, &mut |m| warned.push(m.to_string())),
+            Some("SEED".to_string())
+        );
+        assert!(warned.is_empty());
+    }
+
+    #[test]
+    fn try_read_file_treats_region_as_absent_when_sidecar_mismatches() {
+        let dir = fresh_dir("sidecar-mismatch");
+        let path = dir.join(SEED_FILE);
+        fs::write(&path, b"SEED").unwrap();
+        fs::write(sidecar_path(&path), "0".repeat(64)).unwrap();
+        let mut warned: Vec<String> = Vec::new();
+        assert_eq!(
+            try_read_file(&path, &mut |m| warned.push(m.to_string())),
+            None
+        );
+        assert!(warned
+            .iter()
+            .any(|w| w.contains("sha256") && w.contains(&path.display().to_string())));
+    }
+
+    #[test]
+    fn commit_then_read_round_trips_through_sidecar_verification() {
+        // Parity-critical: the writer (`commit`) and the verifier (`try_read_file`) must agree on what
+        // is hashed, or a header written by one variant would be silently dropped when read back.
+        let dir = fresh_dir("sidecar-roundtrip");
+        commit_growth(&dir, "GROWTH").unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Active(ref s) if s == "GROWTH"
+        ));
     }
 }
