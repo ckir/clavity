@@ -83,8 +83,18 @@ function Invoke-Main {
     # 4. SEED bytes before.
     $b0 = Get-SeedBytes $RepoRoot
 
-    # 5. Curator.
+    # 5. Curator + output manifest (F-abort-manifest). Snapshot the untracked files under Get-DrainOutputPaths
+    # BEFORE and AFTER the curator runs; the set difference is exactly what THIS run's curator created (not asked
+    # of the curator — derived from git, so it can't be wrong even if the curator hallucinates or the prompt
+    # changes). Written even when empty (Write-DrainOutputManifest), so its later ABSENCE unambiguously means
+    # "this run predates the manifest" for abort-drain.ps1's fallback. Written regardless of the [Core]/budget
+    # gates below so abort-drain can still trust it if either of those hard/soft-fails and leaves staging behind.
+    $outputsBefore = @(Get-UntrackedDrainOutputFiles $RepoRoot)
     if (-not $SkipCurator) { Invoke-Curator $staging }
+    $outputsAfter = @(Get-UntrackedDrainOutputFiles $RepoRoot)
+    $newOutputs = @($outputsAfter | Where-Object { $outputsBefore -notcontains $_ })
+    $manifestPath = Get-DrainOutputManifestPath $inboxDir $runId
+    Write-DrainOutputManifest -ManifestPath $manifestPath -Paths $newOutputs
 
     # 6. [Core] integrity — HARD fail (staging retained for abort).
     & pwsh -File (Join-Path $PSScriptRoot 'check-core-integrity.ps1')

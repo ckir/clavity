@@ -116,6 +116,63 @@ function Get-DrainOutputPaths {
     )
 }
 
+function ConvertTo-DrainNormalizedPath([string]$Path) {
+    # repo-relative, forward-slash, no trailing slash — the comparison shape for `git status`/`git ls-files`
+    # paths, Get-DrainOutputPaths entries, and manifest entries alike. Shared by drain-knowledge.ps1 (writing
+    # the output manifest) and abort-drain.ps1 (the untracked-clean guard) so both sides normalize identically.
+    return ($Path -replace '\\', '/').TrimEnd('/')
+}
+
+function ConvertFrom-DrainGitQuotedPath([string]$Field) {
+    # Git C-quotes a path (wraps it in double quotes with backslash escapes) when it contains a double quote, a
+    # backslash, or — under the default core.quotepath=true — non-ASCII bytes. True for `status`, `clean`, and
+    # `ls-files` output alike; unwrap it so downstream path comparisons see the real path.
+    if ($Field.Length -ge 2 -and $Field[0] -eq '"' -and $Field[$Field.Length - 1] -eq '"') {
+        return ($Field.Substring(1, $Field.Length - 2) -replace '\\"', '"') -replace '\\\\', '\'
+    }
+    return $Field
+}
+
+function Get-DrainOutputManifestPath([string]$InboxDir, [string]$RunId) {
+    # Beside the staging snapshot, named for the SAME run id, but with a .outputs.txt extension so it never
+    # matches Find-StagingFile's `agy-observations.staging.*.md` glob.
+    return Join-Path $InboxDir "agy-observations.staging.$RunId.outputs.txt"
+}
+
+function Get-UntrackedDrainOutputFiles([string]$RepoRoot) {
+    # The untracked files git itself reports under Get-DrainOutputPaths right now — the raw material for the
+    # before/after diff drain-knowledge.ps1 uses to derive its output manifest. Never hand-roll this: asking git
+    # is what makes the manifest correct without trusting the curator to self-report.
+    $lines = & git -C $RepoRoot ls-files --others --exclude-standard -- (Get-DrainOutputPaths) 2>$null
+    $paths = [System.Collections.Generic.List[string]]::new()
+    foreach ($l in @($lines)) {
+        if ($l) { $paths.Add((ConvertTo-DrainNormalizedPath (ConvertFrom-DrainGitQuotedPath $l))) }
+    }
+    return @($paths)
+}
+
+function Write-DrainOutputManifest([string]$ManifestPath, [string[]]$Paths) {
+    # One repo-relative, forward-slash path per line, UTF-8 no BOM, LF endings (File.WriteAllText's documented
+    # default — matches every other LF write in this file, D2). An empty set writes a truly empty file (0
+    # bytes), which is a VALID manifest meaning "this run created no new untracked files" — distinct from the
+    # file being ABSENT, which means "this run predates the manifest" (abort-drain.ps1 falls back on that).
+    $arr = @($Paths)
+    if ($arr.Count -eq 0) {
+        [System.IO.File]::WriteAllText($ManifestPath, '')
+    } else {
+        [System.IO.File]::WriteAllText($ManifestPath, (($arr -join "`n") + "`n"))
+    }
+}
+
+function Get-DrainOutputManifestEntries([string]$ManifestPath) {
+    # @() wrap: PS unrolls an empty array return to $null otherwise, and callers' .Count/-contains would break
+    # under Strict Mode. Absent file and empty file both yield @() — callers that need to distinguish "no
+    # manifest" (legacy run, fall back to the conservative guard) from "manifest present but empty" (this run
+    # created nothing new) must Test-Path the manifest themselves; this function only reads entries.
+    if (-not (Test-Path $ManifestPath)) { return @() }
+    return @(Get-Content $ManifestPath | Where-Object { $_ -ne '' })
+}
+
 function Get-SidecarRecoverySections([string]$SidecarPath) {
     # R-V1: the append-only drain-log records ONLY what git can't otherwise recover — the F11 verbatim
     # `## Dropped` + `## Parked (verify-needed)` sections. Promoted / Proposed-demotions detail lives in the

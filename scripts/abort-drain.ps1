@@ -20,12 +20,6 @@ if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).
 
 . (Join-Path $PSScriptRoot 'drain-lib.ps1')   # param-less: no $InboxPath/$RepoRoot clobber (F-P1)
 
-function ConvertTo-DrainNormalizedPath([string]$Path) {
-    # repo-relative, forward-slash, no trailing slash — the comparison shape for both `git status` paths and
-    # Get-DrainOutputPaths entries.
-    return ($Path -replace '\\', '/').TrimEnd('/')
-}
-
 function Get-ModifiedTrackedPaths([string]$RepoRoot) {
     # Parses `git status --porcelain --untracked-files=no` into a flat list of repo-relative, forward-slash
     # paths for every tracked file that is modified/staged/conflicted. Porcelain v1 is FIXED-WIDTH: columns 1-2
@@ -71,16 +65,6 @@ function Get-UnrelatedTrackedChanges([string]$RepoRoot) {
     return @(Get-ModifiedTrackedPaths -RepoRoot $RepoRoot | Where-Object { -not (Test-PathOwnedByDrain -NormalizedPath $_ -OwnedPaths $owned) })
 }
 
-function ConvertFrom-DrainGitQuotedPath([string]$Field) {
-    # Git C-quotes a path (wraps it in double quotes with backslash escapes) when it contains a double quote, a
-    # backslash, or — under the default core.quotepath=true — non-ASCII bytes. True for `status`, `clean`, and
-    # `ls-files` output alike; unwrap it so downstream path comparisons see the real path.
-    if ($Field.Length -ge 2 -and $Field[0] -eq '"' -and $Field[$Field.Length - 1] -eq '"') {
-        return ($Field.Substring(1, $Field.Length - 2) -replace '\\"', '"') -replace '\\\\', '\'
-    }
-    return $Field
-}
-
 function Get-CleanCandidatePaths([string]$RepoRoot) {
     # Ask git itself which untracked files the pending `git clean -fd -- (Get-DrainOutputPaths)` (below) would
     # actually remove, via git's OWN dry-run (-n) — never re-implement clean's untracked-file matching by hand, so
@@ -108,7 +92,7 @@ function Get-CleanCandidatePaths([string]$RepoRoot) {
     return $candidates
 }
 
-function Test-PathIsKnownDrainOutputFile([string]$NormalizedPath, [string[]]$OwnedPaths) {
+function Test-PathIsKnownDrainOutputFile([string]$NormalizedPath, [string[]]$OwnedPaths, [string[]]$ManifestPaths) {
     # Deliberately NARROWER than Test-PathOwnedByDrain (used for TRACKED files, where a directory-PREFIX match is
     # correct — a tracked file nested under docs/fix-the-tool-backlog can only exist because an EARLIER drain's
     # backlog file was already reviewed, committed, and accepted). For an UNTRACKED candidate, only an EXACT match
@@ -119,18 +103,28 @@ function Test-PathIsKnownDrainOutputFile([string]$NormalizedPath, [string[]]$Own
     # by path alone, from a curator-produced one. Silently trusting "nested under the directory" for untracked
     # files is exactly the data-loss bug this guard closes: `git clean -fd` scoped to Get-DrainOutputPaths still
     # deletes anything living inside that directory, maintainer strays included.
+    #
+    # $ManifestPaths closes that gap WITHOUT weakening it: this run's output manifest (drain-knowledge.ps1's
+    # before/after `git ls-files --others` diff over Get-DrainOutputPaths) names exactly the untracked files THIS
+    # run's curator created — including dynamically-named backlog files — so an exact match against it is just as
+    # trustworthy as an exact match against the fixed OwnedPaths file entries. When no manifest exists (a run that
+    # predates this feature), the caller passes @() here and behavior is unchanged from before.
     foreach ($owned in $OwnedPaths) {
         if ($NormalizedPath -ieq (ConvertTo-DrainNormalizedPath $owned)) { return $true }
+    }
+    foreach ($manifested in $ManifestPaths) {
+        if ($NormalizedPath -ieq (ConvertTo-DrainNormalizedPath $manifested)) { return $true }
     }
     return $false
 }
 
-function Get-UnrelatedUntrackedCleanTargets([string]$RepoRoot) {
+function Get-UnrelatedUntrackedCleanTargets([string]$RepoRoot, [string[]]$ManifestPaths) {
     # Every untracked file the pending `git clean -fd -- (Get-DrainOutputPaths)` would actually delete that is NOT
-    # one of the drain's own known-fixed output files — i.e. a maintainer stray `git clean -fd` would silently
-    # destroy but did not come from this drain.
+    # one of the drain's own known-fixed output files, NOR (when a manifest exists for this run) one of this run's
+    # recorded outputs — i.e. a maintainer stray `git clean -fd` would silently destroy but did not come from this
+    # drain.
     $owned = Get-DrainOutputPaths
-    return @(Get-CleanCandidatePaths -RepoRoot $RepoRoot | Where-Object { -not (Test-PathIsKnownDrainOutputFile -NormalizedPath $_ -OwnedPaths $owned) })
+    return @(Get-CleanCandidatePaths -RepoRoot $RepoRoot | Where-Object { -not (Test-PathIsKnownDrainOutputFile -NormalizedPath $_ -OwnedPaths $owned -ManifestPaths $ManifestPaths) })
 }
 
 function Invoke-Main {
@@ -142,6 +136,7 @@ function Invoke-Main {
         exit 0
     }
     $runId = Get-RunIdFromStaging $staging
+    $manifestPath = Get-DrainOutputManifestPath $inboxDir $runId   # may not exist — a run that predates this feature
 
     # F33: if the run is already committed, aborting would re-queue committed observations — block.
     $committedLog = & git -C $RepoRoot show 'HEAD:docs/agy-drain-log.md' 2>$null
@@ -166,7 +161,12 @@ function Invoke-Main {
     # remove is one of the drain's own known-fixed output files (Get-DrainOutputPaths — the single source of truth,
     # not re-listed here). Report both categories together so a maintainer sees every blocker in one pass.
     $unrelated = @(Get-UnrelatedTrackedChanges -RepoRoot $RepoRoot)   # @() wrap: PS unrolls an empty array return to $null otherwise, and .Count below would throw under Strict Mode
-    $unrelatedUntracked = @(Get-UnrelatedUntrackedCleanTargets -RepoRoot $RepoRoot)
+    # Manifest paths (this run's own recorded outputs) are ADDITIONAL legitimate untracked files, on top of the
+    # fixed OwnedPaths file entries — see Test-PathIsKnownDrainOutputFile. Get-DrainOutputManifestEntries returns
+    # @() both when the manifest is absent (legacy run — conservative fallback, unchanged) and when it is present
+    # but empty (this run created nothing new); either way the guard below behaves correctly.
+    $manifestPaths = @(Get-DrainOutputManifestEntries $manifestPath)
+    $unrelatedUntracked = @(Get-UnrelatedUntrackedCleanTargets -RepoRoot $RepoRoot -ManifestPaths $manifestPaths)
     if ($unrelated.Count -gt 0 -or $unrelatedUntracked.Count -gt 0) {
         if ($unrelated.Count -gt 0) {
             Write-Host "abort-drain: REFUSING to abort — the working tree has tracked change(s) that are NOT part of this drain's outputs:" -ForegroundColor Red
@@ -177,7 +177,12 @@ function Invoke-Main {
             Write-Host "abort-drain: REFUSING to abort — the working tree has untracked file(s) under the drain's output paths that are NOT known drain outputs:" -ForegroundColor Red
             foreach ($f in $unrelatedUntracked) { Write-Host "  $f" -ForegroundColor Red }
             Write-Host "abort-drain: 'git clean -fd' would silently DELETE the file(s) above." -ForegroundColor Red
-            Write-Host "abort-drain: NOTE — a file under docs/fix-the-tool-backlog/ may be THIS drain's own curator output. Backlog filenames are chosen per-run and are not recorded anywhere, so this script cannot tell them apart from your own notes. If it IS this drain's output, delete it yourself and re-run; if it is yours, move it aside first." -ForegroundColor Yellow
+            if (-not (Test-Path $manifestPath)) {
+                # Legacy run only. With a manifest present, anything reaching here is provably NOT this run's
+                # output (the manifest lists every untracked file the curator created), so the plain message
+                # above is exact and this caveat would be actively misleading.
+                Write-Host "abort-drain: NOTE — this drain predates output-manifest recording, so there is no record of which backlog files its curator wrote. A file under docs/fix-the-tool-backlog/ may therefore be THIS drain's own output: if so, delete it yourself and re-run; if it is yours, move it aside first." -ForegroundColor Yellow
+            }
         }
         Write-Host "abort-drain: move, commit, or delete the file(s) above as appropriate, then re-run 'just abort-drain'. Staging ($staging) was NOT touched." -ForegroundColor Red
         exit 1
@@ -205,6 +210,7 @@ function Invoke-Main {
 
     Restore-StagingToPending -InboxPath $inbox -StagingPath $staging
     Remove-Item -Force $staging
+    if (Test-Path $manifestPath) { Remove-Item -Force $manifestPath }   # transient run state; never outlives its run — absence is not an error
     Write-Host "abort-drain: rejected run $runId — outputs restored, $((Split-Path $staging -Leaf)) re-queued into ## Pending and removed." -ForegroundColor Green
     exit 0
 }

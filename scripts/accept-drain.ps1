@@ -29,6 +29,7 @@ function Invoke-Main {
         exit 0
     }
     $runId = Get-RunIdFromStaging $staging
+    $manifestPath = Get-DrainOutputManifestPath $inboxDir $runId   # may not exist — a run that predates this feature
 
     # F30: the run must be COMMITTED (git show HEAD), not merely written to the working-tree log.
     $committedLog = & git -C $RepoRoot show 'HEAD:docs/agy-drain-log.md' 2>$null
@@ -52,6 +53,7 @@ function Invoke-Main {
 
     if ($PSCmdlet.ShouldProcess($staging, "delete staging snapshot (accept run $runId)")) {
         Remove-Item -Force $staging
+        if (Test-Path $manifestPath) { Remove-Item -Force $manifestPath }   # transient run state; never outlives its run — absence is not an error
     }
     Write-Host "accept-drain: accepted run $runId — staging snapshot deleted (or previewed under -WhatIf)." -ForegroundColor Green
     exit 0
