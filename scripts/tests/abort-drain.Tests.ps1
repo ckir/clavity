@@ -58,6 +58,28 @@ Describe "abort-drain transaction (scratch repo)" {
         } finally { Remove-Item -Recurse -Force $notRepo -ErrorAction SilentlyContinue }
     }
 
+    It "REFUSES when a tracked file outside drain outputs is modified (data-loss guard) and touches nothing" {
+        Push-Location $script:Repo
+        Set-Content 'README.md' 'v1'
+        git add 'README.md'; git commit -qm "add readme"
+        Pop-Location
+        Set-Content (Join-Path $script:Repo 'README.md') 'unrelated edit'  # dirtied, uncommitted, NOT a drain output
+        & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
+        $LASTEXITCODE | Should -Be 1
+        (Get-Content (Join-Path $script:Repo 'README.md') -Raw).Trim() | Should -Be 'unrelated edit'                       # NOT reverted
+        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'DRAINED SEED (unwanted)'   # nothing touched at all
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1                      # staging retained
+    }
+
+    It "PROCEEDS when only the drain's own outputs are modified" {
+        # BeforeEach already dirties only seed/golden-header.md (a Get-DrainOutputPaths entry) — the guard must
+        # not block the ordinary, expected case.
+        & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
+        $LASTEXITCODE | Should -Be 0
+        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'ORIGINAL SEED'
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
+    }
+
     It "reverts even when the drain outputs were STAGED (reset --hard HEAD, not checkout-from-index)" {
         Push-Location $script:Repo
         git add 'seed/golden-header.md'      # maintainer staged the drain's edit before deciding to abort
