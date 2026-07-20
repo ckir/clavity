@@ -160,8 +160,12 @@ begin
 end;
 
 { ---- uninstall-time deregistration: re-detect live (no persisted per-agent memory across the process
-  boundary — the script's -Agent all re-detects). Verify the pinned hash BEFORE exec (LPE mitigation);
-  a mismatch skips exec (fail-open, but never run a tampered script). ---- }
+  boundary — the script's -Agent all re-detects). Verify the pinned hash BEFORE exec; a mismatch skips
+  exec (fail-open, but never run a tampered script). NOT a privilege-escalation defence: install and
+  uninstall both run unelevated (PrivilegesRequired=lowest) and {app} is user-writable, so the tamperer
+  and the uninstaller are the same principal and no privilege boundary is crossed. It is an INTEGRITY
+  check — it catches a corrupted or partially-written script, and a mismatch is a loud reason to stop
+  rather than something it can prevent. ---- }
 procedure DeregisterMemberPluginOnUninstall(const PluginName, MarketplaceName: string);
 var
   rc, ra, ad, asuc: Boolean; ec: Integer; Ps1Path, Actual: string;
