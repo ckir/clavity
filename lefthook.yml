@@ -8,10 +8,16 @@
 # pre-commit: Python-bridge hygiene, folded here from the former clavity-classic/lefthook.yml — ruff
 #   check --fix + format on staged Python files only (pure Rust/.NET commits untouched). lint + format
 #   run as ONE sequential command on purpose: both rewrite staged files, so parallel runs race.
+# A pre-push hook MUST be fast. Git opens the remote SSH connection BEFORE running this hook, then leaves
+# it idle for however long the hook takes. `lint` (~2 min: dotnet build + clippy x2 + cargo deny) and
+# `scripts-tests` (~3 min: full Pester suite) used to live here, and the combined 5-10 min idle made GitHub
+# hang up mid-push — observed as "Connection to ssh.github.com closed by remote host." after every gate had
+# already passed, with nothing ever pushed. Both still run in CI, and release.ps1's own pre-flight runs them
+# again before it pushes, so removing them here loses no coverage on the release path. Keep every job below
+# in the SECONDS range; anything slower belongs in CI or an explicit pre-flight, never in a hook that holds
+# a live connection open.
 pre-push:
   commands:
-    lint:
-      run: just lint
     seed-sync:
       run: just seed-sync-check
     doc-stubs:
@@ -20,8 +26,6 @@ pre-push:
       run: just check-member-docs
     register-hash:
       run: just check-register-hash
-    scripts-tests:
-      run: just test-scripts
     check-versions:
       run: pwsh -File scripts/check-versions.ps1 dotnet && pwsh -File scripts/check-versions.ps1 classic && pwsh -File scripts/check-versions.ps1 ghidrust && pwsh -File scripts/check-versions.ps1 agy-autotrain && pwsh -File scripts/check-versions.ps1 commonmemory
 pre-commit:
