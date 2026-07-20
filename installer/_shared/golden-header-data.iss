@@ -1,9 +1,16 @@
 { ============================================================================
   installer/_shared/golden-header-data.iss
   Shared Inno [Code] primitives for the golden-header SEED baseline (C4) and per-file backup (C6).
-  Meant to be #include'd INSIDE a [Code] section. Used by clavity-dotnet + clavity-classic (SeedGoldenHeader);
-  BackupDataFile is additionally used by agy-autotrain for its OWN growth.md (never call it on a
-  file the caller does not own — C6 per-file ownership).
+  Meant to be #include'd INSIDE a [Code] section. SeedGoldenHeader is used by clavity-dotnet +
+  clavity-classic. BackupDataFile has exactly TWO callers, both of them those same two members, both
+  backing up the seed baseline + its .sha256 + the pre-split flat file on a KEEP-data uninstall.
+  agy-autotrain does NOT call it: it owns the learned growth file and deletes that directly on an
+  explicit purge, keeping it untouched otherwise. (This header previously claimed agy-autotrain used
+  BackupDataFile for growth.md, which was never true — a future editor must not assume growth.md goes
+  through the quarantine-backup path.) C6 per-file ownership still governs every call: never pass a
+  file the calling member does not own.
+  NOTE: this is a Pascal comment and ends at the first closing brace — never write a brace-wrapped
+  Inno constant anywhere in here, or every installer build breaks.
 ============================================================================ }
 
 { ---- C4 / Boundary-Smuggler (Failure mode D): seed the app dir's seed\golden-header.md into
