@@ -8,6 +8,18 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
+- [assumption] (driver/deterministic) `[corpus]` An oversized reply can fail the ask transport OUTRIGHT — surfacing
+  as a tool ERROR, not as a truncated answer — while the peer has already completed the work in full. The error is
+  therefore not evidence the request was lost. Distinguish the two cases by STEP COUNT: a pre-ask reading vs a
+  post-error reading that has advanced (and returned to idle) proves the payload landed and was processed. The
+  recovery move is NOT to re-send the original request — that double-posts a visible message, burns quota, and makes
+  the peer redo the analysis — but to send a small follow-up that explicitly says the reply was lost in transport,
+  forbids redoing the work or re-reading files, and demands the SAME conclusions re-stated under a hard character
+  budget. This reliably retrieves the parked result. Note the trajectory read-back is not a substitute: it is
+  size-bounded and can be truncated to older steps, so it may show none of the relevant exchange even when the
+  reply exists. (Refines the already-promoted parked-reply-recovery rule, which covered the truncate-to-HEAD and
+  hang modes but not the hard transport-error mode nor the compact-restatement retrieval move.)
+
 - [anti-pattern] (peer/probabilistic) `[corpus]` The peer's UNSOLICITED SELF-CORRECTION channel is not more
   reliable than the rest of its reply — it can be the *least* reliable part. Asked to verify claims against
   files and report `CORRECTION: <what I got wrong>` on any divergence, the peer volunteered a confident

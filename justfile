@@ -35,9 +35,9 @@ check-member-docs:
     pwsh -File scripts/check-member-docs.ps1
 
 # Verify every relative link in the product docs resolves (becheran/mlc; config in .mlc.toml).
-# Not wired into lefthook: it currently reports 4 KNOWN errors -- 2 GitHub-relative release links
-# that are correct under GitHub rendering, and 2 inside do-not-touch knowledge/ manuals. Read
-# .mlc.toml before treating a report as a defect.
+# Not wired into lefthook: it reports 2 KNOWN errors -- the GitHub-relative release links in
+# README.md and ghidrust/README.md, which are correct under GitHub rendering but unresolvable to an
+# offline filesystem check. Anything beyond those two is a real defect. Read .mlc.toml first.
 check-links:
     mlc
 

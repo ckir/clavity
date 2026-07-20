@@ -14,9 +14,13 @@ ignore-path = [
   "docs/superpowers",
   ".clavity",
 
-  # Build output.
+  # Build output. NOTE: mlc's ignore-path matches a LITERAL path from the scan root — it is NOT a
+  # glob. Measured: a bare "target" ignores only a root-level ./target (which never forms here, as
+  # each member owns its own workspace), and "**/target" matches nothing at all. So every build dir
+  # must be enumerated by its real relative path. Add a line here when a new Rust member lands.
   "commonmemory/dist",
-  "target",
+  "clavity-classic/target",
+  "ghidrust/target",
 ]
 
 # Offline by default: no network calls for external URLs. Two consequences worth
@@ -29,4 +33,8 @@ ignore-path = [
 #    "fix" them into something that breaks on GitHub.
 # 2. Bracketed prose such as `[PHASE: EXECUTION]` or `[⚠️ CRITICAL ANTI-PATTERNS]`
 #    is parsed as a markdown reference link and warns. Those are labels, not links.
+#
+# Expected baseline: 2 errors, both from (1) above. The knowledge/ manuals used to add two more via a
+# relative sibling link that could not resolve from both plugin depths; that link is now absolute, so
+# any third error is a genuine regression.
 offline = true
