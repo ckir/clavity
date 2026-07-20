@@ -36,6 +36,18 @@ end;
   growth.md / growth.md.sha256. NEVER call this on a sibling's file (C6 — the exact bug this shared
   helper exists to make structurally impossible to repeat: the pre-cohesion dotnet/classic .iss
   each called their inline BackupHeaderFile on growth.md too, which is NOT theirs to touch). ---- }
+{ ---- The directory the golden-header files actually live in. CLAVITY_GOLDEN_HEADER (a DIRECTORY) wins
+  when set and non-blank, else the profile's .clavity — mirroring resolve_dir in golden_header.rs and
+  ResolveDir in GoldenHeader.cs. Uninstall paths MUST resolve through this rather than hardcoding the
+  default: a user with the override set otherwise gets silent no-ops, so a purge they consented to
+  removes nothing and a keep-time backup protects nothing. ---- }
+function GoldenHeaderDataDir(): string;
+begin
+  Result := Trim(ExpandConstant('{%CLAVITY_GOLDEN_HEADER|}'));
+  if Result = '' then
+    Result := ExpandConstant('{%USERPROFILE}\.clavity');
+end;
+
 procedure BackupDataFile(const Path: string);
 var
   Backup: string;

@@ -260,19 +260,23 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  BridgeDir, EnvFile: string;
+  BridgeDir, EnvFile, HeaderDir: string;
 begin
   if CurUninstallStep = usUninstall then
   begin
-    { Zombie-header fix (mirror dotnet): when KEEPING data (not purge), back up each golden-header file (the SEED
-      baseline + learned GROWTH + any legacy flat file) -> .backup so a reinstall does not auto-inject frozen
-      wisdom. .backup does NOT auto-restore. Skipped on purge. Default path only (CLAVITY_GOLDEN_HEADER override is rare). }
+    { Zombie-header fix: on KEEP, step the driver-SEEDED baseline aside to .backup so a reinstall installs a
+      fresh baseline instead of auto-injecting a frozen one. That is safe for seed.md precisely BECAUSE the
+      installer re-seeds it — nothing of the user's is lost.
+      The legacy pre-split golden-header.md is deliberately NOT backed up: it is the USER's own accumulated
+      wisdom, it is never re-seeded, and renaming it drops it out of the driver's migration read path for
+      good — the dialog says "keep", so keeping it where the driver reads it is the only honest reading.
+      agy-autotrain applies exactly this reasoning to its growth.md and leaves it alone on keep. }
+    HeaderDir := GoldenHeaderDataDir();   { honors CLAVITY_GOLDEN_HEADER; see golden-header-data.iss }
     if not RemoveConfig then
     begin
       { C6: back up ONLY driver-owned files — growth.md is agy-autotrain's, not touched here. }
-      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
-      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md.sha256'));
-      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
+      BackupDataFile(HeaderDir + '\golden-header.seed.md');
+      BackupDataFile(HeaderDir + '\golden-header.seed.md.sha256');
     end
     else
     begin
@@ -281,9 +285,17 @@ begin
         deletes a user who explicitly consented to removal simply kept their data — the dialog was
         making a promise no code kept. C6 ownership still applies: driver-owned files ONLY. The
         learned growth file belongs to agy-autotrain and is purged by ITS uninstaller, not here. }
-      DeleteFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
-      DeleteFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md.sha256'));
-      DeleteFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
+      DeleteFile(HeaderDir + '\golden-header.seed.md');
+      DeleteFile(HeaderDir + '\golden-header.seed.md.sha256');
+      DeleteFile(HeaderDir + '\golden-header.md');  { legacy flat, if present }
+      { ...and the .backup copies a PREVIOUS keep-data uninstall left behind (BackupDataFile renames to
+        <path>.backup). Without these, a purge deletes the active files while silently retaining the
+        user's data in the backups beside them — consent given, data kept. The dotnet member avoids this
+        only because it purges the whole data dir via its own uninstall verb. The legacy .backup is still
+        swept even though keep no longer creates one, because an OLDER build did. }
+      DeleteFile(HeaderDir + '\golden-header.seed.md.backup');
+      DeleteFile(HeaderDir + '\golden-header.seed.md.sha256.backup');
+      DeleteFile(HeaderDir + '\golden-header.md.backup');
     end;
     { Bridge .env (live secret): gated on the keep/purge answer. On purge, remove .env (regenerable
       .venv/__pycache__/.agent already go via [UninstallDelete]); on keep, leave it. }

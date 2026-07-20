@@ -270,21 +270,26 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
+  HeaderDir: string;
 begin
   if CurUninstallStep = usUninstall then
   begin
-    { Zombie-header fix (spec data-lifecycle): when KEEPING data (not --purge-data), back up each golden-header
-      file (the SEED baseline + learned GROWTH, and any legacy flat file) -> .backup so a future reinstall does
-      not auto-inject frozen wisdom. .backup does NOT auto-restore. Skipped on purge (the whole .clavity dir is
-      deleted by clavity-ls --purge-data). NOTE: honors only the default path, not a CLAVITY_GOLDEN_HEADER override. }
+    { Zombie-header fix (spec data-lifecycle): on KEEP, step the driver-SEEDED baseline aside to .backup so a
+      future reinstall installs a fresh baseline rather than auto-injecting a frozen one. Safe for seed.md
+      precisely BECAUSE the installer re-seeds it — nothing of the user's is lost, and .backup never
+      auto-restores. Skipped on purge (the whole data dir goes via clavity-ls --purge-data).
+      The legacy pre-split golden-header.md is deliberately NOT backed up: it is the USER's own accumulated
+      wisdom, is never re-seeded, and renaming it drops it out of the driver's migration read path
+      permanently. The dialog says "keep", so it stays where the driver reads it. agy-autotrain applies the
+      same reasoning to its growth.md. }
     if not RemoveConfig then
     begin
-      { C6: back up ONLY driver-owned files — seed.md + its .sha256 sidecar + the legacy flat file.
-        growth.md is agy-autotrain's file; touching it here was the pre-cohesion bug (Failure mode
-        H) this design fixes — it is removed/backed up ONLY by agy-autotrain's own uninstall. }
-      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md'));
-      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.seed.md.sha256'));
-      BackupDataFile(ExpandConstant('{%USERPROFILE}\.clavity\golden-header.md'));  { legacy flat, if present }
+      { C6: back up ONLY driver-owned files — seed.md + its .sha256 sidecar. growth.md is agy-autotrain's
+        file; touching it here was the pre-cohesion bug (Failure mode H) this design fixes — it is
+        removed/backed up ONLY by agy-autotrain's own uninstall. }
+      HeaderDir := GoldenHeaderDataDir();   { honors CLAVITY_GOLDEN_HEADER; see golden-header-data.iss }
+      BackupDataFile(HeaderDir + '\golden-header.seed.md');
+      BackupDataFile(HeaderDir + '\golden-header.seed.md.sha256');
     end;
   end
   else if CurUninstallStep = usPostUninstall then

@@ -105,14 +105,16 @@ begin
   { C6: this member owns growth.md — offer the same keep/purge choice the drivers offer for their
     own seed.md. Silent uninstall defaults to KEEP (IDNO) — never delete user data without an
     explicit answer. }
-  RemoveGrowth := SuppressibleMsgBox('Also remove the learned golden-header growth data ' +
-    '(~\.clavity\golden-header.growth.md)?' + #13#10 + 'Choose No to keep it for a future reinstall.',
+  RemoveGrowth := SuppressibleMsgBox('Also remove agy-autotrain''s learned data?' + #13#10#13#10 +
+    '  - the learned golden-header growth (~\.clavity\golden-header.growth.md and its .sha256)' + #13#10 +
+    '  - any observations captured but not yet drained (knowledge\agy-observations.md)' + #13#10#13#10 +
+    'Choose No to keep both for a future reinstall.',
     mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  GrowthFile: string;
+  GrowthFile, InboxFile: string;
 begin
   if CurUninstallStep = usUninstall then
   begin
@@ -122,6 +124,12 @@ begin
     begin
       if FileExists(GrowthFile) then DeleteFile(GrowthFile);
       if FileExists(GrowthFile + '.sha256') then DeleteFile(GrowthFile + '.sha256');
+      { The capture inbox is marked uninsneveruninstall so a KEEP-data uninstall cannot destroy it.
+        That flag is unconditional, so on an explicit PURGE it must be removed here or the user's
+        consent is ignored in the other direction — the same promise-not-kept failure the classic
+        member's purge branch was just fixed for. It lives inside the install dir, unlike growth.md. }
+      InboxFile := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md');
+      if FileExists(InboxFile) then DeleteFile(InboxFile);
     end;
     { KEEP (RemoveGrowth=False): leave growth.md exactly where it is. It lives outside the install dir,
       so Inno never auto-removes it, and (unlike a driver's seed.md) it is never re-seeded on install, so
