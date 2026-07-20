@@ -117,3 +117,89 @@ Describe 'Get-HeadingCount' {
         Get-HeadingCount '' | Should -Be 0
     }
 }
+
+Describe 'Test-H1NamesMember (wrong-product defect-class gate)' {
+    It 'accepts a bare H1 that IS exactly the member name' {
+        Test-H1NamesMember "# ghidrust`n`nbody" 'ghidrust' | Should -BeTrue
+    }
+    It 'accepts a decorated title that mentions the member (em-dash tagline)' {
+        Test-H1NamesMember "# clavity-classic - required manual wiring`n`nbody" 'clavity-classic' | Should -BeTrue
+    }
+    It 'accepts a decorated title that mentions the member (colon tagline)' {
+        Test-H1NamesMember "# clavity-dotnet: the MCP language server`n`nbody" 'clavity-dotnet' | Should -BeTrue
+    }
+    It 'is case-insensitive' {
+        Test-H1NamesMember "# CLAVITY-DOTNET`n`nbody" 'clavity-dotnet' | Should -BeTrue
+    }
+    It 'rejects an H1 that names a DIFFERENT member' {
+        Test-H1NamesMember "# ghidrust`n`nbody" 'clavity-dotnet' | Should -BeFalse
+    }
+    It 'rejects the substring trap: a bare ancestor-ish name for a longer member' {
+        # 'clavity-dotnet' contains the substring 'clavity', so a naive "member name contains the H1"
+        # check would wrongly PASS here. We test the other direction (H1 contains the member name),
+        # which correctly fails: 'clavity' does not contain 'clavity-dotnet'.
+        Test-H1NamesMember "# clavity`n`nbody" 'clavity-dotnet' | Should -BeFalse
+    }
+    It 'rejects empty input without throwing' {
+        Test-H1NamesMember '' 'clavity-dotnet' | Should -BeFalse
+    }
+}
+
+Describe 'Invoke-DocCheck - README title must name its member (defect-class gate, end to end)' {
+    # Builds a fully self-contained scratch repo under $TestDrive - it never reads or writes the real
+    # repo. Invoke-DocCheck also runs a global template-substance check independent of any member, so
+    # the scratch repo includes minimal but conforming fake templates to isolate each test to exactly
+    # the README-naming assertion under test.
+    BeforeAll {
+        # Pester v5 gotcha: code in a Describe body (outside BeforeAll/It) runs only during Discovery
+        # and is gone by the time It blocks execute in the Run phase. The helper MUST be defined here.
+        function New-ScratchDocRepo([string]$MemberName, [string]$FolderName, [string]$ReadmeFirstLine) {
+            $repoRoot = Join-Path $TestDrive ([System.Guid]::NewGuid().ToString('N'))
+            $buildDir = Join-Path $repoRoot 'build'
+            New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
+
+            $manifest = [PSCustomObject]@{
+                members = @(
+                    [PSCustomObject]@{ name = $MemberName; source = "./$FolderName" }
+                )
+            }
+            ($manifest | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath (Join-Path $buildDir 'members.json')
+
+            $memberDir = Join-Path $repoRoot $FolderName
+            New-Item -ItemType Directory -Path $memberDir -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $memberDir 'README.md') -Value "$ReadmeFirstLine`n`nbody`n"
+            Set-Content -LiteralPath (Join-Path $memberDir 'CHANGELOG.md') -Value "# changelog`n`n## 1.0.0`n"
+
+            $tplDir = Join-Path (Join-Path (Join-Path $repoRoot 'clavity-dotnet') 'templates') 'tool-skeleton'
+            New-Item -ItemType Directory -Path $tplDir -Force | Out-Null
+            $fourSections = "# t`n`n## a`n## b`n## c`n## d`n"
+            foreach ($name in @('README.md.template', 'README-plugin-only.md.template', 'plugin-README.md.template')) {
+                Set-Content -LiteralPath (Join-Path $tplDir $name) -Value $fourSections
+            }
+            Set-Content -LiteralPath (Join-Path $tplDir 'CHANGELOG.md.template') -Value "# changelog`n`n## 1.0.0`n"
+
+            return $repoRoot
+        }
+    }
+
+    It 'FAILS when the README H1 names a DIFFERENT member, and the message names the member' {
+        $repoRoot = New-ScratchDocRepo -MemberName 'clavity-classic' -FolderName 'clavity-classic' -ReadmeFirstLine '# ghidrust'
+        $result = Invoke-DocCheck $repoRoot
+        $result.ExitCode | Should -Be 1
+        ($result.Failures -join "`n") | Should -Match "member 'clavity-classic'.*does not name member 'clavity-classic'"
+    }
+
+    It 'FAILS on the substring-trap regression: bare "# clavity" for member clavity-dotnet' {
+        $repoRoot = New-ScratchDocRepo -MemberName 'clavity-dotnet' -FolderName 'clavity-dotnet' -ReadmeFirstLine '# clavity'
+        $result = Invoke-DocCheck $repoRoot
+        $result.ExitCode | Should -Be 1
+        ($result.Failures -join "`n") | Should -Match "member 'clavity-dotnet'.*does not name member 'clavity-dotnet'"
+    }
+
+    It 'PASSES for a legitimate decorated title that names the member' {
+        $repoRoot = New-ScratchDocRepo -MemberName 'clavity-dotnet' -FolderName 'clavity-dotnet' -ReadmeFirstLine '# clavity-dotnet - the MCP language server'
+        $result = Invoke-DocCheck $repoRoot
+        $result.Failures | Should -Be @()
+        $result.ExitCode | Should -Be 0
+    }
+}

@@ -52,6 +52,36 @@ function Test-LeadingH1([string]$rawText) {
     return [bool]($first -match '^#(?!#)')
 }
 
+function Get-LeadingH1Text([string]$rawText) {
+    # Returns the trimmed text of the leading line (including its '#' marker), or '' if the doc is
+    # empty/absent. Callers that need the boolean "is this a real H1" question should use
+    # Test-LeadingH1 instead - this is only for extracting text to test/report on.
+    $t = Remove-Bom $rawText
+    if ([string]::IsNullOrEmpty($t)) { return '' }
+    $first = ($t -split "`n", 2)[0]
+    return $first.TrimEnd("`r")
+}
+
+function Test-H1NamesMember([string]$rawText, [string]$memberName) {
+    # Catches the wrong-product defect class (3 real instances found in a 2026-07-19 audit:
+    # clavity-dotnet/README.md titled '# clavity' while documenting four other members;
+    # ghidrust/CLAUDE.md and ghidrust/CONTRIBUTING.md likewise wrong-product). A leading H1 alone
+    # (Test-LeadingH1) proves nothing about WHICH member the doc is for.
+    #
+    # DIRECTION MATTERS - this is the substring trap. 'clavity-dotnet' and 'clavity-classic' both
+    # contain the substring 'clavity', so testing "does the MEMBER NAME contain the H1 text" would
+    # let a bare '# clavity' title pass for either of them - exactly the defect this exists to catch.
+    # We therefore test the other direction: "does the H1 TEXT contain the full MEMBER NAME". A bare
+    # ancestor-ish word (or a different member's name) cannot satisfy that, because it is shorter than
+    # (or simply not equal to) the member name it would need to contain. A decorated title such as
+    # '# clavity-dotnet - the MCP language server' still passes, because the full member name appears
+    # verbatim inside it.
+    if ([string]::IsNullOrWhiteSpace($memberName)) { return $false }
+    $first = Get-LeadingH1Text $rawText
+    if ([string]::IsNullOrEmpty($first)) { return $false }
+    return $first.ToLowerInvariant().Contains($memberName.ToLowerInvariant())
+}
+
 function Test-ChangelogContract([string]$rawText) {
     if ([string]::IsNullOrEmpty($rawText)) { return $false }
     $t = Remove-Bom $rawText   # defensive only - Get-Content -Raw already strips a real file's BOM
@@ -116,6 +146,9 @@ function Invoke-DocCheck([string]$repoRoot) {
             [void]$failed.Add("member '$($m.name)': missing $($shape.Folder)/README.md. Start from clavity-dotnet/templates/tool-skeleton/README.md.template.")
         } elseif (-not (Test-LeadingH1 $readme)) {
             [void]$failed.Add("member '$($m.name)': $($shape.Folder)/README.md has no level-1 title (or is empty/BOM-prefixed). Give it a '# <name>' first line.")
+        } elseif (-not (Test-H1NamesMember $readme $m.name)) {
+            $h1 = Get-LeadingH1Text $readme
+            [void]$failed.Add("member '$($m.name)': $($shape.Folder)/README.md's title '$h1' does not name member '$($m.name)'. Expected the H1 to mention '$($m.name)' (e.g. '# $($m.name) - <tagline>'), not just a shared prefix or a different member's name.")
         }
 
         $changelog = Read-Doc (Join-Path $folderPath 'CHANGELOG.md')
