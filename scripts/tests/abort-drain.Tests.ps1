@@ -80,6 +80,32 @@ Describe "abort-drain transaction (scratch repo)" {
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
     }
 
+    It "REFUSES when an unrelated UNTRACKED file exists under a drain output directory (git-clean data-loss guard) and touches nothing" {
+        # Mirrors the documented review pause: a maintainer drops their own note under docs/fix-the-tool-backlog/
+        # (a Get-DrainOutputPaths DIRECTORY entry) between `just drain-knowledge` and `just abort-drain`. The
+        # scoped `git clean -fd -- (Get-DrainOutputPaths)` would otherwise silently delete it.
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
+        Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md') 'unrelated untracked note'
+        & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
+        $LASTEXITCODE | Should -Be 1
+        (Test-Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md')) | Should -Be $true
+        (Get-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md') -Raw).Trim() | Should -Be 'unrelated untracked note'
+        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'DRAINED SEED (unwanted)'   # nothing touched at all
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1                      # staging retained
+    }
+
+    It "PROCEEDS when the drain's own untracked output file exists (regression: exact-match legitimacy still allows the real case)" {
+        # docs/agy-verify-needed.md is a Get-DrainOutputPaths FILE entry (not committed in the BeforeEach base) —
+        # exactly what a real drain run creates untracked on its first pass. It must still be recognized as a
+        # legitimate drain output and cleaned, not refused as an unrelated stray.
+        Set-Content (Join-Path $script:Repo 'docs/agy-verify-needed.md') '# agy verify-needed backlog'
+        & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
+        $LASTEXITCODE | Should -Be 0
+        (Test-Path (Join-Path $script:Repo 'docs/agy-verify-needed.md')) | Should -Be $false
+        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'ORIGINAL SEED'
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
+    }
+
     It "reverts even when the drain outputs were STAGED (reset --hard HEAD, not checkout-from-index)" {
         Push-Location $script:Repo
         git add 'seed/golden-header.md'      # maintainer staged the drain's edit before deciding to abort

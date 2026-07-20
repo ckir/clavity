@@ -71,6 +71,68 @@ function Get-UnrelatedTrackedChanges([string]$RepoRoot) {
     return @(Get-ModifiedTrackedPaths -RepoRoot $RepoRoot | Where-Object { -not (Test-PathOwnedByDrain -NormalizedPath $_ -OwnedPaths $owned) })
 }
 
+function ConvertFrom-DrainGitQuotedPath([string]$Field) {
+    # Git C-quotes a path (wraps it in double quotes with backslash escapes) when it contains a double quote, a
+    # backslash, or — under the default core.quotepath=true — non-ASCII bytes. True for `status`, `clean`, and
+    # `ls-files` output alike; unwrap it so downstream path comparisons see the real path.
+    if ($Field.Length -ge 2 -and $Field[0] -eq '"' -and $Field[$Field.Length - 1] -eq '"') {
+        return ($Field.Substring(1, $Field.Length - 2) -replace '\\"', '"') -replace '\\\\', '\'
+    }
+    return $Field
+}
+
+function Get-CleanCandidatePaths([string]$RepoRoot) {
+    # Ask git itself which untracked files the pending `git clean -fd -- (Get-DrainOutputPaths)` (below) would
+    # actually remove, via git's OWN dry-run (-n) — never re-implement clean's untracked-file matching by hand, so
+    # the guard's view of "would be deleted" can never drift from the real deletion. Each real removal line reads
+    # `Would remove <path>`. A WHOLLY-untracked directory (e.g. a brand-new docs/fix-the-tool-backlog/ with nothing
+    # committed under it yet) is reported as ONE collapsed line ("Would remove docs/fix-the-tool-backlog/") even
+    # though `clean -fd` would delete every file inside it — so any directory-shaped line (trailing '/') is expanded,
+    # again via git (`ls-files --others`, not hand-rolled matching), into its individual untracked files. The result
+    # is a flat, per-file candidate list the legitimacy check and the refusal message can both name precisely.
+    $lines = & git -C $RepoRoot clean -nd -- (Get-DrainOutputPaths) 2>$null
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in @($lines)) {
+        if (-not $line -or -not ($line -match '^Would remove (.+)$')) { continue }
+        $path = ConvertFrom-DrainGitQuotedPath $Matches[1]
+        if ($path.EndsWith('/')) {
+            $dir = $path.TrimEnd('/')
+            $inner = & git -C $RepoRoot ls-files --others --exclude-standard -- $dir 2>$null
+            foreach ($f in @($inner)) {
+                if ($f) { $candidates.Add((ConvertTo-DrainNormalizedPath (ConvertFrom-DrainGitQuotedPath $f))) }
+            }
+        } else {
+            $candidates.Add((ConvertTo-DrainNormalizedPath $path))
+        }
+    }
+    return $candidates
+}
+
+function Test-PathIsKnownDrainOutputFile([string]$NormalizedPath, [string[]]$OwnedPaths) {
+    # Deliberately NARROWER than Test-PathOwnedByDrain (used for TRACKED files, where a directory-PREFIX match is
+    # correct — a tracked file nested under docs/fix-the-tool-backlog can only exist because an EARLIER drain's
+    # backlog file was already reviewed, committed, and accepted). For an UNTRACKED candidate, only an EXACT match
+    # against one of Get-DrainOutputPaths' individually-named FILE entries is trusted: those are fixed, unique
+    # artifact names that only a drain run writes. A path merely nested under the one DIRECTORY entry
+    # (docs/fix-the-tool-backlog) does NOT count — the curator names backlog files dynamically (<slug>.md), so a
+    # maintainer's own untracked note dropped in that same directory during the review pause is indistinguishable,
+    # by path alone, from a curator-produced one. Silently trusting "nested under the directory" for untracked
+    # files is exactly the data-loss bug this guard closes: `git clean -fd` scoped to Get-DrainOutputPaths still
+    # deletes anything living inside that directory, maintainer strays included.
+    foreach ($owned in $OwnedPaths) {
+        if ($NormalizedPath -ieq (ConvertTo-DrainNormalizedPath $owned)) { return $true }
+    }
+    return $false
+}
+
+function Get-UnrelatedUntrackedCleanTargets([string]$RepoRoot) {
+    # Every untracked file the pending `git clean -fd -- (Get-DrainOutputPaths)` would actually delete that is NOT
+    # one of the drain's own known-fixed output files — i.e. a maintainer stray `git clean -fd` would silently
+    # destroy but did not come from this drain.
+    $owned = Get-DrainOutputPaths
+    return @(Get-CleanCandidatePaths -RepoRoot $RepoRoot | Where-Object { -not (Test-PathIsKnownDrainOutputFile -NormalizedPath $_ -OwnedPaths $owned) })
+}
+
 function Invoke-Main {
     $inbox = Resolve-InboxPath $InboxPath
     $inboxDir = Split-Path $inbox -Parent
@@ -93,15 +155,31 @@ function Invoke-Main {
     # DATA-LOSS GUARD: the drain ran on a PRISTINE tree (drain-knowledge pre-drain guard), but that only covers
     # drain START — the documented workflow (docs/drain-knowledge-runbook.md) requires a human REVIEW PAUSE
     # between `just drain-knowledge` and `just abort-drain` so the maintainer can inspect `git diff`, and it is
-    # normal for unrelated uncommitted work (a quick fix, a note, a test tweak) to land during that pause. `git
-    # reset --hard HEAD` below is unscoped, so without this check any such work would be silently destroyed.
-    # Refuse instead of guessing intent: proceed ONLY if every modified/staged TRACKED file is one of the
-    # drain's own outputs (Get-DrainOutputPaths — the single source of truth, not re-listed here).
+    # normal for unrelated uncommitted work (a quick fix, a note, a test tweak) to land during that pause. TWO
+    # separate operations below are destructive, and BOTH are gated here: `git reset --hard HEAD` is UNSCOPED — it
+    # reverts every TRACKED file in the whole repo, not just the drain's outputs. `git clean -fd` IS scoped to
+    # Get-DrainOutputPaths, but still deletes real work, because one of those paths (docs/fix-the-tool-backlog) is a
+    # DIRECTORY: an unrelated UNTRACKED file a maintainer drops inside it during the pause is invisible to a
+    # `--untracked-files=no` status query (only tracked files are checked that way) and would otherwise be silently
+    # destroyed by that scoped clean. Refuse instead of guessing intent: proceed ONLY if (a) every modified/staged
+    # TRACKED file is one of the drain's own outputs, AND (b) every untracked file the pending `git clean` would
+    # remove is one of the drain's own known-fixed output files (Get-DrainOutputPaths — the single source of truth,
+    # not re-listed here). Report both categories together so a maintainer sees every blocker in one pass.
     $unrelated = @(Get-UnrelatedTrackedChanges -RepoRoot $RepoRoot)   # @() wrap: PS unrolls an empty array return to $null otherwise, and .Count below would throw under Strict Mode
-    if ($unrelated.Count -gt 0) {
-        Write-Host "abort-drain: REFUSING to abort — the working tree has tracked change(s) that are NOT part of this drain's outputs:" -ForegroundColor Red
-        foreach ($f in $unrelated) { Write-Host "  $f" -ForegroundColor Red }
-        Write-Host "abort-drain: 'git reset --hard HEAD' would silently DESTROY the file(s) above. Commit or stash that work, then re-run 'just abort-drain'. Staging ($staging) was NOT touched." -ForegroundColor Red
+    $unrelatedUntracked = @(Get-UnrelatedUntrackedCleanTargets -RepoRoot $RepoRoot)
+    if ($unrelated.Count -gt 0 -or $unrelatedUntracked.Count -gt 0) {
+        if ($unrelated.Count -gt 0) {
+            Write-Host "abort-drain: REFUSING to abort — the working tree has tracked change(s) that are NOT part of this drain's outputs:" -ForegroundColor Red
+            foreach ($f in $unrelated) { Write-Host "  $f" -ForegroundColor Red }
+            Write-Host "abort-drain: 'git reset --hard HEAD' would silently DESTROY the file(s) above." -ForegroundColor Red
+        }
+        if ($unrelatedUntracked.Count -gt 0) {
+            Write-Host "abort-drain: REFUSING to abort — the working tree has untracked file(s) under the drain's output paths that are NOT known drain outputs:" -ForegroundColor Red
+            foreach ($f in $unrelatedUntracked) { Write-Host "  $f" -ForegroundColor Red }
+            Write-Host "abort-drain: 'git clean -fd' would silently DELETE the file(s) above." -ForegroundColor Red
+            Write-Host "abort-drain: NOTE — a file under docs/fix-the-tool-backlog/ may be THIS drain's own curator output. Backlog filenames are chosen per-run and are not recorded anywhere, so this script cannot tell them apart from your own notes. If it IS this drain's output, delete it yourself and re-run; if it is yours, move it aside first." -ForegroundColor Yellow
+        }
+        Write-Host "abort-drain: move, commit, or delete the file(s) above as appropriate, then re-run 'just abort-drain'. Staging ($staging) was NOT touched." -ForegroundColor Red
         exit 1
     }
 
