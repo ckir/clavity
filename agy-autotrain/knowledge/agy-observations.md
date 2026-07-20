@@ -19,6 +19,14 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
   size-bounded and can be truncated to older steps, so it may show none of the relevant exchange even when the
   reply exists. (Refines the already-promoted parked-reply-recovery rule, which covered the truncate-to-HEAD and
   hang modes but not the hard transport-error mode nor the compact-restatement retrieval move.)
+  CORRECTION, same session, 2nd occurrence: a step-count advance proves ACTIVITY, not a usable result. On the
+  second occurrence the steps advanced by 9 and the peer returned to idle, yet the compact-restatement request
+  came back "NO PRIOR RESULT" — the peer had genuinely produced nothing to re-state. So treat the step delta as
+  "the payload landed", never as "the answer exists"; the restatement request MUST offer an explicit escape
+  hatch ("if you have no conclusions, reply exactly NO PRIOR RESULT") or you will mistake a fabricated
+  reconstruction for a recovered result. The durable FIX is upstream of recovery: state a hard character budget
+  in the ORIGINAL request ("under N characters; a longer reply fails my transport and is lost"). Re-sending with
+  that budget succeeded immediately where the unbounded request had failed twice.
 
 - [anti-pattern] (peer/probabilistic) `[corpus]` The peer's UNSOLICITED SELF-CORRECTION channel is not more
   reliable than the rest of its reply — it can be the *least* reliable part. Asked to verify claims against
