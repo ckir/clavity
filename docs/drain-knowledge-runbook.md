@@ -16,7 +16,7 @@ this doc and their behavior ever disagree — the scripts win.
 |---|---|---|
 | `just drain-knowledge [-WhatIf]` | `scripts/drain-knowledge.ps1` | Stages `## Pending` observations, runs a headless `claude -p` curator to fold them into the manuals + SEED, runs the `[Core]`-integrity gate (hard) and the SEED-budget gate (warn), and appends a summary to `docs/agy-drain-log.md`. **Makes NO commit.** |
 | `just accept-drain` | `scripts/accept-drain.ps1` | Confirms the drain's run-ID is in the **committed** `docs/agy-drain-log.md` and the tree is clean, then deletes the staging snapshot. This is the "I reviewed and committed it" step. |
-| `just abort-drain` | `scripts/abort-drain.ps1` | Runs `git reset --hard HEAD` — an unscoped whole-tree reset of every tracked file, not just the drain's outputs — removes the drain's untracked outputs, and re-queues the staged observations back into `## Pending` of the inbox. Any unrelated uncommitted edit in the tree at that moment is lost. This is the "reject this drain" step. |
+| `just abort-drain` | `scripts/abort-drain.ps1` | Refuses outright (nothing touched, staging retained) if the tree has an unrelated tracked change or an unrelated untracked file under the drain's output paths — see the exit-code table below. Otherwise runs `git reset --hard HEAD` — an unscoped whole-tree reset of every tracked file, not just the drain's outputs — removes the drain's untracked outputs, and re-queues the staged observations back into `## Pending` of the inbox. This is the "reject this drain" step. |
 
 The maintainer loop is:
 
@@ -68,6 +68,20 @@ Each drain gets a run-ID and moves the inbox's `## Pending` section into a stagi
 the curator. That staging file is the recovery anchor: it exists only while a drain is pending a
 maintainer decision, and both `accept-drain` and `abort-drain` key off it.
 
+Beside it the drain writes an **output manifest**, `agy-observations.staging.<runId>.outputs.txt`:
+one repo-relative path per line, listing every untracked file the curator created this run under the
+drain's output paths. It is derived, not declared — the drain snapshots `git ls-files --others` over
+those paths before and after the curator runs and takes the difference, so it stays correct even if
+the curator's prompt changes or it misreports what it wrote. In practice this only ever names files
+under `docs/fix-the-tool-backlog/`, whose slugs the curator picks per run.
+
+`abort-drain` needs it because its `git clean -fd` step deletes untracked files under those paths: the
+manifest is how it tells the curator's own new backlog file (safe to remove) from a note you dropped in
+the same directory during the review pause (must not be). An empty manifest is valid and means the
+curator created nothing new. Its **absence** means the run predates this mechanism, and `abort-drain`
+then falls back to refusing on any unrecognised untracked file there. Both `accept-drain` and
+`abort-drain` delete it alongside the staging snapshot, so it never outlives its run.
+
 **`drain-knowledge` exit codes:**
 
 | Exit | Condition |
@@ -87,6 +101,9 @@ should have parked a demotion. The hard budget gate lives in the release preflig
 |---|---|
 | `0` | No pending staging file (nothing to abort) — or a successful reject: tracked files reverted to `HEAD`, untracked drain outputs cleaned, staged observations re-queued into `## Pending`, staging file removed. |
 | `1` | The run-ID is **already in the committed** `docs/agy-drain-log.md` — aborting would re-queue already-shipped observations, so it refuses; use `just accept-drain` instead. |
+| `1` | **REFUSES** — a modified/staged **tracked** file is not one of the drain's own outputs, so `git reset --hard HEAD` would silently destroy it. Nothing is touched; staging retained. Move, commit, or delete the file, then re-run. |
+| `1` | **REFUSES** — an **untracked** file under one of the drain's output paths (e.g. `docs/fix-the-tool-backlog/`) is neither one of the eight individually-named outputs nor listed in this run's output manifest, so the scoped `git clean -fd` would delete it. Nothing is touched; staging retained. Move, commit, or delete the file, then re-run. A backlog file the curator wrote *this run* does NOT trigger this: `drain-knowledge` records it in the manifest (below), so it is recognised as the drain's own output and cleaned normally. |
+| `1` | **REFUSES (runs predating the manifest only)** — with no `…outputs.txt` manifest beside the staging snapshot, the drain has no record of which backlog files its curator wrote, so *any* untracked file under `docs/fix-the-tool-backlog/` is refused. Delete it yourself if it is the drain's output, or move your own file aside, then re-run. |
 | `1` | `git reset --hard HEAD` (the revert) failed — tree not reverted; staging retained so you can fix the repo and re-run. |
 | `1` | `git clean -fd` (removing the drain's untracked outputs) failed — staging retained; fix the repo and re-run. |
 

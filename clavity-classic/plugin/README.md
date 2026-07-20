@@ -137,4 +137,32 @@ Much smaller once `escape-time` is fixed (Install step 4).
   [Console]::Write("`e[?1000l`e[?1002l`e[?1003l`e[?1006l`e[?1049l")
   ```
 - **agy auth:** agy prompts for login periodically — answer it at agy's terminal.
+- **`golden-header region at <path> is <N>B, over the 16384B cap — skipped`** (stderr warning). One
+  region file (SEED or GROWTH) is over the 16 KiB per-file cap; that region is skipped, the other
+  still injects if present and under cap. Trim the offending file.
+- **`golden-header sidecar at <path> is <N>B, over the 1024B cap — skipped`** (stderr warning). The
+  region's `.sha256` sidecar is itself over its 1 KiB cap — too large to hold a plausible digest, so
+  it is never read. The region is skipped, same as an over-cap region. Delete the stray sidecar or
+  re-commit the region so it is rewritten.
+- **`golden-header region at <path> did not match its .sha256 sidecar — skipped`** (stderr warning).
+  The sidecar is an integrity check, not a security control — it just no longer matches the region's
+  content, typically a hand-edited header, a torn write, or filesystem corruption. The region is
+  skipped. Re-commit the region (`clavity curate-commit`, or reinstall the SEED) so header and
+  sidecar are regenerated together; do not hand-edit either file.
+- **`golden-header at <dir> exceeds the 16384B cap — injection skipped`** (stderr warning). What's
+  about to be injected — either the legacy pre-split `golden-header.md` alone, or SEED+GROWTH
+  combined — is over the 16 KiB cap. For the legacy-file case, nothing is injected. For the
+  SEED+GROWTH case this fires together with the next warning, which states the actual outcome.
+- **`combined golden-header at <dir> exceeds the 16384B cap — dropping GROWTH, keeping SEED`**
+  (stderr warning). SEED and GROWTH each fit under 16 KiB alone but their combination doesn't;
+  GROWTH is dropped for this injection and only SEED is used. Trim GROWTH (e.g. via `agy-curate`'s
+  promotion rubric) to fit the remaining budget.
+- **`driver-cheatsheet exceeds 4096 bytes; using baseline floor`** (stderr warning). The learned
+  cheatsheet at `%USERPROFILE%\.clavity\driver-cheatsheet.md` is over its 4 KiB cap, so it is ignored
+  and the shipped baseline is injected instead. Your curated additions stop reaching agy until you
+  trim it — the only symptom otherwise is that learned rules quietly stop applying.
+- **`driver-cheatsheet unreadable (<error>); using baseline floor`** (stderr warning). Same outcome as
+  above, from an I/O error rather than size (the dotnet variant words this one as
+  `driver-cheatsheet read failed: <error>`). An ABSENT cheatsheet is normal and silent — the baseline
+  floor is the shipped default, not an error.
 - **Recovery:** from any *other* shell, `clavity cancel` sends Esc to agy through the psmux server.

@@ -156,10 +156,13 @@ overflows the combined cap is written yet **never injected**. Compile GROWTH to 
 `16 KB − (current size of golden-header.seed.md)` — check the seed size and keep GROWTH lean.
 
 Then **commit it through the binary** so it lands at the resolved shared GROWTH path
-(`%USERPROFILE%\.clavity\golden-header.growth.md`) with an atomic write + a `.sha256` tamper sidecar — only the
-binary knows `CLAVITY_GOLDEN_HEADER`. **Pipe the header via STDIN, never as a shell argument** (a multi-line
-markdown header blows past command-line quoting/length limits). GROWTH is **regenerated wholesale** each run, so
-the commit is idempotent:
+(`%USERPROFILE%\.clavity\golden-header.growth.md`) with an atomic write + a `.sha256` **integrity** sidecar —
+NOT a security control (anyone who can rewrite the header can equally rewrite or delete the sidecar); it exists
+to catch torn writes, filesystem corruption, and a hand-edited header. It is **verified on read**: absent or
+unreadable is accepted unchanged (a fresh install seeds SEED with no sidecar); mismatched or over its own 1 KiB
+cap causes that region to be skipped with a warning. Only the binary knows `CLAVITY_GOLDEN_HEADER`. **Pipe the
+header via STDIN, never as a shell argument** (a multi-line markdown header blows past command-line
+quoting/length limits). GROWTH is **regenerated wholesale** each run, so the commit is idempotent:
 
     # dotnet variant — `clavity-ls curate-commit` writes golden-header.growth.md (SEED is left untouched):
     clavity-ls curate-commit < compiled-growth.md      # or: printf '%s' "$growth" | clavity-ls curate-commit
