@@ -255,4 +255,56 @@ public sealed class GoldenHeaderTests : IDisposable
         GoldenHeader.CommitGrowth(_dir, "GROWTH");
         Assert.Equal("GROWTH", GoldenHeader.TryReadCombined(_dir));
     }
+
+    [Fact]
+    public void TryReadCombined_rejects_a_utf16le_sidecar()
+    {
+        // UTF-16LE — exactly what PowerShell 5.1's `>` redirection or Notepad's "Unicode" save produce
+        // on Windows — must be REJECTED (garbage decode -> mismatch): dotnet's sidecar read is now
+        // UTF-8 only (mirrors Rust's from_utf8_lossy), even though the bytes, decoded as UTF-16LE,
+        // spell the correct digest. Mirrors Rust `read_combined_rejects_a_utf16le_sidecar`.
+        var p = Path.Combine(_dir, GoldenHeader.SeedFileName);
+        File.WriteAllText(p, "SEED");
+        var hex = GoldenHeader.Sha256Hex("SEED");
+        var sidecarBytes = new List<byte> { 0xFF, 0xFE };
+        foreach (var c in hex)
+        {
+            sidecarBytes.Add((byte)c);
+            sidecarBytes.Add(0x00);
+        }
+        File.WriteAllBytes(p + ".sha256", sidecarBytes.ToArray());
+        Assert.Null(GoldenHeader.TryReadCombined(_dir));
+    }
+
+    [Fact]
+    public void TryReadCombined_rejects_an_oversized_sidecar_and_warns()
+    {
+        // A sidecar too large to hold a plausible sha256 digest cannot be a valid one and must never be
+        // read wholly into memory. Mirrors Rust `read_combined_rejects_an_oversized_sidecar_and_warns`.
+        var p = Path.Combine(_dir, GoldenHeader.SeedFileName);
+        File.WriteAllText(p, "SEED");
+        File.WriteAllBytes(p + ".sha256", new byte[2048]);
+        string? warned = null;
+        Assert.Null(GoldenHeader.TryReadCombined(_dir, w => warned = w));
+        Assert.NotNull(warned);
+        Assert.Contains("cap", warned);
+    }
+
+    [Fact]
+    public void Apply_preserves_a_trailing_nbsp()
+    {
+        // NBSP (U+00A0) is full-Unicode whitespace but NOT in AsciiWs — Fix 1's parity requirement is
+        // that TrimEnd(AsciiWs) leaves it alone, unlike the old no-arg TrimEnd(). Mirrors Rust
+        // `apply_active_preserves_a_trailing_nbsp`.
+        var header = "HEADER" + ((char)0x00A0).ToString();
+        Assert.Equal("HEADER" + ((char)0x00A0).ToString() + "\n\nMSG", GoldenHeader.Apply(header, "MSG"));
+    }
+
+    [Fact]
+    public void Apply_still_trims_trailing_ascii_whitespace()
+    {
+        // Proves the NBSP fix does not over-correct: plain ASCII trailing whitespace must still trim.
+        // Mirrors Rust `apply_active_still_trims_trailing_ascii_whitespace`.
+        Assert.Equal("HEADER\n\nMSG", GoldenHeader.Apply("HEADER  \t\r\n", "MSG"));
+    }
 }

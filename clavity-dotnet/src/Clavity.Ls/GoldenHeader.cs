@@ -18,6 +18,12 @@ public static class GoldenHeader
     /// <summary>Strict byte cap (security §size-cap): over-cap content is refused, not injected.</summary>
     public const int MaxBytes = 16 * 1024;
 
+    /// <summary>
+    /// Cap on the <c>.sha256</c> sidecar file, in bytes. A sha256 hex digest is 64 characters, so 1 KiB
+    /// is generous headroom for a trailing newline or BOM. Identical to Rust <c>MAX_SIDECAR_BYTES</c>.
+    /// </summary>
+    public const int MaxSidecarBytes = 1024;
+
     public const string SeedFileName = "golden-header.seed.md";
     public const string GrowthFileName = "golden-header.growth.md";
     public const string LegacyFileName = "golden-header.md";
@@ -98,7 +104,22 @@ public static class GoldenHeader
             {
                 if (File.Exists(sidecarPath))
                 {
-                    var expected = File.ReadAllText(sidecarPath).Trim(AsciiWs).ToLowerInvariant();
+                    var sidecarLen = new FileInfo(sidecarPath).Length;
+                    if (sidecarLen > MaxSidecarBytes)
+                    {
+                        warn?.Invoke($"golden-header sidecar at {sidecarPath} is {sidecarLen}B, over the {MaxSidecarBytes}B cap — skipped");
+                        return null;
+                    }
+
+                    // Decode lossily as UTF-8 (Encoding.UTF8.GetString substitutes U+FFFD for invalid
+                    // bytes rather than throwing) — mirrors Rust's String::from_utf8_lossy on this path,
+                    // NOT the strict throwing decoder used for the region body below. File.ReadAllText
+                    // would auto-detect a UTF-16/UTF-32 BOM and decode with THAT codec instead, which
+                    // Rust's UTF-8-only sidecar read can never do — a UTF-16LE sidecar (exactly what
+                    // PowerShell 5.1's `>` redirection or Notepad's "Unicode" save produce) must be
+                    // REJECTED (garbage decode -> mismatch) on both variants, not silently accepted here.
+                    var sidecarBytes = File.ReadAllBytes(sidecarPath);
+                    var expected = StripBom(Encoding.UTF8.GetString(sidecarBytes)).Trim(AsciiWs).ToLowerInvariant();
                     var actual = Sha256Hex(bytes);
                     if (expected != actual)
                     {
@@ -173,12 +194,12 @@ public static class GoldenHeader
     {
         if (seed is null) return growth;
         if (growth is null) return seed;
-        return seed.TrimEnd() + "\n\n" + growth.Trim();
+        return seed.TrimEnd(AsciiWs) + "\n\n" + growth.Trim(AsciiWs);
     }
 
     /// <summary>Prepend the header (blank-line separated) when present; otherwise return the message unchanged.</summary>
     public static string Apply(string? header, string message) =>
-        string.IsNullOrEmpty(header) ? message : header.TrimEnd() + "\n\n" + message;
+        string.IsNullOrEmpty(header) ? message : header.TrimEnd(AsciiWs) + "\n\n" + message;
 
     /// <summary>
     /// Atomic write of curated content to the resolved path (+ a .sha256 sidecar for INTEGRITY checking —

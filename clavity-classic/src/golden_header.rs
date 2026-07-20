@@ -14,6 +14,10 @@ use sha2::{Digest, Sha256};
 /// 16 KiB cap on the golden header, in BYTES (`16 * 1024`), identical to dotnet `GoldenHeader.MaxBytes`.
 pub const MAX_BYTES: usize = 16 * 1024;
 
+/// Cap on the `.sha256` sidecar file, in bytes. A sha256 hex digest is 64 characters, so 1 KiB is
+/// generous headroom for a trailing newline or BOM. Identical to dotnet `GoldenHeader.MaxSidecarBytes`.
+pub const MAX_SIDECAR_BYTES: u64 = 1024;
+
 /// The driver-seeded baseline region (installer-written). Mirrors dotnet `SeedFileName`.
 pub const SEED_FILE: &str = "golden-header.seed.md";
 /// The learned region written by `curate-commit`. Mirrors dotnet `GrowthFileName`.
@@ -115,7 +119,23 @@ fn try_read_file(path: &Path, warn: &mut dyn FnMut(&str)) -> Option<String> {
     // has a sidecar-less SEED (installer/_shared/golden-header-data.iss). Sidecar unreadable = treat
     // exactly as absent, accept. Sidecar present but mismatched = warn and degrade this region to
     // ABSENT, mirroring the over-cap path above.
-    if let Ok(sidecar_bytes) = fs::read(sidecar_path(path)) {
+    let sc_path = sidecar_path(path);
+    // Cap the sidecar BEFORE reading its bytes, mirroring the over-cap region-body check above — a
+    // sidecar too large to hold a plausible sha256 digest cannot be a valid one, so a huge `.sha256`
+    // file must not be read wholly into memory. Metadata-read failure (sidecar absent or otherwise
+    // unreadable) is NOT oversized here; it falls through to the `fs::read` below, which fails the
+    // same way and is already treated as absent/accept.
+    if let Ok(meta) = fs::metadata(&sc_path) {
+        if meta.len() > MAX_SIDECAR_BYTES {
+            warn(&format!(
+                "golden-header sidecar at {} is {}B, over the {MAX_SIDECAR_BYTES}B cap — skipped",
+                sc_path.display(),
+                meta.len()
+            ));
+            return None;
+        }
+    }
+    if let Ok(sidecar_bytes) = fs::read(&sc_path) {
         // strip_bom BEFORE trimming: dotnet reads the sidecar with File.ReadAllText, which strips a BOM
         // for us, and U+FEFF is NOT in ASCII_WS — so without this a BOM-prefixed sidecar (exactly what a
         // hand-edit in Notepad produces, the case this check exists to catch) would be REJECTED here and
@@ -674,5 +694,57 @@ mod tests {
             read_combined(&dir, &mut |_: &str| {}),
             HeaderState::Active(ref s) if s == "GROWTH"
         ));
+    }
+
+    #[test]
+    fn read_combined_rejects_a_utf16le_sidecar() {
+        // UTF-16LE — exactly what PowerShell 5.1's `>` redirection or Notepad's "Unicode" save produce
+        // on Windows — must be REJECTED (garbage decode -> mismatch): Rust's sidecar read is UTF-8 only
+        // (from_utf8_lossy), even though the bytes, decoded as UTF-16LE, spell the correct digest.
+        // Mirrors dotnet `TryReadCombined_rejects_a_utf16le_sidecar`.
+        let dir = fresh_dir("sidecar-utf16le");
+        let path = dir.join(SEED_FILE);
+        fs::write(&path, b"SEED").unwrap();
+        let hex = sha256_hex(b"SEED");
+        let mut sidecar_bytes: Vec<u8> = vec![0xFF, 0xFE];
+        for c in hex.chars() {
+            sidecar_bytes.push(c as u8);
+            sidecar_bytes.push(0x00);
+        }
+        fs::write(sidecar_path(&path), &sidecar_bytes).unwrap();
+        assert!(matches!(
+            read_combined(&dir, &mut |_: &str| {}),
+            HeaderState::Absent
+        ));
+    }
+
+    #[test]
+    fn read_combined_rejects_an_oversized_sidecar_and_warns() {
+        // A sidecar too large to hold a plausible sha256 digest cannot be a valid one and must never be
+        // read wholly into memory. Mirrors dotnet `TryReadCombined_rejects_an_oversized_sidecar_and_warns`.
+        let dir = fresh_dir("sidecar-oversized");
+        let path = dir.join(SEED_FILE);
+        fs::write(&path, b"SEED").unwrap();
+        fs::write(sidecar_path(&path), vec![0u8; 2048]).unwrap();
+        let mut warned: Vec<String> = Vec::new();
+        let st = read_combined(&dir, &mut |m| warned.push(m.to_string()));
+        assert!(matches!(st, HeaderState::Absent));
+        assert!(warned.iter().any(|w| w.contains("cap")));
+    }
+
+    #[test]
+    fn apply_active_preserves_a_trailing_nbsp() {
+        // NBSP (U+00A0) is full-Unicode whitespace but NOT in ASCII_WS — the cross-variant contract is
+        // that trim_end_matches(ASCII_WS) leaves it alone. Mirrors dotnet `Apply_preserves_a_trailing_nbsp`.
+        let st = HeaderState::Active("HEADER\u{00A0}".to_string());
+        assert_eq!(apply(&st, "MSG"), "HEADER\u{00A0}\n\nMSG");
+    }
+
+    #[test]
+    fn apply_active_still_trims_trailing_ascii_whitespace() {
+        // Proves the NBSP contract does not over-correct: plain ASCII trailing whitespace must still
+        // trim. Mirrors dotnet `Apply_still_trims_trailing_ascii_whitespace`.
+        let st = HeaderState::Active("HEADER  \t\r\n".to_string());
+        assert_eq!(apply(&st, "MSG"), "HEADER\n\nMSG");
     }
 }
