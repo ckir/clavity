@@ -161,15 +161,39 @@ jobs:
           '{ "marketplaces": { "clavity": "C:\\old\\clavity" }, "plugins": { "ghidrust@clavity": true } }' |
             Set-Content $env:FAKE_CLAUDE_STATE -Encoding utf8
 
-          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "install exited $($p.ExitCode) with fake claude present" }
+          # This install EXITS 0 even when registration is skipped entirely (a non-registering install is
+          # still a successful install), so the assertions below are the only failure signal - and without
+          # the Inno log there is no way to tell WHY. The log carries the decisive line, emitted by
+          # register-invoke.iss: "register-plugin.ps1 [install ghidrust] exit=N", where N is
+          # 0=ok 2=partial 3=every detected agent failed (e.g. claude running) 4=NO agent detected.
+          # Dump on ANY failure, not just a non-zero installer exit. Mirrors the lifecycle smoke above.
+          $log = "$env:RUNNER_TEMP\ghidrust-migration.log"
+          function Show-LogAndFail([string]$msg) {
+            Write-Host "===== ghidrust migration install.log ====="
+            if (Test-Path $log) { Get-Content $log } else { Write-Host "(no log produced)" }
+            Write-Host "===== registrar verdict lines ====="
+            if (Test-Path $log) {
+              $hits = @(Select-String -Path $log -Pattern 'register-plugin\.ps1|AGENT ' | ForEach-Object { $_.Line })
+              if ($hits.Count -gt 0) { $hits } else { Write-Host "(none - the registrar was never invoked)" }
+            }
+            throw $msg
+          }
+
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=$log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Show-LogAndFail "install exited $($p.ExitCode) with fake claude present" }
+
+          # Detection is `Get-Command claude` on PATH (plus a ~/.claude fallback that does NOT exist on a
+          # runner). If the shim is not reachable here, the registrar exits 4 and mutates nothing - which
+          # is indistinguishable from a failed migration by the state file alone.
+          $seen = (Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+          Write-Host "[preflight] 'claude' resolves to: $(if ($seen) { $seen } else { '(NOT RESOLVED)' })"
 
           $state = Get-Content $env:FAKE_CLAUDE_STATE -Raw | ConvertFrom-Json
           $mkts  = @($state.marketplaces.PSObject.Properties.Name)
           $plugs = @($state.plugins.PSObject.Properties.Name)
           Write-Host "[migration] marketplaces=$($mkts -join ','); plugins=$($plugs -join ',')"
-          if ($plugs -notcontains 'ghidrust@clavity-ghidrust') { throw "new registration ghidrust@clavity-ghidrust absent" }
-          if ($mkts  -contains 'clavity') { throw "MIGRATION FAILED: legacy 'clavity' marketplace still present" }
+          if ($plugs -notcontains 'ghidrust@clavity-ghidrust') { Show-LogAndFail "new registration ghidrust@clavity-ghidrust absent" }
+          if ($mkts  -contains 'clavity') { Show-LogAndFail "MIGRATION FAILED: legacy 'clavity' marketplace still present" }
           Write-Host "Bug 1 migration smoke PASSED."
           $uninst = Get-ChildItem $app -Filter "unins*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($uninst) { Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null }
