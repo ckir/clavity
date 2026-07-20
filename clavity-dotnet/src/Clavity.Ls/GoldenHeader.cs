@@ -207,10 +207,15 @@ public static class GoldenHeader
     /// sidecar. It exists to catch torn writes, filesystem corruption, and a hand-edited header that no
     /// longer matches what the tool committed; see <see cref="TryReadFile"/> for the read-side check).
     /// Enforces the size cap. Used by `clavity-ls curate-commit`; agy-curate INVOKES it (never raw-edits).
-    /// Sidecar-after-target-rename, mirroring Rust `commit`: the header is moved into place FIRST, and
-    /// only then is the sidecar written (also atomically, via its own tmp+rename) — so a failure between
-    /// the two leaves the OLD header and OLD sidecar mutually consistent, rather than a published sidecar
-    /// hash that accuses a header which was never actually replaced.
+    /// Sidecar-after-target-rename, mirroring Rust `commit`: the header is moved into place FIRST, and only
+    /// then is the sidecar written (also atomically, via its own tmp+rename). What that buys is precisely
+    /// the MOVE-FAILURE case — if the move fails, the OLD header and OLD sidecar are still mutually
+    /// consistent, instead of a freshly-published hash accusing a header that was never replaced.
+    /// It does NOT eliminate the torn-write window, and no two-file update can without a journal: a crash
+    /// AFTER a successful move but before the sidecar lands leaves the NEW header beside the OLD sidecar,
+    /// which the read side sees as a mismatch and degrades to "region absent". That is the deliberate
+    /// trade — the window is narrower and its failure is a skipped region rather than an injected header
+    /// nobody vouched for. Re-running curate-commit repairs it.
     /// </summary>
     public static void Commit(string path, string content)
     {

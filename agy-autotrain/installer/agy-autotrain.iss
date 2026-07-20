@@ -37,7 +37,12 @@ Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: 
 ; uncurated entries. Excludes matches on FILENAME (no path separator), so it applies wherever the file sits.
 Source: "..\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs; \
   Excludes: "installer,dist,publish,agy-observations.md"
-Source: "..\knowledge\agy-observations.md"; DestDir: "{app}\plugins\agy-autotrain\knowledge"; Flags: onlyifdoesntexist
+; uninsneveruninstall as well as onlyifdoesntexist: without it the uninstaller deletes this file like any
+; other installed file, so a KEEP-DATA uninstall would preserve growth.md (which lives outside the app dir)
+; while silently destroying the pending inbox — the same asymmetry the growth.md handling below exists to
+; avoid. Note the remaining gap: a PURGE-data uninstall does not remove it either, so the purge prompt below
+; covers growth.md only. Leaving a file behind is the recoverable failure; deleting one is not.
+Source: "..\knowledge\agy-observations.md"; DestDir: "{app}\plugins\agy-autotrain\knowledge"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Code]
 #include "..\..\installer\_shared\claude-running.iss"
