@@ -147,7 +147,8 @@ To cut a live umbrella release, run:
 `just release` automates the release:
 - Reads conventional commits to auto-derive semver + CHANGELOG per member.
 - Previews the bump and asks you to type the target `clavity-vN` to confirm.
-- Runs a fast local gate, then pushes the tag.
+- Runs a fast local gate, then pushes `main` to the public remote (publishing every accumulated
+  commit) before creating and pushing the tag.
 
 Existing CI heavy-gates (all 5 builds + ghidrust live-E2E) and auto-publishes on green. If CI fails,
 the tag is "burned" (skipped); fix and re-run. Never hand-edit a version — `just bump` remains the

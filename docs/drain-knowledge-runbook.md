@@ -16,7 +16,7 @@ this doc and their behavior ever disagree — the scripts win.
 |---|---|---|
 | `just drain-knowledge [-WhatIf]` | `scripts/drain-knowledge.ps1` | Stages `## Pending` observations, runs a headless `claude -p` curator to fold them into the manuals + SEED, runs the `[Core]`-integrity gate (hard) and the SEED-budget gate (warn), and appends a summary to `docs/agy-drain-log.md`. **Makes NO commit.** |
 | `just accept-drain` | `scripts/accept-drain.ps1` | Confirms the drain's run-ID is in the **committed** `docs/agy-drain-log.md` and the tree is clean, then deletes the staging snapshot. This is the "I reviewed and committed it" step. |
-| `just abort-drain` | `scripts/abort-drain.ps1` | Reverts every tracked file the drain touched back to `HEAD`, removes the drain's untracked outputs, and re-queues the staged observations back into `## Pending` of the inbox. This is the "reject this drain" step. |
+| `just abort-drain` | `scripts/abort-drain.ps1` | Runs `git reset --hard HEAD` — an unscoped whole-tree reset of every tracked file, not just the drain's outputs — removes the drain's untracked outputs, and re-queues the staged observations back into `## Pending` of the inbox. Any unrelated uncommitted edit in the tree at that moment is lost. This is the "reject this drain" step. |
 
 The maintainer loop is:
 

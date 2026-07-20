@@ -3,16 +3,23 @@
 The installer placed `clavity.exe` on your PATH. Classic uses **manual wiring by design** (unlike the
 zero-touch dotnet variant) — finish these one-time steps, then `clavity start` does the rest.
 
+## Prerequisites
+
+- **[Claude Code](https://claude.com/claude-code)** — the master agent, already installed and signed in.
+- **`agy`** (Antigravity CLI) — the paired agent, already installed and signed in.
+- **[psmux](https://github.com/psmux/psmux)** (ships as `psmux`/`pmux`/`tmux`) on your `PATH`. If it
+  lives somewhere not on `PATH`, set `AGY_TMUX_BIN` to its full path instead.
+
 ## 1. Register the agentmemory bus MCP in BOTH agents (clavity's data channel)
 
 **Claude Code:**
 
-    claude mcp add agentmemory -s user -- npx @agentmemory/agentmemory mcp
+    claude mcp add agentmemory -s user -- npx -y @agentmemory/agentmemory mcp
 
 **agy** — add to `%USERPROFILE%\.gemini\config\mcp_config.json` (i.e. `C:\Users\<You>\.gemini\config\...`)
 under `mcpServers` (Windows needs `cmd /c` for a bare `npx`):
 
-    "agentmemory": { "command": "cmd", "args": ["/c", "npx", "@agentmemory/agentmemory", "mcp"] }
+    "agentmemory": { "command": "cmd", "args": ["/c", "npx", "-y", "@agentmemory/agentmemory", "mcp"] }
 
 Restart each agent after editing. (Even the dotnet variant requires this — agentmemory is a separate
 prerequisite, not something either installer registers.)

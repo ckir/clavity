@@ -30,7 +30,7 @@ Every product ships locally inside its own standalone Windows installer. There i
 
 1. Go to the [Releases](../../releases) page. The `clavity-v<N>` umbrella release contains every product's installer in one place.
 2. Download the installer for the product you chose — assets are named
-   `<product>-setup-<version>.exe` (e.g. `clavity-dotnet-setup-0.2.1.exe`), each with a `.sha256`.
+   `<product>-setup-<version>.exe` (e.g. `clavity-dotnet-setup-<version>.exe`), each with a `.sha256`.
 3. Run it. It registers the product's plugin locally with every agent it detects (Claude Code and/or
    `agy`). The three products that ship a binary — clavity-dotnet, clavity-classic, ghidrust — also put
    it on your PATH; agy-autotrain and commonmemory are plugin-only and install nothing on PATH.

@@ -5,7 +5,10 @@
 > ≥2 sources agree · `[conflict]` sources disagree (`[local]`/`[corpus]` win for our version).
 >
 > Companion to the **empirical** [`agy-assumptions.md`](agy-assumptions.md) (what's verified here + how
-> to re-verify) and the **how-to-ask** [`agy-remote-control-protocol.md`](agy-remote-control-protocol.md).
+> to re-verify) and the **how-to-ask**
+> [`agy-remote-control-protocol.md`](https://github.com/ckir/clavity/blob/main/docs/agy-remote-control-protocol.md).
+> That link is absolute deliberately: this manual ships byte-identical inside two plugins at different
+> depths, so no single relative path can resolve from both.
 > The auto-consult policy (when to ask agy before showing the user) is the `agy-first-brainstorm.sh` hook.
 >
 > **agy is a dynamic, multi-model platform, not a static model:** effective capability =

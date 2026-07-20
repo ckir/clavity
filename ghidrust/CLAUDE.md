@@ -29,7 +29,8 @@ an external, versioned tool, the same way the clavity variants depend on agy:
 | `crates/ghidra-ipc` | The wire protocol between Rust and the Ghidra-side worker: request/response types and error envelopes. Pure serde; snapshot-tested with `insta`. |
 | `crates/ghidra-worker-ctl` | Worker lifecycle — launches the JVM, handshakes, and owns the connection. |
 
-All three are version **1.0.1**, edition **2021**, MSRV **1.82**, licensed **PolyForm-Noncommercial-1.0.0**.
+All three share one version (see each crate's `Cargo.toml`), edition **2021**, MSRV **1.82**, licensed
+**PolyForm-Noncommercial-1.0.0**.
 
 Two mechanics to know before touching the worker path:
 

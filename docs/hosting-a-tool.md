@@ -181,7 +181,8 @@ lesson of this repo applied to its own standard.
 Nothing member-specific is needed — once registered, the member is in the umbrella release. Run
 `just release` from the repo root (preview with `just release-dry`): it derives each member's next
 semver + CHANGELOG from conventional commits, previews every bump, and on a typed confirmation plus a
-green local gate pushes the `clavity-v<N>` tag that triggers `umbrella-release.yml`.
+green local gate pushes `main` to the public remote — publishing every accumulated commit — before
+creating and pushing the `clavity-v<N>` tag that triggers `umbrella-release.yml`.
 
 `ghidrust` is gated by its live E2E before publish, so a broken ghidrust blocks a **full** cut — but not
 a single-member hotfix. `republish-member.yml` rebuilds one member onto an already-published release
