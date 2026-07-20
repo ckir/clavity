@@ -28,8 +28,16 @@ SetupMutex=ClavitySetupMutex
 [Files]
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
+; agy-observations.md is EXCLUDED from the blanket copy below and seeded separately, `onlyifdoesntexist`.
+; It is the agy-learn capture inbox: USER DATA that happens to live inside the plugin tree and accumulates
+; between drains. The blanket copy is `ignoreversion` (= always overwrite), so without this split an UPGRADE
+; silently replaces a user's accumulated observations with the shipped template — destroying the exact
+; knowledge this plugin exists to collect, with no warning and no backup. A fresh install still gets the
+; template; an upgrade leaves the live inbox alone. Verified 2026-07-20 against a real box holding 23
+; uncurated entries. Excludes matches on FILENAME (no path separator), so it applies wherever the file sits.
 Source: "..\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs; \
-  Excludes: "installer,dist,publish"
+  Excludes: "installer,dist,publish,agy-observations.md"
+Source: "..\knowledge\agy-observations.md"; DestDir: "{app}\plugins\agy-autotrain\knowledge"; Flags: onlyifdoesntexist
 
 [Code]
 #include "..\..\installer\_shared\claude-running.iss"
