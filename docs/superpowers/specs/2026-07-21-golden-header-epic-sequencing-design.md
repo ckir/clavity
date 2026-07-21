@@ -314,14 +314,28 @@ exactly how the gap survived four rounds. Four conditions, all required:
 1. **Invert T4a's pins.** The tests T4a wrote to assert the header IS in the peer payload must be
    flipped to assert it is NOT, and must be seen failing against the pre-T4b code. This is what makes
    T4a's investment pay: the pins prove the change landed at the wire, not just in a unit under test.
-2. **Prove the driver actually receives the block over the live MCP wire** — not merely that a function
-   returns it. An implementer can satisfy every unit test while the block never reaches the client,
-   because `TryTakeGuidanceBlock`'s output must survive the MCP tool-result path (`McpTools.cs:23`,
-   `AgyAsk`) to be worth anything. Observe it arriving in a real session.
+2. **Prove the block survives the path to the driver, not merely that a function returns it.** An
+   implementer can satisfy every unit test while the block never reaches the client, because
+   `TryTakeGuidanceBlock`'s output must survive the MCP tool-result path (`McpTools.cs:23`, `AgyAsk`).
+   **Building the harness is part of T4b, not a prerequisite it assumes** — round-6 panel, Cold
+   Successor, correctly noted the previous wording ("observe it arriving on the live MCP wire") demands
+   raw JSON-RPC interception with no tooling to do it, which is a stall, not an instruction. Satisfy
+   this at the highest level that is actually reachable: a test that drives `McpTools.AgyAsk` end-to-end
+   and asserts the block is present in the returned `CallToolResult`. That covers the real gap — the
+   function-returns-it-but-nobody-forwards-it failure — without requiring a protocol sniffer. If a
+   genuine wire capture is wanted on top, it is a nice-to-have, not the gate.
 3. **Both variants, same curated file, same observable outcome.** This is constraint 4 made checkable:
-   run the same `growth.md` through the C# and Rust servers and diff what each sends the peer.
+   run the same `growth.md` through the C# and Rust code paths and diff what each sends the peer.
+   Same reachability rule as condition 2 — compare at the highest level both variants expose.
 4. **The over-cap path does not silently substitute.** Feed a deliberately over-cap header and confirm
    the failure is loud and does NOT inject `BaselineFloor` in the header's place (question 4 above).
+   ⚠️ **Run this against a SCRATCH directory via `CLAVITY_GOLDEN_HEADER`, never the live
+   `~/.clavity`.** Round-6 panel, Ordering Skeptic, and it caught a real sequencing collision: this
+   condition requires deliberately bloating a `growth.md`, while T3 later repairs the live one and
+   verifies it against a backup taken *before* the epic. Bloat the live file and T3's bijection check
+   fails by construction. `GoldenHeader.ResolveDir` (`GoldenHeader.cs:32-35`) honours the env override
+   precisely so this kind of test never touches real user data — use it. That also removes any need for
+   a restore step between T4b and T3.
 
 **Non-goal.** T4b does not change the curation pipeline's routing by SUBJECT (about-the-driver vs
 about-agy), which already exists at `agy-curate/SKILL.md:107-109`. The gap being closed is that the
@@ -378,9 +392,35 @@ before anything is written:**
    The default encoder silently substitutes `?` for any character CP437 cannot represent — which would
    destroy data invisibly. If the strict encode throws, the file is NOT purely CP437 mojibake, the
    transform does not apply, and the repair must **abort**, not proceed.
-2. **Bijection check.** Re-mangle the repaired text (encode UTF-8 → decode CP437) and assert it
-   reproduces the original file **byte-for-byte**. If it does, the transform is a bijection on this
-   exact data, so it provably cannot have lost anything.
+2. **Bijection check.** Re-mangle the repaired text and assert it reproduces the original.
+   **State the types precisely — the round-6 panel caught a real type error in the previous wording,
+   which said "encode UTF-8 → decode CP437 … byte-identical to the backup".** That sequence ends in a
+   *string*, not bytes, so comparing it to a file is incoherent. Two equivalent correct forms; pick one
+   and be explicit about which:
+   - **String form (what was actually run):** `remangled = CP437.GetString(UTF8.GetBytes(repaired))`,
+     then assert `remangled` equals the backup **decoded as UTF-8**, ordinal comparison.
+   - **Byte form:** append the missing final step — `UTF8.GetBytes(remangled)` — and assert those bytes
+     equal the backup file's bytes.
+   Either proves the transform is a bijection on this exact data.
+
+⚠️ **This is a ONE-TIME repair of one known file, NOT a reusable tool — do not package it as one.**
+Round-6 panel, Encoding Pedant, and the point is subtle and correct: the transform is a bijection in
+*byte* space but can be destructive in *meaning* space. If a future `growth.md` ever legitimately
+contains the literal text `ΓÇö` — for instance an entry documenting this very bug, which is exactly the
+kind of observation this loop is built to capture — then that clean UTF-8 passes guard 1, the transform
+silently rewrites it to an em dash, and guard 2 still passes because the round-trip is exact. Both
+guards are satisfied while the author's literal words are destroyed. "Provably cannot have lost
+anything" is true byte-wise and false semantically. The protection is scope, not a better guard: this
+runs **once**, against the file whose exact bytes are captured in the backup above and whose
+measurements are recorded here.
+
+3. **Regenerate the `.sha256` sidecar as part of the write.** Not a panel finding — found while
+   verifying the panel's. The read path treats a **present-but-mismatched** sidecar as grounds to
+   "warn and degrade this region to ABSENT" (`GoldenHeader.cs:100-101`; same behaviour in Rust's
+   `try_read_file`). So repairing the file's bytes while leaving the old sidecar in place does not
+   half-work — it silently removes the **entire GROWTH region** from injection, with nothing but a
+   warning on a stream nobody is reading. Committing through `curate-commit` handles this, because
+   `Commit` writes header and sidecar as one atomic unit; a hand-rolled write must not skip it.
 
 **Measured on the live corrupt file, 2026-07-21** — this is verification already performed, not a
 prediction: strict encode **succeeded** (4,684 bytes, so every character is CP437-representable);
