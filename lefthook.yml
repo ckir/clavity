@@ -32,7 +32,12 @@ pre-push:
       # only misbehaves on a stock Windows PowerShell 5.1 box.
       run: just check-installer-ascii
     check-versions:
-      run: pwsh -File scripts/check-versions.ps1 dotnet && pwsh -File scripts/check-versions.ps1 classic && pwsh -File scripts/check-versions.ps1 ghidrust && pwsh -File scripts/check-versions.ps1 agy-autotrain && pwsh -File scripts/check-versions.ps1 commonmemory
+      # ONE pwsh process for all five members, not five. Same checks, same order, same fail-fast, same
+      # exit code — but the old `&&` chain of five `pwsh -File` calls spent ~30s of its ~34s on pwsh
+      # cold starts alone (~6s each, as the installer-ascii note above measures). Every one of those
+      # seconds was idle time on the SSH connection git opens BEFORE this hook runs, which is exactly
+      # the window the header warns about. Measured: 33.7s -> ~7s, hook total 62.5s -> ~36s.
+      run: pwsh -File scripts/check-versions-all.ps1
 pre-commit:
   commands:
     ruff:
