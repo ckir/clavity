@@ -20,7 +20,19 @@ __pycache__/
 # Internal design provenance — excluded from the PUBLIC repo (kept locally, untracked).
 # Pre-push audit WS2 (docs/superpowers/specs/2026-07-11-pre-push-audit-design.md): these hold
 # in-flight TBDs, superseded-model narratives, and local-machine paths not fit for public.
-docs/superpowers/
+# DEFAULT-DENY with opt-IN exceptions. Everything here stays excluded unless a negation below names it,
+# because 15 of these files carry local machine paths. Add a negation only after reading the file and
+# confirming it is public-safe — no local paths, no in-flight TBDs, no superseded narratives.
+#
+# Why this is written as three lines per level instead of a single `docs/superpowers/` rule: git does not
+# descend into an excluded DIRECTORY, so a negation can never resurrect a file beneath one. Each level
+# must therefore exclude its *contents* (`dir/*`) while leaving the directory itself traversable, and
+# re-admit the next level explicitly. Changing these back to a bare `docs/superpowers/` silently breaks
+# every negation below without any error.
+docs/superpowers/*
+!docs/superpowers/specs/
+docs/superpowers/specs/*
+!docs/superpowers/specs/2026-07-21-golden-header-epic-sequencing-design.md
 docs/session-notes/
 .clavity/
 
