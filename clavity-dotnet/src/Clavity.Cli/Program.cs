@@ -51,7 +51,11 @@ if (args.Length > 0 && args[0] == "curate-commit")
     var dir = GoldenHeader.ResolveDir(
         Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-    return CliVerbs.CurateCommit(dir, Console.In, Console.Error);
+    // The raw STREAM, never Console.In: Console.In decodes via the console's OEM input code page (CP437 on
+    // Windows), which silently corrupted the header on the way in. CurateCommit takes a Stream precisely so
+    // this call site cannot choose a decoder at all — see its doc comment.
+    using var stdin = Console.OpenStandardInput();
+    return CliVerbs.CurateCommit(dir, stdin, Console.Error);
 }
 
 if (Clavity.Ls.Install.CliRouter.IsInstallerVerb(args))
