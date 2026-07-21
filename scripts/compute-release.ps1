@@ -17,21 +17,39 @@ if ($BaselineOnly) { return $baseline }
 $serial = Get-NextSerial $RepoRoot
 $range  = if ($baseline) { "$baseline..HEAD" } else { 'HEAD' }
 
-# Collect (subject, changed-paths) per commit ONCE, scoped per member below.
-function Get-CommitsTouching([string]$pathspec) {
+# Collect {Sha, Subject} per commit touching ANY of $pathspecs. One git call, so a commit touching several
+# of them (its own folder AND a shared asset) is returned once — git de-duplicates, we don't have to.
+function Get-CommitRecords([string[]]$pathspecs) {
+    if (-not $pathspecs -or $pathspecs.Count -eq 0) { return @() }
     # Out-String first: `git log` is captured as a string[] (one element per line), so splitting the array
     # directly shatters multi-line records (plan-review R1). Join to one string, then split on NUL.
-    $out = (git -C $RepoRoot log $range --format='%x00%s' -- $pathspec 2>$null | Out-String)
+    $out = (git -C $RepoRoot log $range --format="%x00%H%x1f%s" -- @pathspecs 2>$null | Out-String)
     if (-not $out) { return @() }
-    return @($out -split "`0" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+    $records = @()
+    foreach ($rec in ($out -split "`0" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })) {
+        $parts = $rec -split "`u{1f}", 2
+        if ($parts.Count -lt 2) { continue }
+        $records += [pscustomobject]@{ Sha=$parts[0].Trim(); Subject=$parts[1].Trim() }
+    }
+    return $records
 }
 
 $bumps = @(); $nonConv = @()
 foreach ($m in Get-Members) {
+    # Shared assets that ship into this member (installer/_shared/**, seed/**, build/members.json). Without
+    # these, a commit touching only shared paths bumps nobody and the run reports a silent "nothing to
+    # release" — the bug that stranded the 69ee30f registration fix.
+    $shared = @(Get-SharedPathsFor $m.Key)
     if ($m.Ghidrust) {
         foreach ($ch in @('binary','plugin')) {
-            # subjects for commits whose changed paths fall in this channel
-            $subjects = Get-ChannelSubjects -Range $range -Channel $ch -RepoRoot $RepoRoot
+            # commits whose changed paths fall in this channel. Shared assets are INSTALLER assets, so they
+            # belong to the binary channel; the plugin channel versions ghidrust/plugin/** alone.
+            $records = @(Get-ChannelRecords -Range $range -Channel $ch -RepoRoot $RepoRoot)
+            if ($ch -eq 'binary' -and $shared.Count) {
+                $seen = @($records | ForEach-Object { $_.Sha })
+                $records += @(Get-CommitRecords $shared | Where-Object { $_.Sha -notin $seen })
+            }
+            $subjects = @($records | ForEach-Object { $_.Subject })
             $conv = @($subjects | Where-Object { Test-Conventional $_ })
             $nc   = @($subjects | Where-Object { -not (Test-Conventional $_) })
             if ($nc.Count) { $nonConv += [pscustomobject]@{ Key="ghidrust ($ch)"; Subjects=$nc } }
@@ -44,7 +62,7 @@ foreach ($m in Get-Members) {
         }
         continue
     }
-    $subjects = Get-CommitsTouching ("{0}/" -f $m.Root)
+    $subjects = @(Get-CommitRecords (@("{0}/" -f $m.Root) + $shared) | ForEach-Object { $_.Subject })
     $conv = @($subjects | Where-Object { Test-Conventional $_ })
     $nc   = @($subjects | Where-Object { -not (Test-Conventional $_) })
     if ($nc.Count) { $nonConv += [pscustomobject]@{ Key=$m.Key; Subjects=$nc } }
@@ -55,6 +73,24 @@ foreach ($m in Get-Members) {
         Next=(Step-SemverVersion $current $level); Level=$level; CommitCount=$conv.Count; Notes=(Group-Notes $conv) }
 }
 
+# Default-deny half of the taxonomy (see $SharedPaths in release-lib.ps1). Every path touched in the range
+# must be member-bound, declared-shared, or explicitly dev-only; anything else is UNCLASSIFIED and
+# release.ps1 refuses the release outright — NOT only on a zero-bump run. Gating on zero bumps looks
+# sufficient but isn't: an undeclared shared asset committed ALONGSIDE any member-scoped change produces a
+# bump, so `Nothing` is false and the undeclared asset would sail through on a warning, silently missing
+# every other member that ships it (agy adversarial review, 2026-07-21). An unclassified path is an illegal
+# state on its own terms.
+#
+# Restricted to paths that still EXIST: with no baseline commit $range is all of HEAD, so the sweep sees
+# every path that ever existed and long-deleted ones would bucket as unclassified and fail a first release
+# for nothing. A deleted shared asset is still caught — by Assert-SharedMapHealthy, whose declared entries
+# must exist on disk.
+$touched = @(git -C $RepoRoot log $range --name-only --format='' 2>$null |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -ne '' -and (Test-Path (Join-Path $RepoRoot $_)) } | Sort-Object -Unique)
+$unclassified = @($touched | Where-Object { (Get-PathBucket $_) -eq 'unclassified' })
+
 [pscustomobject]@{
     Serial=$serial; Baseline=$baseline; Nothing=($bumps.Count -eq 0); Bumps=$bumps; NonConventional=$nonConv
+    Unclassified=$unclassified
 }

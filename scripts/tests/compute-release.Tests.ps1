@@ -56,6 +56,78 @@ Describe 'compute emit (sweep + Nothing + non-conventional)' {
             (& $script:Engine -RepoRoot $repo).Nothing | Should -BeTrue
         } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
     }
+    # PINNING (2026-07-21): a commit touching ONLY a shared installer asset must bump every member that
+    # SHIPS it. Before this, member-folder pathspecs attributed it to nobody and the run reported a clean
+    # "nothing to release", stranding 69ee30f — a fix for plugin registration failing on every install.
+    It 'attributes a shared-installer commit to exactly the members that ship it' {
+        $repo = New-TempRepo
+        try {
+            foreach ($mm in @('clavity-classic','agy-autotrain','commonmemory','clavity-dotnet')) {
+                New-Item -ItemType Directory -Force -Path "$mm/installer" | Out-Null
+                Set-Content "$mm/installer/$mm.iss" '#define AppVersion "0.1.0"' -NoNewline
+            }
+            New-Item -ItemType Directory -Force -Path 'ghidrust/installer','ghidrust/plugin','installer/_shared' | Out-Null
+            Set-Content 'ghidrust/installer/ghidrust.iss' '#define AppVersion "1.0.0"' -NoNewline
+            Set-Content 'ghidrust/plugin/plugin.json' '{ "version": "1.0.0" }' -NoNewline
+            Set-Content 'installer/_shared/register-invoke.iss' 'x' -NoNewline
+            git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
+
+            'fixed' | Set-Content 'installer/_shared/register-invoke.iss'
+            git add -A; git commit -q -m 'fix(installer): route the registrar through the right interpreter'
+            $r = & $script:Engine -RepoRoot $repo
+
+            $r.Nothing | Should -BeFalse
+            # register-invoke.iss ships into four members; clavity-dotnet registers via clavity-ls
+            # streaming, not the Inno shell, so it must NOT be bumped by this commit.
+            @($r.Bumps | ForEach-Object { $_.Key }) | Should -Not -Contain 'dotnet'
+            foreach ($k in @('classic','agy-autotrain','commonmemory','ghidrust')) {
+                $b = @($r.Bumps | Where-Object Key -eq $k)
+                $b.Count | Should -Be 1 -Because "$k ships register-invoke.iss and must bump exactly once"
+                $b[0].Level | Should -Be 'patch'
+            }
+            # ghidrust's shared-asset bump belongs to the INSTALLER (binary), never the plugin channel.
+            (@($r.Bumps | Where-Object Key -eq 'ghidrust')[0]).Channel | Should -Be 'binary'
+        } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
+    }
+
+    It 'flags an unclassified path so a zero-bump range cannot pass silently' {
+        $repo = New-TempRepo
+        try {
+            New-Item -ItemType Directory -Force -Path 'commonmemory/installer' | Out-Null
+            Set-Content 'commonmemory/installer/commonmemory.iss' '#define AppVersion "0.1.0"' -NoNewline
+            git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
+            New-Item -ItemType Directory -Force -Path 'core_lib','scripts' | Out-Null
+            'x' | Set-Content 'core_lib/thing.ps1'
+            'y' | Set-Content 'scripts/tidy.ps1'
+            git add -A; git commit -q -m 'feat(core): a brand new top-level directory nobody mapped'
+            $r = & $script:Engine -RepoRoot $repo
+            $r.Nothing        | Should -BeTrue
+            $r.Unclassified   | Should -Contain 'core_lib/thing.ps1'
+            $r.Unclassified   | Should -Not -Contain 'scripts/tidy.ps1'   # dev-only, correctly bumps nobody
+        } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
+    }
+
+    # PINNING the bundled-commit bypass (agy adversarial review, 2026-07-21). An undeclared shared asset
+    # committed ALONGSIDE a member-scoped change still produces a bump, so a gate conditioned on "zero
+    # bumps" would wave it through. Unclassified must be reported even when Nothing is false; release.ps1
+    # refuses on it unconditionally.
+    It 'reports an unclassified path even when another member DID bump' {
+        $repo = New-TempRepo
+        try {
+            New-Item -ItemType Directory -Force -Path 'ghidrust/installer','ghidrust/plugin' | Out-Null
+            Set-Content 'ghidrust/installer/ghidrust.iss' '#define AppVersion "1.0.0"' -NoNewline
+            Set-Content 'ghidrust/plugin/plugin.json' '{ "version": "1.0.0" }' -NoNewline
+            git add -A; git commit -q -m 'chore(release): clavity-v7'; git tag clavity-v7
+            New-Item -ItemType Directory -Force -Path 'installer/_shared' | Out-Null
+            'x' | Set-Content 'installer/_shared/new-core.iss'      # shared, NOT declared in $SharedPaths
+            'y' | Set-Content 'ghidrust/readme-tweak.txt'           # bumps ghidrust, hiding the above
+            git add -A; git commit -q -m 'fix(installer): add a shared helper and tweak ghidrust'
+            $r = & $script:Engine -RepoRoot $repo
+            $r.Nothing      | Should -BeFalse -Because 'the bundled ghidrust change bumps'
+            $r.Unclassified | Should -Contain 'installer/_shared/new-core.iss'
+        } finally { Pop-Location; Remove-Item -Recurse -Force $repo }
+    }
+
     It 'surfaces a non-conventional commit as a warning, not a bump' {
         $repo = New-TempRepo
         try {

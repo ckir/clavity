@@ -8,7 +8,9 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $MembersJsonPath) { $MembersJsonPath = Join-Path $RepoRoot 'build/members.json' }
 try {
     Assert-RosterMatchesMembers -MembersJsonPath $MembersJsonPath
-    Write-Host "check-roster: OK — release roster == build/members.json member set." -ForegroundColor Green
+    # Second, independent gate: the shared-path map vs what the members' installers actually reference.
+    Assert-SharedMapHealthy -RepoRoot $RepoRoot
+    Write-Host "check-roster: OK — release roster == build/members.json member set; shared-path map matches the installers." -ForegroundColor Green
     exit 0
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red

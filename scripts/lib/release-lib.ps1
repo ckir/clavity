@@ -17,6 +17,126 @@ $script:Members = @(
 )
 function Get-Members { $script:Members }
 
+# --- Path taxonomy: shared-shipping + dev-only (owner-ratified 2026-07-21, agy-recommended) -------------
+# The engine used to attribute a commit to a member by MEMBER-FOLDER pathspec alone, so a commit touching
+# only shared/root paths bumped NOBODY and the run reported a clean "nothing to release" — a SILENT
+# under-bump. It stranded 69ee30f, a fix for plugin registration failing on EVERY install. Now every
+# tracked path falls in exactly one of three buckets:
+#   member-bound     '<Root>/...'   -> that member, implicitly (unchanged)
+#   shared-shipping  $SharedPaths   -> the DECLARED dependent member set below
+#   dev-only         $DevOnlyPaths  -> deliberately bumps nobody (CI/docs/tooling)
+# A path in NONE of the three is UNCLASSIFIED and makes the release FAIL LOUDLY (default-deny), so a new
+# top-level path can never again ship as a quiet "nothing to release".
+#
+# DECLARE + PROVE: this table is the source of truth for what bumps (fast, explicit, reviewable), and
+# Assert-SharedMapHealthy below is its auditor — it re-derives each set from the members' own installer
+# sources and fails the build on any disagreement. Declaration alone would rot; derivation alone is blind
+# to files no `#include` mentions (register-plugin.ps1 is shipped by a [Files] `Source:` line and invoked
+# at RUNTIME — a pure #include parser attributes it to nobody, the exact bug class this replaces).
+#
+# `ghidrust` here always means its BINARY channel: every shared asset is an installer asset, and the
+# ghidrust plugin channel versions ghidrust/plugin/** only.
+# Provable=$false marks an asset member installers never name literally, so the grep auditor cannot see it;
+# each carries its own justification and is covered instead by the coverage half of the gate.
+$script:SharedPaths = @(
+    [pscustomobject]@{ Path='installer/_shared/claude-running.iss';        Provable=$true;  Members=@('dotnet','classic','agy-autotrain','commonmemory','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/register-plugin.ps1';       Provable=$true;  Members=@('dotnet','classic','agy-autotrain','commonmemory','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/golden-header-data.iss';    Provable=$true;  Members=@('dotnet','classic','agy-autotrain') }
+    [pscustomobject]@{ Path='installer/_shared/register-invoke.iss';       Provable=$true;  Members=@('classic','agy-autotrain','commonmemory','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/register-plugin-hash.iss';  Provable=$true;  Members=@('classic','agy-autotrain','commonmemory','ghidrust') }
+    [pscustomobject]@{ Path='installer/_shared/path-scan.iss';             Provable=$true;  Members=@('classic') }
+    [pscustomobject]@{ Path='seed/golden-header.md';                       Provable=$true;  Members=@('dotnet','classic') }
+    # Not named by any installer: scripts/generate-scoped-manifest.ps1 reads it and GENERATES each member's
+    # scoped 1-entry marketplace.json, so an edit here changes what every member ships.
+    [pscustomobject]@{ Path='build/members.json';                          Provable=$false; Members=@('dotnet','classic','agy-autotrain','commonmemory','ghidrust') }
+)
+function Get-SharedPaths { $script:SharedPaths }
+
+# Shared paths that ship into member $Key (its extra release pathspecs).
+function Get-SharedPathsFor([string]$Key) {
+    @($script:SharedPaths | Where-Object { $Key -in $_.Members } | ForEach-Object { $_.Path })
+}
+
+# Deliberately versionless: developer/CI surface that reaches no end-user artifact. Prefixes ending in '/'
+# match a subtree; the rest are exact repo-root files. Membership is checked ONLY after member-bound and
+# shared-shipping have had their say, so listing a prefix here can never mask a real bump.
+$script:DevOnlyPaths = @(
+    'scripts/', '.github/', 'docs/', '.claude/', '.vscode/', '.worktrees/',
+    '.antigravityignore', '.gitattributes', '.gitignore', '.mlc.toml',
+    'CLAUDE.md', 'CODE_OF_CONDUCT.md', 'CONTRIBUTING.md', 'DevelopersCockpit.ps1',
+    'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'justfile', 'lefthook.yml'
+)
+function Get-DevOnlyPaths { $script:DevOnlyPaths }
+
+function Test-DevOnlyPath([string]$Path) {
+    $p = $Path -replace '\\', '/'
+    foreach ($d in $script:DevOnlyPaths) {
+        if ($d.EndsWith('/')) { if ($p.StartsWith($d)) { return $true } }
+        elseif ($p -eq $d)    { return $true }
+    }
+    return $false
+}
+
+# Classify one tracked path. Returns 'member' | 'shared' | 'dev-only' | 'unclassified'.
+function Get-PathBucket([string]$Path) {
+    $p = $Path -replace '\\', '/'
+    foreach ($m in Get-Members) { if ($p.StartsWith(($m.Root + '/'))) { return 'member' } }
+    foreach ($s in $script:SharedPaths) { if ($p -eq $s.Path) { return 'shared' } }
+    if (Test-DevOnlyPath $p) { return 'dev-only' }
+    return 'unclassified'
+}
+
+# The AUDITOR for $SharedPaths — the "prove" half of declare+prove, mirroring Assert-RosterMatchesMembers.
+# Two independent failures:
+#   COVERAGE  every tracked file under a shared asset root must be declared. Catches a NEW shared file that
+#             would otherwise be unclassified-at-release-time (loud, but late).
+#   USAGE     for each Provable entry, the declared member set must EQUAL the set derived by searching the
+#             asset's literal BASENAME across each member's own installer sources. Catches the real rot: a
+#             member starts (or stops) using a shared asset and nobody updates the table.
+# Basename search, deliberately NOT an Inno parser: `#include`, `Source:` and a runtime invocation are three
+# different syntaxes for the same dependency, and a parser that understands only the first is how
+# register-plugin.ps1 came to belong to nobody. It over-matches — naming a shared file in a COMMENT counts
+# as a dependency — which errs toward over-bumping (safe) and is fixed by not name-dropping shared files in
+# member installers. Known blind spot: a wildcard Source: (`_shared\*.ps1`) names no basename, so shared
+# assets must be shipped by explicit filename.
+function Assert-SharedMapHealthy([string]$RepoRoot) {
+    $problems = @()
+    $roots = @('installer/_shared', 'seed')
+
+    $tracked = @(git -C $RepoRoot ls-files -- @roots | ForEach-Object { $_.Trim() -replace '\\', '/' } | Where-Object { $_ })
+    if ($tracked.Count -eq 0) { throw "check-shared-map: found no tracked files under $($roots -join ', ') - wrong -RepoRoot?" }
+    $declared = @($script:SharedPaths | ForEach-Object { $_.Path })
+    foreach ($f in $tracked) {
+        if ($f -notin $declared) { $problems += "shared asset '$f' is not declared in `$SharedPaths (add it with the members that ship it)" }
+    }
+    foreach ($d in $declared) {
+        if (-not (Test-Path (Join-Path $RepoRoot $d))) { $problems += "declared shared path '$d' does not exist (renamed or removed? update `$SharedPaths)" }
+    }
+
+    foreach ($s in ($script:SharedPaths | Where-Object { $_.Provable })) {
+        $base = Split-Path $s.Path -Leaf
+        $derived = @()
+        foreach ($m in Get-Members) {
+            $dir = Join-Path $RepoRoot (Join-Path $m.Root 'installer')
+            if (-not (Test-Path $dir)) { continue }
+            # Text sources only. An installer folder legitimately holds binaries (.ico/.exe/.dll) and
+            # slurping one with Get-Content -Raw is at best slow and at worst an encoding throw — so a
+            # binary would fail the gate for a reason having nothing to do with the map. Shared assets are
+            # declared in .iss (#include / Source:) or invoked from .ps1; nothing else declares one.
+            $hit = @(Get-ChildItem -Path $dir -Recurse -File -Include '*.iss','*.ps1' | Where-Object {
+                (Get-Content -Raw -LiteralPath $_.FullName) -like ('*' + $base + '*')
+            })
+            if ($hit.Count) { $derived += $m.Key }
+        }
+        $extra   = @($s.Members | Where-Object { $_ -notin $derived })
+        $missing = @($derived   | Where-Object { $_ -notin $s.Members })
+        if ($extra.Count)   { $problems += "'$($s.Path)': declared for [$($extra -join ', ')] but no installer source names it - stale entry, or the member dropped it" }
+        if ($missing.Count) { $problems += "'$($s.Path)': [$($missing -join ', ')] name it in their installer but are NOT declared - they would silently miss this bump" }
+    }
+
+    if ($problems.Count) { throw ("check-shared-map: the shared-path map disagrees with the members' installers.`n  " + ($problems -join "`n  ")) }
+}
+
 # Baseline = last `chore(release): clavity-v*` commit (subject-anchored). --basic-regexp forces BRE
 # regardless of the user's grep.patternType (^ anchors to line start; () are literal) — FI1'.
 # Match INSIDE the ForEach so $Matches is set in the same scope it is read (plan-review R1: relying on
@@ -146,22 +266,28 @@ function Get-GhidrustChannel([string]$path) {
     return $null
 }
 
-# For a ghidrust channel, return subjects of commits in $Range that touch that channel's paths.
-function Get-ChannelSubjects([string]$Range, [string]$Channel, [string]$RepoRoot) {
+# For a ghidrust channel, return {Sha, Subject} for commits in $Range that touch that channel's paths.
+# Sha (not just the subject) so the caller can UNION this with the shared-path sweep and de-duplicate a
+# commit that touches both, without two same-subject commits collapsing into one.
+function Get-ChannelRecords([string]$Range, [string]$Channel, [string]$RepoRoot) {
     # MUST Out-String first (plan-review R1): git log is a string[]; splitting the array on the %x1e record
     # separator directly detaches each commit's subject from its following --name-only file lines, so the
     # channel attribution silently finds no files and ghidrust never bumps. Join to one string first.
-    $raw = (git -C $RepoRoot log $Range --format='%x1e%s%x00' --name-only -- 'ghidrust/' 2>$null | Out-String)
+    $raw = (git -C $RepoRoot log $Range --format='%x1e%H%x1f%s%x00' --name-only -- 'ghidrust/' 2>$null | Out-String)
     if (-not $raw) { return @() }
-    $subjects = @()
+    $records = @()
     foreach ($rec in ($raw -split "`u{1e}" | Where-Object { $_ -ne '' })) {
         $parts = $rec -split "`0", 2
-        $subject = $parts[0].Trim()
+        $head  = $parts[0] -split "`u{1f}", 2
+        if ($head.Count -lt 2) { continue }
+        $sha = $head[0].Trim(); $subject = $head[1].Trim()
         $files = @()
         if ($parts.Count -gt 1) { $files = @($parts[1] -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }) }
-        foreach ($f in $files) { if ((Get-GhidrustChannel $f) -eq $Channel) { $subjects += $subject; break } }
+        foreach ($f in $files) {
+            if ((Get-GhidrustChannel $f) -eq $Channel) { $records += [pscustomobject]@{ Sha=$sha; Subject=$subject }; break }
+        }
     }
-    return $subjects
+    return $records
 }
 
 # CC2 drift gate (option C): the release roster ($Members.Marketplace) MUST equal, as a SET, the member

@@ -34,7 +34,17 @@ if ($lastRel) {
 
 # --- Compute ---
 $r = & (Join-Path $PSScriptRoot 'compute-release.ps1')
-if ($r.Nothing) { Write-Host "release: nothing to release." -ForegroundColor Yellow; exit 0 }
+# An UNCLASSIFIED path means the engine has no idea who owns a change — the silent under-bump that stranded
+# the 69ee30f registration fix. Refuse unconditionally, NOT merely when there is nothing else to release:
+# an undeclared shared asset committed alongside any member-scoped change still produces a bump, and gating
+# on `Nothing` would let it through on a warning (agy adversarial review, 2026-07-21). A genuinely dev-only
+# range is classified, so this still can't cry wolf.
+if ($r.Unclassified.Count) {
+    Write-Host "release: these touched paths are UNCLASSIFIED — nobody would be versioned for them:" -ForegroundColor Red
+    foreach ($p in $r.Unclassified) { Write-Host "  $p" -ForegroundColor Red }
+    Die "refusing to release. Classify each path in scripts/lib/release-lib.ps1: `$SharedPaths (it ships to members) or `$DevOnlyPaths (it reaches no end user)."
+}
+if ($r.Nothing) { Write-Host "release: nothing to release (dev-only changes)." -ForegroundColor Yellow; exit 0 }
 
 # --- Non-conventional warning (F4) ---
 if ($r.NonConventional.Count) {
