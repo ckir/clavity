@@ -67,6 +67,23 @@ public sealed class CliVerbsTests : IDisposable
     }
 
     [Fact]
+    public void CurateCommit_refuses_a_sequence_truncated_at_end_of_stream()
+    {
+        // "abc" followed by the first TWO bytes of a three-byte em dash (E2 80 94) — exactly what a pipe
+        // that dies mid-character delivers. The dangling bytes are only detectable when the decoder is
+        // FLUSHED at EOF; a decoder that is never flushed drops them and commits a silently truncated
+        // header, which is the same class of undetectable corruption this verb exists to prevent (the
+        // .sha256 sidecar would happily vouch for the truncated bytes). StreamReader does flush at EOF —
+        // measured, not assumed — so this pins behaviour that is real but entirely non-obvious, and that a
+        // refactor to a hand-rolled decode loop would silently lose.
+        var error = new StringWriter();
+
+        Assert.Equal(2, CliVerbs.CurateCommit(_dir, new MemoryStream([0x61, 0x62, 0x63, 0xE2, 0x80]), error));
+        Assert.False(File.Exists(GoldenHeader.GrowthPath(_dir)));
+        Assert.Contains("not valid UTF-8", error.ToString());
+    }
+
+    [Fact]
     public void CurateCommit_does_not_switch_codec_on_a_utf16_bom()
     {
         // BOM detection is off deliberately: a UTF-16 BOM must NOT re-codec the stream, mirroring the sidecar
@@ -83,6 +100,9 @@ public sealed class CliVerbsTests : IDisposable
     {
         // leaveOpen: true — Program.cs owns the standard input stream and disposes it via its own `using`.
         // A StreamReader that disposed the caller's stream would be a silent ownership violation.
+        // This pins NON-DISPOSAL only. It deliberately does not assert the stream's position: the reader
+        // buffers ahead, so the cursor on return is past what was decoded. "Still disposable by its owner"
+        // is the contract; "still readable from where the verb stopped" is not.
         var stream = Utf8("growth\n");
 
         Assert.Equal(0, CliVerbs.CurateCommit(_dir, stream, new StringWriter()));

@@ -20,9 +20,17 @@ public static class CliVerbs
     /// downstream can catch that — mojibake is still perfectly valid UTF-8, so the .sha256 sidecar hashes the
     /// corrupt bytes happily and <see cref="GoldenHeader"/>'s strict read-side decode accepts them. Decoding
     /// correctly HERE is the only defence, so no caller is given the chance to supply its own reader.
-    /// Mirrors classic's <c>curate_commit</c> (clavity-classic/src/main.rs), which likewise takes raw bytes and
-    /// validates them itself. NOTE the one deliberate divergence: classic caps BYTES as it reads, while this
-    /// caps CHARS at read and byte-count at commit. Both refuse the same inputs; only the message differs.
+    /// Mirrors classic's <c>curate_commit</c> (clavity-classic/src/main.rs:690), which likewise takes raw bytes
+    /// and validates them itself. Two divergences, both deliberate and neither affecting WHICH inputs are
+    /// accepted: (1) classic caps BYTES as it reads, while this caps CHARS at read and byte-count at commit;
+    /// (2) the two variants number their non-zero exit codes oppositely — classic returns 1 for over-cap and
+    /// non-UTF-8 input and 2 for an IO failure, this returns 2 for bad input and 1 for an IO failure. The
+    /// accept/reject SET is identical, so any caller testing zero-vs-non-zero is unaffected; no caller in this
+    /// repo branches on the specific code (agy-curate/SKILL.md:167-172 just runs the verb). Unifying them
+    /// would change a shipped CLI contract in one variant or the other, which is not worth doing while
+    /// nothing reads the codes. The trigger to resolve it is concrete: the FIRST time any caller branches on
+    /// a specific non-zero code, unify both variants on THIS scheme (2 = bad input, 1 = environmental
+    /// failure) and say so in agy-curate/SKILL.md, which currently calls the two variants "identical".
     /// </para>
     /// </summary>
     public static int CurateCommit(string dir, Stream stdin, TextWriter error)
@@ -36,7 +44,12 @@ public static class CliVerbs
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
             detectEncodingFromByteOrderMarks: false,
             bufferSize: -1,
-            leaveOpen: true);   // the caller owns the stream it handed us (Program.cs disposes stdin itself).
+            // leaveOpen so the reader does not dispose a stream it does not own (Program.cs disposes stdin
+            // itself). It does NOT make the stream reusable: StreamReader buffers ahead, so on return the
+            // underlying stream is positioned past what was actually decoded, and any bytes still sitting in
+            // the reader's buffer are gone. A caller that read on after this would silently skip input — so
+            // the contract is "yours to dispose", not "yours to keep reading".
+            leaveOpen: true);
 
         // Bounded read: at most MaxBytes+1 chars, so input can never balloon memory before the cap check.
         var buffer = new char[GoldenHeader.MaxBytes + 1];
