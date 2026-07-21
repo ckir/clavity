@@ -258,10 +258,30 @@ wrong, the oracle wins — surface the conflict rather than editing the test.
 
 **T4b supersedes a backlog item — `docs/backlog/golden-header-per-ask-token-optimization.md`.**
 That stub (raised 2026-07-11, never started) proposes injecting the header only on the FIRST ask of a
-conversation, and measures the current cost: the ~16 KB / ~4k-token header is re-read and re-prepended
-on every ask in both variants, so a 20-ask conversation accumulates roughly **80k tokens of repeated
-header** in the peer's context. T4b is a strictly stronger version of that proposal — no peer injection
-at all — so it captures the whole saving. This gives T4 a concrete, measured benefit it otherwise lacks.
+conversation. T4b is a strictly stronger version of that proposal — no peer injection at all — so it
+captures the whole saving. This gives T4 a concrete benefit it otherwise lacks.
+
+**State the saving as a BILLED model, not a context-size snapshot.** The stub's headline number — a
+20-ask conversation "accumulates roughly 80k tokens of repeated header" — is the count of copies
+sitting in the peer's context at turn 20 (20 × ~4k), which understates the case by describing storage
+rather than spend. With `N` asks and a header of `H`:
+
+| | copies in history at turn *k* | cumulative billed |
+|---|---|---|
+| today (per-ask injection into the peer) | *k* | ≈ H·N²/2 |
+| after T4b (once per process into the driver) | 1 | ≈ H·N |
+
+The change is **quadratic → linear**, and the gap widens with session length. Nothing dedupes the
+per-ask copies; each prepended header is a distinct permanent block in the peer's context.
+
+*This survived a direct challenge, recorded because it is the epic's load-bearing justification.* The
+round-9 panel argued the saving is "a false accounting trick — the bill is just transferred from one
+LLM to the other", since the header lands in the driver's context and is resubmitted every turn. That
+is true of the *linear* term and misses the quadratic one: the driver receives exactly one copy
+(`TryTakeGuidanceBlock` is once-per-process), while the peer accumulates a growing stack. Put to the
+panel as arithmetic, the challenge was withdrawn. **The epic does not rest on cost alone** — the
+correctness argument below (routing by audience rather than by subject) stands independently — but the
+token saving is real and structural, not an illusion.
 
 It also **inherits the stub's load-bearing caveat, in a more extreme form.** The stub warns that
 per-turn re-injection may be functioning as deliberate reinforcement against peer context drift, and
@@ -332,6 +352,13 @@ exactly how the gap survived four rounds. Four conditions, all required:
    and asserts the block is present in the returned `CallToolResult`. That covers the real gap — the
    function-returns-it-but-nobody-forwards-it failure — without requiring a protocol sniffer. If a
    genuine wire capture is wanted on top, it is a nice-to-have, not the gate.
+   ⚠️ **This condition names a C#-only entry point, which would leave the RUST half of the split
+   ungated on its primary intent** — round-9 panel, Completeness Critic. Constraint 4 requires both
+   variants to land together precisely so one curated file cannot drive different behaviour per running
+   server, and an oracle that only exercises one variant cannot enforce that. T4b must name the
+   equivalent Rust delivery entry point and assert the same property there. If the Rust variant has no
+   comparable seam, that asymmetry is itself a finding to surface before implementing, not to discover
+   afterwards.
 3. **Both variants, same curated file, same observable outcome.** This is constraint 4 made checkable:
    run the same `growth.md` through the C# and Rust code paths and diff what each sends the peer.
    Same reachability rule as condition 2 — compare at the highest level both variants expose.
@@ -372,8 +399,18 @@ had gone unnamed. This spec already establishes two things that sit badly togeth
 
 So the spec warns at length against reasoning from the incident to "no anchor is safe", correctly
 identifies that T4b produces the unanchored state, and then never says how the peer is supposed to
-operate in it. That is a hole in the design, not a gap in the sequencing, and T4b must close it before
-implementation. Concretely: does the peer keep a baseline by some other route (a system prompt, a
+operate in it. That is a hole in the design, not a gap in the sequencing.
+
+**T4b is blocked on the DECISION, not made responsible for building an anchoring mechanism** — round-9
+panel, Scope Sentinel, argued that loading "is the peer a stateless worker?" onto a routing change is
+scope creep, and that is half right. The distinction that resolves it: T4b *creates* the unanchored
+state, so it cannot honestly land while nobody has decided whether that state is intended — and a
+decision gate is cheap. But if the answer comes back "the peer does need a baseline by some other
+route", then **building that route is its own task**, sequenced before T4b and explicitly not smuggled
+into it. Contrast the lifecycle gap below, correctly delegated to follow-up: the difference is that
+T4b does not create the lifecycle problem, whereas it does create this one.
+
+Concretely: does the peer keep a baseline by some other route (a system prompt, a
 persistent instruction, a reduced always-on preamble)? Or is "the peer is a stateless worker and the
 driver carries all the wisdom" the actual intended design? **The second is a defensible answer — but it
 has to be a stated decision, not a side effect of a routing change.**
@@ -423,7 +460,12 @@ uncorrected roadmap entry, so they would ride along unverified.
 
 They stay in the epic — they were verified against the code and should not be lost — but as their own
 task with its own trivial oracle: each of the three edits is made and the claim it corrects is gone.
-T7 is **not** gated on T4b and can run at any point; it is not part of the docs push gate.
+**Item 1 IS gated on T4b; items 2 and 3 are not.** Round-9 panel, Scope Sentinel, and it is a real
+ordering bug in a task created one round earlier: item 1 closes a backlog stub *because T4b supersedes
+it*, so running it early and then abandoning T4b would destroy a live proposal on the strength of work
+that never happened. A stub is only superseded once the thing superseding it exists. Items 2 and 3
+correct claims that are already false today, independent of this epic, and remain unordered. T7 is not
+part of the docs push gate either way.
 
 **The three corrections** (see [Folded from the roadmap](#folded-from-the-roadmap) for the verification
 behind each):
@@ -524,10 +566,13 @@ broken one.
 
 **Back up the corrupt file — ✅ DONE, and deliberately moved to the FRONT of the sequence.**
 Round-3 panel (Blindspot Auditor) required the backup; round-5 panel (Ordering Skeptic) then showed it
-was ordered fatally late as a sub-step of the LAST task. T4b's own work involves exercising the
-over-cap driver-channel path, which means deliberately bloating or editing a local `growth.md` — so the
-old ordering left the single un-backed-up copy exposed across the entire epic. The backup is not a T3
-step; it is a **precondition of the whole sequence**, and it has been performed:
+was ordered fatally late as a sub-step of the LAST task. Round-9 panel (Contradiction Hunter) caught
+that this paragraph still carried the *original* reason — "T4b deliberately bloats a local `growth.md`,
+leaving the only copy exposed" — after a later fold bound that test to a scratch directory and
+falsified it. The corrected reason matches the sequence section: **defence in depth, because the
+scratch-directory rule is a rule and rules get forgotten**, not a claim that a specific step will
+damage the file. The backup is not a T3 step; it is a **precondition of the whole sequence**, and it
+has been performed:
 
     ~/.clavity/golden-header.growth.md.corrupt-backup-2026-07-21          (4,755 B, byte-identical)
     ~/.clavity/golden-header.growth.md.sha256.corrupt-backup-2026-07-21
