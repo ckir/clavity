@@ -34,9 +34,24 @@ Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: 
 ; silently replaces a user's accumulated observations with the shipped template — destroying the exact
 ; knowledge this plugin exists to collect, with no warning and no backup. A fresh install still gets the
 ; template; an upgrade leaves the live inbox alone. Verified 2026-07-20 against a real box holding 23
-; uncurated entries. Excludes matches on FILENAME (no path separator), so it applies wherever the file sits.
+; uncurated entries.
+;
+; Note the two DELIBERATELY DIFFERENT exclude forms below, because the difference is load-bearing:
+;   * A pattern with NO path separator matches at ANY DEPTH — and against DIRECTORY names as well as file
+;     names. `agy-observations.md` uses that form ON PURPOSE, so the inbox is protected from the blanket
+;     `ignoreversion` copy wherever in the plugin tree it lives, now or after any future reorganisation.
+;   * A pattern with a LEADING BACKSLASH is anchored to the Source root. The three dev folders use that
+;     form because the any-depth behaviour is a hazard for them: unanchored, `installer` would silently
+;     strip a future subdirectory of that name ANYWHERE in the tree — e.g. a skill with an `installer\`
+;     folder — and the file dropped that way is simply absent from the payload, with no build error.
+;     That exact mistake shipped a bug in the sibling commonmemory installer: an unanchored
+;     `.claude-plugin` entry matched the DIRECTORY and dropped its plugin.json, so upgrades could not
+;     overwrite a stale manifest. Anchored, these three only ever mean the top-level folders they name.
+; No [InstallDelete] tombstone is needed here: no file has ever been REMOVED from this payload.
+; agy-observations.md moved between Source lines (blanket copy -> onlyifdoesntexist) but still ships, and
+; deleting it is precisely the data loss the split below exists to prevent.
 Source: "..\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs; \
-  Excludes: "installer,dist,publish,agy-observations.md"
+  Excludes: "\installer,\dist,\publish,agy-observations.md"
 ; uninsneveruninstall as well as onlyifdoesntexist: without it the uninstaller deletes this file like any
 ; other installed file, so a KEEP-DATA uninstall would preserve growth.md (which lives outside the app dir)
 ; while silently destroying the pending inbox — the same asymmetry the growth.md handling below exists to
