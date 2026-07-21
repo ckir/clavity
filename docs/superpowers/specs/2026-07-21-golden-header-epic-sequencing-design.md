@@ -329,6 +329,13 @@ exactly how the gap survived four rounds. Four conditions, all required:
    Same reachability rule as condition 2 — compare at the highest level both variants expose.
 4. **The over-cap path does not silently substitute.** Feed a deliberately over-cap header and confirm
    the failure is loud and does NOT inject `BaselineFloor` in the header's place (question 4 above).
+   **"Loud" means OBSERVABLE, not FATAL — and T4b must not brick the tool to satisfy this.** Round-7
+   panel, Completeness Critic. Today's over-cap behaviour is silent degradation: the region is skipped
+   with a warning (`GoldenHeader.cs` `TryReadFile`, `golden_header.rs:104-110`) and the ask proceeds.
+   If T4b reads "loud" as "throw", then the first user whose accumulated GROWTH crosses the cap loses
+   `agy_ask` entirely until they hand-edit a file they were never told about. That is a worse outcome
+   than the defect being fixed. The target is: the operator can tell it happened, and the ask still
+   completes with the region omitted.
    ⚠️ **Run this against a SCRATCH directory via `CLAVITY_GOLDEN_HEADER`, never the live
    `~/.clavity`.** Round-6 panel, Ordering Skeptic, and it caught a real sequencing collision: this
    condition requires deliberately bloating a `growth.md`, while T3 later repairs the live one and
@@ -336,6 +343,20 @@ exactly how the gap survived four rounds. Four conditions, all required:
    fails by construction. `GoldenHeader.ResolveDir` (`GoldenHeader.cs:32-35`) honours the env override
    precisely so this kind of test never touches real user data — use it. That also removes any need for
    a restore step between T4b and T3.
+
+**Open gap this spec does NOT close — the corpus has no lifecycle policy.** Round-7 panel, Completeness
+Critic, and it is the one thing a reader finishes this document still not knowing. GROWTH accumulates
+by design: every drain adds observations, and `agy-curate` regenerates the region wholesale from the
+inbox plus what it carries forward. Nothing in the pipeline or in this spec ever *removes* anything.
+The cap is therefore not a safety margin, it is a deadline — a sufficiently active user reaches it, and
+at that point the corpus stops growing usefully whatever the failure mode.
+
+This is out of scope for T4b, which is a routing change, and it is deliberately NOT smuggled in here.
+But it must be named rather than discovered later: **the epic makes it more urgent, because T4b raises
+the driver-channel cap and thereby moves the binding constraint around.** The missing pieces are a
+retention/pruning rule (what ages out, and on what evidence), a size discipline in the curator's
+promotion rubric, and a defined behaviour for the user who is already over. Track it as follow-up work
+with a real owner; do not let "the cap is bigger now" pass for having solved it.
 
 **Non-goal.** T4b does not change the curation pipeline's routing by SUBJECT (about-the-driver vs
 about-agy), which already exists at `agy-curate/SKILL.md:107-109`. The gap being closed is that the
