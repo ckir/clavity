@@ -203,6 +203,16 @@ absent file passed a value comparison vacuously; here, an absent *value* does.
 to install each member already, which would make this an assertion added to an existing install
 step rather than new infrastructure. This has not been confirmed by reading them.
 
+**Confirm they INSTALL, not merely BUILD — and confirm the install is unattended.** Round-4 panel,
+Activation Auditor. The assumption above is load-bearing in a way the wording understates: this whole
+task asserts against `{app}`, a path that only exists if an installer actually ran. If the workflows
+only compile `.iss` files into `dist/`, then `{app}` is never materialized and the new assertion either
+fails confusingly or — worse, if written defensively — skips itself and reports green. And an Inno
+installer invoked without `/VERYSILENT /SUPPRESSMSGBOXES` will sit on a GUI prompt no one can see,
+hanging the job until it times out. So the planning step has three questions, not one: do the workflows
+run the installer at all, do they pass unattended flags, and does the resulting `{app}` path match what
+the assertion will read? Answer all three by reading the files before writing a line of the gate.
+
 ### T4a — pin current wire behaviour
 
 **Intent.** Add tests asserting exactly what the peer receives today: the golden header is
@@ -318,10 +328,30 @@ gate passes. Written after T4b so the behaviour being walked through is final.
 3. **Correct roadmap item 2's threat model (golden-header tamper-detection, 7.4).** As written it is
    false in a way that would misdesign the feature.
 
-### T3 — regenerate the corrupt GROWTH region
+### T3 — repair the corrupt GROWTH region
 
-**Intent.** Re-drain `~/.clavity/golden-header.growth.md`, which currently holds mojibake
+**Intent.** Repair `~/.clavity/golden-header.growth.md`, which currently holds mojibake
 (`ΓÇö` where an em dash belongs). The code fix does not repair an already-corrupt file.
+
+⚠️ **"Re-drain" is the WRONG verb, and the round-4 panel was right to reject it.** This spec previously
+said re-drain, which implies the content is regenerated from an upstream source. **There is no upstream
+source.** `agy-curate/SKILL.md:194-195` ends every drain with "**Empty the inbox** — reset `## Pending`
+to empty", so the observations that compiled into today's GROWTH are gone. The corrupt `growth.md` is
+the **only surviving copy of its own content**. A cold successor following the old wording would run the
+drain against an empty inbox and confidently overwrite the only copy with near-nothing.
+
+**What actually repairs it.** GROWTH is "regenerated wholesale each run" (`SKILL.md:165`), and prior
+rules survive that regeneration only because the curator *reads the existing GROWTH and carries them
+forward* — that is precisely what the **reinforce** disposition means (`SKILL.md:113`: "already carried
+by a prior GROWTH run … keep the strongest phrasing when you recompile"). So the repair is a **curate
+pass that takes the corrupt file as its carry-forward input and fixes the mojibake at the CONTENT level
+while recompiling**, then commits through the fixed binary. This works because the damage is
+human-legible and mechanically reversible: `ΓÇö` is unambiguously an em dash, `ΓÜá∩╕Å` a warning emoji,
+`ΓåÆ` an arrow, `Γëñ`/`Γëá` the ≤ and ≠ signs. Nothing is lost — it is mis-decoded, not missing.
+
+**The decoder fix is a precondition, not the repair.** `0470832` stops the commit path creating *new*
+mojibake. It does not touch bytes already on disk. Both halves are required: repair the content, and
+write it through a binary that will not re-mangle it on the way out.
 
 **Precondition — an explicit MANUAL step, not something the sequence performs.** The released, fixed
 `clavity-dotnet` must be **installed**, so that `clavity-ls` on `PATH` carries the strict-UTF-8 decoder.
@@ -349,14 +379,20 @@ only artifact carrying the content it was meant to save. Copy it aside first. Th
 what makes condition 3 below a check you can act on rather than an epitaph.
 
 **Completion oracle.** Three conditions, all required:
-1. **Zero occurrences of U+0393** (GREEK CAPITAL LETTER GAMMA, UTF-8 `CE 93`) in
-   `golden-header.growth.md`. This is the exact, scannable signature: every CP437 mojibake family in
-   the currently-corrupt file leads with it — `ΓÇö` (em dash, **15 occurrences**), `ΓÜá∩╕Å` (warning
-   emoji), `ΓåÆ` (→), `Γëñ` (≤), `Γëá` (≠). Scanning for one codepoint covers all of them, where
-   scanning for `ΓÇö` alone would pass a file still carrying the other four.
-   ⚠️ This is a content-specific heuristic, not a general encoding check: it is safe only because a
-   literal Γ has no legitimate place in this English-language driving corpus. If a curated entry ever
-   legitimately contains Γ, this condition must be replaced rather than loosened.
+1. **Every U+0393 sequence present in the BACKUP is absent from the repaired file** — a one-shot
+   comparison against the pre-repair copy, NOT a standing invariant on the file.
+   The signature is exact and scannable: every CP437 mojibake family in the currently-corrupt file leads
+   with U+0393 (GREEK CAPITAL LETTER GAMMA, UTF-8 `CE 93`) — `ΓÇö` (em dash, **15 occurrences**),
+   `ΓÜá∩╕Å` (warning emoji), `ΓåÆ` (→), `Γëñ` (≤), `Γëá` (≠). Scanning for the one lead codepoint covers
+   all five, where scanning for `ΓÇö` alone would pass a file still carrying the other four.
+   ⚠️ **Why it must be scoped to the backup diff rather than written as "zero Γ in the file".** Round-4
+   panel, Regression Archaeologist, and the finding is sharp: this spec is read by the same agent that
+   curates the corpus, and the corpus is an accumulating memory of observed defects. An observation
+   about *this very bug* — "the CP437 defect produced Γ-led sequences" — is exactly the kind of entry
+   the loop is designed to capture, and curating it would legitimately introduce Γ into GROWTH. A
+   standing "zero Γ" gate would then fail forever, by the system working as intended. Anchoring the
+   check to "what the backup contained" makes it a repair verification with a fixed reference, which
+   cannot be invalidated by later legitimate content.
 2. Its `.sha256` sidecar verifies against the file.
 3. **Content retention** — assert the repaired file's top-level bullet count is greater than or equal
    to the pre-drain count, AND that at least one named, known-stable entry survives verbatim. Capture
