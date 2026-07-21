@@ -86,6 +86,35 @@ jobs:
           if ($manifest.plugins[0].source -ne './plugins/commonmemory') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
           if (-not (Test-Path "$app\plugins\commonmemory\skills\commonmemory\SKILL.md")) { throw "plugin content not staged" }
 
+          # T5 - installed-tree manifest parity. This member is why the gate exists: an unanchored
+          # Excludes entry once matched the .claude-plugin DIRECTORY and dropped plugin.json from the
+          # payload, so a fresh install had no manifest and an upgrade kept a stale one, while every
+          # source-side check passed (fixed at commonmemory/installer/commonmemory.iss:49). Hash
+          # equality, not a version comparison - a version compare passes when a dropped file leaves a
+          # stale manifest whose version did not move this release.
+          # This member's plugin root IS its member root, so the source manifest is not under plugin/.
+          #
+          # NOTE: this gate does NOT structurally validate the source manifest; it relies on the
+          # "Version consistency" step above having ConvertFrom-Json'd it and required a .version key.
+          $srcManifest  = ".claude-plugin/plugin.json"
+          $instManifest = "$app\plugins\commonmemory\.claude-plugin\plugin.json"
+          if (-not (Test-Path $srcManifest -PathType Leaf))  { throw "T5: source manifest missing, or not a file, at $srcManifest - no expected value to compare against" }
+          if (-not (Test-Path $instManifest -PathType Leaf)) { throw "T5 MANIFEST PARITY: $instManifest was not installed as a file (packager dropped .claude-plugin\plugin.json, or shipped a directory of that name)" }
+          $srcHash  = (Get-FileHash $srcManifest  -Algorithm SHA256).Hash
+          # Retry the INSTALLED file only: a real-time scanner can hold a transient read-lock on a file
+          # the installer extracted moments ago. The source file is a plain checkout artifact and is not
+          # subject to that, so it is hashed once above.
+          $instHash = $null
+          foreach ($attempt in 1..5) {
+            try { $instHash = (Get-FileHash $instManifest -Algorithm SHA256).Hash; break }
+            catch {
+              if ($attempt -eq 5) { throw "T5 MANIFEST PARITY: could not read $instManifest after 5 attempts - $($_.Exception.Message)" }
+              Start-Sleep -Milliseconds 400
+            }
+          }
+          if ($srcHash -ne $instHash) { throw "T5 MANIFEST PARITY: installed manifest bytes differ from source (installed=$instHash source=$srcHash) - stale or rewritten plugin.json" }
+          Write-Host "[T5] installed manifest parity OK ($instHash)"
+
           $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
           Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
           $deadline = (Get-Date).AddSeconds(30)
