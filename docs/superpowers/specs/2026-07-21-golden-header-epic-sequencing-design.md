@@ -34,9 +34,20 @@ A four-round adversarial panel closed GREEN on all of the above. The remaining w
    means. But two independent challenges to one decision is signal, not noise, and the honest statement
    of the tension is this: **the owner's constraint makes criterion 5 the one criterion this sequence
    deliberately sacrifices.** A legitimate choice, made with the cost visible. The re-examination
-   trigger is concrete rather than a vibe: **if T4-0 returns answer (b)** — the driver channel cannot
+   trigger was concrete rather than a vibe: **if T4-0 returns answer (b)** — the driver channel cannot
    carry the header — **the epic has materially grown and the split must be reconsidered**, because the
    decision was taken against a smaller T4 than would then exist.
+
+   **RESOLVED. The trigger fired, the decision was re-opened, and the constraint was re-confirmed.**
+   T4-0 returned a qualified (b): the channel cannot carry the header as it stands, but the remedy is
+   three scoped edits (see [T4-0 result](#t4-0--feasibility-spike-run-and-resolved)), not a new-channel
+   design. So the premise behind the re-examination trigger — "the epic just got materially larger" —
+   turned out to be false, and the single-release constraint now rests on stronger evidence than when it
+   was first taken. Two further findings from the re-open, both measured, are recorded because they
+   bear on the sequence rather than on the release: **T6 does not gate the six unpushed commits** (no
+   doc surface documents anything they change), and **T4 does not make the corrupt `growth.md` moot** —
+   `GoldenHeader.cs:159` reads it regardless of audience, so T4 changes the file's consumer, not its
+   corruption. This fork is closed; do not re-open it without new evidence.
 2. **User-facing docs (T6) are a hard gate before any push.**
 3. **T4 pins current behaviour before changing it** (T4a/T4b below), rather than writing only
    post-change assertions.
@@ -46,28 +57,85 @@ A four-round adversarial panel closed GREEN on all of the above. The remaining w
 ## The sequence
 
 ```
-T4-0  →  T5  →  T4a  →  T4b  →  T6  →  RELEASE  →  T3
-(spike)
+T4-0  →  T5  →  T4a  →  T4b  →  T6  →  RELEASE  →  ⏸ install  →  T3
+(done)                                                (manual)
 ```
 
-### T4-0 — feasibility spike (added after panel round 1)
+**The sequence is not required to be linear.** Pausing between steps to run a one-off task by hand —
+installing a release, invoking a verb from a local build, fixing up state — is an intended and
+supported way to execute this, not a deviation from it. The `⏸ install` step above is the one such
+pause the sequence *depends* on: see [T3's precondition](#t3--regenerate-the-corrupt-growth-region)
+for why a released-but-not-installed binary silently re-corrupts the file.
 
-**This runs before anything else, and it can invalidate the rest of the sequence.**
+### T4-0 — feasibility spike (RUN AND RESOLVED)
 
-Determine whether the driver channel can physically carry the golden header. `GoldenHeader.MaxBytes`
-is **16 KB**; the `[driver_guidance]` block is described in the knowledge-delivery design as a
-**≤150-token nudge**. If that figure is accurate, "route SEED+GROWTH to the driver channel" is not a
-routing change — it is a new-channel design, and T4b is a different size of task than this spec
-assumes.
-
-The panel's Cascade Analyst raised this as a blocking feasibility threat rather than a deferrable open
-question, and that is correct: placing T4b on the critical path of a blocked release without first
+This ran before anything else, because it could have invalidated the rest of the sequence. It did not.
+The panel's Cascade Analyst raised it as a blocking feasibility threat rather than a deferrable open
+question, and that was correct — placing T4b on the critical path of a blocked release without first
 validating a basic physical constraint is how a sequence compounds a delay instead of absorbing one.
 
-**Timebox and output.** Read the knowledge-delivery design and `DriverCheatsheet.cs`, confirm or refute
-the ≤150-token figure, and produce one of two answers: (a) the channel carries it, T4b proceeds as
-specified; or (b) it does not, and T4b is re-scoped — at which point the single-release decision should
-be re-examined, because the epic just got materially larger.
+**The spike's own premise was wrong.** The `[driver_guidance]` block was described as a **≤150-token
+nudge**; that figure describes the *content* of the baseline floor, not any cap. The channel's real
+mechanical cap is **4 KB** — `DriverCheatsheet.MaxBytes` (`clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs`)
+and `driver_cheatsheet::MAX_BYTES` (`clavity-classic/src/driver_cheatsheet.rs:8`), the two variants
+agreeing. The gap is therefore 1.67×, not the two orders of magnitude this spec assumed.
+
+**Measured** (`%USERPROFILE%\.clavity`): `golden-header.seed.md` 2,067 B + `golden-header.growth.md`
+4,755 B = **6,822 B** of header against a **4,096 B** channel cap. `driver-cheatsheet.md` is 1,139 B
+today. `GoldenHeader.MaxBytes` is 16 KB, applied per region (`golden_header.rs:104`).
+
+**Answer: a qualified (b).** The channel cannot carry the header as it stands — it is already 1.67×
+over, and GROWTH grows by design, so it will not start fitting. But the remedy is bounded, and T4b
+remains a routing change rather than a new-channel design. Three questions T4b must answer:
+
+1. **Raise the cap in lockstep across both variants — and NOT to 16 KB.** The obvious-looking answer is
+   wrong. `MaxBytes` is enforced **per region**, not on the composition: `try_read_file` applies it once
+   for SEED and once for GROWTH (`golden_header.rs:104`, called per file), so a fully-loaded composed
+   header is bounded at **32 KB**, before `EscalationIndex` is appended at `AgyView.cs:131-132`. A 16 KB
+   driver cap would therefore be under-sized by more than 2× at the worst case while looking, in the
+   diff, like it matched. Derive the value from the composition bound, and write the derivation into a
+   comment beside the constant so the next person does not re-make this mistake.
+   ⚠️ **The 6,822 B figure from T4-0 must NOT be used to size this.** It is one measurement from the
+   maintainer's box; `growth.md` is per-user accumulated data, so a heavier user's file is larger and a
+   fresh install's is near-empty. Size against the enforced bound, never the observed sample.
+   ⚠️ **Nothing today asserts the two constants are equal.** `DriverCheatsheet.MaxBytes` (C#) and
+   `driver_cheatsheet::MAX_BYTES` (`driver_cheatsheet.rs:8`) are independent literals with no
+   cross-variant parity test — the existing parity test at `driver_cheatsheet.rs:101-107` covers the
+   baseline *text*, not the cap. Raising one and forgetting the other produces exactly the
+   one-file-two-behaviours failure that constraint 4 exists to prevent, and it fails silently. Add the
+   parity assertion as part of this change, not after it.
+2. **Replace the over-cap failure mode — this is the spike's real finding, and it is not about size.**
+   `DriverCheatsheet.Read` handles over-cap by returning `BaselineFloor` with only a warning (Rust:
+   `driver_cheatsheet.rs:22-24`, pinned by a test at `:82-83`). Today that is benign, because the file
+   is a small static cheatsheet and the baseline is a reasonable stand-in for it. Once this channel
+   carries GROWTH, the same branch means **every accumulated observation is silently replaced by a
+   hardcoded paragraph** the moment the payload crosses the line — data-loss-shaped, not
+   truncation-shaped, and invisible at the call site. Raising the cap without changing this behaviour
+   moves the cliff rather than removing it.
+3. **Confirm the delivery-semantics change is deliberate — and price the staleness window it opens.**
+   `TryTakeGuidanceBlock` fires once per process (`AgyView.cs:54`, `Interlocked.Exchange`); the golden
+   header is currently applied on every ask (`AgyView.cs:133`). This spec already intends
+   once-per-process, so the change itself is a confirmed consequence rather than a surprise. What the
+   spec previously missed — round-2 panel, State Corruptor — is its effect on the autotrain feedback
+   loop: **a drain that lands while the MCP server is running becomes invisible until that process
+   restarts.** Today's per-ask read has no such window; the next ask picks the new content up.
+   *Correcting the panel's mechanism:* `curate-commit` is a deliberate maintainer drain
+   (`just drain-knowledge`), not something the peer performs mid-conversation, so this is a
+   latency regression on a human-initiated operation rather than a live read-after-write race. That
+   makes it smaller than the panel argued, but not nothing: the drain-then-observe cycle is exactly how
+   this loop is validated, and "restart the server first" becomes a required, documentable step.
+4. **Keep the two readers strictly isolated — do NOT reuse `DriverCheatsheet.Read` for the header.**
+   Round-2 panel, Cascade Analyst, and it is the sharpest finding of the round. `BaselineFloor` is
+   *driver-cheatsheet* content — four static reminders about driving the peer. It is a sane stand-in
+   for a missing cheatsheet and a nonsensical one for a missing golden header. If T4b routes SEED+GROWTH
+   through that reader, then any over-cap or unreadable header silently injects the driver cheatsheet
+   **in place of** the accumulated corpus, and the substitution is invisible at the call site because
+   both paths return a plausible-looking string. Note this compounds item 2: raising the cap without
+   separating the readers moves the cliff instead of removing it, and leaves a wrong-document fallback
+   sitting behind it.
+
+Note that `driver-cheatsheet.md` is a third file, independent of seed/growth. T4b may reuse the
+once-per-process *mechanism* without routing through that file — and per item 4, it should.
 
 ### Why this order
 
@@ -188,14 +256,12 @@ the real code and are not decided by this sequencing spec:
    already exists. If a long session loses the block, the driver silently stops receiving guidance.
 3. **The Rust parity change** — the same split in `golden_header.rs` / `main.rs`, landing together
    with the C# change.
-4. **Whether the driver channel can physically carry the payload.** The golden header is capped at
-   **16 KB** (`GoldenHeader.MaxBytes`), while the `[driver_guidance]` block it would be routed into is
-   described in the knowledge-delivery design as a **≤150-token nudge**. Those are roughly two orders
-   of magnitude apart. "Route SEED+GROWTH to the driver channel" may therefore not be a routing change
-   at all but a new channel, or it may require a cap/summarisation policy. **This is the single most
-   likely reason T4b turns out bigger than it looks, and it must be resolved before implementation
-   rather than discovered during it.** Verify the ≤150-token figure against the knowledge-delivery
-   design before designing around it.
+4. **Whether the driver channel can physically carry the payload — ANSWERED by T4-0, but it left three
+   sub-decisions.** The channel's cap is 4 KB, not a ≤150-token nudge, and the header measures 6,822 B,
+   so it does not fit as-is. See [T4-0](#t4-0--feasibility-spike-run-and-resolved) for the measurements.
+   T4b must decide: (a) the new cap value, in lockstep across both variants; (b) what replaces the
+   silent `BaselineFloor` fallback on over-cap, which is the dangerous part and is independent of
+   whatever cap is chosen; (c) nothing else — this is no longer a threat to T4b's size.
 5. **Whether losing per-turn reinforcement costs drift resistance**, per the superseded backlog stub
    above. If this is judged to need measurement rather than assumption, the measurement is designed in
    T4b's own pass — but note the stub itself concluded the fix "is not obviously safe", so an explicit
@@ -232,15 +298,28 @@ gate passes. Written after T4b so the behaviour being walked through is final.
 **Intent.** Re-drain `~/.clavity/golden-header.growth.md`, which currently holds mojibake
 (`ΓÇö` where an em dash belongs). The code fix does not repair an already-corrupt file.
 
-**Precondition.** The released, fixed `clavity-dotnet` must be **installed**, so that `clavity-ls`
-on `PATH` carries the strict-UTF-8 decoder. Installing the release is a required step, not an
-assumption — a released-but-not-installed binary leaves the old one on `PATH`.
+**Precondition — an explicit MANUAL step, not something the sequence performs.** The released, fixed
+`clavity-dotnet` must be **installed**, so that `clavity-ls` on `PATH` carries the strict-UTF-8 decoder.
+A release pipeline publishes artifacts; it does not install them on the executing machine, so a
+developer running this sequence linearly would hit T3 with the OLD binary still on `PATH` and quietly
+re-corrupt the file. **The sequence is not required to be linear**: pausing after RELEASE to install by
+hand, or invoking the verb from a local build output instead of `PATH`, are both acceptable and are the
+intended way to satisfy this. What is NOT acceptable is executing T3 without confirming which binary
+answered — verify with `clavity-ls --version` (or the local build path) before draining, not after.
 
 **Completion oracle.** Three conditions, all required:
-1. `golden-header.growth.md` byte-verified free of the mojibake signature.
+1. **Zero occurrences of U+0393** (GREEK CAPITAL LETTER GAMMA, UTF-8 `CE 93`) in
+   `golden-header.growth.md`. This is the exact, scannable signature: every CP437 mojibake family in
+   the currently-corrupt file leads with it — `ΓÇö` (em dash, **15 occurrences**), `ΓÜá∩╕Å` (warning
+   emoji), `ΓåÆ` (→), `Γëñ` (≤), `Γëá` (≠). Scanning for one codepoint covers all of them, where
+   scanning for `ΓÇö` alone would pass a file still carrying the other four.
+   ⚠️ This is a content-specific heuristic, not a general encoding check: it is safe only because a
+   literal Γ has no legitimate place in this English-language driving corpus. If a curated entry ever
+   legitimately contains Γ, this condition must be replaced rather than loosened.
 2. Its `.sha256` sidecar verifies against the file.
-3. **Content retention** — the file still carries the curated rules, checked by asserting recovery of
-   specific known entries, not merely a non-zero length.
+3. **Content retention** — assert the repaired file's top-level bullet count is greater than or equal
+   to the pre-drain count, AND that at least one named, known-stable entry survives verbatim. Capture
+   both numbers BEFORE draining; a retention oracle computed only after the fact cannot detect a wipe.
 
 Condition 3 exists because the panel pointed out that an **empty file satisfies 1 and 2 perfectly**
 while silently destroying the user's accumulated knowledge. Since T3's whole purpose is repairing a
@@ -301,11 +380,11 @@ against.
 
 | Risk | Mitigation |
 |---|---|
-| T4 turns out open-ended, holding the merged fixes unshipped indefinitely | The release-split option is recorded above; revisit rather than let the window grow silently |
+| T4 turns out open-ended, holding the merged fixes unshipped indefinitely | RETIRED by T4-0: T4b is three scoped edits across two variants, not an open-ended design. The release fork was re-opened on this basis and the single-release constraint re-confirmed |
 | T5's gate is written but never observed failing | Its completion oracle requires a deliberate red run |
 | T4b changes one variant only | Cross-variant oracle tests named above; both variants in one change |
 | T3 run against a stale `PATH` binary re-corrupts the file | Install step is an explicit precondition, and the byte check would catch it |
-| The driver channel cannot carry a 16 KB header (T4b question 4) | Resolve BEFORE implementing T4b; it may convert a routing change into a new-channel design |
+| The driver channel cannot carry the header (T4b question 4) | MEASURED by T4-0: it cannot — 6,822 B against a 4 KB cap. Remedy is bounded (raise the cap in both variants). The residual risk is not the size but the silent `BaselineFloor` fallback on over-cap, which discards all accumulated wisdom rather than truncating; T4b must replace it |
 | T4b ships and the split proves wrong in live use | It is one release; a revert restores per-ask injection in both variants. The T4a pinning tests are what make a revert verifiable rather than hopeful — a second reason to build them first |
 
 ## Exhaustiveness audit
@@ -313,11 +392,19 @@ against.
 Run against this document on 2026-07-21, per the standing self-audit requirement. Gaps found and
 closed in-document: (1) T5 did not say WHICH members or that **existence** must be asserted separately
 from version equality — the original defect was an absent file, which a value comparison alone would
-pass vacuously; (2) T4b did not confront the ~16 KB header vs ≤150-token driver-channel size mismatch,
-now raised as open question 4 and a risk; (3) no revert story for T4b, now in the risk table.
+pass vacuously; (2) T4b did not confront the header-vs-driver-channel size mismatch, raised as open
+question 4 and a risk, and since **measured** by T4-0; (3) no revert story for T4b, now in the risk table.
 
-Deliberately deferred, with WHERE each resolves: T4b's five open questions resolve in **T4b's own
+**The audit's own to-verify flag paid off, and in the direction that matters.** It flagged the
+≤150-token driver-block figure as cited-not-measured. When T4-0 measured it, the figure was **wrong** —
+it describes the baseline floor's content, not a cap, and the real cap is 4 KB. Two conclusions this
+document had drawn from it (that the mismatch was two orders of magnitude, and that T4b was therefore
+likely a new-channel design) were both false, and the second of those was load-bearing for the
+release-sequencing decision. Recorded because it is the generalisable lesson: an unmeasured figure
+inherited from another document had propagated into a risk rating, an open question, and a
+decision-re-examination trigger before anyone opened the file that defines it.
+
+Deliberately deferred, with WHERE each resolves: T4b's remaining open questions resolve in **T4b's own
 design pass** against the real code, not here. T5's line-level shape resolves in the **implementation
 plan**, after the five `ci-installer-*.yml` files are read — see [Plan vs spec
-boundary](#plan-vs-spec-boundary). The ≤150-token driver-block figure is cited from the
-knowledge-delivery design and is flagged as **to-verify**, not measured for this document.
+boundary](#plan-vs-spec-boundary).
