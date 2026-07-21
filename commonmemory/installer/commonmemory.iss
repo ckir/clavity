@@ -29,8 +29,24 @@ SetupMutex=ClavitySetupMutex
 [Files]
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
+; Every pattern here is ANCHORED with a leading backslash, i.e. matched against the path relative to the
+; Source root rather than by bare name. That is load-bearing twice over:
+;
+; 1. An UNANCHORED pattern matches at ANY DEPTH, and against DIRECTORY names as well as file names. That
+;    is precisely how this line shipped a bug: the old `.claude-plugin` entry matched the directory and
+;    dropped .claude-plugin\plugin.json from the payload entirely. Claude Code prefers that manifest over
+;    the root plugin.json, so an UPGRADE could not overwrite a stale one — a 0.1.1 manifest survived a
+;    0.2.1 install and re-registered the OLD version. Anchoring `\.claude-plugin\marketplace.json` drops
+;    exactly the dev-only marketplace (it declares the `-dev` marketplace for local
+;    `/plugin marketplace add`) and nothing else, so the manifest beside it ships and overwrites.
+; 2. The same any-depth hazard applies to the plain words: unanchored, `installer`/`dist`/`publish` would
+;    silently strip a future subdirectory of that name ANYWHERE in the plugin tree — e.g. a skill with an
+;    `installer\` folder. Anchored, they only ever mean the three top-level dev folders they are meant to.
+;
+; The installed marketplace.json comes from the separate marketplace.install.json entry above, which has
+; its own Source line and is unaffected by this exclude.
 Source: "..\*"; DestDir: "{app}\plugins\commonmemory"; Flags: ignoreversion recursesubdirs createallsubdirs; \
-  Excludes: "installer,dist,publish,.claude-plugin"
+  Excludes: "\installer,\dist,\publish,\.claude-plugin\marketplace.json"
 
 [Code]
 #include "..\..\installer\_shared\claude-running.iss"
