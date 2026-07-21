@@ -8,7 +8,8 @@ line-level plan — see [Plan vs spec](#plan-vs-spec-boundary).
 
 ## Context
 
-Five commits sit unpushed on `main` (`origin/main` = `6440f4b`):
+Work sits unpushed on `main` (`origin/main` = `6440f4b`). **Five FIX commits** carry everything
+user-visible, and they are what the release ships:
 
 | Commit | What |
 |---|---|
@@ -18,7 +19,15 @@ Five commits sit unpushed on `main` (`origin/main` = `6440f4b`):
 | `417d999` | agy-autotrain's dev-folder excludes anchored |
 | `c19a463` | truncated-sequence test + two comment corrections |
 
-A four-round adversarial panel closed GREEN on all of the above. The remaining work is T3–T6.
+⚠️ **Do not state a total commit count anywhere in this document.** Round-10 panel, Numerical Auditor,
+caught the header saying "five" while a later section said "six"; by the time that was checked the true
+figure was **fourteen**. The cause is structural, not clerical: this spec is itself tracked in the
+repo, so every panel round that folds a finding adds a commit and invalidates any number written here —
+the document cannot cite a count of a set it is a member of. Describe commits by KIND (the five fixes
+above, plus this spec's own revision history) and get the live figure from
+`git rev-list --count origin/main..HEAD`.
+
+A four-round adversarial panel closed GREEN on the five fix commits. The remaining work is T3–T7.
 
 ## Decisions already made by the owner
 
@@ -44,7 +53,7 @@ A four-round adversarial panel closed GREEN on all of the above. The remaining w
    design. So the premise behind the re-examination trigger — "the epic just got materially larger" —
    turned out to be false, and the single-release constraint now rests on stronger evidence than when it
    was first taken. Two further findings from the re-open, both measured, are recorded because they
-   bear on the sequence rather than on the release: **T6 does not gate the six unpushed commits** (no
+   bear on the sequence rather than on the release: **T6 does not gate the five fix commits** (no
    doc surface documents anything they change), and **T4 does not make the corrupt `growth.md` moot** —
    `GoldenHeader.cs:159` reads it regardless of audience, so T4 changes the file's consumer, not its
    corruption. This fork is closed; do not re-open it without new evidence.
@@ -60,7 +69,7 @@ A four-round adversarial panel closed GREEN on all of the above. The remaining w
 ✅ backup  →  T4-0  →  T5  →  T4a  →  T4b  →  T6  →  RELEASE  →  ⏸ install  →  T3
 (done)        (done)                                              (manual)
 
-T7 (internal planning-doc corrections) — unordered, runs at any point, gates nothing
+T7 (internal planning-doc corrections) — gates nothing; item 1 runs AFTER T4b, items 2-3 any time
 ```
 
 The **backup comes first, not inside T3**, and is already done.
@@ -360,8 +369,14 @@ exactly how the gap survived four rounds. Four conditions, all required:
    comparable seam, that asymmetry is itself a finding to surface before implementing, not to discover
    afterwards.
 3. **Both variants, same curated file, same observable outcome.** This is constraint 4 made checkable:
-   run the same `growth.md` through the C# and Rust code paths and diff what each sends the peer.
-   Same reachability rule as condition 2 — compare at the highest level both variants expose.
+   run the same `growth.md` through the C# and Rust code paths and diff **both** payloads: what each
+   sends the peer AND what each sends the driver.
+   ⚠️ **Diffing only the peer payload would be a vacuous gate** — round-10 panel, Literal Implementer.
+   After T4b the peer receives the ask and nothing else, so a peer-side diff between the variants
+   compares two copies of the raw ask and passes by construction, while the two variants could be
+   serving completely different guidance to the driver. The driver payload is the one this change
+   creates, so it is the one parity actually has to cover. Same reachability rule as condition 2 —
+   compare at the highest level both variants expose.
 4. **The over-cap path does not silently substitute.** Feed a deliberately over-cap header and confirm
    the failure is loud and does NOT inject `BaselineFloor` in the header's place (question 4 above).
    **"Loud" means OBSERVABLE, not FATAL — and T4b must not brick the tool to satisfy this.** Round-7
@@ -409,6 +424,16 @@ decision gate is cheap. But if the answer comes back "the peer does need a basel
 route", then **building that route is its own task**, sequenced before T4b and explicitly not smuggled
 into it. Contrast the lifecycle gap below, correctly delegated to follow-up: the difference is that
 T4b does not create the lifecycle problem, whereas it does create this one.
+
+**The gate needs an OWNER and a SLOT, or the sequence silently halts at T4b.** Round-10 panel,
+Completeness Critic: the previous wording created a blocking decision that no task in the sequence was
+assigned to make — T4-0, T5 and T4a all precede T4b and none of them answers it, so execution reaches
+T4b and stops on a question nobody was told to resolve. A gate with no owner is not a gate, it is a
+stall. Therefore: **this decision is an explicit OWNER decision, taken in the T4a slot** — before any
+code moves, alongside the pinning work that establishes what the peer receives today. T4a is the right
+slot precisely because pinning current behaviour is what makes the question concrete: the pins show
+exactly what the peer would stop receiving. The decision is recorded here in this spec, and T4b does
+not start until it is.
 
 Concretely: does the peer keep a baseline by some other route (a system prompt, a
 persistent instruction, a reduced always-on preamble)? Or is "the peer is a stateless worker and the
