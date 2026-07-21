@@ -57,9 +57,14 @@ A four-round adversarial panel closed GREEN on all of the above. The remaining w
 ## The sequence
 
 ```
-T4-0  →  T5  →  T4a  →  T4b  →  T6  →  RELEASE  →  ⏸ install  →  T3
-(done)                                                (manual)
+✅ backup  →  T4-0  →  T5  →  T4a  →  T4b  →  T6  →  RELEASE  →  ⏸ install  →  T3
+(done)        (done)                                              (manual)
 ```
+
+The **backup comes first, not inside T3**, and is already done. T4b's work involves deliberately
+exercising the over-cap driver-channel path, which means editing a local `growth.md`; ordering the
+backup as a sub-step of the final task would leave the only copy of the corrupt-but-recoverable corpus
+exposed for the whole epic. See [T3](#t3--repair-the-corrupt-growth-region) for the paths.
 
 **The sequence is not required to be linear.** Pausing between steps to run a one-off task by hand —
 installing a release, invoking a verb from a local build, fixing up state — is an intended and
@@ -302,6 +307,22 @@ the real code and are not decided by this sequencing spec:
    T4b's own pass — but note the stub itself concluded the fix "is not obviously safe", so an explicit
    accept-the-risk decision is required either way. Do not let this question be silently dropped.
 
+**Completion oracle.** Round-5 panel, Oracle Auditor: T4b was the ONLY task in this spec with no
+completion oracle at all, while carrying the epic's entire point. Every other task had one, which is
+exactly how the gap survived four rounds. Four conditions, all required:
+
+1. **Invert T4a's pins.** The tests T4a wrote to assert the header IS in the peer payload must be
+   flipped to assert it is NOT, and must be seen failing against the pre-T4b code. This is what makes
+   T4a's investment pay: the pins prove the change landed at the wire, not just in a unit under test.
+2. **Prove the driver actually receives the block over the live MCP wire** — not merely that a function
+   returns it. An implementer can satisfy every unit test while the block never reaches the client,
+   because `TryTakeGuidanceBlock`'s output must survive the MCP tool-result path (`McpTools.cs:23`,
+   `AgyAsk`) to be worth anything. Observe it arriving in a real session.
+3. **Both variants, same curated file, same observable outcome.** This is constraint 4 made checkable:
+   run the same `growth.md` through the C# and Rust servers and diff what each sends the peer.
+4. **The over-cap path does not silently substitute.** Feed a deliberately over-cap header and confirm
+   the failure is loud and does NOT inject `BaselineFloor` in the header's place (question 4 above).
+
 **Non-goal.** T4b does not change the curation pipeline's routing by SUBJECT (about-the-driver vs
 about-agy), which already exists at `agy-curate/SKILL.md:107-109`. The gap being closed is that the
 existing split is by subject while the need is by AUDIENCE — GROWTH is full of "about agy" content
@@ -340,18 +361,36 @@ to empty", so the observations that compiled into today's GROWTH are gone. The c
 the **only surviving copy of its own content**. A cold successor following the old wording would run the
 drain against an empty inbox and confidently overwrite the only copy with near-nothing.
 
-**What actually repairs it.** GROWTH is "regenerated wholesale each run" (`SKILL.md:165`), and prior
-rules survive that regeneration only because the curator *reads the existing GROWTH and carries them
-forward* — that is precisely what the **reinforce** disposition means (`SKILL.md:113`: "already carried
-by a prior GROWTH run … keep the strongest phrasing when you recompile"). So the repair is a **curate
-pass that takes the corrupt file as its carry-forward input and fixes the mojibake at the CONTENT level
-while recompiling**, then commits through the fixed binary. This works because the damage is
-human-legible and mechanically reversible: `ΓÇö` is unambiguously an em dash, `ΓÜá∩╕Å` a warning emoji,
-`ΓåÆ` an arrow, `Γëñ`/`Γëá` the ≤ and ≠ signs. Nothing is lost — it is mis-decoded, not missing.
+**What actually repairs it: a DETERMINISTIC transform, not a curate pass and not an LLM.** An earlier
+draft of this section said "curate pass … fix the mojibake at the content level", and the round-5 panel
+was right to reject that too: it replaces an impossible mechanical task with an unreliable cognitive
+one. Asking a model to verbatim-retranscribe 4.7 KB invites summarisation, padding, and silent drops —
+and it would pass the oracle below while destroying content, because a model can drop the mojibake,
+invent plausible bullets to satisfy a count, and preserve the one string the check names.
+
+The damage is a pure byte-level transformation and is exactly invertible. The original UTF-8 bytes were
+decoded as CP437 into characters and re-encoded as UTF-8; reversing it is: **decode the file as UTF-8 →
+encode those characters as CP437 → decode the resulting bytes as UTF-8.**
+
+**Two safety properties make this safe to run on the only copy, and BOTH must be asserted at runtime,
+before anything is written:**
+1. **Strict-encode guard.** Encode with a CP437 encoder configured with `EncoderFallback.ExceptionFallback`.
+   The default encoder silently substitutes `?` for any character CP437 cannot represent — which would
+   destroy data invisibly. If the strict encode throws, the file is NOT purely CP437 mojibake, the
+   transform does not apply, and the repair must **abort**, not proceed.
+2. **Bijection check.** Re-mangle the repaired text (encode UTF-8 → decode CP437) and assert it
+   reproduces the original file **byte-for-byte**. If it does, the transform is a bijection on this
+   exact data, so it provably cannot have lost anything.
+
+**Measured on the live corrupt file, 2026-07-21** — this is verification already performed, not a
+prediction: strict encode **succeeded** (4,684 bytes, so every character is CP437-representable);
+round-trip **exact**; U+0393 count **22 → 0**; **15** em dashes and the warning sign recovered; **0**
+U+FFFD replacement characters. Sample of the repaired text: `GROWTH region — newly-learned agy-driving
+wisdom` and `[⚠️ CRITICAL ANTI-PATTERNS — newly learned, additive to SEED]`.
 
 **The decoder fix is a precondition, not the repair.** `0470832` stops the commit path creating *new*
-mojibake. It does not touch bytes already on disk. Both halves are required: repair the content, and
-write it through a binary that will not re-mangle it on the way out.
+mojibake. It does not touch bytes already on disk. Both halves are required: repair the bytes
+deterministically, and write them through a binary that will not re-mangle them on the way out.
 
 **Precondition — an explicit MANUAL step, not something the sequence performs.** The released, fixed
 `clavity-dotnet` must be **installed**, so that `clavity-ls` on `PATH` carries the strict-UTF-8 decoder.
@@ -371,12 +410,21 @@ multi-byte character (an em dash is the natural choice) through the verb into a 
 tests the decoder itself, which is the actual precondition; the version string is a proxy for it and a
 broken one.
 
-**Back up the corrupt file BEFORE draining.** Round-3 panel, Blindspot Auditor. T3's whole purpose is
-mutating a file whose content is already damaged and unreproducible — the corrupt `growth.md` is still
-the ONLY copy of those curated rules, mojibake and all, and the mojibake is mechanically reversible
-while a zero-byte file is not. If the drain's upstream is unexpectedly empty, the repair overwrites the
-only artifact carrying the content it was meant to save. Copy it aside first. This is cheap, and it is
-what makes condition 3 below a check you can act on rather than an epitaph.
+**Back up the corrupt file — ✅ DONE, and deliberately moved to the FRONT of the sequence.**
+Round-3 panel (Blindspot Auditor) required the backup; round-5 panel (Ordering Skeptic) then showed it
+was ordered fatally late as a sub-step of the LAST task. T4b's own work involves exercising the
+over-cap driver-channel path, which means deliberately bloating or editing a local `growth.md` — so the
+old ordering left the single un-backed-up copy exposed across the entire epic. The backup is not a T3
+step; it is a **precondition of the whole sequence**, and it has been performed:
+
+    ~/.clavity/golden-header.growth.md.corrupt-backup-2026-07-21          (4,755 B, byte-identical)
+    ~/.clavity/golden-header.growth.md.sha256.corrupt-backup-2026-07-21
+
+Both verified byte-identical to their sources at copy time. The names deliberately do not match any
+path the reader resolves — `SeedPath`, `GrowthPath`, or `LegacyFileName` (`GoldenHeader.cs:27-29`,
+`:37-38`) — so the copies are inert and cannot be picked up as a region. This backup is also the fixed
+reference the completion oracle compares against, which is what makes condition 1 below a repair
+verification rather than a standing rule.
 
 **Completion oracle.** Three conditions, all required:
 1. **Every U+0393 sequence present in the BACKUP is absent from the repaired file** — a one-shot
@@ -394,9 +442,16 @@ what makes condition 3 below a check you can act on rather than an epitaph.
    check to "what the backup contained" makes it a repair verification with a fixed reference, which
    cannot be invalidated by later legitimate content.
 2. Its `.sha256` sidecar verifies against the file.
-3. **Content retention** — assert the repaired file's top-level bullet count is greater than or equal
-   to the pre-drain count, AND that at least one named, known-stable entry survives verbatim. Capture
-   both numbers BEFORE draining; a retention oracle computed only after the fact cannot detect a wipe.
+3. **Content retention — now PROVEN, not sampled.** Re-mangle the repaired file (encode UTF-8 → decode
+   CP437) and assert the result is **byte-identical to the backup**. Because the transform is a
+   bijection on this data, that single assertion proves nothing was lost, added, reordered, or
+   summarised — it is strictly stronger than any count-and-spot-check.
+   This replaces an earlier "bullet count ≥ pre-repair count, plus one named entry survives verbatim"
+   condition, which round 5 correctly shot down: that condition was designed against an *LLM* repair,
+   and a model can satisfy it while destroying the corpus — drop the mojibake, invent plausible bullets
+   to make the count, preserve the one string the check names, and pass. The count-based oracle was
+   only ever necessary because the proposed mechanism was untrustworthy. With a deterministic
+   transform, the mechanism carries its own proof, and the weaker check is not worth keeping.
 
 Condition 3 exists because the panel pointed out that an **empty file satisfies 1 and 2 perfectly**
 while silently destroying the user's accumulated knowledge. Since T3's whole purpose is repairing a
