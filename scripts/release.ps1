@@ -108,15 +108,70 @@ foreach ($key in ($script:Computed.Bumps.Key | Select-Object -Unique)) {
 }
 
 # --- Push sequence (F5): commit first; only then tag + push tag ---
-git push origin main
-if ($LASTEXITCODE -ne 0) { Die "push main rejected (raced?) — nothing tagged; fix and re-run." }
-git tag $script:Target
-git push origin $script:Target
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "release: COMMIT IS ON main BUT TAG PUSH FAILED — no release has fired." -ForegroundColor Red
-    Write-Host "release: run  git push origin $($script:Target)  to complete it." -ForegroundColor Red
-    exit 1
+# Keepalives, mirrored from ~/.ssh/config so the fix travels with the repo (a fresh clone or another
+# machine has no such config). git opens the SSH connection BEFORE any pre-push hook runs and leaves it
+# idle for the hook's duration; without probes, a drop with no RST is invisible and git blocks forever.
+$env:GIT_SSH_COMMAND = 'ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes'
+
+# A push that HANGS is not a push that FAILS: on 2026-07-21 two `git push origin main` and one
+# `just release` sat wedged ~19h with no output, no error and no timeout, and had to be force-killed.
+# Retry is deliberately OPT-IN on transport signatures only, checked AFTER rejection signatures, with
+# anything unrecognised treated as fatal. A retry must never turn a real refusal (non-fast-forward,
+# permission denied, remote hook decline) into a silent second attempt that appears to succeed.
+$script:PushRejectRe = 'rejected|non-fast-forward|fetch first|Permission denied|Authentication failed|' +
+                       'pre-receive hook declined|protected branch|denied to |not authorized|forbidden'
+$script:PushRetryRe  = 'Connection closed|Connection reset|Connection timed out|Broken pipe|' +
+                       'kex_exchange_identification|ssh_exchange_identification|Timeout, server|' +
+                       'The remote end hung up|early EOF|RPC failed|Network is unreachable|' +
+                       'Temporary failure in name resolution|Could not resolve hostname|CLAVITY_PUSH_TIMEOUT'
+
+# $FailHint is printed IMMEDIATELY BEFORE exiting on any fatal path. It is a parameter rather than a
+# try/catch at the call site on purpose: Die calls `exit`, which unwinds the whole script and can never
+# be caught — so a catch block around this function would silently never run.
+function Invoke-GitPush([string]$Ref, [string]$What, [string[]]$FailHint = @()) {
+    $maxAttempts = 3
+    $timeoutSec  = 180
+    function Stop-Push([string]$msg) {
+        foreach ($line in $FailHint) { Write-Host $line -ForegroundColor Red }
+        Die $msg
+    }
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $o = [IO.Path]::GetTempFileName(); $e = [IO.Path]::GetTempFileName()
+        $p = Start-Process git -ArgumentList @('push', 'origin', $Ref) -NoNewWindow -PassThru `
+                              -RedirectStandardOutput $o -RedirectStandardError $e
+        if ($p.WaitForExit($timeoutSec * 1000)) {
+            $code = $p.ExitCode
+            $text = ((Get-Content $o -Raw -EA SilentlyContinue) + (Get-Content $e -Raw -EA SilentlyContinue))
+        } else {
+            # Bounded, and LOUD. This is the exact state that previously sat silent for 19 hours.
+            try { $p.Kill($true) } catch { }
+            $code = 1
+            $text = "CLAVITY_PUSH_TIMEOUT: no response from origin within ${timeoutSec}s (connection dead or idle, not refused)"
+        }
+        Remove-Item $o, $e -Force -EA SilentlyContinue
+        if ($text) { Write-Host $text.TrimEnd() }
+        if ($code -eq 0) { return }
+
+        if ($text -match $script:PushRejectRe) {
+            Stop-Push "$What REJECTED by origin (not a connection problem) — no retry, nothing else was pushed. Fix and re-run.`n$text"
+        }
+        if ($text -notmatch $script:PushRetryRe) {
+            Stop-Push "$What failed with an UNRECOGNISED error — refusing to retry blind, since a retry must never mask a rejection.`n$text"
+        }
+        if ($attempt -lt $maxAttempts) {
+            Write-Host "release: $What — transport failure (attempt $attempt/$maxAttempts), retrying in ${attempt}0s..." -ForegroundColor Yellow
+            Start-Sleep -Seconds ($attempt * 10)
+        }
+    }
+    Stop-Push "$What failed after $maxAttempts transport attempts — origin unreachable or dropping the connection. Nothing further was pushed."
 }
+
+Invoke-GitPush 'main' 'push main' @('release: nothing was tagged — fix and re-run.')
+git tag $script:Target
+Invoke-GitPush $script:Target "push tag $($script:Target)" @(
+    'release: COMMIT IS ON main BUT TAG PUSH FAILED — no release has fired.',
+    "release: run  git push origin $($script:Target)  to complete it."
+)
 
 # --- Observability (F11/V2): print run URL, suggest non-blocking watch ---
 $repo = (gh repo view --json nameWithOwner -q .nameWithOwner 2>$null)
