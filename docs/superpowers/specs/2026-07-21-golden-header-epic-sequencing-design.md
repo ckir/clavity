@@ -59,12 +59,20 @@ A four-round adversarial panel closed GREEN on all of the above. The remaining w
 ```
 ✅ backup  →  T4-0  →  T5  →  T4a  →  T4b  →  T6  →  RELEASE  →  ⏸ install  →  T3
 (done)        (done)                                              (manual)
+
+T7 (internal planning-doc corrections) — unordered, runs at any point, gates nothing
 ```
 
-The **backup comes first, not inside T3**, and is already done. T4b's work involves deliberately
-exercising the over-cap driver-channel path, which means editing a local `growth.md`; ordering the
-backup as a sub-step of the final task would leave the only copy of the corrupt-but-recoverable corpus
-exposed for the whole epic. See [T3](#t3--repair-the-corrupt-growth-region) for the paths.
+The **backup comes first, not inside T3**, and is already done.
+
+*Why, stated correctly — round-8 panel, Contradiction Hunter, caught this paragraph contradicting a
+later fold.* The original justification was "T4b must edit the live `growth.md` to exercise the
+over-cap path", but a later round bound that test to a scratch `CLAVITY_GOLDEN_HEADER` directory that
+"never touches real user data", which falsified the reason while leaving it in the text. The ordering
+is still correct, for a different and better reason: **the scratch-directory rule is a rule, and rules
+get forgotten, misread, or bypassed under time pressure.** The backup costs nothing and is the only
+thing that survives someone ignoring it. Defence in depth for an irreplaceable file, not a claim that
+some specific step will damage it. See [T3](#t3--repair-the-corrupt-growth-region) for the paths.
 
 **The sequence is not required to be linear.** Pausing between steps to run a one-off task by hand —
 installing a release, invoking a verb from a local build, fixing up state — is an intended and
@@ -336,6 +344,15 @@ exactly how the gap survived four rounds. Four conditions, all required:
    `agy_ask` entirely until they hand-edit a file they were never told about. That is a worse outcome
    than the defect being fixed. The target is: the operator can tell it happened, and the ask still
    completes with the region omitted.
+   **"Observable" needs a named channel, or this condition is unimplementable** — round-8 panel, Cold
+   Successor, correctly noting that the paragraph calls today's warn-and-proceed "silent degradation"
+   and then describes the target as warn-and-proceed, which reads as asking for the thing it just
+   banned. The difference that matters is WHERE the warning lands. Today it goes to
+   `_options.Diagnostics` (`AgyView.cs:129`), i.e. a stream the operator is not reading — which is why
+   the corruption ran for two days unnoticed. To count as observable it must reach the operator on a
+   channel they actually see: the natural fit is the same `CallToolResult` path that already carries
+   the guidance block (`McpTools.cs:26-29`), so the notice arrives in-band with the tool result. Decide
+   the channel in T4b and name it; do not leave "loud" to the implementer's judgement.
    ⚠️ **Run this against a SCRATCH directory via `CLAVITY_GOLDEN_HEADER`, never the live
    `~/.clavity`.** Round-6 panel, Ordering Skeptic, and it caught a real sequencing collision: this
    condition requires deliberately bloating a `growth.md`, while T3 later repairs the live one and
@@ -343,6 +360,27 @@ exactly how the gap survived four rounds. Four conditions, all required:
    fails by construction. `GoldenHeader.ResolveDir` (`GoldenHeader.cs:32-35`) honours the env override
    precisely so this kind of test never touches real user data — use it. That also removes any need for
    a restore step between T4b and T3.
+
+**The question this spec has never answered: what anchors the PEER afterwards?** Round-8 panel,
+Completeness Critic, and it is the most important finding of the entire review — eight rounds in, it
+had gone unnamed. This spec already establishes two things that sit badly together:
+
+- The corruption window "gives essentially zero information about behaviour with no baseline present,
+  which is precisely the state T4b creates", because **SEED stayed legible on every turn** and the peer
+  was anchored throughout.
+- T4b routes **SEED as well as GROWTH** to the driver, so the peer receives the ask payload only.
+
+So the spec warns at length against reasoning from the incident to "no anchor is safe", correctly
+identifies that T4b produces the unanchored state, and then never says how the peer is supposed to
+operate in it. That is a hole in the design, not a gap in the sequencing, and T4b must close it before
+implementation. Concretely: does the peer keep a baseline by some other route (a system prompt, a
+persistent instruction, a reduced always-on preamble)? Or is "the peer is a stateless worker and the
+driver carries all the wisdom" the actual intended design? **The second is a defensible answer — but it
+has to be a stated decision, not a side effect of a routing change.**
+
+Note this bears directly on T4b's open question 5 (does losing per-turn reinforcement cost drift
+resistance) and makes it materially sharper: that question assumed the peer keeps SEED and loses only
+repetition. It does not. It loses the baseline entirely.
 
 **Open gap this spec does NOT close — the corpus has no lifecycle policy.** Round-7 panel, Completeness
 Critic, and it is the one thing a reader finishes this document still not knowing. GROWTH accumulates
@@ -374,8 +412,21 @@ built binary, and confirm the observed system state matches the text at each ste
 cannot be followed, or that produces a different result than it claims, is a defect to fix before the
 gate passes. Written after T4b so the behaviour being walked through is final.
 
-**T6 also carries three documentation corrections folded in from the roadmap** (see
-[Folded from the roadmap](#folded-from-the-roadmap) for the verification behind each):
+### T7 — internal planning-doc corrections (split out of T6)
+
+Round-8 panel, Scope Sentinel: these three were folded into T6, but T6 is scoped to **user-facing docs
+describing shipped behaviour**, and none of these is user-facing. Closing a backlog stub, striking a
+stale roadmap item, and correcting an internal threat model are maintenance of internal planning
+documents. Bundling them under a user-docs task hides real work inside a task whose completion oracle
+(walk the docs against the built binary) cannot exercise them — a doc-walk will never catch an
+uncorrected roadmap entry, so they would ride along unverified.
+
+They stay in the epic — they were verified against the code and should not be lost — but as their own
+task with its own trivial oracle: each of the three edits is made and the claim it corrects is gone.
+T7 is **not** gated on T4b and can run at any point; it is not part of the docs push gate.
+
+**The three corrections** (see [Folded from the roadmap](#folded-from-the-roadmap) for the verification
+behind each):
 
 1. **Close or redirect `docs/backlog/golden-header-per-ask-token-optimization.md`.** T4b supersedes it.
    Left open, it becomes another stale spec describing an optimization that no longer applies.
