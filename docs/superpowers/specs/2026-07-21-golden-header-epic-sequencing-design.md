@@ -189,6 +189,16 @@ existence check works while saying nothing about version equality, so a gate exe
 still pass a stale manifest silently. A gate never seen failing has not been shown to be a gate; a
 gate seen failing for only one of its two assertions has only been shown to be half of one.
 
+**Assert the extracted values are non-empty BEFORE comparing them.** Round-3 panel, Mechanism Gamer.
+The natural implementation pulls `AppVersion` out of the `.iss` and `.version` out of the installed
+`plugin.json` and compares. If either extraction silently yields empty — a regex that stops matching
+after a formatting change, a `jq` path that no longer resolves — the comparison degenerates to
+`"" == ""` and the gate reports GREEN while comparing nothing. That failure is worse than no gate,
+because it is a gate everyone believes is watching. Both extractions must be asserted non-empty and
+well-formed (a version-shaped string) as separate, individually-failing checks before equality is
+evaluated. Note this is the same defect-class as the existence check above, one level up: there, an
+absent file passed a value comparison vacuously; here, an absent *value* does.
+
 **To verify during planning (NOT yet read):** the five `ci-installer-*.yml` workflows are believed
 to install each member already, which would make this an assertion added to an existing install
 step rather than new infrastructure. This has not been confirmed by reading them.
@@ -250,10 +260,25 @@ anchor is survivable" is the specific leap this spec must not make.
 **Four questions T4b must settle, deliberately left open here.** They require a design pass against
 the real code and are not decided by this sequencing spec:
 
-1. **Where `EscalationIndex` goes.** It currently hands the peer absolute local paths. agy's read is
-   that it belongs driver-side. Decide explicitly; do not let it fall out of the refactor.
-2. **Whether once-per-process driver delivery suffices**, given a SessionStart re-injection path
-   already exists. If a long session loses the block, the driver silently stops receiving guidance.
+1. **Which driver-side destination `EscalationIndex` gets — not *whether* it moves.** Round-3 panel,
+   Axiom Breaker: this question was previously phrased as "where does it go", which contradicts T4b's
+   own intent. If the peer receives the ask payload ONLY, then an index that today hands the peer
+   absolute local paths (`AgyView.cs:131-132`) cannot stay where it is — that answer is already
+   excluded by the constraint, and leaving it nominally open invites a circular design pass. The live
+   question is narrower: which driver-side channel carries it, or is it dropped entirely?
+2. **Whether once-per-process driver delivery suffices — the failure is broader than a long session.**
+   Round-3 panel, Cascade Analyst. `_guidanceDelivered` is guarded by `Interlocked.Exchange`
+   (`AgyView.cs:54`) on an `AgyView` registered as `AddSingleton` (`Program.cs:38`), so the flag latches
+   for the **entire lifetime of the language-server process**, not of a conversation. Every conversation
+   after the first that shares that process receives **no** driver guidance at all. The earlier framing
+   here — "if a long session loses the block" — understated this materially.
+   *Correcting the panel's scope:* its claim that this starves "every subsequent conversation on the
+   machine" is too strong. MCP stdio servers are spawned per client, so a separate Claude Code session
+   gets a separate process and a fresh flag. The real blast radius is conversations sharing one server
+   process — which includes the common case of continuing work after a context clear.
+   This must be resolved against the **existing SessionStart re-injection path**, which is the
+   mitigation the original phrasing gestured at: determine whether that path can re-arm the flag, and if
+   it cannot, once-per-process is the wrong mechanism for content this load-bearing.
 3. **The Rust parity change** — the same split in `golden_header.rs` / `main.rs`, landing together
    with the C# change.
 4. **Whether the driver channel can physically carry the payload — ANSWERED by T4-0, but it left three
@@ -304,8 +329,24 @@ A release pipeline publishes artifacts; it does not install them on the executin
 developer running this sequence linearly would hit T3 with the OLD binary still on `PATH` and quietly
 re-corrupt the file. **The sequence is not required to be linear**: pausing after RELEASE to install by
 hand, or invoking the verb from a local build output instead of `PATH`, are both acceptable and are the
-intended way to satisfy this. What is NOT acceptable is executing T3 without confirming which binary
-answered — verify with `clavity-ls --version` (or the local build path) before draining, not after.
+intended way to satisfy this.
+
+**Verify the binary FUNCTIONALLY, not by version string.** Round-3 panel, Dependency Cynic, and it
+overturns this spec's previous instruction to check `clavity-ls --version`. That check is worthless for
+the local-build path this same paragraph endorses: a dev build reports a static, unbumped version
+(`0.3.0`-shaped) that is identical before and after the fix, so a stale local build passes the check
+while carrying the CP437 decoder. The only sound precondition is a **functional probe**: pipe a
+multi-byte character (an em dash is the natural choice) through the verb into a scratch
+`CLAVITY_GOLDEN_HEADER` directory and confirm it round-trips as U+2014 rather than `ΓÇö`. That probe
+tests the decoder itself, which is the actual precondition; the version string is a proxy for it and a
+broken one.
+
+**Back up the corrupt file BEFORE draining.** Round-3 panel, Blindspot Auditor. T3's whole purpose is
+mutating a file whose content is already damaged and unreproducible — the corrupt `growth.md` is still
+the ONLY copy of those curated rules, mojibake and all, and the mojibake is mechanically reversible
+while a zero-byte file is not. If the drain's upstream is unexpectedly empty, the repair overwrites the
+only artifact carrying the content it was meant to save. Copy it aside first. This is cheap, and it is
+what makes condition 3 below a check you can act on rather than an epitaph.
 
 **Completion oracle.** Three conditions, all required:
 1. **Zero occurrences of U+0393** (GREEK CAPITAL LETTER GAMMA, UTF-8 `CE 93`) in
