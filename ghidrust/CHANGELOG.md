@@ -1,4 +1,9 @@
 # ghidrust changelog
+## 1.1.1 — 2026-07-21
+
+### Fixes
+- fix(installer): resolve the 5.1 interpreter with {sys}, not {sysnative}
+
 ## 1.1.0 — 2026-07-20
 
 ### Features

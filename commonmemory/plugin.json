@@ -1,5 +1,5 @@
 {
   "name": "commonmemory",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Shared cross-agent memory conventions for Claude + agy over the agentmemory store."
 }
