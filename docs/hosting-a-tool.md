@@ -90,29 +90,35 @@ Thereafter bump **only** via `just bump <member> <version>`. Never hand-edit a v
    `register-plugin-hash.iss`) and call `RegisterMemberPlugin` / `DeregisterMemberPluginOnUninstall`.
    Do **not** write your own registration logic — `installer/_shared/register-plugin.ps1` is the single
    registrar for every member and for the .NET binary alike.
-8. `<member>/installer/marketplace.install.json` — generated; do not hand-author.
+8. `scripts/lib/release-lib.ps1` — add the member's `Key` to the `Members` list of **every**
+   `$SharedPaths` entry it ships. A shared asset arrives three different ways — an `#include`, a
+   `[Files] Source:` line, or a runtime invocation — and each one counts, so go by what the member
+   actually ships, not by what it `#include`s. Skip this and a fix to that shared asset bumps every
+   member **except** yours: the installer changes, the version does not, and nothing says so. See
+   "Releasing" below for why the release engine needs this.
+9. `<member>/installer/marketplace.install.json` — generated; do not hand-author.
 
 **CI / release**
-9. `.github/workflows/build-<member>.yml` — `workflow_call` + `workflow_dispatch`, produces the installer
-   and its `.sha256`.
-10. `.github/workflows/ci-<member>.yml` — push/PR gated on `paths: [<member>/**, …]`. Plugin-only members
+10. `.github/workflows/build-<member>.yml` — `workflow_call` + `workflow_dispatch`, produces the installer
+    and its `.sha256`.
+11. `.github/workflows/ci-<member>.yml` — push/PR gated on `paths: [<member>/**, …]`. Plugin-only members
     may not need one.
-11. `.github/workflows/ci-installer-<member>.yml` — also watch `installer/_shared/**` and the shared
+12. `.github/workflows/ci-installer-<member>.yml` — also watch `installer/_shared/**` and the shared
     scripts in **both** `paths:` blocks.
-12. `.github/workflows/umbrella-release.yml` — five separate touch points: the per-member **job**, the
+13. `.github/workflows/umbrella-release.yml` — five separate touch points: the per-member **job**, the
     publish job's **`needs:`**, its **download** step, the **`cp dist-<member>/*`** line, and the release-notes
     **table row**.
-13. `.github/workflows/republish-member.yml` — add the member to the `workflow_dispatch` input's
+14. `.github/workflows/republish-member.yml` — add the member to the `workflow_dispatch` input's
     `choice` options, or it can never be hotfixed independently.
 
 **Developer surface**
-14. Root `justfile` — only if the member is **buildable** (has its own `justfile`): add its `mod` line and
+15. Root `justfile` — only if the member is **buildable** (has its own `justfile`): add its `mod` line and
     append `<member>::lint` / `::test` / `::build` / `::fmt` to the four aggregate recipes. Plugin-only
     members need no change.
-15. `DevelopersCockpit.ps1` — `$Buildable` (buildable members only), `$Versioned` (all), and
+16. `DevelopersCockpit.ps1` — `$Buildable` (buildable members only), `$Versioned` (all), and
     `$BannerMembers`.
-16. Root [`README.md`](../README.md) product table and the root [`CLAUDE.md`](../CLAUDE.md) products table.
-17. **Documentation** — create the member's `README.md` and `CHANGELOG.md` (and `plugin/README.md` if it
+17. Root [`README.md`](../README.md) product table and the root [`CLAUDE.md`](../CLAUDE.md) products table.
+18. **Documentation** — create the member's `README.md` and `CHANGELOG.md` (and `plugin/README.md` if it
     is a code+plugin member) from the templates listed under "Per-member documentation" below.
     `just check-member-docs` fails until they exist.
 
@@ -122,6 +128,7 @@ Thereafter bump **only** via `just bump <member> <version>`. Never hand-edit a v
 pwsh -File scripts/check-versions.ps1 <member>
 pwsh -File scripts/check-versions.ps1 <member> -Coverage
 pwsh -File scripts/validate-members-manifest.ps1
+pwsh -File scripts/check-roster.ps1   # roster vs members.json, AND the shared-path map vs the installers
 just test-scripts          # Pester, incl. the roster tests
 ```
 
@@ -186,7 +193,26 @@ creating and pushing the `clavity-v<N>` tag that triggers `umbrella-release.yml`
 
 `ghidrust` is gated by its live E2E before publish, so a broken ghidrust blocks a **full** cut — but not
 a single-member hotfix. `republish-member.yml` rebuilds one member onto an already-published release
-without any sibling's build or gate running (this is why step 13 above matters).
+without any sibling's build or gate running (this is why step 14 above matters).
+
+**Which commits bump your member.** The engine does not bump on "any commit since the last release"; it
+attributes each commit by the paths it touches, and every tracked path falls in exactly one of three
+buckets (`scripts/lib/release-lib.ps1`):
+
+| bucket | what it is | effect |
+|---|---|---|
+| member-bound | anything under `<member>/` | bumps that member |
+| shared-shipping | `$SharedPaths` — assets that ship into members (`installer/_shared/**`, `seed/**`, `build/members.json`) | bumps the members declared for that asset |
+| dev-only | `$DevOnlyPaths` — CI, docs, tooling | bumps nobody, deliberately |
+
+A path in **none** of the three is *unclassified*, and the release refuses to run until you put it in a
+bucket. That is on purpose: before this existed, a commit touching only shared paths bumped nobody and
+the release reported a cheerful "nothing to release", which is how a fix to plugin registration —
+affecting every install — sat unshippable. If you add a top-level path, classify it.
+
+The map is audited, not trusted: `check-roster.ps1` re-derives each shared asset's member set by
+searching the members' own installer sources and fails on any disagreement, so a member that quietly
+starts or stops shipping a shared asset cannot drift out of the table.
 
 ## De-listing a member
 
@@ -199,9 +225,12 @@ reference. Decouple first, in this order:
 3. Delete its `build-<member>.yml`, `ci-<member>.yml`, `ci-installer-<member>.yml`.
 4. Remove it from `check-versions.ps1` (ValidateSet + `$Registry`), `bump-version.ps1`, `lefthook.yml`,
    the root `justfile`, and `DevelopersCockpit.ps1`.
-5. Remove its rows from the root `README.md` / `CLAUDE.md` tables.
-6. **Only now** delete the member folder.
-7. Keep the last published release for existing installs (immutable), or mark it deprecated in its notes.
+5. Remove its `Key` from every `$SharedPaths` entry in `scripts/lib/release-lib.ps1`. Leave one behind
+   and `check-roster.ps1` fails: the map claims a member ships an asset whose installer no longer
+   mentions it.
+6. Remove its rows from the root `README.md` / `CLAUDE.md` tables.
+7. **Only now** delete the member folder.
+8. Keep the last published release for existing installs (immutable), or mark it deprecated in its notes.
 
 ## Tag-namespace protection
 

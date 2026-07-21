@@ -150,6 +150,20 @@ To cut a live umbrella release, run:
 - Runs a fast local gate, then pushes `main` to the public remote (publishing every accumulated
   commit) before creating and pushing the tag.
 
+**Which members a commit bumps** depends on the paths it touches, not just its conventional-commit type.
+Every tracked path belongs to exactly one bucket: under `<member>/` bumps that member; a **shared**
+asset that ships into installers (`installer/_shared/**`, `seed/**`, `build/members.json`) bumps every
+member declared for it in `$SharedPaths`; and **dev-only** paths (`scripts/`, `.github/`, `docs/`, the
+root tooling files) deliberately bump nobody. So a docs-and-CI-only range legitimately reports
+`nothing to release (dev-only changes)`.
+
+A path in none of the three buckets is **unclassified**, and the release stops with
+`refusing to release` and lists them. This is not a bug to work around — it means the engine cannot tell
+who owns your change, and shipping anyway would silently under-version somebody. Fix it by classifying
+each path in `scripts/lib/release-lib.ps1`: add it to `$SharedPaths` with the members that ship it, or
+to `$DevOnlyPaths` if it reaches no end user. `pwsh -File scripts/check-roster.ps1` verifies the result,
+and also re-derives the shared map from the members' installers so it cannot drift.
+
 Existing CI heavy-gates (all 5 builds + ghidrust live-E2E) and auto-publishes on green. If CI fails,
 the tag is "burned" (skipped); fix and re-run. Never hand-edit a version — `just bump` remains the
 sole writer and `just release` drives it for you.
