@@ -13,6 +13,10 @@ ignore-path = [
   # legitimately reference paths that only resolve on the maintainer's box.
   "docs/superpowers",
   ".clavity",
+  # docs-rationalize audit tool (SP2) generated artifacts — they reference code:line and doc paths that
+  # are not links; they are gitignored working files, absent in a fresh clone. Never link-checked.
+  "docs/docs-audit-findings.md",
+  "docs/docs-audit-log.md",
 
   # Build output. NOTE: mlc's ignore-path matches a LITERAL path from the scan root — it is NOT a
   # glob. Measured: a bare "target" ignores only a root-level ./target (which never forms here, as

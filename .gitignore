@@ -44,6 +44,13 @@ docs/superpowers/plans/*
 docs/session-notes/
 .clavity/
 
+# docs-rationalize audit tool (SP2) — per-run generated working artifacts (owner ruling: gitignored).
+# Regenerated on every `just docs-audit`; never committed, never user-facing.
+docs/docs-audit-findings.json
+docs/docs-audit-findings.md
+docs/docs-audit-log.md
+docs/docs-audit.lock
+
 # Secret-shaped / junk guards (defense-in-depth — no secret is tracked today, keep it that way)
 *.pem
 *.key
