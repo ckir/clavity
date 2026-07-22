@@ -7,6 +7,8 @@ Two authorities this file defers to, and does not duplicate:
 - **Which docs each member carries** — [`hosting-a-tool.md` § Per-member documentation](hosting-a-tool.md#per-member-documentation).
 - **Section order within a doc** — the templates in `clavity-dotnet/templates/tool-skeleton/`.
 
+This file is also the authority over the **user-facing subset** that the `docs-rationalize` tool targets: [`docs/user-facing-docs.txt`](user-facing-docs.txt) — 25 files, a subset of the table below, validated by `scripts/check-user-facing-docs.ps1`.
+
 ## Docs (audience → voice)
 
 | Doc | Audience | Voice |
@@ -19,6 +21,7 @@ Two authorities this file defers to, and does not duplicate:
 | `<member>/ROADMAP.md` | Outcomes, not intentions-as-facts (optional) | terse |
 | `docs/**` | Cross-cutting readers; umbrella-only | terse-technical |
 | `<member>/docs/**` | That member's design/protocol depth — runbooks, transport notes, research logs | terse-technical; research logs may be long |
+| `clavity-classic/docs/how-it-works.md`, `clavity-classic/docs/launching-and-driving-agy.md` | **User-facing evaluator docs** — someone deciding whether/how to run clavity-classic. More specific than the generic `<member>/docs/**` internal-depth row above; keep them terse and scannable, not research-log-long | terse-technical |
 | `CONTRIBUTING.md` | A new contributor | terse-technical |
 | `CLAUDE.md` (root) | The agent working anywhere in the repo — cross-cutting rules only | terse, dense |
 | `SECURITY.md` | Someone reporting a vulnerability | terse, unambiguous |
