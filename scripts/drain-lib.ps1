@@ -62,8 +62,16 @@ function Move-PendingToStaging([string]$InboxPath, [string]$StagingPath) {
     # because agy-learn stays a dumb, uncoordinated appender (spec non-goal). The real fix (append-coordination /
     # agentmemory dual-write) is the spec's Evolution path; the drain is a deliberate, infrequent maintainer action,
     # so the residual window is accepted for the MVP.
-    [System.IO.File]::WriteAllText($StagingPath, (((Get-PendingBody $InboxPath) -join "`n") + "`n"))  # LF (D2)
+    # CAPSTONE-F2: write staging to a .tmp, clear the inbox, THEN rename tmp -> the real staging path. This makes the
+    # presence of the REAL staging file IMPLY the inbox was already cleared. If the clear throws (e.g. a concurrent
+    # lock on the inbox from an agy-learn append), no real staging file exists — only the .tmp, which
+    # Find-StagingFile's `agy-observations.staging.*.md` glob does NOT match — so the state is clean and NON-
+    # duplicating: a later abort cannot re-queue the staged body on top of a still-full inbox and double every entry
+    # (the pre-fix write-then-clear order left exactly that "staging exists + inbox full" state on a partial failure).
+    $tmp = $StagingPath + '.tmp'
+    [System.IO.File]::WriteAllText($tmp, (((Get-PendingBody $InboxPath) -join "`n") + "`n"))  # LF (D2)
     Set-PendingBody -InboxPath $InboxPath -body @()   # leave the ## Pending body EMPTY
+    Move-Item -LiteralPath $tmp -Destination $StagingPath -Force   # near-atomic rename; staging appears only post-clear
 }
 
 function Restore-StagingToPending([string]$InboxPath, [string]$StagingPath) {

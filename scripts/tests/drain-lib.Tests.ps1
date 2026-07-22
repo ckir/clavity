@@ -32,6 +32,20 @@ Describe "drain-lib primitives" {
         Move-PendingToStaging -InboxPath $script:Inbox -StagingPath $staging
         (Get-PendingBulletCount -InboxPath $script:Inbox) | Should -Be 0
         (Get-Content $staging | Where-Object { $_ -match '^- \[' }).Count | Should -Be 2
+        (Test-Path ($staging + '.tmp')) | Should -Be $false   # capstone-F2: the .tmp is renamed away on success
+    }
+
+    It "on a failed inbox-clear leaves NO real staging file + the inbox intact — no later abort-duplication (capstone-F2)" {
+        # Simulate a partial failure: the staging .tmp is written, then the inbox clear throws (a concurrent lock).
+        # The fix must leave NO file matching the staging glob (so a later abort has nothing to re-queue on top of the
+        # still-full inbox) and the inbox untouched. Pre-fix (write-then-clear on the REAL path) left a real staging
+        # file beside a full inbox, and abort then doubled every entry.
+        Set-Content -Path $script:Inbox -Value @('# inbox', '', '## Pending', '- [heuristic] r1  ·  x', '- [heuristic] r2  ·  x')
+        $staging = Join-Path $script:Work 'agy-observations.staging.RUNID.md'
+        Mock Set-PendingBody { throw 'simulated concurrent inbox lock' }
+        { Move-PendingToStaging -InboxPath $script:Inbox -StagingPath $staging } | Should -Throw
+        (Find-StagingFile -InboxDir $script:Work) | Should -BeNullOrEmpty   # no REAL staging file (only the ignored .tmp)
+        (Get-PendingBulletCount -InboxPath $script:Inbox) | Should -Be 2    # inbox intact — nothing lost, nothing to duplicate
     }
 
     It "restores staging bullets back under ## Pending (abort primitive)" {
