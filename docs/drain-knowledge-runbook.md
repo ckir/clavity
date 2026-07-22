@@ -38,10 +38,9 @@ The maintainer loop is:
    - **Reject**: `just abort-drain` (no commit needed — it reverts everything and re-queues the
      observations for a future drain attempt).
 
-`drain-knowledge` never commits and never writes the runtime file on its own; the maintainer is
-always the one who decides whether a drain's output is good enough to land, by committing it (or
-not) between steps 1 and 2/3 above — and the runtime header is touched at exactly one point in the
-whole flow: `accept-drain`'s `curate-commit` call.
+`drain-knowledge` never commits and never writes the runtime file on its own — the maintainer decides
+whether to land a drain's output, by committing it (or not) between steps 1 and 2/3. The runtime header
+is touched at exactly one point in the whole flow: `accept-drain`'s `curate-commit` call.
 
 ## Security / trust model
 
