@@ -56,6 +56,16 @@ foreach ($rel in $Files) {
     $code = $LASTEXITCODE
     if ($code -eq 1) { Fail "a protected driver-owned file was modified by the drain (curator may never touch it): $rel" }
     if ($code -ne 0) { Fail "'git diff' could not evaluate $rel (exit $code) — cannot confirm it is unchanged; failing closed" }
+
+    # ALSO check the INDEX vs HEAD (capstone R2-F4, "the index smuggle"). `git diff --quiet HEAD` compares the
+    # WORKING TREE to HEAD, so a curator that stages an edit (`git add`) and then restores only the worktree
+    # (`git restore --worktree`) leaves the malicious change in the INDEX, invisible to the worktree check — and a
+    # later `git commit`/`git commit -a`/GUI commit would commit it. Compare index→HEAD too so a staged-but-not-
+    # worktree edit is caught.
+    & git -C $RepoRoot diff --cached --quiet HEAD -- $rel 2>$null
+    $codeCached = $LASTEXITCODE
+    if ($codeCached -eq 1) { Fail "a protected driver-owned file has a STAGED (index) modification the drain must never make (index smuggle): $rel" }
+    if ($codeCached -ne 0) { Fail "'git diff --cached' could not evaluate $rel (exit $codeCached) — cannot confirm the index is unchanged; failing closed" }
 }
 
 Write-Host "check-core-integrity: OK — every protected driver-owned file is byte-identical to HEAD" -ForegroundColor Green

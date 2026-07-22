@@ -122,4 +122,18 @@ Describe "accept-drain transaction (scratch repo)" {
         # REAL clavity binary — is inherently live-only; see the risks section.)
         (Get-Content $script:Accept -Raw) | Should -Match "drain-lib\.ps1"
     }
+
+    It "PROCEEDS via the REAL default (no stub) when the growth proposal is absent — production nothing-to-publish detection (capstone R2-F2)" {
+        # No -CurateCommitStub: this exercises the PRODUCTION default branch, not the injected stub. With the growth
+        # proposal ABSENT, the default returns 'nothing-to-publish' BEFORE resolving or invoking any clavity binary —
+        # so it pins the real Test-Path detection (which the stub tests bypass) AND never writes a real runtime file.
+        Push-Location $script:Repo
+        git rm -q 'docs/agy-golden-header.growth.md'
+        git commit -qm 'docs-only: no growth proposal'
+        Pop-Location
+        Commit-Drain
+        & pwsh -File $script:Accept -InboxPath $script:Inbox -RepoRoot $script:Repo   # NO stub → real default path
+        $LASTEXITCODE | Should -Be 0
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
+    }
 }

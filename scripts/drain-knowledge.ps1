@@ -106,13 +106,17 @@ function Invoke-Main {
     # working tree to the FLOATING HEAD — would pass VACUOUSLY against a curator's own committed edit to a protected
     # file, while the maintainer's `git diff` review shows nothing (the change is committed). A well-behaved curator
     # NEVER commits, so ANY HEAD movement across the curator run is a protocol violation: reject BEFORE the gate can
-    # be fooled. Staging is retained. Recovery: the rogue commit is now HEAD, so `just abort-drain` alone would NOT
-    # undo it (its `reset --hard HEAD` resets TO the rogue commit) — the maintainer must first
-    # `git reset --soft $headBefore` to un-commit the curator's changes back into the working tree, then review and
-    # re-drain (or abort after the reset).
+    # be fooled. Staging is retained. RECOVERY (capstone R2-F1): the rogue commit is now HEAD, and everything after
+    # $headBefore is the curator's REJECTED work (the drain ran on a pristine tree at $headBefore), so the safe reset
+    # is `git reset --hard $headBefore` — it discards the rogue commit AND any tracked edits, restoring the pristine
+    # pre-curator tree. A bare `git reset --soft` would leave the protected file dirty/staged and STRAND the maintainer
+    # (re-drain is blocked by the pristine-tree guard; abort-drain is blocked by its data-loss guard over the dirty
+    # protected file). After the hard reset, `just abort-drain` cleans the curator's untracked outputs and re-queues
+    # the staging snapshot into ## Pending. (This early-exit intentionally skips step 6's targeted revert — a hard
+    # reset to $headBefore is the complete restoration, which the per-file revert to the ROGUE HEAD could not give.)
     $headAfter = & git -C $RepoRoot rev-parse HEAD 2>$null
     if ($headAfter -ne $headBefore) {
-        Write-Host "drain-knowledge: the curator advanced HEAD (it committed) — a protocol violation that would let the protected-files gate pass vacuously against its own edit. Staging retained ($staging). Recover: 'git reset --soft $headBefore' to un-commit the curator's changes, review 'git status', then re-drain (abort-drain alone will NOT undo the commit)." -ForegroundColor Red
+        Write-Host "drain-knowledge: the curator advanced HEAD (it committed) — a protocol violation that would let the protected-files gate pass vacuously against its own edit. Staging retained ($staging). Recover: 'git reset --hard $headBefore' to discard the curator's rejected commit + edits (restores the pristine tree), then 'just abort-drain' to clean its untracked outputs and re-queue the snapshot." -ForegroundColor Red
         exit 3
     }
 

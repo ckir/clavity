@@ -61,4 +61,16 @@ Describe "check-core-integrity.ps1 (protected-files-unchanged gate)" {
         & pwsh -File $script:Script -RepoRoot $script:Repo          # NO -Files → default from Get-DrainProtectedPaths
         $LASTEXITCODE | Should -Be 1
     }
+
+    It "fails when a protected file is STAGED-modified but the worktree is restored to HEAD (index smuggle; capstone R2-F4)" {
+        # The curator stages a malicious edit then restores ONLY the worktree — the change hides in the INDEX,
+        # invisible to a worktree-vs-HEAD check, and a later `git commit` would commit it. The gate must catch it.
+        Add-Content -Path $script:File -Value 'index-smuggled edit'
+        Push-Location $script:Repo
+        git add 'protected.md'
+        git restore --worktree --source=HEAD 'protected.md'   # worktree back to HEAD; index keeps the staged edit
+        Pop-Location
+        & pwsh -File $script:Script -RepoRoot $script:Repo -Files 'protected.md'
+        $LASTEXITCODE | Should -Be 1
+    }
 }
