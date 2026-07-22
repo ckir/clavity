@@ -106,9 +106,16 @@ Describe 'Invoke-UserFacingDocsCheck' {
         $r = Invoke-UserFacingDocsCheck $repo -TrackedDocs @('README.md','x/plugin/skills/foo/SKILL.md')
         $r.Warnings | Should -Be @()
     }
-    It 'does NOT crash when git is unavailable / not a repo (TrackedDocs left to git in a non-repo TestDrive)' {
+    It 'does NOT crash when this is not a git repo (git present, non-zero exit) - heuristic skips silently' {
         $repo = New-ScratchListRepo -ListLines @('README.md') -Files @{ 'README.md'='# r' }
         { Invoke-UserFacingDocsCheck $repo } | Should -Not -Throw
         (Invoke-UserFacingDocsCheck $repo).ExitCode | Should -Be 0
+    }
+    It 'Get-TrackedMarkdown returns $null when the git binary is absent (Get-Command finds nothing)' {
+        # Proves the Get-Command-git guard branch (not the not-a-repo branch) is exercised: without the
+        # Should -Invoke, a machine WITH git would also return $null via the non-repo path, hiding a mock miss.
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'git' }
+        Get-TrackedMarkdown $TestDrive | Should -Be $null
+        Should -Invoke Get-Command -ParameterFilter { $Name -eq 'git' } -Times 1
     }
 }

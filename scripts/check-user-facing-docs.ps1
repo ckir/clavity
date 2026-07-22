@@ -3,10 +3,12 @@
 # classifies do-not-touch (a doc the docs-rationalize tool must never audit). WARN (non-failing) if a
 # tracked user-facing-shaped .md is absent from the list. Mirrors check-member-docs.ps1's shape.
 #
-# The do-not-touch globs below mirror docs/docs-spec.md's "Do-not-touch" list (its lines 53-89) and are
-# pinned by Pester tests. By docs-spec.md's in-table-XOR-excluded invariant (its lines 94-95), a listed
-# doc that is NOT do-not-touch is necessarily voiced - so (b) is the voice-coverage guard without parsing
-# the voice table.
+# The do-not-touch globs below mirror docs/docs-spec.md's "Do-not-touch" list (its lines 53-89), and the
+# voice-table shapes mirror its "Docs (audience -> voice)" table (its lines 14-28); both sets are pinned by
+# Pester tests. A listed doc must (b1) NOT match a do-not-touch glob AND (b2) POSITIVELY match a voice-table
+# shape (Test-HasVoiceEntry): the check confirms voicing directly rather than inferring it from "not
+# excluded", because docs-spec.md's in-table-XOR-excluded convention (its lines 94-95) admits a "neither"
+# spec-gap case and so is not a guarantee.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -94,13 +96,15 @@ function Get-TrackedMarkdown([string]$repoRoot) {
     # under ErrorActionPreference='Stop', a bare `& git` with git absent throws CommandNotFoundException
     # (a terminating error that bypasses $LASTEXITCODE); the (c) heuristic must degrade to a silent skip.
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $null }
+    $pushed = $false
     try {
-        Push-Location $repoRoot
+        Push-Location -LiteralPath $repoRoot
+        $pushed = $true
         $out = & git ls-files '*.md' 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
         return @($out | ForEach-Object { $_ -replace '\\', '/' })
     } catch { return $null }
-    finally { Pop-Location }
+    finally { if ($pushed) { Pop-Location } }
 }
 
 function Invoke-UserFacingDocsCheck([string]$repoRoot, [string[]]$TrackedDocs = $null) {
