@@ -203,3 +203,20 @@ function Enter-AuditLock {
 }
 
 function Exit-AuditLock([string]$LockPath) { Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue }
+
+function Get-MlcErrorCount([string]$MlcOutput) {
+    # PINNED to mlc's real summary block, captured from a live run (Step 1) — not guessed:
+    #     Result (210 links):
+    #     OK       144
+    #     Skipped  37
+    #     Warnings 27
+    #     Errors   2
+    # Anchored to a WHOLE `Errors <N>` line so the sibling `Warnings <N>` line can never be misread as the count
+    # (a loose `(\d+)\s+error` pattern would match "Warnings 27" on some outputs). Advisory + non-blocking: the
+    # human compares this raw count against the baseline of 2 documented in .mlc.toml. Returns 0 when no summary
+    # block is present — the caller records mlc's raw exit code alongside, so a 0 is never read as "clean" alone.
+    if (-not $MlcOutput) { return 0 }
+    $m = [regex]::Match($MlcOutput, '(?m)^\s*Errors\s+(\d+)\s*$')
+    if ($m.Success) { return [int]$m.Groups[1].Value }
+    return 0
+}

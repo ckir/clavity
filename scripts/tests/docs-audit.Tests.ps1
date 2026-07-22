@@ -210,3 +210,21 @@ Describe 'Self-clearing lock' {
         Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:30Z' -MaxAgeSec 3600 | Should -BeTrue
     }
 }
+
+Describe 'Get-MlcErrorCount' {
+    It 'reads the error count from REAL captured mlc summary output' {
+        $real = @'
+Result (210 links):
+
+OK       144
+Skipped  37
+Warnings 27
+Errors   2
+'@
+        Get-MlcErrorCount $real | Should -Be 2
+    }
+    It 'does not mistake the sibling Warnings line for the Errors line' {
+        Get-MlcErrorCount "OK       144`nWarnings 27`nErrors   0" | Should -Be 0
+    }
+    It 'returns 0 when no summary block is present' { Get-MlcErrorCount 'mlc produced nothing usable' | Should -Be 0 }
+}
