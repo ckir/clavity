@@ -35,6 +35,11 @@ docs/superpowers/specs/*
 !docs/superpowers/specs/2026-07-21-golden-header-epic-sequencing-design.md
 !docs/superpowers/specs/2026-07-22-ship-agy-disciplines-design.md
 !docs/superpowers/specs/2026-07-22-docs-rationalize-tool-design.md
+# Implementation plans — same DEFAULT-DENY opt-IN discipline as specs above: re-admit the plans/
+# directory, exclude its contents, then negate each public-safe plan file by name after reading it.
+!docs/superpowers/plans/
+docs/superpowers/plans/*
+!docs/superpowers/plans/2026-07-22-docs-rationalize-sp1-user-facing-list.md
 docs/session-notes/
 .clavity/
 
