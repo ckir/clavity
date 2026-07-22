@@ -241,6 +241,10 @@ function Invoke-CurateCommit([string]$Exe, [string]$GrowthPath, [string[]]$ArgLi
     # Read the payload BEFORE starting the child (panel agy-R2-2): if ReadAllBytes throws (file removed/unreadable
     # between accept's Test-Path and here), we must NOT already have a started clavity-ls orphaned forever waiting
     # on stdin. With the bytes in hand first, Start is the last thing that can fail here.
+    # Guard against loading an absurd file into RAM (capstone R3-2, Resource Vampire): curate-commit's real limit is
+    # 16 KiB, so anything past a generous 1 MiB bound is invalid GROWTH — return curate-commit's over-cap code (2)
+    # WITHOUT reading it, rather than OOM'ing the accept process on a hallucinated/malicious multi-GB proposal.
+    if ((Get-Item -LiteralPath $GrowthPath).Length -gt 1MB) { return 2 }
     $bytes = [System.IO.File]::ReadAllBytes($GrowthPath)
     try {
         $proc = [System.Diagnostics.Process]::Start($psi)

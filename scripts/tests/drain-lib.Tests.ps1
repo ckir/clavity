@@ -171,4 +171,14 @@ exit 0
         $code = Invoke-CurateCommit -Exe (Join-Path $script:Work 'does-not-exist.exe') -GrowthPath $growth
         $code | Should -BeGreaterThan 0
     }
+
+    It "Invoke-CurateCommit returns 2 (over-cap) WITHOUT loading an absurdly large file into RAM (capstone R3-2)" {
+        # A file far past the 16 KiB cap (here ~1.1 MiB) must be rejected by size BEFORE ReadAllBytes, so a multi-GB
+        # hallucinated proposal can never OOM the accept process. Returns curate-commit's over-cap code (2); the exe
+        # is never launched (a bogus exe path proves Start was not reached).
+        $big = Join-Path $script:Work 'big.md'
+        [System.IO.File]::WriteAllBytes($big, [byte[]]::new(1150000))
+        $code = Invoke-CurateCommit -Exe (Join-Path $script:Work 'nope.exe') -GrowthPath $big
+        $code | Should -Be 2
+    }
 }
