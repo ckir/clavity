@@ -82,4 +82,26 @@ Describe "drain-knowledge orchestrator guards" {
         $LASTEXITCODE | Should -Be 3
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
+
+    It "TARGETED-REVERTS a curator's protected-file edit to HEAD and exits 3 (F2 revert path — previously live-only, now pinned via -CuratorStub)" {
+        # A stub curator that DIRTIES a protected file WITHOUT committing (HEAD does not move, so the F4B HEAD-pin
+        # passes and control reaches step 6). The step-6 gate must fail, targeted-revert the file to HEAD, and exit 3
+        # with staging retained — restoring the file so abort-drain's data-loss guard is NOT stranded (panel F2). This
+        # path is unreachable with -SkipCurator (the pristine-tree guard forbids a pre-dirtied tree), which is exactly
+        # why the plan flagged it live-only; the -CuratorStub seam makes it deterministic.
+        $seed = Join-Path $script:Repo 'seed/golden-header.md'
+        New-Item -ItemType Directory -Path (Split-Path $seed -Parent) -Force | Out-Null
+        Set-Content $seed 'ORIGINAL SEED'
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') -Force | Out-Null
+        Push-Location $script:Repo; git add .; git commit -qm 'seed baseline'; Pop-Location
+        $stub = Join-Path $script:InboxDir 'dirty-protected.ps1'
+        Set-Content -Path $stub -Value @(
+            'param($stagingPath, $repoRoot)'
+            'Set-Content -LiteralPath (Join-Path $repoRoot ''seed/golden-header.md'') -Value ''CURATOR TAMPERED'''
+        )
+        & pwsh -File $script:Drain -InboxPath $script:Inbox -RepoRoot $script:Repo -CuratorStub $stub
+        $LASTEXITCODE | Should -Be 3
+        (Get-Content $seed -Raw).Trim() | Should -Be 'ORIGINAL SEED'   # targeted-revert restored the protected file
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
+    }
 }
