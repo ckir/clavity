@@ -241,6 +241,16 @@ public class AgyAskIntegrationTests
             Assert.Contains(manualPath, block);
             Assert.Contains("escalation index", block, StringComparison.OrdinalIgnoreCase);
 
+            // T4a composition-order pin: Contains alone does not pin ORDER. The canonical section order
+            // (panel F5) is cheatsheet -> golden header (SEED+GROWTH) -> escalation index, so the header
+            // (GROWTH) must precede the index (ESCALATION). Rust has no index, so this three-way order is
+            // C#-only and was unpinned until here.
+            var floorPos = block!.IndexOf(DriverCheatsheet.BaselineFloor, StringComparison.Ordinal);
+            var headerPos = block.IndexOf("SEED-BODY", StringComparison.Ordinal);
+            var indexPos = block.IndexOf("escalation index", StringComparison.OrdinalIgnoreCase);
+            Assert.True(floorPos < headerPos && headerPos < indexPos,
+                $"canonical order must be cheatsheet -> header -> escalation index; got floor@{floorPos} header@{headerPos} index@{indexPos}: {block}");
+
             Assert.Null(view.TryTakeGuidanceBlock());   // once-per-process: second call returns null.
         }
         finally
