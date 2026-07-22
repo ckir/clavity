@@ -261,4 +261,80 @@ Describe 'docs-audit orchestrator (via pwsh -File, -AuditStub seam)' {
         $LASTEXITCODE | Should -Be 0
         (Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw) | Should -Match '- A.md — AUDIT-TIMEOUT'
     }
+    It 'a subset re-run preserves other docs findings (does not wipe the store)' {
+        # Full run seeds A,B,C with FINDINGS.
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck
+        # Subset re-run of ONLY A.
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R2' -Timestamp '2026-07-22 01:00:00Z' -Only 'A.md'
+        $LASTEXITCODE | Should -Be 0
+        $store = Get-Content (Join-Path $script:Root 'docs/docs-audit-findings.json') -Raw | ConvertFrom-Json -AsHashtable
+        @($store.docs['B.md'].findings).Count | Should -Be 1   # B survived the subset run
+        @($store.docs['C.md'].findings).Count | Should -Be 1   # C survived
+    }
+    It 'an outcome-aware failed re-run preserves prior findings (seed FINDINGS, re-audit AUDIT-INCONCLUSIVE)' {
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Only 'A.md'
+        $refuse = Join-Path $script:Root 'stub-refuse.ps1'
+        Set-Content $refuse @('param($docPath,$repoRoot)','Write-Output "I cannot do that."')   # no CLAIMS_INSPECTED => inconclusive
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $refuse -RunId 'R2' -Timestamp '2026-07-22 01:00:00Z' -Only 'A.md'
+        $store = Get-Content (Join-Path $script:Root 'docs/docs-audit-findings.json') -Raw | ConvertFrom-Json -AsHashtable
+        $store.docs['A.md'].outcome | Should -Be 'FINDINGS'          # prior outcome preserved
+        @($store.docs['A.md'].findings).Count | Should -Be 1
+        # @(...) load-bearing: a single Where-Object match unwraps to a bare hashtable whose .Count is its KEY
+        # count. Doubly required here: ConvertFrom-Json -AsHashtable guarantees hashtable entries.
+        @($store.docs['A.md'].history | Where-Object { $_.outcome -eq 'AUDIT-INCONCLUSIVE' }).Count | Should -Be 1
+    }
+    It 'AUDIT-SUSPECT: claims 1 for a code-block-heavy doc' {
+        Set-Content (Join-Path $script:Root 'A.md') @('# A','```bash','x','```','```bash','y','```','```bash','z','```')
+        $one = Join-Path $script:Root 'stub-one.ps1'
+        Set-Content $one @('param($docPath,$repoRoot)','Write-Output "CLAIMS_INSPECTED: 1"','Write-Output "FINDINGS: none"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $one -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Only 'A.md'
+        (Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw) | Should -Match '- A.md — AUDIT-SUSPECT'
+    }
+    It 'partial failure: one doc failing (native non-zero exit) does not abort the others; completed docs keep their log lines' {
+        $mixed = Join-Path $script:Root 'stub-mixed.ps1'
+        # B models a REAL claude -p failure: a native command exits NON-ZERO with empty stdout (it does NOT throw
+        # a PS error — agy plan-review F5). The parser sees no CLAIMS_INSPECTED => AUDIT-INCONCLUSIVE. A and C
+        # audit clean. All three must still get a log line.
+        Set-Content $mixed @(
+            'param($docPath,$repoRoot)'
+            'if ($docPath -eq "B.md") { exit 1 }'
+            'Write-Output "CLAIMS_INSPECTED: 2"; Write-Output "FINDINGS: none"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $mixed -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck
+        $LASTEXITCODE | Should -Be 0
+        $log = Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw
+        $log | Should -Match '- A.md — CLEAN'
+        $log | Should -Match '- B.md — AUDIT-INCONCLUSIVE'   # the throw was caught, recorded, and did not abort
+        $log | Should -Match '- C.md — CLEAN'
+    }
+    It 'a live lock (alive PID, fresh timestamp) makes a second start refuse cleanly (exit 2)' {
+        # Write a lock owned by THIS test process (alive) with a fresh timestamp matching the run -Timestamp.
+        Set-Content (Join-Path $script:Root 'docs/docs-audit.lock') @("$PID", '2026-07-22 00:00:00Z')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R1' -Timestamp '2026-07-22 00:00:05Z' -SkipLinkCheck -Only 'A.md'
+        $LASTEXITCODE | Should -Be 2
+    }
+    It 'a stale lock (past max-age) is reclaimed and the run proceeds' {
+        Set-Content (Join-Path $script:Root 'docs/docs-audit.lock') @("$PID", '2026-07-22 00:00:00Z')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R1' -Timestamp '2026-07-22 05:00:00Z' -SkipLinkCheck -Only 'A.md' -LockMaxAgeSec 3600
+        $LASTEXITCODE | Should -Be 0
+    }
+    It 'the lock is released on completion (self-clearing)' {
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Only 'A.md'
+        Test-Path (Join-Path $script:Root 'docs/docs-audit.lock') | Should -BeFalse
+    }
+    It '-WhatIf previews without taking the lock, invoking the audit, or writing any artifact' {
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -WhatIf
+        $LASTEXITCODE | Should -Be 0                                        # not a vacuous pass: the run exited cleanly (agy R2-F3)
+        Test-Path (Join-Path $script:Root 'docs/docs-audit-findings.json') | Should -BeFalse
+        Test-Path (Join-Path $script:Root 'docs/docs-audit-log.md')       | Should -BeFalse
+        Test-Path (Join-Path $script:Root 'docs/docs-audit.lock')         | Should -BeFalse
+    }
+    It 'a failed audit records its CAUSE in the log, not a bare AUDIT-INCONCLUSIVE (agy R5-F1)' {
+        $quota = Join-Path $script:Root 'stub-quota.ps1'
+        Set-Content $quota @('param($docPath,$repoRoot)', 'Write-Output "Error: 429 API quota exceeded"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $quota -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Only 'A.md'
+        $LASTEXITCODE | Should -Be 0
+        $log = Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw
+        $log | Should -Match '- A.md — AUDIT-INCONCLUSIVE'
+        $log | Should -Match 'diag:Error: 429 API quota exceeded'   # the operator can tell quota from a refusal
+    }
 }
