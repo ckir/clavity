@@ -74,6 +74,15 @@ abort-drain *args:
 accept-drain *args:
     pwsh -File scripts/accept-drain.ps1 {{args}}
 
+# Stage-1 docs-rationalize AUDIT: read-only `claude -p` doc-vs-code accuracy audit over docs/user-facing-docs.txt,
+# emitting a per-doc punch-list (docs/docs-audit-findings.md) + append-only log (docs/docs-audit-log.md). Makes NO
+# doc edits and NO commit. RUN ON DEMAND / BACKGROUNDED ONLY — never a gate, never in lefthook. `*args` forwards
+# flags: `-Only a.md,b.md` (narrow to a subset, skips the link-check — COMMAS, NO SPACES: under `pwsh -File` a
+# space-separated 2nd value silently binds to the next positional parameter), `-WhatIf` (dry-run preview — no
+# lock, no claude -p, no writes), `-RepoRoot <path>`. Main thread picks up the punch-list for Stage 2.
+docs-audit *args:
+    pwsh -File scripts/docs-audit.ps1 {{args}}
+
 # Run the pwsh unit tests for the release engine (pure-logic seam).
 test-scripts:
     pwsh -c "Invoke-Pester scripts/tests -Output Detailed -CI"
