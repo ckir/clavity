@@ -34,6 +34,7 @@ docs/superpowers/*
 docs/superpowers/specs/*
 !docs/superpowers/specs/2026-07-21-golden-header-epic-sequencing-design.md
 !docs/superpowers/specs/2026-07-22-ship-agy-disciplines-design.md
+!docs/superpowers/specs/2026-07-22-docs-rationalize-tool-design.md
 docs/session-notes/
 .clavity/
 
