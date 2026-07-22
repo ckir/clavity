@@ -76,3 +76,76 @@ function Get-DiagnosticSnippet([string]$Text, [int]$Max = 200) {
     if ($one.Length -gt $Max) { return $one.Substring(0, $Max) + '...' }
     return $one
 }
+
+function Read-FindingsStore([string]$Path) {
+    # Returns a mutable hashtable model. Absent/empty/corrupt file => a fresh empty skeleton (the store is a
+    # gitignored working artifact; a corrupt one is safe to discard and rebuild, never a hard error).
+    if (Test-Path $Path) {
+        try {
+            $obj = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable
+            if ($obj -and $obj.ContainsKey('docs')) {
+                if (-not $obj.ContainsKey('schemaVersion')) { $obj['schemaVersion'] = 1 }
+                if ($null -eq $obj['docs']) { $obj['docs'] = @{} }
+                return $obj
+            }
+        } catch { }   # fall through to skeleton
+    }
+    return @{ schemaVersion = 1; docs = @{} }
+}
+
+function Merge-DocResult {
+    param([hashtable]$Store, [string]$DocPath, [hashtable]$Result, [string]$RunId)
+    if (-not $Store.docs.ContainsKey($DocPath)) {
+        $Store.docs[$DocPath] = @{ outcome=$null; claimsInspected=0; auditedAtRunId=$null; findings=@(); history=@() }
+    }
+    $e = $Store.docs[$DocPath]
+    $confirmed = @('CLEAN','FINDINGS') -contains $Result.Outcome
+    if ($confirmed) {
+        $e['outcome']         = $Result.Outcome
+        $e['claimsInspected'] = $Result.ClaimsInspected
+        $e['findings']        = @($Result.Findings)
+        $e['auditedAtRunId']  = $RunId
+        $e['history']         = @($e['history']) + ,@{ runId=$RunId; outcome=$Result.Outcome; note='audited' }
+    } else {
+        # AUDIT-INCONCLUSIVE / AUDIT-TIMEOUT / AUDIT-SUSPECT: do NOT drop prior findings — the doc did not change,
+        # the audit merely failed to confirm. Annotate the failed attempt so Stage 2 sees both.
+        if (@('CLEAN','FINDINGS') -notcontains $e['outcome']) {   # no CONFIRMED findings to preserve (null or a
+            # prior failure state) => record the LATEST failure. `-not $e['outcome']` would freeze an
+            # INCONCLUSIVE->SUSPECT transition on the first failure (agy plan-review F3).
+            $e['outcome']         = $Result.Outcome
+            $e['claimsInspected'] = $Result.ClaimsInspected
+            $e['findings']        = @()
+        }
+        $e['history'] = @($e['history']) + ,@{ runId=$RunId; outcome=$Result.Outcome; note='re-audit did not confirm; prior findings preserved' }
+    }
+    return $Store
+}
+
+function Write-FindingsStore([hashtable]$Store, [string]$Path) {
+    # Atomic: write to .tmp then rename, so a crash mid-write never corrupts the whole store (agy fork-1 fix).
+    $json = ($Store | ConvertTo-Json -Depth 12)
+    $tmp = $Path + ".$PID.tmp"   # PID-unique: a stale-reclaimed zombie run must not share this temp path (agy R2-F2)
+    [System.IO.File]::WriteAllText($tmp, $json)              # UTF-8 no BOM, LF
+    Move-Item -LiteralPath $tmp -Destination $Path -Force    # near-atomic rename
+}
+
+function Render-FindingsView([hashtable]$Store, [string]$Path) {
+    # A GENERATED human/Stage-2 view — the JSON is the source of truth. Each doc's section is bracketed by
+    # machine-parseable delimiters (belt-and-suspenders; the merge itself operates on the JSON, never this text).
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add('# docs audit findings (GENERATED view of docs-audit-findings.json; gitignored working artifact)')
+    $lines.Add('')
+    foreach ($doc in ($Store.docs.Keys | Sort-Object)) {
+        $e = $Store.docs[$doc]
+        $lines.Add("<!-- doc:$doc start -->")
+        $lines.Add("## $doc — $($e['outcome']) (claims inspected: $($e['claimsInspected']))")
+        $fs = @($e['findings'])
+        if ($fs.Count -eq 0) { $lines.Add('- (no findings)') }
+        else { foreach ($f in $fs) { $lines.Add("- $($f['kind']) $($f['docPath']):$($f['docLine']) | $($f['codeRef']) | $($f['text'])") } }
+        $lines.Add("<!-- doc:$doc end -->")
+        $lines.Add('')
+    }
+    $tmp = $Path + ".$PID.tmp"   # PID-unique: a stale-reclaimed zombie run must not share this temp path (agy R2-F2)
+    [System.IO.File]::WriteAllText($tmp, (($lines -join "`n") + "`n"))
+    Move-Item -LiteralPath $tmp -Destination $Path -Force
+}

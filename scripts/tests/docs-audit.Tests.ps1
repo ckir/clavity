@@ -80,3 +80,73 @@ Describe 'Parse-AuditOutput / Get-FencedCodeBlockCount / Get-DocOutcome' {
         (Get-DiagnosticSnippet ('x' * 500)).Length | Should -BeLessOrEqual 203   # 200 + the ellipsis
     }
 }
+
+Describe 'FindingsStore merge/write/render' {
+    BeforeEach { $script:Json = Join-Path $TestDrive ('s-' + [Guid]::NewGuid() + '.json') }
+
+    It 'a fresh store reads as an empty skeleton' {
+        $s = Read-FindingsStore $script:Json
+        $s.schemaVersion | Should -Be 1; $s.docs.Keys.Count | Should -Be 0
+    }
+    It 'a confirmed FINDINGS result is stored and round-trips through disk' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' `
+            -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='A.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        Write-FindingsStore -Store $s -Path $script:Json
+        $r = Read-FindingsStore $script:Json
+        $r.docs['A.md'].outcome | Should -Be 'FINDINGS'
+        @($r.docs['A.md'].findings).Count | Should -Be 1
+    }
+    It 'a CLEAN re-run REPLACES a docs prior FINDINGS section' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='A.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R2' -Result @{ Outcome='CLEAN'; ClaimsInspected=6; Findings=@() } | Out-Null
+        $s.docs['A.md'].outcome | Should -Be 'CLEAN'
+        @($s.docs['A.md'].findings).Count | Should -Be 0
+        $s.docs['A.md'].auditedAtRunId | Should -Be 'R2'
+    }
+    It 'a failed re-run (AUDIT-INCONCLUSIVE) PRESERVES prior findings and annotates the attempt' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='A.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R2' -Result @{ Outcome='AUDIT-INCONCLUSIVE'; ClaimsInspected=0; Findings=@() } | Out-Null
+        $s.docs['A.md'].outcome | Should -Be 'FINDINGS'          # prior outcome preserved
+        @($s.docs['A.md'].findings).Count | Should -Be 1         # prior findings survive
+        # @(...) is load-bearing: a single Where-Object match unwraps to a bare hashtable whose OWN .Count is its
+        # KEY count (3), shadowing PowerShell's single-object Count adapter — the bare form measures 3, not 1.
+        @($s.docs['A.md'].history | Where-Object { $_.outcome -eq 'AUDIT-INCONCLUSIVE' }).Count | Should -Be 1  # attempt not hidden
+    }
+    It 'a first-ever audit that is inconclusive records the state with empty findings' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'B.md' -RunId 'R1' -Result @{ Outcome='AUDIT-INCONCLUSIVE'; ClaimsInspected=0; Findings=@() } | Out-Null
+        $s.docs['B.md'].outcome | Should -Be 'AUDIT-INCONCLUSIVE'
+        @($s.docs['B.md'].findings).Count | Should -Be 0
+    }
+    It 'a failure->different-failure transition updates the visible outcome (agy F3): INCONCLUSIVE then SUSPECT' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'B.md' -RunId 'R1' -Result @{ Outcome='AUDIT-INCONCLUSIVE'; ClaimsInspected=0; Findings=@() } | Out-Null
+        Merge-DocResult -Store $s -DocPath 'B.md' -RunId 'R2' -Result @{ Outcome='AUDIT-SUSPECT'; ClaimsInspected=1; Findings=@() } | Out-Null
+        $s.docs['B.md'].outcome | Should -Be 'AUDIT-SUSPECT'   # NOT frozen on the earlier INCONCLUSIVE
+    }
+    It 'Read-FindingsStore falls through to a fresh skeleton on corrupt JSON (agy F6)' {
+        Set-Content $script:Json '{ this is not valid json'
+        $s = Read-FindingsStore $script:Json
+        $s.schemaVersion | Should -Be 1; $s.docs.Keys.Count | Should -Be 0
+    }
+    It 'Read-FindingsStore falls through to a fresh skeleton when the docs key is missing (agy F6)' {
+        Set-Content $script:Json '{ "schemaVersion": 1 }'
+        (Read-FindingsStore $script:Json).docs.Keys.Count | Should -Be 0
+    }
+    It 'Write-FindingsStore is atomic (leaves no PID-unique .tmp behind)' {
+        $s = Read-FindingsStore $script:Json
+        Write-FindingsStore -Store $s -Path $script:Json
+        Test-Path ($script:Json + ".$PID.tmp") | Should -BeFalse   # same process => same $PID as the write
+    }
+    It 'Render-FindingsView emits per-doc delimited sections' {
+        $s = Read-FindingsStore $script:Json
+        Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R1' -Result @{ Outcome='FINDINGS'; ClaimsInspected=4; Findings=@(@{kind='ACCURACY';docPath='A.md';docLine=1;codeRef='x.rs:2';text='t'}) } | Out-Null
+        $md = Join-Path $TestDrive 'view.md'
+        Render-FindingsView -Store $s -Path $md
+        (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md start -->'
+        (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md end -->'
+    }
+}
