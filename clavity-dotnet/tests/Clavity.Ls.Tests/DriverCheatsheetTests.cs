@@ -32,6 +32,47 @@ public sealed class DriverCheatsheetTests : IDisposable
         Assert.Equal(DriverCheatsheet.BaselineFloor, DriverCheatsheet.Read(_dir));
     }
 
+    // F2 (panel finding): a genuinely-absent file is the normal fresh-install state, NOT a degrade — Degraded
+    // must be false so the caller doesn't lead the delivered block with a warning nobody needs to see.
+    [Fact]
+    public void ReadWithDegradeStatus_reports_not_degraded_when_file_absent()
+    {
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor, text);
+        Assert.False(degraded);
+    }
+
+    // F2: over-cap is an ANOMALOUS degrade — the file exists but is unusable — so Degraded must be true.
+    [Fact]
+    public void ReadWithDegradeStatus_reports_degraded_when_over_cap()
+    {
+        File.WriteAllBytes(Path.Combine(_dir, DriverCheatsheet.FileName),
+            Encoding.UTF8.GetBytes(new string('x', DriverCheatsheet.MaxBytes + 1)));
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor, text);
+        Assert.True(degraded);
+    }
+
+    // F2: a present-but-empty file is also an ANOMALOUS degrade (distinct from a genuinely absent file).
+    [Fact]
+    public void ReadWithDegradeStatus_reports_degraded_when_file_present_but_empty()
+    {
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.FileName), "");
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor, text);
+        Assert.True(degraded);
+    }
+
+    // F2: a small, present, non-empty file is normal content delivery — never a degrade.
+    [Fact]
+    public void ReadWithDegradeStatus_reports_not_degraded_when_file_present_and_readable()
+    {
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.FileName), "custom core\n");
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal("custom core", text);
+        Assert.False(degraded);
+    }
+
     [Fact]
     public void Block_prefixes_the_driver_guidance_label()
     {

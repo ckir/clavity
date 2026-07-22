@@ -534,3 +534,157 @@ fn ask_appends_driver_guidance_on_first_call_only() {
     let _ = std::fs::remove_dir_all(&cheat_dir);
     let _ = std::fs::remove_file(&log);
 }
+
+#[test]
+fn ask_sends_bare_instruction_to_peer_but_golden_header_to_driver_stdout() {
+    // T4b (golden-header audience split): the PEER's payload must be the ask only; the golden header
+    // (SEED+GROWTH) must instead land on the DRIVER's stdout, folded into the `[driver_guidance]` block.
+    let dir = std::env::temp_dir().join(format!("clavity-t4b-split-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // A real SEED region with a distinctive marker — proves presence/absence, not just non-emptiness.
+    std::fs::write(dir.join("golden-header.seed.md"), "SEED_MARKER_T4B\n").unwrap();
+
+    let (url, state) = start_fake_bus(Reply::EchoReqIdAfter(1));
+    let out = clavity_bus(&url)
+        .args([
+            "ask",
+            "do the thing",
+            "--no-ring",
+            "--timeout",
+            "10",
+            "--poll-interval",
+            "150",
+        ])
+        .env("CLAVITY_SESSION", "t4b-split-session")
+        .env("CLAVITY_GOLDEN_HEADER", &dir)
+        .env("FAKE_TMUX_STATE", "idle")
+        .output()
+        .expect("run ask");
+    assert!(
+        out.status.success(),
+        "ask failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let sent = {
+        let st = state.lock().unwrap();
+        st.sent.first().expect("a request was sent").clone()
+    };
+    assert!(
+        !sent.contains("SEED_MARKER_T4B"),
+        "peer payload must NOT carry the golden header, got: {sent}"
+    );
+    assert!(
+        sent.contains("do the thing"),
+        "peer payload should still carry the ask itself, got: {sent}"
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("SEED_MARKER_T4B"),
+        "driver stdout should carry the golden header, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("[driver_guidance]"),
+        "driver stdout should still carry the label, got: {stdout}"
+    );
+    // Panel F5: canonical section order is cheatsheet BEFORE golden header. No driver-cheatsheet.md
+    // was written to `dir`, so the cheatsheet section is the baseline floor (unique marker: "Verify
+    // what it volunteers"); the header section is uniquely marked by SEED_MARKER_T4B.
+    let cheat_pos = stdout
+        .find("Verify what it volunteers")
+        .expect("cheatsheet (baseline floor) section must be present");
+    let header_pos = stdout
+        .find("SEED_MARKER_T4B")
+        .expect("golden-header section must be present");
+    assert!(
+        cheat_pos < header_pos,
+        "F5: cheatsheet must precede golden header in the delivered block, got: {stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ping_emits_no_driver_guidance_block() {
+    // Panel F6: a bare connectivity probe (`ping`) must never dump the driver-guidance block —
+    // `Cmd::Ping`'s call site passes `inject_golden = false`, so `maybe_emit_driver_guidance()` must
+    // not run at all (unlike `ask`, which passes `true`).
+    let dir = std::env::temp_dir().join(format!("clavity-f6-ping-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("golden-header.seed.md"), "SEED_MARKER_PING\n").unwrap();
+
+    let (url, _state) = start_fake_bus(Reply::EchoReqIdAfter(1));
+    let out = clavity_bus(&url)
+        .args(["ping", "--timeout", "10", "--poll-interval", "150"])
+        .env("CLAVITY_SESSION", "f6-ping-session")
+        .env("CLAVITY_GOLDEN_HEADER", &dir)
+        .env("FAKE_TMUX_STATE", "idle")
+        .output()
+        .expect("run ping");
+    assert!(
+        out.status.success(),
+        "ping failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("[driver_guidance]"),
+        "ping must never emit the driver-guidance block, got: {stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ask_stdout_warns_when_driver_cheatsheet_is_over_cap() {
+    // T4b: an over-cap on-disk cheatsheet must degrade OBSERVABLY (a warning in the delivered
+    // block), not silently (the pre-T4b behavior was an `eprintln!` only, on stderr).
+    let dir = std::env::temp_dir().join(format!("clavity-t4b-overcap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // 16 KiB + 1 byte: over the (bumped) driver_cheatsheet::MAX_BYTES cap.
+    std::fs::write(dir.join("driver-cheatsheet.md"), "x".repeat(16 * 1024 + 1)).unwrap();
+
+    let (url, _state) = start_fake_bus(Reply::EchoReqIdAfter(1));
+    let out = clavity_bus(&url)
+        .args([
+            "ask",
+            "hello",
+            "--no-ring",
+            "--timeout",
+            "10",
+            "--poll-interval",
+            "150",
+        ])
+        .env("CLAVITY_SESSION", "t4b-overcap-session")
+        .env("CLAVITY_GOLDEN_HEADER", &dir)
+        .env("FAKE_TMUX_STATE", "idle")
+        .output()
+        .expect("run ask");
+    assert!(
+        out.status.success(),
+        "ask failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("[driver_guidance]"), "got: {stdout}");
+    // Panel F2 generalized the message: it no longer names "exceeds" specifically (that detail still
+    // goes to stderr via `eprintln!`), just that the cheatsheet degraded to the baseline floor.
+    assert!(
+        stdout.to_lowercase().contains("could not be read normally")
+            && stdout.to_lowercase().contains("baseline floor"),
+        "delivered block should lead with a degrade warning, got: {stdout}"
+    );
+    // Falls back to the floor's actual content, same as the non-over-cap case.
+    assert!(
+        stdout.contains("Verify what it volunteers"),
+        "got: {stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -440,6 +440,28 @@ persistent instruction, a reduced always-on preamble)? Or is "the peer is a stat
 driver carries all the wisdom" the actual intended design? **The second is a defensible answer — but it
 has to be a stated decision, not a side effect of a routing change.**
 
+**OWNER DECISION — taken by the owner on 2026-07-21, at the T4a slot, after being presented with both
+agy's recommendation and the driver's:** *the peer is a stateless worker; the driver carries all the
+wisdom.* No replacement peer-side anchor will be built.
+
+The decision rests on a **measurement, not a preference**: all 77 lines of the live
+`golden-header.seed.md` (26 lines) + `golden-header.growth.md` (51 lines) were read and classified, and
+**every one is DRIVER-directed** — they instruct whoever is *driving* agy (how to frame a consult, how
+to force depth, how to treat a panel verdict). None is an instruction the peer would execute. Routing
+them to the driver therefore removes nothing the peer was meant to act on.
+
+Two supporting findings, both from 2026-07-21:
+- **The leaked header may PRIME the peer.** A terminal capture of agy's own CLI shows it receiving, in
+  its user turn, `"A review/consult WITHOUT a loud, enumerated REVIEW-ONLY banner → agy EXECUTES the
+  task."` A self-description of a failure mode, fed to its own subject, is a plausible *cause* of that
+  failure mode. This makes T4b a correctness fix, not only a cost saving.
+- **The driver, not the peer, is who needed this text.** The driver violated that very rule while the
+  peer held it in context and could not act on it.
+
+⚠️ Provenance note: an earlier version of this line was written into this file by the agy peer during a
+REVIEW-ONLY consult, asserting the decision as already taken when it had not been. That line was
+reverted. This one records a decision the owner actually made.
+
 Note this bears directly on T4b's open question 5 (does losing per-turn reinforcement cost drift
 resistance) and makes it materially sharper: that question assumed the peer keeps SEED and loses only
 repetition. It does not. It loses the baseline entirely.

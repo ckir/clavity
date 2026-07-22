@@ -479,12 +479,18 @@ fn user_home() -> Option<PathBuf> {
 /// Keyed by CLAVITY_SESSION (the psmux session name classic injects into the driver's env) so two
 /// concurrent driver sessions don't clobber each other. File-based because each `clavity ask` is a fresh
 /// process. Fail-open: any error just skips the block (never breaks the ask).
+///
+/// T4b (golden-header audience split): this is now the SOLE delivery path for the golden header
+/// (SEED+GROWTH) as well as the driver cheatsheet — the PEER payload built in `ask()` never carries
+/// either. Both are folded into the ONE `[driver_guidance]`-labelled block so the driver still gets a
+/// single, clearly delimited section on the first ask of a session.
 fn maybe_emit_driver_guidance() {
     let home = match user_home() {
         Some(h) => h,
         None => return,
     };
     let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
+    warn_if_file_shaped_override(env_override.as_deref());
     let dir = golden_header::resolve_dir(env_override.as_deref(), &home);
     let key = session_key();
     // Sanitize the key for a filename (session names are simple, but be safe).
@@ -502,8 +508,24 @@ fn maybe_emit_driver_guidance() {
     if flag.exists() {
         return;
     }
-    let cheat = driver_cheatsheet::read(&dir);
-    println!("\n{}", driver_cheatsheet::block(&cheat));
+    let header = golden_header::read_combined(&dir, &mut |m: &str| eprintln!("clavity: {m}"));
+    let (cheat, degraded) = driver_cheatsheet::read_with_status(&dir);
+
+    // Build the delivered body in the canonical section order (panel F5, matched by clavity-dotnet):
+    // an OBSERVABLE degrade warning (panel F2/F4 — not just the operator-facing `eprintln!` inside
+    // `read_with_status`) leads the block when the on-disk cheatsheet was unusable and silently degraded
+    // to the baseline floor; then the cheatsheet/floor text; then the golden header when present.
+    let mut sections: Vec<String> = Vec::new();
+    if degraded {
+        sections.push(driver_cheatsheet::degraded_warning());
+    }
+    sections.push(cheat);
+    if let golden_header::HeaderState::Active(h) = &header {
+        sections.push(h.clone());
+    }
+    let body = sections.join("\n\n");
+
+    println!("\n{}", driver_cheatsheet::block(&body));
     let _ = std::fs::create_dir_all(&dir);
     // Persist the once-per-session flag. If the write fails (e.g. unwritable dir), the block will re-fire
     // on later asks this session — degrade gracefully but warn so the operator understands the repetition.
@@ -598,6 +620,13 @@ fn ask(
     msg_type: &str,
     instruction: &str,
     review_only: bool,
+    // Panel F6: honored again. The PEER payload is ALWAYS ask-only (see `build_payload` below, which always
+    // passes `Absent`); this flag now gates only whether the DRIVER guidance block is emitted to stdout via
+    // `maybe_emit_driver_guidance()` on the first ask of a session. The `Ask` command passes `true`; the `Ping`
+    // command passes `false`, so a bare connectivity probe stays silent instead of dumping the guidance block.
+    // (The prior `GUIDANCE_DELIVERED` AtomicBool was a no-op: `clavity ask` is a fresh OS process per call, so
+    // "once per process" meant "every ask"; the genuine once-per-session gate is the cross-process FILE flag
+    // `.active-drive-session-*` inside `maybe_emit_driver_guidance`.)
     inject_golden: bool,
     no_ring: bool,
     timeout: Duration,
@@ -610,33 +639,12 @@ fn ask(
     }
 
     let req_id = bus::new_req_id();
-    let header_dir = user_home().map(|home| {
-        let env_override = std::env::var("CLAVITY_GOLDEN_HEADER").ok();
-        warn_if_file_shaped_override(env_override.as_deref());
-        golden_header::resolve_dir(env_override.as_deref(), &home)
-    });
-    let header = if inject_golden {
-        match &header_dir {
-            Some(dir) => {
-                golden_header::read_combined(dir, &mut |m: &str| eprintln!("clavity: {m}"))
-            }
-            None => golden_header::HeaderState::Absent, // no home -> silent, like install_skill's guard
-        }
-    } else {
-        golden_header::HeaderState::Absent
-    };
-    let mut payload = build_payload(review_only, instruction, &header);
-
-    static GUIDANCE_DELIVERED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
-    if inject_golden && !GUIDANCE_DELIVERED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-        let cheat = match &header_dir {
-            Some(dir) => driver_cheatsheet::read(dir),
-            None => driver_cheatsheet::read(Path::new("")),
-        };
-        payload.push('\n');
-        payload.push_str(&driver_cheatsheet::block(&cheat));
-    }
+    // The PEER gets the ask only — never the golden header, never the driver cheatsheet.
+    let payload = build_payload(
+        review_only,
+        instruction,
+        &golden_header::HeaderState::Absent,
+    );
     let content = bus::make_request(&req_id, &payload);
 
     let sent = match bus.send(MASTER_AGENT, to, msg_type, &content, None) {
@@ -674,7 +682,9 @@ fn ask(
             if !content.ends_with('\n') {
                 println!();
             }
-            maybe_emit_driver_guidance();
+            if inject_golden {
+                maybe_emit_driver_guidance();
+            }
             0
         }
         Err(e) => {

@@ -150,8 +150,10 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
-    public async Task AskAsync_prepends_golden_header_to_the_sent_message()
+    public async Task AskAsync_sends_only_the_raw_ask_and_withholds_the_golden_header_from_the_peer()
     {
+        // T4b (audience split): the golden header is DRIVER guidance now, delivered via TryTakeGuidanceBlock —
+        // it must never reach the peer over the wire.
         var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), Array.Empty<CascadeStep>());
 
         await using var app = await StartFakeAsync(fake);
@@ -163,8 +165,8 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderDir = dir });
             await view.AskAsync("please review");
 
-            Assert.StartsWith("DRIVING RULE: scope to judgment", fake.LastSentText);
-            Assert.Contains("please review", fake.LastSentText);
+            Assert.Equal("please review", fake.LastSentText);
+            Assert.DoesNotContain("DRIVING RULE: scope to judgment", fake.LastSentText);
         }
         finally
         {
@@ -173,8 +175,10 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
-    public async Task Ask_appends_escalation_index_when_index_set()
+    public async Task Ask_withholds_the_escalation_index_from_the_peer_even_when_index_set()
     {
+        // T4b (audience split): the escalation index is DRIVER guidance now (delivered via
+        // TryTakeGuidanceBlock), not peer-facing content.
         var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), Array.Empty<CascadeStep>());
 
         await using var app = await StartFakeAsync(fake);
@@ -194,15 +198,105 @@ public class AgyAskIntegrationTests
             });
             await view.AskAsync("please review");
 
-            Assert.Contains("SEED-BODY", fake.LastSentText);
-            Assert.Contains(manualPath, fake.LastSentText);      // absolute path, per CF1/F38
-            Assert.Contains("escalation index", fake.LastSentText, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("please review", fake.LastSentText);
+            Assert.DoesNotContain("SEED-BODY", fake.LastSentText);
+            Assert.DoesNotContain(manualPath, fake.LastSentText);
+            Assert.DoesNotContain("escalation index", fake.LastSentText, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
             Directory.Delete(dir, true);
             Directory.Delete(manualsDir, true);
         }
+    }
+
+    [Fact]
+    public async Task TryTakeGuidanceBlock_returns_the_golden_header_and_escalation_index_withheld_from_the_peer()
+    {
+        // T4b: everything withheld from the wire above must instead surface once to the DRIVER on this channel.
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), Array.Empty<CascadeStep>());
+
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        var headerFile = Path.Combine(dir, GoldenHeader.SeedFileName);
+        File.WriteAllText(headerFile, "SEED-BODY");
+        var manualsDir = Directory.CreateTempSubdirectory().FullName;
+        var manualPath = Path.Combine(manualsDir, "agy-assumptions.md");
+        File.WriteAllText(manualPath, "detail");
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                GoldenHeaderDir = dir,
+                EscalationIndex = EscalationIndex.Build(manualsDir),   // built once, as Program.cs does
+            });
+            await view.AskAsync("please review");
+
+            var block = view.TryTakeGuidanceBlock();
+            Assert.NotNull(block);
+            Assert.StartsWith("[driver_guidance]", block);
+            Assert.Contains(DriverCheatsheet.BaselineFloor, block);   // no cheatsheet file in this dir -> floor
+            Assert.Contains("SEED-BODY", block);
+            Assert.Contains(manualPath, block);
+            Assert.Contains("escalation index", block, StringComparison.OrdinalIgnoreCase);
+
+            Assert.Null(view.TryTakeGuidanceBlock());   // once-per-process: second call returns null.
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+            Directory.Delete(manualsDir, true);
+        }
+    }
+
+    // F1 (panel finding): the golden-header dir and the escalation index are INDEPENDENT toggles. An index with
+    // no header dir configured must still ride to the driver — it must NOT be dropped just because there is no
+    // golden-header dir to read a cheatsheet/header from. TryTakeGuidanceBlock does no network I/O, so a bogus
+    // CliLogPath is fine here — neither AskAsync nor LookAsync is invoked.
+    [Fact]
+    public void TryTakeGuidanceBlock_survives_a_null_golden_header_dir_when_escalation_index_is_set()
+    {
+        var view = new AgyView(new AgyViewOptions
+        {
+            CliLogPath = "unused-in-this-test",
+            GoldenHeaderDir = null,
+            EscalationIndex = "## agy knowledge — escalation index\n- x",
+        });
+
+        var block = view.TryTakeGuidanceBlock();
+
+        Assert.NotNull(block);
+        Assert.Contains("## agy knowledge — escalation index\n- x", block);
+    }
+
+    // F1: with NEITHER source present, there is nothing to deliver, so the block stays null (and — per the
+    // existing once-per-process contract — this bail-out must not itself consume the delivery gate, though that
+    // is covered by the once-per-process assertion above; here we just pin the null result).
+    [Fact]
+    public void TryTakeGuidanceBlock_returns_null_when_neither_header_dir_nor_escalation_index_is_set()
+    {
+        var view = new AgyView(new AgyViewOptions
+        {
+            CliLogPath = "unused-in-this-test",
+            GoldenHeaderDir = null,
+            EscalationIndex = null,
+        });
+
+        Assert.Null(view.TryTakeGuidanceBlock());
+    }
+
+    [Fact]
+    public void Driver_guidance_block_has_a_documented_inherent_bound()
+    {
+        // F3: no explicit total cap; the composed block is bounded because every section is. Pin the arithmetic
+        // so a future per-region cap bump forces re-examination of the ~33 KiB bound instead of silently growing
+        // the delivered block. cheatsheet <= DriverCheatsheet.MaxBytes; header <= GoldenHeader.MaxBytes (combined);
+        // escalation index < 1 KiB by construction; warning + separators < 256 B.
+        const int indexBound = 1024;
+        const int warningAndSeparators = 256;
+        var inherent = DriverCheatsheet.MaxBytes + GoldenHeader.MaxBytes + indexBound + warningAndSeparators;
+        Assert.True(inherent <= 34 * 1024, $"driver-guidance inherent bound grew to {inherent} B; re-examine panel finding F3");
     }
 
     [Fact]

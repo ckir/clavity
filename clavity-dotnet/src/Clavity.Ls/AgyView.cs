@@ -46,14 +46,41 @@ public sealed class AgyView
     // agy_ask of this server session only. AgyView is a process-lifetime singleton, so this flag IS session-scoped.
     private int _guidanceDelivered; // 0 = not yet delivered
 
-    /// <summary>Return the labelled driver-guidance block on the FIRST call per process; null thereafter,
-    /// or when injection is disabled (GoldenHeaderDir null).</summary>
+    /// <summary>Return the labelled driver-guidance block on the FIRST call per process; null thereafter, or when
+    /// there is nothing to deliver (no golden-header dir AND no escalation index — F1: the two are independent).
+    /// T4b: this block is the SOLE destination for the driver cheatsheet, the golden header (SEED+GROWTH), and the
+    /// escalation index — none of which reach the peer any more (see AskAsync). If the cheatsheet degraded to the
+    /// baseline floor anomalously (over-cap/unreadable/empty), the block leads with a warning so the degrade is
+    /// OBSERVABLE, not silent.</summary>
     public string? TryTakeGuidanceBlock()
     {
-        if (_options.GoldenHeaderDir is null) return null;
+        // F1 (independent toggles): the block has SOMETHING to deliver when a golden-header dir is configured
+        // (cheatsheet + header) OR an escalation index is set. The two are INDEPENDENT — an index with no header
+        // dir still rides to the driver (pre-T4b it rode to the peer; T4b moves it to the driver). Bail — WITHOUT
+        // consuming the once-per-process gate — only when NEITHER source is present.
+        var haveIndex = _options.EscalationIndex is { Length: > 0 };
+        if (_options.GoldenHeaderDir is null && !haveIndex) return null;
         if (Interlocked.Exchange(ref _guidanceDelivered, 1) != 0) return null;
-        var cheat = DriverCheatsheet.Read(_options.GoldenHeaderDir, m => _options.Diagnostics.WriteLine($"clavity: {m}"));
-        return DriverCheatsheet.Block(cheat);
+
+        void Warn(string m) => _options.Diagnostics.WriteLine($"clavity: {m}");
+
+        // Order (F5 canonical, matched by clavity-classic): warning -> cheatsheet -> header -> escalation index.
+        var sections = new List<string>();
+        if (_options.GoldenHeaderDir is { } dir)
+        {
+            var (cheat, degraded) = DriverCheatsheet.ReadWithDegradeStatus(dir, Warn);
+            if (degraded) sections.Add(DriverCheatsheet.DegradedWarningPrefix); // F2: any anomalous degrade is observable
+            sections.Add(cheat);
+            var header = GoldenHeader.TryReadCombined(dir, Warn);
+            if (!string.IsNullOrEmpty(header)) sections.Add(header);
+        }
+        if (_options.EscalationIndex is { Length: > 0 } idx) sections.Add(idx); // CF1 Option C, independent of the header dir
+
+        // F3: no artificial total cap — every section is inherently bounded (cheatsheet <= DriverCheatsheet.MaxBytes,
+        // header <= GoldenHeader.MaxBytes COMBINED, escalation index < 1 KiB by construction), so the assembled block
+        // is bounded at ~33 KiB. Pinned by the inherent-bound test so a future per-region cap bump can't silently
+        // grow the block unbounded.
+        return DriverCheatsheet.Block(string.Join("\n\n", sections));
     }
 
     public AgyView(AgyViewOptions options, IListeningPorts? listening = null, IModalGuard? modalGuard = null)
@@ -124,13 +151,10 @@ public sealed class AgyView
 
             var model = await ResolveSendModelAsync(client, beforeTrajectory, cancellationToken);
 
-            var header = _options.GoldenHeaderDir is null
-                ? null
-                : GoldenHeader.TryReadCombined(_options.GoldenHeaderDir, m => _options.Diagnostics.WriteLine($"clavity: {m}"));
-            // GoldenHeaderDir and EscalationIndex are INDEPENDENT toggles: the index rides along whenever set, even with no golden-header dir. To disable the index, leave EscalationIndex null (Program.cs sets both together in production).
-            if (_options.EscalationIndex is { Length: > 0 } idx)                 // CF1 Option C (no-op when null)
-                header = string.IsNullOrEmpty(header) ? idx : header.TrimEnd() + "\n\n" + idx;
-            var outgoing = GoldenHeader.Apply(header, message);
+            // T4b (audience split): the golden header (SEED+GROWTH) and escalation index are DRIVER guidance, not
+            // peer-facing content — they no longer reach the wire. The peer receives ONLY the raw user ask; the
+            // accumulated wisdom is instead delivered to the driver once per process via TryTakeGuidanceBlock().
+            var outgoing = message;
 
             _inFlight[conversationId] = 1;
             try
