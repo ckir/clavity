@@ -35,3 +35,11 @@ mitigation for every deterministic entry is a driving move, so none became a fix
 Raw 41 snapshotted before draining. Installed inbox `## Pending` reset to empty. NOTE: the repo source inbox
 (`agy-autotrain/knowledge/agy-observations.md`, 2 entries) DIVERGES from the canonical installed inbox (41) —
 a pre-existing drift, not reconciled by this manual drain.
+
+## note 2026-07-22 — inbox divergence deferred to the next drain (EXTEND-tooling rewrite Task 9)
+The drain-tooling rewrite to the EXTEND model does NOT curate observations, so it does not touch either inbox's
+`## Pending`. Recorded here (append-only) rather than reconciled: the repo source inbox
+(`agy-autotrain/knowledge/agy-observations.md`) holds 2 pre-drain entries, and the canonical INSTALLED inbox holds
+1 (a panel-review lesson captured this session) — both diverging, both left in place for the next real
+`just drain-knowledge` (now EXTEND-correct) to curate. Emptying either here would silently DROP unreviewed
+observations — exactly the data loss the drain transaction exists to prevent (plan panel F5).
