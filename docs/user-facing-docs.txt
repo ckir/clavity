@@ -1,0 +1,36 @@
+# Canonical user-facing documentation list — the docs-rationalize tool's target.
+# Source of truth read by scripts/check-user-facing-docs.ps1 and scripts/docs-audit.ps1 (SP2).
+# One repo-relative path per line. Blank lines and lines starting with '#' are ignored.
+# Narrower than docs-spec.md's full voice-table (which also voices CLAUDE.md, ROADMAP.md, internal docs).
+# See docs/docs-spec.md and docs/superpowers/specs/2026-07-22-docs-rationalize-tool-design.md.
+
+# --- End-user / operator / integrator (12) ---
+README.md
+agy-autotrain/README.md
+commonmemory/README.md
+clavity-classic/README.md
+clavity-dotnet/README.md
+ghidrust/README.md
+clavity-classic/plugin/README.md
+clavity-dotnet/plugin/README.md
+ghidrust/plugin/README.md
+clavity-classic/installer/clavity-classic-MANUAL-SETUP.md
+clavity-classic/installer/clavity-classic-bridge-README-FIRST.md
+SECURITY.md
+
+# --- Contributor (10) ---
+CONTRIBUTING.md
+agy-autotrain/CONTRIBUTING.md
+clavity-classic/CONTRIBUTING.md
+clavity-dotnet/CONTRIBUTING.md
+commonmemory/CONTRIBUTING.md
+ghidrust/CONTRIBUTING.md
+.github/pull_request_template.md
+.github/ISSUE_TEMPLATE/bug_report.md
+.github/ISSUE_TEMPLATE/feature_request.md
+CODE_OF_CONDUCT.md
+
+# --- Umbrella / evaluator (3) ---
+docs/README.md
+clavity-classic/docs/how-it-works.md
+clavity-classic/docs/launching-and-driving-agy.md
