@@ -170,3 +170,36 @@ function Add-AuditLogDoc {
     if ($Result.ContainsKey('Diagnostic') -and $Result.Diagnostic) { $line += " — diag:$($Result.Diagnostic)" }
     [System.IO.File]::AppendAllText($Path, $line + "`n")
 }
+
+function Get-AuditLockPath([string]$RepoRoot) { return (Join-Path $RepoRoot 'docs/docs-audit.lock') }
+
+function Test-AuditLockStale {
+    param([string]$LockPath, [string]$NowUtc, [int]$MaxAgeSec)
+    if (-not (Test-Path $LockPath)) { return $true }        # no lock = free
+    $lines = @(Get-Content -LiteralPath $LockPath)
+    $lockPid = 0; [void][int]::TryParse(($lines[0]), [ref]$lockPid)
+    if ($lockPid -le 0) { return $true }                    # malformed = stale
+    if (-not (Get-Process -Id $lockPid -ErrorAction SilentlyContinue)) { return $true }  # dead PID = stale
+    if ($lines.Count -ge 2 -and $lines[1]) {
+        try {
+            # Parse machine-written timestamps with INVARIANT culture (agy plan-review F2): a culture-sensitive
+            # parse of the 'u' string can throw FormatException on a non-US host, which the catch would turn into
+            # "stale" and silently reclaim a LIVE lock — the exact concurrency the lock exists to prevent.
+            $ic = [System.Globalization.CultureInfo]::InvariantCulture
+            $st = [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
+            $age = [datetime]::Parse($NowUtc, $ic, $st) - [datetime]::Parse($lines[1], $ic, $st)
+            if ($age.TotalSeconds -gt $MaxAgeSec) { return $true }   # too old = stale
+        } catch { return $true }                            # unparseable timestamp = stale
+    }
+    return $false                                           # alive PID + within max-age = LIVE
+}
+
+function Enter-AuditLock {
+    param([string]$LockPath, [string]$NowUtc, [int]$MaxAgeSec)
+    if (-not (Test-AuditLockStale -LockPath $LockPath -NowUtc $NowUtc -MaxAgeSec $MaxAgeSec)) { return $false }
+    New-Item -ItemType Directory -Force (Split-Path $LockPath -Parent) | Out-Null
+    [System.IO.File]::WriteAllText($LockPath, "$PID`n$NowUtc`n")
+    return $true
+}
+
+function Exit-AuditLock([string]$LockPath) { Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue }

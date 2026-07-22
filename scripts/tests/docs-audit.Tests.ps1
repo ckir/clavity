@@ -172,3 +172,41 @@ Describe 'Append-only incremental log' {
         $all | Should -Match '## audit R2'
     }
 }
+
+Describe 'Self-clearing lock' {
+    BeforeEach { $script:Lock = Join-Path $TestDrive ('lk-' + [Guid]::NewGuid()) }
+
+    It 'no lock file => free (stale)' {
+        Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:00Z' -MaxAgeSec 3600 | Should -BeTrue
+    }
+    It 'a fresh lock held by THIS (alive) process is NOT stale' {
+        Set-Content $script:Lock @("$PID", '2026-07-22 00:00:00Z')
+        Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:30Z' -MaxAgeSec 3600 | Should -BeFalse
+    }
+    It 'a lock older than MaxAgeSec is stale regardless of PID' {
+        Set-Content $script:Lock @("$PID", '2026-07-22 00:00:00Z')
+        Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 05:00:00Z' -MaxAgeSec 3600 | Should -BeTrue
+    }
+    It 'a lock whose PID is dead is stale (reclaimable)' {
+        Mock Get-Process { $null } -ParameterFilter { $Id -eq 999001 }
+        Set-Content $script:Lock @('999001', '2026-07-22 00:00:00Z')
+        Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:30Z' -MaxAgeSec 3600 | Should -BeTrue
+        Should -Invoke Get-Process -ParameterFilter { $Id -eq 999001 } -Times 1
+    }
+    It 'Enter-AuditLock writes PID+timestamp when free, and refuses a live lock' {
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:00Z' -MaxAgeSec 3600) | Should -BeTrue
+        (Get-Content $script:Lock)[0] | Should -Be "$PID"
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:10Z' -MaxAgeSec 3600) | Should -BeFalse  # our own fresh lock is live
+    }
+    It 'Exit-AuditLock removes the lock' {
+        Set-Content $script:Lock 'x'; Exit-AuditLock $script:Lock; Test-Path $script:Lock | Should -BeFalse
+    }
+    It 'a malformed PID (non-integer line 1) is stale (agy F6)' {
+        Set-Content $script:Lock @('invalidPID', '2026-07-22 00:00:00Z')
+        Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:30Z' -MaxAgeSec 3600 | Should -BeTrue
+    }
+    It 'a garbage timestamp (unparseable line 2) is stale (agy F6)' {
+        Set-Content $script:Lock @("$PID", 'not-a-timestamp')
+        Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:30Z' -MaxAgeSec 3600 | Should -BeTrue
+    }
+}
