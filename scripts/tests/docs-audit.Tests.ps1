@@ -33,3 +33,50 @@ Describe 'Read-DocList / Get-InScopeDocs' {
         Read-DocList $p | Should -Be @('C#-guide.md', 'README.md')
     }
 }
+
+Describe 'Parse-AuditOutput / Get-FencedCodeBlockCount / Get-DocOutcome' {
+    It 'parses a well-formed audit output with findings' {
+        $raw = "CLAIMS_INSPECTED: 7`nFINDINGS:`n- ACCURACY README.md:12 | src/main.rs:40 | flag --foo does not exist"
+        $p = Parse-AuditOutput $raw
+        $p.Parseable | Should -BeTrue
+        $p.ClaimsInspected | Should -Be 7
+        @($p.Findings).Count | Should -Be 1
+        $p.Findings[0].kind | Should -Be 'ACCURACY'
+        $p.Findings[0].codeRef | Should -Be 'src/main.rs:40'
+    }
+    It 'parses a clean output (FINDINGS: none) as zero findings' {
+        $p = Parse-AuditOutput "CLAIMS_INSPECTED: 3`nFINDINGS: none"
+        $p.Parseable | Should -BeTrue; $p.ClaimsInspected | Should -Be 3; @($p.Findings).Count | Should -Be 0
+    }
+    It 'marks output with no CLAIMS_INSPECTED line unparseable' {
+        (Parse-AuditOutput "I refuse to do that.").Parseable | Should -BeFalse
+    }
+    It 'counts fenced code blocks in a doc' {
+        $f = Join-Path $TestDrive 'blocks.md'
+        Set-Content $f @('# t','```bash','x','```','prose','```','y','```','```pwsh','z','```')
+        Get-FencedCodeBlockCount $f | Should -Be 3
+    }
+    It 'classifies: unparseable => AUDIT-INCONCLUSIVE' {
+        Get-DocOutcome -ClaimsInspected 0 -FindingsCount 0 -FencedBlocks 0 -Parseable $false | Should -Be 'AUDIT-INCONCLUSIVE'
+    }
+    It 'classifies: claims 0 => AUDIT-INCONCLUSIVE (liveness)' {
+        Get-DocOutcome -ClaimsInspected 0 -FindingsCount 0 -FencedBlocks 5 -Parseable $true | Should -Be 'AUDIT-INCONCLUSIVE'
+    }
+    It 'classifies: claims 1 + many code blocks => AUDIT-SUSPECT' {
+        Get-DocOutcome -ClaimsInspected 1 -FindingsCount 0 -FencedBlocks 4 -Parseable $true | Should -Be 'AUDIT-SUSPECT'
+    }
+    It 'classifies: claims 1 but few code blocks => not suspect (CLEAN)' {
+        Get-DocOutcome -ClaimsInspected 1 -FindingsCount 0 -FencedBlocks 1 -Parseable $true | Should -Be 'CLEAN'
+    }
+    It 'classifies: findings => FINDINGS' {
+        Get-DocOutcome -ClaimsInspected 5 -FindingsCount 2 -FencedBlocks 0 -Parseable $true | Should -Be 'FINDINGS'
+    }
+    It 'classifies: claims > 0, no findings, not suspect => CLEAN' {
+        Get-DocOutcome -ClaimsInspected 9 -FindingsCount 0 -FencedBlocks 0 -Parseable $true | Should -Be 'CLEAN'
+    }
+    It 'Get-DiagnosticSnippet collapses to one bounded line (agy R5-F1)' {
+        Get-DiagnosticSnippet "Error: 429`n  quota   exceeded" | Should -Be 'Error: 429 quota exceeded'
+        Get-DiagnosticSnippet '' | Should -Be '(no output)'
+        (Get-DiagnosticSnippet ('x' * 500)).Length | Should -BeLessOrEqual 203   # 200 + the ellipsis
+    }
+}
