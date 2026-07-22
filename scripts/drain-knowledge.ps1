@@ -9,12 +9,17 @@
   The app-data inbox. Default from CLAVITY_AGY_INBOX, else the agy-autotrain install path.
 .PARAMETER SkipCurator
   Test hook: skip the live claude -p call (the curator is mocked in unit tests).
+.PARAMETER CuratorStub
+  Test seam: a PATH to a stub .ps1 (param $stagingPath, $repoRoot) run IN PLACE of the live curator, so a test can
+  exercise curator behaviours the real claude -p can't be scripted to do (e.g. committing mid-run — capstone F4B).
+  A stub-script PATH, not a [scriptblock], because a live scriptblock cannot cross a `pwsh -File` boundary.
 #>
 [CmdletBinding(SupportsShouldProcess)]   # enables -WhatIf / -Confirm dry-run over the mutation block
 param(
     [string]$RepoRoot,
     [string]$InboxPath,
-    [switch]$SkipCurator
+    [switch]$SkipCurator,
+    [string]$CuratorStub
 )
 
 Set-StrictMode -Version Latest
@@ -88,11 +93,28 @@ function Invoke-Main {
     # "this run predates the manifest" for abort-drain.ps1's fallback. Written regardless of the [Core]/budget
     # gates below so abort-drain can still trust it if either of those hard/soft-fails and leaves staging behind.
     $outputsBefore = @(Get-UntrackedDrainOutputFiles $RepoRoot)
-    if (-not $SkipCurator) { Invoke-Curator $staging }
+    $headBefore = & git -C $RepoRoot rev-parse HEAD 2>$null   # F4B: pin HEAD across the curator run (checked in 5b)
+    if ($CuratorStub) { & $CuratorStub $staging $RepoRoot }   # test seam (stub-script PATH) run in place of the real curator
+    elseif (-not $SkipCurator) { Invoke-Curator $staging }
     $outputsAfter = @(Get-UntrackedDrainOutputFiles $RepoRoot)
     $newOutputs = @($outputsAfter | Where-Object { $outputsBefore -notcontains $_ })
     $manifestPath = Get-DrainOutputManifestPath $inboxDir $runId
     Write-DrainOutputManifest -ManifestPath $manifestPath -Paths $newOutputs
+
+    # 5b. HEAD-PIN GATE (capstone F4B). The curator runs with --dangerously-skip-permissions, so it CAN `git commit`.
+    # If it does, HEAD advances to include its own changes, and the protected-files gate below — which compares the
+    # working tree to the FLOATING HEAD — would pass VACUOUSLY against a curator's own committed edit to a protected
+    # file, while the maintainer's `git diff` review shows nothing (the change is committed). A well-behaved curator
+    # NEVER commits, so ANY HEAD movement across the curator run is a protocol violation: reject BEFORE the gate can
+    # be fooled. Staging is retained. Recovery: the rogue commit is now HEAD, so `just abort-drain` alone would NOT
+    # undo it (its `reset --hard HEAD` resets TO the rogue commit) — the maintainer must first
+    # `git reset --soft $headBefore` to un-commit the curator's changes back into the working tree, then review and
+    # re-drain (or abort after the reset).
+    $headAfter = & git -C $RepoRoot rev-parse HEAD 2>$null
+    if ($headAfter -ne $headBefore) {
+        Write-Host "drain-knowledge: the curator advanced HEAD (it committed) — a protocol violation that would let the protected-files gate pass vacuously against its own edit. Staging retained ($staging). Recover: 'git reset --soft $headBefore' to un-commit the curator's changes, review 'git status', then re-drain (abort-drain alone will NOT undo the commit)." -ForegroundColor Red
+        exit 3
+    }
 
     # 6. Protected-files integrity — HARD fail (staging retained for abort). Under EXTEND the curator owns only
     # the GROWTH proposal + docs side-artifacts; it must NOT have touched the SEED, the 4 manuals, or the
@@ -142,7 +164,10 @@ function Invoke-Main {
     # 10. Banners.
     Write-Host "drain-knowledge: done (run $runId). GROWTH ${growthBytes}B, verify-needed: $verifyNeeded." -ForegroundColor Green
     Write-Host "REVIEW the docs/agy-golden-header.growth.md diff (the compiled GROWTH that 'just accept-drain' will publish to the runtime header) plus the sidecar + backlog + verify-needed changes." -ForegroundColor Yellow
-    Write-Host "Next: git diff → then 'git add' + commit → 'just accept-drain'   OR   'just abort-drain' to reject." -ForegroundColor Cyan
+    # F3: lead with `git status` — the drain's outputs are NEW UNTRACKED files, which `git diff` does NOT show at
+    # all (nor would it show a hallucinated stray); `git status` surfaces every untracked path so the maintainer
+    # reviews the full set, not just tracked modifications, before staging.
+    Write-Host "Next: git status (lists ALL new/untracked outputs) → review each with 'git diff' / 'git diff --cached' after 'git add' → commit → 'just accept-drain'   OR   'just abort-drain' to reject." -ForegroundColor Cyan
     exit 0
 }
 

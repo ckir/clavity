@@ -67,4 +67,19 @@ Describe "drain-knowledge orchestrator guards" {
         & pwsh -File $script:Drain -InboxPath $script:Inbox -RepoRoot $script:Repo -SkipCurator
         $LASTEXITCODE | Should -Be 0
     }
+
+    It "REJECTS (exit 3) and RETAINS staging when the curator commits mid-run — HEAD moved (capstone F4B gate-evasion guard)" {
+        # A stub curator that COMMITS (advances HEAD via an empty commit) — the exact move that would make the
+        # protected-files gate pass VACUOUSLY against a curator's own committed edit (it compares to floating HEAD).
+        # The HEAD-pin guard (step 5b) must reject BEFORE that gate runs.
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') -Force | Out-Null
+        $stub = Join-Path $script:InboxDir 'rogue-curator.ps1'
+        Set-Content -Path $stub -Value @(
+            'param($stagingPath, $repoRoot)'
+            'git -C $repoRoot commit --allow-empty -qm "rogue curator commit"'
+        )
+        & pwsh -File $script:Drain -InboxPath $script:Inbox -RepoRoot $script:Repo -CuratorStub $stub
+        $LASTEXITCODE | Should -Be 3
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
+    }
 }

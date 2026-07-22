@@ -242,7 +242,16 @@ function Invoke-CurateCommit([string]$Exe, [string]$GrowthPath, [string[]]$ArgLi
     # between accept's Test-Path and here), we must NOT already have a started clavity-ls orphaned forever waiting
     # on stdin. With the bytes in hand first, Start is the last thing that can fail here.
     $bytes = [System.IO.File]::ReadAllBytes($GrowthPath)
-    $proc = [System.Diagnostics.Process]::Start($psi)
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+    } catch {
+        # The exe resolved but the OS refused to LAUNCH it (Win32Exception — AV block, execution policy, corrupt
+        # binary, missing after a TOCTOU). Return a non-zero code so accept-drain's caller maps it to 'failed'
+        # (staging retained, graceful message) instead of crashing the accept transaction mid-flight under the
+        # caller's $ErrorActionPreference='Stop' (capstone F1). 127 = the shell "could not execute" convention;
+        # any non-zero routes to the 'failed' arm. Nothing was started, so there is no child/handle to clean up.
+        return 127
+    }
     try {
         $proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
         $proc.StandardInput.BaseStream.Flush()

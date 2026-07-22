@@ -161,4 +161,14 @@ exit 0
         $code | Should -Be 0
         [System.IO.File]::ReadAllText($sentinel) | Should -Be ([System.IO.File]::ReadAllText($growth))
     }
+
+    It "Invoke-CurateCommit returns a non-zero code (not a crash) when the exe cannot be launched (capstone F1)" {
+        # Process.Start throws Win32Exception when the resolved exe cannot launch (missing/AV-blocked/exec-policy).
+        # The function must map that to a non-zero return so accept-drain's caller routes it to the 'failed' arm
+        # (staging retained, graceful message) instead of crashing mid-transaction under $ErrorActionPreference='Stop'.
+        $growth = Join-Path $script:Work 'g.md'
+        [System.IO.File]::WriteAllText($growth, 'x')
+        $code = Invoke-CurateCommit -Exe (Join-Path $script:Work 'does-not-exist.exe') -GrowthPath $growth
+        $code | Should -BeGreaterThan 0
+    }
 }
