@@ -228,3 +228,37 @@ Errors   2
     }
     It 'returns 0 when no summary block is present' { Get-MlcErrorCount 'mlc produced nothing usable' | Should -Be 0 }
 }
+
+Describe 'docs-audit orchestrator (via pwsh -File, -AuditStub seam)' {
+    BeforeEach {
+        $script:Root = Join-Path $TestDrive ('o-' + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path (Join-Path $script:Root 'docs') -Force | Out-Null
+        foreach ($f in 'A.md','B.md','C.md') { Set-Content (Join-Path $script:Root $f) "# $f`n" }
+        Set-Content (Join-Path $script:Root 'docs/user-facing-docs.txt') @('A.md','B.md','C.md')
+        # A stub emitting a canned FINDINGS result for every doc.
+        $script:StubFindings = Join-Path $script:Root 'stub-findings.ps1'
+        Set-Content $script:StubFindings @(
+            'param($docPath,$repoRoot)'
+            'Write-Output "CLAIMS_INSPECTED: 5"'
+            'Write-Output "FINDINGS:"'
+            'Write-Output "- ACCURACY $docPath`:3 | src/x.rs:9 | example finding"'
+        )
+    }
+
+    It 'a full run audits every listed doc and writes store + view + log' {
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $script:StubFindings -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck
+        $LASTEXITCODE | Should -Be 0
+        Test-Path (Join-Path $script:Root 'docs/docs-audit-findings.json') | Should -BeTrue
+        Test-Path (Join-Path $script:Root 'docs/docs-audit-findings.md')   | Should -BeTrue
+        (Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw) | Should -Match '- A.md — FINDINGS'
+        $store = Get-Content (Join-Path $script:Root 'docs/docs-audit-findings.json') -Raw | ConvertFrom-Json -AsHashtable
+        $store.docs.Keys.Count | Should -Be 3
+    }
+    It 'a per-doc timeout records AUDIT-TIMEOUT and does not stall the run' {
+        $slow = Join-Path $script:Root 'stub-slow.ps1'
+        Set-Content $slow @('param($docPath,$repoRoot)','Start-Sleep -Seconds 30','Write-Output "CLAIMS_INSPECTED: 1"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $slow -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -TimeoutSec 3 -Only 'A.md'
+        $LASTEXITCODE | Should -Be 0
+        (Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw) | Should -Match '- A.md — AUDIT-TIMEOUT'
+    }
+}
