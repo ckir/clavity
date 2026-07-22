@@ -111,11 +111,14 @@ Describe 'Invoke-UserFacingDocsCheck' {
         { Invoke-UserFacingDocsCheck $repo } | Should -Not -Throw
         (Invoke-UserFacingDocsCheck $repo).ExitCode | Should -Be 0
     }
-    It 'Get-TrackedMarkdown returns $null when the git binary is absent (Get-Command finds nothing)' {
-        # Proves the Get-Command-git guard branch (not the not-a-repo branch) is exercised: without the
-        # Should -Invoke, a machine WITH git would also return $null via the non-repo path, hiding a mock miss.
+    It 'Get-TrackedMarkdown short-circuits to $null (no Push-Location) when the git binary is absent' {
+        # Non-vacuous: a git-PRESENT machine also returns $null via the non-repo fall-through, so asserting
+        # only the $null return would false-pass even if the guard's `return $null` were deleted. Asserting
+        # Push-Location is NEVER reached (-Times 0 -Exactly) is what actually pins the git-absent guard branch.
         Mock Get-Command { $null } -ParameterFilter { $Name -eq 'git' }
+        Mock Push-Location {}
         Get-TrackedMarkdown $TestDrive | Should -Be $null
         Should -Invoke Get-Command -ParameterFilter { $Name -eq 'git' } -Times 1
+        Should -Invoke Push-Location -Times 0 -Exactly
     }
 }

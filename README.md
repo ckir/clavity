@@ -50,7 +50,7 @@ The repository uses a two-tier `just` task runner (`just test`, `just lint`, `ju
 | `just check-user-facing-docs` | a curated user-facing doc is missing, or a do-not-touch / unvoiced doc is on the list |
 | `just check-register-hash` | stale tamper-check hash for the installer registrar |
 | `just check-installer-ascii` | non-ASCII in the Windows PowerShell 5.1 installer surface |
-| `check-versions.ps1` | version-source drift within a member |
+| `check-versions-all.ps1` | version-source drift, across all members |
 
 Pre-commit only runs `ruff` on staged Python files.
 
