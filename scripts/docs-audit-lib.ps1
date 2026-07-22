@@ -149,3 +149,24 @@ function Render-FindingsView([hashtable]$Store, [string]$Path) {
     [System.IO.File]::WriteAllText($tmp, (($lines -join "`n") + "`n"))
     Move-Item -LiteralPath $tmp -Destination $Path -Force
 }
+
+function Initialize-AuditLog {
+    param([string]$Path, [string]$RunId, [string]$Timestamp, [string]$LinkResult)
+    New-Item -ItemType Directory -Force (Split-Path $Path -Parent) | Out-Null
+    if (-not (Test-Path $Path)) {
+        [System.IO.File]::WriteAllText($Path, "# docs audit log (append-only; gitignored working artifact)`n")
+    }
+    [System.IO.File]::AppendAllText($Path, "`n## audit $RunId — $Timestamp — $LinkResult`n")
+}
+
+function Add-AuditLogDoc {
+    param([string]$Path, [string]$DocPath, [hashtable]$Result, [string]$Model, [string]$PromptFile)
+    # Invocation SHAPE only (model alias + prompt file + doc path) — never the expanded prompt (would bloat the
+    # append-only file ~N x per run). Appended as THIS doc completes, so a mid-run crash keeps prior docs on disk.
+    $inv = "$Model/$PromptFile/$DocPath"
+    $findingsCount = @($Result.Findings).Count
+    $line = "- $DocPath — $($Result.Outcome) — claims:$($Result.ClaimsInspected) — invocation:$inv — findings:$findingsCount"
+    # A non-confirmed outcome carries its CAUSE so the operator can tell quota/auth/refusal/crash apart (agy R5-F1).
+    if ($Result.ContainsKey('Diagnostic') -and $Result.Diagnostic) { $line += " — diag:$($Result.Diagnostic)" }
+    [System.IO.File]::AppendAllText($Path, $line + "`n")
+}

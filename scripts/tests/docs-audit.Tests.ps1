@@ -150,3 +150,25 @@ Describe 'FindingsStore merge/write/render' {
         (Get-Content $md -Raw) | Should -Match '<!-- doc:A.md end -->'
     }
 }
+
+Describe 'Append-only incremental log' {
+    BeforeEach { $script:Log = Join-Path $TestDrive ('l-' + [Guid]::NewGuid() + '.md') }
+
+    It 'writes a run header once, then one line per doc, each appended as it completes' {
+        Initialize-AuditLog -Path $script:Log -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -LinkResult 'mlc: 2 errors (baseline 2; exit 1)'
+        Add-AuditLogDoc -Path $script:Log -DocPath 'A.md' -Result @{ Outcome='CLEAN'; ClaimsInspected=3; Findings=@() } -Model 'sonnet' -PromptFile 'docs-audit-prompt.md'
+        $afterFirst = Get-Content $script:Log -Raw           # durable BEFORE the next doc runs (crash-safety)
+        Add-AuditLogDoc -Path $script:Log -DocPath 'B.md' -Result @{ Outcome='FINDINGS'; ClaimsInspected=5; Findings=@(1,2) } -Model 'sonnet' -PromptFile 'docs-audit-prompt.md'
+        $afterFirst | Should -Match '## audit R1 — 2026-07-22 00:00:00Z — mlc: 2 errors'
+        $afterFirst | Should -Match '- A.md — CLEAN — claims:3'
+        (Get-Content $script:Log -Raw) | Should -Match '- B.md — FINDINGS — claims:5 — .*findings:2'
+    }
+    It 'a second run APPENDS a new header, never truncating the first run' {
+        Initialize-AuditLog -Path $script:Log -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -LinkResult 'x'
+        Add-AuditLogDoc -Path $script:Log -DocPath 'A.md' -Result @{ Outcome='CLEAN'; ClaimsInspected=1; Findings=@() } -Model 'sonnet' -PromptFile 'p'
+        Initialize-AuditLog -Path $script:Log -RunId 'R2' -Timestamp '2026-07-22 01:00:00Z' -LinkResult 'y'
+        $all = Get-Content $script:Log -Raw
+        $all | Should -Match '## audit R1'
+        $all | Should -Match '## audit R2'
+    }
+}
