@@ -954,7 +954,10 @@ function Invoke-DocAudit {
         return @{ Raw = $out; TimedOut = $false }
     }
     try { $proc.Kill($true) } catch { }                  # $true = kill the ENTIRE tree (claude + node children); no orphan (agy R3-F1)
-    try { $proc.WaitForExit(5000) } catch { }
+    # `$null =` is LOAD-BEARING (E3, measured): WaitForExit(int) returns bool, and an unassigned expression
+    # statement writes to the output stream — so a bare call leaks $true and corrupts this function's return
+    # into @($true, @{...}). Get-DocResult's `$inv.TimedOut` then throws under Set-StrictMode. Timeout path only.
+    try { $null = $proc.WaitForExit(5000) } catch { }
     $proc.Dispose()
     return @{ Raw = ''; TimedOut = $true }
 }
@@ -1315,6 +1318,17 @@ disagree. Both items below were surfaced by actually executing the suite, and ea
 - **E2 — `Get-DiagnosticSnippet` is specified under Task 6 but its TEST lives in Task 4's `Describe`.** Left as
   written would leave Task 4 red. Implemented in Task 4; Task 6 implements only `Initialize-AuditLog` and
   `Add-AuditLogDoc`.
+- **E3 — `Invoke-DocAudit`'s timeout path returned a CORRUPTED value (real code defect, measured).** The plan's
+  `try { $proc.WaitForExit(5000) } catch { }` left the call UNASSIGNED. `WaitForExit(int)` returns `bool`, and an
+  unassigned expression statement writes to the output stream — so the function returned `@($true, @{Raw='';
+  TimedOut=$true})`, an `Object[]` of 2, not the hashtable. `Get-DocResult`'s `$inv.TimedOut` then throws under
+  `Set-StrictMode -Version Latest` ("The property 'TimedOut' cannot be found on this object"). Measured directly:
+  leaky form → `type=Object[] count=2`; `$null =` form → `type=Hashtable count=1`. This sits on the TIMEOUT path
+  ONLY — precisely the path the per-doc timeout exists to serve — and `Invoke-Main`'s per-doc catch would have
+  swallowed it into a mislabelled `AUDIT-INCONCLUSIVE` instead of `AUDIT-TIMEOUT`. Fixed with `$null =`. Found by
+  the Task 9 implementer, verified by the orchestrator before folding. NOTE the sibling calls are fine and were
+  NOT changed: `Kill($true)` and `Dispose()` return void, and the happy-path `WaitForExit($TimeoutSec*1000)` is
+  consumed as an `if` condition.
 
 ## Execution handoff
 
