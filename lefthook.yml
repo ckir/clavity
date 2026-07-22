@@ -24,6 +24,8 @@ pre-push:
       run: just check-doc-stubs
     member-docs:
       run: just check-member-docs
+    user-facing-docs:
+      run: just check-user-facing-docs
     register-hash:
       run: just check-register-hash
     installer-ascii:

@@ -48,6 +48,7 @@ The repository uses a two-tier `just` task runner (`just test`, `just lint`, `ju
 | `just seed-sync-check` | seed-artifact drift between the two driver plugins |
 | `just check-doc-stubs` | duplicate content in placeholder files |
 | `just check-member-docs` | missing required docs or bad CHANGELOG format |
+| `just check-user-facing-docs` | a curated user-facing doc is missing, or a do-not-touch / unvoiced doc is on the list |
 | `just check-register-hash` | stale tamper-check hash for the installer registrar |
 | `just test-scripts` | regressions in the PowerShell/Pester script suite |
 | `check-versions.ps1` | version-source drift within a member |

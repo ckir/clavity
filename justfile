@@ -34,6 +34,10 @@ check-doc-stubs:
 check-member-docs:
     pwsh -File scripts/check-member-docs.ps1
 
+# Verify docs/user-facing-docs.txt lists only existing, non-do-not-touch, voiced docs (docs-rationalize target).
+check-user-facing-docs:
+    pwsh -File scripts/check-user-facing-docs.ps1
+
 # Verify every relative link in the product docs resolves (becheran/mlc; config in .mlc.toml).
 # Not wired into lefthook: it reports 2 KNOWN errors -- the GitHub-relative release links in
 # README.md and ghidrust/README.md, which are correct under GitHub rendering but unresolvable to an
