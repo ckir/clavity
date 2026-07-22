@@ -53,9 +53,11 @@ bump-ghidrust channel version:
 check-versions member:
     pwsh -File scripts/check-versions.ps1 {{member}}
 
-# Drain machine-local agy-learn captures into the shippable manuals + injected SEED (headless claude curator;
-# NO commit — review `git diff` then `just accept-drain` or `just abort-drain`). `*args` forwards flags such as
-# `-WhatIf` (dry-run) and `-InboxPath <path>` to the script (AB1: without `*args`, `just` rejects extra args).
+# Drain machine-local agy-learn captures into a REVIEWABLE GROWTH proposal (docs/agy-golden-header.growth.md) +
+# docs side-artifacts via a headless claude curator (EXTEND model — the runtime golden-header is published later by
+# `just accept-drain`; the drain never edits the SEED, the 4 manuals, or driver-cheatsheet.core.md). NO commit and
+# NO runtime write — review `git status`/`git diff` then `just accept-drain` or `just abort-drain`. `*args` forwards
+# flags such as `-WhatIf` (dry-run) and `-InboxPath <path>` (AB1: without `*args`, `just` rejects extra args).
 drain-knowledge *args:
     pwsh -File scripts/drain-knowledge.ps1 {{args}}
 
@@ -63,7 +65,8 @@ drain-knowledge *args:
 abort-drain *args:
     pwsh -File scripts/abort-drain.ps1 {{args}}
 
-# Accept a committed drain: prove the run-ID is committed + the tree is clean, then delete the staging snapshot.
+# Accept a committed drain: prove the run-ID is committed + the tree is clean, publish the reviewed GROWTH proposal
+# to the runtime header via curate-commit, then delete the staging snapshot.
 accept-drain *args:
     pwsh -File scripts/accept-drain.ps1 {{args}}
 
