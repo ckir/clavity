@@ -6,35 +6,33 @@ BeforeAll {
 Describe "abort-drain transaction (scratch repo)" {
     BeforeEach {
         $script:Repo = Join-Path ([System.IO.Path]::GetTempPath()) ("abort-" + [Guid]::NewGuid())
-        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'seed') | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') | Out-Null
         Push-Location $script:Repo
         git init -q; git config user.email t@t; git config user.name t
-        Set-Content 'seed/golden-header.md' 'ORIGINAL SEED'
+        Set-Content 'docs/agy-golden-header.growth.md' 'ORIGINAL GROWTH'
         Set-Content 'docs/agy-drain-log.md' '# agy drain log'
         git add .; git commit -qm base
         Pop-Location
-        # Inbox lives OUTSIDE the repo (mirrors reality: the app-data inbox is never under the repo tree).
         $script:InboxDir = Join-Path ([System.IO.Path]::GetTempPath()) ("abox-" + [Guid]::NewGuid())
         New-Item -ItemType Directory -Path $script:InboxDir | Out-Null
         $script:Inbox = Join-Path $script:InboxDir 'agy-observations.md'
         Set-Content $script:Inbox @('# inbox', '', '## Pending')
         Set-Content (Join-Path $script:InboxDir 'agy-observations.staging.RID1.md') @('- [heuristic] r1  ·  x')
-        Set-Content (Join-Path $script:Repo 'seed/golden-header.md') 'DRAINED SEED (unwanted)'  # dirtied, uncommitted
+        Set-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') 'DRAINED GROWTH (unwanted)'  # dirtied, uncommitted
     }
     AfterEach { Remove-Item -Recurse -Force $script:Repo, $script:InboxDir -ErrorAction SilentlyContinue }
 
     It "restores dirtied outputs, re-queues the snapshot, deletes staging" {
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 0
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'ORIGINAL SEED'
+        (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'ORIGINAL GROWTH'
         (Get-Content $script:Inbox | Where-Object { $_ -match '^- \[' }).Count | Should -Be 1
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
     }
 
     It "BLOCKS when the run-ID is already committed (F33) and does NOT delete staging" {
         Push-Location $script:Repo
-        Add-Content 'docs/agy-drain-log.md' '## drain RID1 — x — SEED 1B->2B — verify-needed: 0'
+        Add-Content 'docs/agy-drain-log.md' '## drain RID1 — x — GROWTH 14B — verify-needed: 0'
         git add .; git commit -qm drained
         Pop-Location
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
@@ -44,8 +42,8 @@ Describe "abort-drain transaction (scratch repo)" {
 
     It "-WhatIf previews without reverting outputs or deleting staging" {
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo -WhatIf
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'DRAINED SEED (unwanted)'  # NOT reverted
-        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1                       # NOT deleted
+        (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'DRAINED GROWTH (unwanted)'
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
 
     It "hard-fails (exit 1) and RETAINS staging when the git revert fails" {
@@ -63,97 +61,74 @@ Describe "abort-drain transaction (scratch repo)" {
         Set-Content 'README.md' 'v1'
         git add 'README.md'; git commit -qm "add readme"
         Pop-Location
-        Set-Content (Join-Path $script:Repo 'README.md') 'unrelated edit'  # dirtied, uncommitted, NOT a drain output
+        Set-Content (Join-Path $script:Repo 'README.md') 'unrelated edit'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 1
-        (Get-Content (Join-Path $script:Repo 'README.md') -Raw).Trim() | Should -Be 'unrelated edit'                       # NOT reverted
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'DRAINED SEED (unwanted)'   # nothing touched at all
-        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1                      # staging retained
+        (Get-Content (Join-Path $script:Repo 'README.md') -Raw).Trim() | Should -Be 'unrelated edit'
+        (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'DRAINED GROWTH (unwanted)'
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
 
     It "PROCEEDS when only the drain's own outputs are modified" {
-        # BeforeEach already dirties only seed/golden-header.md (a Get-DrainOutputPaths entry) — the guard must
-        # not block the ordinary, expected case.
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 0
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'ORIGINAL SEED'
+        (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'ORIGINAL GROWTH'
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
     }
 
     It "REFUSES when an unrelated UNTRACKED file exists under a drain output directory (git-clean data-loss guard) and touches nothing" {
-        # Mirrors the documented review pause: a maintainer drops their own note under docs/fix-the-tool-backlog/
-        # (a Get-DrainOutputPaths DIRECTORY entry) between `just drain-knowledge` and `just abort-drain`. The
-        # scoped `git clean -fd -- (Get-DrainOutputPaths)` would otherwise silently delete it.
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
         Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md') 'unrelated untracked note'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 1
         (Test-Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md')) | Should -Be $true
-        (Get-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md') -Raw).Trim() | Should -Be 'unrelated untracked note'
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'DRAINED SEED (unwanted)'   # nothing touched at all
-        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1                      # staging retained
+        (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'DRAINED GROWTH (unwanted)'
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
 
-    It "PROCEEDS when the drain's own untracked output file exists (regression: exact-match legitimacy still allows the real case)" {
-        # docs/agy-verify-needed.md is a Get-DrainOutputPaths FILE entry (not committed in the BeforeEach base) —
-        # exactly what a real drain run creates untracked on its first pass. It must still be recognized as a
-        # legitimate drain output and cleaned, not refused as an unrelated stray.
+    It "PROCEEDS when the drain's own untracked output file exists (exact-match legitimacy still allows the real case)" {
         Set-Content (Join-Path $script:Repo 'docs/agy-verify-needed.md') '# agy verify-needed backlog'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 0
         (Test-Path (Join-Path $script:Repo 'docs/agy-verify-needed.md')) | Should -Be $false
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'ORIGINAL SEED'
+        (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'ORIGINAL GROWTH'
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
     }
 
     It "reverts even when the drain outputs were STAGED (reset --hard HEAD, not checkout-from-index)" {
         Push-Location $script:Repo
-        git add 'seed/golden-header.md'      # maintainer staged the drain's edit before deciding to abort
+        git add 'docs/agy-golden-header.growth.md'
         Pop-Location
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 0
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'ORIGINAL SEED'
-        Push-Location $script:Repo
-        $st = git status --porcelain
-        Pop-Location
+        (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'ORIGINAL GROWTH'
+        Push-Location $script:Repo; $st = git status --porcelain; Pop-Location
         $st | Should -BeNullOrEmpty
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
     }
 
     It "PROCEEDS when the output manifest lists a backlog file that is present untracked (the ordinary abort path this feature unblocks)" {
-        # This is exactly the case that REFUSES without a manifest (see the "REFUSES when an unrelated UNTRACKED
-        # file exists under a drain output directory" test above): the curator legitimately created a
-        # dynamically-named backlog file this run. With the manifest recording it, abort-drain must trust it and
-        # proceed instead of refusing.
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
         Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/some-slug.md') 'curator-produced backlog entry'
         Set-Content (Join-Path $script:InboxDir 'agy-observations.staging.RID1.outputs.txt') 'docs/fix-the-tool-backlog/some-slug.md'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 0
         (Test-Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog/some-slug.md')) | Should -Be $false
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'ORIGINAL SEED'
+        (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'ORIGINAL GROWTH'
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
     }
 
     It "REFUSES when a manifest exists but does NOT list an untracked file present under the backlog directory" {
-        # The manifest names ONE backlog file the curator wrote; a second, unlisted untracked file under the same
-        # directory (a maintainer's own note dropped during the review pause) must still be refused — the manifest
-        # is an allowlist, not a blanket trust of the whole directory.
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
         Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md') 'unrelated untracked note'
         Set-Content (Join-Path $script:InboxDir 'agy-observations.staging.RID1.outputs.txt') 'docs/fix-the-tool-backlog/some-other-slug.md'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 1
         (Test-Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md')) | Should -Be $true
-        (Get-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md') -Raw).Trim() | Should -Be 'unrelated untracked note'
-        (Get-Content (Join-Path $script:Repo 'seed/golden-header.md') -Raw).Trim() | Should -Be 'DRAINED SEED (unwanted)'   # nothing touched at all
-        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1                      # staging retained
+        (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
 
     It "REFUSES with NO manifest present (legacy run) — the conservative fallback is unchanged" {
-        # No agy-observations.staging.RID1.outputs.txt at all — this run predates the manifest feature. Absence of
-        # the manifest must fall back EXACTLY to the pre-manifest behavior: refuse on an unrelated untracked file
-        # under the backlog directory, same as the existing git-clean data-loss guard test above.
         New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
         Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/some-slug.md') 'untracked file, no manifest to vouch for it'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
