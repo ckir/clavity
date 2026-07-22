@@ -95,4 +95,70 @@ Describe "drain-lib primitives" {
         $body = (Get-Content $script:Inbox) -join "`n"
         ($body.IndexOf('OLDER')) | Should -BeLessThan ($body.IndexOf('MIDRUN'))
     }
+
+    It "Get-DrainOutputPaths is the EXTEND set: the growth proposal + docs, and NO seed/manuals" {
+        $paths = @(Get-DrainOutputPaths)
+        $paths | Should -Contain 'docs/agy-golden-header.growth.md'
+        $paths | Should -Contain 'docs/agy-drain-log.md'
+        $paths | Should -Contain 'docs/agy-verify-needed.md'
+        $paths | Should -Contain 'docs/agy-drain-proposal.md'
+        $paths | Should -Contain 'docs/fix-the-tool-backlog'
+        # Protected driver-owned files are NEVER drain outputs under EXTEND.
+        $paths | Should -Not -Contain 'seed/golden-header.md'
+        $paths | Should -Not -Contain 'clavity-dotnet/plugin/knowledge/agy-assumptions.md'
+        $paths | Should -Not -Contain 'clavity-classic/plugin/knowledge/agy-capabilities.md'
+    }
+
+    It "Get-DrainProtectedPaths names the 6 driver-owned files and is DISJOINT from the output set" {
+        $protected = @(Get-DrainProtectedPaths)
+        $protected.Count | Should -Be 6
+        $protected | Should -Contain 'seed/golden-header.md'
+        $protected | Should -Contain 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
+        $outputs = @(Get-DrainOutputPaths)
+        foreach ($p in $protected) { $outputs | Should -Not -Contain $p }   # protected files are never drain outputs
+    }
+
+    It "Get-GrowthProposalBytes counts RAW on-disk bytes of the growth proposal, 0 when absent" {
+        $repo = Join-Path $script:Work 'repo'
+        New-Item -ItemType Directory -Path (Join-Path $repo 'docs') | Out-Null
+        (Get-GrowthProposalBytes $repo) | Should -Be 0                     # absent
+        Set-Content -NoNewline -Path (Join-Path $repo 'docs/agy-golden-header.growth.md') -Value ([string]([char]0x20AC) * 10) -Encoding utf8
+        (Get-GrowthProposalBytes $repo) | Should -Be 30                    # 10 x EUR = 30 UTF-8 bytes
+    }
+
+    It "Resolve-CurateCommitExe returns null when no clavity binary is on PATH and no override is set" {
+        # Isolate PATH so a dev machine's real clavity-ls does not leak in.
+        $savedPath = $env:PATH; $savedOverride = $env:CLAVITY_CURATE_COMMIT_EXE
+        try {
+            $env:PATH = $script:Work            # a dir with no clavity binary
+            $env:CLAVITY_CURATE_COMMIT_EXE = $null
+            (Resolve-CurateCommitExe) | Should -BeNullOrEmpty
+        } finally { $env:PATH = $savedPath; $env:CLAVITY_CURATE_COMMIT_EXE = $savedOverride }
+    }
+
+    It "Resolve-CurateCommitExe honors the CLAVITY_CURATE_COMMIT_EXE override" {
+        $saved = $env:CLAVITY_CURATE_COMMIT_EXE
+        try {
+            $env:CLAVITY_CURATE_COMMIT_EXE = 'C:\some\clavity-ls.exe'
+            (Resolve-CurateCommitExe) | Should -Be 'C:\some\clavity-ls.exe'
+        } finally { $env:CLAVITY_CURATE_COMMIT_EXE = $saved }
+    }
+
+    It "Invoke-CurateCommit feeds the growth file to the exe as RAW UTF-8 bytes on stdin (no console-codepage mangling)" {
+        # A pwsh stub that reads stdin as raw UTF-8 bytes and echoes them to a sentinel, proving the em-dash survives.
+        $growth = Join-Path $script:Work 'growth.md'
+        [System.IO.File]::WriteAllText($growth, "line with an em-dash `u{2014} and euro `u{20AC}")
+        $sentinel = Join-Path $script:Work 'received.txt'
+        $stub = Join-Path $script:Work 'stub.ps1'
+        Set-Content -Path $stub -Value @'
+$bytes = [System.IO.MemoryStream]::new()
+[Console]::OpenStandardInput().CopyTo($bytes)
+[System.IO.File]::WriteAllBytes($args[0], $bytes.ToArray())
+exit 0
+'@
+        $code = Invoke-CurateCommit -Exe 'pwsh' -GrowthPath $growth `
+            -ArgList @('-NoProfile','-File',$stub,$sentinel)
+        $code | Should -Be 0
+        [System.IO.File]::ReadAllText($sentinel) | Should -Be ([System.IO.File]::ReadAllText($growth))
+    }
 }

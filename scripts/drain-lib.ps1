@@ -103,15 +103,15 @@ function Test-RunIdInLog([string]$LogText, [string]$RunId) {
 }
 
 function Get-DrainOutputPaths {
+    # EXTEND model: the curator writes ONLY these tracked repo files. The runtime GROWTH file
+    # (~/.clavity/golden-header.growth.md) is published separately at ACCEPT time via `curate-commit`,
+    # never by the curator. seed/golden-header.md, the 4 driver manuals, and driver-cheatsheet.core.md are
+    # driver-owned + PROTECTED (check-core-integrity.ps1 asserts them byte-unchanged) — never drain outputs.
     return @(
-        'seed/golden-header.md'
-        'clavity-dotnet/plugin/knowledge/agy-assumptions.md'
-        'clavity-dotnet/plugin/knowledge/agy-capabilities.md'
-        'clavity-classic/plugin/knowledge/agy-assumptions.md'
-        'clavity-classic/plugin/knowledge/agy-capabilities.md'
+        'docs/agy-golden-header.growth.md'   # the compiled, reviewable GROWTH proposal (piped to curate-commit at accept)
         'docs/agy-drain-log.md'
         'docs/agy-verify-needed.md'
-        'docs/agy-drain-proposal.md'
+        'docs/agy-drain-proposal.md'         # rationale sidecar (Promoted/Dropped/Parked/Proposed-*)
         'docs/fix-the-tool-backlog'
     )
 }
@@ -197,4 +197,72 @@ function Get-SidecarRecoverySections([string]$SidecarPath) {
     }
     if ($out.Count -eq 0) { return '(no dropped/parked entries this run)' }
     return ($out -join "`n")
+}
+
+function Get-GrowthProposalBytes([string]$RepoRoot) {
+    # RAW on-disk byte length of the compiled GROWTH proposal; 0 when absent (first pass / aborted run). Measure
+    # raw bytes, NOT GetByteCount(ReadAllText) — ReadAllText strips a UTF-8 BOM and substitutes invalid bytes with
+    # U+FFFD, under-counting the true on-disk size the binary's raw-byte read sees (panel agy-A6).
+    $p = Join-Path $RepoRoot 'docs/agy-golden-header.growth.md'
+    if (-not (Test-Path $p)) { return 0 }
+    return (Get-Item -LiteralPath $p).Length
+}
+
+function Get-DrainProtectedPaths {
+    # Driver-owned files the curator must NEVER touch (asserted byte-unchanged by check-core-integrity.ps1). Used
+    # by drain-knowledge's step-6 failure path to targeted-revert a rogue curator edit, and by the docs — never a
+    # drain OUTPUT. Kept as a single source of truth so the gate default and the revert list cannot drift.
+    return @(
+        'seed/golden-header.md'
+        'clavity-dotnet/plugin/knowledge/agy-assumptions.md'
+        'clavity-dotnet/plugin/knowledge/agy-capabilities.md'
+        'clavity-classic/plugin/knowledge/agy-assumptions.md'
+        'clavity-classic/plugin/knowledge/agy-capabilities.md'
+        'agy-autotrain/knowledge/driver-cheatsheet.core.md'
+    )
+}
+
+function Resolve-CurateCommitExe {
+    # The binary that publishes the reviewed GROWTH proposal to the runtime path. Override wins (tests / a
+    # non-PATH install); else prefer the dotnet CLI, then classic. $null => no driver installed (accept warns
+    # and proceeds — the proposal is already committed and can be published by hand later).
+    if ($env:CLAVITY_CURATE_COMMIT_EXE) { return $env:CLAVITY_CURATE_COMMIT_EXE }
+    foreach ($name in @('clavity-ls', 'clavity')) {
+        $cmd = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cmd) { return $cmd.Source }
+    }
+    return $null
+}
+
+function Invoke-CurateCommit([string]$Exe, [string]$GrowthPath, [string[]]$ArgList = @('curate-commit')) {
+    # Publish $GrowthPath's RAW UTF-8 BYTES to the exe's stdin via a Process (NOT a pwsh pipe): pwsh string
+    # piping re-encodes through the console code page (Windows OEM CP437), the exact mojibake `curate-commit`
+    # exists to reject (an em dash became "Γ Ç ö"). Feeding the raw bytes to the base stream is the only safe
+    # transport. Returns the process exit code (0 ok; curate-commit uses 2 = bad input/over-cap, 1 = IO).
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $Exe
+    foreach ($a in $ArgList) { $psi.ArgumentList.Add($a) }
+    $psi.RedirectStandardInput = $true
+    $psi.UseShellExecute = $false
+    # Read the payload BEFORE starting the child (panel agy-R2-2): if ReadAllBytes throws (file removed/unreadable
+    # between accept's Test-Path and here), we must NOT already have a started clavity-ls orphaned forever waiting
+    # on stdin. With the bytes in hand first, Start is the last thing that can fail here.
+    $bytes = [System.IO.File]::ReadAllBytes($GrowthPath)
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    try {
+        $proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+        $proc.StandardInput.BaseStream.Flush()
+    } catch [System.IO.IOException] {
+        # Broken pipe: the child rejected input and exited early (e.g. over-cap → curate-commit stops reading at
+        # MaxBytes+1 and returns exit 2 BEFORE draining stdin). This is NOT a script failure — swallow it and let
+        # the child's own exit code speak. Without this catch the IOException propagates and, under the caller's
+        # $ErrorActionPreference='Stop', crashes accept-drain mid-transaction, bypassing its error switch (panel
+        # F4/agy-A2). Only IOException is caught; anything else still surfaces.
+    } finally {
+        try { $proc.StandardInput.Close() } catch [System.IO.IOException] { }
+    }
+    $proc.WaitForExit()
+    $code = $proc.ExitCode
+    $proc.Dispose()   # release the OS process handle (panel R2-F2); one-per-accept, but do not leak it
+    return $code
 }
