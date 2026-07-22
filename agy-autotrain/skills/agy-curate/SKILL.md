@@ -155,21 +155,40 @@ is within the 16 KB cap; over that it silently degrades to SEED-only, so a GROWT
 overflows the combined cap is written yet **never injected**. Compile GROWTH to fit roughly
 `16 KB − (current size of golden-header.seed.md)` — check the seed size and keep GROWTH lean.
 
-Then **commit it through the binary** so it lands at the resolved shared GROWTH path
+**🛑 Human-review gate — before any runtime write.** This skill publishes directly to the **live** runtime
+header; the standalone path has no separate maintainer `accept-drain` review step (that generation-vs-publish
+split exists only in the dev repo flow). So the human review the EXTEND trust model relies on happens HERE:
+before publishing, PAUSE, show the user the compiled GROWTH proposal (the anti-patterns and assumptions you
+are about to make law for *every* future ask), and ask for explicit approval — "Reply `approve` to publish
+to your runtime header, or request changes." **Do not publish until the user approves.** These are untrusted
+machine-local captures about to become a live injection into every ask; the human gate is the safeguard the
+model depends on, not a formality.
+
+Then, once approved, **commit it through the binary** so it lands at the resolved shared GROWTH path
 (`%USERPROFILE%\.clavity\golden-header.growth.md`) with an atomic write + a `.sha256` **integrity** sidecar —
 NOT a security control (anyone who can rewrite the header can equally rewrite or delete the sidecar); it exists
 to catch torn writes, filesystem corruption, and a hand-edited header. It is **verified on read**: absent or
 unreadable is accepted unchanged (a fresh install seeds SEED with no sidecar); mismatched or over its own 1 KiB
-cap causes that region to be skipped with a warning. Only the binary knows `CLAVITY_GOLDEN_HEADER`. **Pipe the
-header via STDIN, never as a shell argument** (a multi-line markdown header blows past command-line
-quoting/length limits). GROWTH is **regenerated wholesale** each run, so the commit is idempotent:
+cap causes that region to be skipped with a warning. Only the binary knows `CLAVITY_GOLDEN_HEADER`.
 
-    # dotnet variant — `clavity-ls curate-commit` writes golden-header.growth.md (SEED is left untouched):
-    clavity-ls curate-commit < compiled-growth.md      # or: printf '%s' "$growth" | clavity-ls curate-commit
+**Publish via the binary's STDIN as RAW BYTES — never a shell redirect or pipe.** A multi-line markdown
+header blows past command-line quoting/length limits (so it must go via STDIN, not an argument); and on
+Windows a bare `curate-commit < file` is unsupported for external commands, while a text pipe
+(`Get-Content file | curate-commit`, `printf '%s' "$growth" | curate-commit`) re-encodes the stream through
+the console OEM code page (CP437) — corrupting non-ASCII (an em dash becomes `Γ Ç ö`), the exact mojibake
+`curate-commit`'s raw-byte transport exists to reject. Feed the file's raw UTF-8 bytes to the process's
+stdin base stream instead. GROWTH is **regenerated wholesale** each run, so the publish is idempotent:
 
-    # classic variant — `clavity curate-commit` writes golden-header.growth.md too (split-file parity landed;
-    # SEED is left untouched), identical to the dotnet variant:
-    clavity curate-commit < compiled-growth.md
+    # Resolve the driver (dotnet `clavity-ls` or classic `clavity`) and stream RAW bytes to its stdin.
+    # Both variants' `curate-commit` write ONLY golden-header.growth.md (SEED untouched) — transport is identical.
+    $exe = (Get-Command clavity-ls -EA SilentlyContinue) ?? (Get-Command clavity -EA SilentlyContinue)
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $exe.Source; $psi.ArgumentList.Add('curate-commit')
+    $psi.RedirectStandardInput = $true; $psi.UseShellExecute = $false
+    $bytes = [System.IO.File]::ReadAllBytes('compiled-growth.md')
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+    $proc.StandardInput.Close(); $proc.WaitForExit()   # 0 = ok; 2 = bad input/over-cap; 1 = IO
 
 `curate-commit` (both variants) writes **only** `golden-header.growth.md`; it never touches the SEED. Do NOT edit
 the shared files by hand, and do **not rename or remove** a legacy flat `%USERPROFILE%\.clavity\golden-header.md`
