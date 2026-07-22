@@ -422,7 +422,9 @@ Describe 'FindingsStore merge/write/render' {
         Merge-DocResult -Store $s -DocPath 'A.md' -RunId 'R2' -Result @{ Outcome='AUDIT-INCONCLUSIVE'; ClaimsInspected=0; Findings=@() } | Out-Null
         $s.docs['A.md'].outcome | Should -Be 'FINDINGS'          # prior outcome preserved
         @($s.docs['A.md'].findings).Count | Should -Be 1         # prior findings survive
-        ($s.docs['A.md'].history | Where-Object { $_.outcome -eq 'AUDIT-INCONCLUSIVE' }).Count | Should -Be 1  # attempt not hidden
+        # @(...) is load-bearing: a single Where-Object match unwraps to a bare hashtable whose OWN .Count is its
+        # KEY count (3), shadowing PowerShell's single-object Count adapter — the bare form measures 3, not 1.
+        @($s.docs['A.md'].history | Where-Object { $_.outcome -eq 'AUDIT-INCONCLUSIVE' }).Count | Should -Be 1  # attempt not hidden
     }
     It 'a first-ever audit that is inconclusive records the state with empty findings' {
         $s = Read-FindingsStore $script:Json
@@ -1086,7 +1088,9 @@ git commit -m "feat(docs-audit): orchestrator with param-injected audit seam + p
         $store = Get-Content (Join-Path $script:Root 'docs/docs-audit-findings.json') -Raw | ConvertFrom-Json -AsHashtable
         $store.docs['A.md'].outcome | Should -Be 'FINDINGS'          # prior outcome preserved
         @($store.docs['A.md'].findings).Count | Should -Be 1
-        ($store.docs['A.md'].history | Where-Object { $_.outcome -eq 'AUDIT-INCONCLUSIVE' }).Count | Should -Be 1
+        # @(...) load-bearing — see the Task 5 note: a single match unwraps to a bare hashtable whose .Count is
+        # its KEY count. Doubly required here: ConvertFrom-Json -AsHashtable guarantees hashtable entries.
+        @($store.docs['A.md'].history | Where-Object { $_.outcome -eq 'AUDIT-INCONCLUSIVE' }).Count | Should -Be 1
     }
     It 'AUDIT-SUSPECT: claims 1 for a code-block-heavy doc' {
         Set-Content (Join-Path $script:Root 'A.md') @('# A','```bash','x','```','```bash','y','```','```bash','z','```')
@@ -1294,6 +1298,23 @@ Round 2 produced 2 minor, isolated, verified folds.
 ---
 
 **PANEL COMPLETE — 8 rounds · 17 findings folded · 4 rejected by measurement · GREEN.** The owner waived the round cap ("repeat until green"). Every folded finding and every rejection was settled by an executed measurement, never by assertion; notably four confident agy claims were measured FALSE (`ConvertTo-Json` hashtable unroll, `$PSCmdlet` null in a nested function, `.mlc.toml` needing a `./` prefix, and `\s+#.*$` as the comment fix) and one finding was real while agy's proposed fix for it was not.
+
+## Execution findings (post-panel — defects the 8-round plan review structurally could NOT catch)
+
+Recorded during subagent-driven execution. A plan review REASONS over the artifact; it never RUNS the oracle
+against the implementation — so a test and an implementation can each be individually plausible and still
+disagree. Both items below were surfaced by actually executing the suite, and each was verified by measurement.
+
+- **E1 — the Task 5 / Task 10 `history` assertions measured the wrong thing (test defect; the lib was correct).**
+  `($h | Where-Object {...}).Count | Should -Be 1` FAILS with `3`. Measured: a single `Where-Object` match
+  unwraps to a bare `[hashtable]`, whose OWN `Count` (its KEY count — `runId`/`outcome`/`note` = 3) shadows
+  PowerShell's single-object `Count` adapter. Two matches return `2` correctly, which is exactly why the bug
+  hides from inspection. Fixed by wrapping both assertions in `@(...)`. Note a `[pscustomobject]` history entry
+  would NOT have been a valid fix: Task 10 reads the store back through `ConvertFrom-Json -AsHashtable`, which
+  reconstitutes hashtables regardless — the fix must be test-side.
+- **E2 — `Get-DiagnosticSnippet` is specified under Task 6 but its TEST lives in Task 4's `Describe`.** Left as
+  written would leave Task 4 red. Implemented in Task 4; Task 6 implements only `Initialize-AuditLog` and
+  `Add-AuditLogDoc`.
 
 ## Execution handoff
 
