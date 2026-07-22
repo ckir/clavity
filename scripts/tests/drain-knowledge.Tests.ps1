@@ -43,4 +43,28 @@ Describe "drain-knowledge orchestrator guards" {
         $LASTEXITCODE | Should -Be 4
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
     }
+
+    It "exit 0 with -SkipCurator leaves ALL protected files untouched (gate passes non-vacuously)" {
+        # Commit ALL SIX protected files, not just the seed — check-core-integrity SKIPS files absent from HEAD, so
+        # committing only one would let the gate pass vacuously for the other five (panel agy-A5). With all six
+        # committed and the curator skipped, none change, and the step-6 gate must genuinely pass for all six.
+        foreach ($rel in @(
+            'seed/golden-header.md',
+            'clavity-dotnet/plugin/knowledge/agy-assumptions.md',
+            'clavity-dotnet/plugin/knowledge/agy-capabilities.md',
+            'clavity-classic/plugin/knowledge/agy-assumptions.md',
+            'clavity-classic/plugin/knowledge/agy-capabilities.md',
+            'agy-autotrain/knowledge/driver-cheatsheet.core.md')) {
+            $abs = Join-Path $script:Repo $rel
+            New-Item -ItemType Directory -Path (Split-Path $abs -Parent) -Force | Out-Null
+            Set-Content $abs "content of $rel"
+        }
+        Push-Location $script:Repo; git add .; git commit -qm protected; Pop-Location
+        # The drain writes its log to docs/agy-drain-log.md. A real repo always has docs/, but this synthetic
+        # repo does not — pre-create it (an empty dir is invisible to git, so the pristine-tree guard still
+        # passes). Belt-and-suspenders with the step-9 dir-create guard now in the script itself.
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') -Force | Out-Null
+        & pwsh -File $script:Drain -InboxPath $script:Inbox -RepoRoot $script:Repo -SkipCurator
+        $LASTEXITCODE | Should -Be 0
+    }
 }

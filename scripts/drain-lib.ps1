@@ -85,12 +85,6 @@ function Find-StagingFile([string]$InboxDir) {
 
 function New-RunId { return (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ') }
 
-function Get-SeedBytes([string]$RepoRoot) {
-    $seed = Join-Path $RepoRoot 'seed/golden-header.md'
-    if (-not (Test-Path $seed)) { return 0 }
-    return [System.Text.Encoding]::UTF8.GetByteCount([System.IO.File]::ReadAllText($seed))
-}
-
 function Get-RunIdFromStaging([string]$path) {
     $leaf = Split-Path $path -Leaf
     if ($leaf -match '^agy-observations\.staging\.(.+)\.md$') { return $Matches[1] }
