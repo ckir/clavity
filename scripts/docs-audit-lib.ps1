@@ -47,8 +47,10 @@ function Parse-AuditOutput([string]$Raw) {
         if ($l -match '^\s*-\s*(\S+)\s+(\S+?):(\d+)\s*\|\s*(.*?)\s*\|\s*(.*)$') {
             $findings += @{ kind=$Matches[1]; docPath=$Matches[2]; docLine=[int]$Matches[3]; codeRef=$Matches[4]; text=$Matches[5].Trim() }
         }
-        elseif ($l -match '^\s*-\s') {
-            # A BULLET that does not match the contract is NOT ignorable (capstone C3, MEASURED). Silently
+        elseif ($l -match '^\s*-\s' -or (@($l -split '\|').Count -ge 3)) {
+            # A BULLET — or any line carrying the `a | b | c` FINDING SHAPE (capstone C5, MEASURED: the model
+            # dropping the `- ` prefix produced `Findings=0` and a confident CLEAN) — that does not match the
+            # contract is NOT ignorable (capstone C3, MEASURED). Silently
             # dropping it made a doc with real findings report zero findings and classify as CLEAN — a false
             # NEGATIVE on the one thing this tool exists to detect. It needs no adversarial doc: the model
             # merely formatting a finding off-contract (a comma for the `|`, a missing :line) was enough.
@@ -230,15 +232,28 @@ function Enter-AuditLock {
     if (New-AuditLockFile $LockPath $NowUtc) { return $true }        # no lock existed — we won it outright
     # A lock file exists. Refuse unless it is genuinely reclaimable (dead PID or past max-age).
     if (-not (Test-AuditLockStale -LockPath $LockPath -NowUtc $NowUtc -MaxAgeSec $MaxAgeSec)) { return $false }
-    # RECLAIM by STEALING, not by deleting: renaming a file succeeds for exactly one caller, so two runs that both
-    # judged the same crashed lock stale cannot both proceed — the loser's Move fails and it refuses. (A plain
-    # `Remove-Item` here would reintroduce the very defect described above.) Whoever then wins the create holds
-    # the lock; a stealer whose create loses to a third arrival correctly reports "held".
-    $claim = "$LockPath.claim.$PID"
-    try { Move-Item -LiteralPath $LockPath -Destination $claim -Force -ErrorAction Stop }
-    catch { return $false }   # another run stole the stale lock first
-    Remove-Item -LiteralPath $claim -Force -ErrorAction SilentlyContinue
-    return (New-AuditLockFile $LockPath $NowUtc)
+    # RECLAIM under an exclusive CLAIM MARKER, then RE-CHECK (capstone C4, MEASURED). Two earlier attempts at
+    # this failed for the same underlying reason: the staleness verdict above goes out of date the instant
+    # another run finishes reclaiming. Deleting (attempt 1) and renaming (attempt 2) both let a late arrival
+    # destroy the winner's freshly-installed LIVE lock — measured: `Move-Item` renames by PATH, not by file
+    # identity, so it happily stole a valid lock. The marker serialises the reclaim path, and the RE-CHECK
+    # inside it is what actually closes the race: whoever gets the marker second re-reads the lock, finds the
+    # first run's live lock, and refuses instead of stealing it.
+    $claim = "$LockPath.claim"
+    if (-not (New-AuditLockFile $claim $NowUtc)) {
+        # Another run holds the marker — or a run was hard-killed mid-reclaim and orphaned it. An orphaned
+        # marker must never wedge the tool permanently (the whole point of a self-clearing lock), so clear a
+        # stale one here and refuse; the NEXT invocation reclaims cleanly. Never spin.
+        if (Test-AuditLockStale -LockPath $claim -NowUtc $NowUtc -MaxAgeSec $MaxAgeSec) {
+            Remove-Item -LiteralPath $claim -Force -ErrorAction SilentlyContinue
+        }
+        return $false
+    }
+    try {
+        if (-not (Test-AuditLockStale -LockPath $LockPath -NowUtc $NowUtc -MaxAgeSec $MaxAgeSec)) { return $false }
+        Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+        return (New-AuditLockFile $LockPath $NowUtc)
+    } finally { Remove-Item -LiteralPath $claim -Force -ErrorAction SilentlyContinue }
 }
 
 function Exit-AuditLock([string]$LockPath) { Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue }

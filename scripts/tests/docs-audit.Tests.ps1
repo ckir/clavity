@@ -83,6 +83,15 @@ Describe 'Parse-AuditOutput / Get-FencedCodeBlockCount / Get-DocOutcome' {
         Get-DocOutcome -ClaimsInspected $p.ClaimsInspected -FindingsCount (@($p.Findings).Count) `
             -FencedBlocks 0 -Parseable $p.Parseable | Should -Be 'AUDIT-INCONCLUSIVE'
     }
+    It 'a finding line MISSING the bullet prefix poisons the parse rather than reading CLEAN (capstone C5)' {
+        # Measured: the model emitting `ACCURACY doc.md:1 | code.rs:1 | text` with no `- ` prefix produced
+        # Parseable=True, Findings=0 => CLEAN. Any line carrying the `a | b | c` finding shape now counts.
+        $raw = "CLAIMS_INSPECTED: 1`nFINDINGS:`nACCURACY doc.md:1 | code.rs:1 | a real defect"
+        $p = Parse-AuditOutput $raw
+        $p.Parseable | Should -BeFalse
+        Get-DocOutcome -ClaimsInspected $p.ClaimsInspected -FindingsCount (@($p.Findings).Count) `
+            -FencedBlocks 0 -Parseable $p.Parseable | Should -Be 'AUDIT-INCONCLUSIVE'
+    }
     It 'a well-formed bullet plus a wrapped continuation line still parses (capstone C3 non-regression)' {
         # Only a BULLET that breaks the contract poisons the parse; ordinary wrapped prose must not.
         $raw = "CLAIMS_INSPECTED: 7`nFINDINGS:`n- ACCURACY doc.md:1 | code.rs:2 | first part`n  continued here"
@@ -231,10 +240,26 @@ Describe 'Self-clearing lock' {
         Test-Path $script:Lock | Should -BeTrue          # the live lock still exists...
         (Get-Content $script:Lock -Raw) | Should -Be $before   # ...and was not rewritten by the loser
     }
-    It 'Enter-AuditLock leaves no .claim.<pid> residue after reclaiming a stale lock (capstone C2)' {
+    It 'Enter-AuditLock leaves no .claim residue after reclaiming a stale lock (capstone C2/C4)' {
         Set-Content $script:Lock @("$PID", '2026-07-22 00:00:00Z')
         (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 05:00:00Z' -MaxAgeSec 3600) | Should -BeTrue
-        Test-Path ($script:Lock + ".claim.$PID") | Should -BeFalse
+        Test-Path ($script:Lock + '.claim') | Should -BeFalse
+    }
+    It 'a run holding the reclaim marker blocks a concurrent reclaim rather than stealing (capstone C4)' {
+        # Measured defect in the previous fix: Move-Item renames by PATH, so a late arrival stole the winner's
+        # freshly-installed LIVE lock and both ran. Pin it: with the marker held, a reclaim attempt refuses.
+        Set-Content $script:Lock @('999001', '2020-01-01 00:00:00Z')          # stale (dead pid, ancient)
+        Set-Content ($script:Lock + '.claim') @("$PID", '2026-07-22 00:00:00Z')  # a LIVE reclaim in progress
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:05Z' -MaxAgeSec 3600) | Should -BeFalse
+        Test-Path ($script:Lock + '.claim') | Should -BeTrue                 # the live marker was NOT cleared
+    }
+    It 'an ORPHANED reclaim marker is cleared so it cannot wedge the tool forever (capstone C4)' {
+        # A hard-killed run can leave the marker behind; a self-clearing lock must never wedge permanently.
+        Set-Content $script:Lock @('999001', '2020-01-01 00:00:00Z')
+        Set-Content ($script:Lock + '.claim') @('999002', '2020-01-01 00:00:00Z')   # orphaned: dead pid, ancient
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:05Z' -MaxAgeSec 3600) | Should -BeFalse
+        Test-Path ($script:Lock + '.claim') | Should -BeFalse                # cleared, so the NEXT run reclaims
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:06Z' -MaxAgeSec 3600) | Should -BeTrue
     }
     It 'a garbage timestamp (unparseable line 2) is stale (agy F6)' {
         Set-Content $script:Lock @("$PID", 'not-a-timestamp')
