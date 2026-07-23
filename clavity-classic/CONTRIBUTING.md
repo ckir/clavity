@@ -16,7 +16,8 @@ cargo fmt --all                          # format (CI checks `--check`)
 cargo build --release                    # the shippable single binary (no test fakes)
 ```
 
-CI runs exactly these on `ubuntu-latest` and `windows-latest`.
+The bare `cargo build` and `test` are the fast local loop. CI enforces only `fmt`, `clippy`,
+`test --all`, and `build --release` on `ubuntu-latest` and `windows-latest`.
 
 ### Diagnostics
 

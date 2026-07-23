@@ -157,8 +157,8 @@ Much smaller once `escape-time` is fixed (Install step 4).
   (stderr warning). SEED and GROWTH each fit under 16 KiB alone but their combination doesn't;
   GROWTH is dropped for this injection and only SEED is used. Trim GROWTH (e.g. via `agy-curate`'s
   promotion rubric) to fit the remaining budget.
-- **`driver-cheatsheet exceeds 4096 bytes; using baseline floor`** (stderr warning). The learned
-  cheatsheet at `%USERPROFILE%\.clavity\driver-cheatsheet.md` is over its 4 KiB cap, so it is ignored
+- **`driver-cheatsheet exceeds 16384 bytes; using baseline floor`** (stderr warning). The learned
+  cheatsheet at `%USERPROFILE%\.clavity\driver-cheatsheet.md` is over its 16 KiB cap, so it is ignored
   and the shipped baseline is injected instead. Your curated additions stop reaching agy until you
   trim it — the only symptom otherwise is that learned rules quietly stop applying.
 - **`driver-cheatsheet unreadable (<error>); using baseline floor`** (stderr warning). Same outcome as

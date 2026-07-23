@@ -23,7 +23,7 @@ Run `lefthook install` once at the repo root so the pre-commit / pre-push gates 
 ## Three test tiers
 
 1. **Unit — `dotnet test tests/Clavity.Ls.Tests`.** Fast tests for the language server. This is the
-   suite the CI gate and pre-push run. **All PRs must keep it green.**
+   suite the CI gate runs. **All PRs must keep it green.**
 2. **Integration — `dotnet test tests/Clavity.Integration.Tests`.** Slower tests covering wire
    interactions. Not in the default gate — run it by hand after touching that surface.
 3. **Live acceptance — `dotnet test tests/Clavity.Live.Acceptance`.** End-to-end runs against a live
