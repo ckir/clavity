@@ -47,18 +47,19 @@ function Parse-AuditOutput([string]$Raw) {
         if ($l -match '^\s*-\s*(\S+)\s+(\S+?):(\d+)\s*\|\s*(.*?)\s*\|\s*(.*)$') {
             $findings += @{ kind=$Matches[1]; docPath=$Matches[2]; docLine=[int]$Matches[3]; codeRef=$Matches[4]; text=$Matches[5].Trim() }
         }
-        elseif ($l -match '^\s*-\s' -or (@($l -split '\|').Count -ge 3)) {
-            # A BULLET — or any line carrying the `a | b | c` FINDING SHAPE (capstone C5, MEASURED: the model
-            # dropping the `- ` prefix produced `Findings=0` and a confident CLEAN) — that does not match the
-            # contract is NOT ignorable (capstone C3, MEASURED). Silently
-            # dropping it made a doc with real findings report zero findings and classify as CLEAN — a false
-            # NEGATIVE on the one thing this tool exists to detect. It needs no adversarial doc: the model
-            # merely formatting a finding off-contract (a comma for the `|`, a missing :line) was enough.
-            # An unrecognised bullet now poisons the parse, so the doc lands AUDIT-INCONCLUSIVE ("did not
-            # confirm", prior findings preserved) instead of a confident, wrong CLEAN.
+        elseif ($l.Trim()) {
+            # STRICT: inside FINDINGS, ANY non-blank line that is not a well-formed finding poisons the parse.
+            # Three successive narrower rules each leaked a false CLEAN (all MEASURED): dropping a malformed
+            # BULLET (C3 — a comma where the `|` belongs), then a finding with no `- ` prefix (C5), then one
+            # with neither bullet nor pipes (C7 — `ACCURACY doc.md:1, code.rs:1, text`). Each time the finding
+            # fell into the "ignore" bucket and the doc classified CLEAN with a real defect hidden — a false
+            # NEGATIVE on the one thing this tool exists to detect. Shape-matching the malformation is a losing
+            # game; the prompt contract says "emit EXACTLY this shape and nothing else", so anything else IS a
+            # violation. A poisoned parse lands the doc AUDIT-INCONCLUSIVE (prior findings preserved, cause in
+            # the log's diag field) — a cheap, honest "did not confirm" instead of a confident, wrong CLEAN.
             $malformed = $true
         }
-        # Non-bullet lines inside the section (a wrapped continuation, blank lines, trailing prose) stay ignored.
+        # Blank / whitespace-only lines inside the section remain ignored.
     }
     return @{ Parseable = (($null -ne $claim) -and -not $malformed); ClaimsInspected = $(if ($null -ne $claim) { $claim } else { 0 }); Findings = $findings }
 }
@@ -189,7 +190,13 @@ function Get-AuditLockPath([string]$RepoRoot) { return (Join-Path $RepoRoot 'doc
 function Test-AuditLockStale {
     param([string]$LockPath, [string]$NowUtc, [int]$MaxAgeSec)
     if (-not (Test-Path $LockPath)) { return $true }        # no lock = free
-    $lines = @(Get-Content -LiteralPath $LockPath)
+    # Test-Path and Get-Content are two operations (capstone C6, MEASURED). A concurrent run releasing the lock
+    # in between makes Get-Content throw ItemNotFoundException, which under the orchestrator's
+    # $ErrorActionPreference='Stop' propagates out and CRASHES the whole background run — far worse than any
+    # lock race. Resolve by re-testing: vanished => genuinely free; present but unreadable (a sharing violation
+    # while the owner writes it) => treat as LIVE and refuse, never steal a lock we could not read.
+    try { $lines = @(Get-Content -LiteralPath $LockPath -ErrorAction Stop) }
+    catch { return (-not (Test-Path $LockPath)) }
     $lockPid = 0; [void][int]::TryParse(($lines[0]), [ref]$lockPid)
     if ($lockPid -le 0) { return $true }                    # malformed = stale
     if (-not (Get-Process -Id $lockPid -ErrorAction SilentlyContinue)) { return $true }  # dead PID = stale
@@ -256,7 +263,17 @@ function Enter-AuditLock {
     } finally { Remove-Item -LiteralPath $claim -Force -ErrorAction SilentlyContinue }
 }
 
-function Exit-AuditLock([string]$LockPath) { Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue }
+function Exit-AuditLock([string]$LockPath) {
+    # RELEASE ONLY WHAT WE OWN (capstone C7, MEASURED: the unconditional Remove-Item deleted a lock carrying a
+    # different PID). A run whose host slept past MaxAgeSec has its lock legitimately reclaimed by a newer run;
+    # when it wakes and finishes, an unconditional release would delete the NEW run's live lock and let a third
+    # run start alongside it. Releasing only our own PID's lock makes a late finisher harmless.
+    if (-not (Test-Path $LockPath)) { return }
+    try { $lines = @(Get-Content -LiteralPath $LockPath -ErrorAction Stop) } catch { return }
+    $lockPid = 0; [void][int]::TryParse(($lines[0]), [ref]$lockPid)
+    if ($lockPid -ne $PID) { return }   # someone else owns it now — leave it alone
+    Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+}
 
 function Get-MlcErrorCount([string]$MlcOutput) {
     # PINNED to mlc's real summary block, captured from a live run (Step 1) — not guessed:

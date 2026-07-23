@@ -92,9 +92,21 @@ Describe 'Parse-AuditOutput / Get-FencedCodeBlockCount / Get-DocOutcome' {
         Get-DocOutcome -ClaimsInspected $p.ClaimsInspected -FindingsCount (@($p.Findings).Count) `
             -FencedBlocks 0 -Parseable $p.Parseable | Should -Be 'AUDIT-INCONCLUSIVE'
     }
-    It 'a well-formed bullet plus a wrapped continuation line still parses (capstone C3 non-regression)' {
-        # Only a BULLET that breaks the contract poisons the parse; ordinary wrapped prose must not.
+    It 'a finding with NEITHER bullet NOR pipes still poisons the parse (capstone C7 — STRICT)' {
+        # The third and final leak: `ACCURACY doc.md:1, code.rs:1, text` matched no malformed-SHAPE rule and was
+        # ignored => CLEAN. Shape-matching the malformation is a losing game, so the rule is now strict.
+        $raw = "CLAIMS_INSPECTED: 1`nFINDINGS:`nACCURACY doc.md:1, code.rs:1, a real defect"
+        (Parse-AuditOutput $raw).Parseable | Should -BeFalse
+    }
+    It 'any unrecognised non-blank line in the FINDINGS section poisons the parse (capstone C7 — STRICT)' {
+        # DELIBERATE REVERSAL of an earlier assertion that a wrapped continuation line stays parseable. The
+        # prompt contract says "emit EXACTLY this shape and nothing else", so a continuation IS a violation.
+        # A false AUDIT-INCONCLUSIVE is cheap (prior findings preserved, cause logged); a false CLEAN is not.
         $raw = "CLAIMS_INSPECTED: 7`nFINDINGS:`n- ACCURACY doc.md:1 | code.rs:2 | first part`n  continued here"
+        (Parse-AuditOutput $raw).Parseable | Should -BeFalse
+    }
+    It 'blank lines inside the FINDINGS section are still tolerated (capstone C7 non-regression)' {
+        $raw = "CLAIMS_INSPECTED: 7`nFINDINGS:`n`n- ACCURACY doc.md:1 | code.rs:2 | t`n   `n"
         $p = Parse-AuditOutput $raw
         $p.Parseable | Should -BeTrue
         @($p.Findings).Count | Should -Be 1
@@ -223,8 +235,25 @@ Describe 'Self-clearing lock' {
         (Get-Content $script:Lock)[0] | Should -Be "$PID"
         (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:10Z' -MaxAgeSec 3600) | Should -BeFalse  # our own fresh lock is live
     }
-    It 'Exit-AuditLock removes the lock' {
-        Set-Content $script:Lock 'x'; Exit-AuditLock $script:Lock; Test-Path $script:Lock | Should -BeFalse
+    It 'Exit-AuditLock removes OUR lock' {
+        # Content updated from the placeholder 'x' to a real PID: releasing is now ownership-checked (C6), so
+        # the old fixture no longer expressed "our lock". The behaviour under test is unchanged.
+        Set-Content $script:Lock @("$PID", '2026-07-22 00:00:00Z')
+        Exit-AuditLock $script:Lock; Test-Path $script:Lock | Should -BeFalse
+    }
+    It 'Exit-AuditLock does NOT remove a lock owned by another run (capstone C6)' {
+        # Measured defect: a run whose host slept past MaxAgeSec had its lock legitimately reclaimed; on waking
+        # it unconditionally deleted the NEW run's live lock, letting a third run start alongside it.
+        Set-Content $script:Lock @('999002', '2026-07-22 00:00:00Z')
+        Exit-AuditLock $script:Lock
+        Test-Path $script:Lock | Should -BeTrue
+    }
+    It 'Test-AuditLockStale survives the lock vanishing mid-check instead of throwing (capstone C6)' {
+        # Measured: Test-Path then Get-Content is a race; the file disappearing in between threw
+        # ItemNotFoundException, which under the orchestrator's Stop preference crashed the whole run.
+        Set-Content $script:Lock @("$PID", '2026-07-22 00:00:00Z')
+        Remove-Item $script:Lock -Force            # the concurrent release
+        { Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:30Z' -MaxAgeSec 3600 } | Should -Not -Throw
     }
     It 'a malformed PID (non-integer line 1) is stale (agy F6)' {
         Set-Content $script:Lock @('invalidPID', '2026-07-22 00:00:00Z')
