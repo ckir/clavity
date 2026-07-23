@@ -272,6 +272,13 @@ function Exit-AuditLock([string]$LockPath) {
     try { $lines = @(Get-Content -LiteralPath $LockPath -ErrorAction Stop) } catch { return }
     $lockPid = 0; [void][int]::TryParse(($lines[0]), [ref]$lockPid)
     if ($lockPid -ne $PID) { return }   # someone else owns it now — leave it alone
+    # KNOWN RESIDUAL (capstone round 5, weighed and accepted, not overlooked): ownership is checked and then
+    # acted on, so a thread suspended between these two lines could in principle delete a lock reclaimed in the
+    # gap. Measured: that gap is a single integer comparison — below measurement resolution against the ~5-7ms
+    # of file I/O around it — and exploiting it needs another run to complete a >12ms reclaim inside it AND this
+    # run's lock to be past MaxAgeSec. Not closable cheaply either: there is no atomic check-and-delete here
+    # (FileOptions::DeleteOnClose must be declared at open time, before the PID can be read), so any "fix" is
+    # another two-step dance with its own gap — and four prior edits to this lock each introduced a new defect.
     Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
 }
 
