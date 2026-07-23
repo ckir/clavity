@@ -198,7 +198,22 @@ function Enter-AuditLock {
     param([string]$LockPath, [string]$NowUtc, [int]$MaxAgeSec)
     if (-not (Test-AuditLockStale -LockPath $LockPath -NowUtc $NowUtc -MaxAgeSec $MaxAgeSec)) { return $false }
     New-Item -ItemType Directory -Force (Split-Path $LockPath -Parent) | Out-Null
-    [System.IO.File]::WriteAllText($LockPath, "$PID`n$NowUtc`n")
+    # ACQUIRE EXCLUSIVELY (capstone C1, MEASURED). The staleness check above and the write below are two separate
+    # operations, and `Test-AuditLockStale` measures ~12ms (Test-Path + Get-Content + int parse + Get-Process +
+    # two DateTime.Parse calls) — a TOCTOU window wide enough for two concurrently-launched runs to BOTH see the
+    # lock free. The former `[System.IO.File]::WriteAllText` silently CLOBBERS an existing file (measured), so
+    # both would acquire, both would enter the per-doc read-merge-write loop, and findings would be lost — the
+    # exact concurrency this lock exists to prevent. FileMode::CreateNew is atomic-exclusive: it THROWS if the
+    # file exists (measured), so exactly one racer wins and the loser reports "lock held" instead of corrupting.
+    # A stale lock is deleted first, so reclaim still works (measured: CreateNew succeeds once absent).
+    Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+    try {
+        $fs = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::CreateNew)
+        try {
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes("$PID`n$NowUtc`n")
+            $fs.Write($bytes, 0, $bytes.Length)
+        } finally { $fs.Dispose() }
+    } catch { return $false }   # another run won the race between our check and our create
     return $true
 }
 
