@@ -18,8 +18,8 @@ just lint       # cargo fmt --check + clippy -D warnings + cargo deny check
 just fmt        # auto-format
 ```
 
-Run `just` with no arguments to list the recipes. Prefer them over raw `cargo` — they are what CI and
-the pre-push hook run, so a green `just lint && just test` is the same gate.
+Run `just` with no arguments to list the recipes. Prefer them over raw `cargo` — CI runs
+`just lint` and `just test`, so a green `just lint && just test` is the same gate.
 
 Run `lefthook install` once at the repo root so the pre-commit / pre-push gates fire automatically.
 

@@ -48,8 +48,7 @@ managed/native boundary.
 suite covering agent detection, install and uninstall verbs, orchestration, and exit-code mapping
 (`0` all-ok, `2` partial, `3` all-failed, `4` none-detected). Its central test pins the exact ordered
 Claude CLI vectors against a hand-authored golden list frozen from the C# oracle — so a drift fails the
-suite rather than shipping. The suite runs in the pre-push gate (`just test-scripts`) and in
-`ci-scripts.yml`.
+suite rather than shipping. The suite runs in `ci-scripts.yml`.
 
 **Acceptance — met.**
 - ✅ Registration no longer maintains a hand-copied duplicate of the CLI vectors; the duplicate is gone
