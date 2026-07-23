@@ -74,6 +74,22 @@ Describe 'Parse-AuditOutput / Get-FencedCodeBlockCount / Get-DocOutcome' {
     It 'classifies: claims > 0, no findings, not suspect => CLEAN' {
         Get-DocOutcome -ClaimsInspected 9 -FindingsCount 0 -FencedBlocks 0 -Parseable $true | Should -Be 'CLEAN'
     }
+    It 'a MALFORMED findings bullet poisons the parse instead of silently reading as CLEAN (capstone C3)' {
+        # Measured defect: the bullet used commas instead of the `|` contract, the parser dropped it, and the
+        # doc classified CLEAN with 7 claims — a false NEGATIVE hiding a real finding. Must be unparseable.
+        $raw = "CLAIMS_INSPECTED: 7`nFINDINGS:`n- ACCURACY doc.md:1, code.rs:2, comma instead of pipe"
+        $p = Parse-AuditOutput $raw
+        $p.Parseable | Should -BeFalse
+        Get-DocOutcome -ClaimsInspected $p.ClaimsInspected -FindingsCount (@($p.Findings).Count) `
+            -FencedBlocks 0 -Parseable $p.Parseable | Should -Be 'AUDIT-INCONCLUSIVE'
+    }
+    It 'a well-formed bullet plus a wrapped continuation line still parses (capstone C3 non-regression)' {
+        # Only a BULLET that breaks the contract poisons the parse; ordinary wrapped prose must not.
+        $raw = "CLAIMS_INSPECTED: 7`nFINDINGS:`n- ACCURACY doc.md:1 | code.rs:2 | first part`n  continued here"
+        $p = Parse-AuditOutput $raw
+        $p.Parseable | Should -BeTrue
+        @($p.Findings).Count | Should -Be 1
+    }
     It 'Get-DiagnosticSnippet collapses to one bounded line (agy R5-F1)' {
         Get-DiagnosticSnippet "Error: 429`n  quota   exceeded" | Should -Be 'Error: 429 quota exceeded'
         Get-DiagnosticSnippet '' | Should -Be '(no output)'
@@ -204,6 +220,21 @@ Describe 'Self-clearing lock' {
     It 'a malformed PID (non-integer line 1) is stale (agy F6)' {
         Set-Content $script:Lock @('invalidPID', '2026-07-22 00:00:00Z')
         Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:30Z' -MaxAgeSec 3600 | Should -BeTrue
+    }
+    It 'Enter-AuditLock does NOT delete a live lock it lost the race to (capstone C2)' {
+        # Measured defect in the first C1 fix: an unconditional Remove-Item ran BEFORE the exclusive create, so a
+        # second run deleted the first run's freshly-minted LIVE lock and acquired anyway — both ran. Pin the
+        # invariant: a live lock survives a losing acquire attempt, byte for byte.
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:00Z' -MaxAgeSec 3600) | Should -BeTrue
+        $before = Get-Content $script:Lock -Raw
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:10Z' -MaxAgeSec 3600) | Should -BeFalse
+        Test-Path $script:Lock | Should -BeTrue          # the live lock still exists...
+        (Get-Content $script:Lock -Raw) | Should -Be $before   # ...and was not rewritten by the loser
+    }
+    It 'Enter-AuditLock leaves no .claim.<pid> residue after reclaiming a stale lock (capstone C2)' {
+        Set-Content $script:Lock @("$PID", '2026-07-22 00:00:00Z')
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 05:00:00Z' -MaxAgeSec 3600) | Should -BeTrue
+        Test-Path ($script:Lock + ".claim.$PID") | Should -BeFalse
     }
     It 'a garbage timestamp (unparseable line 2) is stale (agy F6)' {
         Set-Content $script:Lock @("$PID", 'not-a-timestamp')

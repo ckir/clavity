@@ -40,14 +40,25 @@ function Parse-AuditOutput([string]$Raw) {
     $lines = @($Raw -split "`r?`n")
     $claim = $null
     foreach ($l in $lines) { if ($l -match '^\s*CLAIMS_INSPECTED:\s*(\d+)\s*$') { $claim = [int]$Matches[1] } }
-    $findings = @(); $inF = $false
+    $findings = @(); $inF = $false; $malformed = $false
     foreach ($l in $lines) {
         if ($l -match '^\s*FINDINGS:') { $inF = $true; continue }
-        if ($inF -and $l -match '^\s*-\s*(\S+)\s+(\S+?):(\d+)\s*\|\s*(.*?)\s*\|\s*(.*)$') {
+        if (-not $inF) { continue }
+        if ($l -match '^\s*-\s*(\S+)\s+(\S+?):(\d+)\s*\|\s*(.*?)\s*\|\s*(.*)$') {
             $findings += @{ kind=$Matches[1]; docPath=$Matches[2]; docLine=[int]$Matches[3]; codeRef=$Matches[4]; text=$Matches[5].Trim() }
         }
+        elseif ($l -match '^\s*-\s') {
+            # A BULLET that does not match the contract is NOT ignorable (capstone C3, MEASURED). Silently
+            # dropping it made a doc with real findings report zero findings and classify as CLEAN — a false
+            # NEGATIVE on the one thing this tool exists to detect. It needs no adversarial doc: the model
+            # merely formatting a finding off-contract (a comma for the `|`, a missing :line) was enough.
+            # An unrecognised bullet now poisons the parse, so the doc lands AUDIT-INCONCLUSIVE ("did not
+            # confirm", prior findings preserved) instead of a confident, wrong CLEAN.
+            $malformed = $true
+        }
+        # Non-bullet lines inside the section (a wrapped continuation, blank lines, trailing prose) stay ignored.
     }
-    return @{ Parseable = ($null -ne $claim); ClaimsInspected = $(if ($null -ne $claim) { $claim } else { 0 }); Findings = $findings }
+    return @{ Parseable = (($null -ne $claim) -and -not $malformed); ClaimsInspected = $(if ($null -ne $claim) { $claim } else { 0 }); Findings = $findings }
 }
 
 function Get-FencedCodeBlockCount([string]$DocAbsPath) {
@@ -194,27 +205,40 @@ function Test-AuditLockStale {
     return $false                                           # alive PID + within max-age = LIVE
 }
 
-function Enter-AuditLock {
-    param([string]$LockPath, [string]$NowUtc, [int]$MaxAgeSec)
-    if (-not (Test-AuditLockStale -LockPath $LockPath -NowUtc $NowUtc -MaxAgeSec $MaxAgeSec)) { return $false }
-    New-Item -ItemType Directory -Force (Split-Path $LockPath -Parent) | Out-Null
-    # ACQUIRE EXCLUSIVELY (capstone C1, MEASURED). The staleness check above and the write below are two separate
-    # operations, and `Test-AuditLockStale` measures ~12ms (Test-Path + Get-Content + int parse + Get-Process +
-    # two DateTime.Parse calls) — a TOCTOU window wide enough for two concurrently-launched runs to BOTH see the
-    # lock free. The former `[System.IO.File]::WriteAllText` silently CLOBBERS an existing file (measured), so
-    # both would acquire, both would enter the per-doc read-merge-write loop, and findings would be lost — the
-    # exact concurrency this lock exists to prevent. FileMode::CreateNew is atomic-exclusive: it THROWS if the
-    # file exists (measured), so exactly one racer wins and the loser reports "lock held" instead of corrupting.
-    # A stale lock is deleted first, so reclaim still works (measured: CreateNew succeeds once absent).
-    Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+function New-AuditLockFile([string]$LockPath, [string]$NowUtc) {
+    # ATOMIC-EXCLUSIVE create. FileMode::CreateNew THROWS if the file already exists (measured), so of N racers
+    # exactly one can succeed. Returns $true only for the winner.
     try {
         $fs = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::CreateNew)
         try {
             $bytes = [System.Text.Encoding]::UTF8.GetBytes("$PID`n$NowUtc`n")
             $fs.Write($bytes, 0, $bytes.Length)
         } finally { $fs.Dispose() }
-    } catch { return $false }   # another run won the race between our check and our create
-    return $true
+        return $true
+    } catch { return $false }
+}
+
+function Enter-AuditLock {
+    param([string]$LockPath, [string]$NowUtc, [int]$MaxAgeSec)
+    # CREATE FIRST, ask questions second (capstone C2, MEASURED). Checking staleness BEFORE creating is a TOCTOU
+    # race: `Test-AuditLockStale` measures ~12ms, so two concurrently-launched runs both see "free" and both
+    # proceed. The first attempt at this fix still lost, because it ran an UNCONDITIONAL `Remove-Item` before the
+    # exclusive create — measured: run B simply DELETED run A's freshly-minted live lock and then created its own,
+    # so both acquired and both entered the per-doc read-merge-write loop. Ordering is the fix: the exclusive
+    # create is the ONLY way to acquire, and staleness is consulted only AFTER it fails.
+    New-Item -ItemType Directory -Force (Split-Path $LockPath -Parent) | Out-Null
+    if (New-AuditLockFile $LockPath $NowUtc) { return $true }        # no lock existed — we won it outright
+    # A lock file exists. Refuse unless it is genuinely reclaimable (dead PID or past max-age).
+    if (-not (Test-AuditLockStale -LockPath $LockPath -NowUtc $NowUtc -MaxAgeSec $MaxAgeSec)) { return $false }
+    # RECLAIM by STEALING, not by deleting: renaming a file succeeds for exactly one caller, so two runs that both
+    # judged the same crashed lock stale cannot both proceed — the loser's Move fails and it refuses. (A plain
+    # `Remove-Item` here would reintroduce the very defect described above.) Whoever then wins the create holds
+    # the lock; a stealer whose create loses to a third arrival correctly reports "held".
+    $claim = "$LockPath.claim.$PID"
+    try { Move-Item -LiteralPath $LockPath -Destination $claim -Force -ErrorAction Stop }
+    catch { return $false }   # another run stole the stale lock first
+    Remove-Item -LiteralPath $claim -Force -ErrorAction SilentlyContinue
+    return (New-AuditLockFile $LockPath $NowUtc)
 }
 
 function Exit-AuditLock([string]$LockPath) { Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue }
