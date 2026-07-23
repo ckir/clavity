@@ -25,8 +25,8 @@ OUTPUT — emit EXACTLY this shape and nothing else (no preamble, no summary):
 
 CLAIMS_INSPECTED: <integer count of distinct claims you traced to code>
 FINDINGS:
-- <KIND> <doc-path>:<doc-line> | <code-file>:<code-line> | <one-line description>
-- <KIND> <doc-path>:<doc-line> | <code-file>:<code-line> | <one-line description>
+- <KIND> <doc-path>:<line-or-range> | <code-file>:<code-line> | <one-line description>
+- <KIND> <doc-path>:<line-or-range> | <code-file>:<code-line> | <one-line description>
 
 Where <KIND> is one of ACCURACY or STALENESS. If there are no findings, emit exactly:
 
@@ -43,4 +43,6 @@ Rules for the output:
 - The CLAIMS_INSPECTED line MUST be present and MUST be a plain integer (it is how the tool proves you truly
   read the doc; omitting it or reporting 0 marks the audit inconclusive, NOT clean).
 - Every finding line MUST have the three `|`-separated fields and MUST cite a real code-file:line that proves it.
+- `<line-or-range>` is either a single line (`12`) or a closed range (`11-19`) when the claim spans lines — those
+  two forms and nothing else. `11-`, `-19`, `11,15` and `lines 11-19` are all violations and discard the audit.
 - Do NOT edit any file. Do NOT git commit. Do NOT emit anything outside the two labelled sections.

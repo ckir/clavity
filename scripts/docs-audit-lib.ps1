@@ -44,8 +44,14 @@ function Parse-AuditOutput([string]$Raw) {
     foreach ($l in $lines) {
         if ($l -match '^\s*FINDINGS:') { $inF = $true; continue }
         if (-not $inF) { continue }
-        if ($l -match '^\s*-\s*(\S+)\s+(\S+?):(\d+)\s*\|\s*(.*?)\s*\|\s*(.*)$') {
-            $findings += @{ kind=$Matches[1]; docPath=$Matches[2]; docLine=[int]$Matches[3]; codeRef=$Matches[4]; text=$Matches[5].Trim() }
+        if ($l -match '^\s*-\s*(\S+)\s+(\S+?):(\d+(?:-\d+)?)\s*\|\s*(.*?)\s*\|\s*(.*)$') {
+            # docLine is a STRING and holds the WHOLE anchor, `12` or `11-19`. The contract accepts a range because
+            # a claim can span lines (a multi-command code block), and the model anchors those as `11-19` — which
+            # the old `:(\d+)` rejected, poisoning the parse and discarding a real finding (measured twice on the
+            # same doc). The prompt contract was widened in lockstep; the parser was NOT patched alone. Keeping the
+            # [int] cast here would throw FormatException on "11-19"; capturing only the start would silently drop
+            # the localisation the model got right. Nothing consumes docLine numerically — see Render-FindingsView.
+            $findings += @{ kind=$Matches[1]; docPath=$Matches[2]; docLine=$Matches[3]; codeRef=$Matches[4]; text=$Matches[5].Trim() }
         }
         elseif ($l.Trim()) {
             # STRICT: inside FINDINGS, ANY non-blank line that is not a well-formed finding poisons the parse.

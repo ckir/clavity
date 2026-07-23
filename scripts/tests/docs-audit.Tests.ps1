@@ -111,6 +111,35 @@ Describe 'Parse-AuditOutput / Get-FencedCodeBlockCount / Get-DocOutcome' {
         $p.Parseable | Should -BeTrue
         @($p.Findings).Count | Should -Be 1
     }
+    It 'a LINE-RANGE anchor parses and preserves the whole range (live-run defect E4)' {
+        # Measured on the first full 25-doc run: the model anchored a claim spanning a 6-command code block as
+        # `CONTRIBUTING.md:11-19`. The regex accepted only `:<int>` before the `|`, so the line was unrecognised,
+        # the strict rule poisoned the parse, and a REAL finding was discarded as AUDIT-INCONCLUSIVE — twice, on
+        # the same doc. A range is a legitimate anchor for a multi-line claim, so the CONTRACT was widened (both
+        # docs-audit-prompt.md and this parser) rather than the parser patched alone. docLine is a STRING now:
+        # keeping the [int] cast would throw FormatException on "11-19", and capturing only the start line would
+        # silently discard the localisation the model got right.
+        $raw = "CLAIMS_INSPECTED: 24`nFINDINGS:`n- ACCURACY CONTRIBUTING.md:11-19 | .github/workflows/ci-classic.yml:42 | CI runs 4 of the 6 listed commands"
+        $p = Parse-AuditOutput $raw
+        $p.Parseable | Should -BeTrue
+        @($p.Findings).Count | Should -Be 1
+        $p.Findings[0].docLine | Should -Be '11-19'
+        Get-DocOutcome -ClaimsInspected $p.ClaimsInspected -FindingsCount (@($p.Findings).Count) `
+            -FencedBlocks 0 -Parseable $p.Parseable | Should -Be 'FINDINGS'
+    }
+    It 'a single-line anchor still parses, as the range-capturing string (E4 non-regression)' {
+        $p = Parse-AuditOutput "CLAIMS_INSPECTED: 7`nFINDINGS:`n- ACCURACY README.md:12 | src/main.rs:40 | t"
+        $p.Parseable | Should -BeTrue
+        $p.Findings[0].docLine | Should -Be '12'
+    }
+    It 'a MALFORMED range still poisons the parse — widening the contract did not loosen the strict rule (E4)' {
+        # The widened shape is `<int>` or `<int>-<int>` and nothing else. An open range, a comma list, or prose
+        # remain contract violations: the poison rule (C3/C5/C7) is untouched by this change.
+        foreach ($anchor in @('doc.md:11-', 'doc.md:-19', 'doc.md:11,15', 'doc.md:lines 11-19')) {
+            $p = Parse-AuditOutput "CLAIMS_INSPECTED: 4`nFINDINGS:`n- ACCURACY $anchor | code.rs:2 | t"
+            $p.Parseable | Should -BeFalse -Because "anchor '$anchor' is off-contract"
+        }
+    }
     It 'Get-DiagnosticSnippet collapses to one bounded line (agy R5-F1)' {
         Get-DiagnosticSnippet "Error: 429`n  quota   exceeded" | Should -Be 'Error: 429 quota exceeded'
         Get-DiagnosticSnippet '' | Should -Be '(no output)'
