@@ -22,8 +22,16 @@ param(
     [string]$AuditStub,
     [string]$RunId,
     [string]$Timestamp,
-    [int]$TimeoutSec = 120,
-    [int]$LockMaxAgeSec = 5400,   # 90 min: a full 25-doc run at the default timeout cannot exceed this while live
+    # 600s/doc. The former 120s default was MEASURED WRONG by the Task 10 Step 4 live smoke: a real audit of
+    # SECURITY.md (a SMALL doc — 4 claims) timed out at 120s, and `claude -p` needs ~53s of startup before any
+    # work begins (measured with a trivial prompt), so 120s left almost no working budget and every real doc
+    # would have logged AUDIT-TIMEOUT. The same doc completed CLEAN well inside 600s. Larger docs carry many
+    # more claims and far more grepping, and this is a background job with nothing on a critical path.
+    [int]$TimeoutSec = 600,
+    # MUST stay above 25 * TimeoutSec, or a full-list run outlives its own lock and a second run reclaims it
+    # mid-flight. That invariant held at the old pair (25*120 = 3000s < 5400s) and BREAKS if only the timeout is
+    # raised (25*600 = 15000s > 5400s) — so both constants move together. 18000s = 5h leaves ~20% headroom.
+    [int]$LockMaxAgeSec = 18000,
     [switch]$SkipLinkCheck        # test/utility: skip mlc even on a full run (subset runs skip it automatically)
 )
 
@@ -66,9 +74,19 @@ function Invoke-DocAudit {
         $tpl = Get-Content (Join-Path $ScriptDir 'docs-audit-prompt.md') -Raw
         $prompt = $tpl.Replace('{{DOC_PATH}}', $DocPath).Replace('{{REPO_ROOT}}', $RepoRoot)
         $psi.FileName = 'claude'
-        # READ-ONLY headless audit: NO --dangerously-skip-permissions, NO write/edit grant. The exact read-only
-        # flag set is confirmed against `claude --help` in Task 10 Step 4 (live-smoke) — do NOT guess it here.
-        foreach ($a in @('-p', $prompt, '--model', $Model)) { $psi.ArgumentList.Add($a) }
+        # READ-ONLY headless audit. Flag set CONFIRMED against `claude --help` (Task 10 Step 4 live-smoke) and
+        # then live-smoked on a real doc — no longer guessed.
+        #   -p                  non-interactive print mode
+        #   --allowedTools      a WHITELIST of read-only tools. Deliberately a whitelist, not a --disallowedTools
+        #                       blacklist: this build's own capstone spent three rounds proving that enumerating
+        #                       the bad shapes never converges, while naming the good ones converges at once. The
+        #                       audit prompt only needs to read files and grep the code it cites.
+        #   NO --dangerously-skip-permissions, NO --allow-dangerously-skip-permissions, NO
+        #   --permission-mode bypassPermissions|acceptEdits — any of those would grant write authority to a run
+        #   whose entire contract is that it reports and never edits.
+        # A tool request outside the whitelist cannot be approved (there is no interactive prompt under -p), so
+        # the failure mode is a denial or a stall that the per-doc timeout reaps — never an unintended write.
+        foreach ($a in @('-p', $prompt, '--model', $Model, '--allowedTools', 'Read', 'Grep', 'Glob')) { $psi.ArgumentList.Add($a) }
         $psi.WorkingDirectory = $RepoRoot
     }
     $psi.RedirectStandardOutput = $true
