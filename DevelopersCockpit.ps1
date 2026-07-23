@@ -156,6 +156,33 @@ function Invoke-Republish {
     Invoke-Cmd $cmd
 }
 
+function Invoke-DocsAudit {
+    # Stage-1 docs-rationalize audit (scripts/docs-audit.ps1 via `just docs-audit`). Deliberately SCOPED behind a
+    # prompt rather than exposed as a bare Cmd row: a full run makes ONE PAID `claude -p` call per doc across all
+    # 25 user-facing docs and can run for hours, which would block this menu. It is never a gate — it edits no
+    # docs, makes no commit, and writes only gitignored artifacts.
+    $mode = Read-Choice '  scope — (p)review dry-run / (o)ne doc / (a)ll 25 docs' @('p', 'o', 'a')
+    if (-not $mode) { return }
+    switch ($mode) {
+        'p' { Invoke-Cmd 'just docs-audit -WhatIf' }
+        'o' {
+            $doc = Read-Trimmed '  doc path exactly as listed in docs/user-facing-docs.txt (e.g. SECURITY.md)'
+            if (-not $doc) { Write-C '  aborted.' 'DarkGray'; return }
+            # ONE doc only, so no comma hazard here. For several, the flag needs COMMAS AND NO SPACES
+            # (`-Only a.md,b.md`): under `pwsh -File` a space-separated 2nd value silently binds to the
+            # script's next positional parameter instead. A subset run also skips the repo-wide link-check.
+            Invoke-Cmd "just docs-audit -Only $doc"
+        }
+        'a' {
+            Write-C '  A full run makes one PAID claude call per doc over all 25 user-facing docs and can take' 'Yellow'
+            Write-C '  hours. It edits no docs and makes no commit; all output is gitignored.' 'Yellow'
+            $go = Read-Choice '  proceed? (y/n)' @('y', 'n')
+            if ($go -ne 'y') { Write-C '  aborted.' 'DarkGray'; return }
+            Invoke-Cmd 'just docs-audit'
+        }
+    }
+}
+
 # Health check — probe each dev tool independently; one missing tool never stops the sweep (spec §Housekeeping).
 $script:HealthProbes = @(
     [pscustomobject]@{ Name = 'just';                      Cmd = 'just --version' }
@@ -172,6 +199,10 @@ $script:HealthProbes = @(
     [pscustomobject]@{ Name = 'bash';                      Cmd = 'bash --version' }
     [pscustomobject]@{ Name = 'cargo-nextest';             Cmd = 'cargo nextest --version' }
     [pscustomobject]@{ Name = 'cargo-deny';                Cmd = 'cargo deny --version' }
+    # `claude` is the audit engine behind `just docs-audit` (action A); without it that action refuses with
+    # exit 3. Not probing `mlc` (the link-checker it also shells out to): it prints a banner rather than a
+    # version line, so the row would be noise.
+    [pscustomobject]@{ Name = 'claude (docs-audit engine)'; Cmd = 'claude --version' }
     [pscustomobject]@{ Name = 'iscc (Inno Setup)';         Cmd = 'iscc' }  # no --version; presence is the signal, may be absent on a dev box
 )
 
@@ -223,6 +254,7 @@ $script:Actions = @(
     [pscustomobject]@{ Key = 'P'; Tier = 2; Desc = 'Republish ONE member';     Note = 'OWNER';   Handler = { Invoke-Republish } }
 
     # [4] HOUSEKEEPING
+    [pscustomobject]@{ Key = 'A'; Tier = 3; Desc = 'Docs accuracy audit';       Note = 'paid; never a gate'; Handler = { Invoke-DocsAudit } }
     [pscustomobject]@{ Key = 'H'; Tier = 3; Desc = 'Health check (tool versions)'; Note = ''; Handler = { Invoke-HealthCheck } }
     [pscustomobject]@{ Key = 'I'; Tier = 3; Desc = 'Install git hooks';        Note = '';        Cmd = 'lefthook install' }
     [pscustomobject]@{ Key = 'N'; Tier = 3; Desc = 'Validate members manifest';Note = '';        Cmd = 'pwsh -File scripts/validate-members-manifest.ps1' }
