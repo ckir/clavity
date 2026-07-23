@@ -1330,6 +1330,43 @@ disagree. Both items below were surfaced by actually executing the suite, and ea
   NOT changed: `Kill($true)` and `Dispose()` return void, and the happy-path `WaitForExit($TimeoutSec*1000)` is
   consumed as an `if` condition.
 
+## AGY-CAPSTONE — 7 rounds over the COMMITTED IMPLEMENTATION — **GREEN**
+
+Run after all 11 tasks landed, against the executable code + tests (range `3ddb53a..6df6a4a`), relentless-
+adversarial-auditor under 5 lenses (correctness · cascade/failure-paths · state/transaction · security-boundary
+· resource). **Round 7: all five lenses "no findings" — PANEL VERDICT: GREEN.**
+
+**Tally: 18 findings — 12 folded · 5 rejected · 1 owner-settled.** Per-round folds: 1 · 2 · 2 · 3 · 0 · 2 · 0.
+Every fold and every rejection was settled by an executed measurement, never by assertion.
+
+**The headline: an 8-round panel reviewed the PLAN and returned GREEN; executing that same design then produced
+12 more real defects.** A plan review reasons over the artifact — it never runs the oracle against the code.
+Two defect families dominated, and both took multiple rounds because each fix was itself wrong:
+
+- **The run lock — 4 rounds.** check-then-`WriteAllText` (clobbers) across a measured ~12ms window → added
+  `CreateNew` but kept an unconditional `Remove-Item` (B deleted A's fresh LIVE lock) → stole by `Move-Item`
+  (renames by PATH, not identity, so B stole A's new LIVE lock) → `Test-Path`+`Get-Content` threw and crashed
+  the run, `Exit-AuditLock` released unconditionally, and a 0-byte lock wedged the tool permanently.
+  **Lesson: a fix for a race is itself a race until measured.**
+- **False `CLEAN` — 3 rounds.** A malformed bullet, then a finding with no `- ` prefix, then one with neither
+  bullet nor pipes — each silently vanished into a confident `CLEAN`, the exact false negative this tool exists
+  to prevent. **Lesson: shape-matching a malformation is a losing game — invert to a strict whitelist.** The
+  contract says "emit EXACTLY this shape and nothing else", so anything else now poisons the parse.
+- **A test that was green for the wrong reason.** The `— diag:<cause>` test passed only because its stub wrote
+  to STDOUT; real `claude` failures write to STDERR with stdout empty, and stderr was being discarded. The
+  feature had never worked in the case it existed for.
+
+**Rejected by measurement (4):** `claude` being an npm `.cmd` that truncates the multi-line prompt (it is a
+native `.exe`; the real 2252-char/39-line prompt arrives intact) · a "blind command execution vector" from that
+truncation (nothing executed; stderr empty) · `& mlc 2>&1 | Out-String` throwing under `Stop` (no throw) ·
+falling through to `Kill` to reap a detached grandchild (`Kill($true)` on an exited process is a no-op).
+**Rejected on the severity floor (1):** the residual `Exit-AuditLock` check→delete gap — a single integer
+comparison, below measurement resolution, with no atomic check-and-delete available; documented in-code.
+**Owner-settled (1):** `AUDIT-SUSPECT` keeps precedence over `FINDINGS`; a one-claim audit of a code-heavy doc
+stays untrusted, and the finding remains visible in the append-only log.
+
+Final state: **65 tests in this suite, 236 repo-wide, 0 failed.**
+
 ## Execution handoff
 
 Plan complete and saved to `docs/superpowers/plans/2026-07-22-docs-rationalize-sp2-audit-script.md`. Two execution options:
