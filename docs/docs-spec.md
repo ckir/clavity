@@ -50,6 +50,14 @@ This file is also the authority over the **user-facing subset** that the `docs-r
 - Cite the enforcer where one exists (e.g. a CHANGELOG's leading H1 is required by
   `scripts/lib/release-lib.ps1`'s injection regex).
 - Link the canonical copy instead of restating it — restating is how the two agy manuals drifted.
+- **Stage-1 audit tool: `just docs-audit`** (`scripts/docs-audit.ps1`). Audits every path in
+  `docs/user-facing-docs.txt` against the current code and writes a per-doc punch-list to
+  `docs/docs-audit-findings.md`, plus an append-only `docs/docs-audit-log.md`. Read-only — it edits no doc,
+  makes no commit, and is never a gate; run it on demand or backgrounded. A `docs-rationalize` pass consumes
+  that punch-list instead of re-deriving one. Its findings are LEADS, not proof: the audit step is itself an
+  LLM invocation, so every finding is confirmed by measurement before anything is rewritten, and a doc it
+  could not confirm (`AUDIT-INCONCLUSIVE` / `AUDIT-TIMEOUT` / `AUDIT-SUSPECT`) is an UNAUDITED doc, not a
+  clean one.
 
 ## Do-not-touch (out of scope for a docs pass)
 
