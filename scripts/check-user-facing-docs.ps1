@@ -58,7 +58,8 @@ $script:VoiceEntryPatterns = @(
     '(?i)^\.github/ISSUE_TEMPLATE/.+\.md$',
     '(?i)^docs/.+\.md$',                        # docs/** (umbrella)
     '(?i)^[^/]+/docs/.+\.md$',                  # <member>/docs/** (incl. the two clavity-classic evaluator docs)
-    '(?i)^clavity-classic/installer/.*(MANUAL-SETUP|README-FIRST)\.md$'  # installer operator docs (docs-spec.md:28)
+    '(?i)^clavity-classic/installer/.*(MANUAL-SETUP|README-FIRST)\.md$',  # installer operator docs (docs-spec.md:28)
+    '(?i)^scripts/README\.md$'                 # the scripts/ inventory index (docs-spec.md contributor row)
 )
 
 function Read-DocList([string]$path) {
