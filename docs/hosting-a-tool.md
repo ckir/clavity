@@ -78,8 +78,8 @@ member that never builds, never version-checks, or never ships. Verified list:
    new files as unregistered. Note `ghidrust` uses **two** classes (`binary` and `plugin`) because it
    versions those independently — copy that shape only if you need it.
 5. `scripts/bump-version.ps1` — add the member to its `[ValidateSet(...)]`.
-6. `lefthook.yml` — append `pwsh -File scripts/check-versions.ps1 <member>` to the pre-push
-   `check-versions` chain.
+6. `scripts/check-versions-all.ps1` — append the member to the `$members` array so the unified
+   pre-push hook picks it up (`lefthook.yml` itself needs no edit).
 
 Thereafter bump **only** via `just bump <member> <version>`. Never hand-edit a version source;
 `bump-version.ps1` is the sole writer, and `check-versions.ps1` is what catches you.
