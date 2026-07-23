@@ -223,8 +223,9 @@ reference. Decouple first, in this order:
    tests.
 2. Remove it from `umbrella-release.yml` (all five touch points) and `republish-member.yml`'s choices.
 3. Delete its `build-<member>.yml`, `ci-<member>.yml`, `ci-installer-<member>.yml`.
-4. Remove it from `check-versions.ps1` (ValidateSet + `$Registry`), `bump-version.ps1`, `lefthook.yml`,
-   the root `justfile`, and `DevelopersCockpit.ps1`.
+4. Remove it from `check-versions.ps1` (ValidateSet + `$Registry`), `bump-version.ps1`,
+   `scripts/check-versions-all.ps1` (the `$members` array), the root `justfile`, and
+   `DevelopersCockpit.ps1` (`lefthook.yml` itself needs no edit unless it had custom hooks).
 5. Remove its `Key` from every `$SharedPaths` entry in `scripts/lib/release-lib.ps1`. Leave one behind
    and `check-roster.ps1` fails: the map claims a member ships an asset whose installer no longer
    mentions it.
