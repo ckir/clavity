@@ -248,6 +248,20 @@ Describe 'Self-clearing lock' {
         Exit-AuditLock $script:Lock
         Test-Path $script:Lock | Should -BeTrue
     }
+    It 'a 0-byte lock is stale, not a crash (capstone C8)' {
+        # Reachable: New-AuditLockFile creates then writes, so a hard-kill/power-loss/full-disk in between
+        # leaves an empty file. Measured: indexing the empty array threw IndexOutOfRangeException under
+        # StrictMode, crashing the run and leaving the lock in place — wedging the tool permanently.
+        New-Item -ItemType File $script:Lock -Force | Out-Null
+        { Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:00Z' -MaxAgeSec 3600 } | Should -Not -Throw
+        Test-AuditLockStale -LockPath $script:Lock -NowUtc '2026-07-22 00:00:00Z' -MaxAgeSec 3600 | Should -BeTrue
+        (Enter-AuditLock -LockPath $script:Lock -NowUtc '2026-07-22 00:00:00Z' -MaxAgeSec 3600) | Should -BeTrue
+    }
+    It 'Exit-AuditLock does not throw on a 0-byte lock and leaves it for reclaim (capstone C8)' {
+        New-Item -ItemType File $script:Lock -Force | Out-Null
+        { Exit-AuditLock $script:Lock } | Should -Not -Throw
+        Test-Path $script:Lock | Should -BeTrue   # no ownership proof => not ours to delete
+    }
     It 'Test-AuditLockStale survives the lock vanishing mid-check instead of throwing (capstone C6)' {
         # Measured: Test-Path then Get-Content is a race; the file disappearing in between threw
         # ItemNotFoundException, which under the orchestrator's Stop preference crashed the whole run.
@@ -412,6 +426,33 @@ Describe 'docs-audit orchestrator (via pwsh -File, -AuditStub seam)' {
         Test-Path (Join-Path $script:Root 'docs/docs-audit-findings.json') | Should -BeFalse
         Test-Path (Join-Path $script:Root 'docs/docs-audit-log.md')       | Should -BeFalse
         Test-Path (Join-Path $script:Root 'docs/docs-audit.lock')         | Should -BeFalse
+    }
+    It 'a failure that reports ONLY on stderr still records its cause (capstone C9)' {
+        # The pre-existing diag test below emits its error on STDOUT, so it never exercised the real failure
+        # shape: `claude` writes quota/auth/crash causes to STDERR and leaves stdout EMPTY. Measured: stderr was
+        # drained but DISCARDED, so the log read `diag:(no output)` and the cause was lost.
+        $errStub = Join-Path $script:Root 'stub-stderr.ps1'
+        Set-Content $errStub @('param($docPath,$repoRoot)', '[Console]::Error.WriteLine("Error: 429 quota exceeded")', 'exit 1')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $errStub -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Only 'A.md'
+        $LASTEXITCODE | Should -Be 0
+        $log = Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw
+        $log | Should -Match '- A.md — AUDIT-INCONCLUSIVE'
+        $log | Should -Match 'diag:Error: 429 quota exceeded'
+        $log | Should -Not -Match 'diag:\(no output\)'
+    }
+    It 'stderr noise cannot inject a finding or a claim count into the parse (capstone C9)' {
+        # stderr feeds the DIAGNOSTIC only; it must never reach the parser, or a chatty child could forge a
+        # CLAIMS_INSPECTED line and turn a failed audit into a confident CLEAN.
+        $spoof = Join-Path $script:Root 'stub-spoof.ps1'
+        Set-Content $spoof @(
+            'param($docPath,$repoRoot)'
+            '[Console]::Error.WriteLine("CLAIMS_INSPECTED: 99")'
+            '[Console]::Error.WriteLine("FINDINGS: none")'
+            'exit 1')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $spoof -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Only 'A.md'
+        $log = Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw
+        $log | Should -Match '- A.md — AUDIT-INCONCLUSIVE'   # NOT CLEAN — stderr did not reach the parser
+        $log | Should -Not -Match 'claims:99'
     }
     It 'a failed audit records its CAUSE in the log, not a bare AUDIT-INCONCLUSIVE (agy R5-F1)' {
         $quota = Join-Path $script:Root 'stub-quota.ps1'

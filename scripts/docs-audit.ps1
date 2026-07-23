@@ -75,7 +75,7 @@ function Invoke-DocAudit {
     $psi.RedirectStandardError  = $true
     $psi.UseShellExecute        = $false
     try { $proc = [System.Diagnostics.Process]::Start($psi) }
-    catch { return @{ Raw = ''; TimedOut = $false } }   # absent CLI (Win32Exception) => empty => AUDIT-INCONCLUSIVE (agy R1-F4)
+    catch { return @{ Raw = ''; Err = ''; TimedOut = $false } }   # absent CLI (Win32Exception) => empty => AUDIT-INCONCLUSIVE (agy R1-F4)
     # Drain BOTH streams async: stderr is redirected, so if it is never read a chatty stderr can fill its pipe
     # buffer and dead-lock the child while stdout drains (self-caught pre-round-4).
     $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
@@ -86,15 +86,23 @@ function Invoke-DocAudit {
         # telemetry/update-checker outliving `claude`) would then hang the orchestrator FOREVER and defeat the
         # per-doc timeout entirely (agy R4-F1, measured). Bound the drain instead — WaitAll returns $false rather
         # than blocking; a stuck pipe yields no usable output => AUDIT-INCONCLUSIVE, the honest "did not confirm".
-        $out = ''
-        if ([System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask), $DrainMs)) { $out = $stdoutTask.Result }
+        $out = ''; $err = ''
+        # KEEP stderr, do not merely drain it (capstone C9, MEASURED). A real `claude` failure — quota, auth,
+        # an unhandled Node exception — writes its cause to STDERR and leaves stdout EMPTY. Discarding it made
+        # the log read `diag:(no output)`, destroying the one field added to tell those failures apart. It is
+        # returned SEPARATELY rather than merged into Raw so it can feed the diagnostic without ever reaching
+        # the parser: stderr noise must not be able to contribute a CLAIMS_INSPECTED line or a findings bullet.
+        if ([System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask), $DrainMs)) {
+            $out = $stdoutTask.Result
+            $err = $stderrTask.Result
+        }
         $proc.Dispose()
-        return @{ Raw = $out; TimedOut = $false }
+        return @{ Raw = $out; Err = $err; TimedOut = $false }
     }
     try { $proc.Kill($true) } catch { }                  # $true = kill the ENTIRE tree (claude + node children); no orphan (agy R3-F1)
     try { $null = $proc.WaitForExit(5000) } catch { }     # $null= : an unassigned WaitForExit(int) bool leaks onto the pipeline (measured), corrupting the @{...} return
     $proc.Dispose()
-    return @{ Raw = ''; TimedOut = $true }
+    return @{ Raw = ''; Err = ''; TimedOut = $true }
 }
 
 function Get-DocResult {
@@ -107,7 +115,10 @@ function Get-DocResult {
     $outcome = Get-DocOutcome -ClaimsInspected $p.ClaimsInspected -FindingsCount (@($p.Findings).Count) -FencedBlocks $blocks -Parseable $p.Parseable
     # Keep WHY a non-confirmed audit failed: the raw head carries the real cause (quota/auth error, refusal,
     # empty response) that a bare AUDIT-INCONCLUSIVE row would throw away (agy R5-F1).
-    $diag = if (@('CLEAN','FINDINGS') -contains $outcome) { '' } else { Get-DiagnosticSnippet $inv.Raw }
+    # Diagnose from stdout AND stderr (capstone C9): the cause of a real failure usually lives on stderr while
+    # stdout is empty. Parsing above deliberately used $inv.Raw (stdout) ONLY.
+    $diag = if (@('CLEAN','FINDINGS') -contains $outcome) { '' }
+            else { Get-DiagnosticSnippet ((@($inv.Raw, $inv.Err) | Where-Object { $_ }) -join ' ') }
     return @{ Outcome=$outcome; ClaimsInspected=$p.ClaimsInspected; Findings=$p.Findings; Diagnostic=$diag }
 }
 

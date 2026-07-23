@@ -197,6 +197,12 @@ function Test-AuditLockStale {
     # while the owner writes it) => treat as LIVE and refuse, never steal a lock we could not read.
     try { $lines = @(Get-Content -LiteralPath $LockPath -ErrorAction Stop) }
     catch { return (-not (Test-Path $LockPath)) }
+    # A 0-BYTE lock is reachable (capstone C8, MEASURED): New-AuditLockFile creates the file and then writes it,
+    # so a hard-kill, power loss or full disk in between leaves an empty one. Indexing the empty array under
+    # `Set-StrictMode -Version Latest` throws IndexOutOfRangeException — which, being outside the try above,
+    # crashed the whole run and left the lock in place, WEDGING the tool permanently. An empty lock carries no
+    # ownership information, so it is by definition stale and reclaimable.
+    if ($lines.Count -lt 1) { return $true }
     $lockPid = 0; [void][int]::TryParse(($lines[0]), [ref]$lockPid)
     if ($lockPid -le 0) { return $true }                    # malformed = stale
     if (-not (Get-Process -Id $lockPid -ErrorAction SilentlyContinue)) { return $true }  # dead PID = stale
@@ -270,6 +276,9 @@ function Exit-AuditLock([string]$LockPath) {
     # run start alongside it. Releasing only our own PID's lock makes a late finisher harmless.
     if (-not (Test-Path $LockPath)) { return }
     try { $lines = @(Get-Content -LiteralPath $LockPath -ErrorAction Stop) } catch { return }
+    # Same 0-byte hazard as Test-AuditLockStale (capstone C8, MEASURED: IndexOutOfRangeException here too).
+    # An empty lock proves no ownership, so we must NOT delete it — leave it for the staleness path to reclaim.
+    if ($lines.Count -lt 1) { return }
     $lockPid = 0; [void][int]::TryParse(($lines[0]), [ref]$lockPid)
     if ($lockPid -ne $PID) { return }   # someone else owns it now — leave it alone
     # KNOWN RESIDUAL (capstone round 5, weighed and accepted, not overlooked): ownership is checked and then
