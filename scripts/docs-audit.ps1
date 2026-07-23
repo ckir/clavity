@@ -22,17 +22,25 @@ param(
     [string]$AuditStub,
     [string]$RunId,
     [string]$Timestamp,
-    # 600s/doc. The former 120s default was MEASURED WRONG by the Task 10 Step 4 live smoke: a real audit of
-    # SECURITY.md (a SMALL doc — 4 claims) timed out at 120s, and `claude -p` needs ~53s of startup before any
-    # work begins (measured with a trivial prompt), so 120s left almost no working budget and every real doc
-    # would have logged AUDIT-TIMEOUT. The same doc completed CLEAN well inside 600s. Larger docs carry many
-    # more claims and far more grepping, and this is a background job with nothing on a critical path.
-    [int]$TimeoutSec = 600,
+    # 1200s/doc. This is a CEILING, not a duration — raising it costs nothing on docs that finish fast, it only
+    # stops killing slow ones. Calibrated from the first full 25-doc run (2h11m total): the 22 docs that did NOT
+    # time out averaged ~275s, while 3 large docs (`README.md`, the classic bridge README-FIRST, and
+    # `commonmemory/CONTRIBUTING.md`) blew through the previous 600s ceiling and were killed mid-audit, wasting
+    # the call entirely. 1200s gives those roughly 4x the typical budget. NOTE: 1200 is a judgement, not a
+    # measurement — nobody has timed how long README.md actually needs, only that it exceeds 600s. If a doc
+    # still times out here, measure it before raising this again rather than guessing a third time.
+    [int]$TimeoutSec = 1200,
     # MUST stay above 25 * TimeoutSec, or a full-list run outlives its own lock and a second run reclaims it
-    # mid-flight. That invariant held at the old pair (25*120 = 3000s < 5400s) and BREAKS if only the timeout is
-    # raised (25*600 = 15000s > 5400s) — so both constants move together. 18000s = 5h leaves ~20% headroom.
-    [int]$LockMaxAgeSec = 18000,
-    [switch]$SkipLinkCheck        # test/utility: skip mlc even on a full run (subset runs skip it automatically)
+    # mid-flight. This pairing has now broken twice when only the timeout moved (25*120=3000 < 5400 held;
+    # 25*600=15000 > 5400 broke it; 25*1200=30000 > 18000 breaks it again) — so ALWAYS move both together.
+    # 36000s = 10h against a 8.3h worst case. The worst case is a ceiling nobody expects to hit: the observed
+    # full run was 2h11m.
+    [int]$LockMaxAgeSec = 36000,
+    [switch]$SkipLinkCheck,       # test/utility: skip mlc even on a full run (subset runs skip it automatically)
+    # Resume a partial run: skip docs a PREVIOUS run already CONFIRMED, re-audit everything else. A full run is
+    # 25 paid `claude -p` calls over potentially hours, so a crash, a quota trip, or a batch of timeouts must
+    # not force re-paying for the docs that already succeeded.
+    [switch]$Continue
 )
 
 Set-StrictMode -Version Latest
@@ -158,10 +166,27 @@ function Invoke-Main {
     $onlyNorm = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $docs = Get-InScopeDocs -RepoRoot $repo -Only $onlyNorm
     $isSubset = ($onlyNorm.Count -gt 0)
+
+    # -Continue: resume a partial run by skipping docs a previous run already CONFIRMED.
+    # ONLY a confirmed outcome counts as done. AUDIT-INCONCLUSIVE / AUDIT-TIMEOUT / AUDIT-SUSPECT all mean
+    # "the audit did not confirm this doc", so they are RETRIED — treating them as done would bake a
+    # non-result into the punch-list as though it were a clean bill, the one failure that makes an audit worse
+    # than none. Deliberately OPT-IN, never the default: once Stage 2 rewrites a doc you WANT it re-audited,
+    # and a resume-by-default would silently skip exactly the docs whose text just changed.
+    # Runs BEFORE the -WhatIf gate so the dry-run preview reports the real post-filter count.
+    $resumeSkipped = 0
+    if ($Continue) {
+        $priorStore = Read-FindingsStore (Join-Path $repo 'docs/docs-audit-findings.json')
+        $confirmed = @($docs | Where-Object {
+            $priorStore.docs.ContainsKey($_) -and (@('CLEAN','FINDINGS') -contains $priorStore.docs[$_]['outcome'])
+        })
+        $resumeSkipped = $confirmed.Count
+        $docs = @($docs | Where-Object { $confirmed -notcontains $_ })
+    }
     # -WhatIf dry-run: everything above is read-only. Preview and SKIP the whole mutation block (lock + audit +
     # artifact writes), mirroring drain-knowledge.ps1:81's ShouldProcess gate.
     if (-not $PSCmdlet.ShouldProcess("$(@($docs).Count) user-facing doc(s)", "audit via claude -p, then write the findings store + log")) {
-        Write-Host "docs-audit (-WhatIf): would audit $(@($docs).Count) doc(s)$(if ($isSubset) { ' (subset)' } else { '' }); link-check would $(if ($isSubset) { 'be skipped (subset run)' } else { 'run repo-wide (mlc)' }). No lock taken, no claude -p, no writes." -ForegroundColor Cyan
+        Write-Host "docs-audit (-WhatIf): would audit $(@($docs).Count) doc(s)$(if ($isSubset) { ' (subset)' } else { '' })$(if ($Continue) { "; -Continue would SKIP $resumeSkipped already-confirmed doc(s)" } else { '' }); link-check would $(if ($isSubset) { 'be skipped (subset run)' } else { 'run repo-wide (mlc)' }). No lock taken, no claude -p, no writes." -ForegroundColor Cyan
         return
     }
     # PRE-FLIGHT (agy R5-F3): a missing audit engine must fail LOUDLY, ONCE — not silently produce N generic
@@ -205,7 +230,8 @@ function Invoke-Main {
             Render-FindingsView -Store $store -Path $findingsMd
             Add-AuditLogDoc -Path $logPath -DocPath $doc -Result $result -Model $model -PromptFile 'docs-audit-prompt.md'
         }
-        Write-Host "docs-audit: done (run $runId). $(@($docs).Count) docs. See docs/docs-audit-findings.md + docs/docs-audit-log.md." -ForegroundColor Green
+        $skipNote = if ($Continue) { " ($resumeSkipped already-confirmed doc(s) skipped by -Continue)" } else { '' }
+        Write-Host "docs-audit: done (run $runId). $(@($docs).Count) docs audited$skipNote. See docs/docs-audit-findings.md + docs/docs-audit-log.md." -ForegroundColor Green
         exit 0
     } finally {
         Exit-AuditLock $lock

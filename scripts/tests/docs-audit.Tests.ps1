@@ -454,6 +454,43 @@ Describe 'docs-audit orchestrator (via pwsh -File, -AuditStub seam)' {
         $log | Should -Match '- A.md — AUDIT-INCONCLUSIVE'   # NOT CLEAN — stderr did not reach the parser
         $log | Should -Not -Match 'claims:99'
     }
+    It '-Continue skips docs a prior run CONFIRMED and re-audits the rest' {
+        # Seed: A CLEAN (confirmed), B AUDIT-INCONCLUSIVE (not confirmed), C never audited.
+        $one = Join-Path $script:Root 'stub-clean.ps1'
+        Set-Content $one @('param($docPath,$repoRoot)','Write-Output "CLAIMS_INSPECTED: 3"','Write-Output "FINDINGS: none"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $one -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Only 'A.md'
+        $refuse = Join-Path $script:Root 'stub-refuse.ps1'
+        Set-Content $refuse @('param($docPath,$repoRoot)','Write-Output "nope"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $refuse -RunId 'R2' -Timestamp '2026-07-22 01:00:00Z' -SkipLinkCheck -Only 'B.md'
+        # Resume: A must be SKIPPED (confirmed), B and C must be re-audited (B was never confirmed).
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $one -RunId 'R3' -Timestamp '2026-07-22 02:00:00Z' -SkipLinkCheck -Continue
+        $LASTEXITCODE | Should -Be 0
+        $log = Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw
+        $r3 = ($log -split '## audit R3')[1]
+        $r3 | Should -Not -Match '- A\.md'      # confirmed => skipped
+        $r3 | Should -Match '- B\.md — CLEAN'   # NOT confirmed => retried
+        $r3 | Should -Match '- C\.md — CLEAN'   # never audited => audited
+    }
+    It '-Continue on a fresh store audits everything (no prior confirmations to skip)' {
+        $one = Join-Path $script:Root 'stub-clean2.ps1'
+        Set-Content $one @('param($docPath,$repoRoot)','Write-Output "CLAIMS_INSPECTED: 3"','Write-Output "FINDINGS: none"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $one -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Continue
+        $LASTEXITCODE | Should -Be 0
+        $store = Get-Content (Join-Path $script:Root 'docs/docs-audit-findings.json') -Raw | ConvertFrom-Json -AsHashtable
+        $store.docs.Keys.Count | Should -Be 3
+    }
+    It '-Continue never SKIPS a doc whose prior outcome was not confirmed (the false-clean trap)' {
+        # A doc recorded AUDIT-TIMEOUT is UNAUDITED, not done. Skipping it would bake a non-result into the
+        # punch-list as though it were a clean bill — the one failure that makes an audit worse than none.
+        $slow = Join-Path $script:Root 'stub-slow2.ps1'
+        Set-Content $slow @('param($docPath,$repoRoot)','Start-Sleep -Seconds 30','Write-Output "CLAIMS_INSPECTED: 1"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $slow -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -TimeoutSec 3 -Only 'A.md'
+        $ok = Join-Path $script:Root 'stub-ok.ps1'
+        Set-Content $ok @('param($docPath,$repoRoot)','Write-Output "CLAIMS_INSPECTED: 4"','Write-Output "FINDINGS: none"')
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $ok -RunId 'R2' -Timestamp '2026-07-22 01:00:00Z' -SkipLinkCheck -Continue -Only 'A.md'
+        $log = Get-Content (Join-Path $script:Root 'docs/docs-audit-log.md') -Raw
+        ($log -split '## audit R2')[1] | Should -Match '- A\.md — CLEAN'   # retried, not skipped
+    }
     It 'a failed audit records its CAUSE in the log, not a bare AUDIT-INCONCLUSIVE (agy R5-F1)' {
         $quota = Join-Path $script:Root 'stub-quota.ps1'
         Set-Content $quota @('param($docPath,$repoRoot)', 'Write-Output "Error: 429 API quota exceeded"')
