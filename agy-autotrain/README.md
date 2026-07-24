@@ -11,8 +11,8 @@ feeds the loop, and the curated wisdom is injected back into every future call.
 > the *learning* loop — and the `adversarial-panel-review` skill — on top.
 
 What this add-on does: **capture → curate → verify → compile**, then promote project-local → global,
-and emit a compiled `golden-header.md` that the binary (dotnet `clavity-ls`) prepends to every ask — or
-that the classic `clavity-driving` skill prepends manually until the classic binary injects it.
+and emit a compiled golden header that both driver binaries (dotnet `clavity-ls` and classic `clavity`)
+prepend to every ask.
 
 ## How it works
 
