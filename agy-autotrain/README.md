@@ -35,6 +35,8 @@ drive agy (core driving skill) ──learn──▶ knowledge/agy-observations.m
   (`clavity-ls curate-commit` → `golden-header.growth.md`), empties the inbox. It never edits the SEED
   manuals.
 - **Verify** (`verify/`): each Empirical Assumption has a synthetic `clavity ask` probe + pass/fail.
+  [`verify/README.md`](verify/README.md) indexes it; [`verify/probe-design.md`](verify/probe-design.md)
+  covers designing a new (paired) probe.
 - **Knowledge** (`knowledge/`): holds the `agy-observations.md` capture inbox and the pinned
   `driver-cheatsheet.core.md` baseline (kept byte-identical to constants in both driver binaries — see
   [CONTRIBUTING.md](CONTRIBUTING.md)). The canonical manuals (`agy-capabilities.md` /

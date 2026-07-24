@@ -27,7 +27,7 @@ $script:DoNotTouchPatterns = @(
     '(?i)^scripts/drain-knowledge-prompt\.md$',# a prompt, functionally code
     '(?i)^seed/golden-header\.md$',            # compiled SEED
     '(?i)^commonmemory/rules/commonmemory\.md$',                       # agy rule file
-    '(?i)^agy-autotrain/verify/.*\.md$',                              # probe harness
+    '(?i)^agy-autotrain/verify/assertions\.md$',                     # measured probe outcomes (data, never rewritten)
     '(?i)^agy-autotrain/docs/fix-the-tool-backlog/',                  # generated append-only
     '(?i)(^|/)agy-mcp-bridge/VENDORED-FROM\.md$',                     # vendored provenance
     '(?i)^docs/(agy-assumptions|agy-capabilities)\.md$',             # pointer stubs
@@ -59,7 +59,8 @@ $script:VoiceEntryPatterns = @(
     '(?i)^docs/.+\.md$',                        # docs/** (umbrella)
     '(?i)^[^/]+/docs/.+\.md$',                  # <member>/docs/** (incl. the two clavity-classic evaluator docs)
     '(?i)^clavity-classic/installer/.*(MANUAL-SETUP|README-FIRST)\.md$',  # installer operator docs (docs-spec.md:28)
-    '(?i)^scripts/README\.md$'                 # the scripts/ inventory index (docs-spec.md contributor row)
+    '(?i)^scripts/README\.md$',                # the scripts/ inventory index (docs-spec.md contributor row)
+    '(?i)^agy-autotrain/verify/(README|probe-design|run-verification)\.md$'  # agy verify-harness prose docs (docs-spec.md)
 )
 
 function Read-DocList([string]$path) {

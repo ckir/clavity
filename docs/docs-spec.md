@@ -7,7 +7,7 @@ Two authorities this file defers to, and does not duplicate:
 - **Which docs each member carries** — [`hosting-a-tool.md` § Per-member documentation](hosting-a-tool.md#per-member-documentation).
 - **Section order within a doc** — the templates in `clavity-dotnet/templates/tool-skeleton/`.
 
-This file is also the authority over the **user-facing subset** that the `docs-rationalize` tool targets: [`docs/user-facing-docs.txt`](user-facing-docs.txt) — 26 files, a subset of the table below, validated by `scripts/check-user-facing-docs.ps1`.
+This file is also the authority over the **user-facing subset** that the `docs-rationalize` tool targets: [`docs/user-facing-docs.txt`](user-facing-docs.txt) — 29 files, a subset of the table below, validated by `scripts/check-user-facing-docs.ps1`.
 
 ## Docs (audience → voice)
 
@@ -24,6 +24,7 @@ This file is also the authority over the **user-facing subset** that the `docs-r
 | `clavity-classic/docs/how-it-works.md`, `clavity-classic/docs/launching-and-driving-agy.md` | **User-facing evaluator docs** — someone deciding whether/how to run clavity-classic. More specific than the generic `<member>/docs/**` internal-depth row above; keep them terse and scannable, not research-log-long | terse-technical |
 | `CONTRIBUTING.md` | A new contributor | terse-technical |
 | `scripts/README.md` | A maintainer / CI-release engineer navigating the script inventory — what each script is and which `just` recipe runs it | terse-technical (index) |
+| `agy-autotrain/verify/README.md`, `probe-design.md`, `run-verification.md` | A contributor running or **designing** an agy empirical probe — the verification harness. (`assertions.md` in the same dir is measured data, do-not-touch below) | terse-technical |
 | `CLAUDE.md` (root) | The agent working anywhere in the repo — cross-cutting rules only | terse, dense |
 | `SECURITY.md` | Someone reporting a vulnerability | terse, unambiguous |
 | `CODE_OF_CONDUCT.md` | Participants | leave substance alone; formatting only |
@@ -80,7 +81,8 @@ This file is also the authority over the **user-facing subset** that the `docs-r
   shapes (`*/skills/**`, `*/skill/`, `*/agy_skills/**`) and silently missed 8 of 13 — every
   `*/plugin/skills/**` file plus `clavity-classic/agy-mcp-bridge/SKILL.md`.
 - `agy-autotrain/knowledge/agy-observations.md` — the `agy-learn` capture inbox, drained by `agy-curate`.
-- `agy-autotrain/verify/*.md` — the probe harness; `assertions.md` records measured outcomes.
+- `agy-autotrain/verify/assertions.md` — measured probe outcomes (data), never rewritten by a docs pass.
+  The prose harness docs (`README.md`, `probe-design.md`, `run-verification.md`) ARE audited — voiced above.
 - `agy-autotrain/docs/fix-the-tool-backlog/**` — generated from `_template.md`, append-only.
 - `seed/golden-header.md` — compiled SEED, written by `curate-commit`.
 - `scripts/drain-knowledge-prompt.md` — a prompt, functionally code.

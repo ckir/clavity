@@ -4,6 +4,9 @@ Test-drives the Empirical Assumptions in `assertions.md` against the LIVE agy. N
 a real `clavity ask` (or send+`await-reply`) plus an outcome check. Run before promoting an assumption
 (invoked by `agy-curate`) and after any `agy --version` bump.
 
+To DESIGN a new probe — especially a paired (A/B) one — see [`probe-design.md`](probe-design.md); this
+runbook covers EXECUTING a probe that already exists.
+
 ## Preflight
 
 1. `clavity doctor` — agy session reachable, daemon healthy.

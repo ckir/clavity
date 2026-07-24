@@ -18,9 +18,12 @@ clavity-classic/installer/clavity-classic-MANUAL-SETUP.md
 clavity-classic/installer/clavity-classic-bridge-README-FIRST.md
 SECURITY.md
 
-# --- Contributor (11) ---
+# --- Contributor (14) ---
 CONTRIBUTING.md
 scripts/README.md
+agy-autotrain/verify/README.md
+agy-autotrain/verify/probe-design.md
+agy-autotrain/verify/run-verification.md
 agy-autotrain/CONTRIBUTING.md
 clavity-classic/CONTRIBUTING.md
 clavity-dotnet/CONTRIBUTING.md
