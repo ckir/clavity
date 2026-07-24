@@ -47,7 +47,7 @@ Governing spec: `docs/superpowers/specs/2026-07-24-ship-agy-workflow-design.md` 
 - Create: `scripts/check-agy-discipline-skills.ps1`
 - Test: `scripts/tests/check-agy-discipline-skills.Tests.ps1`
 
-The lint asserts the *checkable* invariants of every shipped discipline skill (currently just `agy-first`): (a) it exists in both plugins; (b) valid frontmatter with `name:` matching the dir; (c) contains all five ASCII `[VERDICT]` forms; (d) is pure ASCII (no em-dash / non-ASCII — the `ΓÇö` mojibake guard, spec Decision 2.1); (e) names both transports (`agy_ask` and `clavity ask --review-only`); (f) contains the marker-contract constant token. Byte-identity across plugins is left to `check-seed-artifacts-synced.sh` (Task 6) — the single source of truth for cross-plugin drift — so this lint reads only the dotnet copy for content checks to avoid two scripts asserting the same thing.
+The lint asserts the *checkable* invariants of every shipped discipline skill (currently just `agy-first`): (a) it exists in both plugins; (b) valid frontmatter with `name:` matching the dir; (c) contains all four ASCII `[VERDICT]` forms; (d) is pure ASCII (no em-dash / non-ASCII — the `ΓÇö` mojibake guard, spec Decision 2.1); (e) names both transports (`agy_ask` and `clavity ask --review-only`); (f) contains the marker-contract constant token. Byte-identity across plugins is left to `check-seed-artifacts-synced.sh` (Task 6) — the single source of truth for cross-plugin drift — so this lint reads only the dotnet copy for content checks to avoid two scripts asserting the same thing.
 
 - [ ] **Step 0: State-verification.** Confirm `scripts/check-installer-ascii.ps1` and `scripts/tests/check-seed-budget.Tests.ps1` exist and observe their shape (param block, `$PSScriptRoot` resolution, Pester `Describe/It`, exit-code convention). If either is absent or structured differently than described, STOP and report `STATE_MISMATCH: <what>`.
 
@@ -116,7 +116,7 @@ function Fail($msg) { Write-Error $msg -ErrorAction Continue; $script:fail = $tr
 # Discipline skills shipped so far. SP-B appends 'agy-capstone'.
 $skills = @('agy-first')
 
-# The five ASCII [VERDICT] forms the contract requires (spec Decision 2.1 + 2.7).
+# The four ASCII [VERDICT] forms the contract requires (spec Decision 2.1 + 2.7).
 $requiredVerdicts = @(
     '[VERDICT: ALIGNED]',
     '[VERDICT: REJECTED - ',
@@ -275,7 +275,9 @@ one, as the last line:
 ## If the peer is unreachable
 No live peer / no auth / the idle-check never clears: emit `[VERDICT: SKIPPED-UNREACHABLE]` and
 **proceed** — never hang, never hard-block. Surface the skip on BOTH channels: (a) tell your human
-in-chat that the consult was skipped and name the fork it skipped; (b) append one durable line to
+in-chat that the consult was skipped and name the fork it skipped; (b) create `.clavity/agy-marks/` if
+it does not exist (gitignored runtime state — absent on a fresh clone; a bare `>>` append would fail
+`No such file or directory`), then append one durable line to
 `.clavity/agy-marks/skipped.log` (`<iso-8601>  agy-first  SKIPPED-UNREACHABLE  HEAD=<sha>`, where
 `<sha>` is the `git rev-parse HEAD` output, or the literal `none` if HEAD cannot resolve — never a git
 error string) so it is not lost if the chat summary drops it. Do NOT write the consulted marker (below), so the next trigger
@@ -285,13 +287,16 @@ immediate signal and the log the durable backstop.)
 
 ## Debounce marker (hook contract — written here, read by the auto-fire hook)
 Only AFTER a consult actually completes (any of ALIGNED / REJECTED / NEGOTIATE-resolved), record it so
-the auto-fire hook does not re-inject this discipline for the same cycle. Write the current commit sha to
-the marker:
+the auto-fire hook does not re-inject this discipline for the same cycle. Create `.clavity/agy-marks/`
+first if it does not exist (gitignored runtime state, absent on a fresh clone), then write the current
+commit sha to the marker:
 
-- **Path:** `.clavity/agy-marks/agy-first.head`. **(OPEN — resolved in the agy escalation + by the
-  owner, see "Open decision: marker namespacing" below.** The plan currently uses a single
-  discipline-keyed marker, NOT a per-plugin one — that is the panel R1-1 recommendation, pending the
-  agy round.)
+- **Path:** `.clavity/agy-marks/agy-first.head` — a single discipline-keyed marker, no `<plugin-id>`
+  prefix (**DECIDED: Option S**; AGY-AFTER solo panel + agy escalation ALIGNED, owner ratifies). The
+  byte-identical skill body cannot carry a per-plugin literal, and the two drivers are mutually exclusive
+  (only one `clavity` plugin installed; both-installed is a transient migration state where a shared
+  marker correctly debounces the shared phase and *prevents* a duplicate paid consult). See the marker
+  contract doc (Task 5).
 - **Content:** the output of `git rev-parse HEAD` at consult time, nothing else. **If `git rev-parse
   HEAD` cannot resolve** (not a git repo / a repo with no commits), skip writing the marker entirely —
   the discipline simply re-fires next trigger, which is safe.
@@ -405,22 +410,25 @@ Decision 1 (debounce) + Decision 4 (per-plugin state).
 - **Directory:** `.clavity/agy-marks/` (repo-cwd-relative; runtime state; gitignored).
 - **Marker file:** `<discipline>.head`
   - `<discipline>` ∈ { `agy-first` (SP-A), `agy-capstone` (SP-B) }.
-  - **No `<plugin-id>` prefix** (panel R1-1). A byte-identical skill body cannot carry a per-plugin
+  - **No `<plugin-id>` prefix** (DECIDED: Option S). A byte-identical skill body cannot carry a per-plugin
     literal and has no runtime mechanism to resolve which plugin it is; and the two drivers are mutually
     exclusive (both-installed is a transient migration state), so a single discipline-keyed marker is
-    safe — at worst one duplicate consult during migration. See "Open decision" below: this drops
-    Decision 4's per-plugin-state clause *for the marker specifically*, pending the agy round + owner.
+    safe — at worst one duplicate consult during migration. See "Resolved: marker namespacing" below: this
+    drops Decision 4's per-plugin-state clause *for the marker specifically*.
 - **Content:** the commit sha from `git rev-parse HEAD` at consult time, and nothing else. If HEAD cannot
   resolve (no repo / no commits), no marker is written (the discipline re-fires — safe).
 - **Skip log:** `.clavity/agy-marks/skipped.log`, append-only, one line per skipped consult:
   `<iso-8601>  <discipline>  SKIPPED-UNREACHABLE  HEAD=<sha>`.
 
-## Open decision: marker namespacing (agy round + owner)
-The alternative to the single-marker default is to resolve `<plugin-id>` at runtime from
-`CLAUDE_PLUGIN_ROOT` (available to the SP-C hook; the skill's LLM would have to read it too) and keep
-`<plugin-id>-<discipline>.head`. That preserves Decision 4's per-plugin-state clause but adds a
-resolution mechanism both the skill and the hook must share exactly. Resolve which before SP-C builds the
-reader; SP-A's writer follows whatever is chosen.
+## Resolved: marker namespacing = Option S (single, no plugin-id)
+DECIDED (AGY-AFTER solo panel + agy escalation ALIGNED; owner ratifies): a single discipline-keyed marker
+`<discipline>.head`, NO `<plugin-id>` prefix. The rejected alternative (Option P) resolved `<plugin-id>`
+at runtime from `CLAUDE_PLUGIN_ROOT` and kept `<plugin-id>-<discipline>.head`; it preserves Decision 4's
+per-plugin-state clause but adds a fragile runtime-resolution mechanism the byte-identical skill body and
+the SP-C hook would both have to share exactly, for zero benefit — the two drivers are mutually exclusive,
+so Option S never races in steady state, and during the transient both-installed migration a shared marker
+correctly debounces the shared phase (whichever hook fires first sets it, preventing a duplicate paid
+consult). SP-C's reader consumes this same constant.
 
 ## Rules
 
@@ -477,8 +485,9 @@ First add the recipe to `justfile` (next to `seed-sync-check`):
 check-agy-skills:
     pwsh -NoProfile -Command "./scripts/check-agy-discipline-skills.ps1"
 ```
-Then add a matching pre-push entry in `lefthook.yml` next to the `just seed-sync-check` command (same `commands:` block, its own named key):
+Then add a matching pre-push entry in `lefthook.yml` next to the `just seed-sync-check` command (same `commands:` block, its own named key — 4-space key, 6-space `run:`, matching the existing entries):
 ```yaml
+    agy-skills:
       run: just check-agy-skills
 ```
 Do not add a new stricter gate; confirm the exact `lefthook.yml` block shape in Step 0 before editing (indentation and the surrounding `commands:` keys must match the existing entry).
@@ -512,7 +521,7 @@ Confirm the spec's "works without superpowers, manually invokable" guarantee at 
 Run: `pwsh -NoProfile -Command "Get-ChildItem -Recurse -Filter SKILL.md clavity-dotnet/plugin/skills/agy-first, clavity-classic/plugin/skills/agy-first | Select-Object FullName"`
 Expected: both `SKILL.md` paths listed.
 
-- [ ] **Step 2: Confirm the frontmatter `name:` is `agy-first` in both** (so the Skill tool resolves `agy-first` / `clavity-dotnet:agy-first` / `clavity-classic:agy-first`)
+- [ ] **Step 2: Confirm the frontmatter `name:` is `agy-first` in both** (so the Skill tool resolves `agy-first` / `clavity:agy-first` — post-SP-0 both driver plugins are named `clavity` and are mutually exclusive, so whichever is installed surfaces the skill under the single `clavity:` namespace)
 
 Run: `pwsh -NoProfile -Command "Select-String -Path clavity-*/plugin/skills/agy-first/SKILL.md -Pattern '^name:\s*agy-first$'"`
 Expected: two matches (one per plugin).
