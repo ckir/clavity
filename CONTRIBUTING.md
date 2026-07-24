@@ -55,7 +55,8 @@ clavity doctor   # preflight: are tmux/claude/agy on PATH, is the session reacha
 > [`clavity-dotnet/plugin/knowledge/agy-assumptions.md`](clavity-dotnet/plugin/knowledge/agy-assumptions.md)
 > (the canonical manual; `docs/agy-assumptions.md` is now a pointer to it) — it lists every external
 > behavior clavity relies on, how each was verified, and how to re-verify/fix (usually an `AGY_*` override
-> or a skill tweak, not Rust). Update its "verified against" versions when you confirm things on a new agy.
+> or a skill tweak, not Rust). When agy changes, re-verify the affected assumption with its listed check
+> and update that entry — the manual re-verifies empirically rather than trusting a version stamp.
 
 ## Project layout
 
