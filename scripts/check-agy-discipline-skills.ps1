@@ -27,10 +27,19 @@ foreach ($skill in $skills) {
     $path = Join-Path $Root $rel
     if (-not (Test-Path $path)) { Fail "MISSING: $rel"; continue }
     $raw = Get-Content -Raw $path
+    # An empty (0-byte) file makes Get-Content -Raw return $null; guard before any .Contains() so we fail
+    # with a clear message instead of an unhandled null-deref terminating error (capstone R1, Cascade).
+    if ([string]::IsNullOrEmpty($raw)) { Fail "EMPTY: $rel"; continue }
 
-    # (b) frontmatter name matches dir
-    if ($raw -notmatch "(?ms)\A---\r?\n.*?^name:\s*$skill\s*$.*?^---\r?\n") {
-        Fail "$rel : frontmatter 'name:' must equal '$skill'"
+    # (b) frontmatter name matches dir. Scope the check to the REAL frontmatter block (between the first two
+    # '---' fences) so a stray 'name:' smuggled into the BODY plus any body '---' cannot falsely satisfy it
+    # (capstone R1, Protocol/Mechanism: the old lazy '(?ms).*?' spanned past the closing fence -> false-GREEN).
+    if ($raw -match "(?s)\A---\r?\n(?<fm>.*?)\r?\n---\r?\n") {
+        if ($Matches['fm'] -notmatch "(?m)^name:\s*$skill\s*$") {
+            Fail "$rel : frontmatter 'name:' must equal '$skill'"
+        }
+    } else {
+        Fail "$rel : missing or malformed frontmatter block (expected '---' ... '---' at file start)"
     }
     # (c) all required [VERDICT] forms present
     foreach ($v in $requiredVerdicts) {
