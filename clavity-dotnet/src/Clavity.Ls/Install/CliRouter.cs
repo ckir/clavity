@@ -16,7 +16,7 @@ public static class CliRouter
     public static int Run(string[] args, TextWriter output)
     {
         var root = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-        var pluginDir = Path.Combine(root, "plugins", "clavity-dotnet");
+        var pluginDir = Path.Combine(root, "plugins", PluginInstaller.PluginName);
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var logsDir = Path.Combine(home, ".gemini", "antigravity-cli", "logs");
         // CLAVITY_DATA_DIR overrides the golden-header data dir (default %USERPROFILE%\.clavity) — used by tests.
