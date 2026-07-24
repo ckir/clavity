@@ -40,6 +40,8 @@ pre-push:
       # seconds was idle time on the SSH connection git opens BEFORE this hook runs, which is exactly
       # the window the header warns about. Measured: 33.7s -> ~7s, hook total 62.5s -> ~36s.
       run: pwsh -File scripts/check-versions-all.ps1
+    check-plugin-namespace:
+      run: pwsh -File scripts/check-plugin-namespace.ps1
 pre-commit:
   commands:
     ruff:
