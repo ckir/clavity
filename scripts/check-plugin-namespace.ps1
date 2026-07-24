@@ -33,8 +33,10 @@ $violations = @()
 $selfExclude = @('--glob', '!**/check-plugin-namespace.ps1', '--glob', '!**/check-plugin-namespace.Tests.ps1')
 Push-Location $Root
 try {
-    # (a) namespace-qualified old refs anywhere (the `:` is what makes it a namespace, not a folder/scope)
-    $nsHits = rg -n $selfExclude --glob '!**/docs/superpowers/**' --glob '!**/docs/session-notes/**' --glob '!**/docs/archive/**' `
+    # (a) namespace-qualified old refs anywhere (the `:` is what makes it a namespace, not a folder/scope).
+    #     `--hidden` so the scan descends into tracked HIDDEN dirs (.github/, .claude-plugin/, .vscode/) where a
+    #     stray ref could otherwise slip past rg's default hidden-skip; `!**/.git/**` keeps it out of git internals.
+    $nsHits = rg -n --hidden --glob '!**/.git/**' $selfExclude --glob '!**/docs/superpowers/**' --glob '!**/docs/session-notes/**' --glob '!**/docs/archive/**' `
         'clavity-(dotnet|classic):[a-z]' . 2>$null
     if ($nsHits) { $violations += "(a) stray namespace ref(s):`n$nsHits" }
 
@@ -45,7 +47,7 @@ try {
     #     (Option A), and `agy_skills/claudavity-responder` ends in `skills/claudavity-responder`, so
     #     listing it here would over-flag the retained twin. Plugin-responder completeness is covered by
     #     the Phase 2 dir rename + the Phase 3 seed-sync + the Phase 5 doc pass, not by this gate.
-    $dirHits = rg -n $selfExclude 'skills[\\/](clavity-ls-driving|clavity-ls-pairing|clavity-driving)\b' . 2>$null
+    $dirHits = rg -n --hidden --glob '!**/.git/**' $selfExclude 'skills[\\/](clavity-ls-driving|clavity-ls-pairing|clavity-driving)\b' . 2>$null
     if ($dirHits) { $violations += "(b) old skill-dir ref(s):`n$dirHits" }
 
     # (c) old plugin identity in a plugin.json `name` or a marketplace plugins[].name. Match ONLY a
@@ -97,6 +99,9 @@ if (Test-Path $membersPath) {
             if (Test-Path $pj) {
                 $pjName = (Get-Content $pj -Raw | ConvertFrom-Json).name
                 if ($pjName -ne $pn) { $violations += "(d) identity drift: $mkt members pluginName='$pn' but $rel name='$pjName'" }
+            } else {
+                # A completeness gate must not silently shrug if the manifest it is supposed to verify vanished.
+                $violations += "(d) missing manifest: expected $rel for driver $mkt"
             }
         }
     }

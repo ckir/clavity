@@ -29,12 +29,23 @@ if ! diff -q <(jq -S '.hooks.PostToolUse' "$D/hooks/hooks.json") \
 fi
 # Responder skill: the Claude Code plugin copy (renamed to `responder`, Option A/SP-0) and the
 # binary-embedded agy-side twin (kept as `claudavity-responder`, include_str!'d into the Rust binary)
-# must stay in sync in description + body, though their `id:`/`name:` frontmatter (lines 2-3) DELIBERATELY
-# differ (the namespace rename). Compare with those two lines stripped, so body/description drift fails the
-# gate but the intended id/name divergence does not. No structural sync-check tied this pair before SP-0.
+# must stay in sync in description + body, though their `id:`/`name:` frontmatter DELIBERATELY differ
+# (the namespace rename). Compare with the id/name lines stripped FROM THE FRONTMATTER ONLY — scoped to the
+# `---`…`---` block so it is robust to frontmatter reordering and never strips a body line — so body/
+# description drift fails the gate but the intended id/name divergence does not. No structural sync-check
+# tied this pair before SP-0.
 plugin_responder="clavity-classic/plugin/skills/responder/SKILL.md"
 agy_responder="clavity-classic/agy_skills/claudavity-responder/SKILL.md"
-if ! diff -q <(sed '2,3d' "$plugin_responder") <(sed '2,3d' "$agy_responder") >/dev/null 2>&1; then
+strip_idname() { sed '/^---$/,/^---$/{/^id:/d;/^name:/d;}' "$1"; }
+# Guard against a MISSING copy: without this, `sed` on a missing file emits an empty stream to stdout (its
+# error goes to swallowed stderr), `diff -q` compares two empty streams as identical, returns 0, and the
+# gate would FALSELY PASS a renamed/deleted responder. Fail loudly instead.
+if [ ! -f "$plugin_responder" ] || [ ! -f "$agy_responder" ]; then
+  echo "SEED-DRIFT: a responder copy is MISSING (cannot verify sync):" >&2
+  [ -f "$plugin_responder" ] || echo "  missing: $plugin_responder" >&2
+  [ -f "$agy_responder" ]    || echo "  missing: $agy_responder" >&2
+  status=1
+elif ! diff -q <(strip_idname "$plugin_responder") <(strip_idname "$agy_responder") >/dev/null 2>&1; then
   echo "SEED-DRIFT: responder copies diverged beyond the intended id/name frontmatter:" >&2
   echo "  $plugin_responder" >&2
   echo "  $agy_responder" >&2
