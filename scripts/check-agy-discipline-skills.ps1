@@ -10,7 +10,7 @@ $fail = $false
 function Fail($msg) { Write-Error $msg -ErrorAction Continue; $script:fail = $true }
 
 # Discipline skills shipped so far. SP-B appends 'agy-capstone'.
-$skills = @('agy-first')
+$skills = @('agy-first', 'agy-capstone')
 
 # The four ASCII [VERDICT] forms the contract requires (spec Decision 2.1 + 2.7).
 $requiredVerdicts = @(
