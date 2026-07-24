@@ -269,7 +269,7 @@ git commit -m "feat(sp0): classic installer registers plugin identity clavity"
 **Files:**
 - Modify: `clavity-dotnet/src/Clavity.Ls/Install/PluginInstaller.cs:9` (`PluginName` const)
 
-- [ ] **Step 1 (state-verify):** Confirm lines 8-9 are `public const string MarketplaceName = "clavity-dotnet";` and `public const string PluginName = "clavity-dotnet";`. Confirm `CliRouter.cs:57,89` fall through to `PluginInstaller.PluginName` (no separate literal). If either differs, STOP `STATE_MISMATCH`.
+- [ ] **Step 1 (state-verify):** Confirm lines 8-9 are `public const string MarketplaceName = "clavity-dotnet";` and `public const string PluginName = "clavity-dotnet";`. Confirm `CliRouter.cs:57,89` fall through to `PluginInstaller.PluginName` (no separate literal). **Also confirm `PluginInstaller.cs` does NOT construct any `plugins\<dir>` staging/source path or carry any other `clavity-dotnet` literal beyond these consts** (verified at plan time: the file has only these two consts — the staging/agy path is built entirely in the streamed `register-plugin.ps1` from `$PluginName`). Grep to reconfirm: `rg -n 'plugins|Path.Combine|Join|clavity-dotnet' clavity-dotnet/src/Clavity.Ls/Install/PluginInstaller.cs` should surface only lines 8-10. If a path is built from a separate literal, STOP `STATE_MISMATCH` — the staging-dir rename (Task 1.6) would then also need a C# change. If any of the above differs, STOP `STATE_MISMATCH`.
 
 - [ ] **Step 2: Change `PluginName` only:** line 9 → `public const string PluginName = "clavity";`. Leave `MarketplaceName` (line 8) as `"clavity-dotnet"` and `LegacyMarketplaceName` (line 10) as `"clavity"`.
 
@@ -503,30 +503,63 @@ A mass mechanical rename needs a completeness net. This gate asserts all three o
 Create `scripts/tests/check-plugin-namespace.Tests.ps1`:
 ```powershell
 Describe 'check-plugin-namespace' {
-    BeforeAll { $script:gate = Join-Path $PSScriptRoot '..' 'check-plugin-namespace.ps1' }
-    It 'passes on the current (renamed) repo state' {
-        $out = & pwsh -File $script:gate 2>&1
-        $LASTEXITCODE | Should -Be 0 -Because "post-rename repo must be clean: $out"
+    BeforeAll {
+        $script:gate = Join-Path $PSScriptRoot '..' 'check-plugin-namespace.ps1'
+        # Build a CLEAN renamed fixture (a temp $Root), so the unit tests do not depend on the live
+        # repo's phase-in-progress state (the real-repo green check lives in Phase 7, after docs).
+        function New-CleanFixture {
+            $t = Join-Path $env:TEMP "ns-clean-$PID-$(Get-Random)"
+            New-Item -ItemType Directory -Force -Path (Join-Path $t 'build') | Out-Null
+            @'
+{ "members": [
+  { "name": "clavity-dotnet",  "pluginName": "clavity", "source": "./clavity-dotnet/plugin",  "marketplaceName": "clavity-dotnet" },
+  { "name": "clavity-classic", "pluginName": "clavity", "source": "./clavity-classic/plugin", "marketplaceName": "clavity-classic" }
+] }
+'@ | Set-Content (Join-Path $t 'build/members.json')
+            foreach ($d in 'clavity-dotnet','clavity-classic') {
+                New-Item -ItemType Directory -Force -Path (Join-Path $t "$d/plugin/.claude-plugin") | Out-Null
+                '{ "name": "clavity", "version": "0.0.0" }' | Set-Content (Join-Path $t "$d/plugin/.claude-plugin/plugin.json")
+            }
+            return $t
+        }
     }
-    It 'flags a stray old namespace reference' {
-        $tmp = Join-Path $env:TEMP "ns-neg-$PID"
-        New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'docs') | Out-Null
-        'see clavity-classic:claudavity-responder for details' | Set-Content (Join-Path $tmp 'docs/x.md')
-        $out = & pwsh -File $script:gate -Root $tmp 2>&1
-        $LASTEXITCODE | Should -Not -Be 0 -Because "a namespaced old ref must fail: $out"
+    It 'passes on a clean renamed fixture' {
+        $t = New-CleanFixture
+        $out = & pwsh -File $script:gate -Root $t 2>&1
+        $LASTEXITCODE | Should -Be 0 -Because "a fully-renamed tree must be clean: $out"
+    }
+    It 'flags a stray colon-namespace reference' {
+        $t = New-CleanFixture
+        New-Item -ItemType Directory -Force -Path (Join-Path $t 'docs') | Out-Null
+        'see clavity-classic:driving for details' | Set-Content (Join-Path $t 'docs/x.md')
+        & pwsh -File $script:gate -Root $t 2>&1 | Out-Null
+        $LASTEXITCODE | Should -Not -Be 0 -Because "a namespaced old ref must fail (a)"
+    }
+    It 'flags a stale DOC skill-dir ref with NO plugin/ prefix' {
+        $t = New-CleanFixture
+        New-Item -ItemType Directory -Force -Path (Join-Path $t 'x') | Out-Null
+        '- `skills/clavity-driving/` — old path' | Set-Content (Join-Path $t 'x/README.md')
+        & pwsh -File $script:gate -Root $t 2>&1 | Out-Null
+        $LASTEXITCODE | Should -Not -Be 0 -Because "a doc ref to an old skill dir must fail (b)"
+    }
+    It 'flags a driver member whose pluginName is not clavity' {
+        $t = New-CleanFixture
+        (Get-Content (Join-Path $t 'build/members.json') -Raw).Replace('"pluginName": "clavity", "source": "./clavity-dotnet/plugin"','"pluginName": "clavity-dotnet", "source": "./clavity-dotnet/plugin"') |
+            Set-Content (Join-Path $t 'build/members.json')
+        & pwsh -File $script:gate -Root $t 2>&1 | Out-Null
+        $LASTEXITCODE | Should -Not -Be 0 -Because "members.json identity drift must fail (d)"
     }
     It 'does NOT flag the retained marketplace scope name' {
-        $tmp = Join-Path $env:TEMP "ns-pos-$PID"
-        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-        '{ "name": "clavity-dotnet", "plugins": [ { "name": "clavity" } ] }' | Set-Content (Join-Path $tmp 'marketplace.install.json')
-        & pwsh -File $script:gate -Root $tmp 2>&1 | Out-Null
+        $t = New-CleanFixture
+        '{ "name": "clavity-dotnet", "owner": { "name": "x" }, "plugins": [ { "name": "clavity" } ] }' | Set-Content (Join-Path $t 'marketplace.install.json')
+        & pwsh -File $script:gate -Root $t 2>&1 | Out-Null
         $LASTEXITCODE | Should -Be 0 -Because "outer marketplace scope clavity-dotnet is retained"
     }
     It 'does NOT flag the retained agy-side claudavity-responder dir' {
-        $tmp = Join-Path $env:TEMP "ns-agy-$PID"
-        New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'agy_skills/claudavity-responder') | Out-Null
-        "---`nname: claudavity-responder`n---" | Set-Content (Join-Path $tmp 'agy_skills/claudavity-responder/SKILL.md')
-        & pwsh -File $script:gate -Root $tmp 2>&1 | Out-Null
+        $t = New-CleanFixture
+        New-Item -ItemType Directory -Force -Path (Join-Path $t 'clavity-classic/agy_skills/claudavity-responder') | Out-Null
+        "---`nname: claudavity-responder`n---" | Set-Content (Join-Path $t 'clavity-classic/agy_skills/claudavity-responder/SKILL.md')
+        & pwsh -File $script:gate -Root $t 2>&1 | Out-Null
         $LASTEXITCODE | Should -Be 0 -Because "the agy-side twin is intentionally retained (Option A)"
     }
 }
@@ -545,11 +578,13 @@ Create `scripts/check-plugin-namespace.ps1` asserting all three conditions, with
 .SYNOPSIS
 SP-0 namespace-rename completeness gate. Fails if the mass rename left any stray old reference.
 Asserts (a) no `clavity-dotnet:<skill>` / `clavity-classic:<skill>` NAMESPACE refs; (b) no old
-skill-DIR names (clavity-ls-driving, clavity-ls-pairing, clavity-driving) in a plugin skills path;
-(c) no old plugin `name` (clavity-dotnet/clavity-classic) in a plugin.json or a marketplace
-plugins[].name. Must NOT flag: the retained marketplace SCOPE name (outer marketplace.install.json
-`name`, member marketplaceName, scope paths); folder paths (clavity-dotnet/ , clavity-classic/); or
-the retained agy-side `agy_skills/claudavity-responder` twin (Option A).
+skill-DIR names (clavity-ls-driving, clavity-ls-pairing, clavity-driving) referenced anywhere
+(on disk OR in a doc), matched WITHOUT a `plugin/` prefix; (c) no old plugin `name`
+(clavity-dotnet/clavity-classic) in a plugin.json or a marketplace plugins[].name; (d) each driver
+member in build/members.json carries pluginName='clavity' AND its plugin.json `name` agrees.
+Must NOT flag: the retained marketplace SCOPE name (outer marketplace.install.json `name`, member
+marketplaceName, scope paths); folder paths (clavity-dotnet/ , clavity-classic/); or the retained
+agy-side `agy_skills/claudavity-responder` twin (Option A, deliberately excluded from (b)).
 #>
 param([string]$Root = "$PSScriptRoot/..")
 $ErrorActionPreference = 'Stop'
@@ -560,14 +595,22 @@ $nsHits = rg -n --glob '!**/docs/superpowers/**' --glob '!**/docs/session-notes/
     'clavity-(dotnet|classic):[a-z]' $Root 2>$null
 if ($nsHits) { $violations += "(a) stray namespace ref(s):`n$nsHits" }
 
-# (b) old skill-dir names surviving as a plugin skills path segment
-$dirHits = rg -n 'plugin[\\/]skills[\\/](clavity-ls-driving|clavity-ls-pairing|clavity-driving|claudavity-responder)\b' $Root 2>$null
-if ($dirHits) { $violations += "(b) old skill-dir path(s):`n$dirHits" }
+# (b) old skill-DIR names surviving anywhere (on disk OR in a doc/README reference). Match a bare
+#     `skills/<oldname>` segment WITHOUT requiring a `plugin/` prefix, so a stale doc ref like
+#     `skills/clavity-driving/` is caught too. `claudavity-responder` is DELIBERATELY NOT listed: its
+#     plugin copy is renamed to `responder`, but the agy-side twin legitimately KEEPS the name
+#     (Option A), and `agy_skills/claudavity-responder` ends in `skills/claudavity-responder`, so
+#     listing it here would over-flag the retained twin. Plugin-responder completeness is covered by
+#     the Phase 2 dir rename + the Phase 3 seed-sync + the Phase 5 doc pass, not by this gate.
+$dirHits = rg -n 'skills[\\/](clavity-ls-driving|clavity-ls-pairing|clavity-driving)\b' $Root 2>$null
+if ($dirHits) { $violations += "(b) old skill-dir ref(s):`n$dirHits" }
 
 # (c) old plugin identity in a plugin.json `name` or a marketplace plugins[].name.
-#     Scope the search to plugin.json / marketplace.install.json and match ONLY a plugins-array/identity
-#     `name`, never the OUTER marketplace `name` (that is the retained scope).
-foreach ($f in (rg -l --glob '**/plugin.json' --glob '**/marketplace.install.json' '' $Root 2>$null)) {
+#     Scope to plugin.json / marketplace.install.json; match ONLY a plugins-array/identity `name`, never
+#     the OUTER marketplace `name` (retained scope). NOTE: marketplace.install.json is GITIGNORED/generated,
+#     so on committed state this branch typically scans only committed plugin.json files — the generated
+#     manifest's plugins[].name is covered by CI install-smoke (Task 1.7) and, at its source, by check (d).
+foreach ($f in (rg --files -g '**/plugin.json' -g '**/marketplace.install.json' $Root 2>$null)) {
     $j = Get-Content $f -Raw | ConvertFrom-Json
     if ($j.PSObject.Properties['plugins']) {
         foreach ($p in $j.plugins) { if ($p.name -in @('clavity-dotnet','clavity-classic')) { $violations += "(c) old plugin identity in ${f}: plugins[].name=$($p.name)" } }
@@ -577,20 +620,41 @@ foreach ($f in (rg -l --glob '**/plugin.json' --glob '**/marketplace.install.jso
     }
 }
 
+# (d) members.json is the COMMITTED source of the emitted plugin identity (marketplace.install.json is
+#     generated from it). Assert each driver member (keyed by its retained marketplaceName) carries
+#     pluginName='clavity', and that the corresponding plugin.json `name` agrees — closing the drift hole
+#     (c) cannot see on committed state.
+$membersPath = Join-Path $Root 'build/members.json'
+if (Test-Path $membersPath) {
+    $members = (Get-Content $membersPath -Raw | ConvertFrom-Json).members
+    $driverMap = @{ 'clavity-dotnet' = 'clavity-dotnet/plugin/.claude-plugin/plugin.json'; 'clavity-classic' = 'clavity-classic/plugin/.claude-plugin/plugin.json' }
+    foreach ($mkt in $driverMap.Keys) {
+        $m = $members | Where-Object { $_.marketplaceName -eq $mkt }
+        if (-not $m) { $violations += "(d) members.json missing driver member with marketplaceName=$mkt"; continue }
+        $pn = if ($m.PSObject.Properties['pluginName']) { $m.pluginName } else { $m.name }
+        if ($pn -ne 'clavity') { $violations += "(d) members.json member $mkt has pluginName '$pn', expected 'clavity'" }
+        $pj = Join-Path $Root $driverMap[$mkt]
+        if (Test-Path $pj) {
+            $pjName = (Get-Content $pj -Raw | ConvertFrom-Json).name
+            if ($pjName -ne $pn) { $violations += "(d) identity drift: $mkt members pluginName='$pn' but $($driverMap[$mkt]) name='$pjName'" }
+        }
+    }
+}
+
 if ($violations.Count) { $violations | ForEach-Object { Write-Host $_ }; Write-Error "namespace-rename incomplete ($($violations.Count) class(es))"; exit 1 }
 Write-Host "OK: plugin namespace rename complete (no stray clavity-dotnet/clavity-classic identity refs)."
 ```
-Note: this reads `plugin.json`/`marketplace.install.json` structurally (via `ConvertFrom-Json`) for condition (c) so it can distinguish the outer marketplace `name` (retained scope) from `plugins[].name` (identity). Conditions (a)/(b) are string patterns scoped to exclude the historical `docs/superpowers`, `docs/session-notes`, and `docs/archive` trees (dated artifacts, out of scope per the docs recon).
+Note: this reads `plugin.json`/`marketplace.install.json` structurally (via `ConvertFrom-Json`) for conditions (c)/(d) so it can distinguish the outer marketplace `name` (retained scope) from `plugins[].name` (identity), and cross-check `members.json` `pluginName` against the plugin.json `name`. Conditions (a)/(b) are string patterns scoped to exclude the historical `docs/superpowers`, `docs/session-notes`, and `docs/archive` trees (dated artifacts, out of scope per the docs recon).
 
-- [ ] **Step 4: Run the test — verify it passes** (after Phases 1-2 are done, the repo is clean)
+- [ ] **Step 4: Run the test — verify it passes** (fixture-based; independent of live-repo phase state)
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-plugin-namespace.Tests.ps1 -Output Detailed"`
-Expected: PASS (all four tests — the positive-repo case plus the three exemption/negative cases).
+Expected: PASS (all seven cases — clean-fixture pass; three negative cases (a)/(b)/(d); two exemption cases (retained scope, retained agy-side twin)). These use temp `-Root` fixtures, so they pass regardless of where the live repo is in the phase sequence.
 
-- [ ] **Step 5: Run the gate against the real repo**
+- [ ] **Step 5: Run the gate against the real repo — EXPECT IT TO STILL FLAG DOC REFS**
 
 Run: `pwsh -File scripts/check-plugin-namespace.ps1`
-Expected: `OK: ...`. If it flags real stray refs, those are Phase 1/2/5 misses — fix them, then re-run.
+**Expected at this point: NON-zero** — condition (b) now catches stale `skills/<oldname>` references in docs/READMEs, which Phase 5 has not yet cleaned. That is correct and expected. Confirm the ONLY violations reported are (b) doc references slated for Phase 5 (not any (c)/(d) identity drift — those must already be clean from Phase 1). If a (c)/(d) violation appears, that is a real Phase 1 miss — fix it now. The gate goes fully green in Phase 7 Step 1, after the Phase 5 doc pass.
 
 - [ ] **Step 6: Commit**
 
@@ -599,10 +663,12 @@ git add scripts/check-plugin-namespace.ps1 scripts/tests/check-plugin-namespace.
 git commit -m "feat(sp0): namespace-rename completeness gate + Pester"
 ```
 
-### Task 4.2: Wire the gate into pre-push
+### Task 4.2: Author the pre-push wiring (activated in Phase 7)
 
 **Files:**
 - Modify: `lefthook.yml`
+
+**Sequencing note:** the gate's condition (b) intentionally fails on stale doc refs that Phase 5 has not yet cleaned. Do NOT rely on the wired hook passing until Phase 7. You MAY commit the `lefthook.yml` change here (commits do not push — the owner pushes at the end), but the gate is not expected to pass a real `lefthook run pre-push` until after Phase 5. Phase 7 Step 1 verifies it green.
 
 - [ ] **Step 1 (state-verify):** Open `lefthook.yml`. Find the pre-push section and confirm how existing gates are invoked (e.g. `run: just seed-sync-check`). Match that idiom exactly. If the file's structure differs from the recon (a `pre-push` group of `run:` commands), STOP `STATE_MISMATCH`.
 
@@ -613,13 +679,13 @@ git commit -m "feat(sp0): namespace-rename completeness gate + Pester"
 ```
 (Place it beside the other script gates; use the exact key/indentation style the file already uses.)
 
-- [ ] **Step 3: Verify** — `lefthook run pre-push` (or the repo's documented way to dry-run the hook) executes the new gate and it passes.
+- [ ] **Step 3: Verify the hook INVOKES the gate** — `lefthook run pre-push` (or the repo's documented way to dry-run the hook) executes the new `check-plugin-namespace` entry. It is EXPECTED to fail here on stale (b) doc refs (Phase 5 not yet done); the point of this step is only to confirm the wiring runs the gate, not that it passes. Full green is verified in Phase 7 Step 1.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add lefthook.yml
-git commit -m "feat(sp0): wire namespace gate into pre-push"
+git commit -m "feat(sp0): wire namespace gate into pre-push (green after Phase 5)"
 ```
 
 ---
@@ -693,7 +759,10 @@ Expected: all pass. If `just test` surfaces a test pinning the old plugin identi
 
 ### Task 6.2: Spike B — upgrade cascade + both-flavor collision (real installers)
 
-- [ ] **Step 1: Build the two installers** (per the repo's installer build recipe — the same one CI uses, e.g. `scripts/build-classic-release.ps1` / the dotnet build workflow's local equivalent). Confirm each produces a `*-setup-*.exe`.
+- [ ] **Step 1: Build the two installers** locally, exactly mirroring the CI installer-build steps (the canonical recipe — cite these lines if a step is unclear):
+  - **dotnet** (`.github/workflows/build-dotnet.yml`): (1) build/publish the dotnet binary so `clavity-ls.exe` is staged where the `.iss` expects it; (2) from the `clavity-dotnet/` dir, `pwsh -File ../scripts/generate-scoped-manifest.ps1 -MemberName clavity-dotnet -OutFile installer/marketplace.install.json` (workflow line 72); (3) compile: `& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer/clavity-dotnet.iss` (workflow line 86). Produces `clavity-dotnet-setup-<ver>.exe`.
+  - **classic** (`.github/workflows/build-classic.yml`): (1) `pwsh -NoProfile -File scripts/build-classic-release.ps1` (workflow line 62) — stages the runtime files; (2) generate the scoped manifest for `clavity-classic`; (3) `& <ISCC.exe> installer/clavity-classic.iss` (workflow line 85). Produces `clavity-classic-setup-<ver>.exe`.
+  - Confirm each produces a `*-setup-*.exe`. (ISCC lives at `${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe`; `choco install innosetup` if absent — build-classic.yml:74.)
 
 - [ ] **Step 2: Upgrade-cascade test.** On a clean box/VM: install the CURRENT released driver (old plugin identity `clavity-dotnet`), then install the NEW SP-0 build over it. After install, inspect `claude plugin list`:
   - **Expected/desired:** only `clavity@clavity-dotnet` is registered; the old `clavity-dotnet@clavity-dotnet` is gone.
