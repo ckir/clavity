@@ -114,8 +114,9 @@ jobs:
           $installedManifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
           if ($installedManifest.name -ne 'clavity-dotnet') { throw "expected marketplace name clavity-dotnet (C9), got $($installedManifest.name)" }
           if ($installedManifest.plugins.Count -ne 1) { throw "installed marketplace.json has $($installedManifest.plugins.Count) plugins, expected 1 (C10 teardown)" }
-          if ($installedManifest.plugins[0].source -ne './plugins/clavity-dotnet') { throw "unexpected plugin source $($installedManifest.plugins[0].source)" }
-          if (-not (Test-Path "$app\plugins\clavity-dotnet")) { throw "plugins\clavity-dotnet not installed" }
+          if ($installedManifest.plugins[0].source -ne './plugins/clavity') { throw "unexpected plugin source $($installedManifest.plugins[0].source)" }
+          if ($installedManifest.plugins[0].name -ne 'clavity') { throw "expected plugin identity clavity, got $($installedManifest.plugins[0].name)" }
+          if (-not (Test-Path "$app\plugins\clavity")) { throw "plugins\clavity not installed" }
           if (Test-Path "$app\plugins\agy-autotrain") { throw "C10 VIOLATION: sibling agy-autotrain still bundled" }
           if (Test-Path "$app\plugins\commonmemory") { throw "C10 VIOLATION: sibling commonmemory still bundled" }
           if (Test-Path "$app\plugins\ghidrust") { throw "C10 VIOLATION: sibling ghidrust still bundled" }
@@ -252,9 +253,9 @@ jobs:
             Write-Host "===== clavity-dotnet parity-gate install.log ====="
             if (Test-Path $log) { Get-Content $log } else { Write-Host "(no log produced)" }
             Write-Host "===== installed plugin tree ====="
-            if (Test-Path "$app\plugins\clavity-dotnet") {
-              Get-ChildItem "$app\plugins\clavity-dotnet" -Recurse -Force | Select-Object -ExpandProperty FullName
-            } else { Write-Host "(no plugins\clavity-dotnet directory)" }
+            if (Test-Path "$app\plugins\clavity") {
+              Get-ChildItem "$app\plugins\clavity" -Recurse -Force | Select-Object -ExpandProperty FullName
+            } else { Write-Host "(no plugins\clavity directory)" }
             throw $msg
           }
 
@@ -272,7 +273,7 @@ jobs:
           # If that step is removed or reordered after ISCC, this degrades to comparing two
           # identically-corrupt files.
           $srcManifest  = "plugin/.claude-plugin/plugin.json"
-          $instManifest = "$app\plugins\clavity-dotnet\.claude-plugin\plugin.json"
+          $instManifest = "$app\plugins\clavity\.claude-plugin\plugin.json"
           if (-not (Test-Path $srcManifest -PathType Leaf))  { throw "T5: source manifest missing, or not a file, at $srcManifest - no expected value to compare against" }
           if (-not (Test-Path $instManifest -PathType Leaf)) { Show-LogAndFail "T5 MANIFEST PARITY: $instManifest was not installed as a file (packager dropped .claude-plugin\plugin.json, or shipped a directory of that name)" }
           $srcHash  = (Get-FileHash $srcManifest  -Algorithm SHA256).Hash

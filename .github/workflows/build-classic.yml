@@ -117,8 +117,9 @@ jobs:
           $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
           if ($manifest.name -ne 'clavity-classic') { throw "expected marketplace name clavity-classic (C9), got $($manifest.name)" }
           if ($manifest.plugins.Count -ne 1) { throw "expected 1 plugin in scoped manifest, got $($manifest.plugins.Count)" }
-          if ($manifest.plugins[0].source -ne './plugins/clavity-classic') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
-          if (-not (Test-Path "$app\plugins\clavity-classic")) { throw "plugins\clavity-classic not staged" }
+          if ($manifest.plugins[0].source -ne './plugins/clavity') { throw "unexpected plugin source $($manifest.plugins[0].source)" }
+          if ($manifest.plugins[0].name -ne 'clavity') { throw "expected plugin identity clavity, got $($manifest.plugins[0].name)" }
+          if (-not (Test-Path "$app\plugins\clavity")) { throw "plugins\clavity not staged" }
 
           # T5 - installed-tree manifest parity. A source-side check is a tautology for this defect
           # class: the packager dropping .claude-plugin\plugin.json leaves the source correct and only
@@ -130,7 +131,7 @@ jobs:
           # NOTE: this gate does NOT structurally validate the source manifest; it relies on the
           # "Version consistency" step above having ConvertFrom-Json'd it and required a .version key.
           $srcManifest  = "plugin/.claude-plugin/plugin.json"
-          $instManifest = "$app\plugins\clavity-classic\.claude-plugin\plugin.json"
+          $instManifest = "$app\plugins\clavity\.claude-plugin\plugin.json"
           if (-not (Test-Path $srcManifest -PathType Leaf))  { throw "T5: source manifest missing, or not a file, at $srcManifest - no expected value to compare against" }
           if (-not (Test-Path $instManifest -PathType Leaf)) { throw "T5 MANIFEST PARITY: $instManifest was not installed as a file (packager dropped .claude-plugin\plugin.json, or shipped a directory of that name)" }
           $srcHash  = (Get-FileHash $srcManifest  -Algorithm SHA256).Hash
