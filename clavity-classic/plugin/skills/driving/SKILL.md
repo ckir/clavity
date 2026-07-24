@@ -1,5 +1,5 @@
 ---
-name: clavity-driving
+name: driving
 description: Use to drive a live agy peer via the clavity CLI — readiness ping, request shaping, per-mode templates, multi-lens review panels, and cancel/recover.
 ---
 
@@ -104,7 +104,7 @@ keeps it honest:
 - **Verify, never rubber-stamp.** agy is bold and states confident false claims. Confirm any bare factual
   claim by measurement before acting, and fold agy's findings together with your OWN assessment.
 
-<!-- KEEP IN SYNC WITH clavity-ls-driving (clavity-dotnet/plugin/skills/clavity-ls-driving/SKILL.md) — task-assignment protocol + peer-decision-loop (transport idioms differ: classic uses `clavity ask`, dotnet uses `agy_ask`) -->
+<!-- KEEP IN SYNC WITH ls-driving (clavity-dotnet/plugin/skills/ls-driving/SKILL.md) — task-assignment protocol + peer-decision-loop (transport idioms differ: classic uses `clavity ask`, dotnet uses `agy_ask`) -->
 
 ## Injection is automatic — do NOT prepend the golden header yourself
 
