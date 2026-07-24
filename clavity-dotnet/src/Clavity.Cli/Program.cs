@@ -14,7 +14,7 @@ if (args.Contains("--mcp"))
     var agyDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
     var installRoot = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-    var manualsDir = Path.Combine(installRoot, "plugins", "clavity-dotnet", "knowledge");
+    var manualsDir = Path.Combine(installRoot, "plugins", Clavity.Ls.Install.PluginInstaller.PluginName, "knowledge");
     var options = new AgyViewOptions
     {
         CliLogPath = AgyEnvironment.ResolveCliLogPath(
