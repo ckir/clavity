@@ -188,22 +188,22 @@ name: agy-first
 description: Use when facing a design, scope, approach, or sequencing fork in subproject work (typically at the brainstorming approaches step). Runs a divergent, review-only consult of the live agy peer under forcing functions, verifies every factual claim by measurement before folding, negotiates on material disagreement, and ends with one ASCII [VERDICT] token. Best-effort prompt-discipline, manually invokable; auto-fire is added separately.
 ---
 
-# agy-first — consult the peer on a fork before you commit to it
+# agy-first - consult the peer on a fork before you commit to it
 
 ## When to use
 Invoke this skill whenever you face a **design / scope / approach / sequencing fork** in subproject work
-and are about to pick a direction — invoke it manually, or run it when the auto-fire hook (shipped
-separately) injects its directive at the brainstorming approaches step. The value is not "ask agy" — the
+and are about to pick a direction - invoke it manually, or run it when the auto-fire hook (shipped
+separately) injects its directive at the brainstorming approaches step. The value is not "ask agy" - the
 peer is confidently wrong often enough that folding its advice unchecked would *degrade* the outcome. The
 value is the discipline that wraps the consult: **verify every bare factual claim by measurement before
 folding it, and negotiate a synthesis on material disagreement** rather than defer-to-peer or
 dismiss-the-peer.
 
 This is **best-effort prompt-discipline, not a sandbox.** The `[VERDICT]` token below is self-reported;
-its forcing functions make hollow compliance visible to your human — do not make it impossible. The bar
+its forcing functions make hollow compliance visible to your human - do not make it impossible. The bar
 is "materially better than deciding blind," not determinism.
 
-Works with or without superpowers — superpowers only adds the auto-fire and its approval breakpoints.
+Works with or without superpowers - superpowers only adds the auto-fire and its approval breakpoints.
 You can always invoke this skill directly on a fork; when you do, **surface every result and decision to
 your human in-chat** (there is no breakpoint to defer to).
 
@@ -215,41 +215,41 @@ Send the consult over your driver's review-ask transport, review-only:
 
 ## Safety envelope (every consult, no exceptions)
 A bare "review-only" once let the peer write to the tree anyway. Wrap each consult:
-1. **Snapshot before** — capture `git status --short` (and reflog if the fork touches committed work).
-2. **Forbidden-actions banner** — state in the payload: "REVIEW-ONLY. Do not edit, create, move, or
+1. **Snapshot before** - capture `git status --short` (and reflog if the fork touches committed work).
+2. **Forbidden-actions banner** - state in the payload: "REVIEW-ONLY. Do not edit, create, move, or
    delete any file. Do not run mutating commands. Respond with analysis only."
-3. **Permission to pass** — the peer may decline or say it needs more; it must not act.
-4. **Point at files, not summaries** — write the fork/options to `.clavity/seams/<topic>.md` and send
+3. **Permission to pass** - the peer may decline or say it needs more; it must not act.
+4. **Point at files, not summaries** - write the fork/options to `.clavity/seams/<topic>.md` and send
    the peer the PATH; let it read the artifact itself. Never consult it on a pasted summary of your own
    measurements.
-5. **Diff after** — re-check `git status` against the before-snapshot. If the tree changed, the peer
-   breached review-only. A breach is a **security event, not a routine skip** — do NOT proceed silently
+5. **Diff after** - re-check `git status` against the before-snapshot. If the tree changed, the peer
+   breached review-only. A breach is a **security event, not a routine skip** - do NOT proceed silently
    and do NOT fold anything: (a) surface the breach loudly to your human and get confirmation before
    continuing; (b) revert **only the paths the peer touched** (diff the after-state against your
-   before-snapshot and restore exactly those files) — **never** a blind `git reset --hard` /
+   before-snapshot and restore exactly those files) - **never** a blind `git reset --hard` /
    `git checkout -- .`, which would also destroy your own legitimate uncommitted work captured in the
    snapshot; (c) then emit `[VERDICT: SKIPPED-UNREACHABLE]` (the peer's advice is discarded). The
    "proceed, never hang" rule below is for a genuinely *unreachable* peer, NOT a detected breach.
 
 ## The consult (divergent, forcing-function driven)
-Frame the fork as a GOAL + a checkable SUCCESS CRITERION with full method latitude — NOT a vague "be
+Frame the fork as a GOAL + a checkable SUCCESS CRITERION with full method latitude - NOT a vague "be
 creative" dial (the peer converts that into superficial novelty). Shape divergence with vectors as
 needed: invert the core constraint (solve it WITHOUT the main assumed component); the extreme-resource
 version (1 hour / $0, or the opposite); the dumbest brute-force baseline that still works; a cross-domain
 analogy. Each alternative must stay USEFUL against the goal and note its real tradeoffs. Default persona:
 bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic,
 API-contract-pedant). The peer is empowered to CHALLENGE your own settled decision when it has a
-substantive reason (correctness, safety, a materially better design, a hidden contradiction) — you keep
+substantive reason (correctness, safety, a materially better design, a hidden contradiction) - you keep
 the final call.
 
 ## Verify before you fold (the spine)
 Before folding ANY factual claim the peer makes, **verify it by measurement and quote the measured
-output** — the tool stdout or the file line you relied on — in your writeup. A fold with no quoted
+output** - the tool stdout or the file line you relied on - in your writeup. A fold with no quoted
 measurement is visibly hollow to your human. The peer states false claims with identical confidence to
 true ones; an unverified fold is how a confabulation enters your design.
 
 ## AGY-NEGOTIATE (conditional sub-protocol)
-Engage negotiation ONLY on a **material** disagreement — one that changes **architecture, performance,
+Engage negotiation ONLY on a **material** disagreement - one that changes **architecture, performance,
 or security**. Style, naming, and trivia never qualify (those resolve to `ALIGNED`; you yield). Trigger:
 your consult emits `[VERDICT: NEGOTIATE - <reason>]`.
 
@@ -263,49 +263,49 @@ your consult emits `[VERDICT: NEGOTIATE - <reason>]`.
   disagreement, regardless of the emitted token.
 
 ## End with exactly one [VERDICT] token (ASCII only)
-ASCII only — no em-dash or other non-ASCII (mojibake risk; this project has hit corruption). Emit exactly
+ASCII only - no em-dash or other non-ASCII (mojibake risk; this project has hit corruption). Emit exactly
 one, as the last line:
-- `[VERDICT: ALIGNED]` — you and the peer agree; proceed.
-- `[VERDICT: REJECTED - <measured reason>]` — the peer is factually wrong, killed by measurement; you
+- `[VERDICT: ALIGNED]` - you and the peer agree; proceed.
+- `[VERDICT: REJECTED - <measured reason>]` - the peer is factually wrong, killed by measurement; you
   override without negotiation and quote the measurement that killed it.
-- `[VERDICT: NEGOTIATE - <one-line material reason>]` — a material disagreement remains; run
+- `[VERDICT: NEGOTIATE - <one-line material reason>]` - a material disagreement remains; run
   AGY-NEGOTIATE above.
-- `[VERDICT: SKIPPED-UNREACHABLE]` — the consult could not run.
+- `[VERDICT: SKIPPED-UNREACHABLE]` - the consult could not run.
 
 ## If the peer is unreachable
 No live peer / no auth / the idle-check never clears: emit `[VERDICT: SKIPPED-UNREACHABLE]` and
-**proceed** — never hang, never hard-block. Surface the skip on BOTH channels: (a) tell your human
+**proceed** - never hang, never hard-block. Surface the skip on BOTH channels: (a) tell your human
 in-chat that the consult was skipped and name the fork it skipped; (b) create `.clavity/agy-marks/` if
-it does not exist (gitignored runtime state — absent on a fresh clone; a bare `>>` append would fail
+it does not exist (gitignored runtime state - absent on a fresh clone; a bare `>>` append would fail
 `No such file or directory`), then append one durable line to
 `.clavity/agy-marks/skipped.log` (`<iso-8601>  agy-first  SKIPPED-UNREACHABLE  HEAD=<sha>`, where
-`<sha>` is the `git rev-parse HEAD` output, or the literal `none` if HEAD cannot resolve — never a git
+`<sha>` is the `git rev-parse HEAD` output, or the literal `none` if HEAD cannot resolve - never a git
 error string) so it is not lost if the chat summary drops it. Do NOT write the consulted marker (below), so the next trigger
-retries. (The log is a gitignored breadcrumb — it survives normal operation; only a deliberate
+retries. (The log is a gitignored breadcrumb - it survives normal operation; only a deliberate
 `git clean -fd` wipes it, which is an accepted level for a skip breadcrumb, so the in-chat notice is the
 immediate signal and the log the durable backstop.)
 
-## Debounce marker (hook contract — written here, read by the auto-fire hook)
+## Debounce marker (hook contract - written here, read by the auto-fire hook)
 Only AFTER a consult actually completes (any of ALIGNED / REJECTED / NEGOTIATE-resolved), record it so
 the auto-fire hook does not re-inject this discipline for the same cycle. Create `.clavity/agy-marks/`
 first if it does not exist (gitignored runtime state, absent on a fresh clone), then write the current
 commit sha to the marker:
 
-- **Path:** `.clavity/agy-marks/agy-first.head` — a single discipline-keyed marker, no `<plugin-id>`
+- **Path:** `.clavity/agy-marks/agy-first.head` - a single discipline-keyed marker, no `<plugin-id>`
   prefix (**DECIDED: Option S**; AGY-AFTER solo panel + agy escalation ALIGNED, owner ratifies). The
   byte-identical skill body cannot carry a per-plugin literal, and the two drivers are mutually exclusive
   (only one `clavity` plugin installed; both-installed is a transient migration state where a shared
   marker correctly debounces the shared phase and *prevents* a duplicate paid consult). See the marker
   contract doc (Task 5).
 - **Content:** the output of `git rev-parse HEAD` at consult time, nothing else. **If `git rev-parse
-  HEAD` cannot resolve** (not a git repo / a repo with no commits), skip writing the marker entirely —
+  HEAD` cannot resolve** (not a git repo / a repo with no commits), skip writing the marker entirely -
   the discipline simply re-fires next trigger, which is safe.
 - **Lifecycle:** a new commit (new HEAD sha) or a later fork on the same branch changes the content and
   re-arms the discipline. A `SKIPPED-UNREACHABLE` or a review-only breach writes NO marker (see above),
   so the next trigger retries. If you ignore the injected directive entirely, no marker is written and
-  the next trigger re-fires — non-compliance self-heals to a retry.
+  the next trigger re-fires - non-compliance self-heals to a retry.
 
-`.clavity/` is runtime state and is gitignored — never commit a marker.
+`.clavity/` is runtime state and is gitignored - never commit a marker.
 ````
 
 - [ ] **Step 2: Run the lint's happy-path check directly**
