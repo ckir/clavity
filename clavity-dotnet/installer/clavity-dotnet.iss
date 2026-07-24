@@ -37,7 +37,7 @@ Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversion
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity-dotnet"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce

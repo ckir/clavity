@@ -47,7 +47,7 @@ Source: "..\installer\clavity-classic-bridge-README-FIRST.md"; DestDir: "{app}\a
   DestName: "README-FIRST.md"; Flags: ignoreversion; Tasks: install_bridge
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity-classic"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity to PATH"; Flags: checkedonce
