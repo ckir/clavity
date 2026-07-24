@@ -176,7 +176,7 @@ begin
   begin
     { C1/C9: register the clavity-classic plugin against every detected agent — classic has no
       own binary, so (unlike dotnet) it uses the shared Inno registration primitives directly. }
-    RegisterMemberPlugin(ExpandConstant('{app}'), 'clavity-classic', 'clavity-classic',
+    RegisterMemberPlugin(ExpandConstant('{app}'), 'clavity', 'clavity-classic',
       RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded, RegReport);
     ReportRegistrationOutcome(AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy, RegReport);
 
@@ -304,7 +304,7 @@ begin
     EnvFile := BridgeDir + '\.env';
     if RemoveConfig and FileExists(EnvFile) then
       DeleteFile(EnvFile);
-    DeregisterMemberPluginOnUninstall('clavity-classic', 'clavity-classic');
+    DeregisterMemberPluginOnUninstall('clavity', 'clavity-classic');
   end
   else if CurUninstallStep = usPostUninstall then
     RemoveFromUserPath(ExpandConstant('{app}'));
