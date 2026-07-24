@@ -313,3 +313,45 @@ function Get-MlcErrorCount([string]$MlcOutput) {
     if ($m.Success) { return [int]$m.Groups[1].Value }
     return 0
 }
+
+# The repo-wide oracle files: SHARED, load-bearing files that MANY user-facing docs make claims about.
+# The audit is per-doc and traces only each doc's OWN cited code, so a claim about one of these is a
+# structural blind spot — it produced 4 false CLEANs across the first two full runs (gate claims about
+# lefthook.yml; version-stamp claims about the agy-assumptions manuals). The fix injects their VERBATIM
+# current text as authoritative ground truth: no distiller (which would be a second unverified LLM
+# defining "truth" for every audit) and no hand-written fact file (which would drift from the code the
+# tool exists to check). These four caused ALL four false cleans; the ~21 predictably-named
+# .github/workflows/*.yml caused zero, so they get a path POINTER below, not their content (YAGNI).
+$script:SharedOracleFiles = @(
+    'lefthook.yml'
+    'clavity-classic/plugin/knowledge/agy-assumptions.md'
+    'clavity-dotnet/plugin/knowledge/agy-assumptions.md'
+    'docs/agy-assumptions.md'
+)
+
+function Get-SharedOraclePaths { return $script:SharedOracleFiles }
+
+function Build-SharedOracles([string]$RepoRoot) {
+    # Emit each oracle file's live content under a labelled header. A MISSING file is announced LOUDLY,
+    # never silently dropped — an absent oracle reads to the auditor as "no constraint", which is exactly
+    # how the blind spot re-opens. LF-joined so the block is stable regardless of host newline style.
+    $parts = foreach ($rel in $script:SharedOracleFiles) {
+        $full = Join-Path $RepoRoot $rel
+        $body = if (Test-Path -LiteralPath $full -PathType Leaf) { (Get-Content -LiteralPath $full -Raw).TrimEnd() }
+                else { "[ORACLE FILE MISSING AT AUDIT TIME: $rel]" }
+        "=== ORACLE (authoritative current source): $rel ===`n$body"
+    }
+    # The structured CI/build workflows caused zero false cleans — point at them by path, don't inline 25k
+    # tokens of YAML that would bury the load-bearing files above.
+    $parts += "=== ORACLE POINTER: CI/build workflows ===`nFor any claim about what a specific CI or build job runs, read the matching file under .github/workflows/ (e.g. ci-<member>.yml, build-<member>.yml). Do not assume its contents."
+    return ($parts -join "`n`n")
+}
+
+function Build-AuditPrompt([string]$Template, [string]$DocPath, [string]$RepoRoot) {
+    # The single substitution seam for the audit prompt — testable in isolation, and the one place that
+    # must leave NO {{slot}} unfilled. Oracle text is injected LAST so a doc path or repo root that happens
+    # to contain a slot-looking string can never be mistaken for the oracle placeholder.
+    return $Template.Replace('{{DOC_PATH}}', $DocPath).
+                     Replace('{{REPO_ROOT}}', $RepoRoot).
+                     Replace('{{SHARED_ORACLES}}', (Build-SharedOracles -RepoRoot $RepoRoot))
+}

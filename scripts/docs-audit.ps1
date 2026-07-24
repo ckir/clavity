@@ -80,7 +80,10 @@ function Invoke-DocAudit {
         foreach ($a in @('-NoProfile', '-File', $AuditStub, $DocPath, $RepoRoot)) { $psi.ArgumentList.Add($a) }
     } else {
         $tpl = Get-Content (Join-Path $ScriptDir 'docs-audit-prompt.md') -Raw
-        $prompt = $tpl.Replace('{{DOC_PATH}}', $DocPath).Replace('{{REPO_ROOT}}', $RepoRoot)
+        # Fill DOC_PATH/REPO_ROOT *and* inject the repo-wide shared-oracle block (Build-AuditPrompt, in the lib):
+        # closes the per-doc blind spot where a claim about a SHARED file (lefthook.yml, agy-assumptions.md) had no
+        # local code to trace and slipped through as a false CLEAN. Verbatim live content — no distiller, no drift.
+        $prompt = Build-AuditPrompt -Template $tpl -DocPath $DocPath -RepoRoot $RepoRoot
         $psi.FileName = 'claude'
         # READ-ONLY headless audit. Flag set CONFIRMED against `claude --help` (Task 10 Step 4 live-smoke) and
         # then live-smoked on a real doc — no longer guessed.

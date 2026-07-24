@@ -530,3 +530,72 @@ Describe 'docs-audit orchestrator (via pwsh -File, -AuditStub seam)' {
         $log | Should -Match 'diag:Error: 429 API quota exceeded'   # the operator can tell quota from a refusal
     }
 }
+
+Describe 'Shared-oracle injection (per-doc blind-spot fix)' {
+    # The audit traces only each doc's OWN cited code, so a claim about a SHARED file that many docs
+    # reference (the git-hook config, the agy-assumptions manuals) is a structural blind spot — it
+    # produced 4 false CLEANs across the first two full runs. The fix injects the VERBATIM current text
+    # of those files as authoritative ground truth (no distiller = no second unverified LLM; no shadow
+    # facts = no drift). These tests pin the injection and the anti-rot gate.
+
+    It 'every declared shared-oracle path resolves in the real repo (anti-rot gate)' {
+        # If an oracle file is renamed or moved, this test goes RED so the list is fixed rather than
+        # silently injecting "[MISSING]" and re-opening the blind spot.
+        $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+        foreach ($rel in Get-SharedOraclePaths) {
+            Test-Path -LiteralPath (Join-Path $repoRoot $rel) |
+                Should -BeTrue -Because "declared oracle '$rel' must exist"
+        }
+    }
+
+    It 'injects the verbatim current content of each shared-oracle file' {
+        $root = Join-Path $TestDrive ('oracle-' + [Guid]::NewGuid())
+        foreach ($rel in Get-SharedOraclePaths) {
+            $full = Join-Path $root $rel
+            New-Item -ItemType Directory -Path (Split-Path $full -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $full "SENTINEL-for-$($rel -replace '[\\/]','_')"
+        }
+        $block = Build-SharedOracles -RepoRoot $root
+        foreach ($rel in Get-SharedOraclePaths) {
+            $block | Should -Match ([regex]::Escape("SENTINEL-for-$($rel -replace '[\\/]','_')"))
+        }
+    }
+
+    It 'flags a missing oracle LOUDLY rather than omitting it silently' {
+        # A silently-absent oracle reads to the auditor as "no constraint" — the exact way the blind
+        # spot re-opens. A missing file must appear in the block as an explicit marker.
+        $root = Join-Path $TestDrive ('oracle-miss-' + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $root -Force | Out-Null   # create NONE of the oracle files
+        Build-SharedOracles -RepoRoot $root | Should -Match 'MISSING'
+    }
+
+    It 'points at the CI workflows by path rather than injecting their content (YAGNI)' {
+        # The 21 predictably-named workflows caused zero false cleans; a pointer, not 25k tokens of YAML.
+        $root = Join-Path $TestDrive ('oracle-wf-' + [Guid]::NewGuid())
+        foreach ($rel in Get-SharedOraclePaths) {
+            $full = Join-Path $root $rel
+            New-Item -ItemType Directory -Path (Split-Path $full -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $full 'x'
+        }
+        Build-SharedOracles -RepoRoot $root | Should -Match '\.github/workflows/'
+    }
+
+    It 'Build-AuditPrompt fills every slot and carries the doc path + oracle text' {
+        $root = Join-Path $TestDrive ('oracle-prompt-' + [Guid]::NewGuid())
+        foreach ($rel in Get-SharedOraclePaths) {
+            $full = Join-Path $root $rel
+            New-Item -ItemType Directory -Path (Split-Path $full -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $full 'ORACLE-BODY'
+        }
+        $tpl = 'doc={{DOC_PATH}} root={{REPO_ROOT}} oracles={{SHARED_ORACLES}}'
+        $out = Build-AuditPrompt -Template $tpl -DocPath 'X.md' -RepoRoot $root
+        $out | Should -Not -Match '\{\{'          # no unfilled slot left
+        $out | Should -Match 'doc=X.md'
+        $out | Should -Match 'ORACLE-BODY'
+    }
+
+    It 'the shipped prompt template declares the {{SHARED_ORACLES}} slot' {
+        $tpl = Get-Content (Join-Path $PSScriptRoot '..' 'docs-audit-prompt.md') -Raw
+        $tpl | Should -Match ([regex]::Escape('{{SHARED_ORACLES}}'))
+    }
+}
