@@ -529,6 +529,25 @@ Describe 'docs-audit orchestrator (via pwsh -File, -AuditStub seam)' {
         $log | Should -Match '- A.md — AUDIT-INCONCLUSIVE'
         $log | Should -Match 'diag:Error: 429 API quota exceeded'   # the operator can tell quota from a refusal
     }
+    It 'decodes claude stdout as UTF-8 so multibyte chars are not mojibaked into the store' {
+        # `claude` is a Node program that emits UTF-8. The stub writes RAW UTF-8 BYTES to stdout (so the
+        # emitted bytes are UTF-8 regardless of the stub's own console encoding), including an em-dash
+        # (U+2014) in the finding description. Without StandardOutputEncoding=UTF8 on the capture, the
+        # parent decodes those bytes with the ambient OEM code page and `—` lands in the store as mojibake
+        # (`ΓÇö` under CP437). The positive "em-dash survived" check is code-page-independent: it is RED for
+        # ANY non-UTF-8 decode and GREEN only when the capture is UTF-8.
+        $utf8stub = Join-Path $script:Root 'stub-utf8.ps1'
+        Set-Content $utf8stub @(
+            'param($docPath,$repoRoot)'
+            '$text = "CLAIMS_INSPECTED: 1`nFINDINGS:`n- ACCURACY $docPath`:3 | src/x.rs:9 | em`u{2014}dash finding`n"'
+            '$bytes = [System.Text.Encoding]::UTF8.GetBytes($text)'
+            '$o = [Console]::OpenStandardOutput(); $o.Write($bytes, 0, $bytes.Length); $o.Flush()'
+        )
+        & pwsh -File $script:Audit -RepoRoot $script:Root -AuditStub $utf8stub -RunId 'R1' -Timestamp '2026-07-22 00:00:00Z' -SkipLinkCheck -Only 'A.md'
+        $LASTEXITCODE | Should -Be 0
+        $raw = Get-Content (Join-Path $script:Root 'docs/docs-audit-findings.json') -Raw
+        $raw | Should -Match "em`u{2014}dash"   # the em-dash round-tripped; a mojibaked capture fails this
+    }
 }
 
 Describe 'Shared-oracle injection (per-doc blind-spot fix)' {

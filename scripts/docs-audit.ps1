@@ -103,6 +103,11 @@ function Invoke-DocAudit {
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
     $psi.UseShellExecute        = $false
+    # Decode both child streams as UTF-8. `claude` (a Node program) emits UTF-8; without this the parent
+    # decodes with the ambient OEM code page, so a multibyte char in a finding (an em-dash `—`) lands in the
+    # findings JSON store as mojibake (`ΓÇö` under CP437). Set BOTH — a diagnostic on stderr can carry one too.
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding  = [System.Text.Encoding]::UTF8
     try { $proc = [System.Diagnostics.Process]::Start($psi) }
     catch { return @{ Raw = ''; Err = ''; TimedOut = $false } }   # absent CLI (Win32Exception) => empty => AUDIT-INCONCLUSIVE (agy R1-F4)
     # Drain BOTH streams async: stderr is redirected, so if it is never read a chatty stderr can fill its pipe
