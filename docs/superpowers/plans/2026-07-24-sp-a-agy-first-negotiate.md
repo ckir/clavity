@@ -421,14 +421,27 @@ Decision 1 (debounce) + Decision 4 (per-plugin state).
   `<iso-8601>  <discipline>  SKIPPED-UNREACHABLE  HEAD=<sha>`.
 
 ## Resolved: marker namespacing = Option S (single, no plugin-id)
-DECIDED (AGY-AFTER solo panel + agy escalation ALIGNED; owner ratifies): a single discipline-keyed marker
-`<discipline>.head`, NO `<plugin-id>` prefix. The rejected alternative (Option P) resolved `<plugin-id>`
-at runtime from `CLAUDE_PLUGIN_ROOT` and kept `<plugin-id>-<discipline>.head`; it preserves Decision 4's
-per-plugin-state clause but adds a fragile runtime-resolution mechanism the byte-identical skill body and
-the SP-C hook would both have to share exactly, for zero benefit — the two drivers are mutually exclusive,
-so Option S never races in steady state, and during the transient both-installed migration a shared marker
-correctly debounces the shared phase (whichever hook fires first sets it, preventing a duplicate paid
-consult). SP-C's reader consumes this same constant.
+DECIDED (AGY-AFTER solo panel + agy escalation + owner-triggered AGY-NEGOTIATE all ALIGNED; owner
+RATIFIED): a single discipline-keyed marker `<discipline>.head`, NO `<plugin-id>` prefix. The rejected
+alternative (Option P) resolved `<plugin-id>` at runtime from `CLAUDE_PLUGIN_ROOT` and kept
+`<plugin-id>-<discipline>.head`; it preserves Decision 4's per-plugin-state clause but adds a fragile
+runtime-resolution mechanism the byte-identical skill body and the SP-C hook would both have to share
+exactly, for zero benefit. Three verified reasons P is not just unnecessary but strictly worse:
+
+1. **P is degenerate post-SP-0.** SP-0 unified both drivers to plugin identity `clavity`, staging to
+   `plugins/clavity` (`clavity-dotnet.iss:40`, `clavity-classic.iss:50`), so `CLAUDE_PLUGIN_ROOT`'s leaf
+   is `clavity` for BOTH drivers. Resolving `<plugin-id>` from it yields `clavity` either way —
+   P produces the SAME filename as S (`clavity-agy-first.head`), adding fragile parsing for an identical
+   result.
+2. **P regresses on migration.** Retaining one `agy-first.head` across a classic->dotnet swap is the
+   CORRECT debounce behavior (that HEAD's fork was already resolved); P would falsely hide the debounce
+   state from the new plugin and spuriously re-fire a paid consult.
+3. **No cross-project clobber to guard against.** The marker is repo-cwd-relative, so per-repo/worktree
+   isolation already holds — Decision 4's per-plugin-path guard is moot for the marker.
+
+Mutual exclusivity means S never races in steady state; during the transient both-installed migration a
+shared marker correctly debounces the shared phase (whichever hook fires first sets it, preventing a
+duplicate paid consult). SP-C's reader consumes this same constant.
 
 ## Rules
 
