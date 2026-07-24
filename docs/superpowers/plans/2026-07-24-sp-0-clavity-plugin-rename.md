@@ -519,6 +519,7 @@ Describe 'check-plugin-namespace' {
             foreach ($d in 'clavity-dotnet','clavity-classic') {
                 New-Item -ItemType Directory -Force -Path (Join-Path $t "$d/plugin/.claude-plugin") | Out-Null
                 '{ "name": "clavity", "version": "0.0.0" }' | Set-Content (Join-Path $t "$d/plugin/.claude-plugin/plugin.json")
+                '{ "name": "clavity", "version": "0.0.0" }' | Set-Content (Join-Path $t "$d/plugin/plugin.json")  # outer twin (both guarded by (d))
             }
             return $t
         }
@@ -588,6 +589,13 @@ agy-side `agy_skills/claudavity-responder` twin (Option A, deliberately excluded
 #>
 param([string]$Root = "$PSScriptRoot/..")
 $ErrorActionPreference = 'Stop'
+# ripgrep exits 1 when it finds NO matches (the CLEAN case). Under PowerShell 7.4+ with EAP='Stop',
+# $PSNativeCommandUseErrorActionPreference defaults to $true, turning that non-zero native exit into a
+# THROW — which would crash this gate on a clean repo. We test rg's OUTPUT (presence of hits), never its
+# exit code, so disable native-command error propagation. (rg is a repo-wide tooling assumption per
+# cli-tooling.md; if it is somehow absent, the Get-Command guard below fails loudly instead of cryptically.)
+$PSNativeCommandUseErrorActionPreference = $false
+if (-not (Get-Command rg -ErrorAction SilentlyContinue)) { Write-Error "check-plugin-namespace requires ripgrep (rg) on PATH"; exit 2 }
 $violations = @()
 
 # (a) namespace-qualified old refs anywhere (the `:` is what makes it a namespace, not a folder/scope)
@@ -627,16 +635,23 @@ foreach ($f in (rg --files -g '**/plugin.json' -g '**/marketplace.install.json' 
 $membersPath = Join-Path $Root 'build/members.json'
 if (Test-Path $membersPath) {
     $members = (Get-Content $membersPath -Raw | ConvertFrom-Json).members
-    $driverMap = @{ 'clavity-dotnet' = 'clavity-dotnet/plugin/.claude-plugin/plugin.json'; 'clavity-classic' = 'clavity-classic/plugin/.claude-plugin/plugin.json' }
+    # Cross-check BOTH plugin.json twins per driver (inner .claude-plugin/ AND top-level) — Task 1.3
+    # renames all four; (d) must guard all four against future identity drift, not just the inner two.
+    $driverMap = @{
+        'clavity-dotnet'  = @('clavity-dotnet/plugin/.claude-plugin/plugin.json',  'clavity-dotnet/plugin/plugin.json')
+        'clavity-classic' = @('clavity-classic/plugin/.claude-plugin/plugin.json', 'clavity-classic/plugin/plugin.json')
+    }
     foreach ($mkt in $driverMap.Keys) {
         $m = $members | Where-Object { $_.marketplaceName -eq $mkt }
         if (-not $m) { $violations += "(d) members.json missing driver member with marketplaceName=$mkt"; continue }
         $pn = if ($m.PSObject.Properties['pluginName']) { $m.pluginName } else { $m.name }
         if ($pn -ne 'clavity') { $violations += "(d) members.json member $mkt has pluginName '$pn', expected 'clavity'" }
-        $pj = Join-Path $Root $driverMap[$mkt]
-        if (Test-Path $pj) {
-            $pjName = (Get-Content $pj -Raw | ConvertFrom-Json).name
-            if ($pjName -ne $pn) { $violations += "(d) identity drift: $mkt members pluginName='$pn' but $($driverMap[$mkt]) name='$pjName'" }
+        foreach ($rel in $driverMap[$mkt]) {
+            $pj = Join-Path $Root $rel
+            if (Test-Path $pj) {
+                $pjName = (Get-Content $pj -Raw | ConvertFrom-Json).name
+                if ($pjName -ne $pn) { $violations += "(d) identity drift: $mkt members pluginName='$pn' but $rel name='$pjName'" }
+            }
         }
     }
 }
@@ -785,7 +800,7 @@ If and only if the old same-flavor plugin lingers after upgrade, add an explicit
 
 - [ ] **Step 1: Write the failing golden-vector test** — extend `register-plugin.Tests.ps1` to call `Install-ClaudePlugin -PluginName 'clavity' -MarketplaceName 'clavity-classic' -LegacyPluginName 'clavity-classic' -AppDir ...` and assert the command vector now includes `plugin uninstall clavity-classic` (before `plugin install clavity@clavity-classic`), AND a second case with no `-LegacyPluginName` asserting no such extra uninstall. Run: `just test-scripts` → expect FAIL.
 
-- [ ] **Step 2: Implement** — add the param + a guarded `if ($LegacyPluginName) { [void](Invoke-AgentCli 'claude' @('plugin','uninstall',$LegacyPluginName)) }` immediately after the existing line-129/130 pre-clean in `Install-ClaudePlugin`; thread it through `register-invoke.iss` and the two callers. Do NOT change the existing `$PluginName`/`$MarketplaceName` semantics.
+- [ ] **Step 2: Implement** — add the param + a guarded `if ($LegacyPluginName) { [void](Invoke-AgentCli 'claude' @('plugin','uninstall',$LegacyPluginName)) }` **placed alongside the existing `$PluginName` pre-clean at line 133 (i.e. AFTER the marketplace re-add at line 131), NOT after the line-129/130 marketplace removals.** Placing it between lines 130-131 would run `plugin uninstall` while the plugin's marketplace is deregistered, risking a silent (`[void]`-swallowed) fail that orphans the old plugin. Line 133 is the proven context (it is exactly where the existing new-name pre-clean runs, with the marketplace present). Thread the param through `register-invoke.iss` and the two callers. Do NOT change the existing `$PluginName`/`$MarketplaceName` semantics.
 
 - [ ] **Step 3: Re-sync the pinned hash** (register-plugin.ps1 changed): `just sync-register-hash`, then `just check-register-hash` → passes.
 
