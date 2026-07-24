@@ -6,7 +6,7 @@ namespace Clavity.Ls.Install;
 public static class PluginInstaller
 {
     public const string MarketplaceName = "clavity-dotnet";
-    public const string PluginName = "clavity-dotnet";
+    public const string PluginName = "clavity";
     public const string LegacyMarketplaceName = "clavity";   // referenced only by register-plugin.ps1 now; kept for callers/tests
 
     public static AgentResult Install(Agent agent, string pluginName, string marketplaceRoot, PowerShellStreamer stream)

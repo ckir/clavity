@@ -49,7 +49,7 @@ public sealed class CliRouterTests
         Assert.Equal(0, rc);
         var req = Assert.Single(streamer.Requests);
         Assert.Equal("install", req.Verb);
-        Assert.Equal("clavity-dotnet", req.PluginName);
+        Assert.Equal("clavity", req.PluginName);
         Assert.Equal("clavity-dotnet", req.MarketplaceName);
         Assert.Equal(@"C:\app", req.AppDir);
         Assert.Equal("claude", req.Agent);
