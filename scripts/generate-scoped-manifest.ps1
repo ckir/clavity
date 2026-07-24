@@ -8,7 +8,10 @@ five installers.
 
 .PARAMETER MemberName
 The member's plugin real name exactly as it appears in build/members.json "name" (e.g.
-"clavity-dotnet", "ghidrust", "agy-autotrain") — NOT the marketplaceName.
+"clavity-dotnet", "ghidrust", "agy-autotrain") — NOT the marketplaceName. MemberName still keys
+the lookup on "name", but the emitted plugin identity + staging path are taken from the member's
+optional "pluginName" (defaulting to "name" when absent) — the installer's [Files] DestDir MUST
+match "./plugins/<pluginName>".
 
 .PARAMETER MembersJsonPath
 Path to the repo-root build/members.json. Defaults to a path relative to this script's own
@@ -32,17 +35,19 @@ $member = $root.members | Where-Object { $_.name -eq $MemberName }
 if (-not $member) { throw "member '$MemberName' not found in $MembersJsonPath" }
 if (-not $member.marketplaceName) { throw "member '$MemberName' has no marketplaceName in $MembersJsonPath" }
 
-# C1 scoped-manifest path/source contract: the plugin is always staged at {app}\plugins\<name> by
+# C1 scoped-manifest path/source contract: the plugin is always staged at {app}\plugins\<pluginName> by
 # the installer's own [Files] section — the generated source MUST match that literally, or every
-# install fatally aborts (Failure mode J).
+# install fatally aborts (Failure mode J). The plugin identity + staging path come from the member's
+# optional "pluginName" (identity != member key), defaulting to "name" when absent.
+$pluginId = if ($member.PSObject.Properties['pluginName'] -and $member.pluginName) { $member.pluginName } else { $member.name }
 $scoped = [ordered]@{
     '$schema' = 'https://code.claude.com/schemas/marketplace.json'
     name      = $member.marketplaceName
     owner     = $root.owner
     plugins   = @(
         [ordered]@{
-            name        = $member.name
-            source      = "./plugins/$($member.name)"
+            name        = $pluginId
+            source      = "./plugins/$pluginId"
             description = $member.description
         }
     )
@@ -51,4 +56,4 @@ $scoped = [ordered]@{
 $outDir = Split-Path -Parent $OutFile
 if ($outDir -and -not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
 $scoped | ConvertTo-Json -Depth 10 | Set-Content -Path $OutFile -Encoding utf8
-Write-Host "generated ${OutFile}: name=$($member.marketplaceName) plugin=$($member.name) source=./plugins/$($member.name)"
+Write-Host "generated ${OutFile}: name=$($member.marketplaceName) plugin=$pluginId source=./plugins/$pluginId"
