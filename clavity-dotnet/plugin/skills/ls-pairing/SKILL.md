@@ -1,5 +1,5 @@
 ---
-name: clavity-ls-pairing
+name: ls-pairing
 description: Orientation for agy when it is paired with a Claude peer over the clavity-ls Language Server — keep one active conversation, avoid blocking modals, and emit precise, parseable output a programmatic reader can consume.
 ---
 
