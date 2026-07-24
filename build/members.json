@@ -13,12 +13,14 @@
     },
     {
       "name": "clavity-dotnet",
+      "pluginName": "clavity",
       "source": "./clavity-dotnet/plugin",
       "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask).",
       "marketplaceName": "clavity-dotnet"
     },
     {
       "name": "clavity-classic",
+      "pluginName": "clavity",
       "source": "./clavity-classic/plugin",
       "description": "clavity-classic: Claude drives a live agy peer via a psmux doorbell + the agentmemory bus.",
       "marketplaceName": "clavity-classic"
