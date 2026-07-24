@@ -21,35 +21,58 @@ $PSNativeCommandUseErrorActionPreference = $false
 if (-not (Get-Command rg -ErrorAction SilentlyContinue)) { Write-Error "check-plugin-namespace requires ripgrep (rg) on PATH"; exit 2 }
 $violations = @()
 
-# (a) namespace-qualified old refs anywhere (the `:` is what makes it a namespace, not a folder/scope)
-$nsHits = rg -n --glob '!**/docs/superpowers/**' --glob '!**/docs/session-notes/**' --glob '!**/docs/archive/**' `
-    'clavity-(dotnet|classic):[a-z]' $Root 2>$null
-if ($nsHits) { $violations += "(a) stray namespace ref(s):`n$nsHits" }
+# All three repo scans below run from WITHIN $Root using a relative '.' path. rg only honors .gitignore
+# when the search path is relative to the cwd inside the repo; given an ABSOLUTE path (or one containing
+# '..', as the default $PSScriptRoot/.. is) it treats the path as explicit and scans gitignored files too
+# — which made (c) flag the GITIGNORED, generated marketplace.install.json build artifacts (a false
+# positive that would keep this gate RED forever, never green). Scanning from inside $Root with '.'
+# restores gitignore-respect; for the non-git unit-test fixtures (no .gitignore) it just scans everything,
+# the intended fixture behavior. Separately, the gate documents the forbidden patterns in its own
+# docstring and exercises them in its Pester fixture, so it must EXCLUDE its own two files from the (a)/(b)
+# text scans or it would flag itself (a linter never lints itself).
+$selfExclude = @('--glob', '!**/check-plugin-namespace.ps1', '--glob', '!**/check-plugin-namespace.Tests.ps1')
+Push-Location $Root
+try {
+    # (a) namespace-qualified old refs anywhere (the `:` is what makes it a namespace, not a folder/scope)
+    $nsHits = rg -n $selfExclude --glob '!**/docs/superpowers/**' --glob '!**/docs/session-notes/**' --glob '!**/docs/archive/**' `
+        'clavity-(dotnet|classic):[a-z]' . 2>$null
+    if ($nsHits) { $violations += "(a) stray namespace ref(s):`n$nsHits" }
 
-# (b) old skill-DIR names surviving anywhere (on disk OR in a doc/README reference). Match a bare
-#     `skills/<oldname>` segment WITHOUT requiring a `plugin/` prefix, so a stale doc ref like
-#     `skills/clavity-driving/` is caught too. `claudavity-responder` is DELIBERATELY NOT listed: its
-#     plugin copy is renamed to `responder`, but the agy-side twin legitimately KEEPS the name
-#     (Option A), and `agy_skills/claudavity-responder` ends in `skills/claudavity-responder`, so
-#     listing it here would over-flag the retained twin. Plugin-responder completeness is covered by
-#     the Phase 2 dir rename + the Phase 3 seed-sync + the Phase 5 doc pass, not by this gate.
-$dirHits = rg -n 'skills[\\/](clavity-ls-driving|clavity-ls-pairing|clavity-driving)\b' $Root 2>$null
-if ($dirHits) { $violations += "(b) old skill-dir ref(s):`n$dirHits" }
+    # (b) old skill-DIR names surviving anywhere (on disk OR in a doc/README reference). Match a bare
+    #     `skills/<oldname>` segment WITHOUT requiring a `plugin/` prefix, so a stale doc ref like
+    #     `skills/clavity-driving/` is caught too. `claudavity-responder` is DELIBERATELY NOT listed: its
+    #     plugin copy is renamed to `responder`, but the agy-side twin legitimately KEEPS the name
+    #     (Option A), and `agy_skills/claudavity-responder` ends in `skills/claudavity-responder`, so
+    #     listing it here would over-flag the retained twin. Plugin-responder completeness is covered by
+    #     the Phase 2 dir rename + the Phase 3 seed-sync + the Phase 5 doc pass, not by this gate.
+    $dirHits = rg -n $selfExclude 'skills[\\/](clavity-ls-driving|clavity-ls-pairing|clavity-driving)\b' . 2>$null
+    if ($dirHits) { $violations += "(b) old skill-dir ref(s):`n$dirHits" }
 
-# (c) old plugin identity in a plugin.json `name` or a marketplace plugins[].name.
-#     Scope to plugin.json / marketplace.install.json; match ONLY a plugins-array/identity `name`, never
-#     the OUTER marketplace `name` (retained scope). NOTE: marketplace.install.json is GITIGNORED/generated,
-#     so on committed state this branch typically scans only committed plugin.json files — the generated
-#     manifest's plugins[].name is covered by CI install-smoke (Task 1.7) and, at its source, by check (d).
-foreach ($f in (rg --files -g '**/plugin.json' -g '**/marketplace.install.json' $Root 2>$null)) {
-    $j = Get-Content $f -Raw | ConvertFrom-Json
-    if ($j.PSObject.Properties['plugins']) {
-        foreach ($p in $j.plugins) { if ($p.name -in @('clavity-dotnet','clavity-classic')) { $violations += "(c) old plugin identity in ${f}: plugins[].name=$($p.name)" } }
-    } elseif ($j.PSObject.Properties['name'] -and -not $j.PSObject.Properties['owner']) {
-        # a bare plugin.json (not a marketplace manifest, which has owner/plugins): its `name` IS the identity
-        if ($j.name -in @('clavity-dotnet','clavity-classic')) { $violations += "(c) old plugin identity in ${f}: name=$($j.name)" }
+    # (c) old plugin identity in a plugin.json `name` or a marketplace plugins[].name. Match ONLY a
+    #     plugins-array/identity `name`, never the OUTER marketplace `name` (retained scope). Enumerate the
+    #     manifests to inspect via `git -C $Root ls-files` (cwd-independent) so we deterministically look at
+    #     COMMITTED files only: the gitignored/generated marketplace.install.json build artifacts are
+    #     untracked, so git never lists them — they're covered by CI install-smoke (Task 1.7) + check (d).
+    #     This sidesteps rg's shell-context-dependent gitignore handling (an absolute/`-g` scan wrongly
+    #     force-included those stale artifacts). Non-git unit-test fixtures fall back to a plain $Root scan.
+    & git -C $Root rev-parse --is-inside-work-tree *> $null
+    $manifestFiles = if ($LASTEXITCODE -eq 0) {
+        @(git -C $Root ls-files) |
+            Where-Object { $_ -match '(^|/)(plugin\.json|marketplace\.install\.json)$' } |
+            ForEach-Object { Join-Path $Root $_ }
+    } else {
+        @(rg --files -g '**/plugin.json' -g '**/marketplace.install.json' $Root 2>$null)
     }
-}
+    foreach ($f in $manifestFiles) {
+        $j = Get-Content $f -Raw | ConvertFrom-Json
+        if ($j.PSObject.Properties['plugins']) {
+            foreach ($p in $j.plugins) { if ($p.name -in @('clavity-dotnet','clavity-classic')) { $violations += "(c) old plugin identity in ${f}: plugins[].name=$($p.name)" } }
+        } elseif ($j.PSObject.Properties['name'] -and -not $j.PSObject.Properties['owner']) {
+            # a bare plugin.json (not a marketplace manifest, which has owner/plugins): its `name` IS the identity
+            if ($j.name -in @('clavity-dotnet','clavity-classic')) { $violations += "(c) old plugin identity in ${f}: name=$($j.name)" }
+        }
+    }
+} finally { Pop-Location }
 
 # (d) members.json is the COMMITTED source of the emitted plugin identity (marketplace.install.json is
 #     generated from it). Assert each driver member (keyed by its retained marketplaceName) carries
