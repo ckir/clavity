@@ -1,6 +1,6 @@
 ---
-id: claudavity-responder
-name: claudavity-responder
+id: responder
+name: responder
 description: "Respond to claudavity 'doorbell' wakes from a Claude Code session running in the same folder: read the agentmemory signal-bus inbox, act in the live folder under a git checkpoint, and reply on the bus. Trigger on the doorbell line 'claudavity: check your inbox...' or any instruction to check claudavity/claude signals."
 category: collaboration
 risk: safe
