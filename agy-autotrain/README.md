@@ -6,8 +6,8 @@ feeds the loop, and the curated wisdom is injected back into every future call.
 
 > **Driving itself lives in the CORE plugins, not here.** The task-assignment protocol that stops agy
 > misfiring (REVIEW-ONLY banner, phase isolation, mandatory pre-mutation checkpoint,
-> seed-the-invariants) ships in the core driving skills — `clavity-driving` (classic) and
-> `clavity-ls-driving` (dotnet) — so you can drive agy with or without this add-on. agy-autotrain adds
+> seed-the-invariants) ships in the core driving skills — `driving` (classic) and
+> `ls-driving` (dotnet) — so you can drive agy with or without this add-on. agy-autotrain adds
 > the *learning* loop — and the `adversarial-panel-review` skill — on top.
 
 What this add-on does: **capture → curate → verify → compile**, then promote project-local → global,

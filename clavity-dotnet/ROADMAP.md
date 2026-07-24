@@ -123,7 +123,7 @@ model) so a model/version change can't break the live write. User-accepted as de
 agy uses its default model).
 
 ### 4. Packaging verifications — 7.5 / 7.6
-- **7.5** — confirm the dual-plugin format scopes `clavity-ls-driving` to Claude and `clavity-ls-pairing` to agy
+- **7.5** — confirm the dual-plugin format scopes `ls-driving` to Claude and `ls-pairing` to agy
   (else rely on contextual invocation + document).
 - **7.6** — confirm Claude/agy don't auto-update a locally path-installed plugin away from the version-pinned
   `{app}` binary.

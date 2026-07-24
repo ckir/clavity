@@ -49,7 +49,7 @@ runner. Without one, run the unit tier only.
 - **agy is an empirical moving target.** clavity-dotnet drives a live `agy` peer over a gRPC language
   server; its behavior is not a stable contract. Read `plugin/knowledge/agy-assumptions.md` before
   changing any agy-facing code.
-- **Skills are cached.** Editing a skill such as `clavity-ls-pairing` needs an `agy` restart to take
+- **Skills are cached.** Editing a skill such as `ls-pairing` needs an `agy` restart to take
   effect — the skill is cached on first use.
 - **`dotnet format` is not gated.** `ci-dotnet.yml` runs only build and test, so `just lint` is a
   compile. Format locally; nothing enforces it.

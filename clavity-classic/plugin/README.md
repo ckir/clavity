@@ -9,8 +9,8 @@ directory.
 
 ## What's in here
 
-- `skills/claudavity-responder/` — agy-side responder (reacts to the doorbell, replies on the bus)
-- `skills/clavity-driving/` — Claude-side driving protocol
+- `skills/responder/` — agy-side responder (reacts to the doorbell, replies on the bus)
+- `skills/driving/` — Claude-side driving protocol
 - `tmux.conf` — the `escape-time` snippet
 - `.claude-plugin/plugin.json` + `plugin.json` — Claude + agy manifests
 
@@ -61,7 +61,7 @@ clavity start C:\path\to\project     # launches a FRESH agy (in psmux) + Claude 
 ```
 The fresh launch picks up everything above — the agentmemory MCP config, the plugin skills, agy's
 `GEMINI.md` rule, and (via a fresh psmux server) `escape-time`. Then, in Claude, ask it to drive agy
-(e.g. *"use clavity to ask agy to review src/foo"*): Claude uses the bundled **clavity-driving**
+(e.g. *"use clavity to ask agy to review src/foo"*): Claude uses the bundled **driving**
 skill (`clavity ping` for readiness, `clavity ask "…"` for a round-trip); agy uses
 **claudavity-responder**. Observe agy any time with `clavity capture` (read-only — never locks).
 
