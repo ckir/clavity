@@ -27,5 +27,18 @@ if ! diff -q <(jq -S '.hooks.PostToolUse' "$D/hooks/hooks.json") \
   echo "SEED-DRIFT: hooks/hooks.json PostToolUse (shared AGY-AFTER hook) differs between the two plugins" >&2
   status=1
 fi
+# Responder skill: the Claude Code plugin copy (renamed to `responder`, Option A/SP-0) and the
+# binary-embedded agy-side twin (kept as `claudavity-responder`, include_str!'d into the Rust binary)
+# must stay in sync in description + body, though their `id:`/`name:` frontmatter (lines 2-3) DELIBERATELY
+# differ (the namespace rename). Compare with those two lines stripped, so body/description drift fails the
+# gate but the intended id/name divergence does not. No structural sync-check tied this pair before SP-0.
+plugin_responder="clavity-classic/plugin/skills/responder/SKILL.md"
+agy_responder="clavity-classic/agy_skills/claudavity-responder/SKILL.md"
+if ! diff -q <(sed '2,3d' "$plugin_responder") <(sed '2,3d' "$agy_responder") >/dev/null 2>&1; then
+  echo "SEED-DRIFT: responder copies diverged beyond the intended id/name frontmatter:" >&2
+  echo "  $plugin_responder" >&2
+  echo "  $agy_responder" >&2
+  status=1
+fi
 [ "$status" -eq 0 ] && echo "seed agent artifacts in sync (dotnet == classic)"
 exit "$status"
