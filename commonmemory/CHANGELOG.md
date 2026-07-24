@@ -1,5 +1,11 @@
 # commonmemory changelog
 
+## 0.2.2 — 2026-07-24
+
+### Fixes
+- fix(installer): retract the stale dev marketplace v7-v10 shipped
+- fix(installer): ship commonmemory's plugin manifest by anchoring the Excludes
+
 ## 0.2.1 — 2026-07-21
 
 ### Fixes

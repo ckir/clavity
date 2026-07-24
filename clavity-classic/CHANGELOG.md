@@ -1,5 +1,10 @@
 # classic changelog
 
+## 0.2.2 — 2026-07-24
+
+### Fixes
+- fix(golden-header): route accumulated wisdom to the driver, not the agy peer (T4b)
+
 ## 0.2.1 — 2026-07-21
 
 ### Fixes

@@ -1,5 +1,11 @@
 # dotnet changelog
 
+## 0.3.1 — 2026-07-24
+
+### Fixes
+- fix(golden-header): route accumulated wisdom to the driver, not the agy peer (T4b)
+- fix(curate-commit): decode stdin as strict UTF-8, not the console code page
+
 ## 0.3.0 — 2026-07-20
 
 ### Features

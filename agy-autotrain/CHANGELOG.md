@@ -1,4 +1,9 @@
 # agy-autotrain — changelog
+## 0.2.2 — 2026-07-24
+
+### Fixes
+- fix(installer): anchor agy-autotrain's dev-folder excludes to the source root
+
 ## 0.2.1 — 2026-07-21
 
 ### Fixes

@@ -8,7 +8,7 @@
 ; agentmemory MCP or the GEMINI.md doorbell (guided-manual via the shipped docs + the Finished-page [Run]).
 
 #define AppName "clavity-classic"
-#define AppVersion "0.2.1"
+#define AppVersion "0.2.2"
 #define ExeName "clavity.exe"
 
 [Setup]
