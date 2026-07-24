@@ -26,6 +26,10 @@ fmt: dotnet::fmt classic::fmt ghidrust::fmt
 seed-sync-check:
     bash scripts/check-seed-artifacts-synced.sh
 
+# Lint the shipped agy-driving discipline skills (frontmatter, [VERDICT] grammar, transports, marker)
+check-agy-skills:
+    pwsh -NoProfile -Command "./scripts/check-agy-discipline-skills.ps1"
+
 # Verify docs reduced to pointer stubs have not been re-fattened into duplicate content
 check-doc-stubs:
     pwsh -File scripts/check-doc-stubs.ps1

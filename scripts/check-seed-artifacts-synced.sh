@@ -9,6 +9,7 @@ status=0
 # Whole-file byte-identical seed artifacts (single-source-of-truth, committed in both plugins).
 for rel in \
   skills/adversarial-panel-review/SKILL.md \
+  skills/agy-first/SKILL.md \
   hooks/agy-after-reminder.sh \
   knowledge/agy-assumptions.md \
   knowledge/agy-capabilities.md ; do

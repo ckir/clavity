@@ -20,6 +20,8 @@ pre-push:
   commands:
     seed-sync:
       run: just seed-sync-check
+    agy-skills:
+      run: just check-agy-skills
     doc-stubs:
       run: just check-doc-stubs
     member-docs:
