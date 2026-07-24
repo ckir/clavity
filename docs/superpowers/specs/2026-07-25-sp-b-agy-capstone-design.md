@@ -4,7 +4,10 @@
 (driving-session solo panel + live-agy escalation each round) + 2 owner-triggered AGY-NEGOTIATE turns;
 ~16 findings folded (each verified by measurement), 1 fork owner-negotiated to `[VERDICT: ALIGNED]`
 (single-slot marker), round 8 landed clean (agy `[VERDICT: ALIGNED]`, "coherent as a system"). Owner
-waived the round-3 cap ("run until green"). Owner spec-review is the final gate before the plan.
+waived the round-3 cap ("run until green"). **Post-GREEN, the driver (future user of this skill) added 3
+practitioner refinements (seat rotation, plan-base resolution, unmeasurable→UNVERIFIED handling); a
+focused R9 escalation caught + folded a real contradiction between the UNVERIFIED path and §11/§13, then
+confirmed `[VERDICT: ALIGNED]`.** Owner delegated final approval to the driver as the practitioner-expert.
 Sub-project **SP-B** of the ship-agy-workflow epic
 ([`2026-07-24-ship-agy-workflow-design.md`](2026-07-24-ship-agy-workflow-design.md), committed
 `3f31d85`). The epic-level decisions live in that parent spec; this document decides only what is
@@ -71,6 +74,11 @@ Concretely, each round's peer consult is framed with the PROVEN adversarial-pane
   hostile/malformed input, the concurrent / re-entrant / out-of-order case, the boundary / empty / zero
   / overflow case, a cross-domain failure analogy — never a contrived or exotic edge.
 - **Reachability floor:** the same severity floor `adversarial-panel-review` uses to stop nitpicking.
+- **Rotate seats across rounds (practitioner review — panel discipline).** Follow
+  `adversarial-panel-review`'s rotation rule: each additional round seats at least one lens not used in a
+  prior round, so the convergent loop surfaces NEW defect-classes instead of re-deriving covered ones.
+  This is what makes later rounds productive — proven across this spec's own 8-round panel, where each
+  round's fresh seat found a distinct real defect.
 
 ---
 
@@ -128,9 +136,12 @@ convergent code-review mode):
    WAIVED audit line, §13). Emitting the auto-proceed token on a breach would reopen the gate-bypass §12
    closed.
 5. **Review range** — how the driver picks what to review: the range of commits the just-finished plan
-   produced (`<plan-base>..HEAD`, e.g. the branch's commits since the plan started). The driver states
-   the range explicitly in the brief; the peer reviews only that diff (assume surrounding code correct
-   unless obviously flawed; no open-ended global discovery — same scope-binding the panel uses).
+   produced (`<plan-base>..HEAD`, e.g. the branch's commits since the plan started). The driver
+   determines `<plan-base>` from the plan's recorded start — the durable execution index or the plan doc;
+   absent that (a cold manual invocation), the merge-base with the integration branch, or the last
+   release tag. The driver states the resolved range explicitly in the brief; the peer reviews only that
+   diff (assume surrounding code correct unless obviously flawed; no open-ended global discovery — same
+   scope-binding the panel uses).
    **Fold-commit re-extension (panel R1, Axiom Breaker).** Each round's folded fixes are themselves new
    committed code, so the range MUST be re-extended to the post-fold `HEAD` and the final clean round
    MUST cover those fix commits before the driver may declare GREEN — otherwise the capstone greens a
@@ -153,6 +164,18 @@ convergent code-review mode):
    driver would falsely claim it was already fixed.
 7. **Verify before you fold (the spine)** — the driver's run-and-quote obligation above. Quote the
    measured output for every folded finding.
+   **Unmeasurable findings (practitioner review).** If a finding can be neither run (no test/behaviour to
+   exercise) nor resolved by reading the cited line, the driver FIRST attempts a targeted repro/probe in
+   the scratch dir (`.clavity/scratch/<topic>/`) to make it measurable. If it is still genuinely
+   unmeasurable, the driver surfaces it to the human as **UNVERIFIED** — never silently folds it as
+   verified, never silently drops it. A material UNVERIFIED finding blocks a clean `ALIGNED` until the
+   human rules on it. The human's ruling is a **PER-FINDING disposition, NOT the global §13 waiver**
+   (focused-check R9, Protocol Pedant): either (a) direct a fix (→ folded next round), or (b) explicitly
+   ACCEPT the risk — recorded as a distinct per-finding audit line
+   (`<iso-8601>  agy-capstone  UNVERIFIED-ACCEPTED  HEAD=<sha>  <finding>`) that does **NOT** write the
+   completion marker and does **NOT** abort the capstone (the loop continues and can still reach
+   `ALIGNED`). Do not conflate this per-finding acceptance with the §13 global waiver, which terminates
+   the whole gate. This third per-finding disposition is admitted by §11's `ALIGNED` clause.
 8. **Do-not-re-raise ledger** — a running list of already-folded/already-refuted findings, **inlined
    into every round's brief** (the peer's context can truncate across a long review; a shorthand
    "see round 1" can point at something it no longer holds). Ledger entries are plain factual findings,
@@ -197,8 +220,10 @@ R6, Axiom Breaker — the rigid one-token rule fractured on override loops and o
 
 The single terminal token:
 - `[VERDICT: ALIGNED]` — the capstone reached a **clean terminal round**: every finding across the run
-  is either folded (fixed + measured clean) OR killed by measurement (`REJECTED`), and no material
-  unrefuted defect remains. A run whose findings were ALL refuted-by-measurement **is** `ALIGNED` — a
+  has a disposition — folded (fixed + measured clean), killed by measurement (`REJECTED`), OR explicitly
+  human-accepted as an UNVERIFIED risk (a per-finding disposition, §7 — distinct from the global §13
+  waiver) — and no material unrefuted defect remains. A run whose findings were ALL refuted-by-measurement
+  **is** `ALIGNED` — a
   peer hallucination the driver kills does not block completion (else "run until green" with an eager
   peer loops forever inventing fresh refuted findings — panel R3, Resource Vampire). Proposes completion;
   the human adjudicates GREEN.
@@ -400,7 +425,8 @@ trigger, are SP-C. SP-B only defines the WRITE contract.)*
   (plain `diff -q`); fold-fixes committed + range re-extended before GREEN; diff-bomb / oversized diff
   (generated-file exclusion + halt-not-silent-skip); single-slot marker branch-switch transient
   (accepted, documented); token model over a multi-round gate (intermediate=no token, ALIGNED recurs,
-  REJECTED per-finding, waiver out-of-band).
+  REJECTED per-finding, waiver out-of-band); unmeasurable finding → UNVERIFIED with a per-finding human
+  accept-risk disposition (distinct from the global §13 waiver, admitted by §11's ALIGNED — R9).
 - **Panel-hardened:** all of the above beyond the first three bullets were folded during the 8-round
   AGY-AFTER panel + 2 AGY-NEGOTIATE turns (each verified by measurement); round 8 clean.
 - **Deferred-with-owner:** none silently. Auto-fire/hook/trigger explicitly → SP-C; hook-activation tests
@@ -418,4 +444,5 @@ trigger, are SP-C. SP-B only defines the WRITE contract.)*
 - The exact Pester fixtures for the new pinning tests (each rejection fixture must also stage a valid
   `agy-capstone/SKILL.md` — panel R1).
 - The exact generated/vendored-file exclude list or git pathspec for the reviewed diff (panel R3).
-- The waiver audit-log line format + file (shared with the `SKIPPED-UNREACHABLE` skip.log — panel R2).
+- The waiver audit-log line format + file (shared with the `SKIPPED-UNREACHABLE` skip.log — panel R2),
+  and the per-finding `UNVERIFIED-ACCEPTED` audit-line format alongside it (focused-check R9).
