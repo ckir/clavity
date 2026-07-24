@@ -36,7 +36,7 @@ fi
 # tied this pair before SP-0.
 plugin_responder="clavity-classic/plugin/skills/responder/SKILL.md"
 agy_responder="clavity-classic/agy_skills/claudavity-responder/SKILL.md"
-strip_idname() { sed '/^---$/,/^---$/{/^id:/d;/^name:/d;}' "$1"; }
+strip_idname() { sed '/^---[[:space:]]*$/,/^---[[:space:]]*$/{/^id:/d;/^name:/d;}' "$1"; }
 # Guard against a MISSING copy: without this, `sed` on a missing file emits an empty stream to stdout (its
 # error goes to swallowed stderr), `diff -q` compares two empty streams as identical, returns 0, and the
 # gate would FALSELY PASS a renamed/deleted responder. Fail loudly instead.
