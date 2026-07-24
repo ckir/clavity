@@ -337,7 +337,14 @@ function Build-SharedOracles([string]$RepoRoot) {
     # how the blind spot re-opens. LF-joined so the block is stable regardless of host newline style.
     $parts = foreach ($rel in $script:SharedOracleFiles) {
         $full = Join-Path $RepoRoot $rel
-        $body = if (Test-Path -LiteralPath $full -PathType Leaf) { (Get-Content -LiteralPath $full -Raw).TrimEnd() }
+        # Get-Content -Raw on a 0-byte file yields AutomationNull, whose [string] cast is null (NOT "") — so
+        # BOTH ($raw.TrimEnd()) and (([string]$raw).TrimEnd()) throw and crash the WHOLE run, not just this
+        # doc. Guard the read explicitly: a present-but-empty oracle degrades to an empty body, still headered
+        # (reads as "constraint present but says nothing"), never "[MISSING]".
+        $body = if (Test-Path -LiteralPath $full -PathType Leaf) {
+                    $raw = Get-Content -LiteralPath $full -Raw
+                    if ($null -ne $raw) { $raw.TrimEnd() } else { '' }
+                }
                 else { "[ORACLE FILE MISSING AT AUDIT TIME: $rel]" }
         "=== ORACLE (authoritative current source): $rel ===`n$body"
     }
@@ -349,8 +356,10 @@ function Build-SharedOracles([string]$RepoRoot) {
 
 function Build-AuditPrompt([string]$Template, [string]$DocPath, [string]$RepoRoot) {
     # The single substitution seam for the audit prompt — testable in isolation, and the one place that
-    # must leave NO {{slot}} unfilled. Oracle text is injected LAST so a doc path or repo root that happens
-    # to contain a slot-looking string can never be mistaken for the oracle placeholder.
+    # must leave NO {{slot}} unfilled. Oracle text is injected LAST so that a slot-looking string INSIDE the
+    # oracle content (the files carry arbitrary markdown/yaml) is never re-scanned as {{DOC_PATH}}/{{REPO_ROOT}}
+    # — .Replace does not re-examine what it just inserted. (The doc path / repo root are always brace-free
+    # real paths, so the reverse direction cannot arise; the value here is protecting the injected content.)
     return $Template.Replace('{{DOC_PATH}}', $DocPath).
                      Replace('{{REPO_ROOT}}', $RepoRoot).
                      Replace('{{SHARED_ORACLES}}', (Build-SharedOracles -RepoRoot $RepoRoot))

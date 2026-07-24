@@ -598,4 +598,39 @@ Describe 'Shared-oracle injection (per-doc blind-spot fix)' {
         $tpl = Get-Content (Join-Path $PSScriptRoot '..' 'docs-audit-prompt.md') -Raw
         $tpl | Should -Match ([regex]::Escape('{{SHARED_ORACLES}}'))
     }
+
+    It 'does not crash when a shared-oracle file exists but is empty (0-byte)' {
+        # Get-Content -Raw on a 0-byte file returns $null; a bare .TrimEnd() on $null throws and takes
+        # down the WHOLE 26-doc run, not one doc. A truncated-but-not-deleted oracle passes the Test-Path
+        # anti-rot gate, so the empty case must degrade to an empty body — never a crash, never "[MISSING]".
+        $root = Join-Path $TestDrive ('oracle-empty-' + [Guid]::NewGuid())
+        foreach ($rel in Get-SharedOraclePaths) {
+            $full = Join-Path $root $rel
+            New-Item -ItemType Directory -Path (Split-Path $full -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $full -Value '' -NoNewline    # 0 bytes
+        }
+        # Call directly (not inside a Should -Not -Throw scriptblock — that runs in a child scope and the
+        # assignment would not escape). A crash here fails the test with the null-method exception, which is
+        # exactly the RED signal; a clean return proves the guard holds.
+        $block = Build-SharedOracles -RepoRoot $root
+        $block | Should -Match ([regex]::Escape('ORACLE (authoritative current source): lefthook.yml'))
+        $block | Should -Not -Match 'MISSING'                       # present-but-empty is NOT missing
+    }
+
+    It 'does not re-expand a placeholder that appears inside injected oracle content' {
+        # Oracle files carry arbitrary text. Injecting the oracle block LAST is what guarantees a literal
+        # "{{DOC_PATH}}" occurring INSIDE an oracle file is left intact, never re-scanned as the template's
+        # own slot. This is the reachable invariant the order actually protects (a real doc path never
+        # contains braces); it pins the correct meaning of the injection order.
+        $root = Join-Path $TestDrive ('oracle-slot-' + [Guid]::NewGuid())
+        foreach ($rel in Get-SharedOraclePaths) {
+            $full = Join-Path $root $rel
+            New-Item -ItemType Directory -Path (Split-Path $full -Parent) -Force | Out-Null
+            Set-Content -LiteralPath $full 'oracle body mentions {{DOC_PATH}} literally'
+        }
+        $tpl = 'doc={{DOC_PATH}} oracles={{SHARED_ORACLES}}'
+        $out = Build-AuditPrompt -Template $tpl -DocPath 'REAL.md' -RepoRoot $root
+        $out | Should -Match 'doc=REAL.md'                                          # the real slot resolved
+        $out | Should -Match ([regex]::Escape('mentions {{DOC_PATH}} literally'))   # oracle brace-text intact
+    }
 }
