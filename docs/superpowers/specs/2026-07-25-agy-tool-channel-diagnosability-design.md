@@ -125,8 +125,13 @@ fail-safe catches only `RpcException`, so an `ObjectDisposedException` from it w
 hit the central `RunAsync` catch, and return the `{status:"channel_down"}` error-envelope instead of the
 `AgyStatus` shape, breaking criterion 2) — in `try/catch` for `RpcException`, `ObjectDisposedException`, AND
 `LsDiscoveryException` (the LS-unreachable case), returning
-`new AgyStatus(cascadeId: "", totalSteps: 0, state: "channel_down", lastStepKind: 0)`. So `agy_status`
-returns its normal shape with a `channel_down` state and never throws (criterion 2). (The central
+`new AgyStatus(cascadeId: "", totalSteps: 0, state: "channel_down", lastStepKind: 0, diagnostic: <ChannelDiagnostic per the extraction rule>, hint: <the honest hint>)`.
+**F7:** `AgyStatus` gains two OPTIONAL fields — `ChannelDiagnostic? Diagnostic = null` and `string? Hint =
+null` (null on every healthy state; additive, so existing consumers are unaffected) — so the HEALTH-CHECK
+tool itself carries the actionable diagnosis (the real cause + how to recover + the log path), not just a
+bare `channel_down` flag. This is the whole point of the diagnosability goal, and `agy_status` is exactly
+the tool a caller pre-flights. So `agy_status` returns its normal (now enriched) shape with a
+`channel_down` state PLUS the diagnostic and hint, and never throws (criterion 2). (The central
 `RunAsync` catch remains the backstop, but the local catch keeps `agy_status`'s result shape consistent —
 a health check should report health in its own shape, not an error envelope.)
 
@@ -156,7 +161,9 @@ Extend `AgyAskIntegrationTests` / `McpToolsIntegrationTests` with a fake LS that
 2. **`agy_status` -> `AgyStatus{state:"channel_down"}`, never throws** — on the same dead channel. Include
    a variant where the failure surfaces as an `ObjectDisposedException` from `ProbeIdleAsync` (past its
    internal RpcException-only fail-safe): assert `agy_status` STILL returns the `AgyStatus` shape with
-   `state:"channel_down"`, NOT the `{status:"channel_down"}` error envelope (F5 guard).
+   `state:"channel_down"`, NOT the `{status:"channel_down"}` error envelope (F5 guard). Also assert the returned `AgyStatus` POPULATES
+   the `Diagnostic` (with the real `StatusCode`) and `Hint` fields — not just the bare `state` (F7 guard) —
+   and that a HEALTHY `agy_status` leaves both fields null.
 3. **Mid-ask death -> `channel_down`** — the fake goes idle-then-throws (or throws partway) so the
    `RpcException` surfaces after the send; assert the `RunAsync` central catch yields `channel_down`.
 4. **Non-channel exception still propagates (criterion 4)** — a fake that throws e.g.
