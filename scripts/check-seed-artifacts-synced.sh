@@ -12,6 +12,7 @@ for rel in \
   skills/agy-first/SKILL.md \
   skills/agy-capstone/SKILL.md \
   hooks/agy-after-reminder.sh \
+  hooks/agy-seam-inject.sh \
   knowledge/agy-assumptions.md \
   knowledge/agy-capabilities.md ; do
   if ! diff -q "$D/$rel" "$C/$rel" >/dev/null 2>&1; then
@@ -27,6 +28,14 @@ done
 if ! diff -q <(jq -S '.hooks.PostToolUse' "$D/hooks/hooks.json") \
              <(jq -S '.hooks.PostToolUse' "$C/hooks/hooks.json") >/dev/null 2>&1; then
   echo "SEED-DRIFT: hooks/hooks.json PostToolUse (shared AGY-AFTER hook) differs between the two plugins" >&2
+  status=1
+fi
+# The PreToolUse(Skill) block registers the SHARED auto-fire hook (agy-seam-inject.sh) and must be
+# byte-identical across both plugins; enforce it exactly as the PostToolUse block above. Each plugin's
+# manifest may still carry variant-specific blocks (e.g. classic's SessionStart) without tripping this.
+if ! diff -q <(jq -S '.hooks.PreToolUse' "$D/hooks/hooks.json") \
+             <(jq -S '.hooks.PreToolUse' "$C/hooks/hooks.json") >/dev/null 2>&1; then
+  echo "SEED-DRIFT: hooks/hooks.json PreToolUse (shared auto-fire hook) differs between the two plugins" >&2
   status=1
 fi
 # Responder skill: the Claude Code plugin copy (renamed to `responder`, Option A/SP-0) and the
