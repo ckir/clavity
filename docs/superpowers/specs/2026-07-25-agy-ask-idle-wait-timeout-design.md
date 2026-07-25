@@ -88,6 +88,14 @@ Add to `AgyEnvironment`:
 - `CLAVITY_AGY_IDLE_MAX_SECONDS` — absolute max total wait regardless of progress. Default **600**;
   **0 = unbounded** (rely purely on progress + the server idle signal).
 
+**Role split (F1 — why two knobs):** the STALL window is the primary hang guard — it already bounds every
+no-progress condition (a hung RPC, a modal-stuck agy, a dead conversation all present as "no new steps in
+`StallSeconds`"). The ABSOLUTE MAX therefore guards only two residual cases: a *step-producing runaway*
+(agy emitting steps forever without idling) and total caller-latency. Because the stall window is the real
+safety net, the max is deliberately generous; 600s is a middle default (a legitimately long review that
+exceeds it returns `absolute_max`, NOT a modal claim, with a "raise `CLAVITY_AGY_IDLE_MAX_SECONDS`" hint).
+Operators who run very long reviews can raise it or set `0`; the value is not load-bearing for correctness.
+
 Parsed in `Program.cs` when building `AgyViewOptions` (invalid / unset -> the default). Both flow into
 `AgyView` as options, replacing the hardcoded `DefaultIdleWaitTimeout` usage. `DefaultIdleWaitTimeout`
 becomes the default for `CLAVITY_AGY_IDLE_STALL_SECONDS` (semantic: it was always really a
@@ -106,6 +114,14 @@ no-further-idle window, not a whole-turn budget).
   agy was demonstrably active.
 - A hung gRPC call (the RPC itself never returns) is bounded by the same window `cancelAfter`; it surfaces
   as a `stall` (no progress) — correct.
+- **Progress-probe failure (F2):** if the per-window step-count probe (`GetCascadeTrajectoryAsync`) itself
+  throws or times out, the loop must FAIL-TOWARD `possible_modal` (treat the window as no-progress and give
+  up with a diagnostic), never spin retrying — this matches today's behavior (the diagnostic build already
+  runs in the timeout path) and keeps the tool call bounded.
+- **Caller cancellation (F3):** each window's `WaitForConversationFullyIdleAsync` must be linked to the
+  outer `cancellationToken` (as today via `CreateLinkedTokenSource`), so a caller-initiated cancel aborts
+  the whole loop promptly — the loop's own stall/max deadlines are ADDITIONAL to, not a replacement for,
+  the caller's token. A caller cancel is NOT a `possible_modal`; it propagates as cancellation.
 
 ### Components touched
 
