@@ -411,6 +411,9 @@ public sealed class SurfacingModalGuard : IModalGuard
             Assert.NotNull(ex.Diagnostic);
             Assert.Equal(0, ex.Diagnostic!.NewAgySteps);
             Assert.Equal("user", ex.Diagnostic.LastStepClass);
+            // R5 F10 guard: the diagnostic is built from the probe we already fetched — pre-send before-trajectory
+            // + the one probe ONLY, no redundant third fetch (pre-F10 code did before+probe+diagnostic = 3).
+            Assert.Equal(2, fake.TrajectoryCalls);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -562,9 +565,11 @@ Then update the `AskAsync` XML doc comment so its `<paramref name="timeout"/>` s
     /// <summary>Wait for agy to go idle, but do NOT abandon a wait while agy is still making progress. Loops bounded
     /// windows: each window waits for the server "fully idle" up to the stall window; if the server reports idle we
     /// return; if the window elapses (client CancelAfter) OR the server reports a wait-timeout, we probe the step
-    /// count and either RESET the stall window (agy advanced) or throw possible_modal(stall). An absolute-max backstop
-    /// bounds a step-producing runaway (TimeSpan.Zero => unbounded). A caller cancel propagates as cancellation,
-    /// never possible_modal (F3). A per-window probe failure fails-toward possible_modal(stall), never spins (F2).</summary>
+    /// count and either RESET the stall window (agy advanced) or throw possible_modal(stall/absolute_max). An
+    /// absolute-max backstop bounds a step-producing runaway (TimeSpan.Zero => unbounded). A caller cancel propagates
+    /// as cancellation, never possible_modal (F3). A per-window probe failure fails-toward possible_modal(stall) with
+    /// a NULL diagnostic — never spins, never a second network hit (F2 + agy panel R4). The stall/absolute_max
+    /// diagnostic is built from the trajectory we ALREADY fetched this window (no redundant re-fetch — agy panel R5 F10).</summary>
     private async Task WaitForIdleWithProgressAsync(
         LsClient client, string conversationId, int before, TimeSpan? stallOverride, CancellationToken cancellationToken)
     {
@@ -572,6 +577,7 @@ Then update the `AskAsync` XML doc comment so its `<paramref name="timeout"/>` s
         var absoluteMax = _options.IdleAbsoluteMax;   // TimeSpan.Zero => unbounded
         var start = DateTime.UtcNow;
         var lastProgress = before + 1;                // F5: +1 discounts our own injected Kind-14 user step.
+        CascadeTrajectory? lastProbe = null;          // R5 F10: last successfully-fetched trajectory, reused for the diagnostic.
 
         while (true)
         {
@@ -580,7 +586,7 @@ Then update the `AskAsync` XML doc comment so its `<paramref name="timeout"/>` s
             {
                 var remaining = absoluteMax - (DateTime.UtcNow - start);
                 if (remaining <= TimeSpan.Zero)
-                    throw await BuildModalHangAsync(client, conversationId, before, start, IdleLimit.AbsoluteMax, cancellationToken);
+                    throw BuildModalHang(lastProbe, before, start, IdleLimit.AbsoluteMax);
                 windowSecs = remaining < stallWindow ? remaining : stallWindow;
             }
 
@@ -601,43 +607,61 @@ Then update the `AskAsync` XML doc comment so its `<paramref name="timeout"/>` s
             if (!serverTimedOut)
                 return; // server reported fully idle: agy is done (happy path unchanged).
 
-            int total;
+            CascadeTrajectory probe;
             try
             {
-                var probe = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
-                total = probe.Steps.Count;
+                probe = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
             }
             catch (RpcException)
             {
-                // F2: fail-toward possible_modal(stall) WITHOUT a second network hit. BuildModalHangAsync would call
-                // BuildTimeoutDiagnosticAsync -> another GetCascadeTrajectoryAsync; the channel just failed THIS
-                // probe, so that retry would likely fail too and ESCAPE the loop as an uncaught RpcException ->
-                // central catch -> channel_down, silently violating F2's "fail-toward possible_modal". Throw the
-                // stall directly with a null diagnostic instead (agy panel round 4). The stall/absolute_max branches
-                // below keep the real diagnostic: their channel is alive, so BuildTimeoutDiagnosticAsync succeeds.
-                throw new AgyModalHangException(
-                    _modalGuard.OnLsTimeout("WaitForConversationFullyIdle", DateTime.UtcNow - start, IdleLimit.Stall), null);
+                // F2 (agy panel R4): fail-toward possible_modal(stall) with a NULL diagnostic and NO second network
+                // hit. The channel just failed THIS probe; re-fetching for a diagnostic would likely fail again and
+                // ESCAPE the loop as an uncaught RpcException -> central catch -> channel_down, silently violating F2.
+                throw BuildModalHang(null, before, start, IdleLimit.Stall);
             }
+            lastProbe = probe;
+            var total = probe.Steps.Count;
 
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
             else if (absoluteMax > TimeSpan.Zero && (DateTime.UtcNow - start) >= absoluteMax)
-                // Honest label (agy panel round 3): if THIS window was clamped by the absolute-max budget and it
-                // elapsed with no progress, the wait ended because the TOTAL budget ran out — NOT a stall. Reporting
-                // Stall here would tell the operator to raise CLAVITY_AGY_IDLE_STALL_SECONDS (the wrong knob) when
-                // CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.
-                throw await BuildModalHangAsync(client, conversationId, before, start, IdleLimit.AbsoluteMax, cancellationToken);
+                // Honest label (agy panel R3): a budget-clamped window that elapsed with no progress ended because the
+                // TOTAL budget ran out — NOT a stall. Reporting Stall would send the operator to the wrong knob
+                // (CLAVITY_AGY_IDLE_STALL_SECONDS) when CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.
+                throw BuildModalHang(probe, before, start, IdleLimit.AbsoluteMax);
             else
-                throw await BuildModalHangAsync(client, conversationId, before, start, IdleLimit.Stall, cancellationToken);
+                throw BuildModalHang(probe, before, start, IdleLimit.Stall);
         }
     }
 
-    private async Task<AgyModalHangException> BuildModalHangAsync(
-        LsClient client, string conversationId, int before, DateTime start, string limit, CancellationToken ct)
+    /// <summary>Build the possible_modal exception from an ALREADY-FETCHED trajectory (null => null diagnostic). PURE
+    /// + synchronous: it makes NO network call, so it cannot fail with a transient RpcException that would escape to
+    /// the central channel_down catch (agy panel R4/R5 — F8/F10). Elapsed = the TOTAL wait since start.</summary>
+    private AgyModalHangException BuildModalHang(CascadeTrajectory? trajectory, int before, DateTime start, string limit)
     {
-        var diag = await BuildTimeoutDiagnosticAsync(client, conversationId, before, ct);
+        var diag = trajectory is null ? null : BuildTimeoutDiagnostic(trajectory, before);
         return new AgyModalHangException(
             _modalGuard.OnLsTimeout("WaitForConversationFullyIdle", DateTime.UtcNow - start, limit), diag);
+    }
+```
+
+Then, ALSO in `AgyView.cs`, CONVERT the existing network-fetching diagnostic builder into a PURE one that takes the already-fetched trajectory (its only former caller — the old timeout catch — was just replaced by the loop, so no other caller remains; a leftover async version would be dead code AND re-introduce the R5 F10 double-fetch temptation). Locate the existing method by its signature anchor `private static async Task<TimeoutDiagnostic> BuildTimeoutDiagnosticAsync(` and replace the WHOLE method (through its closing brace) — if the anchor is not found verbatim, STOP with `STATE_MISMATCH` — with:
+
+```csharp
+    /// <summary>Where agy stopped, from an already-fetched trajectory: agy-produced step count (discounting our
+    /// injected user step) + the last step's kind/class/summary. PURE — the caller fetched the trajectory, so there
+    /// is no redundant re-fetch (agy panel R5 F10).</summary>
+    private static TimeoutDiagnostic BuildTimeoutDiagnostic(CascadeTrajectory full, int before)
+    {
+        var total = full.Steps.Count;
+        var newAgy = Math.Max(0, total - (before + 1)); // +1 discounts our injected Kind-14 user step.
+        var last = total > 0 ? full.Steps[^1] : null;
+        var lastKind = last?.Kind ?? 0;
+        string? summary = last is null ? null
+            : (last.UserInput is { } u && u.Text.Length > 0 ? u.Text
+               : last.AssistantOutput is { } a && a.Text.Length > 0 ? a.Text : null);
+        if (summary is { Length: > 500 } s) summary = s[..500];
+        return new TimeoutDiagnostic(total, newAgy, lastKind, StepKind.Class(lastKind), summary);
     }
 ```
 
