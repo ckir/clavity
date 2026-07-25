@@ -102,13 +102,16 @@ authoritative presence check.**
 but a forgotten **global** `~/.claude/.no-agy` would silently kill the disciplines for every project. The
 SessionStart hook MUST announce when `.no-agy` is suppressing them, naming the path:
 *"[AGY-DISCIPLINES] suppressed by .no-agy at &lt;path&gt;."* (Loud, not silent -- the whole point of Decision 3.)
-- **This notice hook must NOT self-suppress on `.no-agy` (consuming-agent expertise -- a near-certain
-  implementer trap).** Every sibling hook (`agy-seam-inject.sh`, `agy-after-reminder.sh`,
-  `agy-drive-session-reset.sh`) does `[ -f .no-agy ] && exit 0` early. But THIS hook's whole job is to REPORT
-  that suppression, so it must run to completion and emit the announce -- it must never `exit 0` on `.no-agy`
-  the way the siblings do. An implementer copying the sibling preamble verbatim would reintroduce the exact
-  silent-kill Decision 3 forbids. (It still fails open on genuine errors; it just does not treat `.no-agy` as
-  an early-exit.)
+- **On `.no-agy`, ANNOUNCE the suppression then exit -- a LOUD early exit, not a SILENT one, and NOT a
+  fall-through (consuming-agent expertise + panel delta-review).** Two opposite mistakes to avoid: (a) the
+  sibling hooks (`agy-seam-inject.sh`, `agy-after-reminder.sh`, `agy-drive-session-reset.sh`) do
+  `[ -f .no-agy ] && exit 0` early and **silently** -- copying that verbatim reintroduces the silent-kill
+  Decision 3 forbids, so this hook must NOT silently early-exit on `.no-agy`; (b) but `.no-agy` means
+  auto-fire is definitively off, so the hook must NOT fall through to ALSO emit the jq-missing +
+  superpowers-missing notices -- that would triple-spam a single boot (panel delta finding). **Correct
+  behavior:** when `.no-agy` is present, emit the single `.no-agy` suppression announce (stderr + `exit 2`,
+  per D2) and stop; otherwise (no `.no-agy`) run the superpowers / jq checks. It still fails open (`exit 0`,
+  silent) on a genuine internal error.
 
 ---
 
@@ -116,16 +119,31 @@ SessionStart hook MUST announce when `.no-agy` is suppressing them, naming the p
 
 - **A new per-plugin bash hook**, shipped **byte-identical** in both driver plugins (mirroring
   `agy-after-reminder.sh` / `agy-seam-inject.sh`), registered in each `plugin/hooks/hooks.json` under a
-  `SessionStart` block, `matcher: "startup"`. Fail-open (`exit 0` on any error).
+  `SessionStart` block, `matcher: "startup"`. **Exit-code contract (delta-review finding C -- resolve the
+  exit-2-vs-fail-open tension; a DETECTION FAILURE is NOT a fail-open error):** three outcomes --
+  (1) healthy / nothing to say -> `exit 0`, no stderr; (2) a DETECTION OUTCOME warranting a notice --
+  superpowers not-live (absent OR **corrupt/unreadable settings**), `.no-agy` active, or `jq` missing ->
+  write the line to stderr + `exit 2` (a corrupt `settings.json` resolves to the not-live ADVISORY, per D1,
+  **not** to fail-open); (3) a genuine UNEXPECTED internal error OUTSIDE the detection logic -> `exit 0`,
+  silent (fail-open, never blocks). **Do NOT use a blanket `trap 'exit 0' ERR`** -- it would swallow the
+  settings-parse path and silently drop the advisory (the silent-drop Decision 3 forbids). Handle the settings
+  read explicitly (a `jq`/read failure IS a not-live detection outcome -> exit 2) and reserve fail-open
+  `exit 0` for the truly unexpected.
 - **SessionStart provides `.cwd` and `.source` on stdin (panel F6, measured):** the existing classic
   `agy-drive-session-reset.sh` already reads both and checks `${cwd}/.no-agy` + `${HOME}/.claude/.no-agy`, so
   the `.no-agy` announce (which needs cwd) is feasible and has a working precedent to mirror.
-- **Emission mechanism = `hookSpecificOutput.additionalContext` (consuming-agent expertise).** There is no
-  reliable direct user-facing print for a plugin SessionStart hook; the notice is emitted as SessionStart
-  `additionalContext` (the same JSON shape the sibling hooks emit), which the active LLM sees and surfaces to
-  the user -- the proven best-effort model-relay path SP-C's F10 spike validated for injected directives. This
-  is consistent with the epic's best-effort posture: the notice is a strong nudge the model relays, not a hard
-  UI element. (`hookEventName: "SessionStart"`.)
+- **Emission mechanism = stderr + `exit 2` (CORRECTED via the delta-review + the authoritative Claude Code
+  hooks docs; my earlier `additionalContext` choice was WRONG for this event).** A SessionStart hook's
+  `additionalContext` **and** plain stdout are injected into Claude's CONTEXT ONLY -- NOT shown to the user
+  (hooks-guide.md:554: for SessionStart "anything you write to stdout is added to Claude's context").
+  At boot there is no user turn, so the model does not proactively speak that context = the notice would be
+  **silently absorbed** -- the exact silent-drop Decision 3 forbids (raised by agy's delta-review, then
+  confirmed against the docs by the consuming agent; agy was NOT trusted as the oracle -- the CC docs were).
+  The **only** documented user-visible SessionStart surface is **stderr written with `exit 2`**: for
+  SessionStart, `exit 2` renders the hook's stderr in the transcript as a visible notice and **execution
+  continues** (non-blocking for THIS event -- unlike PreToolUse where `exit 2` blocks the tool). So every
+  user-facing line this hook emits (the superpowers advisory, the `.no-agy` announce, the jq-missing warning)
+  goes to **stderr followed by `exit 2`**; a healthy/silent outcome is `exit 0` with no stderr.
 - **Manifest divergence to respect:** `clavity-classic`'s `hooks.json` already carries a **variant-specific**
   `SessionStart` entry (its driver-guidance reset); `clavity-dotnet` has **no** `SessionStart` block today.
   So the shared degradation-notice registration must be **added to both**, and the anti-drift check must
@@ -162,6 +180,16 @@ SessionStart hook MUST announce when `.no-agy` is suppressing them, naming the p
   never runs, so there is no runtime surface to announce from. Therefore bash is a **documented hard
   prerequisite** (D5), optionally verified at install time -- NOT a fake runtime guard that structurally
   cannot fire. The realistic, guardable case is "bash present, jq missing," which the jq-guard covers.
+- **Per-event visibility of the jq-missing warning (delta-review + CC-docs).** The reliable USER-visible dep
+  warning comes from the **SessionStart hook** (stderr + `exit 2`, D2) -- it checks `jq` at boot and tells the
+  user directly. The per-event guards on `agy-after-reminder.sh` (PostToolUse) and the already-shipped
+  `agy-seam-inject.sh` (PreToolUse, line 24) emit their `guard inactive: missing jq` line via `additionalContext`
+  (model-relay) -- the correct/only best-effort surface for those events, which fire during an active turn the
+  model relays in (`exit 2` there would block the tool / feed Claude, not reach the user). **So SP-C's shipped
+  guard is NOT a latent bug** -- it is the consistent best-effort mechanism for a PreToolUse hook; the new
+  SessionStart hook is what guarantees the user actually *learns* jq is missing. The retrofit onto
+  `agy-after-reminder.sh` therefore mirrors SP-C's `additionalContext` approach (it fixes the measured
+  silent-drop -- no output at all), while the boot-time user-visible dep warning lives in the SessionStart hook.
 
 ---
 
@@ -176,7 +204,12 @@ each hook and asserting behavior -- complementing SP-C's existing `agy-seam-inje
 - **`agy-seam-inject.sh`:** the **jq-missing loud-line** case SP-C deferred here (SP-C's smoke covered the
   happy/debounce/`.no-agy`/ASCII paths; the jq-missing loud line is added now).
 - **The new SessionStart hook:** superpowers-present -> silent; superpowers-absent -> the possibility advisory;
-  `.no-agy` at cwd / `~/.claude` -> the suppression announce; jq-missing loud-line.
+  `.no-agy` at cwd / `~/.claude` -> the suppression announce (and NO superpowers/jq notice -- no spam);
+  jq-missing loud-line. **Every visible-notice case asserts the line is on STDERR with EXIT CODE 2** (the
+  user-visible surface, per D2) and the healthy case asserts `exit 0` with empty stderr -- a test that only
+  checks stdout would pass vacuously on the (invisible) `additionalContext` path this hook must NOT use.
+  Drive the hierarchy cases by pointing `$env:HOME`/`$CLAUDE_PROJECT_DIR` at fixtures with crafted
+  `settings.json` / `settings.local.json` (superpowers enabled at user scope but disabled project-local, etc.).
 
 Fixtures follow the SP-C convention (temp dirs isolated from the real repo's `.clavity`; `bash` invoked as
 the SP-C smoke does; pure-ASCII assertions on emitted lines) **plus `$HOME` isolation (panel F10): each test
