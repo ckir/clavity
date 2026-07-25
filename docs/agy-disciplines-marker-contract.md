@@ -17,8 +17,14 @@ Decision 1 (debounce) + Decision 4 (per-plugin state).
     drops Decision 4's per-plugin-state clause *for the marker specifically*.
 - **Content:** the commit sha from `git rev-parse HEAD` at consult time, and nothing else. If HEAD cannot
   resolve (no repo / no commits), no marker is written (the discipline re-fires — safe).
-- **Skip log:** `.clavity/agy-marks/skipped.log`, append-only, one line per skipped consult:
-  `<iso-8601>  <discipline>  SKIPPED-UNREACHABLE  HEAD=<sha>`.
+- **Skip / audit log:** `.clavity/agy-marks/skipped.log`, append-only, one line per event:
+  - `<iso-8601>  <discipline>  SKIPPED-UNREACHABLE  HEAD=<sha>` - peer unreachable (any discipline).
+  - `<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>` - human waived the capstone gate (SP-B; also writes
+    the marker, so this line is what distinguishes a waiver from a mechanically-verified GREEN in the
+    durable record).
+  - `<iso-8601>  agy-capstone  UNVERIFIED-ACCEPTED  HEAD=<sha>  <finding>` - human accepted the risk of a
+    single unmeasurable finding (SP-B; per-finding, non-terminal - writes NO marker, does NOT abort the
+    capstone).
 
 ## Resolved: marker namespacing = Option S (single, no plugin-id)
 DECIDED (AGY-AFTER solo panel + agy escalation + owner-triggered AGY-NEGOTIATE all ALIGNED; owner
@@ -45,9 +51,17 @@ duplicate paid consult). SP-C's reader consumes this same constant.
 
 ## Rules
 
-- The **skill** writes `<discipline>.head` **only** after a consult actually completes
-  (ALIGNED / REJECTED / resolved NEGOTIATE). A `SKIPPED-UNREACHABLE` or a review-only breach writes NO
-  marker and instead appends to `skipped.log`.
+- The **skill** writes `<discipline>.head` **only** at that discipline's terminal state:
+  - `agy-first` writes after a consult completes (ALIGNED / REJECTED / resolved NEGOTIATE).
+  - `agy-capstone` writes only on **human-confirmed GREEN or explicit human waiver** - NOT on a raw
+    self-reported clean round, an override re-entry still in progress, or a `SKIPPED-UNREACHABLE`. A
+    review-only breach at the capstone gate does NOT write the marker either (it halts-and-asks the
+    human; see the skill).
+  In every case the content stays the bare `git rev-parse HEAD` sha, so the SP-C hook's
+  `content == HEAD` read is uniform across disciplines; capstone's WAIVED / UNVERIFIED-ACCEPTED
+  distinctions live in the log above, never in the marker.
+- A `SKIPPED-UNREACHABLE` or a review-only breach writes NO `.head` marker (the discipline re-fires next
+  trigger); the skip appends to `skipped.log` as above.
 - The **hook** (SP-C) READS the marker: if it exists AND its content == current `git rev-parse HEAD`,
   the discipline was already consulted this cycle → do not inject. Otherwise → inject the directive.
   The hook never writes the `.head` marker (a PreToolUse hook fires before the consult and cannot know
