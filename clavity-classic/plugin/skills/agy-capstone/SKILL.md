@@ -47,8 +47,8 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each round
    breached review-only. Because the capstone is a **completion GATE**, a breach is handled more
    strictly than agy-first's advisory skip: (a) surface the breach loudly to your human; (b) make a
    **best-effort** revert of the peer's changes to paths that were CLEAN in the before-snapshot (diff the
-   after-state against the before-snapshot; `git checkout --` a peer-MODIFIED tracked path, `rm` a
-   peer-CREATED untracked path) - **never** a blind `git reset --hard` / `git checkout -- .`, and
+   after-state against the before-snapshot; `git checkout --` a peer-MODIFIED tracked path, `rm -rf` a
+   peer-CREATED untracked path or directory) - **never** a blind `git reset --hard` / `git checkout -- .`, and
    **never auto-restore a path that was ALREADY dirty before** (that would destroy your own uncommitted
    work - surface it in the halt-and-ask instead). This revert is **best-effort, not guaranteed**: the
    envelope is review-only prompt-discipline, NOT a sandbox, so a determined breach (a destructive
@@ -58,8 +58,10 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each round
    (c) then **HALT-AND-ASK the human** - do NOT
    auto-proceed and do NOT emit `[VERDICT: SKIPPED-UNREACHABLE]` (that token is reserved for a genuine
    connectivity failure and auto-proceeds the gate; a breach must not silently pass "done"). The human
-   decides: re-run the capstone cleanly, or explicitly waive (which writes a WAIVED audit line with
-   `reason=breach`, per the marker section below).
+   decides: re-run the capstone cleanly, or explicitly waive the breach - a **SKIP-equivalent**: it
+   proceeds WITHOUT a clean capstone, writes a `WAIVED ... reason=breach` audit line but **NO completion
+   marker** (so the gate re-arms next trigger), and does NOT mark the plan reviewed. A breach-waiver is
+   therefore NOT a way to pass "done"; only a clean GREEN or a round-cap gate-waiver passes the gate.
 
 ## Review range (what the peer reviews)
 Review the range of commits the just-finished plan produced: `<plan-base>..HEAD`. Resolve `<plan-base>`
@@ -203,15 +205,19 @@ the same `HEAD`. Create `.clavity/agy-marks/` first if it does not exist.
   two drivers are mutually exclusive). See `docs/agy-disciplines-marker-contract.md`.
 - **Content:** the output of `git rev-parse HEAD` at the terminal state, nothing else. If HEAD cannot
   resolve, skip writing the marker (the discipline re-fires next trigger - safe).
-- **Written ONLY on the terminal state** - human-confirmed GREEN **or** explicit human waiver. A
-  self-declared round-ALIGNED not yet confirmed, an override re-entry still in progress, or a
-  `[VERDICT: SKIPPED-UNREACHABLE]` / breach writes **no** marker. A new commit (new HEAD) re-arms the
-  gate.
-- **A human WAIVER also appends a durable audit line** to the same log the skip path uses
-  (`<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>  <reason>`, where `<reason>` is `breach` for a section-4
-  review-only-breach waiver or `round-cap` for a completion-gate waiver - so a post-mortem tells a waived
-  security breach apart from a waived code-review), so a mechanically-verified GREEN and a human waiver -
-  which write the same bare-sha marker - stay distinguishable in the durable record. The marker content
+- **Written ONLY on a GATE-SATISFIED terminal state** - human-confirmed GREEN, or an explicit human
+  **completion-gate waiver** (`round-cap`: the human accepts "done" despite still-live findings). A
+  self-declared round-ALIGNED not yet confirmed, an override re-entry still in progress, a
+  `[VERDICT: SKIPPED-UNREACHABLE]`, **or a review-only breach (waived or not)** writes **no** marker - a
+  `breach` waiver is a SKIP-equivalent (the human chose to proceed without a clean review; the gate is
+  NOT satisfied), so it re-arms next trigger. This closes the bypass where a peer forces a trivial breach
+  to smuggle unreviewed code past a waive. A new commit (new HEAD) re-arms the gate.
+- **Every human WAIVER appends a durable audit line** to the same log the skip path uses
+  (`<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>  <reason>`, `<reason>` = `round-cap` | `breach`). A
+  `round-cap` completion-gate waiver ALSO writes the `.head` marker (it accepts "done", like a confirmed
+  GREEN); a `breach` waiver writes ONLY this audit line and **NO marker** (a skip-equivalent - the gate
+  is not satisfied and re-arms next trigger). So a mechanically-verified GREEN, a gate-waiver, and a
+  breach-waiver stay distinguishable in the durable record. The marker content
   stays the bare sha (the auto-fire hook reads `content == current HEAD`; encoding `WAIVED` into the
   marker would break that read).
 

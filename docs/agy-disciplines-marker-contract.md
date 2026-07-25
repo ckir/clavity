@@ -54,10 +54,12 @@ duplicate paid consult). SP-C's reader consumes this same constant.
 
 - The **skill** writes `<discipline>.head` **only** at that discipline's terminal state:
   - `agy-first` writes after a consult completes (ALIGNED / REJECTED / resolved NEGOTIATE).
-  - `agy-capstone` writes only on **human-confirmed GREEN or explicit human waiver** - NOT on a raw
-    self-reported clean round, an override re-entry still in progress, or a `SKIPPED-UNREACHABLE`. A
-    review-only breach at the capstone gate does NOT write the marker either (it halts-and-asks the
-    human; see the skill).
+  - `agy-capstone` writes only on **human-confirmed GREEN or an explicit human completion-gate waiver
+    (`round-cap`)** - NOT on a raw self-reported clean round, an override re-entry still in progress, or a
+    `SKIPPED-UNREACHABLE`. A review-only breach does NOT write the marker whether or not the human waives
+    it: a `breach` waiver is a skip-equivalent (proceed without a clean review; gate not satisfied), so it
+    writes ONLY the `WAIVED ... breach` audit line and re-arms next trigger. This prevents a peer from
+    smuggling unreviewed code past the gate by forcing a trivial breach and getting it waived.
   In every case the content stays the bare `git rev-parse HEAD` sha, so the SP-C hook's
   `content == HEAD` read is uniform across disciplines; capstone's WAIVED / UNVERIFIED-ACCEPTED
   distinctions live in the log above, never in the marker.
