@@ -45,15 +45,21 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each round
    before-snapshot. If the working tree changed, OR HEAD/history moved (a peer `git reset` /
    `git commit --amend` leaves `git status` clean yet mutates the very range under review), the peer
    breached review-only. Because the capstone is a **completion GATE**, a breach is handled more
-   strictly than agy-first's advisory skip: (a) surface the breach loudly to your human; (b) revert
-   **only the peer-touched paths that were CLEAN in the before-snapshot** (diff the after-state against
-   the before-snapshot and restore exactly those) - **never** a blind `git reset --hard` /
-   `git checkout -- .`, and **never auto-restore a path that was ALREADY dirty before** (restoring it to
-   HEAD would destroy your own uncommitted work - surface such a path in the halt-and-ask instead);
+   strictly than agy-first's advisory skip: (a) surface the breach loudly to your human; (b) make a
+   **best-effort** revert of the peer's changes to paths that were CLEAN in the before-snapshot (diff the
+   after-state against the before-snapshot; `git checkout --` a peer-MODIFIED tracked path, `rm` a
+   peer-CREATED untracked path) - **never** a blind `git reset --hard` / `git checkout -- .`, and
+   **never auto-restore a path that was ALREADY dirty before** (that would destroy your own uncommitted
+   work - surface it in the halt-and-ask instead). This revert is **best-effort, not guaranteed**: the
+   envelope is review-only prompt-discipline, NOT a sandbox, so a determined breach (a destructive
+   `reset` / `amend`, or a mutation of an already-dirty file that the status-only snapshot cannot fully
+   diff) may not be cleanly recoverable - that accepted residual is why the peer is review-only-TRUSTED
+   and the human is HALTED, not a reason to build a sandbox;
    (c) then **HALT-AND-ASK the human** - do NOT
    auto-proceed and do NOT emit `[VERDICT: SKIPPED-UNREACHABLE]` (that token is reserved for a genuine
    connectivity failure and auto-proceeds the gate; a breach must not silently pass "done"). The human
-   decides: re-run the capstone cleanly, or explicitly waive (which writes the WAIVED audit line below).
+   decides: re-run the capstone cleanly, or explicitly waive (which writes a WAIVED audit line with
+   `reason=breach`, per the marker section below).
 
 ## Review range (what the peer reviews)
 Review the range of commits the just-finished plan produced: `<plan-base>..HEAD`. Resolve `<plan-base>`
@@ -202,7 +208,9 @@ the same `HEAD`. Create `.clavity/agy-marks/` first if it does not exist.
   `[VERDICT: SKIPPED-UNREACHABLE]` / breach writes **no** marker. A new commit (new HEAD) re-arms the
   gate.
 - **A human WAIVER also appends a durable audit line** to the same log the skip path uses
-  (`<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>`), so a mechanically-verified GREEN and a human waiver -
+  (`<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>  <reason>`, where `<reason>` is `breach` for a section-4
+  review-only-breach waiver or `round-cap` for a completion-gate waiver - so a post-mortem tells a waived
+  security breach apart from a waived code-review), so a mechanically-verified GREEN and a human waiver -
   which write the same bare-sha marker - stay distinguishable in the durable record. The marker content
   stays the bare sha (the auto-fire hook reads `content == current HEAD`; encoding `WAIVED` into the
   marker would break that read).

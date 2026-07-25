@@ -19,9 +19,10 @@ Decision 1 (debounce) + Decision 4 (per-plugin state).
   resolve (no repo / no commits), no marker is written (the discipline re-fires — safe).
 - **Skip / audit log:** `.clavity/agy-marks/skipped.log`, append-only, one line per event:
   - `<iso-8601>  <discipline>  SKIPPED-UNREACHABLE  HEAD=<sha>` - peer unreachable (any discipline).
-  - `<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>` - human waived the capstone gate (SP-B; also writes
-    the marker, so this line is what distinguishes a waiver from a mechanically-verified GREEN in the
-    durable record).
+  - `<iso-8601>  agy-capstone  WAIVED  HEAD=<sha>  <reason>` - human waived (SP-B; `<reason>` is `breach`
+    for a review-only-breach waiver or `round-cap` for a completion-gate waiver; also writes the marker,
+    so this line distinguishes a waiver from a mechanically-verified GREEN, AND a breach-waiver from a
+    gate-waiver, in the durable record).
   - `<iso-8601>  agy-capstone  UNVERIFIED-ACCEPTED  HEAD=<sha>  <finding>` - human accepted the risk of a
     single unmeasurable finding (SP-B; per-finding, non-terminal - writes NO marker, does NOT abort the
     capstone).
