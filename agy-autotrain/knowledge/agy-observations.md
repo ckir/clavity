@@ -8,6 +8,18 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
+- [heuristic] (driver/probabilistic) `[corpus]` An INDEPENDENT-MODEL adversarial round earns its cost most on
+  GATE / COMPARISON logic: given a scoped artifact plus a concrete drift scenario to reason about, the peer
+  caught a structural FALSE-GREEN -- a diff-based gate whose selector PROJECTED AWAY a load-bearing
+  discriminator field (comparing a filtered inner object while dropping the parent's discriminator), so a
+  divergence in that field compared identical and passed. The same-model author's own multi-seat self-panel
+  had cleared the same selector across two prior rounds; the independent model does not share the author's
+  blind spot on "what my own comparison silently omits." Driving implication: when an artifact defines a gate
+  that compares a PROJECTION/subset of a structure, specifically route it to the peer with a named drift
+  scenario ("flip field X in one side -- does the gate still bite?") rather than trusting a same-model panel;
+  and VERIFY the peer's fix by measurement (here the projection-vs-wrapper fix was confirmed by running both
+  selectors on synthetic drift). (1st observation of the projection-drops-discriminator variant.)
+
 - [anti-pattern] (peer/probabilistic) `[corpus]` The peer's UNSOLICITED SELF-CORRECTION channel is not more
   reliable than the rest of its reply — it can be the *least* reliable part. Asked to verify claims against
   files and report `CORRECTION: <what I got wrong>` on any divergence, the peer volunteered a confident
