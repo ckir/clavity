@@ -19,6 +19,15 @@ Describe 'check-plugin-namespace' {
             }
             return $t
         }
+        function New-GitCleanFixture {
+            # A CLEAN renamed fixture that is a REAL git repo with a .gitignore, so rg's gitignore-respect
+            # (which only engages inside a git repo scanned from within) is exercised.
+            $t = New-CleanFixture
+            & git -C $t init -q
+            & git -C $t -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= add -A
+            & git -C $t -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm init
+            return $t
+        }
     }
     It 'passes on a clean renamed fixture' {
         $t = New-CleanFixture
@@ -58,5 +67,29 @@ Describe 'check-plugin-namespace' {
         "---`nname: claudavity-responder`n---" | Set-Content (Join-Path $t 'clavity-classic/agy_skills/claudavity-responder/SKILL.md')
         & pwsh -File $script:gate -Root $t 2>&1 | Out-Null
         $LASTEXITCODE | Should -Be 0 -Because "the agy-side twin is intentionally retained (Option A)"
+    }
+    It 'does NOT flag an old plugin identity that lives only in a GITIGNORED build artifact' {
+        $t = New-GitCleanFixture
+        try {
+            'build/generated/' | Set-Content (Join-Path $t '.gitignore')
+            New-Item -ItemType Directory -Force -Path (Join-Path $t 'build/generated') | Out-Null
+            # A gitignored generated manifest carrying the OLD identity in a plugins[].name -- must be ignored.
+            '{ "name": "clavity-dotnet", "owner": { "name": "x" }, "plugins": [ { "name": "clavity-dotnet" } ] }' |
+                Set-Content (Join-Path $t 'build/generated/marketplace.install.json')
+            & pwsh -File $script:gate -Root $t 2>&1 | Out-Null
+            $LASTEXITCODE | Should -Be 0 -Because "a gitignored build artifact must not fail the gate"
+        } finally { Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'does NOT flag its own docstring/fixture patterns (self-match exclusion)' {
+        $t = New-GitCleanFixture
+        try {
+            # A file named like the gate itself, containing the forbidden colon-namespace pattern in a comment
+            # (as the real gate's docstring does). The self-exclude globs must keep it from flagging itself.
+            New-Item -ItemType Directory -Force -Path (Join-Path $t 'scripts') | Out-Null
+            '# example forbidden ref clavity-dotnet:driving documented in the gate docstring' |
+                Set-Content (Join-Path $t 'scripts/check-plugin-namespace.ps1')
+            & pwsh -File $script:gate -Root $t 2>&1 | Out-Null
+            $LASTEXITCODE | Should -Be 0 -Because "the gate must exclude its own two files from the text scans"
+        } finally { Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
