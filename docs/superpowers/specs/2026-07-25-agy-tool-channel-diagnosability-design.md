@@ -50,6 +50,14 @@ a dead channel is not a modal hang, and it misses mid-ask death).
 **New types (mirror the `possible_modal` pattern — `AgyModalHangException` + `TimeoutDiagnostic`):**
 - `ChannelDiagnostic(string StatusCode, string Detail)` — a record (like `TimeoutDiagnostic`), carrying the
   gRPC `StatusCode` name (e.g. `"Unavailable"`) and `ex.Status.Detail`/`ex.Message`.
+  **Extraction rule (F4 — never lose the real cause):** build the diagnostic from the UNDERLYING gRPC
+  failure, unwrapping if needed: (a) if the caught exception IS an `RpcException`, use its
+  `StatusCode`+`Status.Detail`; (b) if it is a WRAPPER (`AgyModelUnavailableException`) whose
+  `InnerException` is an `RpcException`, UNWRAP and use the inner's `StatusCode`+`Detail` — do NOT emit
+  `"Unknown"` while a real `RpcException` is available (that would violate criterion 3); (c) for an
+  `ObjectDisposedException` / `LsDiscoveryException` with no inner `RpcException`, set `StatusCode` to the
+  concrete exception type name (e.g. `"ObjectDisposed"` / `"LsDiscovery"`) and `Detail` to `ex.Message` —
+  still a named cause, never a bare `"Unknown"`.
 
 **Central catch in `RunAsync<T>` (`McpTools.cs`)** — add, after the existing two catches:
 ```
@@ -60,7 +68,7 @@ catch (Exception ex) when (ex is RpcException or ObjectDisposedException or LsDi
     // (LsDiscoveryException — thrown by ConnectAndResolveAsync at connect time).
     return JsonSerializer.Serialize(new {
         status = "channel_down",
-        diagnostic = <ChannelDiagnostic from ex>,   // StatusCode + detail (Unknown for the non-Rpc cases)
+        diagnostic = <ChannelDiagnostic per the extraction rule above — UNWRAP an inner RpcException (F4)>,
         hint = "<the honest hint below>",
     });
 }
@@ -97,8 +105,11 @@ not-in-catalog cases at `:319`/`:348`/`:358`) is NOT `channel_down` and is OUT O
 today — a genuine model-availability error, not a channel error). Do not blanket-catch
 `AgyModelUnavailableException` as `channel_down` — that would mislabel a real deprecated-model error.
 
-**`agy_status` local catch (`AgyView.StatusAsync`)** — wrap the RPC calls (`ConnectAndResolveAsync` +
-`GetCascadeTrajectoryAsync`) in `try/catch` for `RpcException`, `ObjectDisposedException`, AND
+**`agy_status` local catch (`AgyView.StatusAsync`)** — wrap the ENTIRE method body — `ConnectAndResolveAsync`,
+`GetCascadeTrajectoryAsync`, AND `ProbeIdleAsync` (F5: NOT just the first two — `ProbeIdleAsync`'s internal
+fail-safe catches only `RpcException`, so an `ObjectDisposedException` from it would otherwise escape,
+hit the central `RunAsync` catch, and return the `{status:"channel_down"}` error-envelope instead of the
+`AgyStatus` shape, breaking criterion 2) — in `try/catch` for `RpcException`, `ObjectDisposedException`, AND
 `LsDiscoveryException` (the LS-unreachable case), returning
 `new AgyStatus(cascadeId: "", totalSteps: 0, state: "channel_down", lastStepKind: 0)`. So `agy_status`
 returns its normal shape with a `channel_down` state and never throws (criterion 2). (The central
@@ -128,7 +139,10 @@ Extend `AgyAskIntegrationTests` / `McpToolsIntegrationTests` with a fake LS that
 `RpcException` for `Unimplemented`; extend it to a dead-channel status):
 1. **Dead-channel `agy_ask` -> `channel_down`** — assert the returned JSON has `status:"channel_down"`, a
    `diagnostic` with the `StatusCode`, and the hint; assert it did NOT throw / no bare error.
-2. **`agy_status` -> `AgyStatus{state:"channel_down"}`, never throws** — on the same dead channel.
+2. **`agy_status` -> `AgyStatus{state:"channel_down"}`, never throws** — on the same dead channel. Include
+   a variant where the failure surfaces as an `ObjectDisposedException` from `ProbeIdleAsync` (past its
+   internal RpcException-only fail-safe): assert `agy_status` STILL returns the `AgyStatus` shape with
+   `state:"channel_down"`, NOT the `{status:"channel_down"}` error envelope (F5 guard).
 3. **Mid-ask death -> `channel_down`** — the fake goes idle-then-throws (or throws partway) so the
    `RpcException` surfaces after the send; assert the `RunAsync` central catch yields `channel_down`.
 4. **Non-channel exception still propagates (criterion 4)** — a fake that throws e.g.
@@ -138,7 +152,7 @@ Extend `AgyAskIntegrationTests` / `McpToolsIntegrationTests` with a fake LS that
    `agy_ask` on a brand-new conversation (no prior model, so `ResolveSendModelAsync` takes the
    catalog-REQUIRED path) and have the fake throw a dead-channel `RpcException(StatusCode.Unavailable)`
    during `GetAvailableModels`. Assert the result is `channel_down` (NOT a bare error, NOT
-   `AgyModelUnavailableException` leaking out). Complement: a `deprecated-model` `AgyModelUnavailableException`
+   `AgyModelUnavailableException` leaking out), AND that `diagnostic.StatusCode` is the REAL inner gRPC status (`"Unavailable"`), NOT `"Unknown"` (F4 guard: the diagnostic unwrapped the inner cause). Complement: a `deprecated-model` `AgyModelUnavailableException`
    with NO channel cause must NOT be reported as `channel_down` (it stays a model error) — proving the fold
    distinguishes a wrapped channel death from a genuine model-availability error.
 
