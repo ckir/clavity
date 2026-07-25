@@ -685,9 +685,12 @@ It extracts ONLY the liveness hook object across all SessionStart groups, so cla
 
 ```bash
 # The SessionStart block diverges by design (classic carries a variant-specific driver-guidance reset that
-# dotnet lacks), so compare ONLY the SHARED liveness hook object, identified by its command referencing
-# agy-liveness-check.sh. It must be byte-identical across both plugins.
-sp_sel='[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | test("agy-liveness-check\\.sh"))]'
+# dotnet lacks), so compare ONLY the SHARED liveness ENTRY across both plugins. RETAIN THE GROUP WRAPPER (do
+# NOT flatten to the bare hook object): the group's `matcher` is load-bearing -- flattening to
+# `.hooks[]` would strip `matcher`, so a drifted matcher (e.g. classic's liveness group changed off "startup")
+# would compare identical and FALSE-GREEN (measured). Keep each SessionStart group, filter its `hooks` array
+# to only the liveness entry, and drop groups left with no liveness hook -- so `matcher` IS compared.
+sp_sel='[.hooks.SessionStart[]? | .hooks |= map(select((.command // "") | test("agy-liveness-check\\.sh"))) | select(.hooks | length > 0)]'
 if ! diff -q <(jq -S "$sp_sel" "$D/hooks/hooks.json") \
              <(jq -S "$sp_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
   echo "SEED-DRIFT: hooks/hooks.json SessionStart (shared liveness hook) differs between the two plugins" >&2
@@ -702,16 +705,24 @@ Expected: `seed agent artifacts in sync (dotnet == classic)`
 
 - [ ] **Step 6: Prove the new SessionStart diff BITES (drift probe)**
 
-Temporarily perturb the classic liveness command, confirm the gate fails, then restore:
+Probe BOTH a command drift AND a matcher drift (the selector retains the group wrapper specifically so a
+matcher divergence bites), restoring after each:
 
 ```bash
+# (a) command drift
 sed -i 's#hooks/agy-liveness-check.sh#hooks/agy-liveness-check-BROKEN.sh#' clavity-classic/plugin/hooks/hooks.json
 just seed-sync-check; echo "exit=$?"   # expect: SEED-DRIFT ... SessionStart (shared liveness hook) ... exit=1
+git checkout -- clavity-classic/plugin/hooks/hooks.json
+# (b) matcher drift (the hole the group-wrapper fix closes): flip classic's SessionStart matcher off "startup"
+sed -i '0,/"matcher": "startup"/s//"matcher": "resume"/' clavity-classic/plugin/hooks/hooks.json
+just seed-sync-check; echo "exit=$?"   # expect: SEED-DRIFT ... SessionStart ... exit=1 (matcher compared)
 git checkout -- clavity-classic/plugin/hooks/hooks.json
 just seed-sync-check                    # expect: back to in-sync
 ```
 
-Expected: the perturbed run prints the SessionStart SEED-DRIFT line and exits 1; after restore, in sync.
+Expected: BOTH perturbations print the SessionStart SEED-DRIFT line and exit 1; after each restore, in sync.
+If the matcher probe (b) prints "in sync" the selector is still flattening away `matcher` -- STOP and report
+`STATE_MISMATCH: seed-sync selector does not compare SessionStart matcher`.
 
 - [ ] **Step 7: Commit**
 
