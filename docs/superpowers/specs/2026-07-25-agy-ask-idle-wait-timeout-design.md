@@ -54,7 +54,13 @@ wastes the whole cap). Submit-then-poll (agy's #4) — most robust against any h
 
 ```
 before          = <step count before the send>          // already computed today
-lastProgress    = before
+lastProgress    = before + 1                             // F5: +1 discounts the caller's OWN injected
+                                                         // Kind-14 user step (the send adds exactly one
+                                                         // step). Matches BuildTimeoutDiagnostic's
+                                                         // `newAgy = total - (before+1)`. WITHOUT the +1,
+                                                         // window 1 sees the caller's own message as
+                                                         // "agy progress", resets, and a DEAD agy takes
+                                                         // 2x StallSeconds to stall instead of 1x.
 overallDeadline = now + MaxSeconds                        // MaxSeconds == 0 -> no absolute cap
 loop:
     windowSecs = StallSeconds
@@ -160,6 +166,9 @@ and can script step counts):
 1. **Long-but-progressing returns the reply, not `possible_modal`** — steps advance across several stall
    windows, then the fake goes idle -> normal reply. (The regression this whole change exists to fix.)
 2. **Stall -> `possible_modal` with `limit:"stall"`** — never idle, no new steps within one stall window.
+   Assert it trips after exactly ONE `StallSeconds` window, NOT two (F5 regression guard: a dead agy that
+   emits nothing after the caller's send must stall at 1x `StallSeconds`; the caller's own injected user
+   step must not be counted as progress). Use a small `StallSeconds` and count the elapsed windows.
 3. **Absolute-max -> `possible_modal` with `limit:"absolute_max"`** — steps advance forever, total exceeds
    `MaxSeconds` (set small in the test).
 4. **Env parse** — `CLAVITY_AGY_IDLE_STALL_SECONDS` / `CLAVITY_AGY_IDLE_MAX_SECONDS` parsed, applied,
