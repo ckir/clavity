@@ -76,6 +76,27 @@ own code (not the channel) would be mislabeled `channel_down`. Accepted as rare:
 `ObjectDisposedException` is almost always the disposed `GrpcChannel`. If this ever bites, narrow the filter
 to inspect the disposed object's type — not done speculatively.
 
+**F3 (WRAPPED channel-death on the new-conversation path — MUST fold):** `AskAsync` calls
+`ResolveSendModelAsync` (`AgyView.cs:152` -> `:309`). On a BRAND-NEW conversation the model catalog is
+REQUIRED, and `AgyView.cs:346` catches a generic `RpcException` (a dead channel surfaces as
+`StatusCode.Unavailable`) and re-throws it WRAPPED as `AgyModelUnavailableException` (dropping the
+`RpcException`). That wrapper is NOT in the central `when` filter, so a dead-channel `agy_ask` on a new
+conversation would bare-error — violating criterion 1. (The EXISTING-conversation path is safe: there the
+catalog `RpcException` is swallowed at `:321`/`:322` and the dead channel resurfaces at send time as a plain
+`RpcException`, which the central catch handles.) Resolution: the channel-death cause must survive to the
+central catch. Two acceptable mechanisms (implementer's call):
+  (i) at `AgyView.cs:346`, pass the `RpcException` as the `AgyModelUnavailableException`'s `InnerException`,
+      and extend the central `when` filter to also match
+      `AgyModelUnavailableException { InnerException: RpcException or ObjectDisposedException or LsDiscoveryException }`
+      -> `channel_down`; or
+  (ii) at `:346`, when the `RpcException` is a channel-death status, RE-THROW the `RpcException` (don't wrap)
+      so the existing central catch handles it, wrapping as `AgyModelUnavailableException` ONLY for a
+      non-channel/transient status.
+Either way, a BARE `AgyModelUnavailableException` with NO channel-death cause (the deprecated-model /
+not-in-catalog cases at `:319`/`:348`/`:358`) is NOT `channel_down` and is OUT OF SCOPE (it behaves as
+today — a genuine model-availability error, not a channel error). Do not blanket-catch
+`AgyModelUnavailableException` as `channel_down` — that would mislabel a real deprecated-model error.
+
 **`agy_status` local catch (`AgyView.StatusAsync`)** — wrap the RPC calls (`ConnectAndResolveAsync` +
 `GetCascadeTrajectoryAsync`) in `try/catch` for `RpcException`, `ObjectDisposedException`, AND
 `LsDiscoveryException` (the LS-unreachable case), returning
@@ -113,6 +134,13 @@ Extend `AgyAskIntegrationTests` / `McpToolsIntegrationTests` with a fake LS that
 4. **Non-channel exception still propagates (criterion 4)** — a fake that throws e.g.
    `InvalidOperationException` must NOT be reported as `channel_down` (it propagates / surfaces distinctly),
    proving the targeted catch does not mask real bugs.
+5. **Wrapped channel-death on a NEW conversation -> `channel_down` (F3 regression guard)** — drive
+   `agy_ask` on a brand-new conversation (no prior model, so `ResolveSendModelAsync` takes the
+   catalog-REQUIRED path) and have the fake throw a dead-channel `RpcException(StatusCode.Unavailable)`
+   during `GetAvailableModels`. Assert the result is `channel_down` (NOT a bare error, NOT
+   `AgyModelUnavailableException` leaking out). Complement: a `deprecated-model` `AgyModelUnavailableException`
+   with NO channel cause must NOT be reported as `channel_down` (it stays a model error) — proving the fold
+   distinguishes a wrapped channel death from a genuine model-availability error.
 
 ## Out of scope
 - Auto-recover / reconnect via `LsDiscovery` rebuild (future direction; agy's #3 — revisit only if the
