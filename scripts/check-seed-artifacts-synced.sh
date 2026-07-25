@@ -10,6 +10,7 @@ status=0
 for rel in \
   skills/adversarial-panel-review/SKILL.md \
   skills/agy-first/SKILL.md \
+  skills/agy-capstone/SKILL.md \
   hooks/agy-after-reminder.sh \
   knowledge/agy-assumptions.md \
   knowledge/agy-capabilities.md ; do
