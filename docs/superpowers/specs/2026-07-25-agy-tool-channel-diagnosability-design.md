@@ -61,7 +61,7 @@ a dead channel is not a modal hang, and it misses mid-ask death).
 
 **Central catch in `RunAsync<T>` (`McpTools.cs`)** — add, after the existing two catches:
 ```
-catch (Exception ex) when (ex is RpcException or ObjectDisposedException or LsDiscoveryException)
+catch (Exception ex) when ((ex is RpcException rpc && rpc.StatusCode != StatusCode.Cancelled) || ex is ObjectDisposedException or LsDiscoveryException)
 {
     // channel dead: agy's LS shut down/restarted (RpcException), the channel was disposed mid-flight
     // (ObjectDisposedException), or the LS is fully down and can't even be discovered
@@ -104,6 +104,20 @@ Either way, a BARE `AgyModelUnavailableException` with NO channel-death cause (t
 not-in-catalog cases at `:319`/`:348`/`:358`) is NOT `channel_down` and is OUT OF SCOPE (it behaves as
 today — a genuine model-availability error, not a channel error). Do not blanket-catch
 `AgyModelUnavailableException` as `channel_down` — that would mislabel a real deprecated-model error.
+
+**F6 (caller-cancellation must NOT be mislabeled `channel_down` — MUST fold):** a gRPC call cancelled by
+the OUTER caller token surfaces as `RpcException` with `StatusCode.Cancelled` (the codebase already
+handles this form at `AgyView.cs:180`). A blanket `RpcException` match would intercept it and return a
+`channel_down` "restart the session" payload — swallowing the caller's cancellation and lying about a
+channel death. Rule: `StatusCode.Cancelled` is EXCLUDED from every channel-down catch and must propagate
+as cancellation, everywhere: (a) the central `RunAsync` filter (done above:
+`rpc.StatusCode != StatusCode.Cancelled`); (b) the `agy_status` local catch (same guard — a Cancelled
+RpcException there re-throws / propagates, it is NOT a `channel_down` state); (c) the F3 wrapper case — if
+the `AgyModelUnavailableException`'s inner `RpcException` is `Cancelled`, it is a cancellation, not
+`channel_down`; and (d) `ResolveSendModelAsync` at `:346` should let a `Cancelled` RpcException propagate
+cleanly rather than wrapping it as `AgyModelUnavailableException` in the first place. (The existing timeout
+path is unaffected — a timeout-CTS cancellation is already converted to `AgyModalHangException` before this
+catch; only a genuine OUTER-caller cancel reaches here as `Cancelled`.)
 
 **`agy_status` local catch (`AgyView.StatusAsync`)** — wrap the ENTIRE method body — `ConnectAndResolveAsync`,
 `GetCascadeTrajectoryAsync`, AND `ProbeIdleAsync` (F5: NOT just the first two — `ProbeIdleAsync`'s internal
@@ -155,6 +169,10 @@ Extend `AgyAskIntegrationTests` / `McpToolsIntegrationTests` with a fake LS that
    `AgyModelUnavailableException` leaking out), AND that `diagnostic.StatusCode` is the REAL inner gRPC status (`"Unavailable"`), NOT `"Unknown"` (F4 guard: the diagnostic unwrapped the inner cause). Complement: a `deprecated-model` `AgyModelUnavailableException`
    with NO channel cause must NOT be reported as `channel_down` (it stays a model error) — proving the fold
    distinguishes a wrapped channel death from a genuine model-availability error.
+6. **Caller-cancellation is NOT `channel_down` (F6 guard)** — drive `agy_ask`/`agy_status` and cancel the
+   OUTER `CancellationToken`; the fake surfaces `RpcException(StatusCode.Cancelled)`. Assert the call
+   propagates as a cancellation (`OperationCanceledException` / the framework's cancellation path), NOT a
+   `channel_down` result — the cancellation must not be swallowed or mislabeled.
 
 ## Out of scope
 - Auto-recover / reconnect via `LsDiscovery` rebuild (future direction; agy's #3 — revisit only if the
