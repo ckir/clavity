@@ -13,6 +13,7 @@ for rel in \
   skills/agy-capstone/SKILL.md \
   hooks/agy-after-reminder.sh \
   hooks/agy-seam-inject.sh \
+  hooks/agy-liveness-check.sh \
   knowledge/agy-assumptions.md \
   knowledge/agy-capabilities.md ; do
   if ! diff -q "$D/$rel" "$C/$rel" >/dev/null 2>&1; then
@@ -36,6 +37,18 @@ fi
 if ! diff -q <(jq -S '.hooks.PreToolUse' "$D/hooks/hooks.json") \
              <(jq -S '.hooks.PreToolUse' "$C/hooks/hooks.json") >/dev/null 2>&1; then
   echo "SEED-DRIFT: hooks/hooks.json PreToolUse (shared auto-fire hook) differs between the two plugins" >&2
+  status=1
+fi
+# The SessionStart block diverges by design (classic carries a variant-specific driver-guidance reset that
+# dotnet lacks), so compare ONLY the SHARED liveness ENTRY across both plugins. RETAIN THE GROUP WRAPPER (do
+# NOT flatten to the bare hook object): the group's `matcher` is load-bearing -- flattening to
+# `.hooks[]` would strip `matcher`, so a drifted matcher (e.g. classic's liveness group changed off "startup")
+# would compare identical and FALSE-GREEN (measured). Keep each SessionStart group, filter its `hooks` array
+# to only the liveness entry, and drop groups left with no liveness hook -- so `matcher` IS compared.
+sp_sel='[.hooks.SessionStart[]? | .hooks |= map(select((.command // "") | test("agy-liveness-check\\.sh"))) | select(.hooks | length > 0)]'
+if ! diff -q <(jq -S "$sp_sel" "$D/hooks/hooks.json") \
+             <(jq -S "$sp_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
+  echo "SEED-DRIFT: hooks/hooks.json SessionStart (shared liveness hook) differs between the two plugins" >&2
   status=1
 fi
 # Responder skill: the Claude Code plugin copy (renamed to `responder`, Option A/SP-0) and the
