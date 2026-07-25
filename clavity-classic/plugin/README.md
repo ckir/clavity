@@ -52,6 +52,11 @@ agy    plugin install ./clavity-classic/plugin
 Install only *stages* the skills — they register on each CLI's **next launch** (step 7 does that);
 restart a CLI you already have open.
 
+> **superpowers prerequisite (auto-fire only).** The agy disciplines (agy-first / agy-capstone) AUTO-FIRE via
+> a superpowers SessionStart/PreToolUse hook. superpowers is required only for that auto-fire; without it the
+> disciplines stay manually invokable (`agy-first` / `agy-capstone`). A boot-time notice tells you if it is
+> not detected as enabled.
+
 **6. Give agy its trigger rule** — see [MCP configuration](#mcp-configuration). Installing the plugin
 makes the responder skill *available* but does **not** make agy fire it on its own.
 

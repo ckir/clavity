@@ -25,6 +25,11 @@ clavity-dotnet/
 Requires the `clavity-ls` binary on PATH (installed by the clavity installer). Golden-header injection +
 the permanent-learning loop are the optional **agy-autotrain** add-on; this core plugin works without it.
 
+> **superpowers prerequisite (auto-fire only).** The agy disciplines (agy-first / agy-capstone) AUTO-FIRE via
+> a superpowers SessionStart/PreToolUse hook. superpowers is required only for that auto-fire; without it the
+> disciplines stay manually invokable (`agy-first` / `agy-capstone`). A boot-time notice tells you if it is
+> not detected as enabled.
+
 Ships via the `clavity-dotnet` standalone installer (`clavity-dotnet-setup-<VERSION>.exe`), which
 registers this plugin against a local, scoped marketplace for each detected agent (Claude Code / agy) —
 there is no remote marketplace to add. See [`clavity-dotnet/README.md`](../README.md) for the Quick
