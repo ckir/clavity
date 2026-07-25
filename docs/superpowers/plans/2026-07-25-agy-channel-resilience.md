@@ -274,6 +274,11 @@ public sealed class SurfacingModalGuard : IModalGuard
         private readonly IReadOnlyList<WaitStep>? _waitPlan;
         private int _waitCalls;
         public int WaitCalls => _waitCalls;
+        private int _trajectoryCalls;
+        public int TrajectoryCalls => _trajectoryCalls;
+        // When true, GetCascadeTrajectory throws RpcException(Unavailable) on the PROBE call (after >=1 wait window)
+        // while the pre-send before-trajectory (the first call) still succeeds. Drives the F2 probe-failure test.
+        private readonly bool _throwOnProbeTrajectory;
 ```
 
   (b) Extend the constructor to accept `waitPlan` — replace the constructor (lines 28-37) with:
@@ -281,7 +286,8 @@ public sealed class SurfacingModalGuard : IModalGuard
 ```csharp
         public FakeAskLs(
             string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial,
-            FetchAvailableModelsResponse? catalog = null, IReadOnlyList<WaitStep>? waitPlan = null)
+            FetchAvailableModelsResponse? catalog = null, IReadOnlyList<WaitStep>? waitPlan = null,
+            bool throwOnProbeTrajectory = false)
         {
             _cascadeId = cascadeId;
             _replyText = replyText;
@@ -289,10 +295,34 @@ public sealed class SurfacingModalGuard : IModalGuard
             _steps = new List<CascadeStep>(initial);
             _catalog = catalog;
             _waitPlan = waitPlan;
+            _throwOnProbeTrajectory = throwOnProbeTrajectory;
         }
 ```
 
-  (c) Replace `WaitForConversationFullyIdle` (lines 69-79) with:
+  (c) Replace `GetCascadeTrajectory` (the existing override) with a call-counting version that can fail the PROBE. Match the existing method by its `GetCascadeTrajectoryResponse GetCascadeTrajectory(...)` signature:
+
+```csharp
+        public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
+            GetCascadeTrajectoryRequest request, ServerCallContext context)
+        {
+            // The 1st call is AskAsync's pre-send before-trajectory; later calls are per-window progress probes.
+            var n = Interlocked.Increment(ref _trajectoryCalls);
+            if (_throwOnProbeTrajectory && n > 1)
+                throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "probe dead"));
+            lock (_gate)
+            {
+                var traj = new CascadeTrajectory { CascadeId = _cascadeId };
+                traj.Steps.AddRange(_steps);
+                return Task.FromResult(new GetCascadeTrajectoryResponse
+                {
+                    Trajectory = traj,
+                    NumTotalSteps = (uint)_steps.Count,
+                });
+            }
+        }
+```
+
+  (d) Replace `WaitForConversationFullyIdle` (the existing override) with:
 
 ```csharp
         public override async Task<WaitForConversationFullyIdleResponse> WaitForConversationFullyIdle(
@@ -479,6 +509,36 @@ public sealed class SurfacingModalGuard : IModalGuard
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public async Task AskAsync_probe_failure_fails_toward_stall_without_a_second_trajectory_call()
+    {
+        // F2 (agy panel round 4): when the per-window progress probe (GetCascadeTrajectory) throws, the loop must
+        // fail-toward possible_modal(stall) with a NULL diagnostic and make NO second trajectory call. The pre-fix
+        // code called BuildModalHangAsync -> BuildTimeoutDiagnosticAsync -> a 2nd GetCascadeTrajectory which, on the
+        // just-failed channel, would fail again and ESCAPE the loop as an uncaught RpcException -> channel_down,
+        // silently violating F2. On the buggy code this test throws RpcException (not AgyModalHangException) and
+        // TrajectoryCalls == 3, so it fails.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) }; // window elapses -> probe fires
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(),
+            waitPlan: plan, throwOnProbeTrajectory: true);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(120),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("probe dies"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            Assert.Null(ex.Diagnostic);             // fail-toward stall with a null diagnostic (no 2nd network hit)
+            Assert.Equal(2, fake.TrajectoryCalls);  // pre-send before-trajectory + the failing probe ONLY
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 ```
 
 - [ ] **Step 6: Run the tests to verify they fail** (red for the right reason)
@@ -549,7 +609,14 @@ Then update the `AskAsync` XML doc comment so its `<paramref name="timeout"/>` s
             }
             catch (RpcException)
             {
-                throw await BuildModalHangAsync(client, conversationId, before, start, IdleLimit.Stall, cancellationToken); // F2
+                // F2: fail-toward possible_modal(stall) WITHOUT a second network hit. BuildModalHangAsync would call
+                // BuildTimeoutDiagnosticAsync -> another GetCascadeTrajectoryAsync; the channel just failed THIS
+                // probe, so that retry would likely fail too and ESCAPE the loop as an uncaught RpcException ->
+                // central catch -> channel_down, silently violating F2's "fail-toward possible_modal". Throw the
+                // stall directly with a null diagnostic instead (agy panel round 4). The stall/absolute_max branches
+                // below keep the real diagnostic: their channel is alive, so BuildTimeoutDiagnosticAsync succeeds.
+                throw new AgyModalHangException(
+                    _modalGuard.OnLsTimeout("WaitForConversationFullyIdle", DateTime.UtcNow - start, IdleLimit.Stall), null);
             }
 
             if (total > lastProgress)
@@ -1058,7 +1125,18 @@ public sealed class AgyModelUnavailableException : Exception
             (RpcException { StatusCode: not StatusCode.Cancelled }) or ObjectDisposedException or LsDiscoveryException);
 ```
 
-- [ ] **Step 5: Thread the RpcException at the new-conversation path** — in `AgyView.cs`, replace the catch at lines 346-351 with a Cancelled-propagating split that passes the RpcException as the inner:
+- [ ] **Step 5: Thread the RpcException at the new-conversation path** — in `AgyView.cs`, inside `ResolveSendModelAsync`, locate this EXACT catch block (the one after the `Unimplemented` catch, in the new-conversation `catalog2` path) — the ANCHOR to match verbatim:
+
+```csharp
+        catch (RpcException ex)   // transient on a capable agy -> clear, non-crashing error (Spec: never crash).
+        {
+            throw new AgyModelUnavailableException(
+                $"Could not reach agy's model catalog to pick a default for this new conversation ({ex.StatusCode}). " +
+                "Retry once agy is responsive.");
+        }
+```
+
+Replace it with a Cancelled-propagating split that passes the RpcException as the inner (if the anchor is not found verbatim, STOP with `STATE_MISMATCH`):
 
 ```csharp
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
@@ -1194,7 +1272,7 @@ git commit -m "feat(clavity-ls): diagnose a wrapped channel death on the new-con
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Integration.Tests --filter AgyChannelDownTests`
 Expected: FAIL — today `StatusAsync` lets the `RpcException` escape to the central `RunAsync` catch, producing the `{status:"channel_down"}` ENVELOPE (lowercase `status`), so the `Assert.False(TryGetProperty("status"))` fails.
 
-- [ ] **Step 3: Wrap `StatusAsync` in a never-throwing local catch** — in `AgyView.cs`, replace `StatusAsync` (lines 114-132) with:
+- [ ] **Step 3: Wrap `StatusAsync` in a never-throwing local catch** — in `AgyView.cs`, replace the ENTIRE `StatusAsync` method — locate it by its signature anchor `public async Task<AgyStatus> StatusAsync(CancellationToken cancellationToken = default)` and replace from that line through its closing brace (if the signature is not found verbatim, STOP with `STATE_MISMATCH`) — with:
 
 ```csharp
     public async Task<AgyStatus> StatusAsync(CancellationToken cancellationToken = default)
