@@ -96,6 +96,21 @@ safety net, the max is deliberately generous; 600s is a middle default (a legiti
 exceeds it returns `absolute_max`, NOT a modal claim, with a "raise `CLAVITY_AGY_IDLE_MAX_SECONDS`" hint).
 Operators who run very long reviews can raise it or set `0`; the value is not load-bearing for correctness.
 
+**Progress-signal limit (F4 — owned tradeoff, not a regression):** the progress signal is the step-COUNT
+delta, which cannot distinguish a healthy single long-running step (a >`StallSeconds` compile/test/subagent
+that emits no intermediate step) from a genuine stall — both hold the step count static. This is NOT a
+regression: today's flat 120s `CancelAfter` (`AgyView.cs:173`) ALSO returns `possible_modal` for exactly
+that static-count case, so the new design matches today's behavior there while strictly improving the
+many-small-steps long-review case (the actual bug). Consequences, deliberately accepted: (a) `StallSeconds`
+IS the knob for long-single-step workloads — raise it; (b) the `stall` outcome is ADVISORY and
+NON-DESTRUCTIVE (the message is already sent; the caller retrieves/re-asks), so a misclassified long step
+costs a re-ask, never lost work; (c) the `stall` hint names both causes (above) so it is never misleading.
+Optional future enrichment (out of scope): if the trajectory exposes an in-flight/tool-executing indicator
+beyond the step count (the diagnostic already carries `LastStepKind`/`LastStepClass`), the loop could treat
+"last step is a tool actively executing" as progress and extend — but distinguishing an in-flight tool from
+a completed one via `Kind` must be verified against the real trajectory before relying on it, so it is
+deferred, not designed-in here.
+
 Parsed in `Program.cs` when building `AgyViewOptions` (invalid / unset -> the default). Both flow into
 `AgyView` as options, replacing the hardcoded `DefaultIdleWaitTimeout` usage. `DefaultIdleWaitTimeout`
 becomes the default for `CLAVITY_AGY_IDLE_STALL_SECONDS` (semantic: it was always really a
@@ -108,10 +123,15 @@ no-further-idle window, not a whole-turn budget).
   addition; the `status` string and existing fields are unchanged).
 - `elapsedSeconds` reports the TOTAL elapsed wait (not one window), so it is honest about how long we
   actually waited.
-- The `hint` text is refined to name the actual condition: a `stall` hint keeps the terminal-modal
-  guidance; an `absolute_max` hint says agy was still progressing but exceeded the max budget (raise
-  `CLAVITY_AGY_IDLE_MAX_SECONDS` or investigate a runaway) — do NOT tell the user to look for a modal when
-  agy was demonstrably active.
+- The `hint` text is refined to name the actual condition. The `stall` hint must NOT assert a terminal
+  modal as the only cause (F4): a static step count for `StallSeconds` means EITHER agy is stuck on a
+  terminal modal (auth/quota/consent) OR it is executing a single long-running step (a big compile/test/
+  subagent that emits no intermediate step) — the available progress signal (step-count delta) cannot
+  distinguish them. The hint names both and points at the knob: "no agy step progress in `StallSeconds` —
+  agy may be stuck on a terminal modal, or running a single long step; inspect the agy tab, and if your
+  workload has long single steps raise `CLAVITY_AGY_IDLE_STALL_SECONDS`." An `absolute_max` hint says agy
+  was still progressing but exceeded the max budget (raise `CLAVITY_AGY_IDLE_MAX_SECONDS` or investigate a
+  runaway) — do NOT tell the user to look for a modal when agy was demonstrably active.
 - A hung gRPC call (the RPC itself never returns) is bounded by the same window `cancelAfter`; it surfaces
   as a `stall` (no progress) — correct.
 - **Progress-probe failure (F2):** if the per-window step-count probe (`GetCascadeTrajectoryAsync`) itself
@@ -146,6 +166,11 @@ and can script step counts):
    invalid falls back to default, `MAX=0` disables the absolute cap.
 5. **Unchanged fast idle** — a conversation that idles immediately returns the reply with no extra
    trajectory probes (happy path untouched).
+6. **Long single step -> `stall` with the honest hint (F4)** — the fake never idles and holds the step
+   count STATIC past one `StallSeconds` window; assert `possible_modal` `limit:"stall"`, that the hint
+   names BOTH a terminal modal AND a single long-running step (not modal-only), and that the sent message
+   is untouched (non-destructive). Documents the owned tradeoff so a future edit can't silently regress the
+   hint back to modal-only.
 
 Keep the tests time-scaled (small stall/max seconds via options) so the suite stays fast. `ModalGuardTests`
 updated for the hint split.
