@@ -47,8 +47,9 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each round
    breached review-only. Because the capstone is a **completion GATE**, a breach is handled more
    strictly than agy-first's advisory skip: (a) surface the breach loudly to your human; (b) make a
    **best-effort** revert of the peer's changes to paths that were CLEAN in the before-snapshot (diff the
-   after-state against the before-snapshot; `git checkout --` a peer-MODIFIED tracked path, `rm -rf` a
-   peer-CREATED untracked path or directory) - **never** a blind `git reset --hard` / `git checkout -- .`, and
+   after-state against the before-snapshot; `git checkout --` a peer-MODIFIED tracked path, and delete
+   (recursively if a directory, in your shell's own idiom - NOT a hardcoded `rm -rf`, which a non-POSIX
+   shell like PowerShell rejects) a peer-CREATED untracked path) - **never** a blind `git reset --hard` / `git checkout -- .`, and
    **never auto-restore a path that was ALREADY dirty before** (that would destroy your own uncommitted
    work - surface it in the halt-and-ask instead). This revert is **best-effort, not guaranteed**: the
    envelope is review-only prompt-discipline, NOT a sandbox, so a determined breach (a destructive
@@ -142,7 +143,11 @@ something it no longer holds). Ledger entries are plain factual findings, not yo
   invocation, which has no breakpoint).
 - **Write on resume, not on the proposal.** Your session persists across the adjudication pause. AFTER
   the human confirms GREEN, resume and write the marker (below) as your next action; do NOT stop dead at
-  the proposal, and do NOT write on an unconfirmed proposal.
+  the proposal, and do NOT write on an unconfirmed proposal. **Write the sha you REVIEWED, not ambient
+  HEAD:** capture `git rev-parse HEAD` at the ALIGNED proposal and write THAT sha. If HEAD MOVED during
+  the adjudication pause (the human committed while you waited), that new commit is UNREVIEWED - do NOT
+  write the marker; re-enter a capstone round on the new HEAD instead. Writing ambient HEAD would green an
+  unreviewed commit.
 - **Override re-entry.** If the human rejects a proposed GREEN or names an unaddressed defect, **re-enter
   capstone rounds on that defect** rather than closing the book. A human "continue" / re-entry answer
   AUTHORIZES that ordered work; the cap does NOT re-halt inside the authorized extension. The
@@ -203,8 +208,10 @@ the same `HEAD`. Create `.clavity/agy-marks/` first if it does not exist.
 - **Path:** `.clavity/agy-marks/agy-capstone.head` - a single discipline-keyed marker, no `<plugin-id>`
   prefix (Option S, as for agy-first: the byte-identical body cannot carry a per-plugin literal and the
   two drivers are mutually exclusive). See `docs/agy-disciplines-marker-contract.md`.
-- **Content:** the output of `git rev-parse HEAD` at the terminal state, nothing else. If HEAD cannot
-  resolve, skip writing the marker (the discipline re-fires next trigger - safe).
+- **Content:** the REVIEWED sha - the `git rev-parse HEAD` captured at the human-confirmed GREEN (or
+  round-cap waiver) for the range that was ACTUALLY reviewed, nothing else - NOT an ambient HEAD
+  re-sampled at write time if code was committed during the adjudication pause (see the mid-adjudication
+  rule above). If HEAD cannot resolve, skip writing the marker (the discipline re-fires next trigger - safe).
 - **Written ONLY on a GATE-SATISFIED terminal state** - human-confirmed GREEN, or an explicit human
   **completion-gate waiver** (`round-cap`: the human accepts "done" despite still-live findings). A
   self-declared round-ALIGNED not yet confirmed, an override re-entry still in progress, a
