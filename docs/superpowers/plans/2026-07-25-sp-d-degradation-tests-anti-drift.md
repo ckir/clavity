@@ -508,11 +508,13 @@ Create `clavity-dotnet/plugin/hooks/agy-liveness-check.sh` (LF endings, pure ASC
 # PreToolUse). additionalContext/stdout would be injected into Claude's CONTEXT only and silently absorbed at
 # boot (no user turn) -- the silent-drop Decision 3 forbids.
 #
-# EXIT-CODE CONTRACT (three outcomes): (1) healthy / nothing to say -> exit 0, no stderr; (2) a DETECTION
-# OUTCOME warranting a notice (superpowers not-live incl. corrupt/unreadable settings, .no-agy active, or jq
-# missing) -> the line on stderr + exit 2; (3) a genuine UNEXPECTED internal error OUTSIDE detection -> falls
-# through to the terminal `exit 0` (fail-open; `set +e` continues past it). NO blanket `trap ... ERR` -- it
-# would swallow the settings-parse path and drop the advisory.
+# EXIT-CODE CONTRACT: (1) healthy / superpowers live -> exit 0, no stderr; (2) a DETECTION OUTCOME warranting
+# a notice (superpowers not-live incl. corrupt/unreadable settings, .no-agy active, or jq missing) -> the line
+# on stderr + exit 2. Every reachable end-state is one of those two explicit exits; there is NO code path
+# OUTSIDE detection. `set +e` is the fail-open guard: a mid-detection command failure does not abort the hook,
+# it continues to the not-live advisory (exit 2) -- non-blocking for SessionStart and fail-toward-loud, the
+# posture Decision 3 wants (a soft advisory beats a silent swallow for a liveness hook). NO blanket
+# `trap ... ERR` -- it would swallow the settings-parse path and drop the advisory. The ONLY silent outcome is (1).
 # Byte-identical across both driver plugins (kept honest by the seed-sync gate).
 set +e
 input=$(cat)
@@ -685,7 +687,7 @@ It extracts ONLY the liveness hook object across all SessionStart groups, so cla
 # The SessionStart block diverges by design (classic carries a variant-specific driver-guidance reset that
 # dotnet lacks), so compare ONLY the SHARED liveness hook object, identified by its command referencing
 # agy-liveness-check.sh. It must be byte-identical across both plugins.
-sp_sel='[.hooks.SessionStart[]?.hooks[]? | select(.command | test("agy-liveness-check\\.sh"))]'
+sp_sel='[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | test("agy-liveness-check\\.sh"))]'
 if ! diff -q <(jq -S "$sp_sel" "$D/hooks/hooks.json") \
              <(jq -S "$sp_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
   echo "SEED-DRIFT: hooks/hooks.json SessionStart (shared liveness hook) differs between the two plugins" >&2
@@ -938,19 +940,24 @@ Expected: `seed agent artifacts in sync (dotnet == classic)`.
 
 ```bash
 BASH="/c/Program Files/Git/bin/bash.exe"
-H=/c/Program\ Files/Git/bin/bash.exe
+HOOK="clavity-dotnet/plugin/hooks/agy-liveness-check.sh"
+# NOTE: env vars go on the BASH side of the pipe (`printf ... | VAR=x "$BASH" ...`), NOT before printf --
+# a prefix on printf sets the var only for printf, so the hook (a separate pipeline stage) never sees it.
 # 1. superpowers enabled (real user settings) -> SILENT, exit 0
-printf '{"cwd":".","source":"startup"}' | "$BASH" clavity-dotnet/plugin/hooks/agy-liveness-check.sh; echo "exit=$?"
-# 2. superpowers absent -> advisory on stderr, exit 2 (point CLAUDE_CONFIG_DIR at an empty dir)
-mkdir -p /tmp/sp-d-empty; CLAUDE_CONFIG_DIR=/tmp/sp-d-empty CLAUDE_PROJECT_DIR=/tmp/sp-d-empty printf '{"cwd":".","source":"startup"}' | "$BASH" clavity-dotnet/plugin/hooks/agy-liveness-check.sh; echo "exit=$?"
+printf '{"cwd":".","source":"startup"}' | "$BASH" "$HOOK"; echo "exit=$?"
+# 2. superpowers absent -> advisory on stderr, exit 2 (point CLAUDE_CONFIG_DIR + CLAUDE_PROJECT_DIR at empty dirs)
+mkdir -p /tmp/sp-d-empty
+printf '{"cwd":".","source":"startup"}' | CLAUDE_CONFIG_DIR=/tmp/sp-d-empty CLAUDE_PROJECT_DIR=/tmp/sp-d-empty "$BASH" "$HOOK"; echo "exit=$?"
 # 3. .no-agy present -> announce, exit 2
-mkdir -p /tmp/sp-d-noagy && touch /tmp/sp-d-noagy/.no-agy; printf '{"cwd":"/tmp/sp-d-noagy","source":"startup"}' | "$BASH" clavity-dotnet/plugin/hooks/agy-liveness-check.sh; echo "exit=$?"
-# 4. jq missing -> one warning, exit 2 (run with a PATH lacking jq)
-PATH="/c/Program Files/Git/usr/bin" printf '{"cwd":".","source":"startup"}' | "$BASH" clavity-dotnet/plugin/hooks/agy-liveness-check.sh; echo "exit=$?"
+mkdir -p /tmp/sp-d-noagy && touch /tmp/sp-d-noagy/.no-agy
+printf '{"cwd":"/tmp/sp-d-noagy","source":"startup"}' | "$BASH" "$HOOK"; echo "exit=$?"
+# 4. jq missing -> one warning, exit 2 (run bash with a PATH lacking jq)
+printf '{"cwd":".","source":"startup"}' | PATH="/c/Program Files/Git/usr/bin" "$BASH" "$HOOK"; echo "exit=$?"
 ```
 
 Expected: (1) no output, exit 0; (2) advisory line, exit 2; (3) `.no-agy` announce, exit 2; (4) jq-missing
-line, exit 2. (Adjust the `PATH` in case 4 if jq is reachable there; the goal is a jq-less PATH.)
+line, exit 2. (In case 4, confirm jq is NOT reachable under the reduced PATH -- if it is, point PATH at a dir
+that genuinely lacks jq. `cat`/`grep` must still resolve there for the hook to run.)
 
 - [ ] **Step 4: Confirm the SP-D commit range + clean tree**
 
