@@ -41,12 +41,16 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each round
    `.clavity/seams/<topic>.md` and send the peer the PATH; let it read the committed diff itself. Never
    consult it on a pasted summary of your own reading. Any measure-and-reproduce framing MUST name a
    scratch dir (`.clavity/scratch/<topic>/`) for the peer to work in, so it never writes to cwd.
-5. **Diff after** - re-check `git status` against the before-snapshot. If the tree changed, the peer
+5. **Diff after** - re-check `git status` AND `git rev-parse HEAD` (plus the reflog tip) against the
+   before-snapshot. If the working tree changed, OR HEAD/history moved (a peer `git reset` /
+   `git commit --amend` leaves `git status` clean yet mutates the very range under review), the peer
    breached review-only. Because the capstone is a **completion GATE**, a breach is handled more
    strictly than agy-first's advisory skip: (a) surface the breach loudly to your human; (b) revert
-   **only the paths the peer touched** (diff the after-state against the before-snapshot and restore
-   exactly those files) - **never** a blind `git reset --hard` / `git checkout -- .`, which would also
-   destroy your own legitimate uncommitted work; (c) then **HALT-AND-ASK the human** - do NOT
+   **only the peer-touched paths that were CLEAN in the before-snapshot** (diff the after-state against
+   the before-snapshot and restore exactly those) - **never** a blind `git reset --hard` /
+   `git checkout -- .`, and **never auto-restore a path that was ALREADY dirty before** (restoring it to
+   HEAD would destroy your own uncommitted work - surface such a path in the halt-and-ask instead);
+   (c) then **HALT-AND-ASK the human** - do NOT
    auto-proceed and do NOT emit `[VERDICT: SKIPPED-UNREACHABLE]` (that token is reserved for a genuine
    connectivity failure and auto-proceeds the gate; a breach must not silently pass "done"). The human
    decides: re-run the capstone cleanly, or explicitly waive (which writes the WAIVED audit line below).
@@ -111,9 +115,11 @@ attempt a targeted repro/probe in the scratch dir (`.clavity/scratch/<topic>/`) 
 it is still genuinely unmeasurable, surface it to your human as **UNVERIFIED** - never silently fold it
 as verified, never silently drop it. A material UNVERIFIED finding blocks a clean `[VERDICT: ALIGNED]`
 until the human rules. The ruling is a **per-finding disposition, distinct from the global waiver below**:
-either (a) direct a fix (folded next round), or (b) explicitly ACCEPT the risk, recorded as a durable
-audit line (`<iso-8601>  agy-capstone  UNVERIFIED-ACCEPTED  HEAD=<sha>  <finding>`) that does NOT write
-the completion marker and does NOT abort the capstone - the loop continues and can still reach ALIGNED.
+either (a) direct a fix (folded next round), or (b) explicitly ACCEPT the risk, appended as a durable
+audit line to `.clavity/agy-marks/skipped.log` (the same audit log the skip and waiver paths use; create
+`.clavity/agy-marks/` first if absent): `<iso-8601>  agy-capstone  UNVERIFIED-ACCEPTED  HEAD=<sha>  <finding>`.
+This line does NOT write the completion marker and does NOT abort the capstone - the loop continues and
+can still reach ALIGNED.
 
 ## Do-not-re-raise ledger
 Keep a running list of already-folded and already-refuted findings, and **inline it into every round's
