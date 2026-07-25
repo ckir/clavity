@@ -5,34 +5,21 @@
 # The comprehensive hook-activation matrix (incl. the jq-missing loud line) is SP-D.
 
 BeforeAll {
-    # $PSScriptRoot is scripts/tests/ ; go up TWO levels (tests -> scripts -> repo root).
+    . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
     $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $script:Hook = Join-Path $RepoRoot 'clavity-dotnet/plugin/hooks/agy-seam-inject.sh'
+    $bashDir = Split-Path -Parent (Get-GitBashOrThrow)
+    $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')
+    # An empty HOME fixture so a real global ~/.claude/.no-agy on the dev box can't suppress the hook mid-test.
+    $script:CleanHome = Join-Path ([IO.Path]::GetTempPath()) ("sp-c-home-" + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path (Join-Path $script:CleanHome '.claude') -Force | Out-Null
 
-    # bash is required (the repo already ships bash hooks + a bash sync-check). Fail loudly
-    # if absent rather than silently skipping — a skipped smoke is a false green.
-    $script:Bash = (Get-Command bash -ErrorAction SilentlyContinue)?.Source
-    if (-not $Bash) { throw 'bash not found on PATH; the SP-C hook smoke requires bash.' }
-
-    function Invoke-Hook {
-        param([string]$Skill, [string]$Cwd = '.')
+    function Invoke-Hook { param([string]$Skill, [string]$Cwd = '.')
         $payload = @{ tool_input = @{ skill = $Skill }; cwd = $Cwd } | ConvertTo-Json -Compress
-        $out = $payload | & $script:Bash $script:Hook 2>$null
-        return (($out | Out-String).Trim())
-    }
-
-    # A throwaway git repo so the debounce read (git -C "$cwd" rev-parse HEAD) has a real HEAD
-    # without touching the real repo. cwd is passed as the payload's .cwd (forward-slashed).
-    function New-TempRepo {
-        $dir = Join-Path ([IO.Path]::GetTempPath()) ("sp-c-" + [Guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        & git -C $dir init -q
-        # Signing-agnostic + hook-free so the fixture survives a box with global commit.gpgsign
-        # or a core.hooksPath (unset on the author's box, but this is committed portable test code).
-        & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit --allow-empty -qm init
-        return $dir
+        (Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ HOME = $script:CleanHome }).StdOut
     }
 }
+AfterAll { Remove-Item -LiteralPath $script:CleanHome -Recurse -Force -ErrorAction SilentlyContinue }
 
 Describe 'agy-seam-inject.sh' {
     It 'injects the AGY-FIRST directive on a brainstorm seam' {
@@ -95,6 +82,19 @@ Describe 'agy-seam-inject.sh' {
         } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'emits the LOUD jq-missing line on a seam match when jq is absent' {
+        $repo = New-TempRepo
+        try {
+            $payload = @{ tool_input = @{ skill = 'superpowers:brainstorming' }; cwd = ($repo -replace '\\','/') } | ConvertTo-Json -Compress
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $script:CleanHome }
+            $r.StdOut | Should -Match 'guard inactive: missing jq'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'is silent (no jq-missing line) on a NON-seam skill when jq is absent' {
+        $payload = @{ tool_input = @{ skill = 'superpowers:writing-plans' }; cwd = '.' } | ConvertTo-Json -Compress
+        $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $script:CleanHome }
+        $r.StdOut | Should -BeNullOrEmpty
+    }
     It 'ships as pure ASCII (project mojibake discipline)' {
         $bytes = [IO.File]::ReadAllBytes($script:Hook)
         ($bytes | Where-Object { $_ -gt 127 }).Count | Should -Be 0
