@@ -32,10 +32,15 @@ AGY-AFTER panel 3 rounds + hardening delta 3 rounds).
   WSL bash. The existing SP-C smoke uses `Get-Command bash` and is therefore fragile locally -- Task 5 fixes it.
 - **Git Bash accepts forward-slash Windows hook paths** (`C:/Users/.../x.sh`) and returns the hook's real exit
   code; `$errFile` capture via `2>$errFile` works; `exit 2` surfaces as `$LASTEXITCODE = 2`.
-- **Env passthrough (Git Bash / MSYS):** `CLAUDE_CONFIG_DIR` and `CLAUDE_PROJECT_DIR` set from PowerShell reach
-  the hook as usable POSIX-converted paths when set to ABSOLUTE Windows paths. `HOME` is MSYS-special: a
-  non-absolute value is mangled; an absolute fixture path is the required form (Task 1 validates this
-  empirically before the suite relies on it).
+- **Env passthrough (Git Bash / MSYS):** `CLAUDE_CONFIG_DIR` / `CLAUDE_PROJECT_DIR` / `HOME` set from
+  PowerShell reach the hook in their RAW Windows form (MSYS auto-POSIX-conversion applies to CLI arguments,
+  NOT to inherited environment variables -- CORRECTED during Task-1 execution; the earlier "POSIX-converted"
+  claim was wrong, measured on Git Bash 5.3.15 cygwin). This does NOT matter: Cygwin/Git-Bash resolves a
+  raw Windows-form path (`C:\...\settings.json`) transparently in `[ -f ... ]` and as a `jq` filename
+  argument (measured: STAT=OK, jq reads it). So the hooks work unchanged, and the tests assert filesystem
+  RESOLUTION of an env-passed absolute dir (a marker/settings file is found), NEVER a path-string FORMAT.
+  ABSOLUTE fixture paths are still required (a relative `HOME` is mangled); Task 1 validates this empirically
+  before the suite relies on it.
 - **`.gitignore:32` = `docs/superpowers/*`** ignores this plan file's tree; commit new plan/spec files with
   `git add -f`. **`.gitattributes:12` = `*.sh text eol=lf`** -- every new/edited `.sh` MUST stay LF.
 - **`just test-scripts` = `pwsh -c "Invoke-Pester scripts/tests -Output Detailed -CI"`** -- a new
