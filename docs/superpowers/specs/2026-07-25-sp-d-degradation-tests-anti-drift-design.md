@@ -102,6 +102,13 @@ authoritative presence check.**
 but a forgotten **global** `~/.claude/.no-agy` would silently kill the disciplines for every project. The
 SessionStart hook MUST announce when `.no-agy` is suppressing them, naming the path:
 *"[AGY-DISCIPLINES] suppressed by .no-agy at &lt;path&gt;."* (Loud, not silent -- the whole point of Decision 3.)
+- **This notice hook must NOT self-suppress on `.no-agy` (consuming-agent expertise -- a near-certain
+  implementer trap).** Every sibling hook (`agy-seam-inject.sh`, `agy-after-reminder.sh`,
+  `agy-drive-session-reset.sh`) does `[ -f .no-agy ] && exit 0` early. But THIS hook's whole job is to REPORT
+  that suppression, so it must run to completion and emit the announce -- it must never `exit 0` on `.no-agy`
+  the way the siblings do. An implementer copying the sibling preamble verbatim would reintroduce the exact
+  silent-kill Decision 3 forbids. (It still fails open on genuine errors; it just does not treat `.no-agy` as
+  an early-exit.)
 
 ---
 
@@ -113,6 +120,12 @@ SessionStart hook MUST announce when `.no-agy` is suppressing them, naming the p
 - **SessionStart provides `.cwd` and `.source` on stdin (panel F6, measured):** the existing classic
   `agy-drive-session-reset.sh` already reads both and checks `${cwd}/.no-agy` + `${HOME}/.claude/.no-agy`, so
   the `.no-agy` announce (which needs cwd) is feasible and has a working precedent to mirror.
+- **Emission mechanism = `hookSpecificOutput.additionalContext` (consuming-agent expertise).** There is no
+  reliable direct user-facing print for a plugin SessionStart hook; the notice is emitted as SessionStart
+  `additionalContext` (the same JSON shape the sibling hooks emit), which the active LLM sees and surfaces to
+  the user -- the proven best-effort model-relay path SP-C's F10 spike validated for injected directives. This
+  is consistent with the epic's best-effort posture: the notice is a strong nudge the model relays, not a hard
+  UI element. (`hookEventName: "SessionStart"`.)
 - **Manifest divergence to respect:** `clavity-classic`'s `hooks.json` already carries a **variant-specific**
   `SessionStart` entry (its driver-guidance reset); `clavity-dotnet` has **no** `SessionStart` block today.
   So the shared degradation-notice registration must be **added to both**, and the anti-drift check must
