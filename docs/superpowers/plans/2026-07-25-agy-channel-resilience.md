@@ -408,6 +408,35 @@ public sealed class SurfacingModalGuard : IModalGuard
     }
 
     [Fact]
+    public async Task AskAsync_reports_absolute_max_not_stall_when_a_budget_clamped_window_finds_no_progress()
+    {
+        // agy panel round 3 guard: window 1 progresses (resets the stall window), then the absolute-max budget
+        // clamps window 2 to the short remainder, which elapses with NO progress. The label MUST be absolute_max
+        // (the budget was the binding cap), NOT stall (which would tell the operator to raise the wrong knob).
+        // This FAILS on the pre-fix code, which threw Stall unconditionally in the no-progress branch.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false), // window 1: progresses
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false), // window 2 (budget-clamped): no progress
+        };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(250), // window 1 (150ms) < 250ms; window 2 clamps to the ~100ms remainder
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("progress then quit"));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task AskAsync_fast_idle_returns_immediately_in_one_window()
     {
         // Happy path unchanged: the server reports idle on the first window -> reply, no stall machinery.
@@ -525,6 +554,12 @@ Then update the `AskAsync` XML doc comment so its `<paramref name="timeout"/>` s
 
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
+            else if (absoluteMax > TimeSpan.Zero && (DateTime.UtcNow - start) >= absoluteMax)
+                // Honest label (agy panel round 3): if THIS window was clamped by the absolute-max budget and it
+                // elapsed with no progress, the wait ended because the TOTAL budget ran out — NOT a stall. Reporting
+                // Stall here would tell the operator to raise CLAVITY_AGY_IDLE_STALL_SECONDS (the wrong knob) when
+                // CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.
+                throw await BuildModalHangAsync(client, conversationId, before, start, IdleLimit.AbsoluteMax, cancellationToken);
             else
                 throw await BuildModalHangAsync(client, conversationId, before, start, IdleLimit.Stall, cancellationToken);
         }
@@ -919,19 +954,23 @@ public class AgyChannelDownTests
     }
 
     [Fact]
-    public async Task Caller_cancellation_is_not_reported_as_channel_down()
+    public async Task A_grpc_cancelled_status_is_not_reported_as_channel_down()
     {
-        // F6 end-to-end: a pre-cancelled token aborts ConnectAndResolve as an OperationCanceledException -> it
-        // propagates as a cancellation, NOT a channel_down result (which would swallow the cancel).
-        var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable, sendThenThrowOnWait: true);
+        // F6 end-to-end (agy panel round 2, [VERDICT: REJECT] fold): a gRPC call cancelled by the outer token
+        // surfaces as RpcException{StatusCode.Cancelled}. It must be EXCLUDED from channel_down and propagate as a
+        // cancellation. NOTE the earlier draft pre-cancelled a local token, which threw OperationCanceledException
+        // at ConnectAndResolveAsync's ThrowIfCancellationRequested BEFORE any gRPC call — trivially passing without
+        // ever exercising the `rpc.StatusCode != StatusCode.Cancelled` guard. Force the guard by having the fake
+        // surface a real RpcException{Cancelled} from the first RPC and asserting it propagates (NOT channel_down):
+        // if the `!= StatusCode.Cancelled` exclusion were removed, IsChannelDown would return true and this would
+        // instead return a channel_down AgyStatus (no throw), failing the assertion.
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.Cancelled); // GetCascadeTrajectory throws Cancelled
         await using var app = await StartAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            using var cts = new CancellationTokenSource();
-            cts.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => McpTools.AgyStatus(ViewFor(cliLog), cts.Token));
+            var ex = await Assert.ThrowsAsync<RpcException>(() => McpTools.AgyStatus(ViewFor(cliLog)));
+            Assert.Equal(StatusCode.Cancelled, ex.StatusCode); // propagated as a cancellation, not masked
         }
         finally { Directory.Delete(dir, true); }
     }
