@@ -1,11 +1,14 @@
+using System.Text.Json;
 using Clavity.Ls;
 using Clavity.Ls.Proto;
+using Clavity.Mcp;
 using Grpc.Core;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
 
 namespace Clavity.Integration.Tests;
 
@@ -37,11 +40,20 @@ public class AgyAskIntegrationTests
         // When true, GetCascadeTrajectory throws RpcException(Unavailable) on the PROBE call (after >=1 wait window)
         // while the pre-send before-trajectory (the first call) still succeeds. Drives the F2 probe-failure test.
         private readonly bool _throwOnProbeTrajectory;
+        // Gap-3: when true, GetAvailableModels ALWAYS throws a transient RpcException(Unavailable) — regardless of
+        // whether a catalog was supplied — to drive the catalog-unreachable warn-and-proceed path for a conversation
+        // that already has a resolvable trajectory model.
+        private readonly bool _throwCatalogUnavailable;
+        // Gap-1 (idle-wait caller-cancel): signalled the instant a "never idle this window" WaitForConversationFullyIdle
+        // call is genuinely BLOCKED server-side, so a test can cancel the CALLER token only once it is certain the
+        // client is truly parked inside that RPC — never racing a fixed delay against cold gRPC-channel setup time.
+        private readonly TaskCompletionSource _waitBlockedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task WaitBlockedSignal => _waitBlockedTcs.Task;
 
         public FakeAskLs(
             string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial,
             FetchAvailableModelsResponse? catalog = null, IReadOnlyList<WaitStep>? waitPlan = null,
-            bool throwOnProbeTrajectory = false)
+            bool throwOnProbeTrajectory = false, bool throwCatalogUnavailable = false)
         {
             _cascadeId = cascadeId;
             _replyText = replyText;
@@ -50,6 +62,7 @@ public class AgyAskIntegrationTests
             _catalog = catalog;
             _waitPlan = waitPlan;
             _throwOnProbeTrajectory = throwOnProbeTrajectory;
+            _throwCatalogUnavailable = throwCatalogUnavailable;
         }
 
         public string? LastSentText { get; private set; }
@@ -111,6 +124,7 @@ public class AgyAskIntegrationTests
                 }
             }
             // Never idle this window: block until the client's per-window CancelAfter cancels the call.
+            _waitBlockedTcs.TrySetResult();
             await Task.Delay(Timeout.Infinite, context.CancellationToken);
             return new WaitForConversationFullyIdleResponse { TimedOut = false }; // unreachable
         }
@@ -129,6 +143,8 @@ public class AgyAskIntegrationTests
         public override Task<GetAvailableModelsResponse> GetAvailableModels(
             FetchAvailableModelsRequest request, ServerCallContext context)
         {
+            if (_throwCatalogUnavailable)
+                throw new RpcException(new Status(StatusCode.Unavailable, "catalog down"));
             if (_catalog is null)
                 throw new RpcException(new Status(StatusCode.Unimplemented, "older agy"));
             return Task.FromResult(new GetAvailableModelsResponse { AvailableModels = _catalog });
@@ -145,6 +161,44 @@ public class AgyAskIntegrationTests
         builder.Services.AddSingleton(fake);
         var app = builder.Build();
         app.MapGrpcService<FakeAskLs>();
+        await app.StartAsync();
+        return app;
+    }
+
+    // Gap-1 (boot-race caller-cancel): GetAllCascadeTrajectories blocks INDEFINITELY (not a fixed delay) so a
+    // precise CancelAfter on the caller token deterministically lands mid-call. Mirrors the pattern already used by
+    // AgyViewIntegrationTests.HangingMapFakeLs (which uses a fixed 30s delay for a different assertion — a
+    // sub-boot-budget wall-clock bound). This variant needs a truly indefinite block, hence the separate class.
+    private sealed class HangingDiscoveryFakeLs : LanguageServerService.LanguageServerServiceBase
+    {
+        // Signalled the instant this handler is genuinely blocked, so the test can cancel the caller token only
+        // once it is certain AskAsync is truly parked in ConnectAndResolveAsync's discovery call — never racing a
+        // fixed delay against cold gRPC-channel setup time.
+        private readonly TaskCompletionSource _blockedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task BlockedSignal => _blockedTcs.Task;
+
+        public override async Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            _blockedTcs.TrySetResult();
+            await Task.Delay(Timeout.Infinite, context.CancellationToken);
+            return new GetAllCascadeTrajectoriesResponse(); // unreachable
+        }
+    }
+
+    // Generic sibling of StartFakeAsync(FakeAskLs) for hosting a DIFFERENT fake service type (e.g.
+    // HangingDiscoveryFakeLs). C# prefers the non-generic overload above when the argument IS a FakeAskLs, so
+    // existing call sites are unaffected.
+    private static async Task<WebApplication> StartFakeAsync<T>(T fake) where T : LanguageServerService.LanguageServerServiceBase
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.ConfigureKestrel(o => o.ConfigureEndpointDefaults(lo => lo.Protocols = HttpProtocols.Http2));
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.AddGrpc();
+        builder.Services.AddSingleton(fake);
+        var app = builder.Build();
+        app.MapGrpcService<T>();
         await app.StartAsync();
         return app;
     }
@@ -527,6 +581,139 @@ public class AgyAskIntegrationTests
             Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
             Assert.Null(ex.Diagnostic);             // fail-toward stall with a null diagnostic (no 2nd network hit)
             Assert.Equal(2, fake.TrajectoryCalls);  // pre-send before-trajectory + the failing probe ONLY
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_propagates_a_caller_cancel_during_the_idle_wait_never_possible_modal()
+    {
+        // Gap-1 (idle-wait): the fake blocks forever in WaitForConversationFullyIdle, so AskAsync is parked in
+        // WaitForIdleWithProgressAsync. Cancelling the CALLER token must propagate a cancellation, not become
+        // possible_modal(stall). A LONG stall window ensures the stall machinery does not fire before we cancel.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromSeconds(30),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            using var cts = new CancellationTokenSource();
+            var ask = view.AskAsync("cancel me", cancellationToken: cts.Token);
+            // Cancel only once the fake proves AskAsync is genuinely parked in the idle-wait RPC — never race a
+            // fixed delay against cold gRPC-channel setup time (which, on a loaded machine, can itself exceed a
+            // few hundred ms and would otherwise land the cancel on an EARLIER call instead of the intended one).
+            await fake.WaitBlockedSignal.WaitAsync(TimeSpan.FromSeconds(10));
+            cts.Cancel();
+            var ex = await Record.ExceptionAsync(() => ask);
+            Assert.NotNull(ex);
+            Assert.IsNotType<AgyModalHangException>(ex); // NOT reclassified as possible_modal
+            Assert.True(ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled }, $"unexpected: {ex}");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_propagates_a_caller_cancel_during_the_boot_race()
+    {
+        // Gap-1 (boot-race / capstone F1): the fake's GetAllCascadeTrajectories blocks forever, so AskAsync is
+        // parked in ConnectAndResolveAsync. Cancelling the CALLER token must propagate as a cancellation, never be
+        // swallowed into channel_down/LsDiscoveryException. A LONG BootRaceTimeout keeps the boot-race deadline
+        // from firing before we cancel.
+        var discoveryFake = new HangingDiscoveryFakeLs();
+        await using var app = await StartFakeAsync(discoveryFake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(30),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            using var cts = new CancellationTokenSource();
+            var ask = view.AskAsync("cancel me", cancellationToken: cts.Token);
+            // Same determinism fix as the idle-wait test above: cancel only once we're certain AskAsync is truly
+            // parked in the discovery call, not racing cold gRPC-channel setup time.
+            await discoveryFake.BlockedSignal.WaitAsync(TimeSpan.FromSeconds(10));
+            cts.Cancel();
+            var ex = await Record.ExceptionAsync(() => ask);
+            Assert.NotNull(ex);
+            Assert.IsNotType<AgyModalHangException>(ex);
+            Assert.IsNotType<LsDiscoveryException>(ex); // must THROW a cancellation, not the channel_down cause
+            Assert.True(ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled }, $"unexpected: {ex}");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_serializes_the_possible_modal_payload_when_agy_stalls()
+    {
+        // Gap-2: McpTools.AgyAsk must serialize {status:"possible_modal", limit:"stall", hint:..., ...} when the
+        // idle-wait stalls. The stall-machinery tests above call AgyView.AskAsync directly, bypassing McpTools'
+        // JSON serialization entirely — this pins the actual wire shape Claude parses (a rename of status/limit
+        // would break Claude's possible_modal handling loop, but would NOT fail any AgyView-level test).
+        // Placed here (not McpToolsIntegrationTests.cs) because that file's FakeLs.WaitForConversationFullyIdle
+        // always returns immediately (TimedOut = false) and cannot be made to stall; FakeAskLs's waitPlan can.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(120),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var result = await McpTools.AgyAsk(view, "stall me");
+            var text = ((TextContentBlock)result.Content[0]).Text;
+            using var doc = JsonDocument.Parse(text);
+            Assert.Equal("possible_modal", doc.RootElement.GetProperty("status").GetString());
+            Assert.Equal("stall", doc.RootElement.GetProperty("limit").GetString());
+            Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("hint").GetString()));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_proceeds_with_the_trajectory_model_when_the_catalog_is_transiently_unreachable()
+    {
+        // Gap-3: an EXISTING conversation already has a resolvable trajectory model (source: trajectory), so the
+        // catalog is consulted only for deprecation VALIDATION, not required. When GetAvailableModels throws a
+        // transient/dead RpcException (Unavailable, not Unimplemented/Cancelled), ResolveSendModelAsync must WARN to
+        // Diagnostics and PROCEED with the trajectory model rather than failing the ask (F2 first-block broad catch,
+        // AgyView.cs ~line 436-441). Reuses the trajectory-model fake pattern from
+        // AskAsync_sends_the_conversations_own_model_from_the_trajectory, with a catalog that always throws.
+        var initial = new[]
+        {
+            new CascadeStep
+            {
+                Kind = 15,
+                Metadata = new CortexStepMetadata { GeneratorModel = 1016 },
+                UserInput = new CascadeUserInput { Text = "prior assistant turn" },
+            },
+        };
+        var fake = new FakeAskLs("conv-1", "ok", TimeSpan.FromMilliseconds(50), initial, throwCatalogUnavailable: true);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        var diagnostics = new StringWriter();
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, Diagnostics = diagnostics });
+            var reply = await view.AskAsync("please do X"); // must SUCCEED despite the catalog being unreachable.
+
+            Assert.Equal(1016, fake.LastSentModel);
+            Assert.Equal("ok", reply.Answer);
+            var diagText = diagnostics.ToString();
+            Assert.Contains("WARNING", diagText);
+            Assert.Contains("catalog", diagText);
         }
         finally { Directory.Delete(dir, true); }
     }

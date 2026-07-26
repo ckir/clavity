@@ -311,4 +311,30 @@ public class AgyChannelDownTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public async Task Boot_race_never_reachable_reports_channel_down()
+    {
+        // Gap-4: discovery (GetAllCascadeTrajectories) NEVER succeeds -- every poll throws the dead status, so
+        // ConnectAndResolveAsync never obtains a client and hits the boot-race deadline with sawChannelDeath=true,
+        // throwing LsDiscoveryException -> channel_down (NOT waiting_for_human, since reachedLsButEmpty never gets
+        // set when every poll dies pre-flight). A SHORT BootRaceTimeout keeps this test fast.
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable, throwOnDiscovery: true);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var result = await McpTools.AgyAsk(view, "hi");
+            var text = ((TextContentBlock)result.Content[0]).Text;
+            using var doc = JsonDocument.Parse(text);
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("status").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
