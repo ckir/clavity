@@ -318,7 +318,13 @@ public sealed class AgyView
     private async Task<(LsClient Client, string ConversationId)> ConnectAndResolveAsync(CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow + _options.BootRaceTimeout;
-        var reachedLsButEmpty = false;
+        var reachedLsButEmpty = false;   // did ANY poll reach the LS up-but-empty (E3 pending signal)?
+        // Did any poll see a GENUINE channel death (a non-DeadlineExceeded RpcException)? A death AFTER a reached-empty
+        // must win at the deadline (report channel_down, not waiting_for_human) — otherwise an LS that was reached
+        // empty once and then DIED would trap the operator waiting on a dead server (capstone R2). A DeadlineExceeded
+        // is only the boot-race budget clamp expiring a poll; it is NOT evidence of death, so it must NOT flip this
+        // (else a healthy always-empty LS whose final clamped poll times out would be mis-reported as channel_down).
+        var sawChannelDeath = false;
 
         while (true)
         {
@@ -349,7 +355,13 @@ public sealed class AgyView
             // A caller-cancel surfaces as RpcException{Cancelled}; do NOT swallow it — otherwise a cancel that
             // coincides with boot-race deadline expiry falls through to the LsDiscoveryException throw below and is
             // mis-reported as channel_down (capstone F1). A real boot-race timeout is DeadlineExceeded, not Cancelled.
-            catch (RpcException ex) when (ex.StatusCode != StatusCode.Cancelled) { } // LS not answering yet.
+            catch (RpcException ex) when (ex.StatusCode != StatusCode.Cancelled)
+            {
+                // A genuine channel death (Unavailable/Internal/...) means the LS is no longer reachable; record it so
+                // the deadline reports channel_down over a stale reached-empty. DeadlineExceeded is just the clamped
+                // boot-race budget expiring this poll — NOT a death — so it must not set this.
+                if (ex.StatusCode != StatusCode.DeadlineExceeded) sawChannelDeath = true;
+            }
             finally
             {
                 // Dispose on every non-handoff exit: retry, empty map, OR an unhandled throw (e.g. cancellation
@@ -359,7 +371,9 @@ public sealed class AgyView
 
             if (DateTime.UtcNow >= deadline)
             {
-                if (reachedLsButEmpty)
+                // Reached-empty means "agy is up, waiting for the human to start a conversation" — UNLESS we later saw
+                // the channel die, in which case it's dead and the operator must restart (channel_down), not wait.
+                if (reachedLsButEmpty && !sawChannelDeath)
                     throw new AgyConversationPendingException(
                         "agy is running but has no conversation yet. WAIT for the human to start or continue the " +
                         "agy session, then try again — do NOT auto-retry in a loop.");

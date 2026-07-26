@@ -261,4 +261,54 @@ public class AgyChannelDownTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // Boot-race fake: the LS is reachable-but-EMPTY on the first discovery poll (which latches reachedLsButEmpty in
+    // the buggy code), then the channel DIES on every subsequent poll. Drives the capstone-R2 latch regression.
+    private sealed class FakeReachedEmptyThenDeadLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _discoveryCalls;
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            // Poll 1: reachable, but no conversation yet (empty map) -> ConnectAndResolve marks reachedLsButEmpty.
+            // Poll 2+: the channel is dead. (BootRaceTimeout is generous so discovery succeeds and >=1 death poll
+            // follows the empty one before the deadline — the last poll before the deadline is a death.)
+            if (System.Threading.Interlocked.Increment(ref _discoveryCalls) == 1)
+                return Task.FromResult(new GetAllCascadeTrajectoriesResponse());
+            throw new RpcException(new Status(StatusCode.Unavailable, "agy died mid-boot-race"));
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_reached_empty_then_dead_reports_channel_down_not_waiting_for_human()
+    {
+        // Capstone R2 regression: reachedLsButEmpty must reflect only the MOST RECENT poll. If the LS is reached
+        // empty once and then dies, the boot-race deadline must throw LsDiscoveryException (-> channel_down /
+        // "restart the session"), NOT a latched AgyConversationPendingException (-> waiting_for_human), which would
+        // trap the operator waiting on a dead server. On the pre-fix (latched) code agy_status returns the
+        // waiting_for_human envelope (no "State" property), so GetProperty("State") throws and this test fails.
+        var fake = new FakeReachedEmptyThenDeadLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            // Fixed: reachedLsButEmpty reflects only the LAST poll (a death) -> LsDiscoveryException at the deadline
+            // -> channel_down AgyStatus (Diagnostic.StatusCode "LsDiscovery"). Buggy (latched): the stale empty-poll
+            // flag throws AgyConversationPendingException -> the waiting_for_human envelope (lowercase "status", no
+            // "State"), so GetProperty("State") throws and the test fails RED.
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.False(doc.RootElement.TryGetProperty("status", out _)); // NOT the waiting_for_human error envelope
+            Assert.Equal("LsDiscovery", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
