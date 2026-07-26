@@ -349,6 +349,11 @@ public sealed class AgyView
                 }
 
                 reachedLsButEmpty = true; // LS up, but no conversation yet (E3).
+                // A successful reach supersedes any EARLIER transient death (capstone R3 "flapping"): the LS is
+                // demonstrably up now, so a startup-transient Unavailable (gRPC service still binding on poll 1)
+                // must not latch and mislabel a healthy waiting-for-human LS as channel_down. sawChannelDeath thus
+                // reflects only the MOST RECENT conclusive poll (empty here, death in the catch below).
+                sawChannelDeath = false;
             }
             catch (LsDiscoveryException) { }  // log/port not ready, or port not listening yet.
             catch (IOException) { }           // cli.log not present yet.

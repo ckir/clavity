@@ -337,4 +337,49 @@ public class AgyChannelDownTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    // Boot-race fake: a TRANSIENT death on the first discovery poll (the LS has bound the port but its gRPC
+    // service is not ready yet -> Unavailable), then reachable-but-EMPTY forever (the LS is up, waiting for the
+    // human to start a conversation). Drives the capstone-R3 "flapping" regression.
+    private sealed class FakeTransientThenEmptyLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private int _discoveryCalls;
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            if (System.Threading.Interlocked.Increment(ref _discoveryCalls) == 1)
+                throw new RpcException(new Status(StatusCode.Unavailable, "gRPC service still binding"));
+            return Task.FromResult(new GetAllCascadeTrajectoriesResponse()); // reachable but empty -> waiting_for_human
+        }
+    }
+
+    [Fact]
+    public async Task Boot_race_transient_death_then_reached_empty_reports_waiting_for_human_not_channel_down()
+    {
+        // Capstone R3 regression: sawChannelDeath must reflect only the MOST RECENT conclusive poll, so a healthy
+        // LS whose gRPC service throws a transient Unavailable while still binding (poll 1) and then comes up empty
+        // (poll 2+, waiting for the human) must yield waiting_for_human -- NOT a latched channel_down. On the pre-fix
+        // code sawChannelDeath latches from poll 1 and never clears, so the deadline throws LsDiscoveryException ->
+        // channel_down (an AgyStatus with "State", no lowercase "status"), and GetProperty("status") throws RED.
+        var fake = new FakeTransientThenEmptyLs();
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                BootRaceTimeout = TimeSpan.FromSeconds(2),
+                BootRacePollInterval = TimeSpan.FromMilliseconds(50),
+            });
+            var json = await McpTools.AgyStatus(view);
+            using var doc = JsonDocument.Parse(json);
+            // waiting_for_human is the RunAsync error envelope (lowercase "status"); channel_down would be the
+            // AgyStatus shape ("State"). Asserting the envelope pins that the transient death did NOT latch.
+            Assert.Equal("waiting_for_human", doc.RootElement.GetProperty("status").GetString());
+            Assert.False(doc.RootElement.TryGetProperty("State", out _));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
