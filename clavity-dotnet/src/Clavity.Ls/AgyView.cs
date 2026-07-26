@@ -122,21 +122,36 @@ public sealed class AgyView
     /// contamination, keyed by CascadeId). Else probe; an RPC error ⇒ "unknown" (fail-safe, never a false idle).</summary>
     public async Task<AgyStatus> StatusAsync(CancellationToken cancellationToken = default)
     {
-        var (client, conversationId) = await ConnectAndResolveAsync(cancellationToken);
-        using (client)
+        try
         {
-            var traj = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
-            var lastKind = traj.Steps.Count > 0 ? traj.Steps[^1].Kind : 0;
-            // Report the REAL cascade id (traj.CascadeId), NOT the conversation id — the field is named
-            // CascadeId and AskAsync fills its CascadeId from the same trajectory, so status.CascadeId now
-            // string-equals ask.CascadeId and a consumer can correlate a pre-fire status with its ask.
+            var (client, conversationId) = await ConnectAndResolveAsync(cancellationToken);
+            using (client)
+            {
+                var traj = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
+                var lastKind = traj.Steps.Count > 0 ? traj.Steps[^1].Kind : 0;
+                // Report the REAL cascade id (traj.CascadeId), NOT the conversation id — the field is named
+                // CascadeId and AskAsync fills its CascadeId from the same trajectory, so status.CascadeId now
+                // string-equals ask.CascadeId and a consumer can correlate a pre-fire status with its ask.
 
-            if (_inFlight.ContainsKey(conversationId))
-                return new AgyStatus(traj.CascadeId, traj.Steps.Count, "working", lastKind);
+                if (_inFlight.ContainsKey(conversationId))
+                    return new AgyStatus(traj.CascadeId, traj.Steps.Count, "working", lastKind);
 
-            var state = await client.ProbeIdleAsync(
-                conversationId, IdleInactivityTimeoutSeconds, TimeSpan.FromMilliseconds(ProbeDeadlineMs), cancellationToken);
-            return new AgyStatus(traj.CascadeId, traj.Steps.Count, state, lastKind);
+                var state = await client.ProbeIdleAsync(
+                    conversationId, IdleInactivityTimeoutSeconds, TimeSpan.FromMilliseconds(ProbeDeadlineMs), cancellationToken);
+                return new AgyStatus(traj.CascadeId, traj.Steps.Count, state, lastKind);
+            }
+        }
+        catch (Exception ex) when (ChannelDown.IsChannelDown(ex))
+        {
+            // F5: the catch wraps the WHOLE body incl ProbeIdleAsync (whose internal fail-safe catches only
+            // RpcException, so an ObjectDisposedException from it would otherwise escape to the central RunAsync
+            // catch and return the {status:channel_down} error-envelope instead of this AgyStatus shape). A health
+            // check reports health in its OWN shape and never throws (criterion 2), carrying the diagnostic+hint (F7).
+            // A caller-cancel (RpcException Cancelled / OperationCanceledException) is NOT matched here -> it
+            // propagates (F6); AgyConversationPendingException is NOT matched -> it flows to RunAsync's
+            // waiting_for_human catch, unchanged.
+            var diag = ChannelDown.Diagnose(ex);
+            return new AgyStatus("", 0, ChannelDown.Status, 0, diag, ChannelDown.Hint(diag));
         }
     }
 

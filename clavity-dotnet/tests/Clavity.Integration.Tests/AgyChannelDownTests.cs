@@ -240,4 +240,25 @@ public class AgyChannelDownTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    [Fact]
+    public async Task Dead_channel_agy_status_returns_the_status_shape_with_channel_down_and_never_throws()
+    {
+        // Criterion 2 + F7: agy_status reports channel_down in its OWN AgyStatus shape (not the {status:...} error
+        // envelope), never throws, and carries the diagnostic + hint.
+        var fake = new FakeChannelDownLs("conv-1", StatusCode.Unavailable); // GetCascadeTrajectory throws
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var json = await McpTools.AgyStatus(ViewFor(cliLog));
+            using var doc = JsonDocument.Parse(json);
+            // AgyStatus shape has "State"/"Diagnostic"/"Hint"; the error envelope would have a lowercase "status".
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+            Assert.False(doc.RootElement.TryGetProperty("status", out _));
+            Assert.Equal("Unavailable", doc.RootElement.GetProperty("Diagnostic").GetProperty("StatusCode").GetString());
+            Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("Hint").GetString()));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
