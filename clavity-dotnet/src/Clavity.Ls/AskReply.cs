@@ -17,8 +17,17 @@ public sealed record ActivityItem(int Kind, string Label, string? Summary);
 public sealed record TimeoutDiagnostic(
     int TotalSteps, int NewAgySteps, int LastStepKind, string LastStepClass, string? LastStepSummary);
 
-/// <summary>agy_status result. State = idle | working | unknown.</summary>
-public sealed record AgyStatus(string CascadeId, int TotalSteps, string State, int LastStepKind);
+/// <summary>On a dead/failed clavity-ls -> agy channel: the underlying gRPC failure. StatusCode = the gRPC
+/// StatusCode name (e.g. "Unavailable"), or the concrete exception type name ("ObjectDisposed"/"LsDiscovery")
+/// when no RpcException is available; Detail = the failure detail/message. Never "Unknown" while a real cause
+/// exists (F4).</summary>
+public sealed record ChannelDiagnostic(string StatusCode, string Detail);
+
+/// <summary>agy_status result. State = idle | working | unknown | channel_down. Diagnostic + Hint are populated
+/// ONLY on channel_down (null on every healthy state; additive, so existing consumers are unaffected — F7).</summary>
+public sealed record AgyStatus(
+    string CascadeId, int TotalSteps, string State, int LastStepKind,
+    ChannelDiagnostic? Diagnostic = null, string? Hint = null);
 
 /// <summary>Maps agy step kinds to a label + a coarse class. 14=user, 15=assistant, everything else = tool
 /// (the spec's "tool" + "unknown" both fail-safe to slow). Built from the captured trajectory golden.</summary>
