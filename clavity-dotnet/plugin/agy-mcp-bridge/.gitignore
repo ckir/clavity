@@ -1,0 +1,12 @@
+# Protect the vendored bridge dir: a dev who runs `uv sync` / the bridge here must never
+# accidentally commit the live secret or generated runtime state into clavity-classic.
+.env
+.venv/
+__pycache__/
+*.pyc
+.agent/
+.pytest_cache/
+.ruff_cache/
+.playwright-cli/
+.serena/
+server.log

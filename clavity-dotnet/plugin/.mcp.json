@@ -1,5 +1,9 @@
 {
   "mcpServers": {
-    "clavity-ls": { "command": "clavity-ls", "args": ["--mcp"] }
+    "clavity-ls": { "command": "clavity-ls", "args": ["--mcp"] },
+    "agy-mcp-bridge": { 
+      "command": "uv", 
+      "args": ["run", "--directory", "agy-mcp-bridge", "python", "server.py"]
+    }
   }
 }

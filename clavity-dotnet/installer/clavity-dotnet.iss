@@ -37,10 +37,20 @@ Source: "..\publish\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\seed\golden-header.md"; DestDir: "{app}\seed"; Flags: ignoreversion
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "agy-mcp-bridge"
+; Opt-in bridge tree (gated). Staged WITHOUT the secret; exclude regenerable + secret artifacts defensively.
+Source: "..\plugin\agy-mcp-bridge\*"; DestDir: "{app}\plugins\clavity\agy-mcp-bridge"; \
+  Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: install_bridge; \
+  Excludes: ".env,.venv,__pycache__,.agent,*.pyc"
+; Bridge first-run doc (gated with the bridge).
+Source: "..\..\clavity-classic\installer\clavity-classic-bridge-README-FIRST.md"; DestDir: "{app}\plugins\clavity\agy-mcp-bridge"; \
+  DestName: "README-FIRST.md"; Flags: ignoreversion; Tasks: install_bridge
 
 [Tasks]
 Name: "addtopath"; Description: "Add clavity-ls to PATH"; Flags: checkedonce
+; Opt-in bridge add-on (default OFF) — value FIRST, prerequisite second (UX round).
+Name: "install_bridge"; Flags: unchecked; \
+  Description: "Install the Antigravity bridge — let Claude hand off a coding task for Antigravity to do autonomously in an isolated worktree (delegate_to_antigravity). Needs Python 3.10+ and uv."
 
 [Registry]
 ; Per-user PATH APPEND (never prepend) when the task is selected (security: PATH hygiene).
@@ -50,6 +60,7 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; \
 [Code]
 #include "..\..\installer\_shared\golden-header-data.iss"
 #include "..\..\installer\_shared\claude-running.iss"
+#include "..\..\installer\_shared\path-scan.iss"
 
 var
   RemoveConfig: Boolean;
@@ -199,6 +210,22 @@ begin
         ExpandConstant('{app}\seed\golden-header.md') + '  to  ' +
         GoldenHeaderDataDir() + '\golden-header.seed.md',
         mbInformation, MB_OK, IDOK);
+    if WizardIsTaskSelected('install_bridge') then
+    begin
+      BridgeDir := ExpandConstant('{app}\plugins\clavity\agy-mcp-bridge');
+      if StemOnPath('uv', UvPath) then
+      begin
+        WizardForm.StatusLabel.Caption := 'Installing the bridge''s Python dependencies (uv sync) - up to a minute...';
+        WizardForm.StatusLabel.Update;
+        if (not Exec(UvPath, 'sync --frozen', BridgeDir, SW_SHOW, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+          SuppressibleMsgBox('The bridge was installed but `uv sync` did not complete. Open a terminal in:' + #13#10 +
+            BridgeDir + #13#10 + 'and run:  uv sync --frozen', mbError, MB_OK, IDOK);
+      end
+      else
+        SuppressibleMsgBox('The bridge was installed but is INACTIVE until you install uv (https://docs.astral.sh/uv/)' + #13#10 +
+          'and run `uv sync --frozen` in:' + #13#10 + BridgeDir + #13#10 + 'BEFORE first use. See README-FIRST.md there.',
+          mbInformation, MB_OK, IDOK);
+    end;
   end
   else if CurStep = ssDone then
     SuppressibleMsgBox('clavity-dotnet is installed. Open a terminal (PowerShell) and run:' + #13#10 +
@@ -292,6 +319,7 @@ begin
       BackupDataFile(HeaderDir + '\golden-header.seed.md');
       BackupDataFile(HeaderDir + '\golden-header.seed.md.sha256');
     end;
+    { Bridge .env (live secret): gated on the keep/purge answer. On purge, clavity-ls --purge-data already removes it, but we can be safe. }
   end
   else if CurUninstallStep = usPostUninstall then
     RemoveFromUserPath(ExpandConstant('{app}'));
