@@ -241,11 +241,15 @@ public sealed class AgyView
             {
                 probe = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
             }
-            catch (RpcException)
+            catch (RpcException) when (!cancellationToken.IsCancellationRequested)
             {
                 // F2 (agy panel R4): fail-toward possible_modal(stall) with a NULL diagnostic and NO second network
                 // hit. The channel just failed THIS probe; re-fetching for a diagnostic would likely fail again and
                 // ESCAPE the loop as an uncaught RpcException -> central catch -> channel_down, silently violating F2.
+                // The `!cancellationToken.IsCancellationRequested` guard mirrors the window-wait catch above: the probe
+                // runs on the OUTER token, so a caller-cancel arriving as RpcException{Cancelled} here must PROPAGATE
+                // as a cancellation, never be reclassified as possible_modal (F3) — otherwise the method's documented
+                // "a caller cancel never becomes possible_modal" guarantee would break on this narrow timing window.
                 throw BuildModalHang(null, before, start, IdleLimit.Stall);
             }
             lastProbe = probe;
