@@ -187,10 +187,10 @@ public sealed class AgyView
                 {
                     await client.SendUserCascadeMessageAsync(conversationId, outgoing, model, cancellationToken);
                 }
-                catch (RpcException)
+                catch (RpcException ex) when (ex.StatusCode != StatusCode.Cancelled)
                 {
                     InvalidateCatalog();   // a stale cache may have approved a now-deprecated id; refresh next ask.
-                    throw;
+                    throw;                 // a caller-cancel (Cancelled) is not a stale-catalog signal -> don't drop the cache; let it propagate (capstone F3).
                 }
 
                 await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, cancellationToken);
@@ -346,7 +346,10 @@ public sealed class AgyView
             }
             catch (LsDiscoveryException) { }  // log/port not ready, or port not listening yet.
             catch (IOException) { }           // cli.log not present yet.
-            catch (RpcException) { }          // LS not answering yet.
+            // A caller-cancel surfaces as RpcException{Cancelled}; do NOT swallow it — otherwise a cancel that
+            // coincides with boot-race deadline expiry falls through to the LsDiscoveryException throw below and is
+            // mis-reported as channel_down (capstone F1). A real boot-race timeout is DeadlineExceeded, not Cancelled.
+            catch (RpcException ex) when (ex.StatusCode != StatusCode.Cancelled) { } // LS not answering yet.
             finally
             {
                 // Dispose on every non-handoff exit: retry, empty map, OR an unhandled throw (e.g. cancellation
@@ -415,6 +418,7 @@ public sealed class AgyView
                     throw new AgyModelUnavailableException(DeprecatedModelHint);
             }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented) { /* older agy: no catalog. */ }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled) { throw; } // caller-cancel: propagate, don't emit a false "catalog unreachable" warning (mirrors the new-conv path, capstone F2).
             catch (RpcException)
             {
                 _options.Diagnostics.WriteLine(
