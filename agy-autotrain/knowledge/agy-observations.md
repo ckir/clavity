@@ -42,6 +42,27 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
   expect to have to READ a returned path rather than parse the inline body, and budget a follow-up read; asking
   for terseness does not prevent it. (1st observation — needs a 2nd before promotion per the heuristic rubric.)
 
+- [anti-pattern] (driver/probabilistic) `[corpus]` The peer's suggested FIX is fallible INDEPENDENTLY of its
+  FINDING: a correct defect report routinely arrives with a fix that is wrong or incomplete. Across one
+  convergent review series the peer (a) correctly identified a real state-latch bug but proposed a naive
+  "reset every iteration" fix that REGRESSED a healthy path (a budget-clamped final poll threw a benign
+  timeout the naive reset misread), and later (b) its accepted narrower fix still missed a startup-transient
+  ORDERING edge that the very next round surfaced. Driving implication: a peer's fix is a fresh CLAIM — trace
+  the full case-matrix of the fix by measurement before folding it, not just the finding; pin each fold with a
+  regression test that goes RED on the pre-fix code; and ALWAYS re-run a fresh review round after folding,
+  because the fix introduces its own edges (here rounds N+1 and N+2 each caught a defect in the prior round's
+  fix). Distinct from the already-noted "verify the peer's fix" point: here the finding was fully correct and
+  only the fix was defective, twice in a row. (1st observation of the correct-finding-defective-fix variant.)
+
+- [heuristic] (driver/probabilistic) `[corpus]` A peer TEST-COVERAGE / exhaustiveness audit OVER-COUNTS: it
+  will confidently report a "gap" that an existing test already covers. Asked to audit two suites, the peer
+  returned 5 ranked gaps; independent verification by reading each cited test showed one was already pinned by
+  an existing hung-boundary test — a false positive that would have produced a redundant, timing-flaky test had
+  it been folded unread. Driving implication: treat every claimed coverage gap as a claim — read the cited
+  test (and grep for a sibling that already exercises the same path) before writing anything; the audit's value
+  is real but its gap list must be filtered by measurement, exactly like a defect panel's findings. (1st
+  observation of the coverage-audit-over-counts variant.)
+
 <!-- Drain log 2026-07-19 (agy peer; 2 pending → recompiled GROWTH + driver cheatsheet):
   1) [assumption] (driver/deterministic) oversized-REASONING-reply truncates-to-HEAD (NOT a hang) — REFINEMENT
      of the already-promoted oversized-turn anti-pattern. Not tool-fixable (recovery = decompose / file-transport,
