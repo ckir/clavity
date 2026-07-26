@@ -53,5 +53,15 @@ public class McpTools
         {
             return JsonSerializer.Serialize(new { status = "waiting_for_human", message = ex.Message });
         }
+        catch (Exception ex) when (ChannelDown.IsChannelDown(ex))
+        {
+            var diag = ChannelDown.Diagnose(ex);
+            return JsonSerializer.Serialize(new
+            {
+                status = ChannelDown.Status,
+                diagnostic = diag,
+                hint = ChannelDown.Hint(diag),
+            });
+        }
     }
 }

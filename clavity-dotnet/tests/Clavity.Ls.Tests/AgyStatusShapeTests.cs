@@ -23,4 +23,27 @@ public class AgyStatusShapeTests
         Assert.Equal("Unavailable", st.Diagnostic!.StatusCode);
         Assert.Equal("restart the session", st.Hint);
     }
+
+    [Fact]
+    public void IsChannelDown_matches_dead_channel_exceptions_but_not_a_caller_cancel()
+    {
+        Assert.True(ChannelDown.IsChannelDown(new Grpc.Core.RpcException(
+            new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "down"))));
+        Assert.True(ChannelDown.IsChannelDown(new ObjectDisposedException("GrpcChannel")));
+        Assert.True(ChannelDown.IsChannelDown(new LsDiscoveryException("agy not up")));
+        // F6: a caller-cancel is NOT channel_down.
+        Assert.False(ChannelDown.IsChannelDown(new Grpc.Core.RpcException(
+            new Grpc.Core.Status(Grpc.Core.StatusCode.Cancelled, "cancelled"))));
+        // criterion 4: an unrelated bug is NOT masked.
+        Assert.False(ChannelDown.IsChannelDown(new InvalidOperationException("real bug")));
+    }
+
+    [Fact]
+    public void Diagnose_unwraps_the_gRPC_status_and_never_returns_Unknown_when_a_cause_exists()
+    {
+        var d = ChannelDown.Diagnose(new Grpc.Core.RpcException(
+            new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "connection refused")));
+        Assert.Equal("Unavailable", d.StatusCode);
+        Assert.Contains("connection refused", d.Detail);
+    }
 }
