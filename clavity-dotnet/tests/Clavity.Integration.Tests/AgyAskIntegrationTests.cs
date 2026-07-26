@@ -25,15 +25,31 @@ public class AgyAskIntegrationTests
         private readonly TimeSpan _idleDelay;
         private readonly FetchAvailableModelsResponse? _catalog;
 
+        // A per-WaitFor-invocation script: window N (0-based, clamped to the last entry) appends AppendSteps
+        // trajectory steps, then either goes idle (returns TimedOut=false with the reply) or blocks until the
+        // client's per-window CancelAfter cancels it. Null => the legacy single-idleDelay behavior (back-compat).
+        public sealed record WaitStep(int AppendSteps, bool GoesIdle);
+        private readonly IReadOnlyList<WaitStep>? _waitPlan;
+        private int _waitCalls;
+        public int WaitCalls => _waitCalls;
+        private int _trajectoryCalls;
+        public int TrajectoryCalls => _trajectoryCalls;
+        // When true, GetCascadeTrajectory throws RpcException(Unavailable) on the PROBE call (after >=1 wait window)
+        // while the pre-send before-trajectory (the first call) still succeeds. Drives the F2 probe-failure test.
+        private readonly bool _throwOnProbeTrajectory;
+
         public FakeAskLs(
             string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial,
-            FetchAvailableModelsResponse? catalog = null)
+            FetchAvailableModelsResponse? catalog = null, IReadOnlyList<WaitStep>? waitPlan = null,
+            bool throwOnProbeTrajectory = false)
         {
             _cascadeId = cascadeId;
             _replyText = replyText;
             _idleDelay = idleDelay;
             _steps = new List<CascadeStep>(initial);
             _catalog = catalog;
+            _waitPlan = waitPlan;
+            _throwOnProbeTrajectory = throwOnProbeTrajectory;
         }
 
         public string? LastSentText { get; private set; }
@@ -42,6 +58,10 @@ public class AgyAskIntegrationTests
         public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
             GetCascadeTrajectoryRequest request, ServerCallContext context)
         {
+            // The 1st call is AskAsync's pre-send before-trajectory; later calls are per-window progress probes.
+            var n = Interlocked.Increment(ref _trajectoryCalls);
+            if (_throwOnProbeTrajectory && n > 1)
+                throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "probe dead"));
             lock (_gate)
             {
                 var traj = new CascadeTrajectory { CascadeId = _cascadeId };
@@ -69,13 +89,30 @@ public class AgyAskIntegrationTests
         public override async Task<WaitForConversationFullyIdleResponse> WaitForConversationFullyIdle(
             WaitForConversationFullyIdleRequest request, ServerCallContext context)
         {
-            // Simulate busy -> idle: wait the scripted delay (cancellable by the client), then append the reply.
-            await Task.Delay(_idleDelay, context.CancellationToken);
+            if (_waitPlan is null)
+            {
+                // Legacy behavior (back-compat for the existing tests): wait the scripted delay, then reply.
+                await Task.Delay(_idleDelay, context.CancellationToken);
+                lock (_gate)
+                    _steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = _replyText } });
+                return new WaitForConversationFullyIdleResponse { TimedOut = false };
+            }
+
+            var idx = Interlocked.Increment(ref _waitCalls) - 1;
+            var step = _waitPlan[Math.Min(idx, _waitPlan.Count - 1)];
             lock (_gate)
             {
-                _steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = _replyText } });
+                for (var i = 0; i < step.AppendSteps; i++)
+                    _steps.Add(new CascadeStep { Kind = 5, AssistantOutput = new CascadeAssistantOutput { Text = "progress" } });
+                if (step.GoesIdle)
+                {
+                    _steps.Add(new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = _replyText } });
+                    return new WaitForConversationFullyIdleResponse { TimedOut = false };
+                }
             }
-            return new WaitForConversationFullyIdleResponse { TimedOut = false };
+            // Never idle this window: block until the client's per-window CancelAfter cancels the call.
+            await Task.Delay(Timeout.Infinite, context.CancellationToken);
+            return new WaitForConversationFullyIdleResponse { TimedOut = false }; // unreachable
         }
 
         public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
@@ -310,49 +347,188 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
-    public async Task AskAsync_throws_TimeoutException_when_conversation_never_goes_idle()
+    public async Task AskAsync_returns_reply_when_agy_progresses_across_several_stall_windows()
     {
-        // Idle delay far exceeds the client timeout -> the client-side guard must cancel the wait.
-        var fake = new FakeAskLs("conv-1", "never", TimeSpan.FromSeconds(10), Array.Empty<CascadeStep>());
-
+        // The regression this whole change exists to fix: agy still advancing across windows must NOT be abandoned.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false), // window 1: +1 step, window elapses
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false), // window 2: +1 step, elapses
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),  // window 3: idle -> reply
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
-            var ex = await Assert.ThrowsAsync<AgyModalHangException>(
-                () => view.AskAsync("hello", timeout: TimeSpan.FromMilliseconds(200)));
-            Assert.Equal("WaitForConversationFullyIdle", ex.Report.Operation);
-            Assert.False(string.IsNullOrWhiteSpace(ex.Report.Hint));
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero, // unbounded: prove progress alone carries the wait
+            });
+            var reply = await view.AskAsync("do a long thing");
+            Assert.Equal("final answer", reply.Answer);
+            Assert.Equal(3, fake.WaitCalls); // 2 progress windows + 1 idle
         }
-        finally
-        {
-            Directory.Delete(dir, true);
-        }
+        finally { Directory.Delete(dir, true); }
     }
 
     [Fact]
-    public async Task AskAsync_timeout_diagnostic_reports_no_agy_progress_when_it_never_moved()
+    public async Task AskAsync_stalls_after_exactly_one_window_when_agy_makes_no_progress()
     {
-        // 10s idle delay ≫ the 200ms client timeout, so when the wait is cancelled only OUR injected user step
-        // exists — agy produced nothing ⇒ NewAgySteps == 0, last step is our Kind-14 ⇒ LastStepClass "user".
-        var fake = new FakeAskLs("conv-1", "never", TimeSpan.FromSeconds(10), Array.Empty<CascadeStep>());
-
+        // F5 regression guard: a dead agy (no steps after our send) stalls at 1x the window, NOT 2x. If lastProgress
+        // were seeded with `before` (not before+1), the caller's own injected user step would read as progress and
+        // push the stall to a second window.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
-            var ex = await Assert.ThrowsAsync<AgyModalHangException>(
-                () => view.AskAsync("hello", timeout: TimeSpan.FromMilliseconds(200)));
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("hello"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            Assert.Equal(1, fake.WaitCalls); // exactly ONE window
+            // Absorbed diagnostic coverage from the old timeout test: agy produced nothing.
             Assert.NotNull(ex.Diagnostic);
             Assert.Equal(0, ex.Diagnostic!.NewAgySteps);
             Assert.Equal("user", ex.Diagnostic.LastStepClass);
+            // R5 F10 guard: the diagnostic is built from the probe we already fetched — pre-send before-trajectory
+            // + the one probe ONLY, no redundant third fetch (pre-F10 code did before+probe+diagnostic = 3).
+            Assert.Equal(2, fake.TrajectoryCalls);
         }
-        finally
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_absolute_max_when_agy_progresses_forever_past_the_budget()
+    {
+        // agy advances every window and never idles -> the absolute-max backstop stops it with limit=absolute_max.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false) }; // reused every window
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
         {
-            Directory.Delete(dir, true);
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(100),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(250), // exhausts after ~2-3 windows
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("runaway"));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
         }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_absolute_max_not_stall_when_a_budget_clamped_window_finds_no_progress()
+    {
+        // agy panel round 3 guard: window 1 progresses (resets the stall window), then the absolute-max budget
+        // clamps window 2 to the short remainder, which elapses with NO progress. The label MUST be absolute_max
+        // (the budget was the binding cap), NOT stall (which would tell the operator to raise the wrong knob).
+        // This FAILS on the pre-fix code, which threw Stall unconditionally in the no-progress branch.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false), // window 1: progresses
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false), // window 2 (budget-clamped): no progress
+        };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(250), // window 1 (150ms) < 250ms; window 2 clamps to the ~100ms remainder
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("progress then quit"));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_fast_idle_returns_immediately_in_one_window()
+    {
+        // Happy path unchanged: the server reports idle on the first window -> reply, no stall machinery.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "quick", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog }); // defaults; unused (idles immediately)
+            var reply = await view.AskAsync("hi");
+            Assert.Equal("quick", reply.Answer);
+            Assert.Equal(1, fake.WaitCalls);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_long_single_step_stalls_with_a_hint_naming_both_modal_and_long_step()
+    {
+        // F4 owned-tradeoff guard: a single long step holds the step count static -> stall, same as a true modal.
+        // The hint names BOTH causes; the sent message is left intact (non-destructive).
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("compile the world"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            Assert.Contains("modal", ex.Report.Hint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("long step", ex.Report.Hint, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("compile the world", fake.LastSentText);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_probe_failure_fails_toward_stall_without_a_second_trajectory_call()
+    {
+        // F2 (agy panel round 4): when the per-window progress probe (GetCascadeTrajectory) throws, the loop must
+        // fail-toward possible_modal(stall) with a NULL diagnostic and make NO second trajectory call. The pre-fix
+        // code called BuildModalHangAsync -> BuildTimeoutDiagnosticAsync -> a 2nd GetCascadeTrajectory which, on the
+        // just-failed channel, would fail again and ESCAPE the loop as an uncaught RpcException -> channel_down,
+        // silently violating F2. On the buggy code this test throws RpcException (not AgyModalHangException) and
+        // TrajectoryCalls == 3, so it fails.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) }; // window elapses -> probe fires
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(),
+            waitPlan: plan, throwOnProbeTrajectory: true);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(120),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("probe dies"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            Assert.Null(ex.Diagnostic);             // fail-toward stall with a null diagnostic (no 2nd network hit)
+            Assert.Equal(2, fake.TrajectoryCalls);  // pre-send before-trajectory + the failing probe ONLY
+        }
+        finally { Directory.Delete(dir, true); }
     }
 
     [Fact]

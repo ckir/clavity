@@ -44,6 +44,7 @@ public class McpTools
                 status = "possible_modal",
                 operation = ex.Report.Operation,
                 elapsedSeconds = ex.Report.Elapsed.TotalSeconds,
+                limit = ex.Report.Limit,
                 hint = ex.Report.Hint,
                 diagnostic = ex.Diagnostic,   // where agy stopped: slow tool vs hang (null if not computed).
             });
