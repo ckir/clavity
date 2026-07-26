@@ -20,4 +20,30 @@ public class AgyEnvironmentTests
         Assert.Equal(expected, AgyEnvironment.ResolveCliLogPath(null, Home));
         Assert.Equal(expected, AgyEnvironment.ResolveCliLogPath("", Home));
     }
+
+    [Fact]
+    public void ResolveSeconds_parses_a_positive_integer_to_a_TimeSpan()
+        => Assert.Equal(TimeSpan.FromSeconds(90),
+            AgyEnvironment.ResolveSeconds("90", TimeSpan.FromSeconds(120)));
+
+    [Fact]
+    public void ResolveSeconds_falls_back_when_unset_or_blank()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(120), AgyEnvironment.ResolveSeconds(null, TimeSpan.FromSeconds(120)));
+        Assert.Equal(TimeSpan.FromSeconds(120), AgyEnvironment.ResolveSeconds("", TimeSpan.FromSeconds(120)));
+    }
+
+    [Fact]
+    public void ResolveSeconds_falls_back_on_a_non_numeric_or_negative_value()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(600), AgyEnvironment.ResolveSeconds("abc", TimeSpan.FromSeconds(600)));
+        Assert.Equal(TimeSpan.FromSeconds(600), AgyEnvironment.ResolveSeconds("-5", TimeSpan.FromSeconds(600)));
+    }
+
+    [Fact]
+    public void ResolveSeconds_treats_zero_as_the_fallback_unless_allowZero()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(600), AgyEnvironment.ResolveSeconds("0", TimeSpan.FromSeconds(600)));
+        Assert.Equal(TimeSpan.Zero, AgyEnvironment.ResolveSeconds("0", TimeSpan.FromSeconds(600), allowZero: true));
+    }
 }

@@ -23,6 +23,12 @@ if (args.Contains("--mcp"))
             Environment.GetEnvironmentVariable(GoldenHeader.PathVar),
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
         EscalationIndex = Clavity.Ls.EscalationIndex.Build(manualsDir),   // built ONCE here (R-V2)
+        IdleStallWindow = AgyEnvironment.ResolveSeconds(
+            Environment.GetEnvironmentVariable(AgyEnvironment.IdleStallSecondsVar),
+            AgyView.DefaultIdleWaitTimeout),
+        IdleAbsoluteMax = AgyEnvironment.ResolveSeconds(
+            Environment.GetEnvironmentVariable(AgyEnvironment.IdleMaxSecondsVar),
+            TimeSpan.FromSeconds(600), allowZero: true),
     };
 
     var ghOverride = Environment.GetEnvironmentVariable(GoldenHeader.PathVar);

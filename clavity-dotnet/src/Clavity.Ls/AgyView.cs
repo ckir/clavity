@@ -25,6 +25,15 @@ public sealed class AgyViewOptions
     /// <summary>Where operator-facing diagnostics go. Default = stderr (stdout is the MCP protocol channel, so
     /// it must NOT carry log lines). Tests inject a StringWriter to assert the surfaced model line.</summary>
     public TextWriter Diagnostics { get; init; } = Console.Error;
+
+    /// <summary>Stall window: max time with NO agy step progress before agy_ask reports possible_modal(limit=stall).
+    /// Env: CLAVITY_AGY_IDLE_STALL_SECONDS. Default = <see cref="AgyView.DefaultIdleWaitTimeout"/> (120s) — it was
+    /// always really a no-further-progress window, not a whole-turn budget.</summary>
+    public TimeSpan IdleStallWindow { get; init; } = AgyView.DefaultIdleWaitTimeout;
+
+    /// <summary>Absolute max total idle-wait regardless of progress. Env: CLAVITY_AGY_IDLE_MAX_SECONDS. Default
+    /// 600s; <see cref="TimeSpan.Zero"/> = unbounded (rely purely on progress + the server idle signal).</summary>
+    public TimeSpan IdleAbsoluteMax { get; init; } = TimeSpan.FromSeconds(600);
 }
 
 /// <summary>
