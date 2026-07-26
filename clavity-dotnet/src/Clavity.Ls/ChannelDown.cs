@@ -15,7 +15,9 @@ public static class ChannelDown
     /// F3 fold.</summary>
     public static bool IsChannelDown(Exception ex) =>
         (ex is RpcException rpc && rpc.StatusCode != StatusCode.Cancelled)
-        || ex is ObjectDisposedException or LsDiscoveryException;
+        || ex is ObjectDisposedException or LsDiscoveryException
+        || (ex is AgyModelUnavailableException && ex.InnerException is
+            (RpcException { StatusCode: not StatusCode.Cancelled }) or ObjectDisposedException or LsDiscoveryException);
 
     /// <summary>Extract the diagnostic per the F4 unwrap rule: the RpcException's status; else an inner
     /// RpcException's status; else the concrete exception type name — never a bare "Unknown".</summary>

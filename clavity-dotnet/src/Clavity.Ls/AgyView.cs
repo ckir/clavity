@@ -424,11 +424,15 @@ public sealed class AgyView
             Surface(LsClient.LegacyFallbackModelId, ModelSource.Legacy);
             return LsClient.LegacyFallbackModelId;
         }
-        catch (RpcException ex)   // transient on a capable agy -> clear, non-crashing error (Spec: never crash).
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
         {
+            throw;   // F6(d): a caller-cancel is a cancellation, never wrapped as a model error / channel_down.
+        }
+        catch (RpcException ex)   // transient OR a dead channel: thread the RpcException so the central catch can
+        {                         // diagnose a channel death (F3); a genuine transient stays a model-availability error.
             throw new AgyModelUnavailableException(
                 $"Could not reach agy's model catalog to pick a default for this new conversation ({ex.StatusCode}). " +
-                "Retry once agy is responsive.");
+                "Retry once agy is responsive.", ex);
         }
 
         if (SendModelResolver.ResolveDefault(catalog2) is int d)

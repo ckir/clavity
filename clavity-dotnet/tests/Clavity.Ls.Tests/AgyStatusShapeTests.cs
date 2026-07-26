@@ -46,4 +46,25 @@ public class AgyStatusShapeTests
         Assert.Equal("Unavailable", d.StatusCode);
         Assert.Contains("connection refused", d.Detail);
     }
+
+    [Fact]
+    public void IsChannelDown_matches_a_wrapped_channel_death_but_not_a_bare_model_error()
+    {
+        var wrappedDead = new AgyModelUnavailableException("no default",
+            new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "down")));
+        var wrappedCancel = new AgyModelUnavailableException("no default",
+            new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Cancelled, "cancelled")));
+
+        Assert.True(ChannelDown.IsChannelDown(wrappedDead));
+        Assert.False(ChannelDown.IsChannelDown(wrappedCancel));                    // F6(c)
+        Assert.False(ChannelDown.IsChannelDown(new AgyModelUnavailableException("deprecated"))); // bare model error
+    }
+
+    [Fact]
+    public void Diagnose_unwraps_a_wrapped_channel_death_to_the_real_inner_status()
+    {
+        var wrappedDead = new AgyModelUnavailableException("no default",
+            new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "down")));
+        Assert.Equal("Unavailable", ChannelDown.Diagnose(wrappedDead).StatusCode); // F4: not "Unknown"
+    }
 }

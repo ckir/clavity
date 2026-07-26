@@ -80,6 +80,46 @@ public class AgyChannelDownTests
         }
     }
 
+    // New conversation (empty trajectory -> catalog REQUIRED) whose GetAvailableModels throws a dead-channel status.
+    private sealed class FakeNewConvCatalogDownLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private readonly string _cascadeId;
+        private readonly StatusCode _status;
+        private readonly List<CascadeStep> _steps = new();
+        public FakeNewConvCatalogDownLs(string cascadeId, StatusCode status) { _cascadeId = cascadeId; _status = status; }
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            var resp = new GetAllCascadeTrajectoriesResponse();
+            resp.TrajectorySummaries[_cascadeId] = new CascadeTrajectorySummary
+            {
+                LastModifiedTime = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+            };
+            return Task.FromResult(resp);
+        }
+
+        public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
+            GetCascadeTrajectoryRequest request, ServerCallContext context)
+        {
+            var traj = new CascadeTrajectory { CascadeId = _cascadeId };
+            lock (_steps) traj.Steps.AddRange(_steps); // empty on the first ask -> new-conversation model path
+            return Task.FromResult(new GetCascadeTrajectoryResponse { Trajectory = traj });
+        }
+
+        public override Task<GetAvailableModelsResponse> GetAvailableModels(
+            FetchAvailableModelsRequest request, ServerCallContext context)
+            => throw new RpcException(new Status(_status, "channel dead")); // catalog RPC dies -> wraps it
+
+        public override Task<SendUserCascadeMessageResponse> SendUserCascadeMessage(
+            SendUserCascadeMessageRequest request, ServerCallContext context)
+            => Task.FromResult(new SendUserCascadeMessageResponse());
+
+        public override Task<WaitForConversationFullyIdleResponse> WaitForConversationFullyIdle(
+            WaitForConversationFullyIdleRequest request, ServerCallContext context)
+            => Task.FromResult(new WaitForConversationFullyIdleResponse { TimedOut = false });
+    }
+
     private static async Task<WebApplication> StartAsync<T>(T fake) where T : class
     {
         var builder = WebApplication.CreateBuilder();
@@ -177,6 +217,26 @@ public class AgyChannelDownTests
         {
             var ex = await Assert.ThrowsAsync<RpcException>(() => McpTools.AgyStatus(ViewFor(cliLog)));
             Assert.Equal(StatusCode.Cancelled, ex.StatusCode); // propagated as a cancellation, not masked
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task Dead_channel_on_a_new_conversation_ask_reports_channel_down_with_the_real_inner_status()
+    {
+        // F3 regression guard: the dead-channel RpcException wrapped as AgyModelUnavailableException on the
+        // new-conversation catalog path must STILL surface as channel_down with the REAL inner status (F4), not
+        // a bare error and not "Unknown".
+        var fake = new FakeNewConvCatalogDownLs("conv-1", StatusCode.Unavailable);
+        await using var app = await StartAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var result = await McpTools.AgyAsk(ViewFor(cliLog), "hi");
+            var text = ((TextContentBlock)result.Content[0]).Text;
+            using var doc = JsonDocument.Parse(text);
+            Assert.Equal("channel_down", doc.RootElement.GetProperty("status").GetString());
+            Assert.Equal("Unavailable", doc.RootElement.GetProperty("diagnostic").GetProperty("StatusCode").GetString());
         }
         finally { Directory.Delete(dir, true); }
     }

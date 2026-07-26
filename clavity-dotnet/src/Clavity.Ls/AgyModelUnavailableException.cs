@@ -6,4 +6,8 @@ namespace Clavity.Ls;
 /// operator how to escape the deadlock (clavity reads the last EXECUTED model, so changing the agy dropdown
 /// without sending re-reads the old model).
 /// </summary>
-public sealed class AgyModelUnavailableException(string message) : Exception(message);
+public sealed class AgyModelUnavailableException : Exception
+{
+    public AgyModelUnavailableException(string message) : base(message) { }
+    public AgyModelUnavailableException(string message, Exception? inner) : base(message, inner) { }
+}
