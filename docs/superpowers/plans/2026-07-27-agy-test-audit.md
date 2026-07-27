@@ -496,6 +496,8 @@ python -c "import sys;d=open('clavity-dotnet/plugin/skills/agy-test-audit/SKILL.
 Expected: `skill-in-sync`, `skill-ascii-ok`. (If `python` is unavailable, the linter in Task 4 also enforces ASCII.)
 
 > **Deferred refinements (spec §5, right-sized here):** the rolling-debt-file **garbage-collection** pass is documented in the skill as a manual whole-tree routine, not implemented as tooling in v1; further **nudge-dedupe** (a "nudged-this-HEAD" breadcrumb so the reminder fires once rather than on each post-capstone tool call) is left to a follow-up — the current debounce (capstone.head==HEAD ∧ audit.head!=HEAD) already bounds it to the narrow capstone-green→audit-run window and self-resolves.
+>
+> **Accepted best-effort limitation (Task-1 diff-gate, solo-panel R1 / Cascade):** when NEITHER `origin/main` nor `main` resolves (detached HEAD / no remote), the gate falls back to HEAD's single commit; a branch whose *final* commit is docs-only would then not nudge even if earlier commits changed code. This is a narrow edge, and rule-1d in `CLAUDE.md` is the backstop (the driver/rule still knows to run the audit), so the missed *nudge* is not a silent audit-skip — consistent with the discipline's best-effort-prompt posture. Not worth a range-reconstruction mechanism in v1.
 
 - [ ] **Step 4: Commit**
 
@@ -552,7 +554,7 @@ For the **non-ASCII**, **empty-file**, and **name-in-body** rejection cases (lin
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Detailed"`
-Expected: FAIL — the real-repo pass test and the `agy-test-audit` rejection cases fail because the linter does not yet know `agy-test-audit` (it lints only agy-first/agy-capstone and would not check the audit skill's tokens; the "passes when every shipped skill…" test stages agy-test-audit but the linter ignores it — and the missing-`EXHAUSTIVE` case cannot fail on a skill the linter never reads).
+Expected: FAIL — specifically the four `agy-test-audit` rejection cases (`Should -Be 1` but the old 2-skill linter ignores `agy-test-audit`, so it exits 0). Note the "passes when every shipped skill…" real-repo test does NOT go red here (the old linter still passes on the two valid real skills) — the generalization in Step 3 is what makes the audit cases bite. This RED confirms the tests pin the new per-skill contract.
 
 - [ ] **Step 3: Generalize the linter**
 
