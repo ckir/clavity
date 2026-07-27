@@ -64,6 +64,15 @@ Describe 'agy-test-audit-reminder.sh' {
             $out.ExitCode | Should -Be 0
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    It 'FIRES when a changed code file has a NON-ASCII name (git quotePath must not defeat the ext grep)' {
+        $r = New-FiredRepo -CodeFile ('src/Modulo_' + [char]0xE9 + '.cs')
+        try {
+            Set-Marker $r.Dir 'agy-capstone' $r.Head
+            $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
+            $out.StdOut  | Should -Match 'AGY-TEST-AUDIT'
+            $out.ExitCode | Should -Be 0
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'is SILENT when the capstone marker is absent (capstone not run/green)' {
         $r = New-FiredRepo
         try {

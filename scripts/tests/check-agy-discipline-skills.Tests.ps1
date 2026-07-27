@@ -95,6 +95,7 @@ Describe 'check-agy-discipline-skills' {
             $needle  = "`$skills = @('agy-first', 'agy-capstone', 'agy-test-audit')"
             $realSrc.Contains($needle) | Should -BeTrue -Because 'the mutation target line must match the real linter verbatim'
             $mutated = $realSrc.Replace($needle, "`$skills = @('agy-first', 'agy-capstone', 'agy-test-audit', 'phantom-unmapped')")
+            $mutated | Should -Not -Be $realSrc -Because 'the phantom-skill injection into $skills must take effect; if the source array formatting changed, update the injection regex'
             $tmpLint = Join-Path ([IO.Path]::GetTempPath()) ("lint-" + [guid]::NewGuid().ToString('N') + ".ps1")
             Set-Content -Path $tmpLint -Value $mutated -Encoding utf8
 
@@ -108,8 +109,9 @@ Describe 'check-agy-discipline-skills' {
             Set-Content -Path (Join-Path $pdir 'SKILL.md') -Value $valid -NoNewline -Encoding utf8
 
             try {
-                & pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1 | Out-Null
+                $guardOut = & pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1
                 $LASTEXITCODE | Should -Be 1
+                ($guardOut -join "`n") | Should -Match 'no required-verdict set mapped'
             } finally {
                 Remove-Item -Force $tmpLint -ErrorAction SilentlyContinue
                 Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue

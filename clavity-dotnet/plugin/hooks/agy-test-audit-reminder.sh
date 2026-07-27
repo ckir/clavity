@@ -28,9 +28,9 @@ gate() {
   base=$(git -C "$cwd" merge-base HEAD "${CLAVITY_AUDIT_BASE_REF:-origin/main}" 2>/dev/null)
   [ -z "$base" ] && base=$(git -C "$cwd" merge-base HEAD main 2>/dev/null)
   if [ -n "$base" ] && [ "$base" != "$head" ]; then
-    changed=$(git -C "$cwd" diff --name-only "$base"..HEAD 2>/dev/null)
+    changed=$(git -C "$cwd" -c core.quotePath=false diff --name-only "$base"..HEAD 2>/dev/null)
   else
-    changed=$(git -C "$cwd" show --name-only --format= HEAD 2>/dev/null)
+    changed=$(git -C "$cwd" -c core.quotePath=false show --name-only --format= HEAD 2>/dev/null)
   fi
   # Executable-code / test path heuristic. Empty match -> silent (docs/config/spec-only range, spec 4).
   printf '%s\n' "$changed" | grep -Eqi '\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1)$' || return 1
