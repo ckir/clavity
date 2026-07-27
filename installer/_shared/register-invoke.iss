@@ -170,6 +170,17 @@ begin
   RegisteredAgy    := AgentLineVerdict(Lines, 'agy', fa) and fa;
 end;
 
+{ Set by RegisterMemberPluginFor from the registrar exit code (2 = a DETECTED agent FAILED while another
+  succeeded) and read by ReportRegistrationOutcomeFor. This is the only reliable partial-failure signal:
+  the per-agent Registered* booleans are False both for a FAILED agent AND for an ABSENT one (the registrar
+  skips an absent agent with no AGENT line), so deriving "partial" from them false-warns on the common
+  single-agent machine (claude present, agy absent -> exit 0, yet RegisteredAgy=False). A module var (not a
+  new out-param) keeps this contained to the shared include - member .iss call sites are unchanged. Install
+  is single-threaded and ReportRegistrationOutcome always immediately follows RegisterMemberPlugin, so the
+  value is never stale across a report. }
+var
+  gLastRegistrationPartial: Boolean;
+
 { ---- top-level install orchestration. The *For variant takes an explicit AgentSel ('all'|'claude'|'agy')
   so a member can scope registration to the agent(s) it actually serves — e.g. a claude-only discipline
   plugin passes 'claude' and the agy CLI is never touched. RegisterMemberPlugin keeps the historical 'all'
@@ -181,6 +192,7 @@ var
 begin
   ExecRegisterScript('install', AppDir, PluginName, MarketplaceName, AgentSel,
     RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded, ExitCode);
+  gLastRegistrationPartial := (ExitCode = 2);   { 2 = partial: >=1 detected agent ok, >=1 detected agent failed }
   Report := 'register-plugin.ps1 exit=' + IntToStr(ExitCode) +
     ' (claude=' + IntToStr(Ord(RegisteredClaude)) + ' agy=' + IntToStr(Ord(RegisteredAgy)) + ')';
 end;
@@ -241,21 +253,30 @@ end;
 { ---- shared install-time reporting: partial failure is REPORTED, not rolled back, at the registration step
   (only the golden-header rollback path reverses a registration). Uses the returned booleans — does NOT
   re-detect (detection now lives in the PS registrar). ---- }
+{ RegisteredClaude/RegisteredAgy are retained in the signature (the member already passes them and uses
+  them elsewhere for rollback fidelity) but are intentionally NOT consulted for the partial-failure warning
+  - that now reads gLastRegistrationPartial (the registrar exit-2 signal), which - unlike the per-agent
+  booleans - does not conflate an ABSENT agent with a FAILED one. }
 procedure ReportRegistrationOutcomeFor(const AgentSel: string; AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy: Boolean; const Report: string);
-var
-  ExpectClaude, ExpectAgy: Boolean;
 begin
-  { Only the TARGETED agents count toward the partial-failure warning: a deliberately claude-only member
-    (AgentSel='claude') must NOT warn merely because agy was not registered — it never asked for agy. }
-  ExpectClaude := (AgentSel = 'all') or (AgentSel = 'claude');
-  ExpectAgy    := (AgentSel = 'all') or (AgentSel = 'agy');
   if not AnyDetected then
-    SuppressibleMsgBox('No compatible agent (Claude Code / agy) found on this machine. Install ' +
-      'Claude Code or agy, then re-run this setup.', mbError, MB_OK, IDOK)
+  begin
+    { Tailor the remediation to the agent(s) this member actually targets — telling a claude-only member's
+      user to "install agy" is a dead end (AgentSel='claude' never registers into agy). }
+    if AgentSel = 'claude' then
+      SuppressibleMsgBox('Claude Code was not found on this machine. Install Claude Code, then re-run ' +
+        'this setup.', mbError, MB_OK, IDOK)
+    else if AgentSel = 'agy' then
+      SuppressibleMsgBox('agy was not found on this machine. Install agy, then re-run this setup.',
+        mbError, MB_OK, IDOK)
+    else
+      SuppressibleMsgBox('No compatible agent (Claude Code / agy) found on this machine. Install ' +
+        'Claude Code or agy, then re-run this setup.', mbError, MB_OK, IDOK);
+  end
   else if not AnySucceeded then
     SuppressibleMsgBox('Plugin registration failed for every detected agent:' + #13#10 + Report,
       mbError, MB_OK, IDOK)
-  else if (ExpectClaude and (not RegisteredClaude)) or (ExpectAgy and (not RegisteredAgy)) then
+  else if gLastRegistrationPartial then
     SuppressibleMsgBox('Plugin registered, but a partial failure may have occurred (not rolled back):'
       + #13#10 + Report, mbInformation, MB_OK, IDOK);
 end;
