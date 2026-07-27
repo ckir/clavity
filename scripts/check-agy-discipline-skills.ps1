@@ -9,16 +9,17 @@ $ErrorActionPreference = 'Stop'
 $fail = $false
 function Fail($msg) { Write-Error $msg -ErrorAction Continue; $script:fail = $true }
 
-# Discipline skills shipped so far. SP-B appends 'agy-capstone'.
-$skills = @('agy-first', 'agy-capstone')
+# Discipline skills shipped so far. SP-B appended 'agy-capstone'; AGY-TEST-AUDIT appends 'agy-test-audit'.
+$skills = @('agy-first', 'agy-capstone', 'agy-test-audit')
 
-# The four ASCII [VERDICT] forms the contract requires (spec Decision 2.1 + 2.7).
-$requiredVerdicts = @(
-    '[VERDICT: ALIGNED]',
-    '[VERDICT: REJECTED - ',
-    '[VERDICT: NEGOTIATE - ',
-    '[VERDICT: SKIPPED-UNREACHABLE]'
-)
+# The required ASCII [VERDICT] forms PER SKILL (each discipline has its own vocabulary). agy-first and
+# agy-capstone share the convergent-review set (spec Decision 2.1 + 2.7); agy-test-audit gates coverage,
+# so it declares EXHAUSTIVE / GAPS FOUND / agy-required-but-unreachable instead.
+$requiredVerdicts = @{
+    'agy-first'      = @('[VERDICT: ALIGNED]', '[VERDICT: REJECTED - ', '[VERDICT: NEGOTIATE - ', '[VERDICT: SKIPPED-UNREACHABLE]')
+    'agy-capstone'   = @('[VERDICT: ALIGNED]', '[VERDICT: REJECTED - ', '[VERDICT: NEGOTIATE - ', '[VERDICT: SKIPPED-UNREACHABLE]')
+    'agy-test-audit' = @('[VERDICT: EXHAUSTIVE]', '[VERDICT: GAPS FOUND]', '[VERDICT: agy-required-but-unreachable]')
+}
 # The documented marker-contract constant the skill must reference (Task 5).
 $markerConstant = '.clavity/agy-marks/'
 
@@ -41,8 +42,8 @@ foreach ($skill in $skills) {
     } else {
         Fail "$rel : missing or malformed frontmatter block (expected '---' ... '---' at file start)"
     }
-    # (c) all required [VERDICT] forms present
-    foreach ($v in $requiredVerdicts) {
+    # (c) all required [VERDICT] forms for THIS skill present
+    foreach ($v in $requiredVerdicts[$skill]) {
         if (-not $raw.Contains($v)) { Fail "$rel : missing required verdict form '$v'" }
     }
     # (d) pure ASCII (mojibake guard)

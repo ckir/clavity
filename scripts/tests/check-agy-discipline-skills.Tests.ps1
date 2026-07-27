@@ -9,7 +9,7 @@ BeforeAll {
     # silently losing its discriminating power).
     function New-ScratchRoot {
         $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("agyskilltest-" + [guid]::NewGuid())
-        foreach ($s in @('agy-first', 'agy-capstone')) {
+        foreach ($s in @('agy-first', 'agy-capstone', 'agy-test-audit')) {
             $dst = Join-Path $scratch "clavity-dotnet/plugin/skills/$s"
             New-Item -ItemType Directory -Path $dst -Force | Out-Null
             Copy-Item (Join-Path $script:RepoRoot "clavity-dotnet/plugin/skills/$s/SKILL.md") `
@@ -29,7 +29,7 @@ Describe 'check-agy-discipline-skills' {
 
     Context 'rejection cases (each perturbs one skill; the other stays valid)' {
         It 'fails loudly on a non-ASCII character in <skill>' -ForEach @(
-            @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }
+            @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }, @{ skill = 'agy-test-audit' }
         ) {
             $scratch = New-ScratchRoot
             $target  = & $script:SkillPath $scratch $skill
@@ -41,11 +41,13 @@ Describe 'check-agy-discipline-skills' {
         }
 
         It 'fails when a required [VERDICT] form is missing from <skill>' -ForEach @(
-            @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }
+            @{ skill = 'agy-first';      token = '[VERDICT: SKIPPED-UNREACHABLE]' },
+            @{ skill = 'agy-capstone';   token = '[VERDICT: SKIPPED-UNREACHABLE]' },
+            @{ skill = 'agy-test-audit'; token = '[VERDICT: EXHAUSTIVE]' }
         ) {
             $scratch = New-ScratchRoot
             $target  = & $script:SkillPath $scratch $skill
-            $body = (Get-Content -Raw $target) -replace '\[VERDICT: SKIPPED-UNREACHABLE\]', '[VERDICT: GONE]'
+            $body = (Get-Content -Raw $target).Replace($token, '[VERDICT: GONE]')
             Set-Content -Path $target -Value $body -Encoding utf8
             & $script:Lint -Root $scratch 2>&1 | Out-Null
             $LASTEXITCODE | Should -Be 1
@@ -53,7 +55,7 @@ Describe 'check-agy-discipline-skills' {
         }
 
         It 'fails cleanly (no unhandled crash) on an empty <skill> file' -ForEach @(
-            @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }
+            @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }, @{ skill = 'agy-test-audit' }
         ) {
             # Capstone R1 (Cascade): a 0-byte SKILL.md made Get-Content -Raw return $null, and
             # $raw.Contains() threw an unhandled terminating error instead of a clean Fail.
@@ -68,7 +70,7 @@ Describe 'check-agy-discipline-skills' {
         }
 
         It 'fails when name: is absent from <skill> real frontmatter even if present in the body' -ForEach @(
-            @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }
+            @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }, @{ skill = 'agy-test-audit' }
         ) {
             # Capstone R1 (Protocol/Mechanism): the old lazy (?ms).*? frontmatter regex spanned past the
             # closing fence, so a 'name:' smuggled into the body plus any body '---' falsely satisfied it.
