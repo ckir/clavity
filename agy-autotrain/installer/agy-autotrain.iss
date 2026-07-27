@@ -95,9 +95,11 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    RegisterMemberPlugin(ExpandConstant('{app}'), 'agy-autotrain', 'clavity-agy-autotrain',
+    { agy-autotrain is a CLAUDE-driver discipline (AGY-LEARN capture/curate) with no agy-side content,
+      so it registers with Claude Code ONLY — never agy (which has no use for it). }
+    RegisterMemberPluginFor(ExpandConstant('{app}'), 'agy-autotrain', 'clavity-agy-autotrain', 'claude',
       RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded, RegReport);
-    ReportRegistrationOutcome(AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy, RegReport);
+    ReportRegistrationOutcomeFor('claude', AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy, RegReport);
   end
   else if CurStep = ssDone then
     SuppressibleMsgBox('agy-autotrain is installed. It will start learning from your project the ' +
@@ -133,7 +135,7 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
-    DeregisterMemberPluginOnUninstall('agy-autotrain', 'clavity-agy-autotrain');
+    DeregisterMemberPluginOnUninstallFor('agy-autotrain', 'clavity-agy-autotrain', 'claude');
     GrowthFile := ExpandConstant('{%USERPROFILE}\.clavity\golden-header.growth.md');
     if RemoveGrowth then
     begin

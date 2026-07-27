@@ -170,16 +170,26 @@ begin
   RegisteredAgy    := AgentLineVerdict(Lines, 'agy', fa) and fa;
 end;
 
-{ ---- top-level install orchestration (same signature as the deleted Pascal). ---- }
-procedure RegisterMemberPlugin(const AppDir, PluginName, MarketplaceName: string;
+{ ---- top-level install orchestration. The *For variant takes an explicit AgentSel ('all'|'claude'|'agy')
+  so a member can scope registration to the agent(s) it actually serves — e.g. a claude-only discipline
+  plugin passes 'claude' and the agy CLI is never touched. RegisterMemberPlugin keeps the historical 'all'
+  default for members that target every detected agent (commonmemory, ghidrust, clavity-classic). ---- }
+procedure RegisterMemberPluginFor(const AppDir, PluginName, MarketplaceName, AgentSel: string;
   var RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded: Boolean; var Report: string);
 var
   ExitCode: Integer;
 begin
-  ExecRegisterScript('install', AppDir, PluginName, MarketplaceName, 'all',
+  ExecRegisterScript('install', AppDir, PluginName, MarketplaceName, AgentSel,
     RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded, ExitCode);
   Report := 'register-plugin.ps1 exit=' + IntToStr(ExitCode) +
     ' (claude=' + IntToStr(Ord(RegisteredClaude)) + ' agy=' + IntToStr(Ord(RegisteredAgy)) + ')';
+end;
+
+procedure RegisterMemberPlugin(const AppDir, PluginName, MarketplaceName: string;
+  var RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded: Boolean; var Report: string);
+begin
+  RegisterMemberPluginFor(AppDir, PluginName, MarketplaceName, 'all',
+    RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded, Report);
 end;
 
 { ---- install-time rollback: selectively deregister ONLY the agents this run registered (per-agent
@@ -202,7 +212,7 @@ end;
   INTEGRITY check — it catches a corrupted or partially-written script, and a mismatch is a loud reason
   to stop rather than something it can prevent. (This is a Pascal comment: it ends at the first closing
   brace, so never write a brace-wrapped Inno constant in here.) ---- }
-procedure DeregisterMemberPluginOnUninstall(const PluginName, MarketplaceName: string);
+procedure DeregisterMemberPluginOnUninstallFor(const PluginName, MarketplaceName, AgentSel: string);
 var
   rc, ra, ad, asuc: Boolean; ec: Integer; Ps1Path, Actual: string;
 begin
@@ -218,21 +228,39 @@ begin
     Log('register-plugin.ps1 SHA-256 mismatch (tamper?) — refusing to exec. Expected {#ExpectedRegisterPs1Sha256}, got ' + Actual);
     exit;   { fail-open deregistration; never run a tampered script }
   end;
-  ExecRegisterScript('uninstall', ExpandConstant('{app}'), PluginName, MarketplaceName, 'all', rc, ra, ad, asuc, ec);
+  { AgentSel scopes deregistration to the same agent(s) the member registered to — a claude-only member
+    passes 'claude' so uninstall never needlessly spins up the agy CLI for a plugin it never registered. }
+  ExecRegisterScript('uninstall', ExpandConstant('{app}'), PluginName, MarketplaceName, AgentSel, rc, ra, ad, asuc, ec);
+end;
+
+procedure DeregisterMemberPluginOnUninstall(const PluginName, MarketplaceName: string);
+begin
+  DeregisterMemberPluginOnUninstallFor(PluginName, MarketplaceName, 'all');
 end;
 
 { ---- shared install-time reporting: partial failure is REPORTED, not rolled back, at the registration step
   (only the golden-header rollback path reverses a registration). Uses the returned booleans — does NOT
   re-detect (detection now lives in the PS registrar). ---- }
-procedure ReportRegistrationOutcome(AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy: Boolean; const Report: string);
+procedure ReportRegistrationOutcomeFor(const AgentSel: string; AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy: Boolean; const Report: string);
+var
+  ExpectClaude, ExpectAgy: Boolean;
 begin
+  { Only the TARGETED agents count toward the partial-failure warning: a deliberately claude-only member
+    (AgentSel='claude') must NOT warn merely because agy was not registered — it never asked for agy. }
+  ExpectClaude := (AgentSel = 'all') or (AgentSel = 'claude');
+  ExpectAgy    := (AgentSel = 'all') or (AgentSel = 'agy');
   if not AnyDetected then
     SuppressibleMsgBox('No compatible agent (Claude Code / agy) found on this machine. Install ' +
       'Claude Code or agy, then re-run this setup.', mbError, MB_OK, IDOK)
   else if not AnySucceeded then
     SuppressibleMsgBox('Plugin registration failed for every detected agent:' + #13#10 + Report,
       mbError, MB_OK, IDOK)
-  else if (not RegisteredClaude) or (not RegisteredAgy) then
+  else if (ExpectClaude and (not RegisteredClaude)) or (ExpectAgy and (not RegisteredAgy)) then
     SuppressibleMsgBox('Plugin registered, but a partial failure may have occurred (not rolled back):'
       + #13#10 + Report, mbInformation, MB_OK, IDOK);
+end;
+
+procedure ReportRegistrationOutcome(AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy: Boolean; const Report: string);
+begin
+  ReportRegistrationOutcomeFor('all', AnyDetected, AnySucceeded, RegisteredClaude, RegisteredAgy, Report);
 end;
