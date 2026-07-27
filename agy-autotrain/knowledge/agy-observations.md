@@ -63,6 +63,22 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
   is real but its gap list must be filtered by measurement, exactly like a defect panel's findings. (1st
   observation of the coverage-audit-over-counts variant.)
 
+- [heuristic] (driver/probabilistic) `[corpus]` On a DESIGN-FORK consult (not a defect review), the peer will
+  confidently assert that a constraint written into your OWN artifact is "actually false" and propose a
+  mechanism that routes around it. Treat this as a high-value signal: here the peer correctly spotted that an
+  over-broad "no hook can enforce this ordering" claim was refutable, because a state-marker that is written
+  ONLY at a terminal success is itself readable by a DIFFERENT hook than the one the claim was reasoning
+  about. But its proposed replacement mechanism was simultaneously (a) IMPRECISE on the exact state semantics
+  (the marker actually meant success-OR-explicitly-waived, not success-only) and (b) INCOMPLETE on a
+  load-bearing detail (which trigger EVENT re-fires the second hook AFTER the first writes its marker within
+  the same lifecycle step). Driving implication: a peer's "your premise is false" is worth verifying against
+  the source of truth (it is often partly right and overturns a genuine blind spot), but do NOT fold its
+  proposed replacement without tracing the full state-AND-trigger case-matrix — the premise-challenge and the
+  mechanism are separate claims, and the mechanism routinely arrives directionally-right-but-underspecified.
+  Distinct from the correct-finding-defective-fix REVIEW variant: this is a GENERATIVE design proposal and the
+  peer's move was to overturn a premise, not patch a bug. (1st observation of the design-consult
+  premise-overturn variant.)
+
 <!-- Drain log 2026-07-19 (agy peer; 2 pending → recompiled GROWTH + driver cheatsheet):
   1) [assumption] (driver/deterministic) oversized-REASONING-reply truncates-to-HEAD (NOT a hang) — REFINEMENT
      of the already-promoted oversized-turn anti-pattern. Not tool-fixable (recovery = decompose / file-transport,
