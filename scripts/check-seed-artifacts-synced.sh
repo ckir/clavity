@@ -11,8 +11,10 @@ for rel in \
   skills/adversarial-panel-review/SKILL.md \
   skills/agy-first/SKILL.md \
   skills/agy-capstone/SKILL.md \
+  skills/agy-test-audit/SKILL.md \
   hooks/agy-after-reminder.sh \
   hooks/agy-seam-inject.sh \
+  hooks/agy-test-audit-reminder.sh \
   hooks/agy-liveness-check.sh \
   knowledge/agy-assumptions.md \
   knowledge/agy-capabilities.md ; do
