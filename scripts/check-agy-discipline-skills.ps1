@@ -42,7 +42,11 @@ foreach ($skill in $skills) {
     } else {
         Fail "$rel : missing or malformed frontmatter block (expected '---' ... '---' at file start)"
     }
-    # (c) all required [VERDICT] forms for THIS skill present
+    # (c) all required [VERDICT] forms for THIS skill present. Fail loud if a skill was enrolled in $skills
+    # but never mapped in $requiredVerdicts (else `foreach` over $null would silently verify nothing).
+    if (-not $requiredVerdicts.ContainsKey($skill)) {
+        Fail "$rel : no required-verdict set mapped for skill '$skill'"
+    }
     foreach ($v in $requiredVerdicts[$skill]) {
         if (-not $raw.Contains($v)) { Fail "$rel : missing required verdict form '$v'" }
     }

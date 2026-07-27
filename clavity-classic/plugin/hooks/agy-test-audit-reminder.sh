@@ -40,13 +40,14 @@ gate() {
 # --- jq guard. jq parses stdin (cwd) + emits structured JSON. Without it: honor the kill-switch, then run
 # the gate against the PROCESS cwd; ONLY when it would fire, emit a loud hardcoded ASCII line. ---
 if ! command -v jq >/dev/null 2>&1; then
-  if [ -f "./.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then exit 0; fi
   # Without jq we cannot parse JSON, but the gate itself needs the real cwd (not the process cwd, which
   # may be an unrelated directory) to find the right repo's HEAD/markers. Extract it with a field-bounded
   # sed on the raw payload (same spirit as agy-after-reminder.sh's grep on file_path/path); fall back to
   # the process cwd only if the field is absent.
   cwd=$(printf '%s' "$input" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
   [ -z "$cwd" ] && cwd="."
+  # Honor the kill-switch against the SAME cwd the gate uses (aligns with the jq path below).
+  if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then exit 0; fi
   if [ "$(gate "$cwd")" = "fire" ]; then
     printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - the AGY-TEST-AUDIT reminder will not fire after capstone green"}}'
   fi
