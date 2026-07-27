@@ -98,6 +98,16 @@ plugin) fits better — it installs/updates/uninstalls cleanly and is disableabl
 
 ## 5. Procedure
 
+**Load-bearing core vs. operational refinements (panel E2).** This spec accreted many guards under
+adversarial review; do not read all of them as required for v1. The **load-bearing core** is four steps:
+point agy at the diff's files (step 1) → **verify each claimed gap by measurement** (step 3) → **owner
+scopes** which to close (step 5) → **close non-vacuously** (step 6). Everything else — the parseable-token
+schema, the discarded-below-floor list, the rolling-debt-file staleness/GC/merge mechanics, the
+headless-emit path, the capstone-invalidation loop — are **operational refinements the implementation plan
+right-sizes**; a v1 can implement the core and land the refinements incrementally. Building the core first
+delivers the value (catching untested reachable behaviours); the refinements harden it against the failure
+modes in §6.
+
 0. **Precheck** the peer is idle (`agy_status`) and reachable (§4 unreachable-handling). Designate a scratch
    dir for any notes/repro.
 1. **Point agy at the REAL files** — via filepath transport (agy reads them itself); **never** a pasted
@@ -139,8 +149,11 @@ plugin) fits better — it installs/updates/uninstalls cleanly and is disableabl
    Any gaps the owner **defers must be logged as tracked debt** in the single rolling debt file (§8) — a
    GAPS-FOUND-but-all-deferred outcome is legitimate only if recorded there, so a habit of always-deferring
    is visible in one place and the discipline cannot degrade into run-then-defer theater (panel S4/S5).
-6. **Close the chosen gaps** — each new test **must be NON-VACUOUS**: it must FAIL if the guarded behaviour
-   regresses. Prove non-vacuousness with a **temporary LOGIC MUTANT** of the guarded code — flip a boolean,
+6. **Close the chosen gaps** — the **driver authors each test itself**; the peer's "suggested test" is a
+   *specification* (name + what to assert), never code to paste-and-run — the peer's output is untrusted
+   input, gated by verify-before-fold (step 3) and owner-scoping (step 5), so a confused/compromised peer
+   cannot inject executable code via a "gap" (panel E1). Each new test **must be NON-VACUOUS**: it must FAIL
+   if the guarded behaviour regresses. Prove non-vacuousness with a **temporary LOGIC MUTANT** of the guarded code — flip a boolean,
    drop a conditional, break a calculation — **not** a structural/signature break (deleting a property or
    method), which only fails to *compile* and proves the symbol was referenced, not that the runtime
    assertion catches a behavioural slip (panel S6/B2). Confirm the **specific newly-added test** is the one
