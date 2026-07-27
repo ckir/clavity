@@ -87,7 +87,12 @@ ask only makes sense when a human is actually on the other end of it.
 Never rubber-stamp a finding. For every finding raised by any seat, verify any bare factual claim by
 actual measurement before folding it in — agy in particular can state a false claim with full confidence,
 and a panel does not self-check its own consistency, so seats (including across rounds) can flatly
-contradict each other or an earlier round without noticing.
+contradict each other or an earlier round without noticing. This applies with special force to any FIX a
+seat (or the peer) SUGGESTS, not only to its findings: a correct finding routinely arrives with a WRONG or
+INCOMPLETE fix — one that regresses other behaviour or leaves an adjacent edge — so treat a suggested fix as
+a fresh claim, verify its full effect before adopting it, and re-run a round after folding because the fix
+spawns its own edges (proven live: a peer twice found a real defect while its proposed fix was wrong once and
+incomplete the next).
 
 Fold undisputed factual or correctness findings autonomously — do not ping-pong every single fold back to
 the operator for approval. Reserve the operator's final call for the case where a finding challenges a
