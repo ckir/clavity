@@ -33,7 +33,7 @@ gate() {
     changed=$(git -C "$cwd" show --name-only --format= HEAD 2>/dev/null)
   fi
   # Executable-code / test path heuristic. Empty match -> silent (docs/config/spec-only range, spec 4).
-  printf '%s\n' "$changed" | grep -Eq '\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1)$' || return 1
+  printf '%s\n' "$changed" | grep -Eqi '\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1)$' || return 1
   echo fire
 }
 
@@ -55,6 +55,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
+[ -z "$cwd" ] && cwd="."
 
 # Opt-out kill-switch (mirrors agy-after-reminder.sh).
 if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then

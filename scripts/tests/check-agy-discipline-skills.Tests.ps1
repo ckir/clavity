@@ -84,4 +84,36 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
     }
+
+    Context 'F3 guard: a skill enrolled in $skills but not mapped in $requiredVerdicts must fail loud' {
+        It 'fails LOUD when a skill is enrolled in $skills but has no $requiredVerdicts mapping (F3 guard)' {
+            # Build a temp linter whose $skills array has an extra 'phantom-unmapped' entry that is
+            # deliberately NOT added to $requiredVerdicts. This is the exact shape the ContainsKey guard
+            # exists to catch: without it, `foreach ($v in $requiredVerdicts[$skill])` iterates $null and
+            # silently verifies nothing, so a skill with zero enforced invariants would pass clean.
+            $realSrc = Get-Content -Raw $script:Lint
+            $needle  = "`$skills = @('agy-first', 'agy-capstone', 'agy-test-audit')"
+            $realSrc.Contains($needle) | Should -BeTrue -Because 'the mutation target line must match the real linter verbatim'
+            $mutated = $realSrc.Replace($needle, "`$skills = @('agy-first', 'agy-capstone', 'agy-test-audit', 'phantom-unmapped')")
+            $tmpLint = Join-Path ([IO.Path]::GetTempPath()) ("lint-" + [guid]::NewGuid().ToString('N') + ".ps1")
+            Set-Content -Path $tmpLint -Value $mutated -Encoding utf8
+
+            # Scratch root with all real skills (New-ScratchRoot) plus a VALID phantom skill dir that
+            # satisfies every OTHER invariant (frontmatter name==dir, ASCII, both transports, marker
+            # constant) so the ONLY possible failure is the missing $requiredVerdicts mapping.
+            $scratch = New-ScratchRoot
+            $pdir = Join-Path $scratch 'clavity-dotnet/plugin/skills/phantom-unmapped'
+            New-Item -ItemType Directory -Force -Path $pdir | Out-Null
+            $valid = "---`nname: phantom-unmapped`n---`nTransport: the agy_ask MCP tool and clavity ask --review-only.`nMarker at .clavity/agy-marks/ per contract.`n"
+            Set-Content -Path (Join-Path $pdir 'SKILL.md') -Value $valid -NoNewline -Encoding utf8
+
+            try {
+                & pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1 | Out-Null
+                $LASTEXITCODE | Should -Be 1
+            } finally {
+                Remove-Item -Force $tmpLint -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
+    }
 }

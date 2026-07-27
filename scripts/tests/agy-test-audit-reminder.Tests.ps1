@@ -55,6 +55,15 @@ Describe 'agy-test-audit-reminder.sh' {
             $out.ExitCode | Should -Be 0
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    It 'FIRES when the changed code file has an UPPERCASE extension (case-insensitive ext match)' {
+        $r = New-FiredRepo -CodeFile 'src/Thing.CS'
+        try {
+            Set-Marker $r.Dir 'agy-capstone' $r.Head
+            $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
+            $out.StdOut  | Should -Match 'AGY-TEST-AUDIT'
+            $out.ExitCode | Should -Be 0
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'is SILENT when the capstone marker is absent (capstone not run/green)' {
         $r = New-FiredRepo
         try {
@@ -110,7 +119,8 @@ Describe 'agy-test-audit-reminder.sh' {
         try {
             Set-Marker $r.Dir 'agy-capstone' $r.Head
             $base = (& git -C $r.Dir merge-base HEAD main).Trim()
-            $base | Should -Not -Be $r.Head          # sanity: base is behind HEAD -> primary path, not fallback
+            $base | Should -Not -BeNullOrEmpty       # a real base commit exists (empty merge-base would fall to the single-commit path)
+            $base | Should -Not -Be $r.Head          # and it is behind HEAD -> primary diff path, not fallback
             $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
             $out.StdOut  | Should -Match 'AGY-TEST-AUDIT'
             $out.ExitCode | Should -Be 0
