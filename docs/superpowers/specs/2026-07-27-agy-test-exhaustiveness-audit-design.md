@@ -101,10 +101,12 @@ plugin) fits better — it installs/updates/uninstalls cleanly and is disableabl
 0. **Precheck** the peer is idle (`agy_status`) and reachable (§4 unreachable-handling). Designate a scratch
    dir for any notes/repro.
 1. **Point agy at the REAL files** — via filepath transport (agy reads them itself); **never** a pasted
-   summary of the driver's own reading. **Bound the read scope to the branch diff (panel C1):** point agy at
-   the files in the branch diff and their *immediate* test counterparts + directly-relevant source — NOT the
-   entire suite or repo, which would blow the context window, cost a fortune, and time the peer out (the
-   capstone scopes to the diff for the same reason). Bind scope in the payload: audit ONLY these files;
+   summary of the driver's own reading. **Bound the read scope, forked by trigger (panel C1 + D2):** when
+   nudged by the branch-finish **hook**, scope to the files in the branch diff and their *immediate* test
+   counterparts + directly-relevant source; when invoked **manually** (`/agy-test-audit <paths>`), scope to
+   the explicitly provided `<paths>` (a manual run on a clean working tree has an EMPTY diff — the diff-bound
+   must NOT be applied, or it audits nothing). Either way, NOT the entire suite or repo, which would blow the
+   context window, cost a fortune, and time the peer out (the capstone scopes to the diff for the same reason). Bind scope in the payload: audit ONLY these files;
    assume the surrounding code is correct; no global discovery. Inline the running accepted-boundary ledger
    (step 4) as text each round (agy's context can truncate; a fresh cascade carries nothing forward).
    **The audit is itself a heavy peer consult (panel R2-2)** and inherits the peer's own latency/timeout
@@ -203,12 +205,28 @@ correction):
 - **A single, stable, ROLLING committed file** (e.g. `coverage-debt.md` at a plan-chosen path) holding ONLY
   the two things that must persist: **unresolved tracked debt** (gaps the owner deferred, so a
   defer-everything habit is visible and the debt is findable in one place) and the **accepted-boundary
-  ledger** (so future audits inherit the do-not-re-raise list). Closed gaps are removed from it.
+  ledger** (so future audits inherit the do-not-re-raise list). Closed gaps are removed from it. Three
+  persistent-state hazards it must be designed against (panel R3-1/D1):
+  - **Ledger staleness:** each accepted-boundary entry records its *specific compensation* (the unit test /
+    catch-scope / structural guarantee that justified not covering it) + a code anchor; a future audit
+    **re-validates the compensation still exists** before honoring the do-not-re-raise — an entry whose
+    compensation vanished is promoted back to a live gap (like the capstone ledger's "unless reachable").
+  - **Ghost debt:** because the audit is diff-scoped (C1), it cannot see deleted/refactored code to prune
+    its stale entries, so the file inflates monotonically. A **periodic global garbage-collection pass**
+    (manual, whole-tree) reconciles the file against current code and drops orphaned entries — the routine
+    diff-bound run cannot do this.
+  - **Merge-conflict attrition:** a single file touched at every branch-finish is a conflict hotspot where a
+    careless `--ours`/`--theirs` silently drops a teammate's entry. Structure it to minimize conflicts —
+    append-only log or module-partitioned sections — not one hand-merged block.
 
 - On close: the new **non-vacuous** tests + the rolling debt file updated (deferred gaps in, closed gaps out)
   + a re-audit verdict (up to the owner's convergence bar).
 - Failure terminals: `[VERDICT: agy-required-but-unreachable]` (peer down, no operator to waive) or a
-  headless run aborting with its gaps written to the rolling debt file — never a silent pass.
+  headless run aborting with its gap list — never a silent pass. **In a headless/CI run the gap list is
+  emitted to stdout/stderr / the CI step summary (build logs), NOT written to the rolling debt file** (panel
+  D3): modifying a tracked file just before a non-zero exit in an ephemeral container is a no-op — the
+  container is destroyed and the write is lost, so the debt would silently vanish. Persisting to the rolling
+  file requires a live workspace (an interactive/local run that then commits).
 
 ## 9. Testing the discipline itself
 
