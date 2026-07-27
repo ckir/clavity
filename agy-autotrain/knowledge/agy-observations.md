@@ -79,6 +79,21 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
   peer's move was to overturn a premise, not patch a bug. (1st observation of the design-consult
   premise-overturn variant.)
 
+- [heuristic] (driver/probabilistic) `[corpus]` On a CONVERGENT multi-round adversarial review driven toward a
+  clean terminal state, the peer trends toward MANUFACTURING ever-lower-value findings round over round if each
+  round's framing implies findings are expected of it - early rounds surfaced real, measurement-verified defects,
+  but by later rounds the finds decayed from correctness bugs to test-of-test brittleness nits and finally to
+  contrived/exotic edges. To reach an HONEST terminal GREEN rather than an infinite tail of manufactured nits,
+  the final round(s) must explicitly (a) set a STRICT severity floor (correctness / safety / contract / real
+  coverage only - name the exclusions: stylistic, hypothetical-unreachable, defensive-hardening-of-already-fail-
+  safe-code) AND (b) AUTHORIZE a clean verdict as an acceptable, expected outcome ("state plainly it is CLEAN if
+  sound; I want an honest clean verdict, not manufactured findings"). Given that framing the peer returned a
+  genuine CLEAN once the code was sound, having produced real folds earlier - so the convergence was honest, not
+  a rubber-stamp. Complements the existing "force depth, don't dial it": that stops theater-compliance on the
+  DISCOVERY side; this stops manufactured-findings on the CONVERGENCE side. Driving implication: pair open/deep
+  framing in early rounds with an explicit floor + permission-to-be-clean in the closing round. (1st observation
+  of the convergence-permission variant.)
+
 <!-- Drain log 2026-07-19 (agy peer; 2 pending → recompiled GROWTH + driver cheatsheet):
   1) [assumption] (driver/deterministic) oversized-REASONING-reply truncates-to-HEAD (NOT a hang) — REFINEMENT
      of the already-promoted oversized-turn anti-pattern. Not tool-fixable (recovery = decompose / file-transport,
