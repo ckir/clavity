@@ -9,7 +9,7 @@ Decision 1 (debounce) + Decision 4 (per-plugin state).
 
 - **Directory:** `.clavity/agy-marks/` (repo-cwd-relative; runtime state; gitignored).
 - **Marker file:** `<discipline>.head`
-  - `<discipline>` ∈ { `agy-first` (SP-A), `agy-capstone` (SP-B) }.
+  - `<discipline>` ∈ { `agy-first` (SP-A), `agy-capstone` (SP-B), `agy-test-audit` (AGY-TEST-AUDIT) }.
   - **No `<plugin-id>` prefix** (DECIDED: Option S). A byte-identical skill body cannot carry a per-plugin
     literal and has no runtime mechanism to resolve which plugin it is; and the two drivers are mutually
     exclusive (both-installed is a transient migration state), so a single discipline-keyed marker is
@@ -63,8 +63,20 @@ duplicate paid consult). SP-C's reader consumes this same constant.
   In every case the content stays the bare `git rev-parse HEAD` sha, so the SP-C hook's
   `content == HEAD` read is uniform across disciplines; capstone's WAIVED / UNVERIFIED-ACCEPTED
   distinctions live in the log above, never in the marker.
+- `agy-test-audit` writes `agy-test-audit.head` only on a **completed audit**: an `[VERDICT: EXHAUSTIVE]`,
+  or a `[VERDICT: GAPS FOUND]` whose every gap is owner-dispositioned (closed or logged as deferred debt
+  in the rolling debt file). An `[VERDICT: agy-required-but-unreachable]` abort writes NO marker (re-fires
+  next trigger). Content is the audited `git rev-parse HEAD`.
 - A `SKIPPED-UNREACHABLE` or a review-only breach writes NO `.head` marker (the discipline re-fires next
   trigger); the skip appends to `skipped.log` as above.
+- **Cross-marker sequencing (AGY-TEST-AUDIT).** Unlike the SP-C `agy-seam-inject.sh` reader (which reads
+  only its own discipline's marker), the `agy-test-audit-reminder.sh` hook READS `agy-capstone.head` to
+  enforce ordering: it nudges the audit only when `agy-capstone.head == current HEAD` (capstone is GREEN at
+  this HEAD) AND `agy-test-audit.head != HEAD` (audit not yet done) AND the reviewed range touched
+  executable code/tests. This is sound precisely because `agy-capstone.head` is written ONLY at a
+  gate-satisfied terminal state (GREEN or a `round-cap` waiver) - so its presence at HEAD is a reliable
+  "capstone is satisfied here" signal for a *different* hook to read. The audit hook, like every reader,
+  never writes a `.head` marker.
 - The **hook** (SP-C) READS the marker: if it exists AND its content == current `git rev-parse HEAD`,
   the discipline was already consulted this cycle → do not inject. Otherwise → inject the directive.
   The hook never writes the `.head` marker (a PreToolUse hook fires before the consult and cannot know
