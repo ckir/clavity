@@ -3,6 +3,11 @@
 # The (transport-agnostic) adversarial-panel-review skill + AGY-AFTER hook are single-source-of-truth but
 # must be committed in BOTH driver plugins (marketplace discovers skills/hooks only from a committed dir).
 set -euo pipefail
+# jq is REQUIRED: the hooks.json comparisons below use `diff <(jq ...) <(jq ...)`, and a process
+# substitution's exit code does NOT propagate to the enclosing `if`/`diff` under `set -e` - so with jq
+# absent, jq errors to stderr, each `<(jq ...)` yields an empty stream, `diff` compares two empties and
+# reports "no drift", silently PASSING the guard. Fail loud instead of pretending the drift checks ran.
+command -v jq >/dev/null 2>&1 || { echo "check-seed-artifacts-synced: jq is required but not found on PATH (cannot verify hooks.json drift)" >&2; exit 2; }
 D=clavity-dotnet/plugin
 C=clavity-classic/plugin
 status=0
