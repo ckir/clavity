@@ -57,7 +57,8 @@ agy to adversarially review an artifact"). Concretely:
   existing `check-seed-artifacts-synced.sh` seed-sync guard must cover the new shared artifact).
 - **Hook:** `clavity-dotnet/plugin/hooks/agy-test-audit-reminder.sh` (mirrored), registered in the plugin
   `hooks.json`, that **nudges** the discipline on the branch-finish step (see §4). It follows the existing
-  hook conventions: jq/bash-runtime guard, stderr + exit-2 advisory emission, silent when not applicable,
+  hook conventions: jq/bash-runtime guard, an advisory nudge emitted as `hookSpecificOutput.additionalContext`
+  JSON on stdout with exit 0 (matching `agy-after-reminder.sh`; NOT stderr/exit-2), silent when not applicable,
   suppressible under the project's `.no-agy` opt-out.
 - **`CLAUDE.md`:** a **one-line pointer** in the agy-discipline enumeration noting AGY-TEST-AUDIT ships with
   the plugin (mirroring how the AGY-AFTER note points out of `CLAUDE.md`) — **no rule body** in `CLAUDE.md`.
@@ -74,11 +75,14 @@ plugin) fits better — it installs/updates/uninstalls cleanly and is disableabl
 
 - **Hook nudge at branch-finish**, intended to run **after AGY-CAPSTONE reports GREEN**. Two important
   bounds (panel S1/S2/B4):
-  - **The ordering is driver-enforced, not hook-enforceable.** A hook cannot know the capstone is GREEN; it
-    only nudges when the branch-finish skill is invoked. So the hook *reminds*, and the driver is
-    responsible for having run the capstone first — exactly as AGY-CAPSTONE itself is a nudged-but-rule-
-    backstopped discipline. The `CLAUDE.md` pointer (not a rule body) is the backstop for branches finished
-    without the skill.
+  - **The ordering is enforced by a marker-reading hook (verified refinement).** The original spec claimed
+    "a hook cannot know the capstone is GREEN." That is true only for a PreToolUse-on-skill hook, which
+    fires *before* any consult. A *marker-reading* PostToolUse hook CAN know: `agy-capstone.head` is written
+    ONLY at a gate-satisfied terminal state (human-GREEN or a `round-cap` waiver -
+    `docs/agy-disciplines-marker-contract.md`), so the `agy-test-audit-reminder.sh` hook nudges only when
+    `agy-capstone.head == HEAD` AND `agy-test-audit.head != HEAD` AND the reviewed range touched
+    executable code/tests. The `CLAUDE.md` pointer remains the backstop for a branch finished without the
+    capstone marker (e.g. capstone skipped), and the driver still owns the decision.
   - **The trigger is scoped to branch-FINISH only, and gated on the diff.** It must NOT copy the capstone
     hook's broad execution-skill matcher (`subagent-driven-development` / `executing-plans` /
     `finishing-a-development-branch`), or it fires mid-implementation, contradicting §2. And even at
