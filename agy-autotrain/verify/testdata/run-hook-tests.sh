@@ -28,6 +28,7 @@ done
 #   driver: dotnet (default — stub supplies clavity-ls, host state irrelevant)
 #         | dotnet-only (needs EXACTLY dotnet detectable; skips if host has clavity)
 #         | none        (needs NO driver detectable; skips if host has either CLI)
+#         | broken-awk  (awk on PATH but failing; the gate must nag, never fall silent)
 run_case() {
   local name="$1" fixture="$2" expect="$3" driver="${4:-dotnet}"
   local sandbox; sandbox=$(mktemp -d)
@@ -56,10 +57,19 @@ run_case() {
       printf 'skip %s — host has clavity (classic) on PATH, so dotnet-only cannot be isolated\n' "$name"
       rm -rf "$sandbox" "$empty"; return
     fi
+  elif [ "$driver" = "broken-awk" ]; then
+    # awk present but failing. It emits nothing, which is byte-identical to "everything resolved",
+    # so the gate must detect the failure itself rather than reading the empty output as a pass.
+    bin=$(mktemp -d)
+    cp "$stub/agy" "$bin/agy"; cp "$stub/clavity-ls" "$bin/clavity-ls"
+    printf '#!/usr/bin/env bash\nexit 2\n' > "$bin/awk"; chmod +x "$bin/awk"
   fi
 
+  # Build the payload with jq, never printf: a sandbox path containing backslashes (any shell whose
+  # mktemp yields native Windows paths) would produce invalid JSON, the hook's jq would fail, and the
+  # gate would exit silently -- quietly turning every silent-expected case into a false pass.
   local out
-  out=$(printf '{"cwd":"%s"}' "$sandbox" \
+  out=$(jq -nc --arg cwd "$sandbox" '{cwd:$cwd}' \
         | PATH="$bin:$PATH" LOCALAPPDATA="$empty" bash "$hook" 2>/dev/null)
   rm -rf "$empty"
   [ "$bin" != "$stub" ] && rm -rf "$bin"   # the "none" branch mints its own bin dir; do not leak it
@@ -87,6 +97,9 @@ run_case "unknown token nags"               bad-token.md     nag
 run_case "missing status columns nag"       no-columns.md    nag
 run_case "other driver's PARTIAL is silent" driver-split.md  silent   dotnet-only
 run_case "no driver detected reads both"    driver-split.md  nag      none
+run_case "aligned padding stays silent"     padded-status.md silent
+run_case "indented row is not skipped"      indented-row.md  nag
+run_case "awk failure nags"                 fail-at-live.md  nag      broken-awk
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

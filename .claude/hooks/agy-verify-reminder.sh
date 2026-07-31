@@ -61,18 +61,23 @@ fi
 # Columns: $2 = id, $3 = dotnet, $4 = classic.
 findings=$(awk -F'|' -v live="$live" -v cols="$cols" '
   function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
-  function check(id, col, v,    tok, ver) {
+  function check(id, col, v,    tok, ver, parts) {
     if (v == "N/A") return
     if (v == "")    { report(id, col, "blank"); return }
-    if (v !~ /^(PASS|FAIL|PARTIAL|ACKED) [0-9]+\.[0-9]+\.[0-9]+$/) { report(id, col, "unrecognised \"" v "\""); return }
-    tok = substr(v, 1, index(v, " ") - 1)
-    ver = substr(v, index(v, " ") + 1)
+    # Whitespace between token and version is FREE: a markdown formatter aligning the column pads
+    # inside the cell, and a gate that false-nags on cosmetic alignment trains people to ignore it.
+    if (v !~ /^(PASS|FAIL|PARTIAL|ACKED)[ \t]+[0-9]+\.[0-9]+\.[0-9]+$/) { report(id, col, "unrecognised \"" v "\""); return }
+    split(v, parts, /[ \t]+/)
+    tok = parts[1]
+    ver = parts[2]
     if (tok == "FAIL" || tok == "PARTIAL") { report(id, col, v); return }
     if (ver != live) report(id, col, v " (live " live ")")
   }
   function report(id, col, why) { out = out (out == "" ? "" : "; ") id " [" col "] " why }
   /^\|[-: |]+\|$/ { indata = 1; next }
-  indata && /^\|/ {
+  # Leading whitespace is tolerated: an indented row must NOT be silently skipped -- skipping one is
+  # indistinguishable from it passing, which is the whole defect class this gate exists to remove.
+  indata && /^[ \t]*\|/ {
     rows++
     id = trim($2)
     if (cols == "dotnet" || cols == "both")  check(id, "dotnet",  trim($3))
@@ -83,6 +88,12 @@ findings=$(awk -F'|' -v live="$live" -v cols="$cols" '
     print out
   }
 ' "$assertions" 2>/dev/null)
+awk_status=$?
+
+# awk ran but FAILED: it produces no output, which is indistinguishable from "everything resolved".
+# Without this check the gate goes silent exactly when it has lost the ability to see -- the same
+# failure shape as the version-stamp defect that motivated this rewrite.
+[ "$awk_status" -ne 0 ] && emit "agy VERIFY-HARNESS: awk exited ${awk_status} while reading the probe status columns in agy-autotrain/verify/assertions.md, so this gate could not evaluate them. Do not read its silence as a pass -- investigate the file shape or the awk build first."
 
 if [ "$findings" = "NOROWS" ]; then
   emit "agy VERIFY-HARNESS: no probe rows could be read from agy-autotrain/verify/assertions.md. The status columns are missing, renamed, or the table was reshaped -- so this gate currently cannot tell you anything about probe freshness. Fix the table shape (see agy-autotrain/verify/README.md)."
