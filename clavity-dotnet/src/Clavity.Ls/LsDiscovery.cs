@@ -146,7 +146,27 @@ public static class LsDiscovery
         }
 
         if (firstAny is not null)
-            return new LsEndpoint(grpcPort, ParseCaptured(firstAny.Groups["port"], "HTTP port"), pid);
+        {
+            // Reaching here means NO same-id HTTP line followed the chosen gRPC line, so nothing yet establishes
+            // that these two lines belong to the same session — the fallback is a guess. Require the ports to be
+            // ADJACENT as the one other corroboration available: agy binds the pair back-to-back, and every real
+            // log measured shows HTTP == gRPC + 1 (17/17). Without this, a log holding two sessions could pair one
+            // session's gRPC port with another's HTTP port, and that chimera PASSES the listening check because the
+            // other session is genuinely alive — the client then talks to the wrong workspace with no error at all.
+            //
+            // Scoped DELIBERATELY to this path only. On the same-id path the matching id already corroborates the
+            // pairing, so an adjacency check there would add no information while introducing a rare HARD failure:
+            // the pair comes from two successive bind-to-port-0 calls, and an unrelated process binding in between
+            // would legitimately yield a gap. Turning that OS-level race into "channel down" would recreate exactly
+            // the outage class this file exists to prevent. Note this guard constrains a NUMERIC relationship
+            // between two values already parsed — it adds no new coupling to the log's text format.
+            var fallbackPort = ParseCaptured(firstAny.Groups["port"], "HTTP port");
+            if (fallbackPort != grpcPort + 1)
+                throw new LsDiscoveryException(
+                    $"cli.log gRPC port {grpcPort} (id {pid}) has no same-id 'for HTTP' line, and the next one " +
+                    $"({fallbackPort}) is not its adjacent partner; the log likely holds more than one session.");
+            return new LsEndpoint(grpcPort, fallbackPort, pid);
+        }
 
         throw new LsDiscoveryException(
             $"Found gRPC port {grpcPort} (pid {pid}) but no following 'for HTTP' line; cli.log session looks truncated.");

@@ -209,6 +209,38 @@ public class LsDiscoveryTests
     }
 
     [Fact]
+    public void ParseLatest_rejects_a_non_adjacent_fallback_pair()
+    {
+        // The fallback fires only when no same-id HTTP line follows, i.e. nothing corroborates that the two lines
+        // belong to one session. Adjacency is then the only remaining evidence: without this guard a two-session
+        // log pairs session 100's gRPC port with session 200's HTTP port, and that chimera passes the listening
+        // check (200 is alive), so the client silently talks to the WRONG workspace instead of erroring.
+        var log =
+            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "200 server.go:525] Language server listening on random port at 2000 for HTTP\n";
+
+        var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+        Assert.Contains("not its adjacent partner", ex.Message);
+    }
+
+    [Fact]
+    public void ParseLatest_does_not_require_adjacency_on_the_same_id_path()
+    {
+        // The guard above is scoped to the FALLBACK on purpose. A matching id already proves the pairing, and the
+        // ports come from two successive bind(0) calls — an unrelated process binding in between legitimately
+        // yields a gap. Hard-failing a healthy session on that OS-level race would recreate the outage class this
+        // file exists to prevent, so a same-id pair must resolve even when the ports are not adjacent.
+        var log =
+            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "100 server.go:525] Language server listening on random port at 1007 for HTTP\n";
+
+        var ep = LsDiscovery.ParseLatest(log);
+
+        Assert.Equal(1000, ep.GrpcPort);
+        Assert.Equal(1007, ep.HttpPort);
+    }
+
+    [Fact]
     public void ParseLatest_throws_on_empty_input()
     {
         Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(""));
