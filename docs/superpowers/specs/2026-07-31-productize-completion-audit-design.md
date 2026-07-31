@@ -273,8 +273,11 @@ record the commit it verified against, so a reader can tell what was actually ex
   `hooks.json` will not parse; fires on a project-level duplicate **when the session cwd is a
   subdirectory of the project**, not only when it is the project root; and picks up a hook added to
   `hooks.json` **without any test edit** — that last one is what proves the list is derived at runtime
-  rather than hardcoded. Non-vacuity checked by mutation: remove each guard in turn, its named test must
-  go red. A guard whose removal leaves the suite green is not a guard.
+  rather than hardcoded; and **still reports ownership when a `.no-agy` file is present**, which is the
+  test that guards constraint 5. Without it, a later contributor who sees this hook ignoring the
+  kill-switch will reasonably "fix" it to obey, the suite will stay green, and the ownership boundary is
+  silently gone. Non-vacuity checked by mutation: remove each guard in turn, its named test must go red.
+  A guard whose removal leaves the suite green is not a guard.
 - **Byte-identical mirrors:** `just seed-sync-check` green; `diff -q` on each mirrored pair.
 - **Skill lint:** `just check-agy-skills` green.
 - **Verification pass output:** each transcript records the exact commands run and their output, not a
@@ -286,7 +289,10 @@ record the commit it verified against, so a reader can tell what was actually ex
 - **The verification pass finds a real defect in a sub-project.** Then it is no longer an audit — it
   becomes a fix, and the release slips. That is the correct outcome, not a reason to soften the pass.
 - **The liveness notice becomes noise** if it fires for a condition the operator has deliberately chosen.
-  Mitigated by naming the exact entries and by `.no-agy` remaining available.
+  The only mitigation is that it names the exact entries, so acting on it is quick. `.no-agy` is
+  explicitly NOT a mitigation here — constraint 5 exempts this check from it, so the kill-switch changes
+  the notice's wording rather than silencing it. Nagging until the registrations are gone is the intended
+  behaviour, not an oversight.
 - **Scope drift into the follow-on epic.** D4 is the boundary; a finding about `agy-test-audit` or
   `AGY-SCOPE` gets logged to the follow-on, not absorbed here.
 
