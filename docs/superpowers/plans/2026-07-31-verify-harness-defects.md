@@ -89,8 +89,15 @@ pass=0; fail=0
 
 # Stub bin dir: fake agy reports a fixed version; fake clavity-ls makes the driver detectable.
 stub=$(mktemp -d)
+trap 'rm -rf "$stub"' EXIT
 printf '#!/usr/bin/env bash\necho "agy 1.1.9"\n' > "$stub/agy";        chmod +x "$stub/agy"
 printf '#!/usr/bin/env bash\nexit 0\n'           > "$stub/clavity-ls"; chmod +x "$stub/clavity-ls"
+
+# The hook exits silently without jq (its first guard), and jq is NOT in /usr/bin on this machine --
+# MEASURED at /c/!PORTABLES/!BIN/jq. A hardcoded PATH would therefore make every nag-expected case
+# exit silently and fail for a reason that has nothing to do with the gate. Keep jq's own directory.
+jq_dir=$(dirname "$(command -v jq 2>/dev/null)" 2>/dev/null)
+[ -z "$jq_dir" ] && { echo "jq not found — the hook cannot run; install jq"; exit 1; }
 
 # run_case <name> <fixture> <expect: nag|silent> [extra PATH entries removed: driver]
 run_case() {
@@ -111,7 +118,7 @@ run_case() {
 
   local out
   out=$(printf '{"cwd":"%s"}' "$sandbox" \
-        | PATH="$bin:/usr/bin:/bin" LOCALAPPDATA="$empty" bash "$hook" 2>/dev/null)
+        | PATH="$bin:$jq_dir:/usr/bin:/bin" LOCALAPPDATA="$empty" bash "$hook" 2>/dev/null)
   rm -rf "$empty"
 
   local got="silent"
@@ -192,7 +199,9 @@ Every fixture below pins one behaviour from the spec. Write them all now so Task
 
 - [ ] **Step 2: Create the nag-expected fixtures**
 
-`acked-stale.md` (`ACKED 1.1.1` vs live `1.1.9`), `partial-live.md` (`PARTIAL 1.1.9`), `blank-status.md` (empty dotnet cell), `bad-token.md` (`Pass 1.1.9`), each the same shape as above with only the dotnet cell changed. `no-columns.md` is the **pre-conversion** table:
+`acked-stale.md` (`ACKED 1.1.1` vs live `1.1.9`), `partial-live.md` (`PARTIAL 1.1.9`), `blank-status.md` (empty dotnet cell), and `bad-token.md` — each the same shape as above with only the dotnet cell changed.
+
+**`bad-token.md` must use `FAILED 1.1.9`, not a case variant like `Pass 1.1.9`.** MEASURED: against the mutant regex `/^(PASS|FAIL|PARTIAL|ACKED)/` (anchor and version dropped), `Pass 1.1.9` still fails to match — awk regexes are case-sensitive — so it still reports "unrecognised", still nags, and the test stays GREEN with the guard removed. That is a vacuous test. `FAILED 1.1.9` matches the mutant's `^FAIL` prefix, yields token `FAILED` which is neither `FAIL` nor `PARTIAL`, carries a current version, and therefore goes **silent** — turning the test RED and proving the full-token anchor is load-bearing. `no-columns.md` is the **pre-conversion** table:
 
 ```markdown
 | # | Assumption | PASS | Last run |
@@ -273,7 +282,7 @@ cols=""
 if command -v clavity-ls >/dev/null 2>&1 || [ -x "${LOCALAPPDATA:-}/Programs/clavity-dotnet/clavity-ls.exe" ]; then
   cols="dotnet"
 fi
-if command -v clavity >/dev/null 2>&1; then
+if command -v clavity >/dev/null 2>&1 || [ -x "${LOCALAPPDATA:-}/Programs/clavity-classic/clavity.exe" ]; then
   [ -n "$cols" ] && cols="both" || cols="classic"
 fi
 [ -z "$cols" ] && cols="both"
@@ -328,7 +337,9 @@ Non-vacuity matters here — a guard test that passes for the wrong reason is wo
 
 Temporarily change `if (tok == "FAIL" || tok == "PARTIAL")` to `if (tok == "FAIL")`, re-run: `PARTIAL at live still nags` must go RED. Restore it.
 
-Temporarily change the token regex to `/^(PASS|FAIL|PARTIAL|ACKED)/` (dropping the anchor and version), re-run: `unknown token nags` must go RED. Restore it.
+Temporarily change the token regex to `/^(PASS|FAIL|PARTIAL|ACKED)/` (dropping the anchor and version), re-run: `unknown token nags` must go RED — the `FAILED 1.1.9` fixture goes silent under the mutant. Restore it.
+
+Note *why* the fixture is `FAILED` and not a case variant: a case variant fails the mutant regex too, so the test would stay green and the mutant would survive. This was measured, not assumed.
 
 Both mutants killed = the tests bind the behaviour they claim to.
 
@@ -637,5 +648,13 @@ Update the durable project memory with the commit range and the fact that the ga
 **Migration order.** The spec requires the table before the hook. Tasks 1-3 write tests and the hook *before* Task 4 converts the table, which inverts that — deliberately, because TDD needs a RED test first and the fixtures are self-contained. The ordering constraint is about *landing*, so Tasks 3 and 4 must be pushed together, or Task 4 must land first. **If splitting across pushes, land Task 4 before Task 3.**
 
 **Type consistency.** `$2`/`$3`/`$4` mean id/dotnet/classic in Tasks 1-4 and 9. Token spellings (`PASS`/`FAIL`/`PARTIAL`/`ACKED`/`N/A`) are identical across the hook, fixtures, curate skill, and README. The runner's `run_case` signature is unchanged between Tasks 1 and 2.
+
+**Unverified citation, flagged rather than asserted.** The classic-driver fallback path
+`${LOCALAPPDATA}/Programs/clavity-classic/clavity.exe` mirrors the verified clavity-dotnet layout, but
+clavity-classic is **not installed on this machine** — `%LOCALAPPDATA%/Programs/` contains
+`clavity-dotnet`, `agy-autotrain` and `commonmemory` only. It is therefore a pattern-match, not a
+measurement. Confirm it against the classic installer before relying on it; if it is wrong the fallback
+simply never fires and detection degrades to `command -v clavity`, which is the pre-existing behaviour,
+so a wrong guess is harmless rather than dangerous.
 
 **Known gaps, stated rather than hidden.** (1) A second Markdown table in `assertions.md` would have its rows read as data — measured to be a non-issue today (one table) and judged below the severity floor by the panel. (2) `no-columns.md` may nag via `blank` rather than `NOROWS` depending on cell count; Task 3 Step 2 accepts either, since both are nags. (3) The `ACKED` disposition reference is a convention the gate cannot enforce — by design, since the hook never parses prose.
