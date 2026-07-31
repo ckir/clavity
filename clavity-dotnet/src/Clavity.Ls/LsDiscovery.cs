@@ -156,6 +156,21 @@ public static class LsDiscovery
     /// Parse the latest endpoint AND confirm its HTTP (h2c) port is currently listening — i.e. the
     /// logged session is still alive, not a stale line from an exited agy.
     /// </summary>
+    /// <remarks>
+    /// DELIBERATELY validates ONLY the newest pair, and does NOT fall back to an older still-listening
+    /// session. Falling back looks like an obvious robustness win — a newer session that has exited would
+    /// otherwise "eclipse" an older live one — but it trades an UNOBSERVED failure for a GUARANTEED one:
+    /// during the boot race (<c>AgyView.ConnectAndResolveAsync</c>) the just-launched session's port is not
+    /// listening YET, which is precisely what that loop waits for. A fallback would resolve on the first
+    /// poll to an OLDER live agy belonging to a DIFFERENT workspace, silently talking to the wrong peer
+    /// instead of waiting — the same wrong-workspace class the same-id preference in ParseLatest exists to
+    /// prevent, promoted from a parsing accident to designed behaviour.
+    /// The eclipse it would guard against is unreachable as configured: MEASURED across all 17 real logs
+    /// (the global cli.log + 16 per-session logs), EVERY file holds exactly ONE session — clavity bakes a
+    /// per-session <c>--log-file</c> (<c>Launcher.cs</c>), so a log with two sessions does not arise.
+    /// Revisit ONLY if that launch model changes to a shared log; then the fix must be "prefer the newest,
+    /// fall back only after the boot race is exhausted", never a plain first-listening-wins scan.
+    /// </remarks>
     /// <exception cref="LsDiscoveryException">No pair found, or the port is not listening.</exception>
     public static LsEndpoint DiscoverActive(string cliLogText, IListeningPorts listening)
     {

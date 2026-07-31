@@ -60,6 +60,21 @@ The `server.go:NNN` source line also moves between versions (517/525 → 560/568
 
 This is a general rule about the peer, not a fact about one version — do not re-pin it on the next bump.
 
+### The log is the ONLY place the port is published (measured 2026-07-31)
+
+Before hardening the parsing further, people reasonably ask "why not read a port file instead?" — the
+answer is that there isn't one. Searching the whole of `~/.gemini/antigravity-cli/` for the LIVE port
+(`56311`/`56312`) matched **no file outside the logs**, and there is no `*.port`, `*.pid`, `*.sock` or
+LS state file (`knowledge.lock` / `update.lock` are unrelated). So log-scraping is not a shortcut here,
+it is the only available mechanism, which is exactly why the pattern's resilience is load-bearing.
+
+**One session per log file.** Across all 17 real logs (global `cli.log` + 16 per-session), **every file
+holds exactly one session** — clavity bakes a per-session `--log-file` (`Launcher.cs`) and exports it as
+`CLAVITY_AGY_LOG`. Two consequences: the backward scan's "last gRPC line" is unambiguous in practice, and
+`DiscoverActive` deliberately does NOT fall back to an older listening session (see its remarks — a
+fallback would break the boot race by resolving to a different workspace's agy). If the launch model ever
+moves to a shared log, both of those need revisiting together.
+
 **Re-verify:** `grep "Language server listening" <the log for the session>` — that is
 `$CLAVITY_AGY_LOG` when set (per-session `--log-file`, see §5), else `~/.gemini/antigravity-cli/cli.log` —
 and confirm both ports are LISTENING (`DiscoverActive` does the listening check via `SystemListeningPorts`).
