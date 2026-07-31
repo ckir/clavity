@@ -13,6 +13,23 @@ re-verified whenever agy's version changes.
 | [`probe-design.md`](probe-design.md) | How to DESIGN a probe, especially the paired (A/B) kind. |
 | [`../../docs/agy-verify-needed.md`](../../docs/agy-verify-needed.md) | Assumptions parked awaiting a probe. |
 
+## Status columns
+
+`assertions.md` carries one status column per driver (`dotnet`, `classic`), read by the SessionStart
+gate in `.claude/hooks/agy-verify-reminder.sh`.
+
+| Token | Meaning | Gate |
+|---|---|---|
+| `PASS <ver>` | Observed to pass at that agy version | silent while the version is current |
+| `FAIL <ver>` | Observed to fail | **always nags** |
+| `PARTIAL <ver>` | Some parts unrun — work in progress | **always nags** |
+| `ACKED <ver>` | Verified, unresolvable by us, disposition recorded | silent while current |
+| `N/A` | Not applicable to that driver | always silent |
+
+**Unresolved states nag; only resolved or explicitly-dispositioned states can be silent.** A `FAIL`
+cannot be quieted by bumping a version — that is deliberate, and it is the whole point of the column.
+A new row starts at `PARTIAL <live>`.
+
 ## Two probe shapes
 
 - **Single-shot** — a deterministic property (one ask + one observation). Execute via
@@ -27,7 +44,9 @@ re-verified whenever agy's version changes.
   GROWTH region.
 - A fail, or an un-probed assumption, stays parked in
   [`../../docs/agy-verify-needed.md`](../../docs/agy-verify-needed.md).
-- A committed SessionStart reminder re-arms the probes when `agy --version` changes.
+- A committed SessionStart gate reads the per-driver status columns and nags while any probe is
+  unresolved or stale — see **Status columns** above. `FAIL`/`PARTIAL` nag regardless of version, so a
+  re-stamp cannot silence them.
 
 ## Quickstart
 

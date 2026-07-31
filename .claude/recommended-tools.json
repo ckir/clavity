@@ -80,5 +80,11 @@
     "why": "Markup link checker (becheran/mlc) - validates every relative link across the 46 in-scope docs. Config: .mlc.toml (offline, product docs only). Run: just check-links.",
     "install": "cargo install mlc --locked",
     "in_path": "mlc"
+  },
+  {
+    "name": "awk",
+    "why": "Read the per-driver status columns in agy-autotrain/verify/assertions.md. The SessionStart verify gate nags when awk is absent rather than failing silent, so a missing awk is visible but blocking.",
+    "install": "Ships with Git for Windows (/usr/bin/awk); otherwise: winget install GnuWin32.Gawk",
+    "in_path": "awk"
   }
 ]

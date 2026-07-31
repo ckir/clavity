@@ -112,3 +112,7 @@ sync-register-hash:
 # Fail if register-plugin-hash.iss drifted from register-plugin.ps1 (pre-push gate).
 check-register-hash:
     pwsh -File scripts/check-register-hash-synced.ps1
+
+# Fixture-test the SessionStart verify gate (agy-autotrain/verify/testdata).
+check-verify-hook:
+    bash agy-autotrain/verify/testdata/run-hook-tests.sh
