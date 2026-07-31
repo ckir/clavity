@@ -52,8 +52,10 @@ fix, removal of the duplicate `agy-learn-reminder` registration, relocation of t
 > registration** — the file may stay on disk, since only registration determines execution.
 > Turning a shipped hook off is done with the `.no-agy` kill-switch, which is **global — it silences
 > every agy discipline, not one hook**. There is deliberately no per-hook off switch: a selective,
-> silent disable is the failure mode this rule exists to prevent. Local iteration on a hook is done by
-> running the script directly against a synthetic payload, never by shadowing the shipped copy.
+> silent disable is the failure mode this rule exists to prevent. **One documented exception: the
+> ownership check itself still runs under `.no-agy` and reports that personal registrations remain, so
+> the kill-switch cannot be used to hide an override.** Local iteration on a hook is done by running the
+> script directly against a synthetic payload, never by shadowing the shipped copy.
 
 **Who performs the retirement, and when — this is not the installer's job.** The operator does it, after
 installing the release, prompted by the enforcement notice below. An installer MUST NOT edit any
@@ -127,7 +129,7 @@ each from a measured defect in an earlier draft of this design:
 
 The disciplines are already functioning for the operator via personal copies, and surgical relief has
 already removed the daily friction, so there is no urgency argument for shipping first. Releasing with an
-unverified completion claim would make the claim permanent. Verification (D5) precedes the release.
+unverified completion claim would make the claim permanent. Verification (scope item 1) precedes the release.
 
 ### D3 — The orphaned ME1 fork does not gate the release
 
@@ -175,8 +177,14 @@ than having no ledger. Two things keep it honest, and neither is a guarantee:
 **Seeding is bounded by what is actually reconstructible, and that is the point.** Seed only entries
 with real evidence in git — SP-B, the clavity-ls channel epic, `agy-test-audit`, and tonight's
 verify-harness range. **Do not back-fill SP-0, SP-A, SP-C or SP-D from memory**: their evidence gap is
-the finding, and manufacturing ledger lines for them would erase it. Their rows are written by the
-verification pass in scope item 1, or not at all.
+the finding, and manufacturing ledger lines for them would erase it.
+
+**And do NOT give them ledger rows from the verification pass either.** The ledger records *capstones*;
+the verification pass is explicitly not one, so writing its results into `rounds` and `verdict` columns
+would either falsify those fields or invent a convention that quietly implies four sub-projects were
+capstone-reviewed when they were not. Their evidence is the verification transcript, which stands on its
+own. **SP-0, SP-A, SP-C and SP-D simply do not appear in the capstone ledger** — an absence that is
+itself accurate, and which the ledger's header should explain rather than leave a reader to wonder about.
 
 ### D6 — Retirement happens WITH the release, prompted, not before it
 
@@ -359,6 +367,24 @@ Four findings, all folded. Three attacked constructs added in earlier rounds —
 - **Fail-loud aborted the sweep.** Reporting an unreadable settings file and returning meant a typo in a
   project-local file masked a real duplicate in the user-level file — a fail-loud path that produces a
   false clean elsewhere. It now reports and continues.
+
+## Panel review — round 5 folds
+
+Three findings, all folded, and **all three were coherence damage caused by this document's own earlier
+folds** rather than defects in the original design:
+
+- Round 4 exempted the ownership check from `.no-agy` but left the **verbatim rule text** — the text that
+  gets published to both plugin READMEs — still promising that the kill-switch silences *every*
+  discipline. The published contract would have contradicted the shipped behaviour on day one.
+- A stale "Verification (D5)" reference survived round 1's split of the verification pass from the ledger.
+- The verification pass was told to seed the **capstone** ledger while being defined as explicitly not a
+  capstone, which would have forced either falsified `rounds`/`verdict` fields or an invented convention
+  implying four sub-projects had been capstone-reviewed. Resolved by keeping them out of the ledger
+  entirely: their evidence is the transcript, and their absence from a capstone ledger is itself accurate.
+
+The lesson generalises beyond this document: **after several rounds of folding, the dominant defect class
+stops being the original design and becomes the edits themselves.** That is what the bespoke Coherence
+Auditor seat was rotated in to hunt, and every finding it returned was of that kind.
 
 ## Self-audit
 
