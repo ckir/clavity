@@ -104,18 +104,34 @@ public static class LsDiscovery
             throw new LsDiscoveryException(
                 "No 'listening on random port ... for HTTPS (gRPC)' line found in cli.log.");
 
+        Match? firstAny = null;
         for (int i = grpcIdx + 1; i < lines.Length; i++)
         {
             var m = HttpLine.Match(lines[i].TrimEnd('\r'));
-            // Require the SAME pid as the gRPC line. The global cli.log is shared, so two agy instances
-            // starting concurrently interleave their pairs; taking the first following HTTP line regardless of
-            // pid can hand back one session's gRPC port with another's HTTP port. That chimera survives
-            // DiscoverActive's listening check — the other session is genuinely alive — and the client then
-            // talks to the WRONG workspace's Language Server. Skipping non-matching lines (rather than failing)
-            // keeps the scan able to reach this session's own HTTP line further down.
-            if (m.Success && ParseCaptured(m.Groups["pid"], "HTTP line pid") == pid)
+            if (!m.Success) continue;
+
+            // PREFER this session's own HTTP line. The global cli.log is shared, so two agy instances starting
+            // concurrently interleave their pairs; taking the first following HTTP line regardless of pid can
+            // hand back one session's gRPC port with another's HTTP port. That chimera survives DiscoverActive's
+            // listening check — the other session is genuinely alive — and the client then talks to the WRONG
+            // workspace's Language Server.
+            //
+            // TryParse, not ParseCaptured: this runs on lines belonging to OTHER sessions, and an unusable
+            // number on a line we are merely skipping must not abort a scan that would otherwise succeed.
+            if (int.TryParse(m.Groups["pid"].Value, out var httpPid) && httpPid == pid)
                 return new LsEndpoint(grpcPort, ParseCaptured(m.Groups["port"], "HTTP port"), pid);
+
+            // Remember the first following HTTP line as a FALLBACK. Matching on the id is a preference, not a
+            // requirement: the id is glog's thread field, and while every real pair observed emits the same
+            // value on both lines (16/16 across all local logs), that is an empirical observation about the
+            // peer's logging, not a contract it owes us. Hard-failing on it would repeat the exact mistake
+            // that caused this outage — treating an observed log detail as guaranteed. If no same-id line
+            // exists we still return a usable endpoint, exactly as before this check was added.
+            firstAny ??= m;
         }
+
+        if (firstAny is not null)
+            return new LsEndpoint(grpcPort, ParseCaptured(firstAny.Groups["port"], "HTTP port"), pid);
 
         throw new LsDiscoveryException(
             $"Found gRPC port {grpcPort} (pid {pid}) but no following 'for HTTP' line; cli.log session looks truncated.");

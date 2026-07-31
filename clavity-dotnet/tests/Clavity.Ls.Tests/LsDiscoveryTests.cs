@@ -170,7 +170,42 @@ public class LsDiscoveryTests
             "38 server.go:568] Language server listening on random port at 99999999999999999999 for HTTP\n";
 
         var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
-        Assert.Contains("not a usable number", ex.Message);
+        // Assert the FIELD, not just the generic wording: the pid path throws the same "not a usable number"
+        // phrase, so a generic assert stays green if the implementation blames the wrong field.
+        Assert.Contains("HTTP port", ex.Message);
+    }
+
+    [Fact]
+    public void ParseLatest_skips_an_unparsable_foreign_line_and_reaches_its_own()
+    {
+        // The id check runs on lines belonging to OTHER sessions. An unusable number on a line we are merely
+        // SKIPPING must not abort a scan that would otherwise succeed — the valid line follows it.
+        var log =
+            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "99999999999999999999 server.go:525] Language server listening on random port at 5000 for HTTP\n" +
+            "100 server.go:525] Language server listening on random port at 1001 for HTTP\n";
+
+        var ep = LsDiscovery.ParseLatest(log);
+
+        Assert.Equal(1001, ep.HttpPort);
+        Assert.Equal(100, ep.Pid);
+    }
+
+    [Fact]
+    public void ParseLatest_falls_back_to_the_following_http_line_when_no_id_matches()
+    {
+        // Matching the id is a PREFERENCE, not a requirement. It is glog's thread field — every real pair
+        // observed carries the same value on both lines, but that is an observation about the peer's logging,
+        // not a contract. If the ids ever drift, discovery must still work rather than hard-fail; treating an
+        // observed log detail as guaranteed is precisely what caused the outage this whole change fixes.
+        var log =
+            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "101 server.go:525] Language server listening on random port at 1001 for HTTP\n";
+
+        var ep = LsDiscovery.ParseLatest(log);
+
+        Assert.Equal(1000, ep.GrpcPort);
+        Assert.Equal(1001, ep.HttpPort);
     }
 
     [Fact]
