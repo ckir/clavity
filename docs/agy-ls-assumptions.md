@@ -24,8 +24,35 @@ I0628 09:29:34.290337 16268 server.go:525] Language server listening on random p
 - **Ports/PID are per-session** — re-discover every run. (e.g. one session: pid 30728 / 61954+61955;
   after a restart: pid 16268 / 59532+59533.)
 
-**Re-verify:** `grep "Language server listening" ~/.gemini/antigravity-cli/cli.log` and confirm both ports
-LISTENING under the agy PID (`DiscoverActive` does the listening check via `SystemListeningPorts`).
+### The line HEAD is not a contract — match the message BODY
+
+agy may prepend arbitrary text to these lines. Observed 2026-07-31 (agy 1.1.9), the same pair now reads:
+
+```
+ERROR: logging before google.Init: I0731 11:43:49.469806      38 server.go:560] Language server listening on random port at 56311 for HTTPS (gRPC)
+ERROR: logging before google.Init: I0731 11:43:49.474132      38 server.go:568] Language server listening on random port at 56312 for HTTP
+```
+
+The `server.go:NNN` source line also moves between versions (517/525 → 560/568). So:
+
+- **Never anchor discovery at `^`** on the glog severity token. The patterns in `LsDiscovery` are anchored on
+  the distinctive **message body** and end-of-line; the head is free. A `^`-anchored pattern silently stops
+  matching, no endpoint is derived, and the entire channel reports down **while agy is healthy and listening** —
+  which is exactly what happened on the 1.1.9 bump.
+- The glog **tail** (`<pid> <file:line>] `) is still required: it is where the PID comes from, and `\S+\]`
+  cannot span whitespace, so leftmost-match can never mistake a timestamp fragment for the PID.
+- The trailing `$` on the `for HTTP` pattern is load-bearing: `for HTTP` is a prefix of `for HTTPS`, so an
+  unanchored pattern will also match an HTTPS line and hand back the TLS port as the h2c port. Pinned by
+  `LsDiscoveryTests.ParseLatest_never_takes_the_http_port_from_an_https_line` (mutant-proven: dropping the
+  anchor turns that test red).
+
+This is a general rule about the peer, not a fact about one version — do not re-pin it on the next bump.
+
+**Re-verify:** `grep "Language server listening" <the log for the session>` — that is
+`$CLAVITY_AGY_LOG` when set (per-session `--log-file`, see §5), else `~/.gemini/antigravity-cli/cli.log` —
+and confirm both ports LISTENING under the agy PID (`DiscoverActive` does the listening check via
+`SystemListeningPorts`). If discovery fails while the ports *are* listening, suspect the line shape first
+and diff a fresh log line against the patterns in `LsDiscovery.cs`.
 
 ## 2. cli.log is held open by a live agy → read with `FileShare.ReadWrite`
 

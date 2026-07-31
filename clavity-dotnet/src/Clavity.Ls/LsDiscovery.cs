@@ -40,15 +40,23 @@ public interface IListeningPorts
 public static class LsDiscovery
 {
     // glog line shape: I0627 05:26:29.288076 30728 server.go:517] <message>
-    //   group 1: severity+date (IWEF + MMDD)   group "pid": the process id   "port": the port number
+    //   group "pid": the process id (the glog tail "<pid> <file:line>]")   "port": the port number
     // The HTTPS line ends "for HTTPS (gRPC)"; the HTTP line ends "for HTTP" — anchoring on $ keeps the
     // HTTP pattern from also matching the HTTPS line.
+    //
+    // DELIBERATELY NOT ANCHORED AT ^ : agy's log HEAD is not a contract. agy 1.1.9 (observed 2026-07-31)
+    // began prefixing these very lines with pre-init logger noise —
+    //   "ERROR: logging before google.Init: I0731 11:43:49.469806      38 server.go:560] Language server ..."
+    // — which silently broke a pattern anchored on the glog severity token and took the whole channel
+    // down while agy itself was healthy and listening. Anchor on the distinctive MESSAGE BODY instead;
+    // the glog tail is still required because that is where the pid comes from. Leftmost-match lands on
+    // the real pid: "\S+\]" cannot span whitespace, so a timestamp fragment can never satisfy it.
     private static readonly Regex GrpcLine = new(
-        @"^[IWEF]\d{4}\s+[\d:.]+\s+(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTPS \(gRPC\)\s*$",
+        @"(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTPS \(gRPC\)\s*$",
         RegexOptions.Compiled);
 
     private static readonly Regex HttpLine = new(
-        @"^[IWEF]\d{4}\s+[\d:.]+\s+(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTP\s*$",
+        @"(?<pid>\d+)\s+\S+\]\s+Language server listening on random port at (?<port>\d+) for HTTP\s*$",
         RegexOptions.Compiled);
 
     /// <summary>

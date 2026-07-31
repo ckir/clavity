@@ -11,6 +11,12 @@ public class LsDiscoveryTests
         "I0627 05:26:29.288076 30728 server.go:517] Language server listening on random port at 61954 for HTTPS (gRPC)\n" +
         "I0627 05:26:29.292085 30728 server.go:525] Language server listening on random port at 61955 for HTTP\n";
 
+    // A verbatim two-line capture from agy 1.1.9 (2026-07-31), which began prefixing these lines with
+    // pre-init logger noise. Same glog tail, arbitrary head — the reason discovery anchors on the body.
+    private const string PrefixedPair =
+        "ERROR: logging before google.Init: I0731 11:43:49.469806      38 server.go:560] Language server listening on random port at 56311 for HTTPS (gRPC)\n" +
+        "ERROR: logging before google.Init: I0731 11:43:49.474132      38 server.go:568] Language server listening on random port at 56312 for HTTP\n";
+
     [Fact]
     public void ParseLatest_reads_grpc_http_and_pid_from_real_pair()
     {
@@ -71,6 +77,45 @@ public class LsDiscoveryTests
     {
         var log =
             "I0627 05:26:29.288076 30728 server.go:517] Language server listening on random port at 61954 for HTTPS (gRPC)\n";
+
+        Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+    }
+
+    [Fact]
+    public void ParseLatest_reads_prefixed_glog_pair()
+    {
+        // agy 1.1.9 prepends "ERROR: logging before google.Init: " to the port lines. The head is not a
+        // contract; the message body is. Leftmost-match still yields the glog pid, not a timestamp fragment.
+        var ep = LsDiscovery.ParseLatest(PrefixedPair);
+
+        Assert.Equal(56311, ep.GrpcPort);
+        Assert.Equal(56312, ep.HttpPort);
+        Assert.Equal(38, ep.Pid);
+    }
+
+    [Fact]
+    public void ParseLatest_picks_newest_across_a_log_format_change()
+    {
+        // A log that spans a peer upgrade holds both shapes. Back-compat (the old pair still parses) and
+        // recency (the newer pair wins) in one case.
+        var ep = LsDiscovery.ParseLatest(RealPair + PrefixedPair);
+
+        Assert.Equal(56311, ep.GrpcPort);
+        Assert.Equal(56312, ep.HttpPort);
+        Assert.Equal(38, ep.Pid);
+    }
+
+    [Fact]
+    public void ParseLatest_never_takes_the_http_port_from_an_https_line()
+    {
+        // Pins the trailing $ on the HTTP pattern. "for HTTP" is a prefix of "for HTTPS", so an unanchored
+        // pattern matches an HTTPS line too. Here the second line is an HTTPS line the gRPC pattern rejects
+        // (trailing text after the "(gRPC)"), so ParseLatest scans PAST the chosen gRPC line and reaches it —
+        // unanchored, that yields HttpPort == GrpcPort and the client dials the TLS port. It must throw.
+        var log =
+            PrefixedPair.Split('\n')[0] + "\n" +
+            "ERROR: logging before google.Init: I0731 11:43:50.000000      38 server.go:560] " +
+            "Language server listening on random port at 56311 for HTTPS (gRPC) [retry]\n";
 
         Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
     }
