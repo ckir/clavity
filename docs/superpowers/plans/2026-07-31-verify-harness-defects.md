@@ -778,15 +778,30 @@ Expected: the same binary, proving both launchers agree.
 
 - [ ] **Step 4: Verify the failure path is loud**
 
+Simulate "nothing on PATH" by stubbing the lookup, **not** by pinning `PATH`. MEASURED: a pinned
+`PATH=/usr/bin:/bin` does not even contain `python` on this machine (it lives under `WindowsApps`), so
+that form of the test dies with "command not found" and asserts nothing — and pinning `PATH` in a test is
+the anti-pattern this plan already removed once.
+
 Run:
 
 ```bash
-PATH=/usr/bin:/bin AGY_TMUX_BIN= python -c "import sys; sys.path.insert(0,'clavity-classic/agy-mcp-bridge'); import agy_tmux" 2>&1 | tail -2
+python -c "
+import sys, os, shutil
+sys.path.insert(0, 'clavity-classic/agy-mcp-bridge')
+os.environ.pop('AGY_TMUX_BIN', None)
+shutil.which = lambda n: None          # nothing resolves, without touching PATH
+try:
+    import agy_tmux
+except RuntimeError as e:
+    print('OK loud failure ->', e)
+else:
+    print('FAIL: imported despite no binary')
+"
 ```
 
-Expected: `RuntimeError: Cannot find the psmux/tmux binary...` — an actionable message, not a traceback
-about a missing file. If psmux happens to live in `/usr/bin` on the machine running this, the case
-cannot be produced there; say so rather than weakening the assertion.
+Expected: `OK loud failure -> Cannot find the psmux/tmux binary. Put psmux (or tmux) on PATH, or set
+AGY_TMUX_BIN to its full path.` — an actionable message, not a later traceback from a subprocess call.
 
 - [ ] **Step 5: Commit**
 
