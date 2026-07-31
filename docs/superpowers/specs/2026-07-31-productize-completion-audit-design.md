@@ -78,18 +78,35 @@ entirely inside an artifact we ship and requires nothing from the host applicati
 each from a measured defect in an earlier draft of this design:
 
 1. **Check every settings file, not just the user one.** Registrations can live in `~/.claude/settings.json`,
-   `<repo>/.claude/settings.json`, and `<repo>/.claude/settings.local.json` — all three exist in this
+   `<project>/.claude/settings.json`, and `<project>/.claude/settings.local.json` — all three exist in this
    repository today. Checking only the first yields a false "no duplicates" while a project-level
    duplicate fires every session.
+   **Resolve `<project>` as both cwd-relative AND git-toplevel, and check whichever exist.** A session
+   started in a subdirectory has a `cwd` that is not the project root, so a naive `$cwd/.claude/` lookup
+   silently misses the real project config. Note that `agy-seam-inject.sh:47` deliberately does NOT use
+   git-toplevel, because its marker *writer* is cwd-relative and the two must agree — that reasoning does
+   not transfer here, since this check only READS and has no paired writer. Checking both paths costs one
+   extra stat and cannot produce a false clean; picking one and guessing wrong can.
+   **Outside a git repository the toplevel lookup must be silent**: `git rev-parse --show-toplevel`
+   prints `fatal: not a git repository` to stderr, and on a SessionStart hook that bleeds into the
+   operator's console looking like a plugin crash. Redirect its stderr and treat an empty result as
+   "no project root", not as an error.
 2. **Derive the shipped-hook list at runtime from the sibling `hooks.json`.** A hardcoded array falls out
    of sync the first time someone adds a hook, and the fixture test keeps passing because it tests the
    old names — the gate would be bypassed silently by the very act of extending the plugin.
-3. **Assert the schema before concluding "clean".** If the expected `.hooks` node is absent — because the
-   host changed its settings schema — emit `schema unrecognised` rather than a false negative. A query
-   that returns empty because it no longer matches anything must never read as "nothing to report".
-4. **Fail loud on unparseable input.** A malformed `settings.json` (a hand-edited trailing comma is the
-   realistic case) must produce `settings unreadable, duplicate check skipped` on stderr — not a silent
-   drop and not a crashed SessionStart.
+3. **Assert the schema down to the leaf it actually reads.** Checking that `.hooks` exists is not enough:
+   the host could keep that node while changing the shape beneath it — command strings moving from
+   `command:` to some `actions[]` form — and the extraction would return empty against an intact top-level
+   node, reading as "no duplicates" forever. The assertion must confirm the *leaf* it extracts is present
+   in the expected shape when hooks exist at all, and emit `schema unrecognised` otherwise. **The general
+   rule, since this keeps recurring: an empty result must be distinguishable from a query that no longer
+   matches anything.**
+4. **Fail loud on unparseable input — including our own.** A malformed `settings.json` (a hand-edited
+   trailing comma is the realistic case) must produce `settings unreadable, duplicate check skipped` on
+   stderr — not a silent drop and not a crashed SessionStart. **The same applies to the plugin's own
+   `hooks.json`**: if that fails to parse, the derived shipped-hook list is empty, every comparison finds
+   nothing, and the gate fails open silently — a defect introduced by the very fix in constraint 2. An
+   unreadable `hooks.json` must emit `shipped-hook list unreadable` and `exit 2`, never a quiet pass.
 5. **Honour the existing exit-code contract, and extend it deliberately.** `agy-liveness-check.sh:12-14`
    documents exactly two end-states: healthy → `exit 0` with no stderr; not-live → advisory on stderr +
    `exit 2`. The duplicate notice is a **third** state and the header contract must be updated to say so
@@ -135,17 +152,20 @@ appending `GREEN` without running anything; a self-asserted ledger line is the s
 re-stamping defect this project removed from its verify gate, and pretending otherwise would be worse
 than having no ledger. Two things keep it honest, and neither is a guarantee:
 
-- The `evidence` column must cite something independently checkable — the fold commits, or the seam
-  files a round produced. A GREEN with an empty evidence column is a first-round-clean capstone and must
-  be written as such (`evidence: none — clean on round 1`), so that "nothing to cite" is stated rather
-  than indistinguishable from "nothing was done".
+- The `evidence` column must cite something independently checkable — fold commits, or the transcript a
+  round produced. **`none` is forbidden as an evidence value.** An earlier draft allowed
+  `evidence: none — clean on round 1` for a capstone that found nothing; that is itself the gameable
+  path, because appending exactly that string is indistinguishable from having run anything at all. A
+  capstone that goes green on its first round still produces a transcript — the rounds it ran, the lenses
+  it seated, what it tried — and the ledger cites that file. **If there is nothing to cite, the entry
+  does not go in the ledger.**
 - The ledger is reviewed like any other artifact, not trusted like a gate output.
 
 **Seeding is bounded by what is actually reconstructible, and that is the point.** Seed only entries
 with real evidence in git — SP-B, the clavity-ls channel epic, `agy-test-audit`, and tonight's
 verify-harness range. **Do not back-fill SP-0, SP-A, SP-C or SP-D from memory**: their evidence gap is
 the finding, and manufacturing ledger lines for them would erase it. Their rows are written by the
-verification pass in scope item 2, or not at all.
+verification pass in scope item 1, or not at all.
 
 ### D6 — Retirement happens WITH the release, prompted, not before it
 
@@ -174,6 +194,12 @@ Calling the window "one session" would be an assumption about operator behaviour
 **In scope — and the ORDER here is load-bearing, not editorial**
 
 1. **Verification pass FIRST**, over SP-0, SP-A, SP-C, SP-D (SP-B already has an evidenced trail).
+   **Bounded explicitly: ONE non-adversarial pass per sub-project — read the spec, read the shipped
+   artifact, assert they match, record the commands and their output.** It is NOT a capstone and must not
+   be run as one. Left unbounded, an implementer would reasonably reach for the standard multi-round
+   adversarial process and spend four full capstones re-reviewing already-shipped code; the gap being
+   closed here is *evidentiary*, not a suspicion that the code is wrong. If a pass turns up an actual
+   defect, that escalates on its own merits — but the default depth is one pass.
 2. Close SP-0's residue: the unrecorded Spike B result and the consequently-indeterminate Task 6.3; the
    Category 9 grep-confirm the plan skipped. Record each outcome **in that sub-project's verification
    transcript from item 1** — running them and not writing down what happened is how the residue was
@@ -218,7 +244,10 @@ record the commit it verified against, so a reader can tell what was actually ex
 - **D1 enforcement:** fixture tests over a synthetic settings tree, one per constraint in D1, not one
   overall. At minimum: notice fires on a user-level duplicate; fires on a project-level duplicate; fires
   on a `settings.local.json` duplicate; stays silent when there is none; says `settings unreadable` on
-  malformed JSON; says `schema unrecognised` when `.hooks` is absent; and picks up a hook added to
+  malformed JSON; says `schema unrecognised` both when `.hooks` is absent **and when the node is intact
+  but its leaf shape is unrecognised**; says `shipped-hook list unreadable` when the plugin's own
+  `hooks.json` will not parse; fires on a project-level duplicate **when the session cwd is a
+  subdirectory of the project**, not only when it is the project root; and picks up a hook added to
   `hooks.json` **without any test edit** — that last one is what proves the list is derived at runtime
   rather than hardcoded. Non-vacuity checked by mutation: remove each guard in turn, its named test must
   go red. A guard whose removal leaves the suite green is not a guard.
@@ -261,6 +290,42 @@ Also folded from the solo panel: the D1 rule text contradicted D6 about who reti
 when · the D5 ledger is self-asserted and must say so rather than pose as proof · ledger seeding must not
 back-fill the four sub-projects whose missing evidence is the actual finding.
 
+## Panel review — round 2 folds
+
+Four findings, all folded, all from rotated seats (Activation Auditor, Protocol Pedant) plus the two core
+seats. Every one is a **false-clean** path in the enforcement introduced by round 1 — the fixes spawned
+their own edges, which is the expected outcome, not a surprise:
+
+- A session started in a **subdirectory** makes `$cwd/.claude/` miss the real project config. Folded with
+  a caveat the reviewer did not have: `agy-seam-inject.sh:47` deliberately rejects git-toplevel because
+  its marker writer is cwd-relative. That reasoning does not transfer to a read-only check, so this one
+  resolves both paths rather than picking one.
+- A **schema check that stops at `.hooks`** passes while the leaf shape beneath it changes, and the
+  extraction silently returns empty. Generalised into a stated rule: an empty result must be
+  distinguishable from a query that no longer matches anything.
+- An unparseable **`hooks.json` — our own file** — empties the derived shipped-hook list and fails the
+  gate open. This defect was created by round 1's own fix and would have shipped with it.
+- The **requirement-coverage mapping** in this document desynced when round 1 reordered the scope list.
+  Confirmed by reading it: it still claimed D1 → scope 1 after D1 had become scope 3.
+
+## Panel review — round 3 folds
+
+Four findings, all folded. The two HIGHs both attacked mitigations this document had already written:
+
+- **The verification pass had no bounded depth.** An implementer reaching for the standard adversarial
+  process would have run four full capstones over already-shipped code. Now bounded to one
+  non-adversarial pass per sub-project, with escalation only if a pass finds something real.
+- **The ledger's own escape hatch was the gameable path.** An earlier draft allowed
+  `evidence: none — clean on round 1` so that a clean capstone could still be recorded. Appending that
+  exact string is indistinguishable from doing nothing — the mitigation reintroduced the defect it was
+  written to prevent. `none` is now forbidden; a clean capstone cites its transcript or does not go in.
+- `git rev-parse --show-toplevel` outside a repository prints `fatal:` to stderr, which on a SessionStart
+  hook reads as a plugin crash. Silenced, with empty treated as "no project root".
+- A second cross-reference had rotted from round 1's reorder. **A sweep for the rest then found a third**
+  — the ledger-seeding pointer. Reordering a numbered list in a document that cross-references it by
+  number rots every reference at once; two rounds of review each caught one instance and missed the
+  others, and only an explicit sweep closed it.
+
 ## Self-audit
 
 **Placeholders:** none. Every decision has a mechanism, an owner, and a location.
@@ -272,12 +337,15 @@ The liveness notice's trigger condition is stated (shipped hook name present in 
 - The *exact wording* of the liveness notice → plan-time; the trigger and the requirement that it name
   the offending entries are fixed here.
 - Which SP-0 disposition applies to Task 6.3 (correctly-skipped vs never-run) → resolved by the Spike B
-  re-run in scope item 4; this design does not pre-judge it.
+  re-run in **scope item 2**; this design does not pre-judge it.
 - The release's version number and contents manifest → the release checklist, scope item 5.
 
-**Requirement coverage:** D1→scope 1 · D2→ordering of scope 2 before 5 · D3→scope-out + ROADMAP ·
-D4→scope-out + ROADMAP · D5→scope 3 · D6→scope 5. Findings 1,6,7 → scope 2 and 4. Findings 4,5 → D1/D6.
-Findings 2,3 → background only; already addressed by the completed surgical relief. Finding 8 → D3.
+**Requirement coverage** — re-synced against the scope list after round 1 reordered it; the mapping below
+is numbered against the CURRENT list, and any future reorder must re-sync it again:
+D1 → scope 3 · D2 → the ordering itself (scope 1 precedes scopes 3-5) · D3 → scope-out + ROADMAP ·
+D4 → scope-out + ROADMAP · D5 → scope 4 · D6 → scope 5.
+Findings 1 and 7 → scope 1 · Finding 6 → scope 2 · Findings 4, 5 → D1 and D6 · Finding 8 → D3 ·
+Findings 2, 3 → background only, already addressed by the completed surgical relief.
 
 **Ambiguity check:** "retire" means both delete the registration and leave or delete the file at the
 operator's discretion — the rule binds the *registration*, since that is what determines execution. This
