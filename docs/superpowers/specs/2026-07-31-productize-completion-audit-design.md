@@ -101,13 +101,24 @@ each from a measured defect in an earlier draft of this design:
    in the expected shape when hooks exist at all, and emit `schema unrecognised` otherwise. **The general
    rule, since this keeps recurring: an empty result must be distinguishable from a query that no longer
    matches anything.**
-4. **Fail loud on unparseable input — including our own.** A malformed `settings.json` (a hand-edited
-   trailing comma is the realistic case) must produce `settings unreadable, duplicate check skipped` on
-   stderr — not a silent drop and not a crashed SessionStart. **The same applies to the plugin's own
+4. **Fail loud on unparseable input — including our own — but do not abort the sweep.** A malformed
+   `settings.json` (a hand-edited trailing comma is the realistic case) must name the offending file on
+   stderr — not a silent drop, not a crashed SessionStart, and **not an early return**. The check reads
+   three files; aborting on the first unreadable one means a typo in a project-local file masks a real
+   duplicate in the user-level file. Report the unreadable file, continue to the others, and carry the
+   non-zero outcome to the end. **The same applies to the plugin's own
    `hooks.json`**: if that fails to parse, the derived shipped-hook list is empty, every comparison finds
    nothing, and the gate fails open silently — a defect introduced by the very fix in constraint 2. An
    unreadable `hooks.json` must emit `shipped-hook list unreadable` and `exit 2`, never a quiet pass.
-5. **Honour the existing exit-code contract, and extend it deliberately.** `agy-liveness-check.sh:12-14`
+5. **The ownership check is NOT suppressed by `.no-agy`.** Every other agy hook exits on the kill-switch,
+   and if this one did too the rule would be trivially evadable: place `.no-agy`, keep your personal
+   registrations, and the enforcer that would demand their retirement never runs. A gate that the thing
+   it polices can switch off is not a gate. Under `.no-agy` the hook still reports ownership — it just
+   reports it as `disciplines suppressed; personal registrations still present: <list>`, so the operator
+   knows the override is in place rather than merely inactive. This is a deliberate, documented exception
+   to an otherwise absolute kill-switch, and the reason is written next to it so nobody later "fixes" the
+   inconsistency.
+6. **Honour the existing exit-code contract, and extend it deliberately.** `agy-liveness-check.sh:12-14`
    documents exactly two end-states: healthy → `exit 0` with no stderr; not-live → advisory on stderr +
    `exit 2`. The duplicate notice is a **third** state and the header contract must be updated to say so
    in the same change. It is advisory: stderr + `exit 2`, never blocking.
@@ -207,7 +218,11 @@ Calling the window "one session" would be an assumption about operator behaviour
 3. Publish and apply D1; implement the D1 liveness enforcement check.
 4. Implement D5 — the capstone ledger and the skill step that requires it.
 5. Define the release checklist: what the one combined release must contain, plus the post-install
-   retirement step.
+   retirement step. **The checklist must instruct the operator to close active Claude Code sessions
+   before installing.** The retirement notice is bound to SessionStart, so installing underneath a
+   running session means it never fires while the newly-installed hooks are already executing — the
+   double-fire then runs silently for the remainder of that session, which is exactly the window D6
+   claims to bound.
 
 **Why verification must precede items 3 and 4.** D1 modifies `agy-liveness-check.sh`, which is an SP-D
 deliverable. D5 modifies the `agy-capstone` skill, which is an SP-B deliverable. Implementing either
@@ -244,8 +259,9 @@ record the commit it verified against, so a reader can tell what was actually ex
 - **D1 enforcement:** fixture tests over a synthetic settings tree, one per constraint in D1, not one
   overall. At minimum: notice fires on a user-level duplicate; fires on a project-level duplicate; fires
   on a `settings.local.json` duplicate; stays silent when there is none; says `settings unreadable` on
-  malformed JSON; says `schema unrecognised` both when `.hooks` is absent **and when the node is intact
-  but its leaf shape is unrecognised**; says `shipped-hook list unreadable` when the plugin's own
+  malformed JSON; **stays silent when `.hooks` is absent entirely** — a fresh install has no hooks node
+  and must not be nagged — while saying `schema unrecognised` when the node IS present but its leaf shape
+  is not what the extraction expects; says `shipped-hook list unreadable` when the plugin's own
   `hooks.json` will not parse; fires on a project-level duplicate **when the session cwd is a
   subdirectory of the project**, not only when it is the project root; and picks up a hook added to
   `hooks.json` **without any test edit** — that last one is what proves the list is derived at runtime
@@ -325,6 +341,24 @@ Four findings, all folded. The two HIGHs both attacked mitigations this document
   — the ledger-seeding pointer. Reordering a numbered list in a document that cross-references it by
   number rots every reference at once; two rounds of review each caught one instance and missed the
   others, and only an explicit sweep closed it.
+
+## Panel review — round 4 folds
+
+Four findings, all folded. Three attacked constructs added in earlier rounds — the pattern held to the end:
+
+- **The kill-switch could switch off the enforcer.** `.no-agy` suppresses every agy hook; had the
+  ownership check obeyed it, the rule would be evadable by placing the file and keeping the personal
+  registrations. Now a documented exception, with the reason written beside it.
+- **Installing under a running session defeats D6 entirely.** The notice is bound to SessionStart, so an
+  install underneath an active session never announces itself while the new hooks are already firing.
+  The release checklist now says to close sessions first.
+- **A direct self-contradiction introduced in round 2.** Constraint 3 said the schema assertion applies
+  "when hooks exist at all"; the verification list said `schema unrecognised` when `.hooks` is *absent*.
+  A clean install has no hooks node, so as written the check would have fired a loud error at every new
+  user on every session. Confirmed by reading both lines.
+- **Fail-loud aborted the sweep.** Reporting an unreadable settings file and returning meant a typo in a
+  project-local file masked a real duplicate in the user-level file — a fail-loud path that produces a
+  false clean elsewhere. It now reports and continues.
 
 ## Self-audit
 
