@@ -117,7 +117,26 @@ public class LsDiscoveryTests
             "ERROR: logging before google.Init: I0731 11:43:50.000000      38 server.go:560] " +
             "Language server listening on random port at 56311 for HTTPS (gRPC) [retry]\n";
 
-        Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+        // Assert on the MESSAGE, not just the type: ParseLatest throws LsDiscoveryException for several
+        // distinct reasons, so a bare Assert.Throws stays green when the method fails for an UNRELATED reason
+        // (e.g. reverting the body-anchoring fix makes it throw "no HTTPS line found" instead, and the test
+        // would never notice). Binding the message keeps this test about the $ anchor specifically.
+        var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+        Assert.Contains("looks truncated", ex.Message);
+    }
+
+    [Fact]
+    public void ParseLatest_reports_an_unusable_number_as_the_typed_exception()
+    {
+        // The patterns are prefix-tolerant, so a digit run long enough to overflow int is matchable. That must
+        // surface as LsDiscoveryException (the contract callers catch), never as a raw OverflowException.
+        // NOTE: capping the pattern's digit count does NOT fix this — a capped group slides along the run and
+        // silently captures a wrong value, so the parse stays uncapped and the conversion is guarded instead.
+        var log = "I0627 05:26:29.288076 30728 some.go:123] echo 99999999999999999999 fake] " +
+                  "Language server listening on random port at 888 for HTTPS (gRPC)\n";
+
+        var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+        Assert.Contains("not a usable number", ex.Message);
     }
 
     [Fact]

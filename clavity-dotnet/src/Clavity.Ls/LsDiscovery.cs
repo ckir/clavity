@@ -60,6 +60,22 @@ public static class LsDiscovery
         RegexOptions.Compiled);
 
     /// <summary>
+    /// Turn a captured digit run into an int, surfacing an unusable one as the typed
+    /// <see cref="LsDiscoveryException"/> callers expect. Reachable because the patterns are prefix-tolerant:
+    /// a digit run long enough to overflow <see cref="int"/> can be matched, and a bare <c>int.Parse</c> would
+    /// escape the contract as an <see cref="OverflowException"/>.
+    /// Deliberately NOT solved by capping the pattern's digit count: a capped group SLIDES along a longer run
+    /// and silently yields a WRONG value (measured — <c>\d{1,7}</c> on a 20-digit run captures 9999999),
+    /// which is worse than failing loudly. Only the <c>port</c> group is pinned by its literal "at " prefix;
+    /// the <c>pid</c> group is not pinned at all.
+    /// </summary>
+    private static int ParseCaptured(Group captured, string what) =>
+        int.TryParse(captured.Value, out var value)
+            ? value
+            : throw new LsDiscoveryException(
+                $"cli.log {what} '{captured.Value}' is not a usable number; the log line is malformed.");
+
+    /// <summary>
     /// Parse the MOST RECENT LS endpoint from cli.log text. A cli.log accumulates across agy restarts,
     /// so the active session is the LAST gRPC line and the first HTTP line that follows it.
     /// </summary>
@@ -78,8 +94,8 @@ public static class LsDiscovery
             if (m.Success)
             {
                 grpcIdx = i;
-                grpcPort = int.Parse(m.Groups["port"].Value);
-                pid = int.Parse(m.Groups["pid"].Value);
+                grpcPort = ParseCaptured(m.Groups["port"], "gRPC port");
+                pid = ParseCaptured(m.Groups["pid"], "pid");
                 break;
             }
         }
@@ -92,7 +108,7 @@ public static class LsDiscovery
         {
             var m = HttpLine.Match(lines[i].TrimEnd('\r'));
             if (m.Success)
-                return new LsEndpoint(grpcPort, int.Parse(m.Groups["port"].Value), pid);
+                return new LsEndpoint(grpcPort, ParseCaptured(m.Groups["port"], "HTTP port"), pid);
         }
 
         throw new LsDiscoveryException(
