@@ -102,7 +102,10 @@ for req in jq awk; do
   command -v "$req" >/dev/null 2>&1 || { echo "$req not found — the hook cannot run without it"; exit 1; }
 done
 
-# run_case <name> <fixture> <expect: nag|silent> [extra PATH entries removed: driver]
+# run_case <name> <fixture> <expect: nag|silent> [driver]
+#   driver: dotnet (default — stub supplies clavity-ls, host state irrelevant)
+#         | dotnet-only (needs EXACTLY dotnet detectable; skips if host has clavity)
+#         | none        (needs NO driver detectable; skips if host has either CLI)
 run_case() {
   local name="$1" fixture="$2" expect="$3" driver="${4:-dotnet}"
   local sandbox; sandbox=$(mktemp -d)
@@ -114,21 +117,30 @@ run_case() {
   # fallbacks cannot see a real clavity-ls.exe on a dev box.
   local empty; empty=$(mktemp -d)
 
+  # Cases that depend on which drivers are DETECTABLE cannot hide a CLI already on the contributor's
+  # PATH, and pinning PATH to hide it is the brittleness we are avoiding. Skip honestly instead.
   if [ "$driver" = "none" ]; then
-    # This case needs NO driver CLI reachable at all. We can drop the stub, but we cannot hide a real
-    # clavity/clavity-ls that is already on the contributor's PATH -- and pinning PATH to hide it is
-    # exactly the brittleness we are avoiding. So skip honestly rather than test something else.
+    # Needs NO driver CLI reachable at all.
     if command -v clavity-ls >/dev/null 2>&1 || command -v clavity >/dev/null 2>&1; then
       printf 'skip %s — a driver CLI is on PATH and cannot be hidden without pinning PATH\n' "$name"
       rm -rf "$sandbox" "$empty"; return
     fi
     bin=$(mktemp -d); cp "$stub/agy" "$bin/agy"     # agy present, no driver CLI
+  elif [ "$driver" = "dotnet-only" ]; then
+    # Needs EXACTLY dotnet detected. The stub supplies clavity-ls, but a host clavity would make the
+    # hook see BOTH drivers, switch to cols="both", read the classic column and nag -- failing a test
+    # that expects silence, for a reason that has nothing to do with the gate.
+    if command -v clavity >/dev/null 2>&1; then
+      printf 'skip %s — host has clavity (classic) on PATH, so dotnet-only cannot be isolated\n' "$name"
+      rm -rf "$sandbox" "$empty"; return
+    fi
   fi
 
   local out
   out=$(printf '{"cwd":"%s"}' "$sandbox" \
         | PATH="$bin:$PATH" LOCALAPPDATA="$empty" bash "$hook" 2>/dev/null)
   rm -rf "$empty"
+  [ "$bin" != "$stub" ] && rm -rf "$bin"   # the "none" branch mints its own bin dir; do not leak it
 
   local got="silent"
   [ -n "$out" ] && got="nag"
@@ -235,7 +247,7 @@ run_case "FAIL in prose stays silent"       fail-in-prose.md silent
 run_case "blank status nags"                blank-status.md  nag
 run_case "unknown token nags"               bad-token.md     nag
 run_case "missing status columns nag"       no-columns.md    nag
-run_case "other driver's PARTIAL is silent" driver-split.md  silent
+run_case "other driver's PARTIAL is silent" driver-split.md  silent   dotnet-only
 run_case "no driver detected reads both"    driver-split.md  nag      none
 ```
 
@@ -336,7 +348,7 @@ emit "agy VERIFY-HARNESS reminder — live agy ${live}. Unresolved or stale prob
 - [ ] **Step 2: Run the tests**
 
 Run: `bash agy-autotrain/verify/testdata/run-hook-tests.sh`
-Expected: `11 passed, 0 failed` with `skip no driver detected reads both` on a box that has a driver CLI on PATH (12 passed where none is installed, e.g. CI). Exit 0 either way.
+Expected: exit 0 with `0 failed`. The pass count depends on which driver CLIs the host has: 12 on a driver-less box (e.g. CI), 11 on this dotnet box (the `none` case skips), 10 on a box with both. Skips print their reason. Any `FAIL` line is a real failure.
 
 If `missing status columns nag` fails, check that `no-columns.md`'s rows yield an empty `$3` — a blank cell reports `blank`, which is still a nag, so either path is acceptable; the case must not be silent.
 
@@ -612,7 +624,7 @@ check-verify-hook:
 - [ ] **Step 5: Run it**
 
 Run: `just check-verify-hook`
-Expected: `11 passed, 0 failed` (12 where no driver CLI is on PATH).
+Expected: `0 failed`; pass count varies with host driver CLIs (12 driver-less, 11 on a dotnet box).
 
 - [ ] **Step 6: Commit**
 
@@ -642,7 +654,7 @@ Expected: a nag naming `A2 [dotnet] PARTIAL 1.1.1 (live 1.1.9)` plus the classic
 - [ ] **Step 2: Confirm the suite is green and nothing else moved**
 
 Run: `just check-verify-hook && git status --porcelain`
-Expected: `11 passed, 0 failed` (12 on a driver-less box), and no modified files beyond those committed above.
+Expected: `0 failed`, and no modified files beyond those committed above.
 
 - [ ] **Step 3: Record the outcome**
 
