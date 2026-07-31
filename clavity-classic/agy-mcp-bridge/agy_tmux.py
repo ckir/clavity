@@ -18,9 +18,31 @@ Verified facts this module relies on (psmux v3.3.5, a "tmux alternative" for Win
 
 import asyncio
 import os
+import shutil
+
+
+def _resolve_mux() -> str:
+    """Locate the psmux/tmux binary: explicit override first, then PATH.
+
+    Never fall back to a hardcoded location — a pinned path is dead on every machine that does not
+    happen to share it, and it fails at first use with a confusing error rather than at startup with
+    an actionable one.
+    """
+    override = os.environ.get("AGY_TMUX_BIN")
+    if override:
+        return override
+    for name in ("psmux", "tmux"):
+        found = shutil.which(name)
+        if found:
+            return found
+    raise RuntimeError(
+        "Cannot find the psmux/tmux binary. Put psmux (or tmux) on PATH, "
+        "or set AGY_TMUX_BIN to its full path."
+    )
+
 
 # The psmux/tmux binary. Override with AGY_TMUX_BIN.
-TMUX_BIN = os.environ.get("AGY_TMUX_BIN", r"C:\!PORTABLES\!BIN\tmux.exe")
+TMUX_BIN = _resolve_mux()
 
 # The tmux session hosting the live, signed-in agy. Override with AGY_SESSION.
 DEFAULT_SESSION = os.environ.get("AGY_SESSION", "claude_agy")

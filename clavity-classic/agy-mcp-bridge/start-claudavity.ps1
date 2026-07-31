@@ -22,7 +22,18 @@
 
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest)
 
-$psmux   = if ($env:AGY_TMUX_BIN)   { $env:AGY_TMUX_BIN }   else { "C:\!PORTABLES\!BIN\tmux.exe" }
+$psmux = if ($env:AGY_TMUX_BIN) {
+    $env:AGY_TMUX_BIN
+} else {
+    # PATH, never a hardcoded location: a pinned path only works on the machine it was written on.
+    $found = @('psmux', 'tmux') |
+        ForEach-Object { (Get-Command $_ -ErrorAction SilentlyContinue).Source } |
+        Where-Object { $_ } | Select-Object -First 1
+    if (-not $found) {
+        throw "Cannot find the psmux/tmux binary. Put psmux (or tmux) on PATH, or set AGY_TMUX_BIN to its full path."
+    }
+    $found
+}
 $session = if ($env:AGY_SESSION)    { $env:AGY_SESSION }    else { "claude_agy" }
 $agyArgs = if ($env:AGY_START_ARGS) { $env:AGY_START_ARGS } else { "--dangerously-skip-permissions" }
 
