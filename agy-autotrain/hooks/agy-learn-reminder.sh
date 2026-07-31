@@ -29,5 +29,13 @@ case "$event" in
     ;;
 esac
 
-jq -nc --arg e "$event" --arg m "$msg" '{hookSpecificOutput:{hookEventName:$e,additionalContext:$m}}'
+# The two events take DIFFERENT output shapes, and emitting the wrong one is not a soft failure --
+# Claude Code rejects the payload outright, so the reminder never reaches the model and the operator
+# sees a schema-validation dump instead. hookSpecificOutput is only valid for PreToolUse,
+# UserPromptSubmit, PostToolUse, PostToolBatch and Stop/SubagentStop; PreCompact is NOT among them and
+# must use the top-level systemMessage field.
+case "$event" in
+  PreCompact) jq -nc --arg m "$msg" '{systemMessage:$m}' ;;
+  *)          jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' ;;
+esac
 exit 0
