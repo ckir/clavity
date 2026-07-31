@@ -75,7 +75,18 @@ run_case() {
   rm -rf "$sandbox"
 }
 
-run_case "FAIL at live version nags" fail-at-live.md nag
+run_case "FAIL at live nags"                fail-at-live.md  nag
+run_case "all PASS at live is silent"       all-pass.md      silent
+run_case "ACKED at live is silent"          acked-live.md    silent
+run_case "ACKED at stale version nags"      acked-stale.md   nag
+run_case "PARTIAL at live still nags"       partial-live.md  nag
+run_case "prose and headings stay silent"   prose-noise.md   silent
+run_case "FAIL in prose stays silent"       fail-in-prose.md silent
+run_case "blank status nags"                blank-status.md  nag
+run_case "unknown token nags"               bad-token.md     nag
+run_case "missing status columns nag"       no-columns.md    nag
+run_case "other driver's PARTIAL is silent" driver-split.md  silent   dotnet-only
+run_case "no driver detected reads both"    driver-split.md  nag      none
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
