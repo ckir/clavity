@@ -12,6 +12,47 @@
 
 ---
 
+## Execution order
+
+**Execute in this sequence — NOT in task-number order.** Task numbers are left untouched on purpose:
+the tasks cross-reference each other by number, and renumbering a document that does that is the exact
+defect class that rotted three cross-references in the source spec, each found a round apart.
+
+| Order | Task | Phase |
+|---|---|---|
+| 1st | Task 1 — SP-0 verification + residue | **A — the audit** |
+| 2nd | Task 2 — SP-A verification | A |
+| 3rd | Task 3 — SP-C verification | A |
+| 4th | Task 4 — SP-D verification | A |
+| 5th | Task 9 — ROADMAP: tracked debt + follow-on epic | A |
+| 6th | Task 6 — implement the D1 ownership check | **B — the enforcement** |
+| 7th | Task 5 — publish the D1 rule | B |
+| 8th | Task 7 — capstone ledger | B |
+| 9th | Task 8 — release checklist | B |
+
+**Phase A is a complete, stoppable deliverable.** It produces every verification transcript and records
+both owner rulings. If the audit turns up a real defect, or if the work is halted there, nothing is left
+half-built.
+
+**The only hard dependency is Task 4 before Task 6.** Task 6 modifies `agy-liveness-check.sh`, the SP-D
+deliverable Task 4 audits; running them the other way means the audit examines this plan's own edit
+rather than SP-D's shipped state — a silently worthless result rather than a visible failure.
+
+*Correction to the source spec's reasoning:* the spec justified the verify-first ordering with two
+constraints — that D1 modifies an SP-D deliverable AND that D5 modifies an SP-B deliverable. The second
+is vacuous here: this plan does not verify SP-B (it was excluded precisely because it already has an
+evidenced capstone trail), so Task 7 has no ordering constraint at all. The conclusion still holds for
+Task 6; the second reason for it does not.
+
+**Task 6 precedes Tasks 5 and 8 deliberately.** Both publish descriptions of the ownership check —
+Task 5 into two shipped plugin READMEs, Task 8 into the release checklist. Landing them first would ship
+artifacts describing behaviour the code does not yet have, including the `.no-agy` exception. That
+failure mode has already occurred twice in this work: a runbook that instructed the re-stamping it was
+written to prevent, and a rule text that promised `.no-agy` silences every discipline after the ownership
+check had been exempted from it. Implement, then describe.
+
+---
+
 ## Verified starting state
 
 Every citation below was read against the working tree at HEAD `26cd99a` before this plan was written.
@@ -369,6 +410,13 @@ diff <(sed -n '/^## Hook ownership/,$p' clavity-dotnet/plugin/README.md) \
      <(sed -n '/^## Hook ownership/,$p' clavity-classic/plugin/README.md) && echo IDENTICAL
 ```
 Expected: `IDENTICAL`.
+
+**This check is review-enforced, not gated — say so rather than assuming CI catches drift.** MEASURED:
+the two plugin READMEs are NOT a byte-identical pair (7148 vs 10256 bytes; they carry legitimately
+per-driver content), and `scripts/check-seed-artifacts-synced.sh` contains no README entry. So the spec's
+"enroll any new byte-identical pair" does not apply to these files — enrolling them whole would be wrong
+and would fail immediately. Only the `## Hook ownership` SECTION is required to match, and nothing
+automated verifies that after this task. Re-run the Step 2 diff if either README is edited.
 
 - [ ] **Step 3: Record the rule in the marker-contract doc**
 
