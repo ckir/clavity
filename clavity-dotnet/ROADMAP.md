@@ -147,6 +147,45 @@ changes driver behaviour on a known-failure scenario — so "delivers better dri
 Shares the same empirical-measurement question as the golden-header per-ask backlog stub
 (`docs/backlog/golden-header-per-ask-token-optimization.md`, the anti-drift trade-off). Owner-surfaced 2026-07-11.
 
+### 7. AGY-SCOPE — "pre-existing defects are always in scope" as a shipped discipline (BRAINSTORM FIRST)
+**Status: brainstorming task, not yet designed.** Owner-directed 2026-07-31; to ship, like its siblings, with the
+clavity plugin (alongside `adversarial-panel-review` / `agy-test-audit`, mirrored to clavity-classic).
+
+**The defect it fixes.** Every review discipline in the family (AGY-AFTER, AGY-CAPSTONE, AGY-TEST-AUDIT) produces
+findings, and none of them says what a finding's **age** means. In practice the driver reaches for "pre-existing /
+not introduced by this commit / out of scope for this change" as a *disposition* — which is not a severity
+argument at all. Two independent axes get collapsed:
+- **severity floor** — the legitimate stand-down, for *contrived / exotic / unreachable* edges, whatever their age;
+- **provenance** — how old the defect is, which carries **zero** dispositional weight.
+Collapsing them silently drops reachable defects, and mirrors the same error onto new code (a contrived new-code
+edge gets folded because it's "in scope" while a reachable old one gets dropped because it isn't).
+
+**Evidence it is real, not theoretical.** Two findings surfaced during the agy-test-audit epic — the seed-sync
+jq-missing silent-pass and the check-roster `Assert-SharedMapHealthy` installer/dotnet gap — were dutifully
+"surfaced to the owner" and were still open, untracked and unplanned, days later. A third (capstone F2, the
+`LsDiscovery.cs` gRPC/HTTP pid-pair mismatch) was very nearly filed under the severity floor for the wrong reason
+— its age rather than its reachability. Surfacing without a tracked plan is not a disposition either.
+
+**Open design questions for the brainstorm** (do NOT pre-answer these here):
+1. **Shape** — a skill (like AGY-AFTER/AUDIT), a rule body in the global `CLAUDE.md` (like AGY-CAPSTONE), a linter
+   over review output, or a *cross-cutting amendment* to the three existing disciplines rather than a fourth
+   sibling? The family-coherence pass already parked a "shared adversarial-review core" question (#2/#3) that this
+   overlaps — resolve them together or explicitly not.
+2. **Enforcement point** — is this checkable mechanically? A finding's disposition line could be required to cite
+   a *reachability* verdict, letting a linter reject "pre-existing" as a stated reason. Or is it purely a
+   judgment rule that only a peer review can catch?
+3. **Where a verified-but-deferred pre-existing defect LANDS** — the deferred/do-not-re-raise ledger is explicitly
+   for severity-floor stand-downs and must not become a parking lot. Does this need its own tracked-debt surface,
+   and does it reuse the agy-test-audit rolling debt file?
+4. **Scope boundary** — "always in scope" cannot mean an unbounded audit of the whole tree on every review.
+   What bounds it: the reviewed diff's blast radius, the touched files, the subsystem? Getting this wrong makes
+   the discipline too expensive to obey, which the family has already learned gets it routed around.
+5. **Owner-scoping** — like AGY-TEST-AUDIT, the driver should surface + plan, never unilaterally expand the work.
+   What is the hand-off artifact, and how does it avoid the exact rot documented above?
+
+Driver-side rule already captured in memory (`feedback-preexisting-defects-in-scope`) so the behaviour binds now;
+this item is about making it a **shipped, installable** discipline rather than one driver's private note.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
