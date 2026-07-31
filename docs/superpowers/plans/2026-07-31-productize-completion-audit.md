@@ -472,20 +472,98 @@ Append these `It` blocks inside the existing `Describe 'agy-liveness-check.sh'` 
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'picks up a NEW shipped hook name without any test edit (list is derived at runtime)' {
+    It 'REPORTS a duplicate registered at PROJECT scope' {
         $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
         try {
-            $shipped = (Get-Content (Join-Path (Split-Path -Parent $script:Hook) 'hooks.json') -Raw | ConvertFrom-Json)
-            $names = ($shipped.hooks.PSObject.Properties.Value | ForEach-Object { $_.hooks.command }) -join ' '
-            $names | Should -Match 'agy-'
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-seam-inject'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'REPORTS a duplicate registered in settings.local.json' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-after-reminder.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-after-reminder'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'finds a PROJECT-scope duplicate when cwd is a SUBDIRECTORY' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            $sub = Join-Path $proj 'src/deep'; New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            # cwd is the SUBDIR; CLAUDE_PROJECT_DIR still names the root, which is why the hook finds it.
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload -Cwd $sub) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-seam-inject'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'says SCHEMA UNRECOGNISED (not "unreadable") when .hooks parses but is the wrong shape' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            # Valid JSON, but .hooks is a STRING where the check expects an object of event arrays.
+            '{ "hooks": "not-an-object" }' | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'schema unrecognised'
+            $r.StdErr   | Should -Not -Match 'settings unreadable'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'says SHIPPED-HOOK LIST UNREADABLE when its own hooks.json will not parse' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $fake -Force | Out-Null
+            Copy-Item $script:Hook (Join-Path $fake 'agy-liveness-check.sh')
+            '{ "hooks": { ,,,' | Set-Content (Join-Path $fake 'hooks.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath (Join-Path $fake 'agy-liveness-check.sh') -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'shipped-hook list unreadable'
+        } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'derives the shipped list at RUNTIME - a hook added to hooks.json is picked up with no test edit' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $fake -Force | Out-Null
+            Copy-Item $script:Hook (Join-Path $fake 'agy-liveness-check.sh')
+            # A hook name that appears NOWHERE in the test file's expectations or the real plugin.
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "${CLAUDE_PLUGIN_ROOT}/hooks/agy-invented-for-this-test.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $fake 'hooks.json') -Encoding ascii
+            $s = Join-Path $cfg 'settings.json'
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-invented-for-this-test.sh"' } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
+            $r = Invoke-BashHook -HookPath (Join-Path $fake 'agy-liveness-check.sh') -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-invented-for-this-test'
+        } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
     }
 ```
 
 - [ ] **Step 2: Run them and verify they FAIL**
 
 Run: `just test-scripts`
-Expected: the five new ownership `It` blocks FAIL (the hook has no ownership check yet). The sixth (`picks up a NEW shipped hook name`) may pass immediately — it asserts the fixture, not the hook.
+Expected: **all eleven** new ownership `It` blocks FAIL — the hook has no ownership check yet, so it exits 0 silently where each of them expects `exit 2` and a message. The 10 pre-existing blocks must stay GREEN; if any of them goes red, the test file edit broke something and that is the first thing to fix.
 
 - [ ] **Step 3: Implement the ownership check**
 
@@ -521,8 +599,16 @@ if ! shipped=$(jq -r '[.hooks[][].hooks[].command] | join(" ")' "$shipped_json" 
   ownership_note="[AGY-DISCIPLINES] shipped-hook list unreadable ($shipped_json) - cannot check hook ownership"
 else
   for f in "${present[@]}"; do
-    if ! personal=$(jq -r '[(.hooks // {})[][].hooks[].command] | join(" ")' "$f" 2>/dev/null); then
+    # TWO distinct failures, deliberately NOT merged into one message. A file that will not parse and a
+    # file that parses but whose .hooks shape we no longer recognise are different problems with different
+    # fixes, and collapsing them re-creates exactly what constraint 3 forbids: an empty result that is
+    # indistinguishable from a query that no longer matches anything.
+    if ! jq -e . "$f" >/dev/null 2>&1; then
       ownership_note="${ownership_note}[AGY-DISCIPLINES] settings unreadable ($f) - ownership not checked for it"$'\n'
+      continue
+    fi
+    if ! personal=$(jq -r '[(.hooks // {})[][].hooks[].command] | join(" ")' "$f" 2>/dev/null); then
+      ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - .hooks is present but not the shape this check reads; ownership NOT verified for it"$'\n'
       continue
     fi
     for name in $(printf '%s\n' $shipped | grep -oE '[a-z0-9-]+\.sh' | sort -u); do
@@ -585,7 +671,12 @@ One at a time, revert a guard, re-run `just test-scripts`, confirm the NAMED tes
 |---|---|
 | Delete the `[ -n "$ownership_note" ]` emit inside the `.no-agy` branch | `STILL reports ownership when .no-agy is present` |
 | Change the settings loop's `continue` to `break` | `reports the unreadable settings file BUT continues the sweep` |
-| Replace the derived `$shipped` with a hardcoded `agy-after-reminder.sh` | `REPORTS a personal registration of a shipped hook name` |
+| Replace the derived `$shipped` with a hardcoded `agy-after-reminder.sh` | `derives the shipped list at RUNTIME` |
+| Drop `"$proj_settings"` from the `present=()` loop | `REPORTS a duplicate registered at PROJECT scope` |
+| Drop `"$local_settings"` from the `present=()` loop | `REPORTS a duplicate registered in settings.local.json` |
+| Change `proj_dir` to `"$cwd"` (ignoring `CLAUDE_PROJECT_DIR`) | `finds a PROJECT-scope duplicate when cwd is a SUBDIRECTORY` |
+| Merge the two failure branches back into one `settings unreadable` message | `says SCHEMA UNRECOGNISED (not "unreadable")` |
+| Delete the `if ! shipped=$(jq …)` guard on `hooks.json` | `says SHIPPED-HOOK LIST UNREADABLE` |
 
 Record each result. A guard whose removal leaves the suite green is not a guard.
 
@@ -649,6 +740,8 @@ this table.
 | date | range | rounds | verdict | evidence |
 |------|-------|--------|---------|----------|
 | 2026-07-25 | SP-B agy-capstone skill | 4 | GREEN | folds 2c105ac, 98ffcbd, a879cce, 0f5e3a1 |
+| 2026-07-27 | agy-test-audit discipline | 3 | GREEN | folds 61bb193, be2a5e3, cd1a209 |
+| 2026-07-30 | clavity-ls channel resilience | 3 | GREEN | folds 131591e, f2bab54, 08abc67 |
 | 2026-07-31 | b14bef1..fbb126b | 5 | GREEN | folds 8fcbfa6, a52ef9d, 20834b0, 200c3ff, fbb126b |
 ```
 
@@ -656,7 +749,7 @@ this table.
 
 Run:
 ```bash
-for s in 2c105ac 98ffcbd a879cce 0f5e3a1 8fcbfa6 a52ef9d 20834b0 200c3ff fbb126b; do
+for s in 2c105ac 98ffcbd a879cce 0f5e3a1 61bb193 be2a5e3 cd1a209 131591e f2bab54 08abc67 8fcbfa6 a52ef9d 20834b0 200c3ff fbb126b; do
   printf '%s %s\n' "$s" "$(git log -1 --format=%s $s 2>/dev/null || echo 'MISSING')"
 done
 ```
@@ -824,3 +917,30 @@ and strictly better than inferring one. This also retires the spec's git-stderr 
 **Known risk, stated.** Task 6 Step 3(a) MOVES an existing block within a heavily-documented file. The
 mirror check in Step 7 and `just test-scripts` in Step 5 are what catch a botched move; the existing 10
 `It` blocks must stay green, which is the regression guard on the relocation.
+
+## Plan review — folds
+
+An adversarial line-by-line review of this plan against its spec returned four findings, all folded. Its
+citation heading came back clean, having independently opened `agy-liveness-check.sh`, the Pester file and
+the SP-0 design to confirm the line references hold.
+
+Every finding was this plan **under-delivering its own spec** — not a flaw in the spec:
+
+- **Five of the spec's mandated fixture tests were missing.** The spec enumerates a test per D1
+  constraint; the first draft wrote six `It` blocks and omitted project-scope, `settings.local.json`,
+  subdirectory-cwd, `schema unrecognised`, and `shipped-hook list unreadable`. All five are now written,
+  and the count in Step 2 corrected from five to eleven.
+- **Two ledger seeds were missing.** The spec names four reconstructible entries; the draft table carried
+  two. The `agy-test-audit` and `clavity-ls channel resilience` rows are added, and all fifteen cited
+  SHAs were resolved against git before being written.
+- **Mutation checks were missing for the guards whose tests were missing** — a direct consequence, and
+  precisely the "a guard whose removal leaves the suite green is not a guard" rule turned on this plan.
+  The table is now eight rows, one per guard.
+- **The implementation collapsed two distinct failures into one message.** A settings file that will not
+  parse and one that parses with an unrecognised `.hooks` shape both emitted `settings unreadable`,
+  violating the spec's own generalised rule that an empty result must be distinguishable from a query
+  that no longer matches anything. Split into two branches with distinct messages, each with its own test.
+
+The last one is the sharpest: the spec states that rule explicitly, in a section written after a panel
+round found the same class of defect — and the plan implementing it still merged the two paths. Writing
+the rule down does not make you follow it; a test for each branch does.
