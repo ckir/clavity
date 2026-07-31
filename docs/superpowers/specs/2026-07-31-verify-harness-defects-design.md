@@ -110,8 +110,12 @@ the hook nag permanently on a perfectly valid file. MEASURED against the real `a
 header text on line 7, and `------------` from the separator on line 8. Under the fail-loud rule below,
 every one of those is an "unrecognised token", so a naive whole-file pass nags forever on a healthy file.
 
-The row filter is: lines beginning with `|`, **excluding** the header row and the `|---|` separator.
-Deliberately *not* keyed on the id looking like `A<n>` — a filter tied to the id pattern would silently
+**The row filter, stated so it can be implemented without guessing:** a data row is a line beginning with
+`|` that appears **after** the separator line, where the separator is the line matching `^\|[-: |]+\|$`
+(only dashes, colons, spaces and pipes). The header is therefore excluded by position — it is the `|`-line
+*before* the separator — with no need to match its text.
+
+Deliberately *not* keyed on the id looking like `A<n>`: a filter tied to the id pattern would silently
 skip a row whose id was mistyped or omitted, recreating the invisible-row blindspot in a new place. Every
 data row is checked; a data row with no recognised token nags.
 
@@ -227,9 +231,12 @@ FAIL-nags-forever rule it would nag every session until someone disabled the hoo
 expensive to obey gets routed around, costing D3 entirely.
 
 `FAIL` → `ACKED` is permitted **only** by recording the disposition: what guidance changed to account for
-the defect. The row must carry a pointer to that disposition; a bare `ACKED` with no reference is
-malformed and nags. Because the token is version-bearing, check 2 **re-arms it on the next agy bump** —
-the peer moved, so the defect may have moved too.
+the defect. The row should carry a pointer to that disposition in its evidence cell — but be clear that
+this is a **convention review enforces, not a rule the gate can check**: the hook reads only the status
+columns and deliberately never parses prose, so it cannot tell a referenced `ACKED` from a bare one. An
+earlier draft claimed a bare `ACKED` "is malformed and nags", which directly contradicted that; the claim
+is withdrawn rather than the principle. Because the token is version-bearing, check 2 **re-arms it on the
+next agy bump** — the peer moved, so the defect may have moved too.
 
 **Stated plainly: this is honour-based, and so is the whole column.** A curator can type `ACKED`, or
 `PASS`, without running anything. No hook can detect that. Two concrete residual holes, named rather than
@@ -348,7 +355,8 @@ it is the one an implementer is most likely to get wrong by treating `PARTIAL` l
 - a **typo'd token** (`PASS 1.1.9a`, `Pass 1.1.9`, `FAILED 1.1.9`) → must nag;
 - a row with a **blank or missing** status → must nag;
 - the **column renamed or absent** → must nag (zero fields parsed);
-- **`N/A classic`** on a dotnet box → must nag;
+- **`N/A` in the classic column while dotnet reads `PASS <live>`**, read on a dotnet box → silent (pins
+  that one driver's `N/A` never speaks for the other);
 - a required **parsing tool unavailable** → must nag;
 - **the file's prose, headings and `|---|` separator** → must NOT nag (pins the row filter; measured that
   a whole-file `awk` pass yields empty fields for lines 1–6 and `------------` for the separator, every
@@ -362,7 +370,7 @@ it is the one an implementer is most likely to get wrong by treating `PARTIAL` l
   early position; measured to corrupt field 4 while leaving field 3 intact);
 - **driver binary absent from `PATH` but present at its known install location** → must resolve, not nag
   (pins the non-interactive-`PATH` fallback);
-- **neither driver detectable and no `N/A` row present** → must stay silent;
+- **neither driver detectable** → both columns evaluated, so an unresolved state in either must nag;
 - **not the clavity repo**, and **agy not installed** → must stay silent.
 
 Docs changes (`run-verification.md`, `probe-design.md`, `README.md`) are verified by inspection against
@@ -392,13 +400,18 @@ this spec.
    for the driver the probe ran under. Omitting this would have the curate skill faithfully write prose
    while leaving the status stale — manufacturing the exact column-vs-prose drift this design exists to
    prevent, in the one workflow that touches the file most.
-4. Downstream references that describe the file's shape: `agy-autotrain/README.md`,
-   `agy-autotrain/skills/agy-learn/SKILL.md`, `docs/docs-spec.md`, `docs/agy-verify-needed.md` — audit
-   each for statements about the table that the new columns falsify.
-3. `agy-autotrain/verify/run-verification.md` — capability-based preflight + per-driver appendix
+4. Downstream references — **already audited; no changes required.** MEASURED: `agy-autotrain/README.md`
+   (lines 26, 66), `agy-autotrain/skills/agy-learn/SKILL.md` (line 30), `docs/docs-spec.md` (lines 27, 84)
+   and `docs/agy-verify-needed.md` (line 4) all reference `assertions.md` only as a *location* — none
+   describes its columns, so the new columns falsify nothing. This item is listed to record that the check
+   was done, not to assign work. One governance note: `docs/docs-spec.md:84` marks `assertions.md` as
+   "measured probe outcomes (data), never rewritten by a docs pass" — consistent with this change, which
+   is a harness change rather than a docs pass, but the implementer should not mistake it for licence to
+   edit recorded outcomes.
+5. `agy-autotrain/verify/run-verification.md` — capability-based preflight + per-driver appendix
    (including the driver-id definitions that name the two status columns).
-4. `agy-autotrain/verify/probe-design.md` — the A4 A/B pair as a worked example.
-5. `agy-autotrain/verify/README.md` — document the status enum and the gate's behaviour.
-6. `.claude/recommended-tools.json` — declare `awk`.
-7. `agy-autotrain/verify/testdata/` + a bash test script covering the positive and negative cases above.
-8. The driving-guidance rule that a phase tag does not bind (D2).
+6. `agy-autotrain/verify/probe-design.md` — the A4 A/B pair as a worked example.
+7. `agy-autotrain/verify/README.md` — document the status enum and the gate's behaviour.
+8. `.claude/recommended-tools.json` — declare `awk`.
+9. `agy-autotrain/verify/testdata/` + a bash test script covering the positive and negative cases above.
+10. The driving-guidance rule that a phase tag does not bind (D2).
