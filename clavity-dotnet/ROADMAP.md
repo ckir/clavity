@@ -186,6 +186,52 @@ jq-missing silent-pass and the check-roster `Assert-SharedMapHealthy` installer/
 Driver-side rule already captured in memory (`feedback-preexisting-defects-in-scope`) so the behaviour binds now;
 this item is about making it a **shipped, installable** discipline rather than one driver's private note.
 
+### 8. Audit spending — round count, capstone placement, model tiering (BRAINSTORM FIRST)
+**Status: brainstorming task, not yet designed.** Owner-directed 2026-07-31.
+
+The AGY-* disciplines are deliberately expensive: rounds-until-green, verify-every-finding-by-measurement,
+verify-the-peer's-fix-too. That expense has repeatedly paid — it has caught a reachable protected-file gate
+evasion, an index smuggle, a wrong peer fix, and an incomplete one. The question is **not** whether review is
+worth paying for; it is whether the current *shape* of the spend buys the most defect-detection per unit cost.
+Three candidate levers, to be evaluated (not assumed):
+- **Fewer agy rounds** — is the marginal round finding real defects, or restating? Rounds visibly decay in
+  severity toward green, so the interesting number is *findings-per-round*, and whether an earlier stop loses
+  anything a cheaper check would have caught anyway.
+- **Batching capstones to the end rather than per-stage** — today a multi-task epic can pay a capstone per stage.
+  One capstone over the whole committed range costs less and sees cross-stage interactions a per-stage review
+  structurally cannot; against that, a defect caught late is a defect built upon, and a whole-range review has
+  more surface to skim. Which failure mode dominates is an empirical question, not a taste one.
+- **Cheaper models on the mechanical work** — the bottom-up capability-gating rule already exists in the global
+  `CLAUDE.md` (Haiku for sweeps/summaries/specified edits, Sonnet for contained implementation, Opus reserved for
+  architecture and hard debugging). The gap is *adherence*, not policy: sessions routinely run log sweeps, file
+  reads, and mechanical verification on the Opus main thread and delegate nothing.
+
+**The tension that must be resolved head-on, not papered over.** The owner's standing rulings are "review is
+INVESTMENT, not cost; stop only when findings dry up" and the panel round-cap is WAIVED ("repeat until green").
+A naive cost-cutting pass would silently overturn both. Any outcome here has to either (a) show the saving comes
+from *waste* (redundant rounds, wrong-tier work, duplicated context) and not from *coverage*, or (b) be an
+explicit owner decision to trade coverage for cost. Cheaper-but-blinder is a regression, not a win.
+
+**Open design questions for the brainstorm** (do NOT pre-answer these here):
+1. **Measurement first** — what is even instrumented today? Cost per session/turn is visible to the driver via
+   hooks, but findings-per-round, tier-of-work, and cost-per-verified-defect are not recorded anywhere. Without
+   that, every lever above is guesswork. Is a lightweight review-telemetry file the actual first deliverable?
+2. **What counts as waste vs coverage** — needs a definition sharp enough to decide cases, e.g. a round that
+   produces only already-ledgered findings, or Opus doing a `grep`-equivalent sweep.
+3. **Capstone placement** — per-stage vs batched vs hybrid (cheap per-stage smoke + one deep whole-range
+   capstone). Does the marker-gated hook mechanism from agy-test-audit already support the batched shape?
+4. **Enforcing the tiering that already exists** — is this a hook (warn when the main thread does bulk mechanical
+   work), a checklist item in the execution skills, or purely driver discipline? Prior art says a rule too
+   expensive or too invisible to follow gets routed around.
+5. **Scope** — driver-side only, or does it also cover the peer (payload size, filepath-not-paste transport,
+   avoiding re-sends after a timeout)? Peer latency is payload-bound, so transport hygiene may be a cheap win
+   independent of round count.
+
+Evidence to seed the brainstorm: a single session on 2026-07-31 spent >$60 delivering a one-line regex fix plus
+docs, memory maintenance, and one capstone round — with **zero** subagent delegation despite several stretches of
+purely mechanical log-sweeping and file-reading, and with the whole bulky measurement context held on the Opus
+main thread. That session's capstone round was *not* the waste: it caught a real regression the author missed.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
