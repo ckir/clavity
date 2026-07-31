@@ -96,7 +96,7 @@ awk_status=$?
 [ "$awk_status" -ne 0 ] && emit "agy VERIFY-HARNESS: awk exited ${awk_status} while reading the probe status columns in agy-autotrain/verify/assertions.md, so this gate could not evaluate them. Do not read its silence as a pass -- investigate the file shape or the awk build first."
 
 if [ "$findings" = "NOROWS" ]; then
-  emit "agy VERIFY-HARNESS: no probe rows could be read from agy-autotrain/verify/assertions.md. The status columns are missing, renamed, or the table was reshaped -- so this gate currently cannot tell you anything about probe freshness. Fix the table shape (see agy-autotrain/verify/README.md)."
+  emit "agy VERIFY-HARNESS: no probe rows could be read from agy-autotrain/verify/assertions.md -- either the table separator line (|---|...|) is missing, or no rows follow it. This gate currently cannot tell you anything about probe freshness. The parser is POSITIONAL and never reads header text, so a RENAMED column does not cause this; a missing, reshaped, or truncated table does. Fix the table shape (see agy-autotrain/verify/README.md)."
 fi
 
 [ -z "$findings" ] && exit 0        # every applicable row resolved and current -> silent

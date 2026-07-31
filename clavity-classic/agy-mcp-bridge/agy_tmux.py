@@ -25,8 +25,11 @@ def _resolve_mux() -> str:
     """Locate the psmux/tmux binary: explicit override first, then PATH.
 
     Never fall back to a hardcoded location — a pinned path is dead on every machine that does not
-    happen to share it, and it fails at first use with a confusing error rather than at startup with
-    an actionable one.
+    happen to share it, and it surfaces as a confusing missing-file error from a subprocess call
+    rather than as something a reader can act on.
+
+    Callers reach this through :func:`tmux_bin`, which defers the lookup to first use so that
+    importing this module never requires the binary.
     """
     override = os.environ.get("AGY_TMUX_BIN")
     if override:
