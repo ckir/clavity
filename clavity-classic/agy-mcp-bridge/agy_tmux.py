@@ -42,7 +42,22 @@ def _resolve_mux() -> str:
 
 
 # The psmux/tmux binary. Override with AGY_TMUX_BIN.
-TMUX_BIN = _resolve_mux()
+#
+# Resolved LAZILY, not at import. Half this module is pure string handling — classify_pane/changed
+# read a captured pane and never touch the binary — and test_agy_tmux.py imports exactly those. A
+# resolution failure at import time would make that whole test file unimportable on any machine
+# without psmux, punishing tests that have no dependency on it. Failure is still loud and carries the
+# same actionable message; it just lands at first real use instead of at import.
+_MUX_CACHE = None
+
+
+def tmux_bin() -> str:
+    """The resolved psmux/tmux binary, memoised after the first successful lookup."""
+    global _MUX_CACHE
+    if _MUX_CACHE is None:
+        _MUX_CACHE = _resolve_mux()
+    return _MUX_CACHE
+
 
 # The tmux session hosting the live, signed-in agy. Override with AGY_SESSION.
 DEFAULT_SESSION = os.environ.get("AGY_SESSION", "claude_agy")
@@ -74,7 +89,7 @@ class SessionNotFound(RuntimeError):
 async def run_tmux(*args: str) -> tuple[int, str, str]:
     """Run the psmux/tmux binary, returning ``(returncode, stdout, stderr)``."""
     process = await asyncio.create_subprocess_exec(
-        TMUX_BIN,
+        tmux_bin(),
         *args,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
