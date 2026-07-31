@@ -25,7 +25,10 @@ printf '#!/bin/sh\nexit 0\n'           > "$stub/clavity-ls"; chmod +x "$stub/cla
 # Do NOT reconstruct a minimal PATH from discovered tool directories: contributors install these
 # wherever they like, and pinning locations is how a test suite starts failing for reasons that have
 # nothing to do with the code under test.
-for req in jq awk; do
+# Check EVERY tool the hook invokes, not just the two obvious ones. A missing `timeout` (no GNU
+# coreutils) makes the hook's version lookup fail, so it exits silent and the nag cases fail with
+# "expected nag, got silent" — a confusing symptom pointing nowhere near the real cause.
+for req in cat jq awk timeout grep head; do
   command -v "$req" >/dev/null 2>&1 || { echo "$req not found — the hook cannot run without it"; exit 1; }
 done
 
