@@ -12,8 +12,17 @@ namespace Clavity.Ls;
 /// ...] Language server listening on random port at &lt;N+1&gt; for HTTP
 /// </code>
 /// The "HTTP" port speaks gRPC over h2c (cleartext HTTP/2) and is the one the .NET client dials
-/// (spec §2/§6). <see cref="Pid"/> is the glog-logged agy process id, kept for diagnostics and a
-/// future PID-scoped listening check.
+/// (spec §2/§6).
+/// <para>
+/// <see cref="Pid"/> is the 3rd glog field, and it is NOT reliably an OS process id — do NOT build an
+/// OS-level, pid-scoped listening check on it. MEASURED (2026-07-31): on lines emitted after glog is
+/// initialized it does equal the real pid (7/7 sessions matched the pid printed in the accompanying
+/// "Starting language server process with pid N" message), but the port lines this class parses are
+/// emitted BEFORE glog init ("ERROR: logging before google.Init: ") and carry a small non-pid value
+/// instead — observed 38 while the owning agy process was pid 15788, and 51 while it was 27972. It is
+/// therefore kept for DIAGNOSTICS and for correlating the two lines of one pair only. Liveness is
+/// established by <see cref="DiscoverActive"/>'s port-level listening check, not by this value.
+/// </para>
 /// </remarks>
 public sealed record LsEndpoint(int GrpcPort, int HttpPort, int Pid);
 
@@ -76,8 +85,14 @@ public static class LsDiscovery
                 $"cli.log {what} '{captured.Value}' is not a usable number; the log line is malformed.");
 
     /// <summary>
-    /// Parse the MOST RECENT LS endpoint from cli.log text. A cli.log accumulates across agy restarts,
-    /// so the active session is the LAST gRPC line and the first HTTP line that follows it.
+    /// Parse the MOST RECENT LS endpoint from cli.log text. A log can hold several agy sessions, so the
+    /// active one is found by scanning BACKWARD to the last gRPC line. Its HTTP partner is then the first
+    /// following HTTP line carrying the SAME 3rd-glog-field value — a PREFERENCE, not a requirement: a
+    /// shared log interleaves concurrently-starting sessions, so taking the first following line outright
+    /// can pair one session's gRPC port with another's HTTP port. If no following line matches, the first
+    /// following HTTP line is used as a fallback, because that field is not a contract the peer owes us
+    /// (see the <see cref="LsEndpoint"/> remarks) and hard-failing on it would be the same mistake that
+    /// broke discovery in the first place.
     /// </summary>
     /// <exception cref="LsDiscoveryException">No complete gRPC+HTTP pair is present.</exception>
     public static LsEndpoint ParseLatest(string cliLogText)

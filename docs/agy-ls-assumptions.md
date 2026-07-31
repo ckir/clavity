@@ -18,11 +18,22 @@ I0628 09:29:34.290337 16268 server.go:525] Language server listening on random p
 ```
 
 - The **HTTP** port (the higher of the pair, `gRPC + 1`) is **gRPC over h2c** — the port the .NET client dials.
-- The 3rd glog field (`16268`) is the agy **PID**.
-- cli.log **accumulates across restarts**, so the active session is the **last** gRPC line and the first
-  `for HTTP` line after it. Implemented by `LsDiscovery.ParseLatest` / `DiscoverActive`.
-- **Ports/PID are per-session** — re-discover every run. (e.g. one session: pid 30728 / 61954+61955;
-  after a restart: pid 16268 / 59532+59533.)
+- The 3rd glog field (`16268`) is **NOT reliably the agy PID — never build a pid-scoped OS check on it.**
+  MEASURED 2026-07-31: on lines emitted *after* glog init it does equal the real pid (7/7 sessions matched
+  the pid printed in the accompanying `Starting language server process with pid N` message), but the port
+  lines we parse are emitted *before* glog init (see the next section) and carry a small non-pid value —
+  observed `38` while the owning process was pid `15788`, and `51` while it was `27972`. Treat it as an
+  opaque correlation token: useful to tell one session's two lines apart, useless for an OS lookup.
+- A log can hold **several sessions**, so the active one is the **last** gRPC line, scanning backward. Its
+  HTTP partner is the first following `for HTTP` line with the **same** 3rd-field value — a *preference*,
+  not a requirement. A shared log interleaves concurrently-starting sessions, so taking the first following
+  line outright can pair one session's gRPC port with another's HTTP port; that chimera survives the
+  listening check (the other session is alive) and the client then talks to the **wrong workspace**. If no
+  following line matches, the first following `for HTTP` line is used as a **fallback** — the field is not a
+  contract the peer owes us, and hard-failing on it would repeat the mistake that broke discovery. Implemented
+  by `LsDiscovery.ParseLatest` / `DiscoverActive`.
+- **Ports are per-session** — re-discover every run. (e.g. one session: 61954+61955; after a restart:
+  59532+59533.)
 
 ### The line HEAD is not a contract — match the message BODY
 
@@ -39,8 +50,9 @@ The `server.go:NNN` source line also moves between versions (517/525 → 560/568
   the distinctive **message body** and end-of-line; the head is free. A `^`-anchored pattern silently stops
   matching, no endpoint is derived, and the entire channel reports down **while agy is healthy and listening** —
   which is exactly what happened on the 1.1.9 bump.
-- The glog **tail** (`<pid> <file:line>] `) is still required: it is where the PID comes from, and `\S+\]`
-  cannot span whitespace, so leftmost-match can never mistake a timestamp fragment for the PID.
+- The glog **tail** (`<id> <file:line>] `) is still required: it is where the 3rd-field correlation token
+  comes from, and `\S+\]` cannot span whitespace, so leftmost-match can never mistake a timestamp fragment
+  for it.
 - The trailing `$` on the `for HTTP` pattern is load-bearing: `for HTTP` is a prefix of `for HTTPS`, so an
   unanchored pattern will also match an HTTPS line and hand back the TLS port as the h2c port. Pinned by
   `LsDiscoveryTests.ParseLatest_never_takes_the_http_port_from_an_https_line` (mutant-proven: dropping the
@@ -50,8 +62,10 @@ This is a general rule about the peer, not a fact about one version — do not r
 
 **Re-verify:** `grep "Language server listening" <the log for the session>` — that is
 `$CLAVITY_AGY_LOG` when set (per-session `--log-file`, see §5), else `~/.gemini/antigravity-cli/cli.log` —
-and confirm both ports LISTENING under the agy PID (`DiscoverActive` does the listening check via
-`SystemListeningPorts`). If discovery fails while the ports *are* listening, suspect the line shape first
+and confirm both ports are LISTENING (`DiscoverActive` does the listening check via `SystemListeningPorts`).
+Check the PORTS, not the logged 3rd field — that field is not the pid on these lines (see §1), so matching it
+against `Get-NetTCPConnection`'s `OwningProcess` will fail even on a perfectly healthy session.
+If discovery fails while the ports *are* listening, suspect the line shape first
 and diff a fresh log line against the patterns in `LsDiscovery.cs`.
 
 ## 2. cli.log is held open by a live agy → read with `FileShare.ReadWrite`
