@@ -93,11 +93,14 @@ trap 'rm -rf "$stub"' EXIT
 printf '#!/usr/bin/env bash\necho "agy 1.1.9"\n' > "$stub/agy";        chmod +x "$stub/agy"
 printf '#!/usr/bin/env bash\nexit 0\n'           > "$stub/clavity-ls"; chmod +x "$stub/clavity-ls"
 
-# The hook exits silently without jq (its first guard), and jq is NOT in /usr/bin on this machine --
-# MEASURED at /c/!PORTABLES/!BIN/jq. A hardcoded PATH would therefore make every nag-expected case
-# exit silently and fail for a reason that has nothing to do with the gate. Keep jq's own directory.
-jq_dir=$(dirname "$(command -v jq 2>/dev/null)" 2>/dev/null)
-[ -z "$jq_dir" ] && { echo "jq not found — the hook cannot run; install jq"; exit 1; }
+# PATH = stub first, then whatever the contributor already has. The stub shadows the real agy and
+# clavity-ls; everything else the hook needs (jq, awk, timeout, grep) resolves from the normal PATH.
+# Do NOT reconstruct a minimal PATH from discovered tool directories: contributors install these
+# wherever they like, and pinning locations is how a test suite starts failing for reasons that have
+# nothing to do with the code under test.
+for req in jq awk; do
+  command -v "$req" >/dev/null 2>&1 || { echo "$req not found — the hook cannot run without it"; exit 1; }
+done
 
 # run_case <name> <fixture> <expect: nag|silent> [extra PATH entries removed: driver]
 run_case() {
@@ -107,18 +110,24 @@ run_case() {
   cp "$here/$fixture" "$sandbox/agy-autotrain/verify/assertions.md"
 
   local bin="$stub"
-  # LOCALAPPDATA is redirected to an EMPTY dir for every case. The hook falls back to
-  # ${LOCALAPPDATA}/Programs/clavity-dotnet/clavity-ls.exe when the CLI is not on PATH, and on a real
-  # dev box that file EXISTS -- so without this the "no driver" case would silently detect dotnet and
-  # never exercise the both-columns fallback it claims to test.
+  # LOCALAPPDATA is redirected to an EMPTY dir for every case, so the hook's install-location
+  # fallbacks cannot see a real clavity-ls.exe on a dev box.
   local empty; empty=$(mktemp -d)
+
   if [ "$driver" = "none" ]; then
+    # This case needs NO driver CLI reachable at all. We can drop the stub, but we cannot hide a real
+    # clavity/clavity-ls that is already on the contributor's PATH -- and pinning PATH to hide it is
+    # exactly the brittleness we are avoiding. So skip honestly rather than test something else.
+    if command -v clavity-ls >/dev/null 2>&1 || command -v clavity >/dev/null 2>&1; then
+      printf 'skip %s — a driver CLI is on PATH and cannot be hidden without pinning PATH\n' "$name"
+      rm -rf "$sandbox" "$empty"; return
+    fi
     bin=$(mktemp -d); cp "$stub/agy" "$bin/agy"     # agy present, no driver CLI
   fi
 
   local out
   out=$(printf '{"cwd":"%s"}' "$sandbox" \
-        | PATH="$bin:$jq_dir:/usr/bin:/bin" LOCALAPPDATA="$empty" bash "$hook" 2>/dev/null)
+        | PATH="$bin:$PATH" LOCALAPPDATA="$empty" bash "$hook" 2>/dev/null)
   rm -rf "$empty"
 
   local got="silent"
@@ -327,7 +336,7 @@ emit "agy VERIFY-HARNESS reminder — live agy ${live}. Unresolved or stale prob
 - [ ] **Step 2: Run the tests**
 
 Run: `bash agy-autotrain/verify/testdata/run-hook-tests.sh`
-Expected: `12 passed, 0 failed`, exit 0.
+Expected: `11 passed, 0 failed` with `skip no driver detected reads both` on a box that has a driver CLI on PATH (12 passed where none is installed, e.g. CI). Exit 0 either way.
 
 If `missing status columns nag` fails, check that `no-columns.md`'s rows yield an empty `$3` — a blank cell reports `blank`, which is still a nag, so either path is acceptable; the case must not be silent.
 
@@ -603,7 +612,7 @@ check-verify-hook:
 - [ ] **Step 5: Run it**
 
 Run: `just check-verify-hook`
-Expected: `12 passed, 0 failed`.
+Expected: `11 passed, 0 failed` (12 where no driver CLI is on PATH).
 
 - [ ] **Step 6: Commit**
 
@@ -633,7 +642,7 @@ Expected: a nag naming `A2 [dotnet] PARTIAL 1.1.1 (live 1.1.9)` plus the classic
 - [ ] **Step 2: Confirm the suite is green and nothing else moved**
 
 Run: `just check-verify-hook && git status --porcelain`
-Expected: `12 passed, 0 failed`, and no modified files beyond those committed above.
+Expected: `11 passed, 0 failed` (12 on a driver-less box), and no modified files beyond those committed above.
 
 - [ ] **Step 3: Record the outcome**
 
