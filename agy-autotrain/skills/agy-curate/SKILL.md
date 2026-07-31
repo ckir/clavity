@@ -128,6 +128,12 @@ does not re-enter here; a carried `driver` cheatsheet rule is appended to the ch
   > 🛑 STOP: before promoting any Empirical Assumption you MUST open `../../verify/run-verification.md`,
   > physically execute its synthetic `clavity ask` probe against the live agy, and record the real
   > outcome in `../../verify/assertions.md`. Never mark a probe "pass" from memory or assumption.
+  > Recording the outcome means BOTH: the evidence in the narrative cell, AND the status cell for the
+  > driver the probe actually ran under (`dotnet` or `classic`). They are one edit, not two — the hook
+  > reads only the status cell and never the prose, so a status left stale is invisible drift.
+  > Tokens: `PASS <ver>` · `FAIL <ver>` · `PARTIAL <ver>` (some parts unrun — always nags) ·
+  > `ACKED <ver>` (verified, unresolvable by us, disposition recorded) · `N/A` (not applicable to that
+  > driver). A probe you did not run under the OTHER driver stays `PARTIAL` there — do not guess it.
 
   If a probe **fails**, that is drift: keep/return the item to the inbox and fix its probe alongside.
 
