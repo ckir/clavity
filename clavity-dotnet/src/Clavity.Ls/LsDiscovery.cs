@@ -107,7 +107,13 @@ public static class LsDiscovery
         for (int i = grpcIdx + 1; i < lines.Length; i++)
         {
             var m = HttpLine.Match(lines[i].TrimEnd('\r'));
-            if (m.Success)
+            // Require the SAME pid as the gRPC line. The global cli.log is shared, so two agy instances
+            // starting concurrently interleave their pairs; taking the first following HTTP line regardless of
+            // pid can hand back one session's gRPC port with another's HTTP port. That chimera survives
+            // DiscoverActive's listening check — the other session is genuinely alive — and the client then
+            // talks to the WRONG workspace's Language Server. Skipping non-matching lines (rather than failing)
+            // keeps the scan able to reach this session's own HTTP line further down.
+            if (m.Success && ParseCaptured(m.Groups["pid"], "HTTP line pid") == pid)
                 return new LsEndpoint(grpcPort, ParseCaptured(m.Groups["port"], "HTTP port"), pid);
         }
 

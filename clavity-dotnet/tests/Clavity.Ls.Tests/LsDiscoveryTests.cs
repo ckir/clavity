@@ -140,6 +140,40 @@ public class LsDiscoveryTests
     }
 
     [Fact]
+    public void ParseLatest_pairs_the_http_line_of_the_SAME_session_when_two_sessions_interleave()
+    {
+        // The global cli.log is shared, so two agy instances starting concurrently interleave their pairs.
+        // The chosen gRPC line is the LAST one (pid 200); the first HTTP line after it belongs to pid 100.
+        // Taking that one yields a chimera endpoint that still passes the listening check (pid 100 is alive),
+        // so the client would talk to the WRONG workspace. Kills two mutants at once: dropping the pid
+        // cross-check, and collapsing the forward scan to the single adjacent line.
+        var log =
+            "100 server.go:517] Language server listening on random port at 1000 for HTTPS (gRPC)\n" +
+            "200 server.go:517] Language server listening on random port at 2000 for HTTPS (gRPC)\n" +
+            "100 server.go:525] Language server listening on random port at 1001 for HTTP\n" +
+            "200 server.go:525] Language server listening on random port at 2001 for HTTP\n";
+
+        var ep = LsDiscovery.ParseLatest(log);
+
+        Assert.Equal(200, ep.Pid);
+        Assert.Equal(2000, ep.GrpcPort);
+        Assert.Equal(2001, ep.HttpPort);
+    }
+
+    [Fact]
+    public void ParseLatest_reports_an_unusable_HTTP_port_as_the_typed_exception()
+    {
+        // Covers the HTTP-line parse path specifically. The existing overflow test only exercises the gRPC
+        // line, so reverting JUST the HTTP-side guard to a raw int.Parse would otherwise keep every test green.
+        var log =
+            "38 server.go:560] Language server listening on random port at 56311 for HTTPS (gRPC)\n" +
+            "38 server.go:568] Language server listening on random port at 99999999999999999999 for HTTP\n";
+
+        var ex = Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(log));
+        Assert.Contains("not a usable number", ex.Message);
+    }
+
+    [Fact]
     public void ParseLatest_throws_on_empty_input()
     {
         Assert.Throws<LsDiscoveryException>(() => LsDiscovery.ParseLatest(""));
