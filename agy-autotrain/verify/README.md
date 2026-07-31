@@ -30,6 +30,13 @@ gate in `.claude/hooks/agy-verify-reminder.sh`.
 cannot be quieted by bumping a version — that is deliberate, and it is the whole point of the column.
 A new row starts at `PARTIAL <live>`.
 
+**Known limit — the gate reads what is present, and has no expectation of what should be.** Deleting a
+row deletes its alarm: an unresolved probe goes silent if you remove it from the table. Measured, not
+assumed (2026-07-31). This is not closable from inside a reader that has no independent list of the
+probes that ought to exist, and it is tolerable because removal is loud in a way re-stamping never was —
+a deleted row is visible in the diff, whereas a re-stamped one looks like someone did the work. Treat
+probe removal as a review-gated act. Do not read the invariant above as protection against it.
+
 ## Two probe shapes
 
 - **Single-shot** — a deterministic property (one ask + one observation). Execute via
