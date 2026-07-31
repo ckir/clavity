@@ -25,11 +25,27 @@ dangerous state. Anywhere the design must choose between failing quietly and nag
 
 ## D3 — an honest gate
 
-### The status column
+### The status columns — one per driver
 
-`assertions.md` gains a dedicated, **visible** `| Status |` column carrying *strictly* one enum token and,
-for version-bearing tokens, one version. The existing narrative cell is unchanged and keeps the full
-evidence.
+`assertions.md` gains **two** dedicated, **visible** columns — `| dotnet | classic |` — each carrying
+*strictly* one enum token and, for version-bearing tokens, one version. The hook reads only the column
+for the driver it detects. The existing narrative cell is unchanged and keeps the full evidence.
+
+**Why two columns rather than one plus a driver tag.** A round-3 panel seat found that a single column
+cannot hold divergent readiness for two mutually-exclusive environments, and produces a nagging
+ping-pong: a dotnet contributor stamps a row `N/A dotnet` and is silent; a classic contributor pulls,
+is nagged, runs the probe and stamps `PASS`; the next peer bump nags the dotnet contributor, who
+overwrites it back to `N/A dotnet`; repeat forever. Each contributor's green state is the other's alarm,
+and they overwrite each other's evidence in the process.
+
+Two columns map the state model onto physical reality instead of encoding it in a tag. It also *removes*
+machinery: the `N/A` token no longer carries an argument, and an entire gate check disappears. This was
+the round-3 seat's proposal and it is strictly better than what it replaced — worth recording, because
+this is a case where the simpler design was also the more correct one.
+
+**The existing column literally named `PASS` is renamed `PASS criterion`.** It holds the pass *criterion*,
+not a status, and leaving two different `PASS` meanings adjacent in one table invites exactly the
+confusion this design is trying to remove.
 
 A machine-readable HTML comment was considered and **rejected**: invisible state drifts from the visible
 text beside it, because humans stop reading what they cannot see. A visible column makes the human and
@@ -57,7 +73,7 @@ The status field, after trimming surrounding whitespace, must match **exactly on
 | `FAIL <ver>` | Physically observed to fail — **our** probe or claim is wrong, or the peer drifted | version | **always nags** |
 | `PARTIAL <ver>` | Some parts run, others **not yet** — work in progress | version | **always nags** |
 | `ACKED <ver>` | Verified, cannot be resolved by us, disposition recorded — a peer defect, or a part that is untestable by construction | version | silent while version == live |
-| `N/A <driver>` | Not applicable under this driver | driver id, e.g. `dotnet` | silent while driver == detected |
+| `N/A` | Not applicable under **this column's** driver | none | always silent |
 
 **`PARTIAL` always nags — it means "unfinished", never "settled".** An earlier draft let `PARTIAL` carry
 the live version and go silent, which created a clean bypass: a curator halfway through a multi-part
@@ -74,8 +90,8 @@ healthy live endpoint, and that reasoning is its disposition.
 The resulting invariant is simple and worth stating: **every token that means "unresolved" nags; only a
 token that means "resolved" or "explicitly dispositioned" can be silent.**
 
-Grammar is pinned: `<TOKEN><single space><field>`, token uppercase, version as bare `MAJOR.MINOR.PATCH`
-with **no** `agy ` prefix, driver id from the fixed set `{dotnet, classic}`. Anything else is malformed
+Grammar is pinned: `<TOKEN>` alone for `N/A`, otherwise `<TOKEN><single space><version>`, token
+uppercase, version as bare `MAJOR.MINOR.PATCH` with **no** `agy ` prefix. Anything else is malformed
 (see *Fail loud*).
 
 **`ACKED`, not `FAIL-ACK` — this naming is load-bearing, not cosmetic.** MEASURED: `FAIL-ACK` contains
@@ -88,8 +104,19 @@ is the primary defence; collision-free tokens mean even a careless implementatio
 
 ### How the hook reads it — extraction, then exact compare
 
-Extract the Status field per row (`awk -F'|'`, trim whitespace), then compare the extracted token by
-**string equality**. Never substring-match, and never grep the whole file.
+**Select the data rows first, then extract the field.** This ordering is not a detail — omitting it makes
+the hook nag permanently on a perfectly valid file. MEASURED against the real `assertions.md`: running
+`awk -F'|'` over every line yields an empty field for each prose line and heading (lines 1–6), the literal
+header text on line 7, and `------------` from the separator on line 8. Under the fail-loud rule below,
+every one of those is an "unrecognised token", so a naive whole-file pass nags forever on a healthy file.
+
+The row filter is: lines beginning with `|`, **excluding** the header row and the `|---|` separator.
+Deliberately *not* keyed on the id looking like `A<n>` — a filter tied to the id pattern would silently
+skip a row whose id was mistyped or omitted, recreating the invisible-row blindspot in a new place. Every
+data row is checked; a data row with no recognised token nags.
+
+Then extract the field for the detected driver's column (`awk -F'|'`, trim whitespace) and compare the
+token by **string equality**. Never substring-match, and never grep the whole file.
 
 **The Status column goes early in the row — immediately after the id — and this position is load-bearing.**
 Markdown permits an escaped pipe (`\|`) inside a cell, and `awk -F'|'` splits on it blindly, shifting
@@ -123,10 +150,14 @@ whole purpose is to not go quiet.
 
 Nag when **any** of these holds:
 
+Reading only the detected driver's column:
+
 1. any row's status token is exactly `FAIL` **or** exactly `PARTIAL` — the unresolved states;
 2. any row bearing a **version** (`PASS`/`FAIL`/`PARTIAL`/`ACKED`) has a version ≠ live `agy --version`;
-3. any row bearing a **driver** (`N/A`) has a driver id ≠ the detected driver;
-4. **fail-loud** (below) fires.
+3. **fail-loud** (below) fires.
+
+The former driver-mismatch check is **gone** — two columns make it structurally unnecessary, since each
+driver reads its own state and can no longer be nagged by, or overwrite, the other's.
 
 Check 1 is the load-bearing one: **it cannot be silenced by re-stamping**, only by fixing the probe or
 explicitly dispositioning the row. This is the direct answer to the standing rule that a stale probe gets
@@ -163,17 +194,11 @@ share an exit path: the first is silence, the second is a nag.
 against, and nagging on every machine that merely checks out the repo is noise that gets the hook
 disabled.
 
-### `N/A` carries a driver id, not a version
+### Which column to read
 
-`A3` (new-thread-per-request) is `N/A` because *this driver* appends to one persistent cascade — a
-property of the driver, not of the agy version. Gating it on the agy version would force a re-stamp on
-every bump with nothing run, manufacturing the exact habit this design exists to eliminate.
-
-But exempting it outright is also wrong: it would become a permanent, invisible blindspot, and nothing
-would notice if the driver changed underneath it. Both panels reached this from opposite directions —
-one arguing the exemption is unsafe, the other that nothing detects a driver switch. Recording the
-**driver id** and gating on *that* resolves both: switch this box to clavity-classic and check 3 fires,
-while an agy bump alone correctly leaves it silent.
+`A3` (new-thread-per-request) is `N/A` in the **dotnet** column, because that driver appends to one
+persistent cascade, while remaining a live assumption in the **classic** column. With per-driver columns
+that is simply two cells, and no gate logic is needed to express it.
 
 **Driver detection is by installed CLI**, since the two drivers are mutually exclusive by design — but it
 must **not** rely on `PATH` alone. This hook runs non-interactively at SessionStart, where user profiles
@@ -184,16 +209,16 @@ everything. The precedent is in this very file: the existing agy lookup already 
 
 Detection mirrors that pattern, PATH first then known install locations:
 
-| Detected | Condition |
-|---|---|
-| `dotnet` | `clavity-ls` on PATH, **or** `${LOCALAPPDATA}/Programs/clavity-dotnet/clavity-ls.exe` present |
-| `classic` | `clavity` on PATH, **or** its known install location present |
-| ambiguous | **both** found → nag; the drivers are meant to be mutually exclusive, so this is itself a misconfiguration worth reporting |
-| unknown | **neither** found → nag **only if** the suite actually contains an `N/A` row; otherwise stay silent |
+| Detected | Condition | Column read |
+|---|---|---|
+| `dotnet` | `clavity-ls` on PATH, **or** `${LOCALAPPDATA}/Programs/clavity-dotnet/clavity-ls.exe` present | `dotnet` |
+| `classic` | `clavity` on PATH, **or** its known install location present | `classic` |
+| ambiguous | **both** found — a misconfiguration, since the drivers are mutually exclusive | **both**, and report the ambiguity |
+| unknown | **neither** found | **both** |
 
-The `unknown` case is deliberately conditional. A cannot-verify should nag — but only when there is
-something to verify. If no row is driver-scoped, an undetectable driver costs nothing and must not
-generate noise.
+Ambiguous and unknown both fall back to evaluating **both** columns, which is the strict reading: if we
+cannot tell which driver applies, an unresolved state in either is a reason to speak up. This keeps the
+cannot-verify case loud without needing a special rule.
 
 ### `ACKED` — why an escape hatch exists, and its honest limits
 
@@ -248,8 +273,8 @@ Per-driver invocations move to a single appendix:
 
 A third driver later costs one appendix row, not a runbook rewrite. This mirrors `probe-design.md`.
 
-The appendix is also where the **driver id** used by gate check 3 is defined, so the runbook and the hook
-cannot disagree about what `dotnet` or `classic` means.
+The appendix is also where the **driver ids** naming the two status columns are defined, so the runbook,
+the table, and the hook cannot disagree about what `dotnet` or `classic` means.
 
 ## D2 — A4 leaves the suite; A5's claim is corrected
 
@@ -283,6 +308,23 @@ Status becomes `ACKED 1.1.9` once the disposition is recorded.
 ordering a checkpoint makes a delegated mutation reversible, which is how `delegate_to_antigravity` is
 meant to be safe. Changing the bridge is separate work.
 
+## Migration — landing order
+
+The change touches every row of a 6-row table plus the hook that reads it, so the intermediate states
+matter to anyone who pulls mid-change.
+
+**Land `assertions.md` first, then the hook.** In that order the old hook sees a file whose newest version
+stamp is unchanged and stays silent, so the table can be converted without nagging anyone. The reverse
+order is actively bad: a new hook against an unconverted table finds no status column, hits fail-loud, and
+nags every contributor at every session start until the table catches up.
+
+Both changes should land in **one commit** where practical, which makes the ordering moot and the rollback
+a single revert. The ordering rule above is the fallback if they must be split.
+
+Once landed, the gate will correctly nag on this repo — A2 is `PARTIAL`, and the classic column is
+`PARTIAL` throughout. That is not a regression to be tuned away; it is the harness telling the truth about
+its own coverage for the first time.
+
 ## Testing
 
 The hook is the only executable artefact, so it gets real tests. Fixtures are `assertions.md` files under
@@ -308,7 +350,15 @@ it is the one an implementer is most likely to get wrong by treating `PARTIAL` l
 - the **column renamed or absent** → must nag (zero fields parsed);
 - **`N/A classic`** on a dotnet box → must nag;
 - a required **parsing tool unavailable** → must nag;
-- an **escaped pipe (`\|`) in a narrative cell** → must not disturb extraction (pins the Status column's
+- **the file's prose, headings and `|---|` separator** → must NOT nag (pins the row filter; measured that
+  a whole-file `awk` pass yields empty fields for lines 1–6 and `------------` for the separator, every
+  one of which would otherwise trip fail-loud on a healthy file);
+- a data row with a **mistyped or missing id** → must still be checked, not skipped (pins that the row
+  filter is not keyed on the id pattern);
+- **`N/A` in the dotnet column while the classic column is `PARTIAL`**, read on a dotnet box → silent;
+  read on a classic box → nags (pins per-driver column selection);
+- **driver ambiguous or undetectable** → both columns evaluated;
+- an **escaped pipe (`\|`) in a narrative cell** → must not disturb extraction (pins the status columns'
   early position; measured to corrupt field 4 while leaving field 3 intact);
 - **driver binary absent from `PATH` but present at its known install location** → must resolve, not nag
   (pins the non-interactive-`PATH` fallback);
@@ -327,14 +377,26 @@ this spec.
 
 ## Deliverables
 
-1. `.claude/hooks/agy-verify-reminder.sh` — field extraction, exact-token compare, the four nag checks,
+1. `.claude/hooks/agy-verify-reminder.sh` — row filtering, per-driver column selection, exact-token
+   compare, the three nag checks,
    fail-loud, and a nag message naming the offending rows.
-2. `agy-autotrain/verify/assertions.md` — add the `Status` column **immediately after the id column**;
-   set A1 `PASS 1.1.9`, A2 `PARTIAL 1.1.1` (nags — half unrun), A3 `N/A dotnet`, A4 removed, A5
-   `ACKED 1.1.9` + disposition reference, A6 `ACKED 1.1.9` + disposition (its negative is untestable by
-   construction, not merely unfinished).
+2. `agy-autotrain/verify/assertions.md` — add the `dotnet` and `classic` columns **immediately after the
+   id column**; rename the existing `PASS` column to `PASS criterion`. Set the dotnet column: A1
+   `PASS 1.1.9`, A2 `PARTIAL 1.1.1` (nags — half unrun), A3 `N/A`, A4 removed, A5 `ACKED 1.1.9` +
+   disposition reference, A6 `ACKED 1.1.9` + disposition (untestable by construction, not merely
+   unfinished). The classic column starts at `PARTIAL <live>` for every row it applies to — those probes
+   have not been run under that driver, and the honest encoding of "never run here" is the state that
+   nags.
+3. **`agy-autotrain/skills/agy-curate/SKILL.md`** — the table's PRIMARY WRITER. `SKILL.md:130` already
+   tells the curator to record the real outcome in `assertions.md`; it must now also set the status cell
+   for the driver the probe ran under. Omitting this would have the curate skill faithfully write prose
+   while leaving the status stale — manufacturing the exact column-vs-prose drift this design exists to
+   prevent, in the one workflow that touches the file most.
+4. Downstream references that describe the file's shape: `agy-autotrain/README.md`,
+   `agy-autotrain/skills/agy-learn/SKILL.md`, `docs/docs-spec.md`, `docs/agy-verify-needed.md` — audit
+   each for statements about the table that the new columns falsify.
 3. `agy-autotrain/verify/run-verification.md` — capability-based preflight + per-driver appendix
-   (including the driver-id definitions used by gate check 3).
+   (including the driver-id definitions that name the two status columns).
 4. `agy-autotrain/verify/probe-design.md` — the A4 A/B pair as a worked example.
 5. `agy-autotrain/verify/README.md` — document the status enum and the gate's behaviour.
 6. `.claude/recommended-tools.json` — declare `awk`.
