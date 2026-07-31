@@ -45,6 +45,8 @@ Under `awk -F'|'` the leading `|` produces an empty `$1`, so **`$2` = id, `$3` =
 | `agy-autotrain/verify/README.md` | Modify — document the enum and the gate |
 | `.claude/recommended-tools.json` | Modify — declare `awk` |
 | `justfile` | Modify — add `check-verify-hook` |
+| `clavity-classic/agy-mcp-bridge/agy_tmux.py` | Modify — resolve psmux from PATH, not a pinned path (Task 10, owner-directed extension) |
+| `clavity-classic/agy-mcp-bridge/start-claudavity.ps1` | Modify — same, for the launcher |
 
 ---
 
@@ -662,7 +664,153 @@ Update the durable project memory with the commit range and the fact that the ga
 
 ---
 
+### Task 10: Stop pinning the psmux binary path
+
+**Scope note — this is an owner-directed extension beyond the source spec**, whose "Out of scope" section
+excludes clavity-classic changes. It is folded in because it is the *same defect class* the plan already
+fixes (a hardcoded tool location that only works on one machine), found by a repo sweep during this work.
+It is independent of Tasks 1-9 and can be reverted alone.
+
+**Files:**
+- Modify: `clavity-classic/agy-mcp-bridge/agy_tmux.py:19-23`
+- Modify: `clavity-classic/agy-mcp-bridge/start-claudavity.ps1:25`
+
+**Not in this task:** `clavity-classic/publish/agy-mcp-bridge/` carries identical copies, but that
+directory is **gitignored build output** (`clavity-classic/.gitignore:10` → `/publish`). It regenerates
+from these two sources; do not hand-edit it.
+
+**Measured facts this task rests on:** both `psmux` and `tmux` resolve on PATH here (to
+`/c/!PORTABLES/!BIN/`), and the pinned `C:\!PORTABLES\!BIN\tmux.exe` exists on this machine only — which
+is precisely why the bug is invisible to its author.
+
+- [ ] **Step 1: Fix the Python bridge**
+
+`agy_tmux.py` currently reads (L19-23):
+
+```python
+import asyncio
+import os
+
+# The psmux/tmux binary. Override with AGY_TMUX_BIN.
+TMUX_BIN = os.environ.get("AGY_TMUX_BIN", r"C:\!PORTABLES\!BIN\tmux.exe")
+```
+
+Replace with:
+
+```python
+import asyncio
+import os
+import shutil
+
+
+def _resolve_mux() -> str:
+    """Locate the psmux/tmux binary: explicit override first, then PATH.
+
+    Never fall back to a hardcoded location — a pinned path is dead on every machine that does not
+    happen to share it, and it fails at first use with a confusing error rather than at startup with
+    an actionable one.
+    """
+    override = os.environ.get("AGY_TMUX_BIN")
+    if override:
+        return override
+    for name in ("psmux", "tmux"):
+        found = shutil.which(name)
+        if found:
+            return found
+    raise RuntimeError(
+        "Cannot find the psmux/tmux binary. Put psmux (or tmux) on PATH, "
+        "or set AGY_TMUX_BIN to its full path."
+    )
+
+
+# The psmux/tmux binary. Override with AGY_TMUX_BIN.
+TMUX_BIN = _resolve_mux()
+```
+
+`TMUX_BIN` stays a module-level `str`, so no caller changes. Resolution failure now raises at import
+with an actionable message instead of surfacing later as a missing-file error from a subprocess call.
+
+- [ ] **Step 2: Fix the PowerShell launcher**
+
+`start-claudavity.ps1:25` currently reads:
+
+```powershell
+$psmux   = if ($env:AGY_TMUX_BIN)   { $env:AGY_TMUX_BIN }   else { "C:\!PORTABLES\!BIN\tmux.exe" }
+```
+
+Replace with:
+
+```powershell
+$psmux = if ($env:AGY_TMUX_BIN) {
+    $env:AGY_TMUX_BIN
+} else {
+    # PATH, never a hardcoded location: a pinned path only works on the machine it was written on.
+    $found = @('psmux', 'tmux') |
+        ForEach-Object { (Get-Command $_ -ErrorAction SilentlyContinue).Source } |
+        Where-Object { $_ } | Select-Object -First 1
+    if (-not $found) {
+        throw "Cannot find the psmux/tmux binary. Put psmux (or tmux) on PATH, or set AGY_TMUX_BIN to its full path."
+    }
+    $found
+}
+```
+
+Leave the `$session` and `$agyArgs` lines on the following two lines unchanged.
+
+- [ ] **Step 3: Verify resolution works without the pinned path**
+
+Run:
+
+```bash
+python -c "import sys; sys.path.insert(0,'clavity-classic/agy-mcp-bridge'); import agy_tmux; print(agy_tmux.TMUX_BIN)"
+```
+
+Expected: a real path to `psmux` (or `tmux`) resolved from PATH — **not** `C:\!PORTABLES\!BIN\tmux.exe`
+unless that is genuinely where PATH found it.
+
+Run:
+
+```bash
+pwsh -NoProfile -Command "\$env:AGY_TMUX_BIN=''; \$f=@('psmux','tmux') | ForEach-Object { (Get-Command \$_ -ErrorAction SilentlyContinue).Source } | Where-Object { \$_ } | Select-Object -First 1; if (\$f) { \$f } else { 'NOT FOUND' }"
+```
+
+Expected: the same binary, proving both launchers agree.
+
+- [ ] **Step 4: Verify the failure path is loud**
+
+Run:
+
+```bash
+PATH=/usr/bin:/bin AGY_TMUX_BIN= python -c "import sys; sys.path.insert(0,'clavity-classic/agy-mcp-bridge'); import agy_tmux" 2>&1 | tail -2
+```
+
+Expected: `RuntimeError: Cannot find the psmux/tmux binary...` — an actionable message, not a traceback
+about a missing file. If psmux happens to live in `/usr/bin` on the machine running this, the case
+cannot be produced there; say so rather than weakening the assertion.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add clavity-classic/agy-mcp-bridge/agy_tmux.py clavity-classic/agy-mcp-bridge/start-claudavity.ps1
+git commit -m "fix(classic): resolve psmux from PATH instead of a pinned path
+
+Both launchers defaulted to C:\\!PORTABLES\\!BIN\\tmux.exe when AGY_TMUX_BIN
+was unset - a path that exists only on the author's machine, which is why the
+defect stayed invisible. Resolution is now override, then PATH (psmux, then
+tmux), then a loud actionable error. The gitignored publish/ copies regenerate
+from these sources."
+```
+
+---
+
 ## Self-review
+
+**Scope beyond the spec — stated, not smuggled.** Task 10 (the pinned psmux path) is an **owner-directed
+extension**. The source spec's "Out of scope" explicitly excludes clavity-classic changes, and this plan
+now exceeds that. It was folded in on the owner's instruction because it is the same defect class the
+plan already fixes — a hardcoded tool location that only works on its author's machine — and it touches
+no file any other task touches, so it can be reverted alone without disturbing Tasks 1-9. Anyone
+reconciling plan against spec should read the difference as deliberate.
 
 **Spec coverage.** All 10 deliverables map to tasks: hook → 3 · assertions.md → 4 · agy-curate → 5 · downstream docs → audited in the spec, no work needed · run-verification → 6 · probe-design → 7 · verify/README → 8 · recommended-tools → 8 · testdata + runner → 1, 2 · phase-tag rule → 7.
 
