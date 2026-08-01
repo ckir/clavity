@@ -696,10 +696,18 @@ the anomaly reminder as the THIRD entry, preserving the existing two and their o
     ]
 ```
 
-**Known limit, state it rather than assume CI covers it:** `scripts/check-seed-artifacts-synced.sh`
-compares the `PostToolUse` and `PreToolUse` blocks across the two manifests but deliberately does NOT
-compare `SessionStart`, because classic carries a variant-specific reset hook there. So these two
-registrations are review-enforced, not gate-enforced. If one is later removed, nothing fails.
+**This claim was WRONG as originally written, and the capstone corrected it — read the gate, do not assume.**
+The original text said `scripts/check-seed-artifacts-synced.sh` "deliberately does NOT compare
+`SessionStart`", making these registrations review-enforced only. It DOES compare `SessionStart`, but
+through an **allow-list filter** (`sp_sel`) that kept only entries matching `agy-liveness-check.sh` — so the
+new anomaly registration was silently EXCLUDED from the comparison. **MEASURED: deleting
+`agy-anomaly-reminder.sh` from the dotnet manifest left `just seed-sync-check` GREEN.** The drain side of
+this whole mechanism could vanish from one driver with no gate firing.
+
+Fixed by adding `agy-anomaly-reminder.sh` to that allow-list. **If you add another SHARED `SessionStart`
+hook, you MUST name it in `sp_sel` too** — omission is silent, not loud. Verified across the whole matrix:
+removing the anomaly hook from EITHER plugin fires, removing the liveness hook still fires, a drifted
+`matcher` still fires, reversing one plugin's order fires, and the untouched baseline stays green.
 
 - [ ] **Step 2b: Verify both manifests are still valid JSON**
 
@@ -1153,7 +1161,13 @@ reminder counts and demands triage (Task 1, tested by `REPORTS the count and dem
 exits with no parked state (Task 2, the Triage section); merge with AGY-SCOPE (Task 4 Step 3).
 
 **Known limits, stated rather than papered over.**
-1. The SessionStart registrations are review-enforced, not gate-enforced (Task 3 Step 2).
+1. ~~The SessionStart registrations are review-enforced, not gate-enforced.~~ **CORRECTED by the capstone:
+   they ARE gate-enforced now.** The gate compared `SessionStart` through an allow-list that named only the
+   liveness hook, so the anomaly registration was excluded and could be deleted from one plugin with the
+   gate still green (MEASURED). `agy-anomaly-reminder.sh` is now in that allow-list. **The residual limit is
+   the allow-list itself: a future shared SessionStart hook that nobody adds to `sp_sel` is silently
+   unchecked, and nothing warns.** That is a smaller hole than the one it replaced, but it is the same
+   shape, and it is the reason this limit stays on the list rather than being deleted.
 2. Nothing verifies that an agent actually captured an anomaly it noticed. Compliance with *noticing* is
    unfalsifiable - an agent can always assert it saw nothing. This ships an honest record, not a gate.
    Three specific ways that bites, named rather than left implicit:

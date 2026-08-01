@@ -49,12 +49,25 @@ if ! diff -q <(jq -S '.hooks.PreToolUse' "$D/hooks/hooks.json") \
   status=1
 fi
 # The SessionStart block diverges by design (classic carries a variant-specific driver-guidance reset that
-# dotnet lacks), so compare ONLY the SHARED liveness ENTRY across both plugins. RETAIN THE GROUP WRAPPER (do
+# dotnet lacks), so compare ONLY the SHARED entries across both plugins. RETAIN THE GROUP WRAPPER (do
 # NOT flatten to the bare hook object): the group's `matcher` is load-bearing -- flattening to
 # `.hooks[]` would strip `matcher`, so a drifted matcher (e.g. classic's liveness group changed off "startup")
 # would compare identical and FALSE-GREEN (measured). Keep each SessionStart group, filter its `hooks` array
-# to only the liveness entry, and drop groups left with no liveness hook -- so `matcher` IS compared.
-sp_sel='[.hooks.SessionStart[]? | .hooks |= map(select((.command // "") | test("agy-liveness-check\\.sh"))) | select(.hooks | length > 0)]'
+# to only the shared entries, and drop groups left with none -- so `matcher` IS compared.
+#
+# THE FILTER IS AN ALLOW-LIST, SO EVERY SHARED SessionStart HOOK MUST BE NAMED IN IT. A hook absent from
+# this pattern is silently EXCLUDED from the comparison, which means it can be deleted from one plugin and
+# the gate still passes. MEASURED: with only the liveness hook listed, removing agy-anomaly-reminder.sh
+# from the dotnet manifest left `just seed-sync-check` green -- the drain side of anomaly capture could
+# vanish from one driver with no gate firing. When you add a SHARED SessionStart hook, add it here too.
+#
+# SIDE EFFECT, INTENDED: with two or more entries surviving the filter, their relative ORDER is now
+# compared as well (jq -S sorts object keys, never array elements). That is correct rather than incidental
+# -- SessionStart hooks run in array order, so two plugins listing the shared hooks in different orders
+# would genuinely behave differently. It could not be enforced before, because only one entry survived.
+# MEASURED across the whole matrix: removing the anomaly hook from EITHER plugin fires, removing the
+# liveness hook still fires, a drifted `matcher` still fires, and reversing one plugin's order fires.
+sp_sel='[.hooks.SessionStart[]? | .hooks |= map(select((.command // "") | test("agy-liveness-check\\.sh|agy-anomaly-reminder\\.sh"))) | select(.hooks | length > 0)]'
 if ! diff -q <(jq -S "$sp_sel" "$D/hooks/hooks.json") \
              <(jq -S "$sp_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
   echo "SEED-DRIFT: hooks/hooks.json SessionStart (shared liveness hook) differs between the two plugins" >&2
