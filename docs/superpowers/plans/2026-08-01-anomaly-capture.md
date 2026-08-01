@@ -639,8 +639,12 @@ defect, tool misbehavior, or operational blocker that actively degrades or
 prevents the workflow. Wide enough for a truncating tool or a test gate that
 outgrew its timeout; narrow enough to exclude style opinions.
 
-States plainly that the spotter WRITES rather than reports, because the measured
-loss is at summarization, not at noticing."
+States plainly who writes: a subagent REPORTS under a fixed heading, the driver
+VERIFIES each claim by measurement, and the driver WRITES the verified ones
+before summarizing. The measured loss is at summarization rather than at
+noticing, so the driver must capture before it summarizes -- but a subagent
+report is a claim, not evidence, and letting the spotter write directly would
+have removed the only step that checks anything."
 ```
 
 ---
