@@ -161,11 +161,14 @@ Run it **three times** and take the slowest. **Ceiling: the FAST batch must run 
 **If the batch exceeds 120s:** first confirm the machine was actually idle and re-measure — a contended host is the likeliest cause, and it is what produced the 94.2s outlier above. If it is still over on a quiet machine, move the most expensive suite to SLOW and re-measure.
 
 > **⚠ MOVING A SUITE CHANGES THE PINNED COUNTS. This is the one number in this task you MAY change, and only this way.**
-> `157` and `201` are **derived facts about the split below**, not invariants. **`358` is the invariant.**
+> `157` and `201` are **derived facts about the split below**, not invariants. **The invariant is that every
+> suite stays reachable from a recipe — see Step 6's structural oracle. `358` is a SNAPSHOT of the suite as
+> it stood at the end of this task, and later tasks legitimately raise it by adding tests.**
 > If you move a suite, you MUST: recompute both halves' `Total`; update the table in this step, the numbers
 > in Step 6, and the commit message in Step 7 so all three agree; and record in `_partition.md` which suite
-> moved and the measurement that forced it. **What you may never do is change `358`, or reach a number by
-> editing a test.** The sum is the coverage guard; the halves are bookkeeping.
+> moved and the measurement that forced it. **What you may never do is make a count go DOWN, or reach any
+> number by deleting, skipping, or un-listing a test.** Reachability is the coverage guard; the counts are
+> bookkeeping that records it.
 
 **The measured FAST set is recorded below.** It was derived by exactly this procedure:
 
@@ -212,8 +215,11 @@ was removed because git opens the SSH connection before the hook and the idle ti
 mid-push (`lefthook.yml:11-18`). This split exists to solve the 600s *foreground tool cap* an agent hits,
 which is a justfile concern only.
 
-**Every test remains reachable from some recipe. The sum of the two halves is 358.** If you move a file
-between halves, re-measure and update the table below; do not edit it from memory.
+**Every test remains reachable from some recipe — that is the invariant, and it is checked structurally
+(the union of the two recipes' file lists must equal `scripts/tests/*.Tests.ps1` exactly).** The sum of the
+two halves was **358** when this split was made; later work that ADDS tests raises it, which is expected. A
+sum that FALLS is coverage loss wearing a passing gate. If you move a file between halves, re-measure and
+update the table below; do not edit it from memory.
 
 ## Measured runtimes
 
@@ -273,7 +279,29 @@ just test-scripts-slow 2>&1 | tail -3
 **Run this with `run_in_background` and read the task output file** — it exceeds the foreground cap.
 Expected: `Failed: 0`.
 
-**The count oracle — this is the invariant, and it is the only number here you may never change:** add the two recipes' **`Total`** numbers — NOT `Tests Passed`. **They must sum to exactly 358, with `Failed: 0` on both.** For the pinned split that is 157 + 201; if Step 2's over-ceiling branch moved a suite, the two halves differ but **the sum does not**. If the sum is not 358, a test was dropped or double-counted — **STOP and report it. Never adjust 358 to match what you measured, and never reach it by editing a test.**
+**The coverage oracle. Read this carefully — the invariant is STRUCTURAL, not a number.**
+
+> **⚠ CORRECTED 2026-08-02.** This step originally declared `358` an invariant that "may never change".
+> **That was wrong, and it was wrong in a way that breaks every later task.** MEASURED during Task 2: adding
+> five tests to a file in the FAST set took the fast `Total` from 157 to 162. Tasks 3, 4 and 6 all add tests
+> too. A plan that pins a total and then instructs you to add tests is self-contradictory, and the way out
+> an implementer reaches for is to stop adding tests or to fudge the number — which is precisely the
+> coverage-gaming this oracle exists to prevent.
+
+**What must never change is that EVERY suite is reachable from a recipe.** Assert it structurally — it is exact, and it costs nothing:
+
+```bash
+# The union of the two recipes' file lists must equal the directory: no omission, no duplicate.
+diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
+     <(grep -oE "scripts/tests/[A-Za-z0-9._-]+\.Tests\.ps1" justfile | xargs -n1 basename | sort -u)
+```
+Expected: **no output, exit 0.** Any line means a suite is unreachable from both recipes — **STOP and report it.** That is the defect the number was only ever a proxy for.
+
+**VERIFIED NON-VACUOUS (2026-08-02), because an oracle nobody mutated is a claim nobody checked:** on the clean tree it exits 0 with no output and both sides list 24 files; deleting one suite from the justfile's lists makes it exit 1 and print the missing name. Both sides being non-empty is part of the check — an empty-vs-empty `diff` reports success while measuring nothing.
+
+**Then record, do not assert, the counts:** run both recipes, confirm **`Failed: 0` on each**, and write the two `Total` values and their sum into `scripts/tests/_partition.md`. **The sum is a snapshot of the suite as it stands, and it RISES whenever a task adds tests — that is correct and expected.** At the end of Task 1 it was 157 + 201 = 358.
+
+**What is still forbidden:** reaching any number by deleting a test, skipping a test, or removing a file from both recipes. If a count goes **down**, STOP and report — that is coverage loss wearing a passing gate.
 
 **A third oracle, because the count alone is gameable:** `git diff --stat lefthook.yml` must be **empty**. The amendment drops Step 5, and a well-meaning implementer "completing" the plan by wiring the hook would reintroduce the exact defect this task was amended to avoid.
 
@@ -540,7 +568,17 @@ One at a time, apply the mutation **to the script**, re-run only this test file,
 ```bash
 just test-scripts-fast
 ```
-Expected: `Failed: 0`. Then run `just test-scripts-slow` with `run_in_background` and confirm `Failed: 0`.
+Expected: `Failed: 0`, **`Total: 162`**. Then run `just test-scripts-slow` **with `run_in_background`, and BLOCK until it genuinely completes** — read its output file and confirm it reached a terminal `Tests completed` line before believing any number. Expected `Failed: 0`, `Total: 201`.
+
+> **⚠ THE FAST COUNT RISES IN THIS TASK, AND THAT IS CORRECT.** It was `157` at the end of Task 1; this task adds five tests to `check-seed-artifacts-synced.Tests.ps1`, which lives in the FAST set, so it becomes **`162`** and the suite total becomes **`363`**. Task 1's Step 6 originally called `358` an invariant "that may never change" — **that was a defect in the plan, corrected 2026-08-02.** Do not try to make the total come out at 358, and do not delete or skip a test to get there.
+
+**Run the structural coverage oracle** — this, not any number, is what guarantees nothing was dropped:
+
+```bash
+diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
+     <(grep -oE "scripts/tests/[A-Za-z0-9._-]+\.Tests\.ps1" justfile | xargs -n1 basename | sort -u)
+```
+Expected: **no output, exit 0**, with both sides listing 24 files. Any output means a suite is unreachable from both recipes — STOP and report. A count that FALLS is likewise coverage loss wearing a passing gate.
 
 - [ ] **Step 7: Commit**
 
