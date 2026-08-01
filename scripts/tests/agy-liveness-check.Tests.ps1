@@ -258,6 +258,38 @@ Describe 'agy-liveness-check.sh' {
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'says SCHEMA UNRECOGNISED when hook entries exist but NONE carries a command field' {
+        # Host schema drift (capstone R2-F2). The settings schema belongs to Claude Code, not to us. If
+        # it renamed .command, jq would yield an empty blob, exit 0, and the check would report no
+        # collisions -- indistinguishable from a genuinely clean machine. Fail closed, not open.
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "other" } ] } ] } }' |
+                Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match "none carries a 'command' field"
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'STILL reports a real collision when only SOME entries lack a command field' {
+        # The guard above must not fire on a merely MIXED shape -- an entry without a command is normal.
+        # This is the exact edge a naive version of that guard breaks, so it is pinned separately.
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "other" }, { "type": "command", "command": "bash agy-seam-inject.sh" } ] } ] } }' |
+                Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-seam-inject\.sh is shipped by this plugin'
+            $r.StdErr   | Should -Not -Match "none carries a 'command' field"
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'says SHIPPED-HOOK LIST UNREADABLE when its own hooks.json will not parse' {
         $cfg = New-ConfigFixture $true; $h = New-CleanHome
         $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))

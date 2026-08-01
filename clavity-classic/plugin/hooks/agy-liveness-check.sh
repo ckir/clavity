@@ -65,7 +65,13 @@ done
 # a real duplicate in the user file. A settings file with no .hooks node is normal (fresh install) and silent.
 ownership_note=""
 shipped_json="$(dirname "$0")/hooks.json"
-if ! shipped=$(jq -r '[.hooks[][].hooks[].command] | join(" ")' "$shipped_json" 2>/dev/null); then
+# Tokenizing happens INSIDE jq, which is already parsing the file. A printf|grep|tr|sort pipeline costs
+# four extra processes, and this hook runs on every SessionStart: measured on Windows, bash itself is
+# ~455ms and each additional fork ~126ms, so the pipeline form cost ~440ms EVERY time it ran -- once for
+# this list plus once per settings file. Doing it in jq removes those forks entirely. Safe to word-split
+# the result below: jq has already reduced it to names matching [a-z0-9._-]+\.sh, which cannot contain a
+# glob character.
+if ! shipped_names=$(jq -r '[.hooks[][].hooks[].command // empty | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" ")' "$shipped_json" 2>/dev/null); then
   ownership_note="[AGY-DISCIPLINES] shipped-hook list unreadable ($shipped_json) - cannot check hook ownership"
 else
   for f in "${present[@]}"; do
@@ -77,8 +83,27 @@ else
       ownership_note="${ownership_note}[AGY-DISCIPLINES] settings unreadable ($f) - ownership not checked for it"$'\n'
       continue
     fi
-    if ! personal=$(jq -r '[(.hooks // {})[][].hooks[].command] | join(" ")' "$f" 2>/dev/null); then
+    # ONE jq call yields the tokenized hook names AND two shape counters. Splitting this into separate
+    # jq invocations would cost an extra fork per settings file on a boot path.
+    if ! personal_raw=$(jq -r '(.hooks // {}) as $h
+                               | [$h[][].hooks[]]              as $entries
+                               | [$entries[].command // empty] as $cmds
+                               | "\($entries | length) \($cmds | length)",
+                                 ([$cmds[] | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" "))' "$f" 2>/dev/null); then
       ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - .hooks is present but not the shape this check reads; ownership NOT verified for it"$'\n'
+      continue
+    fi
+    # Split without forking: first line is the counters, the second is the space-joined hook names.
+    counts="${personal_raw%%$'\n'*}"
+    personal="${personal_raw#*$'\n'}"
+    read -r entry_count cmd_count <<<"$counts"
+    # Hook entries EXIST but not one carries a 'command' field -> the host renamed the key under us.
+    # Staying silent here would be indistinguishable from "no collisions found", which is precisely the
+    # fail-open the hooks.json guard above exists to prevent. A shape we no longer read is reported, not
+    # treated as an empty result. (Some entries lacking 'command' is normal and stays silent; ALL of
+    # them lacking it, with entries present, is not.)
+    if [ "${entry_count:-0}" -gt 0 ] && [ "${cmd_count:-0}" -eq 0 ]; then
+      ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - hook entries are present but none carries a 'command' field; ownership NOT verified for it"$'\n'
       continue
     fi
     # Compare script-name TOKENS, not substrings of the joined command blob. Substring matching both
@@ -88,8 +113,8 @@ else
     # Space-pad both sides so a match is a WHOLE token, and fold case so a case-insensitive filesystem
     # cannot hide a collision. "$shipped" is quoted: unquoted it word-splits AND glob-expands against
     # the session's cwd, so a glob character in our own hooks.json could pull in unrelated local .sh files.
-    personal_names=" $(printf '%s\n' "$personal" | grep -oiE '[a-z0-9._-]+\.sh' | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')"
-    for name in $(printf '%s\n' "$shipped" | grep -oiE '[a-z0-9._-]+\.sh' | tr 'A-Z' 'a-z' | sort -u); do
+    personal_names=" $personal "
+    for name in $shipped_names; do
       case "$personal_names" in
         *" $name "*) ownership_note="${ownership_note}[AGY-DISCIPLINES] $name is shipped by this plugin AND registered in $f - remove that registration, then restart or /clear this session"$'\n' ;;
       esac
