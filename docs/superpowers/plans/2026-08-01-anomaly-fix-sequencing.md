@@ -324,7 +324,7 @@ dropping coverage."
 
 - [ ] **Step 0: State verification**
 
-1. `scripts/check-seed-artifacts-synced.sh:15` is `for rel in \` and `:25` is `  knowledge/agy-capabilities.md ; do`.
+1. `scripts/check-seed-artifacts-synced.sh:15` is `for rel in \`, and the loop it opens ends at `:27` with `  knowledge/agy-capabilities.md ; do`. **(Corrected 2026-08-01: this plan originally cited `:25`. MEASURED — the terminator is at `:27`; `:25` is `hooks/agy-anomaly-reminder.sh`, added by a later commit that shifted the block by two lines. The substantive fact Step 3 depends on — that 15-27 is exactly the `for rel in \ … done` loop — is unchanged.)**
 2. `scripts/check-seed-artifacts-synced.sh:77` begins `sp_sel=` and its `test(...)` names `agy-drive-session-reset\.sh`.
 3. This command prints exactly five paths:
    ```bash
@@ -339,38 +339,59 @@ If the five differ, STOP and report `STATE_MISMATCH: divergent set is <actual>` 
 
 Append to `scripts/tests/check-seed-artifacts-synced.Tests.ps1`, before its final closing brace:
 
+> **⚠ AMENDED 2026-08-01 (owner-approved).** The original text of these tests called bare `& bash`.
+> **MEASURED: on a dev box `bash` resolves to `C:\WINDOWS\system32\bash.exe` — the WSL shim — which has no
+> `jq`, so the script hits its own `jq is required` early-exit and the assertions measure nothing.** The
+> repo already solved this: `scripts/tests/BashHookHelpers.ps1:4-11` documents the exact non-determinism
+> and `Get-GitBashOrThrow` pins Git Bash by absolute path. This file's own `BeforeAll` already wraps it as
+> **`Invoke-SeedSync`**, returning an object with `.ExitCode`, `.StdOut`, `.StdErr` — the two pre-existing
+> tests use it. **Use it. Never `& bash` and never `$LASTEXITCODE` in this file.**
+
 ```powershell
     It 'FIRES when a new shared file exists in only one plugin' {
         # The defect this milestone fixes: under the old allow-list, a file nobody enrolled was never
         # compared, so it could exist in one plugin only and the gate stayed green. Omission was
         # indistinguishable from synchronisation.
-        $probe = 'clavity-dotnet/plugin/skills/zz-discovery-probe/SKILL.md'
+        $probe = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/skills/zz-discovery-probe/SKILL.md'
         New-Item -ItemType Directory -Path (Split-Path $probe) -Force | Out-Null
         Set-Content $probe "---`nname: zz-discovery-probe`n---`nprobe`n" -Encoding ascii
         try {
-            $out = & bash scripts/check-seed-artifacts-synced.sh 2>&1
-            $LASTEXITCODE | Should -Not -Be 0
-            ($out -join "`n") | Should -Match 'zz-discovery-probe'
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0
+            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'zz-discovery-probe'
         } finally { Remove-Item (Split-Path $probe) -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'stays GREEN for every intentionally-divergent twin' {
         # The five files that legitimately exist in one plugin only. If discovery flagged these the gate
         # would be permanently red and would be routed around.
-        $out = & bash scripts/check-seed-artifacts-synced.sh 2>&1
-        $LASTEXITCODE | Should -Be 0
-        ($out -join "`n") | Should -Not -Match 'agy-drive-session-reset|ls-driving|ls-pairing|skills/driving|skills/responder'
+        $r = Invoke-SeedSync
+        $r.ExitCode | Should -Be 0
+        "$($r.StdOut)`n$($r.StdErr)" | Should -Not -Match 'agy-drive-session-reset|ls-driving|ls-pairing|skills/driving|skills/responder'
     }
 
     It 'still FIRES when an enrolled shared file differs in content' {
         # Regression guard: discovery must not lose the behaviour the allow-list already had.
-        $f = 'clavity-classic/plugin/hooks/agy-after-reminder.sh'
+        $f = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/agy-after-reminder.sh'
         $orig = Get-Content $f -Raw
         try {
             Add-Content $f "`n# discovery drift probe`n"
-            & bash scripts/check-seed-artifacts-synced.sh 2>&1 | Out-Null
-            $LASTEXITCODE | Should -Not -Be 0
+            (Invoke-SeedSync).ExitCode | Should -Not -Be 0
         } finally { Set-Content $f $orig -NoNewline }
+    }
+
+    It 'FIRES when hooks.json is missing from one plugin, despite being compared elsewhere' {
+        # compared_elsewhere() delegates hooks.json CONTENT to the jq blocks further down, but it must not
+        # become an escape hatch: it requires the file on BOTH sides, so a deletion still trips the walk.
+        # Without the two-sided check this test goes green while the file has vanished.
+        $f   = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+        $bak = "$f.bak"
+        Move-Item $f $bak
+        try {
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0
+            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'hooks/hooks\.json'
+        } finally { Move-Item $bak $f -Force }
     }
 ```
 
@@ -378,7 +399,7 @@ Append to `scripts/tests/check-seed-artifacts-synced.Tests.ps1`, before its fina
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-seed-artifacts-synced.Tests.ps1 -Output Detailed -CI"`
 
-Expected: `FIRES when a new shared file exists in only one plugin` **FAILS** (the allow-list ignores the probe, so the gate exits 0). The other two pass already — they describe behaviour the allow-list also has. **Only one of the three can go red here, and that is correct, not a shortfall.**
+Expected: `FIRES when a new shared file exists in only one plugin` **FAILS** (the allow-list ignores the probe, so the gate exits 0). **The other three pass already** — they describe behaviour the allow-list also has, including the `hooks.json`-missing case, which the pre-existing jq comparisons already catch. **Only one of the four can go red here, and that is correct, not a shortfall.** Do not "fix" the other three.
 
 - [ ] **Step 3: Replace the allow-list with discovery**
 
@@ -408,11 +429,35 @@ divergent() {
   esac
 }
 
+# A SECOND and DIFFERENT reason to skip the byte-diff: the file is present in BOTH trees and is compared
+# further down by a NARROWER rule that a raw byte-diff cannot express. Kept separate from divergent() on
+# purpose -- that list means "exists in one plugin only", and its documented regeneration command
+# (the find/diff above) can never emit a file that exists on both sides. Merging the two would make the
+# regeneration command permanently disagree with the list, and the next maintainer would delete the odd
+# entry or assume the command is broken.
+#
+# NOT AN ESCAPE HATCH: it REQUIRES the file on both sides before delegating. If hooks.json is deleted from
+# one plugin, this returns 1, the walk falls through to the existence branches below, and the gate fires.
+# Delegating content is not the same as waiving existence.
+compared_elsewhere() {
+  case "$1" in
+    hooks/hooks.json)
+      # Compared by the PostToolUse / PreToolUse / filtered-SessionStart jq blocks below, which tolerate
+      # the variant-specific entry (classic carries an agy-drive-session-reset SessionStart command that
+      # dotnet lacks -- MEASURED: the two manifests differ by exactly that one line). A byte-diff cannot
+      # distinguish that legitimate variance from real drift; those jq rules can.
+      [ -f "$D/$1" ] && [ -f "$C/$1" ] && return 0
+      return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Union of both trees, so a file missing from EITHER side is caught (a one-sided walk would only catch
 # files missing from the other plugin, never from its own).
 for rel in $( { (cd "$D" && find hooks skills knowledge -type f 2>/dev/null)
                 (cd "$C" && find hooks skills knowledge -type f 2>/dev/null); } | sort -u ); do
-  divergent "$rel" && continue
+  divergent "$rel" && continue          # exists in ONE plugin only
+  compared_elsewhere "$rel" && continue # in BOTH; content compared by the jq rules below
   if [ ! -f "$D/$rel" ]; then
     echo "SEED-DRIFT: $rel exists in clavity-classic/plugin but NOT in clavity-dotnet/plugin" >&2
     status=1
@@ -442,6 +487,9 @@ One at a time, apply the mutation **to the script**, re-run only this test file,
 | Delete the `[ ! -f "$D/$rel" ]` branch | `FIRES when a new shared file exists in only one plugin` |
 | Add `skills/` to `divergent()` so every skill is skipped | `still FIRES when an enrolled shared file differs in content` |
 | Remove `hooks/agy-drive-session-reset.sh` from `divergent()` | `stays GREEN for every intentionally-divergent twin` |
+| **Weaken `compared_elsewhere()` to a bare `return 0` for `hooks/hooks.json`** (drop the two `[ -f ... ]` existence checks) | `FIRES when hooks.json is missing from one plugin, despite being compared elsewhere` |
+
+**That fourth row is the one that matters most.** It is the only proof that the new exclusion is not simply a second allow-list with the same fail-open defect this milestone exists to remove. If it does not go red, `compared_elsewhere()` is an escape hatch — report it rather than proceeding.
 
 - [ ] **Step 6: Full gate**
 
