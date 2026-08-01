@@ -39,16 +39,16 @@ if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
 fi
 
 # Resolve the REPOSITORY ROOT the same way the capture snippet does, so both sides always agree. A
-# spotter that had cd'd into a subdirectory writes to the root; if this hook looked only at the payload
+# capturing session cd'd into a subdirectory writes to the root; if this hook looked only at the payload
 # cwd it would miss an anomaly that was captured correctly. Fall back to cwd outside a git worktree.
 root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
 [ -n "$root" ] || root="$cwd"
 
 # Check the payload cwd as a SECOND candidate. Outside a git worktree the two sides fall back to
-# different defaults -- this hook to the session's cwd, the capture snippet to the spotter's own $PWD --
+# different defaults -- this hook to the session's cwd, the capture snippet to the capturing session's own $PWD --
 # and a file written under one would be invisible to the other. Trying both closes the common case at the
 # cost of one extra stat. RESIDUAL LIMIT, stated rather than papered over: in a NON-git directory whose
-# spotter had cd'd into a SUBdirectory, the capture lands somewhere neither path names and this hook will
+# capturing session had cd'd into a SUBdirectory, the capture lands somewhere neither path names and this hook will
 # not see it. Inside a git worktree -- which is every case this plugin actually ships into -- both sides
 # resolve to the same toplevel and the ambiguity does not arise.
 f="$root/.clavity/local-anomalies.md"

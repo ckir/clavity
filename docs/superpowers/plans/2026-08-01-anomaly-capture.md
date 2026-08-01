@@ -197,7 +197,7 @@ Describe 'agy-anomaly-reminder.sh' {
     }
 
     It 'finds the file at the repo ROOT when cwd is a SUBDIRECTORY' {
-        # A spotter that had cd'd into a subdirectory writes to the repo root. If this hook looked only at
+        # A capturing session cd'd into a subdirectory writes to the repo root. If this hook looked only at
         # the payload cwd it would report zero while a real anomaly sat captured and invisible.
         $repo = New-TempRepo; $h = New-CleanHome
         try {
@@ -213,8 +213,8 @@ Describe 'agy-anomaly-reminder.sh' {
 
     It 'finds the file under the payload cwd when it is NOT at the git root' {
         # The case the second candidate exists for, and the only arrangement that can observe it: the repo
-        # ROOT has no anomalies file, but the payload cwd (a subdirectory) does. Reachable when a spotter
-        # without git on PATH captured via its $PWD fallback while cd'd into a subdirectory. A fixture
+        # ROOT has no anomalies file, but the payload cwd (a subdirectory) does. Reachable when a capturing
+        # session without git on PATH used its $PWD fallback while cd'd into a subdirectory. A fixture
         # where root and cwd coincide would pass with or without the fallback and prove nothing.
         $repo = New-TempRepo; $h = New-CleanHome
         try {
@@ -365,16 +365,16 @@ if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
 fi
 
 # Resolve the REPOSITORY ROOT the same way the capture snippet does, so both sides always agree. A
-# spotter that had cd'd into a subdirectory writes to the root; if this hook looked only at the payload
+# capturing session cd'd into a subdirectory writes to the root; if this hook looked only at the payload
 # cwd it would miss an anomaly that was captured correctly. Fall back to cwd outside a git worktree.
 root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
 [ -n "$root" ] || root="$cwd"
 
 # Check the payload cwd as a SECOND candidate. Outside a git worktree the two sides fall back to
-# different defaults -- this hook to the session's cwd, the capture snippet to the spotter's own $PWD --
+# different defaults -- this hook to the session's cwd, the capture snippet to the capturing session's own $PWD --
 # and a file written under one would be invisible to the other. Trying both closes the common case at the
 # cost of one extra stat. RESIDUAL LIMIT, stated rather than papered over: in a NON-git directory whose
-# spotter had cd'd into a SUBdirectory, the capture lands somewhere neither path names and this hook will
+# capturing session had cd'd into a SUBdirectory, the capture lands somewhere neither path names and this hook will
 # not see it. Inside a git worktree -- which is every case this plugin actually ships into -- both sides
 # resolve to the same toplevel and the ambiguity does not arise.
 f="$root/.clavity/local-anomalies.md"
@@ -830,7 +830,8 @@ text in section 7, and do not touch section 8.
 
 ```markdown
 **Update 2026-08-01 - the CAPTURE half is now built and shipped.** An anomaly an agent spots while doing
-something else lands in a gitignored `.clavity/local-anomalies.md` written by the spotter itself, and a
+something else is reported by whoever noticed it, verified by the driver, and written to a gitignored
+`.clavity/local-anomalies.md`, and a
 SessionStart hook counts the untriaged entries and demands triage until the file is empty (see the
 `open-issues` skill). Design converged with the agy peer over an AGY-FIRST consult plus two negotiation
 rounds. What remains for AGY-SCOPE is therefore only the DISPOSITION half: that a defect's age is never a
@@ -845,7 +846,7 @@ git add clavity-dotnet/ROADMAP.md
 git commit -m "docs(roadmap): AGY-SCOPE now needs only the disposition half
 
 The capture half shipped: gitignored anomalies file written directly by the
-spotter, plus a SessionStart hook that counts and demands triage. AGY-SCOPE's
+driver after it verifies the report, plus a SessionStart hook that counts and demands triage. AGY-SCOPE's
 five open design questions were always disposition questions and are unchanged."
 ```
 
@@ -1080,12 +1081,12 @@ exits with no parked state (Task 2, the Triage section); merge with AGY-SCOPE (T
      a clean session. This is the single most likely way the whole thing quietly stops working.
    - **The driver can capture without verifying.** Then unverified claims accumulate and the owner pays
      the debunking cost at triage, which destroys the cheap-capture property the design was built around.
-4. **The activation path has its own activation gap.** Task 5's seam fires from a `PreToolUse` hook with
+3. **The activation path has its own activation gap.** Task 5's seam fires from a `PreToolUse` hook with
    matcher `Skill`, so it only reaches a driver who actually INVOKES `subagent-driven-development` or
    `executing-plans`. A driver who dispatches subagents without invoking either skill never receives the
    clause, and the mechanism is silently bypassed for that whole session. There is no hook that fires on
    "about to write a dispatch". The backstop is the same one this project already uses for AGY-CAPSTONE:
    a durable rule in the operator's own instructions, which binds whether or not a skill was invoked. The
    hook raises the floor; it is not the guarantee.
-3. The hook fires once per session. It cannot force triage mid-session; it can only make the count
+4. The hook fires once per session. It cannot force triage mid-session; it can only make the count
    impossible to miss at the next boot.

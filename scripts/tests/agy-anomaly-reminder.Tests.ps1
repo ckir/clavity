@@ -116,7 +116,7 @@ Describe 'agy-anomaly-reminder.sh' {
     }
 
     It 'finds the file at the repo ROOT when cwd is a SUBDIRECTORY' {
-        # A spotter that had cd'd into a subdirectory writes to the repo root. If this hook looked only at
+        # A capturing session cd'd into a subdirectory writes to the repo root. If this hook looked only at
         # the payload cwd it would report zero while a real anomaly sat captured and invisible.
         $repo = New-TempRepo; $h = New-CleanHome
         try {
@@ -132,8 +132,8 @@ Describe 'agy-anomaly-reminder.sh' {
 
     It 'finds the file under the payload cwd when it is NOT at the git root' {
         # The case the second candidate exists for, and the only arrangement that can observe it: the repo
-        # ROOT has no anomalies file, but the payload cwd (a subdirectory) does. Reachable when a spotter
-        # without git on PATH captured via its $PWD fallback while cd'd into a subdirectory. A fixture
+        # ROOT has no anomalies file, but the payload cwd (a subdirectory) does. Reachable when a capturing
+        # session without git on PATH used its $PWD fallback while cd'd into a subdirectory. A fixture
         # where root and cwd coincide would pass with or without the fallback and prove nothing.
         $repo = New-TempRepo; $h = New-CleanHome
         try {
