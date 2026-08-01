@@ -1161,13 +1161,22 @@ reminder counts and demands triage (Task 1, tested by `REPORTS the count and dem
 exits with no parked state (Task 2, the Triage section); merge with AGY-SCOPE (Task 4 Step 3).
 
 **Known limits, stated rather than papered over.**
-1. ~~The SessionStart registrations are review-enforced, not gate-enforced.~~ **CORRECTED by the capstone:
-   they ARE gate-enforced now.** The gate compared `SessionStart` through an allow-list that named only the
-   liveness hook, so the anomaly registration was excluded and could be deleted from one plugin with the
-   gate still green (MEASURED). `agy-anomaly-reminder.sh` is now in that allow-list. **The residual limit is
-   the allow-list itself: a future shared SessionStart hook that nobody adds to `sp_sel` is silently
-   unchecked, and nothing warns.** That is a smaller hole than the one it replaced, but it is the same
-   shape, and it is the reason this limit stays on the list rather than being deleted.
+1. ~~The SessionStart registrations are review-enforced, not gate-enforced.~~ **CORRECTED by the capstone
+   over two rounds; they ARE gate-enforced now, and the gate now fails CLOSED.** Round 1: the gate compared
+   `SessionStart` through an ALLOW-LIST naming only the liveness hook, so the anomaly registration was
+   excluded and could be deleted from one plugin with the gate still green (MEASURED). Round 2: adding the
+   anomaly hook to that allow-list fixed the immediate case but left the shape — a future shared hook
+   nobody enrols is silently unchecked, and a hook misspelled the SAME way in both manifests drops out of
+   comparison entirely. **The filter is now a DENY-LIST naming only the genuinely variant-specific
+   `agy-drive-session-reset.sh`, so everything else is compared by default.** Verified across 12 cases,
+   including the two the allow-list could never cover: a brand-new shared hook added to both and then
+   removed from one now FIRES, and a hook misspelled in both is still compared so a later divergence FIRES.
+   A future variant-specific hook makes the gate fail until it is named — fail-closed, which is the point.
+   **Residual, TRACKED not merely mentioned:** the FILE-level list (`for rel in`, lines 15-27) still has the
+   allow-list shape. MEASURED: a skill created only in `clavity-dotnet` left `just seed-sync-check` GREEN.
+   Fixing it means auto-discovering shared files and deny-listing the intentionally-divergent twins
+   (`driving`/`ls-driving`, `responder`/`ls-pairing`, `README`, `plugin.json`), which is a design task, not
+   a one-line inversion. Captured to `.clavity/local-anomalies.md` for owner triage.
 2. Nothing verifies that an agent actually captured an anomaly it noticed. Compliance with *noticing* is
    unfalsifiable - an agent can always assert it saw nothing. This ships an honest record, not a gate.
    Three specific ways that bites, named rather than left implicit:

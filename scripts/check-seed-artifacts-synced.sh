@@ -55,22 +55,29 @@ fi
 # would compare identical and FALSE-GREEN (measured). Keep each SessionStart group, filter its `hooks` array
 # to only the shared entries, and drop groups left with none -- so `matcher` IS compared.
 #
-# THE FILTER IS AN ALLOW-LIST, SO EVERY SHARED SessionStart HOOK MUST BE NAMED IN IT. A hook absent from
-# this pattern is silently EXCLUDED from the comparison, which means it can be deleted from one plugin and
-# the gate still passes. MEASURED: with only the liveness hook listed, removing agy-anomaly-reminder.sh
-# from the dotnet manifest left `just seed-sync-check` green -- the drain side of anomaly capture could
-# vanish from one driver with no gate firing. When you add a SHARED SessionStart hook, add it here too.
+# THE FILTER IS A DENY-LIST, AND THAT DIRECTION IS LOAD-BEARING. It names only the hooks that legitimately
+# differ between the two variants and compares EVERYTHING ELSE. It was originally an allow-list naming the
+# shared hooks, which fails OPEN in three ways, all MEASURED:
+#   1. A shared hook nobody adds to the pattern is never compared, so it can be deleted from one plugin and
+#      the gate still passes. That happened: agy-anomaly-reminder.sh was added to both manifests and to the
+#      byte-identity file list, yet removing it from the dotnet manifest left `just seed-sync-check` GREEN.
+#      The drain side of anomaly capture could vanish from one driver with no gate firing.
+#   2. A shared hook misspelled the SAME way in both manifests stops matching the pattern, so it silently
+#      drops out of the comparison entirely and any LATER divergence in it goes unnoticed too.
+#   3. Omission is indistinguishable from synchronisation -- the gate cannot tell "in sync" from "not
+#      looked at", and reports the same green for both.
+# A deny-list inverts all three: anything new is compared by default, and the only way to lose coverage is
+# to explicitly add a name here, which is a visible edit. If a future hook genuinely IS variant-specific,
+# the gate fails until it is named below -- fail-closed, which is the posture we want.
 #
-# SIDE EFFECT, INTENDED: with two or more entries surviving the filter, their relative ORDER is now
-# compared as well (jq -S sorts object keys, never array elements). That is correct rather than incidental
-# -- SessionStart hooks run in array order, so two plugins listing the shared hooks in different orders
-# would genuinely behave differently. It could not be enforced before, because only one entry survived.
-# MEASURED across the whole matrix: removing the anomaly hook from EITHER plugin fires, removing the
-# liveness hook still fires, a drifted `matcher` still fires, and reversing one plugin's order fires.
-sp_sel='[.hooks.SessionStart[]? | .hooks |= map(select((.command // "") | test("agy-liveness-check\\.sh|agy-anomaly-reminder\\.sh"))) | select(.hooks | length > 0)]'
+# SIDE EFFECT, INTENDED: with two or more entries surviving the filter, their relative ORDER is compared
+# (jq -S sorts object keys, never array elements). That is correct rather than incidental -- SessionStart
+# hooks run in array order, so two plugins listing the shared hooks differently would genuinely behave
+# differently. It could not be enforced while only one entry survived the old allow-list.
+sp_sel='[.hooks.SessionStart[]? | .hooks |= map(select((.command // "") | test("agy-drive-session-reset\\.sh") | not)) | select(.hooks | length > 0)]'
 if ! diff -q <(jq -S "$sp_sel" "$D/hooks/hooks.json") \
              <(jq -S "$sp_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
-  echo "SEED-DRIFT: hooks/hooks.json SessionStart (shared liveness hook) differs between the two plugins" >&2
+  echo "SEED-DRIFT: hooks/hooks.json SessionStart (shared hooks) differs between the two plugins" >&2
   status=1
 fi
 # Responder skill: the Claude Code plugin copy (renamed to `responder`, Option A/SP-0) and the
