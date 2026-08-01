@@ -389,8 +389,19 @@ Add this section to the END of both README files, verbatim and identical in each
 ## Hook ownership
 
 A discipline hook has exactly one owner. Once a hook ships in a plugin, the plugin is its sole owner:
-your personal registration of a same-named hook is retired. Retirement means **removing the
+your personal registration of a **same-named** hook is retired. Retirement means **removing that
 registration** — the file may stay on disk, since only registration determines execution.
+
+**Retiring a collision is not the same as giving up your own seams.** If your personal hook does more
+than the shipped one, deleting it silently costs you that extra behaviour. Do this instead: rename it
+(e.g. `agy-legacy-seams.sh`), delete the arms the shipped hook already covers, register it under the new
+name, and keep the rest. A renamed hook with non-overlapping behaviour is not a collision.
+
+**The check matches filenames, not behaviour — know its limit.** A renamed hook that still duplicates a
+shipped arm will fire alongside the shipped one and will NOT be reported, because nothing compares what
+the two scripts do. Trimming the overlapping arms is yours to get right; the release checklist says how
+to verify it. This is a deliberate escape hatch for legitimate extra seams, not a loophole to keep a
+duplicate quietly alive.
 
 Turning a shipped hook off is done with the `.no-agy` kill-switch, which is **global — it silences every
 agy discipline, not one hook**. There is deliberately no per-hook off switch: a selective, silent disable
@@ -451,6 +462,38 @@ git commit -m "docs(disciplines): publish the hook-ownership rule (D1)"
 **Do NOT start until Task 4 is committed** — this modifies the SP-D artifact Task 4 audits.
 
 Reuse the settings resolution the hook ALREADY has at lines 57-67. Do not add git-toplevel logic.
+
+**Why this check earns its place** (revised after an AGY-FIRST consult; the peer first argued to drop
+this task, then withdrew that on measurement). The original justification was "it prevents a double-fire",
+which rests on an assumption we cannot check: we do not control the host and have not measured whether it
+runs both registrations or de-duplicates them. The stronger justification does not depend on that answer:
+
+- If the host runs BOTH, the two copies double-fire.
+- If the host de-duplicates, one silently shadows the other — and since SP-C measured that the two copies
+  have DIVERGED, the operator either loses five seams or is cut off from every future shipped fix, with
+  no signal either way.
+
+**Silent shadowing is the worse outcome, and the check is the only thing that surfaces either.** So it is
+worth building whichever way the host behaves. If someone later measures the host and finds it
+de-duplicates, that strengthens this task rather than retiring it.
+
+- [ ] **Step 0: Prototype the check OUTSIDE the shipped hook first**
+
+Do not write unproven `jq` into a hook that runs on every SessionStart. Build the ownership function as a
+standalone script in the scratchpad, and run it against hand-made fixture files first:
+
+```bash
+SP="C:/Users/user/AppData/Local/Temp/claude/C--Users-user-Development-Rust-clavity/0a1a5578-35fa-4754-b6e7-6e5ce7c134c2/scratchpad/ownership-probe"
+mkdir -p "$SP"
+# Build: (1) a settings.json with a colliding registration, (2) one with no .hooks node,
+# (3) one that will not parse, (4) one whose .hooks is a string not an object.
+# Run the function against each and confirm it prints what Step 3(b) says it should.
+```
+
+Only once every branch produces the expected message does the code go into `agy-liveness-check.sh`. The
+plan's own history is the argument for this step: three of the four Phase A verification passes had to
+correct something this plan asserted without measuring it, and Step 3(b) below is the largest block of
+unmeasured code in the document.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -883,8 +926,30 @@ predates SP-D's commits. This checklist is its closing step.
 
 - [ ] Start a session. The ownership notice will name every personally-registered hook that the plugin
       now ships.
-- [ ] Remove those registrations from the named settings file(s). **The installer does not do this** —
-      those files are yours, and an installer editing them silently is the surprise this design removes.
+- [ ] **For each hook named, diff your copy against the shipped one before touching anything.** They are
+      not guaranteed to be equivalent, and one of them is not. MEASURED at the time of writing:
+
+      diff ~/.claude/hooks/agy-seam-inject.sh clavity-dotnet/plugin/hooks/agy-seam-inject.sh
+
+      The personal `agy-seam-inject.sh` binds **five seams the shipped hook does not carry** —
+      `writing-plans`, `requesting-code-review`, `systematic-debugging`, `subagent-driven-development`,
+      `executing-plans`. Deleting its registration silently loses all five.
+- [ ] **`agy-seam-inject.sh` specifically: rename, do not delete.** Rename to `agy-legacy-seams.sh`,
+      delete its `*brainstorm*` and `*finishing-a-development-branch*` arms (the shipped hook covers
+      both), register it under the new name, and keep the other five. Nothing checks this for you — the
+      ownership check matches filenames, not behaviour, so a leftover duplicate arm will fire twice
+      without being reported.
+- [ ] **Know what moves even when you do this correctly.** The two hooks bind AGY-CAPSTONE to *different*
+      seams: your personal copy fires it on `subagent-driven-development`/`executing-plans`, while the
+      shipped hook fires it on `finishing-a-development-branch`. After retirement the capstone stops
+      being nudged on the plan-execution seams. **This is a behaviour change, not a no-op.** The
+      discipline itself is unaffected — the AGY-CAPSTONE rule binds whether or not a hook fires, which is
+      exactly why the rule exists as a backstop — but the automatic prompt moves.
+- [ ] For every OTHER named hook, apply the same order: **diff first, then decide.** If your copy is
+      equivalent to the shipped one, remove the registration. If it does more, rename-and-trim as above.
+      Do not assume equivalence because the filename matches — that assumption is what makes the loss
+      silent. **The installer does not do any of this** — those files are yours, and an installer editing
+      them silently is the surprise this design removes.
 - [ ] Restart or `/clear` the session so the window closes at a known point.
 - [ ] Start a session again and confirm the notice is gone.
 
