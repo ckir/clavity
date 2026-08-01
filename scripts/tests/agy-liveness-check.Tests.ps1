@@ -158,21 +158,26 @@ Describe 'agy-liveness-check.sh' {
     }
 
     It 'reports the unreadable settings file BUT continues the sweep' {
-        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        # ORDER IS THE WHOLE POINT. The sweep runs user -> project -> local, so the CORRUPT file must sit
+        # at USER scope and the collision AFTER it at PROJECT scope. An earlier version of this test had
+        # them the other way round: the collision was found on iteration 1 and the corrupt file was last,
+        # so `continue` and `break` behaved identically and the mutation left the suite green. A guard
+        # whose removal leaves the suite green is not a guard.
+        $cfg  = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-cfg-"  + [Guid]::NewGuid().ToString('N'))
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        $h = New-CleanHome
         try {
-            $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $cfg -Force | Out-Null
+            '{ "hooks": { ,,, ' | Set-Content (Join-Path $cfg 'settings.json') -Encoding ascii
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
-            '{ "hooks": { ,,, ' | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
-            $s = Join-Path $cfg 'settings.json'
             @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
                hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-liveness-check.sh"' } ) } ) }
-            } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
+            } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'unreadable'
+            $r.StdErr   | Should -Match 'settings unreadable'
             $r.StdErr   | Should -Match 'agy-liveness-check'
-            Remove-Item $proj -Recurse -Force -ErrorAction SilentlyContinue
-        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'stays silent when the settings file has no hooks node at all' {
@@ -231,10 +236,16 @@ Describe 'agy-liveness-check.sh' {
             New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
             # Valid JSON, but .hooks is a STRING where the check expects an object of event arrays.
             '{ "hooks": "not-an-object" }' | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            # A real collision placed AFTER it in the user->project->local sweep. This is what makes the
+            # schema branch's `continue` load-bearing: with a `break` the sweep stops at the bad-shape
+            # project file and never reaches this, so the duplicate goes unreported.
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
             $r.ExitCode | Should -Be 2
             $r.StdErr   | Should -Match 'schema unrecognised'
             $r.StdErr   | Should -Not -Match 'settings unreadable'
+            $r.StdErr   | Should -Match 'agy-seam-inject'
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
