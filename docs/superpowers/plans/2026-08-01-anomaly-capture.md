@@ -185,6 +185,47 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'finds the file at the repo ROOT when cwd is a SUBDIRECTORY' {
+        # A spotter that had cd'd into a subdirectory writes to the repo root. If this hook looked only at
+        # the payload cwd it would report zero while a real anomaly sat captured and invisible.
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $repo '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $repo '.clavity/local-anomalies.md') "# Untriaged anomalies`n`n- [defect] y * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
+            $sub = Join-Path $repo 'scripts/deep'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $sub) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match '1 untriaged'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'counts an entry whose type is Title-Case or multi-word' {
+        # A sloppy type is still a real anomaly. A stricter [a-z] pattern would count these as zero and
+        # silently discard exactly what the hook exists to surface.
+        $w = New-Workspace @(
+            '- [Defect] title-cased type * a.cs:1 * 2026-07-20 * task=z',
+            '- [tool misbehavior] multi-word type * n/a * 2026-07-21 * task=z'
+        )
+        $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match '2 untriaged'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reads the date from its FIELD, ignoring a date written in the prose' {
+        # Scanning the whole line for an ISO date would pick the prose date and report an age that is a lie.
+        $w = New-Workspace @('- [defect] API truncates messages from 2024-01-01 format * a.cs:1 * 2026-08-01 * task=z')
+        $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.StdErr | Should -Match '2026-08-01'
+            $r.StdErr | Should -Not -Match '2024-01-01'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT when jq is absent AND .no-agy is set' {
         # Without this, a machine that simply has no jq gets an unsuppressable boot warning forever and
         # .no-agy -- the documented off switch -- does not switch it off. agy-liveness-check.sh:26-36
@@ -273,7 +314,13 @@ if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
   exit 0
 fi
 
-f="$cwd/.clavity/local-anomalies.md"
+# Resolve the REPOSITORY ROOT the same way the capture snippet does, so both sides always agree. A
+# spotter that had cd'd into a subdirectory writes to the root; if this hook looked only at the payload
+# cwd it would miss an anomaly that was captured correctly. Fall back to cwd outside a git worktree.
+root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
+[ -n "$root" ] || root="$cwd"
+
+f="$root/.clavity/local-anomalies.md"
 [ -f "$f" ] || exit 0
 
 # Present but unreadable is NOT "no anomalies". Report it, for the same reason the jq guard above reports
@@ -284,13 +331,25 @@ if [ ! -r "$f" ]; then
   exit 2
 fi
 
-# An ENTRY is a bullet whose first token is a bracketed type: "- [defect] ...". Prose, headings and plain
-# bullets in the same file are not entries, so the count cannot be inflated by the file's own preamble.
-n=$(grep -c '^- \[[a-z]*\]' "$f" 2>/dev/null)
+# An ENTRY is a bullet whose first token is ANY bracketed word: "- [defect] ...". Prose, headings and
+# plain bullets are not entries, so the file's own preamble cannot inflate the count. The bracket content
+# is deliberately NOT restricted to [a-z]: an agent that writes "[Defect]" or "[tool misbehavior]" has
+# still captured a real anomaly, and a stricter pattern would count it as zero -- silently discarding the
+# very thing this hook exists to surface. Triage can correct a sloppy type; it cannot recover a dropped one.
+n=$(grep -c '^- \[[^]]*\]' "$f" 2>/dev/null)
 [ -z "$n" ] && n=0
 [ "$n" -eq 0 ] && exit 0
 
-oldest=$(grep '^- \[[a-z]*\]' "$f" 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | sort | head -1)
+# Read the capture date from its FIELD, not from anywhere on the line. The format is
+#   - [type] fact * where * DATE * task=...
+# so the date is the field before the last. Scanning the whole line for an ISO date would pick up a date
+# written inside the prose ("truncates messages from 2024-01-01 format") and report an age that is a lie.
+# The separator is written as a CHARACTER CLASS, ' [*] ', not as an escaped ' \* '. MEASURED: the escaped
+# form makes awk warn "escape sequence \* treated as plain *" and emit garbage instead of the field, so
+# the date silently comes back empty. The class form has no escaping ambiguity.
+oldest=$(grep '^- \[[^]]*\]' "$f" 2>/dev/null \
+  | awk -F' [*] ' 'NF>=4 { print $(NF-1) }' \
+  | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' | sort | head -1)
 [ -n "$oldest" ] && oldest=" (oldest $oldest)"
 
 printf '%s\n' "[AGY-ANOMALIES] $n untriaged$oldest in .clavity/local-anomalies.md. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill." >&2
@@ -300,7 +359,7 @@ exit 2
 - [ ] **Step 4: Run the tests and verify they pass**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/agy-anomaly-reminder.Tests.ps1 -Output Detailed -CI"`
-Expected: `Failed: 0`, 11 blocks passing (one may report Skipped on a host that cannot enforce a read deny — that is an accepted outcome for that block only).
+Expected: `Failed: 0`, 14 blocks passing (one may report Skipped on a host that cannot enforce a read deny — that is an accepted outcome for that block only).
 
 - [ ] **Step 5: Mutation-check each guard**
 
@@ -318,6 +377,9 @@ Every mutation below is applied **to the hook**, never to a test.
 | Delete the whole `if ! command -v jq` guard | `warns ONCE (exit 2) when jq is absent rather than failing silently` |
 | Delete the `if [ ! -r "$f" ]` unreadable guard | `REPORTS an unreadable anomalies file rather than counting zero` |
 | Delete the `.no-agy` check INSIDE the jq-missing branch | `is SILENT when jq is absent AND .no-agy is set` |
+| Replace the `git rev-parse --show-toplevel` resolution with `root="$cwd"` | `finds the file at the repo ROOT when cwd is a SUBDIRECTORY` |
+| Tighten the entry pattern `'^- \[[^]]*\]'` back to `'^- \[[a-z]*\]'` | `counts an entry whose type is Title-Case or multi-word` |
+| Replace the field-anchored `awk` date read with a whole-line `grep -oE` for an ISO date | `reads the date from its FIELD, ignoring a date written in the prose` |
 
 - [ ] **Step 6: Commit**
 
@@ -385,18 +447,30 @@ your final message.
 Run this, filling the four fields:
 
 ```bash
-F=.clavity/local-anomalies.md
+# Resolve the REPOSITORY ROOT, never a relative path. A subagent that has cd'd into a subdirectory would
+# otherwise write scripts/.clavity/local-anomalies.md, which the SessionStart hook never looks at: the
+# anomaly is durably recorded and permanently invisible, which is the exact opposite of the point. The
+# hook resolves the root the same way, so both sides always agree.
+R=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+F="$R/.clavity/local-anomalies.md"
 if [ ! -f "$F" ]; then
-  mkdir -p .clavity
+  mkdir -p "$R/.clavity"
   # Self-ignoring directory. This makes .clavity/ invisible to git REGARDLESS of the host repository's
   # own .gitignore, which matters because this plugin ships to repositories whose .gitignore we do not
   # control. Without it, the "capture is private" property holds only in the repo where it was written.
-  [ -f .clavity/.gitignore ] || printf '%s\n' '*' > .clavity/.gitignore
+  [ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' > "$R/.clavity/.gitignore"
   printf '%s\n\n' '# Untriaged anomalies (local, never committed)' > "$F"
 fi
 printf -- '- [%s] %s * %s * %s * task=%s\n' \
   'defect' 'one line stating the fact' 'path/file.ext:LINE' "$(date +%F)" 'what you were doing' >> "$F"
 ```
+
+**Use exactly one of `defect`, `tool`, `process` as the type, lowercase, one word.** Not `[Defect]`, not
+`[tool misbehavior]`. The hook tolerates other bracketed tokens when counting, but the three types are
+what the triage procedure sorts on, so an invented type makes the entry harder to act on.
+
+**Keep the four ` * ` separators.** The hook reads the capture date from the field before `task=`, by
+position. An entry missing a separator still counts, but its age cannot be read.
 
 Two things about that snippet are deliberate:
 
