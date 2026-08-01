@@ -81,9 +81,17 @@ else
       ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - .hooks is present but not the shape this check reads; ownership NOT verified for it"$'\n'
       continue
     fi
-    for name in $(printf '%s\n' $shipped | grep -oE '[a-z0-9-]+\.sh' | sort -u); do
-      case "$personal" in
-        *"$name"*) ownership_note="${ownership_note}[AGY-DISCIPLINES] $name is shipped by this plugin AND registered in $f - remove that registration, then restart or /clear this session"$'\n' ;;
+    # Compare script-name TOKENS, not substrings of the joined command blob. Substring matching both
+    # OVER-fires (a longer name that merely CONTAINS a shipped name -- which is exactly the rename-and-trim
+    # escape hatch the README prescribes, so it punished the documented fix) and UNDER-fires (a name
+    # differing only in case, which on Windows/macOS is the SAME file the host will happily double-fire).
+    # Space-pad both sides so a match is a WHOLE token, and fold case so a case-insensitive filesystem
+    # cannot hide a collision. "$shipped" is quoted: unquoted it word-splits AND glob-expands against
+    # the session's cwd, so a glob character in our own hooks.json could pull in unrelated local .sh files.
+    personal_names=" $(printf '%s\n' "$personal" | grep -oiE '[a-z0-9._-]+\.sh' | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')"
+    for name in $(printf '%s\n' "$shipped" | grep -oiE '[a-z0-9._-]+\.sh' | tr 'A-Z' 'a-z' | sort -u); do
+      case "$personal_names" in
+        *" $name "*) ownership_note="${ownership_note}[AGY-DISCIPLINES] $name is shipped by this plugin AND registered in $f - remove that registration, then restart or /clear this session"$'\n' ;;
       esac
     done
   done

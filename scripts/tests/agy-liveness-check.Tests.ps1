@@ -26,6 +26,15 @@ Describe 'agy-liveness-check.sh' {
             return $h
         }
         function Payload { param([string]$Cwd = '.') @{ cwd = $Cwd; source = 'startup' } | ConvertTo-Json -Compress }
+
+        # Register ONE personal hook by NAME at user scope, run the hook, return the result. Used by the
+        # token-matching tests so the only thing varying between them is the registered filename.
+        function Invoke-WithPersonalHook { param([string]$HookName, $Cfg, $HomeDir)
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command="bash `"~/.claude/hooks/$HookName`"" } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Cfg 'settings.json') -Encoding ascii
+            return Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $Cfg; HOME = $HomeDir; CLAUDE_PROJECT_DIR = $Cfg }
+        }
     }
 
     It 'is SILENT (exit 0, no stderr) when superpowers is enabled' {
@@ -279,5 +288,41 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 2
             $r.StdErr   | Should -Match 'agy-invented-for-this-test'
         } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- Token matching, not substring matching (capstone R1-F4). The check compares whole script-name
+    # tokens case-insensitively. Substring matching over-fired on any longer name CONTAINING a shipped
+    # name and under-fired on a case-differing name. The first two pin the false-positive edges; the
+    # third pins the false-negative that a case-insensitive filesystem would otherwise hide.
+
+    It 'is SILENT about a personal hook whose name is UNRELATED to any shipped one' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            $r = Invoke-WithPersonalHook 'my-custom-hook.sh' $cfg $h
+            $r.ExitCode | Should -Be 0
+            $r.StdErr   | Should -BeNullOrEmpty
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT flag a rename whose name merely CONTAINS a shipped name' {
+        # The README tells operators to rename-and-trim rather than delete. Substring matching flagged
+        # my-agy-seam-inject.sh as a collision, i.e. it punished the documented escape hatch.
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            $r = Invoke-WithPersonalHook 'my-agy-seam-inject.sh' $cfg $h
+            $r.ExitCode | Should -Be 0
+            $r.StdErr   | Should -BeNullOrEmpty
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'REPORTS a collision that differs only in CASE' {
+        # Windows and macOS resolve AGY-SEAM-INJECT.SH and agy-seam-inject.sh to the SAME file, so the
+        # host double-fires. A case-sensitive match stayed silent on the operator's own platform.
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            $r = Invoke-WithPersonalHook 'AGY-SEAM-INJECT.SH' $cfg $h
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-seam-inject\.sh is shipped by this plugin'
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
