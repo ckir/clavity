@@ -156,7 +156,16 @@ Then **measure the candidate set the way the recipe will actually run it**: one 
 pwsh -NoProfile -c "\$r = Invoke-Pester @('scripts/tests/<A>.Tests.ps1','scripts/tests/<B>.Tests.ps1') -Output None -PassThru; 'Total={0} Failed={1}' -f \$r.TotalCount, \$r.FailedCount"
 ```
 
-Run it **three times** and take the slowest. **Ceiling: the FAST batch must run in under 120s** — comfortably inside the 600s foreground tool cap, which is the only budget that still applies now that Step 5 is dropped. If it exceeds that, remove the most expensive suite from the candidate set and re-measure. Do not average, and do not accept a single run: the first run after an idle period is systematically slower (MEASURED: 94.2s, then 75.1s, then 73.7s on an unchanged set).
+Run it **three times** and take the slowest. **Ceiling: the FAST batch must run in under 120s** — comfortably inside the 600s foreground tool cap, which is the only budget that still applies now that Step 5 is dropped. Do not average, and do not accept a single run: the first run after an idle period is systematically slower (MEASURED: 94.2s, then 75.1s, then 73.7s on an unchanged set).
+
+**If the batch exceeds 120s:** first confirm the machine was actually idle and re-measure — a contended host is the likeliest cause, and it is what produced the 94.2s outlier above. If it is still over on a quiet machine, move the most expensive suite to SLOW and re-measure.
+
+> **⚠ MOVING A SUITE CHANGES THE PINNED COUNTS. This is the one number in this task you MAY change, and only this way.**
+> `157` and `201` are **derived facts about the split below**, not invariants. **`358` is the invariant.**
+> If you move a suite, you MUST: recompute both halves' `Total`; update the table in this step, the numbers
+> in Step 6, and the commit message in Step 7 so all three agree; and record in `_partition.md` which suite
+> moved and the measurement that forced it. **What you may never do is change `358`, or reach a number by
+> editing a test.** The sum is the coverage guard; the halves are bookkeeping.
 
 **The measured FAST set is recorded below.** It was derived by exactly this procedure:
 
@@ -215,7 +224,7 @@ Replace `<paste the Step 1 output verbatim here>` with the actual Step 1 output.
 
 - [ ] **Step 4: Rewrite the justfile recipes**
 
-Replace `justfile:91-92` with the following. `<FAST-FILES>` and `<SLOW-FILES>` are space-separated `scripts/tests/<name>.Tests.ps1` paths from Step 2:
+Replace `justfile:91-92` with the following. `<FAST-FILES>` and `<SLOW-FILES>` are the `scripts/tests/<name>.Tests.ps1` paths from Step 2, each **individually quoted and separated by commas** — see the warning immediately below, which is not optional:
 
 **The paths must be individually quoted and COMMA-separated.** `@('a.Tests.ps1 b.Tests.ps1')` is a
 one-element array holding a single string with spaces in it, and Pester will look for one file with that
@@ -256,19 +265,23 @@ just test-scripts-fast 2>&1 | tail -3
 ```
 Expected: `Failed: 0`, `Total: 157`, completing under 120s. **Time it from outside the process** — the recipe's own output does not include pwsh startup, and startup is part of what a caller pays.
 
+(`157` is the count for the pinned split. If Step 2's over-ceiling branch fired and you moved a suite, use your recomputed number here — the split changed, so this derived number changed with it. The sum below did not.)
+
 ```bash
 just test-scripts-slow 2>&1 | tail -3
 ```
 **Run this with `run_in_background` and read the task output file** — it exceeds the foreground cap.
 Expected: `Failed: 0`.
 
-**The count oracle:** add the two recipes' **`Total`** numbers — NOT `Tests Passed`. **They must sum to 358 (157 fast + 201 slow), with `Failed: 0` on both.** If the total does not reach 358, a test was dropped or double-counted — STOP and report it rather than adjusting the expected number.
+**The count oracle — this is the invariant, and it is the only number here you may never change:** add the two recipes' **`Total`** numbers — NOT `Tests Passed`. **They must sum to exactly 358, with `Failed: 0` on both.** For the pinned split that is 157 + 201; if Step 2's over-ceiling branch moved a suite, the two halves differ but **the sum does not**. If the sum is not 358, a test was dropped or double-counted — **STOP and report it. Never adjust 358 to match what you measured, and never reach it by editing a test.**
 
 **A third oracle, because the count alone is gameable:** `git diff --stat lefthook.yml` must be **empty**. The amendment drops Step 5, and a well-meaning implementer "completing" the plan by wiring the hook would reintroduce the exact defect this task was amended to avoid.
 
 **Why `Total` and not `Passed`:** `scripts/tests/agy-anomaly-reminder.Tests.ps1:220` skips conditionally — `Set-ItResult -Skipped -Because 'this host does not enforce the read deny'` — on any host where `icacls` cannot actually deny the current process a read. There, Pester reports `Passed: 357, Skipped: 1, Total: 358`, and a `Passed == 358` oracle would halt on a healthy run. `Total` matches what Step 1's `$r.TotalCount` measured, so the two numbers are directly comparable.
 
 - [ ] **Step 7: Commit**
+
+If Step 2's over-ceiling branch fired and you moved a suite, **change the two half-counts in the message below to what you actually measured** — and leave `358` alone. A commit message stating a split the repo does not have is a lie a future reader will trust.
 
 ```bash
 git add justfile scripts/tests/_partition.md
