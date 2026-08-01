@@ -348,17 +348,36 @@ Append to `scripts/tests/check-seed-artifacts-synced.Tests.ps1`, before its fina
 > tests use it. **Use it. Never `& bash` and never `$LASTEXITCODE` in this file.**
 
 ```powershell
-    It 'FIRES when a new shared file exists in only one plugin' {
+    It 'FIRES when a new shared file exists in clavity-dotnet only' {
         # The defect this milestone fixes: under the old allow-list, a file nobody enrolled was never
         # compared, so it could exist in one plugin only and the gate stayed green. Omission was
         # indistinguishable from synchronisation.
+        # ASSERT THE DIRECTION, not just the filename: this probe exercises the `! -f "$C/$rel"` branch
+        # only. Its mirror below covers the other branch. A filename-only assertion cannot tell them apart.
         $probe = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/skills/zz-discovery-probe/SKILL.md'
         New-Item -ItemType Directory -Path (Split-Path $probe) -Force | Out-Null
         Set-Content $probe "---`nname: zz-discovery-probe`n---`nprobe`n" -Encoding ascii
         try {
             $r = Invoke-SeedSync
             $r.ExitCode | Should -Not -Be 0
-            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'zz-discovery-probe'
+            "$($r.StdOut)`n$($r.StdErr)" |
+                Should -Match 'zz-discovery-probe/SKILL\.md exists in clavity-dotnet/plugin but NOT in clavity-classic/plugin'
+        } finally { Remove-Item (Split-Path $probe) -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES when a new shared file exists in clavity-classic only' {
+        # The MIRROR, and it is not redundant. MEASURED: without it, NO test in this file ever creates a
+        # file present in classic and absent from dotnet, so the walk's `[ ! -f "$D/$rel" ]` branch is
+        # never exercised — it can be DELETED OUTRIGHT and all other tests stay green. A guard no test
+        # reaches is not a guard.
+        $probe = Join-Path $script:RepoRoot 'clavity-classic/plugin/skills/zz-probe-classic-only/SKILL.md'
+        New-Item -ItemType Directory -Path (Split-Path $probe) -Force | Out-Null
+        Set-Content $probe "---`nname: zz-probe-classic-only`n---`nprobe`n" -Encoding ascii
+        try {
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0
+            "$($r.StdOut)`n$($r.StdErr)" |
+                Should -Match 'zz-probe-classic-only/SKILL\.md exists in clavity-classic/plugin but NOT in clavity-dotnet/plugin'
         } finally { Remove-Item (Split-Path $probe) -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -383,14 +402,24 @@ Append to `scripts/tests/check-seed-artifacts-synced.Tests.ps1`, before its fina
     It 'FIRES when hooks.json is missing from one plugin, despite being compared elsewhere' {
         # compared_elsewhere() delegates hooks.json CONTENT to the jq blocks further down, but it must not
         # become an escape hatch: it requires the file on BOTH sides, so a deletion still trips the walk.
-        # Without the two-sided check this test goes green while the file has vanished.
+        #
+        # ⚠ ASSERT THE WALK'S OWN LINE, NOT MERELY THAT "hooks.json" APPEARS SOMEWHERE. MEASURED: with the
+        # file absent, FOUR messages name hooks/hooks.json — the walk's existence line, plus three from the
+        # pre-existing jq blocks (jq errors on the missing file, its process substitution yields empty
+        # output, and `diff -q` reports that as differing). A loose /hooks\.json/ assertion therefore passes
+        # even when compared_elsewhere() is gutted to a bare `return 0`, so the mutation row that is supposed
+        # to prove the two-sided guard proves NOTHING. Only the line below comes from the walk.
+        #
+        # Park the backup OUTSIDE the plugin trees: a *.bak beside the original is itself discovered and
+        # reported as classic-only, which is noise this assertion should not have to tolerate.
         $f   = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
-        $bak = "$f.bak"
-        Move-Item $f $bak
+        $bak = Join-Path ([IO.Path]::GetTempPath()) 'clavity-classic-hooks-json.testbak'
+        Move-Item $f $bak -Force
         try {
             $r = Invoke-SeedSync
             $r.ExitCode | Should -Not -Be 0
-            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'hooks/hooks\.json'
+            "$($r.StdOut)`n$($r.StdErr)" |
+                Should -Match 'hooks/hooks\.json exists in clavity-dotnet/plugin but NOT in clavity-classic/plugin'
         } finally { Move-Item $bak $f -Force }
     }
 ```
@@ -399,7 +428,7 @@ Append to `scripts/tests/check-seed-artifacts-synced.Tests.ps1`, before its fina
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-seed-artifacts-synced.Tests.ps1 -Output Detailed -CI"`
 
-Expected: `FIRES when a new shared file exists in only one plugin` **FAILS** (the allow-list ignores the probe, so the gate exits 0). **The other three pass already** — they describe behaviour the allow-list also has, including the `hooks.json`-missing case, which the pre-existing jq comparisons already catch. **Only one of the four can go red here, and that is correct, not a shortfall.** Do not "fix" the other three.
+Expected: **the two probe tests FAIL** — `FIRES when a new shared file exists in clavity-dotnet only` and `FIRES when a new shared file exists in clavity-classic only` (the allow-list ignores both probes, so the gate exits 0). **The other three pass already** — they describe behaviour the allow-list also has, including the `hooks.json`-missing case, which the pre-existing jq comparisons already catch. **Only two of the five can go red here, and that is correct, not a shortfall.** Do not "fix" the other three.
 
 - [ ] **Step 3: Replace the allow-list with discovery**
 
@@ -473,7 +502,7 @@ done
 
 **SCOPE BOUNDARY — do not exceed it.** This walks `hooks/`, `skills/` and `knowledge/` only. It does not become a general repository linter, it does not police files outside those trees, and it adds no encoding rule (that lives in Task 6). If implementing this requires touching anything outside those three trees, STOP and report it — the scope has slipped.
 
-- [ ] **Step 4: Run the tests and verify ALL of them pass — four new, six in the file**
+- [ ] **Step 4: Run the tests and verify ALL of them pass — five new, seven in the file**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-seed-artifacts-synced.Tests.ps1 -Output Detailed -CI"`
 Expected: `Failed: 0`.
@@ -482,14 +511,29 @@ Expected: `Failed: 0`.
 
 One at a time, apply the mutation **to the script**, re-run only this test file, confirm the NAMED test goes red, then restore. **A guard whose removal leaves the file green is not a guard — report it rather than papering over it.**
 
+> **⚠ THIS TABLE WAS REWRITTEN 2026-08-01 — the previous version was itself vacuous.** Running it MEASURED
+> that three of four rows did not prove what they claimed:
+> - The `[ ! -f "$D/$rel" ]` row named a test whose probe lives in **dotnet**, so it exercises the *other*
+>   branch. **No test in the file reached that branch at all — it could be deleted with the suite green.**
+> - The `skills/` row named a test that modifies a **hooks** file, structurally immune to a skills-only
+>   mutation. A different test went red instead.
+> - The `compared_elsewhere()` row — the one flagged "matters most" — **did not fire**, because the
+>   pre-existing jq blocks emit their own `hooks/hooks.json` messages and the loose assertion accepted them.
+>
+> A mutation table is a claim that each guard is load-bearing. **An unrun mutation table is a claim nobody
+> checked.** Run every row.
+
 | Mutation (in `check-seed-artifacts-synced.sh`) | Test that must go red |
 |---|---|
-| Delete the `[ ! -f "$D/$rel" ]` branch | `FIRES when a new shared file exists in only one plugin` |
-| Add `skills/` to `divergent()` so every skill is skipped | `still FIRES when an enrolled shared file differs in content` |
+| Delete the `[ ! -f "$C/$rel" ]` branch | `FIRES when a new shared file exists in clavity-dotnet only` |
+| Delete the `[ ! -f "$D/$rel" ]` branch | `FIRES when a new shared file exists in clavity-classic only` |
+| Add `hooks/agy-after-reminder.sh` to `divergent()` | `still FIRES when an enrolled shared file differs in content` |
 | Remove `hooks/agy-drive-session-reset.sh` from `divergent()` | `stays GREEN for every intentionally-divergent twin` |
-| **Weaken `compared_elsewhere()` to a bare `return 0` for `hooks/hooks.json`** (drop the two `[ -f ... ]` existence checks) | `FIRES when hooks.json is missing from one plugin, despite being compared elsewhere` |
+| **Weaken `compared_elsewhere()` to a bare `return 0` for `hooks/hooks.json`** (drop both `[ -f ... ]` checks) | `FIRES when hooks.json is missing from one plugin, despite being compared elsewhere` |
 
-**That fourth row is the one that matters most.** It is the only proof that the new exclusion is not simply a second allow-list with the same fail-open defect this milestone exists to remove. If it does not go red, `compared_elsewhere()` is an escape hatch — report it rather than proceeding.
+**Row 5 is the one that matters most, and it only works because the test now asserts the walk's own message.** It is the sole proof that the new exclusion is not a second allow-list carrying the very fail-open defect this milestone exists to remove. **If it does not go red, `compared_elsewhere()` is an escape hatch — STOP and report rather than proceeding.**
+
+**Expect collateral reds and do not treat them as failures.** Row 4 also reds the pre-existing `passes (exit 0, reports in sync)` test, because the real repo's classic-only file stops being deny-listed. Note it and move on. What matters is that the NAMED test goes red in every row.
 
 - [ ] **Step 6: Full gate**
 
