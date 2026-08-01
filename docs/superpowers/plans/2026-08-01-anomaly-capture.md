@@ -543,10 +543,10 @@ message is exactly the failure this whole mechanism exists to end.
 Run this, filling the four fields:
 
 ```bash
-# Resolve the REPOSITORY ROOT, never a relative path. A subagent that has cd'd into a subdirectory would
-# otherwise write scripts/.clavity/local-anomalies.md, which the SessionStart hook never looks at: the
-# anomaly is durably recorded and permanently invisible, which is the exact opposite of the point. The
-# hook resolves the root the same way, so both sides always agree.
+# Resolve the REPOSITORY ROOT, never a relative path. Whoever runs this may be cd'd into a subdirectory,
+# and a relative path would write scripts/.clavity/local-anomalies.md, which the SessionStart hook never
+# looks at: durably recorded and permanently invisible, the exact opposite of the point. The hook resolves
+# the root the same way, so both sides always agree.
 R=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 F="$R/.clavity/local-anomalies.md"
 mkdir -p "$R/.clavity"
@@ -560,11 +560,12 @@ mkdir -p "$R/.clavity"
 # git forever after, and the next `git add .` would publish a list of un-triaged defects. Re-asserting the
 # shield costs one stat per capture.
 [ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
-# The header uses >> and NEVER >. MEASURED: with >, two subagents capturing concurrently both see no file,
-# agent A writes the header and appends its anomaly, then agent B's > truncates the file -- destroying A's
-# anomaly outright -- before appending its own. A mechanism whose entire purpose is not losing things must
-# not have a path that silently eats one. With >> the worst case is a duplicate header, which is cosmetic
-# and which the entry pattern does not count; both anomalies survive. Verified both ways.
+# The header uses >> and NEVER >. MEASURED: with >, two writers that both see no file destroy each other's
+# work -- the first writes the header and appends its anomaly, the second's > truncates the file before
+# appending its own, and the first anomaly is gone. Under the report-then-verify flow the concurrent
+# writers are no longer subagents but two SESSIONS open on the same repository, which is ordinary. A
+# mechanism whose entire purpose is not losing things must not have a path that silently eats one. With >>
+# the worst case is a duplicate header, cosmetic and uncounted by the entry pattern; both survive.
 [ -f "$F" ] || printf '%s\n\n' '# Untriaged anomalies (local, never committed)' >> "$F"
 printf -- '- [%s] %s * %s * %s * task=%s\n' \
   'defect' 'one line stating the fact' 'path/file.ext:LINE' "$(date +%F)" 'what you were doing' >> "$F"
@@ -582,9 +583,9 @@ Two things about that snippet are deliberate:
 - **The `.clavity/.gitignore` containing `*` is load-bearing, not tidiness.** The decision to keep capture
   private rests on the directory being ignored. In this repository that happens to be true anyway; in a
   user's repository it is true only because of this file.
-- **Append with `>>` and a single `printf`.** Several subagents can be capturing at once. A single short
-  append is atomic on POSIX, so concurrent writers interleave lines rather than corrupting them. Do not
-  read-modify-write the file to add an entry.
+- **Append with `>>` and a single `printf`.** Two sessions can be open on the same repository at once. A
+  single short append is atomic on POSIX, so concurrent writers interleave lines rather than corrupting
+  them. Do not read-modify-write the file to add an entry.
 
 - **type**: `defect` (reachable code defect) | `tool` (a tool or peer misbehaving) | `process` (an agent
   or workflow doing the wrong thing)
@@ -1065,5 +1066,22 @@ exits with no parked state (Task 2, the Triage section); merge with AGY-SCOPE (T
 1. The SessionStart registrations are review-enforced, not gate-enforced (Task 3 Step 2).
 2. Nothing verifies that an agent actually captured an anomaly it noticed. Compliance with *noticing* is
    unfalsifiable - an agent can always assert it saw nothing. This ships an honest record, not a gate.
+   Three specific ways that bites, named rather than left implicit:
+   - **A subagent can hardcode `## Anomalies noticed / none`** into its response template and satisfy the
+     format without ever looking. The explicit `none` is still worth requiring — it makes an omission
+     visible in the ordinary case, where the failure is forgetting rather than faking — but it is a
+     prompt for honest effort, not a check on it.
+   - **The driver can verify and then never capture.** That recreates precisely the loss-at-summarization
+     failure the mechanism exists to end, and nothing detects it: an empty file is indistinguishable from
+     a clean session. This is the single most likely way the whole thing quietly stops working.
+   - **The driver can capture without verifying.** Then unverified claims accumulate and the owner pays
+     the debunking cost at triage, which destroys the cheap-capture property the design was built around.
+4. **The activation path has its own activation gap.** Task 5's seam fires from a `PreToolUse` hook with
+   matcher `Skill`, so it only reaches a driver who actually INVOKES `subagent-driven-development` or
+   `executing-plans`. A driver who dispatches subagents without invoking either skill never receives the
+   clause, and the mechanism is silently bypassed for that whole session. There is no hook that fires on
+   "about to write a dispatch". The backstop is the same one this project already uses for AGY-CAPSTONE:
+   a durable rule in the operator's own instructions, which binds whether or not a skill was invoked. The
+   hook raises the floor; it is not the guarantee.
 3. The hook fires once per session. It cannot force triage mid-session; it can only make the count
    impossible to miss at the next boot.
