@@ -258,6 +258,22 @@ Describe 'agy-liveness-check.sh' {
         } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'is SILENT when commands are present but contain no script-name token at all' {
+        # Exercises the empty-token-list path: entries and commands both exist, but nothing matches
+        # [a-z0-9._-]+\.sh, so the extracted name list is empty. Must stay silent rather than reporting
+        # anything, and must not be mistaken for the fail-closed schema case (cmd_count is non-zero).
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "echo hello" } ] } ] } }' |
+                Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 0
+            $r.StdErr   | Should -BeNullOrEmpty
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'says SCHEMA UNRECOGNISED when hook entries exist but NONE carries a command field' {
         # Host schema drift (capstone R2-F2). The settings schema belongs to Claude Code, not to us. If
         # it renamed .command, jq would yield an empty blob, exit 0, and the check would report no

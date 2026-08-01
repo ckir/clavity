@@ -83,20 +83,20 @@ else
       ownership_note="${ownership_note}[AGY-DISCIPLINES] settings unreadable ($f) - ownership not checked for it"$'\n'
       continue
     fi
-    # ONE jq call yields the tokenized hook names AND two shape counters. Splitting this into separate
-    # jq invocations would cost an extra fork per settings file on a boot path.
+    # ONE jq call yields the two shape counters AND the tokenized hook names, on ONE line, so `read`
+    # splits it unambiguously with no fork. Emitting them as two LINES looked tidier but is a trap: when
+    # the names are empty jq's second line is empty, command substitution strips the trailing newline,
+    # and "${var#*$'\n'}" then finds no newline and returns the WHOLE string -- silently assigning the
+    # counters to the names variable. It happened to stay harmless only because a shipped name can never
+    # be a bare integer. One line plus `read -r a b rest` has no such edge.
     if ! personal_raw=$(jq -r '(.hooks // {}) as $h
                                | [$h[][].hooks[]]              as $entries
                                | [$entries[].command // empty] as $cmds
-                               | "\($entries | length) \($cmds | length)",
-                                 ([$cmds[] | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" "))' "$f" 2>/dev/null); then
+                               | "\($entries | length) \($cmds | length) \([$cmds[] | ascii_downcase | scan("[a-z0-9._-]+\\.sh")] | unique | join(" "))"' "$f" 2>/dev/null); then
       ownership_note="${ownership_note}[AGY-DISCIPLINES] schema unrecognised ($f) - .hooks is present but not the shape this check reads; ownership NOT verified for it"$'\n'
       continue
     fi
-    # Split without forking: first line is the counters, the second is the space-joined hook names.
-    counts="${personal_raw%%$'\n'*}"
-    personal="${personal_raw#*$'\n'}"
-    read -r entry_count cmd_count <<<"$counts"
+    read -r entry_count cmd_count personal <<<"$personal_raw"
     # Hook entries EXIST but not one carries a 'command' field -> the host renamed the key under us.
     # Staying silent here would be indistinguishable from "no collisions found", which is precisely the
     # fail-open the hooks.json guard above exists to prevent. A shape we no longer read is reported, not
