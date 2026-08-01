@@ -654,7 +654,14 @@ Append these `It` blocks inside the existing `Describe 'agy-liveness-check.sh'` 
 - [ ] **Step 2: Run them and verify they FAIL**
 
 Run: `just test-scripts`
-Expected: **all eleven** new ownership `It` blocks FAIL — the hook has no ownership check yet, so it exits 0 silently where each of them expects `exit 2` and a message. The 10 pre-existing blocks must stay GREEN; if any of them goes red, the test file edit broke something and that is the first thing to fix.
+Expected: **nine of the eleven** new ownership `It` blocks FAIL — the hook has no ownership check yet, so
+it exits 0 silently where each of those expects `exit 2` and a message. The 10 pre-existing blocks must
+stay GREEN; if any of them goes red, the test file edit broke something and that is the first thing to fix.
+
+**MEASURED AT EXECUTION:** the two blocks that assert SILENCE (`is SILENT about ownership when no personal
+registration exists`, `stays silent when the settings file has no hooks node at all`) pass VACUOUSLY at
+RED — the unimplemented hook is already silent, so they cannot fail. That is not a defect in them; they
+guard against false positives once the check exists. But do not expect them in the RED set.
 
 - [ ] **Step 3: Implement the ownership check**
 
@@ -742,6 +749,27 @@ if [ "$live" = "1" ]; then
 fi
 ```
 
+**(c-bis) THERE IS A THIRD EXIT PATH AND THIS PLAN MISSED IT. Fixed during execution in `611d131`.**
+(a)-(c) above wire ownership into the `.no-agy` branch and the healthy branch — but a corrupt settings
+file makes `jq -s` refuse the whole merge, which drives `live=0` and sends execution to the **"not live"
+advisory at the bottom of the file**, which none of these edits touch. That is not an exotic path: it is
+exactly the scenario Step 1's `reports the unreadable settings file BUT continues the sweep` test
+constructs, so the plan as written would have SWALLOWED the ownership finding in the very case it was
+testing for. Emit it there too, with the same message templates:
+
+```bash
+printf '%s\n' "[AGY-DISCIPLINES] superpowers not detected as enabled - the agy disciplines will not auto-fire. Install/enable superpowers, or invoke agy-first / agy-capstone manually." >&2
+# Ownership is reported here too (same constraint-5 reasoning): a corrupt settings file elsewhere in the
+# merge can drive live=0 (jq -s refuses to parse a bad file), which must not swallow an ownership finding
+# already collected from a settings file that WAS readable.
+[ -n "$ownership_note" ] && printf '%s' "$ownership_note" >&2
+exit 2
+```
+
+**LESSON: when adding an output to a script, enumerate every `exit` in the file and decide about each
+one explicitly. "Both exit paths" was wrong because I counted the paths I had just edited, not the paths
+that exist.**
+
 - [ ] **Step 4: Update the exit-contract comment (constraint 6)**
 
 The header at lines 12-19 documents exactly two end-states. Add the third. Change the sentence beginning `EXIT-CODE CONTRACT:` so it reads:
@@ -758,7 +786,8 @@ The header at lines 12-19 documents exactly two end-states. Add the third. Chang
 - [ ] **Step 5: Run the tests and verify they pass**
 
 Run: `just test-scripts`
-Expected: exit 0, all tests green including the five new ownership blocks.
+Expected: exit 0, all tests green including the **eleven** new ownership blocks (21 in this file, 332
+across the suite). An earlier draft said "five" here — a stale number from before Step 1 grew.
 
 - [ ] **Step 6: Mutation-check each new guard**
 
@@ -767,7 +796,7 @@ One at a time, revert a guard, re-run `just test-scripts`, confirm the NAMED tes
 | Mutation | Test that must go red |
 |---|---|
 | Delete the `[ -n "$ownership_note" ]` emit inside the `.no-agy` branch | `STILL reports ownership when .no-agy is present` |
-| Change the settings loop's `continue` to `break` | `reports the unreadable settings file BUT continues the sweep` |
+| Change the settings loop's `continue` to `break` | `reports the unreadable settings file BUT continues the sweep` — **THIS ROW WAS EMPIRICALLY FALSE AS WRITTEN; see below** |
 | Replace the derived `$shipped` with a hardcoded `agy-after-reminder.sh` | `derives the shipped list at RUNTIME` |
 | Drop `"$proj_settings"` from the `present=()` loop | `REPORTS a duplicate registered at PROJECT scope` |
 | Drop `"$local_settings"` from the `present=()` loop | `REPORTS a duplicate registered in settings.local.json` |
@@ -776,6 +805,24 @@ One at a time, revert a guard, re-run `just test-scripts`, confirm the NAMED tes
 | Delete the `if ! shipped=$(jq …)` guard on `hooks.json` | `says SHIPPED-HOOK LIST UNREADABLE` |
 
 Record each result. A guard whose removal leaves the suite green is not a guard.
+
+**EXECUTION NOTE — run the mutation loop against the SINGLE FILE, not the whole gate.** MEASURED:
+`just test-scripts` (23 files) ≈ **566s**, dangerously near the 600s tool cap; a single file is ≈ **24s**:
+`pwsh -c "Invoke-Pester scripts/tests/agy-liveness-check.Tests.ps1 -Output Detailed -CI"`. Eight rows at
+the full gate is ~75 minutes for no extra signal. Run the FULL gate at Steps 2 and 5 and after Step 7.
+(`-Output None` prints nothing at all; use `-PassThru` and read `.PassedCount` / `.FailedCount` / `.Failed.Name`.)
+
+**ROW 2 WAS FALSE, AND SO WAS AN UNLISTED ROW. Both fixed in `14baff3`.** Measured: changing the
+unreadable-branch `continue` to `break` left the whole suite GREEN (21/21). The cause was not a missing
+assertion but fixture **ORDER** — the sweep runs user → project → local, and the test put the collision in
+the USER file and the corrupt file in the PROJECT file, i.e. LAST. With nothing left to sweep, `continue`
+and `break` are indistinguishable. The **schema-unrecognised branch had the identical hole** and was never
+in this table at all. Both tests now place the bad file BEFORE a real collision, which is the only
+arrangement that can observe the difference; each mutation then reddens its own named test and nothing
+else (20/1, verified twice).
+
+**RULE: a sweep-continues-past-a-bad-element guard can only be observed if the bad element precedes a
+detectable one. Fixture ORDER is part of the assertion, not scenery.**
 
 - [ ] **Step 7: Mirror to clavity-classic, byte-identically**
 
@@ -854,7 +901,20 @@ Expected: every line shows a real subject, none shows `MISSING`. A ledger citing
 
 - [ ] **Step 3: Add the ledger step to the agy-capstone skill**
 
-In `clavity-dotnet/plugin/skills/agy-capstone/SKILL.md`, add to the definition-of-done section:
+In `clavity-dotnet/plugin/skills/agy-capstone/SKILL.md`, add the bullet below.
+
+**CORRECTED AT EXECUTION — there is no "definition-of-done section".** The section that owns completion
+semantics is `## Round cap + human-adjudicated GREEN + override re-entry` (:138). Insert the bullet
+immediately AFTER the `**Write on resume, not on the proposal.**` bullet (which ends `unreviewed
+commit.`) and BEFORE `- **Override re-entry.**`, so the two write-once-GREEN-is-confirmed actions sit
+together. Note the file ALSO has a `## Do-not-re-raise ledger` (:133) — a different ledger; keep the two
+concepts distinct.
+
+**AND THE BLOCK BELOW MUST BE DE-EM-DASHED BEFORE IT GOES IN.** `SKILL.md` declares itself ASCII-only at
+:170 ("ASCII only - no em-dash or other non-ASCII (mojibake risk; this project has hit corruption)") and
+measured **0** non-ASCII bytes. `scripts/check-agy-discipline-skills.sh` has **no ASCII check**, so
+nothing would catch a violation. Replace the em-dash with ` - `. **RULE: `docs/` may carry non-ASCII;
+plugin skills and hooks may NOT, and no gate enforces it — that is on the author.**
 
 ```markdown
 - **Record the round in `docs/agy-capstone-ledger.md` before declaring the plan complete.** One row:
