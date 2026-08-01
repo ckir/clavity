@@ -34,7 +34,7 @@ worth as much as one that does, and because the sibling mechanism failed this ex
 | 4 | `just test-scripts` straddles the 600s tool cap | PROMOTE → **M1** |
 | 5 | a dispatched subagent wrote outside the file set it was given | PROMOTE → **M4** |
 | 6 | the byte-sync gate's FILE list is an allow-list, so new shared files are never compared | PROMOTE → **M2** |
-| 7 | the live GROWTH region was mojibake-corrupted for 13 days while its sidecar matched | **DELETE (artifact)** — republished clean and ASCII-only during the 2026-08-01 curate drain. The *class* survives → **M2 (E)** |
+| 7 | the live GROWTH region was mojibake-corrupted for 13 days while its sidecar matched | **DELETE (artifact)** — republished clean and ASCII-only during the 2026-08-01 curate drain. The *class* survives → **M5 (E)**, relocated there from M2 by panel round 1 |
 | 8 | `agy-curate` cannot satisfy its own "empty the inbox" step | PROMOTE → **M5** |
 
 ### Precedent — the sibling mechanism failed the same test on the same day
@@ -51,7 +51,7 @@ no mechanical oracle, and the milestones with oracles should land while attentio
 
 ---
 
-## The sequence — T → [S+E] → G → D → C
+## The sequence — T → S → G → D → [C+E]
 
 Five milestones. Each is independently committable, independently verifiable, and a valid stopping point.
 No milestone depends on a later one.
@@ -72,13 +72,19 @@ No milestone depends on a later one.
   arrival a **non-synthetic** proof of the discovery gate. The peer verified the reverse dependency I asked
   it to attack: G's files are transport-agnostic, byte-identical across both plugins, and do not touch the
   twin deny-list, so S needs no prior knowledge of G.
-- **The peer argued to drop E entirely; I disputed it and it conceded**, clarifying that its objection was
-  to E as a *separate milestone*, not to the check. Folded into S it is ~5 lines in the same file, same
-  test harness, same session.
+- **The peer argued to drop E entirely; I disputed it and it conceded** — and then the panel proved the
+  peer's *original instinct* right and my counter wrong. I argued E into M2 on COST (~5 lines, same file,
+  same harness). Cost was never the issue: **E in M2 both breaks the untouched baseline and targets the
+  wrong artifact** (both MEASURED — see the note in M2). E now lives in **M5**, at the publish path where
+  the corruption actually entered.
 
-**One risk went unexamined and is therefore called out here rather than trusted:** I explicitly invited the
-peer to argue that folding E into S is scope creep. It agreed instead of attacking. **M2 therefore carries
-an explicit scope boundary** (below) rather than relying on our shared belief that E is cheap.
+**How that error was reachable, since it is the most instructive thing in this document.** During the
+negotiation I explicitly invited the peer to argue that folding E into S was scope creep. It agreed with me
+instead of attacking, and I recorded that as an unexamined risk rather than resolving it. The panel round
+then examined it and found two independent disqualifiers. **A risk you notice, name, and then carry forward
+unresolved is still an unfixed defect** — flagging it bought nothing except the ability to say afterwards
+that it had been flagged. The scope boundary M2 carries below was written as compensation for that
+unresolved risk; it survives on its own merits, but it was not a substitute for answering the question.
 
 ---
 
@@ -116,7 +122,7 @@ what make the split falsifiable.
 
 ---
 
-## M2 — S+E: auto-discovery sync gate, with an ASCII assertion
+## M2 — S: auto-discovery sync gate
 
 **Problem (S).** `scripts/check-seed-artifacts-synced.sh:15-27` gates cross-plugin files through an
 explicit `for rel in` allow-list of 12 entries. Anything not named is silently never compared. **MEASURED:
@@ -130,7 +136,22 @@ sidecar catches torn writes; it cannot catch content that was already wrong. The
 now ASCII-only; nothing stops the next publisher reintroducing non-ASCII.
 
 **Change.** Replace the allow-list with directory discovery over the shared plugin trees, deny-listing the
-intentionally-divergent twins. Fold in an assertion that discovered shared files are pure ASCII.
+intentionally-divergent twins.
+
+> **E MOVED OUT OF M2 — panel round 1, and the panel was right against me.** An earlier version of this
+> milestone folded in "an assertion that discovered shared files are pure ASCII". That was wrong twice over,
+> both MEASURED:
+> 1. **It breaks the untouched baseline.** 383 non-ASCII lines across 11 files in those trees, 5 of them
+>    shared, using deliberate typography — em-dashes, middle dots, banner emoji. The oracle "the untouched
+>    baseline must stay green" and the assertion cannot both hold.
+> 2. **It targets the wrong place.** The 13-day corruption happened in `~/.clavity/golden-header.growth.md`
+>    — a *published runtime artifact* outside the repository entirely. An ASCII check over the repo's
+>    plugin trees would never have caught the defect it was meant to prevent.
+>
+> **E moves to M5**, which already touches the curate skill that owns the publish path where the corruption
+> actually entered. The peer's opening position had been to drop E from this plan; I argued it into M2 on
+> cost, and cost was never the issue — target was. Recorded because winning a negotiation on the wrong axis
+> is not a small error.
 
 **The deny-list is exactly five files, ENUMERATED BY MEASUREMENT** — a `find` over both plugins'
 `hooks/`, `skills/` and `knowledge/` trees, diffed. Do not infer this list; it is the complete set of files
@@ -161,9 +182,14 @@ the signal the scope has slipped and it stops for a decision.
 **Oracle.** The mutation matrix already used for `18495cd`, extended:
 - a file created in only one plugin **must fire** (currently green — this is the defect);
 - a file deleted from one plugin must fire;
-- a non-ASCII byte in a shared file must fire;
+- a shared file whose content differs between plugins must fire (the existing behaviour, unregressed);
 - every intentionally-divergent twin must stay green;
 - the untouched baseline must stay green.
+
+*The row "a non-ASCII byte in a shared file must fire" was removed with E.* It was not merely stale — it
+**directly contradicted the row below it**, since 5 shared files in these trees carry deliberate non-ASCII
+typography, so the baseline could not stay green while that row held. Two adjacent oracle rows asserting
+incompatible things is the kind of defect that only surfaces when someone tries to satisfy both.
 
 **Residual limit to state, not hide.** Discovery replaces an enrolment allow-list with a *divergence*
 deny-list. That is strictly better — the failure mode inverts from "silently unchecked" to "loudly
@@ -181,8 +207,9 @@ every sibling hook of its family ships inside the plugins with all of those prop
 
 It is also broken two independent ways, both reproduced:
 
-1. **Dead on the primary path.** `~/.claude/settings.json:50,70` register the matcher as
-   `mcp__plugin_clavity-dotnet_clavity-ls__agy_ask`. The live tool is
+1. **Dead on the primary path.** `~/.claude/settings.json:46,66` declare the matcher as
+   `"Bash|PowerShell|mcp__plugin_clavity-dotnet_clavity-ls__agy_ask"` (lines 50 and 70 are the `command`
+   entries beneath them — the distinction matters, see the note below). The live tool is
    `mcp__plugin_clavity_clavity-ls__agy_ask`. **Root cause:** `settings.json:108` enables
    `"clavity@clavity-dotnet": true` — the plugin is *named* `clavity` from the *marketplace*
    `clavity-dotnet`, and the matcher was written with the marketplace name. Two similar identifiers, wrong
@@ -213,6 +240,14 @@ the cost of over-matching is a snapshot taken around a call that was not a consu
 simply comes back clean), while the cost of under-matching is the guard silently not existing — which is
 the defect being fixed. **Asymmetric costs, so prefer the over-matching side.** The manifest assertion
 below then checks consistency; the pattern is what removes the fragility rather than merely re-pointing it.
+
+**THE FULL MATCHER STRING IS `Bash|PowerShell|mcp__.*agy_ask` — all three alternatives.** *Panel round 1
+(Mechanism Gamer), confirmed by measurement.* An earlier draft said "the matcher becomes `mcp__.*agy_ask`",
+which reads as the whole matcher rather than one alternative in it. Implemented literally, that drops the
+`Bash|PowerShell` tokens — and those are the ONLY thing that makes the guard fire on the CLI consult path
+(`clavity ask` / `send` / `await-reply`, which is how `clavity-classic` consults at all). The fix for a
+guard dead on the MCP path would have killed it on the shell path instead, converting a half-dead guard
+into a fully dead one. Write the matcher out in full in both `hooks.json` files; do not paraphrase it.
 
 **Portability is established, not assumed.** MEASURED: the only environment dependency in the whole guard
 is `${TMPDIR:-/tmp}` at `agy-consult-guard-lib.sh:43`; there are no operator-specific paths. Living in
@@ -256,7 +291,7 @@ parties read, instead of living in one operator's habits.
 
 ---
 
-## M5 — C: give `agy-curate` a legal end state
+## M5 — C+E: give `agy-curate` a legal end state, and guard its publish path
 
 **Problem.** `agy-autotrain/skills/agy-curate/SKILL.md` instructs, in its Finish step, to empty the inbox.
 Its promotion rubric forbids promoting an Empirical Assumption without a 100% verify-harness pass. When the
@@ -268,7 +303,34 @@ against live 1.1.9.
 the condition that would release it — and reword Finish so "empty" means "every entry routed, promoted,
 dropped, or explicitly held with a reason", which is satisfiable.
 
-**Oracle.** None mechanical; this is prose in a skill. Stated plainly rather than dressed up: M5 is
+### E — the encoding guard, relocated here from M2
+
+**Problem.** The live GROWTH region carried 22 CP437 mojibake sequences and zero real em-dashes for 13 days
+while its `.sha256` sidecar **matched** — the corruption preceded the commit, so the integrity check
+confirmed corrupt content. An integrity sidecar catches torn writes; it cannot catch content that was
+already wrong when it arrived.
+
+**Why it belongs in M5 and not M2.** The corrupted artifact is `~/.clavity/golden-header.growth.md`, a
+published runtime file outside the repository. The thing that publishes it is the curate skill this
+milestone already edits. M2 could not have caught this defect at any scope that also left its baseline
+green — MEASURED, and the reason E moved.
+
+**Change.** Assert at the **publish step** that the compiled payload contains no CP437 mojibake signature
+before `curate-commit` is invoked, and record ASCII-only as the standing policy for the compiled GROWTH
+region (already true of the current published file, which this session republished clean).
+
+**Why a mojibake-signature check and not a blanket ASCII rule.** The SEED region legitimately carries real
+em-dashes and is not corrupt; a blanket non-ASCII rejection at publish time would reject valid content and
+teach the operator to bypass the check. The signature is specific: the byte sequences that a CP437
+round-trip produces (`ce 93 c3 87 c3 b6` and its family) are never intentional.
+
+**Oracle.** Feed the publisher a payload containing a known mojibake sequence and assert it refuses;
+feed it the current clean GROWTH and assert it passes. Both are cheap and both must be seen to behave
+before the check is trusted.
+
+### Oracle for the C half
+
+None mechanical; this is prose in a skill. Stated plainly rather than dressed up: the C half of M5 is
 review-enforced. Its correctness check is that re-reading the skill after the change yields a procedure
 that terminates for the 8 entries currently stranded.
 
