@@ -1071,7 +1071,21 @@ Append these `It` blocks to `scripts/tests/agy-seam-inject.Tests.ps1`, before it
 - [ ] **Step 4: Verify RED, then GREEN**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/agy-seam-inject.Tests.ps1 -Output Detailed -CI"`
-Before Step 2's edits: the four new blocks FAIL. After: `Failed: 0`, 13 blocks.
+
+Before Step 2's edits, expect **`Failed: 3`** — three of the four new blocks fail, not four. **The fourth
+(`does NOT inject the capstone directive on a subagent-driven-development seam`) CANNOT fail before the
+implementation, and that is structural, not a mistake.** Its assertion is `Should -Not -Match`, and before
+the case arm exists `subagent-driven-development` is a non-seam skill, so the hook exits 0 with EMPTY
+output — and empty output satisfies any negative match trivially. MEASURED: piping a non-seam skill through
+the hook yields no stdout at all.
+
+Do not "fix" this by adding a positive assertion to that block; its job is to pin the NEGATIVE binding (the
+personal pre-plugin hook bound AGY-CAPSTONE to this very seam), and duplicating the first block's positive
+check would not test that. **A negative-assertion test is pinned by its mutation row, not by red-first** —
+here, the `Point the new arm at discipline="agy-capstone"` mutation in Step 5, which does turn it red. Treat
+that row as this block's non-vacuity proof and do not skip it.
+
+After Step 2's edits: `Failed: 0`, 13 blocks.
 
 - [ ] **Step 5: Mutation-check the new arm**
 
@@ -1161,3 +1175,11 @@ exits with no parked state (Task 2, the Triage section); merge with AGY-SCOPE (T
    hook raises the floor; it is not the guarantee.
 4. The hook fires once per session. It cannot force triage mid-session; it can only make the count
    impossible to miss at the next boot.
+5. **One test block in this plan is proven only by its mutation row, and nothing enforces that the row is
+   run.** `does NOT inject the capstone directive on a subagent-driven-development seam` asserts
+   `Should -Not -Match`, which empty output satisfies, so it cannot go red before the implementation exists
+   (MEASURED). Its only non-vacuity proof is the `discipline="agy-capstone"` mutation in Task 5 Step 5. An
+   executor who runs the suite but skips the mutation table sees `Failed: 0` and never learns that block was
+   never exercised — and would have no signal that anything was missed. This plan has already shipped two
+   vacuous tests that only mutation caught, so the risk is demonstrated rather than theoretical. Stated
+   here rather than left implicit; the mutation table is the gate, and it is a manual one.
