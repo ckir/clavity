@@ -6,6 +6,12 @@
         "hooks": [
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-seam-inject.sh\"" }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell|mcp__.*agy_ask",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-consult-guard-pre.sh\"" }
+        ]
       }
     ],
     "PostToolUse": [
@@ -19,6 +25,12 @@
         "matcher": "Bash|Write|Edit",
         "hooks": [
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-test-audit-reminder.sh\"" }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|mcp__.*agy_ask",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-consult-guard-post.sh\"" }
         ]
       }
     ],

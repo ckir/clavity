@@ -107,5 +107,36 @@ if (Test-Path $membersPath) {
     }
 }
 
+# Hook matchers must not name a plugin-qualified MCP tool LITERALLY. The consult guard was dead on its
+# primary path because its matcher named `mcp__plugin_clavity-dotnet_clavity-ls__agy_ask` while the live
+# tool is `mcp__plugin_clavity_clavity-ls__agy_ask` -- the plugin is NAMED clavity and installed FROM the
+# marketplace clavity-dotnet, and the matcher used the marketplace name. Two similar identifiers, wrong
+# one chosen, and a hook that never fires cannot report its own absence. Require the pattern form.
+$literalMatchers = @()
+foreach ($manifest in @(
+    'clavity-dotnet/plugin/hooks/hooks.json',
+    'clavity-classic/plugin/hooks/hooks.json')) {
+    $manifestPath = Join-Path $Root $manifest
+    # Test-Path is REQUIRED, not defensive politeness. This script sets $ErrorActionPreference = 'Stop'
+    # at :14, and its own unit fixtures in scripts/tests/check-plugin-namespace.Tests.ps1 build minimal
+    # trees containing plugin.json and build/members.json but NO hooks/hooks.json (MEASURED: zero
+    # occurrences of 'hooks.json' in that test file). An unguarded Get-Content therefore throws
+    # ItemNotFoundException and every fixture-based test in that suite fails.
+    if (-not (Test-Path $manifestPath)) { continue }
+    $json = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    foreach ($event in $json.hooks.PSObject.Properties) {
+        foreach ($group in $event.Value) {
+            if ($group.matcher -match 'mcp__plugin_[A-Za-z0-9-]+_') {
+                $literalMatchers += "${manifest}: $($group.matcher)"
+            }
+        }
+    }
+}
+if ($literalMatchers.Count -gt 0) {
+    Write-Error ("Hook matcher names a plugin-qualified MCP tool literally; use a pattern such as " +
+                 "'mcp__.*agy_ask' instead:`n  " + ($literalMatchers -join "`n  "))
+    exit 1
+}
+
 if ($violations.Count) { $violations | ForEach-Object { Write-Host $_ }; Write-Error "namespace-rename incomplete ($($violations.Count) class(es))"; exit 1 }
 Write-Host "OK: plugin namespace rename complete (no stray clavity-dotnet/clavity-classic identity refs)."
