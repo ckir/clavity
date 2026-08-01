@@ -99,4 +99,30 @@ Describe 'agy-seam-inject.sh' {
         $bytes = [IO.File]::ReadAllBytes($script:Hook)
         ($bytes | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }
+
+    It 'injects the ANOMALY-CAPTURE dispatch directive on a subagent-driven-development seam' {
+        $out = Invoke-Hook 'superpowers:subagent-driven-development'
+        $out | Should -Match 'ANOMALY-CAPTURE'
+        $out | Should -Match 'open-issues'
+        $out | Should -Match 'local-anomalies'
+    }
+
+    It 'injects the same directive on an executing-plans seam' {
+        $out = Invoke-Hook 'superpowers:executing-plans'
+        $out | Should -Match 'ANOMALY-CAPTURE'
+    }
+
+    It 'does NOT inject the capstone directive on a subagent-driven-development seam' {
+        # The personal, pre-plugin copy of this hook bound AGY-CAPSTONE to this seam. The shipped hook
+        # binds the capstone to finishing-a-development-branch only, and this seam to the dispatch clause.
+        # Pinning that keeps the two bindings from silently merging.
+        $out = Invoke-Hook 'superpowers:subagent-driven-development'
+        $out | Should -Not -Match 'AGY-CAPSTONE auto-fire'
+    }
+
+    It 'emits the LOUD jq-missing line on a subagent-driven-development seam when jq is absent' {
+        $payload = @{ tool_input = @{ skill = 'superpowers:subagent-driven-development' }; cwd = '.' } | ConvertTo-Json -Compress
+        $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $script:CleanHome }
+        $r.StdOut | Should -Match 'guard inactive'
+    }
 }

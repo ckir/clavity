@@ -116,6 +116,34 @@ The file is gitignored on purpose. An agent appending raw, un-triaged findings t
 publish sensitive local paths or exploitable detail before anyone reviews them. Triage is what makes an
 entry public, by promoting it.
 
+## Dispatching a subagent - the clause every dispatch must carry
+
+A subagent reports nothing useful unless its dispatch asks for it. It will not invoke this skill on its
+own: it is focused on the task you gave it, and an anomaly is by definition not that task. So the
+instruction has to travel IN the dispatch. Paste this into every implementer dispatch, in its
+report-back section:
+
+> **ANOMALIES.** If you notice something wrong that is NOT part of this task - a defect in adjacent code,
+> a tool misbehaving, a process that cannot work - report it under a heading `## Anomalies noticed` at
+> the END of your final message, one line each, in this shape:
+>
+> `- [defect|tool|process] one line stating the fact * path/file.ext:LINE or n/a * what you were doing`
+>
+> State it as a FACT you observed, with whatever makes it checkable - the command you ran, the file and
+> line, the output you saw. Do NOT judge severity, do NOT stop your task to investigate, and do NOT write
+> to any anomalies file yourself: your report is the channel, and whoever dispatched you will verify each
+> one by measurement before recording it. If you noticed nothing, write `## Anomalies noticed` followed by
+> `none` - an explicit none is worth more than silence, because silence is indistinguishable from not
+> having looked.
+
+**Why a heading and not a sentence in the prose.** A report gets skimmed. A dedicated heading with a
+fixed shape survives skimming, and it makes an omission visible: a report with no such section is a
+report that did not answer the question.
+
+**The driver's obligation is the other half, and it is the half that historically failed.** Verify each
+reported anomaly by measurement, then capture the verified ones with the snippet above BEFORE writing
+your summary. The summary is where these die. Capturing after summarizing is capturing never.
+
 ## Triage - the only two outcomes
 
 A SessionStart hook names the count and the oldest entry until the file is empty. To clear it, take each
