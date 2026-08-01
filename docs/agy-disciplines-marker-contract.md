@@ -83,3 +83,12 @@ duplicate paid consult). SP-C's reader consumes this same constant.
   its outcome).
 - A new commit changes HEAD → content mismatch → re-arms the discipline. There is no branch-keyed
   marker with no expiry (that would permanently silence the discipline).
+
+## Hook ownership (D1)
+
+Shipped plugin hooks are sole-owned by the plugin. A personal registration of a same-named hook in any
+`settings.json` is retired at release-install time by the operator, prompted by the ownership notice in
+`agy-liveness-check.sh`. Installers MUST NOT edit an operator's settings files.
+
+The ownership notice is the ONE agy hook exempt from `.no-agy` — a gate the policed party can switch off
+is not a gate. Guarded by `scripts/tests/agy-liveness-check.Tests.ps1`.

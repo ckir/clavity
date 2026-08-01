@@ -171,3 +171,29 @@ Much smaller once `escape-time` is fixed (Install step 4).
   `driver-cheatsheet read failed: <error>`). An ABSENT cheatsheet is normal and silent — the baseline
   floor is the shipped default, not an error.
 - **Recovery:** from any *other* shell, `clavity cancel` sends Esc to agy through the psmux server.
+
+## Hook ownership
+
+A discipline hook has exactly one owner. Once a hook ships in a plugin, the plugin is its sole owner:
+your personal registration of a **same-named** hook is retired. Retirement means **removing that
+registration** — the file may stay on disk, since only registration determines execution.
+
+**Retiring a collision is not the same as giving up your own seams.** If your personal hook does more
+than the shipped one, deleting it silently costs you that extra behaviour. Do this instead: rename it
+(e.g. `agy-legacy-seams.sh`), delete the arms the shipped hook already covers, register it under the new
+name, and keep the rest. A renamed hook with non-overlapping behaviour is not a collision.
+
+**The check matches filenames, not behaviour — know its limit.** A renamed hook that still duplicates a
+shipped arm will fire alongside the shipped one and will NOT be reported, because nothing compares what
+the two scripts do. Trimming the overlapping arms is yours to get right; the release checklist says how
+to verify it. This is a deliberate escape hatch for legitimate extra seams, not a loophole to keep a
+duplicate quietly alive.
+
+Turning a shipped hook off is done with the `.no-agy` kill-switch, which is **global — it silences every
+agy discipline, not one hook**. There is deliberately no per-hook off switch: a selective, silent disable
+is the failure mode this rule exists to prevent. **One documented exception: the ownership check itself
+still runs under `.no-agy`** and reports that personal registrations remain, so the kill-switch cannot be
+used to hide an override.
+
+Iterating on a hook locally is done by running the script directly against a synthetic payload —
+`echo '{"cwd":"."}' | bash <hook>` — never by shadowing the shipped copy.
