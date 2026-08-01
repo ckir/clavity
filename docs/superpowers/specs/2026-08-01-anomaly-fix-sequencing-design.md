@@ -34,7 +34,7 @@ worth as much as one that does, and because the sibling mechanism failed this ex
 | 4 | `just test-scripts` straddles the 600s tool cap | PROMOTE → **M1** |
 | 5 | a dispatched subagent wrote outside the file set it was given | PROMOTE → **M4** |
 | 6 | the byte-sync gate's FILE list is an allow-list, so new shared files are never compared | PROMOTE → **M2** |
-| 7 | the live GROWTH region was mojibake-corrupted for 13 days while its sidecar matched | **DELETE (artifact)** — republished clean and ASCII-only during the 2026-08-01 curate drain. The *class* survives → **M5 (E)**, relocated there from M2 by panel round 1 |
+| 7 | the live GROWTH region was mojibake-corrupted for 13 days while its sidecar matched | **DELETE (artifact)** — republished clean and ASCII-only during the 2026-08-01 curate drain. The *class* survives → **M6 (E)** — folded into M2, moved to M5 by panel r1, then made its own milestone by panel r2 |
 | 8 | `agy-curate` cannot satisfy its own "empty the inbox" step | PROMOTE → **M5** |
 
 ### Precedent — the sibling mechanism failed the same test on the same day
@@ -46,14 +46,16 @@ unsatisfiable against its own promotion rubric (which forbids promoting an unver
 whenever the verify harness is stale — which it is, stamped agy 1.1.1 against a live 1.1.9.
 
 That is a third outcome appearing in practice, in production, in the mechanism this one was built to
-improve on. **M5 fixes it.** It is listed last not because it is unimportant but because it is prose with
-no mechanical oracle, and the milestones with oracles should land while attention is sharpest.
+improve on. **M5 fixes it.** It is placed late not because it is unimportant but because it is prose with
+no mechanical oracle, and the milestones with oracles should land while attention is sharpest. (M6 follows
+it and *does* carry an oracle; M6 exists only because a sub-part of M5 grew into its own milestone under
+review — see the sequence notes.)
 
 ---
 
-## The sequence — T → S → G → D → [C+E]
+## The sequence — T → S → G → D → C → E
 
-Five milestones. Each is independently committable, independently verifiable, and a valid stopping point.
+Six milestones. Each is independently committable, independently verifiable, and a valid stopping point.
 No milestone depends on a later one.
 
 ### How the order was decided, including where each party was wrong
@@ -75,8 +77,12 @@ No milestone depends on a later one.
 - **The peer argued to drop E entirely; I disputed it and it conceded** — and then the panel proved the
   peer's *original instinct* right and my counter wrong. I argued E into M2 on COST (~5 lines, same file,
   same harness). Cost was never the issue: **E in M2 both breaks the untouched baseline and targets the
-  wrong artifact** (both MEASURED — see the note in M2). E now lives in **M5**, at the publish path where
-  the corruption actually entered.
+  wrong artifact** (both MEASURED — see the note in M2). Panel round 2 then showed that even at the right
+  target the check must live **inside** `curate-commit` (the corruption happens in the pipe, so any check
+  before invocation reads clean bytes), which makes it a change to two binaries. **E is now its own
+  milestone, M6.** It was folded into M2, relocated to M5, and finally separated — growing at each step
+  from the "~5 lines" I used to argue it in. The peer wanted it dropped from this plan at the outset; it
+  was right about the size, and wrong only about the conclusion.
 
 **How that error was reachable, since it is the most instructive thing in this document.** During the
 negotiation I explicitly invited the peer to argue that folding E into S was scope creep. It agreed with me
@@ -291,7 +297,7 @@ parties read, instead of living in one operator's habits.
 
 ---
 
-## M5 — C+E: give `agy-curate` a legal end state, and guard its publish path
+## M5 — C: give `agy-curate` a legal end state
 
 **Problem.** `agy-autotrain/skills/agy-curate/SKILL.md` instructs, in its Finish step, to empty the inbox.
 Its promotion rubric forbids promoting an Empirical Assumption without a 100% verify-harness pass. When the
@@ -303,36 +309,49 @@ against live 1.1.9.
 the condition that would release it — and reword Finish so "empty" means "every entry routed, promoted,
 dropped, or explicitly held with a reason", which is satisfiable.
 
-### E — the encoding guard, relocated here from M2
+**Oracle.** None mechanical; this is prose in a skill. Stated plainly rather than dressed up: M5 is
+review-enforced. Its correctness check is that re-reading the skill after the change yields a procedure
+that terminates for the 8 entries currently stranded.
+
+---
+
+## M6 — E: reject a corrupt payload inside `curate-commit`
+
+**E was folded into M2, then moved to M5, and is now its own milestone. It grew each time, and the
+growth is the finding.** Recorded rather than quietly re-scoped, because "it's only ~5 lines" was the
+argument I used to win a negotiation against dropping it, and that estimate was wrong by an order of
+magnitude.
 
 **Problem.** The live GROWTH region carried 22 CP437 mojibake sequences and zero real em-dashes for 13 days
 while its `.sha256` sidecar **matched** — the corruption preceded the commit, so the integrity check
-confirmed corrupt content. An integrity sidecar catches torn writes; it cannot catch content that was
-already wrong when it arrived.
+confirmed corrupt content. An integrity sidecar catches torn writes; it cannot catch content that arrived
+already wrong.
 
-**Why it belongs in M5 and not M2.** The corrupted artifact is `~/.clavity/golden-header.growth.md`, a
-published runtime file outside the repository. The thing that publishes it is the curate skill this
-milestone already edits. M2 could not have caught this defect at any scope that also left its baseline
-green — MEASURED, and the reason E moved.
+**Where the check must live, and why nowhere earlier works.** *Panel round 2, Blindspot Auditor.* The
+corruption happens **in transit**: on Windows a text pipe re-encodes the stream through the console code
+page, so a check that inspects the compiled file *before* invoking `curate-commit` reads pristine UTF-8,
+passes, and the bytes are mangled afterwards. Every placement outside the receiving process is blind to
+the actual failure mode. The assertion therefore goes **inside `curate-commit`, against the bytes it
+actually received on stdin** — `clavity-dotnet/src/Clavity.Ls/CliVerbs.cs` (which calls
+`GoldenHeader.CommitGrowth` at :87) and the `clavity-classic` equivalent in `src/golden_header.rs`.
 
-**Change.** Assert at the **publish step** that the compiled payload contains no CP437 mojibake signature
-before `curate-commit` is invoked, and record ASCII-only as the standing policy for the compiled GROWTH
-region (already true of the current published file, which this session republished clean).
+**The rule is blanket ASCII, not a mojibake signature.** *Panel round 2, Protocol Pedant, and it corrected
+a false premise of mine.* An earlier draft argued for matching the specific CP437 byte family because "the
+SEED region legitimately carries real em-dashes". **That justification is false: `curate-commit` writes
+only `golden-header.growth.md` and never touches SEED, so SEED is never in the payload.** MEASURED at
+`CliVerbs.cs:87`. Since GROWTH is policy ASCII-only anyway, the payload assertion is simply "every byte
+<= 0x7F" — which is simpler than signature matching and catches **every** mis-encoding, not just CP437.
+A signature list would have missed CP1252 mangling and every non-em-dash character.
 
-**Why a mojibake-signature check and not a blanket ASCII rule.** The SEED region legitimately carries real
-em-dashes and is not corrupt; a blanket non-ASCII rejection at publish time would reject valid content and
-teach the operator to bypass the check. The signature is specific: the byte sequences that a CP437
-round-trip produces (`ce 93 c3 87 c3 b6` and its family) are never intentional.
+**Trade-off, accepted explicitly.** This makes M6 a change to two binaries rather than a documentation
+edit, and a future GROWTH entry genuinely needing a non-ASCII character would be rejected until the policy
+is relaxed. That is the intended direction: GROWTH is a compiled, machine-generated artifact with no
+present need for typography, and the failure it prevents ran undetected for 13 days.
 
-**Oracle.** Feed the publisher a payload containing a known mojibake sequence and assert it refuses;
-feed it the current clean GROWTH and assert it passes. Both are cheap and both must be seen to behave
-before the check is trusted.
-
-### Oracle for the C half
-
-None mechanical; this is prose in a skill. Stated plainly rather than dressed up: the C half of M5 is
-review-enforced. Its correctness check is that re-reading the skill after the change yields a procedure
-that terminates for the 8 entries currently stranded.
+**Oracle.** Feed `curate-commit` a payload containing mojibake bytes on stdin and assert it exits non-zero
+without writing; feed it the current clean GROWTH and assert it writes. Both must be **observed**, in both
+binaries — the refusal case especially, since a check never seen to reject is the same shape as the guard
+in M3 that was never seen to fire.
 
 **Note.** This is *not* the same as reintroducing a parked state into the anomaly mechanism. The anomaly
 file's two-outcome rule stays. `agy-curate` is a different mechanism with a hard external dependency (a
@@ -355,7 +374,7 @@ probe harness against a live peer) that the anomaly file does not have.
 
 ## Known limits
 
-1. **M5 has no mechanical oracle.** Prose changes are review-enforced. Named rather than papered over.
+1. **M5 has no mechanical oracle.** Prose changes are review-enforced. Named rather than papered over. *(Panel r2 caught this asserted alongside a milestone that DID define an oracle — resolved by making E its own milestone, M6, which has one.)*
 2. **M4 raises a floor, it does not close a hole.** Compliance with a stated allow-list is unfalsifiable
    from the driver's side without diffing, and nothing forces the diff.
 3. **M2 inverts a failure mode rather than eliminating it.** A missing deny-list entry now fails loud
