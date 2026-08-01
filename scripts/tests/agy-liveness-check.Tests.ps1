@@ -119,4 +119,154 @@ Describe 'agy-liveness-check.sh' {
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }
+
+    It 'REPORTS a personal registration of a shipped hook name (user scope)' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            $s = Join-Path $cfg 'settings.json'
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-liveness-check.sh"' } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-liveness-check'
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'STILL reports ownership when .no-agy is present (constraint 5)' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            $s = Join-Path $cfg 'settings.json'
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-liveness-check.sh"' } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
+            New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'suppressed by .no-agy'
+            $r.StdErr   | Should -Match 'agy-liveness-check'
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is SILENT about ownership when no personal registration exists' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 0
+            $r.StdErr   | Should -BeNullOrEmpty
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reports the unreadable settings file BUT continues the sweep' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            '{ "hooks": { ,,, ' | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            $s = Join-Path $cfg 'settings.json'
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-liveness-check.sh"' } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'unreadable'
+            $r.StdErr   | Should -Match 'agy-liveness-check'
+            Remove-Item $proj -Recurse -Force -ErrorAction SilentlyContinue
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'stays silent when the settings file has no hooks node at all' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.StdErr | Should -Not -Match 'schema unrecognised'
+        } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'REPORTS a duplicate registered at PROJECT scope' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-seam-inject'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'REPORTS a duplicate registered in settings.local.json' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-after-reminder.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.local.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-after-reminder'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'finds a PROJECT-scope duplicate when cwd is a SUBDIRECTORY' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            $sub = Join-Path $proj 'src/deep'; New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-seam-inject.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            # cwd is the SUBDIR; CLAUDE_PROJECT_DIR still names the root, which is why the hook finds it.
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload -Cwd $sub) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-seam-inject'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'says SCHEMA UNRECOGNISED (not "unreadable") when .hooks parses but is the wrong shape' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $proj = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-proj-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $proj '.claude') -Force | Out-Null
+            # Valid JSON, but .hooks is a STRING where the check expects an object of event arrays.
+            '{ "hooks": "not-an-object" }' | Set-Content (Join-Path $proj '.claude/settings.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $proj }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'schema unrecognised'
+            $r.StdErr   | Should -Not -Match 'settings unreadable'
+        } finally { Remove-Item $cfg,$h,$proj -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'says SHIPPED-HOOK LIST UNREADABLE when its own hooks.json will not parse' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $fake -Force | Out-Null
+            Copy-Item $script:Hook (Join-Path $fake 'agy-liveness-check.sh')
+            '{ "hooks": { ,,,' | Set-Content (Join-Path $fake 'hooks.json') -Encoding ascii
+            $r = Invoke-BashHook -HookPath (Join-Path $fake 'agy-liveness-check.sh') -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'shipped-hook list unreadable'
+        } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'derives the shipped list at RUNTIME - a hook added to hooks.json is picked up with no test edit' {
+        $cfg = New-ConfigFixture $true; $h = New-CleanHome
+        $fake = Join-Path ([IO.Path]::GetTempPath()) ("sp-d-plug-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $fake -Force | Out-Null
+            Copy-Item $script:Hook (Join-Path $fake 'agy-liveness-check.sh')
+            # A hook name that appears NOWHERE in the test file's expectations or the real plugin.
+            @{ hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "${CLAUDE_PLUGIN_ROOT}/hooks/agy-invented-for-this-test.sh"' } ) } ) } } |
+                ConvertTo-Json -Depth 8 | Set-Content (Join-Path $fake 'hooks.json') -Encoding ascii
+            $s = Join-Path $cfg 'settings.json'
+            @{ enabledPlugins = @{ 'superpowers@superpowers-marketplace' = $true }
+               hooks = @{ SessionStart = @( @{ hooks = @( @{ type='command'; command='bash "~/.claude/hooks/agy-invented-for-this-test.sh"' } ) } ) }
+            } | ConvertTo-Json -Depth 8 | Set-Content $s -Encoding ascii
+            $r = Invoke-BashHook -HookPath (Join-Path $fake 'agy-liveness-check.sh') -Payload (Payload) -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'agy-invented-for-this-test'
+        } finally { Remove-Item $cfg,$h,$fake -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
