@@ -12,20 +12,65 @@ D=clavity-dotnet/plugin
 C=clavity-classic/plugin
 status=0
 # Whole-file byte-identical seed artifacts (single-source-of-truth, committed in both plugins).
-for rel in \
-  skills/adversarial-panel-review/SKILL.md \
-  skills/agy-first/SKILL.md \
-  skills/agy-capstone/SKILL.md \
-  skills/agy-test-audit/SKILL.md \
-  skills/open-issues/SKILL.md \
-  hooks/agy-after-reminder.sh \
-  hooks/agy-seam-inject.sh \
-  hooks/agy-test-audit-reminder.sh \
-  hooks/agy-liveness-check.sh \
-  hooks/agy-anomaly-reminder.sh \
-  knowledge/agy-assumptions.md \
-  knowledge/agy-capabilities.md ; do
-  if ! diff -q "$D/$rel" "$C/$rel" >/dev/null 2>&1; then
+# DISCOVERY, not an enrolment list. Every file under the three SHARED trees is compared unless it is named
+# in the divergence deny-list below. The previous form was an allow-list of 12 explicit paths, which failed
+# OPEN: a shared file nobody added was silently never compared, so it could exist in one plugin only and
+# the gate stayed green. MEASURED before this change: a skill created in clavity-dotnet alone left
+# `just seed-sync-check` GREEN. Omission was indistinguishable from synchronisation.
+#
+# The deny-list names files that legitimately exist in ONE plugin only. It is MEASURED, never assumed --
+# regenerate it with:
+#   diff <(cd clavity-dotnet/plugin && find hooks skills knowledge -type f | sort) \
+#        <(cd clavity-classic/plugin && find hooks skills knowledge -type f | sort)
+# Adding a genuinely variant-specific file makes this gate FAIL until it is named here. That is
+# fail-closed and intended: the failure mode inverts from "silently unchecked" to "loudly over-checked".
+divergent() {
+  case "$1" in
+    hooks/agy-drive-session-reset.sh) return 0 ;;   # classic-only: driver-guidance reset
+    skills/driving/SKILL.md)          return 0 ;;   # classic transport twin of ls-driving
+    skills/responder/SKILL.md)        return 0 ;;   # classic transport twin of ls-pairing
+    skills/ls-driving/SKILL.md)       return 0 ;;   # dotnet transport twin of driving
+    skills/ls-pairing/SKILL.md)       return 0 ;;   # dotnet transport twin of responder
+    *) return 1 ;;
+  esac
+}
+
+# A SECOND and DIFFERENT reason to skip the byte-diff: the file is present in BOTH trees and is compared
+# further down by a NARROWER rule that a raw byte-diff cannot express. Kept separate from divergent() on
+# purpose -- that list means "exists in one plugin only", and its documented regeneration command
+# (the find/diff above) can never emit a file that exists on both sides. Merging the two would make the
+# regeneration command permanently disagree with the list, and the next maintainer would delete the odd
+# entry or assume the command is broken.
+#
+# NOT AN ESCAPE HATCH: it REQUIRES the file on both sides before delegating. If hooks.json is deleted from
+# one plugin, this returns 1, the walk falls through to the existence branches below, and the gate fires.
+# Delegating content is not the same as waiving existence.
+compared_elsewhere() {
+  case "$1" in
+    hooks/hooks.json)
+      # Compared by the PostToolUse / PreToolUse / filtered-SessionStart jq blocks below, which tolerate
+      # the variant-specific entry (classic carries an agy-drive-session-reset SessionStart command that
+      # dotnet lacks -- MEASURED: the two manifests differ by exactly that one line). A byte-diff cannot
+      # distinguish that legitimate variance from real drift; those jq rules can.
+      [ -f "$D/$1" ] && [ -f "$C/$1" ] && return 0
+      return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Union of both trees, so a file missing from EITHER side is caught (a one-sided walk would only catch
+# files missing from the other plugin, never from its own).
+for rel in $( { (cd "$D" && find hooks skills knowledge -type f 2>/dev/null)
+                (cd "$C" && find hooks skills knowledge -type f 2>/dev/null); } | sort -u ); do
+  divergent "$rel" && continue          # exists in ONE plugin only
+  compared_elsewhere "$rel" && continue # in BOTH; content compared by the jq rules below
+  if [ ! -f "$D/$rel" ]; then
+    echo "SEED-DRIFT: $rel exists in clavity-classic/plugin but NOT in clavity-dotnet/plugin" >&2
+    status=1
+  elif [ ! -f "$C/$rel" ]; then
+    echo "SEED-DRIFT: $rel exists in clavity-dotnet/plugin but NOT in clavity-classic/plugin" >&2
+    status=1
+  elif ! diff -q "$D/$rel" "$C/$rel" >/dev/null 2>&1; then
     echo "SEED-DRIFT: $rel differs between clavity-dotnet/plugin and clavity-classic/plugin" >&2
     status=1
   fi
