@@ -323,20 +323,24 @@ root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
 f="$root/.clavity/local-anomalies.md"
 [ -f "$f" ] || exit 0
 
-# Present but unreadable is NOT "no anomalies". Report it, for the same reason the jq guard above reports
-# rather than exiting quietly: a silent zero here is indistinguishable from a clean tree, and this hook
-# exists precisely to stop things going unseen.
-if [ ! -r "$f" ]; then
-  printf '%s\n' "[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted" >&2
-  exit 2
-fi
-
 # An ENTRY is a bullet whose first token is ANY bracketed word: "- [defect] ...". Prose, headings and
 # plain bullets are not entries, so the file's own preamble cannot inflate the count. The bracket content
 # is deliberately NOT restricted to [a-z]: an agent that writes "[Defect]" or "[tool misbehavior]" has
 # still captured a real anomaly, and a stricter pattern would count it as zero -- silently discarding the
 # very thing this hook exists to surface. Triage can correct a sloppy type; it cannot recover a dropped one.
+#
+# Present-but-unreadable is NOT "no anomalies", and it is detected from grep's EXIT CODE rather than from
+# a `[ -r "$f" ]` test. MEASURED on Windows Git Bash: the shell's -r builtin does NOT consult Windows ACLs
+# and calls an ACL-denied file readable, so an -r guard never fires there; the read then fails inside grep,
+# the count coerces to zero, and the hook exits silently -- the exact indistinguishable-empty-result this
+# hook exists to prevent, reintroduced by the guard meant to prevent it. grep's contract is POSIX and
+# platform-independent: 0 = matched, 1 = matched nothing, anything greater = error.
 n=$(grep -c '^- \[[^]]*\]' "$f" 2>/dev/null)
+rc=$?
+if [ "$rc" -gt 1 ]; then
+  printf '%s\n' "[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted" >&2
+  exit 2
+fi
 [ -z "$n" ] && n=0
 [ "$n" -eq 0 ] && exit 0
 
@@ -370,12 +374,12 @@ Every mutation below is applied **to the hook**, never to a test.
 | Mutation (in `agy-anomaly-reminder.sh`) | Test that must go red |
 |---|---|
 | Change `sort \| head -1` to `sort -r \| head -1` | `names the OLDEST entry date, not the newest` |
-| Change the count grep `'^- \[[a-z]*\]'` to `'^- '` | `counts ONLY entry bullets, not prose or headings in the file` |
+| Change the count grep `'^- \[[^]]*\]'` to `'^- '` | `counts ONLY entry bullets, not prose or headings in the file` |
 | Delete the `[ -f "$cwd/.no-agy" ]` term from the kill-switch condition | `is SILENT under a workspace .no-agy kill-switch` |
 | Delete the `[ -f "$HOME/.claude/.no-agy" ]` term from the same condition | `is SILENT under a global $HOME/.claude/.no-agy kill-switch` |
 | Delete the `[ -f "$f" ] \|\| exit 0` line | `is SILENT (exit 0) when the anomalies file does not exist` |
 | Delete the whole `if ! command -v jq` guard | `warns ONCE (exit 2) when jq is absent rather than failing silently` |
-| Delete the `if [ ! -r "$f" ]` unreadable guard | `REPORTS an unreadable anomalies file rather than counting zero` |
+| Delete the `if [ "$rc" -gt 1 ]` unreadable guard | `REPORTS an unreadable anomalies file rather than counting zero` |
 | Delete the `.no-agy` check INSIDE the jq-missing branch | `is SILENT when jq is absent AND .no-agy is set` |
 | Replace the `git rev-parse --show-toplevel` resolution with `root="$cwd"` | `finds the file at the repo ROOT when cwd is a SUBDIRECTORY` |
 | Tighten the entry pattern `'^- \[[^]]*\]'` back to `'^- \[[a-z]*\]'` | `counts an entry whose type is Title-Case or multi-word` |
@@ -687,10 +691,15 @@ the gate names the new file."
 
 These are real, from this session, and they are what the mechanism was built for. Run:
 
+**This step must APPEND, never truncate.** An earlier draft opened the file with `>`, which would have
+silently destroyed any anomaly captured between the hook shipping and this step running — the task meant
+to establish the file would have been the thing that emptied it. The header is written only if the file
+does not already exist.
+
 ```bash
 mkdir -p .clavity
 [ -f .clavity/.gitignore ] || printf '%s\n' '*' > .clavity/.gitignore
-printf '%s\n\n' '# Untriaged anomalies (local, never committed)' > .clavity/local-anomalies.md
+[ -f .clavity/local-anomalies.md ] || printf '%s\n\n' '# Untriaged anomalies (local, never committed)' > .clavity/local-anomalies.md
 {
 printf -- '- [tool] agy_look truncates the NEWEST reply out of a long cascade, so the answer just requested is the one that cannot be read back; recovery costs a second write that consumes quota * n/a * 2026-08-01 * task=phase-b-capstone\n'
 printf -- '- [process] just test-scripts grew past the 600s tool cap, so no agent can run the repo gate in the foreground any more * justfile:91 * 2026-08-01 * task=phase-b-capstone\n'
