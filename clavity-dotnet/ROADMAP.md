@@ -287,3 +287,16 @@ via the marketplace. Runtime prereqs: Ghidra 12.1.2 + JDK 21.
   `configure_ghidrust` MCP tool), and JIT MCP diagnostics (`ghidrust doctor` in the boot path turning bad
   config / open-GUI into actionable agent prompts). Requires new binary code (out of the v1.0 packaging).
 - **Lazy-boot worker** re-architecture (paired with `import_binary`).
+
+## Tracked debt — clavity-classic ME1 guard: binary-native vs bash hook
+
+`docs/superpowers/specs/2026-07-22-ship-agy-disciplines-design.md:134` left this fork open "to resolve
+in SP3, via AGY-FIRST". That spec was superseded by the ship-agy-workflow epic, which drops ME1 from
+scope, so the fork was orphaned rather than decided. Owner ruling 2026-07-31: it does NOT gate the
+productize release. It remains undecided and is recorded here so it stops being invisible.
+
+## Follow-on epic — productize the two later disciplines
+
+`agy-test-audit` (shipped 2026-07-27) and the planned `AGY-SCOPE` postdate the ship-agy-workflow epic
+and are not in its model. Owner ruling 2026-07-31: they are a follow-on, not a re-scope — retroactively
+widening a stalled epic prevents it closing. This epic closes at four disciplines.
