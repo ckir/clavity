@@ -94,13 +94,25 @@ backgrounding an explicit documented instruction rather than folklore.
 
 **Oracle.**
 - The fast recipe completes well under 60s.
-- **Total test count across all recipes equals 358.** This is the guard against the obvious cheat: making
-  the fast number look good by dropping coverage. Every test must remain reachable from some recipe.
-- The slow recipe still runs green on demand.
+- **Total test count across all recipes equals 358.** The guard against the obvious cheat: making the fast
+  number look good by dropping coverage. Every test must remain reachable from some recipe.
+- **The slow recipe must run somewhere on a stated cadence** — named in the justfile comment and wired into
+  whatever CI or pre-push path already exists. *Panel finding (Mechanism Gamer): the count assertion alone
+  is gameable.* All 358 tests can still exist while the slow half runs nowhere, which satisfies the count
+  and silently retires half the suite. The count proves nothing was deleted; only a stated run cadence
+  proves anything is still executed.
 
-**Risk.** Splitting by the wrong axis (by file, by subject) leaves the fast gate not actually gating
-anything load-bearing. The partition is by measured runtime, and the count assertion is what makes the
-split falsifiable.
+**Where new tests land.** *Panel finding (Cascade Analyst): M2, M3 and M4 each add tests, and M1 does not
+say into which half.* Rule for the milestones that follow: a new test goes in the FAST recipe unless its
+measured runtime forces otherwise. **M3's guard integration test is fast-recipe by default** — it builds a
+temporary git repo and pipes synthetic payloads, work measured in hundreds of milliseconds, not the
+multi-second Pester fixtures that dominate the slow half. If any new test does land slow, that milestone
+must say so explicitly, because a guard covered only by a suite nobody runs is the failure this whole plan
+exists to end.
+
+**Risk.** Splitting by the wrong axis (by file, by subject) leaves the fast gate not gating anything
+load-bearing. The partition is by measured runtime; the count assertion and the cadence requirement are
+what make the split falsifiable.
 
 ---
 
@@ -185,9 +197,22 @@ Net: **silent where it matters, noisy where it does not** — the worst combinat
 the operator to ignore the guard while the silence removes the protection.
 
 **Change.** Move all three files into `clavity-dotnet/plugin/hooks/` and `clavity-classic/plugin/hooks/`,
-byte-identical. Fix the matcher to the real namespace. Fix the classifier to anchor on **command position**
-(start of string, or after a shell separator) rather than any occurrence. Register in both `hooks.json`.
-Enrolment in the sync gate is **automatic** via M2.
+byte-identical. Fix the matcher. Fix the classifier to anchor on **command position** (start of string, or
+after a shell separator) rather than any occurrence. Register in both `hooks.json`. Enrolment in the sync
+gate is **automatic** via M2.
+
+**The matcher takes a PATTERN, not the corrected literal.** *Panel finding (Activation Auditor): an earlier
+draft said only "fix the matcher to the real namespace", which would repair today's breakage and leave the
+mechanism that caused it fully intact.* A literal tool name is exactly what broke — and it broke on a
+plugin/marketplace naming distinction the operator can change at install time, so the "correct" literal is
+not even stable per-machine. The matcher becomes `mcp__.*agy_ask`, which survives any future rename of the
+plugin or its marketplace.
+
+The obvious objection is that a pattern is a broader match than a literal. That is accepted deliberately:
+the cost of over-matching is a snapshot taken around a call that was not a consult (cheap, and the diff
+simply comes back clean), while the cost of under-matching is the guard silently not existing — which is
+the defect being fixed. **Asymmetric costs, so prefer the over-matching side.** The manifest assertion
+below then checks consistency; the pattern is what removes the fragility rather than merely re-pointing it.
 
 **Portability is established, not assumed.** MEASURED: the only environment dependency in the whole guard
 is `${TMPDIR:-/tmp}` at `agy-consult-guard-lib.sh:43`; there are no operator-specific paths. Living in
@@ -276,3 +301,17 @@ probe harness against a live peer) that the anomaly file does not have.
 4. **The sequence assumes no milestone is abandoned midway.** Each is independently committable, so a stop
    after any milestone leaves a consistent tree — but stopping after M2 leaves the guard still dead, which
    is the highest-severity open defect. If only one milestone can be done, it should be M3, not M1.
+5. **The anomaly mechanism has a hedge at CAPTURE and none at TRIAGE — the same shape as the defect M5
+   fixes elsewhere.** *Panel finding (Axiom Breaker).* The `open-issues` skill already admits a third
+   capture path: an anomaly that "cannot be checked cheaply" is recorded as `reported, unverified:` rather
+   than dropped. But triage still offers exactly two outcomes, and an entry whose reality cannot be settled
+   without some blocked external dependency — a stale probe harness, an unavailable peer — is then neither
+   promotable nor deletable on the evidence available. That is precisely the wall `agy-curate` hit with 8
+   stranded entries.
+   It has not bitten the anomaly file yet: all 8 entries triaged cleanly, and the owner's failure criterion
+   did not trip. It is recorded here because the sibling proves the shape is reachable, and because
+   discovering it the way `agy-curate` did — mid-drain, with no legal move — is worse than naming it now.
+   **Deliberately NOT fixed in this plan.** Adding a HELD state to the anomaly file pre-emptively would
+   reintroduce exactly the parked state the two-outcome rule exists to forbid, on a hypothetical. The
+   trigger to revisit is the first entry that genuinely cannot take either outcome; until then the rule
+   stands unweakened.
