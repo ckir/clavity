@@ -59,7 +59,7 @@ Every citation below was read against the working tree at HEAD `26cd99a` before 
 
 | Fact | Verified |
 |---|---|
-| `clavity-dotnet/plugin/hooks/agy-liveness-check.sh` | 86 lines, 4760 bytes; **byte-identical** to the clavity-classic mirror |
+| `clavity-dotnet/plugin/hooks/agy-liveness-check.sh` | **85** lines, 4760 bytes; **byte-identical** to the clavity-classic mirror |
 | Its `.no-agy` branches | lines 43-50, each `printf … >&2` then `exit 2` |
 | It ALREADY resolves all three settings files | lines 57-67: `config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"`, `proj_dir="${CLAUDE_PROJECT_DIR:-$cwd}"`, then `user_settings` / `proj_settings` / `local_settings` collected into `present=()` |
 | Its exit contract | documented at lines 12-19: healthy → `exit 0` silent; any detection outcome → stderr + `exit 2` |
@@ -626,11 +626,17 @@ user_settings="$config_dir/settings.json"
 proj_settings="$proj_dir/.claude/settings.json"
 local_settings="$proj_dir/.claude/settings.local.json"
 
+# Precedence: user (lowest) first, project-local (highest) last, so the later deep-merge overrides per key.
 present=()
 for f in "$user_settings" "$proj_settings" "$local_settings"; do
   [ -f "$f" ] && present+=("$f")
 done
 ```
+
+**Move the block COMPLETE, including the `# Precedence:` comment above `present=()`.** An earlier draft
+of this plan pasted the block without that comment; moving the pasted version verbatim would silently
+drop the line explaining why the three files are ordered as they are — a shape divergence from the file
+on disk, caught by re-reading `agy-liveness-check.sh:57-67` rather than trusting the paste.
 
 **(b)** Immediately after that block, add the ownership function:
 
