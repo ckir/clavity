@@ -186,6 +186,15 @@ jq-missing silent-pass and the check-roster `Assert-SharedMapHealthy` installer/
 Driver-side rule already captured in memory (`feedback-preexisting-defects-in-scope`) so the behaviour binds now;
 this item is about making it a **shipped, installable** discipline rather than one driver's private note.
 
+**Update 2026-08-01 - the CAPTURE half is now built and shipped.** An anomaly an agent spots while doing
+something else is reported by whoever noticed it, verified by the driver, and written to a gitignored
+`.clavity/local-anomalies.md`, and a
+SessionStart hook counts the untriaged entries and demands triage until the file is empty (see the
+`open-issues` skill). Design converged with the agy peer over an AGY-FIRST consult plus two negotiation
+rounds. What remains for AGY-SCOPE is therefore only the DISPOSITION half: that a defect's age is never a
+disposition, and that a verified pre-existing defect earns a tracked plan rather than a mention. The five
+open design questions above are unchanged; they were always disposition questions.
+
 ### 8. Audit spending — round count, capstone placement, model tiering (BRAINSTORM FIRST)
 **Status: brainstorming task, not yet designed.** Owner-directed 2026-07-31.
 
