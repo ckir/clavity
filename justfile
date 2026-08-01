@@ -87,7 +87,20 @@ accept-drain *args:
 docs-audit *args:
     pwsh -File scripts/docs-audit.ps1 {{args}}
 
-# Run the pwsh unit tests for the release engine (pure-logic seam).
+# Fast script gate: the agent inner-loop recipe. NOT on any git hook - see scripts/tests/_partition.md.
+# The set was chosen by measuring THIS RECIPE as one batch, not by thresholding per-file times, which
+# swing up to 5.9x on run order. Every test is still reachable: fast + slow == the whole suite.
+test-scripts-fast:
+    pwsh -c "Invoke-Pester @('scripts/tests/generate-scoped-manifest.Tests.ps1', 'scripts/tests/BashHookHelpers.Tests.ps1', 'scripts/tests/check-member-docs.Tests.ps1', 'scripts/tests/check-user-facing-docs.Tests.ps1', 'scripts/tests/check-seed-artifacts-synced.Tests.ps1', 'scripts/tests/check-roster.Tests.ps1', 'scripts/tests/check-seed-budget.Tests.ps1', 'scripts/tests/check-agy-discipline-skills.Tests.ps1', 'scripts/tests/drain-lib.Tests.ps1', 'scripts/tests/release-lib.Tests.ps1', 'scripts/tests/register-plugin.Tests.ps1', 'scripts/tests/agy-after-reminder.Tests.ps1', 'scripts/tests/check-growth-budget.Tests.ps1') -Output Detailed -CI"
+
+# CADENCE: on no git hook at all, and it exceeds the 600s foreground tool cap. Run it before any release, and after any
+# change to a file listed as SLOW in scripts/tests/_partition.md. A recipe nobody runs is a retired test.
+# Slow script gate. EXCEEDS the 600s foreground tool cap - an agent MUST background this and read the
+# result from the task output file, never run it in the foreground.
+test-scripts-slow:
+    pwsh -c "Invoke-Pester @('scripts/tests/abort-drain.Tests.ps1', 'scripts/tests/accept-drain.Tests.ps1', 'scripts/tests/agy-anomaly-reminder.Tests.ps1', 'scripts/tests/agy-liveness-check.Tests.ps1', 'scripts/tests/agy-seam-inject.Tests.ps1', 'scripts/tests/agy-test-audit-reminder.Tests.ps1', 'scripts/tests/check-core-integrity.Tests.ps1', 'scripts/tests/check-plugin-namespace.Tests.ps1', 'scripts/tests/compute-release.Tests.ps1', 'scripts/tests/docs-audit.Tests.ps1', 'scripts/tests/drain-knowledge.Tests.ps1') -Output Detailed -CI"
+
+# The whole suite, unchanged in meaning. Same cap warning as test-scripts-slow.
 test-scripts:
     pwsh -c "Invoke-Pester scripts/tests -Output Detailed -CI"
 
