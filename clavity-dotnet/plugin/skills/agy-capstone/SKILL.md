@@ -148,6 +148,11 @@ something it no longer holds). Ledger entries are plain factual findings, not yo
   the adjudication pause (the human committed while you waited), that new commit is UNREVIEWED - do NOT
   write the marker; re-enter a capstone round on the new HEAD instead. Writing ambient HEAD would green an
   unreviewed commit.
+- **Record the round in `docs/agy-capstone-ledger.md` before declaring the plan complete.** One row:
+  date, commit range, round count, verdict, and evidence that is independently checkable (fold commits,
+  or the review transcript). `none` is not a permitted evidence value - a clean first round still
+  produces a transcript, so cite it. Without this row a green capstone is indistinguishable from one
+  that never ran, which is precisely the gap this ledger exists to close.
 - **Override re-entry.** If the human rejects a proposed GREEN or names an unaddressed defect, **re-enter
   capstone rounds on that defect** rather than closing the book. A human "continue" / re-entry answer
   AUTHORIZES that ordered work; the cap does NOT re-halt inside the authorized extension. The
