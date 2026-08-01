@@ -473,7 +473,7 @@ done
 
 **SCOPE BOUNDARY — do not exceed it.** This walks `hooks/`, `skills/` and `knowledge/` only. It does not become a general repository linter, it does not police files outside those trees, and it adds no encoding rule (that lives in Task 6). If implementing this requires touching anything outside those three trees, STOP and report it — the scope has slipped.
 
-- [ ] **Step 4: Run the tests and verify all three pass**
+- [ ] **Step 4: Run the tests and verify ALL of them pass — four new, six in the file**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-seed-artifacts-synced.Tests.ps1 -Output Detailed -CI"`
 Expected: `Failed: 0`.
