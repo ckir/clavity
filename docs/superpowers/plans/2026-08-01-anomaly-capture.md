@@ -923,16 +923,67 @@ your summary. The summary is where these die. Capturing after summarizing is cap
 
 Three edits to `clavity-dotnet/plugin/hooks/agy-seam-inject.sh`.
 
-**(a)** Extend the header comment's seam map (currently two lines) to three:
+**(a)** Rewrite the whole first half of the header. It is not enough to add a third map line — the prose
+around the map makes THREE claims the new arm falsifies:
+
+1. line 2-3: the hook injects at "**two** superpowers phases" — it will be more;
+2. line 2: what it injects is a `"run the discipline now"` directive — true of the first two arms, false of
+   the third, whose payload is `ANOMALY-CAPTURE: you are about to dispatch subagents. TWO obligations...`;
+3. line 3: those phases are "debounced by the HEAD-keyed marker the discipline skills write" — nothing
+   writes a marker for the new arm;
+4. line 7: "The directive POINTS AT the **discipline skill** (which carries the **per-transport clause**)" —
+   the new arm points at `open-issues`, which this same plan calls "a triage procedure, not an agy
+   discipline" (see the File-structure section above), and which carries no transport clause at all
+   (verified: no occurrence of `agy_ask`, `clavity ask`, `--review-only` or "transport" anywhere in it).
+
+Leaving any of the four would ship a comment that contradicts the code directly beneath it, which is worse
+than no comment at all. Replace lines 2-9 — from `# AGY auto-fire hook` through
+`# writes the marker (a PreToolUse hook fires before the consult and cannot know its outcome).` — with
+exactly this:
 
 ```bash
-#   *brainstorm*                     -> AGY-FIRST   (marker agy-first.head)
-#   *finishing-a-development-branch* -> AGY-CAPSTONE (marker agy-capstone.head)
-#   *subagent-driven-development* / *executing-plans* -> ANOMALY-CAPTURE dispatch clause (no marker)
+# AGY auto-fire hook (plugin-shipped). PreToolUse(Skill): inject a best-effort directive at each
+# superpowers seam listed below. NO COUNT is written here on purpose -- the map IS the count, and
+# a number kept beside the list it duplicates is the first thing to rot (this comment has already
+# been wrong about it once).
+#   *brainstorm*                     -> AGY-FIRST: run the discipline  (marker agy-first.head)
+#   *finishing-a-development-branch* -> AGY-CAPSTONE: run the discipline (marker agy-capstone.head)
+#   *subagent-driven-development* / *executing-plans*
+#        -> ANOMALY-CAPTURE: carry the dispatch clause, and capture what comes back (no marker)
+# The arms do NOT inject the same kind of thing: the first two say "run this discipline now", the
+# third says "paste this clause into every dispatch and verify what comes back". Only the first
+# two are debounced, by the HEAD-keyed marker their discipline skill writes
+# (docs/agy-disciplines-marker-contract.md). The third is NOT structurally exempt from that
+# lookup -- it runs it too, against .clavity/agy-marks/anomaly-dispatch.head -- but nothing ever
+# writes that file, so the lookup finds nothing and the arm injects on every invocation.
+# Every directive POINTS AT a skill rather than inlining it: the two discipline skills carry the
+# per-transport consult clause, and the anomaly arm points at open-issues (a triage procedure,
+# not an agy discipline, so it has no transport clause at all). Nothing transport-specific
+# therefore lives in this file, and it is byte-identical across both driver plugins. This hook
+# NEVER writes a marker (a PreToolUse hook fires before the consult and cannot know its outcome).
 ```
 
+Note what that last paragraph deliberately does NOT say: it does not promise the third arm "always
+injects". It describes the mechanism — the lookup runs, and finds nothing — because a reader debugging a
+silent hook needs to know the debounce block is on the path. A stale `anomaly-dispatch.head` containing
+HEAD would suppress the arm; that is contrived, nobody writes that file, but a comment that promised
+"injects every time" would send that reader past the one block that could explain it.
+
+Leave the final two header lines (`# Fail-open: any error -> exit 0 ...` through
+`# ~/.claude). Without jq it degrades LOUD on a seam match (never a silent no-op).`) untouched — those two
+really are true of all three arms.
+
+**LINE NUMBERS SHIFT HERE.** This replaces 8 lines with 19, moving everything below down by **11**. Every
+line citation in sub-step (b) below is written for the file BEFORE (a) is applied. Anchor on the quoted
+CONTENT, never on the number.
+
 **(b)** Add the new seam to the jq-missing fallback so a jq-less machine still degrades LOUD rather than
-silently skipping it. Replace the two-branch `if` (around lines 22-23) with:
+silently skipping it. Find the two-branch `if` inside the `if ! command -v jq` guard — the one whose two
+`grep -Eq` terms match `finishing-a-development-branch` and `brainstorm` and which ends `; then`. It sits at
+lines 22-23 in the ORIGINAL file and at lines **33-34** after (a)'s +11 shift (both MEASURED by applying (a)
+to a scratch copy); match it by content, not by number. Do not confuse it with the single-line `.no-agy`
+kill-switch `if` that sits two lines above it — that one ends `; then exit 0; fi` on one line and is not the
+target. Replace the two-branch `if` with:
 
 ```bash
   if printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*finishing-a-development-branch' \
@@ -940,6 +991,26 @@ silently skipping it. Replace the two-branch `if` (around lines 22-23) with:
      || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*subagent-driven-development' \
      || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*executing-plans'; then
 ```
+
+**(b2) Widen the message that guard prints — it is now wrong.** The very next line inside that `if` emits
+`[AGY-DISCIPLINES] guard inactive: missing jq - disciplines will not auto-fire`. After (b), this guard also
+swallows the anomaly arm, which the rewritten header explicitly teaches is **not** a discipline. A human
+debugging a jq-less machine, wondering why no dispatch clause appeared, reads that line and reasonably
+concludes it is about something else. Replace the whole `printf` line with:
+
+```bash
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - no seam directive will auto-fire (disciplines AND anomaly-capture)"}}'
+```
+
+**This is safe against the pinning tests, and here is the precise scope of that claim.** Three test files
+in `scripts/tests/` assert on the substring `guard inactive: missing jq`, but two of them
+(`agy-after-reminder.Tests.ps1:50`, `agy-test-audit-reminder.Tests.ps1:143`) exercise DIFFERENT hooks with
+their own separate jq guards and are untouched by this edit. The only assertion against THIS hook is
+`agy-seam-inject.Tests.ps1:90` (`Should -Match 'guard inactive: missing jq'`), plus Task 5's new jq test in
+Step 3 (`Should -Match 'guard inactive'`). Both substrings survive the replacement verbatim, and MEASURED:
+nothing anywhere in `scripts/tests/` asserts on the message TAIL being replaced — `grep -rn "will not
+auto-fire"` returns no hits. Keep the line pure ASCII and keep it a single hardcoded `printf` — it must
+work when jq is absent, so it cannot be built with `jq -n`.
 
 **(c)** Add the case arm and the emit. In the seam map, insert the new arm BEFORE the `*)` catch-all:
 
