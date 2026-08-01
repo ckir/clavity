@@ -139,16 +139,20 @@ Replace `<paste the Step 1 output verbatim here>` with the actual Step 1 output.
 
 Replace `justfile:91-92` with the following. `<FAST-FILES>` and `<SLOW-FILES>` are space-separated `scripts/tests/<name>.Tests.ps1` paths from Step 2:
 
+**The paths must be individually quoted and COMMA-separated.** `@('a.Tests.ps1 b.Tests.ps1')` is a
+one-element array holding a single string with spaces in it, and Pester will look for one file with that
+literal multi-word name and fail `PathNotFound`. Write `@('a.Tests.ps1', 'b.Tests.ps1')`.
+
 ```
 # Fast script gate: the pre-push and inner-loop recipe. Partitioned by MEASURED runtime, not by subject
 # (see scripts/tests/_partition.md). Every test is still reachable: fast + slow == the whole suite.
 test-scripts-fast:
-    pwsh -c "Invoke-Pester @('<FAST-FILES>') -Output Detailed -CI"
+    pwsh -c "Invoke-Pester @('scripts/tests/<FAST-1>.Tests.ps1', 'scripts/tests/<FAST-2>.Tests.ps1') -Output Detailed -CI"
 
 # Slow script gate. EXCEEDS the 600s foreground tool cap - an agent MUST background this and read the
 # result from the task output file, never run it in the foreground.
 test-scripts-slow:
-    pwsh -c "Invoke-Pester @('<SLOW-FILES>') -Output Detailed -CI"
+    pwsh -c "Invoke-Pester @('scripts/tests/<SLOW-1>.Tests.ps1', 'scripts/tests/<SLOW-2>.Tests.ps1') -Output Detailed -CI"
 
 # The whole suite, unchanged in meaning. Same cap warning as test-scripts-slow.
 test-scripts:
@@ -184,7 +188,9 @@ just test-scripts-slow 2>&1 | tail -3
 **Run this with `run_in_background` and read the task output file** — it exceeds the foreground cap.
 Expected: `Failed: 0`.
 
-**The count oracle:** add the two recipes' `Tests Passed` numbers. **They must sum to 358.** If they do not, a test was dropped or double-counted — STOP and report it rather than adjusting the expected number.
+**The count oracle:** add the two recipes' **`Total`** numbers — NOT `Tests Passed`. **They must sum to 358, with `Failed: 0` on both.** If the total does not reach 358, a test was dropped or double-counted — STOP and report it rather than adjusting the expected number.
+
+**Why `Total` and not `Passed`:** `scripts/tests/agy-anomaly-reminder.Tests.ps1:220` skips conditionally — `Set-ItResult -Skipped -Because 'this host does not enforce the read deny'` — on any host where `icacls` cannot actually deny the current process a read. There, Pester reports `Passed: 357, Skipped: 1, Total: 358`, and a `Passed == 358` oracle would halt on a healthy run. `Total` matches what Step 1's `$r.TotalCount` measured, so the two numbers are directly comparable.
 
 - [ ] **Step 7: Commit**
 
@@ -520,13 +526,17 @@ Describe 'agy-consult-guard' {
 
 - [ ] **Step 5: Verify RED before GREEN — non-negotiable**
 
-Run: `pwsh -c "Invoke-Pester scripts/tests/agy-consult-guard.Tests.ps1 -Output Detailed -CI"` **against the pre-Step-2 classifier and pre-Step-3 manifests** (stash Steps 2-3 if already applied: `git stash push clavity-dotnet/plugin/hooks clavity-classic/plugin/hooks`).
+**EXECUTE THE STEPS IN THIS ORDER: 1 (copy) → 4 (write the test) → 5 (observe RED) → 2 (classifier) and 3 (manifests) → re-run for GREEN.** The step numbers are the plan's; the order above is the execution order. Do this rather than applying the fix and stashing it back.
 
-Expected RED: `does NOT treat a commit whose MESSAGE mentions the consult CLI as a consult` **must FAIL** — that is the false positive, and it is the one this milestone exists to remove.
+**Why not stash.** An earlier draft said `git stash push clavity-dotnet/plugin/hooks clavity-classic/plugin/hooks`. That does not work, and it fails in two different directions: the guard files are UNTRACKED at this point (created in Step 1), so `git stash push <path>` without `-u` ignores them entirely and leaves the Step 2 fix on disk — the false-positive test then passes and the RED is never observed. Adding `-u` stashes the untracked files themselves, deleting `agy-consult-guard-pre.sh` and `-post.sh` from disk, so the test errors on a missing hook instead of failing on behaviour. Plain TDD ordering avoids both.
 
-Then restore (`git stash pop`) and re-run. Expected: `Failed: 0`.
+Run: `pwsh -c "Invoke-Pester scripts/tests/agy-consult-guard.Tests.ps1 -Output Detailed -CI"` against the freshly-copied, **unmodified** guard.
 
-**A guard test never observed failing proves nothing, and "never observed failing" is exactly how this guard reached production dead.** If the false-positive test passes before Step 2, STOP and report it — either the fixture does not reproduce the defect or the classifier already changed.
+Expected RED: `does NOT treat a commit whose MESSAGE mentions the consult CLI as a consult` **must FAIL** — that is the false positive, and it is the one this milestone exists to remove. The other four blocks may pass or fail depending on whether the manifests are registered yet; only that one is the RED proof.
+
+Then apply Steps 2 and 3 and re-run. Expected: `Failed: 0`.
+
+**A guard test never observed failing proves nothing, and "never observed failing" is exactly how this guard reached production dead.** If the false-positive test passes against the unmodified copy, STOP and report it — either the fixture does not reproduce the defect or the classifier already changed.
 
 - [ ] **Step 6: Add the namespace assertion**
 
@@ -542,7 +552,14 @@ $literalMatchers = @()
 foreach ($manifest in @(
     'clavity-dotnet/plugin/hooks/hooks.json',
     'clavity-classic/plugin/hooks/hooks.json')) {
-    $json = Get-Content (Join-Path $Root $manifest) -Raw | ConvertFrom-Json
+    $manifestPath = Join-Path $Root $manifest
+    # Test-Path is REQUIRED, not defensive politeness. This script sets $ErrorActionPreference = 'Stop'
+    # at :14, and its own unit fixtures in scripts/tests/check-plugin-namespace.Tests.ps1 build minimal
+    # trees containing plugin.json and build/members.json but NO hooks/hooks.json (MEASURED: zero
+    # occurrences of 'hooks.json' in that test file). An unguarded Get-Content therefore throws
+    # ItemNotFoundException and every fixture-based test in that suite fails.
+    if (-not (Test-Path $manifestPath)) { continue }
+    $json = Get-Content $manifestPath -Raw | ConvertFrom-Json
     foreach ($event in $json.hooks.PSObject.Properties) {
         foreach ($group in $event.Value) {
             if ($group.matcher -match 'mcp__plugin_[A-Za-z0-9-]+_') {
