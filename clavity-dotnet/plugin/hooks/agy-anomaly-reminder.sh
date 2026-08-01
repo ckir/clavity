@@ -47,20 +47,24 @@ root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
 f="$root/.clavity/local-anomalies.md"
 [ -f "$f" ] || exit 0
 
-# Present but unreadable is NOT "no anomalies". Report it, for the same reason the jq guard above reports
-# rather than exiting quietly: a silent zero here is indistinguishable from a clean tree, and this hook
-# exists precisely to stop things going unseen.
-if [ ! -r "$f" ]; then
-  printf '%s\n' "[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted" >&2
-  exit 2
-fi
-
 # An ENTRY is a bullet whose first token is ANY bracketed word: "- [defect] ...". Prose, headings and
 # plain bullets are not entries, so the file's own preamble cannot inflate the count. The bracket content
 # is deliberately NOT restricted to [a-z]: an agent that writes "[Defect]" or "[tool misbehavior]" has
 # still captured a real anomaly, and a stricter pattern would count it as zero -- silently discarding the
 # very thing this hook exists to surface. Triage can correct a sloppy type; it cannot recover a dropped one.
+#
+# Present-but-unreadable is NOT "no anomalies", and it is detected from grep's EXIT CODE rather than from
+# a `[ -r "$f" ]` test. MEASURED on Windows Git Bash: the shell's -r builtin does NOT consult Windows ACLs
+# and calls an ACL-denied file readable, so an -r guard never fires there; the read then fails inside grep,
+# the count coerces to zero, and the hook exits silently -- the exact indistinguishable-empty-result this
+# hook exists to prevent, reintroduced by the guard meant to prevent it. grep's contract is POSIX and
+# platform-independent: 0 = matched, 1 = matched nothing, anything greater = error.
 n=$(grep -c '^- \[[^]]*\]' "$f" 2>/dev/null)
+rc=$?
+if [ "$rc" -gt 1 ]; then
+  printf '%s\n' "[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted" >&2
+  exit 2
+fi
 [ -z "$n" ] && n=0
 [ "$n" -eq 0 ] && exit 0
 
