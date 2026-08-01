@@ -130,6 +130,23 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'finds the file under the payload cwd when it is NOT at the git root' {
+        # The case the second candidate exists for, and the only arrangement that can observe it: the repo
+        # ROOT has no anomalies file, but the payload cwd (a subdirectory) does. Reachable when a spotter
+        # without git on PATH captured via its $PWD fallback while cd'd into a subdirectory. A fixture
+        # where root and cwd coincide would pass with or without the fallback and prove nothing.
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'scripts/deep'
+            New-Item -ItemType Directory -Path (Join-Path $sub '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $sub '.clavity/local-anomalies.md') "# Untriaged anomalies`n`n- [defect] y * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
+            Test-Path (Join-Path $repo '.clavity/local-anomalies.md') | Should -BeFalse
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $sub) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match '1 untriaged'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'counts an entry whose type is Title-Case or multi-word' {
         # A sloppy type is still a real anomaly. A stricter [a-z] pattern would count these as zero and
         # silently discard exactly what the hook exists to surface.
@@ -153,6 +170,28 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.StdErr | Should -Match '2026-08-01'
             $r.StdErr | Should -Not -Match '2024-01-01'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'still reads the date when the task field itself contains a separator' {
+        # Counting fields from the right broke here: a ' * ' inside task= shifts NF and $(NF-1) lands on a
+        # fragment of the task, silently dropping that entry's date.
+        #
+        # ORDER IS THE ASSERTION. The entry with the separator in its task must carry the OLDER date. With
+        # it newer, the other entry supplies the same "oldest" either way and the test passes against the
+        # broken form -- which is exactly how the first version of this test was vacuous. The second entry
+        # also keeps a ' * ' in its FACT, proving that case stayed safe.
+        $w = New-Workspace @(
+            '- [defect] x * a.cs:1 * 2026-07-11 * task=investigating * timeout',
+            '- [tool] a * b thing * n/a * 2026-08-01 * task=z'
+        )
+        $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match '2 untriaged'
+            $r.StdErr   | Should -Match '2026-07-11'
+            $r.StdErr   | Should -Not -Match '2026-08-01'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

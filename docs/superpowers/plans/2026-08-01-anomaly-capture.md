@@ -4,7 +4,7 @@
 
 **Goal:** An anomaly an agent notices while doing something else lands in a durable local file the moment it is spotted, and a SessionStart hook keeps naming it until it is either promoted to a tracked ROADMAP item or deleted with a reason.
 
-**Architecture:** Three shipped artifacts per driver plugin — a capture FORMAT (a one-line markdown bullet appended to a gitignored file), a SessionStart REMINDER hook that counts untriaged entries and demands triage, and an `open-issues` SKILL carrying the capture bar and the triage procedure. The spotter (subagent or main agent) appends directly; nothing routes through the main agent's user-facing summary, because that summary is where anomalies measurably died.
+**Architecture:** Three shipped artifacts per driver plugin — a capture FORMAT (a one-line markdown bullet appended to a gitignored file), a SessionStart REMINDER hook that counts untriaged entries and demands triage, and an `open-issues` SKILL carrying the capture bar, the dispatch clause and the triage procedure. A subagent REPORTS what it noticed under a fixed heading; the driver VERIFIES each claim by measurement and WRITES the verified ones to the file BEFORE summarizing — because that summary is where anomalies measurably died, and because an unverified claim written straight to the file is pollution nobody checks.
 
 **Tech Stack:** bash (hook, jq-dependent, pure ASCII), Pester 5 (tests), markdown (skill + capture file), JSON (hooks.json registration).
 
@@ -18,9 +18,14 @@ Settled and NOT open for reinterpretation during execution:
 
 - **Gitignored location.** An agent appending RAW un-triaged defects to a PUBLIC repo can publish
   sensitive local paths before the owner sees them. `.clavity/` is already ignored (`.gitignore:45`).
-- **The spotter writes DIRECTLY.** The loss is not at noticing and not at capture — it is at
-  SUMMARIZATION. Measured: three real anomalies in one session were all reported by their spotter and
-  nearly died when the main agent compressed the report. "Instruct subagents to report better" fixes nothing.
+- **The subagent REPORTS; the driver VERIFIES; the driver WRITES.** *(Owner ruling, 2026-08-01, overriding
+  an earlier converged design in which the spotter wrote directly.)* The loss is at SUMMARIZATION —
+  measured: three real anomalies in one session were all reported by their spotter and nearly died when
+  the driver compressed the report. Direct writes closed that, but by deleting the only step that checks
+  anything: a subagent report is a CLAIM, and in this very session one such claim was confirmed by
+  measurement and fixed while another was refuted by measurement and discarded. Both would have landed in
+  the file, indistinguishable. The loss is therefore closed by requiring the driver to **capture before
+  summarizing**, not by bypassing the driver.
 - **Zero severity judgement at capture.** Removes the busy-agent incentive to rate low, and the
   per-anomaly evaluation cost.
 - **The reminder must COUNT and DEMAND TRIAGE.** Root cause of the sibling `agy-learn` inbox reaching 69
@@ -40,7 +45,13 @@ Settled and NOT open for reinterpretation during execution:
 | `clavity-{dotnet,classic}/plugin/hooks/hooks.json` | SessionStart registration (per-plugin, NOT seed-gated) |
 | `scripts/check-seed-artifacts-synced.sh` | enrol the two new byte-identical pairs |
 | `scripts/tests/agy-anomaly-reminder.Tests.ps1` | Pester coverage for the hook |
+| `clavity-{dotnet,classic}/plugin/hooks/agy-seam-inject.sh` | Task 5: inject the dispatch clause at the seams where dispatching starts |
+| `scripts/tests/agy-seam-inject.Tests.ps1` | Task 5: coverage for the new seam arm |
 | `clavity-dotnet/ROADMAP.md` | record that §7 now needs only the disposition half |
+
+**The FEED side and the DRAIN side are separate artifacts and both are required.** Task 1's hook only
+counts what is already there; Task 5 is what causes anything to be there at all. Building either alone
+produces a mechanism that looks complete and does nothing.
 
 **Do NOT enrol `open-issues` in `scripts/check-agy-discipline-skills.ps1`.** That linter's `$skills` array
 (line 13) requires a `$requiredVerdicts` mapping (line 18) and fails loud for any enrolled skill without
@@ -200,6 +211,23 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'finds the file under the payload cwd when it is NOT at the git root' {
+        # The case the second candidate exists for, and the only arrangement that can observe it: the repo
+        # ROOT has no anomalies file, but the payload cwd (a subdirectory) does. Reachable when a spotter
+        # without git on PATH captured via its $PWD fallback while cd'd into a subdirectory. A fixture
+        # where root and cwd coincide would pass with or without the fallback and prove nothing.
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'scripts/deep'
+            New-Item -ItemType Directory -Path (Join-Path $sub '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $sub '.clavity/local-anomalies.md') "# Untriaged anomalies`n`n- [defect] y * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
+            Test-Path (Join-Path $repo '.clavity/local-anomalies.md') | Should -BeFalse
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $sub) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match '1 untriaged'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'counts an entry whose type is Title-Case or multi-word' {
         # A sloppy type is still a real anomaly. A stricter [a-z] pattern would count these as zero and
         # silently discard exactly what the hook exists to surface.
@@ -223,6 +251,28 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.StdErr | Should -Match '2026-08-01'
             $r.StdErr | Should -Not -Match '2024-01-01'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'still reads the date when the task field itself contains a separator' {
+        # Counting fields from the right broke here: a ' * ' inside task= shifts NF and $(NF-1) lands on a
+        # fragment of the task, silently dropping that entry's date.
+        #
+        # ORDER IS THE ASSERTION. The entry with the separator in its task must carry the OLDER date. With
+        # it newer, the other entry supplies the same "oldest" either way and the test passes against the
+        # broken form -- which is exactly how the first version of this test was vacuous. The second entry
+        # also keeps a ' * ' in its FACT, proving that case stayed safe.
+        $w = New-Workspace @(
+            '- [defect] x * a.cs:1 * 2026-07-11 * task=investigating * timeout',
+            '- [tool] a * b thing * n/a * 2026-08-01 * task=z'
+        )
+        $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match '2 untriaged'
+            $r.StdErr   | Should -Match '2026-07-11'
+            $r.StdErr   | Should -Not -Match '2026-08-01'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -320,7 +370,15 @@ fi
 root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
 [ -n "$root" ] || root="$cwd"
 
+# Check the payload cwd as a SECOND candidate. Outside a git worktree the two sides fall back to
+# different defaults -- this hook to the session's cwd, the capture snippet to the spotter's own $PWD --
+# and a file written under one would be invisible to the other. Trying both closes the common case at the
+# cost of one extra stat. RESIDUAL LIMIT, stated rather than papered over: in a NON-git directory whose
+# spotter had cd'd into a SUBdirectory, the capture lands somewhere neither path names and this hook will
+# not see it. Inside a git worktree -- which is every case this plugin actually ships into -- both sides
+# resolve to the same toplevel and the ambiguity does not arise.
 f="$root/.clavity/local-anomalies.md"
+[ -f "$f" ] || f="$cwd/.clavity/local-anomalies.md"
 [ -f "$f" ] || exit 0
 
 # An ENTRY is a bullet whose first token is ANY bracketed word: "- [defect] ...". Prose, headings and
@@ -351,19 +409,26 @@ fi
 # The separator is written as a CHARACTER CLASS, ' [*] ', not as an escaped ' \* '. MEASURED: the escaped
 # form makes awk warn "escape sequence \* treated as plain *" and emit garbage instead of the field, so
 # the date silently comes back empty. The class form has no escaping ambiguity.
+# Anchor on the task= field and take the one before it, rather than counting from either end. MEASURED:
+# counting from the LEFT breaks when the fact contains " * "; counting from the RIGHT with $(NF-1) breaks
+# when the task does ("task=investigating * timeout" silently yields no date). Anchoring survives both,
+# because task= is the only field with a fixed marker.
 oldest=$(grep '^- \[[^]]*\]' "$f" 2>/dev/null \
-  | awk -F' [*] ' 'NF>=4 { print $(NF-1) }' \
+  | awk -F' [*] ' '{ for (i=1; i<=NF; i++) if ($i ~ /^task=/) { print $(i-1); break } }' \
   | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' | sort | head -1)
 [ -n "$oldest" ] && oldest=" (oldest $oldest)"
 
-printf '%s\n' "[AGY-ANOMALIES] $n untriaged$oldest in .clavity/local-anomalies.md. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill." >&2
+# Name the RESOLVED path, not a relative one. The reader may have started the session in a subdirectory,
+# and a notice that says ".clavity/local-anomalies.md" sends them to a path that does not exist from where
+# they are standing -- at exactly the moment they are least inclined to go hunting for it.
+printf '%s\n' "[AGY-ANOMALIES] $n untriaged$oldest in $f. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill." >&2
 exit 2
 ```
 
 - [ ] **Step 4: Run the tests and verify they pass**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/agy-anomaly-reminder.Tests.ps1 -Output Detailed -CI"`
-Expected: `Failed: 0`, 14 blocks passing (one may report Skipped on a host that cannot enforce a read deny — that is an accepted outcome for that block only).
+Expected: `Failed: 0`, 15 blocks passing.
 
 - [ ] **Step 5: Mutation-check each guard**
 
@@ -384,6 +449,7 @@ Every mutation below is applied **to the hook**, never to a test.
 | Replace the `git rev-parse --show-toplevel` resolution with `root="$cwd"` | `finds the file at the repo ROOT when cwd is a SUBDIRECTORY` |
 | Tighten the entry pattern `'^- \[[^]]*\]'` back to `'^- \[[a-z]*\]'` | `counts an entry whose type is Title-Case or multi-word` |
 | Replace the field-anchored `awk` date read with a whole-line `grep -oE` for an ISO date | `reads the date from its FIELD, ignoring a date written in the prose` |
+| Delete the `[ -f "$f" ] \|\| f="$cwd/.clavity/local-anomalies.md"` second candidate | `finds the file under the payload cwd when it is NOT at the git root` |
 
 - [ ] **Step 6: Commit**
 
@@ -441,12 +507,38 @@ what it degrades or prevents, do not capture it.
 incentive to rate its own interruption as unimportant, and the owner has to make the call at triage
 anyway. Write the fact and move on.
 
-## Capture - one line, written by whoever spots it
+## Who writes - the driver, after verifying
 
-**Write it yourself. Do not report it to whoever dispatched you and assume it will survive.** This is the
-whole point of the mechanism: anomalies are not usually lost at the moment of noticing, they are lost when
-a long report is compressed into a short summary. If you are a subagent, the file is your channel, not
-your final message.
+**A subagent REPORTS; the driver VERIFIES; the driver WRITES.** Owner ruling, and it overrides an earlier
+converged design in which the spotter wrote to the file directly.
+
+The reasoning is worth keeping visible, because the earlier design was not silly - it was solving a real
+failure and traded away something more valuable to do it:
+
+- Anomalies were being lost at SUMMARIZATION. A subagent reported one, the driver compressed a long report
+  into a short answer, and the observation evaporated. Letting the spotter write directly closed that.
+- But it closed it by removing the only step that ever checks anything. A subagent's report is a CLAIM, not
+  evidence. Measured repeatedly in practice: a claimed anomaly turned out to be real and got fixed; a
+  confidently-argued one turned out to be false and was refuted by measurement. Direct writes would have
+  put both in the file, indistinguishable, with nobody looking.
+- So the loss is not fixed by bypassing the driver. It is fixed by requiring the driver to CAPTURE BEFORE
+  SUMMARIZING. That keeps the verification step and still closes the hole, because the hole was
+  summarizing without capturing.
+
+**If you are a subagent:** report anomalies in your final message under a heading of their own, so they
+survive being skimmed. Do not write to the anomalies file. Do not judge severity. Do not stop your task
+for it.
+
+**If you are the driver receiving that report:** for each claimed anomaly, verify it by measurement before
+recording anything - open the file, run the command, reproduce the behaviour. Then:
+
+- **verified** -> capture it with the snippet below, BEFORE you write your summary to the user;
+- **refuted** -> do not capture it, and say plainly in your summary that you checked and it did not hold;
+- **cannot be checked cheaply** -> capture it with the fact stated as a claim (`reported, unverified:`)
+  rather than dropping it, and let triage decide.
+
+Capturing is not optional once something is verified. A verified anomaly that only appears in a chat
+message is exactly the failure this whole mechanism exists to end.
 
 Run this, filling the four fields:
 
@@ -457,14 +549,23 @@ Run this, filling the four fields:
 # hook resolves the root the same way, so both sides always agree.
 R=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 F="$R/.clavity/local-anomalies.md"
-if [ ! -f "$F" ]; then
-  mkdir -p "$R/.clavity"
-  # Self-ignoring directory. This makes .clavity/ invisible to git REGARDLESS of the host repository's
-  # own .gitignore, which matters because this plugin ships to repositories whose .gitignore we do not
-  # control. Without it, the "capture is private" property holds only in the repo where it was written.
-  [ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' > "$R/.clavity/.gitignore"
-  printf '%s\n\n' '# Untriaged anomalies (local, never committed)' > "$F"
-fi
+mkdir -p "$R/.clavity"
+# Self-ignoring directory. This makes .clavity/ invisible to git REGARDLESS of the host repository's own
+# .gitignore, which matters because this plugin ships to repositories whose .gitignore we do not control.
+# Without it, the "capture is private" property holds only in the repo where it was written.
+#
+# CHECKED ON EVERY CAPTURE, deliberately NOT nested inside the file-exists branch below. If it only ran
+# when creating the file for the first time, then any later loss of the .gitignore -- someone deletes it,
+# `git clean -Xdf` removes it, the file was created by hand -- would leave the anomalies file visible to
+# git forever after, and the next `git add .` would publish a list of un-triaged defects. Re-asserting the
+# shield costs one stat per capture.
+[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
+# The header uses >> and NEVER >. MEASURED: with >, two subagents capturing concurrently both see no file,
+# agent A writes the header and appends its anomaly, then agent B's > truncates the file -- destroying A's
+# anomaly outright -- before appending its own. A mechanism whose entire purpose is not losing things must
+# not have a path that silently eats one. With >> the worst case is a duplicate header, which is cosmetic
+# and which the entry pattern does not count; both anomalies survive. Verified both ways.
+[ -f "$F" ] || printf '%s\n\n' '# Untriaged anomalies (local, never committed)' >> "$F"
 printf -- '- [%s] %s * %s * %s * task=%s\n' \
   'defect' 'one line stating the fact' 'path/file.ext:LINE' "$(date +%F)" 'what you were doing' >> "$F"
 ```
@@ -698,8 +799,8 @@ does not already exist.
 
 ```bash
 mkdir -p .clavity
-[ -f .clavity/.gitignore ] || printf '%s\n' '*' > .clavity/.gitignore
-[ -f .clavity/local-anomalies.md ] || printf '%s\n\n' '# Untriaged anomalies (local, never committed)' > .clavity/local-anomalies.md
+[ -f .clavity/.gitignore ] || printf '%s\n' '*' >> .clavity/.gitignore
+[ -f .clavity/local-anomalies.md ] || printf '%s\n\n' '# Untriaged anomalies (local, never committed)' >> .clavity/local-anomalies.md
 {
 printf -- '- [tool] agy_look truncates the NEWEST reply out of a long cascade, so the answer just requested is the one that cannot be read back; recovery costs a second write that consumes quota * n/a * 2026-08-01 * task=phase-b-capstone\n'
 printf -- '- [process] just test-scripts grew past the 600s tool cap, so no agent can run the repo gate in the foreground any more * justfile:91 * 2026-08-01 * task=phase-b-capstone\n'
@@ -748,10 +849,214 @@ in this step. It is local runtime state. Do NOT `git add -f` it.
 
 ---
 
+### Task 5: Make a subagent actually capture (the activation path)
+
+**Files:**
+- Modify: `clavity-dotnet/plugin/skills/open-issues/SKILL.md`
+- Modify: `clavity-dotnet/plugin/hooks/agy-seam-inject.sh` (then mirror both to classic)
+- Modify: `scripts/tests/agy-seam-inject.Tests.ps1`
+
+**Do NOT start until Tasks 1-3 are committed.**
+
+**Why this task exists.** Tasks 1-4 build the file, the reminder, the skill and the seed — and a
+dispatched subagent still never writes anything, because nothing puts the capture instruction in front of
+it. A subagent reads a skill only if it invokes one, and a subagent told "implement this hook" will never
+think to invoke an anomaly-capture skill. The reminder hook is the DRAIN side; this is the missing FEED
+side. Without it the whole mechanism is a very well-tested empty file.
+
+This gap survived a GREEN panel because the plan never described a dispatch path, and a reviewer cannot
+audit an activation path that no text mentions. Absence of text is the one defect class a document review
+structurally cannot see.
+
+- [ ] **Step 0: State verification**
+
+Confirm each; if any differs, STOP and report `STATE_MISMATCH: <what>`:
+1. `clavity-dotnet/plugin/hooks/agy-seam-inject.sh` line 38 begins `case "$skill" in` and its arms are
+   `*finishing-a-development-branch*)`, `*brainstorm*)`, `*)`.
+2. The same file's jq-missing fallback (around lines 22-23) greps for BOTH seam names, and its header
+   comment states it "degrades LOUD on a seam match (never a silent no-op)".
+3. `scripts/tests/agy-seam-inject.Tests.ps1` defines `Invoke-Hook { param([string]$Skill, [string]$Cwd) }`
+   returning `.StdOut`, and has 9 `It` blocks.
+
+- [ ] **Step 1: Add the dispatch clause to the skill**
+
+Insert this section into `clavity-dotnet/plugin/skills/open-issues/SKILL.md`, immediately BEFORE the
+`## Triage - the only two outcomes` heading:
+
+```markdown
+## Dispatching a subagent - the clause every dispatch must carry
+
+A subagent reports nothing useful unless its dispatch asks for it. It will not invoke this skill on its
+own: it is focused on the task you gave it, and an anomaly is by definition not that task. So the
+instruction has to travel IN the dispatch. Paste this into every implementer dispatch, in its
+report-back section:
+
+> **ANOMALIES.** If you notice something wrong that is NOT part of this task - a defect in adjacent code,
+> a tool misbehaving, a process that cannot work - report it under a heading `## Anomalies noticed` at
+> the END of your final message, one line each, in this shape:
+>
+> `- [defect|tool|process] one line stating the fact * path/file.ext:LINE or n/a * what you were doing`
+>
+> State it as a FACT you observed, with whatever makes it checkable - the command you ran, the file and
+> line, the output you saw. Do NOT judge severity, do NOT stop your task to investigate, and do NOT write
+> to any anomalies file yourself: your report is the channel, and whoever dispatched you will verify each
+> one by measurement before recording it. If you noticed nothing, write `## Anomalies noticed` followed by
+> `none` - an explicit none is worth more than silence, because silence is indistinguishable from not
+> having looked.
+
+**Why a heading and not a sentence in the prose.** A report gets skimmed. A dedicated heading with a
+fixed shape survives skimming, and it makes an omission visible: a report with no such section is a
+report that did not answer the question.
+
+**The driver's obligation is the other half, and it is the half that historically failed.** Verify each
+reported anomaly by measurement, then capture the verified ones with the snippet above BEFORE writing
+your summary. The summary is where these die. Capturing after summarizing is capturing never.
+```
+
+- [ ] **Step 2: Add the seam arm to the auto-fire hook**
+
+Three edits to `clavity-dotnet/plugin/hooks/agy-seam-inject.sh`.
+
+**(a)** Extend the header comment's seam map (currently two lines) to three:
+
+```bash
+#   *brainstorm*                     -> AGY-FIRST   (marker agy-first.head)
+#   *finishing-a-development-branch* -> AGY-CAPSTONE (marker agy-capstone.head)
+#   *subagent-driven-development* / *executing-plans* -> ANOMALY-CAPTURE dispatch clause (no marker)
+```
+
+**(b)** Add the new seam to the jq-missing fallback so a jq-less machine still degrades LOUD rather than
+silently skipping it. Replace the two-branch `if` (around lines 22-23) with:
+
+```bash
+  if printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*finishing-a-development-branch' \
+     || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*brainstorm' \
+     || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*subagent-driven-development' \
+     || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*executing-plans'; then
+```
+
+**(c)** Add the case arm and the emit. In the seam map, insert the new arm BEFORE the `*)` catch-all:
+
+```bash
+case "$skill" in
+  *finishing-a-development-branch*)                  discipline="agy-capstone" ;;
+  *brainstorm*)                                      discipline="agy-first" ;;
+  *subagent-driven-development*|*executing-plans*)   discipline="anomaly-dispatch" ;;
+  *)                                                 exit 0 ;;
+esac
+```
+
+and add this arm to the `case "$discipline" in` block, after the `agy-capstone)` arm:
+
+```bash
+  anomaly-dispatch)
+    emit 'ANOMALY-CAPTURE: you are about to dispatch subagents. TWO obligations, and the second is the one that historically fails. (1) EVERY implementer dispatch you write MUST carry the anomaly clause verbatim - it is in the `open-issues` skill under "Dispatching a subagent", short enough to paste inline. It asks the subagent to report anything wrong that is NOT its task under a `## Anomalies noticed` heading at the end of its final message, stated as a checkable fact, with an explicit `none` if it saw nothing. A subagent will not invoke that skill on its own, so the instruction has to travel IN the dispatch. (2) When a report comes back, VERIFY each claimed anomaly by measurement - open the file, run the command, reproduce it - and then APPEND the verified ones to .clavity/local-anomalies.md BEFORE you write your summary to the user. A subagent report is a claim, not evidence; and a verified anomaly that exists only in a chat message is lost the moment you compress that message. Capturing after summarizing is capturing never.' ;;
+```
+
+**Deliberately NOT marker-debounced.** The existing seams debounce on a HEAD-keyed marker that their
+discipline skill writes after running. This seam has no discipline run and writes no marker, so the lookup
+finds nothing and the directive injects every time. That is the intended cadence: these two skills are
+invoked about once per plan execution, and a driver about to write several dispatches should be reminded
+each time rather than once per commit.
+
+- [ ] **Step 3: Add the tests**
+
+Append these `It` blocks to `scripts/tests/agy-seam-inject.Tests.ps1`, before its final closing brace:
+
+```powershell
+    It 'injects the ANOMALY-CAPTURE dispatch directive on a subagent-driven-development seam' {
+        $out = Invoke-Hook 'superpowers:subagent-driven-development'
+        $out | Should -Match 'ANOMALY-CAPTURE'
+        $out | Should -Match 'open-issues'
+        $out | Should -Match 'local-anomalies'
+    }
+
+    It 'injects the same directive on an executing-plans seam' {
+        $out = Invoke-Hook 'superpowers:executing-plans'
+        $out | Should -Match 'ANOMALY-CAPTURE'
+    }
+
+    It 'does NOT inject the capstone directive on a subagent-driven-development seam' {
+        # The personal, pre-plugin copy of this hook bound AGY-CAPSTONE to this seam. The shipped hook
+        # binds the capstone to finishing-a-development-branch only, and this seam to the dispatch clause.
+        # Pinning that keeps the two bindings from silently merging.
+        $out = Invoke-Hook 'superpowers:subagent-driven-development'
+        $out | Should -Not -Match 'AGY-CAPSTONE auto-fire'
+    }
+
+    It 'emits the LOUD jq-missing line on a subagent-driven-development seam when jq is absent' {
+        $payload = @{ tool_input = @{ skill = 'superpowers:subagent-driven-development' }; cwd = '.' } | ConvertTo-Json -Compress
+        $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $script:CleanHome }
+        $r.StdOut | Should -Match 'guard inactive'
+    }
+```
+
+- [ ] **Step 4: Verify RED, then GREEN**
+
+Run: `pwsh -c "Invoke-Pester scripts/tests/agy-seam-inject.Tests.ps1 -Output Detailed -CI"`
+Before Step 2's edits: the four new blocks FAIL. After: `Failed: 0`, 13 blocks.
+
+- [ ] **Step 5: Mutation-check the new arm**
+
+Every mutation applied **to the hook**, never to a test.
+
+| Mutation (in `agy-seam-inject.sh`) | Test that must go red |
+|---|---|
+| Delete the `*subagent-driven-development*\|*executing-plans*)` case arm | `injects the ANOMALY-CAPTURE dispatch directive...` |
+| Drop `\|*executing-plans*` from that arm | `injects the same directive on an executing-plans seam` |
+| Delete the two new `grep -Eq` terms from the jq-missing fallback | `emits the LOUD jq-missing line on a subagent-driven-development seam...` |
+| Point the new arm at `discipline="agy-capstone"` | `does NOT inject the capstone directive...` |
+
+Record each result. **A guard whose removal leaves the file green is not a guard — report it.**
+
+- [ ] **Step 6: Mirror, sync-check, full gate**
+
+```bash
+cp clavity-dotnet/plugin/hooks/agy-seam-inject.sh clavity-classic/plugin/hooks/agy-seam-inject.sh
+cp clavity-dotnet/plugin/skills/open-issues/SKILL.md clavity-classic/plugin/skills/open-issues/SKILL.md
+diff -q clavity-dotnet/plugin/hooks/agy-seam-inject.sh clavity-classic/plugin/hooks/agy-seam-inject.sh && echo HOOK-IDENTICAL
+diff -q clavity-dotnet/plugin/skills/open-issues/SKILL.md clavity-classic/plugin/skills/open-issues/SKILL.md && echo SKILL-IDENTICAL
+just seed-sync-check
+```
+Both files are ALREADY enrolled in the seed-sync list (`agy-seam-inject.sh` from before this plan,
+`open-issues/SKILL.md` by Task 3), so no enrolment edit is needed here — but the gate must be green.
+
+Then run `just test-scripts` with `run_in_background` and read the result from the task output file; it
+exceeds the 600s foreground cap.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add clavity-dotnet/plugin/hooks/agy-seam-inject.sh clavity-classic/plugin/hooks/agy-seam-inject.sh clavity-dotnet/plugin/skills/open-issues/SKILL.md clavity-classic/plugin/skills/open-issues/SKILL.md scripts/tests/agy-seam-inject.Tests.ps1
+git commit -m "feat(anomalies): the FEED side - put the capture clause into every dispatch
+
+Tasks 1-4 built the file, the reminder, the skill and the seed, and nothing ever
+reached the file: a subagent reads a skill only if it invokes one, and one told
+to implement a hook never thinks to invoke an anomaly-capture skill. The
+reminder was the drain side with no feed.
+
+The auto-fire hook now injects on subagent-driven-development and
+executing-plans with the two obligations. Dispatches must ask the subagent to
+report anomalies under a fixed heading with an explicit 'none'; the driver must
+then verify each claim by measurement and append the verified ones BEFORE
+summarizing. A subagent report is a claim, not evidence, and a verified anomaly
+that lives only in a chat message dies at the next summary.
+
+Deliberately not marker-debounced: there is no discipline run to mark, and a
+driver about to write several dispatches should be reminded each time.
+
+The gap survived a GREEN panel because the plan never described a dispatch path,
+and a reviewer cannot audit an activation path no text mentions."
+```
+
+---
+
 ## Self-review
 
 **Spec coverage.** Every element of the converged design maps to a task: gitignored location (Task 4
-Step 1, `.gitignore:45` verified in Task 1 Step 0); spotter writes directly (Task 2, the skill's Capture
+Step 1, `.gitignore:45` verified in Task 1 Step 0); subagent reports / driver verifies / driver writes
+(Task 2's "Who writes" section and Task 5's dispatch clause — the owner ruling that replaced the earlier
+spotter-writes-directly design, and the reason both a FEED task and a DRAIN task exist); the skill's Capture
 section); zero severity at capture (Task 2, stated explicitly, no severity field in the format); the
 reminder counts and demands triage (Task 1, tested by `REPORTS the count and demands triage`); exactly two
 exits with no parked state (Task 2, the Triage section); merge with AGY-SCOPE (Task 4 Step 3).

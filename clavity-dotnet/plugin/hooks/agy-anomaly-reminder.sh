@@ -44,7 +44,15 @@ fi
 root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
 [ -n "$root" ] || root="$cwd"
 
+# Check the payload cwd as a SECOND candidate. Outside a git worktree the two sides fall back to
+# different defaults -- this hook to the session's cwd, the capture snippet to the spotter's own $PWD --
+# and a file written under one would be invisible to the other. Trying both closes the common case at the
+# cost of one extra stat. RESIDUAL LIMIT, stated rather than papered over: in a NON-git directory whose
+# spotter had cd'd into a SUBdirectory, the capture lands somewhere neither path names and this hook will
+# not see it. Inside a git worktree -- which is every case this plugin actually ships into -- both sides
+# resolve to the same toplevel and the ambiguity does not arise.
 f="$root/.clavity/local-anomalies.md"
+[ -f "$f" ] || f="$cwd/.clavity/local-anomalies.md"
 [ -f "$f" ] || exit 0
 
 # An ENTRY is a bullet whose first token is ANY bracketed word: "- [defect] ...". Prose, headings and
@@ -75,10 +83,17 @@ fi
 # The separator is written as a CHARACTER CLASS, ' [*] ', not as an escaped ' \* '. MEASURED: the escaped
 # form makes awk warn "escape sequence \* treated as plain *" and emit garbage instead of the field, so
 # the date silently comes back empty. The class form has no escaping ambiguity.
+# Anchor on the task= field and take the one before it, rather than counting from either end. MEASURED:
+# counting from the LEFT breaks when the fact contains " * "; counting from the RIGHT with $(NF-1) breaks
+# when the task does ("task=investigating * timeout" silently yields no date). Anchoring survives both,
+# because task= is the only field with a fixed marker.
 oldest=$(grep '^- \[[^]]*\]' "$f" 2>/dev/null \
-  | awk -F' [*] ' 'NF>=4 { print $(NF-1) }' \
+  | awk -F' [*] ' '{ for (i=1; i<=NF; i++) if ($i ~ /^task=/) { print $(i-1); break } }' \
   | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' | sort | head -1)
 [ -n "$oldest" ] && oldest=" (oldest $oldest)"
 
-printf '%s\n' "[AGY-ANOMALIES] $n untriaged$oldest in .clavity/local-anomalies.md. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill." >&2
+# Name the RESOLVED path, not a relative one. The reader may have started the session in a subdirectory,
+# and a notice that says ".clavity/local-anomalies.md" sends them to a path that does not exist from where
+# they are standing -- at exactly the moment they are least inclined to go hunting for it.
+printf '%s\n' "[AGY-ANOMALIES] $n untriaged$oldest in $f. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill." >&2
 exit 2
