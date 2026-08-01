@@ -335,23 +335,55 @@ the actual failure mode. The assertion therefore goes **inside `curate-commit`, 
 actually received on stdin** — `clavity-dotnet/src/Clavity.Ls/CliVerbs.cs` (which calls
 `GoldenHeader.CommitGrowth` at :87) and the `clavity-classic` equivalent in `src/golden_header.rs`.
 
-**The rule is blanket ASCII, not a mojibake signature.** *Panel round 2, Protocol Pedant, and it corrected
-a false premise of mine.* An earlier draft argued for matching the specific CP437 byte family because "the
-SEED region legitimately carries real em-dashes". **That justification is false: `curate-commit` writes
-only `golden-header.growth.md` and never touches SEED, so SEED is never in the payload.** MEASURED at
-`CliVerbs.cs:87`. Since GROWTH is policy ASCII-only anyway, the payload assertion is simply "every byte
-<= 0x7F" — which is simpler than signature matching and catches **every** mis-encoding, not just CP437.
-A signature list would have missed CP1252 mangling and every non-em-dash character.
+**The rule is a MOJIBAKE SIGNATURE, not blanket ASCII — and this reverses a fix I accepted in round 2.**
 
-**Trade-off, accepted explicitly.** This makes M6 a change to two binaries rather than a documentation
-edit, and a future GROWTH entry genuinely needing a non-ASCII character would be rejected until the policy
-is relaxed. That is the intended direction: GROWTH is a compiled, machine-generated artifact with no
-present need for typography, and the failure it prevents ran undetected for 13 days.
+Round 2's Protocol Pedant was right that my *stated rationale* was false. I had justified a signature check
+by claiming "the SEED region legitimately carries real em-dashes", and SEED is never in the payload:
+`curate-commit` writes only `golden-header.growth.md` (MEASURED, `CliVerbs.cs:87`). That premise was wrong
+and is withdrawn.
 
-**Oracle.** Feed `curate-commit` a payload containing mojibake bytes on stdin and assert it exits non-zero
-without writing; feed it the current clean GROWTH and assert it writes. Both must be **observed**, in both
-binaries — the refusal case especially, since a check never seen to reject is the same shape as the guard
-in M3 that was never seen to fire.
+**But its proposed replacement — assert every byte <= 0x7F — is wrong, and would have inverted two shipped
+pinning tests.** MEASURED:
+- `clavity-dotnet/tests/Clavity.Ls.Tests/CliVerbsTests.cs:31`
+  `CurateCommit_round_trips_non_ascii_content_byte_identically`
+- `CliVerbsTests.cs:44` `CurateCommit_written_growth_survives_the_strict_read_side_decode`
+
+Both assert `CurateCommit` returns 0 for non-ASCII input and writes it back byte-identically. **That is
+`curate-commit`'s actual contract: a faithful byte transport.** It is the property that makes the raw-byte
+publish path trustworthy in the first place — the very mechanism the curate skill mandates *because* text
+pipes corrupt. A blanket-ASCII rejection would break that contract, and the peer's own note conceded the
+consequence: the two tests "will naturally be updated to assert refusal". **Editing a pinning test to match
+a proposed change is how a contract gets lost. The oracle wins.**
+
+MEASURED that the signature form is compatible: the tests' `NonAsciiSample` contains `⚠️`, an em-dash and
+`≠`, and **no** CP437 signature — so a signature check passes both tests while blanket ASCII fails them.
+
+**Two layers, because neither alone is sufficient — and this is the honest answer to Protocol Pedant's
+brittleness point, which still stands.**
+1. **Transport layer (`curate-commit`, both binaries):** faithful bytes, plus a **tripwire** for known
+   mojibake families (the CP437 round-trip signature and the CP1252 equivalent). This is explicitly a
+   heuristic, not a proof: it cannot enumerate every mis-encoding, and it is not claimed to. It exists to
+   catch the specific silent failure that ran for 13 days.
+2. **Content layer (the `agy-curate` skill, at compile time, i.e. M5's file):** GROWTH is authored
+   ASCII-only as policy. This is where "no non-ASCII in GROWTH" belongs — a statement about what we
+   *write*, not a restriction on what the transport may *carry*.
+
+**Trade-off, accepted explicitly.** M6 is a change to two binaries rather than a documentation edit. The
+tripwire will not catch an exotic mis-encoding outside its signature list; the content-layer policy is what
+covers the general case, and the two together are strictly better than either. **No existing test is
+inverted.**
+
+**Oracle.** Three cases, all **observed**, in both binaries:
+1. a payload carrying a CP437 mojibake signature on stdin → exits non-zero, writes nothing;
+2. the current clean GROWTH → writes normally;
+3. **the two existing non-ASCII pinning tests still pass, unmodified.** This is the regression guard on the
+   fix itself. If satisfying M6 requires editing `CurateCommit_round_trips_non_ascii_content_byte_identically`
+   or `CurateCommit_written_growth_survives_the_strict_read_side_decode`, the implementation is wrong and
+   must stop — not the tests.
+
+Case 1 matters most, and for the same reason as M3: **a check never seen to reject is the same shape as
+the guard that was never seen to fire.** Case 3 is what stops this milestone quietly deleting a contract
+while appearing to add a safeguard.
 
 **Note.** This is *not* the same as reintroducing a parked state into the anomaly mechanism. The anomaly
 file's two-outcome rule stays. `agy-curate` is a different mechanism with a hard external dependency (a
