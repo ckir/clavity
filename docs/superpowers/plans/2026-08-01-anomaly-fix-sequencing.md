@@ -78,9 +78,52 @@ Every citation below was grep-verified before this plan was written. **Re-verify
 
 **Closes anomaly #4.**
 
+> ## ⚠ AMENDMENT (2026-08-01, owner-approved, agy-concurred) — SUPERSEDES Steps 2, 5 and 6 below
+>
+> Executing Step 1 produced a measurement that **invalidates the rule Step 2 states**. Both changes below
+> were consulted with agy under AGY-FIRST, agy initially recommended otherwise, was sent to the raw
+> measurement files, and **reversed its position on all three points**. The owner then ruled.
+>
+> **1. The per-file threshold is not a sound rule — the quantity it thresholds is not stable.**
+> MEASURED, three runs of the same suites on the same commit and machine
+> (`.clavity/seams/task1-measure-run{1,2,3}-*.txt`): per-file wall clock swings up to **5.9×**, driven by
+> position in the run, because the first suite executed absorbs pwsh + Pester cold-start for the whole run.
+> `agy-after-reminder` measured **48.9s** running first and **8.3s** running last. `release-lib` measured
+> **25.7s** first and **4.8s** last. Applying ">= 20s ⇒ SLOW" to those two gives the OPPOSITE answer
+> depending only on sort order. Eight of twelve suites were stable within 15%; four were not.
+> **A rule that cannot be re-applied to get the same answer is not a rule.**
+>
+> **REPLACEMENT RULE — measure the recipe, not the files.** Choose a candidate FAST set from warm per-file
+> evidence, then **measure `just test-scripts-fast` as a single batch** and require it under the ceiling.
+> The per-file table stays in `_partition.md` as *evidence*, never as the decision rule. This also collapses
+> rule and oracle into one measurement — Step 6 already measured the recipe.
+>
+> **⚠ Do not assume batching is cheap.** MEASURED (`.clavity/seams/task1-batch-measurement.txt`): the
+> 13-file FAST set as one `Invoke-Pester` process ran **94.2s / 75.1s / 73.7s**, against a **65.8s** warm
+> per-file sum. Batching is *slower*, not faster — it saves repeated pwsh startup but adds cold module load
+> and cross-file accumulation. agy predicted "~15-20s" and was refuted by 4-5×.
+>
+> **2. Step 5 is DROPPED. No test job goes on the pre-push hook.**
+> `lefthook.yml:11-18` records that a `scripts-tests` job — the full Pester suite — **already lived on
+> pre-push and was deliberately removed**, because git opens the SSH connection *before* the hook runs and
+> the idle time made GitHub hang up mid-push: *"observed as 'Connection to ssh.github.com closed by remote
+> host.' after every gate had already passed, with nothing ever pushed."* `lefthook.yml:17` requires every
+> job to stay "in the SECONDS range". The current hook totals ~36s (`lefthook.yml:43`); the measured fast
+> batch would take it to **110-130s**.
+> **Anomaly #4 is an agent-ergonomics defect — an agent hitting the 600s FOREGROUND TOOL CAP when it runs
+> the suite. It is closed entirely inside the `justfile`.** A pre-push presence was never required to close
+> it, and Step 5 would have reinstated a failure this repo already suffered and wrote down.
+> `lefthook.yml` is **not modified by this task at all.**
+>
+> **Structural selection was also considered and REJECTED by measurement.** A rule of "FAST = spawns no
+> `git`/`bash` child process" does not predict cost here: `docs-audit` has **zero** subprocess matches and
+> runs **120.6s**, while `agy-after-reminder` has **nine** and runs **8.3s** warm
+> (census in `.clavity/seams/task1-batch-measurement.txt`).
+
 **Files:**
 - Modify: `justfile:91-92`
 - Create: `scripts/tests/_partition.md`
+- ~~Modify: `lefthook.yml`~~ — **DROPPED by the amendment above. Do not touch `lefthook.yml`.**
 
 - [ ] **Step 0: State verification**
 
@@ -91,7 +134,7 @@ Confirm each; if any differs, STOP and report `STATE_MISMATCH: <what>`:
        pwsh -c "Invoke-Pester scripts/tests -Output Detailed -CI"
    ```
 2. `ls scripts/tests/*.Tests.ps1 | wc -l` returns `24`.
-3. `lefthook.yml` contains `run: just seed-sync-check` (proves lefthook is the pre-push gate surface).
+3. `git diff --stat lefthook.yml` is empty and stays empty — this task must not modify that file.
 
 - [ ] **Step 1: Measure per-file runtime — this is the partition input, not a guess**
 
@@ -103,11 +146,31 @@ Expected: 24 lines, each naming a file, its seconds and its test count. **Record
 
 Sum the test counts. **It must equal 358.** If it does not, STOP and report `STATE_MISMATCH: test count is <n>, not 358` — the plan's oracle depends on that number.
 
-- [ ] **Step 2: Choose the cut, by measurement**
+- [ ] **Step 2: Choose the cut — candidate set, then measure the RECIPE** *(rewritten by the amendment)*
 
-Sort the Step 1 output descending by seconds. **SLOW = every file whose measured runtime is >= 20s. FAST = the rest.** Do not partition by subject, filename or intuition; the threshold is the rule, and `_partition.md` records why each file landed where it did.
+Step 1's per-file numbers are **evidence, not the rule**. Take the *warm* readings only — discard each run's first entry, which absorbs cold-start for the whole run — and form a candidate FAST set from the cheapest suites.
 
-If the FAST set's summed runtime exceeds 60s, lower the threshold to 10s and re-derive. If it still exceeds 60s, STOP and report `STATE_MISMATCH: fast set cannot reach 60s at a 10s threshold` — that means the suite's cost is not concentrated in a few files and this milestone needs redesign, not a fudged threshold.
+Then **measure the candidate set the way the recipe will actually run it**: one `pwsh` process, one `Invoke-Pester` over the whole list, wall clock timed from OUTSIDE the process so startup counts.
+
+```bash
+pwsh -NoProfile -c "\$r = Invoke-Pester @('scripts/tests/<A>.Tests.ps1','scripts/tests/<B>.Tests.ps1') -Output None -PassThru; 'Total={0} Failed={1}' -f \$r.TotalCount, \$r.FailedCount"
+```
+
+Run it **three times** and take the slowest. **Ceiling: the FAST batch must run in under 120s** — comfortably inside the 600s foreground tool cap, which is the only budget that still applies now that Step 5 is dropped. If it exceeds that, remove the most expensive suite from the candidate set and re-measure. Do not average, and do not accept a single run: the first run after an idle period is systematically slower (MEASURED: 94.2s, then 75.1s, then 73.7s on an unchanged set).
+
+**The measured FAST set is recorded below.** It was derived by exactly this procedure:
+
+| | Files | Tests | Batch wall clock |
+|---|---|---|---|
+| FAST | 13 | **157** | 73.7s / 75.1s / 94.2s |
+| SLOW | 11 | **201** | ~670s (exceeds the cap — must be backgrounded) |
+| | 24 | **358** | |
+
+**FAST (13):** `generate-scoped-manifest`, `BashHookHelpers`, `check-member-docs`, `check-user-facing-docs`, `check-seed-artifacts-synced`, `check-roster`, `check-seed-budget`, `check-agy-discipline-skills`, `drain-lib`, `release-lib`, `register-plugin`, `agy-after-reminder`, `check-growth-budget`
+
+**SLOW (11):** `abort-drain`, `accept-drain`, `agy-anomaly-reminder`, `agy-liveness-check`, `agy-seam-inject`, `agy-test-audit-reminder`, `check-core-integrity`, `check-plugin-namespace`, `compute-release`, `docs-audit`, `drain-knowledge`
+
+**SLOW still exceeds the 600s cap, and that is accepted, not overlooked.** Splitting it further would need a three-way partition and buys nothing: an agent must background it either way. The justfile comment states this so nobody runs it in the foreground and reports a hang.
 
 - [ ] **Step 3: Write `scripts/tests/_partition.md`**
 
@@ -117,13 +180,28 @@ If the FAST set's summed runtime exceeds 60s, lower the threshold to 10s and re-
 `just test-scripts` ran 358 tests in a single Pester invocation, measured at 917s, 650s, 586s and 590s on
 four consecutive runs against a 600s foreground tool cap. It STRADDLED the cap: it worked until it did not.
 
-The suite is now split by MEASURED per-file runtime, not by subject. Threshold: a file runs in the SLOW
-recipe if it measured >= 20s.
+The split is decided by measuring the RECIPE as one batch, not by thresholding per-file numbers.
 
-- `just test-scripts-fast` — the pre-push and inner-loop gate. Target: well under 60s.
-- `just test-scripts-slow` — everything else. Runs on the same pre-push hook, and must be BACKGROUNDED by
-  an agent because it exceeds the foreground tool cap.
+**Per-file runtime here is not a stable quantity, so it cannot be a rule.** Measured three times on one
+commit and machine, the same suite swings up to 5.9x purely on its position in the run, because whichever
+suite executes first absorbs pwsh + Pester cold-start for the whole run: `agy-after-reminder` measured
+48.9s first and 8.3s last; `release-lib` measured 25.7s first and 4.8s last. Eight of twelve suites were
+stable within 15%; four were not. A ">= 20s means SLOW" rule classifies those four differently depending
+only on sort order, so it is not reproducible and is not used.
+
+**Batching is not a saving.** The 13 fast suites as one `Invoke-Pester` process measured 94.2s / 75.1s /
+73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
+load once and accumulates across files.
+
+- `just test-scripts-fast` — the agent inner-loop gate. **157 tests, measured 74-94s.** Ceiling: 120s.
+- `just test-scripts-slow` — everything else. **201 tests, ~670s.** NOT on any git hook; it exceeds the
+  600s foreground tool cap and must be BACKGROUNDED by an agent.
 - `just test-scripts` — both, unchanged in meaning: still every test.
+
+**Neither recipe is wired to `lefthook.yml`, deliberately.** The full suite used to run on pre-push and
+was removed because git opens the SSH connection before the hook and the idle time made GitHub hang up
+mid-push (`lefthook.yml:11-18`). This split exists to solve the 600s *foreground tool cap* an agent hits,
+which is a justfile concern only.
 
 **Every test remains reachable from some recipe. The sum of the two halves is 358.** If you move a file
 between halves, re-measure and update the table below; do not edit it from memory.
@@ -144,8 +222,9 @@ one-element array holding a single string with spaces in it, and Pester will loo
 literal multi-word name and fail `PathNotFound`. Write `@('a.Tests.ps1', 'b.Tests.ps1')`.
 
 ```
-# Fast script gate: the pre-push and inner-loop recipe. Partitioned by MEASURED runtime, not by subject
-# (see scripts/tests/_partition.md). Every test is still reachable: fast + slow == the whole suite.
+# Fast script gate: the agent inner-loop recipe. NOT on any git hook - see scripts/tests/_partition.md.
+# The set was chosen by measuring THIS RECIPE as one batch, not by thresholding per-file times, which
+# swing up to 5.9x on run order. Every test is still reachable: fast + slow == the whole suite.
 test-scripts-fast:
     pwsh -c "Invoke-Pester @('scripts/tests/<FAST-1>.Tests.ps1', 'scripts/tests/<FAST-2>.Tests.ps1') -Output Detailed -CI"
 
@@ -159,19 +238,14 @@ test-scripts:
     pwsh -c "Invoke-Pester scripts/tests -Output Detailed -CI"
 ```
 
-- [ ] **Step 5: Wire the cadence — the count alone is gameable**
+- [ ] ~~**Step 5: Wire the cadence into lefthook**~~ — **DROPPED. `lefthook.yml` is not modified.**
 
-In `lefthook.yml`, in the same job list that already contains `run: just seed-sync-check`, add:
+**Do not add any Pester job to `lefthook.yml`.** See the amendment at the top of this task: the full suite already lived on that hook and was removed because the idle SSH connection made GitHub hang up mid-push, and `lefthook.yml:17` requires every job to stay "in the SECONDS range" (current total ~36s; the fast batch measures 74-94s).
 
-```yaml
-    test-scripts-fast:
-      run: just test-scripts-fast
-```
-
-**Do NOT add `test-scripts-slow` to lefthook** — it exceeds the cap and would make every push unusable. Instead add this comment directly above the `test-scripts-slow` recipe in the justfile:
+Anomaly #4 is the 600s **foreground tool cap** an agent hits — closed entirely by the justfile split. The cadence instead lives as a comment directly above the `test-scripts-slow` recipe in the justfile:
 
 ```
-# CADENCE: not on the pre-push hook (it exceeds the tool cap). Run it before any release, and after any
+# CADENCE: on no git hook at all, and it exceeds the 600s foreground tool cap. Run it before any release, and after any
 # change to a file listed as SLOW in scripts/tests/_partition.md. A recipe nobody runs is a retired test.
 ```
 
@@ -180,7 +254,7 @@ In `lefthook.yml`, in the same job list that already contains `run: just seed-sy
 ```bash
 just test-scripts-fast 2>&1 | tail -3
 ```
-Expected: `Failed: 0`, completing in well under 60s.
+Expected: `Failed: 0`, `Total: 157`, completing under 120s. **Time it from outside the process** — the recipe's own output does not include pwsh startup, and startup is part of what a caller pays.
 
 ```bash
 just test-scripts-slow 2>&1 | tail -3
@@ -188,27 +262,41 @@ just test-scripts-slow 2>&1 | tail -3
 **Run this with `run_in_background` and read the task output file** — it exceeds the foreground cap.
 Expected: `Failed: 0`.
 
-**The count oracle:** add the two recipes' **`Total`** numbers — NOT `Tests Passed`. **They must sum to 358, with `Failed: 0` on both.** If the total does not reach 358, a test was dropped or double-counted — STOP and report it rather than adjusting the expected number.
+**The count oracle:** add the two recipes' **`Total`** numbers — NOT `Tests Passed`. **They must sum to 358 (157 fast + 201 slow), with `Failed: 0` on both.** If the total does not reach 358, a test was dropped or double-counted — STOP and report it rather than adjusting the expected number.
+
+**A third oracle, because the count alone is gameable:** `git diff --stat lefthook.yml` must be **empty**. The amendment drops Step 5, and a well-meaning implementer "completing" the plan by wiring the hook would reintroduce the exact defect this task was amended to avoid.
 
 **Why `Total` and not `Passed`:** `scripts/tests/agy-anomaly-reminder.Tests.ps1:220` skips conditionally — `Set-ItResult -Skipped -Because 'this host does not enforce the read deny'` — on any host where `icacls` cannot actually deny the current process a read. There, Pester reports `Passed: 357, Skipped: 1, Total: 358`, and a `Passed == 358` oracle would halt on a healthy run. `Total` matches what Step 1's `$r.TotalCount` measured, so the two numbers are directly comparable.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add justfile lefthook.yml scripts/tests/_partition.md
-git commit -m "fix(tests): split the script gate by measured runtime
+git add justfile scripts/tests/_partition.md
+git commit -m "fix(tests): split the script gate, measured as a recipe not per file
 
 just test-scripts straddled the 600s foreground tool cap - measured at 917s,
 650s, 586s and 590s across four consecutive runs. Straddling is worse than being
 reliably over: it works until it does not.
 
-Split by MEASURED per-file runtime, never by subject, with the measurements
-recorded in scripts/tests/_partition.md so a later reader can see why each file
-landed where it did. The fast recipe joins the pre-push hook; the slow one keeps
-a stated cadence in a comment, because a recipe nobody runs is a retired test.
+The split is NOT a per-file runtime threshold. Measured three times on one commit
+and machine, a suite's wall clock swings up to 5.9x purely on its position in the
+run, because whichever suite runs first absorbs pwsh and Pester cold-start for the
+whole run - agy-after-reminder measured 48.9s first and 8.3s last. A threshold on
+that quantity classifies four of 24 suites differently depending on sort order, so
+it is not reproducible. The rule is instead: pick a candidate set, then measure the
+recipe as one batch and require it under the ceiling. Per-file numbers stay in
+scripts/tests/_partition.md as evidence.
 
-Both halves sum to 358 tests - the guard against making the fast number look good
-by dropping coverage."
+Batching is not a saving: the fast set as one process measured 74-94s against a
+65.8s warm per-file sum.
+
+lefthook.yml is deliberately untouched. The full suite already lived on pre-push
+and was removed because the idle SSH connection made GitHub hang up mid-push
+(lefthook.yml:11-18). This anomaly is the 600s FOREGROUND TOOL CAP an agent hits,
+which the justfile split closes on its own.
+
+157 fast + 201 slow = 358 - the guard against making the fast number look good by
+dropping coverage."
 ```
 
 ---
@@ -1074,7 +1162,7 @@ outcome would appear in practice - did not trip."
 
 ## Exhaustiveness audit
 
-**Gaps closed in-document:** the M1 threshold was under-specified in the spec (">= 20s, fall back to 10s, else STOP" now); the Rust tripwire's insertion point depends on a local whose name I did not verify, so Task 6 Step 5 instructs reading it and reports `STATE_MISMATCH` rather than guessing.
+**Gaps closed in-document:** the M1 threshold was under-specified in the spec, was then specified as ">= 20s, fall back to 10s, else STOP", and was **superseded on 2026-08-01 by the amendment at the head of Task 1** — measurement showed per-file runtime is not stable enough to threshold (5.9x swing on run order), so the rule is now "choose a candidate set, measure the recipe as one batch"; the Rust tripwire's insertion point depends on a local whose name I did not verify, so Task 6 Step 5 instructs reading it and reports `STATE_MISMATCH` rather than guessing.
 
 **Gaps flagged, with where they resolve:**
 1. **Task 3 Step 8 edits `~/.claude/settings.json`, the operator's file.** The plan says confirm first. It cannot be resolved in-document — it is the operator's call at execution time.
