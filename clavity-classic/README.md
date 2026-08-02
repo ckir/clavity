@@ -74,9 +74,9 @@ Classic wires those **manually by design**; the installer does not edit your age
 
 ```bash
 cargo build --release
-# put it on PATH, e.g. next to your psmux:
-cp target/release/clavity.exe "C:/!PORTABLES/!BIN/"   # Windows
-# cp target/release/clavity   ~/.local/bin/            # elsewhere
+# put the binary in any directory that is on your PATH - alongside psmux is convenient:
+mkdir -p "$LOCALAPPDATA/Programs/clavity" && cp target/release/clavity.exe "$_"   # Windows
+# cp target/release/clavity ~/.local/bin/                                         # elsewhere
 ```
 
 ### 3. Install the agy-side responder skill
