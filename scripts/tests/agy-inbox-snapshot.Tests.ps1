@@ -172,6 +172,27 @@ Describe 'agy-inbox-snapshot' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # AGY-CAPSTONE round 1 finding. KEEP feeds `tail -n +$((KEEP + 1))`; bash evaluates a non-numeric
+    # name as 0, so "abc", "-1" and a literal "0" all collapse to `tail -n +1`, which lists EVERY slot
+    # and deletes them all - including the snapshot taken moments earlier. Measured before the fix:
+    # 3 seeded + 1 fresh -> 0 remaining, silently, exit 0. A malformed knob must degrade to the
+    # default, never to total destruction of the history it is meant to size.
+    It 'ignores a malformed AGY_INBOX_SNAPSHOT_KEEP instead of destroying the ring' -ForEach @(
+        @{ Keep = '0' }, @{ Keep = 'abc' }, @{ Keep = '-1' }, @{ Keep = '3x' }
+    ) {
+        $r = New-PluginRoot $script:Good
+        try {
+            foreach ($i in 1..3) {
+                Set-Content -LiteralPath (Join-Path $r "knowledge/agy-observations.md.2026010$i-000000.bak") `
+                    -Value "old $i" -Encoding ascii
+            }
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                -Env @{ CLAUDE_PLUGIN_ROOT = $r; AGY_INBOX_SNAPSHOT_KEEP = $Keep } | Out-Null
+            # 3 seeded + 1 newly written, all retained under the fallback of 5.
+            BakCount $r | Should -Be 4 -Because "KEEP='$Keep' is malformed and must fall back to 5, not wipe the ring"
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'honours the .no-agy opt-out marker' {
         $r = New-PluginRoot $script:Good
         $h = Join-Path ([IO.Path]::GetTempPath()) ("ibxhome-" + [Guid]::NewGuid().ToString('N'))

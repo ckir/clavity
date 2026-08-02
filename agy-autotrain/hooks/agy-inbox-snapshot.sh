@@ -6,6 +6,12 @@
 set +e
 
 KEEP="${AGY_INBOX_SNAPSHOT_KEEP:-5}"          # how many slots to retain (tunable)
+# VALIDATE IT. KEEP feeds `tail -n +$((KEEP + 1))`, and bash evaluates a non-numeric name as 0, so a
+# typo ("abc"), a negative, or a literal 0 all become `tail -n +1` - which lists EVERY slot and deletes
+# them all, including the snapshot taken moments earlier. The knob meant to size the ring would silently
+# destroy it, fail-open and exit 0, exactly the outcome the invariants below exist to prevent.
+case "$KEEP" in ''|*[!0-9]*) KEEP=5 ;; esac
+[ "$KEEP" -lt 1 ] && KEEP=5
 OBS="${CLAUDE_PLUGIN_ROOT}/knowledge/agy-observations.md"
 
 input=$(cat 2>/dev/null)
