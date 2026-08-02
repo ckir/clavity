@@ -67,6 +67,46 @@ Describe 'agy-consult-guard' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'WARNS when the consult CLI is invoked as clavity.exe' {
+        # Capstone round 1: MEASURED silent before the anchor allowed a .exe suffix. On Windows this is
+        # the literal executable name, so the guard did not exist for the most likely local invocation.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'Bash' 'clavity.exe ask "review this"' $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'e.txt' 'five' -Encoding ascii; git add e.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when the consult CLI is invoked by an absolute path' {
+        # Capstone round 1: MEASURED silent before the anchor allowed a path prefix.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'Bash' '/usr/bin/clavity ask "review this"' $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'f.txt' 'six' -Encoding ascii; git add f.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT treat a parenthesised mention as a consult' {
+        # Pins a DELIBERATE non-widening. Adding "(" to the separator class would catch the capture form
+        # X=$(clavity ask ...), but MEASURED exactly one-for-one it would also make this string warn.
+        # A false alarm is what trained the operator to ignore this guard, so the capture form is left
+        # undetected on purpose. If someone widens the anchor to "(", this test is the thing that objects.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'Bash' 'echo "(clavity ask )"' $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'g.txt' 'seven' -Encoding ascii; git add g.txt; git commit -qm mine; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Not -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'ships as pure ASCII' {
         foreach ($f in @($script:Pre, $script:Post)) {
             ($([IO.File]::ReadAllBytes($f)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0

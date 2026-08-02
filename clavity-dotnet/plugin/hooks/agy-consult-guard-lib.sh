@@ -63,7 +63,19 @@ agy_guard_category() {
   # reported as the peer modifying version control. REPRODUCED: two identical commits differing only in
   # message text gave warn vs silent. A consult invocation can only start the string or follow a shell
   # separator, so require that.
-  local anchor='(^|[;&|]|&&|\|\|)[[:space:]]*clavity[[:space:]]+'
+  # Widened 2026-08-02 (capstone round 1): also allow an optional path prefix and a .exe suffix, so
+  # `clavity.exe ask`, `/usr/bin/clavity ask` and `C:\bin\clavity.exe ask` classify. All three were
+  # MEASURED silent before, i.e. the guard simply did not exist for them.
+  # Deliberately NOT widened to treat `(` as a separator. That would catch `X=$(clavity ask ...)` but
+  # would ALSO make a quoted `"(clavity ask )"` false-alarm - measured, exactly one for one, because both
+  # hinge on the same character - and a false alarm is what trained the operator to ignore this guard in
+  # the first place. The capture form is left undetected on purpose.
+  # KNOWN BOUNDARY, accepted: grep is line-oriented, so a MULTILINE command whose second line begins with
+  # `clavity ask` - a git commit message, say - classifies as a consult. In a real shell a newline IS a
+  # command separator, so distinguishing the two needs quote-aware parsing this hook deliberately does not
+  # attempt. The MCP path above is immune to all of this: it matches on tool NAME and returns before ever
+  # reaching this regex.
+  local anchor='(^|[;&|]|&&|\|\|)[[:space:]]*([[:graph:]]*[/\\])?clavity(\.exe)?[[:space:]]+'
   printf '%s' "$c" | grep -Eq "${anchor}ask([[:space:]]|$)"         && { echo sync;     return; }
   printf '%s' "$c" | grep -Eq "${anchor}send([[:space:]]|$)"        && { echo open;     return; }
   printf '%s' "$c" | grep -Eq "${anchor}await-reply([[:space:]]|$)" && { echo terminal; return; }
