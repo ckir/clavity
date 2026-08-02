@@ -184,4 +184,64 @@ public sealed class CliVerbsTests : IDisposable
         Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8(NonAsciiSample), error));
         Assert.Equal(Encoding.UTF8.GetBytes(NonAsciiSample), File.ReadAllBytes(GoldenHeader.GrowthPath(_dir)));
     }
+
+    // AT-2: the snapshot ring. The sidecar rotates in the SAME slot as its header - a header restored
+    // without its matching sidecar mismatches on read and is silently dropped from every ask, so a
+    // header-only backup is an unrestorable backup.
+    private static string[] Baks(string dir) =>
+        Directory.GetFiles(dir, "golden-header.growth.md.*.bak");
+
+    [Fact]
+    public void Commit_snapshots_the_previous_header_and_its_sidecar_together()
+    {
+        GoldenHeader.CommitGrowth(_dir, "first\n");
+        GoldenHeader.CommitGrowth(_dir, "second\n");
+
+        var baks = Baks(_dir);
+        Assert.Single(baks);
+        Assert.Equal("first\n", File.ReadAllText(baks[0]));
+        Assert.True(File.Exists(baks[0] + ".sha256"), "the sidecar must rotate in the same slot");
+    }
+
+    [Fact]
+    public void Commit_does_not_consume_a_slot_when_content_is_unchanged()
+    {
+        GoldenHeader.CommitGrowth(_dir, "same\n");
+        GoldenHeader.CommitGrowth(_dir, "same\n");
+        GoldenHeader.CommitGrowth(_dir, "same\n");
+        Assert.Empty(Baks(_dir));
+    }
+
+    [Fact]
+    public void Commit_prunes_the_ring_to_the_retention_limit()
+    {
+        // Pre-seed the ring rather than looping CommitGrowth. The snapshot stamp has ONE-SECOND
+        // resolution, so a tight loop of commits produces the SAME filename every iteration and
+        // File.Copy(overwrite: true) collapses them into one .bak - the assert would read 1, not 5.
+        // Seeding fixed 2026-01-01 names and firing a single real commit exercises the prune in
+        // milliseconds with no sleeps. Today's stamp sorts above 20260101-* under the Ordinal
+        // descending sort the implementation uses, so the newest slot is the real one.
+        GoldenHeader.CommitGrowth(_dir, "base\n");
+        for (var i = 1; i <= GoldenHeader.SnapshotKeep + 2; i++)
+            File.WriteAllText(Path.Combine(_dir, $"golden-header.growth.md.20260101-00000{i}.bak"), $"old {i}\n");
+
+        GoldenHeader.CommitGrowth(_dir, "trigger prune\n");
+
+        Assert.Equal(GoldenHeader.SnapshotKeep, Baks(_dir).Length);
+    }
+
+    [Fact]
+    public void A_restored_snapshot_slot_round_trips_through_the_read_side()
+    {
+        GoldenHeader.CommitGrowth(_dir, "original\n");
+        GoldenHeader.CommitGrowth(_dir, "replacement\n");
+
+        var bak = Baks(_dir)[0];
+        File.Copy(bak, GoldenHeader.GrowthPath(_dir), overwrite: true);
+        File.Copy(bak + ".sha256", GoldenHeader.GrowthPath(_dir) + ".sha256", overwrite: true);
+
+        // The whole point: restoring BOTH files leaves the read side satisfied rather than silently
+        // dropping the region on a hash mismatch.
+        Assert.Contains("original", GoldenHeader.TryReadCombined(_dir) ?? "");
+    }
 }

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Globalization;
 
 namespace Clavity.Ls;
 
@@ -17,6 +18,9 @@ public static class GoldenHeader
 
     /// <summary>Strict byte cap (security §size-cap): over-cap content is refused, not injected.</summary>
     public const int MaxBytes = 16 * 1024;
+
+    /// <summary>How many pre-mutation snapshot slots to retain per artifact (AT-2). FIFO.</summary>
+    public const int SnapshotKeep = 5;
 
     /// <summary>
     /// Cap on the <c>.sha256</c> sidecar file, in bytes. A sha256 hex digest is 64 characters, so 1 KiB
@@ -225,6 +229,33 @@ public static class GoldenHeader
 
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+        // AT-2 snapshot ring: preserve the CURRENT header and its sidecar as one slot before replacing
+        // them. Header and sidecar rotate together on purpose - restoring a header while the live
+        // sidecar still holds the previous hash makes the read side see a mismatch and skip the region,
+        // so a header-only backup restores to nothing. Dedup on identical content, otherwise an
+        // aborted re-commit burns a slot each time and a few retries evict the whole ring.
+        if (File.Exists(path))
+        {
+            var current = File.ReadAllText(path);
+            if (!string.Equals(current, content, StringComparison.Ordinal))
+            {
+                var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+                var bak = $"{path}.{stamp}.bak";
+                File.Copy(path, bak, overwrite: true);
+                var liveSidecar = path + ".sha256";
+                if (File.Exists(liveSidecar)) File.Copy(liveSidecar, bak + ".sha256", overwrite: true);
+
+                foreach (var stale in Directory.GetFiles(Path.GetDirectoryName(path)!,
+                             Path.GetFileName(path) + ".*.bak")
+                         .OrderByDescending(f => f, StringComparer.Ordinal)
+                         .Skip(SnapshotKeep))
+                {
+                    File.Delete(stale);
+                    if (File.Exists(stale + ".sha256")) File.Delete(stale + ".sha256");
+                }
+            }
+        }
 
         // 1) header: tmp -> move over target (atomic).
         var tmp = path + ".tmp";
