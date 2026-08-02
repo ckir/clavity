@@ -244,4 +244,60 @@ public sealed class CliVerbsTests : IDisposable
         // dropping the region on a hash mismatch.
         Assert.Contains("original", GoldenHeader.TryReadCombined(_dir) ?? "");
     }
+
+    /// <summary>
+    /// Seed the ring with <paramref name="count"/> slots whose stamps sort BELOW any real one, each with
+    /// its sidecar, so a prune has something old to evict and the sidecars have something to orphan.
+    /// </summary>
+    private void SeedOldSlots(int count)
+    {
+        for (var i = 1; i <= count; i++)
+        {
+            var slot = Path.Combine(_dir, $"golden-header.growth.md.20260101-00000{i}.bak");
+            File.WriteAllText(slot, $"old {i}\n");
+            File.WriteAllText(slot + ".sha256", GoldenHeader.Sha256Hex($"old {i}\n"));
+        }
+    }
+
+    [Fact]
+    public void Commit_prunes_the_OLDEST_slots_and_keeps_the_newest()
+    {
+        // Counting survivors cannot catch a reversed sort. With OrderBy instead of OrderByDescending the
+        // ring keeps the five OLDEST and deletes the three newest - including the snapshot just written -
+        // and the count is still exactly SnapshotKeep, so the count-only assertion stays green while the
+        // ring silently discards its most recent slot on every commit. Assert WHICH slots survive.
+        GoldenHeader.CommitGrowth(_dir, "base\n");
+        SeedOldSlots(GoldenHeader.SnapshotKeep + 2);
+
+        GoldenHeader.CommitGrowth(_dir, "trigger prune\n");
+
+        var surviving = Baks(_dir);
+        Assert.Equal(GoldenHeader.SnapshotKeep, surviving.Length);
+
+        // The slot just written holds the superseded live content. It is the newest and must survive.
+        Assert.Contains(surviving, f => File.ReadAllText(f) == "base\n");
+
+        // The oldest seeded slots are the ones that go; the newest seeded slot stays.
+        Assert.False(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000001.bak")),
+            "the oldest slot must be evicted first");
+        Assert.True(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000007.bak")),
+            "the newest seeded slot must survive");
+    }
+
+    [Fact]
+    public void Commit_prunes_a_stale_slots_sidecar_along_with_it()
+    {
+        // A pruned header whose sidecar is left behind leaks one orphan file per drain forever, and the
+        // orphans are indistinguishable from live slots by name.
+        GoldenHeader.CommitGrowth(_dir, "base\n");
+        SeedOldSlots(GoldenHeader.SnapshotKeep + 2);
+
+        GoldenHeader.CommitGrowth(_dir, "trigger prune\n");
+
+        Assert.False(File.Exists(Path.Combine(_dir, "golden-header.growth.md.20260101-000001.bak.sha256")),
+            "a pruned slot must not leave its sidecar behind");
+        Assert.Equal(
+            Baks(_dir).Length,
+            Directory.GetFiles(_dir, "golden-header.growth.md.*.bak.sha256").Length);
+    }
 }
