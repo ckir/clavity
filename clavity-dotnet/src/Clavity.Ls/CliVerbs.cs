@@ -82,9 +82,28 @@ public static class CliVerbs
             return 2;
         }
 
+        // Mojibake tripwire. A text pipe on Windows re-encodes the stream through the console code page,
+        // so the payload can arrive already mangled AND still be well-formed UTF-8 - which is why the
+        // integrity sidecar matched corrupt content for 13 days. This is deliberately a HEURISTIC over
+        // known corruption families, not a proof: it cannot enumerate every mis-encoding and does not
+        // claim to. It is NOT a blanket non-ASCII rejection - curate-commit is a faithful byte transport
+        // by contract (see CurateCommit_round_trips_non_ascii_content_byte_identically), and rejecting
+        // all non-ASCII would break the very property that makes the raw-byte path worth mandating.
+        var payload = new string(buffer, 0, total);
+        foreach (var signature in new[] { "\u0393\u00C7", "\u00E2\u20AC" })
+        {
+            if (payload.Contains(signature, StringComparison.Ordinal))
+            {
+                error.WriteLine("curate-commit: input contains a suspected mojibake sequence " +
+                                "(a text pipe re-encoded it through the console code page); nothing written. " +
+                                "Stream the file's raw bytes to stdin instead of piping text.");
+                return 2;
+            }
+        }
+
         try
         {
-            GoldenHeader.CommitGrowth(dir, new string(buffer, 0, total));
+            GoldenHeader.CommitGrowth(dir, payload);
             return 0;
         }
         catch (InvalidOperationException ex)   // multibyte content whose UTF-8 BYTE count exceeds the cap

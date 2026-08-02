@@ -719,6 +719,20 @@ fn curate_commit() -> i32 {
             return 1;
         }
     };
+    // Mojibake tripwire - see the .NET twin in CliVerbs.cs for the full rationale. A heuristic over known
+    // corruption families, NOT a blanket non-ASCII rejection: curate-commit is a faithful byte transport
+    // by contract, and rejecting all non-ASCII would break the property that makes the raw-byte publish
+    // path worth mandating over a text pipe.
+    for signature in ["\u{0393}\u{00C7}", "\u{00E2}\u{20AC}"] {
+        if content.contains(signature) {
+            eprintln!(
+                "clavity curate-commit: input contains a suspected mojibake sequence (a text pipe \
+                 re-encoded it through the console code page); nothing written. Stream the file's raw \
+                 bytes to stdin instead of piping text."
+            );
+            return 1;
+        }
+    }
     let Some(home) = user_home() else {
         eprintln!("clavity curate-commit: cannot locate home dir (USERPROFILE/HOME unset)");
         return 2;

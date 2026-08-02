@@ -216,6 +216,13 @@ the console OEM code page (CP437) — corrupting non-ASCII (an em dash becomes `
 `curate-commit`'s raw-byte transport exists to reject. Feed the file's raw UTF-8 bytes to the process's
 stdin base stream instead. GROWTH is **regenerated wholesale** each run, so the publish is idempotent:
 
+**Compile GROWTH as pure ASCII.** This is a rule about what we WRITE, not a restriction on what the
+transport may carry — `curate-commit` remains a faithful byte transport and will accept legitimate
+non-ASCII. It carries a tripwire for known mojibake families, which is a heuristic and not a proof, so the
+authoring policy is what covers the general case. GROWTH is a compiled, machine-generated artifact with no
+present need for typography, and non-ASCII in it bought nothing while costing 13 days of silently corrupt
+injection into every ask.
+
     # Resolve the driver (dotnet `clavity-ls` or classic `clavity`) and stream RAW bytes to its stdin.
     # Both variants' `curate-commit` write ONLY golden-header.growth.md (SEED untouched) — transport is identical.
     $exe = (Get-Command clavity-ls -EA SilentlyContinue) ?? (Get-Command clavity -EA SilentlyContinue)

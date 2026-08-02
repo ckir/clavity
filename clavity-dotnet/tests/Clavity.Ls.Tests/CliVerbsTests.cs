@@ -145,4 +145,43 @@ public sealed class CliVerbsTests : IDisposable
 
         Assert.Equal(before, File.ReadAllBytes(seed));
     }
+
+    // The 13-day corruption: a text pipe re-encoded the payload through the console code page before
+    // curate-commit ever saw it, so the bytes arrived already wrong - and arrived as VALID UTF-8
+    // (the CP437 round-trip of an em-dash is the well-formed sequence U+0393 U+00C7 U+00F6). The .sha256
+    // sidecar therefore MATCHED, confirming corrupt content. An integrity sidecar catches torn writes; it
+    // cannot catch content that was wrong on arrival.
+    private const string Cp437MangledEmDash = "\u0393\u00C7\u00F6";
+    private const string Cp1252MangledPrefix = "\u00E2\u20AC";
+
+    [Fact]
+    public void CurateCommit_refuses_a_payload_carrying_the_CP437_mojibake_signature()
+    {
+        var error = new StringWriter();
+        var payload = $"[ANTI-PATTERNS]\n- a rule {Cp437MangledEmDash} with a mangled dash\n";
+        Assert.NotEqual(0, CliVerbs.CurateCommit(_dir, Utf8(payload), error));
+        Assert.Contains("mojibake", error.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(GoldenHeader.GrowthPath(_dir)));
+    }
+
+    [Fact]
+    public void CurateCommit_refuses_a_payload_carrying_the_CP1252_mojibake_signature()
+    {
+        var error = new StringWriter();
+        var payload = $"[ANTI-PATTERNS]\n- a rule {Cp1252MangledPrefix}\u201D with a mangled quote\n";
+        Assert.NotEqual(0, CliVerbs.CurateCommit(_dir, Utf8(payload), error));
+        Assert.False(File.Exists(GoldenHeader.GrowthPath(_dir)));
+    }
+
+    [Fact]
+    public void CurateCommit_still_accepts_legitimate_non_ascii()
+    {
+        // Guards the tripwire against becoming a blanket ASCII rule. curate-commit is a FAITHFUL BYTE
+        // TRANSPORT by contract - that property is exactly why the raw-byte publish path is worth
+        // mandating over a text pipe. A blanket rule would break it and force the two round-trip tests
+        // above to be inverted, which is not a change this milestone is permitted to make.
+        var error = new StringWriter();
+        Assert.Equal(0, CliVerbs.CurateCommit(_dir, Utf8(NonAsciiSample), error));
+        Assert.Equal(Encoding.UTF8.GetBytes(NonAsciiSample), File.ReadAllBytes(GoldenHeader.GrowthPath(_dir)));
+    }
 }
