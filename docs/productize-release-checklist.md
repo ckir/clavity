@@ -10,6 +10,12 @@ predates SP-D's commits. This checklist is its closing step.
 - [ ] `agy-liveness-check.sh` including the D1 ownership check.
 - [ ] The hook-ownership rule in both plugin READMEs.
 - [ ] `docs/agy-capstone-ledger.md`.
+- [ ] **AT-2 durability (added 2026-08-02, after this checklist was first written).** The two
+      pre-mutation snapshot rings: `agy-autotrain/hooks/agy-inbox-snapshot.sh` with its `PreToolUse`
+      registration in that plugin's `hooks.json`, the ring inside `GoldenHeader.Commit()`, the
+      transactional ordering in `agy-curate`'s `## Finish`, and the recovery procedures in
+      `agy-autotrain/README.md`. **Verified shipping** — `agy-autotrain/installer/agy-autotrain.iss:53`
+      copies `..\*` recursively, so the new hook file reaches an installed box.
 
 ## Before installing
 
@@ -53,3 +59,13 @@ predates SP-D's commits. This checklist is its closing step.
 - The clavity-classic ME1 binary-native-vs-bash fork — tracked debt, does not gate (owner ruling).
 - Productizing `agy-test-audit` and `AGY-SCOPE` — a follow-on epic; this release closes at four
   disciplines.
+
+  ⚠️ **Corrected 2026-08-02: read that as a statement of SCOPE, not of what lands on disk.**
+  `agy-test-audit` is not merely planned — `plugin/skills/agy-test-audit/SKILL.md` and
+  `plugin/hooks/agy-test-audit-reminder.sh` exist in both plugin trees today, and both installers copy
+  their payload by **recursive wildcard** (`clavity-dotnet.iss:40` ships `..\plugin\*`;
+  `agy-autotrain.iss:53` ships `..\*`). **It therefore ships with this release regardless of what this
+  line says.** What remains a follow-on is productizing it — the docs, the ownership entry, and the
+  epic's own closing steps — not its delivery. `AGY-SCOPE` genuinely is absent: no skill or hook for it
+  exists yet. If something must truly not reach users, exclude it in the `.iss`; a line in this file
+  will not do it.
