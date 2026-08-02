@@ -98,6 +98,34 @@ Describe 'agy-inbox-snapshot' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # AGY-TEST-AUDIT finding. 'prunes to at most 5 slots' above asserts ARITY only, and arity cannot
+    # detect a reversed sort: with `ls -1tr` the ring keeps the five OLDEST and deletes the newest -
+    # including the snapshot taken moments earlier by that same invocation - while the surviving count
+    # is still exactly 5. Measured before this test existed: that mutation left the whole suite at
+    # 21/0 green. The C# sibling already pinned this half of the guarantee
+    # (Commit_prunes_the_OLDEST_slots_and_keeps_the_newest); the bash half was missed.
+    # Assert WHICH slots survive, not how many.
+    It 'prunes the OLDEST snapshots and preserves the newest' {
+        $r = New-PluginRoot $script:Good
+        try {
+            foreach ($i in 1..7) {
+                Set-Content -LiteralPath (Join-Path $r 'knowledge/agy-observations.md') `
+                    -Value ($script:Good + "- [heuristic] (driver/probabilistic) entry $i`n") -Encoding ascii
+                Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+                Start-Sleep -Seconds 1
+            }
+            $bodies = @(
+                Get-ChildItem -LiteralPath (Join-Path $r 'knowledge') -Filter 'agy-observations.md.*.bak' |
+                    ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }
+            )
+            $bodies.Count | Should -Be 5
+            @($bodies | Where-Object { $_ -match 'entry 7' }).Count |
+                Should -Be 1 -Because 'the NEWEST snapshot must survive the prune'
+            @($bodies | Where-Object { $_ -match 'entry 1' }).Count |
+                Should -Be 0 -Because 'the OLDEST snapshot must be the one evicted'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'exits 0 when the inbox does not exist at all' {
         $r = New-PluginRoot $null
         try {
