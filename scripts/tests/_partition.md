@@ -1,7 +1,9 @@
 # Test suite partition
 
-`just test-scripts` ran 358 tests in a single Pester invocation, measured at 917s, 650s, 586s and 590s on
-four consecutive runs against a 600s foreground tool cap. It STRADDLED the cap: it worked until it did not.
+**Why the split exists (the state that forced it, 2026-08-01).** `just test-scripts` then ran 358 tests in
+a single Pester invocation, measured at 917s, 650s, 586s and 590s on four consecutive runs against a 600s
+foreground tool cap. It STRADDLED the cap: it worked until it did not. Those figures are history — the
+current, re-measured numbers are further down.
 
 The split is decided by measuring the RECIPE as one batch, not by thresholding per-file numbers.
 
@@ -16,23 +18,55 @@ only on sort order, so it is not reproducible and is not used.
 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **157 tests, measured 74-94s.** Ceiling: 120s.
-- `just test-scripts-slow` — everything else. **201 tests, ~670s.** NOT on any git hook; it exceeds the
-  600s foreground tool cap and must be BACKGROUNDED by an agent.
+- `just test-scripts-fast` — the agent inner-loop gate. **13 suites, 162 tests, measured 125.6s and
+  128.5s** (two consecutive quiet-machine runs, 2026-08-02).
+- `just test-scripts-slow` — everything else. **12 suites, 206 tests, measured 503.6s** (2026-08-02).
+  NOT on any git hook; it can exceed the 600s foreground tool cap and must be BACKGROUNDED by an agent,
+  blocked on by reading its own `Tests completed` line — never by watching a process count.
 - `just test-scripts` — both, unchanged in meaning: still every test.
+
+**The runtime target is ~120s, and it is a TARGET, not an enforceable invariant.** Do not gate anything on
+it. Day-to-day variance on this machine exceeds the margin it would police: the SAME 162-test fast half
+measured ~95s on 2026-08-01 and 125.6-128.5s on 2026-08-02 (a 33% swing on identical code), and the slow
+half measured 1192.6s on 2026-08-01 and 469.5s / 503.6s on 2026-08-02 (a factor of 2.5). The dominant
+variable is what else the machine is doing, including the driving agent's own tool calls — the same CPU
+runs the tests and the agent. Two consequences, both learned the hard way:
+
+1. **Never conclude from one sample.** Take at least two, as the sole command in their message.
+2. **Never predict a partition change by SUBTRACTION.** Moving the 78.4s `agy-consult-guard` suite out of
+   the fast half was predicted (twice, independently) to land it at ~113s. It measured ~127s. Whichever
+   suite runs first absorbs pwsh + Pester cold-start for the whole batch, so removing a suite does not
+   remove its share of that cost — it redistributes it. Measure the recipe after the move, every time.
 
 **Neither recipe is wired to `lefthook.yml`, deliberately.** The full suite used to run on pre-push and
 was removed because git opens the SSH connection before the hook and the idle time made GitHub hang up
 mid-push (`lefthook.yml:11-18`). This split exists to solve the 600s *foreground tool cap* an agent hits,
 which is a justfile concern only.
 
-**Every test remains reachable from some recipe. The sum of the two halves is 358.** If you move a file
-between halves, re-measure and update the table below; do not edit it from memory.
+**Every test remains reachable from some recipe. The invariant is STRUCTURAL, not numeric:** every
+`*.Tests.ps1` in this directory appears in exactly one of the two halves. The oracle is
+
+```bash
+diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
+     <(grep -oE "scripts/tests/[A-Za-z0-9._-]+\.Tests\.ps1" justfile | xargs -n1 basename | sort -u)
+```
+
+which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
+the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
+test raises it. The count today is 368 (162 + 206) and it is a fact, not a contract.
+
+If you move a file between halves, re-measure BOTH halves and update this file; do not edit it from
+memory, and do not compute the new number by subtraction (see above).
 
 ## Measured runtimes
 
+These are per-file numbers taken in one sweep and are INDICATIVE ONLY — the section above explains why a
+per-file time is not a stable quantity and is not used as the partition rule. `agy-consult-guard` was
+measured separately (2026-08-02) in isolation, as the sole command on a quiet machine.
+
 ```
 abort-drain.Tests.ps1                           261,3s   13 tests
+agy-consult-guard.Tests.ps1                      78,4s    5 tests   <- SLOW, moved 2026-08-02
 accept-drain.Tests.ps1                           51,2s   10 tests
 agy-after-reminder.Tests.ps1                      8,8s    8 tests
 agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
