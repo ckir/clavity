@@ -108,4 +108,83 @@ Describe 'agy-inbox-snapshot' {
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }
+
+    # --- The jq-ABSENT fallback branch. -------------------------------------------------------------
+    # jq resolves here to the operator's portable toolchain, so every test above exercises ONLY the jq
+    # branch. On a stock end-user box jq is absent and the field-bounded-grep fallback is the path that
+    # actually runs - i.e. the branch most installs depend on was the one branch with no coverage.
+    # PATH=/usr/bin removes jq while keeping grep/cp/date/ls/cmp/head/tail/rm, all of which live there.
+
+    It 'snapshots via the fallback when jq is absent' {
+        $r = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                -Env @{ CLAUDE_PLUGIN_ROOT = $r; PATH = '/usr/bin' } | Out-Null
+            BakCount $r | Should -Be 1
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT snapshot via the fallback for an unrelated skill' {
+        $r = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'superpowers:brainstorming') `
+                -Env @{ CLAUDE_PLUGIN_ROOT = $r; PATH = '/usr/bin' } | Out-Null
+            BakCount $r | Should -Be 0
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- Field-boundedness. -------------------------------------------------------------------------
+    # The hook's own comment promises "Never a bare substring: another skill could merely MENTION
+    # agy-curate in its args" - but nothing held it to that. A bare `grep -q agy-curate` passes every
+    # other test in this file while snapshotting on any prompt that happens to name the skill.
+
+    It 'does NOT snapshot when another skill merely MENTIONS agy-curate in its args' -ForEach @(
+        @{ Branch = 'jq';       PathEnv = $null }
+        @{ Branch = 'fallback'; PathEnv = '/usr/bin' }
+    ) {
+        $payload = @{
+            tool_name  = 'Skill'
+            tool_input = @{ skill = 'superpowers:brainstorming'; args = 'first drain the inbox with agy-curate' }
+            cwd = 'C:/nowhere'; session_id = 'ibxtest'
+        } | ConvertTo-Json -Compress
+        $r = New-PluginRoot $script:Good
+        try {
+            $envs = @{ CLAUDE_PLUGIN_ROOT = $r }
+            if ($PathEnv) { $envs['PATH'] = $PathEnv }
+            Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $envs | Out-Null
+            BakCount $r | Should -Be 0 -Because "the $Branch branch must key on the skill FIELD, not a substring"
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- The documented knobs. ----------------------------------------------------------------------
+
+    It 'honours the AGY_INBOX_SNAPSHOT_KEEP retention override' {
+        $r = New-PluginRoot $script:Good
+        try {
+            foreach ($i in 1..4) {
+                Set-Content -LiteralPath (Join-Path $r 'knowledge/agy-observations.md') `
+                    -Value ($script:Good + "- [heuristic] (driver/probabilistic) entry $i`n") -Encoding ascii
+                Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                    -Env @{ CLAUDE_PLUGIN_ROOT = $r; AGY_INBOX_SNAPSHOT_KEEP = '2' } | Out-Null
+                Start-Sleep -Seconds 1
+            }
+            BakCount $r | Should -Be 2
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'honours the .no-agy opt-out marker' {
+        $r = New-PluginRoot $script:Good
+        $h = Join-Path ([IO.Path]::GetTempPath()) ("ibxhome-" + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $h '.claude/.no-agy') -Value '' -Encoding ascii
+        try {
+            # HOME must be ABSOLUTE - MSYS mangles a relative value.
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                -Env @{ CLAUDE_PLUGIN_ROOT = $r; HOME = ($h -replace '\\','/') } | Out-Null
+            BakCount $r | Should -Be 0
+        } finally {
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
