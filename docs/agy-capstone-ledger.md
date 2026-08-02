@@ -38,3 +38,35 @@ finding until the peer was told its previous verdict had been refuted by measure
 range were found by checking the reviewer, not by the review. That is worth recording precisely because
 this ledger is a record and not a proof: a row reading "3 rounds, GREEN" would otherwise imply a
 convergence that did not happen the way the number suggests.
+
+---
+
+**Anomaly file drained 2026-08-02 — the 8 captured entries, all fixed rather than filed.** The owner's
+ruling was that closing an anomaly means fixing the defect and letting the file empty as a consequence.
+`.clavity/local-anomalies.md` is gitignored, so deleting an entry destroys the only record of it; the
+dispositions are therefore recorded here.
+
+| # | Anomaly | Disposition |
+|---|---------|-------------|
+| 1 | consult guard classified any command whose TEXT mentioned the consult CLI as a consult | fixed — classifier anchored on command position (`a25ebd2`'s predecessor `fbd89b9`), integration test seen RED first |
+| 2 | consult guard matcher named the MARKETPLACE where the live tool names the PLUGIN, so it never fired on the MCP path | fixed — matcher is now a pattern, plus a namespace assertion that rejects a literal plugin-qualified tool id (`fbd89b9`) |
+| 3 | `agy_look` truncates the newest reply out of a long cascade | tracked elsewhere — root cause is the gRPC 4 MB default in `LsChannel.cs`; backlog item `agy-autotrain/docs/fix-the-tool-backlog/grpc-default-max-message-size.md`, committed `1d4a016` |
+| 4 | `just test-scripts` grew past the 600s foreground tool cap | fixed — suite partitioned by measured batch runtime (`a52a991`, re-partitioned `0543dcc`) |
+| 5 | a dispatched subagent wrote to a file outside the set it was told to touch | fixed — dispatch now states a FILES allow-list and the driver diffs `git status --short` against it (`9d7f484`) |
+| 6 | seed sync gate used an ALLOW-LIST, so any new shared file was silently ungated | fixed — replaced with discovery over the union of both plugin trees (`29a5db8`) |
+| 7 | GROWTH region mojibake-corrupted for 13 days while its sha256 sidecar MATCHED | artifact republished clean; class closed by a tripwire inside `curate-commit`, both binaries (`a25ebd2`) |
+| 8 | `agy-curate` had no legal end state for an entry that is neither promotable nor droppable | fixed — HELD added as a fourth disposition, and the promotion rubric's scope bounded (`a51a20e`) |
+
+The owner's failure criterion for the first triage — "a third outcome appears in practice" — did not trip.
+
+**The file is NOT empty, and that is the correct outcome.** Three entries remain because they are not fixed
+by this plan, and an entry is deleted only when its fix lands: a Pester suite racing on `.git/index` (cause
+UNCONFIRMED — a concurrent `git status` writes that file too, so it needs a quiet-machine repro before it is
+blamed on the suite), a Pester suite mutating the TRACKED `build/members.json`, and a `\uXXXX` escape
+arriving DECODED when written through the editing tool (mechanism unproven — tool or emitting layer — so
+the entry records the observable, not a cause). The SessionStart reminder therefore still reports
+`3 untriaged` and exits 2. The plan predicted silence and exit 0; that prediction assumed the file held
+only the original eight. Deleting the other three to reach a silent hook would have destroyed the only
+record of three live defects, which is the exact failure this capture mechanism exists to prevent.
+
+**Three of the original eight were found by the capture mechanism during its own construction.**
