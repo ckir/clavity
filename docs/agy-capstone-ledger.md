@@ -25,6 +25,37 @@ this table.
 | 2026-08-01 | 185affc..757337a | 3 | GREEN | folds f8d9703, 01622ce, 757337a; briefs .clavity/seams/phase-b-capstone-r{1,2,3}.md |
 | 2026-08-01 | 19f589a..18495cd | 3 | GREEN | folds da18681, 18495cd; briefs .clavity/seams/anomaly-capstone-r{1,2,3}.md |
 | 2026-08-02 | 29a5db8..c70f145 | 4 | GREEN | folds d089552, 0ca7407, c70f145; briefs .clavity/seams/capstone-anomaly-fix-r{1,2,3,4}.md |
+| 2026-08-02 | 6d79bee..a0b2d7b (AT-2 durability) | 3 | GREEN | folds 3adc045, a0b2d7b; round 1's miss reproduced by the probe recorded in 3adc045's message |
+
+**A note on the AT-2 row: round 1 returned GREEN with zero findings, and it was wrong.** Its answer walked
+the six-item do-not-re-raise ledger it had been given and confirmed each item back to the author. Nothing
+in it was a surprise, which is the tell — a review whose findings never surprise the author has agreed
+with the author rather than read the code. The defect was on the surface the ledger never mentioned:
+`AGY_INBOX_SNAPSHOT_KEEP` fed `tail -n +$((KEEP + 1))` unvalidated, and because bash evaluates a
+non-numeric name as 0, a typo (`abc`), a negative, or a literal `0` all became `tail -n +1` — which lists
+every slot and deletes them all, **including the snapshot written moments earlier by that same
+invocation.** Measured with a control that had to retain: `KEEP=5` → 4 slots kept; `KEEP=0`/`abc`/`-1` →
+0 kept, silently, exit 0. A typo in a documented knob was total loss of the history the hook exists to
+preserve. Fixed in `3adc045`.
+
+Round 2, run with five rotated lenses and told plainly that round 1 had been refuted by measurement,
+produced two findings. One was real (`B1`: the prune re-derived its directory with `!` where the adjacent
+line already guards the empty case). **The other arrived with fabricated evidence** — it cited
+bullet-bearing comment blocks at "lines 98, 104, 138" of a file that is 62 lines long; those lines do not
+exist, and its stated consequence was independently wrong, since the dedup invariant bounds unchanged
+content to one slot. The underlying observation was still correct and cheap, so it was folded as
+hardening with a mutation-proven test, and the fabrication recorded rather than quietly dropped.
+
+Round 3 rotated five further lenses and returned clean, citing two files it had not been pointed at. Its
+highest-risk claim — that the installed layout actually reaches the new hook — was checked independently
+rather than accepted: `agy-autotrain/installer/agy-autotrain.iss:53` ships `..\*` with `recursesubdirs`,
+excluding only `installer,dist,publish,agy-observations.md`, so a newly added hook file does reach an
+installed box. That check is the difference between this GREEN and round 1's.
+
+**This is the second consecutive capstone in which the peer's first-round GREEN was false, and the second
+in which a confident, specific, verifiable-looking line citation was invented.** Both times the defect was
+found by checking the reviewer rather than by the review. The `rounds` column reads 3; the honest reading
+is that the peer produced nothing of value until it was told, with measurements, that it had been wrong.
 
 **A note on the anomaly-capture row, because it is the first entry whose round 1 was rejected.** Round 1
 returned GREEN with zero findings on an 864-line diff. It was not accepted: two of its claims were false —
