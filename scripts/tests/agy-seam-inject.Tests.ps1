@@ -125,4 +125,10 @@ Describe 'agy-seam-inject.sh' {
         $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $script:CleanHome }
         $r.StdOut | Should -Match 'guard inactive'
     }
+
+    It 'the dispatch directive demands a FILES allow-list' {
+        $out = Invoke-Hook 'superpowers:subagent-driven-development'
+        $out | Should -Match 'FILES clause'
+        $out | Should -Match 'git status --short'
+    }
 }

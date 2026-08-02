@@ -136,6 +136,18 @@ report-back section:
 > `none` - an explicit none is worth more than silence, because silence is indistinguishable from not
 > having looked.
 
+> **FILES.** This dispatch may create or modify ONLY the files listed here:
+> `<list every path the subagent is permitted to touch>`. Touching anything else - including a file that
+> seems obviously related, a test you think should be updated, or a doc you think is now stale - is out of
+> bounds. If the task cannot be completed within that list, STOP and report
+> `SCOPE: needs <path> because <reason>` rather than widening it yourself.
+
+**The driver verifies this, and that half is the one that historically failed.** After the subagent
+returns, run `git status --short` and compare the actual change set against the list you gave it. A
+subagent once wrote to a file outside its named set, and nothing detected it except the driver happening
+to look. Naming the list without checking it afterwards is theatre: the list is a statement of intent, and
+the diff is the only evidence.
+
 **Why a heading and not a sentence in the prose.** A report gets skimmed. A dedicated heading with a
 fixed shape survives skimming, and it makes an omission visible: a report with no such section is a
 report that did not answer the question.
