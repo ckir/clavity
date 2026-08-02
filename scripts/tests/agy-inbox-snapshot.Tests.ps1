@@ -172,6 +172,21 @@ Describe 'agy-inbox-snapshot' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # AGY-CAPSTONE round 2 hardening. Invariant 2 is supposed to mean "## Pending holds something worth
+    # saving". Unscoped, a bullet ANYWHERE in the file satisfied it - so a drained inbox whose header
+    # prose or a hand-edit carried a bullet would snapshot nothing of value. No such line exists in the
+    # live corpus (measured: all 8 bullets sit below ## Pending at line 9), so this pins intent rather
+    # than fixing a live defect.
+    It 'does NOT count a bullet that sits ABOVE the Pending section' {
+        $body = "# agy observations inbox (raw, project-agnostic)`n`n- [assumption] (peer/probabilistic) stray`n`n## Pending`n"
+        $r = New-PluginRoot $body
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            BakCount $r | Should -Be 0
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     # AGY-CAPSTONE round 1 finding. KEEP feeds `tail -n +$((KEEP + 1))`; bash evaluates a non-numeric
     # name as 0, so "abc", "-1" and a literal "0" all collapse to `tail -n +1`, which lists EVERY slot
     # and deletes them all - including the snapshot taken moments earlier. Measured before the fix:

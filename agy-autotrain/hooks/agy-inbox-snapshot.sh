@@ -44,7 +44,11 @@ grep -q '^## Pending' "$OBS" || exit 0
 # character class MUST include the hyphen - [a-z]+ does not match anti-pattern, which was 42 of the 79
 # entries in the last real corpus. With [a-z] a valid anti-pattern-only inbox reads as malformed and
 # gets no snapshot at all.
-grep -Eq '^- \[[a-z-]+\]' "$OBS" || exit 0
+# Scope the search to the Pending section. Unscoped, a bullet anywhere in the file - header prose, a
+# future template change, a hand-edit - satisfies an invariant that is supposed to mean "Pending has
+# something worth saving". No such line exists in the current corpus, so this is hardening, not a live
+# defect; the dedup invariant below would in any case bound the damage to one slot.
+sed -n '/^## Pending/,$p' "$OBS" | grep -Eq '^- \[[a-z-]+\]' || exit 0
 
 # 3. DEDUP: never rotate when content is identical to the newest snapshot. Without this an aborted or
 # re-run agy-curate burns a slot each time, so a few retries silently evict the whole history. It also

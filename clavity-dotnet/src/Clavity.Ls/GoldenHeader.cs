@@ -246,7 +246,12 @@ public static class GoldenHeader
                 var liveSidecar = path + ".sha256";
                 if (File.Exists(liveSidecar)) File.Copy(liveSidecar, bak + ".sha256", overwrite: true);
 
-                foreach (var stale in Directory.GetFiles(Path.GetDirectoryName(path)!,
+                // Reuse `dir` from above rather than re-deriving with `!`. Line 231 already treats an
+                // empty directory as a real case; Directory.GetFiles("") throws ArgumentException, so
+                // the null-forgiving re-derivation quietly removed a defence its own neighbour keeps.
+                // Not reachable through CommitGrowth today (ResolveDir is guarded non-blank), but
+                // Commit is public and a bare filename is exactly what line 231 anticipates.
+                foreach (var stale in Directory.GetFiles(string.IsNullOrEmpty(dir) ? "." : dir,
                              Path.GetFileName(path) + ".*.bak")
                          .OrderByDescending(f => f, StringComparer.Ordinal)
                          .Skip(SnapshotKeep))
