@@ -17,6 +17,107 @@ spec (`docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md`, refer
 
 ---
 
+## AT-2 — Durability for the *accumulated* observations inbox (the one artifact with no recovery path)
+
+**Status:** open, needs brainstorming · **Opened:** 2026-07-30 · **Size:** unknown until the fork below is
+settled (options range from markdown-only to a new lifecycle mechanism, and the largest option is probably
+*disqualified* by the thinning guardrail — see "Tested against the guardrail")
+
+**Provenance.** Surfaced while driving an unrelated subproject in the sibling `flaui-mcp` repo (2026-07-30).
+The driver was asked whether the *capture* skills protect knowledge against `/compact` and power failure, and
+measured the answer per store. `flaui-mcp`'s inbox came out fine. This one did not, and the difference is
+structural rather than incidental — which is why it belongs here as a task rather than as a note.
+
+### The gap, with measurements (2026-07-30, this machine)
+
+The inbox exists in **two different places that are easy to conflate**, and only one of them is protected:
+
+| | path | protection |
+|---|---|---|
+| **Shipped seed** | `knowledge/agy-observations.md` in THIS repo | tracked in git; full history; recoverable |
+| **Accumulated inbox** | `%LOCALAPPDATA%\Programs\agy-autotrain\plugins\agy-autotrain\knowledge\agy-observations.md` | **in no git repo at all** |
+
+The accumulated copy is the one with the value: **51.0 KB, 48 pending entries** at time of writing, against a
+curate threshold of 8. Every `agy-learn` capture appends *there*. It has no version control, no history, and
+no off-machine copy — so there is no way to recover a truncated write, an accidental deletion, or a bad edit
+by an agent, and no way to see what an entry said before someone rewrote it.
+
+**Compare the sibling loop, which is fine:** `flaui-mcp`'s `.claude/flaui-mcp/observations.md` lives INSIDE
+the project repo, tracked and not ignored, so every capture is one `git add` from durable. The asymmetry is
+not an oversight in either design — it follows from agy-autotrain's inbox being **machine-wide** (it must
+outlive any single project) while flaui-mcp's is **project-scoped**. Machine-wide is the right call; it just
+leaves this artifact outside every repo boundary that would otherwise protect it.
+
+### What ALREADY protects it — do not rebuild this
+
+The installer is not naive here, and any proposal must start from what it already does
+(`installer/agy-autotrain.iss`):
+- `agy-observations.md` is **excluded from the blanket copy** and seeded separately with
+  `onlyifdoesntexist`, precisely so an upgrade cannot replace accumulated observations with the shipped
+  template (`:31-41`, `:54`, `:60`). The comments there state the failure mode in as many words.
+- An uninstall path warns about *"observations captured but not yet drained"* (`:127`) and there is
+  inbox-file handling around `:148-153`, including a deliberate note that renaming the inbox to `.backup`
+  would drop it from the injected set.
+- A `agy-observations.md.preinstall-backup` exists on this machine.
+
+**So the install/upgrade vector is covered.** The uncovered vectors are everything else.
+
+### Why that is still insufficient — the specific weaknesses
+
+1. **Single slot, overwritten.** One `.preinstall-backup`, replaced by the next install. There is no history,
+   so a bad state that survives one install cycle silently overwrites the last good copy.
+2. **Measured staleness right now:** the backup is **22.4 KB** against a live **51.0 KB** inbox. Roughly
+   **28.6 KB of observations — more than half the corpus — exist in exactly one file on one disk.**
+3. **Co-located with what it protects.** The backup sits in the same directory as the original, so it shares
+   its fate under directory deletion, disk loss, or a bad recursive operation.
+4. **Only the install vector triggers it.** Nothing snapshots on the events that actually happen day to day:
+   an agent truncating the file, a botched `agy-curate` drain, an editor writing a partial file, ordinary
+   disk failure.
+5. **`agy-curate` is destructive by design** — it drains the inbox. A curate run that goes wrong mid-drain
+   has no "before" to compare against, which also makes curate mistakes unauditable after the fact.
+
+### Tested against the guardrail (this is the crux of the brainstorm)
+
+The architectural guardrail at the top of this file forbids grafting **standalone-product lifecycle
+features** onto a plugin that is deliberately being *thinned*. A general backup/restore/retention subsystem
+is exactly such a feature, so **the obvious answer is probably the wrong one.** The interesting question is
+whether durability can be bought **without** owning a lifecycle — for example by making the inbox live
+somewhere already version-controlled, rather than by teaching this plugin to manage copies.
+
+### Options to weigh (none chosen — this needs an AGY-FIRST consult before it is specced)
+
+- **A — Relocate the inbox into an existing user-owned repo.** Keep the machine-wide scope but put the file
+  somewhere the user already versions (a dotfiles repo, or `%USERPROFILE%\.claude\`), leaving a pointer
+  behind. *Cheapest to reason about and adds no lifecycle to the plugin — most consistent with the
+  guardrail.* Costs: an install-time path decision, a migration for existing users, and it assumes the user
+  HAS such a repo.
+- **B — `git init` the knowledge directory itself, and have `agy-curate` commit.** Turns every drain into a
+  reviewable diff and makes curate mistakes recoverable. Costs: the plugin now owns a repo lifecycle — read
+  the guardrail carefully before choosing this, and note it also gives the plugin a second, private history
+  that no one will ever look at unless something breaks.
+- **C — Rotating pre-drain snapshots (N deep) written by `agy-curate`, not by the installer.** Directly
+  targets the destructive operation rather than the install vector. Cheapest to implement; still a retention
+  policy, i.e. still lifecycle, and still co-located unless the target directory is elsewhere.
+- **D — Do nothing, and say so out loud.** Document the exposure in the README so it is a known accepted
+  risk rather than an unexamined one. Legitimate if the corpus is judged cheap to re-accumulate — but note
+  that it is explicitly NOT cheap: entries are earned from live sessions, several encode failures that cost
+  real money to learn, and by design they exist nowhere else.
+
+### Open questions for the brainstorm
+
+1. Is the inbox the only unprotected machine-wide artifact, or does the compiled **golden-header GROWTH
+   region** (the actual output of the loop) have the same exposure? Check before scoping — if both, the
+   answer should cover both, and the GROWTH region may matter more since it is what reaches agy's context.
+2. Does the sibling `clavity` / driver plugin family already solve this for a machine-wide store? If a
+   mechanism exists there, **extending** it is in-model where inventing one here is not.
+3. Should durability be `agy-curate`'s job (it is the destructive step and already runs offline) or the
+   installer's (it already has file-lifecycle logic)? Splitting it across both is how the current partial
+   protection ended up misleading.
+4. What is the actual recovery *story*? A backup nobody knows how to restore from is theatre — whichever
+   option wins needs one documented sentence saying how a user gets their observations back.
+
+---
+
 ## AT-1 — Context-pollution hardening for `agy-curate`'s GROWTH region
 
 **Status:** open · **Opened:** 2026-07-17 · **Size:** Part A small / Part B large (see gating fork)
