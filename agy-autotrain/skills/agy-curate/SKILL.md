@@ -137,6 +137,37 @@ does not re-enter here; a carried `driver` cheatsheet rule is appended to the ch
 
   If a probe **fails**, that is drift: keep/return the item to the inbox and fix its probe alongside.
 
+**SCOPE OF THIS RUBRIC — read before applying it.** It gates **promotion into GROWTH** and nothing else.
+An entry the triage matrix routes to the **driver cheatsheet** or the **fix-the-tool backlog** never
+reaches this rubric, so a stale verify harness does NOT block it, whatever its `[assumption]` class tag
+says. Class (`assumption|heuristic|anti-pattern`) and audience (`peer|driver`) are independent axes:
+the rubric keys on the DESTINATION, not on the class tag. Applying the harness gate to a driver-routed
+entry strands it for no reason — MEASURED: the 2026-08-01 drain held 8 entries as harness-blocked when
+only the 2 `peer`-audience ones were, the other 6 being `driver`-audience with a legal move available
+the whole time.
+
+### HELD — the fourth disposition, for an entry that is neither promotable nor droppable
+
+An Empirical Assumption whose probe CANNOT BE RUN is not promotable (the rubric forbids it) and not
+droppable (it may well be true). Before this state existed the skill had no legal move for it, and the
+contradiction was not theoretical: **MEASURED on 2026-08-01, a drain took 79 entries in, routed 71, and
+stranded 8** because `assertions.md` was stamped against agy 1.1.1 while the live peer was 1.1.9. The
+Finish step said empty the inbox; the rubric said these may not promote; nothing said what to do.
+
+An entry may be marked **HELD** only when all three hold:
+1. it is `[assumption]` class **and routed to GROWTH** (i.e. `peer` audience — see the scope note above;
+   a `driver`-routed entry is never HELD, because the harness does not gate it),
+2. its probe could not be executed, and the reason is recorded verbatim, and
+3. the RELEASE CONDITION is named — the specific thing that would let it promote.
+
+Write it as a normal inbox bullet with a `held=` field appended:
+
+    - [assumption] (peer/probabilistic) <the rule>  ·  `[corpus]` · <date> · held=verify-harness-stale-1.1.1-vs-1.1.9
+
+**HELD is not a parking space.** It is a claim that a NAMED blocker exists, and it expires when that
+blocker clears. A HELD entry with no release condition, or one whose condition has since cleared, is a
+drain that did not finish — treat it as pending on the next run.
+
 ## Compile + commit the GROWTH region (via the binary, never a raw edit)
 
 **Migrate a pre-split flat header first (one-time — preserves upgrading users' wisdom, spec Acceptance #4).**
@@ -216,7 +247,11 @@ downstream call. When in doubt, leave it in the inbox.
 
 ## Finish
 
-- **Empty the inbox** (entries are now in GROWTH, the driver cheatsheet, the fix-the-tool backlog, or dropped) —
-  reset `## Pending` to empty.
+- **Empty the inbox** — every entry must reach a terminal disposition: promoted into GROWTH, compiled into
+  the driver cheatsheet, emitted as a fix-the-tool backlog item, dropped as noise, or marked **HELD** with
+  a recorded blocker and release condition. Reset `## Pending` to contain only the HELD entries.
+  **"Empty" means every entry is dispositioned, not that the file has zero lines** — the earlier wording
+  was unsatisfiable whenever the verify harness was stale, which is a state this skill has no power to fix
+  and therefore must be able to survive.
 - If the loop has proven out in-project, this is the point to **promote** the skills + knowledge to the
   global config (the trial-then-globalise step).
