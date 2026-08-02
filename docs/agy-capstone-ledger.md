@@ -60,16 +60,13 @@ dispositions are therefore recorded here.
 
 The owner's failure criterion for the first triage — "a third outcome appears in practice" — did not trip.
 
-**The file is NOT empty, and that is the correct outcome.** Entries remain because they are not fixed by
-this plan, and an entry is deleted only when it is genuinely dispositioned. At the time of writing those
-were: a Pester suite apparently racing on `.git/index` (**since DELETED — see the disposition note at the
-foot of this file; the suites were exonerated by code audit, not by the failed reproductions**), a Pester
-suite mutating the TRACKED `build/members.json`, a `\uXXXX` escape arriving DECODED when written through
-the editing tool (mechanism unproven — tool or emitting layer — so the entry records the observable, not a
-cause), and `git commit -m` shell-expanding its own message. The SessionStart reminder therefore still
-reports untriaged entries and exits 2. The plan predicted silence and exit 0; that prediction assumed the
-file held only the original eight. Deleting the rest to reach a silent hook would have destroyed the only
-record of live defects, which is the exact failure this capture mechanism exists to prevent.
+**At the time this section was written the file was NOT empty, and that was the correct outcome** — four
+entries captured DURING the fix work remained, and an entry is deleted only when it is genuinely
+dispositioned, never to quieten a hook. All four were dispositioned later the same day (see the two
+disposition notes at the foot of this file), and only then did the file empty. The order matters: the plan
+had predicted a silent hook at exit 0 on the assumption the file held only the original eight. Emptying it
+on that schedule would have destroyed the record of four live observations — the exact failure this capture
+mechanism exists to prevent — so the hook stayed noisy until each entry had a recorded reason.
 
 **Three of the original eight were found by the capture mechanism during its own construction.**
 
@@ -141,3 +138,42 @@ and unproven, and is recorded as such rather than asserted.
 **Durable driving rule, which is the part worth keeping:** do not poll git while a test suite is running.
 The reader is the victim of a torn index, not its author, so a supervising `git status` can surface an
 error it did not cause — and then be mistaken for evidence against the code under test.
+
+**The remaining three anomalies, dispositioned 2026-08-02 — all DELETED, none a defect in this repo.**
+Triaged by hand against the `open-issues` rule (promote with an owner, or delete with a recorded reason;
+no parked state), because that skill is not yet installed on this machine. The anomaly file is gitignored,
+so the reasons live here.
+
+**1. "a Pester suite mutates the TRACKED `build/members.json`."** DELETED — the same misattribution as the
+`.git/index` entry above, and found the same way. MEASURED: every `members.json` write in the suites
+targets a fixture, not the repository. `check-plugin-namespace.Tests.ps1:14,54` writes under
+`$env:TEMP/ns-clean-<pid>-<rand>` (`:7`); `check-member-docs.Tests.ps1:166` writes under
+`$TestDrive/<guid>/build/` (`:157-158`); `check-roster.Tests.ps1:10` only READS the real file and sends
+its own writes to `$TestDrive` (`:17,25,37`). No suite writes the tracked file. The emitter is a git
+WRITE-op notice: that identical warning printed on many `git add` calls made by the driver during this
+very session, and the driver was running git write-ops during the original measurement.
+
+**2. "a `\uXXXX` escape written through the editing tool can arrive DECODED."** DELETED from this backlog,
+and the observation kept as a driving rule instead. It is REAL and was reproduced twice — a subagent hit
+it inserting mojibake signatures into two C# files, and the driver reproduced it deliberately (`A`
+produced a bare `0x41`, confirmed by `od -c`). But the mechanism sits in the agent's editing harness, not
+in this codebase: there is no change here that would fix it, so carrying it as a repo backlog item would
+imply an owner who does not exist. The impact is worth restating because it is subtle — source that must
+contain escape TEXT (mojibake signatures, regex character classes, test fixtures) can silently become
+decoded non-ASCII that still compiles and still passes its tests, which is precisely the class the
+`curate-commit` tripwire in this range exists to catch, arriving through the authoring path instead of the
+transport. **Rule: after writing any escape literal, verify at byte level.**
+
+**3. "`git commit -m` shell-expands its own message."** DELETED — not a defect at all, but correct and
+documented shell behaviour, hit while writing a commit message that DOCUMENTED shell syntax. The
+substitution executed, printed `command not found`, and the message committed as `X=.` with the documented
+text gone. The commit SUCCEEDED, which is what made it silent; the corruption was visible only by reading
+the message back, and cost an `--amend`. **Rule: write commit messages via a quoted-delimiter heredoc into
+`git commit -F -` whenever the message contains `$( )`, backticks, or `${ }`.**
+
+**The pattern across all four dispositioned entries is the finding.** Two of the original "suite defects"
+were the driver's own tooling, misattributed to whatever happened to be running at the time, and a third
+was standard shell semantics. Each was captured honestly — the `.git/index` entry explicitly recorded its
+cause as UNCONFIRMED — but each would have been promoted as a code defect on the strength of correlation
+alone. What settled all of them was reading the code, not re-running the scenario. **Correlation with a
+long-running suite is not evidence about that suite; it is evidence about which window was widest.**
