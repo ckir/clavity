@@ -254,6 +254,12 @@ downstream call. When in doubt, leave it in the inbox.
 
 ## Finish
 
+- **Order the mutation, and reset the inbox LAST.** Snapshot (the `agy-inbox-snapshot` hook does this
+  automatically when this skill is invoked through the `Skill` tool; do it by hand if you got here another
+  way), then compile GROWTH, then publish via `curate-commit`, and **only when `curate-commit` exits 0**
+  perform the `## Pending` reset described in the next bullet (which is a reset to the still-pending
+  entries, NOT to zero lines). Resetting first means a failed publish loses the entries and produces no
+  GROWTH to show for them. If `curate-commit` returns non-zero, STOP and leave the inbox untouched.
 - **Empty the inbox** — every entry must reach a terminal disposition: promoted into GROWTH, compiled into
   the driver cheatsheet, emitted as a fix-the-tool backlog item, dropped as noise, or marked **HELD** with
   a recorded blocker and release condition. Reset `## Pending` to contain the HELD entries **and any entry
