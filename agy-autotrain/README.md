@@ -102,6 +102,42 @@ golden header.
   installer just did. Close Claude Code completely, then run the installer again (source:
   `installer/agy-autotrain.iss`).
 
+## Recovering lost observations or a bad GROWTH region
+
+Both artifacts keep the newest 5 pre-mutation snapshots. A backup nobody can restore from is theatre, so
+both procedures are one command.
+
+**The observations inbox:**
+
+```powershell
+$k = "$env:LOCALAPPDATA\Programs\agy-autotrain\plugins\agy-autotrain\knowledge"
+Get-ChildItem "$k\agy-observations.md.*.bak" | Sort-Object LastWriteTime -Descending
+Copy-Item "$k\agy-observations.md.<stamp>.bak" "$k\agy-observations.md"
+```
+
+A restored inbox is a PRE-drain inbox. Its entries were already folded into GROWTH by the drain you are
+undoing, so **reconcile before the next drain**: compare the restored `## Pending` against the current
+GROWTH region and delete anything already represented there. Skipping this duplicates rules in the header
+injected into every ask.
+
+**The GROWTH region — restore both files, always:**
+
+```powershell
+Get-ChildItem "$HOME\.clavity\golden-header.growth.md.*.bak" | Sort-Object LastWriteTime -Descending
+Copy-Item "$HOME\.clavity\golden-header.growth.md.<stamp>.bak"        "$HOME\.clavity\golden-header.growth.md"
+Copy-Item "$HOME\.clavity\golden-header.growth.md.<stamp>.bak.sha256" "$HOME\.clavity\golden-header.growth.md.sha256"
+```
+
+Restoring the header alone leaves the previous sidecar in place; the hashes mismatch and the read side
+silently drops the region. The restore looks successful and does nothing.
+
+Snapshots rotate on the `.bak` suffix only, so a hand-made backup named anything else (a
+`*.preinstall-backup`, a dated `*.corrupt-backup-*`) sits outside the ring and is never evicted by it.
+
+**What snapshots do not cover.** These protect against loss — a truncated file, a bad edit, a drain that
+went wrong. They do not detect silent corruption: if content is wrong when it arrives, the snapshot
+faithfully preserves the wrong content.
+
 ## Docs
 
 - [ROADMAP.md](ROADMAP.md) — enhancement backlog for the learning loop.
