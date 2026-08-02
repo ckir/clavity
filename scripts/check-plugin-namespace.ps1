@@ -126,7 +126,14 @@ foreach ($manifest in @(
     $json = Get-Content $manifestPath -Raw | ConvertFrom-Json
     foreach ($event in $json.hooks.PSObject.Properties) {
         foreach ($group in $event.Value) {
-            if ($group.matcher -match 'mcp__plugin_[A-Za-z0-9-]+_') {
+            # Capstone round 2: the original form only caught the PLUGIN-namespaced shape
+            # (mcp__plugin_<marketplace>_<server>__<tool>). An MCP server configured outside a plugin
+            # bundle is named mcp__<server>__<tool>, which is EQUALLY fragile and slipped through
+            # silently - MEASURED: 'mcp__clavity-ls__agy_ask' did not match the old regex. The optional
+            # plugin_ group catches both. The legitimate PATTERN form is unaffected because a regex
+            # matcher starts with '.' or another metacharacter after mcp__, which [A-Za-z0-9-] rejects
+            # (MEASURED: 'mcp__.*agy_ask' does not match).
+            if ($group.matcher -match 'mcp__(plugin_)?[A-Za-z0-9-]+_[A-Za-z0-9_]+') {
                 $literalMatchers += "${manifest}: $($group.matcher)"
             }
         }

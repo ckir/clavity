@@ -143,10 +143,23 @@ report-back section:
 > `SCOPE: needs <path> because <reason>` rather than widening it yourself.
 
 **The driver verifies this, and that half is the one that historically failed.** After the subagent
-returns, run `git status --short` and compare the actual change set against the list you gave it. A
-subagent once wrote to a file outside its named set, and nothing detected it except the driver happening
-to look. Naming the list without checking it afterwards is theatre: the list is a statement of intent, and
-the diff is the only evidence.
+returns, compare the actual change set against the list you gave it. A subagent once wrote to a file
+outside its named set, and nothing detected it except the driver happening to look. Naming the list
+without checking it afterwards is theatre: the list is a statement of intent, and the diff is the only
+evidence.
+
+**`git status --short` alone is NOT that diff.** Most implementer subagents COMMIT their work, and a
+committed write leaves the working tree clean. MEASURED: after a subagent commits a file outside its list,
+`git status --short` prints nothing at all while `git show --stat HEAD` names the file. Record the SHA
+before you dispatch, and check BOTH axes afterwards:
+
+```bash
+git status --short                 # uncommitted writes
+git log --stat <sha-before>..HEAD  # committed writes - the axis a clean status hides
+```
+
+Neither axis sees a write outside the worktree (`~/.claude/`, a gitignored path, `.git/` itself). If the
+dispatch could touch one of those, name it in the list and check it directly.
 
 **Why a heading and not a sentence in the prose.** A report gets skimmed. A dedicated heading with a
 fixed shape survives skimming, and it makes an omission visible: a report with no such section is a

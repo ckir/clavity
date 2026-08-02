@@ -53,7 +53,8 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is 368 (162 + 206) and it is a fact, not a contract.
+test raises it. The count today is 372 — fast 162 and slow 210, **both measured, not added up**. It is a
+fact, not a contract, and it was 358 / 363 / 368 earlier the same week.
 
 If you move a file between halves, re-measure BOTH halves and update this file; do not edit it from
 memory, and do not compute the new number by subtraction (see above).

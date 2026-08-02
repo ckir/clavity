@@ -256,7 +256,13 @@ downstream call. When in doubt, leave it in the inbox.
 
 - **Empty the inbox** — every entry must reach a terminal disposition: promoted into GROWTH, compiled into
   the driver cheatsheet, emitted as a fix-the-tool backlog item, dropped as noise, or marked **HELD** with
-  a recorded blocker and release condition. Reset `## Pending` to contain only the HELD entries.
+  a recorded blocker and release condition. Reset `## Pending` to contain the HELD entries **and any entry
+  the promotion rubric explicitly parks there** — a one-off Heuristic awaiting a second independent
+  observation is the case that exists today. **Capstone round 2 found this deadlock:** a single-observation
+  `[heuristic]` cannot promote (the rubric says it stays in the inbox), is not noise so cannot be dropped,
+  and is not `[assumption]` class so cannot be HELD. Wording that said "only the HELD entries" left it with
+  no legal move at all — the same unsatisfiable shape this section was written to remove, reintroduced one
+  layer down. A rubric-parked entry is dispositioned: its disposition is "wait for corroboration".
   **"Empty" means every entry is dispositioned, not that the file has zero lines** — the earlier wording
   was unsatisfiable whenever the verify harness was stale, which is a state this skill has no power to fix
   and therefore must be able to survive.

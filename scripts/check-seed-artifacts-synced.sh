@@ -125,6 +125,15 @@ if ! diff -q <(jq -S "$sp_sel" "$D/hooks/hooks.json") \
   echo "SEED-DRIFT: hooks/hooks.json SessionStart (shared hooks) differs between the two plugins" >&2
   status=1
 fi
+# Capstone round 2: the filter above strips agy-drive-session-reset.sh from BOTH manifests, so if the
+# DOTNET manifest ever registered it the gate would strip it there too and still report GREEN - the
+# classic-only hook would be running under dotnet, unnoticed. The filter exists to permit a known
+# one-sided entry, so assert the one-sidedness explicitly rather than assuming it.
+if jq -e '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | test("agy-drive-session-reset\\.sh"))] | length > 0' \
+      "$D/hooks/hooks.json" >/dev/null 2>&1; then
+  echo "SEED-DRIFT: agy-drive-session-reset.sh is registered in clavity-dotnet/plugin/hooks/hooks.json; it is classic-only" >&2
+  status=1
+fi
 # Responder skill: the Claude Code plugin copy (renamed to `responder`, Option A/SP-0) and the
 # binary-embedded agy-side twin (kept as `claudavity-responder`, include_str!'d into the Rust binary)
 # must stay in sync in description + body, though their `id:`/`name:` frontmatter DELIBERATELY differ
@@ -134,7 +143,13 @@ fi
 # tied this pair before SP-0.
 plugin_responder="clavity-classic/plugin/skills/responder/SKILL.md"
 agy_responder="clavity-classic/agy_skills/claudavity-responder/SKILL.md"
-strip_idname() { sed '/^---[[:space:]]*$/,/^---[[:space:]]*$/{/^id:/d;/^name:/d;}' "$1"; }
+# Capstone round 2: the range MUST be anchored at line 1. `/^---$/,/^---$/` is a REPEATING range - after
+# it closes, sed opens a NEW one at the next `---`, so an `id:`/`name:` line sitting in the BODY between
+# two horizontal rules was deleted too, and a real divergence there would have been normalised away.
+# MEASURED on a synthetic file: body lines `id: SMUGGLED` / `name: ALSO SMUGGLED` between a second pair of
+# `---` were stripped. The previous comment here claimed this "never strips a body line"; that was false.
+# `1,/^---$/` starts at line 1 and closes at the FIRST subsequent `---`, i.e. the frontmatter block only.
+strip_idname() { sed '1,/^---[[:space:]]*$/{/^id:/d;/^name:/d;}' "$1"; }
 # Guard against a MISSING copy: without this, `sed` on a missing file emits an empty stream to stdout (its
 # error goes to swallowed stderr), `diff -q` compares two empty streams as identical, returns 0, and the
 # gate would FALSELY PASS a renamed/deleted responder. Fail loudly instead.
