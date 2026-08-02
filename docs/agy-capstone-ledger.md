@@ -60,15 +60,16 @@ dispositions are therefore recorded here.
 
 The owner's failure criterion for the first triage — "a third outcome appears in practice" — did not trip.
 
-**The file is NOT empty, and that is the correct outcome.** Three entries remain because they are not fixed
-by this plan, and an entry is deleted only when its fix lands: a Pester suite racing on `.git/index` (cause
-UNCONFIRMED — a concurrent `git status` writes that file too, so it needs a quiet-machine repro before it is
-blamed on the suite), a Pester suite mutating the TRACKED `build/members.json`, and a `\uXXXX` escape
-arriving DECODED when written through the editing tool (mechanism unproven — tool or emitting layer — so
-the entry records the observable, not a cause). The SessionStart reminder therefore still reports
-`3 untriaged` and exits 2. The plan predicted silence and exit 0; that prediction assumed the file held
-only the original eight. Deleting the other three to reach a silent hook would have destroyed the only
-record of three live defects, which is the exact failure this capture mechanism exists to prevent.
+**The file is NOT empty, and that is the correct outcome.** Entries remain because they are not fixed by
+this plan, and an entry is deleted only when it is genuinely dispositioned. At the time of writing those
+were: a Pester suite apparently racing on `.git/index` (**since DELETED — see the disposition note at the
+foot of this file; the suites were exonerated by code audit, not by the failed reproductions**), a Pester
+suite mutating the TRACKED `build/members.json`, a `\uXXXX` escape arriving DECODED when written through
+the editing tool (mechanism unproven — tool or emitting layer — so the entry records the observable, not a
+cause), and `git commit -m` shell-expanding its own message. The SessionStart reminder therefore still
+reports untriaged entries and exits 2. The plan predicted silence and exit 0; that prediction assumed the
+file held only the original eight. Deleting the rest to reach a silent hook would have destroyed the only
+record of live defects, which is the exact failure this capture mechanism exists to prevent.
 
 **Three of the original eight were found by the capture mechanism during its own construction.**
 
@@ -101,3 +102,42 @@ primary consult channel was never exposed to any of the classifier findings.
 The dispatch allow-list told the driver to check `git status --short`; measured, that command prints
 nothing after a subagent commits a file outside its list, and implementer subagents commit by default. The
 mechanism's own commit message says a list without a diff is theatre. It prescribed the wrong diff.
+
+---
+
+**Anomaly #1 (`.git/index` race) dispositioned 2026-08-02 — DELETED, suites exonerated by construction.**
+
+Captured 2026-08-01: `fatal: .git/index: index file smaller than expected`, seen twice on stderr during a
+per-file runtime measurement, after `abort-drain.Tests.ps1` and after `docs-audit.Tests.ps1`. The cause was
+recorded as UNCONFIRMED at capture time, because the driver's own concurrent `git status` calls also write
+`.git/index` — two candidate authors, and no basis to blame either.
+
+**Settled from the CODE, which three attempted reproductions could not have settled.** MEASURED by audit:
+
+- `scripts/tests/docs-audit.Tests.ps1`, `scripts/docs-audit.ps1` and `scripts/docs-audit-lib.ps1` contain
+  **zero `git` invocations** between them; the single textual match is a comment at
+  `docs-audit.Tests.ps1:555`. That suite is structurally incapable of touching any index.
+- `scripts/tests/abort-drain.Tests.ps1` creates its repo under `[System.IO.Path]::GetTempPath()` (`:8`),
+  and **every** git call in the file sits inside a `Push-Location $script:Repo` / `Pop-Location` pair —
+  `:10-15`, `:34-37`, `:60-63`, `:99-101`, and `:105` inline. Zero unscoped calls.
+
+Neither suite can reach the real repository's `.git/index`. The correlation with those two files is a
+sampling artifact: at 261.3s and 120.6s they are the two longest in the partition and together span most
+of a full run, so any ambient collision is overwhelmingly likely to land inside their window.
+
+**The reproduction attempts are recorded because a negative result is worth keeping, not because they
+decided it.** Three conditions, all clean: quiet (185.75s), with a `git status --porcelain` loop hammering
+the index (271.9s), and the same with the loop's own stderr captured (347.99s, 0 bytes of stderr). Runtime
+rising monotonically is the positive control that the contention was real rather than a loop that never
+started. The capture path was separately proven to carry a git `fatal:` through `pwsh` into the log, so
+these are real negatives and not empty-vs-empty passes.
+
+**What this does and does not establish.** It establishes that no code in this repository caused it, which
+is what makes it undeployable as a backlog item — there is no change here that would fix it. It does NOT
+establish what did. The driver's own concurrent `git status` remains the leading candidate and was
+demonstrably running at the time; an external Windows filter driver is another. That mechanism is INFERRED
+and unproven, and is recorded as such rather than asserted.
+
+**Durable driving rule, which is the part worth keeping:** do not poll git while a test suite is running.
+The reader is the victim of a torn index, not its author, so a supervising `git status` can surface an
+error it did not cause — and then be mistaken for evidence against the code under test.
