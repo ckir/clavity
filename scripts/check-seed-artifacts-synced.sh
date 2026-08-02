@@ -148,8 +148,17 @@ agy_responder="clavity-classic/agy_skills/claudavity-responder/SKILL.md"
 # two horizontal rules was deleted too, and a real divergence there would have been normalised away.
 # MEASURED on a synthetic file: body lines `id: SMUGGLED` / `name: ALSO SMUGGLED` between a second pair of
 # `---` were stripped. The previous comment here claimed this "never strips a body line"; that was false.
-# `1,/^---$/` starts at line 1 and closes at the FIRST subsequent `---`, i.e. the frontmatter block only.
-strip_idname() { sed '1,/^---[[:space:]]*$/{/^id:/d;/^name:/d;}' "$1"; }
+# The first attempt at this fix was `sed '1,/^---$/{...}'`, and capstone round 3 caught that it made a
+# DIFFERENT case worse: on a file with NO frontmatter that range opens at line 1, never finds a closing
+# `---`, and runs to EOF - MEASURED, it ate body `id:`/`name:` lines the ORIGINAL repeating range left
+# alone. A correct finding, a fix that traded one latent fail-open for another.
+# awk instead: only enter frontmatter mode when line 1 actually opens it, and leave at the close.
+strip_idname() {
+  awk 'NR==1 && /^---[[:space:]]*$/ { fm=1; print; next }
+       fm       && /^---[[:space:]]*$/ { fm=0; print; next }
+       fm       && /^(id|name):/       { next }
+                                       { print }' "$1"
+}
 # Guard against a MISSING copy: without this, `sed` on a missing file emits an empty stream to stdout (its
 # error goes to swallowed stderr), `diff -q` compares two empty streams as identical, returns 0, and the
 # gate would FALSELY PASS a renamed/deleted responder. Fail loudly instead.
