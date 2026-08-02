@@ -254,6 +254,51 @@ productize release. It remains undecided and is recorded here so it stops being 
 and are not in its model. Owner ruling 2026-07-31: they are a follow-on, not a re-scope — retroactively
 widening a stalled epic prevents it closing. This epic closes at four disciplines.
 
+### 11. PINNING-ASSERTION-STRENGTH — ship assertion-strength as a mechanical discipline
+
+**Owner ruling 2026-08-02:** the AT-2 session's ad-hoc "add tests for uncovered cases" ruling should ship
+as a standing discipline. Design converged with agy over three negotiation rounds; agy conceded every
+contested point and the concessions were verified (it cited `~/.claude/CLAUDE.md:36` unprompted and
+correctly, and volunteered a false-positive case I had not listed).
+
+**Why it exists.** During AT-2 a plan that had passed an adversarial panel GREEN still shipped a blind
+test. `Commit_prunes_the_ring_to_the_retention_limit` asserted only that N slots survived a prune.
+Reversing the prune's sort makes the ring delete its three *newest* slots — including the snapshot written
+moments earlier by the very commit that triggered the prune — and the count is still exactly N, so the
+test stays green. Measured, not reasoned: `5071872` records the mutation. Cardinality is a weak observer;
+`Count(SortAndTruncate(c, K))` is invariant under *any* permutation before truncation.
+
+**Agreed shape** (do not re-derive; these are settled):
+- **Mechanical, no peer.** The detector was a test runner, not a reviewer. Routing it through agy adds
+  cost without detection power.
+- **Plugin-only home.** Canonical prose is the ONE paragraph at `plugin/skills/agy-test-audit/SKILL.md`
+  Step 5 (`:88-96`), widened to reach tests written during ordinary implementation. That paragraph already
+  specifies logic-mutant-not-structural and "confirm the SPECIFIC new test went red" — the gap was never
+  missing prose, only prose scoped to audit-gap tests. **No `CLAUDE.md` copy** (`CLAUDE.md:62,91` record
+  the standing decision that disciplines ship with the plugin and leave no residue there).
+- **Drop the `AGY-` prefix** — every `AGY-*` discipline convenes the peer; this one does not.
+- **Trigger:** `PostToolUse` hook on `Write|Edit`, debounced to the FIRST touch of each test file per
+  session. Ungated firing was rejected: it would have fired 15+ times in the AT-2 session, and an
+  over-eager guard trains the operator to ignore it — recorded in the AT-2 design as how an earlier guard
+  in this repo actually died.
+- **The three structural smells:** (1) cardinality over an ordered/filtered collection — assert boundary
+  *identity*, never count alone; (2) a dual-path fallback masked by the ambient environment — strip the
+  primary dependency to force the fallback; (3) a structured-token matcher with no distractor case.
+
+**Four defects in agy's draft implementation — fix these when building, do NOT paste its code:**
+1. It writes markers to `.clavity/marks/`, which **does not exist**. The real directory is
+   `.clavity/agy-marks/`, governed by `docs/agy-disciplines-marker-contract.md`. Fabricated path.
+2. Its hook **hard-depends on jq** (`command -v jq || exit 0`), making it silently inert on any box
+   without jq — the exact defect class AT-2 Task 1 closed, where the field-bounded-grep fallback is the
+   branch most installs actually run. Every sibling hook carries that fallback.
+3. Its `hooks.json` snippet uses the wrong schema — the real shape is a top-level `hooks` key with a
+   nested `hooks:[{type:"command",command:...}]` array.
+4. `agy-test-audit-reminder.sh:10` states it **never** writes a marker, by design. A debounce marker is a
+   different thing from an outcome marker, but the deviation needs a deliberate decision, not a silent one.
+
+**Cost:** ~80 tokens per firing, ~2 firings per session; verification is one targeted test run per
+directional or fallback assertion. Both variants' plugins must change together (byte-identical pair).
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
