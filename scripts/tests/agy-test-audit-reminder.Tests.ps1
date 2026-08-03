@@ -143,6 +143,15 @@ Describe 'agy-test-audit-reminder.sh' {
             $out.StdOut | Should -Match 'guard inactive: missing jq'
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    It 'carries the COST clause when it fires' {
+        $r = New-FiredRepo
+        try {
+            Set-Marker $r.Dir 'agy-capstone' $r.Head
+            $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
+            $out.StdOut | Should -Match 'COST:'
+            $out.StdOut | Should -Match 'never WHETHER'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }
