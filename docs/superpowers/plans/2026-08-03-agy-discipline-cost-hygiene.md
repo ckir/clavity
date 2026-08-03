@@ -70,7 +70,7 @@ SESSION POSTURE: reviews later in this work (capstone, test audit, panel) re-rea
 | `clavity-classic/plugin/hooks/agy-seam-inject.sh` | same, mirrored | identical edit |
 | `clavity-dotnet/plugin/hooks/agy-test-audit-reminder.sh` | nudges the test audit after capstone green | append COST |
 | `clavity-classic/plugin/hooks/agy-test-audit-reminder.sh` | same, mirrored | identical edit |
-| `scripts/tests/agy-seam-inject.Tests.ps1` | pins that hook's behaviour | +2 positive, +1 negative, +1 parity |
+| `scripts/tests/agy-seam-inject.Tests.ps1` | pins that hook's behaviour | +2 positive, +2 negative, +1 parity |
 | `scripts/tests/agy-test-audit-reminder.Tests.ps1` | pins that hook's behaviour | +1 positive |
 | `scripts/tests/agy-after-reminder.Tests.ps1` | pins that hook's behaviour | +1 negative, +1 parity |
 | `clavity-dotnet/plugin/README.md` | plugin user docs | + the full section |
@@ -383,6 +383,26 @@ Add inside `Describe 'agy-after-reminder.sh'`:
     }
 ```
 
+Also add, in `scripts/tests/agy-seam-inject.Tests.ps1`, a negative assertion for the **ANOMALY-CAPTURE**
+arm. Spec acceptance criterion 3 requires that arm to be unchanged, and nothing else in this plan verifies
+it: the parity and ASCII checks would both pass happily if text were added there.
+
+```powershell
+    It 'does NOT put either clause on the anomaly-capture seam' {
+        $repo = New-TempRepo
+        try {
+            $cwd = ($repo -replace '\\','/')
+            $out = Invoke-Hook -Skill 'superpowers:executing-plans' -Cwd $cwd
+            $out | Should -Match 'ANOMALY-CAPTURE'
+            $out | Should -Not -Match 'COST:'
+            $out | Should -Not -Match 'SESSION POSTURE:'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+```
+
+The `Should -Match 'ANOMALY-CAPTURE'` line is the **control**: without it, a hook that emitted nothing at
+all would satisfy both negative assertions and the test would pass while proving nothing.
+
 - [ ] **Step 2: Write both parity assertions**
 
 In `scripts/tests/agy-seam-inject.Tests.ps1`, add as the last `It` inside the `Describe`:
@@ -403,15 +423,15 @@ In `scripts/tests/agy-after-reminder.Tests.ps1`, add as the last `It` inside the
     }
 ```
 
-- [ ] **Step 3: Run both suites — all three new tests should PASS immediately**
+- [ ] **Step 3: Run both suites — all four new tests should PASS immediately**
 
 ```bash
 pwsh -c "Invoke-Pester @('scripts/tests/agy-seam-inject.Tests.ps1','scripts/tests/agy-after-reminder.Tests.ps1') -Output Detailed"
 ```
 
-Expected: all pass. This is correct — a negative assertion and a parity assertion both pass on a consistent baseline. They are proven in Step 4.
+Expected: all pass. This is correct — negative assertions and parity assertions all pass on a consistent baseline. They are proven in Step 4.
 
-- [ ] **Step 4: Prove all three non-vacuous by mutation, one at a time**
+- [ ] **Step 4: Prove all four non-vacuous by mutation, one at a time**
 
 **Mutation A — the negative assertion.** Append ` COST: mutant` before the closing `"` of `clavity-dotnet/plugin/hooks/agy-after-reminder.sh:36`, run:
 
@@ -430,6 +450,14 @@ pwsh -c "Invoke-Pester 'scripts/tests/agy-seam-inject.Tests.ps1' -Output Detaile
 Expected: `is byte-identical to the clavity-classic mirror` FAILS. Remove the space, re-run, expect pass.
 
 **Mutation C — agy-after-reminder parity.** Same, on `clavity-classic/plugin/hooks/agy-after-reminder.sh`. Expect FAIL, then revert, then pass.
+
+**Mutation D — the anomaly-arm negative assertion.** Append ` COST: mutant` before the closing `'` of the line **beginning** `emit 'ANOMALY-CAPTURE:` in `clavity-dotnet/plugin/hooks/agy-seam-inject.sh` (line 79 — again, anchor on the line start, not the tail). Run:
+
+```bash
+pwsh -c "Invoke-Pester 'scripts/tests/agy-seam-inject.Tests.ps1' -Output Detailed"
+```
+
+Expected: `does NOT put either clause on the anomaly-capture seam` FAILS. Remove the mutant by hand — **not** with `git checkout --`, which would destroy the uncommitted Task 1 and Task 2 edits to this same file. Re-run, expect pass.
 
 **If any mutation does not produce a failure, the mutation did not land.** Confirm with `git diff --stat` that the file actually changed before concluding the test is weak.
 
@@ -582,7 +610,17 @@ Expected: three `IDENTICAL` lines.
 rg -c 'COST:|SESSION POSTURE:' clavity-dotnet/plugin/hooks/agy-after-reminder.sh
 ```
 
-Expected: no match (the hook must carry neither).
+Expected: no match — that hook must carry neither clause.
+
+And the ANOMALY-CAPTURE arm must be untouched, which the parity and ASCII checks would not catch:
+
+```bash
+sed -n '79p' clavity-dotnet/plugin/hooks/agy-seam-inject.sh | rg -c 'COST:|SESSION POSTURE:'
+```
+
+Expected: no match. Confirm the line is the anomaly arm first — it begins `emit 'ANOMALY-CAPTURE:`.
+
+Expected counts across the whole change: **three** directive sites carry added text, **two** do not.
 
 - [ ] **AGY-CAPSTONE re-run.** This change edits executable code and tests, so the capstone gate applies to the finished range before the branch may be declared done.
 
