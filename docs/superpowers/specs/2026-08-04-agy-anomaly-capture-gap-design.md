@@ -329,7 +329,7 @@ Per-hook suites must pin, at minimum:
 
 ---
 
-## Panel record — 5 rounds, 15 findings, all folded
+## Panel record — 6 rounds, 15 findings, all folded. **GREEN at round 6.**
 
 | round | peer verdict | findings | folded |
 |---|---|---|---|
@@ -338,6 +338,10 @@ Per-hook suites must pin, at minimum:
 | 3 | RED | 3 | 10-12 |
 | 4 | GREEN | 1, **found by me after the GREEN** | 13 |
 | 5 | GREEN | 2, **found by me after the GREEN** | 14-15 |
+| 6 | GREEN | **0 — and my own hunt after it also found nothing.** Findings dried up; review closed | — |
+
+Round 6 was a full-document merge-gate pass with a fresh-reader lens, not a narrow re-check of round 5's
+fold — a panel aimed only at a fold is too thin to justify a GREEN.
 
 **The standing pattern, recorded because it generalises:** the peer's clean rounds were honest and
 correctly cited — I spot-checked citations in rounds 2, 4 and 5 and they held every time. Yet **four
