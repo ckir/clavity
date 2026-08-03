@@ -1,4 +1,15 @@
 # agy-autotrain — changelog
+## 0.4.0 — 2026-08-03
+
+### Features
+- feat(agy-autotrain): cheatsheet - check the clean round, not just license it
+
+### Fixes
+- fix(agy-autotrain): a stamp is DELIMITED - do not let a prose date impersonate one
+- fix(agy-autotrain): prefer the provenance stamp over any other date in the record
+- fix(agy-autotrain): read the bullet RECORD and its trailing stamp, not the leftmost date
+- fix(agy-autotrain): anchor the curate-nudge age scan to pending bullets
+
 ## 0.3.0 — 2026-08-03
 
 ### Features

@@ -1,5 +1,16 @@
 # classic changelog
 
+## 0.4.0 — 2026-08-03
+
+### Features
+- feat(agy-autotrain): cheatsheet - check the clean round, not just license it
+- feat(agy-autotrain): cost clause on the test-audit reminder
+- feat(agy-autotrain): cost clause on the capstone seam
+- feat(agy-autotrain): session-posture line on the brainstorm seam
+
+### Fixes
+- fix(hooks): strip non-ASCII from three hooks, guard the whole payload
+
 ## 0.3.0 — 2026-08-03
 
 ### Features
