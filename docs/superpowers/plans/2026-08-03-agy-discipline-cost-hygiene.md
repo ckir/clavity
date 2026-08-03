@@ -506,6 +506,8 @@ Three habits, in order of payoff:
 
 Unlike the hook strings, this is markdown prose — em-dashes and apostrophes are fine here and match the surrounding files.
 
+**This block has been verified character-for-character against the spec's canonical version** (2022 characters, identical once line-wrapping is normalised). If you reflow or reword it, you are diverging from the reviewed text — re-verify against `docs/superpowers/specs/2026-08-03-agy-discipline-cost-hygiene-design.md` if you do.
+
 - [ ] **Step 2: Add the pointer to the root README**
 
 Append as the final line of the `## How to get started` section in `README.md`:
