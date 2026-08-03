@@ -25,7 +25,16 @@ Two facts make this a shipping defect rather than a user-education gap:
    convene the live agy peer" with no cost qualification, and the agent obeys the text it can see.
    Documentation alone therefore cannot change the behaviour — which is why layer 1 exists.
 
-Measured across all eight shipped hooks: **zero mentions of cost, quota, context size, or compaction.**
+Measured: **zero mentions of cost, quota, context size, or compaction in any shipped hook, on either
+driver.**
+
+**The two drivers do not ship the same hook set, and this matters for every count in this document.**
+`clavity-dotnet/plugin/hooks/` holds 8 shell scripts; `clavity-classic/plugin/hooks/` holds 9 — the extra
+is `agy-drive-session-reset.sh`, which exists only in classic. It was read in full and checked separately:
+it clears a once-per-session driver-guidance flag on `source==startup` and convenes no discipline, so the
+placement rule does not reach it and it carries no added text. Their `hooks.json` files also differ (they
+must, since classic registers one more hook). So "byte-identical across the drivers" is a property of the
+**individual hook scripts this change touches**, never of the plugin trees as a whole.
 
 ## Evidence
 
@@ -468,3 +477,23 @@ implementer would have written the negative assertions, seen them pass, and reco
 A vacuous test that pins nothing is indistinguishable from a real one until the day it is needed.
 
 **Round 4 disposition: RED.**
+
+## Panel record — round 5
+
+Seats: **Stale-Fold Auditor** (bespoke — hunt only the wreckage of ~20 edits: counts, cross-references,
+sentences describing reversed decisions) and **Fresh Reader** (bespoke — read only the Layer 2 README text
+cold, as a developer deciding whether to install), plus both core seats.
+
+The peer returned `PANEL VERDICT: GREEN`, and unlike round 2 it stated where each seat looked, with
+citations that checked out. **But it was still not banked as-is** — inside its Stale-Fold narrative it
+volunteered a fact I had never verified, and measuring that fact falsified a claim in the document.
+
+| id | finding | verification | fold |
+|---|---|---|---|
+| R5-1 | The doc asserted "across all eight shipped hooks" as a universal measurement. It was only ever run against **dotnet**. Classic ships **nine** — `agy-drive-session-reset.sh` exists only there. | `ls` on both hook directories | count corrected per driver; the extra hook read in full and dispositioned (it clears a session flag, convenes nothing, so the placement rule does not reach it); added the note that the two `hooks.json` differ, so "byte-identical" is a property of the touched scripts, not of the plugin trees |
+
+**Credit where it is due: the peer found this, not me.** It surfaced as a volunteered aside rather than a
+numbered finding, which is worth recording — a peer's incidental claims are worth measuring too, not just
+the ones it flags.
+
+**Round 5 disposition: RED** (on a peer-volunteered fact confirmed by measurement, against a peer GREEN).
