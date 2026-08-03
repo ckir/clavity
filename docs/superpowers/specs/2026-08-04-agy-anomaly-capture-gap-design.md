@@ -193,10 +193,21 @@ the change: a non-zero exit here blocks the dispatch itself.
 
 ### 4. *(Optional, owner's call)* Dual-channel the `SessionStart` notice
 
-No longer blocked: the sentinel determined the design. It is **two hooks on one matcher** — `hooks.json`
-already registers two commands under `SessionStart` — one emitting the JSON envelope at exit 0 for the
-model, one emitting stderr at `exit 2` for the owner. They cannot come from the same invocation. Lowest
-value of the four; include or drop on merit.
+No longer blocked: the sentinel determined the design. It is **two hooks**, because the two channels
+cannot come from the same invocation — one emitting the JSON envelope at `exit 0` for the model, one
+emitting stderr at `exit 2` for the owner.
+
+**Where the second hook goes, stated against the POST-SPLIT structure.** An earlier draft justified this
+as *"`hooks.json` already registers two commands under `SessionStart`"* — that was true of the
+**pre-split** file and is no longer true of the target this spec now specifies, where `SessionStart` holds
+two matcher objects of one command each (dotnet). The correct statement is: a matcher object's `hooks`
+array may hold **several** commands, each with its own exit code, and exit status is per-hook rather than
+per-matcher-object. So the model-addressed hook is added as a **second command inside the
+`startup|resume|clear|compact` object**, alongside `agy-anomaly-reminder.sh` — it must fire on exactly the
+occasions the drain notice does, which is what sharing that object guarantees. It must **not** go in the
+`startup` object, which is reserved for the untouched liveness/reset hooks by acceptance criterion 6.
+
+Lowest value of the four; include or drop on merit.
 
 ---
 
