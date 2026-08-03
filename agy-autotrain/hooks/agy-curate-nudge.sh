@@ -24,8 +24,13 @@ fi
 [ -f "$OBS" ] || exit 0
 # Count entries under "## Pending" (lines beginning with "- ["), and find the OLDEST entry date
 # (bullets carry a `· YYYY-MM-DD ·` stamp; lexicographic min == chronologically oldest).
+# BOTH scans MUST be anchored to /^- \[/ - keep them symmetric. The `p=0` terminator is not enough on its
+# own: nothing after "## Pending" starts with "## " (the section is followed by append-only drain-log HTML
+# comments), so `p` stays 1 to EOF. An unanchored date scan therefore reads dates out of those comments and
+# reports an "oldest pending entry" no bullet carries - which latched the age nudge ON permanently, because
+# draining cannot remove a drain log. Pinned by scripts/tests/agy-curate-nudge.Tests.ps1.
 count="$(awk '/^## Pending/{p=1;next} /^## /{p=0} p && /^- \[/{c++} END{print c+0}' "$OBS" 2>/dev/null)"
-oldest="$(awk '/^## Pending/{p=1;next} /^## /{p=0} p && match($0,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/){d=substr($0,RSTART,10); if(m==""||d<m)m=d} END{print m}' "$OBS" 2>/dev/null)"
+oldest="$(awk '/^## Pending/{p=1;next} /^## /{p=0} p && /^- \[/ && match($0,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/){d=substr($0,RSTART,10); if(m==""||d<m)m=d} END{print m}' "$OBS" 2>/dev/null)"
 [ -z "$count" ] && exit 0
 
 # Age gate (spec §5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?
