@@ -187,28 +187,29 @@ These are hard constraints, each verified against the code or a test:
 > consumes several times the tokens it would in a fresh one.
 >
 > Measured on one real session — 305 turns of work at a ~380k context versus the same turns at 40k: about
-> **9x the tokens read**, which came to **$249 against $47** on API pricing.
+> **9x the tokens read, for identical work**.
 >
-> - **On a subscription**, the tokens are what matter rather than the bill: a review fired at high context
->   burns through your usage window much faster, and that is what stops work mid-task. Check `/usage`
->   before starting a long review.
-> - **On API billing**, it's the bill.
+> - **On a subscription**, tokens are what matter: a review fired at high context burns through your usage
+>   window far faster, and that is what stops work mid-task. Check `/usage` before starting a long review.
+> - **On API billing**, that same run measured $249 against $47.
 >
 > Three habits, in order of payoff:
 >
 > 1. **Two chats.** Implement and commit in one session. Then `/compact`, or open a fresh chat, and run
 >    the review there: *"run agy-capstone on `<range>`"*. Same rigor, a fraction of the tokens.
 > 2. **Match the ceremony to the stakes.** The full harness is built for code where a missed defect is
->    expensive. A weekend project may not need all of it. Note that several disciplines are triggered by
->    hooks rather than invoked by you, so "just don't run it" is not how you opt out — see *Turning it
->    down* below.
+>    expensive. On a smaller project, the cheapest move is habit 1 rather than switching anything off —
+>    the disciplines still run, they just cost a fraction. Several of them are triggered by hooks rather
+>    than invoked by you, and they are not individually switchable today; a finer-grained mode is under
+>    consideration.
 > 3. **Fix coverage gaps inline, for free.** Notice a missing test while implementing? Just ask for it
 >    then — *"add a test for that case"*. One turn. Convening a full audit to rediscover the same gap
 >    costs many. Save the convened audit for the gaps you *didn't* notice.
 >
-> **Turning it down.** `.no-agy` in your project root or `~/.claude/` silences every agy discipline. It is
-> deliberately all-or-nothing — there is no per-hook switch — so today it is on or off. A finer-grained
-> mode is under consideration.
+> **Turning it down.** If you do need to silence the disciplines, `.no-agy` in your project root or
+> `~/.claude/` does it — but it is deliberately all-or-nothing, so it silences **every** one of them,
+> including the cheap ones. It is a last resort rather than a tuning knob; try habit 1 first. A
+> finer-grained mode is under consideration.
 
 ### Why habit 3 is scoped the way it is
 
@@ -222,7 +223,15 @@ deliberately describes the zero-turn variant only, so it cannot be generalised i
 - **No promise of unscheduled work.** Layer 3 is deferred and unscheduled, so the text says "under
   consideration", never "on the roadmap" — a shipped doc must not commit to a date nobody has set.
 - **Habit 2 must not imply selective opt-out.** Several disciplines fire from hooks, so "leave the rest"
-  read alone would be false; the habit points at *Turning it down* instead.
+  read alone would be false.
+- **Habit 2 must also not route the reader to the kill-switch.** Pointing a "this is more ceremony than I
+  need" reader at `.no-agy` tells them to disable everything, which *accelerates* the abandonment this
+  section exists to prevent. The cheap remedy (habit 1) is the answer; the kill-switch is disclosed
+  honestly as a last resort, not offered as a tuning knob. **This constraint exists because the fix for
+  the previous one created the defect** — a worked example of why a fold gets re-reviewed.
+- **Dollars stay out of the opening summary.** A prospective user evaluating the plugin should meet the
+  token multiple first; the dollar figure belongs in the API-billing bullet. Leading with a bolded
+  four-figure sum invites bill-shock churn before the reader has seen any value.
 
 ### Placement
 
@@ -285,12 +294,16 @@ re-measured. Measured from the justfile:
 |---|---|---|
 | `agy-seam-inject.Tests.ps1` | `test-scripts-slow` (`justfile:101`) | touched |
 | `agy-test-audit-reminder.Tests.ps1` | `test-scripts-slow` (`justfile:101`) | touched |
-| `agy-after-reminder.Tests.ps1` | `test-scripts-fast` (`justfile:94`) | **not** touched — excluded by the placement rule |
+| `agy-after-reminder.Tests.ps1` | `test-scripts-fast` (`justfile:94`) | **hook** not touched, but the **suite** gains the negative assertion |
+
+**The hook and its suite are touched independently — do not conflate them.** `agy-after-reminder.sh`
+itself is excluded by the placement rule and must not change, but its *test* gains the negative assertion
+that pins that exclusion. So a FAST suite does change, even though no fast-half hook does.
 
 Consequences the implementer must not get wrong:
 
-- The **slow** count in `scripts/tests/_partition.md` is the one to re-measure; the fast count should be
-  unchanged, and confirming "fast is unchanged" proves nothing about this change.
+- **Both** counts in `scripts/tests/_partition.md` move and both must be re-measured: slow, because the
+  two touched hooks' suites live there; fast, because `agy-after-reminder.Tests.ps1` gains an assertion.
 - `test-scripts-slow` can exceed the 600s foreground tool cap, so per `_partition.md` it must be
   **backgrounded** and blocked on its own `Tests completed` line — never on a process count.
 
@@ -331,16 +344,19 @@ Per repo convention each new assertion is watched RED before the text is added, 
    `agy-seam-inject.sh:77` — in both drivers.
 2. The SESSION POSTURE line appears in exactly one site — `agy-seam-inject.sh:75` — in both drivers.
 3. `agy-after-reminder.sh` and the ANOMALY-CAPTURE arm are **unchanged**.
-4. The three touched hook pairs remain byte-identical across the two drivers.
+4. The **two** touched hook files — which between them carry all three directive sites — remain
+   byte-identical across the two drivers. (`agy-test-audit-reminder.sh` carries one site;
+   `agy-seam-inject.sh` carries two. Do not conflate sites with files.)
 5. Every touched hook still passes its ASCII byte test; no clause text contains a backtick or apostrophe.
 6. New assertions pin the presence of each clause and the absence of the clause where the rule excludes
    it; each watched RED first.
 7. The full section appears in both plugin READMEs; the pointer line appears in the root README.
 8. `agy-seam-inject.Tests.ps1` gains the cross-driver parity assertion, matching
    `agy-test-audit-reminder.Tests.ps1:149`.
-9. `_partition.md`'s **slow** count is re-measured by running `test-scripts-slow` backgrounded; the fast
-   count is expected to be unchanged.
-9. No change to `.no-agy` semantics, to any round count, or to any gate's pass condition.
+9. **Both** counts in `_partition.md` are re-measured by running each recipe — slow (backgrounded) because
+   the two touched hooks' suites live there, and fast because `agy-after-reminder.Tests.ps1` gains the
+   negative assertion. Neither is computed by addition.
+10. No change to `.no-agy` semantics, to any round count, or to any gate's pass condition.
 
 ## Panel record — round 1
 
@@ -382,3 +398,25 @@ defects the peer missed:
 | H2 | Acceptance criteria pointed at the **fast** suite count, but both touched suites are in `test-scripts-slow` (`justfile:101`); the only fast one is the suite this design now excludes. | read `justfile:93-101` | criteria retargeted to the slow half, with the backgrounding requirement stated |
 
 **Round 2 disposition: RED** — on driver-side findings, against a peer GREEN.
+
+## Panel record — round 3
+
+Seats rotated in: **Boundary Smuggler** (the mechanism is text injected into an agent's prompt; the hooks
+parse stdin JSON) and **Adoption Skeptic** (bespoke — does publishing concrete cost figures make a
+prospective user *more* likely to walk away?), plus both core seats. The peer was told plainly that its
+round-2 GREEN had not been banked and that a GREEN which walks the ledger is worth nothing; each seat was
+required to state **where it looked**. That calibration worked — the round returned four findings, all
+verified and folded:
+
+| id | finding | verification | fold |
+|---|---|---|---|
+| AB-1 | AC 4 claimed "three touched hook pairs"; only **two files** are touched (three *sites* across two *files*), and criterion 9 appeared twice | read the criteria list | AC 4 rewritten to distinguish sites from files; renumbered |
+| AB-2 | The mandated negative assertion edits `agy-after-reminder.Tests.ps1`, which is in the **fast** half — contradicting the design's own "fast count unchanged" | `justfile:94` vs the design's table | hook-touched vs suite-touched separated; both counts now re-measured |
+| AS-1 | The README opened with a bolded `$249` despite the design mandating tokens-first | read both sections | dollars moved into the API-billing bullet |
+| AS-2 | Habit 2 routed "this is too much ceremony" readers straight to the all-or-nothing kill-switch, accelerating abandonment | read habit 2 against *Turning it down* | habit 2 points at habit 1; kill-switch reframed as last resort |
+
+**AS-2 is a worked example of the fold-spawns-its-own-edge rule.** Round 1's BA-1 finding was that habit 2
+implied a selective opt-out that does not exist; the fix pointed the reader at *Turning it down* — and
+*that* is what created AS-2. One finding, two rounds, and the intermediate fix was the defect.
+
+**Round 3 disposition: RED.**
