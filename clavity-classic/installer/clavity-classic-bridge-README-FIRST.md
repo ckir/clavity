@@ -30,5 +30,7 @@ This folder is the opt-in bridge. It is INACTIVE until you finish these steps **
 
    Replace the path with THIS directory's absolute path (shown in the Explorer address bar), converting `\` to `/`.
 
-> Do NOT run `start-claudavity.ps1` by hand — the MCP server is launched in the background by the host agent;
-> running it manually just hangs the terminal.
+> `start-claudavity.ps1` is the co-launch entrypoint: run it from your normal pwsh (not from inside
+> Claude) FROM YOUR PROJECT FOLDER (or pass that folder as its first argument) — not from this bridge
+> folder. It starts agy detached in a psmux session, then runs Claude Code in the foreground in that
+> same project folder.

@@ -10,7 +10,7 @@ How to design a probe that tests a claim about the live agy peer. The focus is t
 agy is a live, external, non-contract peer. Its behaviour is verified empirically, not trusted.
 Two probe shapes:
 
-- **Single-shot** (probes A1–A6 in [`assertions.md`](assertions.md)) — a near-deterministic
+- **Single-shot** (probes A1, A2, A3, A5, A6 in [`assertions.md`](assertions.md)) — a near-deterministic
   property, e.g. "honors a REVIEW-ONLY banner". One ask + one observation confirms or refutes it.
   Executing one is covered by [`run-verification.md`](run-verification.md).
 - **Paired (A/B)** — a probabilistic / comparative claim: "condition C makes agy MORE likely to do

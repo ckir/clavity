@@ -30,8 +30,8 @@ clavity combines two off-the-shelf channels:
          ▼                                                              ▼ 7. return to idle (free)
 ```
 
-State detection is defense-in-depth and never load-bearing: correctness rests on the bus and on
-`has-session`; a doorbell sent while agy is busy is safely queued and processed as the next turn.
+State detection is defense-in-depth and never load-bearing: correctness rests on the bus; a doorbell
+sent while agy is busy is safely queued and processed as the next turn.
 
 ## See also
 

@@ -1,6 +1,6 @@
 # agy-autotrain — learn from every agy call, and keep the driving sharp
 
-An **optional** dual-plugin (Claude + agy) add-on for the agy-driving **learning loop**, with **no
+An **optional** Claude Code add-on for the agy-driving **learning loop**, with **no
 binary changes** (it composes the existing `clavity` commands + markdown). Everyday agy-driving usage
 feeds the loop, and the curated wisdom is injected back into every future call.
 
@@ -71,14 +71,13 @@ agy-autotrain/
 **Recommended (end users):** run the standalone **agy-autotrain** installer
 (`agy-autotrain-setup-<version>.exe`) from the
 [clavity release page](https://github.com/ckir/clavity/releases). It stages the plugin and registers it
-locally — a scoped `clavity-agy-autotrain` marketplace under its own install dir — against every
-detected agent (Claude Code / agy). No manual `plugin install`, and no remote marketplace: the plugin
-ships inside the installer.
+locally — a scoped `clavity-agy-autotrain` marketplace under its own install dir — with Claude Code
+only (never agy, which has no use for it). No manual `plugin install`, and no remote marketplace: the
+plugin ships inside the installer.
 
 **From a clone (developers):**
 ```
 claude plugin install ./agy-autotrain
-agy    plugin install ./agy-autotrain
 ```
 
 Driving needs only the core plugin; install this add-on when you also want agy to *learn*. When you
@@ -97,10 +96,10 @@ golden header.
   clavity-classic) is installed yet — agy-autotrain composes on top of one but ships no binary of its
   own, so nothing injects the golden header until a driver is present. Install one; expected and
   non-blocking until then (source: `installer/agy-autotrain.iss` post-install message).
-- **Install/uninstall silently fails to (de)register the plugin.** Claude Code was running during
-  setup — it rewrites the plugin registration on its own startup/exit and overwrites what the
-  installer just did. Close Claude Code completely, then run the installer again (source:
-  `installer/agy-autotrain.iss`).
+- **Install/uninstall refuses to run with an error dialog.** The installer detects a running Claude
+  Code and blocks — Claude Code rewrites the plugin registration on its own startup/exit, which would
+  overwrite what the installer just did. Close Claude Code completely, then run the installer again
+  (source: `installer/agy-autotrain.iss`).
 
 ## Recovering lost observations or a bad GROWTH region
 

@@ -75,7 +75,7 @@ de-registers the plugin from each detected agent.
 - `clavity-ls --mcp` — run the MCP stdio server (`agy_look` / `agy_status` / `agy_ask`); started
   automatically via `.mcp.json`, not normally run by hand.
 - `clavity-ls install [--plugin <name>]` — register a plugin with every detected agent (Claude Code
-  and/or agy); default plugin is the core `clavity-dotnet` plugin. Used by the installer's
+  and/or agy); default plugin is the core `clavity` plugin. Used by the installer's
   post-install step.
 - `clavity-ls uninstall [--purge-data]` — deregister; `--purge-data` also deletes the per-session log
   dir and the golden-header data dir.

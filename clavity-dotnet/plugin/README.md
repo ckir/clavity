@@ -16,7 +16,11 @@ clavity-dotnet/
   skills/ls-driving/                         # Claude: when to look vs ask + the anti-misfire protocol
   skills/ls-pairing/                         # agy: etiquette when LS-driven by a paired Claude
   skills/adversarial-panel-review/           # Claude: adversarial multi-seat review of a finished spec/plan
-  hooks/                                     # PostToolUse reminder pointing finished specs/plans at the panel skill
+  skills/agy-first/                          # Claude: consult agy on a design/scope/sequencing fork before committing to it
+  skills/agy-capstone/                       # Claude: rounds-until-green adversarial review of committed code before declaring done
+  skills/agy-test-audit/                     # Claude: audit test-suite coverage exhaustiveness after capstone is green
+  skills/open-issues/                        # Claude: capture an anomaly now, triage it later
+  hooks/                                     # PreToolUse/PostToolUse/SessionStart hooks: consult guards + seam-inject, after/test-audit reminders, startup liveness/anomaly checks
   knowledge/                                 # agy-assumptions.md + agy-capabilities.md — the agy-version-current manuals
 ```
 

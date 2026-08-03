@@ -29,6 +29,7 @@ directly.
 | `check-register-hash-synced.ps1` | Fail if `register-plugin-hash.iss` is stale vs the current `register-plugin.ps1` (uninstaller tamper-check drift guard) | `just check-register-hash` |
 | `sync-register-hash.ps1` | Regenerate `register-plugin-hash.iss` with the current SHA-256 of `register-plugin.ps1` | `just sync-register-hash` |
 | `check-agy-discipline-skills.ps1` | Lints shipped agy-driving discipline skills (frontmatter, ASCII-only [VERDICT] grammar, transports, marker constant) | `just check-agy-skills` (pre-push) |
+| `check-plugin-namespace.ps1` | SP-0 namespace-rename completeness gate: fails if the mass rename left any stray old plugin-namespace, skill-dir, or plugin-identity reference | lefthook pre-push (`check-plugin-namespace`); run directly, no `just` recipe |
 
 ## Seed / golden-header integrity
 
