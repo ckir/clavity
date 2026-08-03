@@ -27,6 +27,7 @@ this table.
 | 2026-08-02 | 29a5db8..c70f145 | 4 | GREEN | folds d089552, 0ca7407, c70f145; briefs .clavity/seams/capstone-anomaly-fix-r{1,2,3,4}.md |
 | 2026-08-02 | 6d79bee..a0b2d7b (AT-2 durability) | 3 | GREEN | folds 3adc045, a0b2d7b; round 1's miss reproduced by the probe recorded in 3adc045's message |
 | 2026-08-03 | 4a25d7a..5dc8822 (curate-nudge age scan) | 4 | GREEN | folds a357d7a, 8099813, 5dc8822; brief `.clavity/seams/capstone-nudge.md` (rewritten per round). Every finding measured before folding; round 3's finding was one the peer itself dismissed as unrealistic |
+| 2026-08-03 | c7b3923..8889473 (agy discipline cost/quota hygiene) | 4 | GREEN (proposed) | folds 309fb4e, c72d94b, 8889473; brief `.clavity/seams/capstone-cost-hygiene.md` (rewritten per round). **R1 GREEN rejected as false** — all six seats returned "no new findings" while restating the driver's own do-not-re-raise ledger as their "where looked", and one claim (`all hooks maintain set +e`) measured false. R2 RED with 3 findings, all verified true by counting. R3 GREEN rejected — its Fold Auditor cited `_partition.md:17` and declared it dated when it was not. R4 GREEN, and its one directly-checkable citation quoted the fixed line verbatim |
 
 **A note on the AT-2 row: round 1 returned GREEN with zero findings, and it was wrong.** Its answer walked
 the six-item do-not-re-raise ledger it had been given and confirmed each item back to the author. Nothing
