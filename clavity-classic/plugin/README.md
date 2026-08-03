@@ -14,6 +14,38 @@ directory.
 - `tmux.conf` — the `escape-time` snippet
 - `.claude-plugin/plugin.json` + `plugin.json` — Claude + agy manifests
 
+## Running this economically
+
+clavity's review disciplines are multi-round by design — that's where the defects come from. But ~87%
+of an agent session's token use is re-reading its own accumulated context rather than producing new
+output. **Every turn re-reads everything before it**, so a review run at the end of a long session
+consumes several times the tokens it would in a fresh one.
+
+Measured on one real session — 305 turns of work at a ~380k context versus the same turns at 40k: about
+**9x the tokens read, for identical work**.
+
+- **On a subscription**, tokens are what matter: a review fired at high context burns through your usage
+  window far faster, and that is what stops work mid-task. Check `/usage` before starting a long review.
+- **On API billing**, that same run measured $249 against $47.
+
+Three habits, in order of payoff:
+
+1. **Two chats.** Implement and commit in one session. Then `/compact`, or open a fresh chat, and run
+   the review there: *"run agy-capstone on `<range>`"*. Same rigor, a fraction of the tokens.
+2. **Match the ceremony to the stakes.** The full harness is built for code where a missed defect is
+   expensive. On a smaller project, the cheapest move is habit 1 rather than switching anything off —
+   the disciplines still run, they just cost a fraction. Several of them are triggered by hooks rather
+   than invoked by you, and they are not individually switchable today; a finer-grained mode is under
+   consideration.
+3. **Fix coverage gaps inline, for free.** Notice a missing test while implementing? Just ask for it
+   then — *"add a test for that case"*. One turn. Convening a full audit to rediscover the same gap
+   costs many. Save the convened audit for the gaps you *didn't* notice.
+
+**Turning it down.** If you do need to silence the disciplines, `.no-agy` in your project root or
+`~/.claude/` does it — but it is deliberately all-or-nothing, so it silences **every** one of them,
+including the cheap ones. It is a last resort rather than a tuning knob; try habit 1 first. A
+finer-grained mode is under consideration.
+
 ## Install / registration
 
 There's no marketplace listing yet, so you install from a local clone of this repo.
