@@ -302,8 +302,24 @@ Add one negative assertion too: the AGY-FIRST emit must **not** contain `COST:`,
 `agy-after-reminder` message must contain neither anchor — otherwise the placement rule is unpinned and a
 later edit could reintroduce the non-durable-deferral defect.
 
-Plus the parity assertion for `agy-seam-inject.Tests.ps1`, copied from
-`agy-test-audit-reminder.Tests.ps1:149` (see *Cross-driver parity*).
+Plus parity assertions for **both** `agy-seam-inject.Tests.ps1` **and** `agy-after-reminder.Tests.ps1`,
+copied from `agy-test-audit-reminder.Tests.ps1:149-152` — a `Get-FileHash` (SHA-256) comparison against
+the classic mirror:
+
+```powershell
+It 'is byte-identical to the clavity-classic mirror' {
+    $classic = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-classic/plugin/hooks/<hook>.sh'
+    (Get-FileHash $script:Hook).Hash | Should -Be (Get-FileHash $classic).Hash
+}
+```
+
+**`agy-after-reminder` needs one even though its hook is not edited, and the reason is subtle.** Every
+suite roots `$script:Hook` at the **dotnet** copy, so the negative assertion that pins this hook's
+*exclusion* — that its message carries neither anchor — only ever inspects dotnet. If a later edit added
+the clause to classic's copy alone, nothing would fail, and the excluded non-durable site would silently
+start telling agents to defer a review that never re-fires. That is precisely the CA-1 defect, re-entering
+through the driver the tests do not look at. The parity assertion is what makes the negative assertion
+cover both drivers.
 
 **Both touched suites live in the SLOW half**, which changes how they are run and which count is
 re-measured. Measured from the justfile:
@@ -382,8 +398,9 @@ subtraction.
    it. **Positive** assertions are watched RED first; **negative** assertions are proven non-vacuous by a
    mutation that is verified to have landed (they cannot go RED on clean baseline).
 7. The full section appears in both plugin READMEs; the pointer line appears in the root README.
-8. `agy-seam-inject.Tests.ps1` gains the cross-driver parity assertion, matching
-   `agy-test-audit-reminder.Tests.ps1:149`.
+8. `agy-seam-inject.Tests.ps1` **and** `agy-after-reminder.Tests.ps1` each gain a cross-driver parity
+   assertion matching `agy-test-audit-reminder.Tests.ps1:149-152`. After this change all three mirrored
+   hooks are pinned.
 9. **Both** counts in `_partition.md` are re-measured by running each recipe — slow (backgrounded) because
    the two touched hooks' suites live there, and fast because `agy-after-reminder.Tests.ps1` gains the
    negative assertion. Neither is computed by addition.
@@ -497,3 +514,19 @@ numbered finding, which is worth recording — a peer's incidental claims are wo
 the ones it flags.
 
 **Round 5 disposition: RED** (on a peer-volunteered fact confirmed by measurement, against a peer GREEN).
+
+## Panel record — round 6
+
+Seats: **Driver-Asymmetry Auditor** and **Rollback Auditor** (both bespoke; reversibility had never been
+examined by any round), plus both core seats. The peer returned GREEN, and this time its volunteered
+claims were **checked and correct** — including that the existing parity test is a SHA-256 `Get-FileHash`
+comparison at `agy-test-audit-reminder.Tests.ps1:149-152`, verified by reading it. Its citation accuracy
+is now good.
+
+One driver-side finding remained:
+
+| id | finding | verification | fold |
+|---|---|---|---|
+| R6-1 | Every suite roots `$script:Hook` at the **dotnet** copy. So the negative assertion pinning `agy-after-reminder`'s *exclusion* only ever inspects dotnet — a later edit adding the clause to classic's copy alone would fail nothing, silently re-introducing CA-1 through the driver the tests do not look at. | read the suites' `$script:Hook` rooting | a parity assertion is now required for `agy-after-reminder.Tests.ps1` too, even though its hook is not edited; the exact `Get-FileHash` pattern is pinned in the design so the implementer does not have to invent it |
+
+**Round 6 disposition: RED** (one driver-side finding, against a peer GREEN whose own claims all held).
