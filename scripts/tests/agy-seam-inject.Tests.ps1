@@ -160,4 +160,20 @@ Describe 'agy-seam-inject.sh' {
         $out | Should -Match 'FILES clause'
         $out | Should -Match 'git status --short'
     }
+
+    It 'does NOT put either clause on the anomaly-capture seam' {
+        $repo = New-TempRepo
+        try {
+            $cwd = ($repo -replace '\\','/')
+            $out = Invoke-Hook -Skill 'superpowers:executing-plans' -Cwd $cwd
+            $out | Should -Match 'ANOMALY-CAPTURE'
+            $out | Should -Not -Match 'COST:'
+            $out | Should -Not -Match 'SESSION POSTURE:'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is byte-identical to the clavity-classic mirror' {
+        $classic = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-classic/plugin/hooks/agy-seam-inject.sh'
+        (Get-FileHash $script:Hook).Hash | Should -Be (Get-FileHash $classic).Hash
+    }
 }

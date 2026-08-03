@@ -56,4 +56,13 @@ Describe 'agy-after-reminder.sh' {
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }
+    It 'does NOT carry the cost clause (its trigger is not durable)' {
+        $r = Invoke-BashHook -HookPath $script:Hook -Payload (New-WritePayload 'docs/superpowers/specs/x.md')
+        $r.StdOut | Should -Not -Match 'COST:'
+        $r.StdOut | Should -Not -Match 'SESSION POSTURE:'
+    }
+    It 'is byte-identical to the clavity-classic mirror' {
+        $classic = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'clavity-classic/plugin/hooks/agy-after-reminder.sh'
+        (Get-FileHash $script:Hook).Hash | Should -Be (Get-FileHash $classic).Hash
+    }
 }
