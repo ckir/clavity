@@ -25,6 +25,12 @@ Two facts make this a shipping defect rather than a user-education gap:
    convene the live agy peer" with no cost qualification, and the agent obeys the text it can see.
    Documentation alone therefore cannot change the behaviour — which is why layer 1 exists.
 
+   **This premise was observed, not merely reasoned.** During the session that produced this design, the
+   `agy-after-reminder` directive fired repeatedly and drove the agent into running a full multi-round
+   adversarial panel each time, without the user ever asking for one. A hook directive demonstrably
+   changes what the agent does. That is the whole basis for expecting a COST clause in the same channel to
+   work — and equally the reason its wording must not become an excuse to skip a gate.
+
 Measured: **zero mentions of cost, quota, context size, or compaction in any shipped hook, on either
 driver.**
 
@@ -393,6 +399,30 @@ subtraction.
 | Added text costs tokens on every hook fire | Capped at two sentences; only three of five directive sites carry any added text |
 | The quoted figures come from a single session | Stated as such in the README text ("one real session"); the method is reproducible from the transcript |
 | `/compact` is itself a summarization pass over the whole context, so the net saving is smaller than the raw multiple | The recommendation stands on the measured 305-turn comparison, which is a like-for-like turn cost; the one-off compaction cost is not modelled and is assumed small against a 300-turn tail. **Unquantified — flagged, not proven.** |
+
+## File manifest
+
+Every file this change touches, in one place. The rest of this document derives these from five separate
+sections; a review whose dominant defect class was *facts restated in scattered places* should not also
+require the implementer to assemble its own file list.
+
+| # | file | change |
+|---|---|---|
+| 1 | `clavity-dotnet/plugin/hooks/agy-test-audit-reminder.sh` | append COST clause to the emit |
+| 2 | `clavity-classic/plugin/hooks/agy-test-audit-reminder.sh` | identical (parity) |
+| 3 | `clavity-dotnet/plugin/hooks/agy-seam-inject.sh` | append COST clause to the AGY-CAPSTONE arm, SESSION POSTURE to the AGY-FIRST arm |
+| 4 | `clavity-classic/plugin/hooks/agy-seam-inject.sh` | identical (parity) |
+| 5 | `scripts/tests/agy-test-audit-reminder.Tests.ps1` | + positive assertion |
+| 6 | `scripts/tests/agy-seam-inject.Tests.ps1` | + 2 positive, + 1 negative, + parity assertion |
+| 7 | `scripts/tests/agy-after-reminder.Tests.ps1` | + negative assertion, + parity assertion |
+| 8 | `clavity-dotnet/plugin/README.md` | + the full section |
+| 9 | `clavity-classic/plugin/README.md` | + the full section |
+| 10 | `README.md` | + the one-line pointer |
+| 11 | `scripts/tests/_partition.md` | both counts re-measured |
+
+**Not touched, deliberately:** `agy-after-reminder.sh` itself (either driver) — see the placement rule;
+the ANOMALY-CAPTURE arm of `agy-seam-inject.sh`; every `jq`-missing fallback branch; and
+`agy-drive-session-reset.sh`, which exists only in classic and convenes nothing.
 
 ## Acceptance criteria
 
