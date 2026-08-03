@@ -14,6 +14,13 @@ BeforeAll {
     $script:CleanHome = Join-Path ([IO.Path]::GetTempPath()) ("sp-c-home-" + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path (Join-Path $script:CleanHome '.claude') -Force | Out-Null
 
+    # The clauses VERBATIM. Asserted whole, not by bookend fragments: an audit mutant that deleted the
+    # operative sentence ("tell the user it runs about 5x leaner...") from all four hooks left the entire
+    # 45-test suite GREEN, because the assertions only pinned the opening token and the closing words.
+    # ~380 of the COST clause's 399 characters were unguarded, including everything actionable in it.
+    $script:CostClause = 'COST: this discipline re-reads the whole session context every round, so running it in a long session burns several times the tokens - and subscription quota - of running it fresh. If this session carries substantial history, do not run it inline: tell the user it runs about 5x leaner after /compact or in a fresh session, and follow their answer. This changes WHERE the review runs, never WHETHER.'
+    $script:PostureClause = 'SESSION POSTURE: reviews later in this work (capstone, test audit, panel) re-read the whole session context each round, so they run far leaner in a fresh session than at the end of a long one. Plan to commit first, then run them after /compact or in a new session.'
+
     function Invoke-Hook { param([string]$Skill, [string]$Cwd = '.')
         $payload = @{ tool_input = @{ skill = $Skill }; cwd = $Cwd } | ConvertTo-Json -Compress
         (Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ HOME = $script:CleanHome }).StdOut
@@ -43,6 +50,8 @@ Describe 'agy-seam-inject.sh' {
             $out = Invoke-Hook -Skill 'superpowers:brainstorming' -Cwd $cwd
             $out | Should -Match 'SESSION POSTURE:'
             $out | Should -Match 'commit first'
+            # Whole clause, so no interior sentence can be lost silently.
+            $out | Should -Match ([regex]::Escape($script:PostureClause))
         } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -63,6 +72,8 @@ Describe 'agy-seam-inject.sh' {
             $out = Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $cwd
             $out | Should -Match 'COST:'
             $out | Should -Match 'never WHETHER'
+            # Whole clause, so no interior sentence can be lost silently.
+            $out | Should -Match ([regex]::Escape($script:CostClause))
         } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

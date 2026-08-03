@@ -44,6 +44,12 @@ Describe 'agy-test-audit-reminder.sh' {
             @{ tool_name = 'Bash'; tool_input = @{ command = 'git commit' }; cwd = $Cwd } | ConvertTo-Json -Compress
         }
         $script:Cwd = { param($d) ($d -replace '\\','/') }
+
+        # The COST clause VERBATIM. Asserted whole, not by bookend fragments: an audit mutant that deleted
+        # its operative sentence ("tell the user it runs about 5x leaner...") from all four hooks left the
+        # entire 45-test suite GREEN, because the assertions pinned only the opening token and the closing
+        # words - leaving ~380 of its 399 characters, and everything actionable in it, unguarded.
+        $script:CostClause = 'COST: this discipline re-reads the whole session context every round, so running it in a long session burns several times the tokens - and subscription quota - of running it fresh. If this session carries substantial history, do not run it inline: tell the user it runs about 5x leaner after /compact or in a fresh session, and follow their answer. This changes WHERE the review runs, never WHETHER.'
     }
 
     It 'FIRES the audit nudge when capstone.head==HEAD, no audit marker, code changed' {
@@ -150,6 +156,8 @@ Describe 'agy-test-audit-reminder.sh' {
             $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
             $out.StdOut | Should -Match 'COST:'
             $out.StdOut | Should -Match 'never WHETHER'
+            # Whole clause, so no interior sentence can be lost silently.
+            $out.StdOut | Should -Match ([regex]::Escape($script:CostClause))
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'ships as pure ASCII' {
