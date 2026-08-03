@@ -185,7 +185,7 @@ These are hard constraints, each verified against the code or a test:
 
 ### Exact text
 
-> ### Running this economically
+> ## Running this economically
 >
 > clavity's review disciplines are multi-round by design — that's where the defects come from. But ~87%
 > of an agent session's token use is re-reading its own accumulated context rather than producing new
@@ -316,8 +316,20 @@ Consequences the implementer must not get wrong:
 - `test-scripts-slow` can exceed the 600s foreground tool cap, so per `_partition.md` it must be
   **backgrounded** and blocked on its own `Tests completed` line — never on a process count.
 
-Per repo convention each new assertion is watched RED before the text is added, and any count in
-`scripts/tests/_partition.md` is re-measured by running the recipe — never by addition or subtraction.
+**Positive and negative assertions are proven differently — do not apply one procedure to both.**
+
+- **Positive assertions** (the clause IS present) are watched **RED first**: written before the hook text
+  is added, they fail because the anchor does not yet exist, then go green when it does. Standard TDD.
+- **Negative assertions** (the clause is ABSENT where the rule excludes it) **cannot be watched RED** —
+  they pass on clean baseline precisely because the forbidden string does not exist yet. Watching them
+  "fail first" is impossible, and an implementer following a blanket RED-first instruction will either
+  stall or contort the test. They are proven non-vacuous by **mutation** instead: temporarily insert the
+  forbidden anchor into the hook, confirm the assertion fails, then revert and confirm it passes. The
+  mutation must be proven to have landed — a mutation that silently did not apply produces a
+  green-looking test that proves nothing.
+
+Any count in `scripts/tests/_partition.md` is re-measured by running the recipe — never by addition or
+subtraction.
 
 ## Deferred work
 
@@ -358,7 +370,8 @@ Per repo convention each new assertion is watched RED before the text is added, 
    `agy-seam-inject.sh` carries two. Do not conflate sites with files.)
 5. Every touched hook still passes its ASCII byte test; no clause text contains a backtick or apostrophe.
 6. New assertions pin the presence of each clause and the absence of the clause where the rule excludes
-   it; each watched RED first.
+   it. **Positive** assertions are watched RED first; **negative** assertions are proven non-vacuous by a
+   mutation that is verified to have landed (they cannot go RED on clean baseline).
 7. The full section appears in both plugin READMEs; the pointer line appears in the root README.
 8. `agy-seam-inject.Tests.ps1` gains the cross-driver parity assertion, matching
    `agy-test-audit-reminder.Tests.ps1:149`.
@@ -429,3 +442,29 @@ implied a selective opt-out that does not exist; the fix pointed the reader at *
 *that* is what created AS-2. One finding, two rounds, and the intermediate fix was the defect.
 
 **Round 3 disposition: RED.**
+
+## Panel record — round 4
+
+Palette exhausted, so two bespoke seats via its escape hatch, both hunting classes no earlier round
+covered: **Implementation Rehearsal** (walk the change in execution order; find the step that cannot be
+done given the state the previous one leaves) and **Self-Application Auditor** (this repo runs these
+disciplines on itself — what breaks when the change lands on its own maintainers?). Core seats re-seated.
+
+Cascade Analyst and Self-Application Auditor both returned "no new findings" **with where-they-looked
+stated** — degradation branches under missing `jq`, fail-open behaviour on detached HEAD and empty
+history, and the marker-debounce interaction when a maintainer follows habit 1 across two chats.
+
+| id | finding | verification | fold |
+|---|---|---|---|
+| AB-1 | The exact-text block specified `### Running this economically` (H3) while the placement instruction said `## ` (H2); both target READMEs use H2 for top-level sections | `:188` vs `:246` | exact text corrected to H2 |
+| IR-1 | Criterion 6 required every new assertion be "watched RED first", but a **negative** assertion passes on clean baseline and can never go RED — the instruction is unexecutable for exactly the assertions that pin the placement rule | reasoned from the assertion semantics | positive and negative proof procedures separated; negatives proven by a verified mutation |
+
+**AB-1 was introduced by my own D1 fold** — the third fix-spawns-its-own-edge instance in this review
+(BA-1 → AS-2, and now D1 → AB-1). That rate is itself the argument for re-running a round after every
+fold rather than folding and shipping.
+
+**IR-1 is the most valuable finding of the whole review**, because it would not have failed loudly: an
+implementer would have written the negative assertions, seen them pass, and recorded them as verified.
+A vacuous test that pins nothing is indistinguishable from a real one until the day it is needed.
+
+**Round 4 disposition: RED.**
