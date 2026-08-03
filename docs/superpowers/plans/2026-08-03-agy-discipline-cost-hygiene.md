@@ -31,6 +31,17 @@ A find-and-replace anchored on that tail hits **both** arms and puts the wrong c
 
 Write `/compact`, not a backticked one. Write "does not", never "doesn't".
 
+**Both strings below have been verified by measurement, so you do not need to re-derive this** — but if you
+alter a single character, re-run the check:
+
+```
+COST     chars=399  apostrophes=0  backticks=0  nonascii=0  dquotes=0  dollar=0
+POSTURE  chars=264  apostrophes=0  backticks=0  nonascii=0  dquotes=0  dollar=0
+```
+
+The `dquotes` and `dollar` columns matter for future-proofing rather than for these two sites: neither
+clause lands in a double-quoted string today, but a `"` or `$` would break one if it ever did.
+
 ---
 
 ## The two exact strings
