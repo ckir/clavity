@@ -354,8 +354,8 @@ subtraction.
 | risk | mitigation |
 |---|---|
 | The clause reads as permission to skip a gate | The "never WHETHER" sentence; the durability condition in the placement rule; a test asserting the anchors are present |
-| Four files must change together; nothing enforces parity | Single commit touching all four; parity gap tracked as deferred work |
-| Clause adds recurring tokens on every hook fire | Capped at two sentences; only three of five directive sites carry it |
+| The two touched hooks must stay in sync across both drivers (four files) | A single commit touches all four, and after this change **both** are pinned: `agy-test-audit-reminder.Tests.ps1:149` already asserts its pair, and this change adds the same assertion for `agy-seam-inject`. Only the untouched mirrored files remain unpinned (deferred item 4) |
+| Added text costs tokens on every hook fire | Capped at two sentences; only three of five directive sites carry any added text |
 | The quoted figures come from a single session | Stated as such in the README text ("one real session"); the method is reproducible from the transcript |
 | `/compact` is itself a summarization pass over the whole context, so the net saving is smaller than the raw multiple | The recommendation stands on the measured 305-turn comparison, which is a like-for-like turn cost; the one-off compaction cost is not modelled and is assumed small against a 300-turn tail. **Unquantified — flagged, not proven.** |
 
