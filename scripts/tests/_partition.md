@@ -18,11 +18,11 @@ only on sort order, so it is not reproducible and is not used.
 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **14 suites, 177 tests, measured 124,6s**
+- `just test-scripts-fast` — the agent inner-loop gate. **15 suites, 177 tests, measured 124,6s**
   (2026-08-03, ONE sample at THIS configuration — see the two-sample rule below; the count is
-  deterministic, the time is not). The immediately preceding sample, 150,6s, was 13 suites / 175 tests,
+  deterministic, the time is not). The immediately preceding sample, 150,6s, was 14 suites / 175 tests,
   so the two are NOT two samples of the same thing and must not be averaged or compared.
-- `just test-scripts-slow` — everything else. **12 suites, 238 tests, measured 653,5s** (2026-08-03,
+- `just test-scripts-slow` — everything else. **13 suites, 238 tests, measured 653,5s** (2026-08-03,
   ONE sample). NOT on any git hook; it **exceeded the 600s foreground tool cap on that very run** and
   must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line — never by
   watching a process count.
@@ -64,7 +64,7 @@ Fast was re-measured five times on 2026-08-03, every time by running the recipe:
 then **171 / 132,3s** after capstone round 2 added 2 more, and **173 passed / 0 failed in 145,9s**
 after capstone round 3 added 2 more. A fifth run, after the cost-clause work added 2 tests to
 `agy-after-reminder`, measured **175 passed / 0 failed in 150,6s**. A sixth, after
-`plugin-hooks-payload.Tests.ps1` was added as a NEW 14th fast suite at 2 tests, measured
+`plugin-hooks-payload.Tests.ps1` was added as a NEW 15th fast suite at 2 tests, measured
 **177 passed / 0 failed in 124,6s** — note the run got FASTER while gaining a suite, which is the
 run-order/cold-start effect this file warns about, not a speed-up.
 
@@ -77,6 +77,23 @@ recipe.** Do not reconcile a surprise like that by arithmetic — the measuremen
 
 If you move a file between halves, re-measure BOTH halves and update this file; do not edit it from
 memory, and do not compute the new number by subtraction (see above).
+
+**THE SUITE COUNT IS A COUNT TOO — and it decayed silently for longer than the test count did.** On
+2026-08-03 this file claimed 13 fast and 12 slow suites while the recipes actually listed 15 and 13.
+It went wrong the way the rest of this file warns about: someone adding a suite **incremented the
+printed number instead of counting the recipe**, and the error then survived every later edit because
+each subsequent editor incremented the already-wrong figure in turn. Do not add one. Count:
+
+```bash
+for r in fast slow; do
+  printf '%s %s\n' "$r" "$(sed -n "/^test-scripts-$r:/,/^$/p" justfile \
+    | grep -oE 'scripts/tests/[A-Za-z0-9._-]+\.Tests\.ps1' | sort -u | wc -l)"
+done
+```
+
+The `## Measured runtimes` table below is also NOT self-maintaining: `agy-inbox-snapshot.Tests.ps1`
+was in `test-scripts-slow` and absent from the table entirely. To find that class of omission,
+diff the recipe membership against the table rather than reading down it.
 
 ## Measured runtimes
 
@@ -91,6 +108,8 @@ accept-drain.Tests.ps1                           51,2s   10 tests
 agy-after-reminder.Tests.ps1                      8,8s   10 tests   <- count 2026-08-03, time older
 agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
 agy-curate-nudge.Tests.ps1                       29,2s   11 tests   <- FAST, added 2026-08-03
+agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
+                                                                      table entirely until 2026-08-03
 agy-liveness-check.Tests.ps1                     40,9s   27 tests
 agy-seam-inject.Tests.ps1                        18,0s   19 tests   <- count 2026-08-03, time older
 agy-test-audit-reminder.Tests.ps1                32,5s   14 tests   <- count 2026-08-03, time older
