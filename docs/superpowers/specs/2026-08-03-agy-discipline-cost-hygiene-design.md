@@ -303,7 +303,7 @@ Add one negative assertion too: the AGY-FIRST emit must **not** contain `COST:`,
 later edit could reintroduce the non-durable-deferral defect.
 
 Plus parity assertions for **both** `agy-seam-inject.Tests.ps1` **and** `agy-after-reminder.Tests.ps1`,
-copied from `agy-test-audit-reminder.Tests.ps1:149-152` — a `Get-FileHash` (SHA-256) comparison against
+copied from `agy-test-audit-reminder.Tests.ps1`'s `It 'is byte-identical to the clavity-classic mirror'` — a `Get-FileHash` (SHA-256) comparison against
 the classic mirror:
 
 ```powershell
@@ -399,7 +399,7 @@ subtraction.
    mutation that is verified to have landed (they cannot go RED on clean baseline).
 7. The full section appears in both plugin READMEs; the pointer line appears in the root README.
 8. `agy-seam-inject.Tests.ps1` **and** `agy-after-reminder.Tests.ps1` each gain a cross-driver parity
-   assertion matching `agy-test-audit-reminder.Tests.ps1:149-152`. After this change all three mirrored
+   assertion matching `agy-test-audit-reminder.Tests.ps1`'s `It 'is byte-identical to the clavity-classic mirror'`. After this change all three mirrored
    hooks are pinned.
 9. **Both** counts in `_partition.md` are re-measured by running each recipe — slow (backgrounded) because
    the two touched hooks' suites live there, and fast because `agy-after-reminder.Tests.ps1` gains the
@@ -520,7 +520,7 @@ the ones it flags.
 Seats: **Driver-Asymmetry Auditor** and **Rollback Auditor** (both bespoke; reversibility had never been
 examined by any round), plus both core seats. The peer returned GREEN, and this time its volunteered
 claims were **checked and correct** — including that the existing parity test is a SHA-256 `Get-FileHash`
-comparison at `agy-test-audit-reminder.Tests.ps1:149-152`, verified by reading it. Its citation accuracy
+comparison at `agy-test-audit-reminder.Tests.ps1`'s `It 'is byte-identical to the clavity-classic mirror'`, verified by reading it. Its citation accuracy
 is now good.
 
 One driver-side finding remained:
@@ -530,3 +530,14 @@ One driver-side finding remained:
 | R6-1 | Every suite roots `$script:Hook` at the **dotnet** copy. So the negative assertion pinning `agy-after-reminder`'s *exclusion* only ever inspects dotnet — a later edit adding the clause to classic's copy alone would fail nothing, silently re-introducing CA-1 through the driver the tests do not look at. | read the suites' `$script:Hook` rooting | a parity assertion is now required for `agy-after-reminder.Tests.ps1` too, even though its hook is not edited; the exact `Get-FileHash` pattern is pinned in the design so the implementer does not have to invent it |
 
 **Round 6 disposition: RED** (one driver-side finding, against a peer GREEN whose own claims all held).
+
+## A standing caution on this document's own citations
+
+This design cites test locations **by test name**, not by line number, wherever the implementer is sent
+somewhere to copy from. That is deliberate: executing this design adds `It` blocks to the very suites it
+cites, so any line number pinned here can drift as the work is done — the document would misdirect its own
+implementer. This repo has already been bitten once by a pinned line that moved.
+
+Hook citations (`agy-test-audit-reminder.sh:68`, `agy-seam-inject.sh:75/77`, `agy-after-reminder.sh:36`)
+are stable by contrast, because the change appends **within** an existing single-line string and adds no
+lines. Re-locate anything here by content if it does not match.
