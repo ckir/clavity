@@ -587,6 +587,32 @@ them.
 
 **Round 7 disposition: RED.**
 
+## Panel record — rounds 8 and 9: CONVERGED
+
+**Round 8.** Seats: **Fold Verification Auditor** (walk all 27 ledger items and confirm each fix landed in
+*every* section stating that fact) and **Cold-Implementer Completeness** (given this document alone, what
+would you have to invent?), plus both core seats. The peer returned GREEN having cross-checked each ledger
+item across sections. Two driver-side additions followed — a consolidated **file manifest** (the change
+touches ~11 files, previously derivable only by assembling them from five sections) and a paragraph
+recording that the hook-outranks-documentation premise was **observed** this session rather than reasoned.
+
+One correction to the peer's round-8 report: it claimed tests are cited "strictly by test name". A sweep
+found test line citations still present as *evidence* references, which the standing caution above already
+covers. The document is correct; the peer's summary overstated it.
+
+**Round 9 (confirming).** Run because this review's own rule is *never fold and ship* — the manifest was
+new content assembled from scattered facts, which is exactly the operation that failed five times here.
+Focus seat **Manifest Cross-Check** verified all eleven rows and the not-touched list against their source
+sections individually. GREEN.
+
+**Disposition: the panel is CONVERGED at round 9.** Findings per round ran **11, 2, 4, 2, 1, 1, 1, 0, 0** —
+two consecutive clean rounds, the second of which specifically covered the final folds. Thirty findings
+folded in total, every one verified by measurement before folding.
+
+Of those thirty, **eleven came from the driver rather than the peer**, including two that were false claims
+in this document and one — the negative assertions that could never go RED — that would not have failed
+loudly. Two peer GREENs were rejected on driver-side findings before the panel genuinely converged.
+
 ## The pattern this review kept hitting, and what to do about it
 
 **Five of the folds in this review created the next defect.** BA-1's fix created AS-2. D1's fix created
