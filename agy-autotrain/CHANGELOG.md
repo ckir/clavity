@@ -1,4 +1,25 @@
 # agy-autotrain — changelog
+## 0.3.0 — 2026-08-03
+
+### Features
+- feat(cheatsheet): sanction the null answer; verify the fix, not just the finding
+- feat(agy-autotrain): snapshot the observations inbox before a drain
+- feat(agy-knowledge): drain the observations inbox - cheatsheet core + gRPC backlog item
+- feat(verify): per-driver status columns in the assertion table
+- feat(sp0): add pluginName field to driver members (identity != member key)
+
+### Fixes
+- fix(agy-autotrain): a malformed KEEP wiped the whole snapshot ring
+- fix(agy-curate): reset the inbox only after curate-commit succeeds
+- fix(gates,dispatch): fold capstone round 2 - four verified findings
+- fix(curate-commit): tripwire a mojibake payload at the receiving end
+- fix(agy-curate): define a legal end state for an unrunnable probe, and bound the rubric
+- fix(agy-autotrain): emit the right payload shape for PreCompact
+- fix(verify): close three silent-failure paths the capstone found
+- fix(installer): correct the partial-failure warning + scoped not-detected message
+- fix(agy-autotrain): register with Claude Code only, never agy
+- fix(docs): correct stale golden-header injection claim in agy-autotrain README
+
 ## 0.2.2 — 2026-07-24
 
 ### Fixes

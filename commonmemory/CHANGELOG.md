@@ -1,5 +1,14 @@
 # commonmemory changelog
 
+## 0.3.0 — 2026-08-03
+
+### Features
+- feat(sp0): add pluginName field to driver members (identity != member key)
+
+### Fixes
+- fix(installer): correct the partial-failure warning + scoped not-detected message
+- fix(agy-autotrain): register with Claude Code only, never agy
+
 ## 0.2.2 — 2026-07-24
 
 ### Fixes

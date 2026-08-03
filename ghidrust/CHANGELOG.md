@@ -1,4 +1,13 @@
 # ghidrust changelog
+## 1.2.0 — 2026-08-03
+
+### Features
+- feat(sp0): add pluginName field to driver members (identity != member key)
+
+### Fixes
+- fix(installer): correct the partial-failure warning + scoped not-detected message
+- fix(agy-autotrain): register with Claude Code only, never agy
+
 ## 1.1.1 — 2026-07-21
 
 ### Fixes
