@@ -30,7 +30,7 @@ fi
 # reports an "oldest pending entry" no bullet carries - which latched the age nudge ON permanently, because
 # draining cannot remove a drain log. Pinned by scripts/tests/agy-curate-nudge.Tests.ps1.
 count="$(awk '/^## Pending/{p=1;next} /^## /{p=0} p && /^- \[/{c++} END{print c+0}' "$OBS" 2>/dev/null)"
-oldest="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^## Pending/{p=1;next} /^## /{ flush(); p=0 } p && /^- \[/ { flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ d=substr(s,RSTART,10); s=substr(s,RSTART+10); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/) stamp=d; cur=d } } END{ flush(); print m }' "$OBS" 2>/dev/null)"
+oldest="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^## Pending/{p=1;next} /^## /{ flush(); p=0 } p && /^- \[/ { flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print m }' "$OBS" 2>/dev/null)"
 [ -z "$count" ] && exit 0
 
 # Age gate (spec §5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?

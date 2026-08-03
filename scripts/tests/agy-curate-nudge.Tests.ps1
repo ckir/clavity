@@ -183,6 +183,45 @@ Describe 'agy-curate-nudge.sh' {
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'does not mistake a prose date followed by the word agy for the stamp' {
+        # Capstone round 3. The stamp rule keyed only on what FOLLOWS the date, so prose of the shape
+        # "<date> agy <word>" impersonated a stamp. In an inbox whose entries are ABOUT agy that phrasing
+        # is ordinary, not exotic. The discriminator: a real stamp is DELIMITED (preceded by punctuation
+        # such as the middle dot), whereas a prose date is preceded by a word.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) capture text  ``[corpus]`` - $script:Today - agy 1.1.10
+  Repro: tested on 2021-05-01 agy probe where it failed.
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -BeNullOrEmpty -Because '2021-05-01 is prose preceded by the word "on", not a delimited stamp'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'still reads a stamp delimited by the real middle-dot separator' {
+        # Guard the fix above against over-tightening: the LIVE inbox delimits with U+00B7, not ASCII.
+        $mid = [char]0x00B7
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) real-format entry  ``[corpus]`` $mid 2020-01-01 $mid agy 1.0.10
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -Match 'oldest pending entry \(2020-01-01\)'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT under a .no-agy kill-switch even when the inbox is genuinely stale' {
         $inbox = @"
 # agy observations inbox
