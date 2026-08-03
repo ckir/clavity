@@ -256,9 +256,18 @@ Per-hook suites must pin, at minimum:
    Assert the parsed JSON key, not a substring — this is the silent-failure mode.
 2. **Fail-open on the dispatch hook.** Assert exit 0 on: malformed payload, absent `jq`, unreadable cwd,
    and a non-Agent payload. There must be **no** path that exits non-zero.
+2b. **`jq`-absent still DELIVERS, on BOTH hooks.** Exit 0 alone is not the requirement — acceptance
+   criterion 9 requires the hardcoded fallback to be **the JSON envelope**. Assert, for each new hook
+   with `jq` removed from `PATH`, that stdout parses as JSON and carries the event-correct key
+   (`systemMessage` for `PreCompact`, `hookSpecificOutput` for the dispatch hook). A hook that exits 0
+   and emits nothing passes item 2 while silently dropping the nudge — the exact invisible failure this
+   change exists to remove.
 3. **`.no-agy` suppression**, workspace and global, on both hooks.
-4. **Wording invariants on the capture nudge** — assert the clause WHOLE via `[regex]::Escape`, not by
-   bookend fragments. A prior epic proved bookend assertions leave ~95% of a directive unguarded.
+4. **Wording invariants on BOTH directives** — the capture nudge *and* the dispatch directive, each
+   asserted WHOLE via `[regex]::Escape`, not by bookend fragments. A prior epic proved bookend assertions
+   leave ~95% of a directive unguarded. For the dispatch directive this is what enforces acceptance
+   criterion 8: whole-clause assertion is the only thing that catches the instruct-the-subagent half
+   being dropped again, and it must also assert the **absence** of a FILES allow-list.
 5. **The widened matcher** — that the drain hook still fires on a `compact`/`resume` payload.
 6. **The regression the split exists to prevent** — that `agy-liveness-check.sh` (and, on classic,
    `agy-drive-session-reset.sh`) is registered under a matcher that does **not** include `compact`,
@@ -270,6 +279,11 @@ Per-hook suites must pin, at minimum:
    **This is a negative assertion**, so it passes on a clean baseline by construction: prove it
    non-vacuous with a mutation that merges the two matcher objects back into one and verify that mutation
    actually landed before trusting the RED.
+7. **Byte-level character scan on both emitted texts** — zero `0x60` (backtick) and zero `0x27`
+   (apostrophe). This enforces acceptance criterion 7, which design item 1 says to "assert in the suite"
+   and which no other item covered. Scan the emitted payload, not the script source: the script may
+   legitimately contain both characters in comments and in the `'"'"'` idiom, so a whole-file scan would
+   be both wrong and permanently red.
 
 ---
 
