@@ -18,8 +18,10 @@ only on sort order, so it is not reproducible and is not used.
 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **13 suites, 175 tests, measured 150,6s**
-  (2026-08-03, ONE sample — see the two-sample rule below; the count is deterministic, the time is not).
+- `just test-scripts-fast` — the agent inner-loop gate. **14 suites, 177 tests, measured 124,6s**
+  (2026-08-03, ONE sample at THIS configuration — see the two-sample rule below; the count is
+  deterministic, the time is not). The immediately preceding sample, 150,6s, was 13 suites / 175 tests,
+  so the two are NOT two samples of the same thing and must not be averaged or compared.
 - `just test-scripts-slow` — everything else. **12 suites, 238 tests, measured 653,5s** (2026-08-03,
   ONE sample). NOT on any git hook; it **exceeded the 600s foreground tool cap on that very run** and
   must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line — never by
@@ -54,14 +56,17 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **175** and slow **238**, **both measured, not added up**. It is a
+test raises it. The count today is fast **177** and slow **238**, **both measured, not added up**. It is a
 fact, not a contract, and it was 358 / 363 / 368 / 372 earlier.
 
 Fast was re-measured five times on 2026-08-03, every time by running the recipe: **166 / 143,9s** when
 `agy-curate-nudge.Tests.ps1` was added at 4 tests, **169 / 145,3s** after capstone round 1 added 3 more,
 then **171 / 132,3s** after capstone round 2 added 2 more, and **173 passed / 0 failed in 145,9s**
 after capstone round 3 added 2 more. A fifth run, after the cost-clause work added 2 tests to
-`agy-after-reminder`, measured **175 passed / 0 failed in 150,6s**.
+`agy-after-reminder`, measured **175 passed / 0 failed in 150,6s**. A sixth, after
+`plugin-hooks-payload.Tests.ps1` was added as a NEW 14th fast suite at 2 tests, measured
+**177 passed / 0 failed in 124,6s** — note the run got FASTER while gaining a suite, which is the
+run-order/cold-start effect this file warns about, not a speed-up.
 
 Slow WAS re-measured on 2026-08-03, at the same time, as the sole command on the machine:
 **238 passed / 0 failed in 653,5s**. Note what that number exposes — the previously recorded slow
@@ -81,7 +86,7 @@ measured separately (2026-08-02) in isolation, as the sole command on a quiet ma
 
 ```
 abort-drain.Tests.ps1                           261,3s   13 tests
-agy-consult-guard.Tests.ps1                      78,4s    5 tests   <- SLOW, moved 2026-08-02
+agy-consult-guard.Tests.ps1                      78,4s    8 tests   <- SLOW, moved 2026-08-02; count 2026-08-03
 accept-drain.Tests.ps1                           51,2s   10 tests
 agy-after-reminder.Tests.ps1                      8,8s   10 tests   <- count 2026-08-03, time older
 agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
@@ -104,6 +109,7 @@ docs-audit.Tests.ps1                            120,6s   80 tests
 drain-knowledge.Tests.ps1                        38,2s    7 tests
 drain-lib.Tests.ps1                               5,2s   20 tests
 generate-scoped-manifest.Tests.ps1                0,7s    2 tests
+plugin-hooks-payload.Tests.ps1                    2,2s    2 tests   <- FAST, added 2026-08-03
 register-plugin.Tests.ps1                        18,6s   18 tests
 release-lib.Tests.ps1                            14,3s   23 tests
 ```

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reset the clavity once-per-session driver-guidance flag on a genuine fresh start (spec §5.C-C first-ask
+# Reset the clavity once-per-session driver-guidance flag on a genuine fresh start (spec section 5.C-C first-ask
 # delivery). Clears ONLY on source==startup so the next session re-delivers; sweeps stale flags. Fail-open.
 set +e
 

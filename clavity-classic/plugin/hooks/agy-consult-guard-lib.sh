@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# ME1 — agy-consult VCS-diff guard, shared library.
+# ME1 - agy-consult VCS-diff guard, shared library.
 # Sourced by agy-consult-guard-pre.sh (PreToolUse) and -post.sh (PostToolUse).
 # Enforces the standing rule: an agy REVIEW-ONLY consult must make ZERO VCS changes.
-# READ-ONLY — it only reports; it never reverts, stages, commits, or blocks. Fail-open.
+# READ-ONLY - it only reports; it never reverts, stages, commits, or blocks. Fail-open.
 #
 # Consult channels & CATEGORIES:
 #   sync     : MCP `agy_ask` tool  |  shell `clavity ask`      -> peer works INSIDE one blocking
@@ -15,10 +15,10 @@
 # item), not this hook.
 #
 # DELIBERATELY OUT OF SCOPE (documented, not a silent gap):
-#   - The MCP signal bus (`memory_signal_send`/`memory_signal_read`) — DIAGNOSTICS-only per policy,
+#   - The MCP signal bus (`memory_signal_send`/`memory_signal_read`) - DIAGNOSTICS-only per policy,
 #     and its tool_name cannot be filtered to `to=agy`/`from=agy`, so guarding it would let non-agy
 #     bus traffic corrupt the async slot. The clavity async wrapper covers it instead.
-#   - `clavity ring` — a bus poll, not a consult.
+#   - `clavity ring` - a bus poll, not a consult.
 #
 # TWO baseline slots per session (`.sync` and `.async`) so an interleaved sync consult can never
 # destroy an in-flight async baseline.
