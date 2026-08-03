@@ -45,6 +45,19 @@ background it. If you do get stranded, drop that commit before retrying.
 
 A long silence during `just test-scripts` is expected. It is not a hang.
 
+So is this line, which the suite prints to the console mid-run:
+
+```
+fatal: .git/index: index file smaller than expected
+```
+
+It is **not** your repo. It is real `git` stderr from inside a **scratch** repo that the accept-drain
+F34 test corrupts on purpose to prove the guard fails closed. It surfaces between two passing results,
+immediately before `[+] hard-fails (exit 1) and RETAINS staging when 'git status' fails (corrupt index;
+F34 fail-closed)` — so the line is the evidence the guard works. It appears on every full-suite run.
+If you want to confirm your own index is fine, stat it rather than running git (`ls -la .git/index` —
+a healthy one is tens of KB); do not run git against the repo while the suite is running.
+
 ---
 
 ## Phase 0 — scope decisions
