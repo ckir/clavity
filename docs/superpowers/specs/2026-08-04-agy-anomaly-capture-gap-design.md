@@ -1,7 +1,12 @@
 # AGY-ANOMALIES: closing the capture-side gap — design
 
 **Status:** owner-approved scope, 2026-08-04. Targets a v16 plugin release.
-**Origin:** `TODO.md` (repo root, untracked), filed by a parallel agent working in another repository.
+**Origin:** a defect report filed by a parallel agent working in another repository. It lived at
+`TODO.md` in this repo root, was never committed, and was **deleted on 2026-08-04 at the owner's
+instruction** once this spec carried its substance — so do not go looking for it. Everything load-bearing
+from it is reproduced here: the diagnosis in *Problem*, the four proposals with their dispositions and
+attributions in *Non-goals*, and the sentinel measurement in the appendix. The peer's full follow-up
+answers remain at `.clavity/seams/anomaly-capture-relay-ANSWER.md` (gitignored, machine-local).
 
 ---
 
@@ -324,10 +329,33 @@ Per-hook suites must pin, at minimum:
 
 ---
 
-## Panel record — round 1 (solo + agy escalation)
+## Panel record — 5 rounds, 15 findings, all folded
 
-**RED, 8 findings, all folded above.** The peer was sent the artifact with my solo findings deliberately
-withheld, so overlap is corroboration rather than echo.
+| round | peer verdict | findings | folded |
+|---|---|---|---|
+| 1 | RED | 8 (5 agy-only, 3 corroborated) | 1-8 |
+| 2 | GREEN | 1, **found by me after the GREEN** | 9 |
+| 3 | RED | 3 | 10-12 |
+| 4 | GREEN | 1, **found by me after the GREEN** | 13 |
+| 5 | GREEN | 2, **found by me after the GREEN** | 14-15 |
+
+**The standing pattern, recorded because it generalises:** the peer's clean rounds were honest and
+correctly cited — I spot-checked citations in rounds 2, 4 and 5 and they held every time. Yet **four
+consecutive rounds still left one defect each, and every one of them was in a section no seat had been
+pointed at.** A panel finds what it is aimed at; aiming it is the reviewer's job, not the panel's.
+
+- Round 2's residual: an acceptance criterion no Testing item enforced.
+- Round 4's: a deferred item still citing a structure an earlier fold had destroyed.
+- Round 5's: a dangling `TODO.md` reference **I created myself** by deleting the file without sweeping for
+  references, and this record itself, which documented one round of a five-round review.
+
+Findings 14-15 are record-level, not design-level: at round 5 the design itself drew no challenge from
+either the peer or me.
+
+### Round 1 detail
+
+The peer was sent the artifact with my solo findings deliberately withheld, so overlap is corroboration
+rather than echo.
 
 | finding | found by | severity |
 |---|---|---|
