@@ -70,3 +70,6 @@ testResults.xml
 # so it can only ever mean this one root-level dir (see the .NET build-output note above for what an
 # unanchored rule cost us).
 /Microsoft/
+
+# Claude Code personal overrides - shared .claude/settings.json IS tracked, the .local one never is.
+.claude/settings.local.json
