@@ -56,6 +56,25 @@ Describe 'agy-seam-inject.sh' {
         } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'carries the COST clause on the capstone seam' {
+        $repo = New-TempRepo
+        try {
+            $cwd = ($repo -replace '\\','/')
+            $out = Invoke-Hook -Skill 'superpowers:finishing-a-development-branch' -Cwd $cwd
+            $out | Should -Match 'COST:'
+            $out | Should -Match 'never WHETHER'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT put the COST clause on the brainstorm seam' {
+        $repo = New-TempRepo
+        try {
+            $cwd = ($repo -replace '\\','/')
+            $out = Invoke-Hook -Skill 'superpowers:brainstorming' -Cwd $cwd
+            $out | Should -Not -Match 'COST:'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is silent on a non-seam skill' {
         (Invoke-Hook -Skill 'superpowers:writing-plans') | Should -BeNullOrEmpty
     }
