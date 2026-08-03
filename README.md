@@ -35,7 +35,8 @@ Every product ships locally inside its own standalone Windows installer. There i
    `agy`). The three products that ship a binary — clavity-dotnet, clavity-classic, ghidrust — also put
    it on your PATH; agy-autotrain and commonmemory are plugin-only and install nothing on PATH.
 
-Review disciplines are multi-round; see **Running this economically** in the plugin README before you start.
+Installing clavity-dotnet or clavity-classic? Their review disciplines are multi-round; see
+**Running this economically** in that product's `plugin/README.md` before you start.
 
 ## Developer workflow
 
