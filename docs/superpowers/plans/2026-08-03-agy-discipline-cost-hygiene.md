@@ -4,7 +4,7 @@
 
 **Goal:** Stop shipped agy review disciplines from firing at peak session context by adding a cost clause to the hook directives that convene them, plus a user-facing README section explaining how to run them economically.
 
-**Architecture:** Two layers, both text. Layer 1 appends a short clause to three directive sites inside two hook scripts (mirrored across both drivers). Layer 2 adds a `## Running this economically` section to both plugin READMEs and a pointer line to the root README. Seven new Pester assertions pin the clauses' presence, their deliberate absence where the placement rule excludes them, and cross-driver byte parity.
+**Architecture:** Two layers, both text. Layer 1 appends a short clause to three directive sites inside two hook scripts (mirrored across both drivers). Layer 2 adds a `## Running this economically` section to both plugin READMEs and a pointer line to the root README. Eight new Pester assertions pin the clauses' presence, their deliberate absence where the placement rule excludes them, and cross-driver byte parity — five in `agy-seam-inject.Tests.ps1`, one in `agy-test-audit-reminder.Tests.ps1`, two in `agy-after-reminder.Tests.ps1`.
 
 **Tech Stack:** Bash hooks emitting JSON via `jq`, Pester 5 tests driven through `BashHookHelpers.ps1`, `just` recipes.
 
@@ -457,7 +457,9 @@ Expected: `is byte-identical to the clavity-classic mirror` FAILS. Remove the sp
 pwsh -c "Invoke-Pester 'scripts/tests/agy-seam-inject.Tests.ps1' -Output Detailed"
 ```
 
-Expected: `does NOT put either clause on the anomaly-capture seam` FAILS. Remove the mutant by hand — **not** with `git checkout --`, which would destroy the uncommitted Task 1 and Task 2 edits to this same file. Re-run, expect pass.
+Expected: `does NOT put either clause on the anomaly-capture seam` FAILS. Then revert.
+
+**Here — unlike Task 2 Step 6 — `git checkout -- clavity-dotnet/plugin/hooks/agy-seam-inject.sh` is safe**, because Task 1 Step 7 and Task 2 Step 8 already committed this file's edits, so reverting it to HEAD removes only the mutant. Your uncommitted work at this point is in the *test* files, which that command does not touch. Removing the mutant by hand is equally fine. Re-run, expect pass.
 
 **If any mutation does not produce a failure, the mutation did not land.** Confirm with `git diff --stat` that the file actually changed before concluding the test is weak.
 
