@@ -85,6 +85,66 @@ Describe 'agy-curate-nudge.sh' {
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'reads the TRAILING stamp, not an earlier date mentioned in the bullet body' {
+        # Capstone F1. awk match() takes the LEFTMOST date on the line, so a bullet whose TEXT mentions a
+        # historical date reported that date as the entry's age - a false stale nag on a fresh capture.
+        # Same defect CLASS as the drain-log bug: reading a date that is not the entry's stamp.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) Regression first observed on 2021-04-15 during a probe  ``[corpus]`` - $script:Today - agy 1.1.10
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -BeNullOrEmpty -Because 'the entry stamp is today; 2021-04-15 is body prose, not the entry date'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'finds the stamp when it sits on a CONTINUATION line of a wrapped bullet' {
+        # Capstone F2, and a regression the bullet-anchor itself introduced: anchoring the date scan to
+        # /^- \[/ made a wrapped bullet's stamp invisible, so a genuinely stale inbox went SILENT. False
+        # silence is worse than a false nag - the maintenance never gets prompted at all.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) An observation whose text is long enough to wrap
+  across more than one line before the provenance stamp  ``[corpus]`` - 2020-01-01 - agy 1.0.10
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -Match 'oldest pending entry \(2020-01-01\)'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'still ignores a drain-log comment date even when it follows a wrapped bullet' {
+        # The two fixes must not re-open each other: widening the scan to continuation lines must not
+        # start swallowing the append-only drain logs again.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) An observation whose text wraps
+  onto a second line  ``[corpus]`` - $script:Today - agy 1.1.10
+
+<!-- Drain log 2020-01-01 (agy 1.0.10): historical notes live here forever. -->
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -BeNullOrEmpty -Because 'the drain log must stay out of scope after the record widening'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT under a .no-agy kill-switch even when the inbox is genuinely stale' {
         $inbox = @"
 # agy observations inbox

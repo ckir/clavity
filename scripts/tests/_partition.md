@@ -53,12 +53,13 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **166** and slow 210, **both measured, not added up**. It is a
+test raises it. The count today is fast **169** and slow 210, **both measured, not added up**. It is a
 fact, not a contract, and it was 358 / 363 / 368 / 372 earlier.
 
-Fast was re-measured 2026-08-03 when `agy-curate-nudge.Tests.ps1` was added to it: **166 passed / 0 failed
-in 143,9s**. Slow was NOT re-measured that day, so do not add these two and publish the sum as a measured
-total — that is exactly the subtraction/addition this section forbids.
+Fast was re-measured twice on 2026-08-03, both times by running the recipe: **166 passed / 0 failed in
+143,9s** when `agy-curate-nudge.Tests.ps1` was added at 4 tests, then **169 passed / 0 failed in 145,3s**
+after the capstone round added 3 more to that file. Slow was NOT re-measured that day, so do not add these
+two and publish the sum as a measured total — that is exactly the addition this section forbids.
 
 If you move a file between halves, re-measure BOTH halves and update this file; do not edit it from
 memory, and do not compute the new number by subtraction (see above).
@@ -75,7 +76,7 @@ agy-consult-guard.Tests.ps1                      78,4s    5 tests   <- SLOW, mov
 accept-drain.Tests.ps1                           51,2s   10 tests
 agy-after-reminder.Tests.ps1                      8,8s    8 tests
 agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
-agy-curate-nudge.Tests.ps1                       11,8s    4 tests   <- FAST, added 2026-08-03
+agy-curate-nudge.Tests.ps1                       18,4s    7 tests   <- FAST, added 2026-08-03
 agy-liveness-check.Tests.ps1                     40,9s   27 tests
 agy-seam-inject.Tests.ps1                        18,0s   13 tests
 agy-test-audit-reminder.Tests.ps1                32,5s   13 tests
