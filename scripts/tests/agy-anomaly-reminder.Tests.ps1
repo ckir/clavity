@@ -215,9 +215,18 @@ Describe 'agy-anomaly-reminder.sh' {
         try {
             $f = Join-Path $w '.clavity/local-anomalies.md'
             & icacls $f /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null
-            $stillReadable = $true
-            try { [IO.File]::ReadAllText($f) | Out-Null } catch { $stillReadable = $false }
-            if ($stillReadable) { Set-ItResult -Skipped -Because 'this host does not enforce the read deny'; return }
+            # Probe readability from the BASH process the hook actually runs in, NOT from PowerShell.
+            # These diverge, and the old guard probed the wrong one: on the GitHub windows-latest runner
+            # the deny bound pwsh (so [IO.File]::ReadAllText threw and the test did NOT skip) while the
+            # hook read the file fine and reported "1 untriaged" - a red test on a host that simply does
+            # not enforce the deny against the subject of the assertion. Probe the subject.
+            $bashExe = Get-GitBashOrThrow
+            $posix = ($f -replace '\\','/')
+            & $bashExe -lc "cat '$posix' > /dev/null 2>&1"
+            if ($LASTEXITCODE -eq 0) {
+                Set-ItResult -Skipped -Because 'this host does not enforce the read deny against the hook process'
+                return
+            }
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 2
             $r.StdErr   | Should -Match 'cannot be read'

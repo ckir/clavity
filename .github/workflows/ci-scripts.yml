@@ -79,6 +79,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install ripgrep
+        shell: pwsh
+        # scripts/check-plugin-namespace.ps1 hard-requires `rg` on PATH and Write-Errors without it, so
+        # all 5 of its assertions went red in CI while passing locally - the dev box carries rg on PATH,
+        # CI did not, and nothing installed it. Prepend the shim dir to GITHUB_PATH so LATER steps see it
+        # too, then assert `rg` actually resolves: a silent install failure must fail HERE and by name,
+        # not resurface later as five unrelated-looking assertion failures.
+        run: |
+          choco install ripgrep -y --no-progress
+          "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
+          rg --version
+          if ($LASTEXITCODE -ne 0) { throw "ripgrep install failed: rg is not on PATH" }
+
       - name: Install Pester v5
         shell: pwsh
         run: Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop

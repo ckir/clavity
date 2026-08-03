@@ -53,6 +53,58 @@ jobs:
         shell: bash
         run: pwsh -File scripts/check-roster.ps1
 
+      - name: Require ci-scripts GREEN for the tagged commit
+        # WHY: ci-scripts was RED for two consecutive releases (clavity-v14 and v15) and both published
+        # anyway. Nothing was wired to stop them: the tag push starts THIS workflow independently of the
+        # branch push's checks, and release.ps1's local pre-flight passes on a dev box that has rg on
+        # PATH while CI had none. A green local gate is not evidence about CI.
+        #
+        # Three outcomes, all explicit:
+        #   run exists + not success  -> FAIL (do not publish behind a red script gate)
+        #   run exists + success      -> pass
+        #   no run after the grace    -> pass, because ci-scripts is path-filtered and a release that
+        #                                touches none of its paths legitimately produces no run.
+        # The GRACE period matters: the branch push and the tag push land seconds apart, so polling
+        # immediately can see zero runs simply because none has been CREATED yet. Concluding "no run
+        # needed" from that would reopen the exact hole this step closes.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.ref_name }}"; fi
+          SHA="$(git rev-list -n1 "$TAG")"
+          GRACE=240        # seconds to allow the run to be created before believing there is none
+          TIMEOUT=2700     # seconds to allow it to finish
+          API="repos/${{ github.repository }}/actions/workflows/ci-scripts.yml/runs?head_sha=$SHA"
+          while :; do
+            runs="$(gh api "$API" --jq '[.workflow_runs[] | {status, conclusion}]')"
+            total="$(printf '%s' "$runs" | jq 'length')"
+            if [ "$total" -eq 0 ]; then
+              if [ "$SECONDS" -lt "$GRACE" ]; then sleep 15; continue; fi
+              echo "no ci-scripts run for $SHA after ${GRACE}s - its paths were untouched, nothing to gate."
+              exit 0
+            fi
+            pending="$(printf '%s' "$runs" | jq '[.[] | select(.status != "completed")] | length')"
+            # An explicit `if`, NOT `[ ... ] && break`: under `set -e` that AND-list returns non-zero
+            # whenever pending != 0, which would abort the step - failing the release gate merely for
+            # having something left to wait for.
+            if [ "$pending" -eq 0 ]; then break; fi
+            if [ "$SECONDS" -ge "$TIMEOUT" ]; then
+              echo "::error::ci-scripts still running for $SHA after ${TIMEOUT}s - refusing to publish on an unknown gate."
+              exit 1
+            fi
+            echo "waiting for $pending ci-scripts run(s) on $SHA to complete..."
+            sleep 20
+          done
+          bad="$(printf '%s' "$runs" | jq '[.[] | select(.conclusion != "success")] | length')"
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::ci-scripts is RED for $SHA - refusing to publish. $runs"
+            exit 1
+          fi
+          echo "ci-scripts is green for $SHA"
+
   dotnet:
     needs: [guard]
     uses: ./.github/workflows/build-dotnet.yml   # FILE ref = this tag's main commit (dotnet is already pinned by the tag)

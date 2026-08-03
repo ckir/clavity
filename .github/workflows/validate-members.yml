@@ -1,6 +1,12 @@
 name: validate-members
 on:
   push:
+    # `branches:` is load-bearing, not decoration. GitHub does NOT apply `paths:` filters to TAG pushes,
+    # so without a branch scope this fired on every clavity-v* tag regardless of what changed - and
+    # `just release` pushes main AND the tag, so whenever the pushed range also touched a path below it
+    # ran TWICE for one commit (measured: clavity-v14 ran it on main and on the tag; clavity-v15 ran it
+    # on the tag alone with nothing relevant changed). Scoping to main makes the paths filter authoritative.
+    branches: [main]
     paths:
       - 'build/members.json'
       - 'scripts/validate-members-manifest.ps1'
