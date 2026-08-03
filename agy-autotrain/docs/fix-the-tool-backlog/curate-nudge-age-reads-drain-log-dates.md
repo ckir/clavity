@@ -3,8 +3,20 @@ slug: curate-nudge-age-reads-drain-log-dates
 variant: both
 observed: 2026-08-03
 source-inbox-entry: "(found during the 2026-08-03 drain, not from an inbox bullet)"
-status: open
+status: fixed
+fixed-by: 7c2de2b, a357d7a, 8099813, 5dc8822
+fixed-on: 2026-08-03
 ---
+
+> **FIXED 2026-08-03.** The age scan is anchored to pending bullets and a stamp is now treated as
+> DELIMITED, so a prose date cannot impersonate one. Taken to AGY-CAPSTONE GREEN at round 4 over
+> `4a25d7a..5dc8822`; regression suite `scripts/tests/agy-curate-nudge.Tests.ps1` went 0 -> 11 tests and
+> is wired into a `justfile` half, so it runs. No carried driver-cheatsheet rule needs retiring — this
+> was our own hook bug, not a peer tendency, so there was never a workaround rule to strip.
+>
+> This item sat at `status: open` for the whole day after its fix shipped. The backlog has no documented
+> closed-state vocabulary (`_template.md` only ever emits `status: open`), so nothing prompts an author to
+> come back and close one. Worth fixing at the template level rather than per-item.
 
 # The agy-curate age nudge reads dates out of drain-log COMMENTS, so it can never be satisfied
 
