@@ -116,9 +116,15 @@ Appended to `agy-test-audit-reminder.sh:68` and `agy-seam-inject.sh:77`:
 ### The SESSION POSTURE line (exact text)
 
 Users are directed to begin work from `superpowers:brainstorming`. That makes the AGY-FIRST arm (selected
-by `case *brainstorm*` at `:53`, emitted at `:75`) the one hook fire **guaranteed to happen early, while
-context is still small**. It is the only place where cost guidance is both cheap to deliver and still
-actionable; everywhere else the advice arrives after the expensive context has accumulated.
+by `case *brainstorm*` at `:53`, emitted at `:75`) the **earliest hook fire available**, landing while
+context is still small — the one place where cost guidance is both cheap to deliver and still actionable.
+Everywhere else the advice arrives after the expensive context has accumulated.
+
+**This is a reachability limit, not a guarantee.** The seam fires only when the user actually invokes a
+brainstorming skill. A user who starts by writing code, or from `writing-plans`, never sees the SESSION
+POSTURE line, and for them the COST clause at the later sites is the only guidance that lands. The line is
+therefore best-effort reinforcement of the documented flow, not a mechanism that covers every user. Layer
+2's README section is what covers the rest.
 
 Appended to `agy-seam-inject.sh:75`:
 
@@ -235,10 +241,13 @@ deliberately describes the zero-turn variant only, so it cannot be generalised i
 
 ### Placement
 
-- **Full section:** `clavity-dotnet/plugin/README.md` and `clavity-classic/plugin/README.md` (both
-  verified present). Placed after each file's existing installation/quickstart material so it is read
-  before first use. **The implementer must confirm the actual heading structure of each file** rather than
-  assuming they match; this design does not pin a heading name.
+- **Full section:** `clavity-dotnet/plugin/README.md` and `clavity-classic/plugin/README.md`. Measured:
+  both open with `# <title>` then `## What's in here` at `:10`, then `## Install / registration`. Insert
+  the new `## Running this economically` **immediately after `## What's in here`** in both — structurally
+  identical in the two files, and early enough that a reader evaluating the plugin meets it before setup
+  rather than after their first expensive session. (The files diverge below that point — dotnet has
+  `## Troubleshooting` and `## Hook ownership`, classic has sub-sections under MCP configuration — so do
+  not anchor on anything lower.)
 - **One-line pointer:** root `README.md`, at the end of `## How to get started` (`README.md:27`) —
   *"Review disciplines are multi-round; see Running this economically before you start."*
 
