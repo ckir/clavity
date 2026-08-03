@@ -36,6 +36,16 @@ Describe 'agy-seam-inject.sh' {
         } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'carries the SESSION POSTURE line on the brainstorm seam' {
+        $repo = New-TempRepo
+        try {
+            $cwd = ($repo -replace '\\','/')
+            $out = Invoke-Hook -Skill 'superpowers:brainstorming' -Cwd $cwd
+            $out | Should -Match 'SESSION POSTURE:'
+            $out | Should -Match 'commit first'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'injects the AGY-CAPSTONE directive on a finishing-a-development-branch seam' {
         $repo = New-TempRepo
         try {
