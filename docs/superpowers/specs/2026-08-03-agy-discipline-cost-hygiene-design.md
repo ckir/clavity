@@ -278,9 +278,18 @@ separate arms are touched — is not. `scripts/check-core-integrity.ps1:4` does 
 compares each protected file against its own committed HEAD blob (tamper detection), not against the other
 driver's copy.
 
-Because the pattern already exists at `agy-test-audit-reminder.Tests.ps1:149`, adding the same assertion
-to `agy-seam-inject.Tests.ps1` is a copy of established repo practice rather than new design. **It is
-therefore in scope for this change**, not deferred.
+Because the pattern already exists as `agy-test-audit-reminder.Tests.ps1`'s
+`It 'is byte-identical to the clavity-classic mirror'`, adding the same assertion is a copy of established
+repo practice rather than new design. **Both remaining mirrored hooks are pinned by this change**, not
+deferred:
+
+- `agy-seam-inject.Tests.ps1` — because this change edits that hook, on both drivers.
+- `agy-after-reminder.Tests.ps1` — **even though its hook is not edited**, because the negative assertion
+  that pins its *exclusion* inspects only the dotnet copy (see *Testing*). Without parity, classic's copy
+  could gain the clause with nothing failing.
+
+After this change all three mirrored hook **scripts** are pinned. What remains deferred is parity for the
+other mirrored plugin files, which this change does not touch.
 
 ## Testing
 
@@ -369,17 +378,18 @@ subtraction.
 3. **A real context measurement in the hooks.** They already receive `transcript_path` on stdin, so the
    "substantial history" judgment could be replaced by a measured threshold. This is what would turn
    constraint 3 from a weakness into a mechanism.
-4. **Cross-driver parity for the remaining unpinned hooks.** This change pins `agy-seam-inject.sh`
-   (in scope, above). `agy-after-reminder.sh` and any other mirrored plugin file remain unpinned, and no
-   gate compares the two plugin trees wholesale. Reachable — a future edit can diverge them silently — so
-   it stays tracked.
+4. **Cross-driver parity for the mirrored files this change does NOT touch.** After this change all three
+   mirrored hook *scripts* are pinned (`agy-test-audit-reminder` already was; `agy-seam-inject` and
+   `agy-after-reminder` are pinned here). What remains unpinned is every other mirrored plugin file —
+   skills, knowledge manuals, and the rest — and no gate compares the two plugin trees wholesale.
+   Reachable, since a future edit can diverge them silently, so it stays tracked.
 
 ## Risks
 
 | risk | mitigation |
 |---|---|
 | The clause reads as permission to skip a gate | The "never WHETHER" sentence; the durability condition in the placement rule; a test asserting the anchors are present |
-| The two touched hooks must stay in sync across both drivers (four files) | A single commit touches all four, and after this change **both** are pinned: `agy-test-audit-reminder.Tests.ps1:149` already asserts its pair, and this change adds the same assertion for `agy-seam-inject`. Only the untouched mirrored files remain unpinned (deferred item 4) |
+| The two touched hooks must stay in sync across both drivers (four files) | A single commit touches all four, and after this change **all three** mirrored hook scripts are pinned by a SHA-256 parity assertion — `agy-test-audit-reminder` already was, and this change adds one for `agy-seam-inject` and one for `agy-after-reminder`. Only the *other* mirrored plugin files remain unpinned (deferred item 4) |
 | Added text costs tokens on every hook fire | Capped at two sentences; only three of five directive sites carry any added text |
 | The quoted figures come from a single session | Stated as such in the README text ("one real session"); the method is reproducible from the transcript |
 | `/compact` is itself a summarization pass over the whole context, so the net saving is smaller than the raw multiple | The recommendation stands on the measured 305-turn comparison, which is a like-for-like turn cost; the one-off compaction cost is not modelled and is assumed small against a 300-turn tail. **Unquantified — flagged, not proven.** |
@@ -530,6 +540,39 @@ One driver-side finding remained:
 | R6-1 | Every suite roots `$script:Hook` at the **dotnet** copy. So the negative assertion pinning `agy-after-reminder`'s *exclusion* only ever inspects dotnet — a later edit adding the clause to classic's copy alone would fail nothing, silently re-introducing CA-1 through the driver the tests do not look at. | read the suites' `$script:Hook` rooting | a parity assertion is now required for `agy-after-reminder.Tests.ps1` too, even though its hook is not edited; the exact `Get-FileHash` pattern is pinned in the design so the implementer does not have to invent it |
 
 **Round 6 disposition: RED** (one driver-side finding, against a peer GREEN whose own claims all held).
+
+## Panel record — round 7
+
+Seats: **Regression Archaeologist** (does this re-open something the repo already fixed? it audited the
+hooks' own comment blocks, which encode past defects) and **Success-Criterion Auditor** (how would anyone
+know this worked?), plus both core seats. Both new seats returned no new findings with where-they-looked
+stated; the Success-Criterion seat confirmed that retention is structurally unmeasurable for a zero-
+telemetry local plugin, while in-session adherence *is* observable by the same transcript-parsing method
+used in *Evidence* — and that the design already discloses its non-observable parts rather than claiming
+them.
+
+| id | finding | verification | fold |
+|---|---|---|---|
+| R7-1 | The round-6 fold updated *Testing* and criterion 8 but left three other sections — *Cross-driver parity*, *Deferred work* item 4, and the *Risks* row — still asserting `agy-after-reminder` is unpinned and deferred, directly contradicting them | read all four sections | all three corrected; a line-number citation my own earlier fold had missed was corrected at the same time |
+
+**Round 7 disposition: RED.**
+
+## The pattern this review kept hitting, and what to do about it
+
+**Five of the folds in this review created the next defect.** BA-1's fix created AS-2. D1's fix created
+round-4's AB-1. The H1 fold left a stale Risks row. The round-6 fold left three stale sections. A
+find-and-replace intended to remove line citations missed one.
+
+The shape is always the same: a fold updates the section the finding pointed at, and leaves every *other*
+section that restated the same fact untouched. It is not carelessness about the finding — it is that a
+document repeats its facts across sections, and a fix aimed at one instance does not know about the rest.
+
+**Two rules follow, and they apply to executing this design as much as to reviewing it:**
+
+1. **After folding anything, grep the whole document for the fact you just changed** — not the wording,
+   the *fact*. Every count, every "X is pinned / not pinned", every scope boundary.
+2. **Never fold and ship.** Re-run a round after every fold. Five defects here were invisible at the
+   moment of the fix and only surfaced on the next pass.
 
 ## A standing caution on this document's own citations
 
