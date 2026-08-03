@@ -145,6 +145,44 @@ Describe 'agy-curate-nudge.sh' {
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'prefers the provenance STAMP over a later date in a post-stamp continuation note' {
+        # Capstone round 2. The mirror image of F1: taking the LAST date in the record picks up a
+        # historical date mentioned in a note AFTER the stamp. Third variant of one root cause - which
+        # date is the ENTRY's date - so the rule is now "prefer the stamp", not "prefer a position".
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) Primary capture text  ``[corpus]`` - $script:Today - agy 1.1.10
+  Note: investigated a past regression first seen on 2021-05-01 in probe logs.
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -BeNullOrEmpty -Because 'the stamp is today; 2021-05-01 is prose in a post-stamp note'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'falls back to the last date in the record when no agy-version stamp is present' {
+        # The stamp preference must DEGRADE, not replace: an entry written without the trailing
+        # "agy <version>" suffix must still age correctly rather than going silent.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) an entry with no version suffix  ``[corpus]`` - 2020-01-01
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -Match 'oldest pending entry \(2020-01-01\)'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT under a .no-agy kill-switch even when the inbox is genuinely stale' {
         $inbox = @"
 # agy observations inbox
