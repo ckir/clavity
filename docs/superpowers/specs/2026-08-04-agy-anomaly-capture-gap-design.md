@@ -260,6 +260,16 @@ Per-hook suites must pin, at minimum:
 4. **Wording invariants on the capture nudge** — assert the clause WHOLE via `[regex]::Escape`, not by
    bookend fragments. A prior epic proved bookend assertions leave ~95% of a directive unguarded.
 5. **The widened matcher** — that the drain hook still fires on a `compact`/`resume` payload.
+6. **The regression the split exists to prevent** — that `agy-liveness-check.sh` (and, on classic,
+   `agy-drive-session-reset.sh`) is registered under a matcher that does **not** include `compact`,
+   `resume` or `clear`. Acceptance criterion 6 demands this be asserted explicitly and nothing else in
+   this list covered it: item 5 pins the positive (the drain hook fires) and would pass unchanged if the
+   naive one-string edit had been made, because that edit widens both hooks at once.
+   Assert it against the parsed `hooks.json` — walk the `SessionStart` array and check each hook's
+   *owning matcher object* — not by a substring search, which cannot tell which hook a matcher governs.
+   **This is a negative assertion**, so it passes on a clean baseline by construction: prove it
+   non-vacuous with a mutation that merges the two matcher objects back into one and verify that mutation
+   actually landed before trusting the RED.
 
 ---
 
