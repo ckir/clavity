@@ -18,11 +18,12 @@ only on sort order, so it is not reproducible and is not used.
 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **13 suites, 162 tests, measured 125.6s and
-  128.5s** (two consecutive quiet-machine runs, 2026-08-02).
-- `just test-scripts-slow` — everything else. **12 suites, 206 tests, measured 503.6s** (2026-08-02).
-  NOT on any git hook; it can exceed the 600s foreground tool cap and must be BACKGROUNDED by an agent,
-  blocked on by reading its own `Tests completed` line — never by watching a process count.
+- `just test-scripts-fast` — the agent inner-loop gate. **13 suites, 175 tests, measured 150,6s**
+  (2026-08-03, ONE sample — see the two-sample rule below; the count is deterministic, the time is not).
+- `just test-scripts-slow` — everything else. **12 suites, 238 tests, measured 653,5s** (2026-08-03,
+  ONE sample). NOT on any git hook; it **exceeded the 600s foreground tool cap on that very run** and
+  must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line — never by
+  watching a process count.
 - `just test-scripts` — both, unchanged in meaning: still every test.
 
 **The runtime target is ~120s, and it is a TARGET, not an enforceable invariant.** Do not gate anything on
@@ -53,14 +54,21 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **173** and slow 210, **both measured, not added up**. It is a
+test raises it. The count today is fast **175** and slow **238**, **both measured, not added up**. It is a
 fact, not a contract, and it was 358 / 363 / 368 / 372 earlier.
 
-Fast was re-measured three times on 2026-08-03, every time by running the recipe: **166 / 143,9s** when
+Fast was re-measured five times on 2026-08-03, every time by running the recipe: **166 / 143,9s** when
 `agy-curate-nudge.Tests.ps1` was added at 4 tests, **169 / 145,3s** after capstone round 1 added 3 more,
 then **171 / 132,3s** after capstone round 2 added 2 more, and **173 passed / 0 failed in 145,9s**
-after capstone round 3 added 2 more. Slow was NOT re-measured that day, so do not add these
-two and publish the sum as a measured total — that is exactly the addition this section forbids.
+after capstone round 3 added 2 more. A fifth run, after the cost-clause work added 2 tests to
+`agy-after-reminder`, measured **175 passed / 0 failed in 150,6s**.
+
+Slow WAS re-measured on 2026-08-03, at the same time, as the sole command on the machine:
+**238 passed / 0 failed in 653,5s**. Note what that number exposes — the previously recorded slow
+count was **210**, and the cost-clause work added only 6 tests to that half. The other ~22 arrived
+from intervening epics that never re-measured this half. **A count in this file decays silently
+whenever a suite in the OTHER half is edited; treat any figure here as stale until you re-run the
+recipe.** Do not reconcile a surprise like that by arithmetic — the measurement is the fact.
 
 If you move a file between halves, re-measure BOTH halves and update this file; do not edit it from
 memory, and do not compute the new number by subtraction (see above).
@@ -75,12 +83,12 @@ measured separately (2026-08-02) in isolation, as the sole command on a quiet ma
 abort-drain.Tests.ps1                           261,3s   13 tests
 agy-consult-guard.Tests.ps1                      78,4s    5 tests   <- SLOW, moved 2026-08-02
 accept-drain.Tests.ps1                           51,2s   10 tests
-agy-after-reminder.Tests.ps1                      8,8s    8 tests
+agy-after-reminder.Tests.ps1                      8,8s   10 tests   <- count 2026-08-03, time older
 agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
 agy-curate-nudge.Tests.ps1                       29,2s   11 tests   <- FAST, added 2026-08-03
 agy-liveness-check.Tests.ps1                     40,9s   27 tests
-agy-seam-inject.Tests.ps1                        18,0s   13 tests
-agy-test-audit-reminder.Tests.ps1                32,5s   13 tests
+agy-seam-inject.Tests.ps1                        18,0s   19 tests   <- count 2026-08-03, time older
+agy-test-audit-reminder.Tests.ps1                32,5s   14 tests   <- count 2026-08-03, time older
 BashHookHelpers.Tests.ps1                         1,5s    4 tests
 check-agy-discipline-skills.Tests.ps1             6,9s   14 tests
 check-core-integrity.Tests.ps1                   24,1s    7 tests
