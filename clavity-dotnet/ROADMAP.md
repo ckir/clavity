@@ -106,6 +106,70 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 
 ## ▶ Forward backlog (in priority order)
 
+### 0. DISCIPLINE EFFICACY — stop confirming presence and calling it proof (▶ TOP PRIORITY, after the current build)
+
+Numbered `0` deliberately: this list is priority-ordered, and renumbering 1-11 would invalidate every
+existing citation to §7 and §8. Owner-directed 2026-08-04. **Deferred until the AGY-ANOMALIES capture-gap
+build ships, because the instrumentation attaches to that code and must be written against it, not
+against a description of it.**
+
+**The failure, stated exactly.** v15 shipped the AGY-ANOMALIES discipline. The install was faithful —
+installed plugin `0.5.0` matches the `clavity-v15` tag file-for-file, verified 2026-08-04, so packaging
+and delivery were never the bug. A session confirmed the hooks fire as designed. They did. And the
+discipline still produced nothing, because the capture side did not exist: a driver working DIRECTLY, not
+dispatching, got no push at any moment. The gap surfaced only when an agent in an unrelated project, two
+tabs away, hit it while doing ordinary work.
+
+**Every gate in this repo measures PRESENCE. None measures EFFICACY.** Byte-parity, pure-ASCII, mirrored
+pairs, `seed-sync-check`, registration structure, "all 3 registered", "installs verified live" — all
+answer *is the file there and wired up?*, and all were correct about v15. The unasked question is *did a
+session that noticed a defect end up with an entry in `.clavity/local-anomalies.md`?* This is the same
+class §6 already names for a different discipline — *"delivers knowledge without validating that driving
+actually improved (delivery != outcome)"* — recorded there and never actioned. Two independent
+disciplines have now hit it; treat it as the general defect it is.
+
+**Why the confirming session was a worthless witness, and no amount of care fixes it:**
+1. it was inside the build, holding the design in context, so "did it fire?" gets reconstructed rather
+   than observed;
+2. **silence and absence are indistinguishable** — this epic's own thesis, applied one level up to its
+   own verification;
+3. nothing the hooks emit identifies itself, so a stale install and a current one look identical.
+
+**The exact code to build upon** (all three files EXIST as of `d0b4cb1` — cite these, do not invent):
+
+| file (mirrored in `clavity-classic/plugin/hooks/`) | message defined | envelope emitted | jq-absent fallback |
+|---|---|---|---|
+| `clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh` | `:31` | `:52` | `:39-43` |
+| `clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh` | `:43` | `:61` | `:48-52` |
+| `clavity-dotnet/plugin/hooks/agy-anomaly-model-notice.sh` | `:44` | `:45` | `:19-21` (exits silently) |
+
+Behaviour is pinned by `scripts/tests/agy-anomaly-{capture-reminder,dispatch-reminder,model-notice}.Tests.ps1`
+and registration by `scripts/tests/plugin-hooks-registration.Tests.ps1`. **Any message change must hold
+the byte ban** (no backtick, apostrophe, double quote, backslash — the last two break the hand-built
+envelope on the jq-absent path, measured) **and keep the jq and no-jq paths byte-identical**, both
+already asserted.
+
+**Three mechanisms, cheapest first. Sequence and scope are the open forks — AGY-FIRST before designing.**
+
+1. **Version-stamp the emitted text.** A build identifier inside each message turns "it fired" into a
+   string that can be checked, and makes a stale install distinguishable from a silent one. Smallest
+   change; kills the ambiguity that made every past confirmation unfalsifiable. Open fork: where the
+   stamp comes from, given the hooks are plain bash with no build step and the byte ban constrains the
+   format.
+2. **Have each discipline record its own firing** — an append-only count, so `nudges fired last 7 days`
+   and `anomalies captured` are both answerable. `0 / 0` means it is not reaching; `12 / 0` means it
+   fires and does not work. Today those two are indistinguishable, which is precisely why v15 looked
+   fine. Open forks: where the counter lives (`.clavity/` is gitignored runtime state), and whether a
+   hook that must fail open may ever write.
+3. **Institutionalise the outside witness.** The agent two tabs away was the only valid experiment run on
+   v15, and it happened by accident. The design is: a fresh session, in an unrelated repo, given ordinary
+   work, never told the discipline exists — then inspect for the observable afterwards. **The session
+   that builds a discipline may never be the session that confirms it.**
+
+**The acceptance test for this item is itself an efficacy test**: it is done when you can answer "is
+AGY-ANOMALIES working for real users?" from recorded evidence, without asking any agent what it thinks
+happened.
+
 ### 1. `clavity --restart-agy` (classic) — 7.7
 Agy-only restart: tear down + relaunch ONLY the agy psmux session under the same `--session`, WITHOUT co-launching
 a new Claude (today only `clavity start` relaunches, which orphans the driving session). Re-run agy's exact launch
