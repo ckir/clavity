@@ -1,6 +1,6 @@
 [package]
 name = "clavity"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 description = "A remote control for Antigravity (agy): Claude drives a live agy session in the same folder via a psmux doorbell + the agentmemory signal bus."
 license = "PolyForm-Noncommercial-1.0.0"

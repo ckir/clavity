@@ -1,5 +1,5 @@
 {
   "name": "clavity",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "clavity-classic: Claude drives a live agy peer via a psmux doorbell + the agentmemory bus."
 }

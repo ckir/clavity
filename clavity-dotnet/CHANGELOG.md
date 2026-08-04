@@ -1,5 +1,15 @@
 # dotnet changelog
 
+## 0.6.0 — 2026-08-04
+
+### Features
+- feat(knowledge): promote the 4 manual-tier rules into the shipped manuals
+- feat(seed): promote 7 verified agy-driving rules into the SHIPPED golden-header
+- feat(hooks): dual-channel the SessionStart anomaly notice for the model
+- feat(hooks): register the anomaly capture and dispatch reminders; split SessionStart
+- feat(hooks): add the AGY-ANOMALIES dispatch reminder on PreToolUse Agent\|Task
+- feat(hooks): add the AGY-ANOMALIES PreCompact capture reminder
+
 ## 0.5.0 — 2026-08-03
 
 ### Features
