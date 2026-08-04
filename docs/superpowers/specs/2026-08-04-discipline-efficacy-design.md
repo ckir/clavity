@@ -4,7 +4,15 @@
 the owner: **measure first, prompt later.**
 
 **Goal.** Answer one question from recorded evidence, without asking any agent what it thinks happened:
-**is the AGY-ANOMALIES discipline reaching a driver at all, and on which channel?**
+**do the AGY-ANOMALIES channels that SHIP TODAY — the `PreCompact` capture reminder and the `PreToolUse`
+dispatch relay — reach a driver at all, and how often?**
+
+**Read that scope precisely.** It is deliberately narrower than "is the discipline reaching a driver",
+because the direct-driver case is already answered: no direct-driver channel exists (see the problem
+statement below), so a recorder could only ever report zero for it, and would be reporting the absence of a
+hook rather than a measurement. What v15 left genuinely unknown is whether the two channels that DO ship
+arrive at anyone — which is what this records. When a direct trigger lands (`§0` step 1b) it gets its own
+event-named field and becomes measurable the same way.
 
 **Explicit non-goal.** This does not measure conversion — whether a delivered nudge caused a capture. It
 cannot, and pretending otherwise is the failure this whole item exists to remove. Conversion is answered
@@ -65,8 +73,16 @@ skill writes and the hook never does**, and the dispatch reminder in particular 
 non-zero exit blocks every subagent dispatch in the session. A best-effort write there is still a write on
 a fail-open path.
 
-Instead: the nudge text carries a **stamp**, and `SessionEnd` greps the session transcript for it. No hook
-on a fail-open path writes anything. Exactly one write happens, at session end, where nothing is blocked.
+Instead: `SessionEnd` reads the session transcript and detects each nudge from the **typed record structure
+a hook injection produces** — never from matching its text. No hook on a fail-open path writes anything.
+Exactly one write happens, at session end, where nothing is blocked.
+
+**This paragraph originally read "the nudge text carries a stamp, and `SessionEnd` greps the transcript for
+it" — free-text matching, which round 1 then killed by measurement.** Three independent mechanisms rule it
+out (context re-serialisation, authored content, and the transcript's self-referentiality — all three
+detailed below). The detection signal is record structure; the stamp's surviving job is version provenance,
+not delivery. That structure is itself unmeasured and is STEP 0 item 5 — this design does not yet know the
+signal it depends on.
 
 **This appeared to reorder ROADMAP `§0` — and round 1 then overturned that.** The stamp looked like a
 prerequisite of step 1 while delivery was to be detected by grepping for it. Once detection moved to
@@ -129,10 +145,8 @@ short enough to append in one write. **That is an ASSERTION, not a measurement, 
 platform by default** — Win32 shell `>>` in Git Bash does not give POSIX `O_APPEND` cross-process
 serialisation, so two sessions ending together can either collide on a sharing violation (record silently
 dropped, since the hook fails open) or interleave fragments and emit a malformed line that breaks every
-downstream JSONL consumer. **STEP 0 item 7:** run ~20 concurrent appends from Git Bash on this machine and
-confirm the line count matches and every line parses. If it does not, the design needs an explicit
-serialisation strategy — per-session files collected by the consumer, or an advisory lock — decided from
-that measurement rather than assumed.
+downstream JSONL consumer. **The measurement that settles it, and the fallbacks if it fails, are STEP 0
+item 7 — defined in that list, not here.**
 
 Cases the design must handle, each with its decided behaviour:
 
@@ -143,6 +157,7 @@ Cases the design must handle, each with its decided behaviour:
 | transcript scan hits the time budget | counts `null`, `scan_status: bounded_out`, **and the record still lands**. A missing record and a bounded-out record must not look alike |
 | two sessions open in the same repo concurrently | both append; `session_id` disambiguates. With the capture field gone there is no cross-session arithmetic left to corrupt — reaching is per-session by construction |
 | `SessionEnd` does not fire (abnormal exit) | no record. STEP 0 item 2. The consumer must therefore report *sessions recorded*, never *sessions run* |
+| the write itself fails — `.clavity/` uncreatable, disk full, file locked by a concurrent session | no record, because the hook fails open. **This is indistinguishable from the row above**, and both are indistinguishable from a session where the recorder was never installed. `scan_status` cannot cover it: that field lives *inside* the record that did not get written. The consumer therefore cannot report a denominator at all, and any rate computed against "sessions run" is fabricated |
 
 ### 🔴 R1 — the survival bias, and why bounding the read is not merely an optimisation
 
@@ -175,11 +190,8 @@ ends at turn 50 may have zero trace of that dispatch in its final records. The t
 perfectly anti-correlated with the behaviour being measured, and in the same direction as the R1 survival
 bias, so the two compound rather than cancel.
 
-**The STEP 0 item 6 measurement must therefore test the compaction case specifically**, not merely "does a
-nudge persist": dispatch an Agent, run `/compact`, take several more turns, then check whether the typed
-injection record from *before* the compaction is still present in the final N records. If it is not, the
-tail scan is dead for compacted sessions and the design needs either a full bounded scan with an honest
-`bounded_out` rate, or a different signal entirely.
+**So STEP 0 item 6 must test the compaction case specifically**, not merely "does a nudge persist" — the
+procedure and the consequences of failure are defined in that item.
 
 ### 🔴 THE STAMP'S RATIONALE WAS OBSOLETED BY THE STRUCTURAL-DETECTION FOLD — resolve before planning
 
@@ -269,6 +281,15 @@ whole-`.hooks` comparison in `scripts/check-seed-artifacts-synced.sh`. It theref
 per-driver literal (Option S, `docs/agy-disciplines-marker-contract.md:13`), which constrains anything
 identifying the emitting driver in the record.
 
+**`SessionEnd` is a NEW EVENT KEY, not a new entry under an existing one.** Measured 2026-08-04:
+`SessionEnd` appears **zero times** in either driver's `hooks.json` — the registered events are
+`PreToolUse`, `PostToolUse`, `SessionStart` and `PreCompact`. Adding a top-level key is a structural change
+to both manifests, so the plan must account for three gates that a same-event addition would not have
+touched: the whole-`.hooks` deny-list comparison in `check-seed-artifacts-synced.sh`, the payload parity
+suite, and the v16 registration suite's *ships no hook file reachable from nowhere* test. It also means
+this event has **never fired in this plugin**, so STEP 0 item 2 is not a formality — nothing here has ever
+observed it.
+
 ### Scope, and what was rejected
 
 Recording is deliberately limited to reaching. Two richer options were considered and rejected:
@@ -284,10 +305,15 @@ Recording is deliberately limited to reaching. Two richer options were considere
 
 ---
 
-## STEP 0 — measure before building. SIX items; five remain open.
+## STEP 0 — measure before building. SEVEN items; six remain open.
 
-Neither is safe to assume, and both are cheap to settle. **The implementation plan starts here, and if
-either fails the design changes rather than the finding being written down as a caveat.**
+None of these is safe to assume. **The implementation plan starts here, and any open item that fails
+changes the design rather than being written down as a caveat.**
+
+Items 6 and 7 were raised by later review rounds and were, until round 3, cited by number elsewhere in this
+document while never appearing in this list. They are the two hardest measurements here, and a plan author
+working from this section alone would have missed both. **A cross-reference is not a definition** — if a
+later round adds an item, it is added HERE.
 
 1. **Does the `SessionEnd` payload carry `transcript_path`?** Confirmed present on `PreCompact` (observed
    live in a real payload this session) and on `SessionStart`. NOT confirmed for `SessionEnd`. The one
@@ -341,6 +367,21 @@ obtainable.**
    transcript directory with no observed way to pick the current one. So the STEP 0 item 1 fallback
    ("reconstructible from session id plus cwd") is **weaker than first written** — it collapses entirely
    unless `transcript_path` is in the payload or `CLAUDE_SESSION_ID` is genuinely set.
+6. **Does a nudge delivered BEFORE a compaction survive into the transcript's last N records?** This is the
+   tail-scan hypothesis that would make the bounded read O(1) in session length instead of a survival-biased
+   truncation. It must be measured on the **compaction case specifically** — dispatch an Agent, `/compact`,
+   take several more turns, then check whether the pre-compaction injection record is still in the final N
+   records — and the probe must be designed so the measuring command's own text cannot match, because the
+   transcript is self-referential. **The 2026-08-04 attempt was CONFOUNDED and must be redone.** If it
+   fails, the tail scan is dead for compacted sessions and the design needs a full bounded scan with an
+   honest `bounded_out` rate, or a different signal.
+7. **Do concurrent appends serialise on this platform?** Run ~20 concurrent appends to one file from Git
+   Bash on this machine; confirm the resulting line count matches and every line parses as JSON. Win32
+   shell `>>` does not give POSIX `O_APPEND` cross-process serialisation, so two sessions ending together
+   may collide (record silently dropped — the hook fails open) or interleave fragments into a malformed
+   line that breaks every downstream consumer. If it fails, the design needs an explicit serialisation
+   strategy — per-session files collected by the consumer, or an advisory lock — chosen from the
+   measurement rather than assumed.
 
 ---
 
