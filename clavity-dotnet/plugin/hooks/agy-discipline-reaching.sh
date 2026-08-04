@@ -1,102 +1,82 @@
 #!/usr/bin/env bash
-# AGY-ANOMALIES discipline-reaching recorder (plugin-shipped). SessionEnd. CAPTURE ONLY.
-# ROADMAP section 0 step 1a: the MEASURE half. Design + every measurement behind it:
-# docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md
+# AGY-ANOMALIES discipline-reaching recorder (plugin-shipped). SessionEnd. CAPTURE ONLY, NO SUBPROCESSES.
+# ROADMAP section 0 step 1a. Design + measurements: docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md
 #
-# IT CAPTURES; IT DOES NOT ANALYSE. This hook writes ONE small row naming the session and its transcript,
-# and stops. All scanning and counting happens later, in scripts/discipline-reaching-report.ps1, which runs
-# on demand with no time limit at all.
+# IT CAPTURES; IT DOES NOT ANALYSE. One small row naming the session and its transcript, then stop. All
+# scanning happens later in scripts/discipline-reaching-report.ps1, which runs on demand with no time limit.
 #
-# WHY THE SPLIT EXISTS - MEASURED ON SHIPPED CODE, v17, TWICE.
-# The first version scanned the transcript here, at SessionEnd. It worked in every unit test and in every
-# direct invocation, and then FAILED IN PRODUCTION: `SessionEnd hook ... failed: Hook cancelled`, on two
-# consecutive real session exits, writing NOTHING. The control that identifies the cause was a diagnostic
-# probe registered on the SAME event in the SAME environment: it did no scanning, took milliseconds, and
-# wrote its row successfully both times. Fast hook survives, multi-second hook is cancelled.
-# ==> SESSION TEARDOWN GIVES A HOOK FAR LESS TIME THAN ITS DECLARED `timeout`, so a SessionEnd hook must do
-# only trivial work. Nothing here may read the transcript, and no future edit may reintroduce that.
-# The failure mode is the worst available: a cancelled hook writes NO row, which is indistinguishable from
-# a session that never ran - the silent zero this entire item exists to remove.
+# WHY IT IS WRITTEN WITHOUT jq, date, OR git - MEASURED, TWICE, ON SHIPPED CODE.
+# v17 scanned the transcript here and was CANCELLED at teardown, writing nothing. The scan moved out, but
+# the rewritten hook still cost ~1,4-1,5s (2 jq starts at ~0,5s each, plus git) and was CANCELLED AGAIN on
+# a real exit. The diagnostic probe that DID survive cost 1,24-1,39s. So ~1,4s is not "the surviving band",
+# it is the EDGE of it - and a hook that SOMETIMES writes is worse than one that never does, because it
+# turns a missing row into an unanswerable question.
+# So every subprocess is gone: field extraction is bash regex, the timestamp is bash's own %()T, the repo
+# root is an in-shell walk. Only mkdir remains, and only when the directory is absent.
 #
-# WHY DEFERRING LOSES NOTHING: transcripts persist on disk after a session ends, so the analysis the report
-# performs later sees exactly what a scan here would have seen.
+# WHY RAW PASSTHROUGH IS SAFE - the trick that removes jq from the WRITE side too. The payload already
+# holds each value JSON-ESCAPED. Copying that escaped text straight into the output re-emits it
+# byte-for-byte, so nothing is unescaped and re-escaped - which is exactly where the previous version
+# corrupted Windows paths (@tsv doubled every backslash). `[^"]*` is the correct extractor because a double
+# quote is an ILLEGAL character in a Windows filename, so no value here can contain one.
 #
-# A NULL IS NOT A ZERO. If the payload names no transcript, that is recorded as a NAMED status, not as a
-# count of zero, and the row still lands. A missing row and a degraded row must never look alike.
+# A NULL IS NOT A ZERO. No transcript named => a NAMED status, never a count of zero, and the row still
+# lands. A missing row and a degraded row must never look alike.
 #
 # Fail-open: any error -> exit 0. Suppressed by .no-agy (workspace or global) like every other hook.
 # Byte-identical across both driver plugins (kept honest by scripts/check-seed-artifacts-synced.sh).
 set +e
-input=$(cat)
+export TZ=UTC
 
-# jq is required to parse the payload at all - without it we cannot learn the session id or the transcript
-# path, so there is nothing to record. Exit silently. This is a known, accepted gap rather than a hidden
-# one: a machine with no jq produces no rows, and the report counts rows RECORDED, never sessions RUN, so
-# it can never mistake this for a measured zero.
-command -v jq >/dev/null 2>&1 || exit 0
+# `read -d ''` slurps the whole stream and is a BUILTIN - no fork, unlike $(cat). It returns non-zero at
+# EOF while still having set the variable, hence the `|| true`-style bare call under `set +e`.
+# NOT $(</dev/stdin): that works when stdin is a FILE but not reliably when it is a PIPE under MSYS, and
+# a hook is always piped. Measured - the file-redirect form passed a hand test and then wrote NOTHING for
+# all eight piped cases in the suite, which is exactly the silent failure this hook must never have.
+IFS= read -r -d '' input
 
-# ONE jq call for every field. MEASURED: each jq start-up costs ~0.5s on this machine, so the obvious
-# field-per-call shape cost ~2,5s in total - and 2,5s is NOT safe here. The probe that provably SURVIVED
-# teardown did ~1,3s of work; the multi-second version was cancelled. Startup COUNT is the cost driver at
-# this size, not the parsing.
-#
-# ONE FIELD PER LINE, AND **NEVER** @tsv. MEASURED on the first real row this hook ever wrote: @tsv escapes
-# backslashes, so a Windows transcript_path came back doubled (C:\Users\...) and the recorded row named a
-# path that cannot resolve. The row landed and was USELESS. @tsv earns that escaping by surviving values
-# containing tabs or newlines; none of these four fields ever contains one, while ALL of them routinely
-# contain backslashes - the wrong trade for this data. Raw line-per-field output is byte-exact.
-{
-  read -r cwd
-  read -r sid
-  read -r reason
-  read -r tx
-} <<EOF
-$(printf '%s' "$input" | jq -r '.cwd // ".", .session_id // "", .reason // "", .transcript_path // ""' 2>/dev/null)
-EOF
+# Raw, still-escaped extraction. No jq: see the header. An absent field stays empty, which the status
+# logic below treats as "not named" rather than as zero.
+cwd=''; sid=''; reason=''; tx=''
+[[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]             && cwd=${BASH_REMATCH[1]}
+[[ $input =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]      && sid=${BASH_REMATCH[1]}
+[[ $input =~ \"reason\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]          && reason=${BASH_REMATCH[1]}
+[[ $input =~ \"transcript_path\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && tx=${BASH_REMATCH[1]}
 
-# STRIP THE TRAILING CR. MEASURED: jq on Windows writes CRLF, so every value read above ends in a carriage
-# return. This was INVISIBLE under the previous @tsv shape, where a single line put the CR only on the LAST
-# field; one-field-per-line puts one on ALL of them - including cwd, which then made mkdir fail on a path
-# with an embedded CR and the hook exit SILENTLY, writing no row at all. Parameter expansion is used rather
-# than `tr -d` because process COUNT is the budget this hook is fighting.
-cwd=${cwd%$'\r'}
-sid=${sid%$'\r'}
-reason=${reason%$'\r'}
-tx=${tx%$'\r'}
-[ -z "$cwd" ] && cwd="."
+# cwd is the only value used as a PATH here, so it is the only one that must be unescaped. The rest pass
+# through still-escaped and are never touched.
+cwd_path=${cwd//\\\\//}
+[ -z "$cwd_path" ] && cwd_path="."
 
-if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
+if [ -f "$cwd_path/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
   exit 0
 fi
 
-# Repo root by walking up for .git, in-shell. `git rev-parse --show-toplevel` is more precise but costs
-# another process start, and process COUNT is what this hook is fighting: the probe that provably survived
-# teardown measured 1238-1389ms, and every subprocess here is ~200-400ms of that budget. A `.git` entry is
-# matched as either a directory (normal clone) or a file (worktree/submodule), which covers the layouts
-# this ships into. Fallback stays cwd, exactly as before, so a non-repo cwd behaves identically.
-root="$cwd"
-_d="$cwd"
-while [ -n "$_d" ] && [ "$_d" != "/" ]; do
-  if [ -e "$_d/.git" ]; then root="$_d"; break; fi
-  _p=$(dirname "$_d" 2>/dev/null)
+# Repo root by walking up for .git, in-shell. `git rev-parse --show-toplevel` is more precise but costs a
+# process start, and process COUNT is the entire budget here. A .git entry matches as a directory (normal
+# clone) or a file (worktree/submodule). Fallback stays cwd, so a non-repo cwd behaves as before.
+root=$cwd_path
+_d=$cwd_path
+while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+  if [ -e "$_d/.git" ]; then root=$_d; break; fi
+  _p=${_d%/*}
   [ "$_p" = "$_d" ] && break
-  _d="$_p"
+  [ -z "$_p" ] && break
+  _d=$_p
 done
 
-# `deferred` says the transcript is named and awaits analysis. `transcript_not_found` is the one verdict
-# knowable HERE without touching the file, and it is recorded as a status rather than as zeroed counts.
 if [ -n "$tx" ]; then status='deferred'; else status='transcript_not_found'; fi
 
-out="$root/.clavity"
-mkdir -p "$out" 2>/dev/null || exit 0
+# printf's %()T is a bash builtin - no `date` process. TZ=UTC above makes it UTC.
+printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
 
-# v:2 is the CAPTURE shape. v:1 was the analyse-at-SessionEnd shape and SHIPPED in v17, so rows of both
-# kinds can coexist in one file on an upgraded machine; the report reads each by its own version rather
-# than guessing. That is exactly what this field was added for.
-# The timestamp comes from jq (`now|todate`) rather than a `date` subprocess - one less process to start.
-# JSON is built by jq, never by printf: a Windows transcript_path carries backslashes that a hand-built
-# envelope would emit unescaped and corrupt.
-jq -nc   --arg sid "$sid"   --arg reason "$reason"   --arg tx "$tx"   --arg status "$status"   '{v:2, session_id:$sid, timestamp:(now|todate), reason:$reason,
-    transcript_path:$tx, scan_status:$status}' >> "$out/discipline-reaching.jsonl" 2>/dev/null
+out="$root/.clavity"
+[ -d "$out" ] || mkdir -p "$out" 2>/dev/null || exit 0
+
+# v:2 is the CAPTURE shape. v:1 was the analyse-at-SessionEnd shape and SHIPPED in v17, so both can coexist
+# on an upgraded machine; the report reads each by its own version. Values are emitted exactly as they
+# arrived - already escaped - so no re-escaping step exists to get wrong.
+printf '{"v":2,"session_id":"%s","timestamp":"%s","reason":"%s","transcript_path":"%s","scan_status":"%s"}\n' \
+  "$sid" "$ts" "$reason" "$tx" "$status" >> "$out/discipline-reaching.jsonl" 2>/dev/null
 
 exit 0
