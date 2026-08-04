@@ -6,7 +6,7 @@
 
 **Architecture:** Two new, isolated bash hooks mirrored byte-identically into both driver plugins, registered in each plugin's `hooks.json`. The existing `SessionStart` matcher object is **split in two** so the drain reminder can widen its matcher without dragging the liveness check (and classic's driver-state reset) along with it. No existing hook script is modified.
 
-**Tech Stack:** Bash (Git Bash on Windows), `jq`, Claude Code plugin `hooks.json`, Pester 5 via `scripts/tests/BashHookHelpers.ps1`, `just` recipes.
+**Tech Stack:** Bash (Git Bash on Windows), `jq`, Claude Code plugin `hooks.json`, Pester 5 via `scripts/tests/BashHookHelpers.ps1`, `just` recipes, and **`python` on PATH** — the three non-vacuity mutation steps (Task 1 Step 7, Task 3 Step 7) drive their edits through it rather than `sed`, because a mutation that inserts shell metacharacters into a shell script is exactly the case `sed` quoting gets wrong. Verified present on the dev box alongside `bash`, `jq`, `cmp`, `sed` and `grep`; this is a developer-side prerequisite only and adds nothing to what the installers ship.
 
 **Source spec:** `docs/superpowers/specs/2026-08-04-agy-anomaly-capture-gap-design.md` — panel-GREEN at round 6. Do not re-review it; implement it.
 
