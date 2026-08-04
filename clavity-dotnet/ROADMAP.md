@@ -220,9 +220,18 @@ sessions.
 **THE OWNER'S SPLIT, binding: MEASURE FIRST, PROMPT LATER.** Step 1 is therefore two halves:
 
 - **1a — MEASURE (in progress).** A `SessionEnd` recorder that answers, from recorded evidence, whether the
-  channels that ship today reach a driver at all. Designed in
+  **`PreToolUse` dispatch relay** reaches a driver. Designed in
   `docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md`. It **reads** the transcript; no hook on
-  a fail-open path writes anything.
+  a fail-open path writes anything. **Validated end-to-end 2026-08-04** on a real 160 MB transcript located
+  from a real `SessionEnd` payload: 6 deliveries detected in 3.0 s against a 10 s budget.
+  🔴 **ONE channel, not two — and the missing one is v16's.** MEASURED across 8 transcripts holding 69
+  compactions: `"hookEvent":"PreCompact"` appears **zero** times, while the identical filter finds thousands
+  of `PreToolUse` records in every one of those files. **`PreCompact` hook firings are never written to the
+  transcript**, so the capture reminder v16 shipped to close gap (a) is invisible to this mechanism. Its
+  *opportunity* is countable (`isCompactSummary`); its *delivery* is not. The recorder therefore ships
+  dispatch-only and says so, rather than emitting a `0` that would read as the v15 failure signature for a
+  channel that may be working perfectly. Covering it needs either a hook that writes (breaking the marker
+  contract's axiom) or the step-3 witness trial.
 - **1b — PROMPT (deferred deliberately).** Where the direct-driver prompt eventually goes
   (`UserPromptSubmit`, `PostToolUseFailure`, or a derived trigger) is to be **decided from 1a's data rather
   than guessed** — which is the whole point of the split.

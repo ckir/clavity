@@ -4,15 +4,22 @@
 the owner: **measure first, prompt later.**
 
 **Goal.** Answer one question from recorded evidence, without asking any agent what it thinks happened:
-**do the AGY-ANOMALIES channels that SHIP TODAY — the `PreCompact` capture reminder and the `PreToolUse`
-dispatch relay — reach a driver at all, and how often?**
+**does the `PreToolUse` dispatch relay reach a driver at all, and how often?**
 
-**Read that scope precisely.** It is deliberately narrower than "is the discipline reaching a driver",
-because the direct-driver case is already answered: no direct-driver channel exists (see the problem
-statement below), so a recorder could only ever report zero for it, and would be reporting the absence of a
-hook rather than a measurement. What v15 left genuinely unknown is whether the two channels that DO ship
-arrive at anyone — which is what this records. When a direct trigger lands (`§0` step 1b) it gets its own
-event-named field and becomes measurable the same way.
+**Read that scope precisely — it narrowed TWICE, both times on measurement, and neither narrowing was a
+retreat from ambition.**
+
+1. It is narrower than *"is the discipline reaching a driver"*, because the direct-driver case is already
+   answered: no direct-driver channel exists (see the problem statement below), so a recorder could only
+   report zero for it, and would be reporting the absence of a hook rather than a measurement. When a
+   direct trigger lands (`§0` step 1b) it gets its own event-named field and becomes measurable the same way.
+2. **It covers ONE of the two shipping channels, not both.** STEP 0 item 8 measured that `PreCompact` hook
+   firings are never recorded in the transcript, so the `PreCompact` capture reminder is invisible to this
+   mechanism entirely. Its **opportunity** is still countable (`compactions`); its **delivery** is not.
+
+**Stating that plainly is the point.** A goal claiming both channels, backed by a detector that can only
+see one, would be the exact failure this item exists to end — a green number standing in for an unasked
+question.
 
 **Explicit non-goal.** This does not measure conversion — whether a delivered nudge caused a capture. It
 cannot, and pretending otherwise is the failure this whole item exists to remove. Conversion is answered
@@ -100,11 +107,18 @@ One append-only record per session. **Reaching only — the recorder does not tr
 | `v` | int | schema version. Required. **`v: 1` is now fixed** — STEP 0 resolved counts-vs-booleans in favour of counts |
 | `session_id` | string | correlation |
 | `timestamp` | string | ISO-8601, UTC. Sourced from the hook's own clock at write time — NOT from any transcript record, whose timestamps belong to the session being observed, not the observation |
-| `precompact_nudges` | int \| `null` | `hook_additional_context` records for the `PreCompact` capture reminder — its words REACHED the model |
 | `dispatch_nudges` | int \| `null` | `hook_additional_context` records for the `PreToolUse` dispatch relay — its words REACHED the model |
-| `precompact_fired` | int \| `null` | `hook_success` records for the same hook — it EXECUTED |
 | `dispatch_fired` | int \| `null` | `hook_success` records for the same hook — it EXECUTED |
+| `compactions` | int \| `null` | `isCompactSummary` records. **OPPORTUNITY for the `PreCompact` reminder, never delivery** — see item 8. Never divide by it |
+| `reason` | string \| `null` | the `SessionEnd` payload's exit-path name (e.g. `prompt_input_exit`). Makes STEP 0 item 2 self-measuring |
 | `scan_status` | enum | `ok` \| `bounded_out` \| `transcript_unreadable` \| `transcript_not_found` |
+
+**🔴 `precompact_nudges` and `precompact_fired` ARE DELETED, not deferred.** STEP 0 item 8 measured that
+`PreCompact` hook firings are never written to the transcript, so those fields were **unobtainable by this
+mechanism** — a schema promising a number its own detector cannot produce. The `PreCompact` channel is
+covered by `compactions` (opportunity only) and otherwise left explicitly unmeasured. **This is the single
+largest change any review or measurement made to this design, and it was found by RUNNING the detector, not
+by reading it.**
 
 **The `_fired` / `_nudges` pair is the design's most important output, and it exists only because STEP 0
 item 5 was measured.** `hook_success` says the hook ran; `hook_additional_context` says its content was
@@ -278,7 +292,7 @@ the control did fail — which is the only reason this was caught rather than sh
 hypothesis.**
 
 **Named consumer, stated now so this is not written and never read:** a `just` recipe that prints, over the
-last N recorded sessions, `precompact_nudges` and `dispatch_nudges` totals — with records carrying `null`
+last N recorded sessions, `dispatch_nudges` / `dispatch_fired` totals plus `compactions` — with records carrying `null`
 counted and reported **separately, broken down by `scan_status`**, so unknowns are never folded into zeros
 and the bounded-out survival bias stays visible rather than becoming silent data loss.
 
@@ -320,7 +334,7 @@ Recording is deliberately limited to reaching. Two richer options were considere
 
 ---
 
-## STEP 0 — measured 2026-08-04. SEVEN items: FIVE RESOLVED, two instrumented and pending.
+## STEP 0 — measured 2026-08-04. EIGHT items: SEVEN RESOLVED, one self-measuring.
 
 **Four of the five resolved items overturned a conclusion this spec had reached by reasoning.** Three
 rounds of adversarial review produced a design defended against two hazards that do not exist, and a
@@ -329,8 +343,9 @@ and it is recorded here rather than quietly folded.
 
 | item | status | result |
 |---|---|---|
-| 1 — how does the hook LOCATE the transcript? | **HALF RESOLVED / pending** | ✅ the env fallback is **DEAD** — `CLAUDE_SESSION_ID` measured `UNSET`. ⏳ so everything rests on `SessionEnd`'s payload carrying `transcript_path` (2 of 2 other events do) |
-| 2 — does `SessionEnd` fire on every exit path? | **INSTRUMENTED, pending** | same instrument, needs several exit kinds |
+| 1 — how does the hook LOCATE the transcript? | ✅ **RESOLVED** | `SessionEnd`'s payload **carries `transcript_path`**, and the path resolves to a readable 160 MB file. The env fallback is dead (`CLAUDE_SESSION_ID` `UNSET`) but is not needed |
+| 2 — does `SessionEnd` fire on every exit path? | **1 of N measured** | ✅ fires on a normal exit. The payload carries a **`reason`** field, so this item is **self-measuring** — see below |
+| 8 — is the `PreCompact` channel observable at all? | 🔴 **RESOLVED — NO** | **it is not.** Half the design's subject matter is invisible to this mechanism |
 | 3 — does injected hook context reach the transcript? | ✅ resolved earlier | yes |
 | 4 — can the transcript be read inside the budget? | ✅ **RESOLVED** | yes, with the right strategy — **1.65 s** on 188 MB |
 | 5 — what is the injection record's structure? | ✅ **RESOLVED** | a typed `attachment` record carrying `hookEvent` + `hookName` |
@@ -411,7 +426,78 @@ are meaningful rather than vacuous. **No serialisation strategy is needed.**
 unparseable lines: its two fragments happened to concatenate into valid JSON, so the corruption check was
 never exercised. A control that fails for the wrong reason is not a control.)*
 
-### Item 1 — HALF RESOLVED, and the half that resolved was the fallback. It is DEAD.
+### 🔴 ITEM 8 — THE `PreCompact` CHANNEL IS NOT OBSERVABLE. Half this design's subject is invisible.
+
+**This item did not exist until the design was RUN.** Three review rounds, and five earlier STEP 0 items,
+all reasoned about *how* to count `precompact_nudges`. None asked whether the data exists. It does not.
+
+**Measured across 8 transcripts containing 69 compactions between them: `"hookEvent":"PreCompact"` appears
+ZERO times.** The control is decisive — the identical filter finds thousands of `"hookEvent":"PreToolUse"`
+records in every one of those same files, and `isCompactSummary` confirms the compactions really happened:
+
+| transcript | compactions | `PreCompact` records | `PreToolUse` records (control) |
+|---|---|---|---|
+| `0a1a5578` | 8 | **0** | 10,073 |
+| `fad76446` | 19 | **0** | 8,831 |
+| `e069b071` | 10 | **0** | 6,579 |
+| `31d76a9f` | 12 | **0** | 6,756 |
+| `c359e435` | 5 | **0** | 6,150 |
+| `fb54cd7e` | 7 | **0** | 7,550 |
+| `b693490e` | 4 | **0** | 2,848 |
+| `7af00666` | 4 | **0** | 5,259 |
+
+The events that ARE recorded: `PostToolUse`, `PreToolUse`, `Stop`, `SessionStart`, `PostToolUseFailure`,
+`SessionEnd`. `PreCompact` is the one absentee. The likely mechanism is that a `PreCompact` hook runs as
+part of the compaction operation and its `systemMessage` is consumed there rather than injected into the
+conversation — but the *cause* is secondary; the *absence* is measured and is what constrains the design.
+
+**The consequence is severe and must not be softened.** `precompact_nudges` and `precompact_fired` are
+**unobtainable by this mechanism.** And the irony is exact: **the `PreCompact` capture reminder is the hook
+v16 shipped to close gap (a)** — so the one channel this recorder most needs to validate is the one it
+cannot see. A recorder that emitted `precompact_nudges: 0` would have reported the v15 failure signature
+for a channel that may be working perfectly.
+
+**What IS still measurable for that channel: the OPPORTUNITY, not the delivery.** `isCompactSummary`
+records are present and countable, so a session's compaction count is knowable — that is how many times the
+reminder *should* have fired. **This is a denominator with no numerator**, which is exactly the shape this
+spec forbids elsewhere, so it must be recorded as `compactions` and **never** divided into anything.
+
+**Three honest resolutions, for the owner rather than for me:**
+
+1. **Ship dispatch-only.** Record the `PreToolUse` channel, which is fully measurable, plus `compactions`
+   as context. State plainly that the `PreCompact` channel is unmeasured. Smallest, honest, and still
+   answers more than v15 did.
+2. **Let the `PreCompact` hook write its own record.** This breaks the design's central axiom (no hook
+   writes; the skill writes and the hook never does — `docs/agy-disciplines-marker-contract.md:55`,
+   `:80-82`). It is *less* dangerous here than elsewhere because `PreCompact` is not a tool-call path, but
+   it is still a write on a fail-open path and it reintroduces the hazard the marker contract settled.
+3. **Measure that channel by the outside-witness trial only** (`§0` step 3), and accept that automated
+   reaching-detection covers dispatch alone.
+
+**Recommendation: option 1.** It preserves every invariant, ships something true, and leaves the harder
+question to the trial that was always going to answer conversion anyway.
+
+### Item 1 — ✅ RESOLVED. The payload carries the path.
+
+**Measured 2026-08-04 from a real `SessionEnd` firing.** The payload:
+
+```
+{"session_id":"c359e435-…","transcript_path":"C:\\Users\\user\\.claude\\projects\\…\\c359e435-….jsonl",
+ "cwd":"C:\\Users\\user\\Development\\Rust\\clavity","prompt_id":"48cd33df-…",
+ "hook_event_name":"SessionEnd","reason":"prompt_input_exit"}
+```
+
+`transcript_path` is present, and it **resolves to a readable 160 MB file** — a path in a payload is not the
+same as a readable file, so that was checked separately rather than assumed.
+
+**End-to-end validation on that real transcript:** the designed two-stage scan ran against the 160 MB file
+and returned `dispatch` deliveries = **6** in **3.0 s**, inside the 10 s budget with headroom. That is the
+whole detection path — locate, scan, count, dedup — exercised once on real data.
+
+`CLAUDE_SESSION_ID` was again `UNSET`, consistent with the earlier measurement, confirming the fallback is
+dead. It is simply not needed.
+
+### Item 1 — the earlier half: the fallback is DEAD (kept for the reasoning)
 
 Measured 2026-08-04 by a temporary `PostToolUse` probe (since removed):
 
@@ -435,7 +521,20 @@ Verified by registering a probe and firing it without restarting. This matters f
 below — the `SessionEnd` probe registered during this session *will* fire at this session's end, so an
 empty probe file is genuine evidence that `SessionEnd` did not fire, not an artifact of late registration.
 
-### Items 1 (remaining half) and 2 — INSTRUMENTED, pending a real firing
+### Item 2 — 1 of N measured, and it turns out to be SELF-MEASURING
+
+**`SessionEnd` fires on a normal exit** — observed, with `reason: "prompt_input_exit"`.
+
+**The payload carries a `reason` field naming the exit path.** That changes how this item resolves: it does
+not need a separate campaign of deliberately killing terminals. **Record `reason` in the record**, and the
+accumulating data says which exit kinds fire, empirically, from ordinary use. An exit kind that never
+appears is either rare or non-firing, and the two are distinguishable once the volume is there.
+
+This is the one place where "the recorder measures its own preconditions" is legitimate rather than
+circular: a `reason` value that is *present* is positive evidence. Absence still proves nothing — which is
+this whole item's thesis, and it applies here too.
+
+### Instrumentation, and the remaining pending work
 
 Neither can be answered by reading source. A local, gitignored `SessionEnd` hook
 (`.clavity/scratch/discipline-efficacy/probe12-sessionend.sh`, registered in `.claude/settings.local.json`)
@@ -472,7 +571,9 @@ actual dispatch. Three independent causes, any one of which alone breaks a count
 requires a record to BE a typed attachment with the right `hookEvent` and `hookName`. The control proved
 it: a fixture where all three lines contained the marker returned 3 by text and 1 by structure.
 
-**So the boolean fallback is withdrawn.** `precompact_nudges` and `dispatch_nudges` are integers.
+**So the boolean fallback is withdrawn.** The surviving delivery counters are integers. (This settled *how*
+to count. Item 8 later settled *what can be counted at all* — and removed the `PreCompact` counters
+outright.)
 
 ---
 
