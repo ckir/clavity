@@ -1,0 +1,152 @@
+# REGISTRATION structure of the shipped hooks.json in both drivers.
+#
+# Distinct responsibility from plugin-hooks-payload.Tests.ps1, which guards the .sh BYTES (ASCII, parity).
+# This file guards WHICH hook is registered under WHICH matcher - a property no .sh test can see.
+#
+# EVERY ASSERTION WALKS THE PARSED JSON AND CHECKS A HOOK'S OWNING MATCHER OBJECT. A substring search
+# over the raw file cannot tell which hook a matcher governs, which is exactly the distinction the
+# SessionStart split exists to create.
+
+Describe 'shipped plugin hook registration' {
+    BeforeAll {
+        $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $script:Manifests = @{
+            dotnet  = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/hooks.json'
+            classic = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+        }
+
+        # Return the matcher values of every object under $Event whose hooks array mentions $Script.
+        # A hook registered twice yields two values, which the callers assert on explicitly.
+        function Get-OwningMatchers { param([string]$Manifest, [string]$Event, [string]$Script)
+            $json = Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json
+            @(foreach ($group in @($json.hooks.$Event)) {
+                if (@($group.hooks) | Where-Object { $_.command -like "*$Script*" }) { $group.matcher }
+            })
+        }
+        function Get-AllCommands { param([string]$Manifest)
+            $json = Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json
+            @(foreach ($event in $json.hooks.PSObject.Properties) {
+                foreach ($group in @($event.Value)) { foreach ($h in @($group.hooks)) { $h.command } }
+            })
+        }
+    }
+
+    It 'registers agy-anomaly-reminder.sh in its OWN SessionStart object on startup|resume|clear|compact - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        $m = $script:Manifests[$Driver]
+        $matchers = @(Get-OwningMatchers -Manifest $m -Event 'SessionStart' -Script 'agy-anomaly-reminder.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'startup|resume|clear|compact'
+    }
+
+    It 'keeps agy-liveness-check.sh on startup ALONE - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # THE REGRESSION THE STRUCTURAL SPLIT EXISTS TO PREVENT. SessionStart was ONE matcher object
+        # holding several hooks, so naively widening its matcher string would also widen the liveness
+        # check - which is documented as "the ONE boot-time liveness surface" and exits 2 with loud
+        # advisories, so it would spam the transcript on every /compact mid-task.
+        # NEGATIVE assertion: it passes on a clean baseline by construction. Its non-vacuity is proven by
+        # a merge-the-objects mutation recorded in the plan for this task.
+        $m = $script:Manifests[$Driver]
+        $matchers = @(Get-OwningMatchers -Manifest $m -Event 'SessionStart' -Script 'agy-liveness-check.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'startup'
+    }
+
+    It 'keeps classic-only agy-drive-session-reset.sh on startup ALONE' {
+        # Re-firing a DRIVER-STATE RESET on every compaction is a behaviour change, not a notification
+        # change - a strictly worse outcome than the liveness spam above.
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests['classic'] -Event 'SessionStart' -Script 'agy-drive-session-reset.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'startup'
+    }
+
+    It 'does NOT register agy-drive-session-reset.sh under dotnet at all' {
+        # It is classic-only. The seed-sync gate filters it out of its SessionStart comparison, so if
+        # dotnet ever registered it the filter would strip it there too and report GREEN.
+        # The non-empty guard is load-bearing: a missing or empty manifest yields no commands, and a
+        # -Not -Match against an empty string passes. Measured three times this session that an
+        # assertion satisfied by the absence of its subject reads as coverage while proving nothing.
+        $cmds = Get-AllCommands $script:Manifests['dotnet']
+        $cmds.Count | Should -BeGreaterThan 0 -Because 'an empty command set satisfies the negative below vacuously'
+        ($cmds -join ' ') | Should -Not -Match 'agy-drive-session-reset'
+    }
+
+    It 'registers the capture reminder on PreCompact manual|auto - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PreCompact' -Script 'agy-anomaly-capture-reminder.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'manual|auto'
+    }
+
+    It 'registers the dispatch reminder on PreToolUse Agent|Task - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # Agent|Task, not Agent. The observed tool name in this runtime is Agent, but binding to one
+        # literal makes the hook a silent no-op if a dispatch arrives under the other, and the existing
+        # matchers are already alternations, so it costs nothing.
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PreToolUse' -Script 'agy-anomaly-dispatch-reminder.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'Agent|Task'
+    }
+
+    It 'leaves agy-seam-inject.sh on PreToolUse Skill - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PreToolUse' -Script 'agy-seam-inject.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'Skill'
+    }
+
+    It 'names only hook files that EXIST in that plugin - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # A typo in a command path registers a hook that can never fire, and a hook that never fires
+        # cannot report its own absence.
+        $m = $script:Manifests[$Driver]
+        $dir = Split-Path -Parent $m
+        $cmds = Get-AllCommands $m
+        $cmds.Count | Should -BeGreaterThan 0 -Because 'an empty command set would pass the loop below vacuously'
+        $missing = foreach ($c in $cmds) {
+            if ($c -match 'hooks/([A-Za-z0-9._-]+\.sh)') {
+                $f = Join-Path $dir $Matches[1]
+                if (-not (Test-Path -LiteralPath $f)) { $Matches[1] }
+            }
+        }
+        ($missing -join '; ') | Should -BeNullOrEmpty
+    }
+
+    It 'ships no hook file that is reachable from nowhere - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # THE OTHER DIRECTION, and nothing tested it before. The test above checks every registered
+        # command has a file; this checks every file is registered. A hook that ships but appears in no
+        # matcher NEVER FIRES -- and, exactly like the gap this whole change exists to close, an absent
+        # nudge and a nudge with nothing to say are indistinguishable from outside. It is the natural
+        # outcome of adding the .sh and forgetting hooks.json, which this plan asks an engineer to do
+        # four times across Tasks 1-3.
+        #
+        # A dot-sourced LIBRARY is legitimately unregistered -- agy-consult-guard-lib.sh is sourced by
+        # both consult guards -- so a file referenced from ANOTHER hook counts as reachable. The
+        # reference search deliberately EXCLUDES the file itself: nearly every hook here names itself in
+        # its own header comment, so searching its own body would let every file self-certify and the
+        # test would pass vacuously forever.
+        $m    = $script:Manifests[$Driver]
+        $dir  = Split-Path -Parent $m
+        $cmds = (Get-AllCommands $m) -join ' '
+        $files = @(Get-ChildItem -LiteralPath $dir -Filter *.sh -File -ErrorAction Stop)
+        $files.Count | Should -BeGreaterThan 0 -Because 'an empty hook dir would pass the loop below vacuously'
+
+        $unreachable = foreach ($f in $files) {
+            if ($cmds -like "*$($f.Name)*") { continue }
+            $others = ($files | Where-Object { $_.Name -ne $f.Name } |
+                       ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
+            if ($others -match [regex]::Escape($f.Name)) { continue }
+            $f.Name
+        }
+        ($unreachable -join '; ') | Should -BeNullOrEmpty
+    }
+}
