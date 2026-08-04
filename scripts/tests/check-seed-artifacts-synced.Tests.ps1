@@ -110,4 +110,66 @@ Describe 'check-seed-artifacts-synced.sh' {
                 Should -Match 'hooks/hooks\.json exists in clavity-dotnet/plugin but NOT in clavity-classic/plugin'
         } finally { Move-Item $bak $f -Force }
     }
+
+    It 'FIRES when the PreCompact block differs between the two plugins' {
+        # The per-event jq rules are an ALLOW-LIST of events. Before this rule existed, PreCompact was
+        # compared by nothing at all: compared_elsewhere() waives hooks.json from the byte-diff and
+        # delegates its content to those rules, so an event without a rule is silently unchecked.
+        $f = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+        $orig = Get-Content -Raw -LiteralPath $f
+        try {
+            $j = $orig | ConvertFrom-Json
+            $j.hooks.PreCompact[0].matcher = 'manual'
+            $j | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $f -Encoding ascii
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0
+            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'PreCompact'
+        } finally { Set-Content -LiteralPath $f -Value $orig -NoNewline }
+    }
+
+    It 'FIRES when one plugin registers an EVENT the other does not' {
+        # The CLASS fix, not just the PreCompact instance: a future event added to one manifest and not
+        # the other would be invisible to every per-event rule. Uses an event name no rule names, so this
+        # can only pass via the whole-hooks catch-all.
+        $f = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+        $orig = Get-Content -Raw -LiteralPath $f
+        try {
+            $j = $orig | ConvertFrom-Json
+            $j.hooks | Add-Member -NotePropertyName 'Notification' -NotePropertyValue @(
+                @{ matcher = '*'; hooks = @(@{ type = 'command'; command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/agy-liveness-check.sh"' }) }
+            )
+            $j | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $f -Encoding ascii
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0
+            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'event set or hook contents'
+        } finally { Set-Content -LiteralPath $f -Value $orig -NoNewline }
+    }
+
+    It 'FIRES when both plugins register the SAME new event with DIFFERENT contents' {
+        # THE CONTROL THAT DISTINGUISHES THE FIX FROM ITS HALF-MEASURE. A key-set comparison passes this
+        # case - both manifests carry the same event NAME - so if this test goes green while the gate is
+        # only comparing keys, the class is not actually closed. Measured before the catch-all existed:
+        # the key sets compare equal and the gate reports GREEN.
+        $f = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+        $g = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/hooks.json'
+        $origC = Get-Content -Raw -LiteralPath $f
+        $origD = Get-Content -Raw -LiteralPath $g
+        try {
+            foreach ($pair in @(@{ Path = $f; Script = 'agy-liveness-check.sh' },
+                                @{ Path = $g; Script = 'agy-anomaly-reminder.sh' })) {
+                $cmd = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/' + $pair.Script + '"'
+                $j = Get-Content -Raw -LiteralPath $pair.Path | ConvertFrom-Json
+                $j.hooks | Add-Member -NotePropertyName 'Notification' -NotePropertyValue @(
+                    @{ matcher = '*'; hooks = @(@{ type = 'command'; command = $cmd }) }
+                )
+                $j | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $pair.Path -Encoding ascii
+            }
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0 -Because 'the event NAMES match; only the contents differ'
+            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'event set or hook contents'
+        } finally {
+            Set-Content -LiteralPath $f -Value $origC -NoNewline
+            Set-Content -LiteralPath $g -Value $origD -NoNewline
+        }
+    }
 }

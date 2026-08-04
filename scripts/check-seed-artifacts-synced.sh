@@ -134,6 +134,38 @@ if jq -e '[.hooks.SessionStart[]?.hooks[]? | select((.command // "") | test("agy
   echo "SEED-DRIFT: agy-drive-session-reset.sh is registered in clavity-dotnet/plugin/hooks/hooks.json; it is classic-only" >&2
   status=1
 fi
+# PreCompact registers the SHARED capture-side anomaly reminder and must be byte-identical across both
+# plugins. It is compared here because the per-event rules above are an ALLOW-LIST of events, and
+# compared_elsewhere() waives hooks.json from the byte-diff on the strength of exactly these rules -- so
+# an event with no rule is not "compared loosely", it is not compared AT ALL. This block is kept for its
+# SPECIFIC diagnostic: the catch-all below would report the same drift only as "the hooks block differs".
+if ! diff -q <(jq -S '.hooks.PreCompact' "$D/hooks/hooks.json") \
+             <(jq -S '.hooks.PreCompact' "$C/hooks/hooks.json") >/dev/null 2>&1; then
+  echo "SEED-DRIFT: hooks/hooks.json PreCompact (shared anomaly capture reminder) differs between the two plugins" >&2
+  status=1
+fi
+# THE CLASS FIX, and it is the reason the block above is not enough on its own. Enumerating events one
+# rule at a time is the same allow-list shape this file already replaced once for SessionStart (see the
+# deny-list note above): the NEXT event someone registers will have no rule either, and its absence will
+# look exactly like synchronisation.
+#
+# COMPARING THE EVENT KEY SET IS NOT THE FIX -- it is half of it, and the weaker half. A key-set diff is
+# fail-CLOSED for presence and fail-OPEN for content: an event registered in BOTH manifests with DIFFERENT
+# commands leaves the key sets identical, so no rule fires and the gate reports GREEN. MEASURED: adding a
+# Notification block to both manifests naming two different scripts kept the key sets equal.
+#
+# So invert instead, exactly as the SessionStart filter above already does: compare the WHOLE .hooks
+# object with the one known-divergent hook filtered out. Anything new is compared BY DEFAULT -- every
+# event, present or absent, and its full contents -- and the only way to lose coverage is to add a name to
+# the deny-list, which is a visible edit. This subsumes the per-event blocks above; they are kept because
+# "PostToolUse differs" localises a failure this catch-all can only report as "the hooks block differs".
+# MEASURED GREEN against both manifests as they stand, with four controls that each reddened it.
+all_sel='.hooks | map_values([ .[]? | .hooks |= map(select((.command // "") | test("agy-drive-session-reset\\.sh") | not)) | select(.hooks | length > 0) ])'
+if ! diff -q <(jq -S "$all_sel" "$D/hooks/hooks.json") \
+             <(jq -S "$all_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
+  echo "SEED-DRIFT: hooks/hooks.json differs between the two plugins (event set or hook contents)" >&2
+  status=1
+fi
 # Responder skill: the Claude Code plugin copy (renamed to `responder`, Option A/SP-0) and the
 # binary-embedded agy-side twin (kept as `claudavity-responder`, include_str!'d into the Rust binary)
 # must stay in sync in description + body, though their `id:`/`name:` frontmatter DELIBERATELY differ
