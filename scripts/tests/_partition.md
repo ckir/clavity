@@ -98,6 +98,11 @@ measured **279,58s**. At 69,1s the new suite is now the SECOND-largest in the fa
 cost is real rather than cold-start. It is still fast-half by measurement, but the fast half is now the
 first place to look if that recipe starts straddling a cap again.
 
+**2026-08-04 (last) — the reaching REPORT (the consumer).** One NEW fast suite
+(`discipline-reaching-report`, 11 tests, 8,1s - it invokes a PowerShell script rather than spawning bash
+hooks, which is why it is an order of magnitude cheaper than the recorder suite next to it). Fast went
+21 suites / 265 tests to **22 suites / 276 tests**, measured **290,53s**.
+
 Two things that pass are worth recording, because both are the kind of number this file exists to stop
 people guessing at:
 
@@ -145,6 +150,7 @@ agy-anomaly-dispatch-reminder.Tests.ps1          16,5s   18 tests   <- FAST, add
 agy-anomaly-model-notice.Tests.ps1               16,9s    9 tests   <- FAST, added 2026-08-04; +1 later same day
 agy-anomaly-contract-stamp.Tests.ps1             11,6s   14 tests   <- FAST, added 2026-08-04
 agy-discipline-reaching.Tests.ps1                69,1s   16 tests   <- FAST, added 2026-08-04
+discipline-reaching-report.Tests.ps1              8,1s   11 tests   <- FAST, added 2026-08-04
 agy-curate-nudge.Tests.ps1                       29,2s   11 tests   <- FAST, added 2026-08-03
 agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
                                                                       table entirely until 2026-08-03
