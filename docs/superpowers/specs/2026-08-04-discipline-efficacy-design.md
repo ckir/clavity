@@ -81,8 +81,9 @@ Exactly one write happens, at session end, where nothing is blocked.
 it" — free-text matching, which round 1 then killed by measurement.** Three independent mechanisms rule it
 out (context re-serialisation, authored content, and the transcript's self-referentiality — all three
 detailed below). The detection signal is record structure; the stamp's surviving job is version provenance,
-not delivery. That structure is itself unmeasured and is STEP 0 item 5 — this design does not yet know the
-signal it depends on.
+not delivery. **That structure has since been MEASURED (STEP 0 item 5): a typed `attachment` record
+carrying `hookEvent` and `hookName`**, which identifies a specific hook by name with no text matching at
+all — and therefore confirms, independently, that the stamp is not needed for detection.
 
 **This appeared to reorder ROADMAP `§0` — and round 1 then overturned that.** The stamp looked like a
 prerequisite of step 1 while delivery was to be detected by grepping for it. Once detection moved to
@@ -96,12 +97,22 @@ One append-only record per session. **Reaching only — the recorder does not tr
 
 | field | type | meaning |
 |---|---|---|
-| `v` | int | schema version. Required; the shape below is not final until STEP 0 resolves counts-vs-booleans |
+| `v` | int | schema version. Required. **`v: 1` is now fixed** — STEP 0 resolved counts-vs-booleans in favour of counts |
 | `session_id` | string | correlation |
 | `timestamp` | string | ISO-8601, UTC. Sourced from the hook's own clock at write time — NOT from any transcript record, whose timestamps belong to the session being observed, not the observation |
-| `precompact_nudges` | int \| bool \| `null` | structurally-detected deliveries of the `PreCompact` capture reminder |
-| `dispatch_nudges` | int \| bool \| `null` | structurally-detected deliveries of the `PreToolUse` dispatch relay |
+| `precompact_nudges` | int \| `null` | `hook_additional_context` records for the `PreCompact` capture reminder — its words REACHED the model |
+| `dispatch_nudges` | int \| `null` | `hook_additional_context` records for the `PreToolUse` dispatch relay — its words REACHED the model |
+| `precompact_fired` | int \| `null` | `hook_success` records for the same hook — it EXECUTED |
+| `dispatch_fired` | int \| `null` | `hook_success` records for the same hook — it EXECUTED |
 | `scan_status` | enum | `ok` \| `bounded_out` \| `transcript_unreadable` \| `transcript_not_found` |
+
+**The `_fired` / `_nudges` pair is the design's most important output, and it exists only because STEP 0
+item 5 was measured.** `hook_success` says the hook ran; `hook_additional_context` says its content was
+injected into the conversation. **`fired > 0` with `nudges == 0` is the v15 failure captured in a single
+record** — every gate green, the hook executing perfectly, and nothing reaching anyone. A recorder with
+only one of these numbers could not tell that state from a hook that never ran, which is precisely the
+blindness this whole item exists to remove. Counts are deduplicated by record `uuid` (measured: ≤2×
+duplication, 87 of 1314).
 
 **Channels are named by EVENT, never by an interpretive label like "direct".** This is not pedantry: the
 only capture-side hook that exists today fires on `PreCompact`, so a field called `direct_nudges` would
@@ -141,12 +152,13 @@ With the capture field gone, the axiom is literally true again: **no hook writes
 **Location: `.clavity/discipline-reaching.jsonl`** — one JSON object per line, append-only, per repo.
 `.clavity/` is gitignored runtime state (`.gitignore:45`), which is correct here: this is per-machine
 observation, not a shipped artifact, and it must never be committed. One line per session keeps appends
-short enough to append in one write. **That is an ASSERTION, not a measurement, and it is wrong on this
-platform by default** — Win32 shell `>>` in Git Bash does not give POSIX `O_APPEND` cross-process
-serialisation, so two sessions ending together can either collide on a sharing violation (record silently
-dropped, since the hook fails open) or interleave fragments and emit a malformed line that breaks every
-downstream JSONL consumer. **The measurement that settles it, and the fallbacks if it fails, are STEP 0
-item 7 — defined in that list, not here.**
+short enough to append in one write.
+
+**That was an ASSERTION, and STEP 0 item 7 has now MEASURED it: the assertion holds.** The concern was that
+Win32 `>>` in Git Bash lacks POSIX `O_APPEND` cross-process serialisation, so two sessions ending together
+would collide or interleave. Measured across 9 rounds at three payload sizes, plus a round with fully
+independent processes: **every append landed intact, every line parsed, no writer was lost.** No
+serialisation strategy, per-session file, or advisory lock is required.
 
 Cases the design must handle, each with its decided behaviour:
 
@@ -159,36 +171,38 @@ Cases the design must handle, each with its decided behaviour:
 | `SessionEnd` does not fire (abnormal exit) | no record. STEP 0 item 2. The consumer must therefore report *sessions recorded*, never *sessions run* |
 | the write itself fails — `.clavity/` uncreatable, disk full, file locked by a concurrent session | no record, because the hook fails open. **This is indistinguishable from the row above**, and both are indistinguishable from a session where the recorder was never installed. `scan_status` cannot cover it: that field lives *inside* the record that did not get written. The consumer therefore cannot report a denominator at all, and any rate computed against "sessions run" is fabricated |
 
-### 🔴 R1 — the survival bias, and why bounding the read is not merely an optimisation
+### ✅ THE SURVIVAL BIAS IS DISSOLVED — measured, and the reasoning that produced it is worth keeping
 
-Bounding the scan is usually a performance concern. Here it is a **correctness** one, and in the worst
-possible direction.
+Rounds 1 and 2 built an elaborate defence here, and **STEP 0 dissolved the thing it defended against.**
+The reasoning is preserved because it was not silly — it was correct given what was then known, and the
+shape of the error is the lesson.
 
-An early-exit scan stops as soon as it finds a nudge. But **proving a nudge is ABSENT requires reading the
-whole transcript** — and absence is precisely the hypothesis under test. So the sessions most likely to
-exhaust the time budget are exactly the zero-nudge direct sessions this whole item exists to detect.
-Those record `null`; nudge-bearing sessions match early and record cleanly. **The dataset would
-systematically drop true zeros and retain non-zeros — it would lie in the one direction that matters.**
+**What was argued.** Proving a nudge is ABSENT requires reading the whole transcript, and absence is the
+hypothesis under test. So the sessions most likely to exhaust the time budget would be exactly the
+zero-nudge sessions the item exists to detect: they would record `null` while nudge-bearing sessions
+matched early and recorded cleanly. The dataset would systematically drop true zeros and retain non-zeros
+— lying in the one direction that matters. A **tail scan** was then proposed as the fix, and round 2
+observed that compaction would defeat it, so the two biases would compound.
 
-`scan_status: bounded_out` makes the loss visible rather than silent, and the consumer reporting
-bounded-out records separately is what stops the bias being read as data. That is mitigation, not a fix.
+**What is true.** A full structural scan of a 188 MB transcript costs **1.65 s** against a 10 s budget
+(STEP 0 item 4). There is no need to bound the read at all in the normal case, so there is no
+early-exit, no truncation, and **no survival bias** — the mechanism the whole argument rested on does not
+arise. And compaction does not drop history from the FILE (item 6): it bounds the model's carried context,
+while the JSONL retains every record. Both feared biases are artifacts of a bounded read that is not
+needed.
 
-**The candidate fix, which is a HYPOTHESIS and remains UNMEASURED (STEP 0 item 6):** the same property
-that invalidated counting may rescue absence-detection. Because the JSONL re-serialises conversation
-context, a nudge delivered early may appear again in later records, in which case a bounded **tail** scan
-of the last N records establishes presence-or-absence at fixed cost, making the read O(1) in session
-length.
+**The tail scan is REJECTED** — not because compaction defeats it, but because it is both unnecessary and
+badly wrong: a tail-1000 window sees 11 of 453 deliveries, a 97% under-count.
 
-**An attempt to measure this on 2026-08-04 was CONFOUNDED and must be redone — see the contamination
-finding below.** Do not record it as validated; it is not.
+`scan_status: bounded_out` is retained purely as a safety valve for a pathological file far outside
+measured sizes, and the consumer still reports those records separately. It is now an exception path
+rather than the expected one.
 
-**🔴 AND COMPACTION MAY DESTROY THE PREMISE OUTRIGHT.** The tail hypothesis assumes context
-re-serialisation carries an early nudge forward into later records. **Compaction does the opposite — it
-summarises and drops earlier turn history.** A session that dispatches at turn 5, compacts at turn 30 and
-ends at turn 50 may have zero trace of that dispatch in its final records. The tail scan would then report
-`dispatch_nudges: 0` for exactly the long, productive, subagent-heavy sessions — a false negative
-perfectly anti-correlated with the behaviour being measured, and in the same direction as the R1 survival
-bias, so the two compound rather than cancel.
+**The lesson, which outlives this spec.** Three review rounds hardened a design against two hazards that
+do not exist, and added a boolean fallback for a capability that turns out to be available. Review reasons
+about what *could* be true; only measurement says what *is*. **When a design's central difficulty is an
+unmeasured platform property, measure it before hardening against it** — the hardening is not free, and
+here it would have shipped a 97%-wrong scan strategy as the primary path.
 
 **So STEP 0 item 6 must test the compaction case specifically**, not merely "does a nudge persist" — the
 procedure and the consequences of failure are defined in that item.
@@ -305,83 +319,134 @@ Recording is deliberately limited to reaching. Two richer options were considere
 
 ---
 
-## STEP 0 — measure before building. SEVEN items; six remain open.
+## STEP 0 — measured 2026-08-04. SEVEN items: FIVE RESOLVED, two instrumented and pending.
 
-None of these is safe to assume. **The implementation plan starts here, and any open item that fails
-changes the design rather than being written down as a caveat.**
+**Four of the five resolved items overturned a conclusion this spec had reached by reasoning.** Three
+rounds of adversarial review produced a design defended against two hazards that do not exist, and a
+fallback for a capability that turns out to be available. That is the case for measuring before reviewing,
+and it is recorded here rather than quietly folded.
 
-Items 6 and 7 were raised by later review rounds and were, until round 3, cited by number elsewhere in this
-document while never appearing in this list. They are the two hardest measurements here, and a plan author
-working from this section alone would have missed both. **A cross-reference is not a definition** — if a
-later round adds an item, it is added HERE.
+| item | status | result |
+|---|---|---|
+| 1 — `SessionEnd` payload carries `transcript_path`? | **INSTRUMENTED, pending** | cannot be read from source; needs a real firing |
+| 2 — does `SessionEnd` fire on every exit path? | **INSTRUMENTED, pending** | same instrument, needs several exit kinds |
+| 3 — does injected hook context reach the transcript? | ✅ resolved earlier | yes |
+| 4 — can the transcript be read inside the budget? | ✅ **RESOLVED** | yes, with the right strategy — **1.65 s** on 188 MB |
+| 5 — what is the injection record's structure? | ✅ **RESOLVED** | a typed `attachment` record carrying `hookEvent` + `hookName` |
+| 6 — does a pre-compaction nudge survive? | ✅ **RESOLVED** | yes on disk; **the tail hypothesis is dead** |
+| 7 — do concurrent appends serialise? | ✅ **RESOLVED** | yes, at every size tested, including independent processes |
 
-1. **Does the `SessionEnd` payload carry `transcript_path`?** Confirmed present on `PreCompact` (observed
-   live in a real payload this session) and on `SessionStart`. NOT confirmed for `SessionEnd`. The one
-   shipping handler inspected (`ecc`'s `session-end-marker.js`) reads neither `transcript_path` nor
-   `session_id` from stdin — it resolves identity from the `CLAUDE_SESSION_ID` environment variable — so
-   it is not evidence either way.
-   **Fallback if absent:** the transcript path is reconstructible from session id plus cwd. The fallback
-   itself rests on `CLAUDE_SESSION_ID` actually being set in the hook environment, which is **also
-   unverified** — it was only observed as a default parameter in third-party code, never measured.
-2. **Does `SessionEnd` fire reliably on every exit path** — a normal end, `/clear`, a closed terminal, a
-   killed process? A recorder that silently misses the abnormal exits under-counts sessions and biases
-   every ratio derived from it.
-3. ✅ **RESOLVED BY MEASUREMENT 2026-08-04 — injected hook context DOES appear in the transcript.** A real
-   transcript in `~/.claude/projects/C--Users-user-Development-Rust-clavity/` contains the
-   `PreToolUse:Agent` relay text, the `PostToolUse` AGY-AFTER text and the bottom-up-gating text. Reading
-   the transcript is therefore a viable delivery signal **in principle**. See the defect it exposed below.
+**A cross-reference is not a definition** — if a later round adds an item, it is added HERE.
 
-### 🔴 THE COUNTING MECHANISM IS INVALID AS ORIGINALLY SPECIFIED — measured, not theorised
+### Item 5 — RESOLVED. The record structure, and the distinction the spec had not drawn.
 
-The first draft said `SessionEnd` greps the transcript and counts occurrences. **Measured: the relay text
-occurs 470 times in a single session's transcript against ONE actual dispatch.** Two independent causes,
-either of which alone breaks a count:
+Measured on a **closed** transcript (`a72c5696…`, 27 MB, mtime 2026-07-11) so the search could not
+contaminate its own evidence. A hook firing produces a typed `attachment` record:
+
+| `.attachment.type` | count in specimen | meaning |
+|---|---|---|
+| `hook_success` | 1297 | the hook **executed** — carries `exitCode`, `stdout`, `stderr`, `durationMs` |
+| `async_hook_response` | 567 | async execution result |
+| `hook_cancelled` | 65 | the hook was **cancelled**, carries `timedOut`, `timeoutMs` |
+| **`hook_additional_context`** | **39** | the hook's content was **INJECTED into the conversation** |
+
+Every one of them carries **`hookEvent`** and **`hookName`**, so a specific hook is identifiable
+structurally, by name, with no text matching whatsoever.
+
+**🔴 THIS IS THE DISTINCTION THIS SPEC HAD COLLAPSED, AND IT IS THE WHOLE POINT OF THE ITEM.**
+`hook_success` means *the hook ran*. `hook_additional_context` means *its words reached the model*. A hook
+that executes and exits 0 while its content never becomes `hook_additional_context` is **precisely the v15
+failure** — every gate green, nothing delivered. The recorder must therefore record **both**, because the
+gap between them is the signal, and a design that recorded only "did it run" would have reproduced the
+exact blindness this item exists to remove. `hook_cancelled` is a third outcome neither field would
+otherwise capture.
+
+**Counting is exact, and the boolean fallback is unnecessary.** In the specimen, structural deliveries for
+`PreToolUse:Agent` = **3**, against a ground truth of **3** `Agent`/`Task` tool uses counted independently
+from the assistant records. Duplication is bounded and small: 87 uuids appear exactly twice, 1227 once,
+never more — **dedup by `uuid`** removes it.
+
+**The self-referentiality hazard is defeated, and this was proven with a control that had to fail.** A
+three-line fixture where all three lines contain the marker string but only one is a genuine delivery
+record: naive text counting returned **3**; the two-stage structural filter returned **1**. Contaminating
+records — a command that searched for the marker, a document that describes it — are `user`/`assistant`
+records, not typed attachments, so structural validation rejects them.
+
+### Item 4 — RESOLVED. The budget is affordable, but only one strategy fits.
+
+Measured on a closed **188 MB** transcript, 28,531 records:
+
+| strategy | elapsed | verdict |
+|---|---|---|
+| naive full `jq` parse of every record | **10.76 s** | **FAILS** the 10 s budget — the spec's fear was correct *for this strategy* |
+| `grep` prefilter → `jq`-validate only the candidate lines | **1.65 s** | passes with ~6× headroom |
+
+The two-stage scan is what makes a **full** scan affordable, and a full scan is what item 6 shows is
+required. `scan_status: bounded_out` survives as a safety valve for a pathological file, not as the
+expected path.
+
+### Item 6 — RESOLVED. Compaction truncates CONTEXT, not the FILE.
+
+The design feared that compaction "summarises and drops earlier turn history", so a session that
+dispatched before compacting would end with no trace of it. **Measured: false.** In a specimen containing
+**12 compactions** (`isCompactSummary` records at 1053, 2439, 4768, 8905, 10047, 11439, 13512, 14631,
+18795, 22034, 23968, 26473), `hook_additional_context` deliveries appear from record **7** through record
+**28,485**, straddling every boundary. The JSONL is append-only; compaction bounds what the model carries
+forward, not what is on disk.
+
+**But the tail hypothesis is dead.** A tail-1000 window on that file starts at record 27,531 and would see
+**11** of ~453 deliveries — a **97% under-count**, and it would report zero for exactly the session whose
+only nudge arrived early. Tail scanning is removed from the design; the full two-stage scan replaces it.
+
+### Item 7 — RESOLVED. Appends serialise.
+
+20 concurrent writers, payloads of 300 B / 8 KB / 64 KB, three repeats each: **9 of 9 rounds clean** —
+20/20 lines, zero unparseable, 20 distinct writers every time. Repeated with 20 **fully independent**
+`bash -c` processes (a truer model of two sessions ending together): clean. Both validator controls fired
+first — a malformed line was detected as unparseable, a short file was detected by count — so the passes
+are meaningful rather than vacuous. **No serialisation strategy is needed.**
+
+*(The first version of this probe had a single control that "failed" on line count while reporting zero
+unparseable lines: its two fragments happened to concatenate into valid JSON, so the corruption check was
+never exercised. A control that fails for the wrong reason is not a control.)*
+
+### Items 1 and 2 — INSTRUMENTED, pending a real firing
+
+Neither can be answered by reading source. A local, gitignored `SessionEnd` hook
+(`.clavity/scratch/discipline-efficacy/probe12-sessionend.sh`, registered in `.claude/settings.local.json`)
+records one line per firing: the verbatim payload, and whether `CLAUDE_SESSION_ID` / `CLAUDE_PROJECT_DIR`
+are set. It always exits 0 and writes nothing else. A malformed payload is still recorded, as a string, so
+a bad payload is evidence rather than a lost line. **Item 2 needs several exit kinds** — a normal end,
+`/clear`, a closed terminal, a killed process — so it resolves over days, not in one run.
+
+**The still-live half of item 1 is not "does the payload have a field" — it is HOW THE HOOK FINDS THE FILE
+AT ALL.** Measured: the task-directory id observed at runtime is NOT the transcript filename, and this
+project's transcript directory holds **112 `.jsonl` files** with no observed way to pick the current one.
+So the "reconstructible from session id plus cwd" fallback collapses entirely unless `transcript_path` is
+in the payload or `CLAUDE_SESSION_ID` is genuinely set in the hook environment. **If both are absent the
+recorder cannot be built as designed**, and that is the one remaining result that can still invalidate it.
+
+### 🔴 TEXT-COUNTING IS INVALID — and structural counting is EXACT. Both measured.
+
+These are two different questions and the spec previously conflated them into a single pessimism.
+
+**Text-counting is invalid.** The relay text occurs **470 times** in one session's transcript against ONE
+actual dispatch. Three independent causes, any one of which alone breaks a count:
 
 1. **The JSONL re-serialises conversation context**, so one injection appears in many subsequent records.
    The number is "records containing this text", not "times it was delivered".
-2. **The same text appears in AUTHORED content** — my own messages, the hook source, this spec. In this
-   repository the nudge text *is* the subject matter, so authored occurrences are not an edge case, they
-   are guaranteed. No choice of stamp string escapes this, because any stamp gets written into the docs
-   that describe it.
+2. **The same text appears in AUTHORED content** — messages, the hook source, this spec. In this repository
+   the nudge text *is* the subject matter, so authored occurrences are guaranteed, not an edge case. No
+   choice of stamp string escapes this, because any stamp gets written into the docs that describe it.
+3. **The transcript is self-referential** — searching for a string writes it into the corpus being
+   searched.
 
-**Consequence:** delivery must be detected from the transcript's **record STRUCTURE** — the typed entry a
-hook injection produces — never from free-text matching anywhere in the file. That structure is unknown
-and becomes STEP 0 item 5.
+**Structural counting is exact.** Measured against ground truth: 3 detected deliveries, 3 actual
+`Agent`/`Task` uses. The three mechanisms above all attack *text*; none of them survives a filter that
+requires a record to BE a typed attachment with the right `hookEvent` and `hookName`. The control proved
+it: a fixture where all three lines contained the marker returned 3 by text and 1 by structure.
 
-**And it may reduce the contract:** if structure yields a reliable *occurred / did not occur* signal but
-not a trustworthy count, then `precompact_nudges` and `dispatch_nudges` become **booleans**, not integers.
-That still answers the v15 question exactly — reaching is a 0-vs-N question — and a boolean is immune to
-the inflation measured above. **Decide this from the STEP 0 measurement; do not assume a count is
-obtainable.**
-
-4. **Does `SessionEnd` impose a timeout, and can the transcript be read inside it?** `ecc` registers its
-   `SessionEnd` hook with `"timeout": 10`
-   (`~/.claude/plugins/cache/ecc/ecc/2.0.0/hooks/hooks.json:338-353`). **Measured: a real transcript in
-   this project is 134 MB.** A full-file scan inside a 10-second budget is not obviously feasible, and
-   failing it produces no record *silently, for exactly the long sessions most likely to contain a nudge*
-   — a bias in the worst possible direction. **The read must be bounded** (tail-N records, or an early
-   exit on first structural match if the signal degrades to a boolean).
-5. **What is the transcript's record structure for an injected hook context?** Required by the defect
-   above. Also unresolved: **how the hook locates the transcript at all.** Measured: the task-directory id
-   observed at runtime is NOT the transcript filename, and 131 `.jsonl` files sit in this project's
-   transcript directory with no observed way to pick the current one. So the STEP 0 item 1 fallback
-   ("reconstructible from session id plus cwd") is **weaker than first written** — it collapses entirely
-   unless `transcript_path` is in the payload or `CLAUDE_SESSION_ID` is genuinely set.
-6. **Does a nudge delivered BEFORE a compaction survive into the transcript's last N records?** This is the
-   tail-scan hypothesis that would make the bounded read O(1) in session length instead of a survival-biased
-   truncation. It must be measured on the **compaction case specifically** — dispatch an Agent, `/compact`,
-   take several more turns, then check whether the pre-compaction injection record is still in the final N
-   records — and the probe must be designed so the measuring command's own text cannot match, because the
-   transcript is self-referential. **The 2026-08-04 attempt was CONFOUNDED and must be redone.** If it
-   fails, the tail scan is dead for compacted sessions and the design needs a full bounded scan with an
-   honest `bounded_out` rate, or a different signal.
-7. **Do concurrent appends serialise on this platform?** Run ~20 concurrent appends to one file from Git
-   Bash on this machine; confirm the resulting line count matches and every line parses as JSON. Win32
-   shell `>>` does not give POSIX `O_APPEND` cross-process serialisation, so two sessions ending together
-   may collide (record silently dropped — the hook fails open) or interleave fragments into a malformed
-   line that breaks every downstream consumer. If it fails, the design needs an explicit serialisation
-   strategy — per-session files collected by the consumer, or an advisory lock — chosen from the
-   measurement rather than assumed.
+**So the boolean fallback is withdrawn.** `precompact_nudges` and `dispatch_nudges` are integers.
 
 ---
 
