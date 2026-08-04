@@ -68,8 +68,11 @@ a fail-open path.
 Instead: the nudge text carries a **stamp**, and `SessionEnd` greps the session transcript for it. No hook
 on a fail-open path writes anything. Exactly one write happens, at session end, where nothing is blocked.
 
-**This reorders ROADMAP `§0`.** The stamp was listed as step 2; it is a **prerequisite of step 1**,
-because it is what makes a delivery greppable.
+**This appeared to reorder ROADMAP `§0` — and round 1 then overturned that.** The stamp looked like a
+prerequisite of step 1 while delivery was to be detected by grepping for it. Once detection moved to
+record structure, that justification vanished. See "The stamp's rationale was obsoleted" below: the stamp
+is **parallel to** the recorder, not blocking it, and its surviving purpose is version provenance — which
+is also why `§0`'s separate argument for stamping *before the witness trial* still stands untouched.
 
 ### What is recorded
 
@@ -157,6 +160,41 @@ length.
 **An attempt to measure this on 2026-08-04 was CONFOUNDED and must be redone — see the contamination
 finding below.** Do not record it as validated; it is not.
 
+### 🔴 THE STAMP'S RATIONALE WAS OBSOLETED BY THE STRUCTURAL-DETECTION FOLD — resolve before planning
+
+Round 1 concluded that detection must key on the transcript's **record structure**, not on text. That fold
+spawned its own edge, and it lands on `§0`'s sequencing.
+
+The stamp was justified twice, and structural detection removes one of the two justifications:
+
+- **As a delivery marker — now redundant.** Its original job was to make a nudge greppable and to separate
+  nudge text from authored text. Structural detection does that better, and text-matching is ruled out by
+  three measured mechanisms. **The stamp buys nothing for detection.**
+- **As version provenance — still needed, and unaffected.** Distinguishing a *stale installed* hook from a
+  *current* one is a different question that structure cannot answer: a record's shape says a hook fired,
+  not which build emitted it. That was the original §0 rationale ("makes a stale install distinguishable
+  from a silent one") and it survives intact.
+
+**Consequence for `§0`:** the stamp is NOT a prerequisite of the recorder, as this spec claimed before
+round 1. The recorder can be built and shipped without it. The stamp remains worth doing for provenance,
+but it is **parallel to** step 1 rather than blocking it — and if the recorder ships first, its records
+simply cannot answer "which build" until the stamp lands. **Update `§0` when this spec is ratified;
+leaving both documents claiming a prerequisite that no longer exists is exactly the incomplete fold this
+project keeps paying for.**
+
+### Record-file lifecycle — unbounded by default
+
+`.clavity/discipline-reaching.jsonl` is append-only, one line per session, forever, per repo. Nothing in
+this design prunes or rotates it. At a few hundred bytes per line this is slow-growing rather than
+dangerous, but "slow-growing and never examined" is how the `_partition.md` counts decayed. **Decide a
+retention rule in the plan** — a line cap, an age cap, or an explicit "unbounded, and here is why that is
+acceptable". Do not leave it unstated.
+
+Two identifiers the spec has not sourced, both needed before implementation: **where `session_id` comes
+from** (the same STEP 0 unknown as the transcript path — `CLAUDE_SESSION_ID` is a candidate, unverified),
+and **what `v` is set to for this first shape**, plus what a consumer does with a version it does not
+recognise (recommended: count it separately rather than parsing it, mirroring the `null` discipline).
+
 ### 🔴 THE TRANSCRIPT IS SELF-REFERENTIAL — measured, and it constrains every text-based approach
 
 **Measured 2026-08-04.** A control string invented at the keyboard and never emitted by any hook
@@ -187,11 +225,19 @@ last N recorded sessions, `precompact_nudges` and `dispatch_nudges` totals — w
 counted and reported **separately, broken down by `scan_status`**, so unknowns are never folded into zeros
 and the bounded-out survival bias stays visible rather than becoming silent data loss.
 
-**The consumer MUST NOT print a ratio, and that is a contract, not a preference.** Recording deliveries
-and captures side by side actively invites computing conversion from them, which this design explicitly
-cannot support — the denominator problem is why the plausible-opportunity option was rejected. Printing
-`captures / nudges` would manufacture exactly the confident wrong number ("0% conversion") that agy named
-as this design's Quiet Zero failure mode. Totals only, each labelled with what it does and does not mean.
+**The ratio prohibition is now STRUCTURAL rather than a stated rule, and that is strictly better.** An
+earlier draft forbade the consumer from printing `captures / nudges`, because that number would
+manufacture the confident-wrong "0% conversion" (the Quiet Zero failure mode). With the capture field
+removed there is no numerator in the record at all — **the forbidden number is unconstructible from this
+data.** A prose prohibition depends on every future reader obeying it; an absent field does not. Keep the
+reasoning recorded here so a later change does not reintroduce the numerator without understanding what it
+costs.
+
+**The recorder ships to BOTH drivers, byte-identically**, like every other hook in this repo — mirrored
+into `clavity-classic/plugin/hooks/`, enforced by `scripts/tests/plugin-hooks-payload.Tests.ps1` and the
+whole-`.hooks` comparison in `scripts/check-seed-artifacts-synced.sh`. It therefore cannot carry a
+per-driver literal (Option S, `docs/agy-disciplines-marker-contract.md:13`), which constrains anything
+identifying the emitting driver in the record.
 
 ### Scope, and what was rejected
 
