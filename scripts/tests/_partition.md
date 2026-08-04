@@ -91,6 +91,13 @@ than either prior sample despite +14 tests, which is the run-order swing this fi
 NOT evidence the new suite is free. Slow was not re-run in this pass; its 238 / 761,28s entry above is
 therefore the newest slow figure and is now one change stale.
 
+**2026-08-04 (later still) — the discipline-reaching recorder.** One NEW fast suite
+(`agy-discipline-reaching`, 16 tests). Fast went 20 suites / 249 tests to **21 suites / 265 tests**,
+measured **279,58s**. At 69,1s the new suite is now the SECOND-largest in the fast half after
+`check-seed-artifacts-synced`; each of its cases spawns a bash hook against a synthetic transcript, so the
+cost is real rather than cold-start. It is still fast-half by measurement, but the fast half is now the
+first place to look if that recipe starts straddling a cap again.
+
 Two things that pass are worth recording, because both are the kind of number this file exists to stop
 people guessing at:
 
@@ -137,6 +144,7 @@ agy-anomaly-capture-reminder.Tests.ps1            9,9s   10 tests   <- FAST, add
 agy-anomaly-dispatch-reminder.Tests.ps1          16,5s   18 tests   <- FAST, added 2026-08-04
 agy-anomaly-model-notice.Tests.ps1               16,9s    9 tests   <- FAST, added 2026-08-04; +1 later same day
 agy-anomaly-contract-stamp.Tests.ps1             11,6s   14 tests   <- FAST, added 2026-08-04
+agy-discipline-reaching.Tests.ps1                69,1s   16 tests   <- FAST, added 2026-08-04
 agy-curate-nudge.Tests.ps1                       29,2s   11 tests   <- FAST, added 2026-08-03
 agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
                                                                       table entirely until 2026-08-03
