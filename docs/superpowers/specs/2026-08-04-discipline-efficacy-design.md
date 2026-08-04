@@ -92,11 +92,13 @@ not delivery. **That structure has since been MEASURED (STEP 0 item 5): a typed 
 carrying `hookEvent` and `hookName`**, which identifies a specific hook by name with no text matching at
 all — and therefore confirms, independently, that the stamp is not needed for detection.
 
-**This appeared to reorder ROADMAP `§0` — and round 1 then overturned that.** The stamp looked like a
-prerequisite of step 1 while delivery was to be detected by grepping for it. Once detection moved to
-record structure, that justification vanished. See "The stamp's rationale was obsoleted" below: the stamp
-is **parallel to** the recorder, not blocking it, and its surviving purpose is version provenance — which
-is also why `§0`'s separate argument for stamping *before the witness trial* still stands untouched.
+**This claim about the stamp reversed TWICE, and the second reversal is the one that stands.** The stamp
+first looked like a prerequisite of step 1, because delivery was to be detected by grepping for it. Round 1
+moved detection to record structure and concluded the stamp was therefore redundant for detection. **Then
+measurement showed structure alone cannot ATTRIBUTE a delivery to a specific hook** — see the correction
+under item 5 — so a discriminator inside the record's `content` is required after all, and the stamp is the
+stable form of it. Net: the recorder can ship without a stamp by matching message prose, and will be
+brittle; the stamp makes it stable. Provenance remains a separate, untouched reason to want one.
 
 ### What is recorded
 
@@ -228,9 +230,13 @@ spawned its own edge, and it lands on `§0`'s sequencing.
 
 The stamp was justified twice, and structural detection removes one of the two justifications:
 
-- **As a delivery marker — now redundant.** Its original job was to make a nudge greppable and to separate
-  nudge text from authored text. Structural detection does that better, and text-matching is ruled out by
-  three measured mechanisms. **The stamp buys nothing for detection.**
+- **As a delivery marker — this bullet said "now redundant" and MEASUREMENT REVERSED IT.** Structure
+  identifies the *channel* but not the *hook* (`hookName` is `<Event>:<ToolName>`, shared by every
+  plugin on that tool), so attribution needs a discriminator inside the delivery record's `content`.
+  Free-text matching over the whole file remains ruled out by three measured mechanisms; a match **scoped
+  to a hook attachment's `content`** is not that, and is immune to all three. **The stamp is the stable
+  form of that discriminator** — without it the count keys on message prose and breaks silently, toward
+  zero, on any wording edit.
 - **As version provenance — still needed, and unaffected.** Distinguishing a *stale installed* hook from a
   *current* one is a different question that structure cannot answer: a record's shape says a hook fired,
   not which build emitted it. That was the original §0 rationale ("makes a stale install distinguishable
@@ -245,10 +251,13 @@ structure and records it in a `hook_version` field, or provenance is explicitly 
 the recorder and answered another way. **What must not happen is the spec continuing to claim a benefit
 its own schema cannot produce.**
 
-**Consequence for `§0`:** the stamp is NOT a prerequisite of the recorder, as this spec claimed before
-round 1. The recorder can be built and shipped without it. The stamp remains worth doing for provenance,
-but it is **parallel to** step 1 rather than blocking it — and if the recorder ships first, its records
-simply cannot answer "which build" until the stamp lands. **Update `§0` when this spec is ratified;
+**Consequence for `§0` — REVISED by measurement, after this paragraph had already been propagated once.**
+Round 1 said the stamp was not a prerequisite, `§0` was updated to say so, and then the attribution finding
+under item 5 overturned it. Current position: the recorder **can** ship first, keying attribution on
+message prose, and is brittle that way; the stamp converts that to a stable token and is therefore
+**strongly wanted by step 1a, not merely parallel to it**. Provenance ("which build") remains a separate
+reason. **`§0` currently asserts the superseded "parallel, not a prerequisite" wording and must be
+corrected;
 leaving both documents claiming a prerequisite that no longer exists is exactly the incomplete fold this
 project keeps paying for.**
 
@@ -366,8 +375,53 @@ contaminate its own evidence. A hook firing produces a typed `attachment` record
 | `hook_cancelled` | 65 | the hook was **cancelled**, carries `timedOut`, `timeoutMs` |
 | **`hook_additional_context`** | **39** | the hook's content was **INJECTED into the conversation** |
 
-Every one of them carries **`hookEvent`** and **`hookName`**, so a specific hook is identifiable
-structurally, by name, with no text matching whatsoever.
+Every one of them carries **`hookEvent`** and **`hookName`**.
+
+### 🔴 CORRECTION — `hookName` DOES NOT IDENTIFY THE HOOK. Structure alone over-counts.
+
+An earlier revision of this section claimed `hookName` made "a specific hook identifiable structurally, by
+name, with no text matching whatsoever." **That is false, and it was caught by running the detector rather
+than reading it.**
+
+**`hookName` is `<Event>:<ToolName>`** — `PreToolUse:Agent`, `PostToolUse:Bash` — not the script. Every
+plugin registering a hook on the same tool shares the same `hookName`. Worse, the delivery record carries
+no discriminator at all: `hook_success` has a **`command`** field naming the script, but
+`hook_additional_context` has only `["content","hookEvent","hookName","toolUseID","type"]`.
+
+**Measured consequence, on the real transcript:** filtering `hook_additional_context` by
+`hookName == "PreToolUse:Agent"` returned **6**. Inspecting the `content` of those six: **1** is this
+project's AGY-ANOMALIES relay; **5** are an unrelated bottom-up-gating hook that happens to fire on the
+same tool. **The structural count over-reported this project's deliveries by 6×.** An earlier note in this
+spec quoting "6 dispatch deliveries detected" was that over-count, and is corrected to **1**.
+
+**The fix — and it is narrow, not a retreat to free-text matching.** Attribution needs a discriminator
+**inside the `content` field of an already-structurally-identified delivery record**:
+
+```
+attachment && .attachment.type=="hook_additional_context"     # structure  (defeats authored text)
+  && .attachment.hookName=="PreToolUse:Agent"                 # channel
+  && (.attachment.content | test(<signature>))                # attribution
+```
+
+**This is safe from all three hazards that killed free-text matching**, and the reason is structural, not
+hopeful: authored prose, re-serialised conversation context, and the detector's own self-referential query
+text all land in `user`/`assistant` records, **never inside a hook attachment's `content` field**. The text
+match is scoped to a region no author and no query can write to.
+
+### 🔴 THEREFORE THE STAMP IS LOAD-BEARING FOR THE RECORDER AFTER ALL — round 1's conclusion is REVERSED
+
+Round 1 concluded the stamp "buys nothing for detection," and that conclusion propagated into `§0` as *the
+stamp is parallel to step 1a, not a prerequisite*. **The measurement above overturns it.** Attribution
+requires a signature inside `content`, so something must play that role:
+
+- **Today** the discriminator would be a fragment of the message prose (`AGY-ANOMALIES relay`) — which
+  works, and is exactly the brittle coupling the stamp exists to remove. Any message edit silently
+  breaks the count, and it fails toward **zero**, the v15 signature.
+- **A stamp** makes it a stable token independent of the prose, pinned by a test.
+
+So the honest statement is: **the recorder can ship without a stamp, matching prose, and will be fragile;
+with a stamp it is stable.** That is materially stronger than "parallel, buys nothing," and `§0` must be
+corrected rather than left asserting the superseded finding.
 
 **🔴 THIS IS THE DISTINCTION THIS SPEC HAD COLLAPSED, AND IT IS THE WHOLE POINT OF THE ITEM.**
 `hook_success` means *the hook ran*. `hook_additional_context` means *its words reached the model*. A hook
@@ -491,7 +545,9 @@ question to the trial that was always going to answer conversion anyway.
 same as a readable file, so that was checked separately rather than assumed.
 
 **End-to-end validation on that real transcript:** the designed two-stage scan ran against the 160 MB file
-and returned `dispatch` deliveries = **6** in **3.0 s**, inside the 10 s budget with headroom. That is the
+and returned **6** candidate deliveries in **3.0 s**, inside the 10 s budget with headroom — of which
+**exactly 1 was this project's hook**, the other 5 belonging to an unrelated hook on the same tool (see the
+attribution correction under item 5). The timing result stands; the count needed the content filter. That is the
 whole detection path — locate, scan, count, dedup — exercised once on real data.
 
 `CLAUDE_SESSION_ID` was again `UNSET`, consistent with the earlier measurement, confirming the fallback is

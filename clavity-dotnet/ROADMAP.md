@@ -182,10 +182,18 @@ does not fire is "testing a known null wire", and independently re-measured the 
    literal (Option S, `docs/agy-disciplines-marker-contract.md:13`). It goes before the **trial**, and that
    reason is load-bearing and untouched: without it a null trial result cannot be split into *never fired*
    vs *fired and ignored*. Its own failure mode is a stale stamp after a message edit — pin it with a test.
-   **But it is PARALLEL to step 1a, not a prerequisite of it.** An earlier draft had the recorder detecting
-   delivery by grepping for the stamp; detection now keys on record structure, which identifies a hook by
-   `hookName` without any stamp, so the recorder can ship first. The stamp's surviving job is **version
-   provenance** — telling a stale install from a current one, which structure cannot answer.
+   🔴 **This entry previously said the stamp was PARALLEL to step 1a and not a prerequisite. MEASUREMENT
+   REVERSED THAT, and this is the corrected wording.** Record structure identifies the **channel**, not the
+   **hook**: `hookName` is `<Event>:<ToolName>` (e.g. `PreToolUse:Agent`), shared by every plugin
+   registering on that tool, and the delivery record `hook_additional_context` carries **no `command`
+   field** to disambiguate. Measured on a real transcript: 6 structural matches on `PreToolUse:Agent`, of
+   which **1** was this project's relay and 5 were an unrelated hook — a 6x over-count. Attribution
+   therefore needs a discriminator **inside the delivery record's `content`** (which is immune to the three
+   mechanisms that killed whole-file text matching, because authored prose and query echoes never land
+   inside a hook attachment). **The stamp is the stable form of that discriminator** — without it the count
+   keys on message prose and breaks silently toward zero on any wording edit, which is the v15 signature.
+   The recorder can still ship first and match prose; it is simply brittle until the stamp lands. Version
+   provenance — telling a stale install from a current one — remains a separate, untouched reason.
 3. **Outside-witness trial.** Unprimed agent, unrelated repo, ordinary work, never told the discipline
    exists. Inspect the transcript for BOTH the stamp (delivery) and a real `.clavity/local-anomalies.md`
    entry (outcome). **The session that builds a discipline may never be the session that confirms it.**
