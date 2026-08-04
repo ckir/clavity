@@ -37,13 +37,32 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 # ONE jq call for every field. MEASURED: each jq start-up costs ~0.5s on this machine, so the obvious
 # field-per-call shape cost ~2,5s in total - and 2,5s is NOT safe here. The probe that provably SURVIVED
-# teardown did milliseconds of work; the multi-second version was cancelled. Startup count is the cost
-# driver at this size, not the parsing, so the fields come back in one @tsv line.
-IFS=$(printf '	')
-read -r cwd sid reason tx <<EOF
-$(printf '%s' "$input" | jq -r '[.cwd // ".", .session_id // "", .reason // "", .transcript_path // ""] | @tsv' 2>/dev/null)
+# teardown did ~1,3s of work; the multi-second version was cancelled. Startup COUNT is the cost driver at
+# this size, not the parsing.
+#
+# ONE FIELD PER LINE, AND **NEVER** @tsv. MEASURED on the first real row this hook ever wrote: @tsv escapes
+# backslashes, so a Windows transcript_path came back doubled (C:\Users\...) and the recorded row named a
+# path that cannot resolve. The row landed and was USELESS. @tsv earns that escaping by surviving values
+# containing tabs or newlines; none of these four fields ever contains one, while ALL of them routinely
+# contain backslashes - the wrong trade for this data. Raw line-per-field output is byte-exact.
+{
+  read -r cwd
+  read -r sid
+  read -r reason
+  read -r tx
+} <<EOF
+$(printf '%s' "$input" | jq -r '.cwd // ".", .session_id // "", .reason // "", .transcript_path // ""' 2>/dev/null)
 EOF
-unset IFS
+
+# STRIP THE TRAILING CR. MEASURED: jq on Windows writes CRLF, so every value read above ends in a carriage
+# return. This was INVISIBLE under the previous @tsv shape, where a single line put the CR only on the LAST
+# field; one-field-per-line puts one on ALL of them - including cwd, which then made mkdir fail on a path
+# with an embedded CR and the hook exit SILENTLY, writing no row at all. Parameter expansion is used rather
+# than `tr -d` because process COUNT is the budget this hook is fighting.
+cwd=${cwd%$'\r'}
+sid=${sid%$'\r'}
+reason=${reason%$'\r'}
+tx=${tx%$'\r'}
 [ -z "$cwd" ] && cwd="."
 
 if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then

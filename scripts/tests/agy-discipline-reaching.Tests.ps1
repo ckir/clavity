@@ -129,6 +129,31 @@ Describe 'agy-discipline-reaching.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'preserves a REAL Windows transcript_path byte-for-byte' {
+        # THE FIXTURE-FIDELITY REGRESSION. Every other test here hands the hook a path with FORWARD slashes
+        # (Payload does a backslash-to-slash replace), so none could see either defect that the FIRST REAL
+        # ROW exposed:
+        #   1. @tsv ESCAPES BACKSLASHES - a Windows path came back doubled, so the row named a path that
+        #      cannot resolve. It landed, and was useless.
+        #   2. jq on Windows writes CRLF - every field carried a trailing CR. Under @tsv that hit only the
+        #      LAST field and stayed hidden; one-field-per-line put one on cwd too, mkdir then failed on a
+        #      path with an embedded CR, and the hook exited SILENTLY writing nothing.
+        # A suite green over forward-slash fixtures is a test lying in the worst direction. Real payloads
+        # carry backslashes, so this one does.
+        $r = New-TempRepo; $h = New-CleanHome
+        try {
+            $winPath = 'C:\Users\user\.claude\projects\C--x\81fb317f.jsonl'
+            $payload = @{ cwd = $r.Replace([char]92, [char]47); session_id = 'win'; reason = 'prompt_input_exit'
+                          transcript_path = $winPath } | ConvertTo-Json -Compress
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ HOME = $h }
+            $x.ExitCode | Should -Be 0
+            $rec = Get-Record $r
+            $rec | Should -Not -BeNullOrEmpty -Because 'a CR in cwd made mkdir fail and the hook write NOTHING - silence is the failure mode'
+            $rec.Last.transcript_path | Should -BeExactly $winPath -Because 'the report can only open a path stored byte-exactly'
+            $rec.Last.session_id | Should -BeExactly 'win' -Because 'a trailing CR would corrupt correlation too'
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'carries the exit path so STEP 0 item 2 is self-measuring' {
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
