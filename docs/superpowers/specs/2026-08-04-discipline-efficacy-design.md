@@ -98,9 +98,9 @@ One append-only record per session. **Reaching only — the recorder does not tr
 |---|---|---|
 | `v` | int | schema version. Required; the shape below is not final until STEP 0 resolves counts-vs-booleans |
 | `session_id` | string | correlation |
-| `timestamp` | string | ISO-8601, UTC |
-| `precompact_nudges` | int \| bool \| `null` | stamped deliveries of the `PreCompact` capture reminder |
-| `dispatch_nudges` | int \| bool \| `null` | stamped deliveries of the `PreToolUse` dispatch relay |
+| `timestamp` | string | ISO-8601, UTC. Sourced from the hook's own clock at write time — NOT from any transcript record, whose timestamps belong to the session being observed, not the observation |
+| `precompact_nudges` | int \| bool \| `null` | structurally-detected deliveries of the `PreCompact` capture reminder |
+| `dispatch_nudges` | int \| bool \| `null` | structurally-detected deliveries of the `PreToolUse` dispatch relay |
 | `scan_status` | enum | `ok` \| `bounded_out` \| `transcript_unreadable` \| `transcript_not_found` |
 
 **Channels are named by EVENT, never by an interpretive label like "direct".** This is not pedantry: the
