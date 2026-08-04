@@ -71,9 +71,9 @@ Every citation below was read from the working tree on 2026-08-04 before this pl
 | `clavity-classic/plugin/hooks/hooks.json` | **modify.** Same, keeping `agy-drive-session-reset.sh` on `startup`. |
 | `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1` | **new suite.** Behaviour of the capture hook. |
 | `scripts/tests/agy-anomaly-dispatch-reminder.Tests.ps1` | **new suite.** Behaviour of the dispatch hook, incl. the fail-open matrix. |
-| `scripts/tests/plugin-hooks-registration.Tests.ps1` | **new suite.** `hooks.json` *registration structure* in both drivers — a distinct responsibility from `plugin-hooks-payload.Tests.ps1`, which guards the `.sh` bytes. |
-| `scripts/check-seed-artifacts-synced.sh` | **modify.** Compare `PreCompact`, and compare the event key SET. |
-| `scripts/tests/check-seed-artifacts-synced.Tests.ps1` | **modify.** Two tests for the two new gate rules. |
+| `scripts/tests/plugin-hooks-registration.Tests.ps1` | **new suite.** `hooks.json` *registration structure* in both drivers — which hook sits under which matcher, and that registration and filesystem agree **in both directions**. A distinct responsibility from `plugin-hooks-payload.Tests.ps1`, which guards the `.sh` bytes (ASCII + cross-driver byte parity — verified, so the new hooks inherit that cover). |
+| `scripts/check-seed-artifacts-synced.sh` | **modify.** Compare `PreCompact` by name, and add a whole-`.hooks` deny-list catch-all that compares every event, present or future, by content. |
+| `scripts/tests/check-seed-artifacts-synced.Tests.ps1` | **modify.** Three tests: the `PreCompact` rule, a one-sided event, and the same-event-different-contents case that distinguishes the catch-all from a key-set check. |
 | `justfile:94` | **modify.** Register the three new suites in `test-scripts-fast`. |
 | `scripts/tests/_partition.md` | **modify.** Re-measure both halves by running each recipe. |
 
@@ -355,30 +355,88 @@ Expected: `Tests Passed: 10, Failed: 0`.
 - [ ] **Step 7: Prove the byte-scan assertion is non-vacuous**
 
 A scan for characters that are already absent passes by construction. Mutate, confirm the mutation
-landed, watch it go red, revert.
+landed, watch it go red, restore.
+
+**Two rules govern this step, and the second is the one that is easy to miss.**
+
+1. **The hook is UNTRACKED until Step 8, so `git checkout --` cannot restore it** — it exits 1 with
+   `did not match any file(s) known to git`. Take a copy *before* the mutation and restore from that.
+2. **A mutation must land AND leave the file executable.** If it lands but breaks the script, the suite
+   still goes red — from a bash syntax error and an empty stdout, not from the assertion under test. The
+   assertion is then still unproven while looking proven, which is exactly the vacuity this step exists to
+   rule out. So the landed-check asserts *both*.
+
+That second rule bites here specifically: `msg=` at the top of the hook is a **single-quoted** bash
+literal, so a bare apostrophe inserted into it terminates the string and the file stops parsing. An
+apostrophe can only be embedded by the `'"'"'` concatenation. A **double quote** needs no such care — it
+is literal inside single quotes — so it is the mutation that proves the scan most cheaply.
+
+Do the whole step in Python: no nested shell quoting, and the same reason Task 3 Step 7 uses Python.
 
 ```bash
-# Replace the hyphen in "one line: -" with an apostrophe, using the '"'"' idiom.
-sed -i "s/one line: - \[type\]/one line'"'"' [type]/" clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh
-grep -c "one line'" clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh
+python -c "
+import shutil, subprocess, sys
+p = 'clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh'
+shutil.copy(p, p + '.bak')                       # BACKUP FIRST - the file is untracked
+s = open(p, newline='').read()
+assert 'one line: - [type]' in s, 'anchor text not found - the hook body drifted from this plan'
+open(p, 'w', newline='').write(s.replace('one line: - [type]', 'one line: - \"type\"'))
+landed = open(p, newline='').read().count('\"type\"')
+parses = subprocess.run(['bash','-n',p]).returncode == 0
+print('landed=%d parses=%s' % (landed, parses))
+"
 ```
-Expected: `1` — **the mutation is proven to have landed.** If it prints `0`, the `sed` did not apply and
-the RED below would prove nothing; fix the mutation before continuing.
+Expected: **`landed=1 parses=True`.** Both halves are load-bearing. `landed=0` means the anchor text
+drifted and the RED below would prove nothing. `parses=False` means the mutant is a syntax error, so the
+RED would come from an empty stdout rather than from the byte scan — restore and rethink the mutation
+before reading anything into it.
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/agy-anomaly-capture-reminder.Tests.ps1 -Output Detailed -CI"`
-Expected: the apostrophe test FAILS (`Because apostrophe`).
+Expected: the double-quote test FAILS (`Because double quote`), and — because the hook still parses and
+still emits — the other nine tests still PASS. That contrast is the proof: the byte scan, and only the
+byte scan, saw the change.
 
-Revert and re-verify:
+Restore and re-verify:
 ```bash
-git checkout -- clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh
+python -c "
+import shutil
+p = 'clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh'
+shutil.move(p + '.bak', p)
+"
+pwsh -c "Invoke-Pester scripts/tests/agy-anomaly-capture-reminder.Tests.ps1 -Output Detailed -CI"
 ```
-Then re-run the suite. Expected: `Tests Passed: 10, Failed: 0`.
+Expected: `Tests Passed: 10, Failed: 0`.
 
-Note: the hook is untracked until Step 8, so `git checkout --` cannot restore it. Take a copy first:
+**Optional, for the apostrophe byte specifically.** The double-quote mutation proves the scan mechanism
+works; it does not exercise the `0x27` branch. To prove that one too, embed the apostrophe the only way a
+single-quoted literal permits — the `'"'"'` concatenation — which keeps the file parseable:
+
 ```bash
-cp clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh /tmp/cap-hook.bak   # BEFORE the sed
-cp /tmp/cap-hook.bak clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh   # to revert
+python -c "
+import shutil, subprocess
+p = 'clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh'
+shutil.copy(p, p + '.bak')
+s = open(p, newline='').read()
+# ' + \"'\" + ' -> a literal apostrophe inside the single-quoted msg, file still valid bash
+open(p, 'w', newline='').write(s.replace(\"one line: - [type]\", \"one line: - '\\\"'\\\"'[type]\"))
+print('parses=%s' % (subprocess.run(['bash','-n',p]).returncode == 0))
+"
 ```
+Expected: `parses=True`, then the apostrophe test FAILS (`Because apostrophe`). Restore as above.
+
+- [ ] **Step 7b: Re-mirror before committing**
+
+The mutations touched the dotnet copy only. Prove the pair is identical again before Step 8, or a
+half-restored file ships as a permanent cross-driver divergence:
+
+```bash
+cp clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh \
+   clavity-classic/plugin/hooks/agy-anomaly-capture-reminder.sh
+cmp clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh \
+    clavity-classic/plugin/hooks/agy-anomaly-capture-reminder.sh && echo IDENTICAL
+ls clavity-dotnet/plugin/hooks/*.bak clavity-classic/plugin/hooks/*.bak 2>/dev/null && echo "STOP: a .bak survived - delete it, it would ship" || echo "no .bak residue"
+```
+Expected: `IDENTICAL`, then `no .bak residue`.
 
 - [ ] **Step 8: Commit**
 
@@ -518,8 +576,17 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         # A structural companion to the matrix above: the matrix can only cover the paths it thought of.
         # Both shipping PreToolUse hooks have zero non-zero exit paths; this asserts the same property
         # directly rather than by sampling.
-        $src = Get-Content -Raw -LiteralPath $script:Hook
-        [regex]::Matches($src, '(?m)^\s*exit\s+[1-9]').Count | Should -Be 0
+        #
+        # THE MATCH IS DELIBERATELY NOT ANCHORED TO LINE START. An earlier draft used
+        # '(?m)^\s*exit\s+[1-9]', which requires exit to be the first token on its line - so it saw a
+        # bare `exit 2` and MISSED `if [ ... ]; then exit 2; fi`, which is how a blocking exit would
+        # actually arrive in a guard clause, and is the single most likely shape of this defect. Measured:
+        # that pattern returns 0 matches against an appended inline guard. Since exit 2 is BLOCKING on
+        # PreToolUse, an assertion with a hole exactly where the risk lives is worse than none.
+        # Whole-line comments are dropped first so the file's own prose about "exit 2" cannot red it; the
+        # hook body carries no inline trailing comments, and none may be added without revisiting this.
+        $code = @(Get-Content -LiteralPath $script:Hook | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+        [regex]::Matches($code, '\bexit\s+[1-9]').Count | Should -Be 0
     }
 
     It 'still DELIVERS the JSON envelope when jq is absent' {
@@ -711,17 +778,25 @@ Run the suite. Expected: `carries NO FILES allow-list` FAILS.
 
 Restore: `cp /tmp/disp-hook.bak clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh`
 
-**7b — the no-non-zero-exit assertion.** Same protocol:
+**7b — the no-non-zero-exit assertion.** The probe is deliberately an **inline guard**, not a bare
+`exit 3` on its own line: the inline form is how a blocking exit would actually arrive in this file, and
+an anchored pattern would miss it. Proving the assertion against the realistic shape is the whole point.
 
 ```bash
-printf '\n# probe\nif [ -n "$CLAVITY_NEVER_SET" ]; then exit 3; fi\n' \
+printf '\nif [ -n "$CLAVITY_NEVER_SET" ]; then exit 3; fi\n' \
     >> clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh
-grep -cE '^\s*exit\s+[1-9]' clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh
+grep -cE 'exit[[:space:]]+[1-9]' clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh
+bash -n clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh && echo "parses=True"
 ```
-Expected: `1` — mutation proven landed. Note the probe is written so the mutated hook still behaves
-correctly at runtime; only the source-level assertion should fail, which is exactly what it claims to guard.
+Expected: **`1`, then `parses=True`.** The count is the landed-check; the parse check is what stops a
+broken mutant from producing a red that means nothing. The probe is written so the mutated hook still
+behaves correctly at runtime, so only the source-level assertion should move.
 
-Run the suite. Expected: `has no non-zero exit anywhere in its source` FAILS.
+Note the landed-check pattern is **unanchored**, matching the assertion. An anchored `^\s*exit\s+[1-9]`
+returns **0** here — measured — because `exit 3` is preceded by `then `.
+
+Run the suite. Expected: `has no non-zero exit anywhere in its source` FAILS, and every other test in the
+suite still PASSES — the mutant is valid bash and still emits, so nothing else should move.
 
 Restore: `cp /tmp/disp-hook.bak clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh`
 Re-run the suite. Expected: `Tests Passed: 18, Failed: 0`.
@@ -870,6 +945,37 @@ Describe 'shipped plugin hook registration' {
         }
         ($missing -join '; ') | Should -BeNullOrEmpty
     }
+
+    It 'ships no hook file that is reachable from nowhere - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # THE OTHER DIRECTION, and nothing tested it before. The test above checks every registered
+        # command has a file; this checks every file is registered. A hook that ships but appears in no
+        # matcher NEVER FIRES -- and, exactly like the gap this whole change exists to close, an absent
+        # nudge and a nudge with nothing to say are indistinguishable from outside. It is the natural
+        # outcome of adding the .sh and forgetting hooks.json, which this plan asks an engineer to do
+        # four times across Tasks 1-3.
+        #
+        # A dot-sourced LIBRARY is legitimately unregistered -- agy-consult-guard-lib.sh is sourced by
+        # both consult guards -- so a file referenced from ANOTHER hook counts as reachable. The
+        # reference search deliberately EXCLUDES the file itself: nearly every hook here names itself in
+        # its own header comment, so searching its own body would let every file self-certify and the
+        # test would pass vacuously forever.
+        $m    = $script:Manifests[$Driver]
+        $dir  = Split-Path -Parent $m
+        $cmds = (Get-AllCommands $m) -join ' '
+        $files = @(Get-ChildItem -LiteralPath $dir -Filter *.sh -File -ErrorAction Stop)
+        $files.Count | Should -BeGreaterThan 0 -Because 'an empty hook dir would pass the loop below vacuously'
+
+        $unreachable = foreach ($f in $files) {
+            if ($cmds -like "*$($f.Name)*") { continue }
+            $others = ($files | Where-Object { $_.Name -ne $f.Name } |
+                       ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
+            if ($others -match [regex]::Escape($f.Name)) { continue }
+            $f.Name
+        }
+        ($unreachable -join '; ') | Should -BeNullOrEmpty
+    }
 }
 ```
 
@@ -877,8 +983,14 @@ Describe 'shipped plugin hook registration' {
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"`
 Expected: FAIL on the anomaly-reminder matcher (it is `startup`, not the widened value), on both
-`PreCompact` tests (no such event), and on both `PreToolUse Agent|Task` tests. The liveness,
-drive-session-reset, seam-inject and file-existence tests already PASS.
+`PreCompact` tests (no such event), on both `PreToolUse Agent|Task` tests, **and on both
+`reachable from nowhere` tests** — Tasks 1 and 2 created four `.sh` files that no matcher yet names, which
+is precisely the state that test exists to reject. The liveness, drive-session-reset, seam-inject and
+file-existence tests already PASS.
+
+That last RED is worth pausing on: it is not incidental. Between Task 2's commit and Task 3's, both new
+hooks are shipped and dead — installed, byte-perfect, mirrored, ASCII-clean, and firing on nothing. Every
+other test in the repo is green in that state.
 
 - [ ] **Step 3: Rewrite `clavity-dotnet/plugin/hooks/hooks.json`**
 
@@ -1031,7 +1143,9 @@ legitimate difference between the two manifests:
 - [ ] **Step 5: Run the suite to verify it passes**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"`
-Expected: `Tests Passed: 14, Failed: 0`.
+Expected: `Tests Passed: 16, Failed: 0` — 9 `It` blocks: 7 are `-ForEach` over both drivers (14 cases),
+plus the classic-only `agy-drive-session-reset` test and the dotnet-only negative (2 more). If the
+Detailed output disagrees with 16, trust the output and find out why.
 
 - [ ] **Step 6: Verify the existing seed-sync gate is still green**
 
@@ -1082,7 +1196,34 @@ Restore and re-verify:
 cp /tmp/dotnet-hooks.bak clavity-dotnet/plugin/hooks/hooks.json
 pwsh -c "Invoke-Pester scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"
 ```
-Expected: `Tests Passed: 14, Failed: 0`.
+Expected: `Tests Passed: 16, Failed: 0`.
+
+- [ ] **Step 7b: Prove the reachable-from-nowhere assertion is non-vacuous**
+
+Also a negative assertion, so also needs a landed mutation. Drop in a hook file that no matcher names and
+no other hook sources — the exact thing it claims to catch:
+
+```bash
+printf '#!/usr/bin/env bash\nexit 0\n' > clavity-dotnet/plugin/hooks/agy-orphan-probe.sh
+ls clavity-dotnet/plugin/hooks/agy-orphan-probe.sh && \
+  grep -c 'agy-orphan-probe' clavity-dotnet/plugin/hooks/hooks.json
+```
+Expected: the path echoes, then `0` — **the file exists and is registered nowhere**, which is the state
+under test. (`grep -c` exits 1 on no match; that is expected here, not a failure.)
+
+Run: `pwsh -c "Invoke-Pester scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"`
+Expected: `ships no hook file that is reachable from nowhere - dotnet` FAILS, naming
+`agy-orphan-probe.sh`. Confirm the `classic` case still PASSES — the probe is one-sided, so a failure on
+both would mean the test is not reading per-driver.
+
+Delete the probe and re-verify — **it must not survive into the commit**, and it is untracked, so nothing
+would restore it for you:
+```bash
+rm -f clavity-dotnet/plugin/hooks/agy-orphan-probe.sh
+ls clavity-dotnet/plugin/hooks/agy-orphan-probe.sh 2>/dev/null && echo "STOP: probe survived" || echo "probe gone"
+pwsh -c "Invoke-Pester scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"
+```
+Expected: `probe gone`, then `Tests Passed: 16, Failed: 0`.
 
 - [ ] **Step 8: Commit**
 
@@ -1110,7 +1251,7 @@ comments record fixing twice before (`:103-116`), so the fix closes the class as
 
 - [ ] **Step 1: Write the failing tests**
 
-Append these two `It` blocks inside the existing `Describe 'check-seed-artifacts-synced.sh'` in
+Append these three `It` blocks inside the existing `Describe 'check-seed-artifacts-synced.sh'` in
 `scripts/tests/check-seed-artifacts-synced.Tests.ps1`, immediately before its closing brace:
 
 ```powershell
@@ -1133,7 +1274,7 @@ Append these two `It` blocks inside the existing `Describe 'check-seed-artifacts
     It 'FIRES when one plugin registers an EVENT the other does not' {
         # The CLASS fix, not just the PreCompact instance: a future event added to one manifest and not
         # the other would be invisible to every per-event rule. Uses an event name no rule names, so this
-        # can only pass via the key-set comparison.
+        # can only pass via the whole-hooks catch-all.
         $f = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
         $orig = Get-Content -Raw -LiteralPath $f
         try {
@@ -1144,16 +1285,44 @@ Append these two `It` blocks inside the existing `Describe 'check-seed-artifacts
             $j | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $f -Encoding ascii
             $r = Invoke-SeedSync
             $r.ExitCode | Should -Not -Be 0
-            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'different EVENT names'
+            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'event set or hook contents'
         } finally { Set-Content -LiteralPath $f -Value $orig -NoNewline }
+    }
+
+    It 'FIRES when both plugins register the SAME new event with DIFFERENT contents' {
+        # THE CONTROL THAT DISTINGUISHES THE FIX FROM ITS HALF-MEASURE. A key-set comparison passes this
+        # case - both manifests carry the same event NAME - so if this test goes green while the gate is
+        # only comparing keys, the class is not actually closed. Measured before the catch-all existed:
+        # the key sets compare equal and the gate reports GREEN.
+        $f = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+        $g = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/hooks.json'
+        $origC = Get-Content -Raw -LiteralPath $f
+        $origD = Get-Content -Raw -LiteralPath $g
+        try {
+            foreach ($pair in @(@{ Path = $f; Script = 'agy-liveness-check.sh' },
+                                @{ Path = $g; Script = 'agy-anomaly-reminder.sh' })) {
+                $j = Get-Content -Raw -LiteralPath $pair.Path | ConvertFrom-Json
+                $j.hooks | Add-Member -NotePropertyName 'Notification' -NotePropertyValue @(
+                    @{ matcher = '*'; hooks = @(@{ type = 'command'; command = "bash `"`${CLAUDE_PLUGIN_ROOT}/hooks/$($pair.Script)`"" }) }
+                )
+                $j | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $pair.Path -Encoding ascii
+            }
+            $r = Invoke-SeedSync
+            $r.ExitCode | Should -Not -Be 0 -Because 'the event NAMES match; only the contents differ'
+            "$($r.StdOut)`n$($r.StdErr)" | Should -Match 'event set or hook contents'
+        } finally {
+            Set-Content -LiteralPath $f -Value $origC -NoNewline
+            Set-Content -LiteralPath $g -Value $origD -NoNewline
+        }
     }
 ```
 
 - [ ] **Step 2: Run the suite to verify both fail**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-seed-artifacts-synced.Tests.ps1 -Output Detailed -CI"`
-Expected: the two new tests FAIL — the gate exits 0 because nothing compares `PreCompact` or the key set.
-The seven pre-existing tests still pass.
+Expected: **all three new tests FAIL** — the gate exits 0 because nothing compares `PreCompact`, nothing
+compares the event set, and nothing compares an unruled event's contents. The seven pre-existing tests
+still pass.
 
 - [ ] **Step 3: Add the two rules**
 
@@ -1172,13 +1341,26 @@ if ! diff -q <(jq -S '.hooks.PreCompact' "$D/hooks/hooks.json") \
   status=1
 fi
 # THE CLASS FIX, and it is the reason the block above is not enough on its own. Enumerating events one
-# rule at a time is the same allow-list shape this file already replaced twice (see the deny-list note
-# above): the NEXT event someone registers will have no rule either, and its absence will look exactly
-# like synchronisation. Comparing the event KEY SET makes a one-sided event fail loudly the moment it is
-# added -- fail-closed, which is the posture this gate wants.
-if ! diff -q <(jq -S '.hooks | keys' "$D/hooks/hooks.json") \
-             <(jq -S '.hooks | keys' "$C/hooks/hooks.json") >/dev/null 2>&1; then
-  echo "SEED-DRIFT: hooks/hooks.json registers different EVENT names in the two plugins" >&2
+# rule at a time is the same allow-list shape this file already replaced once for SessionStart (see the
+# deny-list note above): the NEXT event someone registers will have no rule either, and its absence will
+# look exactly like synchronisation.
+#
+# COMPARING THE EVENT KEY SET IS NOT THE FIX -- it is half of it, and the weaker half. A key-set diff is
+# fail-CLOSED for presence and fail-OPEN for content: an event registered in BOTH manifests with DIFFERENT
+# commands leaves the key sets identical, so no rule fires and the gate reports GREEN. MEASURED: adding a
+# Stop block to both manifests naming two different scripts kept the key sets equal.
+#
+# So invert instead, exactly as the SessionStart filter above already does: compare the WHOLE .hooks
+# object with the one known-divergent hook filtered out. Anything new is compared BY DEFAULT -- every
+# event, present or absent, and its full contents -- and the only way to lose coverage is to add a name to
+# the deny-list, which is a visible edit. This subsumes the key-set check and the per-event blocks above;
+# those are kept for their specific diagnostics, since "PostToolUse differs" localises a failure that this
+# catch-all can only report as "the hooks block differs". MEASURED GREEN against both manifests as they
+# stand, with a control that reddened it on an injected matcher change.
+all_sel='.hooks | map_values([ .[]? | .hooks |= map(select((.command // "") | test("agy-drive-session-reset\\.sh") | not)) | select(.hooks | length > 0) ])'
+if ! diff -q <(jq -S "$all_sel" "$D/hooks/hooks.json") \
+             <(jq -S "$all_sel" "$C/hooks/hooks.json") >/dev/null 2>&1; then
+  echo "SEED-DRIFT: hooks/hooks.json differs between the two plugins (event set or hook contents)" >&2
   status=1
 fi
 ```
@@ -1186,7 +1368,7 @@ fi
 - [ ] **Step 4: Run the suite to verify it passes**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-seed-artifacts-synced.Tests.ps1 -Output Detailed -CI"`
-Expected: `Tests Passed: 9, Failed: 0`.
+Expected: `Tests Passed: 10, Failed: 0`.
 
 - [ ] **Step 5: Verify the gate is green on the real repo**
 
@@ -1197,7 +1379,7 @@ Expected: exit 0, `in sync`.
 
 ```bash
 git add scripts/check-seed-artifacts-synced.sh scripts/tests/check-seed-artifacts-synced.Tests.ps1
-git commit -m "fix(seed-sync): compare PreCompact and the hooks.json event key set across drivers"
+git commit -m "fix(seed-sync): compare PreCompact by name and every hooks.json event by content"
 ```
 
 ---
@@ -1514,7 +1696,8 @@ pwsh -c "Invoke-Pester scripts/tests/agy-anomaly-model-notice.Tests.ps1 -Output 
 pwsh -c "Invoke-Pester scripts/tests/plugin-hooks-registration.Tests.ps1 -Output Detailed -CI"
 just seed-sync-check
 ```
-Expected: `Tests Passed: 5, Failed: 0`; `Tests Passed: 16, Failed: 0`; `in sync`.
+Expected: `Tests Passed: 5, Failed: 0`; `Tests Passed: 18, Failed: 0` (Task 3's 16 plus this task's
+two-driver registration assertion); `in sync`.
 
 - [ ] **Step 8: Register the suite, re-measure, commit**
 
@@ -1556,10 +1739,12 @@ Expected: `in sync`.
 
 Run:
 ```bash
-git diff --stat <base-sha> -- clavity-dotnet/plugin/hooks/agy-seam-inject.sh \
-                              clavity-classic/plugin/hooks/agy-seam-inject.sh
+git diff --stat fe38993 -- clavity-dotnet/plugin/hooks/agy-seam-inject.sh \
+                           clavity-classic/plugin/hooks/agy-seam-inject.sh
 ```
-where `<base-sha>` is HEAD before Task 1. Expected: **no output**.
+`fe38993` is the commit that added this plan, i.e. HEAD immediately before Task 1 — named here rather than
+left as a placeholder, since it is knowable now and a wrong base silently turns this check into a no-op.
+Expected: **no output**.
 
 - [ ] **Acceptance criterion 5 — `agy-anomaly-reminder.sh`'s script body is unchanged**
 
@@ -1595,7 +1780,7 @@ Dispatch any subagent and confirm the relay directive arrives, and — more impo
 | 10 | `agy-seam-inject.sh` byte-identical to its pre-change state | Task 2 Step 1 test *leaves agy-seam-inject.sh untouched*; Final verification `git diff --stat` |
 | 11 | all shipped hooks pure ASCII, zero CR, every mirrored pair identical | Task 1 Step 4, Task 2 Step 4; standing cover by `plugin-hooks-payload.Tests.ps1` |
 | 12 | both `_partition.md` counts re-measured by running each recipe | Task 5 Steps 4–7 |
-| 13 | new assertions proven non-vacuous by a landed mutation; negatives carry a control | Task 1 Step 7, Task 2 Step 7a/7b, Task 3 Step 7 — each confirms the mutation landed *before* reading the RED |
+| 13 | new assertions proven non-vacuous by a landed mutation; negatives carry a control | Task 1 Step 7, Task 2 Step 7a/7b, Task 3 Step 7 and 7b — each confirms the mutation landed **and left the file executable** before reading the RED, and each names what must *not* move so a red for the wrong reason is visible |
 
 ---
 
@@ -1604,9 +1789,11 @@ Dispatch any subagent and confirm the relay directive arrives, and — more impo
 **1. Spec coverage.** All 13 acceptance criteria map to a task (table above). All 8 Testing items are
 covered: items 1/2/2b/3/4/7 by the two hook suites, items 5/6 by `plugin-hooks-registration.Tests.ps1`.
 Design items 1, 2 and 3 are Tasks 1, 3 and 2; design item 4 is Task 6, flagged optional as the spec does.
-The file manifest is covered, with **two additions the spec does not list**, both flagged in-document:
-`plugin-hooks-registration.Tests.ps1` (a home for Testing items 5–6) and the `check-seed-artifacts-synced`
-change (Task 4).
+The file manifest is covered, with **three additions the spec does not list**, all flagged in-document:
+`plugin-hooks-registration.Tests.ps1` (a home for Testing items 5–6), the `check-seed-artifacts-synced`
+change (Task 4), and the `reachable from nowhere` assertion added in panel round 1 — which is not tied to
+an acceptance criterion but guards the failure this plan makes most likely, since it asks an engineer to
+create four hook files in Tasks 1–2 and register them only in Task 3.
 
 **2. Placeholder scan.** No TBD, no "handle edge cases", no "similar to Task N". Every code step carries
 complete content; every command carries its expected output.
@@ -1622,7 +1809,8 @@ under those names throughout, including in Task 6's appended test.
 
 - **The seed-sync gate had no `PreCompact` rule** and no rule for any future event — a `PreCompact` block
   could vanish from one driver with `just seed-sync-check` GREEN. Closed as Task 4, including the class
-  fix (event key-set comparison), not just the instance.
+  fix: a whole-`.hooks` deny-list catch-all that compares every event by content, not merely the event
+  key set (which is fail-closed for presence but fail-**open** for content, measured).
 - **Task ordering would have gone red mid-task** if a hook were created in one driver before the other;
   `plugin-hooks-payload.Tests.ps1` and the seed-sync walk both fire on a one-sided file. Each hook is
   therefore created in both drivers inside one task, and the constraint is stated explicitly.
@@ -1631,6 +1819,37 @@ under those names throughout, including in Task 6's appended test.
   be before the RED means anything.
 - **The new hooks are untracked when the mutation steps run**, so `git checkout --` cannot restore them.
   Each mutation step takes a copy first.
+
+## Panel record
+
+**Round 1 (2026-08-04) — RED, 5 findings, all folded.** Seven seats: Literal Implementer, Mechanism
+Gamer, Protocol Pedant, Activation Auditor, Cascade Analyst, Axiom Breaker, Blindspot Auditor. Seats
+dropped and why: Boundary Smuggler (no trust boundary), Resource Vampire (no unbounded iteration), State
+Corruptor (its nearest surface, the mutate-and-restore steps, went to Blindspot Auditor).
+
+| # | finding | found by |
+|---|---|---|
+| 1 | Task 1 Step 7's mutation could not prove the byte scan: the `sed` line does not parse, and its obvious repair puts an apostrophe inside a single-quoted literal, which stops the file being bash. The landed-check then reports `1` on a broken file. | me, corroborated |
+| 2 | Task 2 Step 7b's probe does not trip its own assertion — and the assertion itself was anchored to line start, so it missed `if …; then exit 2; fi`, the shape a blocking exit would actually take. | me, corroborated |
+| 3 | Task 1 Step 7 reverted with `git checkout --` on a file untracked until Step 8. | me alone |
+| 4 | Task 4's event key-set rule is fail-closed for presence but fail-**open** for content, so it closed half the class it claimed to close. | me alone |
+| 5 | Nothing asserted that a shipped hook is registered anywhere — a hook can ship dead with every existing test green. | me alone |
+
+**The peer's round-1 verdict was `PANEL GREEN (7/7)`, and it was false.** Its report described mutations
+the plan does not contain, gave test counts the plan does not state, and asserted the emitted strings use
+"double quotes exclusively" when the byte scan forbids `0x22`. Sent back to the specific lines and asked
+what was literally on them, it retracted every one of those claims and independently confirmed findings 1
+and 2 — reaching the deeper half of finding 2, that the anchored regex misses an inline guard, on its own.
+**A peer sent to the source contradicts you; a peer handed your summary agrees with you.** Findings 3, 4
+and 5 it never raised in either pass.
+
+Every fold in this round was verified by running it, not by reasoning about it: the apostrophe mutant was
+measured to break `bash -n`; the anchored regex was measured to return 0 against the inline guard and the
+widened one 1; the whole-`.hooks` catch-all was measured silent on the real tree and firing on four
+controls, including the same-event-different-contents case a key-set diff misses; and the
+reachable-from-nowhere test was measured against the live tree, where its one exception —
+`agy-consult-guard-lib.sh`, dot-sourced by both consult guards — is what the sourced-library clause exists
+for.
 
 **Gaps left open, with where they resolve:**
 
