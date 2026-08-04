@@ -73,22 +73,49 @@ because it is what makes a delivery greppable.
 
 ### What is recorded
 
-One append-only record per session:
+One append-only record per session. **Reaching only — the recorder does not track captures at all.**
 
-| field | meaning |
-|---|---|
-| `session_id` | correlation |
-| `timestamp` | ISO-8601, UTC |
-| `direct_nudges` | count of stamped direct-capture deliveries found in the transcript |
-| `dispatch_nudges` | count of stamped dispatch-relay deliveries found in the transcript |
-| `anomalies_delta` | entries in `.clavity/local-anomalies.md` at session end minus the count at session start |
+| field | type | meaning |
+|---|---|---|
+| `v` | int | schema version. Required; the shape below is not final until STEP 0 resolves counts-vs-booleans |
+| `session_id` | string | correlation |
+| `timestamp` | string | ISO-8601, UTC |
+| `precompact_nudges` | int \| bool \| `null` | stamped deliveries of the `PreCompact` capture reminder |
+| `dispatch_nudges` | int \| bool \| `null` | stamped deliveries of the `PreToolUse` dispatch relay |
+| `scan_status` | enum | `ok` \| `bounded_out` \| `transcript_unreadable` \| `transcript_not_found` |
 
-`anomalies_delta` needs a baseline, so `SessionStart` records the starting count. `SessionStart` already
-has registered hooks, so no new event is introduced for it.
+**Channels are named by EVENT, never by an interpretive label like "direct".** This is not pedantry: the
+only capture-side hook that exists today fires on `PreCompact`, so a field called `direct_nudges` would
+read `> 0` whenever a session merely compacted — and an evaluator would conclude direct-driver reaching
+works when it demonstrably does not. The field name must not carry the conclusion the data is supposed to
+establish. When a genuine direct-driver trigger is later added (`§0` step 1b), it gets its own
+event-named field.
 
-**Channel attribution is the point, not decoration.** The v16 defect is specifically that the *direct*
-channel never fires. `direct_nudges == 0` across many sessions while `dispatch_nudges > 0` is unarguable
-evidence of that, and no aggregate count would show it.
+`scan_status` is required, never omitted. **A `null` count with `scan_status: ok` is impossible by
+construction**; a `null` always carries the reason it is null, so an unknown can never be read as a zero
+and a bounded-out scan can never be mistaken for a missing record.
+
+### No capture field, and no SessionStart write — decided, with reasons
+
+An earlier draft recorded an `anomalies_delta` (entries at session end minus a `SessionStart` baseline).
+**Both are removed.** Three independent defects killed them, and dropping the field collapses all three:
+
+- **Triage arithmetic erases captures.** A session that triages 3 pending anomalies and captures 2 new
+  ones records `-1`. Totalled across sessions, triage deletions cancel new captures — a week with 10
+  triaged and 10 captured reports *zero capture activity*.
+- **It contradicted this design's own axiom.** "Exactly one write, at session end" is false if
+  `SessionStart` must also write.
+- **It coupled two lifecycle events.** The recorder would need `SessionStart` AND `SessionEnd` to both
+  succeed, and per-session baseline files would be orphaned in `.clavity/` by every crashed or killed
+  session, with no cleanup owner.
+
+The deeper reason is scope: a capture count is the **numerator of a conversion ratio this design cannot
+compute**, because it has no trustworthy denominator — zero captures in a clean session is the correct
+true-negative outcome, and nothing here can distinguish that from five missed defects. Conversion is
+measured by the outside-witness trial (`§0` step 3) against known injected ground truth, or not at all.
+
+With the capture field gone, the axiom is literally true again: **no hook writes on any path except
+`SessionEnd`, which blocks nothing, and the recorder is self-contained in that one hook.**
 
 ### Where it lives, and the cases the shape has to survive
 
@@ -101,22 +128,64 @@ Cases the design must handle, each with its decided behaviour:
 
 | case | behaviour |
 |---|---|
-| `.clavity/local-anomalies.md` absent at session start | baseline is `0`; absence is not an error |
 | `.clavity/` absent entirely | create it; a fresh clone has no `.clavity/` |
-| transcript unreadable, or `transcript_path` absent and unreconstructible | record the session with `direct_nudges` and `dispatch_nudges` as `null`, **not `0`** — an unknown must never be recorded as a measured zero, which is this item's own thesis |
-| two sessions open in the same repo concurrently | both append; `session_id` disambiguates. Deltas are per-session and may interleave — the baseline is read at that session's start, so a concurrent capture by the other session inflates one delta and not the other. **Accepted and stated**, not silently wrong: the record answers reaching, and reaching is per-session |
-| a session captures an anomaly then deletes it | delta may be `0` or negative. Negative is legal and recorded as-is; clamping it would hide a triage that ran |
-| `SessionEnd` does not fire (abnormal exit) | no record. This is STEP 0 item 2, and it biases every ratio derived from the file — so the consumer must report *sessions recorded*, never *sessions run* |
-| **`SessionStart` baseline missing** (hook did not fire, or its write failed) | `anomalies_delta` is `null`, **not `0`**. Without a baseline the delta is unknown, and an unknown recorded as zero is this item's own thesis inverted |
-| **transcript scan hits the time budget** | `direct_nudges`/`dispatch_nudges` are `null` and the record still lands, with a flag naming the reason. A missing record and a bounded-out record must not look alike |
+| transcript unreadable (Windows write-lock at teardown), or path unresolvable | counts `null`, `scan_status` names which. **Never `0`** — an unknown recorded as a measured zero is this item's own thesis inverted |
+| transcript scan hits the time budget | counts `null`, `scan_status: bounded_out`, **and the record still lands**. A missing record and a bounded-out record must not look alike |
+| two sessions open in the same repo concurrently | both append; `session_id` disambiguates. With the capture field gone there is no cross-session arithmetic left to corrupt — reaching is per-session by construction |
+| `SessionEnd` does not fire (abnormal exit) | no record. STEP 0 item 2. The consumer must therefore report *sessions recorded*, never *sessions run* |
 
-Every record carries a **`v` schema version integer**. Fields will change once STEP 0 resolves whether the
-counts are integers or booleans; without a version, old and new records mix silently in an append-only
-file and the consumer averages incompatible shapes.
+### 🔴 R1 — the survival bias, and why bounding the read is not merely an optimisation
+
+Bounding the scan is usually a performance concern. Here it is a **correctness** one, and in the worst
+possible direction.
+
+An early-exit scan stops as soon as it finds a nudge. But **proving a nudge is ABSENT requires reading the
+whole transcript** — and absence is precisely the hypothesis under test. So the sessions most likely to
+exhaust the time budget are exactly the zero-nudge direct sessions this whole item exists to detect.
+Those record `null`; nudge-bearing sessions match early and record cleanly. **The dataset would
+systematically drop true zeros and retain non-zeros — it would lie in the one direction that matters.**
+
+`scan_status: bounded_out` makes the loss visible rather than silent, and the consumer reporting
+bounded-out records separately is what stops the bias being read as data. That is mitigation, not a fix.
+
+**The candidate fix, which is a HYPOTHESIS and remains UNMEASURED (STEP 0 item 6):** the same property
+that invalidated counting may rescue absence-detection. Because the JSONL re-serialises conversation
+context, a nudge delivered early may appear again in later records, in which case a bounded **tail** scan
+of the last N records establishes presence-or-absence at fixed cost, making the read O(1) in session
+length.
+
+**An attempt to measure this on 2026-08-04 was CONFOUNDED and must be redone — see the contamination
+finding below.** Do not record it as validated; it is not.
+
+### 🔴 THE TRANSCRIPT IS SELF-REFERENTIAL — measured, and it constrains every text-based approach
+
+**Measured 2026-08-04.** A control string invented at the keyboard and never emitted by any hook
+(`ZZZ-NEVER-EMITTED-STRING`) was searched for in a live transcript. It returned 1 hit immediately, and
+**11 hits** moments later. The transcript's mtime was 10 seconds old: it is written live, and **the act of
+searching for a string writes that string into the corpus being searched**, via the tool-call record.
+
+Three consequences, all load-bearing:
+
+1. **It confounded the tail-scan measurement above.** The tail hits could not be distinguished from the
+   query that looked for them. Any STEP 0 measurement of the tail hypothesis must be designed so the
+   measuring command's own text cannot match — for example by measuring a transcript that is definitively
+   closed, or by keying on structure rather than text.
+2. **It is a third independent reason text-matching cannot work**, alongside context re-serialisation and
+   authored content. Free-text detection has a *feedback loop*: the detector pollutes its own evidence.
+   **Detection must key on the transcript's typed record STRUCTURE for a hook injection. This is no longer
+   a preference; three separate measured mechanisms rule out the alternative.**
+3. **It taints the earlier 470-occurrence figure.** That number was real evidence that counting is invalid,
+   and remains so — but the specific magnitude is contaminated by the measurer and must not be quoted as a
+   delivery count.
+
+The general lesson, worth carrying beyond this spec: **a probe needs a control that must fail, and here
+the control did fail — which is the only reason this was caught rather than shipped as a validated
+hypothesis.**
 
 **Named consumer, stated now so this is not written and never read:** a `just` recipe that prints, over the
-last N recorded sessions, `direct_nudges`, `dispatch_nudges` and `anomalies_delta` totals — with records
-carrying `null` in any field counted and reported **separately**, so unknowns are never folded into zeros.
+last N recorded sessions, `precompact_nudges` and `dispatch_nudges` totals — with records carrying `null`
+counted and reported **separately, broken down by `scan_status`**, so unknowns are never folded into zeros
+and the bounded-out survival bias stays visible rather than becoming silent data loss.
 
 **The consumer MUST NOT print a ratio, and that is a contract, not a preference.** Recording deliveries
 and captures side by side actively invites computing conversion from them, which this design explicitly
@@ -178,7 +247,7 @@ hook injection produces — never from free-text matching anywhere in the file. 
 and becomes STEP 0 item 5.
 
 **And it may reduce the contract:** if structure yields a reliable *occurred / did not occur* signal but
-not a trustworthy count, then `direct_nudges` and `dispatch_nudges` become **booleans**, not integers.
+not a trustworthy count, then `precompact_nudges` and `dispatch_nudges` become **booleans**, not integers.
 That still answers the v15 question exactly — reaching is a 0-vs-N question — and a boolean is immune to
 the inflation measured above. **Decide this from the STEP 0 measurement; do not assume a count is
 obtainable.**
