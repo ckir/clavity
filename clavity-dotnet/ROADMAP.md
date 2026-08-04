@@ -109,9 +109,10 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 ### 0. DISCIPLINE EFFICACY — stop confirming presence and calling it proof (▶ TOP PRIORITY, after the current build)
 
 Numbered `0` deliberately: this list is priority-ordered, and renumbering 1-11 would invalidate every
-existing citation to §7 and §8. Owner-directed 2026-08-04. **Deferred until the AGY-ANOMALIES capture-gap
-build ships, because the instrumentation attaches to that code and must be written against it, not
-against a description of it.**
+existing citation to §7 and §8. Owner-directed 2026-08-04. **The deferral is DISCHARGED: it waited on the
+AGY-ANOMALIES capture-gap build, because the instrumentation attaches to that code and had to be written
+against it rather than against a description of it. That build shipped as `clavity-v16` (dotnet `0.6.0`),
+verified installed 2026-08-04, so the code now exists to build upon.**
 
 **The failure, stated exactly.** v15 shipped the AGY-ANOMALIES discipline. The install was faithful —
 installed plugin `0.5.0` matches the `clavity-v15` tag file-for-file, verified 2026-08-04, so packaging
@@ -178,37 +179,61 @@ does not fire is "testing a known null wire", and independently re-measured the 
    only `*subagent-driven-development*|*executing-plans*`, with `:55` `*) exit 0` for every other skill.
    **v16 closed gap (a) only for sessions long enough to compact.**
 2. **Static contract stamp in the emitted strings** — pure ASCII, byte-ban compliant, no per-driver
-   literal (Option S, `docs/agy-disciplines-marker-contract.md:13`). It goes SECOND, before the trial,
-   and the reason is load-bearing: without it a null trial result cannot be split into *never fired* vs
-   *fired and ignored*. Its own failure mode is a stale stamp after a message edit — pin it with a test.
+   literal (Option S, `docs/agy-disciplines-marker-contract.md:13`). It goes before the **trial**, and that
+   reason is load-bearing and untouched: without it a null trial result cannot be split into *never fired*
+   vs *fired and ignored*. Its own failure mode is a stale stamp after a message edit — pin it with a test.
+   **But it is PARALLEL to step 1a, not a prerequisite of it.** An earlier draft had the recorder detecting
+   delivery by grepping for the stamp; detection now keys on record structure, which identifies a hook by
+   `hookName` without any stamp, so the recorder can ship first. The stamp's surviving job is **version
+   provenance** — telling a stale install from a current one, which structure cannot answer.
 3. **Outside-witness trial.** Unprimed agent, unrelated repo, ordinary work, never told the discipline
    exists. Inspect the transcript for BOTH the stamp (delivery) and a real `.clavity/local-anomalies.md`
    entry (outcome). **The session that builds a discipline may never be the session that confirms it.**
-4. **Firing counter — DEMOTED off the critical path.** It measures activation volume, not conversion:
-   `12 / 0` is ambiguous (it can mean twelve sessions with genuinely nothing to capture), so the earlier
-   claim in this entry that it means "fires and does not work" was wrong. The `0`-vs-`N` signal it does
-   provide comes free from the witness transcript. It is also an awkward fit: `docs/agy-disciplines-marker-contract.md:55`
-   and `:80-82` establish that **the skill writes and the hook never does**, and these hooks must fail open.
+4. **Firing counter — DROPPED, superseded by step 1a.** It was demoted for measuring activation volume
+   rather than conversion (`12 / 0` is ambiguous — it can mean twelve sessions with genuinely nothing to
+   capture), and it is now dropped outright: the `SessionEnd` recorder obtains the same signal by READING
+   the transcript, so no hook writes on a fail-open path at all. That resolves the awkwardness this entry
+   noted — `docs/agy-disciplines-marker-contract.md:55` and `:80-82` establish that **the skill writes and
+   the hook never does**.
 
-**🔴 THE OPEN PROBLEM, and step 1 is BLOCKED on it — surfaced after the negotiation, by neither side
-during it.** The two obvious homes for a direct-driver capture prompt are ALREADY DISPOSITIONED in this
-epic's own spec (`docs/superpowers/specs/2026-08-04-agy-anomaly-capture-gap-design.md`):
+**✅ THE OPEN PROBLEM IS RESOLVED — it was an incomplete enumeration, not a real tension.** For the record,
+because the reasoning that made it look impossible is worth keeping: the two obvious homes for a
+direct-driver capture prompt were already dispositioned in this epic's own spec
+(`docs/superpowers/specs/2026-08-04-agy-anomaly-capture-gap-design.md`) — a `Stop` hook / end-of-task seam
+**withdrawn** (`:65`, *"fires 100+ times in a long session"*), and firing on tool output **rejected**
+(`:67`, *"misses the quiet cases, fires on ordinary debugging"*). Reinstating either reproduces the
+**"Anomalies noticed: none" reflex**. The apparent tension was that every event a direct driver reliably
+reaches is HIGH-FREQUENCY, while the low-frequency events (`PreCompact`, `SessionStart`) never reach short
+sessions.
 
-- a `Stop` hook / end-of-task seam — **withdrawn** (`:65`): *"Fires 100+ times in a long session and would
-  manufacture exactly the blind-answering that `adversarial-panel-review`'s `--low` bypass exists to avoid."*
-- firing on tool output — **rejected** (`:67`): *"Misses the quiet cases, fires on ordinary debugging."*
+**Both prerequisites this entry demanded have since been established, neither assumed:**
 
-Reinstating either would reproduce the peer's own separately-named failure mode, the **"Anomalies noticed:
-none" reflex** — a model learning to append a canned `none` to satisfy the structure, so the relay reads
-100% compliant while capturing nothing. **The real tension: the events a direct driver reliably reaches
-are HIGH-FREQUENCY, and high-frequency prompting destroys the thing being prompted for; the low-frequency
-events (`PreCompact`, `SessionStart`) do not reach short sessions at all.** `SessionStart` is too early to
-capture what has not happened yet; `PreCompact` is too late and often never.
+1. **The full event surface was enumerated.** `SessionEnd`, `UserPromptSubmit` and `PostToolUseFailure`
+   appear **zero times** in this epic's spec, plan, or this ROADMAP, yet all three are real shipping
+   events — `SessionEnd` and `PostToolUseFailure` at `~/.claude/plugins/cache/ecc/ecc/2.0.0/hooks/hooks.json:338`
+   and `:248`, `UserPromptSubmit` in Anthropic's own marketplace. `PostToolUseFailure` has since been
+   observed firing in a real transcript, so this is measured, not merely documented.
+2. **A low-frequency trigger did not need to be derived — one already exists.** `SessionEnd` occupies the
+   slot this entry assumed was empty: **fires once, reaches every session including short ones, and fires
+   after the driver has demonstrably done work.**
 
-**Two things must be established before a design, neither assumed:** the FULL hook-event surface Claude
-Code exposes (only the events this repo already uses have been enumerated), and whether a low-frequency
-trigger can be **derived** — fired once per session at a moment the driver has demonstrably done work —
-rather than picked from the existing menu.
+**THE OWNER'S SPLIT, binding: MEASURE FIRST, PROMPT LATER.** Step 1 is therefore two halves:
+
+- **1a — MEASURE (in progress).** A `SessionEnd` recorder that answers, from recorded evidence, whether the
+  channels that ship today reach a driver at all. Designed in
+  `docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md`. It **reads** the transcript; no hook on
+  a fail-open path writes anything.
+- **1b — PROMPT (deferred deliberately).** Where the direct-driver prompt eventually goes
+  (`UserPromptSubmit`, `PostToolUseFailure`, or a derived trigger) is to be **decided from 1a's data rather
+  than guessed** — which is the whole point of the split.
+
+**Four things 1a's STEP 0 measured that this entry would otherwise have had you design around**
+(2026-08-04, probes in `.clavity/scratch/discipline-efficacy/`): a hook firing writes a **typed
+`attachment` record carrying `hookEvent` and `hookName`**, so delivery is detectable structurally with no
+text matching; `hook_success` (the hook RAN) and `hook_additional_context` (its words REACHED the model)
+are **different records**, and `fired > 0` with `reached == 0` is precisely the v15 failure in a single
+row; concurrent appends **do** serialise on this platform; and **`CLAUDE_SESSION_ID` is `UNSET` in the hook
+environment**, so anything here that needs session identity must read it from the payload.
 
 **Also carry into the design: "synthetic trial overfitting"** (the peer's named failure mode for step 3).
 If the induced defect is loud and resembles the prompt's own examples, the model logs it and the trial
