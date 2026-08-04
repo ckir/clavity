@@ -125,7 +125,14 @@ With the capture field gone, the axiom is literally true again: **no hook writes
 **Location: `.clavity/discipline-reaching.jsonl`** — one JSON object per line, append-only, per repo.
 `.clavity/` is gitignored runtime state (`.gitignore:45`), which is correct here: this is per-machine
 observation, not a shipped artifact, and it must never be committed. One line per session keeps appends
-atomic enough for the concurrency case below without a lock file.
+short enough to append in one write. **That is an ASSERTION, not a measurement, and it is wrong on this
+platform by default** — Win32 shell `>>` in Git Bash does not give POSIX `O_APPEND` cross-process
+serialisation, so two sessions ending together can either collide on a sharing violation (record silently
+dropped, since the hook fails open) or interleave fragments and emit a malformed line that breaks every
+downstream JSONL consumer. **STEP 0 item 7:** run ~20 concurrent appends from Git Bash on this machine and
+confirm the line count matches and every line parses. If it does not, the design needs an explicit
+serialisation strategy — per-session files collected by the consumer, or an advisory lock — decided from
+that measurement rather than assumed.
 
 Cases the design must handle, each with its decided behaviour:
 
@@ -160,6 +167,20 @@ length.
 **An attempt to measure this on 2026-08-04 was CONFOUNDED and must be redone — see the contamination
 finding below.** Do not record it as validated; it is not.
 
+**🔴 AND COMPACTION MAY DESTROY THE PREMISE OUTRIGHT.** The tail hypothesis assumes context
+re-serialisation carries an early nudge forward into later records. **Compaction does the opposite — it
+summarises and drops earlier turn history.** A session that dispatches at turn 5, compacts at turn 30 and
+ends at turn 50 may have zero trace of that dispatch in its final records. The tail scan would then report
+`dispatch_nudges: 0` for exactly the long, productive, subagent-heavy sessions — a false negative
+perfectly anti-correlated with the behaviour being measured, and in the same direction as the R1 survival
+bias, so the two compound rather than cancel.
+
+**The STEP 0 item 6 measurement must therefore test the compaction case specifically**, not merely "does a
+nudge persist": dispatch an Agent, run `/compact`, take several more turns, then check whether the typed
+injection record from *before* the compaction is still present in the final N records. If it is not, the
+tail scan is dead for compacted sessions and the design needs either a full bounded scan with an honest
+`bounded_out` rate, or a different signal entirely.
+
 ### 🔴 THE STAMP'S RATIONALE WAS OBSOLETED BY THE STRUCTURAL-DETECTION FOLD — resolve before planning
 
 Round 1 concluded that detection must key on the transcript's **record structure**, not on text. That fold
@@ -174,6 +195,15 @@ The stamp was justified twice, and structural detection removes one of the two j
   *current* one is a different question that structure cannot answer: a record's shape says a hook fired,
   not which build emitted it. That was the original §0 rationale ("makes a stale install distinguishable
   from a silent one") and it survives intact.
+
+**But that surviving purpose is currently UNREALISED, and saying it survives is not the same as capturing
+it.** The recorder detects structure and never reads the stamp, and the schema has no field for a hook
+build. So a session driven by a stale v15 hook and one driven by a current hook emit **identical**
+records — the provenance benefit is claimed in prose and delivered nowhere. Two honest resolutions, to be
+chosen in the plan rather than left implicit: either the recorder reads the stamp *in addition to*
+structure and records it in a `hook_version` field, or provenance is explicitly declared out of scope for
+the recorder and answered another way. **What must not happen is the spec continuing to claim a benefit
+its own schema cannot produce.**
 
 **Consequence for `§0`:** the stamp is NOT a prerequisite of the recorder, as this spec claimed before
 round 1. The recorder can be built and shipped without it. The stamp remains worth doing for provenance,
@@ -254,7 +284,7 @@ Recording is deliberately limited to reaching. Two richer options were considere
 
 ---
 
-## STEP 0 — measure before building. Two assumptions are unverified.
+## STEP 0 — measure before building. SIX items; five remain open.
 
 Neither is safe to assume, and both are cheap to settle. **The implementation plan starts here, and if
 either fails the design changes rather than the finding being written down as a caveat.**
