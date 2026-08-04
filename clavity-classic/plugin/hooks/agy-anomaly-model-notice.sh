@@ -41,6 +41,6 @@ if [ "$rc" -gt 1 ]; then exit 0; fi
 [ -z "$n" ] && n=0
 [ "$n" -eq 0 ] && exit 0
 
-msg="AGY-ANOMALIES: $n untriaged in $f. Triage before new work via the open-issues skill: each entry is either PROMOTED to a tracked item with an owner, or DELETEd with a recorded reason. There is no parked state."
+msg="AGY-ANOMALIES/1: $n untriaged in $f. Triage before new work via the open-issues skill: each entry is either PROMOTED to a tracked item with an owner, or DELETEd with a recorded reason. There is no parked state."
 jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
 exit 0

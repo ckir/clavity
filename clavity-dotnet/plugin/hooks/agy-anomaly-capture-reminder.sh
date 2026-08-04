@@ -28,7 +28,7 @@ input=$(cat)
 
 # ONE definition, used by BOTH emission paths, so the jq-absent fallback can never drift from the
 # jq-present one. A test asserts the two paths deliver a byte-identical string.
-msg='AGY-ANOMALIES check BEFORE COMPACTION: did you VERIFY a defect this session that is OUTSIDE your current task and is not yet in .clavity/local-anomalies.md? Capture it now via the open-issues skill - one line: - [type] fact * path:LINE * DATE * task=<what you were doing>. Uncaptured anomalies are lost at compaction. NOT an anomaly: a test you expected to fail, an error in the work you are actively doing, or anything you have not verified by measurement. If nothing qualifies, do nothing - a speculative entry is worse than none, because it lands on a blocking triage gate.'
+msg='AGY-ANOMALIES/1 check BEFORE COMPACTION: did you VERIFY a defect this session that is OUTSIDE your current task and is not yet in .clavity/local-anomalies.md? Capture it now via the open-issues skill - one line: - [type] fact * path:LINE * DATE * task=<what you were doing>. Uncaptured anomalies are lost at compaction. NOT an anomaly: a test you expected to fail, an error in the work you are actively doing, or anything you have not verified by measurement. If nothing qualifies, do nothing - a speculative entry is worse than none, because it lands on a blocking triage gate.'
 
 # jq is needed only to read cwd out of the payload. Without it, STILL DELIVER: emit the same message in a
 # hand-built envelope rather than exiting silently. A silent exit here is precisely the invisible zero

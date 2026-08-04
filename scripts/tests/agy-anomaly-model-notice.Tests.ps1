@@ -68,6 +68,26 @@ Describe 'agy-anomaly-model-notice.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'delivers the triage directive WHOLE, not just its bookends' {
+        # This suite asserted the count exactly and then only the trailing clause, leaving the OPERATIVE
+        # middle - what the reader is actually told to DO with each entry - unguarded. Its two sibling
+        # suites pin their directive verbatim for exactly this reason: a bookend pair is satisfied by a
+        # message whose instruction has been gutted. Measured on a prior epic at ~95% of the clause.
+        # The head and tail are invariant; only the count and the path interpolate, so both invariant
+        # halves are pinned WHOLE here.
+        $r = New-RepoWith (New-Entries 3); $h = New-CleanHome
+        try {
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h }
+            $x.ExitCode | Should -Be 0
+            $ctx = Get-Ctx $x
+            $ctx | Should -Not -BeNullOrEmpty -Because 'a silent hook would satisfy every match below vacuously'
+            $ctx | Should -Match ('^' + [regex]::Escape('AGY-ANOMALIES/1: 3 untriaged in ')) `
+                 -Because 'the contract stamp and the count open the message; see agy-anomaly-contract-stamp.Tests.ps1'
+            $ctx | Should -Match ([regex]::Escape('. Triage before new work via the open-issues skill: each entry is either PROMOTED to a tracked item with an owner, or DELETEd with a recorded reason. There is no parked state.')) `
+                 -Because 'the directive is the payload - gutting it leaves a notice that names a number and asks for nothing'
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'reports 12 as twelve, not as a substring of two' {
         # The control for the assertion above. Without it, a count that is wrong in the tens digit is
         # indistinguishable from a correct one under any substring match.

@@ -40,7 +40,7 @@ input=$(cat)
 # compliance theater -- nothing instructed the subagent to produce the heading the driver is then told to
 # look for, so the driver checks, finds nothing, and correctly concludes "no anomalies" from a question
 # that was never asked.
-msg='AGY-ANOMALIES relay, both halves. (1) In the dispatch you are about to write, ask the subagent to report anything wrong it notices that is NOT its task, under a heading Anomalies noticed at the end of its final message, stated as a checkable fact, with an explicit none if it saw nothing. (2) When it returns, VERIFY each claimed anomaly by measurement and APPEND the verified ones to .clavity/local-anomalies.md BEFORE you write your summary. A verified anomaly that exists only in a chat message is lost the moment you compress that message.'
+msg='AGY-ANOMALIES/1 relay, both halves. (1) In the dispatch you are about to write, ask the subagent to report anything wrong it notices that is NOT its task, under a heading Anomalies noticed at the end of its final message, stated as a checkable fact, with an explicit none if it saw nothing. (2) When it returns, VERIFY each claimed anomaly by measurement and APPEND the verified ones to .clavity/local-anomalies.md BEFORE you write your summary. A verified anomaly that exists only in a chat message is lost the moment you compress that message.'
 
 # jq is needed only to read cwd. Without it, STILL DELIVER the envelope rather than exiting silently: a
 # silent exit is indistinguishable from a hook that is installed and has nothing to say. Kill-switch

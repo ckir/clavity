@@ -82,6 +82,15 @@ tests to **19 suites / 234 tests**, measured **251,8s then 244,0s** — the firs
 this file. Slow was measured in the same pass, backgrounded and alone: **238 passed / 0 failed in
 761,28s**, its test count unchanged at 238 while its time rose from 653,5s.
 
+**2026-08-04 (later) — the AGY-ANOMALIES contract stamp.** One NEW fast suite
+(`agy-anomaly-contract-stamp`, 14 tests) covering the stamp across all three model-addressed hooks and
+BOTH drivers, plus **+1 test in `agy-anomaly-model-notice`** pinning its triage directive WHOLE (it was
+the only one of the three whose message text was asserted NOWHERE; a mutation proved the pre-existing
+bookend assertions all PASSED against a gutted directive). Fast went 19 suites / 234 tests to **20 suites / 249 tests**, measured **231,18s then 220,0s** — faster
+than either prior sample despite +14 tests, which is the run-order swing this file already warns about and
+NOT evidence the new suite is free. Slow was not re-run in this pass; its 238 / 761,28s entry above is
+therefore the newest slow figure and is now one change stale.
+
 Two things that pass are worth recording, because both are the kind of number this file exists to stop
 people guessing at:
 
@@ -126,7 +135,8 @@ agy-after-reminder.Tests.ps1                      8,8s   10 tests   <- count 202
 agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
 agy-anomaly-capture-reminder.Tests.ps1            9,9s   10 tests   <- FAST, added 2026-08-04
 agy-anomaly-dispatch-reminder.Tests.ps1          16,5s   18 tests   <- FAST, added 2026-08-04
-agy-anomaly-model-notice.Tests.ps1               16,9s    8 tests   <- FAST, added 2026-08-04
+agy-anomaly-model-notice.Tests.ps1               16,9s    9 tests   <- FAST, added 2026-08-04; +1 later same day
+agy-anomaly-contract-stamp.Tests.ps1             11,6s   14 tests   <- FAST, added 2026-08-04
 agy-curate-nudge.Tests.ps1                       29,2s   11 tests   <- FAST, added 2026-08-03
 agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
                                                                       table entirely until 2026-08-03

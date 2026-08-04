@@ -37,7 +37,7 @@ Describe 'agy-anomaly-capture-reminder.sh' {
         # The message VERBATIM. Asserted WHOLE via [regex]::Escape, never by bookend fragments: a prior
         # epic measured that bookend assertions left ~95% of a 399-character clause unguarded, and an
         # audit mutant that deleted the operative sentence from all four hooks left a 45-test suite GREEN.
-        $script:CaptureMsg = 'AGY-ANOMALIES check BEFORE COMPACTION: did you VERIFY a defect this session that is OUTSIDE your current task and is not yet in .clavity/local-anomalies.md? Capture it now via the open-issues skill - one line: - [type] fact * path:LINE * DATE * task=<what you were doing>. Uncaptured anomalies are lost at compaction. NOT an anomaly: a test you expected to fail, an error in the work you are actively doing, or anything you have not verified by measurement. If nothing qualifies, do nothing - a speculative entry is worse than none, because it lands on a blocking triage gate.'
+        $script:CaptureMsg = 'AGY-ANOMALIES/1 check BEFORE COMPACTION: did you VERIFY a defect this session that is OUTSIDE your current task and is not yet in .clavity/local-anomalies.md? Capture it now via the open-issues skill - one line: - [type] fact * path:LINE * DATE * task=<what you were doing>. Uncaptured anomalies are lost at compaction. NOT an anomaly: a test you expected to fail, an error in the work you are actively doing, or anything you have not verified by measurement. If nothing qualifies, do nothing - a speculative entry is worse than none, because it lands on a blocking triage gate.'
     }
 
     It 'emits a top-level systemMessage and NOT hookSpecificOutput' {

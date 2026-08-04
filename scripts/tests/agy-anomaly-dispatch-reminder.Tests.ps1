@@ -35,7 +35,7 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
 
         # The directive VERBATIM, asserted WHOLE. Bookend assertions leave the middle unguarded, which is
         # where the operative content lives - measured on a prior epic at ~95% of the clause.
-        $script:DispatchMsg = 'AGY-ANOMALIES relay, both halves. (1) In the dispatch you are about to write, ask the subagent to report anything wrong it notices that is NOT its task, under a heading Anomalies noticed at the end of its final message, stated as a checkable fact, with an explicit none if it saw nothing. (2) When it returns, VERIFY each claimed anomaly by measurement and APPEND the verified ones to .clavity/local-anomalies.md BEFORE you write your summary. A verified anomaly that exists only in a chat message is lost the moment you compress that message.'
+        $script:DispatchMsg = 'AGY-ANOMALIES/1 relay, both halves. (1) In the dispatch you are about to write, ask the subagent to report anything wrong it notices that is NOT its task, under a heading Anomalies noticed at the end of its final message, stated as a checkable fact, with an explicit none if it saw nothing. (2) When it returns, VERIFY each claimed anomaly by measurement and APPEND the verified ones to .clavity/local-anomalies.md BEFORE you write your summary. A verified anomaly that exists only in a chat message is lost the moment you compress that message.'
 
         function Get-Ctx { param($Result) ($Result.StdOut | ConvertFrom-Json).hookSpecificOutput.additionalContext }
     }
