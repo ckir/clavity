@@ -18,14 +18,14 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **15 suites, 177 tests, measured 124,6s**
-  (2026-08-03, ONE sample at THIS configuration — see the two-sample rule below; the count is
-  deterministic, the time is not). The immediately preceding sample, 150,6s, was 14 suites / 175 tests,
-  so the two are NOT two samples of the same thing and must not be averaged or compared.
-- `just test-scripts-slow` — everything else. **13 suites, 238 tests, measured 653,5s** (2026-08-03,
-  ONE sample). NOT on any git hook; it **exceeded the 600s foreground tool cap on that very run** and
-  must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line — never by
-  watching a process count.
+- `just test-scripts-fast` — the agent inner-loop gate. **19 suites, 234 tests, measured 251,8s and
+  244,0s** (2026-08-04, TWO samples at THIS configuration, 3% apart — the first time this file records
+  two, as its own rule below has always demanded). The preceding entry, 15 suites / 177 tests / 124,6s,
+  is a DIFFERENT configuration and must not be compared against these.
+- `just test-scripts-slow` — everything else. **13 suites, 238 tests, measured 761,28s** (2026-08-04,
+  ONE sample, as the sole command on the machine). NOT on any git hook; it is **well past the 600s
+  foreground tool cap** — 653,5s a day earlier, 761,28s now — and must be BACKGROUNDED by an agent,
+  blocked on by reading its own `Tests completed` line, never by watching a process count.
 - `just test-scripts` — both, unchanged in meaning: still every test.
 
 **The runtime target is ~120s, and it is a TARGET, not an enforceable invariant.** Do not gate anything on
@@ -75,6 +75,23 @@ from intervening epics that never re-measured this half. **A count in this file 
 whenever a suite in the OTHER half is edited; treat any figure here as stale until you re-run the
 recipe.** Do not reconcile a surprise like that by arithmetic — the measurement is the fact.
 
+**2026-08-04 — the AGY-ANOMALIES capture-gap change.** Four NEW fast suites landed together
+(`plugin-hooks-registration`, `agy-anomaly-capture-reminder`, `agy-anomaly-dispatch-reminder`,
+`agy-anomaly-model-notice`), and `check-seed-artifacts-synced` gained 3 tests. Fast went 15 suites / 177
+tests to **19 suites / 234 tests**, measured **251,8s then 244,0s** — the first two-sample fast entry in
+this file. Slow was measured in the same pass, backgrounded and alone: **238 passed / 0 failed in
+761,28s**, its test count unchanged at 238 while its time rose from 653,5s.
+
+Two things that pass are worth recording, because both are the kind of number this file exists to stop
+people guessing at:
+
+- **`check-seed-artifacts-synced` is now the largest suite in the fast half at 77,2s.** Its 3 new tests
+  each invoke the whole gate, so it absorbed ~21s. It is still fast-half by measurement, but it is the
+  first candidate if that half ever needs trimming.
+- **The `_partition.md` update was deliberately deferred until every suite had landed.** Registering three
+  suites and then measuring, when a fourth was known to be coming, would have written a figure that the
+  very next commit falsified — which is precisely how the counts here decayed before.
+
 If you move a file between halves, re-measure BOTH halves and update this file; do not edit it from
 memory, and do not compute the new number by subtraction (see above).
 
@@ -107,6 +124,9 @@ agy-consult-guard.Tests.ps1                      78,4s    8 tests   <- SLOW, mov
 accept-drain.Tests.ps1                           51,2s   10 tests
 agy-after-reminder.Tests.ps1                      8,8s   10 tests   <- count 2026-08-03, time older
 agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
+agy-anomaly-capture-reminder.Tests.ps1            9,9s   10 tests   <- FAST, added 2026-08-04
+agy-anomaly-dispatch-reminder.Tests.ps1          16,5s   18 tests   <- FAST, added 2026-08-04
+agy-anomaly-model-notice.Tests.ps1               16,9s    8 tests   <- FAST, added 2026-08-04
 agy-curate-nudge.Tests.ps1                       29,2s   11 tests   <- FAST, added 2026-08-03
 agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
                                                                       table entirely until 2026-08-03
@@ -120,7 +140,16 @@ check-growth-budget.Tests.ps1                    14,1s    7 tests
 check-member-docs.Tests.ps1                       3,0s   35 tests
 check-plugin-namespace.Tests.ps1                 25,8s    8 tests
 check-roster.Tests.ps1                            5,3s    5 tests
-check-seed-artifacts-synced.Tests.ps1             4,1s    2 tests
+check-seed-artifacts-synced.Tests.ps1            77,2s   10 tests   <- re-measured 2026-08-04. The row
+                                                                      said 4,1s / 2 tests; the suite had
+                                                                      SEVEN tests before this change even
+                                                                      touched it, so this figure had
+                                                                      decayed silently through at least
+                                                                      two prior edits. It is now the
+                                                                      LARGEST suite in the fast half -
+                                                                      each of its tests invokes the whole
+                                                                      gate - and the first candidate if
+                                                                      that half ever needs trimming.
 check-seed-budget.Tests.ps1                       8,2s    4 tests
 check-user-facing-docs.Tests.ps1                  3,3s   15 tests
 compute-release.Tests.ps1                        22,6s    7 tests
@@ -128,6 +157,7 @@ docs-audit.Tests.ps1                            120,6s   80 tests
 drain-knowledge.Tests.ps1                        38,2s    7 tests
 drain-lib.Tests.ps1                               5,2s   20 tests
 generate-scoped-manifest.Tests.ps1                0,7s    2 tests
+plugin-hooks-registration.Tests.ps1               0,5s   18 tests   <- FAST, added 2026-08-04
 plugin-hooks-payload.Tests.ps1                    2,2s    2 tests   <- FAST, added 2026-08-03
 register-plugin.Tests.ps1                        18,6s   18 tests
 release-lib.Tests.ps1                            14,3s   23 tests

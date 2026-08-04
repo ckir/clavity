@@ -149,4 +149,19 @@ Describe 'shipped plugin hook registration' {
         }
         ($unreachable -join '; ') | Should -BeNullOrEmpty
     }
+
+    It 'registers the model notice in the SAME SessionStart object as the drain reminder - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # Sharing the object is what guarantees the two halves fire on exactly the same occasions. It must
+        # NOT land in the startup object, which acceptance criterion 6 reserves for the untouched
+        # liveness and reset hooks.
+        $m = $script:Manifests[$Driver]
+        $notice = @(Get-OwningMatchers -Manifest $m -Event 'SessionStart' -Script 'agy-anomaly-model-notice.sh')
+        $drain  = @(Get-OwningMatchers -Manifest $m -Event 'SessionStart' -Script 'agy-anomaly-reminder.sh')
+        $notice.Count | Should -Be 1
+        $drain.Count  | Should -Be 1
+        $notice[0]    | Should -BeExactly $drain[0]
+        $notice[0]    | Should -BeExactly 'startup|resume|clear|compact'
+    }
 }
