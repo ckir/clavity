@@ -165,8 +165,32 @@ constraint plus the fact that the two drivers are mutually exclusive). **Read th
 designing the stamp; the same reasoning and the same trap apply.** A stamp that differs per driver is not
 a stamp, it is a parity break that both gates above will reject.
 
-**THE NEGOTIATED SEQUENCE** — AGY-FIRST consult plus one negotiation round, 2026-08-04. Brief and reply:
-`.clavity/seams/discipline-efficacy-agy-first.md`. The peer's opening answer proposed *stamp -> counter ->
+**THE SEQUENCE — OWNER-RATIFIED 2026-08-04, after a second AGY-FIRST consult and measurement.**
+
+**⚠ READ THIS BEFORE THE NUMBERED LIST BELOW: the stamp moved BACK to first.** The list is kept in its
+original numbering because other text cites it, but the ratified order of work is:
+
+> **stamp (item 2) → recorder / step 1a (item 1) → witness trial (item 3).**
+
+The stamp went from *first*, to *parallel and buying nothing*, to *first again* — and the round trip was
+not churn, it was two measurements. Round 1 demoted it when detection moved from grepping the transcript to
+reading record structure. **Then structure turned out to identify the CHANNEL but not the HOOK**
+(`hookName` is `<Event>:<ToolName>`, shared by every plugin on that tool; the delivery record carries no
+`command`), so attribution needs a discriminator inside the record's `content`, and the stamp is the stable
+form of it. **Owner ruling: stamp first, so attribution keys on a stable token from day one rather than on
+message prose that fails silently toward zero — the v15 signature — the first time anyone edits a message.**
+
+**Owner ruling on the `PreCompact` channel, same date: ship dispatch-only.** Record `compactions` as
+session context grouped separately from delivery totals, state plainly in the output that `PreCompact`
+reaching is unmeasured, and leave that channel to the witness trial (item 3). Rationale, independently
+reached by the driver and the peer and verified by measurement: `PreCompact` hook firings produce **zero**
+transcript records across all 112 project transcripts, so delivery there is unobservable; a hook writing
+its own record would capture only that the script RAN, mislabelling it as reached and recreating the v15
+illusion; and the channel touches **15 of 112 sessions (13%)** while step 1b is already scheduled to
+relocate the trigger to an event that *is* logged. Consult brief and reply:
+`.clavity/seams/discipline-efficacy-precompact-fork.md`.
+
+The earlier negotiated ordering, for provenance: the peer's opening answer proposed *stamp -> counter ->
 witness*; it then **explicitly superseded its own ordering** when shown that instrumenting a trigger that
 does not fire is "testing a known null wire", and independently re-measured the enumeration below.
 

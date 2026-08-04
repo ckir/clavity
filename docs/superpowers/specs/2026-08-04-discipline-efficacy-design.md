@@ -516,7 +516,29 @@ records are present and countable, so a session's compaction count is knowable �
 reminder *should* have fired. **This is a denominator with no numerator**, which is exactly the shape this
 spec forbids elsewhere, so it must be recorded as `compactions` and **never** divided into anything.
 
-**Three honest resolutions, for the owner rather than for me:**
+### ✅ OWNER RULING 2026-08-04 — ship dispatch-only. This fork is CLOSED.
+
+**Decided: option 1 + option 3 together.** Record the dispatch channel, record `compactions` as session
+context **grouped separately from delivery totals** in the consumer output, state plainly that `PreCompact`
+reaching is unmeasured, and leave that channel to the outside-witness trial (`§0` step 3).
+
+Reached independently by the driver and the agy peer, and the peer's two strongest arguments were ones this
+spec had not made:
+
+- **Option 2 does not solve the problem it is invoked for.** A hook writing its own record captures only
+  that the *script ran*; it cannot observe whether Claude Code injected the `systemMessage` into the
+  compacted context. It would turn an unverified execution into a recorded delivery — **recreating the v15
+  illusion inside the very instrument built to detect it.** The axiom violation is the lesser objection.
+- **The channel is small and already scheduled for replacement.** Measured across all 112 project
+  transcripts: **15 sessions ever compacted (13%)**; the other 87% never reach `PreCompact` at all. Step 1b
+  relocates the direct-driver trigger to an event that *is* logged. Breaking a settled axiom to instrument
+  a temporary, low-coverage channel is permanent debt for a transient gain.
+
+The peer independently re-ran the item 8 probe across all 112 transcripts (0 `PreCompact`, 67,152
+`PreToolUse`, 82 compaction summaries) and every checkable claim it made was verified against the source
+before this ruling was folded.
+
+**The three options as they stood, kept because the reasoning is the record:**
 
 1. **Ship dispatch-only.** Record the `PreToolUse` channel, which is fully measurable, plus `compactions`
    as context. State plainly that the `PreCompact` channel is unmeasured. Smallest, honest, and still
@@ -528,8 +550,21 @@ spec forbids elsewhere, so it must be recorded as `compactions` and **never** di
 3. **Measure that channel by the outside-witness trial only** (`§0` step 3), and accept that automated
    reaching-detection covers dispatch alone.
 
-**Recommendation: option 1.** It preserves every invariant, ships something true, and leaves the harder
-question to the trial that was always going to answer conversion anyway.
+*(Recommendation at the time: option 1 — ratified above, together with option 3.)*
+
+### ✅ OWNER RULING 2026-08-04 — the STAMP LANDS FIRST, before the recorder
+
+Given the attribution finding under item 5, the ratified order of work is:
+
+> **stamp → recorder → witness trial**
+
+**Why first rather than alongside.** Attribution needs a discriminator inside the delivery record's
+`content`. Without a stamp that discriminator is a fragment of message prose, so the first edit to any hook
+message silently drops the count **to zero** — and a false zero here is indistinguishable from the failure
+the recorder exists to detect. Shipping the recorder first would mean its most confusing possible failure
+mode is also its most likely one. The stamp is small, testable, and removes that window entirely.
+
+This reverses `§0`'s previous "parallel to step 1a, not a prerequisite" wording, which is corrected there.
 
 ### Item 1 — ✅ RESOLVED. The payload carries the path.
 
