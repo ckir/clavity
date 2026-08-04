@@ -392,9 +392,24 @@ RED would come from an empty stdout rather than from the byte scan — restore a
 before reading anything into it.
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/agy-anomaly-capture-reminder.Tests.ps1 -Output Detailed -CI"`
-Expected: the double-quote test FAILS (`Because double quote`), and — because the hook still parses and
-still emits — the other nine tests still PASS. That contrast is the proof: the byte scan, and only the
-byte scan, saw the change.
+Expected — **MEASURED 2026-08-04, `Tests Passed: 6, Failed: 4`**, and the four are exactly:
+
+| test | why it moves |
+|---|---|
+| `emits a message free of ...` | **the target** — `Expected 0, because double quote, but got 2` |
+| `delivers the capture directive WHOLE` | the message text changed; it is asserted verbatim |
+| `still DELIVERS the JSON envelope when jq is absent` | same, it also asserts the message whole |
+| `delivers an IDENTICAL message with and without jq` | the raw `"` breaks the hand-built envelope |
+
+**That last row is the double-quote ban's rationale, demonstrated rather than argued.** The `jq`-absent
+path builds its JSON with `printf` and has no escaping machinery, so a raw quote in `msg` emits malformed
+JSON and the two channels stop agreeing — while the `jq` path escapes it and carries on. This is why the
+byte scan bans `0x22` and `0x5C` and not merely the two bash-quoting characters.
+
+The contrast that proves the mutant is honest is **not** "only one test moves" — three tests legitimately
+assert the message verbatim, so any text mutation moves them too. It is that **six tests still pass**:
+the hook still parses, still exits 0, still emits, and still honours both kill-switches. A broken mutant
+would have taken all ten down and proven nothing.
 
 Restore and re-verify:
 ```bash
