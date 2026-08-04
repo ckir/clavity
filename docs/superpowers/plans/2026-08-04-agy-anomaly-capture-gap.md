@@ -800,15 +800,24 @@ an anchored pattern would miss it. Proving the assertion against the realistic s
 ```bash
 printf '\nif [ -n "$CLAVITY_NEVER_SET" ]; then exit 3; fi\n' \
     >> clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh
-grep -cE 'exit[[:space:]]+[1-9]' clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh
+# Strip whole-line comments FIRST, exactly as the assertion does. Without that this counts the hook's own
+# comment about "exit 2 is non-blocking" and prints 2, which reads as a failed mutation. Measured.
+grep -vE '^[[:space:]]*#' clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh \
+  | grep -cE 'exit[[:space:]]+[1-9]'
 bash -n clavity-dotnet/plugin/hooks/agy-anomaly-dispatch-reminder.sh && echo "parses=True"
 ```
-Expected: **`1`, then `parses=True`.** The count is the landed-check; the parse check is what stops a
-broken mutant from producing a red that means nothing. The probe is written so the mutated hook still
-behaves correctly at runtime, so only the source-level assertion should move.
+Expected: **`1`, then `parses=True`** (the same command against the unmutated file prints `0`). The count
+is the landed-check; the parse check is what stops a broken mutant from producing a red that means
+nothing. The probe is written so the mutated hook still behaves correctly at runtime, so only the
+source-level assertion should move.
 
-Note the landed-check pattern is **unanchored**, matching the assertion. An anchored `^\s*exit\s+[1-9]`
-returns **0** here — measured — because `exit 3` is preceded by `then `.
+**A landed-check must look at what the assertion looks at.** This one strips comments because the
+assertion does; an unstripped count sees the file's own prose and is off by one before you start.
+
+Note the pattern is **unanchored**, matching the assertion. Measured against the real hook with the probe
+appended: unanchored finds it, and the anchored `^\s*exit\s+[1-9]` that an earlier draft used returns
+**0** — because `exit 3` is preceded by `then `. That is the round-1 finding, reproduced on the shipped
+file rather than argued.
 
 Run the suite. Expected: `has no non-zero exit anywhere in its source` FAILS, and every other test in the
 suite still PASSES — the mutant is valid bash and still emits, so nothing else should move.
