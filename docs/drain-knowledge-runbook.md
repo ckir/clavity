@@ -1,9 +1,11 @@
 # Drain-knowledge maintainer runbook
 
 `agy-learn` captures land in a machine-local app-data inbox (`agy-observations.md`, `## Pending`
-section) — they are **not** shippable until a maintainer drains them into a reviewable **GROWTH
-proposal** (`docs/agy-golden-header.growth.md`) plus a few docs side-artifacts, and then publishes
-that proposal to the runtime golden-header (`~/.clavity/golden-header.growth.md`). This is the
+section). A maintainer drains them into a reviewable **GROWTH proposal**
+(`docs/agy-golden-header.growth.md`) plus a few docs side-artifacts, and then publishes that proposal
+to the runtime golden-header (`~/.clavity/golden-header.growth.md`). **That publish is the end of this
+loop, and it is still MACHINE-LOCAL — it does not ship anything to anyone.** Getting knowledge to
+other users is a separate, human step; see "How knowledge actually reaches a user" below. This is the
 **EXTEND model**: the curator never edits the driver-owned SEED (`seed/golden-header.md`), the four
 driver manuals (`clavity-dotnet/plugin/knowledge/agy-{assumptions,capabilities}.md` and their
 `clavity-classic` mirrors), or `agy-autotrain/knowledge/driver-cheatsheet.core.md` — those stay
@@ -14,6 +16,61 @@ runs on an end-user box.
 The three recipes are thin wrappers around `scripts/drain-knowledge.ps1`, `scripts/abort-drain.ps1`,
 and `scripts/accept-drain.ps1`. Read those scripts (and `scripts/drain-lib.ps1`) as the ground truth if
 this doc and their behavior ever disagree — the scripts win.
+
+## How knowledge actually reaches a user (the step this loop does NOT do)
+
+**Nothing in the drain loop ships.** Both automated curators terminate in machine-local state:
+
+| path | writes | ships? |
+|---|---|---|
+| `agy-curate` (the skill) | `~/.clavity/golden-header.growth.md` via `curate-commit` | **no** — per-machine runtime |
+| `just drain-knowledge` -> `just accept-drain` | `docs/agy-golden-header.growth.md`, then the same runtime file | **no** — same terminal |
+| `agy-curate` cheatsheet arm | `agy-autotrain/knowledge/driver-cheatsheet.core.md` | yes — pinned into both binaries |
+
+Only three artifacts are carried to end users by the installers, and **all three are PROTECTED from
+every drain** (`scripts/drain-lib.ps1:107-119`, enforced by `scripts/check-core-integrity.ps1`):
+
+- `seed/golden-header.md` — the **injected** SEED, prepended to *every ask on every install*
+- the four driver manuals `clavity-{dotnet,classic}/plugin/knowledge/agy-{assumptions,capabilities}.md`
+  — not injected; reachable via the escalation index. Must stay **byte-identical across drivers**
+  (`just seed-sync-check`)
+- `agy-autotrain/knowledge/driver-cheatsheet.core.md` — plus its two pinned literals in
+  `clavity-classic/src/driver_cheatsheet.rs` and `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs`
+
+They are protected *on purpose*: promoting a machine-local, self-reported capture into something every
+user receives is a judgement call, so it is human-gated by construction. The consequence to internalise
+is that **if no human performs the promotion, learned knowledge never leaves the machine that learned
+it** — and that is a silent outcome, because every gate in the loop still reports green.
+
+### The promotion procedure
+
+1. **Drain first**, so the material is distilled: `just drain-knowledge` -> review -> `just accept-drain`.
+2. **Read `~/.clavity/golden-header.growth.md`.** *This* is the source to promote from — not the inbox.
+   After a drain the inbox is empty or holds only rubric-parked entries, and running a drain purely to
+   re-fill it will promote entries `agy-curate` deliberately parked (the two curators read one inbox with
+   different bars; whichever runs first wins).
+3. **Split by the SEED-tier bar:** inject a rule *iff not knowing it immediately corrupts the workspace
+   or loops*. Everything else goes to the manuals, reachable via the escalation index. SEED is re-paid on
+   every ask of every install, so compress hard and leave headroom.
+4. **Hand-edit the protected carriers** above. Selection is mandatory, not optional: the cap is
+   `SEED_MAX_BYTES = 7992` (`scripts/check-seed-budget.ps1`, the single source of truth). Worked example,
+   2026-08-04: a 7 984 B GROWTH could not be folded wholesale into a 2 067 B SEED — 7 promoted rules took
+   it to 5 133 B and 4 were left manual-tier.
+5. **Verify:** `scripts/check-seed-budget.ps1`, `just seed-sync-check`, `scripts/check-core-integrity.ps1`;
+   if `core.md` moved, both pinning oracles **by name**.
+6. **Commit, then RELEASE.** The release is what reaches users — the commit alone does not.
+
+### Four traps, all hit in practice
+
+- **`check-core-integrity` FAILS on an uncommitted protected file, by design.** It diffs worktree against
+  HEAD to prove a drain never touched them. A legitimate hand-edit trips it until you commit. Commit —
+  never bypass the gate.
+- **Your editor may write CRLF into these LF files, and git normalises it silently.** The installers copy
+  `seed/golden-header.md` verbatim under a CI byte-check, so normalise to LF *before* staging and confirm
+  the diff is additions-only (`git diff --numstat`) with no reflow of existing lines.
+- **The inbox is not the source** — see step 2.
+- **"Installed and registered" is a presence check, not proof of effect.** A faithful install whose
+  knowledge never got promoted looks identical to one that did.
 
 ## The three recipes and their contract
 
