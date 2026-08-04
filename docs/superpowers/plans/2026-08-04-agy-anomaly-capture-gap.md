@@ -1474,7 +1474,7 @@ git commit -m "test: register the three new hook suites in test-scripts-fast and
 
 ---
 
-## Task 6 (OPTIONAL — owner decides before starting): dual-channel the `SessionStart` notice
+## Task 6 (APPROVED by the owner 2026-08-04 — build it): dual-channel the `SessionStart` notice
 
 **Files:**
 - Create: `clavity-dotnet/plugin/hooks/agy-anomaly-model-notice.sh`
@@ -1488,9 +1488,11 @@ not the model, so a session can begin with pending anomalies that the agent doin
 about. The two channels cannot come from one invocation — one hook emits the JSON envelope at `exit 0`
 for the model, the other stderr at `exit 2` for the owner — so it is a second hook or nothing.
 
-**My recommendation: build it.** It is the only remaining path by which the model, who does the triage,
-finds out there is triage to do. But it is genuinely severable: Tasks 1–5 satisfy every acceptance
-criterion without it. **Ask the owner before starting this task.**
+**My recommendation was: build it** — it is the only remaining path by which the model, who does the
+triage, finds out there is triage to do. It is nonetheless genuinely severable: Tasks 1–5 satisfy every
+acceptance criterion without it. **The owner approved it on 2026-08-04, so this task is now in scope and
+is no longer conditional.** It still runs last, after Tasks 1–5, because it registers a second hook inside
+the `startup|resume|clear|compact` object that Task 3 creates.
 
 It goes as a second command inside the `startup|resume|clear|compact` object, alongside
 `agy-anomaly-reminder.sh` — it must fire on exactly the occasions the drain notice does, and that is what
@@ -1788,7 +1790,8 @@ Dispatch any subagent and confirm the relay directive arrives, and — more impo
 
 **1. Spec coverage.** All 13 acceptance criteria map to a task (table above). All 8 Testing items are
 covered: items 1/2/2b/3/4/7 by the two hook suites, items 5/6 by `plugin-hooks-registration.Tests.ps1`.
-Design items 1, 2 and 3 are Tasks 1, 3 and 2; design item 4 is Task 6, flagged optional as the spec does.
+Design items 1, 2 and 3 are Tasks 1, 3 and 2; design item 4 is Task 6, which the spec leaves optional and
+the owner approved on 2026-08-04 — so all four design items ship.
 The file manifest is covered, with **three additions the spec does not list**, all flagged in-document:
 `plugin-hooks-registration.Tests.ps1` (a home for Testing items 5–6), the `check-seed-artifacts-synced`
 change (Task 4), and the `reachable from nowhere` assertion added in panel round 1 — which is not tied to
@@ -1853,8 +1856,9 @@ for.
 
 **Gaps left open, with where they resolve:**
 
-- **Whether to build Task 6** is the owner's call, per the spec's own framing. My recommendation is in the
-  task header. It resolves before Task 6 starts, not in this document.
+- ~~**Whether to build Task 6**~~ — **RESOLVED 2026-08-04: the owner approved it.** Task 6 is in scope and
+  runs last. Design item 4 therefore ships, and the plan now covers every design item in the spec, not
+  only every acceptance criterion.
 - **Runtime acceptance of both envelopes** cannot be proven by the suites, which drive the hooks directly.
   It resolves in the two live smoke checks in Final verification — the only place trap 1 and trap 2 are
   actually testable.
