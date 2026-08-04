@@ -700,8 +700,65 @@ outright.)
 - **Where the direct-driver prompt eventually goes** (`UserPromptSubmit`, `PostToolUseFailure`, or a
   derived trigger) — deferred deliberately by the owner's split, to be decided from this recorder's data
   rather than guessed. ROADMAP `§0` step 1b.
-- **The outside-witness trial** — ROADMAP `§0` step 3. Carries its own named failure mode, synthetic trial
-  overfitting: a loud induced defect resembling the prompt's own examples proves nothing about the subtle
-  real ones.
+- **The outside-witness trial** — ROADMAP `§0` step 3. Protocol drafted below.
+
+---
+
+## STEP 3 — the outside-witness trial. Protocol, and why it is easy to fake
+
+**It measures CONVERSION**, the thing the recorder explicitly cannot: did a delivered nudge cause a
+capture? The recorder answers *reaching*; this answers *outcome*. Neither substitutes for the other.
+
+**It cannot be run by whoever built this.** Not a courtesy — a measurement constraint. A primed witness
+reconstructs "did it fire?" from knowing the design instead of observing it, which is exactly how v15 got
+a false confirmation. **The session that builds a discipline may never be the session that confirms it.**
+
+### The trap this protocol exists to avoid
+
+**Synthetic trial overfitting.** Plant a loud defect resembling the prompt's own examples and the witness
+logs it, the trial reads GREEN, and nothing has been learned — because the defects that matter are the
+subtle, out-of-scope oddities noticed under load, not the ones the prompt already describes. A trial that
+can only succeed proves nothing. So:
+
+- **The planted defect must NOT resemble the prompt's examples.** The relay text names a shape
+  (`[type] fact * path:LINE * DATE * task=`) and explicitly excludes three cases (a test you expected to
+  fail, an error in the work you are actively doing, anything unverified). A defect that pattern-matches
+  the shape tests recall of the prompt, not the discipline.
+- **It must be REAL and PRE-EXISTING**, not injected for the trial. A genuine latent defect in an
+  unrelated file is the population we care about. Fabricating one changes the thing being measured.
+- **It must be OUT OF SCOPE of the assigned task** — that is the entire definition of an anomaly here, and
+  the case no other gate covers.
+
+### Preconditions, all of which must hold or the run is VOID
+
+1. A **build + install** has happened. Hooks fire from the INSTALLED plugin; a repo checkout proves
+   nothing. The installed hook must carry the contract stamp, or the recorder cannot attribute delivery.
+2. The witness is **unprimed**: never told this discipline exists, not shown this spec, not working in
+   this repo.
+3. The task is **ordinary work**, chosen for its own sake, that plausibly routes through the defect's
+   neighbourhood.
+4. **Ground truth is sealed BEFORE the run** — the defect, its location, and what a correct capture would
+   say, written down and not consulted until scoring.
+
+### Scoring, with the outcome most likely to be misread named first
+
+| outcome | reading |
+|---|---|
+| witness never encountered the defect's neighbourhood | **VOID — not a negative.** No opportunity means no evidence either way. Recording it as a failure fabricates the denominator this whole item refuses to fabricate |
+| encountered it, did not notice | negative for **noticing** — the prompt cannot help here |
+| noticed, did not capture to `.clavity/local-anomalies.md` | negative for **the discipline** — this is the interesting failure, and the one the recorder cannot see |
+| noticed and captured | positive |
+| captured, but `dispatch_nudges` is 0 for that session | **the discipline did not cause it** — the witness would have captured anyway. Counts as a positive for the WITNESS and a null for the DISCIPLINE |
+
+That last row is why the recorder and the trial run together: the recorder supplies the delivery half, and
+without it a capture cannot be attributed to the nudge at all.
+
+**One trial is an anecdote.** Pre-register how many runs and what fraction counts as working BEFORE the
+first one, or the stopping rule becomes "stop when the answer is pleasing" — the same defect as the Quiet
+Zero, one level up.
+
+**Scope limit, stated so it is not quietly exceeded:** a VOID-heavy trial series says the *task selection*
+was wrong, not that the discipline failed. Fix the selection and re-run; do not convert VOIDs into
+negatives to reach a verdict.
 - **The firing counter as originally conceived** — dropped. This recorder supersedes it, without any hook
   writing on a fail-open path.
