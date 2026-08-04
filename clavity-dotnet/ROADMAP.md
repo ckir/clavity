@@ -164,22 +164,56 @@ constraint plus the fact that the two drivers are mutually exclusive). **Read th
 designing the stamp; the same reasoning and the same trap apply.** A stamp that differs per driver is not
 a stamp, it is a parity break that both gates above will reject.
 
-**Three mechanisms, cheapest first. Sequence and scope are the open forks — AGY-FIRST before designing.**
+**THE NEGOTIATED SEQUENCE** — AGY-FIRST consult plus one negotiation round, 2026-08-04. Brief and reply:
+`.clavity/seams/discipline-efficacy-agy-first.md`. The peer's opening answer proposed *stamp -> counter ->
+witness*; it then **explicitly superseded its own ordering** when shown that instrumenting a trigger that
+does not fire is "testing a known null wire", and independently re-measured the enumeration below.
 
-1. **Version-stamp the emitted text.** A build identifier inside each message turns "it fired" into a
-   string that can be checked, and makes a stale install distinguishable from a silent one. Smallest
-   change; kills the ambiguity that made every past confirmation unfalsifiable. Open fork: where the
-   stamp comes from, given the hooks are plain bash with no build step and the byte ban constrains the
-   format.
-2. **Have each discipline record its own firing** — an append-only count, so `nudges fired last 7 days`
-   and `anomalies captured` are both answerable. `0 / 0` means it is not reaching; `12 / 0` means it
-   fires and does not work. Today those two are indistinguishable, which is precisely why v15 looked
-   fine. Open forks: where the counter lives (`.clavity/` is gitignored runtime state), and whether a
-   hook that must fail open may ever write.
-3. **Institutionalise the outside witness.** The agent two tabs away was the only valid experiment run on
-   v15, and it happened by accident. The design is: a fresh session, in an unrelated repo, given ordinary
-   work, never told the discipline exists — then inspect for the observable afterwards. **The session
-   that builds a discipline may never be the session that confirms it.**
+1. **Fix the direct-driver trigger placement. THIS IS A DEFECT IN v16, not new work.** MEASURED
+   2026-08-04, independently by both sides, against `clavity-dotnet/plugin/hooks/hooks.json`: across all
+   registered events, the number of hooks that prompt a driver working DIRECTLY — not dispatching, not
+   compacting — to capture an anomaly is **ZERO**. `PreCompact` fires only on compaction, so a short or
+   medium session never reaches it; `Agent|Task` requires a dispatch; `SessionStart` carries drain/triage
+   notices for anomalies that already exist, not a capture prompt; and `agy-seam-inject.sh:54` matches
+   only `*subagent-driven-development*|*executing-plans*`, with `:55` `*) exit 0` for every other skill.
+   **v16 closed gap (a) only for sessions long enough to compact.**
+2. **Static contract stamp in the emitted strings** — pure ASCII, byte-ban compliant, no per-driver
+   literal (Option S, `docs/agy-disciplines-marker-contract.md:13`). It goes SECOND, before the trial,
+   and the reason is load-bearing: without it a null trial result cannot be split into *never fired* vs
+   *fired and ignored*. Its own failure mode is a stale stamp after a message edit — pin it with a test.
+3. **Outside-witness trial.** Unprimed agent, unrelated repo, ordinary work, never told the discipline
+   exists. Inspect the transcript for BOTH the stamp (delivery) and a real `.clavity/local-anomalies.md`
+   entry (outcome). **The session that builds a discipline may never be the session that confirms it.**
+4. **Firing counter — DEMOTED off the critical path.** It measures activation volume, not conversion:
+   `12 / 0` is ambiguous (it can mean twelve sessions with genuinely nothing to capture), so the earlier
+   claim in this entry that it means "fires and does not work" was wrong. The `0`-vs-`N` signal it does
+   provide comes free from the witness transcript. It is also an awkward fit: `docs/agy-disciplines-marker-contract.md:55`
+   and `:80-82` establish that **the skill writes and the hook never does**, and these hooks must fail open.
+
+**🔴 THE OPEN PROBLEM, and step 1 is BLOCKED on it — surfaced after the negotiation, by neither side
+during it.** The two obvious homes for a direct-driver capture prompt are ALREADY DISPOSITIONED in this
+epic's own spec (`docs/superpowers/specs/2026-08-04-agy-anomaly-capture-gap-design.md`):
+
+- a `Stop` hook / end-of-task seam — **withdrawn** (`:65`): *"Fires 100+ times in a long session and would
+  manufacture exactly the blind-answering that `adversarial-panel-review`'s `--low` bypass exists to avoid."*
+- firing on tool output — **rejected** (`:67`): *"Misses the quiet cases, fires on ordinary debugging."*
+
+Reinstating either would reproduce the peer's own separately-named failure mode, the **"Anomalies noticed:
+none" reflex** — a model learning to append a canned `none` to satisfy the structure, so the relay reads
+100% compliant while capturing nothing. **The real tension: the events a direct driver reliably reaches
+are HIGH-FREQUENCY, and high-frequency prompting destroys the thing being prompted for; the low-frequency
+events (`PreCompact`, `SessionStart`) do not reach short sessions at all.** `SessionStart` is too early to
+capture what has not happened yet; `PreCompact` is too late and often never.
+
+**Two things must be established before a design, neither assumed:** the FULL hook-event surface Claude
+Code exposes (only the events this repo already uses have been enumerated), and whether a low-frequency
+trigger can be **derived** — fired once per session at a moment the driver has demonstrably done work —
+rather than picked from the existing menu.
+
+**Also carry into the design: "synthetic trial overfitting"** (the peer's named failure mode for step 3).
+If the induced defect is loud and resembles the prompt's own examples, the model logs it and the trial
+reads GREEN — while the defects that matter are subtle, out-of-scope oddities noticed under load. The
+trial needs a defect the prompt does NOT resemble, or it reproduces this item's own failure one level out.
 
 **The acceptance test for this item is itself an efficacy test**: it is done when you can answer "is
 AGY-ANOMALIES working for real users?" from recorded evidence, without asking any agent what it thinks
