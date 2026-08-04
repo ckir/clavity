@@ -103,6 +103,12 @@ first place to look if that recipe starts straddling a cap again.
 hooks, which is why it is an order of magnitude cheaper than the recorder suite next to it). Fast went
 21 suites / 265 tests to **22 suites / 276 tests**, measured **290,53s**.
 
+**2026-08-04 (final) — the scripts/README inventory guard.** One NEW fast suite
+(`scripts-readme-inventory`, 3 tests, 4,2s). Fast went 22 suites / 276 tests to **23 suites / 279 tests**,
+measured **346,4s**. Added because `scripts/README.md` is an inventory index
+(`check-user-facing-docs.ps1:62` names it as one) and nothing verified it was complete — it drifted the
+same day, when a new script was added and the index was not updated.
+
 Two things that pass are worth recording, because both are the kind of number this file exists to stop
 people guessing at:
 
@@ -151,6 +157,7 @@ agy-anomaly-model-notice.Tests.ps1               16,9s    9 tests   <- FAST, add
 agy-anomaly-contract-stamp.Tests.ps1             11,6s   14 tests   <- FAST, added 2026-08-04
 agy-discipline-reaching.Tests.ps1                69,1s   16 tests   <- FAST, added 2026-08-04
 discipline-reaching-report.Tests.ps1              8,1s   11 tests   <- FAST, added 2026-08-04
+scripts-readme-inventory.Tests.ps1                4,2s    3 tests   <- FAST, added 2026-08-04
 agy-curate-nudge.Tests.ps1                       29,2s   11 tests   <- FAST, added 2026-08-03
 agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
                                                                       table entirely until 2026-08-03
