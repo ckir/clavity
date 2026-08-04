@@ -1,5 +1,11 @@
 # classic changelog
 
+## 0.6.0 — 2026-08-04
+
+### Features
+- feat(hooks): discipline-reaching recorder - and the 20,9s budget blowout it hid
+- feat(hooks): AGY-ANOMALIES contract stamp, plus the coverage gap it exposed
+
 ## 0.5.0 — 2026-08-04
 
 ### Features
