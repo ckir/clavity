@@ -1777,16 +1777,31 @@ Expected: **no output**.
 Run the same `git diff --stat` for both copies of `agy-anomaly-reminder.sh`. Expected: no output. Only its
 *registration* changed.
 
-- [ ] **Live smoke of the `PreCompact` hook**
+### The two live smokes BLOCK ON A RELEASE — they cannot run from the repo
 
-The suites drive the hook directly; they cannot prove the runtime accepts the envelope. Trigger a
-`/compact` and confirm the capture reminder appears as a system message. If a schema-validation dump
-appears instead, the envelope shape is wrong for the event — see trap 2.
+**Measured 2026-08-04.** Hooks fire from the INSTALLED plugin
+(`%LOCALAPPDATA%\Programs\clavity-dotnet\plugins\clavity\hooks\`), not from this working tree. That
+installed manifest still reads:
 
-- [ ] **Live smoke of the dispatch hook**
+```
+events:              PostToolUse, PreToolUse, SessionStart      <- no PreCompact
+SessionStart groups: startup                                    <- not split
+PreToolUse matchers: Skill, Bash|PowerShell|mcp__.*agy_ask      <- no Agent|Task
+```
 
-Dispatch any subagent and confirm the relay directive arrives, and — more importantly — that the dispatch
-**is not blocked**. A blocked dispatch means a non-zero exit path survived; see trap 3.
+So neither smoke below is merely "not yet run" — both are **impossible until the plugin is rebuilt and
+installed**, which is a release action and the owner's call. Do not tick them from this working tree, and
+do not read a quiet `/compact` as evidence: the hook that would have spoken is not installed.
+
+- [ ] **Live smoke of the `PreCompact` hook** — *after install.* Trigger a `/compact` and confirm the
+  capture reminder appears as a system message. A schema-validation dump instead means the envelope shape
+  is wrong for the event (trap 2). This is the ONLY check that can prove trap 1 and trap 2 are closed;
+  the suites drive the hook directly and cannot see what the runtime accepts.
+
+- [ ] **Live smoke of the dispatch hook** — *after install.* Dispatch any subagent, confirm the relay
+  directive arrives and — more importantly — that the dispatch **is not blocked**. A blocked dispatch
+  means a non-zero exit path survived (trap 3). The 6-case fail-open matrix and the source scan both
+  argue this cannot happen; only the live dispatch demonstrates it.
 
 ---
 
