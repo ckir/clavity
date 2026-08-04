@@ -1,22 +1,18 @@
-# The DISCIPLINE-REACHING recorder (SessionEnd). ROADMAP section 0, step 1a.
+# The DISCIPLINE-REACHING recorder (SessionEnd). ROADMAP section 0, step 1a. CAPTURE ONLY.
 #
-# WHAT IT ANSWERS, and the scope is deliberately narrow: does the PreToolUse dispatch relay REACH a driver,
-# and how often? Everything here was measured before it was designed (STEP 0 in
-# docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md), and three measurements are encoded
-# below as REGRESSIONS because each one already fooled a reviewer or the driver:
+# THIS HOOK NAMES A SESSION AND ITS TRANSCRIPT, AND STOPS. Every count lives in the report
+# (scripts/discipline-reaching-report.ps1) and is tested there.
 #
-#   1. THE 6x OVER-COUNT. hookName is <Event>:<ToolName>, shared by every plugin registering on that tool,
-#      and the delivery record carries no field naming the script. MEASURED on a real transcript: 6
-#      structural matches on PreToolUse:Agent, of which ONE was ours. So a count that keys on structure
-#      ALONE is wrong, and the fixture below contains foreign deliveries that must not be counted.
-#   2. THE SELF-REFERENTIAL TRANSCRIPT. A control string never emitted by any hook went from 1 hit to 11
-#      purely by being searched for - the detector pollutes its own evidence. The fixture therefore puts
-#      the stamp inside user/assistant records too; those must not be counted.
-#   3. DUPLICATION. Records repeat, bounded at 2x (87 of 1314 measured), so counts dedup by uuid.
+# WHY, and it is the only reason that matters: the first version scanned the transcript HERE. It passed
+# every test in this file and every direct invocation, then failed on SHIPPED v17 in production, twice -
+# `SessionEnd hook ... failed: Hook cancelled` - writing NOTHING. The control was a diagnostic probe on the
+# SAME event in the SAME environment doing no scanning: it wrote its row both times. Fast hook survives,
+# multi-second hook is cancelled. Session teardown gives a hook far less time than its declared `timeout`.
 #
-# THE RECORD MUST ALWAYS LAND. A missing record and a degraded one must not look alike: an unreadable
-# transcript records null counts plus a scan_status naming WHY, never a 0. A measured zero and an unknown
-# are the same failure this whole item exists to remove.
+# So the assertions below are mostly NEGATIVE - they exist to stop analysis creeping back into teardown,
+# because a cancelled hook writes NO row, and no row is indistinguishable from a session that never ran:
+# the silent zero this entire item exists to remove. That failure could not be caught by invoking the hook
+# directly, which is the whole lesson.
 
 Describe 'agy-discipline-reaching.sh' {
     BeforeAll {
@@ -33,10 +29,9 @@ Describe 'agy-discipline-reaching.sh' {
             return $h
         }
 
-        # A synthetic transcript whose EXPECTED answers are known by construction:
-        #   dispatch_nudges = 2  (uuids d1, d2; d1 appears twice -> dedup)
-        #   dispatch_fired  = 1  (one hook_success naming our script)
-        #   compactions     = 2
+        # A realistic transcript. This hook must NOT read it - the fixture exists so a capture row has a
+        # real path to name, and so a regression that starts scanning would have something to find. The
+        # counting expectations it encodes are asserted in discipline-reaching-report.Tests.ps1.
         function New-Transcript {
             $p = Join-Path ([IO.Path]::GetTempPath()) ("reach-tx-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
             $lines = @(
@@ -91,7 +86,7 @@ Describe 'agy-discipline-reaching.sh' {
             $rec = Get-Record $r
             $rec | Should -Not -BeNullOrEmpty -Because 'no record at all is the one outcome this design forbids'
             $rec.Count | Should -Be 1
-            $rec.Last.v | Should -Be 1
+            $rec.Last.v | Should -Be 2 -Because 'v:1 was the analyse-at-SessionEnd shape, SHIPPED in v17; the report reads both'
             $rec.Last.session_id | Should -BeExactly 'sess-1'
             $rec.Last.reason | Should -BeExactly 'prompt_input_exit'
             # Assert the RAW bytes, not the parsed object: ConvertFrom-Json coerces an ISO string into a
@@ -101,66 +96,49 @@ Describe 'agy-discipline-reaching.sh' {
         } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'counts OUR stamped deliveries only - not another plugin sharing the hookName' {
-        # THE 6x OVER-COUNT REGRESSION. The fixture holds 3 foreign deliveries on the identical hookName.
+    It 'CAPTURES ONLY - it names the transcript and does NOT count anything' {
+        # THE LOAD-BEARING CONTRACT. Analysis moved OUT of this hook because scanning here was CANCELLED at
+        # real session teardown on shipped v17, twice, writing nothing. A row carrying counts is proof the
+        # scan came back - which is precisely what must never happen in a SessionEnd hook again.
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
+            $x.ExitCode | Should -Be 0
             $rec = Get-Record $r
             $rec | Should -Not -BeNullOrEmpty
-            $rec.Last.dispatch_nudges | Should -Be 2 -Because 'd1 (twice, deduped) and d2 are ours; f1/f2/f3 are a different hook on the same tool'
+            $rec.Last.v | Should -Be 2 -Because 'v:1 was the analyse-at-SessionEnd shape and SHIPPED in v17; both can coexist'
+            $rec.Last.transcript_path | Should -Not -BeNullOrEmpty -Because 'the report can only analyse a transcript this row names'
+            $rec.Last.scan_status | Should -BeExactly 'deferred'
+            foreach ($f in 'dispatch_nudges','dispatch_nudges_unstamped','dispatch_fired','compactions') {
+                $rec.Last.PSObject.Properties.Name | Should -Not -Contain $f -Because "$f is the report's job; its presence here means scanning crept back into teardown"
+            }
         } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'does NOT count the stamp appearing in authored user or assistant records' {
-        # THE SELF-REFERENTIALITY REGRESSION, encoded: u1 and a1 both carry the stamp verbatim.
+    It 'does not read the transcript at all - an UNREADABLE path still yields a clean deferred row' {
+        # If the hook touched the file, an unreadable path would change the outcome. It must not: the
+        # verdict on readability belongs to the report, later, where there is time to reach it.
+        $r = New-TempRepo; $h = New-CleanHome
+        try {
+            $bogus = Join-Path ([IO.Path]::GetTempPath()) 'no-such-transcript-xyz.jsonl'
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $bogus) -Env @{ HOME = $h }
+            $x.ExitCode | Should -Be 0
+            $rec = Get-Record $r
+            $rec.Last.scan_status | Should -BeExactly 'deferred' -Because 'the path was NAMED; whether it resolves is the report to discover'
+            $rec.Last.transcript_path | Should -Match 'no-such-transcript-xyz'
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'carries the exit path so STEP 0 item 2 is self-measuring' {
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
-            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
-            $rec = Get-Record $r
-            $rec.Last.dispatch_nudges | Should -Be 2 -Because 'authored records carrying the stamp are not deliveries'
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx -Reason 'clear') -Env @{ HOME = $h } | Out-Null
+            (Get-Record $r).Last.reason | Should -BeExactly 'clear'
         } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'separates a PRE-STAMP delivery from no delivery at all' {
-        # Without this field the whole adoption window is unreadable. MEASURED on a real transcript from a
-        # pre-stamp install: fired=1, nudges=0 - which is character-for-character the v15 failure signature
-        # (the hook ran, nothing reached the model) while the discipline was in fact working perfectly.
-        # dispatch_nudges_unstamped is what tells those two apart until stamped builds are ubiquitous.
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
-        try {
-            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
-            $rec = Get-Record $r
-            $rec | Should -Not -BeNullOrEmpty
-            $rec.Last.dispatch_nudges_unstamped | Should -Be 1 -Because 'g1 carries our text without the contract number'
-            $rec.Last.dispatch_nudges | Should -Be 2 -Because 'a STAMPED delivery must not also be counted as unstamped'
-        } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
-    }
-
-    It 'records EXECUTION separately from DELIVERY - fired vs reached' {
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
-        try {
-            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
-            $rec = Get-Record $r
-            $rec.Last.dispatch_fired | Should -Be 1 -Because 'one hook_success names our script; the other names a different hook'
-            $rec.Last.dispatch_nudges | Should -Be 2
-        } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
-    }
-
-    It 'records compactions as OPPORTUNITY, since PreCompact delivery is unobservable' {
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
-        try {
-            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
-            $rec = Get-Record $r
-            $rec.Last.compactions | Should -Be 2
-            $rec.Last.PSObject.Properties.Name | Should -Not -Contain 'precompact_nudges' -Because 'PreCompact firings produce ZERO transcript records - a field promising that number cannot be produced'
-            $rec.Last.PSObject.Properties.Name | Should -Not -Contain 'precompact_fired'
-        } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
-    }
-
-    It 'records NULL counts and a naming scan_status when the transcript is <Case>' -ForEach @(
+    It 'records a naming scan_status when the payload names NO transcript' -ForEach @(
         @{ Case = 'absent from the payload'; Kind = 'none' }
-        @{ Case = 'a path that does not exist'; Kind = 'missing' }
     ) {
         $r = New-TempRepo; $h = New-CleanHome
         try {
@@ -169,20 +147,9 @@ Describe 'agy-discipline-reaching.sh' {
             $x.ExitCode | Should -Be 0
             $rec = Get-Record $r
             $rec | Should -Not -BeNullOrEmpty -Because 'a degraded scan must still leave a record; silence is indistinguishable from a session that never ran'
-            $rec.Last.dispatch_nudges | Should -BeNullOrEmpty -Because 'an unknown recorded as 0 is this items own thesis inverted'
-            $rec.Last.scan_status | Should -BeExactly 'transcript_not_found'
+            $rec.Last.scan_status | Should -BeExactly 'transcript_not_found' -Because 'no transcript was NAMED, which is knowable here without reading anything'
+            $rec.Last.PSObject.Properties.Name | Should -Not -Contain 'dispatch_nudges' -Because 'an unknown recorded as 0 is this items own thesis inverted'
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
-    }
-
-    It 'never pairs scan_status ok with a null count' {
-        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
-        try {
-            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
-            $rec = Get-Record $r
-            $rec.Last.scan_status | Should -BeExactly 'ok'
-            $rec.Last.dispatch_nudges | Should -Not -BeNullOrEmpty
-            $rec.Last.dispatch_fired  | Should -Not -BeNullOrEmpty
-        } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'creates .clavity/ when it does not exist' {

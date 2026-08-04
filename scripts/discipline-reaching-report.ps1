@@ -37,12 +37,69 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$SCHEMA = 1
+$SCHEMA_ANALYSED = 1   # v1: counts were computed at SessionEnd (SHIPPED in v17)
+$SCHEMA_CAPTURE  = 2   # v2: the row names a transcript; THIS script does the counting
 
 if (-not $Path) {
     $root = (& git rev-parse --show-toplevel 2>$null)
     if (-not $root) { $root = (Get-Location).Path }
     $Path = Join-Path $root '.clavity/discipline-reaching.jsonl'
+}
+
+function Expand-CaptureRow {
+    # Turn a v2 capture row into the analysed shape by scanning the transcript it names. Same two-stage
+    # strategy the hook used to run inline - ONE grep over selective patterns, ONE classifying jq - because
+    # the cost model is BYTES FED TO JQ, not lines: prefiltering `fired` on the record type once matched
+    # 132 MB of a 176 MB file. The prefilter is only an optimisation; the jq filter is what makes the count
+    # correct (a prefilter alone measured 256 where the structural filter measured 1).
+    param($Row)
+    $add = { param($n,$v) $Row | Add-Member -NotePropertyName $n -NotePropertyValue $v -Force }
+    $tx = if ($Row.PSObject.Properties.Name -contains 'transcript_path') { $Row.transcript_path } else { '' }
+
+    if ([string]::IsNullOrWhiteSpace($tx) -or -not (Test-Path -LiteralPath $tx)) {
+        & $add 'scan_status' 'transcript_not_found'
+        foreach ($f in 'dispatch_nudges','dispatch_nudges_unstamped','dispatch_fired','compactions') { & $add $f $null }
+        return $Row
+    }
+
+    $jqExe = Get-Command jq -ErrorAction SilentlyContinue
+    if (-not $jqExe) {
+        # No jq means the counts are UNKNOWN, never zero.
+        & $add 'scan_status' 'transcript_unreadable'
+        foreach ($f in 'dispatch_nudges','dispatch_nudges_unstamped','dispatch_fired','compactions') { & $add $f $null }
+        return $Row
+    }
+
+    $stamp = 'AGY-ANOMALIES/1'
+    $filter = @'
+if (.type=="attachment" and .attachment.type=="hook_additional_context"
+    and (.attachment.hookEvent // "")=="PreToolUse"
+    and (((.attachment.content // "") | tostring) | contains($s)))       then "N " + (.uuid // "")
+elif (.type=="attachment" and .attachment.type=="hook_success"
+    and (((.attachment.command // "") | tostring) | contains("agy-anomaly-dispatch-reminder"))) then "F " + (.uuid // "")
+elif (.type=="attachment" and .attachment.type=="hook_additional_context"
+    and (.attachment.hookEvent // "")=="PreToolUse"
+    and (((.attachment.content // "") | tostring) | contains("AGY-ANOMALIES"))) then "L " + (.uuid // "")
+elif (.isCompactSummary==true)                                          then "C " + (.uuid // "")
+else empty end
+'@
+    try {
+        $pat = '"type":"hook_additional_context"|"isCompactSummary":true|"command":"bash .{0,120}agy-anomaly-dispatch-reminder'
+        $classified = @(
+            Select-String -LiteralPath $tx -Pattern $pat -Raw -AllMatches -ErrorAction Stop |
+                & $jqExe.Source -r --arg s $stamp $filter 2>$null
+        ) | Sort-Object -Unique
+    } catch {
+        & $add 'scan_status' 'transcript_unreadable'
+        foreach ($f in 'dispatch_nudges','dispatch_nudges_unstamped','dispatch_fired','compactions') { & $add $f $null }
+        return $Row
+    }
+    & $add 'dispatch_nudges'           (@($classified | Where-Object { $_ -like 'N *' }).Count)
+    & $add 'dispatch_fired'            (@($classified | Where-Object { $_ -like 'F *' }).Count)
+    & $add 'dispatch_nudges_unstamped' (@($classified | Where-Object { $_ -like 'L *' }).Count)
+    & $add 'compactions'               (@($classified | Where-Object { $_ -like 'C *' }).Count)
+    & $add 'scan_status' 'ok'
+    return $Row
 }
 
 Write-Output 'AGY-ANOMALIES discipline reaching'
@@ -68,7 +125,11 @@ foreach ($line in $raw) {
     $v = if ($o.PSObject.Properties.Name -contains 'v') { $o.v } else { $null }
     # An unrecognised version is COUNTED, not parsed - mirroring the null discipline. Guessing at the
     # shape of a future record is how a reader silently mixes incompatible numbers into one total.
-    if ($v -ne $SCHEMA) { $unsupported++; continue }
+    if ($v -eq $SCHEMA_CAPTURE) {
+        # v2 names a transcript and defers the analysis to HERE, where there is no time limit. Scanning at
+        # SessionEnd was CANCELLED on shipped v17 twice, writing nothing, so the work moved to this script.
+        $o = Expand-CaptureRow -Row $o
+    } elseif ($v -ne $SCHEMA_ANALYSED) { $unsupported++; continue }
     $rows += $o
 }
 

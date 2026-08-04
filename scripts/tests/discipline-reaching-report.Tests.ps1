@@ -35,6 +35,29 @@ Describe 'discipline-reaching-report.ps1' {
             '"dispatch_nudges":null,"dispatch_nudges_unstamped":null,"dispatch_fired":null,' +
             '"compactions":null,"scan_status":"' + $Status + '"}'
         }
+        function CapRec { param([string]$Tx, [string]$Sid = 'cap')
+            (@{ v=2; session_id=$Sid; timestamp='2026-08-04T00:00:00Z'; reason='prompt_input_exit';
+                transcript_path=$Tx; scan_status='deferred' } | ConvertTo-Json -Compress)
+        }
+        # Same shape a real transcript uses, including the ARRAY content form. Expected: reached 2 (d1
+        # duplicated + d2), unstamped 1, fired 1, compactions 2.
+        function New-ScanTranscript {
+            $p = Join-Path ([IO.Path]::GetTempPath()) ("rep-tx-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+            $S = 'AGY-ANOMALIES/1'
+            @(
+                '{"type":"attachment","uuid":"d1","attachment":{"type":"hook_additional_context","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","content":["' + $S + ' relay."]}}'
+                '{"type":"attachment","uuid":"d2","attachment":{"type":"hook_additional_context","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","content":"' + $S + ' relay."}}'
+                '{"type":"attachment","uuid":"d1","attachment":{"type":"hook_additional_context","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","content":["' + $S + ' relay."]}}'
+                '{"type":"attachment","uuid":"g1","attachment":{"type":"hook_additional_context","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","content":["AGY-ANOMALIES relay."]}}'
+                '{"type":"attachment","uuid":"f1","attachment":{"type":"hook_additional_context","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","content":"BOTTOM-UP GATING."}}'
+                '{"type":"user","uuid":"u1","message":{"role":"user","content":"grep for ' + $S + '"}}'
+                '{"type":"attachment","uuid":"s1","attachment":{"type":"hook_success","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","command":"bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-anomaly-dispatch-reminder.sh\"","exitCode":0}}'
+                '{"type":"attachment","uuid":"s2","attachment":{"type":"hook_success","hookEvent":"PreToolUse","hookName":"PreToolUse:Bash","command":"bash /x/other.sh","exitCode":0}}'
+                '{"type":"user","uuid":"c1","isCompactSummary":true,"message":{"role":"user","content":"s"}}'
+                '{"type":"user","uuid":"c2","isCompactSummary":true,"message":{"role":"user","content":"s"}}'
+            ) -join "`n" | Set-Content -LiteralPath $p -Encoding utf8NoBOM
+            return $p
+        }
         function Run { param([string]$Dir, [int]$Last = 0)
             Push-Location $Dir
             try {
@@ -134,6 +157,41 @@ Describe 'discipline-reaching-report.ps1' {
             $o = Run $d
             $o | Should -Match '(?i)precompact'
             $o | Should -Match '(?i)(unmeasured|not measured|cannot be measured)'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'SCANS a v2 capture row and produces the counts the hook no longer computes' {
+        # v2 is the CAPTURE shape: the hook names a transcript and stops, because scanning at SessionEnd was
+        # CANCELLED on shipped v17 twice. The analysis moved HERE, so this is where it must be proven.
+        $tx = New-ScanTranscript
+        $d  = New-Store @( (CapRec $tx) )
+        try {
+            $o = Run $d
+            $o | Should -Not -BeNullOrEmpty
+    $o | Should -Match 'stamped\s+:\s+2' -Because 'two distinct STAMPED deliveries, one duplicated -> deduped by uuid'
+    $o | Should -Match 'unstamped\s+:\s+1' -Because 'one pre-stamp delivery must not be counted as stamped'
+    $o | Should -Match 'fired\s+:\s+1' -Because 'one hook_success names our script; the other names a different hook'
+            $o | Should -Match 'compactions\s+:\s+2'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'still reads a v1 row, because v17 SHIPPED that shape' {
+        # An upgraded machine can hold both kinds in one file. Reading only the newest would silently drop
+        # every session recorded before the split.
+        $tx = New-ScanTranscript
+        $d  = New-Store @( (Rec 5 0 5 0), (CapRec $tx) )
+        try {
+            $o = Run $d
+    $o | Should -Match 'stamped\s+:\s+7' -Because 'the v1 row contributes 5 and the scanned v2 row contributes 2'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'records a v2 row whose transcript is GONE as an unknown, never a zero' {
+        $d = New-Store @( (CapRec (Join-Path ([IO.Path]::GetTempPath()) 'vanished-transcript.jsonl')) )
+        try {
+            $o = Run $d
+            $o | Should -Match 'transcript_not_found\D+1'
+            $o | Should -Match '(?i)not[- ]?(scanned|counted)|unscanned|incomplete' -Because 'a transcript deleted before the report runs is an UNKNOWN, and the split makes that case reachable'
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
