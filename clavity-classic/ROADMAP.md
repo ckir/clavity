@@ -215,6 +215,24 @@ fast-path content (the responder skill already fast-paths `[ping]` → `READY`, 
 
 ## Follow-ups (captured post-implementation)
 
+### ▶ DISCIPLINE EFFICACY applies to THIS driver too — see `clavity-dotnet/ROADMAP.md` §0
+
+Owner-directed 2026-08-04, top priority after the current build. **The item is stated once, in the
+umbrella backlog** (`clavity-dotnet/ROADMAP.md` §0, which also carries ghidrust's) rather than duplicated
+here, because a long entry maintained in two files is the drift this repo keeps paying for. **The
+requirement, however, is parity: whatever ships there ships here, byte-identically.**
+
+What it concerns: every gate in this repo measures whether a discipline is PRESENT (files mirrored, ASCII,
+registered, seed-sync green) and none measures whether it WORKS. v15 shipped the AGY-ANOMALIES discipline
+with a faithful install and correctly-firing hooks, and it still produced nothing.
+
+Classic-side surface, mirrored byte-identically and verified `IDENTICAL` 2026-08-04:
+`clavity-classic/plugin/hooks/agy-anomaly-{capture-reminder,dispatch-reminder,model-notice}.sh`, plus
+`clavity-classic/plugin/hooks/hooks.json`. Parity is enforced by
+`scripts/tests/plugin-hooks-payload.Tests.ps1` and the whole-`.hooks` catch-all in
+`scripts/check-seed-artifacts-synced.sh`. **A per-driver literal cannot live in these bodies** — see
+`docs/agy-disciplines-marker-contract.md:13` (Option S) for the precedent and the trap.
+
 ### Pre-flight thread discovery for standalone `await-reply` (agy's idea, 2026-06-16)
 
 > Source: agy, generative-mode round during the capability-profile test suite (Test C). Captured here

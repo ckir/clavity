@@ -149,6 +149,21 @@ the byte ban** (no backtick, apostrophe, double quote, backslash — the last tw
 envelope on the jq-absent path, measured) **and keep the jq and no-jq paths byte-identical**, both
 already asserted.
 
+**PARITY IS A REQUIREMENT, NOT A FOLLOW-UP — and it is what makes mechanism 1 hard.** Whatever ships here
+ships to **both drivers**, byte-identically: the three hooks above are mirrored in
+`clavity-classic/plugin/hooks/` and verified `IDENTICAL` (2026-08-04). Two gates already enforce it and
+will fail the moment a driver drifts — `scripts/tests/plugin-hooks-payload.Tests.ps1` (per-file byte
+parity across the two hook dirs) and the whole-`.hooks` deny-list catch-all in
+`scripts/check-seed-artifacts-synced.sh`, which compares every registered event by content.
+
+That constraint bites mechanism 1 directly: **a byte-identical hook body cannot carry a per-driver
+literal.** This is a solved problem in this repo, not a new one — `docs/agy-disciplines-marker-contract.md:13`
+records the same collision for the discipline markers and its decision (**Option S**: a single
+discipline-keyed name with no `<plugin-id>` prefix, justified there by exactly this byte-identity
+constraint plus the fact that the two drivers are mutually exclusive). **Read that decision before
+designing the stamp; the same reasoning and the same trap apply.** A stamp that differs per driver is not
+a stamp, it is a parity break that both gates above will reject.
+
 **Three mechanisms, cheapest first. Sequence and scope are the open forks — AGY-FIRST before designing.**
 
 1. **Version-stamp the emitted text.** A build identifier inside each message turns "it fired" into a
