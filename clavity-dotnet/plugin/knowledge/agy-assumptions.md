@@ -78,6 +78,10 @@ of these as live only after a fresh harness PASS, not on the strength of a past 
   primary way to reach the peer, that OVERRIDES a higher-level one-front-door abstraction (instruction
   priority: user-config > skills) and reproduces the leak even with the abstraction installed —
   reconcile global config to defer to the front door.
+- **Seeding a KNOWN defect** ("here is the bug — find more like this") → over-application: it flags every
+  superficially-similar construct **without checking the mechanism**, producing a false-positive flood
+  that costs more to triage than the hunt saved. Ask for an open hunt without naming the class, or
+  require a proof against the actual failing operation for each hit.
 
 ## Transient runtime gotchas (agy/backend behavior, not config)
 

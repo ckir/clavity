@@ -45,6 +45,16 @@
   do **not** parallelize *edits to the same file* — see Axis B / the protocol's "what Claude gets wrong".)
 - **Strong contextual inference from CWD** `[doc/user]` — infers the codebase/tooling from the working
   dir; fast Go startup, low memory `[doc/user]`.
+- **Latent breadth is gated by SELECTION — name the domain and the lens** `[corpus]` — the peer carries a
+  large skill catalog but engages the matching specialist only when you NAME the domain and lens (or hand
+  it the SPEC as the correctness oracle). An adversarial-auditor persona plus a named-spec pass catches
+  spec-required null/empty/boundary cases that general review and property tests both miss. → name the
+  lens; do not hope for it.
+- **Open framing beats a closed menu for DESIGN** `[corpus]` — a closed "pick A/B/C" anchors it to your
+  option-space; an OPEN "goal + verifiable criterion + full latitude" validates WITHOUT anchoring, so an
+  independent reproduction of your pre-baked choice is real evidence it was not framing-induced, and it
+  surfaces hardenings the menu never raises — most of all when you also ask it to name a failure mode in
+  its OWN proposal. → reserve closed options for the final human-ratification step.
 
 ## B. Weaknesses & failure modes (route away / guardrail)
 
@@ -69,6 +79,16 @@
   `agy -p`. (Output can be recovered from the transcript file — Axis D.)
 - **Dot-prefixed ancestor path rejected** `[doc #20]` — a workspace under a `.`-dir logs "is hidden:
   ignore uri" and writes fall back to `…/scratch`. Keep agy's cwd off hidden-dir paths.
+- **Adversarial pressure → confident OVER-CORRECTION, and a reversal is not convergence** `[corpus]` —
+  shown a counter-measurement it swings to the opposite extreme rather than decomposing, never naming the
+  middle position where one part stays and the other goes (both answers wrong the same way). Invited to
+  self-challenge it argues to WIN: argument quality rises while factual reliability falls, and it will
+  rest a well-structured case on a claim the artifact explicitly contradicts — its CONCLUSION may still be
+  right, on grounds it never mentions. After conceding, a rule it drafts skews OVER-STRICT: rigour on the
+  page, too costly to obey, and a rule too expensive to follow gets routed around exactly like a gameable
+  one. → separate the CONCLUSION from the ARGUMENT and verify each independently; read a
+  conceded-then-drafted rule for RIGIDITY, not just for loopholes; expect to author the decomposed middle
+  yourself. Its value under pressure is refuting premises by measurement, not landing the design.
 
 ## C. Reasoning profile & model selection
 
