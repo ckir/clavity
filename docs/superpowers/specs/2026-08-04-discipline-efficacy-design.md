@@ -247,7 +247,8 @@ retention rule in the plan** — a line cap, an age cap, or an explicit "unbound
 acceptable". Do not leave it unstated.
 
 Two identifiers the spec has not sourced, both needed before implementation: **where `session_id` comes
-from** (the same STEP 0 unknown as the transcript path — `CLAUDE_SESSION_ID` is a candidate, unverified),
+from** — **NOT the environment**: `CLAUDE_SESSION_ID` is measured `UNSET` in hooks, so `session_id` must be
+read from the payload, which carries it (STEP 0 item 1),
 and **what `v` is set to for this first shape**, plus what a consumer does with a version it does not
 recognise (recommended: count it separately rather than parsing it, mirroring the `null` discipline).
 
@@ -328,7 +329,7 @@ and it is recorded here rather than quietly folded.
 
 | item | status | result |
 |---|---|---|
-| 1 — `SessionEnd` payload carries `transcript_path`? | **INSTRUMENTED, pending** | cannot be read from source; needs a real firing |
+| 1 — how does the hook LOCATE the transcript? | **HALF RESOLVED / pending** | ✅ the env fallback is **DEAD** — `CLAUDE_SESSION_ID` measured `UNSET`. ⏳ so everything rests on `SessionEnd`'s payload carrying `transcript_path` (2 of 2 other events do) |
 | 2 — does `SessionEnd` fire on every exit path? | **INSTRUMENTED, pending** | same instrument, needs several exit kinds |
 | 3 — does injected hook context reach the transcript? | ✅ resolved earlier | yes |
 | 4 — can the transcript be read inside the budget? | ✅ **RESOLVED** | yes, with the right strategy — **1.65 s** on 188 MB |
@@ -410,7 +411,31 @@ are meaningful rather than vacuous. **No serialisation strategy is needed.**
 unparseable lines: its two fragments happened to concatenate into valid JSON, so the corruption check was
 never exercised. A control that fails for the wrong reason is not a control.)*
 
-### Items 1 and 2 — INSTRUMENTED, pending a real firing
+### Item 1 — HALF RESOLVED, and the half that resolved was the fallback. It is DEAD.
+
+Measured 2026-08-04 by a temporary `PostToolUse` probe (since removed):
+
+- **`CLAUDE_SESSION_ID` is `UNSET` in the hook environment.** The spec previously called this "unverified —
+  observed only as a default parameter in third-party code, never measured". It is now measured, and it is
+  absent. **The "reconstructible from session id plus cwd" fallback is therefore not weak, it is
+  unavailable.** (`CLAUDE_PROJECT_DIR` *is* set, but a project dir cannot pick one file out of 112.)
+- **The payload carries `transcript_path` directly.** Observed keys: `cwd`, `duration_ms`, `effort`,
+  `hook_event_name`, `permission_mode`, `prompt_id`, `session_id`, `tool_input`, `tool_name`,
+  `tool_response`, `tool_use_id`, **`transcript_path`**. That is two events out of two observed —
+  `PreCompact` carried it too.
+
+**Consequence: the design now rests on a single point of failure.** With no env fallback, everything
+depends on `SessionEnd`'s payload carrying `transcript_path`. Two of two observed events carry it, so this
+is *likely* — but it is the one unmeasured fact that can still invalidate the recorder outright, and it
+must not be assumed. If `SessionEnd` omits it, the hook cannot locate the transcript and the design needs a
+different home for the read.
+
+**Operational fact worth recording: hooks ARE hot-reloaded from `settings.local.json` mid-session.**
+Verified by registering a probe and firing it without restarting. This matters for the pending measurement
+below — the `SessionEnd` probe registered during this session *will* fire at this session's end, so an
+empty probe file is genuine evidence that `SessionEnd` did not fire, not an artifact of late registration.
+
+### Items 1 (remaining half) and 2 — INSTRUMENTED, pending a real firing
 
 Neither can be answered by reading source. A local, gitignored `SessionEnd` hook
 (`.clavity/scratch/discipline-efficacy/probe12-sessionend.sh`, registered in `.claude/settings.local.json`)
@@ -422,9 +447,10 @@ a bad payload is evidence rather than a lost line. **Item 2 needs several exit k
 **The still-live half of item 1 is not "does the payload have a field" — it is HOW THE HOOK FINDS THE FILE
 AT ALL.** Measured: the task-directory id observed at runtime is NOT the transcript filename, and this
 project's transcript directory holds **112 `.jsonl` files** with no observed way to pick the current one.
-So the "reconstructible from session id plus cwd" fallback collapses entirely unless `transcript_path` is
-in the payload or `CLAUDE_SESSION_ID` is genuinely set in the hook environment. **If both are absent the
-recorder cannot be built as designed**, and that is the one remaining result that can still invalidate it.
+So the "reconstructible from session id plus cwd" fallback needed `CLAUDE_SESSION_ID` — **which is now
+measured `UNSET` in the hook environment, so that fallback is gone.** Everything rests on `SessionEnd`'s
+payload carrying `transcript_path`. **If it does not, the recorder cannot be built as designed**, and that
+is the one remaining result that can still invalidate it.
 
 ### 🔴 TEXT-COUNTING IS INVALID — and structural counting is EXACT. Both measured.
 
