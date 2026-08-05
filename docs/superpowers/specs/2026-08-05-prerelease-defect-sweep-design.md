@@ -46,6 +46,11 @@ A user with `.no-agy` at their repository root who launches Claude in `repo/src`
 is the same bug fixed in the recorder at `b5d6742`; these were left because they emit a message rather
 than write a file, which is a different severity, not a different bug.
 
+**That "only a message" premise is TRUE OF SIXTEEN AND FALSE OF THE SEVENTEENTH.**
+`agy-drive-session-reset.sh` deletes files — see the severity inversion under U4. It is stated here, at the
+first place a reader meets the premise, because leaving the correction only at U4 lets anyone reading top
+to bottom act on a claim this document itself refutes ninety lines later.
+
 **Each hook has TWO `.no-agy` checks, not one.** This was missed on the first pass and is the single most
 important structural fact for the plan:
 
@@ -204,9 +209,16 @@ Dropping `$cwd` would silently narrow today's behaviour while claiming to widen 
 
 **Deliberately NOT copied from that template: `[ -e "$root/.git" ] || exit 0`.** That guard exists because
 the recorder WRITES A FILE into the user's tree and a non-repo directory has no project to attribute a row
-to. These nine only emit a message, so a non-git directory is harmless. Copying it would carry a guard
-whose reason does not apply — and would silence nine hooks in every non-repo directory, a behaviour change
-nobody asked for.
+to. Copying it would carry a guard whose reason does not apply — and would silence nine hooks in every
+non-repo directory, a behaviour change nobody asked for.
+
+**The original wording of this paragraph justified that on "these nine only emit a message", which is
+false — `agy-drive-session-reset.sh` deletes files. The conclusion survives the corrected premise, but only
+by a different argument, and it is worth writing down rather than inheriting.** The `.git` guard exists to
+stop the recorder WRITING INTO THE USER'S TREE at a path it cannot attribute. `agy-drive-session-reset.sh`
+deletes from `${CLAVITY_GOLDEN_HEADER:-$HOME/.clavity}` (`:16`) — a fixed location in the user's profile,
+never a path derived from the repo root — so a non-git directory creates no unattributable write for it
+either. The guard stays out for all nine; the reason for the ninth is not the reason for the other eight.
 
 **Also NOT uniform across the 17: the exit contract.** The hooks span three lifecycle events with different
 semantics, and the shared edit must preserve each one:
@@ -467,7 +479,7 @@ leaving a real mutation unreported — **a false negative being the fatal class 
 | item | why |
 |---|---|
 | Adding `.no-agy` to the consult guards | Would create a self-suppression exploit — see U3b |
-| `[ -e "$root/.git" ] \|\| exit 0` in the nine reminders | The guard's reason does not apply; would silence them in every non-repo directory |
+| `[ -e "$root/.git" ] \|\| exit 0` in the nine hooks | The guard's reason does not apply; would silence them in every non-repo directory. **Not** because "they only emit a message" — that is false of `agy-drive-session-reset.sh`; see §U1 for the corrected argument |
 | `path-scan.iss` / `ClassicClavityOnPath` unification | Intentional duplication, roster correctly scoped, installer refactor before a release is unjustified risk |
 | The ECC hook tax | Does not ship in this artifact; owner config decision |
 | ME1 async attribution, the MCP signal bus, `clavity ring` | Already documented as out of scope in `lib.sh:17-21`; unchanged by this work |
