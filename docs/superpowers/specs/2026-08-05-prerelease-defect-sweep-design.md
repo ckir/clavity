@@ -138,6 +138,23 @@ too — recovery without normalization reproduces this bug in eight more files.
 Per the standing owner ruling that pre-existing defects are in scope, this is in scope: it is reachable, it
 ships, and U1 is already editing that line.
 
+**🔴 HALF OF THESE LINE NUMBERS STOP BEING TRUE THE MOMENT THE WORK STARTS. The plan must not carry them
+as bare line numbers.** Measured across the seven dual-check hooks: in every one, the DEGRADED check
+precedes the NORMAL-PATH check (`:27`/`:37`, `:18`/`:29`, `:32`/`:46`, `:40`/`:48`, `:49`/`:57`,
+`:50`/`:61`, `:29`+`:33`/`:128`). Option C inserts roughly a dozen lines at the degraded site, so editing
+it first pushes the normal-path citation down by that delta — in `agy-after-reminder.sh`, `:29` becomes
+about `:42`, and every later citation in that file moves with it.
+
+Two ways to be safe, and the plan should say which it uses:
+
+1. **Anchor on surrounding text, not on line numbers** — quote the block being replaced. This is the
+   robust option and the one to prefer.
+2. **Edit bottom-to-top within each file** — normal-path site first, degraded site second. Everything
+   above an edit keeps its line number, so all remaining citations stay valid.
+
+The single-site files are unaffected: `agy-anomaly-model-notice.sh` (`:26`), `agy-drive-session-reset.sh`
+(`:9`), and U2's and U3's targets each have exactly one edit site.
+
 **Provenance note, because it bears on trust.** These line numbers match the ORIGINAL anomaly capture
 exactly. During this spec's self-audit I "re-measured" them twice and got two different wrong answers —
 first matching `.no-agy` in COMMENT prose, then matching the DEGRADED-branch check — and briefly recorded
@@ -306,7 +323,9 @@ find "${DIR}" -maxdepth 1 -name '.active-drive-session-*' -type f -mtime +7 -del
 A `.no-agy` bypass in the other sixteen produces an unwanted *message*. A bypass here produces an unwanted
 *deletion* in a user who has explicitly opted out. It is therefore the one file in the set whose defect is
 in the same severity class as the recorder's — the bug that was already judged worth fixing at `b5d6742` —
-and it should be sequenced FIRST within U1, not last.
+and it should be sequenced FIRST within U1, not last — **with its suite written BEFORE that edit**, which
+is why §4 splits U4 in two. Writing the suite against current behaviour first is what makes the U1 edit to
+this particular hook observable rather than hopeful.
 
 **Test shape differs from the other eight, so "the eight existing ones supply the pattern" is only half
 true.** Those suites assert on emitted stdout JSON or stderr text. This hook's observable behaviour is
@@ -412,7 +431,21 @@ ME1 suite lives there).
 
 ## 4. Sequence, and what forces it
 
-**(U1 + U2) → (U3 + U4) → commit → capstone with ME1 seated → full gates → release.**
+**U4's suite (drive-session-reset only) → U1 + U2 → U3 → the rest of U4 → commit → capstone with ME1
+seated → full gates → release.**
+
+**🔴 THE ORIGINAL SEQUENCE CONTRADICTED ITSELF, and the contradiction was introduced by this document's own
+round-1 fold.** It read `(U1 + U2) → (U3 + U4)`, while U4 simultaneously argued that
+`agy-drive-session-reset.sh` is the highest-severity file of the seventeen and *"should be sequenced FIRST
+within U1"*. Both cannot hold: the file would be **edited first and tested last**. That means the one hook
+in the set whose bypass causes a **deletion** rather than a message would be modified with no automated
+safety net, and its suite — which does not exist yet — would arrive after every other hook had already
+changed.
+
+Resolved by splitting U4: **write the `agy-drive-session-reset.sh` suite against the CURRENT behaviour
+first**, confirm it passes, then make the U1 edit to that hook and watch the new subdirectory case go from
+red to green. That is the ordinary test-first shape, it costs nothing, and it is the only part of this work
+where a mistake deletes a file rather than printing a line.
 
 The peer initially argued the reverse — review ME1 first, because it would "overwrite" U1's edits in the
 same directory. **Measured and refuted:** the six `agy-consult-guard-*` files contain **zero** occurrences
