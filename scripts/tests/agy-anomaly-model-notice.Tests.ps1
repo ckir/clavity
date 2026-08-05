@@ -151,6 +151,42 @@ Describe 'agy-anomaly-model-notice.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
+        # The suite's own Payload helper forward-slashes cwd, which is the repo-wide convention and is
+        # exactly why this bug survived: a POSIX-shaped path cannot exercise the Windows walk. These two
+        # tests hand-build the RAW backslashed shape the real payload has.
+        $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
+        try {
+            $sub = Join-Path $r 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
+
+            $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup"}'
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ HOME = $h }
+
+            $x.ExitCode | Should -Be 0
+            $x.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'DOES fire from that same subdirectory when .no-agy is absent (positive control)' {
+        # THIS TEST IS THE REAL ORACLE OF THE PAIR, and that is not a general principle - it is a measured
+        # fact about THIS hook. MEASURED 2026-08-05: with the backslash normalization removed, the walk
+        # never leaves the subdirectory, so the hook cannot find the anomalies file and exits silently -
+        # and the silence test above passes for entirely the wrong reason. Only this control goes red.
+        # Never delete it, and never read a green silence test here as evidence the walk works.
+        $r = New-RepoWith (New-Entries 1); $h = New-CleanHome
+        try {
+            $sub = Join-Path $r 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+
+            $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup"}'
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ HOME = $h }
+
+            (Get-Ctx $x) | Should -Match 'AGY-ANOMALIES/1' -Because 'without the opt-out it must still fire - otherwise the silence test proves nothing'
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'exits 0 when jq is absent' {
         $h = New-CleanHome
         try {
