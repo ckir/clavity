@@ -33,7 +33,20 @@ Expected: every line ends `LF`. Any `CRLF` or `MIXED-BROKEN` must be fixed befor
 
 **4. Do not trust a bash `grep` that returns zero.** Three false zeros were recorded while writing this plan — text that was plainly present. If a search returns nothing and you expected something, open the file.
 
-**5. Do not hand-verify backslash behaviour in a shell.** The agent harness eats backslashes before bash sees them; two attempts to measure normalization by hand produced contaminated results. **Copy the recorder's line verbatim and let the Pester tests prove it.**
+**5. `$Cwd -replace '\\', '\\'` is CORRECT. Do not "fix" it.** It looks wrong and a reviewer already
+flagged it as a defect. MEASURED in PowerShell:
+
+```
+'C:\Users\user\repo\src' -replace '\\','\\'    ->  C:\\Users\\user\\repo\\src   (valid JSON, round-trips)
+'C:\Users\user\repo\src' -replace '\\','\\\\'  ->  C:\\\\Users\\\\...           (parses to C:\\Users\\...)
+```
+
+The pattern `'\\'` is a regex matching one backslash; the replacement `'\\'` is two literal characters,
+because .NET replacement strings treat `$`, not `\`, as the escape. So it doubles them, which is exactly
+what a JSON string needs. **The suggested "fix" to `'\\\\'` would quadruple them and introduce the bug it
+claimed to remove.** `$Cwd.Replace('\','\\')` is equivalent and may read more clearly; either is fine.
+
+**6. Do not hand-verify backslash behaviour in a shell.** The agent harness eats backslashes before bash sees them; two attempts to measure normalization by hand produced contaminated results. **Copy the recorder's line verbatim and let the Pester tests prove it.**
 
 ---
 
@@ -145,10 +158,13 @@ This hook is the highest-severity file in the set: it **deletes files** rather t
 # than emitting a message: it clears the once-per-session driver-guidance flag. A .no-agy bypass here
 # deletes a file belonging to a user who opted out - and because the session key defaults to 'default'
 # (hook :17), it can be a DIFFERENT, concurrent, opted-in session's flag.
-BeforeAll {
+Describe 'agy-drive-session-reset.sh' {
+  BeforeAll {
     . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
-    $script:Hook = Join-Path $PSScriptRoot '..\..\clavity-classic\plugin\hooks\agy-drive-session-reset.sh' |
-        Resolve-Path | Select-Object -ExpandProperty Path
+    # House style, matching every sibling suite: BeforeAll lives INSIDE Describe, the hook binds to
+    # $script:Hook, and the repo root is derived with Split-Path rather than a relative Join-Path.
+    $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $script:Hook = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/agy-drive-session-reset.sh'
 
     # Build the payload WITHOUT the repo-wide `-replace '\\','/'` convention. Every other suite
     # forward-slashes cwd, which is exactly why the Windows walk bug survived: a POSIX-shaped path
@@ -164,9 +180,7 @@ BeforeAll {
         New-Item -ItemType Directory -Path $d -Force | Out-Null
         return $d
     }
-}
-
-Describe 'agy-drive-session-reset.sh' {
+  }
 
     It 'CLEARS the session flag on source=startup (positive control)' {
         $repo = New-TempRepo
@@ -427,6 +441,7 @@ Append inside the existing top-level `Describe` block in `scripts/tests/agy-anom
         $sub  = Join-Path $repo 'src'
         New-Item -ItemType Directory -Path $sub -Force | Out-Null
         New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $repo '.clavity') -Force | Out-Null
         Set-Content -Path (Join-Path $repo '.clavity\local-anomalies.md') -Value '- [defect] x * a:1 * 2026-01-01 * task=t' -Force
 
         # Raw, backslashed payload - deliberately NOT forward-slashed. The repo-wide test convention
@@ -586,26 +601,25 @@ pwsh -c "Invoke-Pester scripts/tests/agy-after-reminder.Tests.ps1 -Output Detail
 
 Do the normal-path site before the degraded site. Everything above an edit keeps its position, so working bottom-to-top keeps the second BEFORE block matching.
 
+**🔴 REPLACE ONLY THE KILL-SWITCH BLOCK. Leave every extraction line above it alone.** Each hook extracts
+different fields — `fp` here, `skill` in `agy-seam-inject.sh`, nothing extra in the anomaly hooks — and
+those lines are NOT part of this edit. An earlier draft of this plan pasted `agy-after-reminder.sh`'s `fp`
+lines into the shared block and told Tasks 6–10 to apply it verbatim, which would have inserted
+`[ -z "$fp" ] && exit 0` into five hooks that have no `file_path` and **silenced all five on the normal
+path.** Caught by the panel. The block below is hook-agnostic; keep it that way.
+
 **Normal-path site, BEFORE (verbatim):**
 
 ```bash
-fp=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null)
-cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
-[ -z "$fp" ] && exit 0
-
 # Opt-out kill-switch (mirrors agy-seam-inject.sh).
 if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
   exit 0
 fi
 ```
 
-**AFTER:**
+**AFTER — this exact block is reused by Tasks 6–10:**
 
 ```bash
-fp=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null)
-cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
-[ -z "$fp" ] && exit 0
-
 cwd_path=${cwd//\\\\//}
 [ -z "$cwd_path" ] && cwd_path="."
 
@@ -687,7 +701,50 @@ These five have the **same shape** as Task 5: a degraded branch whose kill-switc
 `  if [ -f "./.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then exit 0; fi`, and a normal-path block
 `if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then` / `  exit 0` / `fi`.
 
-**Apply Task 5's two AFTER blocks verbatim to each**, with the per-hook differences tabulated below. Work bottom-to-top in each file (normal-path site first). Each task = edit dotnet → `cp` to classic → Checks A, B, C → mutation-prove → commit.
+**Apply Task 5's two AFTER blocks verbatim to each** — they are hook-agnostic, and the BEFORE they match
+is **only the kill-switch block**, never the extraction lines above it. Work bottom-to-top in each file
+(normal-path site first). Each task = edit dotnet → `cp` to classic → Checks A, B, C → mutation-prove →
+commit.
+
+**🔴 Confirm the BEFORE you are replacing, per hook. Do NOT carry any neighbouring line into the edit.**
+These are the normal-path kill-switch blocks as they exist now — the extraction lines shown are context to
+help you locate the block, and **must be left exactly as they are**:
+
+```bash
+# agy-anomaly-capture-reminder.sh and agy-anomaly-dispatch-reminder.sh  (identical shape)
+cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)   <-- CONTEXT, do not touch
+[ -z "$cwd" ] && cwd="."                                        <-- CONTEXT, do not touch
+
+if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then   <-- replace from here
+  exit 0
+fi                                                                  <-- to here
+
+# agy-seam-inject.sh
+skill=$(printf '%s' "$input" | jq -r '.tool_input.skill // ""' 2>/dev/null)   <-- CONTEXT
+cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)                 <-- CONTEXT
+
+# Opt-out kill-switch (mirrors agy-after-reminder.sh): .no-agy in the session cwd or ~/.claude.
+if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then   <-- replace from here
+  exit 0
+fi                                                                  <-- to here
+
+# agy-anomaly-reminder.sh
+cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)   <-- CONTEXT, note: no `[ -z ]` line here
+
+# Opt-out kill-switch (mirrors agy-after-reminder.sh): silent, no notice.
+if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then   <-- replace from here
+  exit 0
+fi                                                                  <-- to here
+
+# agy-test-audit-reminder.sh
+cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)   <-- CONTEXT
+[ -z "$cwd" ] && cwd="."                                        <-- CONTEXT
+
+# Opt-out kill-switch (mirrors agy-after-reminder.sh).
+if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then   <-- replace from here
+  exit 0
+fi                                                                  <-- to here
+```
 
 | Task | Hook | Event | Degraded exit | Test suite | Positive-control assertion |
 |---|---|---|---|---|---|
@@ -776,7 +833,34 @@ defect in an earlier draft of this plan, caught by diffing the pasted text again
 
 Three candidates now, so the reported path must be chosen from three — the old two-way fallback would name `$cwd/.no-agy`, a file that does not exist, whenever the root was the reason.
 
-Insert the canonical preamble (recover / normalize / global / walk) above this block, as in Task 5.
+**🔴 Insert only the NORMALIZATION and the WALK above this block — NOT the canonical preamble's
+`[ -f "$HOME/.claude/.no-agy" ] && exit 0` line.** This hook is the one exception, and inserting the full
+preamble here would be a serious regression. `agy-liveness-check.sh:125-127` says so in its own words:
+
+> *"`.no-agy` kill-switch: announce LOUDLY (naming the path) then STOP. NOT a silent early-exit (that
+> reintroduces the silent-kill Decision 3 forbids)"*
+
+A silent `exit 0` on the global opt-out would kill that announce **and** skip the ownership report at
+`:133`, whose comment states the constraint plainly: *"ownership is reported EVEN under the kill-switch. A
+gate the policed party can switch off is not a gate."* The global opt-out must stay inside the `if` below,
+where it is announced and exits 2. Insert exactly this, and nothing more:
+
+```bash
+cwd_path=${cwd//\\\\//}
+[ -z "$cwd_path" ] && cwd_path="."
+root=$cwd_path
+_d=$cwd_path
+while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+  if [ -e "$_d/.git" ]; then root=$_d; break; fi
+  _p=${_d%/*}
+  [ "$_p" = "$_d" ] && break
+  [ -z "$_p" ] && break
+  _d=$_p
+done
+```
+
+(An earlier draft of this plan said "insert the canonical preamble ... as in Task 5" here. The panel caught
+it. This is why the plan states each hook's exit contract instead of sharing one.)
 
 - [ ] **Step 4: Degraded site — BEFORE (verbatim)**
 
