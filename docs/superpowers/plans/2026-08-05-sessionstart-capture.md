@@ -566,6 +566,29 @@ git commit -m "feat(scripts): the report reads v:3 rows instead of discarding th
 
 ## Task 5: Report — deduplicate by session_id
 
+> ### 🔴 CORRECTED DURING EXECUTION 2026-08-05 — the code below is SUPERSEDED
+>
+> An implementer applied this task verbatim and **it broke 5 pinned tests**, then correctly reverted
+> rather than editing them. Three defects, all confirmed by measurement:
+>
+> 1. **The collapse must be scoped to `v:3` only.** A `v:1` row carries its delivery counts INLINE, so
+>    collapsing two of them silently DISCARDS the second row's numbers. `v:1`/`v:2` were `SessionEnd`
+>    hooks with strictly one row per session; only `v:3` multi-fires. Applying event-stream reconstruction
+>    to summary records is a category error, not a harmless no-op. The five `v:1` fixtures that share a
+>    default `session_id` (`Rec`'s `'s'`, `NullRec`'s `'n'`) then pass UNCHANGED, which is the point.
+>    **Owner ruling 2026-08-05, after an agy consult that reached the same conclusion independently.**
+>    Guard: `if ($v -ne $SCHEMA_CAPTURE_3 -or [string]::IsNullOrWhiteSpace($sid))`.
+> 2. **Every row must leave `Merge-SessionRows` carrying `first_seen`/`last_seen`/`fire_count`**, collapsed
+>    or not. The sort immediately after reads `last_seen` off every row, and under `Set-StrictMode` +
+>    `$ErrorActionPreference = 'Stop'` (`:37-38`) one row missing it **kills the whole report**. MEASURED:
+>    the hook writes `"session_id":""` when the payload carries none, so an uncollapsible row is reachable
+>    from the real producer.
+> 3. **The `path_disagreement` branch must not read `$last.transcript_path`** — the newest row may carry no
+>    path at all, which is the same StrictMode kill. Take the last non-empty entry of the ordered `$paths`.
+>
+> The `Should -Match 'LONG'` assertion in Step 1 was also removed: it needs a section that prints session
+> ids, which does not exist until Task 7.
+
 Firing on all four sources means one session emits `1 + clears + compactions` rows. A `compact` fire reuses the session's `session_id` (measured), so dedup is load-bearing rather than a no-op.
 
 **Files:**
@@ -753,6 +776,24 @@ git commit -m "perf(scripts): scan each transcript once, after dedup and slicing
 ---
 
 ## Task 7: Report — the provisional bucket and the three-way partition
+
+> ### 🔴 FOUND DURING EXECUTION 2026-08-05 — this task will break THREE EARLIER TESTS unless you fix the fixture first
+>
+> `New-ScanTranscript` writes its file at test time, so **its mtime is always fresh**. The freshness check
+> this task adds classifies anything touched in the last 15 minutes as `provisional` and excludes it from
+> the totals. So every existing test that scans a `New-ScanTranscript` fixture and asserts
+> `reached the model, stamped : 2` will start reporting `0`:
+> `'SCANS a v2 capture row and produces the counts the hook no longer computes'`,
+> `'COUNTS a v:3 row instead of routing it to unsupported'` (Task 4), and
+> `'collapses many rows of ONE session into one record'` (Task 5).
+>
+> **Fix the helper, not the three tests:** have `New-ScanTranscript` stamp an OLD `LastWriteTimeUtc` (e.g.
+> `-3h`) before returning. A fixture that means "a finished session" must not look like one written a
+> second ago. The two tests THIS task adds set the mtime explicitly in both directions, so they are
+> unaffected and still prove both branches.
+>
+> **Watch it fail first.** Add the provisional logic, run, and confirm those three tests go red for exactly
+> this reason before touching the helper — otherwise you cannot tell this fix from a coincidence.
 
 Under `SessionEnd` a row existed only after its session finished, so every scanned transcript was complete. Under `SessionStart` the row lands at turn zero, so running the report while another session is live scans a transcript still being written — and that session reports `fired: 0` under `scanned cleanly`, indistinguishable from a session where the discipline genuinely never reached.
 
