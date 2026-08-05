@@ -52,7 +52,7 @@ directly.
 | `docs-audit.ps1` | Stage-1 docs-rationalize audit: read-only `claude -p` doc-vs-code accuracy audit over `docs/user-facing-docs.txt`, emitting a per-doc punch-list + append-only log. No doc edits, no commit. | `just docs-audit` |
 | `docs-audit-prompt.md` | The prompt fed to the per-doc `claude -p` auditor call inside `docs-audit.ps1` | input to `docs-audit.ps1`, not executable |
 | `docs-audit-lib.ps1` | Shared, parameter-less docs-audit primitives (doc-list parsing, in-scope resolution) | dot-sourced by `docs-audit.ps1`; no recipe |
-| `discipline-reaching-report.ps1` | Read-only reader for `.clavity/discipline-reaching.jsonl`: reports whether the AGY-ANOMALIES dispatch relay is reaching a driver. Never folds a `null` count into a zero, never prints a ratio, and reports sessions RECORDED (not run) — each refusal blocks a measured false conclusion | `just discipline-report [--Last N]` |
+| `discipline-reaching-report.ps1` | Read-only reader for `.clavity/discipline-reaching.jsonl`: reports whether the AGY-ANOMALIES dispatch relay is reaching a driver. Never folds a `null` count into a zero, never prints a ratio, reports sessions RECORDED (distinct sessions, not runs), and quarantines still-running sessions in a `PROVISIONAL` bucket — each refusal blocks a measured false conclusion | `just discipline-report [--Last N]` |
 
 ## Subdirectories
 

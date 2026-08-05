@@ -97,6 +97,8 @@ measured **279,58s**. At 69,1s the new suite is now the SECOND-largest in the fa
 `check-seed-artifacts-synced`; each of its cases spawns a bash hook against a synthetic transcript, so the
 cost is real rather than cold-start. It is still fast-half by measurement, but the fast half is now the
 first place to look if that recipe starts straddling a cap again.
+**↳ SUPERSEDED as of 2026-08-05: that suite is now 15,2s and FIFTH, because `6b87f1f` moved the transcript
+scan out of the hook. The paragraph above is kept as the record of what was true when it was written.**
 
 **2026-08-04 (last) — the reaching REPORT (the consumer).** One NEW fast suite
 (`discipline-reaching-report`, 11 tests, 8,1s - it invokes a PowerShell script rather than spawning bash
@@ -108,6 +110,28 @@ hooks, which is why it is an order of magnitude cheaper than the recorder suite 
 measured **346,4s**. Added because `scripts/README.md` is an inventory index
 (`check-user-facing-docs.ps1:62` names it as one) and nothing verified it was complete — it drifted the
 same day, when a new script was added and the index was not updated.
+
+**2026-08-05 — the recorder moves to SessionStart.** NO new suite; the fast half stays **23 suites**. Three
+existing suites grew: `discipline-reaching-report` 11 → 22, `plugin-hooks-registration` 18 → 22, and
+`agy-discipline-reaching` 13 → 16. Fast went 279 recorded tests to **294 tests**, measured **520,16s then
+292,09s**.
+
+🔴 **THAT 1,78x SPREAD IS THE MOST USEFUL NUMBER IN THIS ENTRY, and it is on IDENTICAL code** — same
+commit, same machine, back-to-back, 294/294 green both times. It is hard evidence for the rule this file
+already states: day-to-day variance here exceeds any margin a time-based partition rule could police. The
+first sample was taken immediately after a long editing session and the second was not; that is a
+plausible cause (cold cache, or an antivirus pass over freshly-written files) and it is NOT measured, so
+do not repeat it as fact. **The operational lesson: one sample of this recipe is not a measurement. Two
+disagreeing samples are.** A single slow reading is not evidence of a regression - it very nearly sent a
+reader hunting one here.
+
+🔴 **`agy-discipline-reaching`'s ROW HAD BEEN WRONG IN BOTH COLUMNS AND NOTHING CAUGHT IT.** The count said
+16 while the suite really held 13, and the time said 69,1s while it really ran in ~15s. The figures were
+right when written (`d2b8649`); then `6b87f1f` and `872498f` each changed the suite without re-measuring.
+The count is only correct today by coincidence - this change added exactly the three tests the row had
+been over-claiming. **A file whose job is to be the measured oracle carried a wrong number for two
+commits, and the spec and plan for this epic both inherited it.** Nothing enforces this table; re-measuring
+after touching a suite is a discipline, not a gate.
 
 Two things that pass are worth recording, because both are the kind of number this file exists to stop
 people guessing at:
@@ -149,29 +173,42 @@ measured separately (2026-08-02) in isolation, as the sole command on a quiet ma
 abort-drain.Tests.ps1                           261,3s   13 tests
 agy-consult-guard.Tests.ps1                      78,4s    8 tests   <- SLOW, moved 2026-08-02; count 2026-08-03
 accept-drain.Tests.ps1                           51,2s   10 tests
-agy-after-reminder.Tests.ps1                      8,8s   10 tests   <- count 2026-08-03, time older
+agy-after-reminder.Tests.ps1                      9,7s   10 tests   <- FAST, re-measured 2026-08-05
 agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
-agy-anomaly-capture-reminder.Tests.ps1            9,9s   10 tests   <- FAST, added 2026-08-04
-agy-anomaly-dispatch-reminder.Tests.ps1          16,5s   18 tests   <- FAST, added 2026-08-04
-agy-anomaly-model-notice.Tests.ps1               16,9s    9 tests   <- FAST, added 2026-08-04; +1 later same day
-agy-anomaly-contract-stamp.Tests.ps1             11,6s   14 tests   <- FAST, added 2026-08-04
-agy-discipline-reaching.Tests.ps1                69,1s   16 tests   <- FAST, added 2026-08-04
-discipline-reaching-report.Tests.ps1              8,1s   11 tests   <- FAST, added 2026-08-04
-scripts-readme-inventory.Tests.ps1                4,2s    3 tests   <- FAST, added 2026-08-04
-agy-curate-nudge.Tests.ps1                       29,2s   11 tests   <- FAST, added 2026-08-03
+agy-anomaly-capture-reminder.Tests.ps1            8,4s   10 tests   <- FAST, re-measured 2026-08-05
+agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   18 tests   <- FAST, re-measured 2026-08-05
+agy-anomaly-model-notice.Tests.ps1               16,7s    9 tests   <- FAST, re-measured 2026-08-05
+agy-anomaly-contract-stamp.Tests.ps1              5,5s   14 tests   <- FAST, re-measured 2026-08-05
+agy-discipline-reaching.Tests.ps1                15,2s   16 tests   <- FAST. The row said 69,1s and it had
+                                                                      been WRONG since 6b87f1f split capture
+                                                                      from analysis: that figure was measured
+                                                                      while the hook still scanned the
+                                                                      transcript inline. Its COUNT was stale
+                                                                      too - 13 real against 16 recorded -
+                                                                      until this change happened to land on
+                                                                      16. Two commits changed the suite and
+                                                                      neither re-measured. Re-measured
+                                                                      2026-08-05.
+discipline-reaching-report.Tests.ps1              6,2s   22 tests   <- FAST, re-measured 2026-08-05 (was
+                                                                      8,1s / 11 tests). It invokes a
+                                                                      PowerShell script rather than spawning
+                                                                      bash hooks, so it DOUBLED its test
+                                                                      count and got cheaper.
+scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
+agy-curate-nudge.Tests.ps1                       17,1s   11 tests   <- FAST, re-measured 2026-08-05
 agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
                                                                       table entirely until 2026-08-03
 agy-liveness-check.Tests.ps1                     40,9s   27 tests
 agy-seam-inject.Tests.ps1                        18,0s   19 tests   <- count 2026-08-03, time older
 agy-test-audit-reminder.Tests.ps1                32,5s   14 tests   <- count 2026-08-03, time older
-BashHookHelpers.Tests.ps1                         1,5s    4 tests
-check-agy-discipline-skills.Tests.ps1             6,9s   14 tests
+BashHookHelpers.Tests.ps1                         1,7s    4 tests   <- FAST, re-measured 2026-08-05
+check-agy-discipline-skills.Tests.ps1             6,6s   14 tests   <- FAST, re-measured 2026-08-05
 check-core-integrity.Tests.ps1                   24,1s    7 tests
-check-growth-budget.Tests.ps1                    14,1s    7 tests
-check-member-docs.Tests.ps1                       3,0s   35 tests
+check-growth-budget.Tests.ps1                    15,3s    7 tests   <- FAST, re-measured 2026-08-05
+check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
 check-plugin-namespace.Tests.ps1                 25,8s    8 tests
-check-roster.Tests.ps1                            5,3s    5 tests
-check-seed-artifacts-synced.Tests.ps1            77,2s   10 tests   <- re-measured 2026-08-04. The row
+check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
+check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had
                                                                       SEVEN tests before this change even
                                                                       touched it, so this figure had
@@ -181,15 +218,22 @@ check-seed-artifacts-synced.Tests.ps1            77,2s   10 tests   <- re-measur
                                                                       each of its tests invokes the whole
                                                                       gate - and the first candidate if
                                                                       that half ever needs trimming.
-check-seed-budget.Tests.ps1                       8,2s    4 tests
-check-user-facing-docs.Tests.ps1                  3,3s   15 tests
+check-seed-budget.Tests.ps1                       8,4s    4 tests   <- FAST, re-measured 2026-08-05
+check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-measured 2026-08-05
 compute-release.Tests.ps1                        22,6s    7 tests
 docs-audit.Tests.ps1                            120,6s   80 tests
 drain-knowledge.Tests.ps1                        38,2s    7 tests
-drain-lib.Tests.ps1                               5,2s   20 tests
-generate-scoped-manifest.Tests.ps1                0,7s    2 tests
-plugin-hooks-registration.Tests.ps1               0,5s   18 tests   <- FAST, added 2026-08-04
-plugin-hooks-payload.Tests.ps1                    2,2s    2 tests   <- FAST, added 2026-08-03
-register-plugin.Tests.ps1                        18,6s   18 tests
-release-lib.Tests.ps1                            14,3s   23 tests
+drain-lib.Tests.ps1                               3,4s   20 tests   <- FAST, re-measured 2026-08-05
+generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
+plugin-hooks-registration.Tests.ps1               0,6s   22 tests   <- FAST, re-measured 2026-08-05 (was
+                                                                      0,5s / 18 tests; +4 for the recorder's
+                                                                      SessionStart registration, which this
+                                                                      suite had never covered)
+plugin-hooks-payload.Tests.ps1                    3,4s    2 tests   <- FAST, re-measured 2026-08-05
+register-plugin.Tests.ps1                         6,6s   18 tests   <- FAST, re-measured 2026-08-05
+release-lib.Tests.ps1                             5,5s   23 tests   <- FAST, re-measured 2026-08-05
 ```
+
+Every FAST row above was re-measured in ONE sweep on 2026-08-05 (the 292,09s sample below). The SLOW rows
+were not touched and carry their older figures. Test COUNTS were all correct except the three suites this
+change edited — so what decays here is TIMES, which is exactly why the section header calls them indicative.

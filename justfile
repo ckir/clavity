@@ -87,7 +87,7 @@ accept-drain *args:
 docs-audit *args:
     pwsh -File scripts/docs-audit.ps1 {{args}}
 
-# Reads the SessionEnd recorder's rows (ROADMAP section 0 step 1a). Read-only.
+# Reads the SessionStart recorder's rows (ROADMAP section 0 step 1a). Read-only.
 # `just discipline-report --Last 20` bounds the window. NOTE: just shows the LAST comment line as the
 # description in `just --list`, so keep the one-liner below directly above the recipe.
 # Is the AGY-ANOMALIES dispatch relay actually reaching a driver?

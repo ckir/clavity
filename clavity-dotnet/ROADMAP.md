@@ -223,7 +223,7 @@ does not fire is "testing a known null wire", and independently re-measured the 
    entry (outcome). **The session that builds a discipline may never be the session that confirms it.**
 4. **Firing counter — DROPPED, superseded by step 1a.** It was demoted for measuring activation volume
    rather than conversion (`12 / 0` is ambiguous — it can mean twelve sessions with genuinely nothing to
-   capture), and it is now dropped outright: the `SessionEnd` recorder obtains the same signal by READING
+   capture), and it is now dropped outright: the step-1a recorder obtains the same signal by READING
    the transcript, so no hook writes on a fail-open path at all. That resolves the awkwardness this entry
    noted — `docs/agy-disciplines-marker-contract.md:55` and `:80-82` establish that **the skill writes and
    the hook never does**.
@@ -248,14 +248,23 @@ sessions.
 2. **A low-frequency trigger did not need to be derived — one already exists.** `SessionEnd` occupies the
    slot this entry assumed was empty: **fires once, reaches every session including short ones, and fires
    after the driver has demonstrably done work.**
+   🔴 **BUT DO NOT REACH FOR IT WITHOUT READING THIS.** MEASURED 2026-08-05: a plugin hook registered on
+   `SessionEnd` via `${CLAUDE_PLUGIN_ROOT}` **never runs** — the variable does not resolve at that event, so
+   the hook is cancelled and writes nothing. Cancelled 3/3 with the variable; an absolute path from the same
+   manifest worked 2/2. That is what shipped broken in v17 and is why step 1a's recorder moved to
+   `SessionStart` (`docs/superpowers/specs/2026-08-05-sessionstart-capture-design.md`). The event's
+   *frequency* argument above still stands; its *reachability from a plugin manifest* does not. Anything
+   registered there needs an absolute path, or another event.
 
 **THE OWNER'S SPLIT, binding: MEASURE FIRST, PROMPT LATER.** Step 1 is therefore two halves:
 
-- **1a — MEASURE (in progress).** A `SessionEnd` recorder that answers, from recorded evidence, whether the
-  **`PreToolUse` dispatch relay** reaches a driver. Designed in
-  `docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md`. It **reads** the transcript; no hook on
+- **1a — MEASURE (in progress).** A `SessionStart` recorder that answers, from recorded evidence, whether
+  the **`PreToolUse` dispatch relay** reaches a driver. Designed in
+  `docs/superpowers/specs/2026-08-05-sessionstart-capture-design.md` — which **supersedes the `SessionEnd`
+  registration** in the 2026-08-04 spec, because `${CLAUDE_PLUGIN_ROOT}` does not resolve at `SessionEnd`,
+  so the v17 hook was cancelled and wrote nothing. It **reads** the transcript; no hook on
   a fail-open path writes anything. **Validated end-to-end 2026-08-04** on a real 160 MB transcript located
-  from a real `SessionEnd` payload: 6 deliveries detected in 3.0 s against a 10 s budget.
+  from a real hook payload: 6 deliveries detected in 3.0 s against a 10 s budget.
   🔴 **ONE channel, not two — and the missing one is v16's.** MEASURED across 8 transcripts holding 69
   compactions: `"hookEvent":"PreCompact"` appears **zero** times, while the identical filter finds thousands
   of `PreToolUse` records in every one of those files. **`PreCompact` hook firings are never written to the
