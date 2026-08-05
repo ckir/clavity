@@ -177,6 +177,9 @@ Two different questions, and answering both with "the earliest" is wrong:
 
 - **Content comes from the EARLIEST row** — it names how the session ORIGINATED (`source=startup` rather
   than the `compact` that followed), and the transcript path is the same either way (measured above).
+- **The collapsed record keeps BOTH timestamps** — `first_seen` and `last_seen`. Carrying one and
+  silently using it for both purposes is how the two questions got conflated in the first place, and any
+  output that prints a time must say which of the two it is printing.
 - **Recency ordering comes from the LATEST row.** `-Last N` must rank a session by its most recent
   activity, not its birth. Otherwise a long session started at 08:00 that is still alive at 18:00 sorts
   as older than twenty short sessions that began and ended at midday, and `-Last 20` drops the single
@@ -238,10 +241,44 @@ REPORTED counts honest regardless of row count — but the growth rate is no lon
 whoever first sees this file at a few thousand lines should find that stated here rather than treat it as a
 defect.
 
+**🔴 The report can now scan a session that is still running — and this is the one genuinely new failure
+the move introduces.** Under `SessionEnd` a row existed only after its session had finished, so every
+transcript the report scanned was complete. Under `SessionStart` the row lands at turn zero, which means
+running the report while another session is live scans a transcript that is still being written. That
+session yields `fired: 0, reached: 0` and is filed under `scanned cleanly` — indistinguishable from a
+finished session where the discipline genuinely never reached. It is a plausible number meaning something
+other than what it says, which is the exact defect class this item exists to remove, arriving through the
+door the fix opened.
+
+The row cannot know it, but the report can: a session whose transcript is still being appended to is
+detectable at scan time, and such rows belong in their own bucket rather than in the clean total. The
+narrower, sufficient rule: **never count the reporting session itself**, and treat any transcript modified
+during the scan as in-flight rather than clean.
+
+**A session started and abandoned in seconds now records too.** A mis-launch that the user immediately
+kills writes a `startup` row, and its transcript exists, so it scans cleanly at zero. `SessionEnd` did not
+reliably see these — a killed session has no teardown. This inflates the recorded-session count with true
+zeroes. It does not corrupt any total the report prints, because the report refuses to compute a rate over
+them, and that refusal is now doing load-bearing work rather than merely being principled.
+
 **A missing row still cannot be distinguished from a session that never happened.** This move fixes the
 KNOWN instance of the silent zero; it does not make the class detectable. That gap is deliberate and left
 open: the honest detector is the owner-run outside-witness protocol in the prior spec, not another
 self-report from the same machinery that would be failing.
+
+## What this assumes about the HOST, and how each assumption would announce itself
+
+Claude Code is external and can change without notice. Three assumptions, ranked by how loudly each fails:
+
+| assumption | if it changes | how we find out |
+|---|---|---|
+| `${CLAUDE_PLUGIN_ROOT}` resolves at `SessionStart` | no rows at all | **SILENT** — the failure this item exists to fix, now at a different event |
+| `session_id`/`transcript_path`/`source` stay top-level string keys | regex misses; empty fields | LOUD — every row lands as `transcript_not_found`, a visible bucket |
+| `startup\|resume\|clear\|compact` is the exhaustive source list | a new source fires nothing | quiet, but FAIL-SAFE — a missed `clear`-like transition costs context, not a session |
+
+Only the first is silent, and it is the one already known to bite. That asymmetry is worth stating plainly:
+the schema's null discipline makes shape-drift visible, but nothing inside this design can make
+non-registration visible. The detector for that remains the owner-run outside-witness protocol.
 
 ## Before this item may be called complete — one measurement, not an inference
 
@@ -271,6 +308,10 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
 - Add: `-Last N` returns N distinct SESSIONS when the file holds a session with many rows. Construct the
   fixture so slicing-before-dedup gives a different answer than dedup-before-slicing; a fixture where both
   orders agree tests nothing.
+- Add: collapsing a `startup` row at T1 with a `compact` row at T2 yields ONE record whose `source` is
+  `startup` and whose recency key is T2. Assert both halves — a test that only checks the count passes
+  even when content and ordering have been taken from the same row.
+- Add: a session whose transcript is still being written is NOT counted as scanned cleanly.
 - **Fixtures must use real Windows paths with backslashes.** Forward-slash fixtures are what hid two
   shipped defects; a green suite over unrealistic fixtures is a test lying in the worst direction.
 
