@@ -6,6 +6,19 @@
   Background/manual only — never a `just` auto-gate. Sequential with a per-doc timeout.
 .PARAMETER Only
   Narrowing arg: audit only these listed docs (a subset run SKIPS the repo-wide link-check).
+  TWO TRAPS, both measured. (1) It INTERSECTS against docs/user-facing-docs.txt, so an off-roster value is
+  dropped SILENTLY - ROADMAP.md, CLAUDE.md, CHANGELOGs and everything under docs/superpowers/ are
+  deliberately not on that roster. A run that matches nothing logs a header with NO rows and prints
+  "0 docs audited", which reads exactly like a clean pass and is not one: it is a NULL RESULT. Check the
+  count before believing a verdict. (2) Pass the paths COMMA-SEPARATED WITH NO SPACES, or the second value
+  binds to -RepoRoot.
+.NOTES
+  `claims:N` IN THE LOG IS NOT A MEASUREMENT. The claim extractor is an LLM reading prose, and its count
+  varies run to run on an UNCHANGED file. MEASURED 2026-08-05: clavity-dotnet/plugin/README.md audited at
+  34 claims on 2026-08-04 and 24 on 2026-08-05, while git log proves the file untouched since ce169a4
+  (2026-08-03) - a 30% swing with no content change. So a drop in claims is NOT a drift signal, and a CLEAN
+  verdict on a low-claim run inspected fewer things than a CLEAN on a high-claim one. Do not build a check
+  on that number.
 .PARAMETER SkipAudit
   Test/utility: skip the live audit entirely (records AUDIT-INCONCLUSIVE per doc).
 .PARAMETER AuditStub
