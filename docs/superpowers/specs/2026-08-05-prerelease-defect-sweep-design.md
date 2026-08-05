@@ -423,6 +423,21 @@ rewritten. Do not accept "the suite is green" as evidence here.
 the test fails, restore. Three vacuous assertions shipped in the SessionStart epic and were only caught by
 mutation. A test that cannot fail is not coverage.
 
+**Packaging — VERIFIED, no manifest change needed.** Panel round 5 measured how hook files reach the
+installed product: `clavity-dotnet/installer/clavity-dotnet.iss:40` and
+`clavity-classic/installer/clavity-classic.iss:50` are both
+`Source: "..\plugin\*"; DestDir: "{app}\plugins\clavity"; Flags: ignoreversion recursesubdirs createallsubdirs`.
+A **recursive wildcard**, so edits to existing hooks ship automatically and neither `.iss` nor `hooks.json`
+needs touching. This is recorded because the opposite — a fix that lands in the repo and never reaches a
+user — is the failure it rules out, and it is worth one grep to know rather than assume.
+
+**Gate gap, STATED AND ACCEPTED for this release.** Nothing in the automated gates verifies the INSTALLED
+artifact; every suite runs against the in-repo tree. The hooks that actually fire on a user's machine are
+the installed copies, so a packaging or registration fault would pass every gate here. That is a real hole,
+it is not new, and closing it is an installer/E2E project rather than part of this sweep — but the plan
+must not claim the gates prove the shipped behaviour. The hot-copy/live-smoke route in
+`.clavity/RUNBOOK-sessionstart-install.md` remains the only thing that does.
+
 **Gates.** `bash scripts/check-seed-artifacts-synced.sh` (exit 0) for the 16 dual-driver files;
 `just test-scripts-fast`; `just test-scripts-slow` (backgrounded — it exceeds the 600s tool cap, and the
 ME1 suite lives there).
