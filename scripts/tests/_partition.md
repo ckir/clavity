@@ -18,14 +18,16 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **19 suites, 234 tests, measured 251,8s and
-  244,0s** (2026-08-04, TWO samples at THIS configuration, 3% apart — the first time this file records
-  two, as its own rule below has always demanded). The preceding entry, 15 suites / 177 tests / 124,6s,
-  is a DIFFERENT configuration and must not be compared against these.
-- `just test-scripts-slow` — everything else. **13 suites, 238 tests, measured 761,28s** (2026-08-04,
-  ONE sample, as the sole command on the machine). NOT on any git hook; it is **well past the 600s
-  foreground tool cap** — 653,5s a day earlier, 761,28s now — and must be BACKGROUNDED by an agent,
-  blocked on by reading its own `Tests completed` line, never by watching a process count.
+- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 327 tests, measured 429,46s solo**
+  (2026-08-06). A second sample read 665,4s but was taken WHILE the slow half ran and is not comparable;
+  see the contention entry below, which is the operationally important one — **the fast half is now
+  cap-adjacent, not cap-safe.**
+- `just test-scripts-slow` — everything else. **13 suites, 257 tests, measured 819,2s solo** (2026-08-06).
+  NOT on any git hook; it is **well past the 600s foreground tool cap** — 653,5s, 761,28s, now 819,2s —
+  and must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line, never by
+  watching a process count. **A backgrounded run can also be STOPPED before it finishes** (one was, at 9
+  of 13 suites, on 2026-08-06): a log with no `Tests Passed:` line is an ABORTED run, not a passing one,
+  and its zero failures mean only that nothing had failed YET.
 - `just test-scripts` — both, unchanged in meaning: still every test.
 
 **The runtime target is ~120s, and it is a TARGET, not an enforceable invariant.** Do not gate anything on
@@ -56,8 +58,16 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **177** and slow **238**, **both measured, not added up**. It is a
-fact, not a contract, and it was 358 / 363 / 368 / 372 earlier.
+test raises it. The count today is fast **327** and slow **257**, **both measured, not added up**. It is a
+fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
+"fast 177 and slow 238" until 2026-08-06, having decayed through five intervening entries below that each
+recorded a new number without updating it.
+
+**Since 2026-08-06 the structural invariant is ENFORCED, not just documented.**
+`scripts/tests/test-suite-registration.Tests.ps1` runs that `diff` as a test: every suite on disk is in
+exactly one half, no recipe names a file that is gone, and no suite sits in both. Before that it was a
+command in this file that nothing invoked — and `just test-scripts` globs the directory, so an
+unregistered suite ran there and reported green while appearing in NEITHER gate anyone uses.
 
 Fast was re-measured five times on 2026-08-03, every time by running the recipe: **166 / 143,9s** when
 `agy-curate-nudge.Tests.ps1` was added at 4 tests, **169 / 145,3s** after capstone round 1 added 3 more,
@@ -131,6 +141,24 @@ reader hunting one here.
 earlier the same day (520,16s and 292,09s) on code that differed by nine tests. **Three samples now
 bracket 292-520s. Treat any single figure from this recipe as an anecdote.**
 
+**2026-08-05/06 — the pre-release defect sweep (the `.no-agy` repo-root walk).** TWO new fast suites:
+`agy-drive-session-reset` (6 tests — the only hook in the agy set that DELETES rather than prints, and it
+had never had a suite) and `test-suite-registration` (4 tests). Six existing suites grew, four of them in
+the slow half. Fast went 23 suites / 303 tests to **25 suites / 327 tests**; slow stays **13 suites** and
+went 238 to **257 tests**.
+
+Fast measured **429,46s solo**, then **665,4s** on a second sample — but read the next paragraph before
+comparing them.
+
+🔴 **THE SECOND FAST SAMPLE IS CONTENDED AND IS NOT COMPARABLE TO THE FIRST.** It was launched while
+`test-scripts-slow` was still running on the same machine, which is precisely the dominant variable this
+file warns about, and it is a measurement error rather than a finding. It is recorded instead of discarded
+because of what it shows: **under contention the FAST half took 665,4s and blew the 600s foreground tool
+cap**, getting moved to the background by the harness. The fast half is the agent inner-loop recipe; it is
+supposed to be the one that never straddles the cap. It does not straddle it solo — 429,46s — but it has
+no headroom left for a machine that is doing anything else. **Do not run the two halves concurrently, and
+treat the fast half as cap-adjacent, not cap-safe.**
+
 🔴 **`agy-discipline-reaching`'s ROW HAD BEEN WRONG IN BOTH COLUMNS AND NOTHING CAUGHT IT.** The count said
 16 while the suite really held 13, and the time said 69,1s while it really ran in ~15s. The figures were
 right when written (`d2b8649`); then `6b87f1f` and `872498f` each changed the suite without re-measuring.
@@ -176,14 +204,38 @@ per-file time is not a stable quantity and is not used as the partition rule. `a
 measured separately (2026-08-02) in isolation, as the sole command on a quiet machine.
 
 ```
-abort-drain.Tests.ps1                           261,3s   13 tests
-agy-consult-guard.Tests.ps1                      78,4s    8 tests   <- SLOW, moved 2026-08-02; count 2026-08-03
-accept-drain.Tests.ps1                           51,2s   10 tests
-agy-after-reminder.Tests.ps1                      9,7s   10 tests   <- FAST, re-measured 2026-08-05
-agy-anomaly-reminder.Tests.ps1                   21,4s   16 tests
-agy-anomaly-capture-reminder.Tests.ps1            8,4s   10 tests   <- FAST, re-measured 2026-08-05
-agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   18 tests   <- FAST, re-measured 2026-08-05
-agy-anomaly-model-notice.Tests.ps1               16,7s    9 tests   <- FAST, re-measured 2026-08-05
+abort-drain.Tests.ps1                            72,9s   13 tests   <- SLOW, re-measured 2026-08-06. The
+                                                                      row said 261,3s: a 3,6x over-claim on
+                                                                      an UNCHANGED suite. Nothing edited it;
+                                                                      the old figure simply decayed. This is
+                                                                      the same failure as agy-discipline-
+                                                                      reaching's below, in the other half.
+agy-consult-guard.Tests.ps1                     134,4s   10 tests   <- SLOW, moved 2026-08-02; re-measured
+                                                                      2026-08-06 (+2 tests: the cross-driver
+                                                                      byte-identity check now covers lib.sh
+                                                                      too, and the deliberate .no-agy
+                                                                      omission is pinned). Now the LARGEST
+                                                                      suite in the slow half, past docs-audit.
+accept-drain.Tests.ps1                           42,4s   10 tests   <- SLOW, re-measured 2026-08-06
+agy-after-reminder.Tests.ps1                      9,7s   14 tests   <- COUNT 2026-08-06 (+4: root-walk
+                                                                      silence + control, jq and no-jq).
+                                                                      TIME is the 2026-08-05 solo figure.
+agy-anomaly-reminder.Tests.ps1                   26,8s   20 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-anomaly-capture-reminder.Tests.ps1            8,4s   14 tests   <- COUNT 2026-08-06 (+4)
+agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
+agy-anomaly-model-notice.Tests.ps1               16,7s   11 tests   <- COUNT 2026-08-06 (+2)
+agy-drive-session-reset.Tests.ps1                   ?    6 tests   <- FAST, NEW 2026-08-06. NO SOLO TIME
+                                                                      YET: its only sweep was the contended
+                                                                      one (42,0s there, inflated ~1,55x by
+                                                                      the concurrent slow half). Measured
+                                                                      26,4s alone as a single suite, which
+                                                                      is a different mode again. Re-measure
+                                                                      in the next solo fast sweep rather
+                                                                      than copying either figure.
+test-suite-registration.Tests.ps1                   ?    4 tests   <- FAST, NEW 2026-08-06. Same caveat;
+                                                                      0,7s in the contended sweep, and it
+                                                                      does no I/O beyond reading justfile,
+                                                                      so it is genuinely near-free.
 agy-anomaly-contract-stamp.Tests.ps1              5,5s   14 tests   <- FAST, re-measured 2026-08-05
 agy-discipline-reaching.Tests.ps1                15,2s   16 tests   <- FAST. The row said 69,1s and it had
                                                                       been WRONG since 6b87f1f split capture
@@ -205,17 +257,23 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 agy-curate-nudge.Tests.ps1                       17,1s   11 tests   <- FAST, re-measured 2026-08-05
-agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
-                                                                      table entirely until 2026-08-03
-agy-liveness-check.Tests.ps1                     40,9s   27 tests
-agy-seam-inject.Tests.ps1                        18,0s   19 tests   <- count 2026-08-03, time older
-agy-test-audit-reminder.Tests.ps1                32,5s   14 tests   <- count 2026-08-03, time older
+agy-inbox-snapshot.Tests.ps1                    122,5s   22 tests   <- SLOW, re-measured 2026-08-06; was
+                                                                      MISSING from this table entirely
+                                                                      until 2026-08-03
+agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-measured 2026-08-06 (+5:
+                                                                      four root-walk cases plus the marker
+                                                                      cwd-relative contract, which had
+                                                                      been comment-only). Time had said
+                                                                      18,0s and was "count 2026-08-03,
+                                                                      time older" - now both are current.
+agy-test-audit-reminder.Tests.ps1                50,8s   18 tests   <- SLOW, re-measured 2026-08-06 (+4)
 BashHookHelpers.Tests.ps1                         1,7s    4 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   14 tests   <- FAST, re-measured 2026-08-05
-check-core-integrity.Tests.ps1                   24,1s    7 tests
+check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-growth-budget.Tests.ps1                    15,3s    7 tests   <- FAST, re-measured 2026-08-05
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
-check-plugin-namespace.Tests.ps1                 25,8s    8 tests
+check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
 check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had
@@ -229,9 +287,9 @@ check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measur
                                                                       that half ever needs trimming.
 check-seed-budget.Tests.ps1                       8,4s    4 tests   <- FAST, re-measured 2026-08-05
 check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-measured 2026-08-05
-compute-release.Tests.ps1                        22,6s    7 tests
-docs-audit.Tests.ps1                            120,6s   80 tests
-drain-knowledge.Tests.ps1                        38,2s    7 tests
+compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-measured 2026-08-06
+docs-audit.Tests.ps1                            130,0s   80 tests   <- SLOW, re-measured 2026-08-06
+drain-knowledge.Tests.ps1                        40,5s    7 tests   <- SLOW, re-measured 2026-08-06
 drain-lib.Tests.ps1                               3,4s   20 tests   <- FAST, re-measured 2026-08-05
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
 plugin-hooks-registration.Tests.ps1               0,6s   22 tests   <- FAST, re-measured 2026-08-05 (was
