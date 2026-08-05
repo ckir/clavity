@@ -195,9 +195,11 @@ foreach ($line in $raw) {
     # An unrecognised version is COUNTED, not parsed - mirroring the null discipline. Guessing at the
     # shape of a future record is how a reader silently mixes incompatible numbers into one total.
     if ($v -eq $SCHEMA_CAPTURE -or $v -eq $SCHEMA_CAPTURE_3) {
-        # v2 names a transcript and defers the analysis to HERE, where there is no time limit. Scanning at
-        # SessionEnd was CANCELLED on shipped v17 twice, writing nothing, so the work moved to this script.
-        $o = Expand-CaptureRow -Row $o
+        # A capture row names a transcript and defers the scan. The scan does NOT happen here: it happens
+        # after dedup and slicing, so a session's fifteen compact rows read their transcript ONCE, not
+        # fifteen times. (Scanning at SessionEnd was CANCELLED on shipped v17 twice, writing nothing, which
+        # is why the analysis lives in this script at all.)
+        $o | Add-Member -NotePropertyName 'needs_scan' -NotePropertyValue $true -Force
     } elseif ($v -ne $SCHEMA_ANALYSED) { $unsupported++; continue }
     $rows += $o
 }
@@ -208,6 +210,11 @@ foreach ($line in $raw) {
 $rows = @(Merge-SessionRows -Rows $rows)
 $rows = @($rows | Sort-Object -Property @{ Expression = { [string]$_.last_seen } })
 if ($Last -gt 0 -and $rows.Count -gt $Last) { $rows = $rows[-$Last..-1] }
+
+# Pipeline order: parse -> collapse -> slice -> EXPAND. This bounds transcript reads to N.
+$rows = @($rows | ForEach-Object {
+    if ($_.PSObject.Properties.Name -contains 'needs_scan' -and $_.needs_scan) { Expand-CaptureRow -Row $_ } else { $_ }
+})
 
 function Get-Num { param($Row, [string]$Name)
     if ($Row.PSObject.Properties.Name -notcontains $Name) { return $null }
