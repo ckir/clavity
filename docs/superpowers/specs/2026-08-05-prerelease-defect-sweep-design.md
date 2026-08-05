@@ -108,8 +108,19 @@ So the options are three, not two:
 | **C — recover the real cwd, then walk** | matches the normal path exactly | one regex; **already shipped in two hooks** |
 
 **Option C makes the degraded branch as accurate as the normal path**, which collapses the whole dilemma:
-there is then no "degraded" `.no-agy` semantics to reason about, only a degraded *output* path. The plan
-should adopt C unless it can state why A or B is better, and the burden now sits on A and B.
+there is then no "degraded" `.no-agy` semantics to reason about, only a degraded *output* path.
+
+**DECIDED: option C.** The peer answered B in round 1 on the premise that *"the process cwd is always
+inside the target workspace"*; challenged in round 2 to check that premise against the files, it withdrew
+B and adopted C. Its Q2 answer is the part worth recording, because it is the honest one: **whether `./`
+can differ from the payload `cwd` is NOT establishable from this repository** — the hook dispatcher is
+closed-source host behaviour, and nothing in-tree constrains what working directory it hands a child hook.
+An assumption we cannot check is exactly the assumption not to build on, and C is the option that does not
+need it. Use the recorder's subprocess-free bash regex (`agy-discipline-reaching.sh:41`), not `sed`, so the
+degraded branch costs zero forks.
+
+**Recovery does not exempt any hook from normalization** — C recovers the *escaped* value, so `:49` is
+still mandatory. C without `:49` is the same no-op with extra steps.
 
 **🔴 AND THE EXISTING `sed` RECOVERY IS ALREADY BROKEN ON WINDOWS — a reachable, pre-existing defect in the
 exact lines U1 edits.** MEASURED 2026-08-05 on `{"cwd":"C:\\Users\\user\\repo\\src"}`, the `:47` `sed`
@@ -171,6 +182,25 @@ walk would put two different root idioms in one file, and they can disagree: `gi
 worktrees and submodules, whereas the in-shell walk stops at the first `.git` *entry*. Also note
 `agy-anomaly-model-notice.sh:9-13` claims the two halves "can never disagree", pinned by a test that compares
 **counts** — a test that would not notice a `.no-agy` divergence between them.
+
+**The check form, for every hook in the set** — three candidates, global first (cheapest, root-independent),
+then the two path candidates:
+
+```bash
+[ -f "$HOME/.claude/.no-agy" ] && exit 0
+if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
+  exit 0            # per-hook: the SessionStart hooks announce first; see the exit-contract table
+fi
+```
+
+Use the explicit `if`, matching every existing hook. The one-line `[ -f a ] || [ -f b ] && exit 0` does
+work — `||` and `&&` are equal precedence and left-associative, so it groups `(a || b) && exit`, verified
+by running it — but it reads as though the `&&` binds only to the second test, and this is a snippet that
+will be pasted seventeen times.
+
+Both path candidates are required, not just `$root`. Outside a git worktree `$root` falls back to `$cwd`
+and the two coincide; inside one they differ, and a user may legitimately have opted out at either level.
+Dropping `$cwd` would silently narrow today's behaviour while claiming to widen it.
 
 **Deliberately NOT copied from that template: `[ -e "$root/.git" ] || exit 0`.** That guard exists because
 the recorder WRITES A FILE into the user's tree and a non-repo directory has no project to attribute a row
@@ -273,6 +303,16 @@ filesystem state. Its suite must assert: the flag file is deleted when `source=s
 the `-mtime +7` sweep does not remove a fresh flag. The last is the one a copied pattern would miss, and
 `:22-24` documents why it matters — an `-empty` sweep would delete a concurrent session's live flag.
 
+**The concurrency case is not hypothetical, which raises what the `.no-agy` fix is worth here.** `:17` is
+`KEY="${CLAVITY_SESSION:-${AGY_SESSION:-default}}"`, so when neither variable is set — the ordinary case —
+every concurrent session on the machine shares one flag file, `.active-drive-session-default`. Combined
+with the bypass in U1, a session the user has explicitly opted out of, launched from a subdirectory, will
+still reach `:21` and delete the flag belonging to a **different, opted-in, running session**, which then
+silently re-delivers its guidance. That is the cross-session consequence of the same one-line bug, and it
+is the concrete reason this hook sequences first. The suite must cover it: with `.no-agy` at the repo root
+and the payload `cwd` in a subdirectory, a pre-existing `.active-drive-session-default` must still exist
+afterwards.
+
 ---
 
 ## 3. Testing
@@ -292,6 +332,38 @@ because normalization was omitted. Each `.no-agy` case must be accompanied by an
 `.no-agy` at that same scope the hook DOES fire with its specific message. Without the positive half, the
 Windows no-op above ships green. This is the same defect class as the three vacuous assertions caught by
 mutation in the SessionStart epic — a control that cannot fail is not a control.
+
+**🔴🔴 THE TEST HELPER ERASES THE EXACT CONDITION THE FIX DEPENDS ON. Copying `:223` as instructed
+produces a GREEN test over a BROKEN fix.** This is the most important item in this document for whoever
+writes the tests, and it was found only by opening the helper.
+
+MEASURED at `scripts/tests/agy-discipline-reaching.Tests.ps1:76`, the shared payload builder every test
+routes through does this:
+
+```powershell
+$o = @{ cwd = ($Cwd -replace '\\','/'); session_id = $Sid; hook_event_name = 'SessionStart'; ... }
+```
+
+It **forward-slashes the cwd before serialising the payload.** `BashHookHelpers.ps1`'s `New-TempRepo` says
+the same thing in its contract — *"Returns the dir path (Windows form); callers forward-slash it for the
+payload cwd."* And the existing subdirectory case at `:236` builds its path with `Join-Path` (which yields
+backslashes on Windows) only for `:76` to strip them again.
+
+Consequences, and they are not subtle:
+
+1. **Every existing `.no-agy` test feeds a POSIX-shaped path.** That is why the no-op above has never been
+   caught — not because nobody looked, but because the harness cannot express the failing input.
+2. **A `root-from-subdir` case added to the `:223` block in the obvious way inherits `:76` and therefore
+   passes whether or not normalization was implemented.** It would be a fourth vacuous assertion, added by
+   a spec that explicitly warns against vacuous assertions.
+3. So success criterion 1 is not satisfiable through the existing helper. **At least one test per hook must
+   bypass `:76` and feed a raw, JSON-escaped, backslashed `cwd`** — the shape the real payload has —
+   asserting suppression still occurs. That test is the only thing standing between this fix and a silent
+   no-op in production.
+
+**Mutation proof for this specific case:** with the backslashed-payload test in place, remove the `:49`
+normalization and confirm the test FAILS. If it still passes, the test is going through `:76` and must be
+rewritten. Do not accept "the suite is green" as evidence here.
 
 **U4** — a new suite. The eight existing ones supply the pattern.
 
