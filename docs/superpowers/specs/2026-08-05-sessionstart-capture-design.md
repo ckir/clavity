@@ -501,7 +501,8 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
 
 ## Testing
 
-- Retarget `scripts/tests/agy-discipline-reaching.Tests.ps1` (**12 `It` blocks**) at the `SessionStart`
+- Retarget `scripts/tests/agy-discipline-reaching.Tests.ps1` (**12 `It` blocks but 16 TESTS** — `:165` and
+  `:201` use `-ForEach` and expand; `scripts/tests/_partition.md:158` records the 16) at the `SessionStart`
   payload shape; keep every existing regression (Windows path byte-exactness, CR stripping, pipe-safe
   stdin, fail-open, `.no-agy`, append, cross-driver parity, no non-zero exit). The change is concentrated
   in one place: the `Payload` helper at `:67` hardcodes
@@ -542,6 +543,29 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
   HISTORICAL and must survive untouched.
 - **Fixtures must use real Windows paths with backslashes.** Forward-slash fixtures are what hid two
   shipped defects; a green suite over unrealistic fixtures is a test lying in the worst direction.
+- **Add the `.no-agy` subdirectory case to the `-ForEach` block at `:201`, not as a new `It`.** That block
+  already parameterises the workspace-vs-global scopes, so the subdirectory scope belongs in its data. This
+  raises the TEST count without changing the BLOCK count — which is exactly the distinction the next item
+  turns on.
+
+## Two files that go stale silently, because nothing fails when they do
+
+Neither is code, and neither breaks a build. Both are load-bearing anyway.
+
+**`scripts/tests/_partition.md` is the measured structural oracle and this change drifts it.** It records
+per-suite figures (`:158` `agy-discipline-reaching.Tests.ps1 ... 16 tests`, `:159`
+`discipline-reaching-report.Tests.ps1 ... 11 tests`) and fast-half totals (`21 suites / 265 tests`).
+This spec adds roughly eight cases across those two suites. Nothing enforces the oracle, so a stale
+`_partition.md` simply becomes quietly wrong — and its whole purpose is to be the thing you trust instead of
+re-measuring. Re-measure and update it after the suites change; never hand-edit the numbers to what they
+ought to be.
+
+**`scripts/README.md:55` describes the report's behaviour, including the phrase this spec changes.** Its
+entry says the report "reports sessions RECORDED (not run)". After this change that line is still true but
+incomplete: `Sessions recorded` now counts distinct sessions rather than rows, and a `PROVISIONAL` section
+exists that the entry does not mention. `scripts/tests/scripts-readme-inventory.Tests.ps1` guards that
+README against missing ENTRIES — it does not check whether an entry's DESCRIPTION is still accurate, so
+this drift passes the guard silently. Update the entry by hand.
 
 ---
 
