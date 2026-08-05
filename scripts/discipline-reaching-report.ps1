@@ -258,12 +258,11 @@ foreach ($r in $counted) {
 Write-Output ''
 Write-Output ("Sessions recorded : {0}" -f $rows.Count)
 Write-Output ("  scanned cleanly : {0}" -f $counted.Count)
-if ($provisional.Count -gt 0) {
-    # Conditional, unlike the "not scanned" line below it: PowerShell's -Match is case-insensitive, so an
-    # unconditional "provisional : 0" line would itself satisfy a caller's `-Not -Match 'PROVISIONAL'`
-    # check on a session that has NONE - the exact false-positive this bucket exists to prevent elsewhere.
-    Write-Output ("  provisional     : {0}   (still running - excluded from every total below)" -f $provisional.Count)
-}
+# UNCONDITIONAL, exactly like the two lines around it. A partition summary must name every bucket every
+# time: a line that vanishes when the count is zero makes "no session was live" indistinguishable from
+# "this build does not track live sessions" - which is this report's own first refusal (a null and a zero
+# must never look alike) applied to its own output. `provisional : 0` says we looked and found none.
+Write-Output ("  provisional     : {0}   (still running - excluded from every total below)" -f $provisional.Count)
 Write-Output ("  not scanned     : {0}   (excluded from every total below)" -f $degraded.Count)
 
 Write-Output ''

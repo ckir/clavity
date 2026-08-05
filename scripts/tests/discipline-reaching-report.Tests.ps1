@@ -308,7 +308,13 @@ Describe 'discipline-reaching-report.ps1' {
             $o = Run $d
             $o | Should -Match 'scanned cleanly\s*:\s*1'
             $o | Should -Match 'reached the model, stamped\s*:\s*2'
-            $o | Should -Not -Match 'PROVISIONAL'
+            # ASSERT THE BUCKET REPORTS ZERO, don't assert the WORD is absent. `-Not -Match 'PROVISIONAL'`
+            # was the first phrasing and it was wrong twice over: PowerShell's -Match is case-insensitive,
+            # so it also forbade the summary line - and satisfying it meant DELETING that line when the
+            # count is zero, which would make "no session was live" look identical to "this build does not
+            # track live sessions". A zero must be stated, not implied by silence.
+            $o | Should -Match 'provisional\s*:\s*0' -Because 'the bucket names itself even when empty'
+            $o | Should -Not -Match 'PROVISIONAL\s+\(' -Because 'the per-session SECTION is what must be absent'
         } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
