@@ -171,6 +171,14 @@ two fires**, which is what makes "keep the earliest row" safe — the discarded 
 `clear` remains unobserved. It is the one source that could plausibly mint a new id, and if it does the
 effect is benign (it simply presents as a separate session).
 
+**Legacy rows collapse trivially.** `v:1` was written at `SessionEnd`, one row per session, so dedup over
+`v:1` is an identity mapping and every historical total survives untouched. Their single `timestamp`
+becomes both `first_seen` and `last_seen`.
+
+**The session live during the upgrade itself records nothing** — it booted under the v17 manifest so no
+`SessionStart` capture fired, and by the time it exits the `SessionEnd` registration is gone. That is
+benign: it matches exactly what v17 already did for every session, which was nothing.
+
 ### Which row wins, and which row orders
 
 Two different questions, and answering both with "the earliest" is wrong:
@@ -211,6 +219,30 @@ resolves nothing, does nothing, and still reads to a future maintainer as though
 Given that a phantom `SessionEnd` registration is precisely what cost this item three review rounds, the
 empty shell is worse than clutter.
 
+## A shipped defect this spec must fix, because it touches the same lines
+
+**`.no-agy` does not suppress this hook when Claude is launched from a subdirectory.**
+`agy-discipline-reaching.sh:51` tests `$cwd_path/.no-agy`, but the repo-root walk that decides WHERE the
+row gets written does not happen until `:58-66`. So a user with `.no-agy` at their repo root who starts
+Claude in `repo/src` is not suppressed — and the hook then writes into `repo/.clavity/`, the very tree
+whose owner opted out.
+
+**MEASURED 2026-08-05, with a control.** Payload `cwd=repo/src` and `repo/.no-agy` present: a row was
+written. Same payload with `cwd=repo`: nothing written. The control behaving correctly is what makes the
+first result a finding rather than a broken probe.
+
+**Fix:** move the workspace check to AFTER the root walk and test `$root/.no-agy` (keeping the existing
+`$cwd_path` and `$HOME/.claude` tests — a `.no-agy` in a subdirectory should still suppress that
+subdirectory). Add a test whose `cwd` is a subdirectory of a repo carrying a root `.no-agy`; the existing
+case at `scripts/tests/agy-discipline-reaching.Tests.ps1` only exercises `cwd` = repo root, which is why
+this survived.
+
+**The same hole exists in eight sibling hooks** — every plugin hook tests `$cwd/.no-agy`. For the reminder
+hooks the cost is an unwanted message rather than a write, so it is a different severity and a different
+change; it is logged in `.clavity/local-anomalies.md` and is NOT in this spec's scope. Fixing it here for
+the hook this spec already rewrites is not scope creep; leaving a consent bypass in the one hook that
+WRITES would be.
+
 ## What this does NOT change
 
 The hook body keeps its **structure**: no subprocesses (bash regex instead of jq, `printf %()T` instead of
@@ -250,10 +282,24 @@ finished session where the discipline genuinely never reached. It is a plausible
 other than what it says, which is the exact defect class this item exists to remove, arriving through the
 door the fix opened.
 
-The row cannot know it, but the report can: a session whose transcript is still being appended to is
-detectable at scan time, and such rows belong in their own bucket rather than in the clean total. The
-narrower, sufficient rule: **never count the reporting session itself**, and treat any transcript modified
-during the scan as in-flight rather than clean.
+**The first rule written here for this was not implementable, and replacing it is the point.** Round 2
+said "never count the reporting session itself, and treat any transcript modified during the scan as
+in-flight". Both halves fail:
+
+- The report is a PowerShell script. Claude Code does not hand it the calling session's `session_id`, so
+  "the reporting session" is not a thing it can identify without process-tree introspection.
+- "Modified during the scan" tests a window of milliseconds. A live session waiting on a prompt or an API
+  response is not writing during that window, so the check would miss almost every live session — while
+  reading as though it had covered them.
+
+**The rule that works, and needs neither:** a session whose transcript was modified within a recency
+threshold (15 minutes is ample) is **`provisional`** — counted in its own bucket, never in `scanned
+cleanly`. It needs only the file's mtime, and it subsumes the reporting session automatically, because the
+transcript of the session running the report was appended to moments ago.
+
+And the framing correction underneath: scanning a live transcript is not WRONG, it is **incomplete**. Every
+dispatch it counts really happened; more may follow. `provisional` says exactly that, where "exclude" would
+have thrown away a true partial count.
 
 **A session started and abandoned in seconds now records too.** A mis-launch that the user immediately
 kills writes a `startup` row, and its transcript exists, so it scans cleanly at zero. `SessionEnd` did not
@@ -311,7 +357,11 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
 - Add: collapsing a `startup` row at T1 with a `compact` row at T2 yields ONE record whose `source` is
   `startup` and whose recency key is T2. Assert both halves — a test that only checks the count passes
   even when content and ordering have been taken from the same row.
-- Add: a session whose transcript is still being written is NOT counted as scanned cleanly.
+- Add: a session whose transcript mtime is inside the recency threshold reports as `provisional` and is
+  excluded from `scanned cleanly`. Drive it by setting the fixture's mtime, not by racing a live writer.
+- Add: `.no-agy` at a repo root suppresses a payload whose `cwd` is a SUBDIRECTORY of that repo. This is
+  the case that lets the shipped bypass through, so assert that NO file is created — not merely that the
+  exit code is 0, which the bypass also satisfies.
 - **Fixtures must use real Windows paths with backslashes.** Forward-slash fixtures are what hid two
   shipped defects; a green suite over unrealistic fixtures is a test lying in the worst direction.
 
