@@ -350,6 +350,12 @@ this spec rewrites, and they fall into two groups that a blanket find-and-replac
 
 **Stale — must change:**
 - `agy-discipline-reaching.sh:2` — the header still declares the hook's event as `SessionEnd`.
+- **`agy-discipline-reaching.sh:3` — the line directly below it, in BOTH drivers, points at the superseded
+  spec**: `# ROADMAP section 0 step 1a. Design + measurements:
+  docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md`. It sends a reader to the document that
+  had to be banner-marked as describing a failed design. Caught only by a ROLE-based sweep after a
+  NAME-based one had already passed over it — and it was one line below a defect the name-based sweep DID
+  find, which is the useful lesson: proximity to a found defect is not coverage.
 - 🔴 `discipline-reaching-report.ps1:110` — **user-facing output**, printed when the record file is absent:
   `'The recorder writes one row per session at SessionEnd, from the INSTALLED plugin.'` This is the message
   a user sees at the exact moment they are asking why nothing was recorded, and after this change it names
