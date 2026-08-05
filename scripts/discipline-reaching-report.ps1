@@ -201,9 +201,19 @@ if ($raw.Count -eq 0) {
 }
 
 $rows = @(); $malformed = 0; $unsupported = 0
+$sourceCounts = [ordered]@{}; $legacyRows = 0
 foreach ($line in $raw) {
     try { $o = $line | ConvertFrom-Json } catch { $malformed++; continue }
     $v = if ($o.PSObject.Properties.Name -contains 'v') { $o.v } else { $null }
+    # Counted per ROW, before dedup - this is a count of hook FIRINGS, not of sessions.
+    if ($v -eq $SCHEMA_CAPTURE_3 -and $o.PSObject.Properties.Name -contains 'source') {
+        $s = [string]$o.source
+        if ([string]::IsNullOrWhiteSpace($s)) { $s = '(unnamed)' }
+        if (-not $sourceCounts.Contains($s)) { $sourceCounts[$s] = 0 }
+        $sourceCounts[$s]++
+    } elseif ($v -eq $SCHEMA_ANALYSED -or $v -eq $SCHEMA_CAPTURE) {
+        $legacyRows++
+    }
     # An unrecognised version is COUNTED, not parsed - mirroring the null discipline. Guessing at the
     # shape of a future record is how a reader silently mixes incompatible numbers into one total.
     if ($v -eq $SCHEMA_CAPTURE -or $v -eq $SCHEMA_CAPTURE_3) {
@@ -279,6 +289,14 @@ Write-Output 'SESSION CONTEXT  (opportunity only - NOT a denominator)'
 Write-Output ("  compactions : {0}" -f $sumCompactions)
 Write-Output '  The PreCompact capture reminder is UNMEASURED here: its firings produce zero transcript'
 Write-Output '  records, so its delivery cannot be observed. Never divide a delivery count by this number.'
+
+Write-Output ''
+Write-Output 'HOOK INVOCATIONS  (firings, NOT sessions - one session fires once per start, clear and compact)'
+foreach ($k in $sourceCounts.Keys) { Write-Output ("  {0} : {1}" -f $k, $sourceCounts[$k]) }
+if ($legacyRows -gt 0) { Write-Output ("  legacy (v1/v2) : {0}   (they carry an EXIT reason, not a boot source)" -f $legacyRows) }
+Write-Output '  These are NOT the `compactions` figure above: that one is derived from the transcript and'
+Write-Output '  counts different things. They WILL diverge - a compaction before the plugin was installed'
+Write-Output '  appears in one and not the other. A reader who expects them to agree will misread a correct report.'
 
 if ($degraded.Count -gt 0) {
     Write-Output ''

@@ -317,4 +317,21 @@ Describe 'discipline-reaching-report.ps1' {
             $o | Should -Not -Match 'PROVISIONAL\s+\(' -Because 'the per-session SECTION is what must be absent'
         } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'reports the source distribution as INVOCATIONS and keeps legacy reasons out of it' {
+        $tx = New-ScanTranscript
+        $d = New-Store @(
+            (CapRec3 $tx -Sid 'A' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+            (CapRec3 $tx -Sid 'A' -Source 'compact' -Ts '2026-08-05T09:00:00Z')
+            (Rec 1 0 0 0 'ok' 'OLD' 1)
+        )
+        try {
+            $o = Run $d
+            $o | Should -Match 'HOOK INVOCATIONS'
+            $o | Should -Match 'startup\s*:\s*1'
+            $o | Should -Match 'compact\s*:\s*1'
+            $o | Should -Match 'legacy \(v1/v2\)\s*:\s*1' -Because 'v1 carries an EXIT reason, which answers a different question than a BOOT source'
+            $o | Should -Not -Match 'prompt_input_exit' -Because 'an exit reason must never bucket into the boot-source distribution'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
