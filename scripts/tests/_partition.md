@@ -125,6 +125,12 @@ do not repeat it as fact. **The operational lesson: one sample of this recipe is
 disagreeing samples are.** A single slow reading is not evidence of a regression - it very nearly sent a
 reader hunting one here.
 
+**2026-08-05 (later) — the AGY-CAPSTONE folds.** Still **23 suites**; no suite added. The capstone put
+**9 more tests** into `discipline-reaching-report` (22 -> 31) across three fold commits. Fast went 294 to
+**303 tests**, measured **366,46s** — a third sample of this recipe, and it lands between the two taken
+earlier the same day (520,16s and 292,09s) on code that differed by nine tests. **Three samples now
+bracket 292-520s. Treat any single figure from this recipe as an anecdote.**
+
 🔴 **`agy-discipline-reaching`'s ROW HAD BEEN WRONG IN BOTH COLUMNS AND NOTHING CAUGHT IT.** The count said
 16 while the suite really held 13, and the time said 69,1s while it really ran in ~15s. The figures were
 right when written (`d2b8649`); then `6b87f1f` and `872498f` each changed the suite without re-measuring.
@@ -189,11 +195,14 @@ agy-discipline-reaching.Tests.ps1                15,2s   16 tests   <- FAST. The
                                                                       16. Two commits changed the suite and
                                                                       neither re-measured. Re-measured
                                                                       2026-08-05.
-discipline-reaching-report.Tests.ps1              6,2s   22 tests   <- FAST, re-measured 2026-08-05 (was
-                                                                      8,1s / 11 tests). It invokes a
+discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was 8,1s / 11 tests before the
+                                                                      SessionStart move; 22 after it; 31
+                                                                      after the capstone. It invokes a
                                                                       PowerShell script rather than spawning
-                                                                      bash hooks, so it DOUBLED its test
-                                                                      count and got cheaper.
+                                                                      bash hooks, so it TRIPLED its test
+                                                                      count and still got cheaper. The 6,2s
+                                                                      figure was taken at 22 tests - the 9
+                                                                      capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 agy-curate-nudge.Tests.ps1                       17,1s   11 tests   <- FAST, re-measured 2026-08-05
 agy-inbox-snapshot.Tests.ps1                    100,4s   22 tests   <- SLOW; was MISSING from this
