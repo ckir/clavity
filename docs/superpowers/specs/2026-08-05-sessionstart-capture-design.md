@@ -526,6 +526,13 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
 - Add: `.no-agy` at a repo root suppresses a payload whose `cwd` is a SUBDIRECTORY of that repo. This is
   the case that lets the shipped bypass through, so assert that NO file is created — not merely that the
   exit code is 0, which the bypass also satisfies.
+- **The suite's `-Because` strings carry the same stale-premise hazard as the report's header, and they
+  are what a future engineer reads when a test fails.** `agy-discipline-reaching.Tests.ps1:218` asserts a
+  zero exit `-Because 'SessionEnd runs at teardown; a non-zero here helps nobody'`. The assertion stays —
+  fail-open is, if anything, more important at boot than at teardown — but its stated reason becomes false
+  the moment this ships. Same for the file header at `:1`. Meanwhile `:8`, `:89`, `:102` and `:109` record
+  the v17 cancellation and the `v:1` schema history: those are TRUE and must survive. Update the
+  justifications that describe the current event; keep the ones that describe what happened.
 - **Fixtures must use real Windows paths with backslashes.** Forward-slash fixtures are what hid two
   shipped defects; a green suite over unrealistic fixtures is a test lying in the worst direction.
 
