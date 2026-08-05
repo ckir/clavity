@@ -6,7 +6,9 @@
 .DESCRIPTION
     Read-only. No -WhatIf: it changes nothing (read-only checkers are exempt from the ShouldProcess rule).
 
-    FOUR THINGS THIS REPORT DELIBERATELY REFUSES TO DO, each of which would reintroduce a measured failure:
+    THREE THINGS THIS REPORT DELIBERATELY REFUSES TO DO, each of which would reintroduce a measured
+    failure - followed by ONE THING THAT QUIETLY CHANGED MEANING, which is not a refusal and must not be
+    filed as one:
 
     1. IT NEVER FOLDS A NULL INTO A ZERO. A null count means the scan could not run; a zero means it ran
        and found nothing. Averaging them manufactures exactly the confident-wrong conclusion this item
@@ -27,6 +29,8 @@
        record; and sessions where the registration silently failed - the class this whole item exists to
        fight and still cannot detect from the inside. The last two are consequences of the SessionStart
        design, so this refusal is better founded than it was, not weaker.
+
+    AND THE ONE THAT CHANGED MEANING:
 
     4. "SESSIONS RECORDED" NOW COUNTS DISTINCT SESSIONS, NOT ROWS. It counted rows until dedup existed, and
        the two were equal only because SessionEnd wrote exactly one row per session. The label stays
