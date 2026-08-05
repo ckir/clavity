@@ -44,17 +44,53 @@ msg='AGY-ANOMALIES/1 relay, both halves. (1) In the dispatch you are about to wr
 
 # jq is needed only to read cwd. Without it, STILL DELIVER the envelope rather than exiting silently: a
 # silent exit is indistinguishable from a hook that is installed and has nothing to say. Kill-switch
-# first, against the process cwd, since the payload cannot be parsed without jq.
+# first. cwd is recovered from the RAW payload with a bash regex, so this path is no longer blind to the
+# session's workspace -- it used to test "./.no-agy", the PROCESS cwd, which need not be the workspace.
+# EVERY exit below is 0, including the new ones: exit 2 is BLOCKING for PreToolUse (see the header).
 if ! command -v jq >/dev/null 2>&1; then
-  if [ -f "./.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then exit 0; fi
+  [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
+  # Raw recovery keeps the JSON escaping, hence the DOUBLE-backslash pattern - see the note at the jq path.
+  cwd_path=${cwd//\\\\//}
+  [ -z "$cwd_path" ] && cwd_path="."
+  [ -f "$HOME/.claude/.no-agy" ] && exit 0
+  root=$cwd_path
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+  if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$msg"
   exit 0
 fi
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
-[ -z "$cwd" ] && cwd="."
+# THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
+# SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch above reads the RAW
+# payload, where the DOUBLE backslashes survive, and needs ${cwd//\\\\//}. MEASURED 2026-08-05: the raw form
+# applied to a jq-decoded value matches nothing and leaves the path untouched - a silent no-op that looks
+# exactly like a working fix. Do NOT unify the two spellings.
+cwd_path=${cwd//\\//}
+[ -z "$cwd_path" ] && cwd_path="."
 
-if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
+[ -f "$HOME/.claude/.no-agy" ] && exit 0
+
+# Repo root by walking up for .git, in-shell, so a .no-agy at the REPO ROOT is honoured when the session
+# was launched from a subdirectory. The normalization above is load-bearing: ${_d%/*} strips on "/" only.
+root=$cwd_path
+_d=$cwd_path
+while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+  if [ -e "$_d/.git" ]; then root=$_d; break; fi
+  _p=${_d%/*}
+  [ "$_p" = "$_d" ] && break
+  [ -z "$_p" ] && break
+  _d=$_p
+done
+
+if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
   exit 0
 fi
 

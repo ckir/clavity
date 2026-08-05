@@ -38,6 +38,59 @@ Describe 'agy-anomaly-dispatch-reminder.sh' {
         $script:DispatchMsg = 'AGY-ANOMALIES/1 relay, both halves. (1) In the dispatch you are about to write, ask the subagent to report anything wrong it notices that is NOT its task, under a heading Anomalies noticed at the end of its final message, stated as a checkable fact, with an explicit none if it saw nothing. (2) When it returns, VERIFY each claimed anomaly by measurement and APPEND the verified ones to .clavity/local-anomalies.md BEFORE you write your summary. A verified anomaly that exists only in a chat message is lost the moment you compress that message.'
 
         function Get-Ctx { param($Result) ($Result.StdOut | ConvertFrom-Json).hookSpecificOutput.additionalContext }
+
+        # As Payload, but WITHOUT the forward-slashing. That convention is repo-wide and is exactly why the
+        # Windows repo-root walk bug survived - a POSIX-shaped path cannot exercise it.
+        function RawPayload { param([string]$Cwd)
+            '{"cwd":"' + ($Cwd -replace '\\', '\\') + '","tool_name":"Agent","hook_event_name":"PreToolUse"}'
+        }
+    }
+
+    # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
+    # Each silence case is paired with a positive control, and the CONTROL is the load-bearing half:
+    # measured on a sibling hook, a broken walk produced silence indistinguishable from a working
+    # kill-switch, and only the control went red.
+    It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ HOME = $h }
+            $r.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
+            $r.ExitCode | Should -Be 0 -Because 'exit 2 is BLOCKING for PreToolUse - it would halt every dispatch'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'DOES deliver from that same subdirectory when .no-agy is absent (positive control)' {
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ HOME = $h }
+            (Get-Ctx $r) | Should -Match ([regex]::Escape($script:DispatchMsg)) -Because 'without the opt-out it must still deliver - otherwise the silence test proves nothing'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'honours a root .no-agy from a subdirectory on the DEGRADED (no jq) path too' {
+        # This path used to test "./.no-agy" - the PROCESS cwd, not the session workspace - so it could
+        # not honour any workspace opt-out at all when the two differ. Nothing covered it.
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $r.StdOut   | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
+            $r.ExitCode | Should -Be 0 -Because 'every path in this PreToolUse hook must fail open'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'DOES deliver from that subdirectory without .no-agy when jq is absent (degraded positive control)' {
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload $sub) -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            (Get-Ctx $r) | Should -Match ([regex]::Escape($script:DispatchMsg)) -Because 'the degraded path must still deliver without an opt-out'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'emits hookSpecificOutput with hookEventName PreToolUse' {
