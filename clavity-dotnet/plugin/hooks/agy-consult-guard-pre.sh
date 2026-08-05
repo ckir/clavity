@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ME1 - agy-consult VCS-diff guard, PRE half.
+# agy-consult VCS-diff guard, PRE half.
 # PreToolUse(Bash|PowerShell|<agy_ask MCP>): snapshot a VCS baseline for a consult so POST can
 # detect a mutation. Silent (emits nothing). Fail-open: any error -> exit 0.
 #   sync  -> write the .sync  baseline FRESH each call (Pre/Post bracket a blocking consult)

@@ -429,11 +429,12 @@ docs, memory maintenance, and one capstone round — with **zero** subagent dele
 purely mechanical log-sweeping and file-reading, and with the whole bulky measurement context held on the Opus
 main thread. That session's capstone round was *not* the waste: it caught a real regression the author missed.
 
-### 9. Tracked debt — clavity-classic ME1 guard: binary-native vs bash hook
+### 9. Tracked debt — clavity-classic consult guard: binary-native vs bash hook
 
 `docs/superpowers/specs/2026-07-22-ship-agy-disciplines-design.md:134` left this fork open "to resolve
-in SP3, via AGY-FIRST". That spec was superseded by the ship-agy-workflow epic, which drops ME1 from
-scope, so the fork was orphaned rather than decided. Owner ruling 2026-07-31: it does NOT gate the
+in SP3, via AGY-FIRST". That spec was superseded by the ship-agy-workflow epic, which drops the guard
+from scope, so the fork was orphaned rather than decided. (The superseded spec calls it "ME1"; that
+task ID means nothing to a reader, so it is named descriptively here — owner ruling 2026-08-05.) Owner ruling 2026-07-31: it does NOT gate the
 productize release. It remains undecided and is recorded here so it stops being invisible.
 
 ### 10. Follow-on epic — productize the two later disciplines

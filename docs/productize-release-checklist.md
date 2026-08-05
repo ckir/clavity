@@ -56,7 +56,7 @@ predates SP-D's commits. This checklist is its closing step.
 
 ## Not in this release
 
-- The clavity-classic ME1 binary-native-vs-bash fork — tracked debt, does not gate (owner ruling).
+- The clavity-classic consult-guard binary-native-vs-bash fork — tracked debt, does not gate (owner ruling).
 - Productizing `agy-test-audit` and `AGY-SCOPE` — a follow-on epic; this release closes at four
   disciplines.
 

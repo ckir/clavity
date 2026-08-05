@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ME1 - agy-consult VCS-diff guard, shared library.
+# agy-consult VCS-diff guard, shared library.
 # Sourced by agy-consult-guard-pre.sh (PreToolUse) and -post.sh (PostToolUse).
 # Enforces the standing rule: an agy REVIEW-ONLY consult must make ZERO VCS changes.
 # READ-ONLY - it only reports; it never reverts, stages, commits, or blocks. Fail-open.
@@ -19,6 +19,12 @@
 #     and its tool_name cannot be filtered to `to=agy`/`from=agy`, so guarding it would let non-agy
 #     bus traffic corrupt the async slot. The clavity async wrapper covers it instead.
 #   - `clavity ring` - a bus poll, not a consult.
+#   - .no-agy: this guard deliberately does NOT honour the kill-switch. .no-agy is a file IN THE REPO,
+#     so a review-only consult that mutated version control could create it and thereby hide its own
+#     write - post.sh would exit before diffing. A guard the untrusted actor can switch off is not a
+#     guard. Same principle the ownership check follows (see clavity-classic/plugin/README.md), and it
+#     is pinned by a test in scripts/tests/agy-consult-guard.Tests.ps1 so a later "consistency" pass
+#     cannot add the check back unnoticed.
 #
 # TWO baseline slots per session (`.sync` and `.async`) so an interleaved sync consult can never
 # destroy an in-flight async baseline.

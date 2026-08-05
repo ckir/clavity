@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ME1 - agy-consult VCS-diff guard, POST half.
+# agy-consult VCS-diff guard, POST half.
 # PostToolUse(Bash|PowerShell|<agy_ask MCP>): if this consult has a baseline, diff it and warn
 # LOUDLY on any delta. READ-ONLY: never reverts/stages/blocks. Fail-open. It never stays SILENT on
 # a case that would leave the driver falsely confident - an inconclusive check warns too.
