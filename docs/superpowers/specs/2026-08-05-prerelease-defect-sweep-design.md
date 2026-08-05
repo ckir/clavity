@@ -274,7 +274,17 @@ not. **The hook is correct; it records what it is handed.** The comment is what 
 In scope because a false invariant in shipped source is a defect attractor: the next reader — human or
 model — reasons from it. One-line edit, both drivers, zero behaviour change, zero regression risk.
 
-### U3 — ME1's two known gaps (3 files)
+### U3 — the consult guard's two known gaps (3 files)
+
+> **Naming, owner remark 2026-08-05: "ME1 is not a descriptive name for humans."** Correct, and this
+> document has been rewritten to say **the consult guard** — the read-only pre/post hook pair that
+> snapshots version control around an agy consult and reports if a review-only peer wrote to the tree.
+> `ME1` was a task ID from the ship-agy-disciplines epic and carries no meaning to a reader.
+>
+> The ID still appears in three places this spec does NOT rewrite, so it stays findable:
+> `clavity-dotnet/ROADMAP.md:432` (tracked debt), the superseded
+> `docs/superpowers/specs/2026-07-22-ship-agy-disciplines-design.md` (a historical record — rewriting it
+> would falsify what was decided under that name), and the seam file `.clavity/seams/me1-capstone-r3.md`.
 
 **U3a — `agy-consult-guard-lib.sh` has no test coverage.** `scripts/tests/agy-consult-guard.Tests.ps1:5-6`
 binds only `$script:Pre` and `$script:Post`. The lib is the largest of the three at 6,9K and carries the
@@ -282,7 +292,7 @@ binds only `$script:Pre` and `$script:Post`. The lib is the largest of the three
 
 **U3b — the missing `.no-agy` opt-out is DESIGN, and must be documented as such.**
 
-This was argued out with the peer and **both of our first answers were wrong.** Adding `.no-agy` to ME1
+This was argued out with the peer and **both of our first answers were wrong.** Adding `.no-agy` to the consult guard
 would create a **self-suppression exploit**: `.no-agy` is a file in the repository, so a review-only
 consult that mutated version control could write `.no-agy` and thereby hide its own write — `post.sh`
 would exit before diffing. A guard the untrusted actor can switch off is not a guard.
@@ -293,7 +303,7 @@ The codebase already states this principle. `clavity-classic/plugin/README.md`:
 > still runs under `.no-agy`** and reports that personal registrations remain, so the kill-switch cannot
 > be used to hide an override.
 
-ME1 is that class. `agy-consult-guard-lib.sh:17` already has a
+The consult guard is that class. `agy-consult-guard-lib.sh:17` already has a
 `DELIBERATELY OUT OF SCOPE (documented, not a silent gap)` block listing the MCP signal bus and
 `clavity ring`. **Add the `.no-agy` omission there**, with the self-suppression reason. Follows the file's
 own convention; changes no behaviour.
@@ -417,7 +427,7 @@ rewritten. Do not accept "the suite is green" as evidence here.
 
 **U4** — a new suite. The eight existing ones supply the pattern.
 
-**U3a** — extend the ME1 suite to cover the lib.
+**U3a** — extend the consult-guard suite to cover the lib.
 
 **Mutation requirement.** For each unit, prove the new assertion is load-bearing: revert the guard, confirm
 the test fails, restore. Three vacuous assertions shipped in the SessionStart epic and were only caught by
@@ -440,13 +450,13 @@ must not claim the gates prove the shipped behaviour. The hot-copy/live-smoke ro
 
 **Gates.** `bash scripts/check-seed-artifacts-synced.sh` (exit 0) for the 16 dual-driver files;
 `just test-scripts-fast`; `just test-scripts-slow` (backgrounded — it exceeds the 600s tool cap, and the
-ME1 suite lives there).
+consult-guard suite lives there).
 
 ---
 
 ## 4. Sequence, and what forces it
 
-**U4's suite (drive-session-reset only) → U1 + U2 → U3 → the rest of U4 → commit → capstone with ME1
+**U4's suite (drive-session-reset only) → U1 + U2 → U3 → the rest of U4 → commit → capstone with the consult guard
 seated → full gates → release.**
 
 **🔴 THE ORIGINAL SEQUENCE CONTRADICTED ITSELF, and the contradiction was introduced by this document's own
@@ -462,13 +472,13 @@ first**, confirm it passes, then make the U1 edit to that hook and watch the new
 red to green. That is the ordinary test-first shape, it costs nothing, and it is the only part of this work
 where a mistake deletes a file rather than printing a line.
 
-The peer initially argued the reverse — review ME1 first, because it would "overwrite" U1's edits in the
+The peer initially argued the reverse — review the consult guard first, because it would "overwrite" U1's edits in the
 same directory. **Measured and refuted:** the six `agy-consult-guard-*` files contain **zero** occurrences
 of `.no-agy`, so U1 never opens them. The two sets are disjoint. The peer withdrew the constraint, calling
 it a false spatial generalization, and reversed to this order.
 
 What genuinely orders it: U1 and U2 are the low-discovery work; landing them first banks the largest chunk
-and leaves ME1 as an isolated task. Nothing else constrains it.
+and leaves the consult guard as an isolated task. Nothing else constrains it.
 
 **U1 is NOT purely mechanical, and an earlier draft of this spec wrongly called it "zero-discovery".** The
 two-check structure above means every one of the 17 files carries a judgement call about its degraded
@@ -476,12 +486,12 @@ branch, and `agy-liveness-check.sh` differs further: its degraded checks ANNOUNC
 exiting silently, so a change there alters user-visible boot output. Budget U1 as careful repetitive work
 with one real decision, not as find-and-replace.
 
-**One capstone, not two.** ME1's staged round-3 brief (`.clavity/seams/me1-capstone-r3.md`) is **stale** —
-it names `C:/Users/user/.claude/hooks/…` from when ME1 was global config, and the old matcher
+**One capstone, not two.** The consult guard's staged round-3 brief (`.clavity/seams/me1-capstone-r3.md`) is **stale** —
+it names `C:/Users/user/.claude/hooks/…` from when it was global config, and the old matcher
 `mcp__plugin_clavity-dotnet_clavity-ls__agy_ask`; it ships from the plugin now with `mcp__.*agy_ask`.
 Rather than repair it and run a separate review, fold its four hunt questions in as **named seats of the
 single capstone over this release's committed range**. A capstone reviews committed code, so it would wait
-for these commits regardless, and ME1's changed files are part of this diff. One review of what ships
+for these commits regardless, and the consult guard's changed files are part of this diff. One review of what ships
 together.
 
 Its four seats, carried forward: a VCS mutation invisible to the 7 axes; a path that silently disables the
@@ -533,11 +543,11 @@ leaving a real mutation unreported — **a false negative being the fatal class 
    literally would send an implementer to write 5 unnecessary suites. **Direct test + parity gate = covered;
    `agy-drive-session-reset.sh` has no parity pair and so needs its own suite — which is U4.**
 2. `agy-drive-session-reset.sh` has a suite, registered in `justfile`.
-3. `agy-consult-guard-lib.sh` is covered by the ME1 suite.
+3. `agy-consult-guard-lib.sh` is covered by the consult-guard suite.
 4. The `model` comment states what is true.
 5. `lib.sh`'s OUT OF SCOPE block records the `.no-agy` omission and its reason.
 6. Fast half and slow half green; `check-seed-artifacts-synced.sh` exit 0; `_partition.md` re-measured.
-7. A capstone over the committed range, with ME1's four seats, reaching owner-confirmed GREEN.
+7. A capstone over the committed range, with the consult guard's four seats, reaching owner-confirmed GREEN.
 
 ---
 
@@ -549,4 +559,4 @@ leaving a real mutation unreported — **a false negative being the fatal class 
 | `[ -e "$root/.git" ] \|\| exit 0` in the nine hooks | The guard's reason does not apply; would silence them in every non-repo directory. **Not** because "they only emit a message" — that is false of `agy-drive-session-reset.sh`; see §U1 for the corrected argument |
 | `path-scan.iss` / `ClassicClavityOnPath` unification | Intentional duplication, roster correctly scoped, installer refactor before a release is unjustified risk |
 | The ECC hook tax | Does not ship in this artifact; owner config decision |
-| ME1 async attribution, the MCP signal bus, `clavity ring` | Already documented as out of scope in `lib.sh:17-21`; unchanged by this work |
+| Consult-guard async attribution, the MCP signal bus, `clavity ring` | Already documented as out of scope in `lib.sh:17-21`; unchanged by this work |
