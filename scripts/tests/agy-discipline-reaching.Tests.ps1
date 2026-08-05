@@ -1,18 +1,26 @@
-# The DISCIPLINE-REACHING recorder (SessionEnd). ROADMAP section 0, step 1a. CAPTURE ONLY.
+# The DISCIPLINE-REACHING recorder (SessionStart). ROADMAP section 0, step 1a. CAPTURE ONLY.
 #
 # THIS HOOK NAMES A SESSION AND ITS TRANSCRIPT, AND STOPS. Every count lives in the report
 # (scripts/discipline-reaching-report.ps1) and is tested there.
 #
 # WHY, and it is the only reason that matters: the first version scanned the transcript HERE. It passed
 # every test in this file and every direct invocation, then failed on SHIPPED v17 in production, twice -
-# `SessionEnd hook ... failed: Hook cancelled` - writing NOTHING. The control was a diagnostic probe on the
-# SAME event in the SAME environment doing no scanning: it wrote its row both times. Fast hook survives,
-# multi-second hook is cancelled. Session teardown gives a hook far less time than its declared `timeout`.
+# `SessionEnd hook ... failed: Hook cancelled` - writing NOTHING.
 #
-# So the assertions below are mostly NEGATIVE - they exist to stop analysis creeping back into teardown,
-# because a cancelled hook writes NO row, and no row is indistinguishable from a session that never ran:
-# the silent zero this entire item exists to remove. That failure could not be caught by invoking the hook
-# directly, which is the whole lesson.
+# WHAT THAT FAILURE WAS ACTUALLY CAUSED BY - and the wrong answer this file used to give. The old text here
+# said "fast hook survives, multi-second hook is cancelled", i.e. that teardown starves a slow hook. That
+# was WRONG and it cost three review rounds. The real cause: ${CLAUDE_PLUGIN_ROOT} DOES NOT RESOLVE at
+# SessionEnd. Cancelled 3/3 with the variable; an absolute path from the SAME manifest worked 2/2. The
+# "control" the old text cited differed in TWO ways at once - it did no scanning AND it used an absolute
+# path - so it could never separate the two, and duration was the confound: a SLOWER hook registered
+# elsewhere survived. One axis was varied three times and the other never. The recorder now runs at
+# SessionStart, where the variable resolves.
+#
+# So the assertions below are mostly NEGATIVE - they exist to stop analysis creeping back into the hook.
+# The reason survives the corrected diagnosis on its own merits: this hook now runs at EVERY session start,
+# so it must be cheap; and a hook that fails to write leaves NO row, which is indistinguishable from a
+# session that never ran - the silent zero this entire item exists to remove. That failure could not be
+# caught by invoking the hook directly, which is the whole lesson.
 
 Describe 'agy-discipline-reaching.sh' {
     BeforeAll {
@@ -97,9 +105,10 @@ Describe 'agy-discipline-reaching.sh' {
     }
 
     It 'CAPTURES ONLY - it names the transcript and does NOT count anything' {
-        # THE LOAD-BEARING CONTRACT. Analysis moved OUT of this hook because scanning here was CANCELLED at
-        # real session teardown on shipped v17, twice, writing nothing. A row carrying counts is proof the
-        # scan came back - which is precisely what must never happen in a SessionEnd hook again.
+        # THE LOAD-BEARING CONTRACT. Analysis moved OUT of this hook because scanning here was CANCELLED on
+        # shipped v17, twice, writing nothing. A row carrying counts is proof the scan came back - which
+        # must never happen in THIS hook again, whatever event it is registered on. It fires at every
+        # session start now, so the cost is paid on every session rather than once at the end.
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
@@ -110,7 +119,7 @@ Describe 'agy-discipline-reaching.sh' {
             $rec.Last.transcript_path | Should -Not -BeNullOrEmpty -Because 'the report can only analyse a transcript this row names'
             $rec.Last.scan_status | Should -BeExactly 'deferred'
             foreach ($f in 'dispatch_nudges','dispatch_nudges_unstamped','dispatch_fired','compactions') {
-                $rec.Last.PSObject.Properties.Name | Should -Not -Contain $f -Because "$f is the report's job; its presence here means scanning crept back into teardown"
+                $rec.Last.PSObject.Properties.Name | Should -Not -Contain $f -Because "$f is the report's job; its presence here means scanning crept back into the hook"
             }
         } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -245,11 +254,14 @@ Describe 'agy-discipline-reaching.sh' {
         } finally { Remove-Item $d,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'exits 0 when jq is absent' {
+    It 'exits 0 under a minimal PATH (the hook spawns no subprocess but mkdir)' {
+        # RENAMED, not deleted. The hook no longer invokes jq at all, so the old name described a
+        # dependency that no longer exists - but the assertion still means something: it proves the hook
+        # fails OPEN when almost nothing is on PATH.
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h; PATH = $script:NoJqPath }
-            $x.ExitCode | Should -Be 0 -Because 'SessionEnd runs at teardown; a non-zero here helps nobody'
+            $x.ExitCode | Should -Be 0 -Because 'a boot hook must fail open; a non-zero exit at SessionStart helps nobody and risks the session'
         } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
