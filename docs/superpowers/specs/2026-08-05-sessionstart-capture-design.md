@@ -51,7 +51,8 @@ model and re-runs the three rounds that were already wasted on it.
 A genuine second benefit, independent of the cause: a row written at the beginning survives a session that
 crashes or is killed, which a teardown-time write never could.
 
-**MEASURED 2026-08-05 — the `SessionStart` payload carries everything needed**, captured live:
+**MEASURED 2026-08-05 on TWO of the four sources — `startup` and `compact`** (`resume` and `clear` remain
+unobserved). Both carry every field this design needs:
 
 ```
 cwd, hook_event_name, model, session_id, source, transcript_path
@@ -59,7 +60,12 @@ cwd, hook_event_name, model, session_id, source, transcript_path
 
 `transcript_path` was the load-bearing unknown: the prior spec claimed it "Confirmed present on
 `PreCompact` … and on `SessionStart`", but only the `PreCompact` half had been observed. The
-`SessionStart` half was an assumption carried in the same sentence as a measured fact. It is now measured.
+`SessionStart` half was an assumption carried in the same sentence as a measured fact. It is now measured —
+**for `startup` and `compact`.** Extending that to `resume` and `clear` is an extrapolation, and it is
+recorded as one rather than quietly promoted. The design is safe under a failed extrapolation: a payload
+missing `transcript_path` produces a row with `scan_status: transcript_not_found`, which is a named,
+visible degradation and not a zero. The first `resume` and `clear` rows to land should be checked against
+this and the answer written here.
 
 **Why this option only exists now.** `SessionStart` was rejected in the original design because v1 computed
 an `anomalies_delta` needing a baseline at start and a write at end. **v2 is capture-only** — it names the
@@ -162,11 +168,26 @@ claimed during review that the report "already deduplicates by session_id"; it d
 used to dismiss the multi-fire cost as trivial. Verified by measurement before folding.
 
 ✅ **MEASURED 2026-08-05 — a `compact` fire REUSES the session's `session_id`, so dedup is load-bearing,
-not a no-op.** This was flagged here as unmeasured and has since been settled from a captured payload
+not a no-op.** Settled from a captured payload
 (`.clavity/scratch/discipline-efficacy/sessionstart-payload.txt:4`): a `source=compact` fire carried
 `session_id c359e435-163a-416d-8e01-00a105d030d7`, the id of the session it compacted, corroborated
-independently by that session's own `PreCompact` payload. **`transcript_path` was byte-identical across the
-two fires**, which is what makes "keep the earliest row" safe — the discarded rows name the same transcript.
+independently by that session's own `PreCompact` payload.
+
+⚠️ **A NARROWER claim than this document first made, and the correction is worth keeping visible.** An
+earlier draft said `transcript_path` was "byte-identical across the two fires". It is not what the evidence
+shows: the two captured payloads are **different sessions** (`b289efb2` at `startup`, `c359e435` at
+`compact`), so nothing there compares one session's `startup` row against its own `compact` row. That
+comparison has NOT been made.
+
+What holds instead, and why it is still enough: in both observations the transcript is
+`<session_id>.jsonl`. If the id is stable across fires — which IS measured — then a path derived from the
+id is stable too. That is a structural inference from a naming convention observed twice, not a
+measurement, and it is labelled as such here because mistaking the two is the specific error that has cost
+this item the most.
+
+If the convention ever changes, "keep the earliest" starts naming a stale transcript. The cheap insurance:
+when collapsing rows, if their `transcript_path` values differ, prefer the LATEST and record that they
+disagreed. Nothing observed says they will, and the report should not be silent if they do.
 
 `clear` remains unobserved. It is the one source that could plausibly mint a new id, and if it does the
 effect is benign (it simply presents as a separate session).
@@ -237,7 +258,22 @@ subdirectory). Add a test whose `cwd` is a subdirectory of a repo carrying a roo
 case at `scripts/tests/agy-discipline-reaching.Tests.ps1` only exercises `cwd` = repo root, which is why
 this survived.
 
-**The same hole exists in eight sibling hooks** — every plugin hook tests `$cwd/.no-agy`. For the reminder
+**And a second, related one: the hook writes into NON-REPOSITORY directories.** The root walk at `:58-66`
+falls back to `root=$cwd_path` when it finds no `.git`, and `:73-74` then creates `$root/.clavity/`
+regardless. **MEASURED:** a payload whose `cwd` is an ordinary folder with no git ancestor produced
+`.clavity/discipline-reaching.jsonl` in that folder. Open Claude in `Downloads` and it leaves a directory
+behind.
+
+**Fix:** if the walk finds no `.git`, exit 0 without writing. A session outside any repository has no
+project to attribute reaching to, so the row would be unattributable anyway — this discards nothing worth
+having. Note the ordering interaction: this check and the `.no-agy` check both depend on `$root`, so both
+belong after the walk.
+
+Writing `.clavity/` into a git repo the user is actually working in is NOT part of this defect — that is
+how every other piece of clavity's per-repo state already behaves, and a repo is a project the row can be
+attributed to. The line being drawn is between "a repository" and "any directory at all".
+
+**The `.no-agy` hole exists in eight sibling hooks** — every plugin hook tests `$cwd/.no-agy`. For the reminder
 hooks the cost is an unwanted message rather than a write, so it is a different severity and a different
 change; it is logged in `.clavity/local-anomalies.md` and is NOT in this spec's scope. Fixing it here for
 the hook this spec already rewrites is not scope creep; leaving a consent bypass in the one hook that
@@ -251,9 +287,9 @@ Windows paths, CR stripping, and pipe-safe stdin. Boot is not teardown and there
 pressure, but a hook that runs at every session start should still be cheap.
 
 **Its FIELDS do change, and "the body stays as rewritten" must not be read as forbidding that.**
-`agy-discipline-reaching.sh:43` extracts `"reason"`; schema `v:3` needs `"source"`, and the literal `"v":2`
-in the `printf` at `:79` becomes `"v":3`. The invariant being preserved is the process count and the
-escaping strategy — not the field list.
+`agy-discipline-reaching.sh:43` extracts `"reason"`; schema `v:3` needs `"source"`. A `"model"` extraction
+joins the same regex block, `model` joins the `printf` template, and the literal `"v":2` at `:79` becomes
+`"v":3`. The invariant being preserved is the process count and the escaping strategy — not the field list.
 
 The deferred-analysis split stays. The report still refuses to fold a `null` into a zero, refuses to print
 a ratio, and reports sessions RECORDED rather than RUN.
@@ -300,6 +336,19 @@ transcript of the session running the report was appended to moments ago.
 And the framing correction underneath: scanning a live transcript is not WRONG, it is **incomplete**. Every
 dispatch it counts really happened; more may follow. `provisional` says exactly that, where "exclude" would
 have thrown away a true partial count.
+
+**Exactly how that lands in the output, because "counted separately but not discarded" is two instructions
+and an implementer must not have to pick one.** A provisional session:
+
+- is **NOT** in `scanned cleanly`, and its counts are **NOT** in the `DISPATCH RELAY` sums — those totals
+  mean completed sessions, and mixing a partial count in would make them mean something softer without
+  saying so;
+- **IS** printed, with its counts, in its own `PROVISIONAL (still running - counts may grow)` section;
+- is counted in `Sessions recorded`, which is a count of rows on file and has always been exactly that.
+
+So nothing is thrown away and nothing is blended. This is the same shape as the existing `NOT SCANNED`
+section, and for the same reason: a number whose meaning differs gets its own heading rather than a
+footnote.
 
 **A session started and abandoned in seconds now records too.** A mis-launch that the user immediately
 kills writes a `startup` row, and its transcript exists, so it scans cleanly at zero. `SessionEnd` did not
@@ -359,6 +408,7 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
   even when content and ordering have been taken from the same row.
 - Add: a session whose transcript mtime is inside the recency threshold reports as `provisional` and is
   excluded from `scanned cleanly`. Drive it by setting the fixture's mtime, not by racing a live writer.
+- Add: a payload whose `cwd` has no `.git` ancestor writes NOTHING and creates no directory.
 - Add: `.no-agy` at a repo root suppresses a payload whose `cwd` is a SUBDIRECTORY of that repo. This is
   the case that lets the shipped bypass through, so assert that NO file is created — not merely that the
   exit code is 0, which the bypass also satisfies.
