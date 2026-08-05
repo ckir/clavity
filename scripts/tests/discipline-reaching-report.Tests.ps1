@@ -151,6 +151,72 @@ Describe 'discipline-reaching-report.ps1' {
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'keeps an UNSUPPORTED-version row out of the boot-source distribution even when it carries a source' {
+        # THE THIRD VACUOUS ASSERTION, found by mutation on 2026-08-05. The source-counting guard reads
+        # `$v -eq $SCHEMA_CAPTURE_3 -and ... -contains 'source'`, and deleting the VERSION half of it broke
+        # NOTHING: all 22 tests still passed. Every fixture that carried a `source` was already v:3, so the
+        # property check alone satisfied them, and `Should -Not -Match 'prompt_input_exit'` in the
+        # distribution test passes because v:1 carries `reason` - not because the version guard works.
+        #
+        # This pins the version half on its own. A v99 row is the suite's established way of writing "a
+        # schema this build does not know" (see the test above), and it is the case that actually matters:
+        # source-counting happens BEFORE the version dispatch, so without the guard a future schema would
+        # be counted as a hook FIRING and then dropped from `Sessions recorded` - a row present in one
+        # total and absent from the other.
+        $tx = New-ScanTranscript
+        $d = New-Store @(
+            (CapRec3 $tx -Sid 'REAL' -Source 'startup')
+            ('{"v":99,"session_id":"FUTURE","timestamp":"2026-08-05T10:00:00Z","source":"teleport","scan_status":"ok"}')
+        )
+        try {
+            $o = Run $d
+            $o | Should -Match 'startup\s*:\s*1' -Because 'the real v:3 row still counts'
+            $o | Should -Not -Match 'teleport' -Because 'an unsupported schema must not enter the boot-source distribution it is about to be dropped from'
+            $o | Should -Match 'unsupported schema version\s*:\s*1' -Because 'and it must be reported as skipped, not silently vanish'
+            $o | Should -Match 'Sessions recorded\s*:\s*1'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'orders -Last N CHRONOLOGICALLY across a year boundary, not alphabetically by a localised date' {
+        # AGY-CAPSTONE round 1, CONFIRMED BY MEASUREMENT on this machine (culture el-GR).
+        # ConvertFrom-Json does NOT hand back the ISO-8601 STRING - it parses it into a [System.DateTime].
+        # `[string]$Row.timestamp` then formats it with the host's CurrentCulture, so the sort key becomes
+        # "08/05/2026 08:00:00" / "01/01/2027 08:00:00" and an ALPHABETICAL sort puts January 2027 BEFORE
+        # August 2026. -Last N then slices off the newest sessions and keeps the oldest.
+        # Every fixture in this suite used same-day, increasing-hour timestamps, which masks it completely.
+        $tx = New-ScanTranscript
+        $d = New-Store @(
+            (CapRec3 $tx -Sid 'OLDER' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+            (CapRec3 $tx -Sid 'NEWER' -Source 'startup' -Ts '2027-01-01T08:00:00Z')
+        )
+        try {
+            (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
+            $o = Run $d -Last 1
+            $o | Should -Match 'Sessions recorded\s*:\s*1'
+            $o | Should -Match 'NEWER' -Because '2027 is later than 2026 in every culture; only a string sort disagrees'
+            $o | Should -Not -Match 'OLDER'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'adopts a later fire transcript when the EARLIEST row named none' {
+        # AGY-CAPSTONE round 1. Merge-SessionRows keeps $g[0] for CONTENT, and only overrides
+        # transcript_path when the collapsed rows DISAGREE (more than one distinct non-empty path). If the
+        # earliest row named NO transcript and a later one did, there is exactly ONE distinct path, so the
+        # disagreement branch never runs and the session keeps the earliest row's EMPTY path - reporting
+        # transcript_not_found for a session whose transcript is right there and readable.
+        $tx = New-ScanTranscript
+        $d = New-Store @(
+            ('{"v":3,"session_id":"S1","timestamp":"2026-08-05T08:00:00Z","source":"startup","model":"m","transcript_path":"","scan_status":"transcript_not_found"}')
+            (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T09:00:00Z')
+        )
+        try {
+            $o = Run $d
+            $o | Should -Match 'Sessions recorded\s*:\s*1'
+            $o | Should -Match 'scanned cleanly\s*:\s*1' -Because 'the session HAS a readable transcript; a later fire named it'
+            $o | Should -Match 'reached the model, stamped\s*:\s*2' -Because 'and its counts must reach the totals'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'survives a malformed line and says so rather than dying' {
         $d = New-Store @( (Rec 2 0 2 0), '{not json at all', (Rec 1 0 1 0) )
         try {
@@ -244,6 +310,11 @@ Describe 'discipline-reaching-report.ps1' {
             $o | Should -Match 'Sessions recorded\s*:\s*1'
             $o | Should -Match 'LONG' -Because 'LONG is still active at 18:00; ranked by birth it would sort older than SHORT and be dropped'
             $o | Should -Not -Match 'SHORT'
+            # PINS CONTENT-FROM-EARLIEST. LONG fired startup at 08:00 and compact at 18:00; the collapsed
+            # record must report how it BEGAN. Before the PROVISIONAL line printed `began`, flipping
+            # Merge-SessionRows to keep the LATEST row broke nothing at all - measured, 25/25 still green.
+            $o | Should -Match 'began startup' -Because 'the merge keeps the EARLIEST row for content'
+            $o | Should -Match '2 fires' -Because 'and fire_count must survive the collapse it summarises'
         } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

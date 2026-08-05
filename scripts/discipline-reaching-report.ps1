@@ -129,6 +129,29 @@ else empty end
     return $Row
 }
 
+function ConvertTo-SortKey {
+    <#
+      Return a key that sorts CHRONOLOGICALLY as a string, whatever the host's culture.
+
+      WHY THIS EXISTS - measured, not theorised. `ConvertFrom-Json` does NOT hand back the ISO-8601 STRING
+      it read: it parses an ISO-looking value into a [System.DateTime]. A later `[string]` cast then
+      formats that with the host's CurrentCulture, so on this machine (el-GR) the timestamp
+      "2026-08-05T08:00:00Z" becomes the sort key "08/05/2026 08:00:00". Sorted alphabetically,
+      "01/01/2027 ..." lands BEFORE "08/05/2026 ...", so -Last N drops the NEWEST sessions and keeps the
+      oldest. Every fixture in the suite used same-day, increasing-hour timestamps, which hid it entirely.
+
+      A value that is not a DateTime (a malformed or non-ISO timestamp survives as a plain string) is
+      returned unchanged - it still sorts deterministically, and an ISO string sorts consistently with the
+      invariant keys produced here.
+    #>
+    param($Value)
+    if ($null -eq $Value) { return '' }
+    if ($Value -is [datetime]) {
+        return $Value.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    return [string]$Value
+}
+
 function Merge-SessionRows {
     <#
       Collapse rows by session_id - FOR THE SessionStart CAPTURE SCHEMA (v:3) ONLY.
@@ -160,7 +183,7 @@ function Merge-SessionRows {
     #>
     param([object[]]$Rows)
     $ownTs = { param($Row)
-        if ($Row.PSObject.Properties.Name -contains 'timestamp') { [string]$Row.timestamp } else { '' }
+        if ($Row.PSObject.Properties.Name -contains 'timestamp') { ConvertTo-SortKey $Row.timestamp } else { '' }
     }
     $stamp = { param($Row, $First, $Last, $Count)
         $Row | Add-Member -NotePropertyName 'first_seen' -NotePropertyValue ([string]$First) -Force
@@ -181,18 +204,33 @@ function Merge-SessionRows {
         $groups[$sid].Add($r)
     }
     foreach ($sid in $groups.Keys) {
-        $g = @($groups[$sid] | Sort-Object -Property @{ Expression = { [string]$_.timestamp } })
+        $g = @($groups[$sid] | Sort-Object -Property @{ Expression = { ConvertTo-SortKey $_.timestamp } })
         $keep = $g[0]
         & $stamp $keep (& $ownTs $g[0]) (& $ownTs $g[-1]) $g.Count
         $paths = @($g | ForEach-Object {
             if ($_.PSObject.Properties.Name -contains 'transcript_path') { [string]$_.transcript_path } else { '' }
         } | Where-Object { $_ -ne '' })
-        if (@($paths | Sort-Object -Unique).Count -gt 1) {
+        $keepPath = if ($keep.PSObject.Properties.Name -contains 'transcript_path') { [string]$keep.transcript_path } else { '' }
+        if ($paths.Count -gt 0) {
             # The LATEST NON-EMPTY path, NOT $g[-1].transcript_path: the newest row may carry no path at
             # all, and reading an absent property here would kill the report under StrictMode. $paths is
             # already in timestamp order, so its last element is the newest one that named anything.
-            $keep | Add-Member -NotePropertyName 'transcript_path'   -NotePropertyValue $paths[-1] -Force
-            $keep | Add-Member -NotePropertyName 'path_disagreement' -NotePropertyValue $true      -Force
+            #
+            # TWO DISTINCT CASES, and only the second is a disagreement:
+            #   GAP - the earliest row named NO transcript and a later fire did. There is one distinct path,
+            #     so the disagreement test below never fires; without this branch the session would keep the
+            #     earliest row's EMPTY path and report `transcript_not_found` for a transcript that is right
+            #     there and readable. A startup fire that names nothing, followed by a compact that does, is
+            #     ordinary - the earliest row is the LEAST likely of the group to know the path.
+            #   DISAGREEMENT - the rows named DIFFERENT transcripts, which would mean the <session_id>.jsonl
+            #     convention this design infers from has broken. That one is surfaced to the reader.
+            if ([string]::IsNullOrWhiteSpace($keepPath)) {
+                $keep | Add-Member -NotePropertyName 'transcript_path' -NotePropertyValue $paths[-1] -Force
+            }
+            if (@($paths | Sort-Object -Unique).Count -gt 1) {
+                $keep | Add-Member -NotePropertyName 'transcript_path'   -NotePropertyValue $paths[-1] -Force
+                $keep | Add-Member -NotePropertyName 'path_disagreement' -NotePropertyValue $true      -Force
+            }
         }
         $out.Add($keep)
     }
@@ -325,8 +363,17 @@ if ($provisional.Count -gt 0) {
     Write-Output ''
     Write-Output 'PROVISIONAL  (still running - counts may grow, and are NOT in the totals above)'
     foreach ($p in $provisional) {
-        Write-Output ("  {0}  reached {1}, fired {2}" -f `
-            ([string]$p.session_id), (Get-Num $p 'dispatch_nudges'), (Get-Num $p 'dispatch_fired'))
+        # `began` is the ORIGIN source - the earliest row of the collapsed session, not the latest. It is
+        # printed for two reasons. It is genuinely useful: a live session that began as `compact` has a
+        # history behind it that a `startup` one does not. And it is the ONLY place the content-from-
+        # earliest rule in Merge-SessionRows becomes OBSERVABLE - every other field is identical across a
+        # session's rows. MEASURED 2026-08-05: before this line existed, changing that merge to keep the
+        # LATEST row broke NOTHING - all 25 tests stayed green. A design rule no output can distinguish is
+        # a rule no test can pin.
+        $began = if ($p.PSObject.Properties.Name -contains 'source') { [string]$p.source } else { '?' }
+        $fires = if ($p.PSObject.Properties.Name -contains 'fire_count') { [string]$p.fire_count } else { '?' }
+        Write-Output ("  {0}  began {1}, {2} fires, reached {3}, fired {4}" -f `
+            ([string]$p.session_id), $began, $fires, (Get-Num $p 'dispatch_nudges'), (Get-Num $p 'dispatch_fired'))
     }
 }
 
