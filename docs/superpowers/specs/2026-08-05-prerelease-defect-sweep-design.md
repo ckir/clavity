@@ -19,7 +19,7 @@ recorded here so nobody re-adds them.
 |---|---|
 | `check-seed-artifacts-synced.sh` "passes when `jq` is absent" | **Fixed.** `:10` — `command -v jq >/dev/null 2>&1 \|\| { echo "…jq is required"; }` fails loud |
 | `LsDiscovery.cs` "never checks the HTTP pid matches the gRPC pid" | **Fixed.** `:136` `httpPid == pid`; fallback at `:148` additionally requires adjacent ports |
-| two hardcoded `C:\!PORTABLES\!BIN\tmux.exe` paths | **Not shipped.** They exist only in `clavity-classic/publish/`, gitignored build output that `clavity-classic/scripts/build-classic-release.ps1` restages from source which no longer contains the path |
+| two hardcoded `C:\!PORTABLES\!BIN\tmux.exe` paths | **Not shipped — but not where this row said.** RE-MEASURED panel round 3: the repo now contains exactly ONE occurrence, `clavity-classic/docs/archive/2026-06-16-agy-remote-control-design.md:75`, and it is prose in an archived design doc, not code. The two `clavity-classic/publish/` copies this row named are GONE — `publish/` still exists and contains no such reference |
 | `docs-audit` claim-count instability | **Documented at source** 2026-08-05 in `scripts/docs-audit.ps1`'s header |
 
 **And one closed by investigation — `path-scan.iss` "dotnet gap".** Not a defect. `clavity-dotnet.iss:71`
@@ -369,9 +369,28 @@ Consequences, and they are not subtle:
    passes whether or not normalization was implemented.** It would be a fourth vacuous assertion, added by
    a spec that explicitly warns against vacuous assertions.
 3. So success criterion 1 is not satisfiable through the existing helper. **At least one test per hook must
-   bypass `:76` and feed a raw, JSON-escaped, backslashed `cwd`** — the shape the real payload has —
-   asserting suppression still occurs. That test is the only thing standing between this fix and a silent
-   no-op in production.
+   bypass its suite's payload builder and feed a raw, JSON-escaped, backslashed `cwd`** — the shape the
+   real payload has — asserting suppression still occurs. That test is the only thing standing between
+   this fix and a silent no-op in production.
+
+**It is not one helper — it is a repo-wide test convention, and that changes the instruction.** Found in
+panel round 3: `scripts/tests/agy-consult-guard.Tests.ps1:19` has its own independent `Payload` function
+doing the identical thing —
+
+```powershell
+function Payload { param([string]$Tool, [string]$Cmd, [string]$Cwd)
+    @{ tool_name = $Tool; tool_input = @{ command = $Cmd }; cwd = ($Cwd -replace '\\','/'); ... }
+```
+
+Two suites, two separately-written builders, same normalization. So "bypass `:76`" is the wrong
+instruction — **each suite has its own builder and each must be checked**, because a suite whose builder
+was written the same way will mask the failure the same way. The plan must enumerate the payload builder
+in every suite it touches rather than assuming one shared helper.
+
+**Method note, because it nearly cost this finding:** a bash `grep -rn` for the `-replace '\\','/'` pattern
+returned ZERO matches while the code was plainly there — the third bash-grep false zero recorded in this
+repo. It was found by reading the file directly. Do not accept a bash `grep` zero as evidence of absence
+when planning this work; cross-check with a different tool.
 
 **Mutation proof for this specific case:** with the backslashed-payload test in place, remove the `:49`
 normalization and confirm the test FAILS. If it still passes, the test is going through `:76` and must be
