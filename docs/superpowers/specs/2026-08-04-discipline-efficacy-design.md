@@ -1,5 +1,21 @@
 # Discipline efficacy — session-end reaching recorder
 
+> 🔴 **PARTIALLY SUPERSEDED by `2026-08-05-sessionstart-capture-design.md`. Do not implement the
+> `SessionEnd` registration described here.** It shipped in v17 and FAILED in production:
+> `${CLAUDE_PLUGIN_ROOT}` does not resolve at `SessionEnd`, so the hook was cancelled and wrote nothing.
+> Capture moved to `SessionStart`.
+>
+> **What is superseded:** the event registration, and every hazard below that reasons from `SessionEnd`
+> firing or not firing — including the row in the failure table about abnormal exit, and STEP 0 item 2
+> ("does `SessionEnd` fire on every exit path?"), which is now moot.
+>
+> **What still stands:** the recorder's PURPOSE, the schema discipline (never fold a null into a zero,
+> never print an unconstructible ratio), the deferred-analysis split, and the argument that any rate
+> computed against "sessions run" is fabricated — that one is event-agnostic and survives intact.
+>
+> This banner exists because the document's own title names the wrong event. Without it a reader arrives
+> at a detailed, confident, and wrong implementation plan.
+
 **Status:** design, approved in shape by the owner 2026-08-04. Implements ROADMAP `§0` step 1, as split by
 the owner: **measure first, prompt later.**
 

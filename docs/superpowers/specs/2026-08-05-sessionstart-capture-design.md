@@ -533,6 +533,13 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
   the moment this ships. Same for the file header at `:1`. Meanwhile `:8`, `:89`, `:102` and `:109` record
   the v17 cancellation and the `v:1` schema history: those are TRUE and must survive. Update the
   justifications that describe the current event; keep the ones that describe what happened.
+- 🔴 **The SIBLING suite carries the same dead premise, and sweeping one test file is not sweeping the
+  suite.** `scripts/tests/discipline-reaching-report.Tests.ps1:14-15` restates the "never say sessions run"
+  refusal with both now-dead reasons, and `:98` asserts it
+  `-Because 'SessionEnd may not fire on every exit path, so that denominator is unknowable'`. Update both
+  to the four replacement reasons. In the SAME file, `:164-165` (v2 exists because `SessionEnd` scanning
+  was cancelled twice on v17) and `:178` (`still reads a v1 row, because v17 SHIPPED that shape`) are
+  HISTORICAL and must survive untouched.
 - **Fixtures must use real Windows paths with backslashes.** Forward-slash fixtures are what hid two
   shipped defects; a green suite over unrealistic fixtures is a test lying in the worst direction.
 
