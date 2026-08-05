@@ -199,16 +199,37 @@ Describe 'agy-discipline-reaching.sh' {
     }
 
     It 'is SILENT under .no-agy (<Scope>) and writes nothing' -ForEach @(
-        @{ Scope = 'workspace' }, @{ Scope = 'global' }
+        @{ Scope = 'workspace' }, @{ Scope = 'global' }, @{ Scope = 'root-from-subdir' }
     ) {
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
-            if ($Scope -eq 'workspace') { New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null }
-            else { New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null }
-            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx) -Env @{ HOME = $h }
+            $cwdArg = $r
+            switch ($Scope) {
+                'workspace' { New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null }
+                'global'    { New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null }
+                'root-from-subdir' {
+                    # THE SHIPPED BYPASS: the opt-out is at the repo ROOT that would be written to, while
+                    # the session was launched in a SUBDIRECTORY. Before the fix this WROTE a row.
+                    New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
+                    $cwdArg = Join-Path $r 'src'
+                    New-Item -ItemType Directory -Path $cwdArg -Force | Out-Null
+                }
+            }
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $cwdArg $tx) -Env @{ HOME = $h }
             $x.ExitCode | Should -Be 0
-            Get-Record $r | Should -BeNullOrEmpty
+            Get-Record $r | Should -BeNullOrEmpty -Because 'an opt-out anywhere on the path to the write target must suppress the write'
         } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'writes NOTHING and creates no directory when cwd has no .git ancestor' {
+        $d = Join-Path ([IO.Path]::GetTempPath()) ("nogit-" + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $d -Force | Out-Null
+        $h = New-CleanHome; $tx = New-Transcript
+        try {
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $d $tx) -Env @{ HOME = $h }
+            $x.ExitCode | Should -Be 0
+            Test-Path -LiteralPath (Join-Path $d '.clavity') | Should -BeFalse -Because 'a session outside a repo has no project to attribute reaching to'
+        } finally { Remove-Item $d,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'exits 0 when jq is absent' {

@@ -48,13 +48,12 @@ cwd=''; sid=''; reason=''; tx=''
 cwd_path=${cwd//\\\\//}
 [ -z "$cwd_path" ] && cwd_path="."
 
-if [ -f "$cwd_path/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
-  exit 0
-fi
+# The GLOBAL opt-out does not depend on the repo root, so it is checked first and cheaply.
+[ -f "$HOME/.claude/.no-agy" ] && exit 0
 
 # Repo root by walking up for .git, in-shell. `git rev-parse --show-toplevel` is more precise but costs a
 # process start, and process COUNT is the entire budget here. A .git entry matches as a directory (normal
-# clone) or a file (worktree/submodule). Fallback stays cwd, so a non-repo cwd behaves as before.
+# clone) or a file (worktree/submodule).
 root=$cwd_path
 _d=$cwd_path
 while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
@@ -64,6 +63,20 @@ while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
   [ -z "$_p" ] && break
   _d=$_p
 done
+
+# NO REPOSITORY, NO ROW. $root is reassigned ONLY when the walk finds a .git, so a .git under $root here is
+# exactly equivalent to "the walk succeeded" - no flag variable is needed, and testing $cwd_path instead
+# would reintroduce the subdirectory bug fixed directly below. A session outside any repo has no project to
+# attribute reaching to, so the row would be unattributable anyway.
+[ -e "$root/.git" ] || exit 0
+
+# WORKSPACE OPT-OUT, CHECKED AFTER THE WALK - this is the fix. Checking only $cwd_path meant a .no-agy at
+# the repo ROOT did not suppress a session launched in a SUBDIRECTORY, while the write below still landed
+# in that root. MEASURED: cwd=repo/src with repo/.no-agy present WROTE a row; cwd=repo wrote nothing.
+# Both paths are tested: a .no-agy in a subdirectory still suppresses that subdirectory.
+if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
+  exit 0
+fi
 
 if [ -n "$tx" ]; then status='deferred'; else status='transcript_not_found'; fi
 
