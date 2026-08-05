@@ -23,6 +23,17 @@ Describe 'shipped plugin hook registration' {
                 if (@($group.hooks) | Where-Object { $_.command -like "*$Script*" }) { $group.matcher }
             })
         }
+        # Count the OBJECTS under $Event whose hooks array mentions $Script. Deliberately distinct from
+        # Get-OwningMatchers above, which returns each owning group's matcher VALUE: "matcher" is an
+        # OPTIONAL key, so a group that omits it yields $null and vanishes into every emptiness check.
+        # Presence assertions can use either (they compare the matcher string); ABSENCE assertions must use
+        # this one, because it counts a matcher-less group as the registration it is.
+        function Get-OwningGroupCount { param([string]$Manifest, [string]$Event, [string]$Script)
+            $json = Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json
+            @(foreach ($group in @($json.hooks.$Event)) {
+                if (@($group.hooks) | Where-Object { $_.command -like "*$Script*" }) { 1 }
+            }).Count
+        }
         function Get-AllCommands { param([string]$Manifest)
             $json = Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json
             @(foreach ($event in $json.hooks.PSObject.Properties) {
@@ -177,8 +188,15 @@ Describe 'shipped plugin hook registration' {
     It 'registers agy-discipline-reaching.sh on SessionEnd NOWHERE - <Driver>' -ForEach @(
         @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
     ) {
+        # COUNT THE OWNING GROUPS, NOT THEIR MATCHER VALUES. This assertion was first written as
+        # `@(Get-OwningMatchers ...) | Should -BeNullOrEmpty` and it passed VACUOUSLY. MEASURED 2026-08-05:
+        # a group with no "matcher" key makes Get-OwningMatchers emit $null, so the array is @($null) with
+        # Count 1, and Should -BeNullOrEmpty accepts a piped $null. The deleted SessionEnd block had exactly
+        # that shape - `{ "hooks": [...] }` with no matcher sibling - so the absence test would have passed
+        # against the very registration it exists to forbid. An absence assertion must not be written on a
+        # LABEL that is allowed to be absent.
         $m = $script:Manifests[$Driver]
-        @(Get-OwningMatchers -Manifest $m -Event 'SessionEnd' -Script 'agy-discipline-reaching.sh') |
-            Should -BeNullOrEmpty -Because '${CLAUDE_PLUGIN_ROOT} does not resolve at SessionEnd; the hook is cancelled and writes nothing'
+        Get-OwningGroupCount -Manifest $m -Event 'SessionEnd' -Script 'agy-discipline-reaching.sh' |
+            Should -Be 0 -Because '${CLAUDE_PLUGIN_ROOT} does not resolve at SessionEnd; the hook is cancelled and writes nothing'
     }
 }
