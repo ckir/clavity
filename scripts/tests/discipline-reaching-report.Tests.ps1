@@ -198,6 +198,82 @@ Describe 'discipline-reaching-report.ps1' {
         } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'degrades ONE row with a non-numeric count instead of killing the whole report' {
+        # AGY-CAPSTONE round 3. `[int]"N/A"` throws, and under $ErrorActionPreference='Stop' that
+        # terminating error takes down the entire run - so one corrupted or hand-edited field in one row
+        # would destroy the reading of every other session. The row is now an UNKNOWN, which is the
+        # bucket that already exists to say so.
+        $d = New-Store @(
+            (Rec 5 0 5 0 'ok' 'GOOD' 1)
+            ('{"v":1,"session_id":"BAD","timestamp":"2026-08-05T00:00:00Z","reason":"x","dispatch_nudges":"N/A","dispatch_nudges_unstamped":null,"dispatch_fired":null,"compactions":null,"scan_status":"ok"}')
+        )
+        try {
+            $o = Run $d
+            $o | Should -Match 'Sessions recorded\s*:\s*2' -Because 'the bad row is still a recorded session'
+            $o | Should -Match 'reached the model, stamped\s*:\s*5' -Because 'the GOOD row must still be counted, and the bad one must contribute nothing'
+            $o | Should -Not -Match '(?i)cannot convert|invalid cast' -Because 'the report degrades a row; it does not die on one'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'refuses to call a scan CLEAN when jq failed part-way through the transcript' {
+        # AGY-CAPSTONE round 3, and the sharpest defect of the review. PowerShell's try/catch does NOT
+        # fire for a NATIVE binary's non-zero exit, so a jq failure fell straight through to the success
+        # tail: counts taken from whatever jq managed to emit before dying, and scan_status stamped 'ok'.
+        # MEASURED: a transcript whose final line is truncated (a session killed mid-write - ordinary)
+        # makes jq exit 5 while still emitting the earlier records, so the scan reported 1 delivery as a
+        # COMPLETE reading when the real answer was unknown. That is Refusal #1 in its general form: a
+        # partial result presented as an authoritative one.
+        $tx = Join-Path ([IO.Path]::GetTempPath()) ("trunc-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+        @(
+            '{"type":"attachment","uuid":"d1","attachment":{"type":"hook_additional_context","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","content":["AGY-ANOMALIES/1 relay."]}}'
+            '{"type":"attachment","uuid":"TRUNC","attachment":{"type":"hook_additional_context","hookEv'
+        ) -join "`n" | Set-Content -LiteralPath $tx -Encoding utf8NoBOM
+        (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddHours(-3)
+        $d = New-Store @( (CapRec3 $tx -Sid 'TRUNC') )
+        try {
+            $o = Run $d
+            $o | Should -Match 'scanned cleanly\s*:\s*0' -Because 'a scan whose tool failed is not a clean scan'
+            $o | Should -Match 'not scanned\s*:\s*1'
+            $o | Should -Match 'transcript_unreadable' -Because 'and it must be named as an unknown, not a count'
+            $o | Should -Not -Match 'reached the model, stamped\s*:\s*1' -Because 'the partial count must never enter the totals'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'raises the FIRED BUT NEVER REACHED alarm for a COMPLETED session too' {
+        # AGY-CAPSTONE round 3. The live-session alarm added in round 2 was pinned; the ORIGINAL
+        # completed-session alarm never was. Every fixture with a finished session had reached > 0, so
+        # deleting that branch outright left all 27 tests green. Two alarms, one covered.
+        $tx = Join-Path ([IO.Path]::GetTempPath()) ("done-tx-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+        '{"type":"attachment","uuid":"s1","attachment":{"type":"hook_success","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","command":"bash /x/agy-anomaly-dispatch-reminder.sh","exitCode":0}}' |
+            Set-Content -LiteralPath $tx -Encoding utf8NoBOM
+        (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddHours(-3)
+        $d = New-Store @( (CapRec3 $tx -Sid 'DONE') )
+        try {
+            $o = Run $d
+            $o | Should -Match 'scanned cleanly\s*:\s*1'
+            $o | Should -Match 'hook fired\s*:\s*1'
+            $o | Should -Match 'v15 failure signature' -Because 'fired with nothing reached is the whole reason this report exists'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'SURFACES a transcript path disagreement instead of silently picking one' {
+        # AGY-CAPSTONE round 3. Merge-SessionRows sets path_disagreement and the report has a block to
+        # print it - and nothing exercised either. Deleting the whole block left all 27 tests green, so a
+        # guard written specifically to be LOUD could have gone silent unnoticed.
+        $tx1 = New-ScanTranscript
+        $tx2 = New-ScanTranscript
+        $d = New-Store @(
+            (CapRec3 $tx1 -Sid 'SPLIT' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+            (CapRec3 $tx2 -Sid 'SPLIT' -Source 'compact' -Ts '2026-08-05T09:00:00Z')
+        )
+        try {
+            $o = Run $d
+            $o | Should -Match 'TRANSCRIPT PATH DISAGREEMENT'
+            $o | Should -Match 'SPLIT'
+            $o | Should -Match ([regex]::Escape((Split-Path -Leaf $tx2))) -Because 'the LATEST path is the one used, and the reader is told which'
+        } finally { Remove-Item $d,$tx1,$tx2 -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'raises the FIRED BUT NEVER REACHED alarm for a LIVE session, not only a finished one' {
         # AGY-CAPSTONE round 2, and the worst defect in the epic. The v15 signature - the hook fired and
         # nothing reached the model - is the single reason this report exists. It was computed only over

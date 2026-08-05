@@ -98,13 +98,28 @@ elif (.type=="attachment" and .attachment.type=="hook_additional_context"
 elif (.isCompactSummary==true)                                          then "C " + (.uuid // "")
 else empty end
 '@
+    # try/catch DOES NOT CATCH A NATIVE BINARY'S NON-ZERO EXIT. That is why $LASTEXITCODE is checked
+    # explicitly below rather than trusted to throw. MEASURED: a transcript whose last line is truncated -
+    # an ordinary consequence of a session killed mid-write - makes jq exit 5 while STILL emitting the
+    # records it parsed before dying. Without this check the partial output flowed straight into the
+    # success tail and was stamped `scan_status = ok`: a scan reported as complete on a count that was
+    # merely whatever jq managed before it failed. Refusal #1 says a null is never a zero; this is the
+    # same rule for a PARTIAL, which is worse, because a plausible number invites more trust than a blank.
+    $jqExit = 0
     try {
         $pat = '"type":"hook_additional_context"|"isCompactSummary":true|"command":"bash .{0,120}agy-anomaly-dispatch-reminder'
+        $global:LASTEXITCODE = 0
         $classified = @(
             Select-String -LiteralPath $tx -Pattern $pat -Raw -AllMatches -ErrorAction Stop |
                 & $jqExe.Source -r --arg s $stamp $filter 2>$null
         ) | Sort-Object -Unique
+        $jqExit = $global:LASTEXITCODE
     } catch {
+        & $add 'scan_status' 'transcript_unreadable'
+        foreach ($f in 'dispatch_nudges','dispatch_nudges_unstamped','dispatch_fired','compactions') { & $add $f $null }
+        return $Row
+    }
+    if ($jqExit -ne 0) {
         & $add 'scan_status' 'transcript_unreadable'
         foreach ($f in 'dispatch_nudges','dispatch_nudges_unstamped','dispatch_fired','compactions') { & $add $f $null }
         return $Row
@@ -293,6 +308,18 @@ $rows = @(Merge-SessionRows -Rows $rows)
 $rows = @($rows | Sort-Object -Property @{ Expression = { [string]$_.last_seen } })
 if ($Last -gt 0 -and $rows.Count -gt $Last) { $rows = $rows[-$Last..-1] }
 
+# SAY WHAT IS ABOUT TO HAPPEN BEFORE THE SLOW PART, not after. -Last defaults to 0, meaning ALL recorded
+# sessions, and each one costs a Select-String plus a jq over a whole transcript. MEASURED on this
+# machine: 118 transcripts totalling 1766 MB, the largest 264 MB taking 8,98s for the Select-String pass
+# alone. So a full-history run is a minute at a hundred sessions and climbing, with nothing on screen
+# until it finishes. The DEFAULT IS DELIBERATELY UNCHANGED - it is a documented contract and a bounded
+# default would silently narrow what an existing caller measures. Telling the operator turns a silent
+# wait into an informed one, which is this report's own posture applied to itself.
+$toScan = @($rows | Where-Object { $_.PSObject.Properties.Name -contains 'needs_scan' -and $_.needs_scan })
+if ($toScan.Count -ge 20) {
+    Write-Output ("Scanning {0} transcripts (-Last is 0, meaning every recorded session). Pass -Last 20 to bound it." -f $toScan.Count)
+}
+
 # Pipeline order: parse -> collapse -> slice -> EXPAND. This bounds transcript reads to N.
 $rows = @($rows | ForEach-Object {
     if ($_.PSObject.Properties.Name -contains 'needs_scan' -and $_.needs_scan) { Expand-CaptureRow -Row $_ } else { $_ }
@@ -302,7 +329,12 @@ function Get-Num { param($Row, [string]$Name)
     if ($Row.PSObject.Properties.Name -notcontains $Name) { return $null }
     $val = $Row.$Name
     if ($null -eq $val) { return $null }
-    return [int]$val
+    # A NON-NUMERIC value is an UNKNOWN, not a crash. `[int]"N/A"` throws, and under
+    # $ErrorActionPreference='Stop' that terminating error kills the whole report over one bad field in
+    # one row - so a single corrupted or hand-edited line would take down the reading of every other
+    # session. Returning $null routes the row into the `not scanned` bucket, which already exists to say
+    # exactly this: the value is unknowable. Degrade the row, never the report.
+    try { return [int]$val } catch { return $null }
 }
 
 # THREE disjoint sets keyed on scan_status, NOT on null-ness. Null-ness worked as a discriminator only
