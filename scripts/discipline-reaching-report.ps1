@@ -37,8 +37,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$SCHEMA_ANALYSED = 1   # v1: counts were computed at SessionEnd (SHIPPED in v17)
-$SCHEMA_CAPTURE  = 2   # v2: the row names a transcript; THIS script does the counting
+$SCHEMA_ANALYSED  = 1   # v1: counts were computed at SessionEnd (SHIPPED in v17 - real machines hold these)
+$SCHEMA_CAPTURE   = 2   # v2: SessionEnd capture; never shipped, dev machines only
+$SCHEMA_CAPTURE_3 = 3   # v3: SessionStart capture. `source` replaces `reason`; adds `model`
 
 if (-not $Path) {
     $root = (& git rev-parse --show-toplevel 2>$null)
@@ -125,7 +126,7 @@ foreach ($line in $raw) {
     $v = if ($o.PSObject.Properties.Name -contains 'v') { $o.v } else { $null }
     # An unrecognised version is COUNTED, not parsed - mirroring the null discipline. Guessing at the
     # shape of a future record is how a reader silently mixes incompatible numbers into one total.
-    if ($v -eq $SCHEMA_CAPTURE) {
+    if ($v -eq $SCHEMA_CAPTURE -or $v -eq $SCHEMA_CAPTURE_3) {
         # v2 names a transcript and defers the analysis to HERE, where there is no time limit. Scanning at
         # SessionEnd was CANCELLED on shipped v17 twice, writing nothing, so the work moved to this script.
         $o = Expand-CaptureRow -Row $o

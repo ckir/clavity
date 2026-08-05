@@ -39,6 +39,10 @@ Describe 'discipline-reaching-report.ps1' {
             (@{ v=2; session_id=$Sid; timestamp='2026-08-04T00:00:00Z'; reason='prompt_input_exit';
                 transcript_path=$Tx; scan_status='deferred' } | ConvertTo-Json -Compress)
         }
+        function CapRec3 { param([string]$Tx, [string]$Sid = 'cap3', [string]$Source = 'startup', [string]$Ts = '2026-08-05T00:00:00Z')
+            (@{ v=3; session_id=$Sid; timestamp=$Ts; source=$Source; model='claude-opus-5';
+                transcript_path=$Tx; scan_status='deferred' } | ConvertTo-Json -Compress)
+        }
         # Same shape a real transcript uses, including the ARRAY content form. Expected: reached 2 (d1
         # duplicated + d2), unstamped 1, fired 1, compactions 2.
         function New-ScanTranscript {
@@ -193,6 +197,17 @@ Describe 'discipline-reaching-report.ps1' {
             $o | Should -Match 'transcript_not_found\D+1'
             $o | Should -Match '(?i)not[- ]?(scanned|counted)|unscanned|incomplete' -Because 'a transcript deleted before the report runs is an UNKNOWN, and the split makes that case reachable'
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'COUNTS a v:3 row instead of routing it to unsupported' {
+        $tx = New-ScanTranscript
+        $d = New-Store @( (CapRec3 $tx) )
+        try {
+            $o = Run $d
+            $o | Should -Match 'Sessions recorded\s*:\s*1'
+            $o | Should -Not -Match 'unsupported schema version'
+            $o | Should -Match 'reached the model, stamped\s*:\s*2' -Because 'the fixture transcript holds 2 stamped deliveries'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'reports cleanly when the store is <Case>' -ForEach @(
