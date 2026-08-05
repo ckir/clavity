@@ -64,8 +64,8 @@ Describe 'agy-discipline-reaching.sh' {
             return $p
         }
 
-        function Payload { param([string]$Cwd, [string]$Tx, [string]$Reason = 'prompt_input_exit', [string]$Sid = 'sess-1')
-            $o = @{ cwd = ($Cwd -replace '\\','/'); session_id = $Sid; hook_event_name = 'SessionEnd'; reason = $Reason }
+        function Payload { param([string]$Cwd, [string]$Tx, [string]$Source = 'startup', [string]$Sid = 'sess-1', [string]$Model = 'claude-opus-5')
+            $o = @{ cwd = ($Cwd -replace '\\','/'); session_id = $Sid; hook_event_name = 'SessionStart'; source = $Source; model = $Model }
             if ($null -ne $Tx) { $o.transcript_path = ($Tx -replace '\\','/') }
             $o | ConvertTo-Json -Compress
         }
@@ -86,9 +86,9 @@ Describe 'agy-discipline-reaching.sh' {
             $rec = Get-Record $r
             $rec | Should -Not -BeNullOrEmpty -Because 'no record at all is the one outcome this design forbids'
             $rec.Count | Should -Be 1
-            $rec.Last.v | Should -Be 2 -Because 'v:1 was the analyse-at-SessionEnd shape, SHIPPED in v17; the report reads both'
+            $rec.Last.v | Should -Be 3 -Because 'v:1 (analyse-at-SessionEnd) SHIPPED in v17 and v:2 (SessionEnd capture) exists on dev machines; the report reads each by its own version'
             $rec.Last.session_id | Should -BeExactly 'sess-1'
-            $rec.Last.reason | Should -BeExactly 'prompt_input_exit'
+            $rec.Last.source | Should -BeExactly 'startup'
             # Assert the RAW bytes, not the parsed object: ConvertFrom-Json coerces an ISO string into a
             # DateTime, which re-renders with 7 fractional digits, so a match on the parsed value tests
             # PowerShell's formatter rather than what this hook actually wrote to disk.
@@ -106,7 +106,7 @@ Describe 'agy-discipline-reaching.sh' {
             $x.ExitCode | Should -Be 0
             $rec = Get-Record $r
             $rec | Should -Not -BeNullOrEmpty
-            $rec.Last.v | Should -Be 2 -Because 'v:1 was the analyse-at-SessionEnd shape and SHIPPED in v17; both can coexist'
+            $rec.Last.v | Should -Be 3 -Because 'all three schema versions can coexist on an upgraded machine; the report reads each by its own version'
             $rec.Last.transcript_path | Should -Not -BeNullOrEmpty -Because 'the report can only analyse a transcript this row names'
             $rec.Last.scan_status | Should -BeExactly 'deferred'
             foreach ($f in 'dispatch_nudges','dispatch_nudges_unstamped','dispatch_fired','compactions') {
@@ -154,11 +154,24 @@ Describe 'agy-discipline-reaching.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'carries the exit path so STEP 0 item 2 is self-measuring' {
+    It 'carries the BOOT SOURCE so STEP 0 item 2 is self-measuring' {
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx -Reason 'clear') -Env @{ HOME = $h } | Out-Null
-            (Get-Record $r).Last.reason | Should -BeExactly 'clear'
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx -Source 'clear') -Env @{ HOME = $h } | Out-Null
+            (Get-Record $r).Last.source | Should -BeExactly 'clear'
+        } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'writes schema v:3 with source and model, and no reason field' {
+        $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r $tx -Source 'compact' -Model 'claude-opus-5[1m]') -Env @{ HOME = $h } | Out-Null
+            $rec = Get-Record $r
+            $rec.Last.v              | Should -Be 3
+            $rec.Last.source         | Should -BeExactly 'compact'
+            $rec.Last.model          | Should -BeExactly 'claude-opus-5[1m]'
+            $rec.Last.scan_status    | Should -BeExactly 'deferred'
+            $rec.Last.PSObject.Properties.Name | Should -Not -Contain 'reason' -Because 'source says how a session BEGAN; reason said how it ended'
         } finally { Remove-Item $r,$h,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

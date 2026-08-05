@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# AGY-ANOMALIES discipline-reaching recorder (plugin-shipped). SessionEnd. CAPTURE ONLY, NO SUBPROCESSES.
-# ROADMAP section 0 step 1a. Design + measurements: docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md
+# AGY-ANOMALIES discipline-reaching recorder (plugin-shipped). SessionStart. CAPTURE ONLY, NO SUBPROCESSES.
+# ROADMAP section 0 step 1a. Design + measurements: docs/superpowers/specs/2026-08-05-sessionstart-capture-design.md
 #
 # IT CAPTURES; IT DOES NOT ANALYSE. One small row naming the session and its transcript, then stop. All
 # scanning happens later in scripts/discipline-reaching-report.ps1, which runs on demand with no time limit.
 #
-# WHY IT IS WRITTEN WITHOUT jq, date, OR git - MEASURED, TWICE, ON SHIPPED CODE.
-# v17 scanned the transcript here and was CANCELLED at teardown, writing nothing. The scan moved out, but
-# the rewritten hook still cost ~1,4-1,5s (2 jq starts at ~0,5s each, plus git) and was CANCELLED AGAIN on
-# a real exit. The diagnostic probe that DID survive cost 1,24-1,39s. So ~1,4s is not "the surviving band",
-# it is the EDGE of it - and a hook that SOMETIMES writes is worse than one that never does, because it
-# turns a missing row into an unanswerable question.
-# So every subprocess is gone: field extraction is bash regex, the timestamp is bash's own %()T, the repo
-# root is an in-shell walk. Only mkdir remains, and only when the directory is absent.
+# WHY IT IS WRITTEN WITHOUT jq, date, OR git.
+# NOT because of teardown pressure - that was a wrong diagnosis that cost three rounds. The real cause of
+# the v17 failure was that ${CLAUDE_PLUGIN_ROOT} DOES NOT RESOLVE at SessionEnd (cancelled 3/3 with the
+# variable at 20,9s / 1,5s / 0,6s; an absolute path from the same manifest worked 2/2 - one axis varied,
+# the other never). Duration was a confound: a SLOWER hook registered elsewhere survived.
+# The subprocess-free form is kept anyway on its own merits: a hook that runs at EVERY session start should
+# be cheap, and the rewrite carries three fixes worth keeping - byte-exact Windows paths, CR stripping, and
+# pipe-safe stdin.
 #
 # WHY RAW PASSTHROUGH IS SAFE - the trick that removes jq from the WRITE side too. The payload already
 # holds each value JSON-ESCAPED. Copying that escaped text straight into the output re-emits it
-# byte-for-byte, so nothing is unescaped and re-escaped - which is exactly where the previous version
+# byte-for-byte, so nothing is unescaped and re-escaped - which is exactly where an earlier version
 # corrupted Windows paths (@tsv doubled every backslash). `[^"]*` is the correct extractor because a double
 # quote is an ILLEGAL character in a Windows filename, so no value here can contain one.
 #
@@ -37,10 +37,11 @@ IFS= read -r -d '' input
 
 # Raw, still-escaped extraction. No jq: see the header. An absent field stays empty, which the status
 # logic below treats as "not named" rather than as zero.
-cwd=''; sid=''; reason=''; tx=''
+cwd=''; sid=''; src=''; model=''; tx=''
 [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]             && cwd=${BASH_REMATCH[1]}
 [[ $input =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]      && sid=${BASH_REMATCH[1]}
-[[ $input =~ \"reason\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]          && reason=${BASH_REMATCH[1]}
+[[ $input =~ \"source\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]          && src=${BASH_REMATCH[1]}
+[[ $input =~ \"model\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]           && model=${BASH_REMATCH[1]}
 [[ $input =~ \"transcript_path\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && tx=${BASH_REMATCH[1]}
 
 # cwd is the only value used as a PATH here, so it is the only one that must be unescaped. The rest pass
@@ -86,10 +87,12 @@ printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
 out="$root/.clavity"
 [ -d "$out" ] || mkdir -p "$out" 2>/dev/null || exit 0
 
-# v:2 is the CAPTURE shape. v:1 was the analyse-at-SessionEnd shape and SHIPPED in v17, so both can coexist
-# on an upgraded machine; the report reads each by its own version. Values are emitted exactly as they
-# arrived - already escaped - so no re-escaping step exists to get wrong.
-printf '{"v":2,"session_id":"%s","timestamp":"%s","reason":"%s","transcript_path":"%s","scan_status":"%s"}\n' \
-  "$sid" "$ts" "$reason" "$tx" "$status" >> "$out/discipline-reaching.jsonl" 2>/dev/null
+# v:3 is the SessionStart capture shape. v:1 (analyse-at-SessionEnd) SHIPPED in v17 and v:2 (SessionEnd
+# capture) exists on dev machines, so all three can coexist on an upgraded machine; the report reads each by
+# its own version rather than guessing. Values are emitted exactly as they arrived - already JSON-escaped by
+# the caller - so no re-escaping step exists to get wrong. `model` is recorded and deliberately NOT reported:
+# capture is the irreversible half, and a field not written at session N cannot be recovered at N+1.
+printf '{"v":3,"session_id":"%s","timestamp":"%s","source":"%s","model":"%s","transcript_path":"%s","scan_status":"%s"}\n' \
+  "$sid" "$ts" "$src" "$model" "$tx" "$status" >> "$out/discipline-reaching.jsonl" 2>/dev/null
 
 exit 0
