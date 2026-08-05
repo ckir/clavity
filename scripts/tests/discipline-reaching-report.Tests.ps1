@@ -210,6 +210,60 @@ Describe 'discipline-reaching-report.ps1' {
         } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'collapses many rows of ONE session into one record, keeping the earliest source' {
+        $tx = New-ScanTranscript
+        $d = New-Store @(
+            (CapRec3 $tx -Sid 'S1' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+            (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T12:00:00Z')
+            (CapRec3 $tx -Sid 'S1' -Source 'compact' -Ts '2026-08-05T16:00:00Z')
+        )
+        try {
+            $o = Run $d
+            $o | Should -Match 'Sessions recorded\s*:\s*1' -Because 'three fires, one session'
+            $o | Should -Match 'reached the model, stamped\s*:\s*2' -Because 'the transcript must be counted ONCE, not three times'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'orders -Last N by the LATEST fire, not the earliest' {
+        $tx = New-ScanTranscript
+        $d = New-Store @(
+            (CapRec3 $tx -Sid 'LONG'  -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+            (CapRec3 $tx -Sid 'SHORT' -Source 'startup' -Ts '2026-08-05T12:00:00Z')
+            (CapRec3 $tx -Sid 'LONG'  -Source 'compact' -Ts '2026-08-05T18:00:00Z')
+        )
+        try {
+            $o = Run $d -Last 1
+            $o | Should -Match 'Sessions recorded\s*:\s*1'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT collapse v:1 rows that share a session id - their counts are INLINE' {
+        # THE SCOPE GUARD. v:1 rows carry their delivery counts on the row itself, so collapsing two of
+        # them would silently DISCARD the second row's numbers. v:1 was a SessionEnd hook with strictly
+        # one row per session; only v:3 multi-fires. Rec's $Sid defaults to 's', so these three rows all
+        # share an id - which is exactly the case an unconditional collapse would destroy.
+        $d = New-Store @( (Rec 2 0 3 1), (Rec 1 0 1 0), (Rec 0 4 2 5) )
+        try {
+            $o = Run $d
+            $o | Should -Match 'Sessions recorded\s*:\s*3' -Because 'three v:1 rows are three sessions, whatever ids they carry'
+            $o | Should -Match 'reached the model, stamped\s*:\s*3' -Because '2 + 1 + 0 - no row may be dropped'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'survives a row whose session_id is EMPTY, which the hook really emits' {
+        # The hook initialises sid='' and writes "session_id":"" when the payload carries none. Such a row
+        # cannot be collapsed, so it is passed through - and it must still leave Merge-SessionRows carrying
+        # last_seen, because the sort immediately after reads that property off EVERY row. Under
+        # Set-StrictMode + $ErrorActionPreference='Stop' a single missing property kills the whole report.
+        $tx = New-ScanTranscript
+        $d = New-Store @( (CapRec3 $tx -Sid '' -Ts '2026-08-05T08:00:00Z'), (CapRec3 $tx -Sid 'OK' -Ts '2026-08-05T09:00:00Z') )
+        try {
+            $o = Run $d
+            $o | Should -Match 'Sessions recorded\s*:\s*2' -Because 'an id-less row is its own session, not a crash and not a merge'
+            $o | Should -Not -Match "(?i)cannot be found on this object"
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'reports cleanly when the store is <Case>' -ForEach @(
         @{ Case = 'absent';  Lines = $null }
         @{ Case = 'empty';   Lines = @() }
