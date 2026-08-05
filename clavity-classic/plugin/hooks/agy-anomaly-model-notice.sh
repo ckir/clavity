@@ -7,8 +7,10 @@
 # exactly the same occasions.
 #
 # The MODEL is the one who does the triage, so it has to learn the work exists. Counting logic mirrors
-# agy-anomaly-reminder.sh deliberately, including its root resolution (:41-45) and its bracketed-bullet
-# entry pattern (:58-70), so the two halves can never disagree about what is pending. A test runs BOTH
+# agy-anomaly-reminder.sh deliberately, including its in-shell repo-root walk and its bracketed-bullet
+# entry pattern, so the two halves can never disagree about what is pending. (Cited by CONTENT, not by
+# line: the previous ":41-45" and ":58-70" both went stale the moment the root resolution moved, and a
+# wrong line number sends the next reader to unrelated code.) A test runs BOTH
 # hooks against the same repo and asserts the two counts match, because "mirrors it deliberately" is a
 # claim about two separate files that nothing else would notice going out of step.
 #

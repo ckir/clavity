@@ -24,7 +24,23 @@ input=$(cat)
 # 26-36: without this, a machine that simply has no jq gets an unsuppressable boot warning forever, and
 # .no-agy -- the documented way to turn the disciplines off -- would not turn it off.
 if ! command -v jq >/dev/null 2>&1; then
-  if [ -f "./.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
+  # cwd is recovered from the RAW payload with a bash regex, so this path is no longer blind to the
+  # session's workspace -- it used to test "./.no-agy", the PROCESS cwd, which need not be the workspace.
+  # Raw recovery keeps the JSON escaping, hence the DOUBLE-backslash pattern - see the note at the jq path.
+  [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
+  cwd_path=${cwd//\\\\//}
+  [ -z "$cwd_path" ] && cwd_path="."
+  [ -f "$HOME/.claude/.no-agy" ] && exit 0
+  root=$cwd_path
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+  if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
     exit 0
   fi
   printf '%s\n' "[AGY-ANOMALIES] guard inactive: missing jq - cannot check for untriaged anomalies; install jq" >&2
@@ -32,17 +48,39 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
+# THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
+# SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch above reads the RAW
+# payload, where the DOUBLE backslashes survive, and needs ${cwd//\\\\//}. MEASURED 2026-08-05: the raw form
+# applied to a jq-decoded value matches nothing and leaves the path untouched - a silent no-op that looks
+# exactly like a working fix. Do NOT unify the two spellings.
+cwd_path=${cwd//\\//}
+[ -z "$cwd_path" ] && cwd_path="."
 
-# Opt-out kill-switch (mirrors agy-after-reminder.sh): silent, no notice.
-if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
-  exit 0
-fi
+[ -f "$HOME/.claude/.no-agy" ] && exit 0
 
 # Resolve the REPOSITORY ROOT the same way the capture snippet does, so both sides always agree. A
 # capturing session cd'd into a subdirectory writes to the root; if this hook looked only at the payload
 # cwd it would miss an anomaly that was captured correctly. Fall back to cwd outside a git worktree.
-root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
-[ -n "$root" ] || root="$cwd"
+#
+# The walk is in-shell rather than `git rev-parse --show-toplevel` for two reasons: it must run BEFORE the
+# workspace kill-switch (so a .no-agy at the root is honoured from a subdirectory, which a check against
+# the payload cwd alone cannot do), and a subprocess-per-boot is avoidable. A .git entry matches as a
+# directory (normal clone) or a file (worktree/submodule), which `-e` covers and `-d` would not. The
+# normalization above is load-bearing: ${_d%/*} strips on "/" only.
+root=$cwd_path
+_d=$cwd_path
+while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+  if [ -e "$_d/.git" ]; then root=$_d; break; fi
+  _p=${_d%/*}
+  [ "$_p" = "$_d" ] && break
+  [ -z "$_p" ] && break
+  _d=$_p
+done
+
+# Opt-out kill-switch (mirrors agy-after-reminder.sh): silent, no notice.
+if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
+  exit 0
+fi
 
 # Check the payload cwd as a SECOND candidate. Outside a git worktree the two sides fall back to
 # different defaults -- this hook to the session's cwd, the capture snippet to the capturing session's own $PWD --
@@ -52,7 +90,7 @@ root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)
 # not see it. Inside a git worktree -- which is every case this plugin actually ships into -- both sides
 # resolve to the same toplevel and the ambiguity does not arise.
 f="$root/.clavity/local-anomalies.md"
-[ -f "$f" ] || f="$cwd/.clavity/local-anomalies.md"
+[ -f "$f" ] || f="$cwd_path/.clavity/local-anomalies.md"
 [ -f "$f" ] || exit 0
 
 # An ENTRY is a bullet whose first token is ANY bracketed word: "- [defect] ...". Prose, headings and

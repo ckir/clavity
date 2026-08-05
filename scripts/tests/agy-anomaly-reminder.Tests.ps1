@@ -22,6 +22,63 @@ Describe 'agy-anomaly-reminder.sh' {
             return $h
         }
         function Payload { param([string]$Cwd) @{ cwd = ($Cwd -replace '\\','/'); source = 'startup' } | ConvertTo-Json -Compress }
+
+        # As Payload, but WITHOUT the forward-slashing. That convention is repo-wide and is exactly why
+        # the Windows repo-root walk bug survived - a POSIX-shaped path cannot exercise it.
+        function RawPayload { param([string]$Cwd)
+            '{"cwd":"' + ($Cwd -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
+        }
+        # A real git repo with an anomalies file at its ROOT and an empty subdirectory to run from.
+        function New-RepoWithAnomaly {
+            $r = New-TempRepo
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $r '.clavity/local-anomalies.md') `
+                "# Untriaged anomalies (gitignored, local)`n`n- [defect] x * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
+            New-Item -ItemType Directory -Path (Join-Path $r 'src') -Force | Out-Null
+            return $r
+        }
+    }
+
+    # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
+    # Each silence case is paired with a positive control, and the CONTROL is the load-bearing half:
+    # measured on this hook's own model-addressed sibling, a broken walk produced silence that was
+    # indistinguishable from a working kill-switch, and only the control went red.
+    It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
+            $x.StdErr   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
+            $x.ExitCode | Should -Be 0
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'DOES report from that same subdirectory when .no-agy is absent (positive control)' {
+        # Also pins that the walk finds the anomalies file at the ROOT while running from a subdirectory,
+        # which is the behaviour the header comment promises and the whole reason the root is resolved.
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
+            $x.StdErr   | Should -Match 'AGY-ANOMALIES' -Because 'without the opt-out it must still report - otherwise the silence test proves nothing'
+            $x.ExitCode | Should -Be 2 -Because 'SessionStart routes the owner notice via stderr at exit 2'
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'honours a root .no-agy from a subdirectory on the DEGRADED (no jq) path too' {
+        # This path used to test "./.no-agy" - the PROCESS cwd, not the session workspace - so it could
+        # not honour any workspace opt-out at all when the two differ. Nothing covered it.
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $x.StdErr   | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
+            $x.ExitCode | Should -Be 0
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'DOES warn from that subdirectory without .no-agy when jq is absent (degraded positive control)' {
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $x.StdErr | Should -Match 'guard inactive: missing jq' -Because 'without the opt-out the degraded path must still announce itself'
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'is SILENT (exit 0) when the anomalies file does not exist' {
