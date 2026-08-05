@@ -343,6 +343,32 @@ The last two are new, and both are consequences of decisions made in THIS docume
 merely still valid; it is better founded than before. An obsolete justification guarding a correct rule is
 more dangerous than no justification, because it invites exactly the deletion it was written to prevent.
 
+### The other `SessionEnd` references — which change, which must NOT
+
+That refusal is one instance of a class, so the class was swept. Six references exist across the two files
+this spec rewrites, and they fall into two groups that a blanket find-and-replace would flatten:
+
+**Stale — must change:**
+- `agy-discipline-reaching.sh:2` — the header still declares the hook's event as `SessionEnd`.
+- 🔴 `discipline-reaching-report.ps1:110` — **user-facing output**, printed when the record file is absent:
+  `'The recorder writes one row per session at SessionEnd, from the INSTALLED plugin.'` This is the message
+  a user sees at the exact moment they are asking why nothing was recorded, and after this change it names
+  the wrong event. A wrong hint during diagnosis is worse than no hint.
+- The hook's header block (`:8-17`) explains the subprocess-free rewrite as a response to teardown
+  cancellation pressure. That is the DISCARDED duration theory preserved in a comment. The rewrite is still
+  worth keeping — it is cheap and it fixed real defects — but its stated reason must match this document's,
+  or the next reader inherits the wrong model from the code itself.
+
+**Historical — must NOT change:**
+- `agy-discipline-reaching.sh:76` and `discipline-reaching-report.ps1:40` describe `v:1` as the
+  analyse-at-`SessionEnd` shape that shipped in v17. That is a true statement about a schema version real
+  machines still hold; editing it would erase the only explanation of why `v:1` rows exist.
+- `discipline-reaching-report.ps1:130` records that `SessionEnd` scanning was cancelled twice, which is why
+  analysis was deferred to the report. Still true, and still the reason that split exists.
+
+The distinction matters more than the edits: a sweep that "updates all `SessionEnd` references" destroys
+the provenance of the schema versions the report is required to keep reading.
+
 ---
 
 ## What the move costs — three consequences of writing at boot instead of exit
