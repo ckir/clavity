@@ -11,8 +11,9 @@
 #   2. PRINT A RATIO. There is no capture numerator in the schema at all, so a conversion figure is
 #      unconstructible from this data - and `compactions` is an OPPORTUNITY count with no matching
 #      delivery number, so dividing by it fabricates a rate. It is printed in its own section.
-#   3. SAY "SESSIONS RUN". SessionEnd may not fire on every exit path, and a machine without jq records
-#      nothing, so the denominator is unknowable. The report says sessions RECORDED.
+#   3. SAY "SESSIONS RUN". The denominator is unknowable: sessions predating the install, sessions
+#      suppressed by .no-agy, sessions outside a git repo (deliberately unrecorded), and sessions whose
+#      registration silently failed. The report says sessions RECORDED - now meaning DISTINCT sessions.
 
 Describe 'discipline-reaching-report.ps1' {
     BeforeAll {
@@ -105,7 +106,7 @@ Describe 'discipline-reaching-report.ps1' {
         try {
             $o = Run $d
             $o | Should -Match '(?i)recorded'
-            $o | Should -Not -Match '(?i)sessions run' -Because 'SessionEnd may not fire on every exit path, so that denominator is unknowable'
+            $o | Should -Not -Match '(?i)sessions run' -Because 'sessions predating install, .no-agy opt-outs, non-git dirs and silent registration failures all make the denominator unknowable'
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
