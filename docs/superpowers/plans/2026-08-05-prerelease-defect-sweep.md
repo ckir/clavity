@@ -61,6 +61,19 @@ insertion point. Leave it alone.** `$cwd_path` does not exist yet at that line, 
 reference an unset variable and silently resolve `proj_dir` to empty. A blanket find-and-replace of `$cwd`
 across these files is therefore **wrong**; convert only the sites listed above.
 
+**🔴 And in `agy-seam-inject.sh`, `$cwd_path` and `$root` are NOT interchangeable — using `$root` for the
+marker would be a real regression.** After this work that file contains both, and its `:58-62` states the
+contract in its own words:
+
+> *"The marker is CWD-RELATIVE, anchored to the payload's session cwd EXACTLY as the discipline skills
+> write it... **Do NOT anchor to git-toplevel: that would diverge from the cwd-relative writer in a
+> launched-from-subdir session and defeat the debounce.**"*
+
+So `marker="$cwd_path/.clavity/agy-marks/..."` — normalized, same directory — is correct, and
+`marker="$root/..."` is wrong. **`$root` is for the `.no-agy` check and nothing else in this file.** The
+plan pushes hard on "walk up to the repo root"; do not let that momentum carry into a line whose own
+comment forbids it.
+
 `gate()` in `agy-test-audit-reminder.sh` is safe to pass a new value to — it binds `local cwd="$1"` at
 `:20` rather than reading the global, so passing `"$cwd_path"` genuinely changes what it uses. (Checked,
 because if it had read the global the instruction would have been a silent no-op.)
@@ -770,10 +783,25 @@ fi                                                                  <-- to here
 | Task | Hook | Event | Degraded exit | Test suite | Positive-control assertion |
 |---|---|---|---|---|---|
 | 6 | `agy-anomaly-capture-reminder.sh` | PreCompact | `exit 0` | `agy-anomaly-capture-reminder.Tests.ps1` | `Should -Match 'AGY-ANOMALIES/1'` |
-| 7 | `agy-anomaly-dispatch-reminder.sh` | PreToolUse | **`exit 0` — `exit 2` would abort the user's tool call** | `agy-anomaly-dispatch-reminder.Tests.ps1` | `Should -Match 'Anomalies noticed'` |
+| 7 | `agy-anomaly-dispatch-reminder.sh` | PreToolUse | **`exit 0` — `exit 2` would abort the user's tool call** (see note) | `agy-anomaly-dispatch-reminder.Tests.ps1` | `Should -Match 'Anomalies noticed'` |
 | 8 | `agy-seam-inject.sh` | PreToolUse | **`exit 0` — same hazard** | `agy-seam-inject.Tests.ps1` | `Should -Match 'AGY-'` |
 | 9 | `agy-anomaly-reminder.sh` | SessionStart | `exit 2` on stderr — **keep it** | `agy-anomaly-reminder.Tests.ps1` | `Stderr Should -Match 'AGY-ANOMALIES'` |
 | 10 | `agy-test-audit-reminder.sh` | PostToolUse | `exit 0` | `agy-test-audit-reminder.Tests.ps1` | `Should -Match 'AGY-TEST-AUDIT'` |
+
+**Note on Task 7 — there is already a safety net, and it is worth knowing about.**
+`agy-anomaly-dispatch-reminder.sh:15-19` states its contract and names its own guard:
+
+> *"FAIL OPEN ON EVERY PATH, AND THAT IS NOT A STYLE PREFERENCE. `exit 2` is non-blocking for
+> `SessionStart` but BLOCKING for `PreToolUse` … a non-zero exit here does not degrade a notification — it
+> HALTS EVERY SUBAGENT DISPATCH in the session. … **A test asserts that no exit with a non-zero status
+> appears anywhere in this file.**"*
+
+So if you paste the wrong exit into that hook, a test fails loudly rather than the damage shipping. Do not
+treat that as licence to be careless — but if that test goes red after your edit, this is what it means.
+
+**The walk terminates safely on Windows.** MEASURED: from `C:/Users/u/a/b/c/d` with no `.git` anywhere, the
+loop ends after 7 iterations at `C:`, because `${_d%/*}` on `C:` returns `C:` and the
+`[ "$_p" = "$_d" ] && break` guard fires. No infinite loop at a drive root.
 
 **Two hooks in this group differ from Task 5's BEFORE text — read carefully:**
 
