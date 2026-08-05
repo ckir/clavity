@@ -516,8 +516,17 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
   `v:3` assertion following. Note that helper's default `($Cwd -replace '\\','/')` — it manufactures
   forward-slash fixtures, which is the shape that hid two shipped defects, so the dedicated real-Windows-
   path case must keep bypassing it.
-- Add: the manifest registers `SessionEnd` **nowhere** and `SessionStart` for this hook — the defect being
-  fixed is a registration defect, so registration needs an assertion.
+- 🔴 **Add the registration assertion to `scripts/tests/plugin-hooks-registration.Tests.ps1`, which already
+  owns exactly this job — and note WHY it did not already cover this hook.** That suite asserts the
+  registration of seven hooks (`:34` `:43` `:58` `:66` `:77` `:85` `:96` `:153`) using
+  `Get-OwningMatchers -Manifest $m -Event <event> -Script <name>` with a `-ForEach` over both drivers.
+  **The discipline-reaching hook is not among them.** That omission is why v17 shipped a `SessionEnd`
+  registration that no structural gate ever examined: the hook was added without being added HERE. Assert
+  `SessionStart` on `startup|resume|clear|compact`, and `SessionEnd` nowhere, in that suite's idiom.
+- **`:122` — `ships no hook file that is reachable from nowhere` — is already a safety net for the specific
+  way this change can go wrong.** Delete the `SessionEnd` block, forget to add the `SessionStart`
+  registration, and that existing test fails. Worth knowing it is there before implementing, and worth not
+  duplicating.
 - Add: the report deduplicates by `session_id` and still totals correctly across `v:1`/`v:2`/`v:3`.
 - Add: a `v:3` row is COUNTED, not routed to `unsupported`. Assert the total, not merely the absence of a
   skip line — the current code path fails by silently incrementing a counter, which a loose assertion passes.
