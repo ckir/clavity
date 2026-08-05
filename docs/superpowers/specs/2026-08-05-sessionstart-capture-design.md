@@ -41,9 +41,15 @@ exists to eliminate.
 
 **Register the capture on `SessionStart`, keeping `${CLAUDE_PLUGIN_ROOT}`.**
 
-This is not a workaround for the cancellation; it removes the failure class. There is no teardown window,
-nothing to cancel, and sessions that crash or are killed are captured because the row is written at the
-beginning.
+**Why this works, stated to match the root cause and not the discarded theory.** `${CLAUDE_PLUGIN_ROOT}`
+**resolves** at `SessionStart`; that is the whole mechanism. It is tempting to write "there is no teardown
+window, so there is nothing to cancel" — that sentence is the DURATION theory coming back in through the
+side door, and this document has already established duration was a confound. Absence of teardown is not
+why the fix works. If the reason is misstated here, the next person to touch this re-derives the wrong
+model and re-runs the three rounds that were already wasted on it.
+
+A genuine second benefit, independent of the cause: a row written at the beginning survives a session that
+crashes or is killed, which a teardown-time write never could.
 
 **MEASURED 2026-08-05 — the `SessionStart` payload carries everything needed**, captured live:
 
@@ -76,7 +82,7 @@ mandatory rather than optional** (below).
 | `session_id` | payload | correlation, and the dedup key |
 | `timestamp` | hook clock | ISO-8601 UTC |
 | `source` | payload | `startup` \| `resume` \| `clear` \| `compact`. Replaces `reason` |
-| `model` | payload | new signal, free from this payload |
+| `model` | payload | recorded, deliberately NOT displayed — see below |
 | `transcript_path` | payload | what the report later scans |
 | `scan_status` | derived | `deferred`, or `transcript_not_found` when the payload names none |
 
@@ -89,12 +95,35 @@ guessing, exactly as the null discipline demands.
 data. STEP 0 item 2 ("does `SessionEnd` fire on every exit path?") becomes moot — nothing depends on that
 event any more.
 
+**`model` is recorded but not reported, and that asymmetry is deliberate.** There is no question it answers
+today, and this report does not print numbers nobody can interpret. But capture is the one irreversible
+half: a field not written at session N is unrecoverable at session N+1, while a field written and ignored
+costs a few bytes. So it is recorded against a future efficacy question — plausibly "does reaching differ
+by model?" — and the report displays nothing until such a question is actually posed. If that question is
+never posed, the field stays unread, which is the cheap outcome.
+
+**The report's version dispatch must be extended — this is REQUIRED WORK, not an implication.**
+`scripts/discipline-reaching-report.ps1:132` reads
+`elseif ($v -ne $SCHEMA_ANALYSED) { $unsupported++; continue }`. A `v:3` row therefore takes the
+`unsupported` branch and is dropped from every total, reported only as a skipped-row count. Shipping the
+new schema without this change would make the recorder write rows that the only consumer discards —
+exactly the silent zero this whole item exists to remove, reintroduced at the other end of the pipe.
+
 ---
 
 ## Deduplication — new code, not existing behaviour
 
 The report must collapse rows by `session_id`: **keep the earliest**, and report the `source` distribution
 across all rows separately as context.
+
+**Dedup runs BEFORE the `-Last` slice, and getting that order wrong silently redefines the parameter.**
+Today `discipline-reaching-report.ps1:120` slices raw LINES
+(`if ($Last -gt 0 -and $raw.Count -gt $Last) { $raw = $raw[-$Last..-1] }`) and its help text at `:26`
+promises "the last N recorded SESSIONS". Those coincided only because one session meant one row. Once a
+compaction-heavy session emits many rows, slicing first makes `-Last 20` return however many distinct
+sessions happen to fall in the last 20 lines — possibly three. The number stays plausible while its
+meaning changes, which is the failure mode this report is built to refuse. Parse and collapse first, then
+take the last N sessions.
 
 **This is new.** `session_id` appears NOWHERE in `scripts/discipline-reaching-report.ps1` today. It was
 claimed during review that the report "already deduplicates by session_id"; it does not, and that claim was
@@ -108,17 +137,62 @@ lands should be checked against this, and the answer written down here.
 
 ---
 
+## Registration — state the exact form, because "all four" has two encodings
+
+The manifest offers two ways to say "every source", and they are **not proven equivalent**:
+`clavity-{dotnet,classic}/plugin/hooks/hooks.json:68` registers `SessionEnd` with **no matcher at all**,
+while `:51` registers `startup|resume|clear|compact` **explicitly**. Whether an omitted matcher means "all"
+on `SessionStart` is unmeasured, and an unmeasured equivalence is exactly what produced this spec.
+
+**Write the explicit form.** Add the hook to the existing `startup|resume|clear|compact` block at `:51`,
+alongside `agy-anomaly-reminder.sh` and `agy-anomaly-model-notice.sh`. Those two hooks are observed firing
+in production under that matcher, so the block is proven, and reusing it means the registration under test
+is one already known to work rather than a new one.
+
 ## What this does NOT change
 
-The hook body stays as rewritten: **no subprocesses** (bash regex instead of jq, `printf %()T` instead of
-`date`, in-shell `.git` walk instead of `git rev-parse`). Boot is not teardown and there is no cancellation
-pressure, but a hook that runs at every session start should still be cheap, and the rewrite also carries
-three fixes worth keeping — byte-exact Windows paths, CR stripping, and pipe-safe stdin.
+The hook body keeps its **structure**: no subprocesses (bash regex instead of jq, `printf %()T` instead of
+`date`, in-shell `.git` walk instead of `git rev-parse`), plus the three fixes worth keeping — byte-exact
+Windows paths, CR stripping, and pipe-safe stdin. Boot is not teardown and there is no cancellation
+pressure, but a hook that runs at every session start should still be cheap.
+
+**Its FIELDS do change, and "the body stays as rewritten" must not be read as forbidding that.**
+`agy-discipline-reaching.sh:43` extracts `"reason"`; schema `v:3` needs `"source"`, and the literal `"v":2`
+in the `printf` at `:79` becomes `"v":3`. The invariant being preserved is the process count and the
+escaping strategy — not the field list.
 
 The deferred-analysis split stays. The report still refuses to fold a `null` into a zero, refuses to print
 a ratio, and reports sessions RECORDED rather than RUN.
 
 ---
+
+## What the move costs — three consequences of writing at boot instead of exit
+
+**More writers, and now concurrent ones.** `SessionEnd` produced one appender per session. Two Claude
+sessions started in the same repo at once now append simultaneously. A single short `>>` line is expected
+to be atomic, but that is an assumption inherited rather than measured, and it is recorded here so a
+corrupt interleaved row is diagnosed rather than puzzled over.
+
+**More rows, and no retention story.** Rows per session goes from 1 to `1 + clears + compactions`. The file
+is append-only, never rotated, and the report reads it whole. Nothing needs building now — dedup keeps the
+REPORTED counts honest regardless of row count — but the growth rate is no longer one line per session, and
+whoever first sees this file at a few thousand lines should find that stated here rather than treat it as a
+defect.
+
+**A missing row still cannot be distinguished from a session that never happened.** This move fixes the
+KNOWN instance of the silent zero; it does not make the class detectable. That gap is deliberate and left
+open: the honest detector is the owner-run outside-witness protocol in the prior spec, not another
+self-report from the same machinery that would be failing.
+
+## Before this item may be called complete — one measurement, not an inference
+
+Every claim that `${CLAUDE_PLUGIN_ROOT}` resolves at `SessionStart` currently rests on OTHER hooks working
+there (`agy-anomaly-reminder.sh`, `agy-anomaly-model-notice.sh`, `agy-liveness-check.sh`). That is strong
+inductive evidence and it is not a measurement of THIS hook.
+
+**Required:** after the manifest change ships into the installed plugin, start a session and confirm a real
+row lands. Round-1 rationale in the prior spec was wrong for three rounds precisely because a plausible
+inference went unmeasured; the same shape of reasoning appears above, so it gets the same treatment.
 
 ## Testing
 
@@ -128,6 +202,11 @@ a ratio, and reports sessions RECORDED rather than RUN.
 - Add: the manifest registers `SessionEnd` **nowhere** and `SessionStart` for this hook — the defect being
   fixed is a registration defect, so registration needs an assertion.
 - Add: the report deduplicates by `session_id` and still totals correctly across `v:1`/`v:2`/`v:3`.
+- Add: a `v:3` row is COUNTED, not routed to `unsupported`. Assert the total, not merely the absence of a
+  skip line — the current code path fails by silently incrementing a counter, which a loose assertion passes.
+- Add: `-Last N` returns N distinct SESSIONS when the file holds a session with many rows. Construct the
+  fixture so slicing-before-dedup gives a different answer than dedup-before-slicing; a fixture where both
+  orders agree tests nothing.
 - **Fixtures must use real Windows paths with backslashes.** Forward-slash fixtures are what hid two
   shipped defects; a green suite over unrealistic fixtures is a test lying in the worst direction.
 
