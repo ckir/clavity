@@ -246,8 +246,9 @@ pipeline: parse → collapse by `session_id` → take the last N → expand. Tha
 ## Registration — state the exact form, because "all four" has two encodings
 
 The manifest offers two ways to say "every source", and they are **not proven equivalent**:
-`clavity-{dotnet,classic}/plugin/hooks/hooks.json:68` registers `SessionEnd` with **no matcher at all**,
-while `:51` registers `startup|resume|clear|compact` **explicitly**. Whether an omitted matcher means "all"
+`clavity-{dotnet,classic}/plugin/hooks/hooks.json:66-72` registers `SessionEnd` with **no matcher at all**
+(an absence is shown by the whole block, not by any one line), while `:51` registers
+`startup|resume|clear|compact` **explicitly**. Whether an omitted matcher means "all"
 on `SessionStart` is unmeasured, and an unmeasured equivalence is exactly what produced this spec.
 
 **Write the explicit form.** Add the hook to the existing `startup|resume|clear|compact` block at `:51`,
@@ -289,6 +290,12 @@ behind.
 project to attribute reaching to, so the row would be unattributable anyway — this discards nothing worth
 having. Note the ordering interaction: this check and the `.no-agy` check both depend on `$root`, so both
 belong after the walk.
+
+**The guard is `[ -e "$root/.git" ] || exit 0` — no flag variable needed, and the reason is worth stating
+because it is not obvious.** `$root` starts as `$cwd_path` and is reassigned **only** when the walk finds a
+`.git` (`:61`). So a `.git` under `$root` after the walk is exactly equivalent to "the walk succeeded". An
+implementer who does not see that will add a `found=1` flag — harmless — or test `$cwd_path` instead of
+`$root`, which reintroduces the subdirectory bug this section just fixed.
 
 Writing `.clavity/` into a git repo the user is actually working in is NOT part of this defect — that is
 how every other piece of clavity's per-repo state already behaves, and a repo is a project the row can be
