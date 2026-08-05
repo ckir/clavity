@@ -221,8 +221,12 @@ benign: it matches exactly what v17 already did for every session, which was not
 Two different questions, and answering both with "the earliest" is wrong:
 
 - **Content comes from the EARLIEST row** — it names how the session ORIGINATED (`source=startup` rather
-  than the `compact` that followed). The transcript path is expected to be identical either way, by the
-  structural inference above — NOT by measurement, and the disagreement guard is there because of it.
+  than the `compact` that followed).
+- **`transcript_path` is the ONE EXCEPTION to that rule.** The paths are expected to be identical, by the
+  structural inference above and NOT by measurement — so when they are not, the disagreement guard wins and
+  the LATEST path is used. Saying "content comes from the earliest row" without naming this exception is
+  how the guard would get quietly dropped in implementation; it is stated as an exception here for that
+  reason.
 - **The collapsed record keeps BOTH timestamps** — `first_seen` and `last_seen`. Carrying one and
   silently using it for both purposes is how the two questions got conflated in the first place, and any
   output that prints a time must say which of the two it is printing.
@@ -350,6 +354,13 @@ threshold (15 minutes is ample) is **`provisional`** — counted in its own buck
 cleanly`. It needs only the file's mtime, and it subsumes the reporting session automatically, because the
 transcript of the session running the report was appended to moments ago.
 
+**mtime is a heuristic, and it FAILS IN THE SAFE DIRECTION — which is why it is acceptable.** Anything that
+touches a file without changing it (a backup pass, an antivirus scan, an indexer) will push a long-finished
+session into `provisional` for fifteen minutes. That is a real effect and it is the tolerable one: the
+error moves a complete session OUT of the clean total, understating what was measured. The opposite error —
+a live session silently counted as complete — is the one this bucket exists to prevent. When a heuristic
+must be wrong, it should be wrong toward "do not count", and this one is.
+
 And the framing correction underneath: scanning a live transcript is not WRONG, it is **incomplete**. Every
 dispatch it counts really happened; more may follow. `provisional` says exactly that, where "exclude" would
 have thrown away a true partial count.
@@ -366,6 +377,23 @@ and an implementer must not have to pick one.** A provisional session:
 So nothing is thrown away and nothing is blended. This is the same shape as the existing `NOT SCANNED`
 section, and for the same reason: a number whose meaning differs gets its own heading rather than a
 footnote.
+
+🔴 **This requires a THREE-way partition, and the existing code has a two-way one — an implementer who
+follows the surrounding structure will get it wrong.** `discipline-reaching-report.ps1:143-144` splits rows
+into `$counted` (counts are non-null) and `$degraded` (counts are null). **A provisional row has non-null
+counts** — it really did scan a prefix — so it lands in `$counted` and blends into `$sumReached` under
+exactly the rule this section forbids. The partition must be rewritten as three disjoint sets keyed on
+`scan_status`:
+
+| set | `scan_status` | goes into |
+|---|---|---|
+| clean | `ok` | `scanned cleanly` + the `DISPATCH RELAY` sums |
+| provisional | `provisional` | its own section, with its counts |
+| degraded | `transcript_not_found`, `transcript_unreadable` | `NOT SCANNED`, no counts (they are null) |
+
+Keying on `scan_status` rather than on null-ness is the point: null-ness was a sufficient discriminator
+only while "has counts" and "is complete" meant the same thing, and `provisional` is precisely the case
+where they come apart.
 
 **A session started and abandoned in seconds now records too.** A mis-launch that the user immediately
 kills writes a `startup` row, and its transcript exists, so it scans cleanly at zero. `SessionEnd` did not
