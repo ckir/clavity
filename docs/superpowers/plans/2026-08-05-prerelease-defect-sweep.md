@@ -82,6 +82,57 @@ because if it had read the global the instruction would have been a silent no-op
 
 ---
 
+---
+
+## 🔴 CORRECTION FOUND DURING EXECUTION (2026-08-05, after Task 4) — READ BEFORE TASKS 5–11
+
+**The normalization form must match where `cwd` came from, and this plan pastes the wrong one into every
+normal-path site.** Everything below that says `cwd_path=${cwd//\\\\//}` immediately after a `jq -r`
+extraction is WRONG and is a **silent no-op**.
+
+MEASURED, one payload (`{"cwd":"C:\\Users\\user\\repo\\src"}`) through both extractions:
+
+| `cwd` source | value it yields | `${cwd//\\\\//}` | `${cwd//\\//}` |
+|---|---|---|---|
+| raw `[[ $input =~ ... ]]` | `C:\\Users\\user\\repo\\src` (escaping survives) | ✅ `C:/Users/user/repo/src` | `C://Users//user//repo//src` |
+| `jq -r '.cwd'` | `C:\Users\user\repo\src` (jq DECODES) | ❌ **unchanged — matches nothing** | ✅ `C:/Users/user/repo/src` |
+
+So:
+
+- **Normal-path sites (cwd came from `jq -r`) → `cwd_path=${cwd//\\//}`.**
+- **Degraded sites (cwd came from the raw `[[ =~ ]]` recovery) → `cwd_path=${cwd//\\\\//}`.** Unchanged.
+- Task 3 is correct as written: it *replaced* the jq extraction with the raw one, so it takes the double
+  form, and its mutation step proved it.
+
+The recorder is not wrong and was not mis-copied — `agy-discipline-reaching.sh:49` is byte-for-byte what
+this plan quotes. It simply reads `cwd` from the raw payload, and the plan carried its line to a place
+where `cwd` has already been decoded.
+
+**Add the WHY as a comment at every site**, or the next reader will "unify" the two spellings and
+reintroduce this:
+
+```bash
+# THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
+# SINGLE backslashes here and the pattern is one escaped backslash. A hook that recovers cwd from the RAW
+# payload with [[ =~ ]] keeps the DOUBLE backslashes and needs ${cwd//\\\\//} instead. MEASURED 2026-08-05:
+# using the raw form on a jq-decoded value matches nothing and leaves the path untouched - a silent no-op
+# that looks exactly like a working fix. Do NOT unify the two spellings.
+```
+
+### 🔴 And the reason this nearly shipped: a silence test can pass for the wrong reason
+
+With the wrong form in `agy-anomaly-model-notice.sh`, **the silence test PASSED.** The walk never left the
+subdirectory, so the hook could not find the anomalies file and exited quietly — silence produced by a
+broken fix, indistinguishable from silence produced by a working kill-switch. Only the **positive control**
+went red.
+
+**Every hook task below therefore needs its positive control, and the control is the oracle — not the
+silence test.** Where a hook's message depends on a path the walk resolves, treat a green silence test as
+no evidence at all. Three panel rounds could not catch this: a panel reasons about the artifact, it never
+runs it.
+
+---
+
 ## The canonical preamble
 
 This exact block is the fix. It is lifted from `clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh:41-66`, which ships and works. **Copy it; do not retype it and do not "improve" it.**
