@@ -33,19 +33,55 @@ msg='AGY-ANOMALIES/1 check BEFORE COMPACTION: did you VERIFY a defect this sessi
 # jq is needed only to read cwd out of the payload. Without it, STILL DELIVER: emit the same message in a
 # hand-built envelope rather than exiting silently. A silent exit here is precisely the invisible zero
 # this hook exists to remove -- and it is invisible in both directions, because an absent nudge and a
-# nudge with nothing to say look identical from outside. Honor the kill-switch FIRST, against the process
-# cwd, since the payload cannot be parsed without jq (agy-anomaly-reminder.sh:22-25 records the defect
-# this ordering prevents: a machine that simply has no jq otherwise gets an unsuppressable nudge forever).
+# nudge with nothing to say look identical from outside. Honor the kill-switch FIRST (agy-anomaly-reminder.sh
+# records the defect this ordering prevents: a machine that simply has no jq otherwise gets an
+# unsuppressable nudge forever). cwd is recovered from the RAW payload with a bash regex, so this path is
+# no longer blind to the session's workspace -- it used to test "./.no-agy", the PROCESS cwd, which is not
+# necessarily the workspace at all.
 if ! command -v jq >/dev/null 2>&1; then
-  if [ -f "./.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then exit 0; fi
+  [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
+  # Raw recovery keeps the JSON escaping, hence the DOUBLE-backslash pattern - see the note at the jq path.
+  cwd_path=${cwd//\\\\//}
+  [ -z "$cwd_path" ] && cwd_path="."
+  [ -f "$HOME/.claude/.no-agy" ] && exit 0
+  root=$cwd_path
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+  if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
   printf '{"systemMessage":"%s"}\n' "$msg"
   exit 0
 fi
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
-[ -z "$cwd" ] && cwd="."
+# THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
+# SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch above reads the RAW
+# payload, where the DOUBLE backslashes survive, and needs ${cwd//\\\\//}. MEASURED 2026-08-05: the raw form
+# applied to a jq-decoded value matches nothing and leaves the path untouched - a silent no-op that looks
+# exactly like a working fix. Do NOT unify the two spellings.
+cwd_path=${cwd//\\//}
+[ -z "$cwd_path" ] && cwd_path="."
 
-if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
+[ -f "$HOME/.claude/.no-agy" ] && exit 0
+
+# Repo root by walking up for .git, in-shell, so a .no-agy at the REPO ROOT is honoured when the session
+# was launched from a subdirectory. The normalization above is load-bearing: ${_d%/*} strips on "/" only.
+root=$cwd_path
+_d=$cwd_path
+while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+  if [ -e "$_d/.git" ]; then root=$_d; break; fi
+  _p=${_d%/*}
+  [ "$_p" = "$_d" ] && break
+  [ -z "$_p" ] && break
+  _d=$_p
+done
+
+if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
   exit 0
 fi
 
