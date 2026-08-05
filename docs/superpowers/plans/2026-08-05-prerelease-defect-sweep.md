@@ -46,7 +46,26 @@ because .NET replacement strings treat `$`, not `\`, as the escape. So it double
 what a JSON string needs. **The suggested "fix" to `'\\\\'` would quadruple them and introduce the bug it
 claimed to remove.** `$Cwd.Replace('\','\\')` is equivalent and may read more clearly; either is fine.
 
-**6. Do not hand-verify backslash behaviour in a shell.** The agent harness eats backslashes before bash sees them; two attempts to measure normalization by hand produced contaminated results. **Copy the recorder's line verbatim and let the Pester tests prove it.**
+**6. Downstream `$cwd` uses — convert these three, and DO NOT convert the fourth.** Once a hook has
+`$cwd_path`, leaving a later bare `$cwd` mixes a normalized and an un-normalized path in one file. MEASURED
+2026-08-05, these are every downstream use in the target hooks that sits AFTER the insertion point:
+
+| file | site | action |
+|---|---|---|
+| `agy-seam-inject.sh` | `head=$(git -C "$cwd" rev-parse HEAD ...)` and `marker="$cwd/.clavity/..."` | → `$cwd_path` (Task 8) |
+| `agy-test-audit-reminder.sh` | normal path `[ "$(gate "$cwd")" = "fire" ] \|\| exit 0` | → `$cwd_path` (Task 10) |
+| `agy-anomaly-reminder.sh`, `agy-anomaly-model-notice.sh` | the `[ -f "$f" ] \|\| f="$cwd/.clavity/..."` fallback | → `$cwd_path` (Tasks 4 and 9) |
+
+**🔴 The exception — `agy-liveness-check.sh` has `proj_dir="${CLAUDE_PROJECT_DIR:-$cwd}"` well ABOVE the
+insertion point. Leave it alone.** `$cwd_path` does not exist yet at that line, so "converting" it would
+reference an unset variable and silently resolve `proj_dir` to empty. A blanket find-and-replace of `$cwd`
+across these files is therefore **wrong**; convert only the sites listed above.
+
+`gate()` in `agy-test-audit-reminder.sh` is safe to pass a new value to — it binds `local cwd="$1"` at
+`:20` rather than reading the global, so passing `"$cwd_path"` genuinely changes what it uses. (Checked,
+because if it had read the global the instruction would have been a silent no-op.)
+
+**7. Do not hand-verify backslash behaviour in a shell.** The agent harness eats backslashes before bash sees them; two attempts to measure normalization by hand produced contaminated results. **Copy the recorder's line verbatim and let the Pester tests prove it.**
 
 ---
 
@@ -710,7 +729,9 @@ commit.
 These are the normal-path kill-switch blocks as they exist now — the extraction lines shown are context to
 help you locate the block, and **must be left exactly as they are**:
 
-```bash
+```text
+# ANNOTATED — NOT PASTEABLE. The "<--" markers are annotation, not bash. This block is here to help you
+# locate each edit site and to make clear what must NOT be carried into the edit.
 # agy-anomaly-capture-reminder.sh and agy-anomaly-dispatch-reminder.sh  (identical shape)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)   <-- CONTEXT, do not touch
 [ -z "$cwd" ] && cwd="."                                        <-- CONTEXT, do not touch
