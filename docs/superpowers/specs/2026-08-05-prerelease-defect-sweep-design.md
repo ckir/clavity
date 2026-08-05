@@ -274,7 +274,11 @@ not. **The hook is correct; it records what it is handed.** The comment is what 
 In scope because a false invariant in shipped source is a defect attractor: the next reader — human or
 model — reasons from it. One-line edit, both drivers, zero behaviour change, zero regression risk.
 
-### U3 — the consult guard's two known gaps (3 files)
+### U3 — the consult guard: two known gaps + a naming fix (7 files)
+
+Unique file count: `scripts/tests/agy-consult-guard.Tests.ps1` (U3a) plus the six
+`agy-consult-guard-{lib,pre,post}.sh` across both drivers (U3c), of which the two `lib.sh` copies are also
+U3b's target. **U3b and U3c both edit `lib.sh` — make them one edit per file, not two passes.**
 
 > **Naming, owner remark 2026-08-05: "ME1 is not a descriptive name for humans."** Correct, and this
 > document has been rewritten to say **the consult guard** — the read-only pre/post hook pair that
@@ -307,6 +311,21 @@ The consult guard is that class. `agy-consult-guard-lib.sh:17` already has a
 `DELIBERATELY OUT OF SCOPE (documented, not a silent gap)` block listing the MCP signal bus and
 `clavity ring`. **Add the `.no-agy` omission there**, with the self-suppression reason. Follows the file's
 own convention; changes no behaviour.
+
+**U3c — drop the `ME1 - ` prefix from the six shipped hook headers.** Owner-approved scope addition,
+2026-08-05, following the naming remark above. Line 2 of each of `agy-consult-guard-{lib,pre,post}.sh` in
+both drivers currently reads:
+
+```bash
+# ME1 - agy-consult VCS-diff guard, PRE half.
+```
+
+The descriptive name is already there — `ME1 - ` is a redundant prefix that makes a reader's first
+encounter with the file an opaque task ID. Delete the prefix; keep the rest of the line verbatim.
+
+Six files, comment-only, no behaviour change. **They are byte-identical pairs**, so both drivers must be
+edited identically or `check-seed-artifacts-synced.sh` fails — which is the point of that gate and the
+reason this is safe to do mechanically. The header is already pure ASCII and stays that way.
 
 **Verified and NOT a defect:** `agy-consult-guard-pre.sh` fails open — `exit 0` at `:11`, `:14`, `:27`,
 `:29`, `:31`. A `PreToolUse` hook exiting 2 would BLOCK the tool call; this one cannot.
@@ -546,6 +565,8 @@ leaving a real mutation unreported — **a false negative being the fatal class 
 3. `agy-consult-guard-lib.sh` is covered by the consult-guard suite.
 4. The `model` comment states what is true.
 5. `lib.sh`'s OUT OF SCOPE block records the `.no-agy` omission and its reason.
+5a. No shipped consult-guard hook header opens with `ME1 - `; `check-seed-artifacts-synced.sh` still
+   exit 0, proving both drivers were edited identically.
 6. Fast half and slow half green; `check-seed-artifacts-synced.sh` exit 0; `_partition.md` re-measured.
 7. A capstone over the committed range, with the consult guard's four seats, reaching owner-confirmed GREEN.
 
