@@ -69,15 +69,58 @@ byte-identical pairs):
 | `agy-liveness-check.sh` | `:128` | `:29` + `:33` (announces, `exit 2`) |
 
 Plus **classic-only**: `clavity-classic/plugin/hooks/agy-drive-session-reset.sh:9` — a bare
-`[ -f "${cwd}/.no-agy" ] && exit 0`, no degraded branch, no `jq` dependency.
+`[ -f "${cwd}/.no-agy" ] && exit 0`, with no degraded branch.
+
+**CORRECTION (panel round 1, measured).** An earlier draft said this hook has "no `jq` dependency". That
+is FALSE: `:7-8` call `jq` twice —
+
+```bash
+source="$(printf '%s' "$input" | jq -r '.source // empty' 2>/dev/null)"
+cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)"
+```
+
+Without `jq` both are empty, so `:9` evaluates `[ -f "/.no-agy" ]` and `:13`
+(`[ "$source" = "startup" ] || exit 0`) exits. The hook therefore HAS a degraded path — an undeclared,
+untested one in which the kill-switch check reads an absolute `/.no-agy`. The plan must treat it as a
+ninth degraded branch, not as the one file exempt from the question.
 
 8 × 2 + 1 = **17 files**.
 
 **The plan must decide the degraded branch explicitly, and it is not obvious.** The repo-root walk is pure
 bash and needs no `jq`, so a degraded branch COULD walk up from `./`. Against that: `./` is the process
 cwd, which is not necessarily the session's workspace, so walking from it could suppress on an unrelated
-repository's `.no-agy`. Leaving it as-is preserves a known-narrow behaviour; changing it trades one
-imprecision for another. **Decide in the plan with the reasoning recorded; do not let it default.**
+repository's `.no-agy`. **Decide in the plan with the reasoning recorded; do not let it default.**
+
+**🔴 CORRECTION (panel round 1): that is a FALSE BINARY, and the third option is already proven in-tree.**
+An earlier draft framed this as "leave `./` as-is" vs "walk from `./`", and the peer answered inside that
+frame. Both miss that **the real cwd is recoverable without `jq`**. `agy-test-audit-reminder.sh:47` already
+does it, with a field-bounded `sed` on the raw payload, and `:43-46` states the reason — *"the gate itself
+needs the real cwd (not the process cwd, which may be an unrelated directory)"*, which is precisely the
+objection raised against walking from `./`. The recorder does the same thing with a bash regex
+(`agy-discipline-reaching.sh:41`) and no subprocess at all.
+
+So the options are three, not two:
+
+| option | degraded branch behaviour | cost |
+|---|---|---|
+| A — leave as-is | checks `./.no-agy` only; root opt-out ignored without `jq` | none; keeps a known gap |
+| B — walk from `./` | walks up from the PROCESS cwd | may suppress on an unrelated repo |
+| **C — recover the real cwd, then walk** | matches the normal path exactly | one regex; **already shipped in two hooks** |
+
+**Option C makes the degraded branch as accurate as the normal path**, which collapses the whole dilemma:
+there is then no "degraded" `.no-agy` semantics to reason about, only a degraded *output* path. The plan
+should adopt C unless it can state why A or B is better, and the burden now sits on A and B.
+
+**🔴 AND THE EXISTING `sed` RECOVERY IS ALREADY BROKEN ON WINDOWS — a reachable, pre-existing defect in the
+exact lines U1 edits.** MEASURED 2026-08-05 on `{"cwd":"C:\\Users\\user\\repo\\src"}`, the `:47` `sed`
+captures `[^"]*` from the **raw, still-escaped** payload and yields `C:\\Users\\user\\repo\\src` with
+DOUBLED backslashes. `:50` then evaluates `[ -f "C:\\Users\\user\\repo\\src/.no-agy" ]`, which does not
+stat the intended file. **So `agy-test-audit-reminder.sh`'s degraded kill-switch check does not work on this
+project's only target platform today.** Option C must therefore carry the recorder's `:49` normalization
+too — recovery without normalization reproduces this bug in eight more files.
+
+Per the standing owner ruling that pre-existing defects are in scope, this is in scope: it is reachable, it
+ships, and U1 is already editing that line.
 
 **Provenance note, because it bears on trust.** These line numbers match the ORIGINAL anomaly capture
 exactly. During this spec's self-audit I "re-measured" them twice and got two different wrong answers —
@@ -87,14 +130,80 @@ plan: `grep` for a bare string finds comments and fallback paths, and `head -1` 
 you want.
 
 **The template** is the recorder's fixed shape (`agy-discipline-reaching.sh`, `b5d6742`): check the GLOBAL
-opt-out first (it does not depend on the root, so it stays cheap), then walk up for `.git`, then check
-**both** `$root/.no-agy` and `$cwd_path/.no-agy`.
+opt-out first (`:53` — it does not depend on the root, so it stays cheap), then walk up for `.git`
+(`:58-66`), then check **both** `$root/.no-agy` and `$cwd_path/.no-agy`.
+
+**🔴 THE TEMPLATE INCLUDES `:49`, AND OMITTING IT MAKES THE ENTIRE FIX A NO-OP ON WINDOWS.** This is the
+highest-severity finding of the panel and the one most likely to be lost in transcription.
+
+The walk at `:62` advances with `_p=${_d%/*}`, which strips on `/` only. The recorder feeds it a
+*normalized* path — `cwd_path=${cwd//\\\\//}` at `:49` — because the payload's `cwd` arrives as raw
+JSON-escaped text with **doubled** backslashes. MEASURED 2026-08-05 on `{"cwd":"C:\\Users\\user\\repo\\src"}`:
+
+| step | value |
+|---|---|
+| extracted, un-normalized | `C:\\Users\\user\\repo\\src` |
+| `${_d%/*}` on it | `C:\\Users\\user\\repo\\src` — **unchanged** |
+| loop outcome | `_p = _d` → `break` at `:63` on iteration 1 |
+
+So a hook that gains the walk but not the normalization **resolves `root` to the cwd it started from, silently
+does nothing, and still passes any test that only asserts "not suppressed from a subdirectory" by accident.**
+Normalization is not a detail of the template — it is load-bearing, and **none of the eight target hooks
+currently normalizes `$cwd`.** (`agy-after-reminder.sh:34` normalizes `$fp`, a different field — do not
+mistake it for precedent.)
+
+Note the normalized form is `C://Users//user//repo//src` — doubled slashes, which are benign for `[ -e ]`
+and for `${_d%/*}`. **Do not "tidy" them**; collapsing them is an unrequested change to a measured-working
+path shape.
+
+**Root-idiom collision — two hooks already resolve the root, a different way.** `agy-anomaly-reminder.sh:44`
+and `agy-anomaly-model-notice.sh:30` both run
+`root=$(cd "$cwd" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)` — *after* their `.no-agy`
+check. `agy-anomaly-reminder.sh:41-43` states the reason in terms that describe U1's own defect exactly:
+
+> *"A capturing session cd'd into a subdirectory writes to the root; if this hook looked only at the payload
+> cwd it would miss an anomaly that was captured correctly."*
+
+These two hooks already understand the subdirectory problem and already fixed it — for the anomalies-FILE
+lookup, while leaving the kill-switch check above it root-blind. **For these two the correct fix is to move
+the kill-switch check below the existing root resolution, not to add a second walk.** Adding the in-shell
+walk would put two different root idioms in one file, and they can disagree: `git rev-parse` follows
+worktrees and submodules, whereas the in-shell walk stops at the first `.git` *entry*. Also note
+`agy-anomaly-model-notice.sh:9-13` claims the two halves "can never disagree", pinned by a test that compares
+**counts** — a test that would not notice a `.no-agy` divergence between them.
 
 **Deliberately NOT copied from that template: `[ -e "$root/.git" ] || exit 0`.** That guard exists because
 the recorder WRITES A FILE into the user's tree and a non-repo directory has no project to attribute a row
 to. These nine only emit a message, so a non-git directory is harmless. Copying it would carry a guard
 whose reason does not apply — and would silence nine hooks in every non-repo directory, a behaviour change
 nobody asked for.
+
+**Also NOT uniform across the 17: the exit contract.** The hooks span three lifecycle events with different
+semantics, and the shared edit must preserve each one:
+
+| event | example | on suppression |
+|---|---|---|
+| `SessionStart` | `agy-anomaly-reminder.sh:31`, `agy-liveness-check.sh` | stderr + `exit 2` (non-blocking here) |
+| `PreToolUse` | `agy-seam-inject.sh` | stdout JSON + **`exit 0`** |
+| `PostToolUse` | `agy-after-reminder.sh`, `agy-test-audit-reminder.sh` | stdout JSON + **`exit 0`** |
+
+`exit 2` is non-blocking on `SessionStart` but **BLOCKING on `PreToolUse`** — a standing fact in this repo.
+A snippet pasted uniformly across all 17 files that carries a `SessionStart` exit code into the
+`PreToolUse` hook would abort the user's tool call on any box lacking `jq`. **The walk is shared; the exit
+line is not.**
+
+**And `agy-liveness-check.sh:129` must be updated with the walk, not just alongside it.** It reports the
+suppressing path to the user at boot:
+
+```bash
+suppressed="$cwd/.no-agy"; [ -f "$suppressed" ] || suppressed="$HOME/.claude/.no-agy"
+```
+
+That is a two-way fallback. Once `$root/.no-agy` becomes a third way to be suppressed, this line names a
+file that does not exist — it would tell the user they are suppressed by `$cwd/.no-agy` while the real
+opt-out sits at the repo root. This hook's entire purpose is to say LOUDLY why the disciplines are off, so
+a wrong path here is a defect in the one hook that exists to prevent confusion. Set the reported path from
+whichever candidate actually matched.
 
 ### U2 — a comment that asserts a false invariant (2 files)
 
@@ -142,15 +251,47 @@ on one file is the argument for giving it a suite, not just a fix.**
 
 Minimum: the same `.no-agy` scope coverage the other eight have, including the new subdirectory case.
 
+**🔴 SEVERITY INVERSION — this hook is the most serious of the 17, and the spec had it as a footnote.**
+§U1 justifies leaving these hooks unfixed until now on the grounds that *"they emit a message rather than
+write a file, which is a different severity."* **That rationale does not apply here.** Measured, this hook
+emits nothing and instead MUTATES DISK:
+
+```bash
+rm -f "${DIR}/.active-drive-session-${SAFE}" 2>/dev/null                                    # :21
+find "${DIR}" -maxdepth 1 -name '.active-drive-session-*' -type f -mtime +7 -delete 2>/dev/null  # :25
+```
+
+A `.no-agy` bypass in the other sixteen produces an unwanted *message*. A bypass here produces an unwanted
+*deletion* in a user who has explicitly opted out. It is therefore the one file in the set whose defect is
+in the same severity class as the recorder's — the bug that was already judged worth fixing at `b5d6742` —
+and it should be sequenced FIRST within U1, not last.
+
+**Test shape differs from the other eight, so "the eight existing ones supply the pattern" is only half
+true.** Those suites assert on emitted stdout JSON or stderr text. This hook's observable behaviour is
+filesystem state. Its suite must assert: the flag file is deleted when `source=startup`; it is RETAINED when
+`source=resume`; it is retained under `.no-agy` at each scope (workspace, global, and root-from-subdir); and
+the `-mtime +7` sweep does not remove a fresh flag. The last is the one a copied pattern would miss, and
+`:22-24` documents why it matters — an `-empty` sweep would delete a concurrent session's live flag.
+
 ---
 
 ## 3. Testing
 
 **U1** — eight suites already assert `.no-agy` suppression. Extend each with the **subdirectory scope**,
-following the shape proven in `scripts/tests/agy-discipline-reaching.Tests.ps1:201` — a `-ForEach` block
-whose data gains a `root-from-subdir` case, so the TEST count rises without the BLOCK count changing.
+following the shape proven in `scripts/tests/agy-discipline-reaching.Tests.ps1:223` —
+`It 'is SILENT under .no-agy (<Scope>) and writes nothing' -ForEach @(` — a `-ForEach` block whose data
+gains a `root-from-subdir` case, so the TEST count rises without the BLOCK count changing.
+(**Citation corrected in panel round 1:** an earlier draft said `:201`, which is inside an unrelated test.
+`:187` is a second `-ForEach` block and is also not the one to copy.)
 
 Each case must assert the hook is **silent** — not merely that it exits 0, which the bypass also satisfies.
+
+**Every suppression case needs a PAIRED POSITIVE CONTROL in the same `-ForEach` data.** Silence assertions
+are one-sided: a hook reduced to `exit 0` passes all of them, and so does a hook whose walk is a no-op
+because normalization was omitted. Each `.no-agy` case must be accompanied by an assertion that **without**
+`.no-agy` at that same scope the hook DOES fire with its specific message. Without the positive half, the
+Windows no-op above ships green. This is the same defect class as the three vacuous assertions caught by
+mutation in the SessionStart epic — a control that cannot fail is not a control.
 
 **U4** — a new suite. The eight existing ones supply the pattern.
 
@@ -208,8 +349,18 @@ leaving a real mutation unreported — **a false negative being the fatal class 
 - **The installed plugin goes stale.** The hot-copy that proved the SessionStart recorder live will be
   superseded. Either redo it or let the release supersede it — but do not read the stale installed tree as
   evidence about the new code.
-- **Test-suite registration is an explicit list in `justfile`, not a glob.** U4 adds a new suite; unless it
-  is registered there it exists and never runs.
+- **Test-suite registration is two explicit lists in `justfile`, and nothing enforces membership.**
+  `justfile:101` (`test-scripts-fast`) and `:108` (`test-scripts-slow`) are hand-maintained arrays.
+  **CORRECTION (panel round 1, measured):** an earlier draft said an unregistered suite "exists and never
+  runs" — that is false. `justfile:112` (`test-scripts`) runs `Invoke-Pester scripts/tests`, a **glob**, so
+  an unregistered suite does run there. The true hazard is narrower and worse: it runs in **neither gate
+  this spec actually names in §3**, while `just test-scripts` reports it green — and per the standing
+  cadence note the whole-suite recipe exceeds the 600s cap and is not routinely run. So the suite is green
+  in the recipe nobody runs and absent from the two everybody runs.
+  The only detector is the `diff` oracle documented at `scripts/tests/_partition.md:53-54`, and **no test
+  invokes it** — `grep -rln justfile scripts/tests/*.Tests.ps1` returns nothing. It is a manual command in a
+  Markdown file. **U4 must state which list it joins** (`test-scripts-fast`, on the peer's reasoning that it
+  touches filesystem flags without heavy analysis) and the plan must run that oracle by hand.
 - **`_partition.md` must be re-measured**, not hand-edited, after the suites change. It was wrong in both
   columns for two commits precisely because nobody re-measured.
 
@@ -217,8 +368,19 @@ leaving a real mutation unreported — **a false negative being the fatal class 
 
 ## 6. Success criteria
 
-1. All 17 files honour `.no-agy` at the repo root from a subdirectory, each pinned by a test that fails
-   when the guard is reverted.
+1. All 17 files honour `.no-agy` at the repo root from a subdirectory, **on a Windows-shaped `cwd`** (the
+   normalization above; a test using a POSIX path cannot detect the no-op), each pinned by a test that
+   fails when the guard is reverted **and** by a positive control that fires when it is absent.
+
+   **How the 17 are actually covered — state it, do not leave it implied.** MEASURED: 8 suites bind the
+   **dotnet** copies; only 4 bind classic, and 5 classic copies (`agy-anomaly-capture-reminder`,
+   `-dispatch-reminder`, `-model-notice`, `agy-anomaly-reminder`, `agy-liveness-check`) have no suite of
+   their own. They are covered **transitively**, by `scripts/check-seed-artifacts-synced.sh` proving byte
+   parity with the dotnet copy it tests — that script discovers files under the shared trees rather than
+   reading an enrolment list (`:15`, `:63`), and exempts `agy-drive-session-reset.sh` as classic-only
+   (`:29`). That is a sound argument, but the spec had not made it, and "each pinned by a test" read
+   literally would send an implementer to write 5 unnecessary suites. **Direct test + parity gate = covered;
+   `agy-drive-session-reset.sh` has no parity pair and so needs its own suite — which is U4.**
 2. `agy-drive-session-reset.sh` has a suite, registered in `justfile`.
 3. `agy-consult-guard-lib.sh` is covered by the ME1 suite.
 4. The `model` comment states what is true.
