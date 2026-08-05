@@ -90,8 +90,12 @@ out="$root/.clavity"
 # v:3 is the SessionStart capture shape. v:1 (analyse-at-SessionEnd) SHIPPED in v17 and v:2 (SessionEnd
 # capture) exists on dev machines, so all three can coexist on an upgraded machine; the report reads each by
 # its own version rather than guessing. Values are emitted exactly as they arrived - already JSON-escaped by
-# the caller - so no re-escaping step exists to get wrong. `model` is recorded and deliberately NOT reported:
-# capture is the irreversible half, and a field not written at session N cannot be recovered at N+1.
+# the caller - so no re-escaping step exists to get wrong. model is recorded and deliberately NOT reported:
+# capture is the irreversible half. model is written when the payload carries it - startup and compact
+# payloads do, resume payloads do not (MEASURED 2026-08-05: the first real post-install row was
+# source=resume with an empty model). The hook records what it is handed; an empty model is DATA, not a bug.
+# The previous wording here asserted that a field not written at session N cannot be recovered later, which
+# is false for exactly that case and would send a reader hunting a capture bug that does not exist.
 printf '{"v":3,"session_id":"%s","timestamp":"%s","source":"%s","model":"%s","transcript_path":"%s","scan_status":"%s"}\n' \
   "$sid" "$ts" "$src" "$model" "$tx" "$status" >> "$out/discipline-reaching.jsonl" 2>/dev/null
 
