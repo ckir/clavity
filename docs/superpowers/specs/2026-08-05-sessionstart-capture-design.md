@@ -68,9 +68,22 @@ for it.
 
 ### Fire on all four `source` values — owner ruling
 
-`startup`, `resume`, `clear`, `compact`. Capturing only `startup` would miss a session resumed after a
-crash, which is exactly the population `SessionEnd` already fails to see. **This makes deduplication
-mandatory rather than optional** (below).
+`startup`, `resume`, `clear`, `compact`. **This makes deduplication mandatory rather than optional**
+(below).
+
+**The original justification for `resume` was wrong, and correcting it does not change the ruling.** This
+spec previously argued that capturing only `startup` "would miss a session resumed after a crash". It would
+not: a session that crashed had already fired `SessionStart(source=startup)` at birth and had already
+written its row. Resuming it writes a SECOND row which dedup then discards. That reasoning confused how a
+session ENDED with how it BEGAN — the same conflation that made `reason` look interchangeable with
+`source`.
+
+What firing on all four actually buys, stated accurately:
+- `resume` uniquely captures only sessions that began BEFORE the hook was installed, or whose `startup`
+  write failed. A small population, but a real one, and it is the population that is invisible by
+  construction to every other event.
+- `clear` and `compact` are not about capturing new SESSIONS at all. They record that a long session went
+  through those transitions, which is the `source` distribution the report prints as context.
 
 ---
 
@@ -82,7 +95,7 @@ mandatory rather than optional** (below).
 | `session_id` | payload | correlation, and the dedup key |
 | `timestamp` | hook clock | ISO-8601 UTC |
 | `source` | payload | `startup` \| `resume` \| `clear` \| `compact`. Replaces `reason` |
-| `model` | payload | recorded, deliberately NOT displayed — see below |
+| `model` | payload | a plain STRING (measured); recorded, deliberately NOT displayed — see below |
 | `transcript_path` | payload | what the report later scans |
 | `scan_status` | derived | `deferred`, or `transcript_not_found` when the payload names none |
 
@@ -94,6 +107,12 @@ guessing, exactly as the null discipline demands.
 **`reason` is lost.** `source` says how a session BEGAN, not how it ended; it is related data, not the same
 data. STEP 0 item 2 ("does `SessionEnd` fire on every exit path?") becomes moot — nothing depends on that
 event any more.
+
+**`model` is a plain string and its FORM varies — measured, both fires.** The two captured payloads carry
+`"model":"claude-opus-5"` and `"model":"claude-opus-5[1m]"`, the latter marking the 1M-context variant. The
+existing `[^"]*` extractor handles both, and an absent or non-string value would simply leave the field
+empty — which the hook already treats as "not named" rather than as a zero. No special handling is needed,
+and none should be added on speculation about shapes that have not been observed.
 
 **`model` is recorded but not reported, and that asymmetry is deliberate.** There is no question it answers
 today, and this report does not print numbers nobody can interpret. But capture is the one irreversible
@@ -116,6 +135,19 @@ exactly the silent zero this whole item exists to remove, reintroduced at the ot
 The report must collapse rows by `session_id`: **keep the earliest**, and report the `source` distribution
 across all rows separately as context.
 
+**That distribution counts HOOK INVOCATIONS, and must be labelled as such.** `startup: 10, compact: 20` is
+thirty firings across ten sessions, not thirty sessions — and printed under a heading that does not say so,
+it reads as the latter. Worse, `compact: 20` sits next to the existing `compactions:` figure the report
+derives from `isCompactSummary` in the transcript (`discipline-reaching-report.ps1:83`). Those two numbers
+count different things and WILL diverge — a compaction before the plugin was installed appears in one and
+not the other — so a reader who assumes they should agree will treat a correct report as broken. Label the
+breakdown as invocations, keep it out of the session totals, and say plainly that it is not the same
+measurement as `compactions`.
+
+**Legacy rows have no `source` at all.** `v:1` and `v:2` carry `reason` (an EXIT reason: `prompt_input_exit`
+and the like). Those values must never be bucketed into the `source` distribution — they answer a different
+question and would silently contaminate it. Count legacy rows in their own bucket.
+
 **Dedup runs BEFORE the `-Last` slice, and getting that order wrong silently redefines the parameter.**
 Today `discipline-reaching-report.ps1:120` slices raw LINES
 (`if ($Last -gt 0 -and $raw.Count -gt $Last) { $raw = $raw[-$Last..-1] }`) and its help text at `:26`
@@ -129,11 +161,32 @@ take the last N sessions.
 claimed during review that the report "already deduplicates by session_id"; it does not, and that claim was
 used to dismiss the multi-fire cost as trivial. Verified by measurement before folding.
 
-🔴 **An assumption this rests on, stated so it is not laundered into a fact: whether repeated `SessionStart`
-fires within one session share a `session_id` is UNMEASURED.** Only `source=startup` has been observed so
-far. If `clear`/`compact` mint a NEW id, dedup is a harmless no-op; if they reuse it, dedup is load-bearing.
-Implementing it is safe under both, so this does not block — but the first `clear` or `compact` row that
-lands should be checked against this, and the answer written down here.
+✅ **MEASURED 2026-08-05 — a `compact` fire REUSES the session's `session_id`, so dedup is load-bearing,
+not a no-op.** This was flagged here as unmeasured and has since been settled from a captured payload
+(`.clavity/scratch/discipline-efficacy/sessionstart-payload.txt:4`): a `source=compact` fire carried
+`session_id c359e435-163a-416d-8e01-00a105d030d7`, the id of the session it compacted, corroborated
+independently by that session's own `PreCompact` payload. **`transcript_path` was byte-identical across the
+two fires**, which is what makes "keep the earliest row" safe — the discarded rows name the same transcript.
+
+`clear` remains unobserved. It is the one source that could plausibly mint a new id, and if it does the
+effect is benign (it simply presents as a separate session).
+
+### Which row wins, and which row orders
+
+Two different questions, and answering both with "the earliest" is wrong:
+
+- **Content comes from the EARLIEST row** — it names how the session ORIGINATED (`source=startup` rather
+  than the `compact` that followed), and the transcript path is the same either way (measured above).
+- **Recency ordering comes from the LATEST row.** `-Last N` must rank a session by its most recent
+  activity, not its birth. Otherwise a long session started at 08:00 that is still alive at 18:00 sorts
+  as older than twenty short sessions that began and ended at midday, and `-Last 20` drops the single
+  most active session on the machine. That inverts exactly the question the parameter exists to answer.
+
+**And `Expand-CaptureRow` runs LAST — after dedup and after the slice.** It is the expensive step: it
+`Select-String`s and `jq`s a whole transcript (`discipline-reaching-report.ps1:88-91`), and it is invoked
+per-row inside the parse loop today (`:131`). Left in that position, a session with fifteen `compact` rows
+would read the same multi-hundred-megabyte transcript fifteen times to produce one answer. Order the
+pipeline: parse → collapse by `session_id` → take the last N → expand. That bounds transcript reads to N.
 
 ---
 
@@ -148,6 +201,12 @@ on `SessionStart` is unmeasured, and an unmeasured equivalence is exactly what p
 alongside `agy-anomaly-reminder.sh` and `agy-anomaly-model-notice.sh`. Those two hooks are observed firing
 in production under that matcher, so the block is proven, and reusing it means the registration under test
 is one already known to work rather than a new one.
+
+**And DELETE the whole `SessionEnd` block** (`:66-72`), in both drivers — not just its inner hook entry.
+This hook is its only occupant, so moving it leaves an empty event registration behind: a listener that
+resolves nothing, does nothing, and still reads to a future maintainer as though teardown capture exists.
+Given that a phantom `SessionEnd` registration is precisely what cost this item three review rounds, the
+empty shell is worse than clutter.
 
 ## What this does NOT change
 
@@ -196,9 +255,14 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
 
 ## Testing
 
-- Retarget `scripts/tests/agy-discipline-reaching.Tests.ps1` at the `SessionStart` payload shape; keep every
-  existing regression (Windows path byte-exactness, CR stripping, pipe-safe stdin, fail-open, `.no-agy`,
-  append, cross-driver parity, no non-zero exit).
+- Retarget `scripts/tests/agy-discipline-reaching.Tests.ps1` (**12 `It` blocks**) at the `SessionStart`
+  payload shape; keep every existing regression (Windows path byte-exactness, CR stripping, pipe-safe
+  stdin, fail-open, `.no-agy`, append, cross-driver parity, no non-zero exit). The change is concentrated
+  in one place: the `Payload` helper at `:67` hardcodes
+  `hook_event_name = 'SessionEnd'; reason = $Reason` and must emit `SessionStart` / `source`, with the
+  `v:3` assertion following. Note that helper's default `($Cwd -replace '\\','/')` — it manufactures
+  forward-slash fixtures, which is the shape that hid two shipped defects, so the dedicated real-Windows-
+  path case must keep bypassing it.
 - Add: the manifest registers `SessionEnd` **nowhere** and `SessionStart` for this hook — the defect being
   fixed is a registration defect, so registration needs an assertion.
 - Add: the report deduplicates by `session_id` and still totals correctly across `v:1`/`v:2`/`v:3`.
