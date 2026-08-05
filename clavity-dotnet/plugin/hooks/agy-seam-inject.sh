@@ -28,8 +28,23 @@ input=$(cat)
 # which could false-match a seam name mentioned in another skill's args) and, ONLY on a seam
 # match, emit a loud printf-hardcoded ASCII line so a disabled hook is never silent. ---
 if ! command -v jq >/dev/null 2>&1; then
-  # Kill-switch still honored (global; cwd falls back to the process cwd without jq).
-  if [ -f "./.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then exit 0; fi
+  # Kill-switch still honored. cwd is recovered from the RAW payload with a bash regex rather than falling
+  # back to the PROCESS cwd, which need not be the session's workspace. Raw recovery keeps the JSON
+  # escaping, hence the DOUBLE-backslash pattern - see the note at the jq path below.
+  [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
+  cwd_path=${cwd//\\\\//}
+  [ -z "$cwd_path" ] && cwd_path="."
+  [ -f "$HOME/.claude/.no-agy" ] && exit 0
+  root=$cwd_path
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+  if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
   if printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*finishing-a-development-branch' \
      || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*brainstorm' \
      || printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*subagent-driven-development' \
@@ -42,8 +57,33 @@ fi
 skill=$(printf '%s' "$input" | jq -r '.tool_input.skill // ""' 2>/dev/null)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
 
-# Opt-out kill-switch (mirrors agy-after-reminder.sh): .no-agy in the session cwd or ~/.claude.
-if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
+# THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
+# SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch above reads the RAW
+# payload, where the DOUBLE backslashes survive, and needs ${cwd//\\\\//}. MEASURED 2026-08-05: the raw form
+# applied to a jq-decoded value matches nothing and leaves the path untouched - a silent no-op that looks
+# exactly like a working fix. Do NOT unify the two spellings.
+cwd_path=${cwd//\\//}
+[ -z "$cwd_path" ] && cwd_path="."
+
+# Opt-out kill-switch (mirrors agy-after-reminder.sh): .no-agy in the repo root, the session cwd, or
+# ~/.claude. Global first - it needs no root.
+[ -f "$HOME/.claude/.no-agy" ] && exit 0
+
+# Repo root by walking up for .git, in-shell, so a .no-agy at the REPO ROOT is honoured when the session
+# was launched from a subdirectory. The normalization above is load-bearing: ${_d%/*} strips on "/" only.
+# $root IS FOR THIS CHECK AND NOTHING ELSE IN THIS FILE - see the debounce contract below, which forbids
+# anchoring the marker to git-toplevel.
+root=$cwd_path
+_d=$cwd_path
+while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+  if [ -e "$_d/.git" ]; then root=$_d; break; fi
+  _p=${_d%/*}
+  [ "$_p" = "$_d" ] && break
+  [ -z "$_p" ] && break
+  _d=$_p
+done
+
+if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
   exit 0
 fi
 
@@ -59,9 +99,11 @@ esac
 # to the payload's session cwd EXACTLY as the discipline skills write it (a bare
 # .clavity/agy-marks/<discipline>.head relative to the agent's cwd). Do NOT anchor to
 # git-toplevel: that would diverge from the cwd-relative writer in a launched-from-subdir
-# session and defeat the debounce. Inject UNLESS the marker exists AND its content == HEAD. ---
-head=$(git -C "$cwd" rev-parse HEAD 2>/dev/null)
-marker="$cwd/.clavity/agy-marks/$discipline.head"
+# session and defeat the debounce. Inject UNLESS the marker exists AND its content == HEAD.
+# $cwd_path, NOT $root - the walked root exists above but using it HERE is the exact divergence this
+# paragraph forbids. Normalized only, same directory. ---
+head=$(git -C "$cwd_path" rev-parse HEAD 2>/dev/null)
+marker="$cwd_path/.clavity/agy-marks/$discipline.head"
 if [ -n "$head" ] && [ -f "$marker" ] && [ "$(cat "$marker" 2>/dev/null)" = "$head" ]; then
   exit 0
 fi

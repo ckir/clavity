@@ -25,10 +25,91 @@ BeforeAll {
         $payload = @{ tool_input = @{ skill = $Skill }; cwd = $Cwd } | ConvertTo-Json -Compress
         (Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ HOME = $script:CleanHome }).StdOut
     }
+
+    # As Invoke-Hook, but the cwd is left in its RAW backslashed Windows form. Every other test here
+    # forward-slashes it, which is the repo-wide convention and is exactly why the Windows repo-root
+    # walk bug survived - a POSIX-shaped path cannot exercise it. $NoJq drops jq off PATH.
+    function Invoke-HookRaw { param([string]$Skill, [string]$Cwd, [switch]$NoJq)
+        $payload = '{"tool_input":{"skill":"' + $Skill + '"},"cwd":"' + ($Cwd -replace '\\', '\\') + '","hook_event_name":"PreToolUse"}'
+        $env = @{ HOME = $script:CleanHome }
+        if ($NoJq) { $env['PATH'] = $script:NoJqPath }
+        Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $env
+    }
 }
 AfterAll { Remove-Item -LiteralPath $script:CleanHome -Recurse -Force -ErrorAction SilentlyContinue }
 
 Describe 'agy-seam-inject.sh' {
+    # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
+    # Each silence case is paired with a positive control, and the CONTROL is the load-bearing half:
+    # measured on a sibling hook, a broken walk produced silence indistinguishable from a working
+    # kill-switch, and only the control went red.
+    It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
+        $repo = New-TempRepo
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+            $r = Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $sub
+            $r.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
+            $r.ExitCode | Should -Be 0 -Because 'exit 2 is BLOCKING for PreToolUse - it would halt the tool call'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'DOES inject from that same subdirectory when .no-agy is absent (positive control)' {
+        $repo = New-TempRepo
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            $r = Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $sub
+            $r.StdOut | Should -Match 'AGY-FIRST auto-fire' -Because 'without the opt-out it must still inject - otherwise the silence test proves nothing'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'honours a root .no-agy from a subdirectory on the DEGRADED (no jq) path too' {
+        # This path used to test "./.no-agy" - the PROCESS cwd, not the session workspace.
+        $repo = New-TempRepo
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+            $r = Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $sub -NoJq
+            $r.StdOut   | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
+            $r.ExitCode | Should -Be 0
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'DOES emit the jq-missing line from that subdirectory without .no-agy (degraded positive control)' {
+        $repo = New-TempRepo
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            $r = Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $sub -NoJq
+            $r.StdOut | Should -Match 'guard inactive: missing jq' -Because 'without the opt-out the degraded path must still announce itself'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'keeps the debounce marker CWD-RELATIVE, not anchored to the walked repo root' {
+        # THE CONTRACT AT :99-102 IN ITS OWN WORDS. $root now exists in this file for the .no-agy check,
+        # and reusing it here would defeat the debounce for a launched-from-subdir session: the skills
+        # write the marker relative to the agent's cwd, so a hook reading it at git-toplevel would never
+        # find it and would re-inject forever. Nothing else pins this.
+        $repo = New-TempRepo
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            $head = (& git -C $repo rev-parse HEAD).Trim()
+
+            # Marker at the SUBDIRECTORY (where a subdir session's skill would write it) must debounce.
+            New-Item -ItemType Directory -Path (Join-Path $sub '.clavity/agy-marks') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $sub '.clavity/agy-marks/agy-first.head') -Value $head -NoNewline
+            (Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $sub).StdOut |
+                Should -BeNullOrEmpty -Because 'the marker is written relative to the session cwd, so it must be read there'
+
+            # A marker at the REPO ROOT must NOT debounce a subdirectory session.
+            Remove-Item -LiteralPath (Join-Path $sub '.clavity') -Recurse -Force
+            New-Item -ItemType Directory -Path (Join-Path $repo '.clavity/agy-marks') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $repo '.clavity/agy-marks/agy-first.head') -Value $head -NoNewline
+            (Invoke-HookRaw -Skill 'superpowers:brainstorming' -Cwd $sub).StdOut |
+                Should -Match 'AGY-FIRST auto-fire' -Because 'anchoring the marker to git-toplevel is what the contract forbids'
+        } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'injects the AGY-FIRST directive on a brainstorm seam' {
         # Clean temp repo: no marker + a resolvable HEAD -> must inject. (Passing cwd='.'
         # would read the REAL repo's .clavity markers/HEAD and could spuriously debounce.)
