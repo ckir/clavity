@@ -164,4 +164,21 @@ Describe 'shipped plugin hook registration' {
         $notice[0]    | Should -BeExactly $drain[0]
         $notice[0]    | Should -BeExactly 'startup|resume|clear|compact'
     }
+
+    It 'registers agy-discipline-reaching.sh on SessionStart startup|resume|clear|compact - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        $m = $script:Manifests[$Driver]
+        $matchers = @(Get-OwningMatchers -Manifest $m -Event 'SessionStart' -Script 'agy-discipline-reaching.sh')
+        $matchers.Count | Should -Be 1 -Because 'exactly one SessionStart object may own this hook'
+        $matchers[0] | Should -BeExactly 'startup|resume|clear|compact' -Because 'the owner ruled it fires on all four sources'
+    }
+
+    It 'registers agy-discipline-reaching.sh on SessionEnd NOWHERE - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        $m = $script:Manifests[$Driver]
+        @(Get-OwningMatchers -Manifest $m -Event 'SessionEnd' -Script 'agy-discipline-reaching.sh') |
+            Should -BeNullOrEmpty -Because '${CLAUDE_PLUGIN_ROOT} does not resolve at SessionEnd; the hook is cancelled and writes nothing'
+    }
 }
