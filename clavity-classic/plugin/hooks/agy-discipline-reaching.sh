@@ -56,14 +56,23 @@ cwd_path=${cwd//\\\\//}
 # process start, and process COUNT is the entire budget here. A .git entry matches as a directory (normal
 # clone) or a file (worktree/submodule).
 root=$cwd_path
-_d=$cwd_path
-while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
-  if [ -e "$_d/.git" ]; then root=$_d; break; fi
-  _p=${_d%/*}
-  [ "$_p" = "$_d" ] && break
-  [ -z "$_p" ] && break
-  _d=$_p
-done
+# ONE stat gates the walk. On an unreachable share EVERY level pays an SMB timeout - MEASURED
+# 2026-08-06: 20314ms walking an unreachable //server/share/a/b/c vs 9282ms gated. Do NOT replace
+# this with a "//" prefix test: WSL repos are LIVE UNC paths (\\wsl.localhost\<distro>\...) and
+# such a test would silently disable the root walk for them.
+if [ -d "$cwd_path" ]; then
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    # Stop at the UNC volume root - //server/.git is not a valid path and statting it costs
+    # another network round-trip for a result that can never be a repo.
+    case "$_d" in //*/*/*) ;; //*) break ;; esac
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+fi
 
 # NO REPOSITORY, NO ROW. $root is reassigned ONLY when the walk finds a .git, so a .git under $root here is
 # exactly equivalent to "the walk succeeded" - no flag variable is needed, and testing $cwd_path instead

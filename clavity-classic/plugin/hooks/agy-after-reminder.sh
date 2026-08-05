@@ -23,14 +23,23 @@ if ! command -v jq >/dev/null 2>&1; then
   [ -z "$cwd_path" ] && cwd_path="."
   [ -f "$HOME/.claude/.no-agy" ] && exit 0
   root=$cwd_path
-  _d=$cwd_path
-  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
-    if [ -e "$_d/.git" ]; then root=$_d; break; fi
-    _p=${_d%/*}
-    [ "$_p" = "$_d" ] && break
-    [ -z "$_p" ] && break
-    _d=$_p
-  done
+  # ONE stat gates the walk. On an unreachable share EVERY level pays an SMB timeout - MEASURED
+  # 2026-08-06: 20314ms walking an unreachable //server/share/a/b/c vs 9282ms gated. Do NOT replace
+  # this with a "//" prefix test: WSL repos are LIVE UNC paths (\\wsl.localhost\<distro>\...) and
+  # such a test would silently disable the root walk for them.
+  if [ -d "$cwd_path" ]; then
+    _d=$cwd_path
+    while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+      if [ -e "$_d/.git" ]; then root=$_d; break; fi
+      # Stop at the UNC volume root - //server/.git is not a valid path and statting it costs
+      # another network round-trip for a result that can never be a repo.
+      case "$_d" in //*/*/*) ;; //*) break ;; esac
+      _p=${_d%/*}
+      [ "$_p" = "$_d" ] && break
+      [ -z "$_p" ] && break
+      _d=$_p
+    done
+  fi
   if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
   if printf '%s' "$input" | grep -Eq '"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*docs[\\/]+superpowers[\\/]+(specs|plans)[\\/]+[^"]*\.md'; then
     printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - the AGY-AFTER panel reminder will not fire on spec/plan writes"}}'
@@ -57,14 +66,23 @@ cwd_path=${cwd//\\//}
 # so an un-normalized Windows path breaks this loop on its first iteration. A .git entry matches as a
 # directory (normal clone) or a file (worktree/submodule).
 root=$cwd_path
-_d=$cwd_path
-while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
-  if [ -e "$_d/.git" ]; then root=$_d; break; fi
-  _p=${_d%/*}
-  [ "$_p" = "$_d" ] && break
-  [ -z "$_p" ] && break
-  _d=$_p
-done
+# ONE stat gates the walk. On an unreachable share EVERY level pays an SMB timeout - MEASURED
+# 2026-08-06: 20314ms walking an unreachable //server/share/a/b/c vs 9282ms gated. Do NOT replace
+# this with a "//" prefix test: WSL repos are LIVE UNC paths (\\wsl.localhost\<distro>\...) and
+# such a test would silently disable the root walk for them.
+if [ -d "$cwd_path" ]; then
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    # Stop at the UNC volume root - //server/.git is not a valid path and statting it costs
+    # another network round-trip for a result that can never be a repo.
+    case "$_d" in //*/*/*) ;; //*) break ;; esac
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+fi
 
 if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
   exit 0

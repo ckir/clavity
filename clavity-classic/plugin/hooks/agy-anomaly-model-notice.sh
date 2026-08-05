@@ -40,14 +40,23 @@ cwd_path=${cwd//\\//}
 # on a worktree or submodule, where .git is a file rather than a directory. The normalization above is
 # load-bearing: ${_d%/*} strips on "/" only, so an un-normalized Windows path breaks the walk at once.
 root=$cwd_path
-_d=$cwd_path
-while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
-  if [ -e "$_d/.git" ]; then root=$_d; break; fi
-  _p=${_d%/*}
-  [ "$_p" = "$_d" ] && break
-  [ -z "$_p" ] && break
-  _d=$_p
-done
+# ONE stat gates the walk. On an unreachable share EVERY level pays an SMB timeout - MEASURED
+# 2026-08-06: 20314ms walking an unreachable //server/share/a/b/c vs 9282ms gated. Do NOT replace
+# this with a "//" prefix test: WSL repos are LIVE UNC paths (\\wsl.localhost\<distro>\...) and
+# such a test would silently disable the root walk for them.
+if [ -d "$cwd_path" ]; then
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    # Stop at the UNC volume root - //server/.git is not a valid path and statting it costs
+    # another network round-trip for a result that can never be a repo.
+    case "$_d" in //*/*/*) ;; //*) break ;; esac
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+fi
 
 if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
   exit 0

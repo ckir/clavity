@@ -33,14 +33,23 @@ if ! command -v jq >/dev/null 2>&1; then
   cwd_path=${cwd//\\\\//}
   [ -z "$cwd_path" ] && cwd_path="."
   root=$cwd_path
-  _d=$cwd_path
-  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
-    if [ -e "$_d/.git" ]; then root=$_d; break; fi
-    _p=${_d%/*}
-    [ "$_p" = "$_d" ] && break
-    [ -z "$_p" ] && break
-    _d=$_p
-  done
+  # ONE stat gates the walk. On an unreachable share EVERY level pays an SMB timeout - MEASURED
+  # 2026-08-06: 20314ms walking an unreachable //server/share/a/b/c vs 9282ms gated. Do NOT replace
+  # this with a "//" prefix test: WSL repos are LIVE UNC paths (\\wsl.localhost\<distro>\...) and
+  # such a test would silently disable the root walk for them.
+  if [ -d "$cwd_path" ]; then
+    _d=$cwd_path
+    while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+      if [ -e "$_d/.git" ]; then root=$_d; break; fi
+      # Stop at the UNC volume root - //server/.git is not a valid path and statting it costs
+      # another network round-trip for a result that can never be a repo.
+      case "$_d" in //*/*/*) ;; //*) break ;; esac
+      _p=${_d%/*}
+      [ "$_p" = "$_d" ] && break
+      [ -z "$_p" ] && break
+      _d=$_p
+    done
+  fi
   if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
     _s="$root/.no-agy"; [ -f "$_s" ] || _s="$cwd_path/.no-agy"
     printf '%s\n' "[AGY-DISCIPLINES] suppressed by .no-agy at $_s" >&2
@@ -72,14 +81,23 @@ cwd_path=${cwd//\\//}
 # NOTE: $root is for the .no-agy check ONLY. It must not become the basis for proj_dir - CLAUDE_PROJECT_DIR
 # and the session cwd are the contract for locating settings.json, not git-toplevel.
 root=$cwd_path
-_d=$cwd_path
-while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
-  if [ -e "$_d/.git" ]; then root=$_d; break; fi
-  _p=${_d%/*}
-  [ "$_p" = "$_d" ] && break
-  [ -z "$_p" ] && break
-  _d=$_p
-done
+# ONE stat gates the walk. On an unreachable share EVERY level pays an SMB timeout - MEASURED
+# 2026-08-06: 20314ms walking an unreachable //server/share/a/b/c vs 9282ms gated. Do NOT replace
+# this with a "//" prefix test: WSL repos are LIVE UNC paths (\\wsl.localhost\<distro>\...) and
+# such a test would silently disable the root walk for them.
+if [ -d "$cwd_path" ]; then
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    # Stop at the UNC volume root - //server/.git is not a valid path and statting it costs
+    # another network round-trip for a result that can never be a repo.
+    case "$_d" in //*/*/*) ;; //*) break ;; esac
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+fi
 
 # --- superpowers enabled-check across Claude Code's settings hierarchy (more-specific scope wins per plugin
 # key): project-local > project > user. Read ONLY files that exist (a missing settings file at a scope is

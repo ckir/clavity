@@ -58,4 +58,36 @@ Describe 'shipped plugin hook payload' {
         }
         ($drift -join '; ') | Should -BeNullOrEmpty
     }
+
+    It 'gates every repo-root walk on one stat, and stops at the UNC volume root' {
+        # MEASURED 2026-08-06: an unreachable //server/share/a/b/c cost 20314ms because EVERY level of
+        # the walk pays its own SMB timeout, against 3882ms for the single stat the walk replaced. The
+        # `[ -d "$cwd_path" ]` gate cuts that to ~9400ms by spending one stat before walking at all; the
+        # residual is the two .no-agy stats the design requires and no walk change can remove.
+        #
+        # This is asserted STRUCTURALLY rather than behaviourally on purpose: reproducing it needs a
+        # network path that times out, which no hermetic test can provide. Structure is what a future
+        # edit would drop, and an ungated walk is INVISIBLE on a developer's local disk - it costs 11ms
+        # there. The defect only appears on the machine of a user we would never hear from.
+        #
+        # Discovered by glob like every other assertion here, so a hook added later is covered.
+        foreach ($dir in @($script:DotnetHooks, $script:ClassicHooks)) {
+            $hooks = Get-HookSet $dir
+            $hooks.Count | Should -BeGreaterThan 0 -Because "an empty glob for $dir would make this vacuous"
+
+            $walks = 0
+            $bad = foreach ($h in $hooks) {
+                $t = Get-Content -Raw -LiteralPath $h.FullName
+                $w = ([regex]::Matches($t, [regex]::Escape('while [ -n "$_d" ]'))).Count
+                if ($w -eq 0) { continue }
+                $walks += $w
+                $g = ([regex]::Matches($t, [regex]::Escape('if [ -d "$cwd_path" ]; then'))).Count
+                $u = ([regex]::Matches($t, [regex]::Escape('case "$_d" in //*/*/*) ;; //*) break ;; esac'))).Count
+                if ($g -ne $w) { "$($h.Name): $w walk(s) but $g stat-gate(s)" }
+                if ($u -ne $w) { "$($h.Name): $w walk(s) but $u UNC-root stop(s)" }
+            }
+            ($bad -join '; ') | Should -BeNullOrEmpty
+            $walks | Should -BeGreaterThan 10 -Because "$dir should carry the walk in most hooks; a near-zero count means the pattern moved and this test went blind"
+        }
+    }
 }
