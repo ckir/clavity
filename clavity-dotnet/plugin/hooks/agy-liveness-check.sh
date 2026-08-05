@@ -23,11 +23,27 @@
 set +e
 input=$(cat)
 
-# --- jq guard. jq is needed to parse cwd + merge settings. Without it, honor the kill-switch (global +
-# process cwd) then emit ONE loud dep warning (never silent; we cannot do the superpowers check without jq). ---
+# --- jq guard. jq is needed to merge settings. Without it, honor the kill-switch (global + the session's
+# REAL workspace, recovered from the raw payload) then emit ONE loud dep warning (never silent; we cannot
+# do the superpowers check without jq). The old form tested "./.no-agy", the PROCESS cwd, which need not
+# be the workspace - and it announced that literal string as the suppressing path whether or not it was. ---
 if ! command -v jq >/dev/null 2>&1; then
-  if [ -f "./.no-agy" ]; then
-    printf '%s\n' "[AGY-DISCIPLINES] suppressed by .no-agy at ./.no-agy" >&2
+  # Raw recovery keeps the JSON escaping, hence the DOUBLE-backslash pattern - see the note at the jq path.
+  [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
+  cwd_path=${cwd//\\\\//}
+  [ -z "$cwd_path" ] && cwd_path="."
+  root=$cwd_path
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
+  if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
+    _s="$root/.no-agy"; [ -f "$_s" ] || _s="$cwd_path/.no-agy"
+    printf '%s\n' "[AGY-DISCIPLINES] suppressed by .no-agy at $_s" >&2
     exit 2
   fi
   if [ -f "$HOME/.claude/.no-agy" ]; then
@@ -40,13 +56,38 @@ fi
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
 
+# THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
+# SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch below reads the RAW
+# payload, where the DOUBLE backslashes survive, and needs ${cwd//\\\\//}. MEASURED 2026-08-05: the raw form
+# applied to a jq-decoded value matches nothing and leaves the path untouched - a silent no-op that looks
+# exactly like a working fix. Do NOT unify the two spellings.
+#
+# Resolved HERE, above proj_dir, rather than just above the kill-switch: the walk needs the normalized
+# value, and defining it late would leave proj_dir the only place in the file reading a raw $cwd.
+cwd_path=${cwd//\\//}
+[ -z "$cwd_path" ] && cwd_path="."
+
+# Repo root by walking up for .git, in-shell, so a .no-agy at the REPO ROOT is honoured when the session
+# was launched from a subdirectory. The normalization above is load-bearing: ${_d%/*} strips on "/" only.
+# NOTE: $root is for the .no-agy check ONLY. It must not become the basis for proj_dir - CLAUDE_PROJECT_DIR
+# and the session cwd are the contract for locating settings.json, not git-toplevel.
+root=$cwd_path
+_d=$cwd_path
+while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+  if [ -e "$_d/.git" ]; then root=$_d; break; fi
+  _p=${_d%/*}
+  [ "$_p" = "$_d" ] && break
+  [ -z "$_p" ] && break
+  _d=$_p
+done
+
 # --- superpowers enabled-check across Claude Code's settings hierarchy (more-specific scope wins per plugin
 # key): project-local > project > user. Read ONLY files that exist (a missing settings file at a scope is
 # NORMAL, not a not-live signal). superpowers is live iff the merged enabledPlugins has a key matching
 # ^superpowers@ resolving to true (PREFIX match; the marketplace suffix is not guaranteed). Absent / false /
 # corrupt-present -> the possibility-framed advisory (fail-toward-loud). ---
 config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-proj_dir="${CLAUDE_PROJECT_DIR:-$cwd}"
+proj_dir="${CLAUDE_PROJECT_DIR:-$cwd_path}"
 user_settings="$config_dir/settings.json"
 proj_settings="$proj_dir/.claude/settings.json"
 local_settings="$proj_dir/.claude/settings.local.json"
@@ -125,8 +166,13 @@ fi
 # --- .no-agy kill-switch: announce LOUDLY (naming the path) then STOP. NOT a silent early-exit (that
 # reintroduces the silent-kill Decision 3 forbids); NOT a fall-through to the superpowers/jq notices (that
 # would triple-spam one boot). One announce, then exit. ---
-if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
-  suppressed="$cwd/.no-agy"; [ -f "$suppressed" ] || suppressed="$HOME/.claude/.no-agy"
+if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
+  # THREE candidates now, so the reported path must be chosen from three. The old two-way fallback named
+  # "$cwd/.no-agy" - a file that does not exist - whenever the REPO ROOT was the reason for suppression,
+  # which is a defect in the one hook whose whole job is to say truthfully why the disciplines are off.
+  suppressed="$root/.no-agy"
+  [ -f "$suppressed" ] || suppressed="$cwd_path/.no-agy"
+  [ -f "$suppressed" ] || suppressed="$HOME/.claude/.no-agy"
   printf '%s\n' "[AGY-DISCIPLINES] suppressed by .no-agy at $suppressed" >&2
   # Constraint 5: ownership is reported EVEN under the kill-switch. A gate the policed party can switch
   # off is not a gate -- otherwise .no-agy plus a kept personal registration hides an override entirely.

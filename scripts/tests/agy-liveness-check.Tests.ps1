@@ -116,6 +116,61 @@ Describe 'agy-liveness-check.sh' {
             $r.StdErr   | Should -Match 'suppressed by .no-agy'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
+    # This hook exists to say LOUDLY and TRUTHFULLY why the disciplines are off, so naming a path that
+    # does not exist is a defect in the one hook meant to prevent confusion. Every other test here
+    # forward-slashes cwd; these feed the raw backslashed shape the real payload carries.
+    It 'names the ROOT .no-agy path when suppressed from a subdirectory' {
+        $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+            $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.ExitCode | Should -Be 2 -Because 'SessionStart announces and stops - it must NOT exit 0 silently'
+            $r.StdErr   | Should -Match 'suppressed by \.no-agy' -Because 'a root opt-out must suppress it from a subdirectory'
+            $r.StdErr   | Should -Not -Match 'src[\\/]\.no-agy' -Because 'it must name the file that actually exists, not the cwd candidate'
+        } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'still ADVISES from that same subdirectory when .no-agy is absent (positive control)' {
+        $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ CLAUDE_CONFIG_DIR = $cfg; HOME = $h; CLAUDE_PROJECT_DIR = $cfg }
+            $r.StdErr | Should -Not -Match 'suppressed by \.no-agy' -Because 'without the opt-out nothing may claim suppression - otherwise the test above proves nothing'
+            $r.StdErr | Should -Match 'superpowers'               -Because 'it must still deliver its real advisory'
+        } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'no-jq: announces the ROOT .no-agy from a subdirectory, not the literal ./.no-agy' {
+        # The degraded path tested "./.no-agy" - the PROCESS cwd - and announced that literal string as the
+        # suppressing path whether or not any such file existed. Nothing covered it.
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
+            $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $r.ExitCode | Should -Be 2
+            $r.StdErr   | Should -Match 'suppressed by \.no-agy' -Because 'the degraded path must honour the same root opt-out'
+            $r.StdErr   | Should -Not -Match 'missing jq'        -Because 'one announce, not two - the kill-switch wins'
+            $r.StdErr   | Should -Not -Match '\./\.no-agy'       -Because 'it must name the real file, not the process-cwd placeholder'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'no-jq: still warns about jq from that subdirectory when .no-agy is absent (degraded control)' {
+        $repo = New-TempRepo; $h = New-CleanHome
+        try {
+            $sub = Join-Path $repo 'src'
+            New-Item -ItemType Directory -Path $sub -Force | Out-Null
+            $payload = '{"cwd":"' + ($sub -replace '\\', '\\') + '","source":"startup","hook_event_name":"SessionStart"}'
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $r.StdErr | Should -Match 'missing jq' -Because 'without the opt-out the degraded path must still warn'
+        } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'emits ONE jq-missing warning (exit 2) when jq is absent' {
         $h = New-CleanHome
         try {
