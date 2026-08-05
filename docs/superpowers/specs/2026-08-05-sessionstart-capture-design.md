@@ -354,6 +354,13 @@ threshold (15 minutes is ample) is **`provisional`** — counted in its own buck
 cleanly`. It needs only the file's mtime, and it subsumes the reporting session automatically, because the
 transcript of the session running the report was appended to moments ago.
 
+**Sample the mtime AFTER the scan finishes, not before.** The order is not cosmetic: a transcript written
+to DURING the scan is exactly the in-flight case this bucket exists for, and a before-reading sample cannot
+see it while an after-reading sample can. Reading it before would also make the scan's own duration a
+window in which the answer silently goes stale. This is stated because it is the one ordering decision an
+implementer would otherwise have to invent — and inventing it the other way loses the case that motivated
+the rule.
+
 **mtime is a heuristic, and it FAILS IN THE SAFE DIRECTION — which is why it is acceptable.** Anything that
 touches a file without changing it (a backup pass, an antivirus scan, an indexer) will push a long-finished
 session into `provisional` for fifteen minutes. That is a real effect and it is the tolerable one: the
@@ -372,7 +379,15 @@ and an implementer must not have to pick one.** A provisional session:
   mean completed sessions, and mixing a partial count in would make them mean something softer without
   saying so;
 - **IS** printed, with its counts, in its own `PROVISIONAL (still running - counts may grow)` section;
-- is counted in `Sessions recorded`, which is a count of rows on file and has always been exactly that.
+- is counted in `Sessions recorded`.
+
+⚠️ **And `Sessions recorded` itself changes meaning under this spec — say so, or the most prominent number
+in the report drifts silently.** `discipline-reaching-report.ps1:155` prints `$rows.Count`. That was a
+count of ROWS, which equalled sessions only because `SessionEnd` wrote exactly one row per session. After
+dedup it becomes a count of DISTINCT SESSIONS. The label stays honest — arguably it becomes honest for the
+first time — but the quantity behind it is different, and a reader comparing a v17-era report to a v18 one
+is comparing two different measurements under one name. State the change in the report's own header
+alongside the three refusals it already documents.
 
 So nothing is thrown away and nothing is blended. This is the same shape as the existing `NOT SCANNED`
 section, and for the same reason: a number whose meaning differs gets its own heading rather than a
