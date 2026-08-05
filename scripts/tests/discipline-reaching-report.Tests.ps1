@@ -60,6 +60,12 @@ Describe 'discipline-reaching-report.ps1' {
                 '{"type":"user","uuid":"c1","isCompactSummary":true,"message":{"role":"user","content":"s"}}'
                 '{"type":"user","uuid":"c2","isCompactSummary":true,"message":{"role":"user","content":"s"}}'
             ) -join "`n" | Set-Content -LiteralPath $p -Encoding utf8NoBOM
+            # A fixture that means "a FINISHED session" must not look like one written a second ago. The
+            # report classifies a transcript touched in the last 15 minutes as `provisional` and keeps it
+            # out of the totals, so a fresh mtime here would silently zero every count this helper exists
+            # to provide. Tests that specifically exercise the freshness boundary set the mtime themselves,
+            # in both directions, so this default does not weaken them.
+            (Get-Item -LiteralPath $p).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddHours(-3)
             return $p
         }
         function Run { param([string]$Dir, [int]$Last = 0)
@@ -232,8 +238,11 @@ Describe 'discipline-reaching-report.ps1' {
             (CapRec3 $tx -Sid 'LONG'  -Source 'compact' -Ts '2026-08-05T18:00:00Z')
         )
         try {
+            (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
             $o = Run $d -Last 1
             $o | Should -Match 'Sessions recorded\s*:\s*1'
+            $o | Should -Match 'LONG' -Because 'LONG is still active at 18:00; ranked by birth it would sort older than SHORT and be dropped'
+            $o | Should -Not -Match 'SHORT'
         } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -277,5 +286,29 @@ Describe 'discipline-reaching-report.ps1' {
             $o | Should -Match '(?i)(no records|nothing recorded|0 sessions recorded)'
             $o | Should -Not -Match '(?i)error|exception'
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reports a still-being-written transcript as provisional, not as scanned cleanly' {
+        $tx = New-ScanTranscript
+        $d = New-Store @( (CapRec3 $tx -Sid 'LIVE') )
+        try {
+            (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
+            $o = Run $d
+            $o | Should -Match 'PROVISIONAL'
+            $o | Should -Match 'scanned cleanly\s*:\s*0' -Because 'a live session is not a completed one'
+            $o | Should -Match 'reached the model, stamped\s*:\s*0' -Because 'a partial count must not enter the DISPATCH RELAY totals'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reports an OLD transcript as scanned cleanly, not provisional' {
+        $tx = New-ScanTranscript
+        $d = New-Store @( (CapRec3 $tx -Sid 'DONE') )
+        try {
+            (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddHours(-3)
+            $o = Run $d
+            $o | Should -Match 'scanned cleanly\s*:\s*1'
+            $o | Should -Match 'reached the model, stamped\s*:\s*2'
+            $o | Should -Not -Match 'PROVISIONAL'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

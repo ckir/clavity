@@ -99,7 +99,19 @@ else empty end
     & $add 'dispatch_fired'            (@($classified | Where-Object { $_ -like 'F *' }).Count)
     & $add 'dispatch_nudges_unstamped' (@($classified | Where-Object { $_ -like 'L *' }).Count)
     & $add 'compactions'               (@($classified | Where-Object { $_ -like 'C *' }).Count)
-    & $add 'scan_status' 'ok'
+
+    # PROVISIONAL: the transcript is still being written, so these counts are INCOMPLETE - not wrong. Every
+    # dispatch counted really happened; more may follow. Sample the mtime AFTER the scan, never before: a
+    # transcript written to DURING the scan is exactly the in-flight case this bucket exists for, and only
+    # an after-reading sample can see it. This also subsumes the session running the report, whose own
+    # transcript was appended to moments ago - which matters because a PowerShell script is never handed its
+    # caller's session_id and cannot identify itself any other way.
+    # mtime is a heuristic and it FAILS SAFE: a backup or antivirus pass that merely touches a file pushes a
+    # finished session into provisional for a few minutes, moving a complete session OUT of the clean total.
+    # The opposite error - a live session counted as complete - is the one this exists to prevent.
+    $fresh = $false
+    try { $fresh = ((Get-Item -LiteralPath $tx).LastWriteTimeUtc -gt (Get-Date).ToUniversalTime().AddMinutes(-15)) } catch { $fresh = $false }
+    & $add 'scan_status' $(if ($fresh) { 'provisional' } else { 'ok' })
     return $Row
 }
 
@@ -223,8 +235,17 @@ function Get-Num { param($Row, [string]$Name)
     return [int]$val
 }
 
-$counted = @($rows | Where-Object { $null -ne (Get-Num $_ 'dispatch_nudges') })
-$degraded = @($rows | Where-Object { $null -eq (Get-Num $_ 'dispatch_nudges') })
+# THREE disjoint sets keyed on scan_status, NOT on null-ness. Null-ness worked as a discriminator only
+# while "has counts" and "is complete" meant the same thing; `provisional` is exactly where they come
+# apart - it has non-null counts and is not complete, so a null-based split would blend a partial count
+# into the totals.
+function Get-Status { param($Row)
+    if ($Row.PSObject.Properties.Name -notcontains 'scan_status') { return '' }
+    return [string]$Row.scan_status
+}
+$counted     = @($rows | Where-Object { (Get-Status $_) -eq 'ok' -and $null -ne (Get-Num $_ 'dispatch_nudges') })
+$provisional = @($rows | Where-Object { (Get-Status $_) -eq 'provisional' })
+$degraded    = @($rows | Where-Object { (Get-Status $_) -ne 'ok' -and (Get-Status $_) -ne 'provisional' })
 
 $sumReached   = 0; $sumUnstamped = 0; $sumFired = 0; $sumCompactions = 0
 foreach ($r in $counted) {
@@ -237,6 +258,12 @@ foreach ($r in $counted) {
 Write-Output ''
 Write-Output ("Sessions recorded : {0}" -f $rows.Count)
 Write-Output ("  scanned cleanly : {0}" -f $counted.Count)
+if ($provisional.Count -gt 0) {
+    # Conditional, unlike the "not scanned" line below it: PowerShell's -Match is case-insensitive, so an
+    # unconditional "provisional : 0" line would itself satisfy a caller's `-Not -Match 'PROVISIONAL'`
+    # check on a session that has NONE - the exact false-positive this bucket exists to prevent elsewhere.
+    Write-Output ("  provisional     : {0}   (still running - excluded from every total below)" -f $provisional.Count)
+}
 Write-Output ("  not scanned     : {0}   (excluded from every total below)" -f $degraded.Count)
 
 Write-Output ''
@@ -260,6 +287,27 @@ if ($degraded.Count -gt 0) {
     $degraded | Group-Object -Property scan_status | Sort-Object Name | ForEach-Object {
         Write-Output ("  {0} : {1}" -f $_.Name, $_.Count)
     }
+}
+
+if ($provisional.Count -gt 0) {
+    Write-Output ''
+    Write-Output 'PROVISIONAL  (still running - counts may grow, and are NOT in the totals above)'
+    foreach ($p in $provisional) {
+        Write-Output ("  {0}  reached {1}, fired {2}" -f `
+            ([string]$p.session_id), (Get-Num $p 'dispatch_nudges'), (Get-Num $p 'dispatch_fired'))
+    }
+}
+
+# The disagreement guard from Merge-SessionRows is USELESS if nobody is told. A session whose collapsed
+# rows named different transcripts had the LATEST path used; that is a silent choice unless surfaced, and
+# it would mean the <session_id>.jsonl naming convention this design infers from has changed.
+$disagreed = @($rows | Where-Object { $_.PSObject.Properties.Name -contains 'path_disagreement' })
+if ($disagreed.Count -gt 0) {
+    Write-Output ''
+    Write-Output 'TRANSCRIPT PATH DISAGREEMENT  (the latest path was used)'
+    foreach ($x in $disagreed) { Write-Output ("  {0} : {1}" -f ([string]$x.session_id), ([string]$x.transcript_path)) }
+    Write-Output '  Rows of one session named DIFFERENT transcripts. This design assumes <session_id>.jsonl;'
+    Write-Output '  if this line ever appears, that assumption has broken and the dedup key needs revisiting.'
 }
 
 if ($malformed -gt 0 -or $unsupported -gt 0) {
