@@ -68,8 +68,8 @@ visible degradation and not a zero. The first `resume` and `clear` rows to land 
 this and the answer written here.
 
 **Why this option only exists now.** `SessionStart` was rejected in the original design because v1 computed
-an `anomalies_delta` needing a baseline at start and a write at end. **v2 is capture-only** — it names the
-session and its transcript and stops. That objection died with v1, and the rejection outlived the reason
+an `anomalies_delta` needing a baseline at start and a write at end. **v2 and v3 are capture-only** — the
+row names the session and its transcript and stops. That objection died with v1, and the rejection outlived the reason
 for it.
 
 ### Fire on all four `source` values — owner ruling
@@ -103,7 +103,12 @@ What firing on all four actually buys, stated accurately:
 | `source` | payload | `startup` \| `resume` \| `clear` \| `compact`. Replaces `reason` |
 | `model` | payload | a plain STRING (measured); recorded, deliberately NOT displayed — see below |
 | `transcript_path` | payload | what the report later scans |
-| `scan_status` | derived | `deferred`, or `transcript_not_found` when the payload names none |
+| `scan_status` | derived | as WRITTEN: `deferred`, or `transcript_not_found` when the payload names none |
+
+The `scan_status` the REPORT works with is a wider set — it overwrites the written value with `ok`,
+`transcript_not_found`, `transcript_unreadable`, or the new `provisional`. The row's own value is a record
+of what the hook knew at write time; the report's is what the scan found. They are deliberately not the
+same vocabulary, and nothing should try to reconcile them.
 
 **Three versions remain readable, and the `v` field is why it exists.** `v:1` (counts computed at
 `SessionEnd`) SHIPPED in v17, so real machines may hold those rows. `v:2` (SessionEnd capture) never
@@ -189,8 +194,19 @@ If the convention ever changes, "keep the earliest" starts naming a stale transc
 when collapsing rows, if their `transcript_path` values differ, prefer the LATEST and record that they
 disagreed. Nothing observed says they will, and the report should not be silent if they do.
 
-`clear` remains unobserved. It is the one source that could plausibly mint a new id, and if it does the
-effect is benign (it simply presents as a separate session).
+🔴 **`clear` remains unobserved, and an earlier draft called that "benign". It is not, necessarily.** The
+outcome depends on TWO variables, not one:
+
+| `clear` mints… | effect |
+|---|---|
+| new `session_id`, new transcript | benign — genuinely presents as a separate session |
+| new `session_id`, SAME transcript | **double-counting** — two records scan one transcript, and every dispatch in it is counted twice |
+| same `session_id` | already handled — dedup collapses it |
+
+The middle row is a real hazard and calling the whole case benign was an unverified assertion of the exact
+kind this document keeps having to retract. **Measure it:** trigger a `/clear`, capture the payload, and
+compare both its `session_id` and its `transcript_path` against the pre-clear session's. If the middle row
+is what happens, dedup must key on `transcript_path` as well as `session_id`.
 
 **Legacy rows collapse trivially.** `v:1` was written at `SessionEnd`, one row per session, so dedup over
 `v:1` is an identity mapping and every historical total survives untouched. Their single `timestamp`
@@ -205,7 +221,8 @@ benign: it matches exactly what v17 already did for every session, which was not
 Two different questions, and answering both with "the earliest" is wrong:
 
 - **Content comes from the EARLIEST row** — it names how the session ORIGINATED (`source=startup` rather
-  than the `compact` that followed), and the transcript path is the same either way (measured above).
+  than the `compact` that followed). The transcript path is expected to be identical either way, by the
+  structural inference above — NOT by measurement, and the disagreement guard is there because of it.
 - **The collapsed record keeps BOTH timestamps** — `first_seen` and `last_seen`. Carrying one and
   silently using it for both purposes is how the two questions got conflated in the first place, and any
   output that prints a time must say which of the two it is printing.
