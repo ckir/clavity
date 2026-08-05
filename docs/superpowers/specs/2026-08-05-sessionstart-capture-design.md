@@ -322,6 +322,27 @@ joins the same regex block, `model` joins the `printf` template, and the literal
 The deferred-analysis split stays. The report still refuses to fold a `null` into a zero, refuses to print
 a ratio, and reports sessions RECORDED rather than RUN.
 
+🔴 **But the third refusal's stated REASONS both die with this change, and the reasons must be rewritten
+even though the rule does not.** `discipline-reaching-report.ps1:22-24` currently reads:
+
+> IT NEVER SAYS "SESSIONS RUN". SessionEnd is not proven to fire on every exit path, and a machine
+> without jq records nothing, so the denominator is unknowable.
+
+Under this spec, `SessionEnd` is deleted, and the hook no longer invokes `jq` at all — so **both** premises
+are void. A maintainer who checks that reasoning will find it obsolete and may reasonably conclude the rule
+can go. It cannot: the denominator is still unknowable, for four different reasons that must replace the
+two dead ones —
+
+- sessions that ran before the plugin was installed;
+- sessions suppressed by `.no-agy`;
+- sessions outside any git repository, which this spec now *deliberately* declines to record;
+- sessions where the registration silently failed — the class this item exists to fight and still cannot
+  detect from the inside.
+
+The last two are new, and both are consequences of decisions made in THIS document. So the refusal is not
+merely still valid; it is better founded than before. An obsolete justification guarding a correct rule is
+more dangerous than no justification, because it invites exactly the deletion it was written to prevent.
+
 ---
 
 ## What the move costs — three consequences of writing at boot instead of exit
