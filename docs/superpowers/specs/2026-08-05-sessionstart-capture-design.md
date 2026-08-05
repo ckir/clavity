@@ -548,6 +548,29 @@ inference went unmeasured; the same shape of reasoning appears above, so it gets
   raises the TEST count without changing the BLOCK count — which is exactly the distinction the next item
   turns on.
 
+## What a NAME-based sweep misses — the files that describe this by ROLE
+
+Grepping for `discipline-reaching` finds thirteen files. It cannot find a file that describes this
+machinery without naming it, and two such files exist. Both name the OLD EVENT, which is precisely the
+term that is about to become wrong:
+
+🔴 **`clavity-dotnet/ROADMAP.md:254` — the owner-facing entry for this item, and the worst instance in the
+whole class.** It reads: *"**1a — MEASURE (in progress).** A `SessionEnd` recorder that answers, from
+recorded evidence, whether the `PreToolUse` dispatch relay reaches a driver. Designed in
+`docs/superpowers/specs/2026-08-04-discipline-efficacy-design.md`."* Both halves are now wrong: the event,
+and the spec it points at — which is the document that just had to be banner-marked as superseded. This is
+ROADMAP `§0`, the owner's stated TOP PRIORITY, so it is the first thing a fresh session reads about this
+work. Update the event and repoint it at this document.
+
+**`justfile:90` — `# Reads the SessionEnd recorder's rows (ROADMAP section 0 step 1a). Read-only.`**
+Stale, but note the precision that matters: `just --list` shows the LAST comment line as a recipe's
+description, and that is `:92`. So `:90` is internal documentation, not user-facing output — a lower
+severity than `discipline-reaching-report.ps1:110`, which a user really does see. Fix it, but do not
+conflate the two.
+
+⚠️ **`justfile` is LF and editing it has silently converted it to CRLF four times in this project.** Check
+the CR count after touching it, before committing.
+
 ## Two files that go stale silently, because nothing fails when they do
 
 Neither is code, and neither breaks a build. Both are load-bearing anyway.
