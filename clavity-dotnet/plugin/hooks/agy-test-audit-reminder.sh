@@ -41,28 +41,63 @@ gate() {
 # the gate against the PROCESS cwd; ONLY when it would fire, emit a loud hardcoded ASCII line. ---
 if ! command -v jq >/dev/null 2>&1; then
   # Without jq we cannot parse JSON, but the gate itself needs the real cwd (not the process cwd, which
-  # may be an unrelated directory) to find the right repo's HEAD/markers. Extract it with a field-bounded
-  # sed on the raw payload (same spirit as agy-after-reminder.sh's grep on file_path/path); fall back to
-  # the process cwd only if the field is absent.
-  cwd=$(printf '%s' "$input" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-  [ -z "$cwd" ] && cwd="."
+  # may be an unrelated directory) to find the right repo's HEAD/markers. Recover it from the raw payload
+  # with the same bash-regex technique the recorder uses, in place of the previous `sed` capture: sed
+  # returned the value with its JSON ESCAPING INTACT and nothing normalized it, so on Windows every
+  # subsequent stat ran against a path that does not resolve. Raw recovery keeps the escaping, hence the
+  # DOUBLE-backslash pattern here - see the note at the jq path below.
+  [[ $input =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && cwd=${BASH_REMATCH[1]}
+  cwd_path=${cwd//\\\\//}
+  [ -z "$cwd_path" ] && cwd_path="."
+  [ -f "$HOME/.claude/.no-agy" ] && exit 0
+  root=$cwd_path
+  _d=$cwd_path
+  while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+    if [ -e "$_d/.git" ]; then root=$_d; break; fi
+    _p=${_d%/*}
+    [ "$_p" = "$_d" ] && break
+    [ -z "$_p" ] && break
+    _d=$_p
+  done
   # Honor the kill-switch against the SAME cwd the gate uses (aligns with the jq path below).
-  if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then exit 0; fi
-  if [ "$(gate "$cwd")" = "fire" ]; then
+  if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
+  if [ "$(gate "$cwd_path")" = "fire" ]; then
     printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq - the AGY-TEST-AUDIT reminder will not fire after capstone green"}}'
   fi
   exit 0
 fi
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
-[ -z "$cwd" ] && cwd="."
+# THE NORMALIZATION FORM MUST MATCH THE EXTRACTION SOURCE. jq -r DECODES the JSON escaping, so cwd holds
+# SINGLE backslashes here and the pattern is one escaped backslash; the degraded branch above reads the RAW
+# payload, where the DOUBLE backslashes survive, and needs ${cwd//\\\\//}. MEASURED 2026-08-05: the raw form
+# applied to a jq-decoded value matches nothing and leaves the path untouched - a silent no-op that looks
+# exactly like a working fix. Do NOT unify the two spellings.
+cwd_path=${cwd//\\//}
+[ -z "$cwd_path" ] && cwd_path="."
+
+[ -f "$HOME/.claude/.no-agy" ] && exit 0
+
+# Repo root by walking up for .git, in-shell, so a .no-agy at the REPO ROOT is honoured when the session
+# was launched from a subdirectory. The normalization above is load-bearing: ${_d%/*} strips on "/" only.
+root=$cwd_path
+_d=$cwd_path
+while [ -n "$_d" ] && [ "$_d" != "/" ] && [ "$_d" != "." ]; do
+  if [ -e "$_d/.git" ]; then root=$_d; break; fi
+  _p=${_d%/*}
+  [ "$_p" = "$_d" ] && break
+  [ -z "$_p" ] && break
+  _d=$_p
+done
 
 # Opt-out kill-switch (mirrors agy-after-reminder.sh).
-if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
+if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
   exit 0
 fi
 
-[ "$(gate "$cwd")" = "fire" ] || exit 0
+# gate() binds `local cwd="$1"` rather than reading the global, so passing the NORMALIZED path genuinely
+# changes what it stats - checked, because if it had read the global this would be a silent no-op.
+[ "$(gate "$cwd_path")" = "fire" ] || exit 0
 
 emit() { jq -n -c --arg ctx "$1" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'; }
 emit 'AGY-TEST-AUDIT auto-fire: AGY-CAPSTONE is GREEN at this HEAD and the branch changed executable code/tests. BEFORE you declare the branch done, invoke the `agy-test-audit` skill to convene the live agy peer to audit the TEST SUITES for coverage exhaustiveness (untested reachable behaviours, vacuous/weak assertions, missing edge cases) - the orthogonal question the capstone does NOT ask. Load-bearing posture (the skill carries the full procedure and your driver'"'"'s transport): point the peer at the diff'"'"'s real test+source files by filepath (never a pasted summary); VERIFY every claimed gap BY MEASUREMENT before folding (the peer over-counts and states false gaps with confidence); the OWNER scopes which gaps to close; the driver authors each test and proves it NON-VACUOUS with a logic mutant; log deferred gaps as tracked debt. End with exactly one ASCII [VERDICT] token. If closing a gap needs an implementation-source refactor, that invalidates the capstone GREEN - re-run AGY-CAPSTONE. If the peer is unreachable, halt-and-ask or abort `[VERDICT: agy-required-but-unreachable]` - never a silent pass. COST: this discipline re-reads the whole session context every round, so running it in a long session burns several times the tokens - and subscription quota - of running it fresh. If this session carries substantial history, do not run it inline: tell the user it runs about 5x leaner after /compact or in a fresh session, and follow their answer. This changes WHERE the review runs, never WHETHER.'

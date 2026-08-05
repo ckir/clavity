@@ -45,6 +45,23 @@ Describe 'agy-test-audit-reminder.sh' {
         }
         $script:Cwd = { param($d) ($d -replace '\\','/') }
 
+        # As New-AuditPayload, but WITHOUT the forward-slashing every other test here applies. That
+        # convention is repo-wide and is exactly why the Windows repo-root walk bug survived: a
+        # POSIX-shaped path cannot exercise it.
+        function New-RawAuditPayload { param([string]$Cwd)
+            '{"tool_name":"Bash","tool_input":{"command":"git commit"},"cwd":"' + ($Cwd -replace '\\', '\\') + '","hook_event_name":"PostToolUse"}'
+        }
+        # A FIRE-state repo plus a subdirectory carrying its OWN capstone marker. The markers are
+        # cwd-relative by contract (docs/agy-disciplines-marker-contract.md), so a session running in a
+        # subdirectory writes them there - which is what makes the gate fire from the subdirectory.
+        function New-FiredSubdir {
+            $r = New-FiredRepo
+            $sub = Join-Path $r.Dir 'src'
+            New-Item -ItemType Directory -Path (Join-Path $sub '.clavity/agy-marks') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $sub '.clavity/agy-marks/agy-capstone.head') -Value $r.Head -NoNewline -Encoding ascii
+            return [pscustomobject]@{ Dir = $r.Dir; Sub = $sub; Head = $r.Head }
+        }
+
         # The COST clause VERBATIM. Asserted whole, not by bookend fragments: an audit mutant that deleted
         # its operative sentence ("tell the user it runs about 5x leaner...") from all four hooks left the
         # entire 45-test suite GREEN, because the assertions pinned only the opening token and the closing
@@ -160,6 +177,47 @@ Describe 'agy-test-audit-reminder.sh' {
             $out.StdOut | Should -Match ([regex]::Escape($script:CostClause))
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    # --- .no-agy at the REPO ROOT, session cwd in a SUBDIRECTORY ---------------------------------
+    # Each silence case is paired with a positive control, and the CONTROL is the load-bearing half:
+    # measured on a sibling hook, a broken walk produced silence indistinguishable from a working
+    # kill-switch, and only the control went red.
+    It 'is SILENT when .no-agy is at the repo root and cwd is a subdirectory' {
+        $r = New-FiredSubdir
+        try {
+            New-Item -ItemType File -Path (Join-Path $r.Dir '.no-agy') -Force | Out-Null
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (New-RawAuditPayload $r.Sub)
+            $x.StdOut | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'FIRES from that same subdirectory when .no-agy is absent (positive control)' {
+        # Also proves gate() receives a path that resolves: it binds `local cwd="$1"` rather than reading
+        # the global, so passing the normalized value genuinely changes what it stats.
+        $r = New-FiredSubdir
+        try {
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (New-RawAuditPayload $r.Sub)
+            $x.StdOut | Should -Match 'AGY-TEST-AUDIT auto-fire' -Because 'without the opt-out it must still fire - otherwise the silence test proves nothing'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'no-jq: is SILENT under a root .no-agy from a subdirectory' {
+        # The degraded path recovered cwd with a `sed` capture that left the JSON escaping intact, so on
+        # Windows every stat below it ran against a path that does not resolve. Nothing covered that.
+        $r = New-FiredSubdir
+        try {
+            New-Item -ItemType File -Path (Join-Path $r.Dir '.no-agy') -Force | Out-Null
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (New-RawAuditPayload $r.Sub) -Env @{ PATH = $script:NoJqPath }
+            $x.StdOut | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'no-jq: DOES emit the jq-missing line from that subdirectory without .no-agy (degraded control)' {
+        # This is the assertion the old sed capture could not have satisfied on a backslashed payload:
+        # reaching it requires gate() to find HEAD and the capstone marker through the recovered cwd.
+        $r = New-FiredSubdir
+        try {
+            $x = Invoke-BashHook -HookPath $script:Hook -Payload (New-RawAuditPayload $r.Sub) -Env @{ PATH = $script:NoJqPath }
+            $x.StdOut | Should -Match 'guard inactive: missing jq' -Because 'the degraded gate must resolve the real cwd, not a path still carrying JSON escapes'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'ships as pure ASCII' {
         ($([IO.File]::ReadAllBytes($script:Hook)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
     }
