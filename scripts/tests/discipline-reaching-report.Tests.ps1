@@ -198,6 +198,48 @@ Describe 'discipline-reaching-report.ps1' {
         } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'raises the FIRED BUT NEVER REACHED alarm for a LIVE session, not only a finished one' {
+        # AGY-CAPSTONE round 2, and the worst defect in the epic. The v15 signature - the hook fired and
+        # nothing reached the model - is the single reason this report exists. It was computed only over
+        # $counted, and a session that is still running is `provisional`, so its counts are excluded.
+        # MEASURED before the fix: a live session with fired=1, reached=0 printed `hook fired : 0` and NO
+        # banner at all. An engineer running this DURING the outage - the one moment it matters - was told
+        # nothing was wrong. The provisional bucket is right to keep partial counts out of the TOTALS; it
+        # was wrong to keep them out of the ALARM.
+        $tx = Join-Path ([IO.Path]::GetTempPath()) ("live-tx-" + [Guid]::NewGuid().ToString('N') + ".jsonl")
+        '{"type":"attachment","uuid":"s1","attachment":{"type":"hook_success","hookEvent":"PreToolUse","hookName":"PreToolUse:Agent","command":"bash /x/agy-anomaly-dispatch-reminder.sh","exitCode":0}}' |
+            Set-Content -LiteralPath $tx -Encoding utf8NoBOM
+        $d = New-Store @( (CapRec3 $tx -Sid 'LIVE') )
+        try {
+            (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
+            $o = Run $d
+            $o | Should -Match 'provisional\s*:\s*1'
+            $o | Should -Match 'FIRED BUT NEVER REACHED' -Because 'the alarm must fire while the failure is HAPPENING'
+            $o | Should -Match '(?i)still running|live|in flight' -Because 'and must say the reading is from an unfinished session'
+            $o | Should -Match 'reached the model, stamped\s*:\s*0' -Because 'the partial counts still stay OUT of the totals'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'picks the earliest fire WITHIN one session across a year boundary too' {
+        # AGY-CAPSTONE round 2. The year-boundary test above uses two SINGLE-ROW sessions, so it pins only
+        # the OUTER sort. MEASURED: reverting the INTRA-GROUP sort in Merge-SessionRows back to
+        # `[string]$_.timestamp` left all 25 tests green. There are two sorts and one test was covering one
+        # of them. Here one session fires in Aug 2026 and again in Jan 2027, so a localised string sort
+        # would make the 2027 compact look like the session's ORIGIN and report `began compact`.
+        $tx = New-ScanTranscript
+        $d = New-Store @(
+            (CapRec3 $tx -Sid 'SPAN' -Source 'startup' -Ts '2026-08-05T08:00:00Z')
+            (CapRec3 $tx -Sid 'SPAN' -Source 'compact' -Ts '2027-01-01T08:00:00Z')
+        )
+        try {
+            (Get-Item -LiteralPath $tx).LastWriteTimeUtc = (Get-Date).ToUniversalTime()
+            $o = Run $d
+            $o | Should -Match 'Sessions recorded\s*:\s*1'
+            $o | Should -Match 'began startup' -Because 'August 2026 precedes January 2027 chronologically'
+            $o | Should -Not -Match 'began compact'
+        } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'adopts a later fire transcript when the EARLIEST row named none' {
         # AGY-CAPSTONE round 1. Merge-SessionRows keeps $g[0] for CONTENT, and only overrides
         # transcript_path when the collapsed rows DISAGREE (more than one distinct non-empty path). If the
@@ -283,7 +325,12 @@ Describe 'discipline-reaching-report.ps1' {
         } finally { Remove-Item $d,$tx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'collapses many rows of ONE session into one record, keeping the earliest source' {
+    It 'collapses many rows of ONE session into one record, scanning its transcript ONCE' {
+        # RENAMED. The title used to claim "keeping the earliest source" and asserted no such thing - the
+        # fixture is not provisional, so nothing here prints `source` at all, and flipping the merge to
+        # keep the LATEST row left this test green. That rule is now pinned by the two tests below that
+        # DO print it. This one proves what it can actually see: three fires collapse to one session and
+        # the transcript is counted once rather than three times.
         $tx = New-ScanTranscript
         $d = New-Store @(
             (CapRec3 $tx -Sid 'S1' -Source 'startup' -Ts '2026-08-05T08:00:00Z')

@@ -140,9 +140,14 @@ function ConvertTo-SortKey {
       "01/01/2027 ..." lands BEFORE "08/05/2026 ...", so -Last N drops the NEWEST sessions and keeps the
       oldest. Every fixture in the suite used same-day, increasing-hour timestamps, which hid it entirely.
 
-      A value that is not a DateTime (a malformed or non-ISO timestamp survives as a plain string) is
-      returned unchanged - it still sorts deterministically, and an ISO string sorts consistently with the
-      invariant keys produced here.
+      A value that is not a DateTime is returned unchanged, so it still sorts deterministically. Note what
+      that does NOT claim: a raw string does not necessarily interleave correctly with the keys produced
+      here. `[string]::CompareOrdinal('2026-08-05T08:00:00.0000000Z','2026-08-05T08:00:00Z')` is -44,
+      because '.' (0x2E) sorts below 'Z' (0x5A) - so at the SAME SECOND the two shapes invert.
+      That is unreachable from this producer rather than handled: MEASURED, ConvertFrom-Json parses every
+      `T...Z` form to DateTime, and the hook only ever writes `%Y-%m-%dT%H:%M:%SZ`, so a surviving raw
+      string means a timestamp that is not ISO at all - which cannot collide at a second with anything.
+      If a future writer emits a different shape, this is the line to revisit.
     #>
     param($Value)
     if ($null -eq $Value) { return '' }
@@ -174,10 +179,10 @@ function Merge-SessionRows {
       naming convention seen twice, not a measurement. If the paths ever disagree, prefer the LATEST and
       say so rather than silently naming a stale transcript.
 
-      EVERY row leaves here carrying first_seen, last_seen and fire_count - collapsed or not. The sort
+      EVERY row leaves here carrying last_seen and fire_count - collapsed or not. The sort
       that follows reads last_seen off every row, and under Set-StrictMode + $ErrorActionPreference='Stop'
       a single row missing it KILLS THE WHOLE REPORT. A pass-through row is a session of one fire, so
-      first_seen = last_seen = its own timestamp is not a placeholder, it is the truth. MEASURED: the hook
+      last_seen = its own timestamp is not a placeholder, it is the truth. MEASURED: the hook
       writes "session_id":"" when the payload carries none, so an uncollapsible row is reachable from the
       real producer, not merely hypothetical.
     #>
@@ -185,8 +190,10 @@ function Merge-SessionRows {
     $ownTs = { param($Row)
         if ($Row.PSObject.Properties.Name -contains 'timestamp') { ConvertTo-SortKey $Row.timestamp } else { '' }
     }
-    $stamp = { param($Row, $First, $Last, $Count)
-        $Row | Add-Member -NotePropertyName 'first_seen' -NotePropertyValue ([string]$First) -Force
+    # No `first_seen`. It was stamped on every row and READ BY NOTHING - not sorted on, not printed, not
+    # asserted. A session's origin is already visible as `began <source>`, and the origin TIME is not a
+    # question this report answers. A property written for symmetry is a property that rots.
+    $stamp = { param($Row, $Last, $Count)
         $Row | Add-Member -NotePropertyName 'last_seen'  -NotePropertyValue ([string]$Last)  -Force
         $Row | Add-Member -NotePropertyName 'fire_count' -NotePropertyValue $Count -Force
     }
@@ -197,7 +204,7 @@ function Merge-SessionRows {
         $sid = if ($r.PSObject.Properties.Name -contains 'session_id') { [string]$r.session_id } else { '' }
         if ($v -ne $SCHEMA_CAPTURE_3 -or [string]::IsNullOrWhiteSpace($sid)) {
             $t = & $ownTs $r
-            & $stamp $r $t $t 1
+            & $stamp $r $t 1
             $out.Add($r); continue
         }
         if (-not $groups.Contains($sid)) { $groups[$sid] = [System.Collections.Generic.List[object]]::new() }
@@ -206,7 +213,7 @@ function Merge-SessionRows {
     foreach ($sid in $groups.Keys) {
         $g = @($groups[$sid] | Sort-Object -Property @{ Expression = { ConvertTo-SortKey $_.timestamp } })
         $keep = $g[0]
-        & $stamp $keep (& $ownTs $g[0]) (& $ownTs $g[-1]) $g.Count
+        & $stamp $keep (& $ownTs $g[-1]) $g.Count
         $paths = @($g | ForEach-Object {
             if ($_.PSObject.Properties.Name -contains 'transcript_path') { [string]$_.transcript_path } else { '' }
         } | Where-Object { $_ -ne '' })
@@ -318,6 +325,20 @@ foreach ($r in $counted) {
     $c = Get-Num $r 'compactions';               if ($null -ne $c) { $sumCompactions += [int]$c }
 }
 
+# THE PROVISIONAL ROWS ARE SUMMED SEPARATELY, AND THEY NEVER ENTER THE TOTALS ABOVE. They exist for one
+# reason: the v15 ALARM below. Keeping a partial count out of a TOTAL is correct - a growing number must
+# not be reported as a final one. Keeping it out of the ALARM was a defect, and the worst one in this
+# epic: the failure signature this whole report exists to detect belongs to the session you are running
+# the report FROM, which is by definition still running, hence provisional. MEASURED before this fix: a
+# live session with fired=1 and reached=0 printed `hook fired : 0` and no alarm at all - the report was
+# silent during exactly the outage it was invoked to diagnose.
+$liveReached = 0; $liveUnstamped = 0; $liveFired = 0
+foreach ($r in $provisional) {
+    $n = Get-Num $r 'dispatch_nudges';            if ($null -ne $n) { $liveReached   += [int]$n }
+    $u = Get-Num $r 'dispatch_nudges_unstamped';  if ($null -ne $u) { $liveUnstamped += [int]$u }
+    $f = Get-Num $r 'dispatch_fired';             if ($null -ne $f) { $liveFired     += [int]$f }
+}
+
 Write-Output ''
 Write-Output ("Sessions recorded : {0}" -f $rows.Count)
 Write-Output ("  scanned cleanly : {0}" -f $counted.Count)
@@ -335,6 +356,11 @@ Write-Output ("  reached the model, unstamped : {0}   (pre-stamp build - deliver
 Write-Output ("  hook fired                   : {0}" -f $sumFired)
 if ($sumFired -gt 0 -and $sumReached -eq 0 -and $sumUnstamped -eq 0) {
     Write-Output '  ^ FIRED BUT NEVER REACHED - this is the v15 failure signature. Investigate.'
+}
+if ($liveFired -gt 0 -and $liveReached -eq 0 -and $liveUnstamped -eq 0) {
+    Write-Output ("  ^ FIRED BUT NEVER REACHED in a session that is STILL RUNNING ({0} fired, 0 reached)." -f $liveFired)
+    Write-Output '    This reading is INCOMPLETE and is not in the totals above - more may yet reach. But it is'
+    Write-Output '    the v15 signature happening NOW, which is the case those totals can never show you.'
 }
 
 Write-Output ''
@@ -370,7 +396,12 @@ if ($provisional.Count -gt 0) {
         # session's rows. MEASURED 2026-08-05: before this line existed, changing that merge to keep the
         # LATEST row broke NOTHING - all 25 tests stayed green. A design rule no output can distinguish is
         # a rule no test can pin.
-        $began = if ($p.PSObject.Properties.Name -contains 'source') { [string]$p.source } else { '?' }
+        # `-contains 'source'` is TRUE for `"source":""` - the hook always emits the key, possibly empty -
+        # so a presence check alone printed `began , 2 fires` with a stray comma. Normalised the same way
+        # the invocation distribution normalises it, so the two sections agree on what an unnamed source
+        # looks like.
+        $began = if ($p.PSObject.Properties.Name -contains 'source') { [string]$p.source } else { '' }
+        if ([string]::IsNullOrWhiteSpace($began)) { $began = '(unnamed)' }
         $fires = if ($p.PSObject.Properties.Name -contains 'fire_count') { [string]$p.fire_count } else { '?' }
         Write-Output ("  {0}  began {1}, {2} fires, reached {3}, fired {4}" -f `
             ([string]$p.session_id), $began, $fires, (Get-Num $p 'dispatch_nudges'), (Get-Num $p 'dispatch_fired'))
