@@ -4,6 +4,11 @@ Describe 'agy-consult-guard' {
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Pre  = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh'
         $script:Post = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh'
+        # The largest of the three and the one carrying the snapshot logic, yet it was bound by nothing:
+        # pre/post exercise it by sourcing it, so its BEHAVIOUR was covered, but every FILE-level assertion
+        # below silently skipped it.
+        $script:Lib  = Join-Path $repoRoot 'clavity-dotnet/plugin/hooks/agy-consult-guard-lib.sh'
+        $script:Classic = Join-Path $repoRoot 'clavity-classic/plugin/hooks'
 
         function New-GuardRepo {
             $d = Join-Path ([IO.Path]::GetTempPath()) ("guard-" + [Guid]::NewGuid().ToString('N'))
@@ -108,8 +113,34 @@ Describe 'agy-consult-guard' {
     }
 
     It 'ships as pure ASCII' {
-        foreach ($f in @($script:Pre, $script:Post)) {
+        foreach ($f in @($script:Pre, $script:Post, $script:Lib)) {
             ($([IO.File]::ReadAllBytes($f)) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
         }
+    }
+
+    It 'is byte-identical to the clavity-classic mirror' {
+        foreach ($f in @($script:Pre, $script:Post, $script:Lib)) {
+            $mirror = Join-Path $script:Classic (Split-Path -Leaf $f)
+            Test-Path -LiteralPath $mirror | Should -BeTrue -Because "$(Split-Path -Leaf $f) must ship in both drivers"
+            [IO.File]::ReadAllBytes($mirror) | Should -Be ([IO.File]::ReadAllBytes($f)) -Because 'the two drivers ship the same guard'
+        }
+    }
+
+    It 'deliberately does NOT honour .no-agy, in either half' {
+        # NOT an oversight, and until now only a comment said so. .no-agy is a file IN THE REPO, so a
+        # review-only consult that mutated version control could create it and thereby hide its own write:
+        # post.sh would exit before diffing. A guard the untrusted actor can switch off is not a guard.
+        # Without this test, a later "consistency" pass that adds the kill-switch to these three files -
+        # the obvious-looking change, since every sibling hook honours it - would be a silent hole with
+        # nothing to catch it.
+        $r = New-GuardRepo
+        try {
+            New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'b.txt' 'two' -Encoding ascii; git add b.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'CONSULT GUARD' -Because 'a .no-agy in the repo must not be able to silence the guard that watches the repo'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
