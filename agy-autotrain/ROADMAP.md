@@ -19,9 +19,16 @@ spec (`docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md`, refer
 
 ## AT-2 — Durability for the *accumulated* observations inbox (the one artifact with no recovery path)
 
-**Status:** open, needs brainstorming · **Opened:** 2026-07-30 · **Size:** unknown until the fork below is
-settled (options range from markdown-only to a new lifecycle mechanism, and the largest option is probably
-*disqualified* by the thinning guardrail — see "Tested against the guardrail")
+**Status:** ✅ **SHIPPED AND CLOSED 2026-08-02** — capstone GREEN over `6d79bee..a0b2d7b`, recorded in
+`docs/agy-capstone-ledger.md`. Verified 2026-08-06: the deliverable `agy-autotrain/hooks/agy-inbox-snapshot.sh`
+ships, is registered, and carries a 22-test suite (`scripts/tests/agy-inbox-snapshot.Tests.ps1`, slow half).
+The last commit to touch it, `a0b2d7b`, is the very tip that capstone reviewed.
+**This heading read "open, needs brainstorming" for four days after it closed.** The brainstorm it was
+waiting for happened, the fork below was settled, and the work shipped — everything from here down is the
+RECORD of that, not an open question. ~~**Opened:** 2026-07-30~~
+⚠ **The options/fork sections below are preserved deliberately** — they are why the chosen design looks the
+way it does, and the AT-2 capstone's round-1 GREEN was FALSE (a total-data-loss defect was found by hand
+afterwards), which is the kind of thing worth being able to re-read.
 
 **Provenance.** Surfaced while driving an unrelated subproject in the sibling `flaui-mcp` repo (2026-07-30).
 The driver was asked whether the *capture* skills protect knowledge against `/compact` and power failure, and

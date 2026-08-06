@@ -54,6 +54,15 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 ## ✅ Shipped
 
 ### clavity-dotnet — releases
+
+> 🔴 **THIS LIST STOPS AT v0.1.9 AND THE PLUGIN IS AT 0.7.0** (checked 2026-08-06 against
+> `clavity-dotnet/plugin/plugin.json`; umbrella tags run `clavity-v12`…`clavity-v17`). Everything from
+> 0.2.0 to 0.7.0 is missing here. **`CHANGELOG.md` is the current record and is generated — read it, not
+> this section, for what shipped when.** The list below is kept because its entries carry the *reasoning*
+> behind each early release, which a generated changelog does not; it is history, not a status board.
+> `clavity-dotnet/CLAUDE.md` claims both files "stay current" — for this one that has not been true since
+> 0.1.9, and backfilling six minors from commit messages would manufacture recollection rather than record it.
+
 - **v0.1.0–v0.1.4** — packaging: Inno installer + PowerShell chooser + release CI + silent install/uninstall
   CI smoke; mutual-exclusion guard; per-user (`%LOCALAPPDATA%` + HKCU), unsigned. (v0.1.1–v0.1.4 were
   installer-hang fixes culminating in a fully CI-green silent lifecycle — the lesson that birthed local-ISCC
@@ -299,16 +308,23 @@ Agy-only restart: tear down + relaunch ONLY the agy psmux session under the same
 a new Claude (today only `clavity start` relaunches, which orphans the driving session). Re-run agy's exact launch
 + confirm readiness via a `ping`. Surfaced 2026-06-29 when an agy MCP hang forced a full teardown mid-session.
 
-### 2. Golden-header tamper-detection — 7.4
-Compare `golden-header.md` to its `.sha256` sidecar at read-time; LOUD plain-English warning on external change,
-subtle active-marker otherwise. Honest threat model: the sidecar defends accidental corruption / naive hand-edits
-only (same-user adversary rewrites both — the accepted same-user boundary). Staged after the injection MVP.
+### 2. Golden-header tamper-detection — 7.4 · ✅ SHIPPED
+**Verified in code 2026-08-06** — `Clavity.Ls/GoldenHeader.cs` reads the `.sha256` sidecar at read-time,
+warns and degrades the region to absent on mismatch, and enforces a 1 KiB sidecar cap (`:26`, `:79-80`,
+`:106-111`). The honest threat model is stated in the source itself (`:97` — it catches torn writes and
+naive hand-edits, not a same-user adversary who rewrites both). Kept here rather than moved to Shipped
+because §0 forbids renumbering: every citation to §7 and §8 depends on these indices.
 
-### 3. Dynamic send-model resolution (dotnet) — T10 follow-up
-`AgyView` hard-codes the send model id (`MODEL_GEMINI_3_1_PRO_HIGH = 1037`); the enum ints are version-specific to
-the running agy. Resolve dynamically (`GetAvailableModels` `default_agent_model_id`, or the conversation's own
-model) so a model/version change can't break the live write. User-accepted as deferred (pre-1.0 scope; the paired
-agy uses its default model).
+~~Compare `golden-header.md` to its `.sha256` sidecar at read-time; LOUD warning on external change.~~
+
+### 3. Dynamic send-model resolution (dotnet) — T10 follow-up · ✅ SHIPPED as v0.1.9
+**Verified in code 2026-08-06** — `Clavity.Ls/SendModelResolver.cs` resolves `default_agent_model_id` →
+the `models` map → the concrete model (`:37-44`), and `LsClient.cs:65` states that the literal `1037` now
+"lives in exactly one place" as the too-old-agy fallback. This entry described the hard-coded state that
+v0.1.9 removed, and it sat in the forward backlog while also appearing in the Shipped list above —
+**the same work listed as both done and pending.**
+
+~~`AgyView` hard-codes the send model id (`MODEL_GEMINI_3_1_PRO_HIGH = 1037`)… resolve dynamically.~~
 
 ### 4. Packaging verifications — 7.5 / 7.6
 - **7.5** — confirm the dual-plugin format scopes `ls-driving` to Claude and `ls-pairing` to agy
@@ -316,14 +332,16 @@ agy uses its default model).
 - **7.6** — confirm Claude/agy don't auto-update a locally path-installed plugin away from the version-pinned
   `{app}` binary.
 
-### 5. dotnet golden-header parity follow-ups
-The classic 7.3 implementation (`src/golden_header.rs`) is now the canonical golden-header behavior; two dotnet
-divergences were found during the Spec A capstone and are tracked as **dotnet-side code fixes** (they do not
-affect the packaging `.iss`/CI contracts):
-- **`GoldenHeader.Apply` trim charset** — dotnet uses full-Unicode `TrimEnd()`; classic (canonical) trims an
-  **ASCII-only** whitespace set. Align dotnet to ASCII-only.
-- **Sidecar write order/atomicity** — dotnet writes the `.sha256` sidecar **before** the target rename and
-  non-atomically; classic writes it **after** the rename, atomically. Align dotnet to after-move/atomic.
+### 5. dotnet golden-header parity follow-ups · ✅ SHIPPED (both bullets)
+The classic 7.3 implementation (`src/golden_header.rs`) is the canonical golden-header behavior; two dotnet
+divergences were found during the Spec A capstone. **Both verified aligned in code 2026-08-06:**
+- ~~**`GoldenHeader.Apply` trim charset**~~ — **DONE.** `GoldenHeader.cs:201` and `:206` trim with `AsciiWs`,
+  matching classic's ASCII-only set. The full-Unicode `TrimEnd()` this entry describes is gone.
+- ~~**Sidecar write order/atomicity**~~ — **DONE.** `GoldenHeader.cs:214-217` states the contract in its own
+  words — "Sidecar-after-target-rename, mirroring Rust `commit`" — and `:266-272` implements it: the header
+  goes tmp→move first, and only then the sidecar, atomically via its own tmp+rename. The source also records
+  WHY that order matters (a failed move leaves the old header and old sidecar mutually consistent, rather
+  than a fresh hash accusing a header that was never replaced).
 
 ### 6. agy-autotrain knowledge-delivery — driver-side effectiveness measure
 The agy-knowledge-delivery design (`docs/superpowers/specs/2026-07-11-agy-knowledge-delivery-design.md`, panel-GREEN)
