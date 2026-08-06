@@ -127,7 +127,37 @@ somewhere already version-controlled, rather than by teaching this plugin to man
 
 ## AT-1 — Context-pollution hardening for `agy-curate`'s GROWTH region
 
-**Status:** open · **Opened:** 2026-07-17 · **Size:** Part A small / Part B large (see gating fork)
+**Status:** ~~open~~ → **KILLED 2026-08-06 (both parts)** · **Opened:** 2026-07-17 ·
+**last-triaged: 2026-08-06** (open-work reconsideration sweep, Phase 1 Task 3)
+
+**Part A — KILLED on clause 1 and clause 2 of the disposition bar.** Measured 2026-08-06:
+- **Its clause-1 premise no longer holds.** Part A's loss argument is the *silent* GROWTH drop past the
+  16 KB cap. **That drop is no longer silent.** `clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs:91` emits
+  `"golden-header region at {path} is {len}B, over the {MaxBytes}B cap — skipped"`, and `:80` states
+  *"over-cap and sidecar-mismatch both warn and degrade the region to absent."* The callback is wired, not
+  null: `AgyView.cs:83` passes `Warn` into `TryReadCombined`, and `AgyView.cs:74` defines
+  `void Warn(string m) => _options.Diagnostics.WriteLine($"clavity: {m}")`. **An operator is told.**
+- **Clause 2 therefore fails too** — the failure mode is neutralised by an existing invariant, which is
+  precisely what clause 2 rejects.
+- **Its second half was NEVER A GAP.** Part A asks for *"a single explicit anti-poisoning gate"*, stating
+  none exists. One did, before this entry was written: `skills/agy-curate/SKILL.md:250`
+  **"Anti-poisoning circuit-breaker. You (the curator) are the gate, not a transcriber…"**, present at
+  `c46be48` (2026-07-13) — **four days before AT-1 was opened.**
+- **Only the line-density cap is genuinely unbuilt** (zero matches in `SKILL.md` for a line cap or ordered
+  breach; `git log -S'line-density'` finds no implementation). It is a quality improvement with a loud
+  existing signal in front of it, not a lie, loss or crash.
+
+**Part B — KILLED on clause 3 (unresolved design fork), and it fails clause 1 as well.** Its own text is the
+evidence: *"🛑 GATING ARCHITECTURAL FORK (resolve via AGY-FIRST + user BEFORE building Part B)"*, two
+unanswered questions (a) and (b), and *"Do NOT implement Part B until this is decided."* The injection half
+*"almost certainly needs clavity-binary support that does not exist — which would violate agy-autotrain's
+core 'no binary changes' property"*, which the architectural guardrail above (**"capabilities migrate OUT to
+the drivers, not IN"**) forbids. Context pollution is degraded quality, not a false diagnostic — clause 1
+is not met either. No implementation commit exists.
+
+⚠️ **Kept in place, struck through rather than deleted** — the analysis of *why* project-local scoping may
+belong on the clavity binary's roadmap instead is the durable part, and killing is cheap because git is the
+undo.
 
 **The goal (what "context-pollution avoidance" means here).** The golden-header GROWTH region is prepended to
 *every* agy ask, so anything low-value or off-domain that leaks into it silently taxes every future call. This
@@ -137,7 +167,7 @@ sibling flaui-mcp autotrain loop, which evolved a stricter guard than agy-curate
 (2026-07-17) confirmed these are the *only* flaui-mcp advances worth porting into a thin / EXTEND plugin — see
 "Out of scope" for what was deliberately rejected.
 
-### Part A — Volume: line-density cap + ordered breach + explicit anti-poisoning gate  *(small; markdown-only; do first)*
+### ~~Part A — Volume: line-density cap + ordered breach + explicit anti-poisoning gate~~ · 🚫 **KILLED 2026-08-06 (clauses 1 + 2)**
 
 **Gap.** In `skills/agy-curate/SKILL.md` the *"Compile + commit the GROWTH region"* section (~:119–141) has only
 a **coarse 16 KB combined *byte* cap** whose failure mode is a **silent cliff**: if `SEED + GROWTH` exceeds
@@ -162,7 +192,7 @@ but that governs a *project-local* file; agy-autotrain's GROWTH is a *machine-wi
 budget — e.g. from `16 KB − sizeof(golden-header.seed.md)` at a realistic bytes-per-line — and state the
 reasoning.
 
-### Part B — Relevance: project-local learning tier + opt-in promote-to-global  *(large; GATED — resolve the fork below FIRST)*
+### ~~Part B — Relevance: project-local learning tier + opt-in promote-to-global~~ · 🚫 **KILLED 2026-08-06 (clause 3: the gating fork below was never resolved)**
 
 **Gap.** agy-curate promotes *all* learned wisdom into the **one machine-wide** golden-header, which is then
 injected into *every* agy ask regardless of what the user is working on. Domain-specific wisdom (e.g. a C#
