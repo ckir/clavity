@@ -25,6 +25,24 @@ both measured 2026-08-06:
 ⚠️ **That promotion mechanism is not airtight, which is exactly why the seventh surface exists** — the same
 superseded spec's `SP1` was never promoted anywhere and sits only on the PARKED line.
 
+✅ **NO EIGHTH SURFACE — searched for and NOT found, recorded because a null result you cannot see is
+indistinguishable from a search nobody ran.** Measured 2026-08-06:
+- **GitHub issues: zero open.** The repo ships `.github/ISSUE_TEMPLATE/{bug_report,feature_request}.md`
+  against a real remote, so the channel exists — it is simply empty.
+- **GitHub releases: 7 published, and none tracks open work** (zero open-work phrases across ~25 KB of
+  bodies). They are the fourth oracle, not a surface — see preamble item 2.
+- **`TODO`/`FIXME`/`HACK`/`XXX` in executable code: zero files** across `*.{cs,rs,ps1,sh,js}`.
+- **Per-epic memory files: a FALSE LEAD, and instructively so.** A probe for `▶ RESUME` / `in progress`
+  flagged **17** files that `MEMORY.md` lists as shipped. **All 17 were historical narrative**, not live
+  state: `project_pre-push-audit.md:44` reads *"Release run 29159502125 IN PROGRESS (~10min…)"* — a CI run
+  from 2026-07-11. These files are running logs, so a superseded resume pointer sits in them forever.
+
+🔴 **The methodological difference is the point, and it is the same lesson three other probes taught this
+round.** The seventh surface was established by measuring **ABSENCE** — five named items, zero hits across
+six surfaces — a probe that *can* return the failing answer. The eighth rested on the **PRESENCE of
+narrative text**, which cannot separate a log entry from a live claim. **Before trusting any "I found a
+surface" result, ask which of those two shapes the probe has.**
+
 **Architecture:** Pure documentation work. One surface per task, each ending in its own commit, so a
 surface swept is a surface banked. No executable code changes anywhere in this phase — that is what the
 Task 9 scope gate proves.
@@ -59,9 +77,29 @@ export MEM="/c/Users/user/.claude/projects/C--Users-user-Development-Rust-clavit
 ls "$MEM/MEMORY.md" && echo "MEM resolves"
 ```
 
-**2. The oracle is three-way and GIT IS THE PRIMARY ONE.** Current code, then `git log`, then CHANGELOG.
-Both stale entries found so far evaded a code-only grep, because a shipped item leaves a commit even after
-its symbol is renamed or moved to another assembly.
+**2. The oracle is FOUR-way and GIT IS THE PRIMARY ONE.** Current code, then `git log`, then CHANGELOG,
+then **GitHub Releases**. Both stale entries found so far evaded a code-only grep, because a shipped item
+leaves a commit even after its symbol is renamed or moved to another assembly.
+
+**The fourth oracle — `gh release view <tag>`** — is the one to reach for when an item claims to have
+shipped and you want a published, dated statement rather than a local file:
+
+```bash
+gh release list --limit 15
+gh release view clavity-v17 --json body -q .body
+```
+
+Measured 2026-08-06: **7 releases, `clavity-v10` … `clavity-v17`, latest 2026-08-04.** (`v11` is absent and
+that is correct — it was burned.)
+
+✅ **Release bodies are an ORACLE, never a surface.** Measured across all 7 bodies (~25 KB): **zero**
+occurrences of `known issue` / `not yet` / `TODO` / `planned` / `deferred` / `workaround`. They record only
+what shipped, so nothing owed is ever tracked there — consult them, never edit them.
+
+⚠️ **They lag exactly like the CHANGELOGs, and for the same reason.** Both stop at 2026-08-04 because
+release-please writes both at release time while ~106 commits sit unpushed. **So a release body's SILENCE
+about recent work is not evidence the work did not ship** — for anything after 2026-08-04, fall back to
+`git log`. Do not report the lag as a finding.
 
 ⚠️ **`--grep` matches the roadmap's OWN commits.** `docs(roadmap): capture X` proves the item was
 *recorded*, not that it shipped. **Open the commit and read it.**
@@ -669,12 +707,54 @@ Verified: items **1** and **4** are OPEN; 2 and 3 are RESOLVED by the pre-releas
 - **#4 — `docs-audit` claim counts unstable across runs.** Already documented in `docs-audit.ps1`'s own
   `.NOTES` as measured behaviour. Judge whether anything is left to do beyond what is documented.
 
-- [ ] **Step 2b: `MEMORY.md`'s PARKED line — a SEVENTH surface the spec's six-surface table missed**
+- [ ] **Step 2b: `MEMORY.md`'s whole `▶ NEXT — ranked` section — the SEVENTH surface**
+
+🔴 **THE SURFACE IS THE WHOLE SECTION, NOT JUST THE `PARKED` LINE.** A first pass scoped this to line 57
+alone; the confirming round caught that as an **incomplete fold** — the dominant fold defect in this
+project. The section holds **five numbered items** and at least three carry open work:
 
 ```bash
 export MEM="/c/Users/user/.claude/projects/C--Users-user-Development-Rust-clavity/memory"
+sed -n '/^## ▶ NEXT — ranked/,/^## Feedback/p' "$MEM/MEMORY.md"
+```
+
+Measured 2026-08-06 against all six surfaces:
+- **#1 ROADMAP §7 / §8** — ✅ covered by surface 1. No action here.
+- **#2 pre-existing defects** — 2 closed by measurement, 1 dropped. Confirm, do not re-litigate.
+- **#3 "Still-unverified doc: `clavity-classic/README.md`"** — 🔴 **ABSENT from all six.** Its own note says
+  the pinned line `:208` has **drifted**, so re-locate by CONTENT, never by line number.
+- **#4 "Priming hypothesis — PARKED, NULL pilot"**, detail in `docs/agy-verify-needed.md` —
+  🔴 **ABSENT from all six.**
+- **#5 the `PARKED` line** — 🔴 **ABSENT from all six**, five items, detailed below.
+
+🔴 **BACK `MEMORY.md` UP BEFORE TOUCHING IT — there is no `git checkout` for this file.** It lives outside
+the repository and is the substrate a cold session recovers from. Every other surface in this plan is
+git-backed and a bad edit is one command away from reversal; this one is not, and a botched edit here costs
+the recovery path itself.
+
+🔴 **BACK UP BOTH MEMORY FILES, NOT JUST ONE.** `project_tracked-debt.md` (edited in Step 2) sits across
+the identical boundary — outside the repository, outside git — and a botched edit there is exactly as
+unrecoverable. Backing up only `MEMORY.md` is the same incomplete fold as scoping this surface to one line.
+
+```bash
+export MEM="/c/Users/user/.claude/projects/C--Users-user-Development-Rust-clavity/memory"
+B=.clavity/scratch/open-work-phase1
+mkdir -p "$B"
+cp "$MEM/MEMORY.md"               "$B/MEMORY.md.bak"
+cp "$MEM/project_tracked-debt.md" "$B/project_tracked-debt.md.bak"
+wc -l "$MEM/MEMORY.md" "$B/MEMORY.md.bak" "$MEM/project_tracked-debt.md" "$B/project_tracked-debt.md.bak"
 grep -n 'PARKED (do NOT start' "$MEM/MEMORY.md"
 ```
+
+Each pair of line counts must match. **To roll back after a botched edit:**
+
+```bash
+cp .clavity/scratch/open-work-phase1/MEMORY.md.bak               "$MEM/MEMORY.md"
+cp .clavity/scratch/open-work-phase1/project_tracked-debt.md.bak "$MEM/project_tracked-debt.md"
+```
+
+⚠️ **Write the restore command down before you need it.** A backup whose restore path an executor has to
+invent mid-incident is a backup that gets skipped.
 
 Expected: **line 57**, reading *"**PARKED (do NOT start until the owner says):** ship-agy-disciplines SP1 ·
 Phase-2 A2 hook-vs-gate · ME2 banner-injector · 2 stale pre-monorepo specs · the deferred papercut list."*
@@ -700,6 +780,18 @@ spec. **Check them separately.**
 
 Whatever changes, the *"Items 1 and 4 remain OPEN"* line near the top must change with it. **A file that
 miscounts itself is the exact defect this epic exists to remove**, and this one states its count in prose.
+
+🔴 **THE COUNT IS STATED IN TWO FILES AND BOTH MUST MOVE TOGETHER.** `MEMORY.md:45` carries an independent
+copy: *"**[TRACKED DEBT](project_tracked-debt.md)** — **2 open of 4**"*. Resolving a debt in Step 2 while
+updating only `project_tracked-debt.md` leaves the index asserting a count its own target contradicts —
+**a stale entry created by the sweep that exists to remove stale entries.**
+
+```bash
+grep -n 'open of 4\|remain OPEN' "$MEM/MEMORY.md" "$MEM/project_tracked-debt.md"
+```
+
+⚠️ **Re-locate that line by CONTENT, not by the number 45.** A panel cited it as `:44` this round, which is
+the backlog-triage entry — one line off, in a finding that was otherwise correct.
 
 - [ ] **Step 4: Update the index** — memory-only surface, no commit. Mark `- [x] S6`.
 
