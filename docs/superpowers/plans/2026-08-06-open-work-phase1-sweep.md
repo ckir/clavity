@@ -5,8 +5,9 @@
 **Goal:** Disposition every recorded item on all **seven** tracking surfaces as CLOSED, KILLED or KEPT with
 its oracle's output attached, then stop at the Phase-2 owner gate with two ruling requests.
 
-🔴 **SEVEN, not the spec's six.** The seventh is `MEMORY.md`'s `PARKED` line (Task 7 Step 2b), found during
-the round-2 panel and measured to hold five items that appear on **none** of the six. **This is the third
+🔴 **SEVEN, not the spec's six.** The seventh is **`MEMORY.md`'s whole `## ▶ NEXT — ranked` section**
+(Task 7 Step 2b) — **not** merely its `PARKED` line, which is only item #5 of five. Found during the round-2
+panel, widened in round 3 after the first scoping proved too narrow. **This is the third
 consecutive epic whose surface inventory was itself incomplete** — the last one missed the ROADMAPs and
 found two stale entries within minutes of including them. **Treat "the inventory is complete" as the
 claim most likely to be wrong.**
@@ -27,10 +28,15 @@ superseded spec's `SP1` was never promoted anywhere and sits only on the PARKED 
 
 ✅ **NO EIGHTH SURFACE — searched for and NOT found, recorded because a null result you cannot see is
 indistinguishable from a search nobody ran.** Measured 2026-08-06:
-- **GitHub issues: zero open.** The repo ships `.github/ISSUE_TEMPLATE/{bug_report,feature_request}.md`
-  against a real remote, so the channel exists — it is simply empty.
+- **GitHub issues: zero, in ANY state.** The repo ships `.github/ISSUE_TEMPLATE/{bug_report,feature_request}.md`
+  against a real remote, so the channel exists — it is simply empty. **Open pull requests: zero.**
 - **GitHub releases: 7 published, and none tracks open work** (zero open-work phrases across ~25 KB of
   bodies). They are the fourth oracle, not a surface — see preamble item 2.
+
+⚠️ **Re-run these with an explicit high `--limit` before trusting a zero.** `gh issue list` and
+`gh release list` **paginate and default to 30**, so a small default can silently hide a long tail and
+present truncation as absence. Re-measured at `--limit 100`: still 7 / 0 / 0, so these numbers are real —
+but the shape of that mistake is the same one `head -40` made in Task 8.
 - **`TODO`/`FIXME`/`HACK`/`XXX` in executable code: zero files** across `*.{cs,rs,ps1,sh,js}`.
 - **Per-epic memory files: a FALSE LEAD, and instructively so.** A probe for `▶ RESUME` / `in progress`
   flagged **17** files that `MEMORY.md` lists as shipped. **All 17 were historical narrative**, not live
@@ -119,7 +125,9 @@ committed files, the surface is DONE** — correct memory and move on. Never re-
 carries its disposition. A `git commit` that fails with "nothing to commit" on a resume is the healthy
 outcome; confirm with `git log --oneline -5` and continue. Never reach for `--allow-empty`.
 
-🔴 **The git tiebreak does NOT cover Surface 6.** Task 7's tracked-debt half lives in `<MEM>`, outside git,
+🔴 **The git tiebreak does NOT cover Surfaces 6 OR 7 — both live in `<MEM>`, outside git.** Surface 7
+(`MEMORY.md`) is in exactly the same position as the tracked-debt half below, and for the same reason: no
+commit can ever attest either one. Task 7's tracked-debt half lives in `<MEM>`, outside git,
 so no commit can ever attest it. **For that surface only, the tiebreak is the file's own content** — read
 `project_tracked-debt.md` and judge from the dispositions written in it. This is also why Surface 6 is swept
 last (spec §8a): every surface that git *can* attest is banked before the one it cannot.
@@ -182,7 +190,7 @@ exists to reject.
 | `clavity-dotnet/ROADMAP.md` | disposition §0–§11, Stretch, `# ghidrust` | 4, 5 |
 | `agy-autotrain/docs/fix-the-tool-backlog/*.md` | disposition 6 open entries | 6 |
 | `docs/backlog/`, `<MEM>/project_tracked-debt.md` | confirm + disposition 2 open debts | 7 |
-| `<MEM>/MEMORY.md` (the `PARKED` line, **surface 7**) | disposition 5 parked items, none of which reach surfaces 1-6 | 7 |
+| `<MEM>/MEMORY.md` (**surface 7** — the whole `## ▶ NEXT — ranked` section, all 5 numbered items, NOT just its `PARKED` line) | disposition #3, #4 and #5, each measured absent from surfaces 1-6 | 7 |
 | — | §-renumbering citation audit | 8 |
 | — | final gates + the Phase-2 handover | 9, 10 |
 
@@ -756,6 +764,14 @@ cp .clavity/scratch/open-work-phase1/project_tracked-debt.md.bak "$MEM/project_t
 ⚠️ **Write the restore command down before you need it.** A backup whose restore path an executor has to
 invent mid-incident is a backup that gets skipped.
 
+🔴 **THE BACKUP EXPIRES THE MOMENT ANYTHING ELSE WRITES TO THESE FILES.** Both are edited repeatedly
+throughout the plan — the durable index is refreshed after every commit, and Task 10 rewrites the resume
+point. **Restoring a `.bak` taken at Step 2b would silently discard every index update made since.** So:
+- The `.bak` is a rollback for **this step only**, valid until the next write to that file.
+- **Re-take it immediately before any later step that edits the same file**, overwriting the old copy.
+- If you must restore after later edits, restore into a **scratch copy** and merge by hand — never straight
+  over the live file.
+
 Expected: **line 57**, reading *"**PARKED (do NOT start until the owner says):** ship-agy-disciplines SP1 ·
 Phase-2 A2 hook-vs-gate · ME2 banner-injector · 2 stale pre-monorepo specs · the deferred papercut list."*
 
@@ -1048,8 +1064,18 @@ surface that too, clearly marked as a third and separate question.
 
 - [ ] **Step 3: Report the full sweep result**
 
-State plainly: how many items were CLOSED, KILLED, KEPT; which surfaces produced stale entries; the
-§-renumber audit's result **including a null result**; and both scope-gate arms verbatim.
+State plainly: how many items were CLOSED, KILLED, KEPT; which of the **seven** surfaces produced stale
+entries; the §-renumber audit's result **including its corpus size, its in-scope count, the exclusion rule
+and a null result if that is what it was**; and **all four** scope-gate arms verbatim (0, 0b, 1, 2).
+
+**Report the NULL results too, by name.** A search that found nothing is a result; a search you do not
+mention is indistinguishable from one you never ran — success criterion 3:
+- no eighth surface (GitHub issues, PRs, releases, `TODO`/`FIXME`, the plan/spec archive, per-epic memory);
+- the archive ruled an oracle rather than a surface, and why;
+- anything the sweep confirmed correct-as-recorded rather than changed.
+
+⚠️ **Say explicitly that the plan swept SEVEN surfaces while the spec enumerates six**, and that the
+seventh was found mid-review. The owner needs that to decide whether the spec is amended.
 
 - [ ] **Step 4: Do not guess either ruling, and do not proceed**
 
@@ -1059,25 +1085,36 @@ State plainly: how many items were CLOSED, KILLED, KEPT; which surfaces produced
 
 ## Self-review
 
-**Spec coverage.** §1 base rate → the traps preamble. §2 bar → the bar section, applied in every task. §3
-oracle → Task preamble item 2 and every Step. §4 surfaces 1–6 → Tasks 1, 2, 3, 4, 5, 6, 7. §5 gate →
-Task 10. §7a clause-1 narrowness → Task 5 Step 1 and Task 4 Step 1. §7b vocabulary → the vocabulary table.
-§8 criteria: 1 → all tasks; 2 → "record the OUTPUT" in the preamble; 3 → Task 8 Step 4; 4 → Task 10;
-5 → Phase 3, out of scope here; 6 → Task 6 Step 3; 7 → Task 9 Step 1; 8 → Task 9 Step 1 arm 1, which
-discharges it more cheaply than a suite run. §8a staging → one commit per surface, S6 last. §8b lifecycle →
-the cheatsheet retirement-candidate rule and the anomaly-routing note.
+⚠️ **This section was itself stale after the round 1-3 folds and was rewritten in round 4** — it still
+claimed six surfaces, still called the ghidrust question an open lead, still listed AT-2 as undecided, and
+still asserted the plan matched the spec's surface table, which by then was false. **A self-review is an
+artifact like any other and goes stale like any other.**
 
-**Placeholders.** One deliberate: `<the PHASE 1 BASE SHA>` in Tasks 9's commands, filled at Task 0 by
+**Spec coverage.** §1 base rate → the traps preamble. §2 bar → the bar section, applied in every task. §3
+oracle → preamble item 2, now **four-way** (code, `git log`, CHANGELOG, `gh release view`). §4 surfaces →
+Tasks 1, 2, 3, 4, 5, 6, 7. §5 gate → Task 10. §7a clause-1 narrowness → Task 5 Step 1 and Task 4 Step 1.
+§7b vocabulary → the vocabulary table. §8 criteria: 1 → all tasks; 2 → "record the OUTPUT" in the preamble;
+3 → Task 8 Step 4; 4 → Task 10; 5 → Phase 3, out of scope here; 6 → Task 6 Step 3; 7 → Task 9 Step 1;
+8 → Task 9 Step 1 arm 1, which discharges it more cheaply than a suite run. §8a staging → one commit per
+surface, S6/S7 last. §8b lifecycle → the cheatsheet retirement-candidate rule and the anomaly-routing note.
+
+**Placeholders.** One deliberate: `<the PHASE 1 BASE SHA>` in Task 9's commands, filled at Task 0 by
 definition and read back from the index rather than re-derived. No others.
 
 **Consistency.** `last-triaged: 2026-08-06` is the single stamp format. `<MEM>` is the memory directory
-throughout. Surface numbering matches the spec's table exactly (S1 split into 1a/1b for commit size only).
+throughout.
+
+🔴 **The plan DELIBERATELY DIVERGES from the spec's surface table: the spec lists six, the plan sweeps
+SEVEN.** The seventh (`MEMORY.md`'s `## ▶ NEXT — ranked` section) was measured to hold work absent from all
+six. **This divergence is intentional and must not be "corrected" back to six** — if anything is updated to
+match, it is the spec, and only after the sweep confirms the finding.
 
 **Known gaps, each with where it is resolved:**
-- **Whether AT-2, §9 and §10 are KEPT or KILLED** is not pre-decided — the plan names the oracle and the
-  bar and requires the executor to run them. Pre-deciding would be the fabricated precision the plan
-  discipline forbids.
-- **The ghidrust two-channel version question** is explicitly a lead, resolved in Task 5 Step 5.
+- **Whether §9 and §10 are KEPT or KILLED** is not pre-decided — the plan names the oracle and the bar and
+  requires the executor to run them. Pre-deciding would be the fabricated precision the plan discipline
+  forbids. **AT-2 is no longer among these: it is measured CLOSED** (Task 3 Step 3).
+- **The ghidrust two-channel question is RESOLVED, not a lead** — measured in round 2 and written into
+  Task 5 Step 5, including which channel each version belongs to and which stamp is stale.
 - **Tracked debt #1's disposition** may become a third gate question — Task 7 Step 2 says to stop and
   report rather than invent one.
 - **Phase 3's ordering** is provisional in the spec and is re-derived after this sweep, not here.
