@@ -62,12 +62,23 @@ and read as open. Before dispositioning anything, state its **oracle**: a comman
 an oracle, ask what output it would produce if the entry *were* fixed. If that is the same output you are
 looking at, the oracle is broken.
 
-🔴 **A HIT can also be a false positive for the entry's actual question — read WHICH symbols came back, and
-which did not.** Measured 2026-08-06: an oracle grepping for `TryReadCombined|Apply|cache` returned one hit
-and was read as "the per-ask read is still there". **The single hit was in a once-per-process guarded
-method, and the absent `Apply` was the whole answer** — the send path had stopped prepending entirely. The
-stamp written from that reading was false and had to be retracted after a peer opened the file.
-**A grep result is a list of lines, not a verdict. Open the enclosing function and find the caller.**
+🔴 **A HIT can also be a false positive for the entry's actual question — read WHICH symbols came back,
+which did not, and WHAT FUNCTION each hit is in.** This produced **two consecutive false dispositions of
+the same entry on 2026-08-06**, both citing real line numbers:
+
+1. A grep for `TryReadCombined|Apply|cache` returned **one hit and no `Apply` hit**, read as "the per-ask
+   read is still there". The hit was inside a once-per-process guarded method and **the absent `Apply` was
+   the whole answer** — the send path had stopped prepending entirely.
+2. The retraction then cited `read_combined` at a line in the *other* driver as proof its ask path still
+   prepended. That line was inside a `doctor()` diagnostic function, not the ask path — which passes an
+   explicit "absent" header.
+
+**Both readings were confident, both cited real lines, and both were caught by an adversarial reader
+opening the file rather than by the person who wrote them.**
+
+**A grep result is a list of lines, not a verdict.** Before writing a disposition from one: open the
+enclosing function, find the caller, and check what the *call site* passes. If you cannot name the caller,
+you have not measured the thing the entry is about.
 
 ## 3. Per-surface closing conventions — and the trap
 
@@ -256,15 +267,26 @@ Stated plainly, because a runbook that oversells itself is worse than none:
    Mark it `fixed` on one driver's evidence and you false-clean the other; leave it `open` and you
    misreport the driver that is done. **Neither is right, and nothing warns you.**
 
-   🔴 **This is not hypothetical — it was live on both entries this surface touched in 2026-08-06's sweep.**
+   🔴 **This is not hypothetical — both cross-driver entries in 2026-08-06's sweep turned on it.**
    `idle-wait-false-modal` (`variant: both`) was closed `fixed` on dotnet commits; the closure only holds
    because classic was *separately* checked and has no `possible_modal` verdict at all. And
-   `docs/backlog/golden-header-per-ask-token-optimization.md` is the same shape pointing the other way:
-   dotnet stopped sending the header to the peer (T4b) while classic still prepends it on every ask, so
-   the stub is half-obsolete and had to be re-scoped to classic rather than closed or left alone.
-   **Until the frontmatter carries per-variant status, a `both` entry demands two measurements and a
-   disposition that says which driver it refers to.**
+   `docs/backlog/golden-header-per-ask-token-optimization.md` was **triaged wrong twice in one day for
+   exactly this reason** — first as "unstarted" (both drivers assumed unchanged), then as "half resolved,
+   classic still live" (the second driver assumed unchanged). It is in fact resolved on **both**. Two
+   wrong dispositions, one cause: **one driver measured, the other inferred.**
+   **Until the frontmatter carries per-variant status, a `both` entry demands two REAL measurements and a
+   disposition that names which driver it refers to.** The single `status:` field makes the half-measured
+   answer look exactly like the fully-measured one.
 
-**All five are the same shape: this is documentation, and documentation does not execute.** That was the
+6. **The oracles recorded in `last-triaged:` comments ROT, and nothing runs them.** A stamp like
+   *"oracle: no `StepDelta` symbol in `Clavity.Ls/*.cs`"* is a grep pinned to a path and a symbol name.
+   Move the type to another assembly, rename the symbol, or split the module, and that grep keeps
+   returning a confident answer about the wrong place. **A live example is already in this repo:** several
+   stamps written on 2026-08-06 scope themselves to `Clavity.Ls/*.cs`, but `McpTools.cs` — which one of
+   them cites — lives in `Clavity.Mcp`. Because these oracles are markdown comments and no gate executes
+   them, the rot is silent and the next triager inherits it as evidence.
+
+**All six are the same shape: this is documentation, and documentation does not execute.** That was the
 accepted trade — see [§8](#8-why-no-mechanism-exists) — and [§7](#7-the-three-revisit-triggers) is what
-expires it.
+expires it. **Mode 6 is the one most likely to bite first**, because every stamp this runbook asks you to
+write is another instance of it.
