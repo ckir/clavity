@@ -233,10 +233,21 @@ Classic-side surface, mirrored byte-identically and verified `IDENTICAL` 2026-08
 `scripts/check-seed-artifacts-synced.sh`. **A per-driver literal cannot live in these bodies** — see
 `docs/agy-disciplines-marker-contract.md:13` (Option S) for the precedent and the trap.
 
-### Pre-flight thread discovery for standalone `await-reply` (agy's idea, 2026-06-16)
+### Pre-flight thread discovery for standalone `await-reply` (agy's idea, 2026-06-16) · ✅ SHIPPED
 
-> Source: agy, generative-mode round during the capability-profile test suite (Test C). Captured here
-> as a future enhancement, not yet implemented.
+> Source: agy, generative-mode round during the capability-profile test suite (Test C).
+>
+> ✅ **SHIPPED — verified in code 2026-08-06. Option D below is implemented and its acceptance criteria
+> are met.** `--thread-id` is a REQUIRED arg (`src/main.rs:106-107`, a bare `String`, so clap rejects a
+> call without it — "no thread, no read", the footgun is gone); `await_reply` passes it through as
+> `Some(thread_id)` (`src/main.rs:456`); `membus.rs:163` appends `&threadId=` to every read URL; and
+> `tests/integration.rs:205` exercises the scoped path. The design text below is kept as the record of
+> WHY discovery was rejected as racy — that reasoning is still load-bearing if anyone reopens it.
+>
+> ⚠️ **This entry read "a future enhancement, not yet implemented" for weeks after it shipped** (the code
+> predates the 2026-07-09 monorepo vendoring, so it landed on or about the 2026-06-17 design date). It was
+> found by the first sweep to include `ROADMAP.md` in scope — the 2026-08-06 backlog-triage epic
+> deliberately excluded this surface as "already settled". **It was not settled.**
 
 **Friction.** `clavity ask` is safe because it *sent* the request itself, so it knows the `threadId`
 and scopes its consuming read to that one thread (never touches unrelated unread). But **standalone
