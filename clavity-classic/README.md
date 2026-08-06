@@ -59,7 +59,7 @@ daemon (default `:3111`). **Nothing works without it** — it is clavity's data 
 
 ### 2. Install clavity
 
-**Recommended (Windows, no toolchain) — the installer.** Download `clavity-classic-setup.exe` from the
+**Recommended (Windows, no toolchain) — the installer.** Download `clavity-classic-setup-<version>.exe` from the
 [latest release](https://github.com/ckir/clavity/releases/latest) and run it. It puts `clavity` on your
 `PATH`, sets a mutual-exclusion marker (it will **not** co-install with the .NET **clavity-dotnet** variant),
 and optionally installs the `delegate_to_antigravity` **bridge** add-on (opt-in, default off — needs Python
@@ -68,7 +68,9 @@ remaining one-time wiring — the agentmemory bus (step 1 above) and the `GEMINI
 Classic wires those **manually by design**; the installer does not edit your agent configs.
 
 > Per-user install (`%LOCALAPPDATA%`, HKCU — no admin). **Unsigned** (owner decision): SmartScreen warns —
-> *More info → Run anyway*. Verify the download against the published `clavity-classic-setup.exe.sha256`.
+> *More info → Run anyway*. Verify the download against the matching published
+`clavity-classic-setup-<version>.exe.sha256` (release assets are versioned — e.g.
+`clavity-classic-setup-0.4.0.exe`; there is no unversioned filename).
 
 **From source** (developers / other platforms):
 
