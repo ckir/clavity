@@ -2,8 +2,28 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Disposition every recorded item on all six tracking surfaces as CLOSED, KILLED or KEPT with its
-oracle's output attached, then stop at the Phase-2 owner gate with two ruling requests.
+**Goal:** Disposition every recorded item on all **seven** tracking surfaces as CLOSED, KILLED or KEPT with
+its oracle's output attached, then stop at the Phase-2 owner gate with two ruling requests.
+
+🔴 **SEVEN, not the spec's six.** The seventh is `MEMORY.md`'s `PARKED` line (Task 7 Step 2b), found during
+the round-2 panel and measured to hold five items that appear on **none** of the six. **This is the third
+consecutive epic whose surface inventory was itself incomplete** — the last one missed the ROADMAPs and
+found two stale entries within minutes of including them. **Treat "the inventory is complete" as the
+claim most likely to be wrong.**
+
+✅ **The plan/spec ARCHIVE (`docs/superpowers/`) is deliberately NOT a surface — decided, do not re-open.**
+It is an **oracle**: consult it to decide whether an item shipped, and change nothing in it. Two reasons,
+both measured 2026-08-06:
+- **It has no usable progress signal.** Across 52 archived plans there are **~2,210 unchecked task boxes and
+  ZERO checked ones.** The convention is written into every plan and ticked in none, so any sweep keyed on
+  checkbox state would report every plan ever written as unfinished — including epics recorded GREEN in
+  `docs/agy-capstone-ledger.md`.
+- **Its surviving debt is promoted, and the mechanism is visible.** `clavity-dotnet/ROADMAP.md:452` exists
+  *because* a fork in `specs/2026-07-22-ship-agy-disciplines-design.md:134` was *"orphaned rather than
+  decided"* and was lifted onto a live surface *"so it stops being invisible."*
+
+⚠️ **That promotion mechanism is not airtight, which is exactly why the seventh surface exists** — the same
+superseded spec's `SP1` was never promoted anywhere and sits only on the PARKED line.
 
 **Architecture:** Pure documentation work. One surface per task, each ending in its own commit, so a
 surface swept is a surface banked. No executable code changes anywhere in this phase — that is what the
@@ -124,6 +144,7 @@ exists to reject.
 | `clavity-dotnet/ROADMAP.md` | disposition §0–§11, Stretch, `# ghidrust` | 4, 5 |
 | `agy-autotrain/docs/fix-the-tool-backlog/*.md` | disposition 6 open entries | 6 |
 | `docs/backlog/`, `<MEM>/project_tracked-debt.md` | confirm + disposition 2 open debts | 7 |
+| `<MEM>/MEMORY.md` (the `PARKED` line, **surface 7**) | disposition 5 parked items, none of which reach surfaces 1-6 | 7 |
 | — | §-renumbering citation audit | 8 |
 | — | final gates + the Phase-2 handover | 9, 10 |
 
@@ -612,9 +633,9 @@ git commit -m "docs(backlog): apply the bar to the six open entries; rewrite the
 
 ---
 
-## Task 7: Surface 6 — `docs/backlog/` and tracked debt (LAST, per spec §8a)
+## Task 7: Surfaces 6 AND 7 — `docs/backlog/`, tracked debt, and the PARKED line (LAST, per spec §8a)
 
-**Files:** `docs/backlog/`, `<MEM>/project_tracked-debt.md`
+**Files:** `docs/backlog/`, `<MEM>/project_tracked-debt.md`, `<MEM>/MEMORY.md`
 
 🔴 **Swept LAST deliberately:** the tracked-debt half lives in memory, outside git, so it cannot end in a
 commit and the commit-is-truth tiebreak does not apply to it. Every git-backed surface is banked first.
@@ -647,6 +668,33 @@ Verified: items **1** and **4** are OPEN; 2 and 3 are RESOLVED by the pre-releas
   rather than inventing a disposition.**
 - **#4 — `docs-audit` claim counts unstable across runs.** Already documented in `docs-audit.ps1`'s own
   `.NOTES` as measured behaviour. Judge whether anything is left to do beyond what is documented.
+
+- [ ] **Step 2b: `MEMORY.md`'s PARKED line — a SEVENTH surface the spec's six-surface table missed**
+
+```bash
+export MEM="/c/Users/user/.claude/projects/C--Users-user-Development-Rust-clavity/memory"
+grep -n 'PARKED (do NOT start' "$MEM/MEMORY.md"
+```
+
+Expected: **line 57**, reading *"**PARKED (do NOT start until the owner says):** ship-agy-disciplines SP1 ·
+Phase-2 A2 hook-vs-gate · ME2 banner-injector · 2 stale pre-monorepo specs · the deferred papercut list."*
+
+🔴 **Measured 2026-08-06: ZERO of those five items appear on ANY of the six enumerated surfaces.** They are
+tracked in exactly one place — that line. **It is a parking lot, which the triage runbook §8 names as the
+failure mode a tracking system must not have**, and it is the third consecutive epic in which an inventory
+of surfaces turned out to be missing a surface. **Disposition all five against the bar, here.**
+
+🔴 **DO NOT COPY THE DISPOSITIONS A REVIEWER OFFERS FOR THESE — two were checked and two were wrong:**
+- *"the deferred papercut list is a phantom phrase with no enumerated items → KILL"* is **FALSE.**
+  `project_docs-rationalize.md:459` and `:691` name two specific deferred papercuts (a prompt file that is
+  functionally code; `just --list` rendering a mangled description). **The list is real and has members.**
+- *"ME2 banner-injector shipped in dotnet"* has **no supporting evidence** — `banner.injector` matches
+  **only** that MEMORY.md line, repo-wide and memory-wide. An item with no backing document cannot be
+  dispositioned from its name; **find what it referred to, or record that it is unresolvable and say so.**
+
+⚠️ **`ship-agy-disciplines SP1` is NOT the same item as dotnet §9.** §9 is that spec's *ME1* consult guard,
+already promoted (`clavity-dotnet/ROADMAP.md:452`). SP1 is a different sub-task from the same superseded
+spec. **Check them separately.**
 
 - [ ] **Step 3: Update the file's own count in the same edit**
 
