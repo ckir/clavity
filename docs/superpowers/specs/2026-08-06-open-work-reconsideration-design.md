@@ -52,8 +52,11 @@ name the wrong action the message induces, clause 1 is not met.
 
 ### The §0/§7 exception, and the criterion that bounds it
 
-`ROADMAP.md` §0 and §7 fail clause 3 today. They are **not** auto-killed and **not** carried forward
-silently — see §5.
+`ROADMAP.md` **§7 fails clause 3** today — no mechanism. **§0 SATISFIES clause 3 but fails clause 1**
+(§7a). Both reach the §5 gate; neither is auto-killed and neither is carried forward silently — but **they
+get there by different routes and are asked different questions.**
+
+⚠️ This sentence read *"§0 and §7 fail clause 3 today"* for two full rounds after that stopped being true.
 
 🔴 **An exception with no criterion is the parking lot re-entering through the back door**, which is exactly
 what accepting the peer's argument was meant to close. So the criterion is stated and it is narrow:
@@ -107,8 +110,9 @@ spec for that item's name before committing.**
 **surfaced is not directed or ranked**, so clause (a) is not met and §6 is judged on the bar like anything
 else. Stated explicitly because "owner touched it at some point" is exactly how this exception would widen.
 
-**Twice now, measurement has moved §0's disposition** — first when the owner re-opened its TOP PRIORITY
-standing, then here when its mechanism turned out to exist. Treat any claim about §0's status in this spec
+**THREE times now, measurement has moved §0's disposition** — the owner re-opened its TOP PRIORITY
+standing; then its mechanism turned out to exist (so it left the §5 gate); then clause 1 turned out to
+reject it (so it returned, asking a different question). Treat any claim about §0's status in this spec
 as the thing most likely to be wrong.
 
 ---
@@ -217,14 +221,21 @@ them is how an override gets recorded as a bar pass.**
 The consult argued items like this should be killed outright; the counter-argument is that §10 of the same
 roadmap records the opposite failure — *"retroactively widening a stalled epic prevents it closing"*.
 
-**Resolution (owner-approved):** at the end of Phase 1, with the sweep's evidence in hand, the owner rules
-on §7: **spec it, or kill it.** Not park it, not carry it forward. If kept, it gets its own spec — which
-is then a decision rather than a deferral. If killed, it leaves the roadmap the same day.
+**Resolution (owner-approved): at the end of Phase 1, with the sweep's evidence in hand, the owner rules on
+BOTH — two separate rulings, not one.**
+
+- **§7:** *spec it, or kill it.* If kept it gets its own spec, which is a decision rather than a deferral.
+  If killed it leaves the roadmap the same day.
+- **§0:** *the bar rejects this on clause 1 — do you override?* If overridden it becomes a KEPT item and
+  Phase 3 implements **only the steps Phase 1 found unshipped** (§6 item 8). If not overridden it is
+  KILLED and struck from the roadmap, exactly like any other item that fails the bar.
 
 **The executor's handover when it reaches this gate** — because an autonomous run must not stall silently:
-stop at the end of Phase 1, commit everything, write the ruling request into the memory file as the ▶
-resume point, and **surface the question to the owner in chat with the sweep's evidence attached**. Do not
-proceed into Phase 3 with §7 unruled, and do not guess the ruling.
+stop at the end of Phase 1, commit everything, write **both** ruling requests into the memory file as the
+▶ resume point, and **surface both questions to the owner in chat with the sweep's evidence attached**.
+**Do not proceed into Phase 3 with either §7 or §0 unruled, and do not guess either ruling.** 🔴 An earlier
+draft of this paragraph named only §7 — it was written when §0 was not at this gate and was never
+reconciled when round 2 put it back, leaving an unhandled branch immediately before Phase 3.
 
 **Why this is not the attrition path the peer warned about:** the disposition is a scheduled, evidenced,
 owner-made ruling with a deadline, not an omission. The failure mode it is designed against — an item
@@ -419,6 +430,11 @@ reopen it on the merits.
    `last-triaged` naming the driver that IS fixed and the one that is not.** Marking it `fixed` on one
    driver's evidence false-cleans the other — measured live this session on two separate entries, pointing
    in opposite directions.
+4. **A tracked-debt item in `project_tracked-debt.md`.** It has no frontmatter, so the table's frontmatter
+   column does not apply. **Rule: mark it ✅ in place with its evidence and leave it in the file — do not
+   delete it.** That file is the record of what was decided, and a deleted item is indistinguishable from
+   one that never existed. Its open/closed count is stated at the top and **must be updated in the same
+   edit**, or the file lies about itself the way every other surface here has.
 
 ## 8a. Staging and spend — this epic does not fit in one session
 
@@ -488,7 +504,9 @@ map to §5 and criterion 4. The out-of-scope list in §7 names each excluded ite
   in §6.1 rather than assumed.
 - The ghidrust version-channel question — **settled in Phase 1**, flagged in §4 as a lead, not a finding.
 - The §-renumbering citation audit — **settled in Phase 1**, criterion 3.
-- Whether §0/§7 are specced or killed — **settled by the owner in Phase 2**, by design.
+- **§7** — specced or killed; **§0** — overridden or killed. **Two different questions**, both settled by
+  the owner in Phase 2, by design. (Writing this line as a single "specced or killed" for both is the
+  error §5 exists to prevent, and this line carried it for a round.)
 
 **Scope check.** Phase 1 is one plan. Phase 3 is a second plan, gated on Phase 1's findings — writing
 line-level steps now for items the sweep may delete would be exactly the fabricated precision the plan
