@@ -490,11 +490,26 @@ rg -n 'ghidrust' scripts/lib/release-lib.ps1 | head -3
 
 - **NativeAOT** is already marked infeasible with its reason. Confirm it still reads as
   "not planned" and leave it; it is not an open item.
-- 🔴 **The ghidrust version question is an UNRESOLVED LEAD, not a finding.** `plugin/plugin.json` says
-  `1.0.0`, the CHANGELOG says `1.2.0`, the roadmap says *"SHIPPED — v1.0.0"*, and `release-lib.ps1`
-  states ghidrust versions a **binary** channel and a **plugin** channel separately. **Resolve which
-  channel each number belongs to BEFORE asserting any defect.** If they are consistent under two-channel
-  versioning, say so and change nothing.
+- ✅ **The ghidrust version question is RESOLVED — measured 2026-08-06 during the round-2 panel. It is a
+  REAL find, and it is half of what it looked like.** The two channels are:
+  - **Binary channel = `1.2.0`.** All three member crates carry `version = "1.2.0"`
+    (`ghidrust/crates/{ghidrust-mcp,ghidra-ipc,ghidra-worker-ctl}/Cargo.toml:3`), and
+    `ghidrust/CHANGELOG.md:2` is `## 1.2.0 — 2026-08-03`. **Consistent.**
+    ⚠️ `ghidrust/Cargo.toml` is a **workspace** manifest and carries no package version — do not look for it
+    there and conclude it is missing.
+  - **Plugin channel = `1.0.0`** (`ghidrust/plugin/plugin.json:3`), which `release-lib.ps1:37-38` scopes to
+    `ghidrust/plugin/**` only. **Consistent with itself.**
+
+  🔴 **What is NOT consistent is the roadmap.** `clavity-dotnet/ROADMAP.md:550` heads the section
+  **"## What ghidrust is now"** and `:551` then reads **"SHIPPED — v1.0.0."** while describing *both*
+  channels ("Delivered two-channel: `ghidrust-setup-<VERSION>.exe` installs the binary→PATH; the plugin …
+  ships via the marketplace"). A section stating what the product is **now** names a binary version two
+  releases behind — `1.1.1` and `1.2.0` both shipped after it. **Disposition: update the stamp in place to
+  name each channel's version separately.** This is an ordinary instance of the epic's own base rate, not a
+  new class.
+
+  ⚠️ **Neither panel reviewer resolved this** — both correctly noted the plan flagged it as a lead and left
+  it there. **A lead is only closed by measuring it.**
 - The v1.1 feature items (`import_binary`, smart-server onboarding, lazy-boot) are **new features, which
   spec §7 puts out of scope.** Disposition them — the spec's expectation is KILL as feature requests for a
   tool with no active development cycle here — but **do not build them.**
