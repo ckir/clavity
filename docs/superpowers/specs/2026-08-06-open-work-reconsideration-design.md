@@ -239,6 +239,16 @@ is written only after Phase 1 lands.
 3. **Inbox-snapshot slash-command path.** `agy-autotrain/hooks/hooks.json` registers only
    `PreToolUse: Skill`, `SessionStart` and `PreCompact`, with **no `UserPromptSubmit` event at all**, so the
    pre-drain snapshot never fires on a slash-command invocation of a destructive drain.
+   🔴 **The entry's proposed mitigation — a `UserPromptSubmit` matcher on `^/agy-autotrain:agy-curate\b` —
+   is an UNCHECKED ASSUMPTION about the hook contract, and this spec inherited it without testing.**
+   Measured: **no `UserPromptSubmit` event exists anywhere in this repository**, and every matcher that
+   does exist is a tool name or an event-source alternation — `Skill`, `Agent|Task`, `Write|Edit`,
+   `startup|clear|compact`, `manual|auto`. **Not one is a regex over prompt text.** So there is zero
+   in-repo precedent that `matcher` is even evaluated against the prompt for this event.
+   **The plan must establish the contract before building on it** — the repo's own history includes a
+   still-open question about whether `Agent|Task` matches unanchored, which is the same class of doubt.
+   **If the matcher shape does not hold, mitigation 1 (a snapshot inside `curate-commit` itself) is the
+   fallback and needs no hook contract at all.**
 4. **No-open-conversation diagnostic.** Conversation-existence is not split from endpoint reachability, so
    the same misleading hint fires when agy is alive but has no open conversation.
 5. **`stalled-reply-recoverable-not-lost`.** Idle-wait expiry throws rather than re-polling, discarding a
@@ -308,6 +318,39 @@ crash and data-loss exposure in roughly an hour.
 
 ---
 
+## 7a. The bar must be APPLIED, not merely adopted
+
+🔴 **An earlier draft adopted a three-clause bar in §2 and then listed eight survivors in §6 without ever
+applying it to them.** A bar that never touches the list it governs is decorative, and this epic exists to
+delete decoration. **Every KEPT item records its clause 1 / 2 / 3 justification in one line**, and two of
+them are not obvious and must be argued rather than assumed:
+
+- **§0 (discipline efficacy)** — clause 1 is *not* self-evident: its absence causes no crash and no data
+  loss. The case is that **a green gate measuring the wrong thing is an active lie** — v15's hooks fired
+  exactly as designed, every presence gate reported green, and the discipline produced nothing. If that
+  reading is rejected, §0 fails clause 1 and is KILLED. **State the ruling; do not let it pass silently on
+  clause 3 alone**, which is how it entered this list.
+- **§11 (assertion-strength)** — same shape: a cardinality assertion that stays green while the code is
+  reversed is a passing test reporting a false result. That is clause 1 as an active lie, not as a crash.
+
+**If an item cannot be given all three justifications in one line each, it is not KEPT.**
+
+## 7b. Disposition vocabulary — this spec's states are not the surfaces' states
+
+🔴 **Unmapped in an earlier draft.** This spec says CLOSED / KILLED / KEPT; `_template.md:6` says
+`status: open | fixed | wont-fix`. An executor must not invent the mapping:
+
+| spec state | `fix-the-tool-backlog/` frontmatter | `ROADMAP.md` |
+|---|---|---|
+| **CLOSED** (already shipped) | `status: fixed` + `fixed-by` + `fixed-on` (the COMMIT's date) | ✅ SHIPPED in place, with evidence |
+| **KILLED** (fails the bar) | `status: wont-fix` + `last-triaged` + the clause it failed | struck through in place, with the clause it failed |
+| **KEPT** (survives, to implement) | `status: open` + `last-triaged` | left as-is, ranked |
+
+⚠️ **A KILLED entry is the first use of `wont-fix` in this repository** — the runbook records that no entry
+uses it today, so there is no example to copy. It therefore MUST carry its reason inline: a `wont-fix` with
+no recorded argument is indistinguishable from an entry someone got tired of, and the next reader cannot
+reopen it on the merits.
+
 ## 8a. Staging and spend — this epic does not fit in one session
 
 🔴 **An earlier draft said nothing about cost, in an epic whose own §7 excludes a mechanism on spend
@@ -318,6 +361,11 @@ specs. **Assume it spans several sessions and stage it so that each stage is ind
 
 - **Phase 1 is split by SURFACE, and each surface ends in its own commit.** A surface swept is a surface
   banked; the epic is never in a half-swept state that a fresh session cannot resume from.
+  🔴 **Surface 6 is the exception and needs its own rule: the tracked-debt half lives in memory, OUTSIDE
+  git, so it cannot "end in a commit."** Its completion marker is the memory file itself, which makes it
+  the one surface where the commit-is-truth tiebreak above does not apply. **Sweep it LAST**, so that
+  every surface with a git record is already banked, and record its completion explicitly rather than
+  inferring it from a commit that will never exist.
 - **Phase 3 is split by ITEM**, one commit per item, for the same reason.
 - **Reviews re-read the whole session context each round, so they cost far more at the end of a long
   session than at the start of a fresh one.** Commit first, then run the panel/capstone after a compaction
