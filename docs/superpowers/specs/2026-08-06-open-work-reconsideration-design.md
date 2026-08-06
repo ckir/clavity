@@ -45,8 +45,42 @@ list". The peer's counter-argument was accepted: *a needs-design list is a guilt
 items rot without accountability, and killing is cheap because git is the undo.* There is no needs-design
 list in this epic.
 
-**The one exception, and it is a decision rather than a loophole:** `ROADMAP.md` §0 and §7 fail clause 3
-today. They are **not** auto-killed and **not** carried forward silently — see §5.
+**Clause 1 needs a test, or it becomes a vibe.** "Active lie" means: **a diagnostic a competent operator
+would act on, whose action is wrong.** `ChannelDown.Hint` qualifies — it names a dead peer and sends you to
+inspect processes, when the peer is alive. An unhelpful-but-neutral message does not qualify. If you cannot
+name the wrong action the message induces, clause 1 is not met.
+
+### The §0/§7 exception, and the criterion that bounds it
+
+`ROADMAP.md` §0 and §7 fail clause 3 today. They are **not** auto-killed and **not** carried forward
+silently — see §5.
+
+🔴 **An exception with no criterion is the parking lot re-entering through the back door**, which is exactly
+what accepting the peer's argument was meant to close. So the criterion is stated and it is narrow:
+
+> An item qualifies for the §5 binding-ruling treatment ONLY if **all three** hold:
+> **(a)** the owner has explicitly ranked or directed it on the record; **(b)** it fails clause 3 — no
+> concrete mechanism exists yet; **(c)** it is not already answered or shipped.
+> Everything else dies on clause 3.
+
+🔴 **The first draft of this criterion said "no other open item has an owner priority directive, so the
+exception admits exactly two." That was FALSE, and measuring it is what produced the three-part test
+above.** Measured — `rg -n 'Owner-directed|TOP PRIORITY|BRAINSTORM FIRST|Owner ruling'` over all four
+roadmaps returns owner markings on **§0, §7, §8, §9, §10 and §11**. Clause (a) alone would have admitted
+six items and re-opened the parking lot at triple the width. What each of the extra four actually needs:
+
+- **§8** — has an owner directive and fails (a)→(b), but **fails (c)**: the cost/quota-hygiene epic shipped
+  and reached capstone GREEN (`c7b3923..8889473`), answering two of its three levers, while §8 still reads
+  *"not yet designed"*. → **CLOSE it in Phase 1**, do not rule on it in Phase 2.
+- **§11** — has an owner ruling (2026-08-02) but **passes clause 3**: its design is settled and the roadmap
+  says *"Agreed shape (do not re-derive; these are settled)"*. → an ordinary **KEPT** item, implemented in
+  Phase 3.
+- **§9 and §10** — carry owner *dispositions* (*"does NOT gate the productize release"*, *"they are a
+  follow-on, not a re-scope"*), which are rulings about scope rather than directives to do the work.
+  → ordinary Phase-1 items, judged on the bar like anything else.
+
+So the exception admits **§0 and §7 only** — but by a test that survives contact with the evidence, rather
+than by a count that did not.
 
 ---
 
@@ -103,6 +137,28 @@ All six surfaces, item by item, against §2's bar and §3's oracle.
 
 **Output of Phase 1:** every item marked CLOSED / KILLED / KEPT, each with its evidence, and the kept set
 ranked. Roadmap entries are closed **in place** (✅ SHIPPED with the evidence), never renumbered.
+
+### Where the evidence lives, and how a crash resumes
+
+🔴 **An earlier draft named no home for Phase 1's output. Without one, Phase 3 cannot consume it and a
+fresh session cannot resume** — and this project's standing rule is that any multi-commit work must be
+resumable by a cold successor from the index alone.
+
+- **The disposition itself lives on the surface it belongs to** — roadmap entries marked in place,
+  frontmatter edited in place. That is the durable record and it is in git.
+- **The running sweep state lives in `<memory>/project_open-work-reconsideration.md`**: which surfaces are
+  swept, the base SHA, and the single ▶ resume point. **Updated the moment a surface completes, never in
+  batch** — a completed surface not yet reflected there is a recovery hole.
+- **A resumed run re-reads that file first** and continues at the named surface. It does **not** re-sweep a
+  surface already marked complete, and it does not trust this spec's inventory over the file.
+
+### If the §-renumbering audit finds broken citations
+
+Renumbering is forbidden, so the audit cannot be resolved by fixing the numbers. The disposition path is:
+**re-anchor the citation, not the section.** Any citation found pointing at the wrong content is rewritten
+to name the section's **title** as well as its number (e.g. "§7 AGY-SCOPE"), so a future renumber degrades
+it to ambiguous rather than to silently wrong. **If the audit finds none, say so explicitly** — a silent
+pass here is indistinguishable from an audit that never ran.
 
 ---
 
@@ -183,22 +239,49 @@ crash and data-loss exposure in roughly an hour.
 
 ## 8. Success criteria
 
-1. Every item on all six surfaces carries a disposition — CLOSED, KILLED, or KEPT — and every disposition
-   cites a command, a `file:line`, or a commit.
-2. **No item is dispositioned from its own prose.** Each names the oracle that was run.
-3. Every CLOSED roadmap entry is marked ✅ in place with its evidence. **Nothing is renumbered**, and the
-   pre-`252f63c` citation risk is audited and reported.
+1. Every item on all six surfaces carries a disposition — CLOSED, KILLED, or KEPT — **except §0 and §7,
+   whose terminal state is the §5 ruling** (the only permitted fourth outcome, and only for those two).
+2. **No item is dispositioned from its own prose, and naming an oracle is not running one.** Each
+   disposition records **the oracle's actual OUTPUT** — the command's stdout, the quoted line, or the
+   commit — not merely which oracle was chosen. 🔴 This epic's own evidence is that a named oracle can
+   point at the wrong file and return a confident wrong answer; a criterion satisfied by *naming* is
+   satisfied by a broken oracle.
+3. Every CLOSED roadmap entry is marked ✅ in place with its evidence. **Nothing is renumbered**, the
+   pre-`252f63c` citation risk is audited, and the audit **states its result either way** — including
+   "none found".
 4. §0 and §7 each have a binding owner ruling recorded in the roadmap: specced or killed. Neither is left
    in its current undecided state.
-5. Every KEPT item is implemented, or the epic states plainly which were not and why.
+5. **Every KEPT item is implemented.** 🔴 An earlier draft read *"…or the epic states plainly which were
+   not and why"*, which made this criterion unfalsifiable — an epic implementing nothing satisfied it. If
+   an item cannot be implemented, the correct action is to **re-disposition it** (it fails clause 3 and is
+   KILLED, or the owner rules on it) — not to leave it KEPT-but-undone. **KEPT and unimplemented is not a
+   permitted end state.**
 6. The falsified `grpc-default-max-message-size` reproduction is rewritten in byte terms; no entry retains
    a repro that measurement has disproven.
 7. The scope gate from the prior epic still holds where it applies: no new mechanism is introduced under
-   cover of triage.
-8. `just test-scripts-fast` count is unchanged by the sweep itself, and any change during Phase 3 is
-   accounted for by a named new test.
+   cover of triage — **including the TTL idea in §7, which needs its own decision against runbook §8.**
+8. Phase 3 changes code, so the suite count **will** move. The gate is therefore not "unchanged": every
+   delta is accounted for by a **named** new test, and the Phase-1 sweep on its own (docs-only) moves it by
+   zero.
 
 ---
+
+## 8a. Staging and spend — this epic does not fit in one session
+
+🔴 **An earlier draft said nothing about cost, in an epic whose own §7 excludes a mechanism on spend
+grounds.** That is the same blind spot `docs/backlog-triage-runbook.md` §8 was written about.
+
+The work is ~25 items × 3 oracles, plus a panel per artifact, plus a capstone, plus possibly two further
+specs. **Assume it spans several sessions and stage it so that each stage is independently complete:**
+
+- **Phase 1 is split by SURFACE, and each surface ends in its own commit.** A surface swept is a surface
+  banked; the epic is never in a half-swept state that a fresh session cannot resume from.
+- **Phase 3 is split by ITEM**, one commit per item, for the same reason.
+- **Reviews re-read the whole session context each round, so they cost far more at the end of a long
+  session than at the start of a fresh one.** Commit first, then run the panel/capstone after a compaction
+  or in a new session. This is a scheduling fact, not a reason to skip them.
+- **No stage may be skipped to save spend.** The runbook's position stands: review is investment. Staging
+  exists so the cost is *paid where it is cheapest*, not avoided.
 
 ## 9. Known traps, carried forward
 
