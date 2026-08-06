@@ -401,7 +401,24 @@ divergences were found during the Spec A capstone. **Both verified aligned in co
   WHY that order matters (a failed move leaves the old header and old sidecar mutually consistent, rather
   than a fresh hash accusing a header that was never replaced).
 
-### 6. agy-autotrain knowledge-delivery — driver-side effectiveness measure
+### ~~6. agy-autotrain knowledge-delivery — driver-side effectiveness measure~~ · 🚫 **KILLED 2026-08-06 (clause 1)**
+
+> **last-triaged: 2026-08-06.** Killed on clause 1, and it is the item that **proved clause 1 must stay
+> narrow** — so killing it is the bar working, not the bar being harsh.
+> - Its ask is *"a probe / verify-harness confirming a delivered rule demonstrably changes driver behaviour
+>   … so 'delivers better driving' is substantiated, not assumed."* That is an **unvalidated assumption**,
+>   not a **false diagnostic**. Nothing prints a wrong answer an operator would act on.
+> - **Widening clause 1 to admit it readmits every unbuilt validation harness in the repo** — including §4,
+>   which this sweep just killed on the identical reasoning. A clause that admits all of them cannot reject
+>   any of them.
+>
+> 🔴 **Why §0 gets a gate and this does not, since their clause-1 failure is IDENTICAL.** The difference is
+> not the argument, it is the marking. §0 is **`▶ TOP PRIORITY`, owner-directed**, so it reaches the
+> Phase-2 gate asking *"the bar rejects this — do you override?"*. §6 is marked **`Owner-surfaced
+> 2026-07-11`** — surfaced is not directed, so clause (a) of the §5 exception test is not met and no gate
+> question is owed. **If that reading of "Owner-surfaced" is wrong, this kill is wrong with it** — it is
+> the single assumption holding §6 out of the gate, and it is stated here so it can be overturned in one
+> sentence.
 The agy-knowledge-delivery design (`docs/superpowers/specs/2026-07-11-agy-knowledge-delivery-design.md`, panel-GREEN)
 closes the driver-facing consume gap — it pushes a curated `[driver_guidance]` cheatsheet at drive-time. But it
 **delivers** knowledge without **validating** that driving actually improved (delivery ≠ outcome; a ≤150-tok block is
@@ -414,6 +431,20 @@ Shares the same empirical-measurement question as the golden-header per-ask back
 ### 7. AGY-SCOPE — "pre-existing defects are always in scope" as a shipped discipline (BRAINSTORM FIRST)
 **Status: brainstorming task, not yet designed.** Owner-directed 2026-07-31; to ship, like its siblings, with the
 clavity plugin (alongside `adversarial-panel-review` / `agy-test-audit`, mirrored to clavity-classic).
+
+> ### ⏸️ NO DISPOSITION RECORDED — this item goes to the OWNER at the Phase-2 gate
+>
+> **State recorded 2026-08-06 (open-work sweep, Task 5 Step 2). Deliberately not judged here.**
+> - It **fails clause 3** on its face: `(BRAINSTORM FIRST)`, *"not yet designed"*, no chosen mechanism.
+> - But it is **owner-directed 2026-07-31**, which meets clause (a) of the §5 exception test, so the bar
+>   does not get to kill it silently.
+> - **The sweep found no mechanism for it anywhere.** `AGY-SCOPE` appears only as a *name* — in §10's
+>   scope, in the `open-issues` skill's closing "scope boundary" note, and here. No skill, hook, or spec
+>   implements it.
+>
+> **The owner's question is: SPEC IT, OR KILL IT.** That is a different question from §0's, and the two
+> must not be merged — §0 has a settled mechanism and is asked *"the bar rejects this on clause 1, do you
+> override?"*; §7 has no mechanism and is asked *"is this worth designing at all?"*.
 
 **The defect it fixes.** Every review discipline in the family (AGY-AFTER, AGY-CAPSTONE, AGY-TEST-AUDIT) produces
 findings, and none of them says what a finding's **age** means. In practice the driver reaches for "pre-existing /
@@ -459,8 +490,33 @@ rounds. What remains for AGY-SCOPE is therefore only the DISPOSITION half: that 
 disposition, and that a verified pre-existing defect earns a tracked plan rather than a mention. The five
 open design questions above are unchanged; they were always disposition questions.
 
-### 8. Audit spending — round count, capstone placement, model tiering (BRAINSTORM FIRST)
-**Status: brainstorming task, not yet designed.** Owner-directed 2026-07-31.
+### 8. Audit spending — round count, capstone placement, model tiering (BRAINSTORM FIRST) · ✅ **ANSWERED 2026-08-06**
+
+> **✅ CLOSED as ANSWERED — the brainstorm this asked for was overtaken by a shipped epic.** The agy
+> discipline cost/quota hygiene epic ran and reached **capstone GREEN, owner-confirmed**, over
+> `c7b3923..8889473` (`docs/agy-capstone-ledger.md`, row dated 2026-08-03). **All three levers below now
+> have measured answers, and two of them are refuted.** Measured 2026-08-06 (open-work sweep, Task 5).
+>
+> - **"Fewer agy rounds" — REFUTED.** agy rounds are **~2% of driver spend**; peer inference is billed
+>   peer-side. Cutting rounds cannot buy what this lever assumed it would.
+> - **"Cheaper models on the mechanical work" — REFUTED as a *cost* lever.** All tool results across a long
+>   session total **~88k tokens against ~610k of the agent's own prose (~7:1)**, so delegating bulky output
+>   is bounded by that 88k. (The bottom-up gating rule still stands on its own merits — this refutes the
+>   *saving*, not the practice.)
+> - **"Batching capstones to the end" — ANSWERED, and INVERTED.** **87.2% of spend is context re-payment**,
+>   not generation. The real lever is **WHEN a discipline runs, not how many rounds**: the same 305 turns
+>   cost **$249 at ~380k context versus $47 at 40k**, and **a capstone at turn 500 pays ~5x the identical
+>   capstone at turn 50.** So §8's framing had it backwards — *batching to the end is the expensive
+>   direction*; running the review early, at low context, is the cheap one.
+>
+> **The tension §8 insisted on was honoured, not papered over:** the saving is located in **waste** (context
+> re-payment at peak) rather than **coverage**, so neither "review is investment" nor the waived round-cap
+> is overturned. **Nothing here trades coverage for cost.**
+>
+> ⚠️ **Left in place and NOT renumbered** — §0 forbids renumbering because every citation to §7 and §8
+> depends on these indices.
+
+~~**Status: brainstorming task, not yet designed.** Owner-directed 2026-07-31.~~
 
 The AGY-* disciplines are deliberately expensive: rounds-until-green, verify-every-finding-by-measurement,
 verify-the-peer's-fix-too. That expense has repeatedly paid — it has caught a reachable protected-file gate
@@ -505,7 +561,23 @@ docs, memory maintenance, and one capstone round — with **zero** subagent dele
 purely mechanical log-sweeping and file-reading, and with the whole bulky measurement context held on the Opus
 main thread. That session's capstone round was *not* the waste: it caught a real regression the author missed.
 
-### 9. Tracked debt — clavity-classic consult guard: binary-native vs bash hook
+### ~~9. Tracked debt — clavity-classic consult guard: binary-native vs bash hook~~ · 🚫 **KILLED 2026-08-06 (clause 3)**
+
+> **last-triaged: 2026-08-06.** Killed on clause 3 — **an unresolved design fork**, by its own words:
+> *"It remains undecided and is recorded here so it stops being invisible."* The originating spec
+> (`docs/superpowers/specs/2026-07-22-ship-agy-disciplines-design.md:134`) left it *"to resolve in SP3, via
+> AGY-FIRST"*, and SP3 never happened — the spec was superseded and the fork was **orphaned rather than
+> decided**.
+>
+> 🔴 **Clause 3 KILLS, it does not park — and this entry is the clearest example of why that ruling
+> exists.** "Recorded here so it stops being invisible" is precisely the guilt-free parking state the
+> disposition bar was written to end: visible, undecided, and carried forward indefinitely at no cost to
+> anyone. The owner ruling attached to it (*"it does NOT gate the productize release"*) is a **disposition,
+> not a directive**, so it earns no §5 gate question.
+>
+> ⚠️ **Killing it does not decide the fork** — it removes a permanent placeholder for a decision nobody is
+> scheduled to make. If the guard is ever needed, it returns as a specced item with a chosen mechanism, and
+> git holds this text.
 
 `docs/superpowers/specs/2026-07-22-ship-agy-disciplines-design.md:134` left this fork open "to resolve
 in SP3, via AGY-FIRST". That spec was superseded by the ship-agy-workflow epic, which drops the guard
@@ -513,13 +585,39 @@ from scope, so the fork was orphaned rather than decided. (The superseded spec c
 task ID means nothing to a reader, so it is named descriptively here — owner ruling 2026-08-05.) Owner ruling 2026-07-31: it does NOT gate the
 productize release. It remains undecided and is recorded here so it stops being invisible.
 
-### 10. Follow-on epic — productize the two later disciplines
+### ~~10. Follow-on epic — productize the two later disciplines~~ · 🚫 **KILLED 2026-08-06 (clause 1)**
+
+> **last-triaged: 2026-08-06.** Killed on clause 1, judged strictly as this entry's own framing demands.
+> **Name the wrong action its absence induces — there isn't one.** Two disciplines not yet packaged into a
+> release causes no silent loss, no crash, and prints no false diagnostic; `agy-test-audit` shipped
+> 2026-07-27 and works, it is simply not bundled.
+>
+> ⚠️ **It is also gated on an item that may not survive**: half its scope is `AGY-SCOPE` (§7), which is
+> still undesigned and goes to the Phase-2 owner gate asking *"spec it, or kill it"*. **A packaging epic
+> for a discipline that may be killed cannot be ranked ahead of the decision that decides it.**
+>
+> The owner ruling it carries (*"they are a follow-on, not a re-scope — retroactively widening a stalled
+> epic prevents it closing"*) is preserved above and remains sound; killing this entry does not disturb it.
 
 `agy-test-audit` (shipped 2026-07-27) and the planned `AGY-SCOPE` postdate the ship-agy-workflow epic
 and are not in its model. Owner ruling 2026-07-31: they are a follow-on, not a re-scope — retroactively
 widening a stalled epic prevents it closing. This epic closes at four disciplines.
 
-### 11. PINNING-ASSERTION-STRENGTH — ship assertion-strength as a mechanical discipline
+### 11. PINNING-ASSERTION-STRENGTH — ship assertion-strength as a mechanical discipline · ✅ **KEPT 2026-08-06 (all three clauses)**
+
+> **last-triaged: 2026-08-06.** The only item on this surface to clear the bar outright.
+> - **Clause 1 — MET, and this is the textbook case.** A cardinality assertion prints **PASS** over
+>   reversed sort logic. A green test is a diagnostic a competent operator acts on, and the action —
+>   merging — is wrong. **Measured, not argued:** `5071872` records the mutation in which the ring deletes
+>   its three *newest* slots, including the snapshot written moments earlier, while the count stays exactly
+>   N and the test stays green.
+> - **Clause 2 — MET.** Not neutralised by any existing invariant: the blind test shipped **through an
+>   adversarial panel that had already gone GREEN**, so the review layer demonstrably does not catch it.
+> - **Clause 3 — MET.** The design is settled, converged with the peer over three negotiation rounds with
+>   every concession verified. It is not a fork awaiting a decision.
+>
+> **Oracle:** `df2b907` *"docs(roadmap): capture PINNING-ASSERTION-STRENGTH"* is a **docs** commit;
+> `git log -S'SortAndTruncate'` returns no implementation. Captured, not built.
 
 **Owner ruling 2026-08-02:** the AT-2 session's ad-hoc "add tests for uncovered cases" ruling should ship
 as a standing discipline. Design converged with agy over three negotiation rounds; agy conceded every
@@ -606,13 +704,38 @@ on every push to `main`, and packaging ships via the unified `umbrella-release.y
 > **19 tools** (14 read/nav + 5 durable writes) over MCP stdio. Pure-Rust single binary `ghidrust`.
 
 ## What ghidrust is now
-**SHIPPED — v1.0.0.** `ghidrust serve` attaches to a **pre-analyzed, GUI-closed** Ghidra project and drives
+
+> 🔴 **VERSION STAMP CORRECTED 2026-08-06** — this section is headed *"what ghidrust is **now**"* and was
+> naming a binary version **two releases stale**. The two channels are versioned separately
+> (`scripts/lib/release-lib.ps1:37-38`: *"`ghidrust` here always means its BINARY channel … the ghidrust
+> plugin channel versions `ghidrust/plugin/**` only"*), and each is internally consistent:
+> - **Binary channel — `1.2.0`.** All three member crates carry `version = "1.2.0"`
+>   (`ghidrust/crates/{ghidrust-mcp,ghidra-ipc,ghidra-worker-ctl}/Cargo.toml:3`) and
+>   `ghidrust/CHANGELOG.md` heads `## 1.2.0 — 2026-08-03`.
+> - **Plugin channel — `1.0.0`** (`ghidrust/plugin/plugin.json:3`).
+>
+> ⚠️ `ghidrust/Cargo.toml` is a **workspace** manifest and carries no package version — looking there and
+> finding none proves nothing.
+
+**SHIPPED — binary v1.2.0 · plugin v1.0.0** (the text below describes the v1.0.0 capability set, which is
+still accurate; only the stamp was stale). `ghidrust serve` attaches to a **pre-analyzed, GUI-closed** Ghidra project and drives
 it: decompile/navigate (`inspect_function`, `get_disassembly`, `get_xrefs`, …) plus durable, CAS-guarded
 writes saved to disk (`rename`, `comment`, `set_datatype`, `set_prototype`, `set_local`). Delivered
 two-channel: `ghidrust-setup-<VERSION>.exe` installs the binary→PATH; the plugin (skill + `.mcp.json`) ships
 via the marketplace. Runtime prereqs: Ghidra 12.1.2 + JDK 21.
 
-## ▶ Forward backlog (v1.1)
+## ▶ Forward backlog (v1.1) · 🚫 **ALL THREE KILLED 2026-08-06 (out of scope: new features)**
+
+> **last-triaged: 2026-08-06.** These are **new features**, which the open-work spec puts explicitly out of
+> scope — that epic reconsiders and ranks *existing* open items, it does not admit new capability.
+> Independently, all three fail **clause 1**: their absence causes no loss, crash or false diagnostic. It
+> causes ghidrust to keep the documented "pre-analyze in the GUI" constraint it already ships with and
+> documents honestly.
+>
+> ⚠️ **This is a KILL of the roadmap entries, not a judgement on the features.** ghidrust has no active
+> development cycle in this repo; if one starts, these return as a v1.1 spec with their own evidence. Kept
+> struck through rather than deleted — the capability sketches are the durable part.
+
 - **`import_binary`** — create a project + import/analyze a binary (removes the "pre-analyze in the GUI"
   constraint) — the headline v1.1 feature.
 - **Smart-server onboarding** — self-registering binary (`ghidrust register`), agent-driven lazy config (a
