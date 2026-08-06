@@ -174,6 +174,34 @@ constraint plus the fact that the two drivers are mutually exclusive). **Read th
 designing the stamp; the same reasoning and the same trap apply.** A stamp that differs per driver is not
 a stamp, it is a parity break that both gates above will reject.
 
+> ### 📏 WHICH STEPS HAVE SHIPPED — measured 2026-08-06 (open-work sweep, Phase 1 Task 4 Step 1)
+>
+> **§0 is PARTIALLY SHIPPED: two of its three ratified steps are done.** This measurement exists because
+> ranking a partly-built item as unstarted is the error that sweep was run to remove. **No disposition is
+> recorded here — §0 goes to the owner gate.**
+>
+> - **Item 2, the static contract stamp — ✅ SHIPPED** (`29372b4` *"feat(hooks): AGY-ANOMALIES contract
+>   stamp"*). The literal `AGY-ANOMALIES/1` is live in three hooks —
+>   `agy-anomaly-model-notice.sh:77`, `agy-anomaly-dispatch-reminder.sh:43`,
+>   `agy-anomaly-capture-reminder.sh:31` — and pinned by `scripts/tests/agy-anomaly-contract-stamp.Tests.ps1`,
+>   which is the test this entry asked for against a stale stamp.
+> - **Item 1a, the MEASURE half — ✅ SHIPPED.** `scripts/discipline-reaching-report.ps1` reads
+>   `hookName` / `hook_additional_context` and counts deliveries by the stamp, with two suites
+>   (`agy-discipline-reaching.Tests.ps1`, `discipline-reaching-report.Tests.ps1`).
+> - **Item 1b, the PROMPT half — ❌ NOT SHIPPED. The original defect is unchanged.** Measured against
+>   `plugin/hooks/hooks.json` today, every anomaly-capture prompt still sits behind a precondition:
+>   `PreToolUse` matcher `Agent|Task` (needs a **dispatch**), `SessionStart` ×2 (triage notices for
+>   anomalies that already exist, not a capture prompt), `PreCompact` (needs a **compaction**).
+>   **The count of hooks that prompt a driver working DIRECTLY is still ZERO**, exactly as item 1 states.
+>   There is no `UserPromptSubmit` registration.
+> - **Item 3, the outside-witness trial — ❌ NOT RUN.** Its protocol is written (`0b634d3` *"docs(spec): the
+>   outside-witness trial protocol, and the trap that makes it fakeable"*); no trial has been conducted.
+> - **Item 4, the firing counter — already DROPPED** by this entry itself, superseded by step 1a.
+>
+> **So the unbuilt remainder of §0 is: step 1b, then the witness trial.** The prerequisite the sequence
+> insists on — the stamp before the trial, so a null result can be split into *never fired* versus *fired
+> and ignored* — **is already satisfied.**
+
 **THE SEQUENCE — OWNER-RATIFIED 2026-08-04, after a second AGY-FIRST consult and measurement.**
 
 **⚠ READ THIS BEFORE THE NUMBERED LIST BELOW: the stamp moved BACK to first.** The list is kept in its
@@ -303,12 +331,29 @@ trial needs a defect the prompt does NOT resemble, or it reproduces this item's 
 AGY-ANOMALIES working for real users?" from recorded evidence, without asking any agent what it thinks
 happened.
 
-### 1. `clavity --restart-agy` (classic) — 7.7
+### ~~1. `clavity --restart-agy` (classic) — 7.7~~ · 🚫 **KILLED 2026-08-06 (clauses 1 + 2)**
+
+> **last-triaged: 2026-08-06.** Oracle: `rg 'restart-agy|restart_agy'` over `clavity-classic/src/` and
+> `clavity-dotnet/src/` returns **NOT IMPLEMENTED**, and `git log --grep='restart-agy'` finds only docs,
+> plan and renumber commits (`58119e9`, `252f63c`, `e56d6a7`) — no implementation. So it is genuinely
+> unbuilt; it dies on the bar, not on the oracle.
+> - **Clause 1 — FAILS.** Its absence causes no silent data loss, no crash and no false diagnostic. The
+>   hang that motivated it is agy's; the absence only makes *recovery* costly. Losing the driving session
+>   to a full `clavity start` is disruptive but it is not silent — the operator chooses it knowingly, which
+>   is exactly what clause 1's "an operator would act on it, and the action is wrong" does not describe.
+> - **Clause 2 — FAILS.** A working alternative exists today (full teardown and restart). The gap is
+>   neutralised by an ordinary operating convention, which clause 2 rejects.
+> - **Clause 3 — passes.** The mechanism is concrete: relaunch only the agy psmux session under the same
+>   `--session`, re-run agy's exact launch, confirm readiness via a `ping`. **Passing clause 3 alone is not
+>   survival; all three are required.**
+>
+> ⚠️ **This is an ergonomic gap, and killing it is not a claim that it is worthless** — it is a claim that
+> it does not clear a bar built to reject everything that is merely nice. Git is the undo.
 Agy-only restart: tear down + relaunch ONLY the agy psmux session under the same `--session`, WITHOUT co-launching
 a new Claude (today only `clavity start` relaunches, which orphans the driving session). Re-run agy's exact launch
 + confirm readiness via a `ping`. Surfaced 2026-06-29 when an agy MCP hang forced a full teardown mid-session.
 
-### 2. Golden-header tamper-detection — 7.4 · ✅ SHIPPED
+### 2. Golden-header tamper-detection — 7.4 · ✅ SHIPPED · **spot-checked 2026-08-06**
 **Verified in code 2026-08-06** — `Clavity.Ls/GoldenHeader.cs` reads the `.sha256` sidecar at read-time,
 warns and degrades the region to absent on mismatch, and enforces a 1 KiB sidecar cap (`:26`, `:79-80`,
 `:106-111`). The honest threat model is stated in the source itself (`:97` — it catches torn writes and
@@ -317,7 +362,7 @@ because §0 forbids renumbering: every citation to §7 and §8 depends on these 
 
 ~~Compare `golden-header.md` to its `.sha256` sidecar at read-time; LOUD warning on external change.~~
 
-### 3. Dynamic send-model resolution (dotnet) — T10 follow-up · ✅ SHIPPED as v0.1.9
+### 3. Dynamic send-model resolution (dotnet) — T10 follow-up · ✅ SHIPPED as v0.1.9 · **spot-checked 2026-08-06**
 **Verified in code 2026-08-06** — `Clavity.Ls/SendModelResolver.cs` resolves `default_agent_model_id` →
 the `models` map → the concrete model (`:37-44`), and `LsClient.cs:65` states that the literal `1037` now
 "lives in exactly one place" as the too-old-agy fallback. This entry described the hard-coded state that
@@ -326,13 +371,26 @@ v0.1.9 removed, and it sat in the forward backlog while also appearing in the Sh
 
 ~~`AgyView` hard-codes the send model id (`MODEL_GEMINI_3_1_PRO_HIGH = 1037`)… resolve dynamically.~~
 
-### 4. Packaging verifications — 7.5 / 7.6
+### ~~4. Packaging verifications — 7.5 / 7.6~~ · 🚫 **KILLED 2026-08-06 (clause 1)**
+
+> **last-triaged: 2026-08-06.** Both halves are *"confirm X"* tasks with **no code deliverable**, and that
+> is what kills them.
+> - **Clause 1 — FAILS, and strictly.** An **unverified property is not a false diagnostic.** Nothing here
+>   prints a wrong answer an operator would act on; the roadmap simply does not yet know whether two
+>   properties hold. **Widening clause 1 to cover "we have not checked this" readmits every unbuilt
+>   verification task in the repo**, which is most of what the clause exists to reject (see §7a).
+> - Oracle, for the record: both skills exist — `plugin/skills/ls-driving/SKILL.md:2` and
+>   `plugin/skills/ls-pairing/SKILL.md:2`. 7.5 asks whether the dual-plugin format *scopes* them per host,
+>   and 7.6 whether a path-installed plugin auto-updates away from the pinned `{app}` binary.
+>
+> ⚠️ **If either property turns out to be FALSE, that is a new defect with its own evidence** — and it
+> enters as a defect, not as a resurrected verification task.
 - **7.5** — confirm the dual-plugin format scopes `ls-driving` to Claude and `ls-pairing` to agy
   (else rely on contextual invocation + document).
 - **7.6** — confirm Claude/agy don't auto-update a locally path-installed plugin away from the version-pinned
   `{app}` binary.
 
-### 5. dotnet golden-header parity follow-ups · ✅ SHIPPED (both bullets)
+### 5. dotnet golden-header parity follow-ups · ✅ SHIPPED (both bullets) · **spot-checked 2026-08-06**
 The classic 7.3 implementation (`src/golden_header.rs`) is the canonical golden-header behavior; two dotnet
 divergences were found during the Spec A capstone. **Both verified aligned in code 2026-08-06:**
 - ~~**`GoldenHeader.Apply` trim charset**~~ — **DONE.** `GoldenHeader.cs:201` and `:206` trim with `AsciiWs`,
