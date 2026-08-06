@@ -235,7 +235,8 @@ Append to the same EXECUTION STATE block, verbatim:
 ```markdown
 ### Phase 1 surface progress (update the MOMENT a surface's commit lands)
 - [ ] S4 commonmemory  - [ ] S2 classic  - [ ] S3 agy-autotrain  - [ ] S1a dotnet §0-§5
-- [ ] S1b dotnet §6-§11+Stretch+ghidrust  - [ ] S5 fix-the-tool  - [ ] S6 backlog+debt (LAST)
+- [ ] S1b dotnet §6-§11+Stretch+ghidrust  - [ ] S5 fix-the-tool
+- [ ] S6 backlog+debt (LAST)  - [ ] S7 MEMORY.md ranked section (LAST, same task)
 - [ ] renumber audit  - [ ] final gates  - [ ] Phase-2 gate surfaced
 ```
 
@@ -679,7 +680,7 @@ git commit -m "docs(backlog): apply the bar to the six open entries; rewrite the
 
 ---
 
-## Task 7: Surfaces 6 AND 7 — `docs/backlog/`, tracked debt, and the PARKED line (LAST, per spec §8a)
+## Task 7: Surfaces 6 AND 7 — `docs/backlog/`, tracked debt, and `MEMORY.md`'s ranked section (LAST, per spec §8a)
 
 **Files:** `docs/backlog/`, `<MEM>/project_tracked-debt.md`, `<MEM>/MEMORY.md`
 
@@ -701,11 +702,15 @@ exists, it was never in any inventory — disposition it against the bar and say
 
 ```bash
 export MEM="/c/Users/user/.claude/projects/C--Users-user-Development-Rust-clavity/memory"
-sed -n '19,26p'  "$MEM/project_tracked-debt.md"   # the count line + item 1
-sed -n '59,66p'  "$MEM/project_tracked-debt.md"   # item 4
+awk '/^\*\*STATUS 2026/,/^## 2\./' "$MEM/project_tracked-debt.md"   # the count line + item 1
+awk '/^## 4\./,/^$/'              "$MEM/project_tracked-debt.md"   # item 4
 ```
 
 Verified: items **1** and **4** are OPEN; 2 and 3 are RESOLVED by the pre-release sweep.
+
+⚠️ **These are `awk` content ranges, not `sed` line ranges, and that is deliberate.** They read a file this
+same task then edits, so any line number would be correct when written and wrong on a resumed run. **Anchor
+every read of a `<MEM>` file to its text.**
 
 - **#1 — seven ECC hooks cost ~33s per tool call.** 🔴 **It is NOT clavity's code.** Judge clause 2
   honestly: it is a real daily tax, but it is another plugin's. **The spec gives no authority to change a
@@ -797,7 +802,7 @@ spec. **Check them separately.**
 Whatever changes, the *"Items 1 and 4 remain OPEN"* line near the top must change with it. **A file that
 miscounts itself is the exact defect this epic exists to remove**, and this one states its count in prose.
 
-🔴 **THE COUNT IS STATED IN TWO FILES AND BOTH MUST MOVE TOGETHER.** `MEMORY.md:45` carries an independent
+🔴 **THE COUNT IS STATED IN TWO FILES AND BOTH MUST MOVE TOGETHER.** `MEMORY.md` carries an independent
 copy: *"**[TRACKED DEBT](project_tracked-debt.md)** — **2 open of 4**"*. Resolving a debt in Step 2 while
 updating only `project_tracked-debt.md` leaves the index asserting a count its own target contradicts —
 **a stale entry created by the sweep that exists to remove stale entries.**
@@ -806,10 +811,15 @@ updating only `project_tracked-debt.md` leaves the index asserting a count its o
 grep -n 'open of 4\|remain OPEN' "$MEM/MEMORY.md" "$MEM/project_tracked-debt.md"
 ```
 
-⚠️ **Re-locate that line by CONTENT, not by the number 45.** A panel cited it as `:44` this round, which is
-the backlog-triage entry — one line off, in a finding that was otherwise correct.
+🔴 **NO LINE NUMBER IS GIVEN FOR IT ON PURPOSE — GREP FOR THE TEXT.** That single line has been cited three
+times today and every citation was right when made and wrong afterwards: I wrote `:45`, a round-3 panel said
+`:44` (then the backlog-triage entry), a round-4 panel measured `:43`, and it now sits at `:44` again.
+**Nobody was careless — the file is edited constantly, so the number moves.** `MEMORY.md` is the single most
+frequently rewritten file in this plan; **a line number into it is stale before the executor reads it.**
 
-- [ ] **Step 4: Update the index** — memory-only surface, no commit. Mark `- [x] S6`.
+- [ ] **Step 4: Update the index** — memory-only surfaces, no commit. Mark **both** `- [x] S6` and
+`- [x] S7`. **Marking only S6 leaves the sweep looking complete with a surface unswept**, which is the
+failure this task exists to fix.
 
 ---
 
