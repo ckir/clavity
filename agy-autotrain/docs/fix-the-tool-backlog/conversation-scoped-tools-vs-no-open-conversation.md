@@ -40,3 +40,17 @@ Deterministic on the clavity-dotnet bridge, where every exposed tool (`agy_ask`,
 the signal bus plus psmux and is not scoped this way, so this is NOT carried as a classic item.
 Retirement gated on a permanent regression test asserting the two failure modes map to distinct
 errors.
+
+## Disposition — open-work sweep, 2026-08-06
+
+**KEPT — all three clauses met, and clause 1 is the textbook case.**
+
+1. **Lie, with the wrong action named in the entry itself.** A live endpoint with no open conversation
+   fails identically to a dead one, so the operator reads "transport fault" and restarts — and the entry
+   records that the condition *"survives both an agy restart and a full machine restart, so 'restart it' …
+   never clears it."* A diagnostic that reliably induces a useless recovery action is exactly what clause 1
+   is for.
+2. **Unavoidable.** No invariant or driving convention distinguishes the two states today; the tell (a
+   read-only call failing in the same shape as a mutating one) requires already knowing the answer.
+3. **Mechanism.** Separate conversation-existence from endpoint-reachability in the LS client before
+   mapping the error. Bounded and specified.

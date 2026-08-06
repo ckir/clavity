@@ -40,3 +40,16 @@ this is fixed: ask the peer to RESTATE its already-reached conclusion rather tha
 original ask, because re-sending re-bills and re-runs work that is already done. Offer a licensed
 "NO PRIOR RESULT" escape hatch so a genuine absence is reportable instead of confabulated - measured
 working on 2026-08-02: the hatch was available, unused, and the continuation resumed at the exact cut.
+
+## Disposition — open-work sweep, 2026-08-06
+
+**KEPT — all three clauses met.**
+
+1. **Loss AND lie.** An idle-wait expiry returns a timeout while the peer's turn completes, so a finished
+   reply exists on the peer side and never reaches the caller — reading as *"never produced"* rather than
+   *"produced and dropped in transit"*. **The induced wrong action is re-asking**, paying for the turn
+   again. Corroborated live 2026-08-02 against agy 1.1.9 by verify-harness probe A2: a decomposed re-ask
+   recovered the exact continuation from the precise cut point, proving the tail existed the whole time.
+2. **Unavoidable.** Large or long turns are ordinary for review work.
+3. **Mechanism.** On expiry, poll `agy_status` to a longer deadline and retrieve the completed turn from
+   the trajectory; report stalled only if the step counter is genuinely not advancing.

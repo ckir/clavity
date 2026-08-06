@@ -17,3 +17,16 @@ after a large reply, read the trajectory via `agy_look`; it returns the HEAD/old
 
 ## Notes
 classic has no trajectory-look analogue → does not reproduce; the "decompose the oversized ask into terse turns" driving move is carried as a cheatsheet rule.
+
+## Disposition — open-work sweep, 2026-08-06
+
+**KEPT — all three clauses met.**
+
+1. **Lie.** `agy_look` returns the HEAD of the trajectory and truncates before the just-produced reply, so a
+   caller reading it to see "the latest state" is shown older turns with nothing marking them stale. **The
+   wrong action it induces is concrete:** the driver concludes the peer never answered and re-asks, paying
+   for the same turn twice.
+2. **Unavoidable.** Nothing in the current flow neutralises it; reading a trajectory after a large reply is
+   ordinary use, not an edge case.
+3. **Mechanism — already built, just not wired.** `BoundedView.cs:38` exposes `newestFirst`, used by
+   `agy_ask` and its tests; `AgyView.cs:110` simply does not pass it. No design fork remains.

@@ -62,3 +62,15 @@ future third invocation path.
   is that the fallback is easy to skip, which a code fix removes rather than a driving rule.
 - Sibling class: `curate-nudge-age-reads-drain-log-dates` — also a hook whose guard silently does not do
   what its presence implies. Both were found by RUNNING the drain, not by reading the hook.
+
+## Disposition — open-work sweep, 2026-08-06
+
+**KEPT — all three clauses met.**
+
+1. **Silent loss.** The pre-drain snapshot does not happen on the slash-command path, so a drain that goes
+   wrong has no `.bak` to recover from — and nothing reports the omission. Measured 2026-08-03: no new
+   `.bak` appeared, and the newest one already differed from the live file.
+2. **Unavoidable.** Invoking the curator as a slash command is the natural way to run it; the Skill-tool
+   path that *does* snapshot is the less obvious one.
+3. **Mechanism.** Register the missing event in `hooks.json` (there is no `UserPromptSubmit` registration
+   today) or move the snapshot into the skill body. Two named options, both bounded.

@@ -13,10 +13,21 @@ last-triaged: 2026-08-06   # oracle: no MaxReceiveMessageSize/MaxSendMessageSize
 
 On the clavity-dotnet bridge, against a live peer:
 
-1. Drive one long-lived conversation until its trajectory exceeds roughly 1100 steps (a multi-round
-   review thread reaches this in a single working session).
+> 🔴 **THIS REPRODUCTION WAS FALSIFIED AND REWRITTEN 2026-08-06.** It previously said to drive past
+> *"roughly 1100 steps"* and that *"every call fails."* **Both are false.** Four round-trips succeeded the
+> same day at **996, 1111, 1203 and 1290 steps**, each returning a multi-KB reply, and agy was later driven
+> past 1700. **The cap is on message BYTES, not step count** — `LsChannel.cs` sets no
+> `MaxReceiveMessageSize`, so gRPC's **4 MB default** applies, and `git log -S'MaxReceiveMessageSize'` shows
+> it never has been set. Step count was only ever a proxy for payload size, and a poor one: a session with
+> large tool outputs crosses 4 MB in far fewer steps, while a long thread of terse turns may never cross it.
+> **Never refuse a call on step count** — that is what this entry taught, expensively.
+
+1. Drive one conversation until its **trajectory payload** approaches gRPC's default **4 MB** receive limit.
+   Step count is not the trigger and must not be used as one; what matters is accumulated bytes, which
+   large tool outputs dominate.
 2. Call any RPC that reads the conversation back (`agy_status`, `agy_look`, `agy_ask`).
-3. Every call fails. The surfaced text is an opaque error whose Hint blames a peer shutdown or restart.
+3. The call fails once the response crosses the limit — `ResourceExhausted` from the receive path. The
+   surfaced text is an opaque error whose Hint blames a peer shutdown or restart.
 4. Confirm the peer is NOT down, which is the whole point: the agy process is alive and both Language
    Server ports are in the listening set, verifiable independently of the bridge.
 5. Reconnect the client (`/mcp` reconnect). The failure persists unchanged, because the cause is the
@@ -67,3 +78,18 @@ rather than a driver-cheatsheet rule.
 - **Retirement gating.** Do not retire the carried rule on the fix alone: it needs a permanent regression
   test pinning that an over-cap response produces the size diagnostic and not a liveness one, green and
   committed, plus adoption among end users.
+
+## Disposition — open-work sweep, 2026-08-06
+
+**KEPT — all three clauses met.**
+
+1. **Lie.** The channel has no `MaxReceiveMessageSize`, so a reply over gRPC's 4 MB default dies
+   `ResourceExhausted` — and `ChannelDown.cs:38-42` reports that with an **unconditional** hint saying
+   agy's language server *"appears to have shut down or restarted"*. **The induced wrong action is
+   restarting a peer that is alive and idle.**
+2. **Unavoidable.** Ordinary review traffic crosses 4 MB; nothing warns before it does.
+3. **Mechanism.** Set an explicit receive limit on the channel. One call site, no fork.
+
+⚠️ **Ships WITH the hint fix.** Raising the cap alone leaves `ChannelDown`'s unconditional message
+misdirecting every *other* channel failure — fixing the cap would remove this symptom while preserving the
+lie.
