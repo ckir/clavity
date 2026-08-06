@@ -18,8 +18,9 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 327 tests, measured 429,46s solo**
-  (2026-08-06). A second sample read 665,4s but was taken WHILE the slow half ran and is not comparable;
+- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 328 tests, measured 429,46s solo**
+  (2026-08-06; the 429,46s was taken at 327 tests — see the count-correction entry below).
+  A second sample read 665,4s but was taken WHILE the slow half ran and is not comparable;
   see the contention entry below, which is the operationally important one — **the fast half is now
   cap-adjacent, not cap-safe.**
 - `just test-scripts-slow` — everything else. **13 suites, 257 tests, measured 819,2s solo** (2026-08-06).
@@ -58,7 +59,7 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **327** and slow **257**, **both measured, not added up**. It is a
+test raises it. The count today is fast **328** and slow **257**, **both measured, not added up**. It is a
 fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
 "fast 177 and slow 238" until 2026-08-06, having decayed through five intervening entries below that each
 recorded a new number without updating it.
@@ -158,6 +159,31 @@ cap**, getting moved to the background by the harness. The fast half is the agen
 supposed to be the one that never straddles the cap. It does not straddle it solo — 429,46s — but it has
 no headroom left for a machine that is doing anything else. **Do not run the two halves concurrently, and
 treat the fast half as cap-adjacent, not cap-safe.**
+
+🔴 **2026-08-06 (count correction) — THE FAST COUNT IS 328, AND THIS FILE SAID 327 FOR THREE COMMITS.**
+Re-measured by running the recipe: **328 passed / 0 failed**, and the per-suite breakdown of that same run
+sums to 328 independently. The 327 above was **not a miscount — it was true when written and then
+decayed in 40 minutes**: `c58056a` (01:49) re-measured the partition after the defect sweep and correctly
+recorded 327; `413c617` (02:29) added a third test to `plugin-hooks-payload.Tests.ps1` — *"gates every
+repo-root walk on one stat, and stops at the UNC volume root"* — and did not re-measure this file. The
+suite's row said `2 tests`; it has three. **That is the third row in this file to decay exactly this way**
+(`agy-discipline-reaching`, `abort-drain`, now `plugin-hooks-payload`), and the first where the total and
+the row were wrong *consistently*, which is the dangerous shape: adding the rows up reproduces the wrong
+total and reads as corroboration. This file already forbids that arithmetic — **"both measured, not added
+up"** — and this is why.
+
+**How it surfaced is the reusable part:** a plan pinned 328 from its own measurement, this file said 327,
+and the disagreement sat unresolved as a known-open question rather than being measured. Resolving it cost
+one recipe run. **Two artifacts disagreeing about a measured number is not a tie — it is an unrun
+measurement.**
+
+**A fourth data point for the contention rule, and the most extreme yet: 737,5s.** That run was launched
+backgrounded while the driving agent kept working — greps, `git commit` with lefthook, file edits — on the
+same machine. Nothing else was running; no slow half. **1,72x the 429,46s solo figure, from the agent's own
+tool calls alone**, and 137s past the 600s foreground cap. The file already warns that the driving agent's
+own work is part of the dominant variable; this measures it. It is **not** comparable to any solo sample
+and must not be read as a regression. Operationally: if you need the fast half's *time*, run it as the sole
+command; if you only need its *count*, background it and keep working — the count is unaffected.
 
 🔴 **`agy-discipline-reaching`'s ROW HAD BEEN WRONG IN BOTH COLUMNS AND NOTHING CAUGHT IT.** The count said
 16 while the suite really held 13, and the time said 69,1s while it really ran in ~15s. The figures were
@@ -296,7 +322,12 @@ plugin-hooks-registration.Tests.ps1               0,6s   22 tests   <- FAST, re-
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this
                                                                       suite had never covered)
-plugin-hooks-payload.Tests.ps1                    3,4s    2 tests   <- FAST, re-measured 2026-08-05
+plugin-hooks-payload.Tests.ps1                    3,4s    3 tests   <- FAST. COUNT corrected 2026-08-06:
+                                                                      the row said 2 and had been wrong
+                                                                      since 413c617 added the repo-root
+                                                                      walk case 40 min after the sweep
+                                                                      re-measured this file. TIME is the
+                                                                      2026-08-05 figure, taken at 2 tests.
 register-plugin.Tests.ps1                         6,6s   18 tests   <- FAST, re-measured 2026-08-05
 release-lib.Tests.ps1                             5,5s   23 tests   <- FAST, re-measured 2026-08-05
 ```
