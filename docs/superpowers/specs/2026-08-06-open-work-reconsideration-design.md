@@ -79,8 +79,27 @@ six items and re-opened the parking lot at triple the width. What each of the ex
   follow-on, not a re-scope"*), which are rulings about scope rather than directives to do the work.
   → ordinary Phase-1 items, judged on the bar like anything else.
 
-So the exception admits **§0 and §7 only** — but by a test that survives contact with the evidence, rather
-than by a count that did not.
+🔴 **The exception admits §7 ONLY. §0 does not qualify, and this spec asserted the opposite.** An earlier
+draft said *"§0 and §7 fail clause 3: both are marked BRAINSTORM-FIRST and neither has a specified
+mechanism."* **Both halves are false for §0**, and the agy panel caught it:
+
+- `clavity-dotnet/ROADMAP.md:118` marks §0 **`▶ TOP PRIORITY`**, not `BRAINSTORM FIRST`.
+- `clavity-dotnet/ROADMAP.md:177` reads **"THE SEQUENCE — OWNER-RATIFIED 2026-08-04, after a second
+  AGY-FIRST consult and measurement"**, followed by a numbered sequence and settled sub-rulings including
+  *"Owner ruling on the `PreCompact` channel, same date: ship dispatch-only."*
+
+**§0 therefore PASSES clause 3** — it has a concrete owner-ratified mechanism — and is an **ordinary KEPT
+item**, ranked and implemented in Phase 3 like any other. Sending it to a "spec it or kill it" ruling would
+have posed the owner a **false dilemma about work that is already designed**, and would have re-opened a
+sequence the owner ratified two days ago.
+
+**§6 is the near-miss worth naming.** `clavity-dotnet/ROADMAP.md:354` ends *"Owner-surfaced 2026-07-11"* —
+**surfaced is not directed or ranked**, so clause (a) is not met and §6 is judged on the bar like anything
+else. Stated explicitly because "owner touched it at some point" is exactly how this exception would widen.
+
+**Twice now, measurement has moved §0's disposition** — first when the owner re-opened its TOP PRIORITY
+standing, then here when its mechanism turned out to exist. Treat any claim about §0's status in this spec
+as the thing most likely to be wrong.
 
 ---
 
@@ -146,11 +165,18 @@ resumable by a cold successor from the index alone.
 
 - **The disposition itself lives on the surface it belongs to** — roadmap entries marked in place,
   frontmatter edited in place. That is the durable record and it is in git.
-- **The running sweep state lives in `<memory>/project_open-work-reconsideration.md`**: which surfaces are
-  swept, the base SHA, and the single ▶ resume point. **Updated the moment a surface completes, never in
-  batch** — a completed surface not yet reflected there is a recovery hole.
-- **A resumed run re-reads that file first** and continues at the named surface. It does **not** re-sweep a
-  surface already marked complete, and it does not trust this spec's inventory over the file.
+- **The running sweep state lives in the auto-memory file `project_open-work-reconsideration.md`**, in the
+  per-project memory directory — for this machine,
+  `C:\Users\user\.claude\projects\C--Users-user-Development-Rust-clavity\memory\`. It is **outside the
+  repo and outside git** (see runbook §13 failure mode 4). It records which surfaces are swept, the base
+  SHA, and the single ▶ resume point. **Updated the moment a surface completes, never in batch.**
+- 🔴 **Order: COMMIT FIRST, then write memory — and on resume, GIT IS THE TRUTH.** These are two records
+  that can disagree, and a crash between them is the likely case, not the exotic one. If memory says a
+  surface is incomplete but its entries are already marked in committed files, **the surface is done**;
+  correct memory and move on. Never re-sweep on memory's word alone, and never re-edit an entry that
+  already carries its disposition — the sweep's edits are not idempotent.
+- **A resumed run reads memory first, then verifies it against `git log`/`git diff` before acting**, and
+  does not trust this spec's inventory over either.
 
 ### If the §-renumbering audit finds broken citations
 
@@ -166,14 +192,22 @@ pass here is indistinguishable from an audit that never ran.
 
 **This is an owner decision point, and the epic does not proceed past it silently.**
 
-§0 (discipline efficacy) and §7 (AGY-SCOPE) fail clause 3: both are marked BRAINSTORM-FIRST and neither has
-a specified mechanism. The consult argued they should be killed outright; the counter-argument is that §10
-of the same roadmap records the opposite failure — *"retroactively widening a stalled epic prevents it
-closing"*.
+**§7 (AGY-SCOPE) only.** It is marked `(BRAINSTORM FIRST)` with *"Status: brainstorming task, not yet
+designed"* and an owner directive dated 2026-07-31 — owner-directed, no mechanism, not already answered.
+**§0 was in this section in an earlier draft and has been removed**: it has an owner-ratified sequence
+(`clavity-dotnet/ROADMAP.md:177`), so it passes clause 3 and is an ordinary KEPT item. See §2.
+
+The consult argued items like this should be killed outright; the counter-argument is that §10 of the same
+roadmap records the opposite failure — *"retroactively widening a stalled epic prevents it closing"*.
 
 **Resolution (owner-approved):** at the end of Phase 1, with the sweep's evidence in hand, the owner rules
-on each: **spec it, or kill it.** Not park it, not carry it forward. If kept, it gets its own spec — which
+on §7: **spec it, or kill it.** Not park it, not carry it forward. If kept, it gets its own spec — which
 is then a decision rather than a deferral. If killed, it leaves the roadmap the same day.
+
+**The executor's handover when it reaches this gate** — because an autonomous run must not stall silently:
+stop at the end of Phase 1, commit everything, write the ruling request into the memory file as the ▶
+resume point, and **surface the question to the owner in chat with the sweep's evidence attached**. Do not
+proceed into Phase 3 with §7 unruled, and do not guess the ruling.
 
 **Why this is not the attrition path the peer warned about:** the disposition is a scheduled, evidenced,
 owner-made ruling with a deadline, not an omission. The failure mode it is designed against — an item
@@ -212,6 +246,13 @@ is written only after Phase 1 lands.
 6. **AT-1 Part A** — GROWTH line-density cap and anti-poisoning gate. Markdown-only.
 7. **§11 PINNING-ASSERTION-STRENGTH.** Design is settled (`df2b907`, agreed with agy over three rounds);
    `git log --grep` shows it was captured and never implemented.
+8. **§0 DISCIPLINE EFFICACY** — added here after the panel established it passes clause 3. It carries an
+   owner-ratified sequence at `clavity-dotnet/ROADMAP.md:177` and the owner marked it `▶ TOP PRIORITY`.
+   🔴 **It is also by far the largest item here and the only one that is a build rather than a fix**, so
+   its position is the ranking's real open question: the seven above it are small, bounded and mostly
+   single-file, while §0 is a multi-session build. **Phase 1 must re-measure how much of §0's sequence has
+   already shipped before Phase 3 orders it** — a partially-shipped item ranked as if unstarted is the
+   same error this whole epic exists to remove.
 
 **Fallback ordering if the epic is ever cut short** — the consult's one-hour version, recorded because it
 is a genuinely different answer and close to as good: items 1, 2, 3 plus AT-1 Part A close most of the
@@ -249,8 +290,9 @@ crash and data-loss exposure in roughly an hour.
 3. Every CLOSED roadmap entry is marked ✅ in place with its evidence. **Nothing is renumbered**, the
    pre-`252f63c` citation risk is audited, and the audit **states its result either way** — including
    "none found".
-4. §0 and §7 each have a binding owner ruling recorded in the roadmap: specced or killed. Neither is left
-   in its current undecided state.
+4. **§7** has a binding owner ruling recorded in the roadmap: specced or killed, not left undecided.
+   (**§0 is deliberately NOT in this criterion** — it passes clause 3 and is covered by criterion 5 as an
+   ordinary KEPT item. An earlier draft had it here.)
 5. **Every KEPT item is implemented.** 🔴 An earlier draft read *"…or the epic states plainly which were
    not and why"*, which made this criterion unfalsifiable — an epic implementing nothing satisfied it. If
    an item cannot be implemented, the correct action is to **re-disposition it** (it fails clause 3 and is
@@ -282,6 +324,24 @@ specs. **Assume it spans several sessions and stage it so that each stage is ind
   or in a new session. This is a scheduling fact, not a reason to skip them.
 - **No stage may be skipped to save spend.** The runbook's position stands: review is investment. Staging
   exists so the cost is *paid where it is cheapest*, not avoided.
+
+## 8b. Two lifecycle gaps the panel found, and where each is handled
+
+**Fixing a tool defect does NOT retire its driver-cheatsheet rule, and the epic must not silently leave
+that dangling.** `_template.md` states the two are separate gates and that retirement additionally requires
+a committed green regression test on every variant the quirk reproduced on, plus wide end-user adoption.
+So for every Phase-3 item that closes a `fix-the-tool-backlog` entry:
+
+- **Do not touch the cheatsheet rule in this epic.** That prohibition stands.
+- **Do record, on the closed entry, that its driver rule is now a retirement CANDIDATE** and what the
+  remaining gate is. Otherwise the workaround rides in driver context forever with nothing pointing at it —
+  the panel's finding, and it is correct: a fixed defect whose workaround is never retired is permanent
+  prompt cost.
+- Actual retirement is a separate decision, gated on `_template.md`'s conditions. **Not this epic.**
+
+**Anomalies noticed mid-sweep go to `.clavity/local-anomalies.md` via the `open-issues` skill, not into the
+sweep.** A sweep that absorbs every defect it notices never terminates. Capture, do not chase — and the
+driver verifies before recording.
 
 ## 9. Known traps, carried forward
 
