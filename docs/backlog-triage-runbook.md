@@ -286,6 +286,10 @@ Stated plainly, because a runbook that oversells itself is worse than none:
    them cites — lives in `Clavity.Mcp`. Because these oracles are markdown comments and no gate executes
    them, the rot is silent and the next triager inherits it as evidence.
 
+   *(Precisely: two of those stamps scope their grep to `Clavity.Ls/*.cs`, and a third cites `McpTools.cs`
+   with no path at all — that file is in `Clavity.Mcp`, so a reader who carries the neighbouring stamps'
+   scope over to it searches the wrong assembly and finds nothing.)*
+
 **All six are the same shape: this is documentation, and documentation does not execute.** That was the
 accepted trade — see [§8](#8-why-no-mechanism-exists) — and [§7](#7-the-three-revisit-triggers) is what
 expires it. **Mode 6 is the one most likely to bite first**, because every stamp this runbook asks you to
