@@ -51,6 +51,15 @@ committed files, the surface is DONE** — correct memory and move on. Never re-
 carries its disposition. A `git commit` that fails with "nothing to commit" on a resume is the healthy
 outcome; confirm with `git log --oneline -5` and continue. Never reach for `--allow-empty`.
 
+🔴 **The git tiebreak does NOT cover Surface 6.** Task 7's tracked-debt half lives in `<MEM>`, outside git,
+so no commit can ever attest it. **For that surface only, the tiebreak is the file's own content** — read
+`project_tracked-debt.md` and judge from the dispositions written in it. This is also why Surface 6 is swept
+last (spec §8a): every surface that git *can* attest is banked before the one it cannot.
+
+**6. Before resuming ANY task, check the working tree is clean** (`git status --short`). A crash can leave a
+half-written edit uncommitted; resuming on top of it silently merges two tasks into one commit and defeats
+the one-commit-per-surface staging. If it is dirty, identify which task wrote it before continuing.
+
 ---
 
 ## The disposition vocabulary (from spec §7b — do not invent a mapping)
@@ -126,6 +135,21 @@ Expected: no output from `status`, then a SHA.
 the EXECUTION STATE block, as `PHASE 1 BASE SHA`. Task 9's scope gate reads it back from there and **never
 re-derives it from ambient HEAD** — a crash that loses it makes the gate diff nothing and report a clean
 pass, which is the worst shape a failure can take.
+
+🔴 **THIS WRITE IS CONDITIONAL — NEVER OVERWRITE AN EXISTING ONE.** Grep the index for `PHASE 1 BASE SHA`
+first:
+
+```bash
+export MEM="/c/Users/user/.claude/projects/C--Users-user-Development-Rust-clavity/memory"
+grep -n 'PHASE 1 BASE SHA' "$MEM/project_open-work-reconsideration.md" || echo "  ABSENT -> this is a fresh start, write it"
+```
+
+If it is already there, this is a **resumed** run: leave the recorded SHA exactly as it stands, confirm it
+is an ancestor of HEAD (`git merge-base --is-ancestor <recorded> HEAD && echo ancestor-ok`), and skip to the
+first unchecked surface. A successor that re-runs Task 0 and stamps the *current* mid-sweep HEAD as the base
+silently shortens Task 9's diff to only the surfaces swept after the crash — every earlier surface then
+passes the scope gate by being invisible to it. **That is the same false-clean shape the paragraph above
+warns about, reached from the other direction.**
 
 - [ ] **Step 2: Initialise the per-surface progress list**
 
@@ -391,8 +415,8 @@ the capstone range as evidence. **Do not delete the section and do not renumber.
 - [ ] **Step 4: §9, §10, §11 — oracle each**
 
 ```bash
-sed -n '450,463p' clavity-dotnet/ROADMAP.md   # §9 classic consult guard
-sed -n '458,464p' clavity-dotnet/ROADMAP.md   # §10 productize follow-on
+sed -n '450,457p' clavity-dotnet/ROADMAP.md   # §9 classic consult guard
+sed -n '458,463p' clavity-dotnet/ROADMAP.md   # §10 productize follow-on
 sed -n '464,508p' clavity-dotnet/ROADMAP.md   # §11 assertion-strength
 git log --oneline --all --grep='assertion.strength' --grep='PINNING' -i | head -5
 ```
@@ -462,8 +486,11 @@ Each already carries `last-triaged: 2026-08-06` with its oracle's output. **Do n
 What was never done is applying the bar:
 
 ```bash
-grep -h -A1 '^status: open' agy-autotrain/docs/fix-the-tool-backlog/*.md | grep 'last-triaged'
+grep -A1 '^status: open' agy-autotrain/docs/fix-the-tool-backlog/*.md | grep 'last-triaged'
 ```
+
+⚠️ **Do NOT add `-h`.** It suppresses the filename, and the output is then six `last-triaged:` lines with
+nothing saying which entry each belongs to — useless for a task whose whole job is a per-entry judgment.
 
 For each, add the three clause justifications to the `last-triaged` comment, or kill it. Expected per the
 spec: five are KEPT (ranks 1–5), and **`working-vs-stuck-step-delta` is the KILL candidate** — the peer
@@ -492,10 +519,25 @@ pass immediately — which makes it a WEAK control here.** The real check for th
 entry's comment now contains its three clause justifications:
 
 ```bash
-grep -c 'clause' agy-autotrain/docs/fix-the-tool-backlog/*.md
+grep -c 'clause' \
+  agy-autotrain/docs/fix-the-tool-backlog/agy-look-tail-truncation.md \
+  agy-autotrain/docs/fix-the-tool-backlog/conversation-scoped-tools-vs-no-open-conversation.md \
+  agy-autotrain/docs/fix-the-tool-backlog/grpc-default-max-message-size.md \
+  agy-autotrain/docs/fix-the-tool-backlog/inbox-snapshot-misses-slash-command-path.md \
+  agy-autotrain/docs/fix-the-tool-backlog/stalled-reply-recoverable-not-lost.md \
+  agy-autotrain/docs/fix-the-tool-backlog/working-vs-stuck-step-delta.md
 ```
 
-Expected: a non-zero count on each of the six.
+**Name the six files; do NOT use the `*.md` glob.** The glob prints all eleven files in the directory, and
+five of them — `README`, `_template`, `DRY-RUN-2026-07-11`, and the two already-closed entries — stay at `0`
+legitimately forever. An executor comparing that output against "non-zero on each" reads five correct zeros
+as five failures, and the usual resolution of that confusion is to stop trusting the check.
+
+✅ **This one has a real red baseline, measured 2026-08-06 at `5c1bbdd`: all six are `0` today.** So the
+control genuinely fails before the work and can only pass because of it — which is exactly what Step 4's
+first command cannot claim.
+
+Expected AFTER: a non-zero count on each of the six.
 
 - [ ] **Step 5: Commit**
 
@@ -568,32 +610,86 @@ backlog"*. **Establish the old→new mapping from the diff itself.**
 - [ ] **Step 2: Find every §-citation in the repo and in memory**
 
 ```bash
-rg --no-ignore -n '§[0-9]+' --glob '*.md' . 2>/dev/null | grep -v '^./.git/' | grep -v 'ROADMAP.md:' | head -40
 export MEM="/c/Users/user/.claude/projects/C--Users-user-Development-Rust-clavity/memory"
-rg -n '§[0-9]+' "$MEM" | head -20
+mkdir -p .clavity/scratch/open-work-phase1
+rg --no-ignore --hidden -n '§[0-9]+' --glob '*.md' --glob '!.git/**' . 2>/dev/null \
+  | grep -v 'ROADMAP.md:' > .clavity/scratch/open-work-phase1/cites-repo.txt
+rg -n '§[0-9]+' "$MEM" > .clavity/scratch/open-work-phase1/cites-mem.txt
+wc -l .clavity/scratch/open-work-phase1/cites-*.txt
 ```
 
-**`rg --no-ignore` is mandatory** — `docs/superpowers/` and `.clavity/` are gitignored and a plain search
-returns a false zero.
+**BOTH flags are mandatory, for two DIFFERENT reasons — measured 2026-08-06:**
+- `--no-ignore` reaches `docs/superpowers/`, which is gitignored (`.gitignore:32-34`).
+- `--hidden` reaches `.clavity/`, which is a **dot-directory**. ripgrep skips hidden paths by *default*,
+  independently of gitignore, so `--no-ignore` alone does **not** see it: measured **1** hit versus **180**
+  with `--hidden` added. The two flags are not interchangeable and neither substitutes for the other.
+- The memory arm needs neither, because a path given to `rg` **explicitly** is searched even though
+  `.claude/` is hidden (measured: 134 hits).
 
-- [ ] **Step 3: Check each citation against the mapping, and repair by RE-ANCHORING**
+🔴 **DO NOT PIPE EITHER ARM THROUGH `head`.** The repo arm matched **569 lines** when measured, so a
+`head -40` shows 7% of the corpus and hides the rest behind an output that looks complete. **That is
+precisely the failure Step 4 and success criterion 3 exist to forbid** — an audit that silently covers a
+fraction of its subject and reports a clean pass. Write both arms to files, review them in full, and state
+the counts in the commit message.
 
-For any citation that predates `252f63c` and points at different content today:
-**rewrite it to name the section's TITLE as well as its number** (e.g. `§7 AGY-SCOPE`). **Never renumber
-the sections to match the citation.** A title-anchored citation degrades to ambiguous rather than to
-silently wrong on the next renumber.
+- [ ] **Step 3: Narrow the corpus by a STATED rule, then date each survivor by its commit**
+
+Measured 2026-08-06 at `5c1bbdd`: **632 repo lines + 101 memory lines = 733**. Most are citations to *spec*
+sections (`spec §5`, `§7a`) which no roadmap renumber can affect. **Narrow it — but state the rule in the
+commit message, because a narrowing you do not declare is the same silent cap as a `head`:**
+
+```bash
+cd .clavity/scratch/open-work-phase1
+grep -iE 'roadmap|backlog' cites-repo.txt cites-mem.txt > cites-inscope.txt
+wc -l cites-inscope.txt
+grep -ivE 'roadmap|backlog' cites-repo.txt cites-mem.txt | wc -l   # the OUT-of-scope count, to report
+```
+
+**Report both numbers.** "Audited N of 733, excluded M because they cite spec sections, not roadmap
+sections" is a result. "Audited 40" is not.
+
+Then, for each in-scope citation, **date it by the commit that introduced it** — a bare `§7` carries no
+year, but the commit that wrote it does:
+
+```bash
+git log -1 --format='%h %ad %s' --date=short -S'<the exact citation text>' -- <the file>
+```
+
+🔴 **Read the commit's DESCRIPTION, not just its date.** A message like
+*"docs(roadmap): mark §1 clavity-classic installer SHIPPED (v0.1.0) + renumber backlog"* names the section
+by **title as well as number**, which is exactly the disambiguation the citation itself lacks. If the
+description names a title that no longer matches the number, the citation has drifted and you have the
+evidence in one line. If the introducing commit **postdates `252f63c`**, the citation was written against
+today's numbering and needs no repair — record that and move on.
+
+⚠️ For a citation in `<MEM>` there is no commit to read: memory is outside git. Date those by content
+against the roadmap as it stands today.
+
+**Repair by RE-ANCHORING, never by renumbering:** rewrite the citation to name the section's TITLE as well
+as its number (e.g. `§7 AGY-SCOPE`). **Never renumber the sections to match the citation.** A
+title-anchored citation degrades to ambiguous rather than to silently wrong on the next renumber.
 
 - [ ] **Step 4: State the result either way**
 
-🔴 **If no broken citation exists, say so explicitly in the commit message.** A silent pass here is
-indistinguishable from an audit that never ran — success criterion 3.
+🔴 **If no broken citation exists, say so explicitly in the commit message,** together with the corpus size,
+the in-scope count and the exclusion rule. A silent pass here is indistinguishable from an audit that never
+ran — success criterion 3.
 
 ```bash
-git add -A docs/ && git commit -m "docs: re-anchor §-citations broken by the 252f63c renumber"
+git add <each repaired file, named explicitly> && git commit -F - <<'EOF'
+docs: re-anchor §-citations broken by the 252f63c renumber
+
+Corpus 733 (632 repo + 101 memory). In scope N, excluded M as spec-section
+citations unaffected by a roadmap renumber. Repaired: <files, or "none - null result">.
+EOF
 ```
 
-⚠️ **If nothing changed, there is nothing to commit and that is correct.** Do not force a commit; record
-the null result in the index and in Task 10's report.
+🔴 **Never `git add -A docs/` here.** Task 8's own header says it changes no file unless a broken citation
+is found, so there is nothing a wildcard can add that naming the files would not. `git add -A` has twice
+swept an unintended file into a commit on this **public** repo — name every path.
+
+⚠️ **If nothing changed, there is nothing to commit and that is correct.** Do not force a commit; record the
+null result in the index and in Task 10's report.
 
 ---
 
@@ -603,14 +699,37 @@ the null result in the index and in Task 10's report.
 
 ```bash
 BASE=<the PHASE 1 BASE SHA from the memory index, NOT ambient HEAD>
+
+echo "== ARM 0 (POSITIVE CONTROL): the diff must NOT be empty =="
+git diff --name-only $BASE..HEAD | wc -l
+echo "== ARM 0b: the working tree must be clean =="
+git status --porcelain
+
 echo "== ARM 1: paths that are not .md (must print nothing) =="
 git diff --name-only $BASE..HEAD | grep -v '\.md$'
 echo "== ARM 2: .md paths that are MECHANISM, not documentation (must print nothing) =="
-git diff --name-only $BASE..HEAD | grep -E '(^|/)(skills|agy_skills|knowledge|hooks|rules)/|(^|/)SKILL\.md$'
+git diff --name-only $BASE..HEAD \
+  | grep -E '(^|/)(skills|agy_skills|knowledge|hooks|rules)/|(^|/)SKILL\.md$|(^|/)(CLAUDE|GEMINI|AGENTS)\.md$'
 ```
 
-Both empty = scope held, and **arm 1 empty also discharges success criterion 8** (no test file changed, so
-no count can have moved). Anything printed = name the file to the owner rather than judging it harmless.
+Arms 1 and 2 empty = scope held, and **arm 1 empty also discharges success criterion 8** (no test file
+changed, so no count can have moved). Anything printed = name the file to the owner rather than judging it
+harmless.
+
+🔴 **ARM 0 IS NOT OPTIONAL — arms 1 and 2 are `grep`s over a diff, and an EMPTY diff satisfies both.** A
+wrong `BASE` (lost, mis-copied, or re-stamped by a resumed Task 0) makes this gate print two clean arms
+while having examined nothing. **The count must be non-zero and must be at least as large as the number of
+surfaces that produced a commit.** If it is zero, the gate did not pass — it did not run.
+
+🔴 **ARM 0b closes the other half:** arms 1 and 2 read *committed* history only, so an uncommitted or
+untracked non-`.md` edit sitting in the working tree is invisible to both. `git status --porcelain` must be
+silent, or the gate is reasoning about a tree that is not the one on disk.
+
+🔴 **`CLAUDE.md` is MECHANISM, not documentation** — measured 2026-08-06: four exist
+(`./CLAUDE.md`, `clavity-classic/`, `clavity-dotnet/`, `ghidrust/`), and every one is binding instruction to
+an agent. Under the original arm 2 an edit to any of them passed **both** arms silently: they end in `.md`
+and they sit in no `skills/`-class directory. `GEMINI.md` and `AGENTS.md` are in the pattern because the
+same rule applies to them the moment one appears.
 
 ⚠️ **No segment is anchored to `plugin/`, deliberately** — three of this repo's four skill roots carry no
 `plugin/` segment, and a `plugin/`-anchored gate cannot see `agy-autotrain/knowledge/driver-cheatsheet.core.md`.
@@ -624,14 +743,25 @@ python3 -c "
 import subprocess
 BASE='<the PHASE 1 BASE SHA>'
 fs=subprocess.run(['git','diff','--name-only',BASE+'..HEAD'],capture_output=True,text=True).stdout.split()
+assert fs, 'EMPTY DIFF - wrong BASE, this check examined nothing'
 for f in fs:
-    d=subprocess.run(['git','show','HEAD:'+f],capture_output=True).stdout
+    r=subprocess.run(['git','show','HEAD:'+f],capture_output=True)
+    if r.returncode != 0:
+        print('UNREADABLE', f, '<-- deleted in range, or bad path; NOT a pass'); continue
+    d=r.stdout
     crlf=d.count(b'\r\n'); lf=d.count(b'\n')-crlf
     print(('CRLF' if crlf and not lf else ('MIXED' if crlf else 'LF')), f)"
 ```
 
-Expected: every file `LF`. With `core.autocrlf` the working tree is legitimately CRLF — **never "normalize"
-a clean file.**
+Expected: every file `LF`, and no `UNREADABLE`. With `core.autocrlf` the working tree is legitimately CRLF
+— **never "normalize" a clean file.**
+
+🔴 **The `returncode` check and the `assert` are both load-bearing, and the original had neither.**
+Measured 2026-08-06: `git show HEAD:<path that does not exist>` returns **zero bytes on stdout**, so the
+counters see `crlf=0, lf=0` and the expression falls through to print **`LF`** — a clean verdict on a file
+it never read. A file deleted anywhere in the range would therefore be reported as passing. Filtering
+deletions out with `--diff-filter=d` hides that case but still cannot distinguish an unreadable file from a
+legitimately empty one; **checking the exit code catches both, and every other read failure besides.**
 
 - [ ] **Step 3: The disposition evidence**
 
@@ -641,6 +771,13 @@ git diff $BASE..HEAD -- '*ROADMAP.md' | grep -E '^\+.*(✅|~~|wont-fix|KILLED|cl
 ```
 
 **These hunks are the evidence that no item was left correct-but-unmarked.** A checkbox is not.
+
+✅ **`'*ROADMAP.md'` is CORRECT as written — do not "fix" it to `'**/ROADMAP.md'`.** A round-1 panel finding
+claimed the single star cannot cross a directory separator and that this pathspec therefore matches none of
+the four roadmaps. **Refuted by measurement 2026-08-06:**
+`git diff --name-only 885905a~1..HEAD -- '*ROADMAP.md'` printed `clavity-classic/ROADMAP.md`. Git pathspec
+globbing is `fnmatch` **without** `FNM_PATHNAME`, so `*` matches `/` — this is exactly why the pattern needs
+no directory prefix, and adding one would instead stop it matching a roadmap at the repository root.
 
 ⚠️ **Count the ROADMAP hunks against the number of items you dispositioned.** If a surface produced fewer
 hunks than items, an item was silently skipped — that is the failure mode this command exists to catch,
