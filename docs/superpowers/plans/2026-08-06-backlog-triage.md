@@ -587,12 +587,17 @@ the index is a recovery hole regardless of how accurate the rest of the epic is.
 - [ ] **Step 1: The allow-list check — this is the scope gate, and it needs BOTH arms**
 
 ```bash
-git diff --name-only <Task 0 SHA>..HEAD > changed.txt
 echo "== ARM 1: paths that are not .md (must print nothing) =="
-grep -v '\.md$' changed.txt
+git diff --name-only <Task 0 SHA>..HEAD | grep -v '\.md$'
 echo "== ARM 2: .md paths that are MECHANISM, not documentation (must print nothing) =="
-grep -E '(^|/)(skills|agy_skills)/|(^|/)SKILL\.md$|(^|/)plugin/(knowledge|hooks)/' changed.txt
+git diff --name-only <Task 0 SHA>..HEAD | grep -E '(^|/)(skills|agy_skills)/|(^|/)SKILL\.md$|(^|/)plugin/(knowledge|hooks)/'
 ```
+
+**Two pipes, no temp file — deliberately.** An earlier draft wrote the list to `changed.txt` in the repo
+root. Measured: `*.log` is ignored (`.gitignore:57`) but **`changed.txt` is not**, so it would sit
+untracked and visible in the root of a **public** repo — and `.gitignore:62` already carries a `diff.txt`
+from exactly this class of leftover. A scope gate should not itself leave an artifact behind, least of all
+in an epic whose Task 5 warns that `git add -A` twice swept an unintended file onto this repo.
 
 🔴 **"Every path ends in `.md`" is NOT sufficient, and believing it is would defeat the entire epic.**
 In this repository `.md` is the extension mechanism is *written in*: every behavioural contract is a
