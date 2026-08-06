@@ -10,6 +10,27 @@ item is then implemented. No item survives on reputation.
 **New features are out of scope.** Everything here already exists as a recorded item. The question is
 which deserve to exist, in what order, and which should stop existing.
 
+## LIVE STATUS — read this before anything else
+
+This spec was rebuilt across three adversarial rounds and **carries its own correction history inline**,
+deliberately: the errors are instructive and hiding them would repeat them. **But that means a skimmed
+sentence may be a recorded MISTAKE rather than an instruction.** Every such passage is marked "an earlier
+draft…" — and this table is the authority if anything below appears to disagree with it.
+
+| item | live disposition | decided by |
+|---|---|---|
+| **§7 AGY-SCOPE** | goes to the §5 gate — **spec it, or kill it** | owner, end of Phase 1 |
+| **§0 DISCIPLINE EFFICACY** | **FAILS the bar on clause 1.** Goes to the §5 gate — **do you override?** Not a KEPT item today | owner, end of Phase 1 |
+| **§8** | **CLOSE** — already answered by a shipped epic | Phase 1 |
+| **§6** | ordinary Phase-1 item; "Owner-surfaced" is not a directive | Phase 1 |
+| **§11** | **KEPT** — passes all three clauses | ranked 7th, Phase 3 |
+| items 1–6 of §6 | **KEPT** — pass all three clauses | Phase 3 |
+| **AT-1 Part B** | candidate **KILL** — needs binary changes the plugin forbids | Phase 1 |
+
+**The two most-corrected claims in this document, so you distrust them by default:** §0's disposition has
+moved **three times** under measurement, and the exception criterion in §2 was wrong once. If you need
+either, read §7a and §5 — not a summary sentence elsewhere.
+
 ---
 
 ## 1. Why now, and the base rate that justifies the effort
@@ -93,8 +114,8 @@ and neither has a specified mechanism."* **Both halves are false for §0:**
   AGY-FIRST consult and measurement"**, followed by a numbered sequence and settled sub-rulings including
   *"Owner ruling on the `PreCompact` channel, same date: ship dispatch-only."*
 
-**So §0 PASSES clause 3.** Sending it to a *"spec it or kill it"* ruling would pose a false dilemma about
-work that is already designed.
+**So §0 PASSES clause 3** — *this is one clause of three, not a disposition.* Sending it to a *"spec it or
+kill it"* ruling would pose a false dilemma about work that is already designed.
 
 **What was wrong second, and is the live statement:** the next draft concluded from that §0 was *"an
 ordinary KEPT item, ranked and implemented like any other."* **That does not follow — clause 3 is one of
