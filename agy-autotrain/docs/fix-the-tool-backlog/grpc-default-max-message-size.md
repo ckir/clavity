@@ -4,6 +4,7 @@ variant: clavity-dotnet
 observed: 2026-08-01
 source-inbox-entry: "A client that reads a peer conversation's full history over an RPC"
 status: open
+last-triaged: 2026-08-06   # oracle: no MaxReceiveMessageSize/MaxSendMessageSize in LsChannel.cs -> confirmed still open
 ---
 
 # Trajectory read hits the gRPC default receive cap and is misreported as a dead peer

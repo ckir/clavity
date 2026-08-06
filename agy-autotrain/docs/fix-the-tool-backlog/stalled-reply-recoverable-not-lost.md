@@ -4,6 +4,7 @@ variant: clavity-dotnet
 observed: 2026-07-31
 source-inbox-entry: "- [assumption] (driver/deterministic) A review transport can stall mid-step while the peer's work continues to completion"
 status: open
+last-triaged: 2026-08-06   # oracle: no idle-expiry poll / retry path in AgyView.cs -> expiry still throws rather than re-polling, confirmed still open
 ---
 
 # An idle-wait expiry discards a reply the peer already finished producing

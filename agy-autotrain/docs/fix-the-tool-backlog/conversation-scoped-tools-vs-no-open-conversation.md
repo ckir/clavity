@@ -4,6 +4,7 @@ variant: clavity-dotnet
 observed: 2026-08-03
 source-inbox-entry: "Endpoint-reachable is not conversation-open: when every peer tool is scoped"
 status: open
+last-triaged: 2026-08-06   # oracle: no "no open conversation"/NoConversation/conversation-existence split anywhere in Clavity.Ls/*.cs -> confirmed still open
 ---
 
 # A live endpoint with NO open conversation fails every tool identically to a dead endpoint

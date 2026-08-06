@@ -4,6 +4,7 @@ variant: both
 observed: 2026-08-03
 source-inbox-entry: "the pre-drain snapshot hook did not fire when agy-curate was invoked as a"
 status: open
+last-triaged: 2026-08-06   # oracle: hooks.json still registers only PreToolUse:Skill / SessionStart / PreCompact and has no UserPromptSubmit event at all -> neither mitigation landed, confirmed still open
 ---
 
 # The pre-drain inbox snapshot silently does not happen when agy-curate is invoked as a slash command

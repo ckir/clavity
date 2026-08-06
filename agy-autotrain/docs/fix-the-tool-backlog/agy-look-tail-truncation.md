@@ -4,6 +4,7 @@ variant: clavity-dotnet
 observed: 2026-07-10
 source-inbox-entry: "- [anti-pattern] When a synchronous review/consult payload is large enough to exceed the driver's idle-wait window,"
 status: open
+last-triaged: 2026-08-06   # oracle: agy_look (AgyView.cs:110) calls BoundedView.Summarize(trajectory, budgetChars) with newestFirst defaulting to false, and the McpTools.cs:14 description documents neither arm -> confirmed still open. NB the tail-anchored view DOES exist (BoundedView.cs:38-41 `newestFirst`), used only by agy_ask and tests; grep AgyView.cs alone and you will wrongly conclude no such view exists at all.
 ---
 
 # Oversized reply's trajectory read-back truncates to the head

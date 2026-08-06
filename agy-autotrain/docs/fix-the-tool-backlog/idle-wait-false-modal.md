@@ -3,7 +3,9 @@ slug: idle-wait-false-modal
 variant: both
 observed: 2026-06-30
 source-inbox-entry: "- [anti-pattern] Bundling an external TOOL-ACTION into a consult reply — asking the peer"
-status: open
+status: fixed
+fixed-by: eea56b1, 07b34b0
+fixed-on: 2026-07-26
 ---
 
 # Bundled tool-action exceeds idle-wait causing false modal
