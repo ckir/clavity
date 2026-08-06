@@ -23,7 +23,7 @@ not write it:
 
 ---
 
-## Read this before Task 1 — five things that will bite you
+## Read this before Task 1 — six things that will bite you
 
 **1. A status line is not evidence of itself.** Every one of the seven stale entries found on 2026-08-06
 looked plausible and was wrong. **Run the oracle. Never disposition from the entry's own prose.**
@@ -45,6 +45,28 @@ red-gates two pinning tests in both drivers.
 **5. Un-reproduced is NOT fixed.** Several entries need a live agy peer in a specific state. If an oracle
 cannot be run, the entry keeps `status: open` and gains `last-triaged: 2026-08-06`. Closing on a failed
 reproduction is the false-clean this whole epic exists to remove.
+
+**6. 🔴 NONE OF THIS IS IDEMPOTENT. Check before you write, every time.** Assume the session can die at any
+moment — that is a standing rule of this project, not a hypothetical. Three steps here append rather than
+set, and re-running them corrupts quietly rather than loudly:
+
+- **Task 1 Step 4** appends a `## A tracked defect MUST carry its reproduction` section to
+  `feedback-preexisting-defects-in-scope.md`. Run twice, the section appears twice — and **Task 1 Step 5's
+  `grep -c` then returns `2` where it expects `1`, so the verification reports a failure whose real cause
+  is a duplicate, not a missing edit.**
+- **Task 1 Step 3** replaces a line beginning `2. **PRE-EXISTING DEFECTS — tracked**`. After a successful
+  first run that string no longer exists, so a re-run finds nothing to replace and must not "fix" that by
+  appending a second item.
+- **Task 7 Step 1** appends the revisit-trigger block to `MEMORY.md`; its Step 2 `grep -c` expects `1`.
+
+**Before every append in this plan, grep for the text you are about to add. If it is already there, the
+step is DONE — skip it and move on.** A `grep -c` returning 2 is not a licence to delete one copy blindly;
+read both, keep the correct one.
+
+**The same applies to the git steps.** Tasks 2, 3, 4 and 5 each end in a commit. On a resumed run the work
+may already be committed and the tree clean — `git commit` then fails with "nothing to commit". **That is
+the expected, healthy outcome of a resume, not an error to work around.** Never reach for `--allow-empty`
+to make the step "pass"; confirm the prior commit exists (`git log --oneline -5`) and continue.
 
 ---
 
@@ -75,7 +97,24 @@ reproduction is the false-clean this whole epic exists to remove.
 git status --short && git rev-parse HEAD
 ```
 
-Expected: no output from `status`, then a SHA. Write it down — Task 8 diffs against it.
+Expected: no output from `status`, then a SHA.
+
+🔴 **Write that SHA into `<memory>/project_backlog-triage.md` before doing anything else, and read it back
+from there in Task 8 — never re-derive it from ambient HEAD.** This is the single piece of state the whole
+plan's evidence rests on, and it is the one a crash destroys.
+
+**The failure it prevents, traced:** the session dies after Task 4; a fresh session starts at Task 0; Task
+0 records `<Task 0 SHA>` as the *post-Task-4* commit; Task 8 Step 2 then runs
+`git diff <Task 0 SHA>..HEAD -- agy-autotrain/docs/fix-the-tool-backlog/ docs/backlog/` and prints
+**nothing at all**, because those dispositions were committed before that SHA. The criterion-7 evidence —
+the whole artifact that proves no entry was left correct-but-unmarked — silently evaporates, and it
+evaporates as a **clean pass**, which is the worst shape a failure can take. Recording it durably at Task
+0 is also just the POWER-FAILURE discipline this project already requires; the plan should not need its
+own mechanism for it.
+
+**If you are RESUMING** (the index already names a Task 0 SHA), keep that SHA, skip Task 0 Step 2's
+baseline run if the index also records the measured N, and go to the task after the last one the index
+marks complete.
 
 - [ ] **Step 2: Record the suite baseline**
 
@@ -292,9 +331,14 @@ last-triaged: 2026-08-06   # oracle: no MaxReceiveMessageSize in LsChannel.cs ->
 grep -L -e 'last-triaged' -e 'fixed-by' agy-autotrain/docs/fix-the-tool-backlog/*.md | grep -vE 'README|_template|DRY-RUN'
 ```
 
-Expected AFTER Task 2: no output. **Run it BEFORE Task 2 as well** — measured 2026-08-06 it lists exactly
-the seven open entries, which is the positive control. A verification you never saw fail is not a
-verification; this repo has already shipped one silence test that passed while the fix was a no-op.
+Expected AFTER Task 2: no output. **Run it BEFORE Task 2 as well** — on a clean start, measured
+2026-08-06, it lists exactly the seven open entries. That is the positive control: a verification you
+never saw fail is not a verification, and this repo has already shipped one silence test that passed while
+the fix was a no-op.
+
+**On a RESUMED run it will list fewer than seven, or none.** That is not a broken control — it is the
+worklist telling you which entries are still outstanding. Do the ones it names and move on; do not
+re-triage the ones it has already cleared.
 
 **Two things about this command are load-bearing:**
 - **It matches `last-triaged` OR `fixed-by`.** The disposition table above gives a `fixed` entry
@@ -354,7 +398,7 @@ re-open the same question.
 
 ```bash
 git add agy-autotrain/docs/fix-the-tool-backlog/
-git commit -m "docs(backlog): confirm the fixed entry's provenance, classify the two non-entries"
+git commit -m "docs(backlog): confirm the fixed entry's provenance, classify the one non-entry"
 ```
 
 ---
@@ -547,17 +591,42 @@ git diff --name-only <Task 0 SHA>..HEAD > changed.txt
 echo "== ARM 1: paths that are not .md (must print nothing) =="
 grep -v '\.md$' changed.txt
 echo "== ARM 2: .md paths that are MECHANISM, not documentation (must print nothing) =="
-grep -E '(^|/)(plugin|scripts|src|installer)/|(^|/)SKILL\.md$|(^|/)\.github/' changed.txt
+grep -E '(^|/)(skills|agy_skills)/|(^|/)SKILL\.md$|(^|/)plugin/(knowledge|hooks)/' changed.txt
 ```
 
 🔴 **"Every path ends in `.md`" is NOT sufficient, and believing it is would defeat the entire epic.**
 In this repository `.md` is the extension mechanism is *written in*: every behavioural contract is a
-`plugin/skills/<name>/SKILL.md` (seven of them in `clavity-dotnet/plugin/skills/` alone), and driver
-behaviour is carried by `plugin/knowledge/*.md`. A single-arm extension test greens a diff that adds a
-brand-new skill — precisely the mechanism the owner declined. Arm 2 is what makes the gate mean what it
-claims. Verified 2026-08-06 against sample paths: arm 2 catches `…/skills/agy-capstone/SKILL.md` and
-`…/plugin/knowledge/driver-cheatsheet.core.md`, while `docs/backlog-triage-runbook.md`,
-`agy-autotrain/docs/fix-the-tool-backlog/*.md` and `clavity-classic/README.md` fall in neither arm.
+`SKILL.md`, and driver behaviour is carried by `plugin/knowledge/*.md`. A single-arm extension test greens
+a diff that adds a brand-new skill — precisely the mechanism the owner declined.
+
+**Arm 2 asks one question only: is this `.md` file MECHANISM?** Arm 1 has already guaranteed every path is
+`.md`, so arm 2 does not need to name `scripts/`, `src/`, `justfile` or a CI workflow — none of those are
+`.md` and arm 1 catches them all. Keeping arm 2 to the mechanism question is what makes it precise:
+
+- It matches **any** `skills/` or `agy_skills/` segment, not just `plugin/skills/`. Measured 2026-08-06,
+  this repo has **four** skill roots and three of them carry no `plugin/` segment at all —
+  `agy-autotrain/skills/`, `clavity-classic/agy_skills/`, `commonmemory/skills/`. A gate anchored on
+  `plugin/` would wave a new skill straight through in three of four products.
+- It matches a **supporting** `.md` inside a skill directory, not only `SKILL.md`. A skill's behaviour
+  routinely lives in a file the SKILL.md references.
+
+🔴 **Arm 2 must NOT be anchored on `.github/` or `installer/`.** An earlier draft was, and it would have
+red-flagged Task 5's own deliverables: `.github/pull_request_template.md` and
+`clavity-classic/installer/clavity-classic-bridge-README-FIRST.md` are both on Task 5's confirmed-findings
+list, and both are ordinary docs. **A scope gate that fires on the plan's own legitimate output trains its
+reader to ignore it**, which is worse than no gate.
+
+Verified 2026-08-06 against sample paths, in both directions: arm 2 catches
+`clavity-dotnet/plugin/skills/agy-capstone/SKILL.md`, `agy-autotrain/skills/agy-curate/SKILL.md`,
+`agy-autotrain/skills/agy-curate/reference.md`, `clavity-classic/agy_skills/responder/SKILL.md`,
+`clavity-dotnet/plugin/knowledge/driver-cheatsheet.core.md` and `clavity-dotnet/plugin/hooks/notes.md`;
+and clears `docs/backlog-triage-runbook.md`, both `docs/backlog/` and `fix-the-tool-backlog/` entries,
+`.github/pull_request_template.md`, `clavity-classic/installer/…README-FIRST.md`,
+`clavity-classic/README.md` and `agy-autotrain/README.md`.
+
+⚠️ **Do not "improve" this with a negative lookahead.** `grep -E` is POSIX ERE and has no `(?!…)`; a
+pattern using one does not error, it silently matches **nothing** — measured — so an exclusion written
+that way greens every path it was meant to police.
 
 Both arms empty = scope held. Anything printed by either arm = the "build nothing" decision was broken,
 and you name the file to the owner rather than deciding for yourself whether it was harmless.
@@ -639,7 +708,18 @@ whether this is the mitigation the entry asked for." That judgement cannot be pr
 what the hit is, and pretending otherwise would be the fabricated precision this repo's plan discipline
 exists to prevent.
 
-**What round 3 changed, and the one lesson under all of it.** Nine findings folded, from a solo panel and
+**What the second plan round changed.** Seven more findings, and the sharpest was a regression **introduced
+by the first round's own fix**: the new scope gate was anchored on `.github/` and `installer/`, so it would
+have red-flagged Task 5's own deliverables — a gate that fires on the plan's legitimate output, which
+trains its reader to ignore it. Rewriting it around the actual question (*is this `.md` file mechanism?*)
+also closed a hole the first version had: three of this repo's four skill roots carry no `plugin/` segment.
+The peer's proposed remedy used a `(?!…)` lookahead, which `grep -E` does not support and which silently
+matches nothing — it would have greened every path it was meant to police. Also folded: the plan was not
+idempotent (three appends and four commits break differently on a resumed run), and a crash would have
+silently emptied the criterion-7 evidence by re-recording `<Task 0 SHA>` as a later commit.
+**A fix is a new claim. Both rounds proved it on this plan.**
+
+**What the first plan round changed, and the one lesson under all of it.** Nine findings folded, from a solo panel and
 an independent agy round that converged on the same three blockers: the entry set was **seven, not six**;
 Task 3 Step 2 acted on a **false claim** about a well-formed file; the scope gate tested only the file
 **extension**, in a repo where `SKILL.md` is how mechanism is written; the disposition table and its own
