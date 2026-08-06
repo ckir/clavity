@@ -19,7 +19,17 @@ this sweep finds — items it may delete cannot be planned against. Phase 1 ends
 
 ---
 
-## Read this before Task 1 — five things that will bite you
+## Read this before Task 1 — seven things that will bite you
+
+**0. READ AN ITEM'S STATUS LINE BEFORE ITS EVIDENCE.** A section can carry pages of live-sounding text —
+open questions, options with none chosen, "needs a consult first" — that its own status line marks as
+**preserved historical record of work already shipped**. Quoting that text as current state is how you order
+a finished item killed.
+
+🔴 **This plan did exactly that to AT-2 and was caught in review** (Task 3 Step 3). It is the **third**
+false disposition in this epic from one cause: **a grep hit whose enclosing section was never opened.** The
+first two cost a retraction and then a retraction of the retraction. **Open the section. Read the status
+line. Then read the evidence.**
 
 **1. `<MEM>` is this path.** Shell state does not persist between tool calls in this harness, so re-export
 it in every call that uses it:
@@ -188,12 +198,18 @@ newest entry is `## 0.3.0 — 2026-08-03`.
 - [ ] **Step 2: Confirm there is genuinely nothing open**
 
 ```bash
-grep -nE '^- \[ \]|TODO|▶|open item|Forward backlog' commonmemory/ROADMAP.md || echo "  NO open markers -> surface CLEAN"
+grep -nE '^- \[ \]|TODO|▶|Forward backlog' commonmemory/ROADMAP.md || echo "  NO open markers -> surface CLEAN"
 ```
 
 Expected: `NO open markers -> surface CLEAN`. **If anything prints, that item is a real find** — it means
 a surface asserting "no open items remain" contains one, which is this epic's whole subject. Disposition it
 against the bar before moving on.
+
+🔴 **`open item` was removed from that alternation and must not go back.** It matched the file's own
+sentence *"T1 is **shipped**. No open items remain."* (`commonmemory/ROADMAP.md:12`), so the clean-surface
+echo could never fire and **the one surface expected to pass reported a find every time.** The remaining four
+alternatives cover real open markers. **This is the same defect as Task 3 Step 2's probe: a check whose
+matching text is the very sentence asserting the thing is fine.**
 
 - [ ] **Step 3: Record and mark the surface swept**
 
@@ -272,29 +288,62 @@ that decides it.
 
 ```bash
 sed -n '140,164p' agy-autotrain/ROADMAP.md
-rg -n 'line-density|anti-poison|MaxBytes|16 ?KB|density' agy-autotrain/skills/agy-curate/SKILL.md || echo "  no density cap in the skill -> not shipped"
-git log --oneline --all --grep='line-density' --grep='anti-poison' -i | head -5
+echo "== HALF 1: is there a LINE-density cap, distinct from the coarse 16 KB BYTE cap? =="
+rg -in 'lines?[- ]density|density cap|max.*[0-9]+ lines|[0-9]+ lines (max|cap)|ordered breach' \
+  agy-autotrain/skills/agy-curate/SKILL.md || echo "  ZERO -> no line-density cap shipped"
+echo "== HALF 2: is there an explicit anti-poisoning gate? =="
+rg -in 'anti-poison' agy-autotrain/skills/agy-curate/SKILL.md || echo "  ZERO -> no gate shipped"
+git log --oneline --all -S'line-density' -- agy-autotrain/ | head -5
 ```
 
-Expected per the spec: not shipped → **KEPT**, ranked 6th in Phase 3. Record all three clause
-justifications. Clause 1 is the **silent** GROWTH drop past the byte cap — name the loss.
+🔴 **DO NOT use `rg 'line-density|anti-poison|MaxBytes|16 ?KB|density'` as one probe.** Measured 2026-08-06:
+`16 ?KB` matches `SKILL.md:191` and `:193`, which describe the **pre-existing byte cap this item is asking to
+put something in FRONT of.** The probe therefore matches whether or not the feature shipped, and its
+`|| echo "not shipped"` fallback can never fire. **A probe that cannot return the failing answer is not an
+oracle.** Bare `density` has the same defect.
 
-- [ ] **Step 3: AT-2 — run the oracle**
+🔴 **AT-1 Part A IS TWO DELIVERABLES, and they measure differently. Judge them separately:**
+- **Half 1 — the line-density cap plus ordered breach.** Measured: **ZERO matches. Not shipped.**
+- **Half 2 — "a single explicit anti-poisoning gate".** Measured: `SKILL.md:250` already carries
+  *"**Anti-poisoning circuit-breaker.** You (the curator) are the gate, not a transcriber…"*, which rejects
+  unverified, over-general or one-off entries. **The roadmap's gap statement — "there is no single explicit
+  anti-poisoning gate" — appears to be already satisfied, and by prose rather than by a mechanism.**
+
+**Decide half 2 explicitly; do not assume either way.** If `:250` satisfies it, Part A is
+**partially shipped** and the vocabulary table's rule applies: mark that step ✅ individually and leave the
+section open on half 1 alone. If it does not — because Part A wants a *mechanical* gate and `:250` is an
+instruction to a human curator — say so in one line and keep both halves open.
+
+⚠️ **"Not shipped → KEPT" was this plan's original expectation and it is too coarse.** Ranking a
+partially-shipped item as unstarted is the exact error this epic exists to remove; it is why §0 gets a
+which-steps-shipped measurement in Task 4, and Part A earns the same treatment.
+
+Record all three clause justifications for whatever remains open. Clause 1 is the **silent** GROWTH drop past
+the byte cap — name the loss.
+
+- [ ] **Step 3: AT-2 — it is ALREADY CLOSED. Confirm, and change nothing.**
 
 ```bash
-sed -n '20,37p' agy-autotrain/ROADMAP.md
-sed -n '94,127p' agy-autotrain/ROADMAP.md   # "Options to weigh (none chosen...)" + open questions
+sed -n '20,32p' agy-autotrain/ROADMAP.md
 ```
 
-🔴 **AT-2 says outright it "needs an AGY-FIRST consult before it is specced" and lists options with none
-chosen.** That is an unresolved design fork → **fails clause 3**. Its owner marking is not a priority
-directive, so it does **not** qualify for the §5 exception (spec §2's three-part test).
-**Disposition: KILLED on clause 3**, struck through in place with the clause and the "none chosen" line
-quoted as the evidence.
+Expected: **`**Status:** ✅ **SHIPPED AND CLOSED 2026-08-02**`** — capstone GREEN over `6d79bee..a0b2d7b`,
+deliverable `agy-autotrain/hooks/agy-inbox-snapshot.sh` shipped and registered with a 22-test suite.
+**Disposition: CLOSED, already done. No edit needed** — same shape as Task 2 Step 2.
 
-⚠️ **If you disagree — if AT-2 looks like it has a settled mechanism after all — STOP and report it rather
-than keeping it.** A fourth item reaching the §5 gate is a finding the spec explicitly says to surface, not
-a licence to widen the epic.
+🔴 **AN EARLIER DRAFT OF THIS PLAN ORDERED AT-2 KILLED ON CLAUSE 3, AND THAT WAS WRONG.** It quoted
+`agy-autotrain/ROADMAP.md:94` — *"Options to weigh (none chosen — this needs an AGY-FIRST consult before it
+is specced)"* — as evidence of a live unresolved fork. **That line is real, and it is inside a section whose
+own status line says the work shipped**, kept deliberately: *"everything from here down is the RECORD of
+that, not an open question."*
+
+**This is the third time in this epic that one cause produced a false disposition: a grep hit whose
+enclosing section was never opened.** It is also the single worst outcome available to this sweep — an epic
+whose purpose is finding items recorded as open but actually shipped, itself ordering a shipped item killed.
+**Before dispositioning ANY item, read its status line first and its evidence second.**
+
+⚠️ AT-2's heading *did* read "open, needs brainstorming" for four days after it closed, and the entry says so.
+That is a real instance of this epic's base rate — **already corrected, so it is not a new find.**
 
 - [ ] **Step 4: Commit**
 
@@ -601,11 +650,22 @@ miscounts itself is the exact defect this epic exists to remove**, and this one 
 
 ```bash
 git show --stat 252f63c | head -20
-git show 252f63c -- clavity-dotnet/ROADMAP.md | grep -E '^[+-]### [0-9]' | head -20
+git show 252f63c -- ROADMAP.md | grep -E '^[+-]### [0-9]'
 ```
 
 Verified: its message is *"docs(roadmap): mark §1 clavity-classic installer SHIPPED (v0.1.0) + renumber
 backlog"*. **Establish the old→new mapping from the diff itself.**
+
+🔴 **The path is `ROADMAP.md`, NOT `clavity-dotnet/ROADMAP.md` — the roadmap was at the repository ROOT when
+`252f63c` was written, and moved during the monorepo consolidation.** Measured:
+`git cat-file -e 252f63c:clavity-dotnet/ROADMAP.md` → *"fatal: path … exists on disk, but not in
+'252f63c'"*, while the root path resolves and the corrected command yields **11** heading lines.
+
+⚠️ **This is a trap the whole plan is built to catch, and it caught the plan.** A pathspec naming today's
+location silently returns an **empty diff** for a historical commit — no error, no warning — so the audit
+would have concluded "nothing was renumbered" and passed. **When a command reads history, verify the path
+existed at that commit** (`git cat-file -e <sha>:<path>`), because a moved file makes an empty result
+indistinguishable from a clean one.
 
 - [ ] **Step 2: Find every §-citation in the repo and in memory**
 
@@ -786,11 +846,26 @@ and an earlier epic's version of it under-reported by one and read as a clean pa
 - [ ] **Step 4: Anomalies file unchanged in count by this epic**
 
 ```bash
-grep -c '^- \[' .clavity/local-anomalies.md 2>/dev/null || echo 0
+if [ -f .clavity/local-anomalies.md ]; then
+  grep -c '^- \[' .clavity/local-anomalies.md
+else
+  echo "0 (file absent)"
+fi
 ```
 
 Any entries added during the sweep are legitimate captures. **Report the count; do not triage them here** —
 that is `open-issues`' job with its own two-outcome procedure.
+
+⚠️ **`grep -c … || echo 0` prints `0` TWICE** — measured 2026-08-06. `grep -c` exits **1** on a genuine
+zero-count, so the fallback fires on top of the `0` that `-c` already printed, and the two cases the
+fallback exists to distinguish — *file present with no entries* and *file missing* — become
+indistinguishable.
+
+🔴 **`test -f X && grep -c … || echo …` DOES NOT FIX IT — measured, it still double-prints.** The `||` binds
+to the whole `&&` chain, so `grep`'s exit-1 still triggers the fallback. **An explicit `if`/`else` is the
+only shape that works here**, because it is the only one in which `grep`'s exit code is not a control-flow
+signal. *(This correction was itself caught by re-running the probe after fixing it — which is the entire
+argument for running a fix rather than reading it.)*
 
 ---
 
