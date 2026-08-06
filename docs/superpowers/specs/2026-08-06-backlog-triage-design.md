@@ -147,6 +147,80 @@ file is a GENERATED view of `docs-audit-findings.json` and is overwritten by the
 judgement written there is erased by the tool that produced it. The two already-checked findings are
 recorded there, with the six unchecked ones named so the section cannot be misread as a clearance.
 
+### U5 — The runbook, so the next session does not re-derive any of this (owner-directed)
+
+**`docs/backlog-triage-runbook.md`**, matching the established naming of `docs/release-runbook.md` and
+`docs/drain-knowledge-runbook.md`. Internal, deliberately NOT on `docs/user-facing-docs.txt`.
+
+Everything below was discovered by measurement in ONE session and would otherwise be re-discovered:
+
+1. **The six tracking surfaces, by path.** Four `ROADMAP.md`, `agy-autotrain/docs/fix-the-tool-backlog/`,
+   `docs/backlog/`, `docs/docs-audit-findings.md`, `.clavity/local-anomalies.md`, and out-of-tree memory.
+   **Two of these were missing from every prior inventory** — the list is the single most re-derivable fact here.
+2. **Measure, never read.** Every one of the seven stale entries looked plausible. State the oracle per
+   entry: a command, a test name, or a `file:line` — a status line is not evidence of itself.
+3. **Per-surface closing conventions, including the trap.** `fix-the-tool-backlog/` is **append-only**;
+   close by editing frontmatter to `status: fixed` + `fixed-by` + `fixed-on`, and **never** touch the
+   driver-cheatsheet rule — `_template.md:14-18` forbids conflating those two gates.
+4. **Un-reproduced is not fixed.** The third disposition and why it exists.
+5. **`docs-audit-findings.md` is LEADS, not defects.** 2 of 2 spot-checked were stale or a misparse; its
+   claim counts swing run-to-run on unchanged files (`docs-audit.ps1:16-19`). Record judgements in
+   `memory/project_docs-accuracy-audit.md` — the punch-list itself is generated and gets overwritten.
+6. **Searching for "are any left?" needs `rg --no-ignore`.** Both the Grep tool and bash `grep` returned
+   false zeros this session, in opposite directions, and `.clavity/` + `docs/superpowers/` are gitignored.
+7. **The three revisit-triggers**, so a future session knows when this decision expires.
+8. **Why no mechanism exists** — with the measured counts, so nobody rebuilds Direction B from scratch.
+9. **The dual-variant twin check.** Verifying a hook or skill fix in `clavity-dotnet/plugin/` ONLY is a
+   trap: unless it is mirrored to `clavity-classic/plugin/` or enrolled in `check-seed-artifacts-synced.sh`'s
+   `divergent()` (`:27-29`, which exempts the classic-only `agy-drive-session-reset.sh`), the defect is
+   still live on the other driver. **Sixteen of this repo's hook files are byte-identical pairs** — a
+   single-driver check answers half the question.
+10. **The `wont-fix` disposition.** `_template.md:6` permits `open | fixed | wont-fix`, and **no entry
+    currently uses it**, so a future author has no example to copy — which is exactly why it belongs here.
+    Record what a deliberate architectural refusal looks like and where its reason goes. D2 in this epic is
+    the closest live case.
+11. **`ROADMAP.md` is forward-looking; `CHANGELOG.md` is release history — never backfill one into the
+    other.** This was the literal root cause of §3 appearing as both pending and shipped. In `ROADMAP.md`
+    mark a forward item ✅ SHIPPED in place; leave release history to the generated changelog.
+12. **Routing for a NEWLY observed problem**, so the next surface is not invented: transient session
+    friction → `.clavity/local-anomalies.md`; a driver/bridge execution defect with a code-level mitigation
+    → `fix-the-tool-backlog/`; architecture or a planned increment → the owning `ROADMAP.md`.
+
+### U6 — Close what this epic fixes, and make closing the last step (owner-directed)
+
+**The failure being prevented is specific and measured:** AT-2 and the two tracked-debt items each had a
+capstone AND a ledger row, and their entries still read "open" afterwards. Work finished; the entry did not.
+
+- **This epic closes its own:** every entry it dispositions is marked closed on its own surface, in the
+  same commit range, using that surface's convention (U5.3). No entry is left correct-but-unmarked.
+- **The standing rule goes in the runbook, and it must cover BOTH epic shapes** — anchored to provenance,
+  not to a surface sweep, because "reconcile all six surfaces" is the kind of universal instruction an
+  agent agrees with and skips:
+  - **Single-origin epic** (spawned from a `ROADMAP` §, a `fix-the-tool-backlog/<slug>.md`, an anomaly, or
+    a memory entry): close THAT entry in the final commit range.
+  - **Sweep epic** (no single origin — it resolves many): close every entry named in the epic's own Scope
+    section.
+  🔴 **The first draft of this rule said only "close the entry that originated it", which does not cover
+  THIS epic — a sweep with no single origin — nor the pre-release defect sweep before it. A rule that
+  fails on its own author's case is already wrong.** Caught by the panel.
+- **Epics with genuinely no tracking entry** (an ad-hoc fix, a spike) close nothing and that is correct.
+  The rule must say so, or it invites inventing an entry to satisfy a checklist.
+
+🔴 **State the limitation honestly in the runbook, do not oversell it.** This is a documented step, not an
+enforced gate. Three ways it fails, and all three must be written down:
+
+1. **Ordinary commits consult nothing.** Two of the seven stale entries were fixed by `01b97a9` and
+   `5542d38`, which convened no epic and would read no runbook.
+2. **A passive document in `docs/` is invisible to subagents and fresh sessions** unless something injects
+   it into their prompt. Nothing does. This epic deliberately builds no injector — which means the runbook
+   helps whoever thinks to open it, and that is a smaller set than "everyone".
+3. **An incidental fix cannot close an entry its author never knew existed.** Someone refactoring
+   `GoldenHeader.cs` fixes a symptom tracked in `fix-the-tool-backlog/` without ever seeing the file.
+
+It narrows recurrence; it does not end it. If it proves insufficient, that is revisit-trigger 3 firing, and
+the mechanism decision reopens **with evidence rather than on principle** — which is the point of writing
+the triggers down instead of arguing the mechanism now.
+
 ## Explicitly OUT of scope
 
 - Any new checker, gate, protocol step, or CI assertion. That is the decision, not an omission.
@@ -173,6 +247,17 @@ recorded there, with the six unchecked ones named so the section cannot be misre
    commit range as the triage. Not "somewhere a future session will read" — that is unpinnable and passes
    by assertion. `MEMORY.md` is the file loaded into every session's context, which is what makes it the
    only location that satisfies the intent.
+6. **`docs/backlog-triage-runbook.md` exists and carries all eight items of U5.** Checkable by reading it
+   against that list — each numbered item is present or the criterion fails. A runbook that omits the
+   surface enumeration or the append-only trap has failed at exactly the point it was written to cover.
+7. **No entry this epic dispositions is left correct-but-unmarked.** For every item triaged, its own
+   surface shows the disposition, using that surface's convention. **The auditable artifact is
+   `git diff` of every touched tracking file, printed in the final task** — the hunks (`- status: open` →
+   `+ status: fixed`, or `+ ✅ SHIPPED`) ARE the evidence. "Re-read each surface at the end" was the first
+   phrasing and it collapses into the same trust-the-checkbox failure the criterion names; a diff hunk
+   cannot be satisfied by assertion.
+8. **`MEMORY.md` and the topic file agree with the surfaces.** The index has been stale twice today; an
+   epic about staleness that leaves its own index wrong has not landed.
 
 ## Testing
 
