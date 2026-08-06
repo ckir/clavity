@@ -63,7 +63,23 @@ this sweep finds — items it may delete cannot be planned against. Phase 1 ends
 
 ---
 
-## Read this before Task 1 — seven things that will bite you
+## Read this before Task 1 — eight things that will bite you
+
+**7. EVERY NUMBER IN THIS PLAN IS STALE. Anchor to TEXT, and re-measure every count.** This is the lesson
+this plan learned most expensively — it recurred in four different shapes across four review rounds, and
+the last two instances were inside the fix for the first:
+
+- **A line number into a file this plan EDITS** is correct when written and wrong when read. One line in
+  `MEMORY.md` was cited three times in one day — `:45`, `:44`, `:43` — and sits at `:58` for a different
+  item. **Nobody was careless.** `grep` for the text instead.
+- **A `sed` range into a file the same task edits** is the same bug wearing different clothes. Use `awk`
+  content ranges, or `grep -n` for the heading first and use what it prints.
+- **A measured count of a corpus that CONTAINS this plan** changes as you edit the plan: the §-citation
+  corpus went 733 → 745 during review, with no sweep having run.
+- **A line number into a git-tracked file that MOVED** returns an empty diff with no error (Task 8).
+
+**The rule: if a number can move, the plan states how to FIND the thing, not where it was.** Any line
+number that survives here is illustrative — verify it before relying on it, and prefer the anchor.
 
 **0. READ AN ITEM'S STATUS LINE BEFORE ITS EVIDENCE.** A section can carry pages of live-sounding text —
 open questions, options with none chosen, "needs a consult first" — that its own status line marks as
@@ -252,7 +268,7 @@ costs 255–430s per run and would prove strictly less. **Do not run it in Phase
 
 **Files:** `commonmemory/ROADMAP.md` (read-only if the claim holds)
 
-- [ ] **Step 1: Run the three-way oracle on its only claim**
+- [ ] **Step 1: Run the four-way oracle on its only claim**
 
 ```bash
 sed -n '10,12p' commonmemory/ROADMAP.md
@@ -334,7 +350,17 @@ ruling), 1 already CLOSED at 885905a`.
 
 **Files:** Modify `agy-autotrain/ROADMAP.md`
 
-Three items, verified: **AT-2** (line 20), **AT-1 Part A** (line 140), **AT-1 Part B** (line 165).
+Three items. **Locate each by its heading, not by a line number** — this task EDITS the same file it reads,
+so a range that is right in Step 1 can be wrong by Step 3:
+
+```bash
+grep -n '^## AT-2\|^### Part A\|^### Part B' agy-autotrain/ROADMAP.md
+```
+
+Expected: three matches — `## AT-2 — Durability for the *accumulated* observations inbox`,
+`### Part A — Volume: line-density cap …`, `### Part B — Relevance: project-local learning tier …`.
+**Use the line numbers this prints, not any written below**; the `sed` ranges in the steps that follow were
+correct at `5c1bbdd` and are illustrative only.
 
 - [ ] **Step 1: AT-1 Part B — run the oracle on the candidate KILL**
 
@@ -722,9 +748,9 @@ every read of a `<MEM>` file to its text.**
 
 - [ ] **Step 2b: `MEMORY.md`'s whole `▶ NEXT — ranked` section — the SEVENTH surface**
 
-🔴 **THE SURFACE IS THE WHOLE SECTION, NOT JUST THE `PARKED` LINE.** A first pass scoped this to line 57
-alone; the confirming round caught that as an **incomplete fold** — the dominant fold defect in this
-project. The section holds **five numbered items** and at least three carry open work:
+🔴 **THE SURFACE IS THE WHOLE SECTION, NOT JUST THE `PARKED` LINE.** A first pass scoped this to the
+`PARKED` line alone; the confirming round caught that as an **incomplete fold** — the dominant fold defect
+in this project. The section holds **five numbered items** and at least three carry open work:
 
 ```bash
 export MEM="/c/Users/user/.claude/projects/C--Users-user-Development-Rust-clavity/memory"
@@ -777,7 +803,7 @@ point. **Restoring a `.bak` taken at Step 2b would silently discard every index 
 - If you must restore after later edits, restore into a **scratch copy** and merge by hand — never straight
   over the live file.
 
-Expected: **line 57**, reading *"**PARKED (do NOT start until the owner says):** ship-agy-disciplines SP1 ·
+Expected: one match, reading *"**PARKED (do NOT start until the owner says):** ship-agy-disciplines SP1 ·
 Phase-2 A2 hook-vs-gate · ME2 banner-injector · 2 stale pre-monorepo specs · the deferred papercut list."*
 
 🔴 **Measured 2026-08-06: ZERO of those five items appear on ANY of the six enumerated surfaces.** They are
@@ -867,17 +893,24 @@ wc -l .clavity/scratch/open-work-phase1/cites-*.txt
 - The memory arm needs neither, because a path given to `rg` **explicitly** is searched even though
   `.claude/` is hidden (measured: 134 hits).
 
-🔴 **DO NOT PIPE EITHER ARM THROUGH `head`.** The repo arm matched **569 lines** when measured, so a
-`head -40` shows 7% of the corpus and hides the rest behind an output that looks complete. **That is
+🔴 **DO NOT PIPE EITHER ARM THROUGH `head`.** The repo arm matched **569 lines** on the first measurement
+and over 600 later, so a `head -40` shows well under a tenth of the corpus and hides the rest behind an
+output that looks complete. **That is
 precisely the failure Step 4 and success criterion 3 exist to forbid** — an audit that silently covers a
 fraction of its subject and reports a clean pass. Write both arms to files, review them in full, and state
 the counts in the commit message.
 
 - [ ] **Step 3: Narrow the corpus by a STATED rule, then date each survivor by its commit**
 
-Measured 2026-08-06 at `5c1bbdd`: **632 repo lines + 101 memory lines = 733**. Most are citations to *spec*
-sections (`spec §5`, `§7a`) which no roadmap renumber can affect. **Narrow it — but state the rule in the
-commit message, because a narrowing you do not declare is the same silent cap as a `head`:**
+🔴 **RE-MEASURE THIS CORPUS. DO NOT TRUST ANY NUMBER WRITTEN HERE.** It was **632 + 101 = 733** at
+`5c1bbdd` and **641 + 104 = 745** a few hours later, with no sweep having run in between. **The corpus
+contains this plan and the memory index**, so every edit made *while reviewing* it changes the number it
+reports — a measurement that includes its own instrument. Report the figure **you** measure, and expect it
+to differ from this paragraph.
+
+Most matches are citations to *spec* sections (`spec §5`, `§7a`) which no roadmap renumber can affect.
+**Narrow it — but state the rule in the commit message, because a narrowing you do not declare is the same
+silent cap as a `head`:**
 
 ```bash
 cd .clavity/scratch/open-work-phase1
