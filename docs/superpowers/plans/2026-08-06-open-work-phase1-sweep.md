@@ -65,22 +65,6 @@ this sweep finds — items it may delete cannot be planned against. Phase 1 ends
 
 ## Read this before Task 1 — eight things that will bite you
 
-**7. EVERY NUMBER IN THIS PLAN IS STALE. Anchor to TEXT, and re-measure every count.** This is the lesson
-this plan learned most expensively — it recurred in four different shapes across four review rounds, and
-the last two instances were inside the fix for the first:
-
-- **A line number into a file this plan EDITS** is correct when written and wrong when read. One line in
-  `MEMORY.md` was cited three times in one day — `:45`, `:44`, `:43` — and sits at `:58` for a different
-  item. **Nobody was careless.** `grep` for the text instead.
-- **A `sed` range into a file the same task edits** is the same bug wearing different clothes. Use `awk`
-  content ranges, or `grep -n` for the heading first and use what it prints.
-- **A measured count of a corpus that CONTAINS this plan** changes as you edit the plan: the §-citation
-  corpus went 733 → 745 during review, with no sweep having run.
-- **A line number into a git-tracked file that MOVED** returns an empty diff with no error (Task 8).
-
-**The rule: if a number can move, the plan states how to FIND the thing, not where it was.** Any line
-number that survives here is illustrative — verify it before relying on it, and prefer the anchor.
-
 **0. READ AN ITEM'S STATUS LINE BEFORE ITS EVIDENCE.** A section can carry pages of live-sounding text —
 open questions, options with none chosen, "needs a consult first" — that its own status line marks as
 **preserved historical record of work already shipped**. Quoting that text as current state is how you order
@@ -151,6 +135,22 @@ last (spec §8a): every surface that git *can* attest is banked before the one i
 **6. Before resuming ANY task, check the working tree is clean** (`git status --short`). A crash can leave a
 half-written edit uncommitted; resuming on top of it silently merges two tasks into one commit and defeats
 the one-commit-per-surface staging. If it is dirty, identify which task wrote it before continuing.
+
+**7. EVERY NUMBER IN THIS PLAN IS STALE. Anchor to TEXT, and re-measure every count.** This is the lesson
+this plan learned most expensively — it recurred in four different shapes across five review rounds, and
+the last two instances were inside the fix for the first:
+
+- **A line number into a file this plan EDITS** is correct when written and wrong when read. One line in
+  `MEMORY.md` was cited three times in one day — `:45`, `:44`, `:43` — and the `PARKED` line moved from
+  `:57` to `:58` mid-review. **Nobody was careless.** `grep` for the text instead.
+- **A `sed` range into a file the same task edits** is the same bug wearing different clothes. Use `awk`
+  content ranges, or `grep -n` the heading first and use what it prints.
+- **A measured count of a corpus that CONTAINS this plan** changes as you edit the plan: the §-citation
+  corpus went 733 → 745 during review, with no sweep having run.
+- **A line number into a git-tracked file that MOVED** returns an empty diff with no error (Task 8).
+
+**The rule: if a number can move, the plan states how to FIND the thing, not where it was.** Any line
+number that survives here is illustrative — verify it before relying on it, and prefer the anchor.
 
 ---
 
