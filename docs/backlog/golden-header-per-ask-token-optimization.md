@@ -1,10 +1,10 @@
 # Backlog stub — golden-header per-ask token optimization
 
 **Status:** BACKLOG (not started). **Raised:** 2026-07-11 (token-efficiency audit of the agy-knowledge-delivery
-design). **Last triaged:** 2026-08-06 (confirmed unstarted — `AgyView.cs:83` still calls
+design). **Scope:** cross-cutting — `clavity-dotnet` + `clavity-classic` (the shared golden-header injection).
+**Last triaged:** 2026-08-06 (confirmed unstarted — `AgyView.cs:83` still calls
 `GoldenHeader.TryReadCombined(dir, Warn)` inside the ask path with no cache or once-per-conversation guard,
 and classic does the same at `main.rs:511`; neither driver has changed).
-**Scope:** cross-cutting — `clavity-dotnet` + `clavity-classic` (the shared golden-header injection).
 **NOT part of** the agy-knowledge-delivery spec (that is driver-facing delivery; this is the peer-facing header).
 
 ## Observation (VERIFIED in code)
