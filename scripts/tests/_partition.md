@@ -185,6 +185,17 @@ own work is part of the dominant variable; this measures it. It is **not** compa
 and must not be read as a regression. Operationally: if you need the fast half's *time*, run it as the sole
 command; if you only need its *count*, background it and keep working — the count is unaffected.
 
+**And a SECOND solo sample the same day: 254,74s** — same commit range, same machine, deliberately run with
+the driver idle, 328/328 green. **That is 1,69x apart from the 429,46s figure recorded above, and both are
+"solo".** Three samples now bracket this recipe at **255 / 429 / 738s**. Two consequences:
+
+- **The "cap-adjacent, not cap-safe" reading rests on the 429,46s sample, and 254,74s does not support it.**
+  Do not treat either as the recipe's time. The honest statement is that the fast half runs somewhere in the
+  250-430s band when nothing else is competing, and blows the 600s cap when something is.
+- It is the same lesson this file already states twice (a 1,78x spread on identical code, and
+  "one sample of this recipe is not a measurement"), now confirmed a third time. **Stop quoting a single
+  figure from this file as if it were the runtime.**
+
 🔴 **`agy-discipline-reaching`'s ROW HAD BEEN WRONG IN BOTH COLUMNS AND NOTHING CAUGHT IT.** The count said
 16 while the suite really held 13, and the time said 69,1s while it really ran in ~15s. The figures were
 right when written (`d2b8649`); then `6b87f1f` and `872498f` each changed the suite without re-measuring.
