@@ -115,7 +115,7 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 
 ## ▶ Forward backlog (in priority order)
 
-### 0. DISCIPLINE EFFICACY — stop confirming presence and calling it proof (▶ TOP PRIORITY, after the current build)
+### 0. DISCIPLINE EFFICACY — stop confirming presence and calling it proof · ~~▶ TOP PRIORITY~~ → **one defect fix (step 1b); owner ruling 2026-08-06**
 
 Numbered `0` deliberately: this list is priority-ordered, and renumbering 1-11 would invalidate every
 existing citation to §7 and §8. Owner-directed 2026-08-04. **The deferral is DISCHARGED: it waited on the
@@ -173,6 +173,33 @@ discipline-keyed name with no `<plugin-id>` prefix, justified there by exactly t
 constraint plus the fact that the two drivers are mutually exclusive). **Read that decision before
 designing the stamp; the same reasoning and the same trap apply.** A stamp that differs per driver is not
 a stamp, it is a parity break that both gates above will reject.
+
+> ### 🔴 OWNER RULING 2026-08-06 — §0 IS SPLIT. Part one is a DEFECT; the trial is KILLED.
+>
+> **The Phase-2 gate asked whether to override the bar for §0. The owner's answer reframed it: §0 was two
+> different things wearing one number, and they get opposite dispositions.**
+>
+> - **✅ STEP 1b — RECLASSIFIED AS A DEFECT, to be fixed.** No override was needed, because it is not a
+>   validation task. Measured: every anomaly-capture prompt sits behind a precondition — a **dispatch**
+>   (`PreToolUse` matcher `Agent|Task`), a **compaction** (`PreCompact`), or one of three named skills
+>   (`agy-seam-inject.sh`). `SessionStart` only nags about anomalies **already recorded**; it never asks for
+>   a new one. **So for a user running ordinary short or medium sessions — no subagents, no compaction —
+>   the capture discipline never prompts at all.** It is installed, registered, and inert, and the user has
+>   no way to tell. This entry called it *"a DEFECT IN v16, not new work"* from the start; it was the bar
+>   that was being misapplied, not the item that was overreaching.
+> - **🚫 STEP 3, THE OUTSIDE-WITNESS TRIAL — KILLED (clause 1).** It is a validation harness: it would tell
+>   us whether the disciplines change behaviour, which is an **unvalidated assumption**, not a false
+>   diagnostic. Killed consistently with §4 and §6, both killed on identical reasoning in this same sweep.
+>   **Widening clause 1 to admit it readmits every unbuilt validation harness in the repo.**
+>
+> ⚠️ **ACCEPTED COST OF THIS RULING, recorded so it is not rediscovered as a surprise:** the trial was the
+> only step that would ever have demonstrated the disciplines work on an unprimed user. Killing it leaves
+> the product's central claim — "delivers better driving" — **still unproven, now with better plumbing
+> underneath it.** That is a deliberate trade, made with the alternative stated.
+>
+> ➡️ **§0 is therefore no longer a `▶ TOP PRIORITY` epic. It is one small bug fix (step 1b).** The
+> demotion is deliberate. Items 2 and 1a already shipped (below); with the trial killed, 1b is all that
+> remains.
 
 > ### 📏 WHICH STEPS HAVE SHIPPED — measured 2026-08-06 (open-work sweep, Phase 1 Task 4 Step 1)
 >
