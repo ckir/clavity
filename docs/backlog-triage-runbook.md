@@ -62,6 +62,13 @@ and read as open. Before dispositioning anything, state its **oracle**: a comman
 an oracle, ask what output it would produce if the entry *were* fixed. If that is the same output you are
 looking at, the oracle is broken.
 
+🔴 **A HIT can also be a false positive for the entry's actual question — read WHICH symbols came back, and
+which did not.** Measured 2026-08-06: an oracle grepping for `TryReadCombined|Apply|cache` returned one hit
+and was read as "the per-ask read is still there". **The single hit was in a once-per-process guarded
+method, and the absent `Apply` was the whole answer** — the send path had stopped prepending entirely. The
+stamp written from that reading was false and had to be retracted after a peer opened the file.
+**A grep result is a list of lines, not a verdict. Open the enclosing function and find the caller.**
+
 ## 3. Per-surface closing conventions — and the trap
 
 - **`fix-the-tool-backlog/` is APPEND-ONLY.** `README.md:8`: *"One file per entry (append-only)."*
@@ -239,7 +246,25 @@ Stated plainly, because a runbook that oversells itself is worse than none:
 3. **An incidental fix cannot close an entry its author never saw.** The rule above binds an epic to its
    *own* scope. A fix that happens to resolve an unrelated entry leaves that entry standing, and nothing
    here detects it.
+4. **Surface 6 is outside git, so no commit can carry it.** Dispositions recorded in the memory dir are
+   not in any clone, not in any other machine's session, and not atomic with the commit that earned them.
+   A fresh environment sees the repo surfaces and none of surface 6. There is no fix here short of moving
+   that state in-tree, which is its own decision — the point is not to believe the surfaces are in sync
+   just because the commit landed.
+5. **A `variant: both` entry has ONE `status:` field, so a one-driver fix has no honest disposition.**
+   `_template.md:2-6` pairs `variant: <clavity-dotnet | clavity-classic | both>` with a single `status:`.
+   Mark it `fixed` on one driver's evidence and you false-clean the other; leave it `open` and you
+   misreport the driver that is done. **Neither is right, and nothing warns you.**
 
-**All three are the same shape: this is documentation, and documentation does not execute.** That was the
+   🔴 **This is not hypothetical — it was live on both entries this surface touched in 2026-08-06's sweep.**
+   `idle-wait-false-modal` (`variant: both`) was closed `fixed` on dotnet commits; the closure only holds
+   because classic was *separately* checked and has no `possible_modal` verdict at all. And
+   `docs/backlog/golden-header-per-ask-token-optimization.md` is the same shape pointing the other way:
+   dotnet stopped sending the header to the peer (T4b) while classic still prepends it on every ask, so
+   the stub is half-obsolete and had to be re-scoped to classic rather than closed or left alone.
+   **Until the frontmatter carries per-variant status, a `both` entry demands two measurements and a
+   disposition that says which driver it refers to.**
+
+**All five are the same shape: this is documentation, and documentation does not execute.** That was the
 accepted trade — see [§8](#8-why-no-mechanism-exists) — and [§7](#7-the-three-revisit-triggers) is what
 expires it.
