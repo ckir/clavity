@@ -79,19 +79,29 @@ six items and re-opened the parking lot at triple the width. What each of the ex
   follow-on, not a re-scope"*), which are rulings about scope rather than directives to do the work.
   → ordinary Phase-1 items, judged on the bar like anything else.
 
-🔴 **The exception admits §7 ONLY. §0 does not qualify, and this spec asserted the opposite.** An earlier
-draft said *"§0 and §7 fail clause 3: both are marked BRAINSTORM-FIRST and neither has a specified
-mechanism."* **Both halves are false for §0**, and the agy panel caught it:
+🔴 **The three-part criterion above admits §7 ONLY. §0 reaches the §5 gate by a DIFFERENT route — see
+§7a — and this spec has asserted two wrong things about §0 in as many rounds.**
+
+**What was wrong first:** an earlier draft said *"§0 and §7 fail clause 3: both are marked BRAINSTORM-FIRST
+and neither has a specified mechanism."* **Both halves are false for §0:**
 
 - `clavity-dotnet/ROADMAP.md:118` marks §0 **`▶ TOP PRIORITY`**, not `BRAINSTORM FIRST`.
 - `clavity-dotnet/ROADMAP.md:177` reads **"THE SEQUENCE — OWNER-RATIFIED 2026-08-04, after a second
   AGY-FIRST consult and measurement"**, followed by a numbered sequence and settled sub-rulings including
   *"Owner ruling on the `PreCompact` channel, same date: ship dispatch-only."*
 
-**§0 therefore PASSES clause 3** — it has a concrete owner-ratified mechanism — and is an **ordinary KEPT
-item**, ranked and implemented in Phase 3 like any other. Sending it to a "spec it or kill it" ruling would
-have posed the owner a **false dilemma about work that is already designed**, and would have re-opened a
-sequence the owner ratified two days ago.
+**So §0 PASSES clause 3.** Sending it to a *"spec it or kill it"* ruling would pose a false dilemma about
+work that is already designed.
+
+**What was wrong second, and is the live statement:** the next draft concluded from that §0 was *"an
+ordinary KEPT item, ranked and implemented like any other."* **That does not follow — clause 3 is one of
+three.** §7a shows §0 **fails clause 1**, so it fails the bar and is **conditional on an owner override**,
+not an ordinary survivor. **§0 is not a KEPT item today.**
+
+🔴 **Read §7a and §5 for §0's actual disposition; do not conclude it from this section.** This paragraph
+stood contradicting them for a full round, and the identical mistake — a section left stale by a fold that
+moved an item — had already been caught once in criterion 1. **When a fold moves an item, grep the whole
+spec for that item's name before committing.**
 
 **§6 is the near-miss worth naming.** `clavity-dotnet/ROADMAP.md:354` ends *"Owner-surfaced 2026-07-11"* —
 **surfaced is not directed or ranked**, so clause (a) is not met and §6 is judged on the bar like anything
@@ -223,6 +233,10 @@ excluded from every epic until it is forgotten — requires that no one ever rul
 ---
 
 ## 6. Phase 3 — implement the survivors
+
+> **Seven survivors and one conditional.** Items 1–7 pass the bar. **Item 8 (§0) does NOT** — it is listed
+> here only so its ranking is visible, and it enters Phase 3 solely if the owner overrides at the §5 gate.
+> Do not read this list as eight approved items.
 
 Ranked. This ordering is **provisional**: Phase 1 may close or kill any of these, and the plan for Phase 3
 is written only after Phase 1 lands.
