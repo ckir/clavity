@@ -139,7 +139,7 @@ All six surfaces, item by item, against §2's bar and §3's oracle.
 | 3 | `agy-autotrain/ROADMAP.md` | AT-1 (Parts A and B), AT-2 |
 | 4 | `commonmemory/ROADMAP.md` | measured COMPLETE; confirm, do not assume |
 | 5 | `agy-autotrain/docs/fix-the-tool-backlog/` | the 6 still-open entries |
-| 6 | `docs/backlog/` + tracked debt in memory | 1 stub (now closed) + debt #1 and #4 |
+| 6 | `docs/backlog/` + tracked debt in memory | 1 stub (now closed) + debt #1 and #4 — **located in the auto-memory file `project_tracked-debt.md`**, in the same per-project memory directory named above. It is a markdown file, not an agentmemory slot or a queryable store; read it directly. Measured: **2 of its 4 items are open**, and the item indices are its own. |
 
 **Inventory facts to carry in, all measured 2026-08-06 — do not re-derive, but do not trust blindly either:**
 
@@ -192,10 +192,17 @@ pass here is indistinguishable from an audit that never ran.
 
 **This is an owner decision point, and the epic does not proceed past it silently.**
 
-**§7 (AGY-SCOPE) only.** It is marked `(BRAINSTORM FIRST)` with *"Status: brainstorming task, not yet
-designed"* and an owner directive dated 2026-07-31 — owner-directed, no mechanism, not already answered.
-**§0 was in this section in an earlier draft and has been removed**: it has an owner-ratified sequence
-(`clavity-dotnet/ROADMAP.md:177`), so it passes clause 3 and is an ordinary KEPT item. See §2.
+**Two items reach this gate, for opposite reasons. The question asked of each is different, and conflating
+them is how an override gets recorded as a bar pass.**
+
+- **§7 (AGY-SCOPE) — no mechanism.** Marked `(BRAINSTORM FIRST)`, *"Status: brainstorming task, not yet
+  designed"*, owner directive 2026-07-31. **Question: spec it, or kill it?**
+- **§0 (discipline efficacy) — has a mechanism, but fails clause 1.** It has an owner-ratified sequence at
+  `clavity-dotnet/ROADMAP.md:177`, so clause 3 is satisfied; §7a shows clause 1 is not, and that widening
+  clause 1 to admit it also readmits §6 and §4. **Question: the bar rejects this — do you override it?**
+  🔴 **§0 has now moved between phases TWICE under measurement** (out of the gate in round 1, back into it
+  in round 2, each time for a different and correct reason). **Do not re-derive its status from an earlier
+  section of this spec; read §7a.**
 
 The consult argued items like this should be killed outright; the counter-argument is that §10 of the same
 roadmap records the opposite failure — *"retroactively widening a stalled epic prevents it closing"*.
@@ -256,13 +263,20 @@ is written only after Phase 1 lands.
 6. **AT-1 Part A** — GROWTH line-density cap and anti-poisoning gate. Markdown-only.
 7. **§11 PINNING-ASSERTION-STRENGTH.** Design is settled (`df2b907`, agreed with agy over three rounds);
    `git log --grep` shows it was captured and never implemented.
-8. **§0 DISCIPLINE EFFICACY** — added here after the panel established it passes clause 3. It carries an
-   owner-ratified sequence at `clavity-dotnet/ROADMAP.md:177` and the owner marked it `▶ TOP PRIORITY`.
-   🔴 **It is also by far the largest item here and the only one that is a build rather than a fix**, so
-   its position is the ranking's real open question: the seven above it are small, bounded and mostly
-   single-file, while §0 is a multi-session build. **Phase 1 must re-measure how much of §0's sequence has
-   already shipped before Phase 3 orders it** — a partially-shipped item ranked as if unstarted is the
-   same error this whole epic exists to remove.
+8. **§0 DISCIPLINE EFFICACY — CONDITIONAL on the §5 override; not a survivor until then.** It passes
+   clause 3 (owner-ratified sequence, `clavity-dotnet/ROADMAP.md:177`) and the owner marked it
+   `▶ TOP PRIORITY`, but §7a shows it **fails clause 1**. If the override is refused it is KILLED and this
+   entry is struck.
+   🔴 **It is also by far the largest item here and the only one that is a build rather than a fix** — the
+   seven above it are small, bounded and mostly single-file. Two bounding rules therefore apply:
+   - **Phase 1 must measure how much of §0's sequence has already shipped.** Its own text orders the work
+     *"stamp (item 2) → recorder / step 1a (item 1) → witness trial (item 3)"* and notes step 1b is already
+     scheduled — so it is partly underway. **Ranking a partially-shipped item as unstarted is the exact
+     error this epic exists to remove.**
+   - 🔴 **Phase 3 implements ONLY the steps Phase 1 finds unshipped, and the plan states them by name.**
+     "Implement §0" is unbounded and would swallow the epic — which is §10's recorded failure mode. If the
+     remaining scope is larger than the other seven items combined, it belongs in its own epic and the
+     override ruling should say so.
 
 **Fallback ordering if the epic is ever cut short** — the consult's one-hour version, recorded because it
 is a genuinely different answer and close to as good: items 1, 2, 3 plus AT-1 Part A close most of the
@@ -290,8 +304,13 @@ crash and data-loss exposure in roughly an hour.
 
 ## 8. Success criteria
 
-1. Every item on all six surfaces carries a disposition — CLOSED, KILLED, or KEPT — **except §0 and §7,
+1. Every item on all six surfaces carries a disposition — CLOSED, KILLED, or KEPT — **except §7 and §0,
    whose terminal state is the §5 ruling** (the only permitted fourth outcome, and only for those two).
+   **They reach that gate for opposite reasons and the ruling asked of each is different:** §7 has no
+   mechanism (*spec it or kill it*); §0 has a mechanism but **fails clause 1** (*the bar rejects this — do
+   you override?*). 🔴 An earlier draft of this criterion listed §0 for the wrong reason and then, after
+   §0 was moved out, was left stale for a full round contradicting criterion 4. **Both criteria now name
+   the same set; check them against each other whenever either changes.**
 2. **No item is dispositioned from its own prose, and naming an oracle is not running one.** Each
    disposition records **the oracle's actual OUTPUT** — the command's stdout, the quoted line, or the
    commit — not merely which oracle was chosen. 🔴 This epic's own evidence is that a named oracle can
@@ -300,9 +319,10 @@ crash and data-loss exposure in roughly an hour.
 3. Every CLOSED roadmap entry is marked ✅ in place with its evidence. **Nothing is renumbered**, the
    pre-`252f63c` citation risk is audited, and the audit **states its result either way** — including
    "none found".
-4. **§7** has a binding owner ruling recorded in the roadmap: specced or killed, not left undecided.
-   (**§0 is deliberately NOT in this criterion** — it passes clause 3 and is covered by criterion 5 as an
-   ordinary KEPT item. An earlier draft had it here.)
+4. **§7 and §0** each have a binding owner ruling recorded in the roadmap, neither left undecided:
+   **§7** — specced or killed. **§0** — overridden into the KEPT set, or killed on clause 1.
+   The ruling records **which** question was answered, so a later reader cannot mistake an override for a
+   bar pass.
 5. **Every KEPT item is implemented.** 🔴 An earlier draft read *"…or the epic states plainly which were
    not and why"*, which made this criterion unfalsifiable — an epic implementing nothing satisfied it. If
    an item cannot be implemented, the correct action is to **re-disposition it** (it fails clause 3 and is
@@ -325,13 +345,33 @@ applying it to them.** A bar that never touches the list it governs is decorativ
 delete decoration. **Every KEPT item records its clause 1 / 2 / 3 justification in one line**, and two of
 them are not obvious and must be argued rather than assumed:
 
-- **§0 (discipline efficacy)** — clause 1 is *not* self-evident: its absence causes no crash and no data
-  loss. The case is that **a green gate measuring the wrong thing is an active lie** — v15's hooks fired
-  exactly as designed, every presence gate reported green, and the discipline produced nothing. If that
-  reading is rejected, §0 fails clause 1 and is KILLED. **State the ruling; do not let it pass silently on
-  clause 3 alone**, which is how it entered this list.
-- **§11 (assertion-strength)** — same shape: a cardinality assertion that stays green while the code is
-  reversed is a passing test reporting a false result. That is clause 1 as an active lie, not as a crash.
+- **§11 (assertion-strength) PASSES clause 1.** A cardinality assertion that stays green while the sort is
+  reversed is **literally a false diagnostic**: it prints PASS about code that is broken, and the wrong
+  action it induces — merging — is nameable. That is clause 1 exactly as §2 defines it.
+
+- 🔴 **§0 (discipline efficacy) FAILS clause 1, and therefore FAILS THE BAR.** An earlier draft rescued it
+  with *"a green gate measuring the wrong thing is an active lie"*. **The agy panel showed that reading is
+  a smuggle, and it is right.** No diagnostic lies in §0's case; what is missing is proof that a shipped
+  discipline changes behaviour. **Measured, the same premise readmits at least two items this epic
+  otherwise judges on their merits:**
+  - **§6** — `clavity-dotnet/ROADMAP.md:350-354` asks for *"a probe / verify-harness confirming a delivered
+    rule demonstrably changes driver behaviour … so 'delivers better driving' is substantiated, not
+    assumed."* **That is §0's argument word for word.**
+  - **§4** — the packaging verifications are the same shape: confirm a property nobody has proven.
+
+  A clause that admits every unbuilt validation harness cannot reject one, and rejecting speculative
+  harnesses is most of what clause 1 is for. **So clause 1 stays narrow: a false operational diagnostic
+  whose induced wrong action can be named.**
+
+  **Consequence, stated plainly rather than engineered around: applied strictly, THE BAR KILLS §0** — the
+  item the owner ranked `▶ TOP PRIORITY`. It has a mechanism (clause 3) and is arguably unavoidable
+  (clause 2), but it does not clear clause 1.
+
+  **§0 is therefore admitted ONLY by an explicit owner override, which must be ASKED FOR, not assumed.**
+  It goes to the §5 gate — not as "spec it or kill it" (it is already specced) but as: *the bar rejects
+  this; do you override it?* **An override is legitimate and the owner's to make. Silently widening a
+  clause until the favoured item fits is not.** That this bar bites the owner's own top priority is
+  evidence it is a real bar rather than a decorative one.
 
 **If an item cannot be given all three justifications in one line each, it is not KEPT.**
 
@@ -350,6 +390,21 @@ them are not obvious and must be argued rather than assumed:
 uses it today, so there is no example to copy. It therefore MUST carry its reason inline: a `wont-fix` with
 no recorded argument is indistinguishable from an entry someone got tired of, and the next reader cannot
 reopen it on the merits.
+
+**Three states the table above cannot express, each with its rule:**
+
+1. **A partially-shipped multi-step item** (§0 is one — some steps done, others open). A whole-section ✅
+   would be false and a whole-section strike-through would be worse. **Rule: mark the SHIPPED STEPS ✅
+   individually, in place, and leave the section open.** The section closes only when its last step does.
+2. **An item the owner ruled on at the §5 gate.** It is neither `fixed` nor `wont-fix`. **Rule: record the
+   ruling and its DATE on the entry — "owner-overridden into scope" or "killed on clause 1" — so the basis
+   is legible later.** A ruling recorded as a plain status loses the reason, and the reason is the whole
+   value.
+3. 🔴 **A `variant: both` entry fixed on ONE driver.** The single `status:` field cannot say it, which is
+   `docs/backlog-triage-runbook.md` §13 failure mode 5. **Rule: it stays `status: open` with
+   `last-triaged` naming the driver that IS fixed and the one that is not.** Marking it `fixed` on one
+   driver's evidence false-cleans the other — measured live this session on two separate entries, pointing
+   in opposite directions.
 
 ## 8a. Staging and spend — this epic does not fit in one session
 
