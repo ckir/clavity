@@ -590,7 +590,7 @@ the index is a recovery hole regardless of how accurate the rest of the epic is.
 echo "== ARM 1: paths that are not .md (must print nothing) =="
 git diff --name-only <Task 0 SHA>..HEAD | grep -v '\.md$'
 echo "== ARM 2: .md paths that are MECHANISM, not documentation (must print nothing) =="
-git diff --name-only <Task 0 SHA>..HEAD | grep -E '(^|/)(skills|agy_skills)/|(^|/)SKILL\.md$|(^|/)plugin/(knowledge|hooks)/'
+git diff --name-only <Task 0 SHA>..HEAD | grep -E '(^|/)(skills|agy_skills|knowledge|hooks|rules)/|(^|/)SKILL\.md$'
 ```
 
 **Two pipes, no temp file — deliberately.** An earlier draft wrote the list to `changed.txt` in the repo
@@ -608,10 +608,13 @@ a diff that adds a brand-new skill — precisely the mechanism the owner decline
 `.md`, so arm 2 does not need to name `scripts/`, `src/`, `justfile` or a CI workflow — none of those are
 `.md` and arm 1 catches them all. Keeping arm 2 to the mechanism question is what makes it precise:
 
-- It matches **any** `skills/` or `agy_skills/` segment, not just `plugin/skills/`. Measured 2026-08-06,
-  this repo has **four** skill roots and three of them carry no `plugin/` segment at all —
-  `agy-autotrain/skills/`, `clavity-classic/agy_skills/`, `commonmemory/skills/`. A gate anchored on
-  `plugin/` would wave a new skill straight through in three of four products.
+- **No segment is anchored to `plugin/`, deliberately.** Measured 2026-08-06, this repo has four skill
+  roots and three carry no `plugin/` segment (`agy-autotrain/skills/`, `clavity-classic/agy_skills/`,
+  `commonmemory/skills/`) — and the same is true of the knowledge and hook roots:
+  **`agy-autotrain/knowledge/`, `agy-autotrain/hooks/` and `commonmemory/rules/` all sit at a product
+  root.** 🔴 A `plugin/`-anchored gate misses `agy-autotrain/knowledge/driver-cheatsheet.core.md` — which
+  is **the exact file item 4 above forbids this epic from touching.** A gate that cannot see the one file
+  the plan names as off-limits is not a gate.
 - It matches a **supporting** `.md` inside a skill directory, not only `SKILL.md`. A skill's behaviour
   routinely lives in a file the SKILL.md references.
 
@@ -621,13 +624,15 @@ red-flagged Task 5's own deliverables: `.github/pull_request_template.md` and
 list, and both are ordinary docs. **A scope gate that fires on the plan's own legitimate output trains its
 reader to ignore it**, which is worse than no gate.
 
-Verified 2026-08-06 against sample paths, in both directions: arm 2 catches
+Verified 2026-08-06 against 18 sample paths, **9 caught and 9 cleared, in both directions**. Caught:
 `clavity-dotnet/plugin/skills/agy-capstone/SKILL.md`, `agy-autotrain/skills/agy-curate/SKILL.md`,
-`agy-autotrain/skills/agy-curate/reference.md`, `clavity-classic/agy_skills/responder/SKILL.md`,
-`clavity-dotnet/plugin/knowledge/driver-cheatsheet.core.md` and `clavity-dotnet/plugin/hooks/notes.md`;
-and clears `docs/backlog-triage-runbook.md`, both `docs/backlog/` and `fix-the-tool-backlog/` entries,
-`.github/pull_request_template.md`, `clavity-classic/installer/…README-FIRST.md`,
-`clavity-classic/README.md` and `agy-autotrain/README.md`.
+`agy-autotrain/skills/agy-curate/reference.md`, `clavity-classic/agy_skills/responder/SKILL.md`, both
+`driver-cheatsheet.core.md` copies (`clavity-dotnet/plugin/knowledge/` **and** `agy-autotrain/knowledge/`),
+`commonmemory/rules/commonmemory.md`, `clavity-dotnet/plugin/hooks/notes.md`, `agy-autotrain/hooks/`.
+Cleared: `docs/backlog-triage-runbook.md`, both `docs/backlog/` and `fix-the-tool-backlog/` entries, and
+every doc on Task 5's list — `.github/pull_request_template.md`,
+`clavity-classic/installer/…README-FIRST.md`, `clavity-classic/README.md`, `agy-autotrain/README.md`,
+`agy-autotrain/verify/probe-design.md`, `clavity-classic/docs/how-it-works.md`.
 
 ⚠️ **Do not "improve" this with a negative lookahead.** `grep -E` is POSIX ERE and has no `(?!…)`; a
 pattern using one does not error, it silently matches **nothing** — measured — so an exclusion written
