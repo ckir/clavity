@@ -725,14 +725,29 @@ test stays green. Measured, not reasoned: `5071872` records the mutation. Cardin
 **Cost:** ~80 tokens per firing, ~2 firings per session; verification is one targeted test run per
 directional or fallback assertion. Both variants' plugins must change together (byte-identical pair).
 
-### 12. Post-plan-2 leftovers — two guards that overstate what they verify · **PROMOTED FROM TRIAGE 2026-08-07**
+### 12. Post-plan-2 leftovers — two guards that overstate what they verify · ✅ **SHIPPED 2026-08-07**
 
 Both entries came out of `.clavity/local-anomalies.md` at the triage that followed plan 2's capstone. Each
 was verified by measurement before promotion, and each is stated with the measurement that establishes it.
 **Shared theme, and the reason they are one section: each is a mechanism that TELLS THE READER it checked
 something it did not actually check.** That is the same disease as §0 — presence mistaken for proof.
 
-#### 12a. The consult guard cannot tell the agy peer from a concurrent local subagent
+#### 12a. The consult guard cannot tell the agy peer from a concurrent local subagent · ✅ **SHIPPED**
+
+✅ **SHIPPED 2026-08-07** — `56d6014` (dotnet message) + `0c3be8c` (byte-identical classic mirror).
+**Pinning test:** `scripts/tests/agy-consult-guard.Tests.ps1` → `names the concurrent-local-agent confound
+in the breach warning`, which asserts the existing `VERSION CONTROL CHANGED` alarm still fires *and* that
+the message now carries `CANNOT attribute` and `concurrent`. It was **verified red before the fix** (failing
+on `CANNOT attribute` against the old message) rather than assumed. The pre-existing file-level gates —
+pure ASCII and byte-identical-to-mirror — both still hold; the new clause is pure ASCII by measurement.
+
+**Only the message changed.** The seven axes were not narrowed, the breach wording was not downgraded, and
+the guard was not made silent when local agents are active — see the ⚠ below, which still binds. The
+*optional* half of the mechanism (recording whether local agents were dispatched during the window and
+downgrading the wording accordingly) was **deliberately not built**: it needs state the hook does not have,
+and naming the confound is what makes the already-advised verify step actionable.
+
+**The provenance below is kept deliberately** — it is the measurement that justified the change.
 
 `clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh` (and its byte-identical classic mirror) detects a
 review-only breach by comparing seven axes of VCS state captured before the consult against the state after
@@ -748,7 +763,8 @@ deliberate temporary mutation. The peer had changed nothing.
 1. **Loss.** Not silent — the failure is a LOUD false alarm, which is worse in a specific way: this alarm
    is security-grade ("ARBITRARY-CODE-EXEC vector" is one of its axes), and an alarm that cries wolf during
    ordinary subagent-driven work trains the driver to discount it. The message's first instruction is
-   *"verify the peer (not you) made these changes"* — which is correct and is what caught this one — but a
+   *"verify the peer (not you) made these changes"* (**the pre-fix wording — `56d6014` replaced it**) —
+   which is correct and is what caught this one — but a
    driver who skips that step and follows the next clause would revert a subagent's in-flight work.
 2. **Unavoidable.** Subagent-driven execution is the standard workflow, and consults are issued during it.
    Any overlap reproduces this.
@@ -762,7 +778,21 @@ deliberate temporary mutation. The peer had changed nothing.
 prior capstone caught a real index-smuggle through one of them. The defect is the attribution, not the
 detection.
 
-#### 12b. The new emission arm's jq-absent path is completely untested
+#### 12b. The new emission arm's jq-absent path is completely untested · ✅ **SHIPPED**
+
+✅ **SHIPPED 2026-08-07** — `4252ad5`, **test-only; no shipped code changed.**
+**Pinning test:** `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1` → `delivers the SAME
+UserPromptSubmit envelope with and without jq`. The suite went 25 → 26.
+
+🔴 **This test PASSED on arrival, so its green run was not evidence** — the path already worked; the defect
+was that it was unpinned. It was therefore proven non-vacuous by mutation: misspelling `hookEventName` as
+`hookEventNam` at `agy-anomaly-capture-reminder.sh:156` turned **exactly one** test red — this one. That
+single-test result is the second half of the finding: it re-confirms by measurement that *nothing else in
+the suite reads that line*, which is precisely the gap this entry recorded. The hook was then restored and
+`git diff --exit-code` verified clean.
+
+**The provenance below is kept deliberately** — including the rewrite note, which is a worked example of the
+incomplete-fold failure mode this repo keeps paying for.
 
 🔴 **THIS ENTRY WAS REWRITTEN 2026-08-07, BEFORE ANY WORK STARTED ON IT.** As first written it claimed a
 hook comment at `:29-30` falsely advertised a byte-parity test. **That comment no longer exists** — plan 2's
@@ -778,7 +808,8 @@ jq-absent path: `UserPromptSubmit` → `hookSpecificOutput` (`:156` printf, `:19
 
 **MEASURED 2026-08-07.** Every `NoJqPath` test in `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1`
 (`:119`, `:138`, `:171`, `:208`, `:217`) invokes the hook with **no `-Arguments`**, so all of them take the
-`PreCompact` branch. **The count of tests exercising the `UserPromptSubmit` arm's jq-absent path is ZERO.**
+`PreCompact` branch. **The count of tests exercising the `UserPromptSubmit` arm's jq-absent path was ZERO**
+(at the time of measurement; `4252ad5` made it one).
 The path works today — probed directly, it emits valid JSON with `hookEventName` = `UserPromptSubmit` — but
 nothing in the suite would notice if it stopped.
 
