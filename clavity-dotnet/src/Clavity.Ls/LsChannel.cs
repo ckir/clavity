@@ -47,6 +47,14 @@ public static class LsChannel
 
         return GrpcChannel.ForAddress(
             $"http://127.0.0.1:{httpPort}",
-            new GrpcChannelOptions { HttpHandler = effective });
+            new GrpcChannelOptions
+            {
+                HttpHandler = effective,
+                // A cascade's trajectory grows without bound, and gRPC's 4 MB DEFAULT was being inherited by
+                // accident — every readback past it died ResourceExhausted while the peer was healthy. 64 MB is a
+                // deliberate ceiling well above the largest realistic trajectory; null (unbounded) was rejected so
+                // a runaway response still fails loudly instead of exhausting memory.
+                MaxReceiveMessageSize = 64 * 1024 * 1024,
+            });
     }
 }

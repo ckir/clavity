@@ -77,4 +77,30 @@ public class LsChannelIntegrationTests
         Assert.Equal("ckir/clavity", ws.Repository.ComputedName);
         Assert.Equal("test-conv-id", resp.Metadata.RootConversationId);
     }
+
+    [Fact]
+    public async Task A_response_larger_than_the_4MB_grpc_default_completes()
+    {
+        const int bigStringLength = 5 * 1024 * 1024;
+        var bigString = new string('x', bigStringLength);
+
+        var expected = new GetConversationMetadataResponse
+        {
+            Metadata = new Clavity.Ls.Proto.Metadata
+            {
+                RootConversationId = bigString,
+            },
+        };
+
+        await using var app = await StartFakeLsAsync(expected);
+        using var channel = LsChannel.ForHttpPort(PortOf(app));
+        var client = new LanguageServerService.LanguageServerServiceClient(channel);
+
+        var resp = await client.GetConversationMetadataAsync(
+            new GetConversationMetadataRequest { ConversationId = "test-conv-id" });
+
+        Assert.NotNull(resp.Metadata);
+        Assert.Equal(bigStringLength, resp.Metadata.RootConversationId.Length);
+        Assert.Equal(bigString, resp.Metadata.RootConversationId);
+    }
 }
