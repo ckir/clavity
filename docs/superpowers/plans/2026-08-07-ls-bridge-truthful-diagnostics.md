@@ -483,7 +483,7 @@ The fix already exists and is tested — `BoundedView.Summarize` takes `bool new
 
 **Files:**
 - Modify: `clavity-dotnet/src/Clavity.Ls/AgyView.cs`
-- Modify: `clavity-dotnet/tests/Clavity.Ls.Tests/BoundedViewTests.cs`
+- Modify: `clavity-dotnet/tests/Clavity.Integration.Tests/AgyViewIntegrationTests.cs` — **NOT** `BoundedViewTests.cs`; see Step 2 for why that target is the defect this task is fixing
 
 - [ ] **Step 1: Confirm the call site**
 
@@ -571,9 +571,7 @@ git commit -m "fix(ls): agy_look keeps the newest trajectory steps under a tight
 
 **Do not rewrite the idle-wait.** `AgyView.WaitForIdleWithProgressAsync` already implements progress-aware waiting, a stall window, an absolute max, and `BuildModalHang`. The entry's proposed remedy ("poll `agy_status` until idle, then retrieve the trajectory") is *mostly already there*. The residual defect, per the entry's own `last-triaged` oracle, is narrower: **on expiry it throws rather than re-polling.**
 
-**Files:**
-- Modify: `clavity-dotnet/src/Clavity.Ls/AgyView.cs`
-- Modify: `clavity-dotnet/tests/Clavity.Ls.Tests/AskReplyProjectionTests.cs` (or a new file if the fake-client harness lives elsewhere — read it first)
+**Files: see the STOP block below — this task declares no file set until Step 3 resolves.** If it does produce code, the test belongs in `clavity-dotnet/tests/Clavity.Integration.Tests/AgyViewIntegrationTests.cs`, where `AgyView` is already driven against the in-process fake LS — **not** `AskReplyProjectionTests.cs`, which an earlier draft named and which does not host that harness.
 
 ### 🔴 STOP — this task's PREMISE is unproven, and the entry's proposed fix is already implemented
 
@@ -746,7 +744,29 @@ Solo pass (5) + peer escalation (6, seats rotated to **Mechanism Gamer** and **D
 
 🔴 **Finding 17 is the most valuable thing either round produced, and it is a lesson about probes, not about this plan.** The sweep recorded the entry as open on the strength of a grep for `NoConversation` / `no open conversation` — **names the implementation does not use.** It is called `AgyConversationPendingException`. A probe keyed on invented vocabulary reports ABSENT for something present and cannot return its failing answer. **Fourth recorded-open-but-shipped item in this epic; the first caused by the probe's wording rather than an unopened section.**
 
-**Round 3 is owed** (owner's standing ruling: repeat until green; cap now 6). Tasks 3 and 4 changed materially this round.
+## Panel ledger — round 3, and the entry ruling
+
+Solo pass (2) + peer escalation (1, seats rotated to **Boundary Smuggler** and **Activation Auditor**; the last two unused of the eleven). **Yield collapsed as expected: 10 → 11 → 3.** Three of four seats returned "no new findings" with reasons, not padding.
+
+| # | Finding | Fold |
+|---|---|---|
+| 23 | 🔴 **`dotnet test --filter` exits 0 when it matches nothing** — measured live, exit 0 on a typo'd class name. Every filtered step was ambiguous between "passed" and "never ran" | preamble item 5: read the test COUNT, never accept absence-of-failure |
+| 24 | The plan's real deliverable shrank to 3 of 5 tasks and nothing said so | honest scope table added |
+| 25 | Task 4's `Files:` header still named `BoundedViewTests.cs` after Step 2 was retargeted — an executor scoping from task metadata edits the wrong file | corrected |
+| 26 | **Found by my own Law-3 sweep, not the panel:** the same stale pointer had propagated into Task 5's `Files:` block, which *also* contradicted the `Files: none` the STOP block declares | both fixed |
+
+🔴 **Finding 26 is the fourth incomplete-fold in this epic, and it was inside the fix for finding 25.** The pattern is now beyond doubt: **after every fold, grep the whole artifact for the fact you changed.** The panel did not catch it; the grep did, and it was free.
+
+### ✅ The `conversation-scoped-tools` entry is CLOSEABLE — verified, not accepted
+
+The peer ruled **(a) FULLY SATISFIED** against the entry's own acceptance text. **I verified its load-bearing claim rather than banking it**, because a clean round is the least-guarded reply it gives. Both cited tests exist at the cited lines:
+
+- `AgyChannelDownTests.cs:284` — `Boot_race_reached_empty_then_dead_reports_channel_down_not_waiting_for_human`
+- `AgyChannelDownTests.cs:358` — `Boot_race_transient_death_then_reached_empty_reports_waiting_for_human_not_channel_down`
+
+The entry's retirement gate reads *"a permanent regression test asserting the two failure modes map to distinct errors."* Those two tests assert exactly that, in both directions. **Gate met.** Task 3 should therefore close the entry rather than build a second path — but **flipping a KEPT entry to closed is the owner's call**, and Task 6 records it as such.
+
+**PANEL VERDICT: round 3 RED (3 folded), and after these folds the panel proposes GREEN. Awaiting owner adjudication.**
 
 ## Self-review
 
