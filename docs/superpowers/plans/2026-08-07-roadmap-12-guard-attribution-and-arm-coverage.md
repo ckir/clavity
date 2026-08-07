@@ -244,15 +244,28 @@ No em-dash, no smart quote, no ellipsis character. The text above is already ASC
 itself, and do not make the guard silent when local agents are active. A prior capstone caught a real
 index-smuggle through one of those axes. **The defect is attribution, not detection.**
 
-- [ ] **Step 5: Run and verify it PASSES**
+- [ ] **Step 5: Run, and expect EXACTLY ONE failure**
 
 Run: `pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/agy-consult-guard.Tests.ps1 -Output Detailed"`
-Expected: `Tests Passed: <n>, Failed: 0` — but see Step 6 first: the mirror test will fail until Task 3
-lands, and that is expected.
 
-🔴 **The test `is byte-identical to the clavity-classic mirror` (`:121-127`) WILL FAIL at this point**,
-because only the dotnet copy has changed. That is the expected intermediate state, not a defect. Record it
-and proceed to Task 3, which fixes it. **Do not "fix" it by reverting the dotnet change.**
+🔴 **Expected: `Tests Passed: 10, Failed: 1`. NOT `Failed: 0`.**
+
+The one failure must be **`is byte-identical to the clavity-classic mirror`** (`:121-127`), because only the
+dotnet copy has changed. **This is the expected intermediate state, not a defect.** Task 3 fixes it. **Do
+not "fix" it by reverting the dotnet change, and do not copy the file to classic here** — that is Task 3's
+step, and doing it early skips its parity verification.
+
+The arithmetic, so it can be checked rather than trusted: the suite has **10** `It` blocks today; Step 2
+adds one, giving **11**; ten pass and the mirror test fails.
+
+**If ANY test other than the mirror test fails, stop and report which** — that is not the intermediate
+state this step describes.
+
+> An earlier draft of this step read *"Expected: `Tests Passed: <n>, Failed: 0`"* immediately followed by a
+> note saying the mirror test would fail. A step that states two contradictory expectations is exactly the
+> defect class that cost this project six findings in the previous epic, all of them in verification steps.
+> The peer that caught it predicted `9` passing rather than `10` — correct about the contradiction, wrong
+> about the count, because it did not include the test this plan adds. Both halves were measured.
 
 - [ ] **Step 6: Commit**
 
