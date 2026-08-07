@@ -4,7 +4,7 @@ variant: both
 observed: 2026-08-03
 source-inbox-entry: "the pre-drain snapshot hook did not fire when agy-curate was invoked as a"
 status: open
-last-triaged: 2026-08-06   # oracle: hooks.json still registers only PreToolUse:Skill / SessionStart / PreCompact and has no UserPromptSubmit event at all -> neither mitigation landed, confirmed still open
+last-triaged: 2026-08-07   # PARTIAL — covers mitigation 2 ONLY. hooks.json registers only PreToolUse:Skill / SessionStart / PreCompact and has no UserPromptSubmit event, so mitigation 2 did not land. UNVERIFIED for mitigation 1 (a snapshot inside the curate-commit BINARY, which leaves no trace in hooks.json) and mitigation 3 (skill-body first step). Per docs/backlog-triage-runbook.md §2 a negative on one path proves only that path; the earlier "neither mitigation landed" claim overstated what the grep could see.
 ---
 
 # The pre-drain inbox snapshot silently does not happen when agy-curate is invoked as a slash command

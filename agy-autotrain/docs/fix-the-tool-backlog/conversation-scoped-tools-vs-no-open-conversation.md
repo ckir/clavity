@@ -3,8 +3,8 @@ slug: conversation-scoped-tools-vs-no-open-conversation
 variant: clavity-dotnet
 observed: 2026-08-03
 source-inbox-entry: "Endpoint-reachable is not conversation-open: when every peer tool is scoped"
-status: open
-last-triaged: 2026-08-06   # oracle: no "no open conversation"/NoConversation/conversation-existence split anywhere in Clavity.Ls/*.cs -> confirmed still open
+status: fixed
+last-triaged: 2026-08-07   # CORRECTED. The 2026-08-06 stamp read "no NoConversation/conversation-existence split in Clavity.Ls/*.cs -> confirmed still open". That was a FALSE NEGATIVE on invented vocabulary (see docs/backlog-triage-runbook.md §2): the shipped path is AgyConversationPendingException, and it is partly in Clavity.Mcp, outside the grep's scope.
 ---
 
 # A live endpoint with NO open conversation fails every tool identically to a dead endpoint
@@ -54,3 +54,29 @@ errors.
    read-only call failing in the same shape as a mutating one) requires already knowing the answer.
 3. **Mechanism.** Separate conversation-existence from endpoint-reachability in the LS client before
    mapping the error. Bounded and specified.
+
+## Already fixed — closed 2026-08-07, no code written
+
+**The remedy this entry specifies was already implemented, and this entry never should have been KEPT.**
+
+**Evidence.** `clavity-dotnet/src/Clavity.Ls/AgyView.cs:381` throws `AgyConversationPendingException`
+— *"agy is running but has no conversation yet. WAIT for the human to start or continue the agy session,
+then try again — do NOT auto-retry in a loop."* — under `if (reachedLsButEmpty && !sawChannelDeath)`, which
+is exactly the conversation-existence / endpoint-reachability split this entry asks for. It surfaces as a
+distinct status via `clavity-dotnet/src/Clavity.Mcp/McpTools.cs:52-55`
+(`status = "waiting_for_human"`), not as the generic shutdown hint.
+
+**Retirement gate — MET.** This entry's own Notes require *"a permanent regression test asserting the two
+failure modes map to distinct errors."* Two exist, asserting both directions:
+- `clavity-dotnet/tests/Clavity.Integration.Tests/AgyChannelDownTests.cs:284`
+  `Boot_race_reached_empty_then_dead_reports_channel_down_not_waiting_for_human`
+- `…:358` `Boot_race_transient_death_then_reached_empty_reports_waiting_for_human_not_channel_down`
+
+🔴 **Why it was recorded open.** The 2026-08-06 triage probe searched for `NoConversation` /
+`"no open conversation"` / `"conversation-existence split"` — **names the implementation never uses** — and
+scoped itself to `Clavity.Ls/*.cs`, while half the shipped path lives in `Clavity.Mcp`. A probe keyed on
+invented vocabulary reports ABSENT for something present and cannot return its failing answer. That
+probe was following `docs/backlog-triage-runbook.md` §2, whose rule (*"a negative result is decisive"*) was
+itself inverted; the rule was corrected on 2026-08-07 and this entry is the worked example in it.
+
+**No commit from the open-work epic fixed this** — the fix predates the epic. Do not attribute it to one.
