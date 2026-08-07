@@ -130,11 +130,16 @@ earlier draft assumed every run has a capstone ledger row and a commit message. 
 no fold, produces **no commit at all**. It also contains **zero** references to `skipped.log` (measured),
 so pointing it at that log names a path the skill does not have.
 
-| Discipline | Durable record for both tokens |
-|---|---|
-| `agy-capstone` | `.clavity/agy-marks/skipped.log` for `UNVERIFIED-ACCEPTED` (existing format, `SKILL.md:126-131`); the committed `docs/agy-capstone-ledger.md` row for below-floor summaries |
-| `agy-test-audit` | the committed `docs/accepted-boundaries.md` — an owner-accepted unverifiable finding *is* an accepted boundary, and the schema in §4.6 already carries a compensation anchor |
-| `adversarial-panel-review` | a **stand-downs section in the reviewed artifact itself**, since the artifact is the thing that persists and the run may never commit |
+The two tokens need **separate** destinations, because they are different kinds of record: an
+`UNVERIFIED-ACCEPTED` is a standing owner decision that must survive and be re-read, while a below-floor
+summary is a breadcrumb proving the finding was seen. Collapsing them into one file per discipline —
+which an earlier draft did — routes trivial nits into a ledger reserved for architectural exemptions.
+
+| Discipline | `UNVERIFIED-ACCEPTED` record | below-floor summary (§4.4) |
+|---|---|---|
+| `agy-capstone` | `.clavity/agy-marks/skipped.log`, existing format per `SKILL.md:126-131` | the committed `docs/agy-capstone-ledger.md` row |
+| `agy-test-audit` | the committed `docs/accepted-boundaries.md`, under the **owner-accepted** mode of §4.6 | the branch-finish commit message |
+| `adversarial-panel-review` | a **stand-downs section in the reviewed artifact itself**, since the artifact is what persists and the run may never commit | the same section |
 
 *(One round-2 finding justified this by claiming a spec review "runs before git commits exist, so there
 is no `HEAD=<sha>` to write". That rationale is false — the repository always has a `HEAD`. The finding
@@ -223,12 +228,28 @@ prose. The entry format mirrors `open-issues`' own, which is already terse and a
 - [boundary] <behaviour not covered> * <source/path.ext:LINE> * compensation=<what covers it instead, with its code anchor> * <YYYY-MM-DD>
 ```
 
-One entry per line. `compensation=` must name a concrete artifact (a unit test, a catch scope, a
-structural guarantee) **and** its anchor, because that anchor is exactly what the future audit
-re-validates. An entry with no anchor is not honorable as do-not-re-raise and reverts to a live gap.
+One entry per line, in one of **two modes**, because the file now receives two kinds of entry:
+
+- **Compensated** (the normal case) — `compensation=` names a concrete artifact (a unit test, a catch
+  scope, a structural guarantee) **and** its anchor. That anchor is exactly what the future audit
+  re-validates; an entry with no anchor is not honorable as do-not-re-raise and reverts to a live gap.
+- **Owner-accepted** — `compensation=owner-accepted:<YYYY-MM-DD> <rationale>`, for an
+  `UNVERIFIED-ACCEPTED` finding routed here per §4.1. There is **no** compensating artifact by
+  definition: the finding could be neither proved nor refuted, and the owner accepted the risk. A future
+  audit re-validates such an entry by confirming **the cited source anchor still exists**, not by hunting
+  a compensation that was never claimed.
+
+Without the second mode the two rules collide: §4.1 routes an owner-accepted unverifiable finding into
+this file, and the compensated rule then finds no anchor and resurrects it as a live gap — silently
+revoking a decision the owner had made. That is a contradiction between two sections written in
+different passes, not a design choice.
 
 **Section-partitioned, not a flat append.** Entries group under a heading per product
-(`clavity-dotnet`, `clavity-classic`, `ghidrust`, …), sorted by source path within a section. This
+(`clavity-dotnet`, `clavity-classic`, `ghidrust`, `agy-autotrain`, `commonmemory`), sorted by source path
+within a section. A boundary in shared or root-level code — `scripts/`, root `docs/` — groups under a
+dedicated `shared` heading. That fallback is stated because §4.9 states the analogous one for ROADMAP
+ownership and this section originally did not; without it each driver invents its own heading and the
+partitioning that prevents the merge conflict stops working. This
 carries forward a constraint the source skill already stated and an earlier draft of this spec dropped —
 `agy-test-audit/SKILL.md:114-116`: *"Structure it append-only / section-partitioned to minimize merge
 conflicts (a single file touched every branch-finish is a conflict hotspot where a careless
