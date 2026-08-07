@@ -42,11 +42,58 @@ do not read.
 and read as open. Before dispositioning anything, state its **oracle**: a command, a test name, or a
 `file:line` that decides the question.
 
-- **A negative result is decisive.** "The symbol the mitigation would have introduced is absent" closes
-  the question: the entry stays open.
-- **A positive result is NOT decisive.** A grep hit means *open the file and judge* whether the hit is the
-  mitigation the entry asked for or an unrelated use of the same words. That judgement cannot be
+> 🔴 **CORRECTED 2026-08-07. This rule used to read "a negative result is decisive" and it was BACKWARDS.**
+> It manufactured three false "still open" verdicts in a single sweep. It also contradicted this same
+> section's own later rule — *"A check that returns the same answer whether the work was done or not is
+> not a check"* — because a grep for a name you invented is exactly such a check. **The triagers were not
+> careless; they were obeying this section.**
+
+🔴 **THE TEST IS WHO CHOSE THE NAME.** This is the whole rule, and getting it wrong in *either* direction
+is costly — the first attempt at this correction said "a negative result is never decisive", which would
+have thrown away three sound oracles.
+
+- **A name the implementer could NOT have chosen freely** — a framework API (`MaxReceiveMessageSize`), a
+  hook event (`UserPromptSubmit`), a wire field, a config key — **its absence IS strong evidence.** There
+  was no synonym available; if the work had been done, that exact token would be there. The
+  `grpc-default-max-message-size` and `inbox-snapshot-misses-slash-command-path` stamps are of this kind
+  and they are sound.
+- **A name YOU invented to describe the fix** — `NoConversation`, "conversation-existence split",
+  "idle-expiry poll / retry path" — **its absence proves nothing at all.** The implementer never read your
+  entry and had no reason to pick your words.
+
+🔴 **A negative on an INVENTED name is the WEAKEST evidence available**, because it cannot distinguish
+*not implemented* from *implemented under a name you did not think of*. **Measured 2026-08-06/07, three
+times:**
+  - `conversation-scoped-tools` grepped for `NoConversation` / "no open conversation". The shipped fix is
+    `AgyConversationPendingException` + `reachedLsButEmpty` (`AgyView.cs:381`), surfacing as
+    `waiting_for_human` (`McpTools.cs:52-55`) — **and already pinned by two regression tests**
+    (`AgyChannelDownTests.cs:284`, `:358`) that satisfy the entry's own stated retirement gate.
+  - `stalled-reply-recoverable-not-lost` looked for an "idle-expiry poll / retry path". The shipped fix is
+    the `lastProgress` loop in `WaitForIdleWithProgressAsync` (`AgyView.cs:273-281`), which *is* the
+    step-counter discriminator the entry asks for.
+  - `agy-autotrain` AT-1 Part A asserted no anti-poisoning gate existed. One had existed at
+    `agy-autotrain/skills/agy-curate/SKILL.md:250` since `c46be48` — **four days before the item was
+    opened.**
+
+**So an absent INVENTED symbol ESCALATES, it never closes.** Verify behaviourally instead: run the entry's
+"Steps to Reproduce", or read the code path the entry's *evidence* names and judge whether the behaviour it
+demands is present **under any name**.
+
+✅ **A well-built oracle already exists in this repo — copy its shape.** `agy-look-tail-truncation`'s stamp
+cites the exact call site *and* warns: *"NB the tail-anchored view DOES exist (`BoundedView.cs:38-41`
+`newestFirst`), used only by `agy_ask` and tests; grep `AgyView.cs` alone and you will wrongly conclude no
+such view exists at all."* It anticipated the failure mode and disarmed it in the stamp. **That is what a
+negative oracle has to do to be trusted.**
+
+- **A positive result is not decisive either.** A grep hit means *open the file and judge* whether the hit
+  is the mitigation the entry asked for or an unrelated use of the same words. That judgement cannot be
   pre-written, because it depends on what the hit turns out to be.
+
+- 🔴 **When neither can be established, the verdict is `UNKNOWN` — never `open`.** If the reproduction
+  needs state you cannot reach (a live peer, a >4 MB payload, a timing race), say so in the
+  `last-triaged:` stamp and leave the disposition explicitly unresolved. **An un-runnable check silently
+  becoming "still open" is how a shipped fix stays on the backlog for weeks** — the failure this whole
+  section exists to prevent. `UNKNOWN` costs one honest line; a false `open` costs a planned task.
 
 🔴 **Point the oracle at the file the entry's own evidence names, not at the file you assume.** Measured
 2026-08-06, twice in one session:
