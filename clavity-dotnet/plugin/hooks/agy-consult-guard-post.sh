@@ -86,6 +86,6 @@ if [ "$b_head" != "$a_head" ]; then
   headmsg=" New commit(s): $(git -C "$cwd" log --oneline "${b_head}..${a_head}" 2>/dev/null | head -5 | tr '\n' ';')"
 fi
 
-msg="AGY CONSULT GUARD - VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT: the agy peer appears to have modified git state during a consult that was supposed to make ZERO changes. What changed: ${axes}Next: verify the peer (not you) made these changes; if so, undo them with a TARGETED per-file 'git checkout -- <file>' / 'git reset' (NEVER a broad 'git checkout <dir>/'), then re-issue the consult with a louder forbidden-actions banner. Changed paths:\n${paths}${headmsg}"
+msg="AGY CONSULT GUARD - VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT: the agy peer appears to have modified git state during a consult that was supposed to make ZERO changes. What changed: ${axes}CAVEAT - this guard compares VCS state before and after the consult and CANNOT attribute a change to the peer rather than to anything else running in this repository at the same time. If you dispatched a local subagent, or another session is open on this repo, that is the likelier cause, and reverting would destroy its in-flight work. Next: verify the peer - not you, and not a concurrent local agent - made these changes; if so, undo them with a TARGETED per-file 'git checkout -- <file>' / 'git reset' (NEVER a broad 'git checkout <dir>/'), then re-issue the consult with a louder forbidden-actions banner. Changed paths:\n${paths}${headmsg}"
 emit "$msg"
 exit 0

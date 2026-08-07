@@ -38,6 +38,25 @@ Describe 'agy-consult-guard' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'names the concurrent-local-agent confound in the breach warning' {
+        # The guard detects a VCS delta across the consult window. It CANNOT attribute that delta to the
+        # peer rather than to anything else running in the same repository at the same time.
+        # MEASURED 2026-08-07: it fired naming the three files a local implementer subagent was mid-edit on,
+        # one carrying a deliberate temporary mutation, while the peer had changed nothing.
+        # This matters because the message's next instruction is a revert: a driver who acts on it without
+        # verifying would destroy that subagent's in-flight work.
+        $r = New-GuardRepo
+        try {
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            Push-Location $r; Set-Content 'b.txt' 'two' -Encoding ascii; git add b.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED' -Because 'the existing alarm must still fire'
+            $out | Should -Match 'CANNOT attribute'
+            $out | Should -Match 'concurrent'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT across an MCP consult that changed nothing' {
         $r = New-GuardRepo
         try {
