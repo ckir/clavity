@@ -725,6 +725,74 @@ test stays green. Measured, not reasoned: `5071872` records the mutation. Cardin
 **Cost:** ~80 tokens per firing, ~2 firings per session; verification is one targeted test run per
 directional or fallback assertion. Both variants' plugins must change together (byte-identical pair).
 
+### 12. Post-plan-2 leftovers — two guards that overstate what they verify · **PROMOTED FROM TRIAGE 2026-08-07**
+
+Both entries came out of `.clavity/local-anomalies.md` at the triage that followed plan 2's capstone. Each
+was verified by measurement before promotion, and each is stated with the measurement that establishes it.
+**Shared theme, and the reason they are one section: each is a mechanism that TELLS THE READER it checked
+something it did not actually check.** That is the same disease as §0 — presence mistaken for proof.
+
+#### 12a. The consult guard cannot tell the agy peer from a concurrent local subagent
+
+`clavity-dotnet/plugin/hooks/agy-consult-guard-post.sh` (and its byte-identical classic mirror) detects a
+review-only breach by comparing seven axes of VCS state captured before the consult against the state after
+it. **It has no way to attribute a change to the peer rather than to anything else running in the same
+repository at the same time.**
+
+**MEASURED 2026-08-07.** During plan 2 a capstone round was issued while an implementer subagent was
+mid-task. The guard fired, naming the three files that subagent was editing, one of which carried a
+deliberate temporary mutation. The peer had changed nothing.
+
+**Against the bar:**
+
+1. **Loss.** Not silent — the failure is a LOUD false alarm, which is worse in a specific way: this alarm
+   is security-grade ("ARBITRARY-CODE-EXEC vector" is one of its axes), and an alarm that cries wolf during
+   ordinary subagent-driven work trains the driver to discount it. The message's first instruction is
+   *"verify the peer (not you) made these changes"* — which is correct and is what caught this one — but a
+   driver who skips that step and follows the next clause would revert a subagent's in-flight work.
+2. **Unavoidable.** Subagent-driven execution is the standard workflow, and consults are issued during it.
+   Any overlap reproduces this.
+3. **Mechanism.** Bounded: add a clause to the breach message naming the concurrent-local-agent confound as
+   the likeliest benign cause, so the verify step is not merely advised but explained. Optionally record
+   whether local agents were dispatched during the consult window and downgrade the wording when they were.
+   **Both driver plugins must change together (byte-identical pair), and `agy-consult-guard.Tests.ps1` is
+   the suite.**
+
+⚠ **Do NOT "fix" this by making the guard quieter or by narrowing its axes.** The axes are load-bearing; a
+prior capstone caught a real index-smuggle through one of them. The defect is the attribution, not the
+detection.
+
+#### 12b. A hook comment claims a byte-parity test that does not exist
+
+`clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh:29-30` states that the `jq` and jq-absent
+emission paths deliver a **byte-identical** string, and that *"a test asserts"* it.
+
+**MEASURED 2026-08-07, twice.** The test at `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1:138`
+compares `.systemMessage` **after `ConvertFrom-Json`** — it pins the decoded MESSAGE, not the bytes. And
+the paths are genuinely not byte-identical on this platform: Windows `jq` terminates with `\r\n`, the
+hand-built `printf` with `\n` (611 vs 610 bytes on the `UserPromptSubmit` arm; 600 vs 599 on the
+`PreCompact` arm, so it **predates plan 2** and is not a regression). A trailing line ending is harmless to
+a JSON consumer, so **the functional invariant holds and nothing is broken today.**
+
+**Against the bar:**
+
+1. **Silent loss.** Yes, and this is the whole entry: a maintainer reading that comment believes a guard
+   exists. A future change that made the two paths structurally diverge — a different key, a dropped
+   field, a lost escape — would not be caught by the test the comment points at.
+2. **Unavoidable.** The comment sits at the top of the file every change to this hook must touch, and it
+   was believed by the agy peer during the capstone, which asserted byte-identity from reading it.
+3. **Mechanism.** Two bounded parts: correct the comment to say what the test actually pins, and add a test
+   comparing the two paths' RAW stdout with the trailing newline normalized — which would catch a
+   structural divergence while tolerating the platform's line ending. **Byte-identical pair; both drivers.**
+
+#### Assessed and deliberately NOT promoted
+
+- **A tab between the slash command and its arguments does not trigger the inbox snapshot.** Measured with
+  a firing space-separator control: it fails on BOTH the jq and grep paths identically (the fallback greps
+  the RAW payload, where a tab is the two characters `\t` and a backslash is not `[[:space:]]`). The four
+  `case` patterns are a deliberate complete set. **Below the reachability floor** — recorded in the backlog
+  entry's *Known limit* section, not tracked here.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.

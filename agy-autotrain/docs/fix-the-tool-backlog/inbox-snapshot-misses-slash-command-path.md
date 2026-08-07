@@ -118,6 +118,14 @@ Mitigation 3 (a snapshot as the skill body's first step) was not needed and was 
 
 ### Known limit
 
+**A tab or newline between the command and its arguments does not trigger a snapshot.** MEASURED
+2026-08-07 during the plan-2 capstone, with a firing space-separator control: `/agy-autotrain:agy-curate`
+followed by a tab fails on **both** the jq path and the grep fallback, identically. The peer that raised it
+predicted a divergence between the two paths; there is none, because the fallback greps the RAW payload,
+where a tab is the two characters `\t` and a backslash is not `[[:space:]]`. The four `case` patterns are a
+deliberate complete set and were not widened: a tab as an argument separator in a typed slash command is
+below the reachability floor. Recorded here so the next reader does not re-derive it.
+
 The fix covers the two invocation paths that exist today. A **third** future entry path would need the
 same treatment — which is the durable concern mitigation 1 was reaching for, even though its specific
 remedy is wrong. If a third path appears, the right answer is to widen this hook, not to couple the driver
