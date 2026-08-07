@@ -147,6 +147,14 @@ running the premise the tests rest on instead of reading them. **Six panel round
 | EX-2 | 🔴 **BLOCKING.** Step 7's mutation instruction named an `if [ ! -f "$seen" ]` / `else` block that **does not exist** — LI-3 rewrote the gate as a loop in round 4 and Step 7 was never re-derived | **FOLDED** — rewritten with the correct mutation, plus a note on why deleting the `exit 0` outright produces silence rather than the needed emission |
 | EX-3 | Step 7 demanded "**EXACTLY TWO** tests red" and made a third a hard stop. That count predates rounds 4-5, which added six more gate tests; the true blast radius is seven, because the markers are coupled | **FOLDED** — the must-fail control is now named singly, the collateral is a prediction to confirm rather than a count to match, and the stop condition is named as four specific gate-independent tests |
 
+Three more followed, found the same way — by executing the plan rather than reading it:
+
+| # | Finding | Disposition |
+|---|---|---|
+| EX-4 | 🔴 **The test helpers could never have been called.** `New-GateEnv` and `Invoke-Prompt` were bare `function` statements in the `Describe` body. In Pester 5 a function declared there is visible only during the DISCOVERY pass and is gone by RUN — every `It` calling them threw `CommandNotFoundException` unconditionally, whatever the hook did | **FOLDED** — both bodies moved byte-identically into `BeforeAll`, which is where this very file already keeps `New-CleanHome`/`New-Workspace`/`Payload`. The plan cited that harness and still got the placement wrong |
+| EX-5 | 🔴 **Round 5's own fix (MG-3) created this.** The exhaustive `Get-ChildItem -Path $TestDrive -Recurse` sweep is cross-test contaminated: `$TestDrive` is per-CONTAINER, not per-`It`, and the gate tests never clean up. The test passes ALONE and fails after its 8 siblings, tripping on a sibling's own CORRECT marker | **FOLDED** — one `AfterEach` clearing `$TestDrive`. Exhaustiveness preserved, non-vacuity guard still bites |
+| EX-6 | Task 3 Step 6 demanded "**Two** tests must go red". Same stale-count class as EX-3: written before the `passes the event name as an argument` test existed, whose regex requires a literal `agy-anomaly-capture-reminder\.sh` and so also fails under the typo. The true count is three | **FOLDED** — three named, the must-fire control identified, the typo scoped to the dotnet manifest, and a red `classic` variant made the stop condition |
+
 **What this round is evidence of.** The two clean verdicts that were *probed* both broke (rounds 2 and 5) —
 and now the round-6 GREEN broke too, under a probe the panel format cannot perform: **executing the
 premise.** All three findings live in the plan's VERIFICATION steps, not its implementation steps, which is
@@ -863,9 +871,23 @@ Expected: `Failed: 0`.
 
 - [ ] **Step 6: Prove the new assertion is non-vacuous**
 
-Temporarily change the registered script name to `agy-anomaly-capture-reminder-typo.sh`. Re-run. **Two tests
-must go red**: the new group-count assertion, and the existing `names only hook files that EXIST in that
-plugin` at `:115-131`. If the group-count one stays green, it is not reading what you think. Restore.
+Temporarily change the registered script name to `agy-anomaly-capture-reminder-typo.sh` **in the dotnet
+manifest ONLY**. Re-run.
+
+🔴 **THREE tests must go red — not two.** This step said "two" until 2026-08-07; that count was written
+before the second test below existed, and is finding EX-6, the same stale-expected-failure-count class as
+EX-3. Check them by name:
+
+- `registers the capture reminder on UserPromptSubmit in exactly one BARE group - dotnet` — the group count
+  drops to 0. **This is the control that MUST fire.** If it stays green, the assertion is not reading what
+  you think it is, and nothing else in this step matters.
+- `passes the event name as an argument on UserPromptSubmit - dotnet` — its regex requires a literal
+  `agy-anomaly-capture-reminder\.sh`, which `...-reminder-typo.sh` does not contain.
+- the existing `names only hook files that EXIST in that plugin` at `:115-131` — the typo names a file that
+  does not exist.
+
+**The `classic` variants of all three must stay GREEN**, because only the dotnet manifest was edited. A red
+classic variant means the wrong file was edited — a genuine stop. Restore and re-run to confirm green.
 
 - [ ] **Step 7: Commit**
 
