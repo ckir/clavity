@@ -166,6 +166,29 @@ marker is a terminus this gate must cover.
 
 This generalizes the mechanism already proven at `agy-test-audit:67-69` instead of inventing one.
 
+**The existing ALIGNED enumeration must be UPDATED, not shadowed.** `agy-capstone/SKILL.md:177-179`
+already enumerates what a clean terminal round accepts — *"folded (fixed + measured clean), killed by
+measurement (`[VERDICT: REJECTED - ...]`), or explicitly human-accepted as an UNVERIFIED risk — and no
+material unrefuted defect remains."* Measured: the strings `DEFERRED` and `BELOW-FLOOR` appear **zero**
+times in that file. So two of this amendment's five tokens are dispositions the skill's own terminal
+condition does not admit, and a run that used them could not legitimately reach `ALIGNED` at all. The
+plan must rewrite that enumeration to the full five — adding a token beside an existing exhaustive list
+without editing the list is how the two silently disagree.
+
+**And the "no material unrefuted defect remains" guarantee is PRESERVED, not weakened.** A deferred
+defect is by definition unrefuted and still present, so a naive reading of this amendment would let
+deferral launder a material defect past the clause that exists to stop shipping known-broken code.
+It does not:
+
+- A **material** defect disposed as `DEFERRED-TO-ANOMALIES` does **not** clear `ALIGNED` on the driver's
+  own authority. It needs an owner ruling — the same shape as the existing `UNVERIFIED` path at
+  `SKILL.md:122-131`, which likewise blocks a clean verdict "until the human rules".
+- A `DISCARDED-BELOW-FLOOR` item clears, because *not material* is exactly what that token asserts and
+  §4.1 now makes it cite the guard that proves it.
+
+The taxonomy therefore widens what a reviewer must *account for*; it never widens what a driver may
+*wave through alone*.
+
 **What the gate does not do.** It binds findings that were *recorded*. A finding never written down has
 no unassigned token and cannot trip the gate. That hole is real and is not closable by this mechanism —
 recording discipline stays a judgment rule that a peer review catches, which is why §4.4 keeps a
@@ -318,7 +341,7 @@ is a ruling against untracked parking lots, and `:182-184` forbids exactly that 
 | File | Change |
 |---|---|
 | `{dotnet,classic}/plugin/skills/adversarial-panel-review/SKILL.md` | taxonomy + gate + age clause + anti-sweep + scope boundary |
-| `{dotnet,classic}/plugin/skills/agy-capstone/SKILL.md` | same |
+| `{dotnet,classic}/plugin/skills/agy-capstone/SKILL.md` | same, **plus a rewrite of the `ALIGNED` disposition enumeration at `:177-179`** to admit all five tokens (§4.2) |
 | `{dotnet,classic}/plugin/skills/agy-test-audit/SKILL.md` | same, plus the §4.6 reconciliation |
 | `{dotnet,classic}/plugin/skills/open-issues/SKILL.md` | §4.7 intake-bar clarification |
 | `scripts/check-agy-discipline-skills.ps1` | `$requiredVerdicts` additions |
