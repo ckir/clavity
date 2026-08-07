@@ -368,6 +368,14 @@ closed set, or "one of:" construction that the five tokens must now appear in.**
 - **Non-vacuity is mandatory.** Each new assertion must be proven with a deliberate mutation of the
   guarded text, and the **specific newly-added test** must be the one that goes red — not merely that
   the suite returned non-zero.
+- **The existing mutation table must gain rows — this is the enumeration defect again, in test code.**
+  `check-agy-discipline-skills.Tests.ps1:43-46` holds its **own** hardcoded `-ForEach` data, independent
+  of the checker's `$requiredVerdicts`: it swaps a required token for `[VERDICT: GONE]` and asserts
+  `$LASTEXITCODE -eq 1`. Today it samples **one token per skill across three skills**. Adding tokens to
+  `$requiredVerdicts` without adding matching rows here leaves the new tokens with **no mutation proof at
+  all** — the checker could silently fail to enforce them and the suite would stay green, which is
+  precisely the vacuous-test hole `agy-test-audit/SKILL.md:88-96` exists to forbid. The plan adds a row
+  per new token per enrolled review skill.
 - **Roster** — if `docs/accepted-boundaries.md` is user-facing it needs enrolling in
   `docs/user-facing-docs.txt`; `just docs-audit` silently intersects that roster, so an unenrolled doc
   audits as "0 docs" rather than failing. The plan decides enrollment explicitly.
