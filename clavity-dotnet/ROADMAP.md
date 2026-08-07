@@ -762,28 +762,43 @@ deliberate temporary mutation. The peer had changed nothing.
 prior capstone caught a real index-smuggle through one of them. The defect is the attribution, not the
 detection.
 
-#### 12b. A hook comment claims a byte-parity test that does not exist
+#### 12b. The new emission arm's jq-absent path is completely untested
 
-`clavity-dotnet/plugin/hooks/agy-anomaly-capture-reminder.sh:29-30` states that the `jq` and jq-absent
-emission paths deliver a **byte-identical** string, and that *"a test asserts"* it.
+🔴 **THIS ENTRY WAS REWRITTEN 2026-08-07, BEFORE ANY WORK STARTED ON IT.** As first written it claimed a
+hook comment at `:29-30` falsely advertised a byte-parity test. **That comment no longer exists** — plan 2's
+Task 1 replaced that block, comment and all. The original capture was taken against a *pre-plan-2* reading
+of the file and was never re-verified against the file plan 2 had already changed: an incomplete fold, in
+the entry written to record someone else's. It was caught by read-verifying every citation before writing
+the implementation plan, which is exactly what that discipline is for. **The surviving defect below is a
+different and better one, established by measurement.**
 
-**MEASURED 2026-08-07, twice.** The test at `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1:138`
-compares `.systemMessage` **after `ConvertFrom-Json`** — it pins the decoded MESSAGE, not the bytes. And
-the paths are genuinely not byte-identical on this platform: Windows `jq` terminates with `\r\n`, the
-hand-built `printf` with `\n` (611 vs 610 bytes on the `UserPromptSubmit` arm; 600 vs 599 on the
-`PreCompact` arm, so it **predates plan 2** and is not a regression). A trailing line ending is harmless to
-a JSON consumer, so **the functional invariant holds and nothing is broken today.**
+`agy-anomaly-capture-reminder.sh` now has **two** emission arms, each with a `jq` path and a hand-built
+jq-absent path: `UserPromptSubmit` → `hookSpecificOutput` (`:156` printf, `:199` jq), and everything else →
+`systemMessage` (`:157` printf, `:200` jq).
+
+**MEASURED 2026-08-07.** Every `NoJqPath` test in `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1`
+(`:119`, `:138`, `:171`, `:208`, `:217`) invokes the hook with **no `-Arguments`**, so all of them take the
+`PreCompact` branch. **The count of tests exercising the `UserPromptSubmit` arm's jq-absent path is ZERO.**
+The path works today — probed directly, it emits valid JSON with `hookEventName` = `UserPromptSubmit` — but
+nothing in the suite would notice if it stopped.
 
 **Against the bar:**
 
-1. **Silent loss.** Yes, and this is the whole entry: a maintainer reading that comment believes a guard
-   exists. A future change that made the two paths structurally diverge — a different key, a dropped
-   field, a lost escape — would not be caught by the test the comment points at.
-2. **Unavoidable.** The comment sits at the top of the file every change to this hook must touch, and it
-   was believed by the agy peer during the capstone, which asserted byte-identity from reading it.
-3. **Mechanism.** Two bounded parts: correct the comment to say what the test actually pins, and add a test
-   comparing the two paths' RAW stdout with the trailing newline normalized — which would catch a
-   structural divergence while tolerating the platform's line ending. **Byte-identical pair; both drivers.**
+1. **Silent loss.** Yes, and it is the same shape as the defect that created this hook: the jq-absent branch
+   is *"the branch most installs actually run"* (AT-2's lesson), it is hand-built `printf` with no escaping
+   machinery, and a malformed brace or a wrong key there would emit nothing the model can read — **no error,
+   no output, and it looks installed and working.** Every existing test would stay green.
+2. **Unavoidable.** It ships enabled to every user of both drivers on every prompt.
+3. **Mechanism.** Bounded: add a jq-vs-jq-absent comparison for the `UserPromptSubmit` arm, mirroring the
+   existing one at `:135-142` and keeping its non-vacuity guard (that guard exists because a prior version
+   of this very test passed green against a hook that did not exist). Comparing the two `.StdOut` values
+   directly is the right assertion — `Invoke-BashHook` already `.Trim()`s, so a raw comparison tolerates the
+   platform's trailing-newline difference while still catching a structural divergence.
+
+**Note, recorded so it is not re-discovered as a defect:** the two paths are genuinely *not* byte-identical
+on this platform — Windows `jq` terminates with `\r\n`, `printf` with `\n` (611 vs 610 bytes on the new arm,
+600 vs 599 on the old). It predates plan 2, a trailing line ending is harmless to a JSON consumer, and the
+`.Trim()` above is what makes it a non-issue for the test. **Do not "fix" the line ending.**
 
 #### Assessed and deliberately NOT promoted
 
