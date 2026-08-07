@@ -539,6 +539,39 @@ with:
   to prune stale entries.
 ```
 
+- [ ] **Step 3b: Fix the FIFTH restatement, at `:82` - the one that now contradicts Step 3**
+
+Step 3 just redefined the rolling committed file as boundaries-ONLY and said in so many words that
+owner-deferred gaps do NOT live there. But numbered item 4 of "The audit round", ~30 lines ABOVE it, still
+routes deferred gaps INTO that same file. Left alone, this task ships a skill that contradicts itself
+within one screen. Find it by text, not by number - Step 2a and 2b have already shifted this file.
+
+Verify state first:
+
+```bash
+grep -n "in the rolling debt file (below)" clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md
+```
+
+Expected: exactly ONE hit. If zero or more than one, STOP and report `STATE_MISMATCH: <count>`.
+
+Replace:
+
+```
+   the owner **defers must be logged as tracked debt** in the rolling debt file (below) - a
+   GAPS-FOUND-but-all-deferred outcome is legitimate only if recorded, so a defer-everything habit is
+   visible in one place and the discipline cannot degrade into run-then-defer theater.
+```
+
+with:
+
+```
+   the owner **defers must be logged as tracked debt** on the anomalies conveyor
+   (`.clavity/local-anomalies.md`, promoted to a tracked `ROADMAP.md` item) - NOT in the rolling committed
+   file below, which holds accepted boundaries only. A GAPS-FOUND-but-all-deferred outcome is legitimate
+   only if recorded, so a defer-everything habit is visible in one place and the discipline cannot degrade
+   into run-then-defer theater.
+```
+
 - [ ] **Step 4: Rewrite the GAPS FOUND completion condition**
 
 Replace:
@@ -1083,3 +1116,13 @@ content nesting three-backtick fences inside a three-backtick fence; and Task 3 
 instruction outrunning Step 9's explicit `git add`. Refuted by measurement and NOT folded: `perl` unavailable
 (5.42.2 present), `coverage-debt` leaking past the two SKILL files (confined to them), the roster exclusion
 being unsafe (`check-user-facing-docs.ps1` warns, never fails, on absent-from-list).
+
+**Panel round 2 folded.** The live peer returned GREEN on both its seats and produced a 25-row table
+asserting zero verification mismatches. That GREEN was FALSE. Running the plan's own Task 7 Step 1 sweep -
+rather than reasoning about it - surfaced `agy-test-audit/SKILL.md:82`, a FIFTH restatement of the debt
+routing, inside the very file Task 3 edits and about 30 lines above the section Step 3 rewrites. Left
+alone, Task 3 would have shipped a skill contradicting itself within one screen. Now Task 3 Step 3b.
+The peer also misquoted that sweep (it reported an `-E` form with escaped `\|` alternation, which the plan
+does not contain and which would silently match nothing) and then greened its own misquote - so its row
+verdicts are not evidence. Seventh instance of this epic's signature defect class, and the second one that
+only a RUN, never a reading, could find.
