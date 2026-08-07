@@ -142,6 +142,39 @@ Describe 'agy-anomaly-capture-reminder.sh' {
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'delivers the SAME UserPromptSubmit envelope with and without jq' {
+        # THE GAP THIS CLOSES. Every other NoJqPath test in this file passes no -Arguments, so all of them
+        # take the PreCompact branch. Before this test, the number of tests exercising the UserPromptSubmit
+        # arm's hand-built jq-absent printf was ZERO. That branch is the one most installs actually run, it
+        # builds JSON by hand with no escaping machinery, and a malformed brace or a wrong key there emits
+        # nothing the model can read -- with no error, and looking installed and working.
+        #
+        # Two SEPARATE gate environments, because the gate is per-session and never emits on prompt 1:
+        # each path needs its own session id and its own marker directory, or the second would be suppressed.
+        $w  = New-Workspace
+        $a  = New-GateEnv    # jq present
+        $b  = New-GateEnv    # jq absent
+        $pa = '{"cwd":"' + ($w -replace '\\','/') + '","session_id":"' + $a.Sid + '"}'
+        $pb = '{"cwd":"' + ($w -replace '\\','/') + '","session_id":"' + $b.Sid + '"}'
+
+        $null   = Invoke-BashHook -HookPath $script:Hook -Payload $pa -Arguments @('UserPromptSubmit') -Env @{ HOME = $a.Home; TMPDIR = $a.Tmp }
+        $withJq = (Invoke-BashHook -HookPath $script:Hook -Payload $pa -Arguments @('UserPromptSubmit') -Env @{ HOME = $a.Home; TMPDIR = $a.Tmp }).StdOut
+
+        $null   = Invoke-BashHook -HookPath $script:Hook -Payload $pb -Arguments @('UserPromptSubmit') -Env @{ HOME = $b.Home; TMPDIR = $b.Tmp; PATH = $script:NoJqPath }
+        $noJq   = (Invoke-BashHook -HookPath $script:Hook -Payload $pb -Arguments @('UserPromptSubmit') -Env @{ HOME = $b.Home; TMPDIR = $b.Tmp; PATH = $script:NoJqPath }).StdOut
+
+        # NON-VACUITY, and it is not decoration. The sibling test at :139-140 records why: an equality
+        # assertion is satisfied when BOTH paths emit nothing, and a prior version of that test passed green
+        # against a hook that did not exist, because $null equalled $null.
+        $withJq | Should -Not -BeNullOrEmpty -Because 'two silent paths are trivially identical'
+        $noJq   | Should -Not -BeNullOrEmpty -Because 'two silent paths are trivially identical'
+
+        # RAW stdout, not a decoded field. Invoke-BashHook already Trim()s, which normalizes the platform's
+        # trailing-newline difference (Windows jq emits CRLF, printf emits LF) -- so this tolerates the line
+        # ending while still catching a structural divergence: a different key, a dropped field, a lost brace.
+        $noJq | Should -BeExactly $withJq
+    }
+
     It 'is SILENT under a WORKSPACE .no-agy' {
         $w = New-Workspace; $h = New-CleanHome
         try {
