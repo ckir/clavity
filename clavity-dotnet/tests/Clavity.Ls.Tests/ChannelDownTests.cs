@@ -4,6 +4,46 @@ namespace Clavity.Ls.Tests;
 
 public class ChannelDownTests
 {
+    // One diagnostic per Fault. The throw is the point: adding a Fault without updating this map fails the
+    // suite loudly instead of silently skipping the new arm.
+    private static ChannelDiagnostic RepresentativeDiagnosticFor(ChannelDown.Fault f) => f switch
+    {
+        ChannelDown.Fault.TransportDown => new ChannelDiagnostic("Unavailable", "connection refused"),
+        ChannelDown.Fault.ResourceExhausted => new ChannelDiagnostic("ResourceExhausted", "message too big"),
+        ChannelDown.Fault.AuthFailed => new ChannelDiagnostic("Unauthenticated", "token rejected"),
+        ChannelDown.Fault.InvalidRequest => new ChannelDiagnostic("NotFound", "no such cascade"),
+        _ => throw new InvalidOperationException(
+            $"Fault.{f} has no representative diagnostic. Add one HERE, and an arm to StatusFor AND to Hint."),
+    };
+
+    [Fact]
+    public void Every_fault_maps_to_its_own_status_so_a_new_arm_cannot_silently_report_channel_down()
+    {
+        // StatusFor's fallback is `_ => Status` ("channel_down"). A fault added to Classify and to Hint but
+        // NOT to StatusFor therefore emits "channel_down" while the hint says the channel is fine -- the
+        // precise contradiction StatusFor exists to prevent. That defect DID occur once during this change's
+        // own review, guarded only by a code comment. A comment cannot fail a build; this test can.
+        var faults = Enum.GetValues<ChannelDown.Fault>();
+
+        var statusOf = faults.ToDictionary(f => f, f =>
+        {
+            var d = RepresentativeDiagnosticFor(f);
+            // Guard the guard: the sample must actually classify as the fault it stands for, or this test
+            // would be checking the wrong arm and still pass.
+            Assert.Equal(f, ChannelDown.Classify(d));
+            return ChannelDown.StatusFor(d);
+        });
+
+        var collisions = statusOf
+            .GroupBy(kv => kv.Value)
+            .Where(g => g.Count() > 1)
+            .Select(g => $"{g.Key} <- {string.Join(" + ", g.Select(kv => kv.Key))}")
+            .ToList();
+
+        // Name WHICH faults collide, never just how many.
+        Assert.True(collisions.Count == 0, "faults sharing one status: " + string.Join(" | ", collisions));
+    }
+
     [Fact]
     public void An_oversized_payload_is_not_reported_as_a_peer_shutdown()
     {
