@@ -136,6 +136,22 @@ guard would do. That is the difference between a verdict and a concession.
 turn. There is no state available to debounce it — that is the failure being reported — and stderr is not
 the model's context, so it costs the operator a repeated line rather than training a reflex. Accepted.
 
+### Round 7 — found at EXECUTION time, by tracing the tests against the code. Two were BLOCKING.
+
+Round 6 declared GREEN. These were found immediately afterwards, while preparing the Task 1 dispatch, by
+running the premise the tests rest on instead of reading them. **Six panel rounds missed all three.**
+
+| # | Finding | Disposition |
+|---|---|---|
+| EX-1 | 🔴 **BLOCKING.** Both fallback tests set the "unwritable" location to a merely NONEXISTENT nested path — but the gate's own `mkdir -p` CREATES it. MEASURED: `mkdir -p ./definitely-not-a-directory/nested` succeeds and the marker write succeeds. So `falls back to a second marker location` passed **vacuously** (it re-tested the ordinary path), and `warns on stderr and stays SILENT` **fails against correct code** — no warning is ever emitted. Under NAME THE ORACLE ("the tests win") an implementer would have been sent to break working code | **FOLDED** — both now block with a regular FILE as a parent component (`mkdir -p` then fails ENOTDIR, measured) |
+| EX-2 | 🔴 **BLOCKING.** Step 7's mutation instruction named an `if [ ! -f "$seen" ]` / `else` block that **does not exist** — LI-3 rewrote the gate as a loop in round 4 and Step 7 was never re-derived | **FOLDED** — rewritten with the correct mutation, plus a note on why deleting the `exit 0` outright produces silence rather than the needed emission |
+| EX-3 | Step 7 demanded "**EXACTLY TWO** tests red" and made a third a hard stop. That count predates rounds 4-5, which added six more gate tests; the true blast radius is seven, because the markers are coupled | **FOLDED** — the must-fail control is now named singly, the collateral is a prediction to confirm rather than a count to match, and the stop condition is named as four specific gate-independent tests |
+
+**What this round is evidence of.** The two clean verdicts that were *probed* both broke (rounds 2 and 5) —
+and now the round-6 GREEN broke too, under a probe the panel format cannot perform: **executing the
+premise.** All three findings live in the plan's VERIFICATION steps, not its implementation steps, which is
+where five of the previous fourteen also lived. A panel reasons over the artifact; it never runs it.
+
 ### What this ledger is evidence of
 
 Six rounds, **14 findings folded**. The distribution is the point, and it is worth carrying into the next
@@ -422,8 +438,17 @@ It 'treats a DIFFERENT session id as a fresh session' {
 It 'falls back to a second marker location when TMPDIR is not writable' {
     # The gate must survive an unwritable TMPDIR rather than either going silent forever or emitting on
     # every prompt. HOME is writable here, so the fallback location carries the session.
+    #
+    # 🔴 MEASURED 2026-08-07: A MERELY NONEXISTENT NESTED PATH IS NOT UNWRITABLE. The gate's own
+    # `[ -d "$_cand" ] || mkdir -p "$_cand"` CREATES it, and the marker write then succeeds. An earlier
+    # draft set $g.Tmp to 'definitely-not-a-directory/nested' and so exercised the ORDINARY path while
+    # claiming to exercise the fallback -- it passed vacuously. The only portable way to make a location
+    # genuinely unusable is to put a regular FILE where a parent directory component must be; `mkdir -p`
+    # then fails ENOTDIR. Verified: mkdir -p on ./blocker/nested with ./blocker a file -> "Not a directory".
     $g = New-GateEnv; $w = New-Workspace
-    $g.Tmp = Join-Path $TestDrive 'definitely-not-a-directory/nested'
+    $blocker = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+    Set-Content -LiteralPath $blocker -Value 'x' -NoNewline
+    $g.Tmp = Join-Path $blocker 'nested'
     $null  = Invoke-Prompt $g $w                      # prompt 1: suppressed via the fallback marker
     (Invoke-Prompt $g $w).Stdout | Should -Not -BeNullOrEmpty   # prompt 2: emits
     (Invoke-Prompt $g $w).Stdout | Should -BeNullOrEmpty        # prompt 3: gated, NOT spamming
@@ -433,9 +458,18 @@ It 'warns on stderr and stays SILENT when NO marker location is writable' {
     # THE CORRECTED TRADE. An earlier draft fell through to emit here, which means emitting on EVERY
     # prompt for the rest of the session -- the high-frequency spam this plan's own rationale calls worse
     # than no prompt at all. The operator gets a diagnostic; the model gets nothing.
+    #
+    # 🔴 BOTH locations must be blocked with a regular FILE as a parent component, for the reason measured
+    # in the previous test. With merely-nonexistent paths the gate's `mkdir -p` CREATES both, no warning is
+    # ever emitted, and this test FAILS AGAINST CORRECT CODE -- which under the NAME THE ORACLE rule below
+    # would send an implementer to break working code to satisfy an impossible premise.
     $g = New-GateEnv; $w = New-Workspace
-    $g.Tmp  = Join-Path $TestDrive 'not-a-dir/nested'
-    $g.Home = Join-Path $TestDrive 'also-not-a-dir/nested'
+    $blockT = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+    $blockH = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+    Set-Content -LiteralPath $blockT -Value 'x' -NoNewline
+    Set-Content -LiteralPath $blockH -Value 'x' -NoNewline
+    $g.Tmp  = Join-Path $blockT 'nested'
+    $g.Home = Join-Path $blockH 'nested'
     $r1 = Invoke-Prompt $g $w
     $r2 = Invoke-Prompt $g $w
     $r3 = Invoke-Prompt $g $w
@@ -648,21 +682,48 @@ Expected: `Tests Passed: <n>, Failed: 0` with `<n>` greater than the baseline co
 
 - [ ] **Step 7: Prove the gate is non-vacuous**
 
-Temporarily delete the whole `if [ ! -f "$seen" ]` / `else` block, leaving only the `: > "$sent"` line, so
-the gate degrades to "emit on the first prompt, once".
+🔴 **This step was rewritten on 2026-08-07. Two earlier versions of it were unexecutable.** The first
+said "delete the whole `if [ ! -f "$seen" ]` / `else` block" — **no such block exists**; finding LI-3
+rewrote the gate as a `for` loop and this step was never re-derived against it. The second asserted
+"**expect EXACTLY TWO** tests red" and made a third failure a hard stop — a count calibrated against a
+much smaller test set, before rounds 4 and 5 added six more gate tests. Following either version, an
+implementer would have stopped on a control that failed for what looked like the wrong reason.
 
-**Expect EXACTLY TWO tests red**, and check them by name:
+**The mutation.** In the create branch of the loop, replace the `exit 0` that follows the `find` prune
+with:
 
-- `emits NOTHING on the first prompt of a session` — now emits.
-- `emits at most once per session` — the first prompt consumes the `sent` marker, so the **second** prompt
-  is now silent and its `$two | Should -Not -BeNullOrEmpty` fails.
+```bash
+      seen=$_s; sent="$_cand/.clavity-anomaly-sent-$sid"; break
+```
 
-🔴 **Two, not one.** An earlier draft of this plan asserted "only that test must go red", which is wrong:
-the two markers are coupled, so removing the first-prompt branch necessarily moves the emission that the
-once-per-session test asserts on. An implementer following the earlier wording would have seen a second
-failure, concluded the control failed for the wrong reason, and stopped. **Verify the two failures are
-these two by name** — any third failure means the gate is entangled with something this plan has not
-accounted for, and that is a genuine stop.
+This is the mutation that expresses "the gate degrades to emit on the first prompt, once". **Do not
+instead delete the `exit 0` outright** — the loop would then run on to the second candidate, fall out with
+`seen` still empty, and take the no-location-writable branch, which is silence, not the first-prompt
+emission this control needs to produce.
+
+**The one failure that MUST occur — this is the control:**
+
+- `emits NOTHING on the first prompt of a session` — it now emits. **If this test stays green, the gate is
+  not doing what you think and nothing below matters.**
+
+**Expected collateral, stated as a prediction to confirm rather than a gate.** The markers are coupled, so
+moving the emission one prompt earlier flips every test that asserts on an emission at prompt 2 or later.
+Predicted: `does NOT say BEFORE COMPACTION when it emits on UserPromptSubmit`, `emits at most once per
+session`, `treats a DIFFERENT session id as a fresh session`, `falls back to a second marker location when
+TMPDIR is not writable`, `still gates correctly when the session id needs sanitizing`, and `holds the byte
+ban on the UserPromptSubmit message`. **Do not treat this list as a count to match.** Confirm each red test
+is one that asserts on a prompt-2-or-later emission; that is the property, not the number.
+
+**The genuine stop condition** is a red test that the mutation cannot explain — specifically any of these
+four, none of which touch the first-prompt branch:
+
+- `emits the compaction wording and a systemMessage envelope when invoked as PreCompact`
+- `defaults to PreCompact behaviour when given NO argument`
+- `warns on stderr and stays SILENT when NO marker location is writable`
+- `does not let a session id escape the marker directory`
+
+If one of those goes red, the gate is entangled with something this plan has not accounted for. **Stop and
+report it.**
 
 Restore the file and confirm it matches the committed version exactly (`git diff --exit-code <file>`).
 
