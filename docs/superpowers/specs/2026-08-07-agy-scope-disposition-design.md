@@ -71,7 +71,7 @@ adopts the existing names.
 | `REJECTED: <measured reason>` | The finding is false | A **measurement** — `file:line` or quoted stdout |
 | `DISCARDED-BELOW-FLOOR: <target> unreachable because <guard>` | Contrived, exotic, or unreachable | The **structural guard, invariant, or precondition at `file:line`** that makes it unreachable |
 | `DEFERRED-TO-ANOMALIES: <anchor> * <YYYY-MM-DD>[ * unverified]` | Reachable, not fixed now | The **already-appended** inbox entry |
-| `UNVERIFIED-ACCEPTED: <finding>` | Neither provable nor refutable; owner accepted the risk | The `skipped.log` audit line, per `agy-capstone/SKILL.md:126-131` |
+| `UNVERIFIED-ACCEPTED: <finding>` | Neither provable nor refutable; owner accepted the risk | A durable owner-acceptance record — **see below, it differs per discipline** |
 
 **Age is not a member of the set.** This is the mechanism, and its limit should be stated honestly: it
 removes the *slot* for a provenance disposition, not the *ability to reason badly*. A reviewer can still
@@ -99,12 +99,22 @@ the two reconcile:
   `open-issues/SKILL.md:54-55` explicitly sanctions capturing what "cannot be checked cheaply" as a
   claim, so the token must not assert verification the entry does not carry.
 
-**Deferral is bounded to defects outside the reviewed change.** `DEFERRED-TO-ANOMALIES` is available
-**only** for a defect on a line the reviewed diff did not introduce or modify. A reachable defect in the
-change's *own* new lines must be `FOLDED`, or must go through the existing `UNVERIFIED` path to an owner
-ruling. Without this bound the token is a general-purpose escape hatch: an implementer could append their
-own fresh bug to the inbox, satisfy the completeness gate, and ship it under a clean verdict — which
-would invert the discipline into a way of *evading* review rather than widening it.
+**Deferral is bounded by CAUSATION, not by line membership.** `DEFERRED-TO-ANOMALIES` is available
+**only** for a defect that was already reachable *before* the reviewed change and whose failure mode the
+change did not induce. Any failure the change causes must be `FOLDED` — **regardless of which line the
+symptom appears on** — or must go through the existing `UNVERIFIED` path to an owner ruling.
+
+The line-membership phrasing this replaces ("a line the diff did not introduce or modify") was itself
+gameable, and the hole is the interesting one: an implementer changes an output contract at
+`parser.rs:50`, which induces a panic in the untouched downstream helper at `parser.rs:120`; the panic is
+a genuine regression the change caused, yet line 120 passes a naive `git diff` membership test and
+defers cleanly. Causation is the property that matters, and it costs a judgment call that a membership
+test does not — that cost is accepted, because a bound a `git diff` can settle is a bound an implementer
+can route around.
+
+Without this bound the token is a general-purpose escape hatch: an implementer could append their own
+fresh bug to the inbox, satisfy the completeness gate, and ship it under a clean verdict — which would
+invert the discipline into a way of *evading* review rather than widening it.
 
 **Ordering constraint.** The driver appends to the inbox **first**, then emits the token. A token
 pointing at an entry that was never written is the exact rot this replaces.
@@ -112,6 +122,23 @@ pointing at an entry that was never written is the exact rot this replaces.
 **Authorship constraint.** The peer never writes to the inbox. Per `open-issues/SKILL.md:29` —
 *"A subagent REPORTS; the driver VERIFIES; the driver WRITES."* The peer's output is untrusted input;
 this amendment does not create a write path for it.
+
+**The durable record differs per discipline, because the disciplines do not have the same artifacts.**
+Two tokens require a durable trace — `UNVERIFIED-ACCEPTED` and the below-floor summary of §4.4 — and an
+earlier draft assumed every run has a capstone ledger row and a commit message. That is false for
+`adversarial-panel-review`, which reviews a **pre-implementation artifact** and, on a round that produces
+no fold, produces **no commit at all**. It also contains **zero** references to `skipped.log` (measured),
+so pointing it at that log names a path the skill does not have.
+
+| Discipline | Durable record for both tokens |
+|---|---|
+| `agy-capstone` | `.clavity/agy-marks/skipped.log` for `UNVERIFIED-ACCEPTED` (existing format, `SKILL.md:126-131`); the committed `docs/agy-capstone-ledger.md` row for below-floor summaries |
+| `agy-test-audit` | the committed `docs/accepted-boundaries.md` — an owner-accepted unverifiable finding *is* an accepted boundary, and the schema in §4.6 already carries a compensation anchor |
+| `adversarial-panel-review` | a **stand-downs section in the reviewed artifact itself**, since the artifact is the thing that persists and the run may never commit |
+
+*(One round-2 finding justified this by claiming a spec review "runs before git commits exist, so there
+is no `HEAD=<sha>` to write". That rationale is false — the repository always has a `HEAD`. The finding
+was folded on the two measured grounds above, not on its stated reason.)*
 
 ### 4.2 The completeness gate
 
@@ -156,9 +183,9 @@ discarded below the floor.
 The full list lands in the **ephemeral per-run report**. But a stand-down that exists *only* in a
 gitignored scratch file is an audit black hole: a defect class repeatedly stood down across weeks leaves
 zero durable trace, so a later incident cannot discover that anyone ever saw it. Each
-`DISCARDED-BELOW-FLOOR` therefore also gets a **one-line summary in the run's durable record** — the
-existing committed `docs/agy-capstone-ledger.md` row for a capstone, or the commit message otherwise.
-This creates **no new surface**: both destinations already exist and are already written on every run.
+`DISCARDED-BELOW-FLOOR` therefore also gets a **one-line summary in the run's durable record**, which is
+**per-discipline** — see the table in §4.1. This creates **no new surface**: every destination named
+there is a file the discipline already writes.
 
 ### 4.5 Scope boundary
 
@@ -199,6 +226,16 @@ prose. The entry format mirrors `open-issues`' own, which is already terse and a
 One entry per line. `compensation=` must name a concrete artifact (a unit test, a catch scope, a
 structural guarantee) **and** its anchor, because that anchor is exactly what the future audit
 re-validates. An entry with no anchor is not honorable as do-not-re-raise and reverts to a live gap.
+
+**Section-partitioned, not a flat append.** Entries group under a heading per product
+(`clavity-dotnet`, `clavity-classic`, `ghidrust`, …), sorted by source path within a section. This
+carries forward a constraint the source skill already stated and an earlier draft of this spec dropped —
+`agy-test-audit/SKILL.md:114-116`: *"Structure it append-only / section-partitioned to minimize merge
+conflicts (a single file touched every branch-finish is a conflict hotspot where a careless
+`--ours`/`--theirs` silently drops a teammate's entry)"*. Two branches finishing in parallel both append
+to the tail of a flat file and collide on adjacent lines; the conflict resolution is where an accepted
+boundary silently disappears. The same passage's **periodic manual whole-tree garbage-collection pass**
+carries forward too: a diff-scoped run cannot see deleted code, so it cannot prune orphaned entries.
 
 ### 4.7 The intake-bar amendment (a fourth skill is touched)
 
@@ -314,9 +351,13 @@ Named because an unnamed limitation reads as a claim of coverage.
    emits *"guard inactive: missing jq - cannot check for untriaged anomalies"* and the triage demand
    never fires. Deferred entries then sit in the inbox unannounced. Pre-existing, not introduced here,
    and out of scope to fix — but the F4 answer rests on that gate, so its failure mode is stated.
-3. **The inbox is destroyed by `git clean -fd`.** `.gitignore:45` makes `.clavity/` untracked. Entries
-   deferred but not yet triaged are lost without trace. The window is one session by design, because
-   `:182-184` forbids parking — but the window is real.
+3. **The inbox is destroyed by `git clean -fdx` / `-fdX`, but survives a plain `git clean -fd`.**
+   `.gitignore:45` makes `.clavity/` **ignored**, and `git clean` skips ignored paths unless `-x`/`-X` is
+   passed. Measured in a throwaway repo: after `git clean -fd` the ignored file **survived** while an
+   untracked control directory was deleted; `-fdx` then removed it. An earlier draft of this spec
+   asserted plain `-fd` destroys the inbox, which was simply wrong. The exposure is therefore narrower
+   than stated — a deliberate `-x` clean, not routine artifact cleanup — but it is not zero, and the same
+   flag takes the debounce markers with it.
 4. **The gate cannot see an unrecorded finding** (§4.2). Recording discipline stays a judgment rule.
 
 ## 9. Success criterion
