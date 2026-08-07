@@ -212,7 +212,16 @@ The codebase already has the pattern to follow: the same method emits distinct t
     };
 ```
 
-Then in `clavity-dotnet/src/Clavity.Mcp/McpTools.cs`, in the `catch (Exception ex) when (ChannelDown.IsChannelDown(ex))` block, change `status = ChannelDown.Status,` to `status = ChannelDown.StatusFor(diag),`. Apply the same change wherever `AgyView.StatusAsync` builds its `AgyStatus` from `ChannelDown.Status`.
+Then in `clavity-dotnet/src/Clavity.Mcp/McpTools.cs`, in the `catch (Exception ex) when (ChannelDown.IsChannelDown(ex))` block, change `status = ChannelDown.Status,` to `status = ChannelDown.StatusFor(diag),`. Apply the same change in `AgyView.StatusAsync` where it builds its `AgyStatus` from `ChannelDown.Status`.
+
+🔴 **The two surfaces are NOT the same field, and a test enforces the difference.** `agy_ask` / `agy_look` fail into an anonymous envelope with a lowercase `status`; `agy_status` returns the `AgyStatus` record, which serializes PascalCase `State`. `AgyChannelDownTests.cs:257-258` asserts **both** — `State == "channel_down"` **and** that a lowercase `status` property is *absent*:
+
+```csharp
+Assert.Equal("channel_down", doc.RootElement.GetProperty("State").GetString());
+Assert.False(doc.RootElement.TryGetProperty("status", out _));
+```
+
+So do **not** "unify" the two by adding a lowercase `status` to the `AgyStatus` shape — that test exists to prevent exactly that, and it would be a wire-contract break. Change the *value* on each surface, never the field name.
 
 Add to `ChannelDownTests.cs`:
 
@@ -257,13 +266,16 @@ cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests && dotnet test tests/Cla
 
 🔴 **The Integration suite is not optional here, even though it is not the CI gate.** `AgyChannelDownTests.cs` asserts the exact `status`/`State` value this task changes, across ~7 cases. Running only `Clavity.Ls.Tests` would leave the change's blast radius unmeasured.
 
-Expected: `Failed: 0` in both, and `Clavity.Ls.Tests` passing count **≥ Task 0 Step 2's count + 3**. If another test pinned the old "channel is down" prose, fix **that test's expectation** only if its intent was to pin the shutdown narrative for a genuine transport death; if it pinned the prose for a non-transport fault, that test was encoding the defect — report it rather than editing it silently.
+Expected: `Failed: 0` in both, and `Clavity.Ls.Tests` passing count **≥ Task 0 Step 2's count + 4**.
+
+🔴 **Why 4 and not 3.** Step 1 adds three tests; Step 3b adds a fourth (`The_status_field_and_the_hint_never_contradict_each_other`). A `+3` threshold passes for an executor who implements Step 1 and **silently skips Step 3b entirely** — the wire-contract half, which is the half that stops the status field contradicting the hint. The gate must be able to detect the omission it is guarding against. If another test pinned the old "channel is down" prose, fix **that test's expectation** only if its intent was to pin the shutdown narrative for a genuine transport death; if it pinned the prose for a non-transport fault, that test was encoding the defect — report it rather than editing it silently.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add clavity-dotnet/src/Clavity.Ls/ChannelDown.cs \
         clavity-dotnet/src/Clavity.Ls/AskReply.cs \
+        clavity-dotnet/src/Clavity.Ls/AgyView.cs \
         clavity-dotnet/src/Clavity.Mcp/McpTools.cs \
         clavity-dotnet/tests/Clavity.Ls.Tests/ChannelDownTests.cs
 git commit -m "fix(ls): ChannelDown.Hint names the real fault instead of always blaming a peer shutdown"
@@ -336,7 +348,30 @@ git commit -m "fix(ls): set MaxReceiveMessageSize deliberately instead of inheri
 
 ## Task 3: A live endpoint with no open conversation must not report a shutdown
 
-**This task has a measurement step before its code step, deliberately.** The entry specifies the remedy but not the wire signal agy produces when no conversation is open. Do not guess a status code — measure it.
+### 🔴 STOP — the entry's remedy appears ALREADY SHIPPED, and its own oracle was a false negative
+
+Round-2 panel finding, verified at source. The entry asks for *"a distinct typed error with a Hint naming the real cause and the real remedy — 'no agy conversation is open; open one in agy, then retry' — instead of the current generic hint that blames a shutdown."*
+
+That exists. `AgyView.cs:379-384`:
+
+```csharp
+// Reached-empty means "agy is up, waiting for the human to start a conversation" — UNLESS we later saw
+// the channel die, in which case it's dead and the operator must restart (channel_down), not wait.
+if (reachedLsButEmpty && !sawChannelDeath)
+    throw new AgyConversationPendingException(
+        "agy is running but has no conversation yet. WAIT for the human to start or continue the " +
+        "agy session, then try again — do NOT auto-retry in a loop.");
+```
+
+`McpTools.cs:52-55` catches it and returns `{"status":"waiting_for_human", ...}` — a distinct status, a truthful cause, and the right remedy. It even discriminates against channel death explicitly (`!sawChannelDeath`).
+
+🔴 **Why the sweep missed it — and this is the reusable lesson.** The entry's `last-triaged` line records its oracle as: *"no 'no open conversation'/NoConversation/conversation-existence split anywhere in Clavity.Ls/*.cs -> confirmed still open"*. **The probe searched for names the code does not use.** The implementation is called `AgyConversationPendingException` / `reachedLsButEmpty`. A probe keyed on invented vocabulary cannot return its failing answer — it reports ABSENT for something present. **This is the fourth recorded-open-but-shipped item in this epic, and the first caused by the probe's wording rather than by an unopened section.**
+
+**What may still be real, and it is narrow:** the shipped path fires on the *discovery / boot-race* route, where the trajectory map is reachable-but-empty. A conversation that was resolved and then closed **mid-session** could still surface as an `RpcException` and fall through to `ChannelDown`. That is unproven.
+
+**So this task is now measurement-first, and its most likely outcome is that the entry is re-dispositioned rather than fixed.**
+
+**This task has a measurement step before its code step, deliberately.** Do not guess a status code — measure it.
 
 **Files:**
 - Modify: `clavity-dotnet/src/Clavity.Ls/ChannelDown.cs`
@@ -346,9 +381,11 @@ git commit -m "fix(ls): set MaxReceiveMessageSize deliberately instead of inheri
 
 Follow `agy-autotrain/docs/fix-the-tool-backlog/conversation-scoped-tools-vs-no-open-conversation.md` "Steps to Reproduce": with the agy host running and **no** conversation open, call `agy_status`.
 
-Record verbatim: the `StatusCode` and the `Detail` string. That pair is the mapping input.
+**Expected, given the shipped path above: `{"status":"waiting_for_human", ...}`.** If that is what you get, the entry's remedy is already in place. **STOP and report `ALREADY-SHIPPED: waiting_for_human path handles it`** — then take Task 3 no further and mark the entry accordingly in Task 6. Re-dispositioning a KEPT backlog entry is the owner's call, not yours.
 
-**If you cannot reach that state** (no agy host, or a conversation cannot be closed), STOP and report `BLOCKED: cannot reproduce no-open-conversation state`. Do **not** invent a status code — a wrong mapping makes the hint lie in a new way, which is the defect this plan exists to remove.
+**Only if you instead get a `channel_down` envelope blaming a peer shutdown** is there a defect here. In that case record verbatim: the `StatusCode` and the `Detail` string. That pair is the mapping input, and it is the mid-session-close case, not the clean-boot case.
+
+**If you cannot reach either state** (no agy host, or a conversation cannot be closed), STOP and report `BLOCKED: cannot reproduce no-open-conversation state`. Do **not** invent a status code — a wrong mapping makes the hint lie in a new way, which is the defect this plan exists to remove.
 
 - [ ] **Step 1b: Verify the fault REACHES the classifier at all — this task is void without it**
 
@@ -390,7 +427,9 @@ Expected: the new test FAILS on `DoesNotContain`.
 
 - [ ] **Step 4: Extend the classifier**
 
-Add `NoConversation` to the `Fault` enum, extend `Classify` to return it for the measured signal, and add its arm to the `Hint` switch:
+Add `NoConversation` to the `Fault` enum, extend `Classify` to return it for the measured signal, add its arm to the `Hint` switch, **and add its arm to `StatusFor` — this is not optional.**
+
+🔴 `StatusFor`'s fallback is `_ => Status`, which returns `"channel_down"`. Adding a fault to `Classify`/`Hint` and forgetting `StatusFor` would emit `{"status":"channel_down", "hint":"The channel is healthy but no agy conversation is open…"}` — **recreating the exact contradiction Task 1 Step 3b exists to remove.** Add `Fault.NoConversation => "no_conversation",` and re-run the Step 3b contradiction test. Update `AskReply.cs`'s `State` enumeration in the same commit.
 
 ```csharp
             Fault.NoConversation =>
@@ -435,13 +474,9 @@ Expected: one line reading `return BoundedView.Summarize(trajectory, budgetChars
 
 🔴 **The obvious test does not work, and it fails in the direction that looks like success.** `BoundedViewTests.cs` already contains `BoundedView.Summarize(t, budgetChars: 8000, maxStepChars: 16000, newestFirst: true)` and it already passes — `BoundedView` is not the broken component. A new test calling `Summarize(..., newestFirst: true)` directly would go **green on the first run**, and an executor following "watch it fail" would either fake the red or conclude the defect is already fixed. The unwired call site is `AgyView`'s `agy_look` path; only a test that goes through **`AgyView.LookAsync`** can pin this.
 
-Write the test against `AgyView.LookAsync` using the fake/canned LS client the existing tests use. Find that harness first:
+**The test goes in `clavity-dotnet/tests/Clavity.Integration.Tests/AgyViewIntegrationTests.cs`** — measured to exist, and it is where `AgyView` is already driven against the in-process fake LS. Read its existing tests and reuse their setup rather than inventing one.
 
-```bash
-grep -rn "class .*Fake\|CannedHandler\|LsClient" clavity-dotnet/tests/ | head -20
-```
-
-`clavity-dotnet/tests/Clavity.Integration.Tests/LsFramingConformanceTests.cs` builds a client over a `CannedHandler`; if the fake-LS harness lives in `Clavity.Integration.Tests`, put this test there and run it with that project's command. **State in the test file which project it lives in** — the two suites have different run commands and only one is the CI gate.
+🔴 **This changes Steps 5 and 6 below, and getting it wrong is a silent pass.** If the test lands in the Integration project but Step 5 runs only `Clavity.Ls.Tests`, the suite goes green **without ever running the new test**, and Step 6 would stage the wrong file — leaving the fix committed with zero covering test while every verification step reports success.
 
 The test: drive `LookAsync` against a canned trajectory with more steps than the budget allows, then assert **identity** of the boundary steps:
 
@@ -487,20 +522,23 @@ to:
 
 **Shape check before you write it:** confirm the third parameter of `BoundedView.Summarize` is `maxStepChars` and `newestFirst` is the fourth, so the named argument is required and a positional third argument would silently bind the wrong parameter. Read the signature at `BoundedView.cs`.
 
-- [ ] **Step 5: Run tests, verify green**
+- [ ] **Step 5: Run BOTH suites, verify green**
 
 ```bash
-cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests
+cd clavity-dotnet && dotnet test tests/Clavity.Integration.Tests && dotnet test tests/Clavity.Ls.Tests
 ```
 
-Expected: `Failed: 0`.
+Expected: `Failed: 0` in both, and the **Integration** count is baseline + 1 — that is where the new test lives. A green `Clavity.Ls.Tests` alone proves nothing about this fix.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add clavity-dotnet/src/Clavity.Ls/AgyView.cs clavity-dotnet/tests/Clavity.Ls.Tests/BoundedViewTests.cs
+git add clavity-dotnet/src/Clavity.Ls/AgyView.cs \
+        clavity-dotnet/tests/Clavity.Integration.Tests/AgyViewIntegrationTests.cs
 git commit -m "fix(ls): agy_look keeps the newest trajectory steps under a tight budget"
 ```
+
+**Before committing, confirm the staged set matches what you actually edited:** `git status --short` must show no modified-but-unstaged file. Task 7's clean-tree gate will catch a miss, but catching it here costs nothing.
 
 ---
 
@@ -665,7 +703,27 @@ Solo pass (2 findings) + live-peer escalation (8 findings, 7 seats). **All 10 ve
 
 🔴 **The two findings that would have cost the most were both "the test passes when it should fail":** #4 (test targets a component that already works) and #5 (a fix that regresses modal-hang detection while looking correct). Both are Law 1 — defects found by reasoning about *running* code, not by reading the plan.
 
-**Round 2 is owed** (owner's standing ruling: repeat until green). Tasks 1, 4 and 5 changed materially, and in this project a fold has twice spawned its own defect.
+## Panel ledger — round 2, RED (do NOT re-raise)
+
+Solo pass (5) + peer escalation (6, seats rotated to **Mechanism Gamer** and **Dependency Cynic**). **All verified by measurement; none refuted.**
+
+| # | Finding | Fold |
+|---|---|---|
+| 12 | Task 6 had no conditional row for `conversation-scoped-tools` despite Task 3's two stop paths | conditional row added |
+| 13 | The consumer check was advisory — an executor could note it and commit | now an explicit `CONTRACT:` STOP |
+| 14 | Plan overstated "Hint has zero tests"; `AgyChannelDownTests.cs` exists | claim corrected and narrowed to *cause-specificity* |
+| 15 | Task 1 changes a value the Integration suite asserts, but only the CI suite was run | Tasks 0 and 1 now run both suites |
+| 16 | `AskReply.cs`'s XML doc enumerates the permitted `State` values and goes stale | added to Task 1's commit |
+| 17 | 🔴 **The no-conversation remedy is ALREADY SHIPPED** (`AgyView.cs:381` → `waiting_for_human`), and the entry's own oracle grepped for vocabulary the code never uses | Task 3 gated on an `ALREADY-SHIPPED` stop |
+| 18 | Task 3 added `NoConversation` to `Classify`/`Hint` but not `StatusFor`, recreating the contradiction Step 3b removes | `StatusFor` arm made mandatory |
+| 19 | Step 3b edits `AgyView.cs`; Step 6's explicit `git add` omitted it | path added |
+| 20 | Step 5's `+3` threshold passes for an executor who skips Step 3b entirely | raised to `+4`, with the reason stated |
+| 21 | Task 4's test could land in the Integration project while Step 5 ran only the CI suite and Step 6 staged the wrong file — green with zero coverage | file named explicitly; Steps 5 and 6 corrected |
+| 22 | `status` (lowercase, ask/look) and `State` (PascalCase, agy_status) are different fields, and a test asserts lowercase `status` is *absent* | Step 3b now forbids "unifying" them |
+
+🔴 **Finding 17 is the most valuable thing either round produced, and it is a lesson about probes, not about this plan.** The sweep recorded the entry as open on the strength of a grep for `NoConversation` / `no open conversation` — **names the implementation does not use.** It is called `AgyConversationPendingException`. A probe keyed on invented vocabulary reports ABSENT for something present and cannot return its failing answer. **Fourth recorded-open-but-shipped item in this epic; the first caused by the probe's wording rather than an unopened section.**
+
+**Round 3 is owed** (owner's standing ruling: repeat until green; cap now 6). Tasks 3 and 4 changed materially this round.
 
 ## Self-review
 
