@@ -24,7 +24,10 @@ public sealed record TimeoutDiagnostic(
 public sealed record ChannelDiagnostic(string StatusCode, string Detail);
 
 /// <summary>agy_status result. State = idle | working | unknown | channel_down | payload_too_large. Diagnostic + Hint
-/// ONLY on channel_down (null on every healthy state; additive, so existing consumers are unaffected — F7).</summary>
+/// are populated on every FAULT state (channel_down and payload_too_large alike — both come from the same catch, which
+/// carries the diagnostic), and are null on every healthy state; additive, so existing consumers are unaffected — F7.
+/// Consumers must treat "State names a fault" rather than "State == channel_down" as the test for a populated
+/// Diagnostic.</summary>
 public sealed record AgyStatus(
     string CascadeId, int TotalSteps, string State, int LastStepKind,
     ChannelDiagnostic? Diagnostic = null, string? Hint = null);
