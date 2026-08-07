@@ -35,7 +35,8 @@ function Invoke-BashHook {
     param(
         [Parameter(Mandatory)][string]$HookPath,
         [string]$Payload = '{}',
-        [hashtable]$Env = @{}
+        [hashtable]$Env = @{},
+        [string[]]$Arguments = @()
     )
     $bash = Get-GitBashOrThrow
     $hookPosix = ($HookPath -replace '\\','/')
@@ -46,7 +47,7 @@ function Invoke-BashHook {
     }
     $errFile = [IO.Path]::GetTempFileName()
     try {
-        $out = ($Payload | & $bash $hookPosix 2>$errFile | Out-String)
+        $out = ($Payload | & $bash $hookPosix @Arguments 2>$errFile | Out-String)
         $code = $LASTEXITCODE
         $err = (Get-Content -Raw -LiteralPath $errFile -ErrorAction SilentlyContinue)
         if ($null -eq $err) { $err = '' }

@@ -46,4 +46,20 @@ Describe 'BashHookHelpers (harness validation)' {
             $r.StdOut | Should -Match 'HOME_MARKER_FOUND'
         } finally { Remove-Item -LiteralPath $home2 -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'forwards positional arguments to the hook' {
+        $probe = Join-Path $TestDrive 'echo-args.sh'
+        Set-Content -LiteralPath $probe -Value "#!/usr/bin/env bash`ncat >/dev/null`nprintf '%s' `"`$1`"" -NoNewline
+        $r = Invoke-BashHook -HookPath $probe -Payload '{}' -Arguments @('UserPromptSubmit')
+        $r.Stdout | Should -BeExactly 'UserPromptSubmit'
+    }
+
+    It 'passes no argument when -Arguments is omitted' {
+        # CONTROL: guards the default path every EXISTING caller uses. If -Arguments defaulted to something
+        # non-empty, every hook in the repo would start receiving a spurious $1.
+        $probe = Join-Path $TestDrive 'echo-args.sh'
+        Set-Content -LiteralPath $probe -Value "#!/usr/bin/env bash`ncat >/dev/null`nprintf '[%s]' `"`$1`"" -NoNewline
+        $r = Invoke-BashHook -HookPath $probe -Payload '{}'
+        $r.Stdout | Should -BeExactly '[]'
+    }
 }
