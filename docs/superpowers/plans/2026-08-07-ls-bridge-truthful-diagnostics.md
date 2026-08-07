@@ -48,7 +48,15 @@ These are not general advice. Each one cost a real defect in the epic that produ
 | `clavity-dotnet/tests/Clavity.Ls.Tests/AgyStatusShapeTests.cs` | Existing `ChannelDown` coverage | Untouched — it pins `IsChannelDown`/`Diagnose`, which stay behaviour-compatible |
 | `agy-autotrain/docs/fix-the-tool-backlog/*.md` | The four entries | `status:` flipped in Task 6 only |
 
-**Measured coverage gap (do not treat as pre-existing-and-therefore-fine):** there is no `ChannelDownTests.cs`. `IsChannelDown` and `Diagnose` are covered incidentally by `AgyStatusShapeTests.cs`; `Hint` — the thing that lies — has **zero** tests. Task 1 creates the file.
+**Coverage, stated precisely** (an earlier draft of this plan overstated it and was corrected by a round-2 measurement): there is no `Clavity.Ls.Tests/ChannelDownTests.cs` — Task 1 creates it. `IsChannelDown` and `Diagnose` are covered by `AgyStatusShapeTests.cs`. But `Clavity.Integration.Tests/AgyChannelDownTests.cs` **does** exist and asserts the channel-down envelope across ~7 cases. So the claim is *not* "this is untested"; it is that **no test pins the hint's CAUSE-SPECIFICITY**, which is the defect.
+
+**Additional files the Task 1 change touches — measured, not assumed:**
+
+| File | Why it is in scope |
+|---|---|
+| `clavity-dotnet/src/Clavity.Mcp/McpTools.cs` | emits `status = ChannelDown.Status` in the shared catch |
+| `clavity-dotnet/tests/Clavity.Integration.Tests/AgyChannelDownTests.cs` | ~7 tests assert `status`/`State` == `"channel_down"`. None uses `ResourceExhausted`, so they should still pass — **but Task 1 must run the Integration suite to prove it, not assume it** |
+| `clavity-dotnet/src/Clavity.Ls/AskReply.cs` | its XML doc enumerates `State = idle \| working \| unknown \| channel_down`. Adding a value makes that enumeration **stale**, and a doc that lists the wrong permitted values is the same defect class this plan exists to remove. Update it in the same commit |
 
 ---
 
@@ -68,10 +76,10 @@ Expected: a SHA, and **no output** from the second command. Write the SHA into t
 - [ ] **Step 2: Confirm the suite is green BEFORE any change**
 
 ```bash
-cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests
+cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests && dotnet test tests/Clavity.Integration.Tests
 ```
 
-Expected: build succeeds; the test run ends with a `Passed!` line and `Failed: 0`. **Record the passing test count.** A suite that is already red makes every later "it passes" claim meaningless — if it is red, STOP and report.
+Expected: build succeeds; each run ends with a `Passed!` line and `Failed: 0`. **Record BOTH passing counts.** Task 1 changes a value the Integration suite asserts, so a baseline for only the CI-gate suite would leave the later comparison unanchored. A suite that is already red makes every later "it passes" claim meaningless — if either is red, STOP and report.
 
 - [ ] **Step 3: Branch**
 
@@ -222,7 +230,16 @@ Add to `ChannelDownTests.cs`:
     }
 ```
 
-**Consumer check before you commit:** `status` is a wire value other code may switch on. Grep for consumers of `"channel_down"` across the repo and the plugin hooks; if anything matches on it, adding a new value is a contract change that needs the owner's call, not a silent edit.
+**Consumer check before you commit — and it is a STOP, not a note.** `status` is a wire value other code may switch on. Adding a new value is a contract change.
+
+```bash
+grep -rn '"channel_down"\|channel_down' --include=*.cs --include=*.sh --include=*.ps1 --include=*.json . | grep -v '/obj/\|/bin/'
+```
+
+Use the **Grep tool** rather than shell `rg` for the repo-wide sweep (preamble item 4).
+
+- **Only `ChannelDown.cs` and its tests match** → proceed.
+- **Anything else matches — a hook, a script, another C# switch** → **STOP and report `CONTRACT: <path> consumes "channel_down"`.** Do not commit, and do not "helpfully" update the consumer: whether the bridge may emit a new top-level status is the owner's call. An executor who notes this and commits anyway has shipped a silent contract break, which is the same class of defect as the hint that lies.
 
 - [ ] **Step 4: Run the tests and verify they pass**
 
@@ -232,20 +249,27 @@ cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualified
 
 Expected: all three PASS.
 
-- [ ] **Step 5: Run the FULL suite — the wording change may break a pinned string elsewhere**
+- [ ] **Step 5: Run BOTH suites — the wording change may break a pinned string elsewhere**
 
 ```bash
-cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests
+cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests && dotnet test tests/Clavity.Integration.Tests
 ```
 
-Expected: `Failed: 0`, and a passing count **≥ Task 0 Step 2's count + 3**. If another test pinned the old "channel is down" prose, fix **that test's expectation** only if its intent was to pin the shutdown narrative for a genuine transport death; if it pinned the prose for a non-transport fault, that test was encoding the defect — report it rather than editing it silently.
+🔴 **The Integration suite is not optional here, even though it is not the CI gate.** `AgyChannelDownTests.cs` asserts the exact `status`/`State` value this task changes, across ~7 cases. Running only `Clavity.Ls.Tests` would leave the change's blast radius unmeasured.
+
+Expected: `Failed: 0` in both, and `Clavity.Ls.Tests` passing count **≥ Task 0 Step 2's count + 3**. If another test pinned the old "channel is down" prose, fix **that test's expectation** only if its intent was to pin the shutdown narrative for a genuine transport death; if it pinned the prose for a non-transport fault, that test was encoding the defect — report it rather than editing it silently.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add clavity-dotnet/src/Clavity.Ls/ChannelDown.cs clavity-dotnet/tests/Clavity.Ls.Tests/ChannelDownTests.cs
+git add clavity-dotnet/src/Clavity.Ls/ChannelDown.cs \
+        clavity-dotnet/src/Clavity.Ls/AskReply.cs \
+        clavity-dotnet/src/Clavity.Mcp/McpTools.cs \
+        clavity-dotnet/tests/Clavity.Ls.Tests/ChannelDownTests.cs
 git commit -m "fix(ls): ChannelDown.Hint names the real fault instead of always blaming a peer shutdown"
 ```
+
+**Explicit paths, never `git add -A`** — a broad add has twice swept unintended files in this repo, once onto a public remote. If Step 3b's consumer check made you touch a file not listed here, add it deliberately and say why in the commit body.
 
 ---
 
@@ -565,7 +589,7 @@ Expected, **all nine lines** the glob returns — `*.md` matches `_template.md` 
 |---|---|
 | `_template.md` | `open` — it is the template, never flip it |
 | `agy-look-tail-truncation.md` | `fixed` |
-| `conversation-scoped-tools-vs-no-open-conversation.md` | `fixed` |
+| `conversation-scoped-tools-vs-no-open-conversation.md` | `fixed` **only if** Task 3 completed — it has TWO stop paths (`BLOCKED: cannot reproduce`, and `SCOPE: … not admitted by IsChannelDown`). If either fired, it stays `open` |
 | `grpc-default-max-message-size.md` | `fixed` — **unless** Task 2 Step 3b reported `PARTIAL`, in which case `open` |
 | `stalled-reply-recoverable-not-lost.md` | `fixed` **only if** Task 5 Step 3 produced code; otherwise `open` |
 | `curate-nudge-age-reads-drain-log-dates.md` | `fixed` (already) |
