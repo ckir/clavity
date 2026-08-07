@@ -115,7 +115,7 @@ The two variants are **mutually exclusive** on a machine (the installers refuse 
 
 ## ▶ Forward backlog (in priority order)
 
-### 0. DISCIPLINE EFFICACY — stop confirming presence and calling it proof · ~~▶ TOP PRIORITY~~ → **one defect fix (step 1b); owner ruling 2026-08-06**
+### 0. DISCIPLINE EFFICACY — stop confirming presence and calling it proof · ~~▶ TOP PRIORITY~~ → ~~**one defect fix (step 1b); owner ruling 2026-08-06**~~ → ✅ **ALL RATIFIED STEPS SHIPPED 2026-08-07 (2, 1a, 1b); the witness trial was KILLED, not deferred. Two coverage holes accepted — see item 1b.**
 
 Numbered `0` deliberately: this list is priority-ordered, and renumbering 1-11 would invalidate every
 existing citation to §7 and §8. Owner-directed 2026-08-04. **The deferral is DISCHARGED: it waited on the
@@ -200,6 +200,10 @@ a stamp, it is a parity break that both gates above will reject.
 > ➡️ **§0 is therefore no longer a `▶ TOP PRIORITY` epic. It is one small bug fix (step 1b).** The
 > demotion is deliberate. Items 2 and 1a already shipped (below); with the trial killed, 1b is all that
 > remains.
+>
+> ✅ **UPDATE 2026-08-07 — step 1b has SHIPPED, so §0 has no unbuilt remainder.** Detail and the two
+> accepted coverage holes are in the WHICH-STEPS-SHIPPED block below. The text above is kept as written
+> because it is the reasoning that produced the demotion.
 
 > ### 📏 WHICH STEPS HAVE SHIPPED — measured 2026-08-06 (open-work sweep, Phase 1 Task 4 Step 1)
 >
@@ -215,19 +219,48 @@ a stamp, it is a parity break that both gates above will reject.
 > - **Item 1a, the MEASURE half — ✅ SHIPPED.** `scripts/discipline-reaching-report.ps1` reads
 >   `hookName` / `hook_additional_context` and counts deliveries by the stamp, with two suites
 >   (`agy-discipline-reaching.Tests.ps1`, `discipline-reaching-report.Tests.ps1`).
-> - **Item 1b, the PROMPT half — ❌ NOT SHIPPED. The original defect is unchanged.** Measured against
->   `plugin/hooks/hooks.json` today, every anomaly-capture prompt still sits behind a precondition:
+> - **Item 1b, the PROMPT half — ✅ SHIPPED 2026-08-07** (`40f9eaa` the hook, `a527020` the classic mirror,
+>   `58afde2` the registration). It shipped on **`UserPromptSubmit`**, registered **bare** in both driver
+>   manifests, with the discrimination done inside `agy-anomaly-capture-reminder.sh`. A `matcher` was NOT
+>   used: nothing establishes that one is evaluated against prompt text for this event, and both
+>   first-party plugins that register it match in-script. The hook takes the event name as `$1`, selects a
+>   prompt-specific message, and emits `hookSpecificOutput` — measured to be the arm that reaches the model
+>   for this event, where `PreCompact` requires top-level `systemMessage`. Gated to **at most one emission
+>   per session, never on the first prompt.** Pinned by `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1`
+>   (11 new tests) and `scripts/tests/plugin-hooks-registration.Tests.ps1`.
+>
+>   **PROVENANCE — the measurement that made this work necessary, kept deliberately.** Before the fix,
+>   measured against `plugin/hooks/hooks.json`: every anomaly-capture prompt sat behind a precondition —
 >   `PreToolUse` matcher `Agent|Task` (needs a **dispatch**), `SessionStart` ×2 (triage notices for
->   anomalies that already exist, not a capture prompt), `PreCompact` (needs a **compaction**).
->   **The count of hooks that prompt a driver working DIRECTLY is still ZERO**, exactly as item 1 states.
->   There is no `UserPromptSubmit` registration.
+>   anomalies that already exist, not a capture prompt), `PreCompact` (needs a **compaction**). *"The count
+>   of hooks that prompt a driver working DIRECTLY is still ZERO ... There is no `UserPromptSubmit`
+>   registration."* That count is now **one**.
+>
+>   🔴 **TWO ACCEPTED COVERAGE HOLES. Neither is closed, and 1b must not be read as closing them.**
+>   1. **A session containing exactly one user prompt is unreachable.** The gate deliberately does not fire
+>      on the first prompt, because at that moment the driver has done no work and can have observed
+>      nothing; prompting there trains the reflexive "none" answer the capture-gap spec records as worse
+>      than no prompt. The only events landing *after* work in a one-prompt session are `Stop` (withdrawn)
+>      and `SessionEnd` (measured dead — `${CLAUDE_PLUGIN_ROOT}` does not resolve there, cancelled 3/3, see
+>      the SessionEnd measurement below). **Owner-accepted 2026-08-07.**
+>   2. **A message injected into a RUNNING turn does not raise `UserPromptSubmit` at all.** Measured
+>      2026-08-07 during the Task 0 envelope probe: a registered sentinel recorded exactly one firing across
+>      a window containing both a mid-turn message and a fresh turn, with the session id unchanged
+>      throughout (so no restart, and the registration was live for both). **This hole was NOT known when
+>      the item was ratified and is recorded here rather than discovered later.**
+>
+>   The mechanism that would have covered hole 1 is the outside-witness trial, which this epic's own owner
+>   ruling **KILLED** (see the ruling block above). Do not reopen the trial to close it.
 > - **Item 3, the outside-witness trial — ❌ NOT RUN.** Its protocol is written (`0b634d3` *"docs(spec): the
 >   outside-witness trial protocol, and the trap that makes it fakeable"*); no trial has been conducted.
 > - **Item 4, the firing counter — already DROPPED** by this entry itself, superseded by step 1a.
 >
-> **So the unbuilt remainder of §0 is: step 1b, then the witness trial.** The prerequisite the sequence
+> **So the unbuilt remainder of §0 was: step 1b, then the witness trial.** The prerequisite the sequence
 > insists on — the stamp before the trial, so a null result can be split into *never fired* versus *fired
 > and ignored* — **is already satisfied.**
+>
+> ✅ **As of 2026-08-07 there is NO unbuilt remainder.** Step 1b shipped; the witness trial was KILLED by
+> owner ruling, not deferred. **§0's three surviving ratified steps (2, 1a, 1b) are all done.**
 
 **THE SEQUENCE — OWNER-RATIFIED 2026-08-04, after a second AGY-FIRST consult and measurement.**
 
@@ -266,6 +299,9 @@ does not fire is "testing a known null wire", and independently re-measured the 
    notices for anomalies that already exist, not a capture prompt; and `agy-seam-inject.sh:54` matches
    only `*subagent-driven-development*|*executing-plans*`, with `:55` `*) exit 0` for every other skill.
    **v16 closed gap (a) only for sessions long enough to compact.**
+   ✅ **SHIPPED 2026-08-07 as step 1b** (`40f9eaa` / `a527020` / `58afde2`). The count above was the
+   measurement that justified the work and is kept as written; **it is now one, not ZERO.** Two coverage
+   holes remain accepted — see item 1b in the WHICH-STEPS-SHIPPED block above.
 2. **Static contract stamp in the emitted strings** — pure ASCII, byte-ban compliant, no per-driver
    literal (Option S, `docs/agy-disciplines-marker-contract.md:13`). It goes before the **trial**, and that
    reason is load-bearing and untouched: without it a null trial result cannot be split into *never fired*
