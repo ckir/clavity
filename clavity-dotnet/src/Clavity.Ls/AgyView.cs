@@ -151,7 +151,7 @@ public sealed class AgyView
             // propagates (F6); AgyConversationPendingException is NOT matched -> it flows to RunAsync's
             // waiting_for_human catch, unchanged.
             var diag = ChannelDown.Diagnose(ex);
-            return new AgyStatus("", 0, ChannelDown.Status, 0, diag, ChannelDown.Hint(diag));
+            return new AgyStatus("", 0, ChannelDown.StatusFor(diag), 0, diag, ChannelDown.Hint(diag));
         }
     }
 

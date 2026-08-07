@@ -23,7 +23,7 @@ public sealed record TimeoutDiagnostic(
 /// exists (F4).</summary>
 public sealed record ChannelDiagnostic(string StatusCode, string Detail);
 
-/// <summary>agy_status result. State = idle | working | unknown | channel_down. Diagnostic + Hint are populated
+/// <summary>agy_status result. State = idle | working | unknown | channel_down | payload_too_large. Diagnostic + Hint
 /// ONLY on channel_down (null on every healthy state; additive, so existing consumers are unaffected — F7).</summary>
 public sealed record AgyStatus(
     string CascadeId, int TotalSteps, string State, int LastStepKind,

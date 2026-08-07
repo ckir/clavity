@@ -58,7 +58,7 @@ public class McpTools
             var diag = ChannelDown.Diagnose(ex);
             return JsonSerializer.Serialize(new
             {
-                status = ChannelDown.Status,
+                status = ChannelDown.StatusFor(diag),
                 diagnostic = diag,
                 hint = ChannelDown.Hint(diag),
             });
