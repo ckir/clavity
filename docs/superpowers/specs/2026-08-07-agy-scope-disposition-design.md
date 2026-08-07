@@ -55,22 +55,59 @@ without a tracked plan is not a disposition either.
 
 ### 4.1 The disposition taxonomy (the core)
 
-Every finding raised in any round of any of the three disciplines resolves to **exactly one** of four
-tokens. The set is **closed** — there is no fifth outcome, and no "noted".
+Every finding raised in any round of any of the three disciplines resolves to **exactly one** of five
+tokens. The set is **closed** — there is no sixth outcome, and no "noted".
+
+**This taxonomy EXTENDS an existing vocabulary; it does not replace one.** `agy-capstone` already ships
+two per-finding dispositions — `[VERDICT: REJECTED - <measured reason>]`, described at `SKILL.md:184-186`
+as *"a **per-finding disposition**, not a terminus"*, and the `UNVERIFIED-ACCEPTED` audit line at
+`SKILL.md:126-131`. An earlier draft of this spec invented `REFUTED` alongside `REJECTED` and omitted
+`UNVERIFIED` entirely, which would have shipped a rival vocabulary for the same acts. The taxonomy below
+adopts the existing names.
 
 | Token | Meaning | Required evidence |
 |---|---|---|
 | `FOLDED: <what changed>` | Fixed inside the current work | The change itself |
-| `REFUTED: <falsification>` | The finding is false | A **measurement** — `file:line` or quoted stdout |
-| `DISCARDED-BELOW-FLOOR: <argument>` | Contrived, exotic, or unreachable | A **reachability** argument |
-| `DEFERRED-TO-ANOMALIES: <path>:<line>` | Reachable, verified, not fixed now | The **already-appended** inbox line |
+| `REJECTED: <measured reason>` | The finding is false | A **measurement** — `file:line` or quoted stdout |
+| `DISCARDED-BELOW-FLOOR: <target> unreachable because <guard>` | Contrived, exotic, or unreachable | The **structural guard, invariant, or precondition at `file:line`** that makes it unreachable |
+| `DEFERRED-TO-ANOMALIES: <anchor> * <YYYY-MM-DD>[ * unverified]` | Reachable, not fixed now | The **already-appended** inbox entry |
+| `UNVERIFIED-ACCEPTED: <finding>` | Neither provable nor refutable; owner accepted the risk | The `skipped.log` audit line, per `agy-capstone/SKILL.md:126-131` |
 
-**Age is not a member of the set**, so it cannot be written as an outcome. `DISCARDED-BELOW-FLOOR` is
-the only stand-down, and it must carry a reachability argument — never a provenance one.
+**Age is not a member of the set.** This is the mechanism, and its limit should be stated honestly: it
+removes the *slot* for a provenance disposition, not the *ability to reason badly*. A reviewer can still
+smuggle age into a reachability argument ("this predates the diff and nothing new reaches it"). What the
+taxonomy buys is that such a claim now has to be **stated as a reachability claim**, which §4.5 makes
+checkable and which a peer can contradict. It does not buy impossibility.
 
-**Ordering constraint.** `DEFERRED-TO-ANOMALIES` cites a line that must already exist: the driver
-appends to the inbox **first**, then cites it. A token pointing at an unwritten line is the exact rot
-this replaces.
+**Evidentiary parity.** `DISCARDED-BELOW-FLOOR` carries the same evidentiary bar as `REJECTED`: it must
+cite the guard, invariant, or precondition at `file:line` that makes the defect unreachable. An earlier
+draft required only "a reachability argument", which let a plausible prose assertion stand down a real
+defect while a refutation needed quoted output — an asymmetry that pushed reviewers toward the cheaper
+token precisely when the finding was uncomfortable.
+
+**`DEFERRED-TO-ANOMALIES` payload grammar.** Three fields, matching `open-issues`' own entry format so
+the two reconcile:
+
+- `<anchor>` — the **source** location, `file:line`, or the literal `n/a` when the defect has no single
+  line (a tool defect, an architectural omission). `open-issues/SKILL.md:111` already specifies
+  *"`file:line` if it has one, `n/a` if it does not"*, and a grammar that cannot express `n/a` would
+  force a fabricated line number.
+- `<YYYY-MM-DD>` — identifies the inbox entry by **stable identity, never by line offset**. Inbox line
+  numbers shift the moment triage deletes an entry, and `open-issues/SKILL.md:182-184` guarantees
+  deletion happens. A committed review record citing `local-anomalies.md:15` goes stale by design.
+- `unverified` — **required** when the captured entry is a `reported, unverified:` claim.
+  `open-issues/SKILL.md:54-55` explicitly sanctions capturing what "cannot be checked cheaply" as a
+  claim, so the token must not assert verification the entry does not carry.
+
+**Deferral is bounded to defects outside the reviewed change.** `DEFERRED-TO-ANOMALIES` is available
+**only** for a defect on a line the reviewed diff did not introduce or modify. A reachable defect in the
+change's *own* new lines must be `FOLDED`, or must go through the existing `UNVERIFIED` path to an owner
+ruling. Without this bound the token is a general-purpose escape hatch: an implementer could append their
+own fresh bug to the inbox, satisfy the completeness gate, and ship it under a clean verdict — which
+would invert the discipline into a way of *evading* review rather than widening it.
+
+**Ordering constraint.** The driver appends to the inbox **first**, then emits the token. A token
+pointing at an entry that was never written is the exact rot this replaces.
 
 **Authorship constraint.** The peer never writes to the inbox. Per `open-issues/SKILL.md:29` —
 *"A subagent REPORTS; the driver VERIFIES; the driver WRITES."* The peer's output is untrusted input;
@@ -78,16 +115,29 @@ this amendment does not create a write path for it.
 
 ### 4.2 The completeness gate
 
-**No terminal clean verdict may be proposed while any raised finding lacks a token.** This binds to each
-skill's existing terminus rather than introducing a new one:
+**No verdict that COMPLETES a run may be proposed while any raised finding lacks a token.** The gate
+binds to each skill's existing termini rather than introducing a new one — and it binds to **every**
+completing terminus, not only the clean one:
 
-| Skill | Terminus it gates | Anchor |
+| Skill | Completing termini it gates | Anchor |
 |---|---|---|
 | adversarial-panel-review | `GREEN` | `SKILL.md:236` |
 | agy-capstone | `[VERDICT: ALIGNED]` | `SKILL.md:177` |
-| agy-test-audit | `[VERDICT: EXHAUSTIVE]` | `SKILL.md:132` |
+| agy-test-audit | `[VERDICT: EXHAUSTIVE]` **and `[VERDICT: GAPS FOUND]`** | `SKILL.md:131`, `SKILL.md:134-136` |
+
+**Gating only the clean terminus would leave the hole wide open.** `agy-test-audit/SKILL.md:134-136`
+defines `[VERDICT: GAPS FOUND]` as legitimately *"done"* once every gap is closed or recorded as deferred
+debt, and `SKILL.md:154-155` has such a run **write the debounce marker** — so a `GAPS FOUND` run both
+completes and disarms the next nudge. A driver who tokenized one gap and left three peer claims
+unassigned could terminate through it untouched. Any terminus that completes a run and can write a
+marker is a terminus this gate must cover.
 
 This generalizes the mechanism already proven at `agy-test-audit:67-69` instead of inventing one.
+
+**What the gate does not do.** It binds findings that were *recorded*. A finding never written down has
+no unassigned token and cannot trip the gate. That hole is real and is not closable by this mechanism —
+recording discipline stays a judgment rule that a peer review catches, which is why §4.4 keeps a
+discarded-findings list rather than relying on the gate alone.
 
 ### 4.3 The age clause
 
@@ -101,8 +151,14 @@ gesturing at them — so that paraphrase has a named target to be measured again
 ### 4.4 The anti-sweep device, generalized
 
 All three skills adopt `agy-test-audit`'s existing requirement: each run lists the top 1-2 findings it
-discarded below the floor. This lands in the **ephemeral per-run report**, not a committed file, so it
-creates no new surface.
+discarded below the floor.
+
+The full list lands in the **ephemeral per-run report**. But a stand-down that exists *only* in a
+gitignored scratch file is an audit black hole: a defect class repeatedly stood down across weeks leaves
+zero durable trace, so a later incident cannot discover that anyone ever saw it. Each
+`DISCARDED-BELOW-FLOOR` therefore also gets a **one-line summary in the run's durable record** — the
+existing committed `docs/agy-capstone-ledger.md` row for a capstone, or the commit message otherwise.
+This creates **no new surface**: both destinations already exist and are already written on every run.
 
 ### 4.5 Scope boundary
 
@@ -126,8 +182,23 @@ holding **two different things**. They separate:
   → needs a **committed** home, because `:78-79` requires a *future* audit to re-validate that each
   compensation still exists. A gitignored file cannot serve that.
 
-The new file is `docs/accepted-boundaries.md` — renamed from the specced-but-absent `docs/coverage-debt.md`
-because under the split it no longer holds debt, and a name that lies is worse than no file.
+The new file is `docs/accepted-boundaries.md`. It is **created, not renamed** — `docs/coverage-debt.md`
+was specified at `agy-test-audit/SKILL.md:111` but never existed, so there is nothing to `git mv`. The
+name differs because under the split the file no longer holds debt, and a name that lies is worse than
+no file.
+
+**It needs a schema, not free prose.** `agy-test-audit/SKILL.md:78-79` requires a *future* audit to
+"re-validate the compensation still exists before honoring the do-not-re-raise" — an entry whose
+compensation vanished is promoted back to a live gap. That re-validation cannot run against arbitrary
+prose. The entry format mirrors `open-issues`' own, which is already terse and already parsed by eye:
+
+```
+- [boundary] <behaviour not covered> * <source/path.ext:LINE> * compensation=<what covers it instead, with its code anchor> * <YYYY-MM-DD>
+```
+
+One entry per line. `compensation=` must name a concrete artifact (a unit test, a catch scope, a
+structural guarantee) **and** its anchor, because that anchor is exactly what the future audit
+re-validates. An entry with no anchor is not honorable as do-not-re-raise and reverts to a live gap.
 
 ### 4.7 The intake-bar amendment (a fourth skill is touched)
 
@@ -148,15 +219,41 @@ opinion-exclusion at `:19-21` is untouched and still does the narrowing work.
 
 ### 4.8 Mechanical enforcement
 
-Add the four taxonomy tokens to `$requiredVerdicts` in `check-agy-discipline-skills.ps1:18-21` for the
-enrolled skills, so a mirror that silently loses the amendment fails a gate rather than degrading
+Add the taxonomy tokens to `$requiredVerdicts` in `check-agy-discipline-skills.ps1:18-21` for the
+enrolled review skills, so a mirror that silently loses the amendment fails a gate rather than degrading
 quietly. This checks that the contract **ships**, not that it is **obeyed** — obedience stays a judgment
 rule a peer review catches. Claiming otherwise would be theater.
+
+**No partitioning of the checker is required, and none should be added.** `$requiredVerdicts` is already
+keyed per skill — `check-agy-discipline-skills.ps1:15` states *"The required ASCII [VERDICT] forms PER
+SKILL (each discipline has its own vocabulary)"*, and `agy-test-audit` already carries a set disjoint
+from the other two. Adding tokens to the review-skill entries therefore cannot affect `agy-first`, which
+is a consult discipline and is deliberately absent from §5's file list. A round-1 finding proposed
+splitting the map into `$consultVerdicts` / `$reviewVerdicts` to prevent that breakage; the breakage
+cannot occur, and the split would refactor a structure that already partitions. **Rejected by
+measurement.**
 
 **Enrollment of `adversarial-panel-review` is deferred to the plan.** It is absent from
 `check-agy-discipline-skills.ps1:13` and uses `GREEN` rather than a `[VERDICT: …]` token, so enrolling it
 means either teaching the checker a second grammar or changing the skill's terminus. That is a real
 decision with its own blast radius, and it is not free.
+
+### 4.9 The conveyor's terminus
+
+`open-issues/SKILL.md:182-184` requires every inbox entry to be PROMOTED to a tracked item or DELETED
+with a recorded reason. "Promoted to a tracked ROADMAP item" is under-specified in a monorepo: **four
+`ROADMAP.md` files exist** — `clavity-dotnet/`, `clavity-classic/`, `agy-autotrain/`, `commonmemory/` —
+while `agy-anomaly-reminder.sh:110-111` resolves a **single** inbox at the repo root. A defect found
+during a `clavity-dotnet` review can live in any product.
+
+**Rule:** a promoted entry lands in the `ROADMAP.md` of the product that **owns the defective file**, not
+the product under review. Where a defect spans products or belongs to none (shared `scripts/`, root
+`docs/`), it lands in `clavity-dotnet/ROADMAP.md`, which is the repo's de-facto primary and already
+carries the cross-cutting sections including §7 itself.
+
+This is the only sanctioned backlog. It is not a new surface: the ROADMAPs are committed, owner-curated,
+priority-ordered, and already the place work is scoped. The standing ruling against backlog *mechanisms*
+is a ruling against untracked parking lots, and `:182-184` forbids exactly that by construction.
 
 ## 5. Files touched
 
@@ -178,7 +275,7 @@ Eight skill files, four logical bodies, each shipping twice byte-identically.
 - **Byte parity** — `check-seed-artifacts-synced.sh` already covers `skills`; the four amended skills are
   not in its exception list (`:29-33`), so parity is enforced without new work.
 - **Contract presence** — new assertions in `check-agy-discipline-skills.Tests.ps1` that each enrolled
-  skill carries all four tokens and the age clause.
+  skill carries all five tokens and the age clause.
 - **Non-vacuity is mandatory.** Each new assertion must be proven with a deliberate mutation of the
   guarded text, and the **specific newly-added test** must be the one that goes red — not merely that
   the suite returned non-zero.
@@ -205,11 +302,33 @@ backfill happens inside this work or as a follow-on is a plan-time decision.
   paraphrase. The closed taxonomy achieves the goal by removing the slot, not by policing the wording.
 - **Auto-fixing deferred defects.** The driver surfaces and plans; the owner scopes.
 
+### 8.1 Accepted limitations — holes this design does not close
+
+Named because an unnamed limitation reads as a claim of coverage.
+
+1. **The amendment binds only when the SKILL is invoked.** AGY-CAPSTONE also exists as a self-contained
+   rule in the global `CLAUDE.md`, and a capstone driven from that rule alone never loads the taxonomy.
+   §8 puts that file out of bounds, so this hole is by construction, not by oversight. Mitigation is
+   social: the rule already points at the discipline family.
+2. **The conveyor's forcing function degrades silently without `jq`.** `agy-anomaly-reminder.sh:55`
+   emits *"guard inactive: missing jq - cannot check for untriaged anomalies"* and the triage demand
+   never fires. Deferred entries then sit in the inbox unannounced. Pre-existing, not introduced here,
+   and out of scope to fix — but the F4 answer rests on that gate, so its failure mode is stated.
+3. **The inbox is destroyed by `git clean -fd`.** `.gitignore:45` makes `.clavity/` untracked. Entries
+   deferred but not yet triaged are lost without trace. The window is one session by design, because
+   `:182-184` forbids parking — but the window is real.
+4. **The gate cannot see an unrecorded finding** (§4.2). Recording discipline stays a judgment rule.
+
 ## 9. Success criterion
 
 Take a reachable defect demonstrably older than the diff under review. There must be **no wording a
-reviewer can write that stands it down** without either (a) a reachability argument, or (b) an owner
-ruling recorded somewhere durable. If "pre-existing" remains sayable as a terminal reason, this failed.
+reviewer can write that stands it down** without either (a) a reachability argument citing the guard that
+makes it unreachable, or (b) an owner ruling recorded somewhere durable. If "pre-existing" remains
+sayable as a terminal reason, this failed.
+
+Note the bar deliberately: it is that a bad stand-down must be **stated as a falsifiable reachability
+claim**, not that a bad stand-down becomes impossible (§4.1). A claim a peer can open the file and
+contradict is the achievable goal; an unfoolable gate is not.
 
 ## 10. Open questions carried to the plan
 
