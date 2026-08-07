@@ -827,7 +827,7 @@ The entry's retirement gate reads *"a permanent regression test asserting the tw
 
 🔴 **Why this round exists, and it is a lesson worth keeping.** GREEN was proposed at `e050d59` — then four more changes were committed on top (`7eb2eba`, `aeebbb3`). **A GREEN never covers commits made after it.** Continuing to cite that GREEN would have shipped unreviewed edits under a reviewed banner. The owner caught it; the capstone discipline already states the rule ("re-extend the range after every fold") and I applied it to code but not to this document.
 
-Solo pass (5) + peer escalation (2). **All 11 palette seats were exhausted by round 3**, so this round used the palette's escape hatch: **Fold Auditor · Cold Reader · Provenance Auditor · Convergence Judge.**
+Solo pass (5) + peer escalation (2) + **a post-peer Law-3 sweep that found 2 more the panel had missed** = 9. **All 11 palette seats were exhausted by round 3**, so this round used the palette's escape hatch: **Fold Auditor · Cold Reader · Provenance Auditor · Convergence Judge.**
 
 | # | Finding | Fold |
 |---|---|---|
