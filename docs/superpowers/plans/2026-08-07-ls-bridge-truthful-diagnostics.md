@@ -637,9 +637,9 @@ Note what the entry's own evidence does and does not cover: its corroboration is
 - [ ] **Step 3: Decide, and record the decision**
 
 - **If a reachable state produces the loss** → write the failing test for *that* state through the fake-LS harness, then implement the narrowest fix. Any readback MUST sit inside the existing `RpcException` guard, and the return path MUST distinguish "turn completed" from "made progress then hung" — progress alone is not completion.
-- **If no reachable state produces it** → the entry is **falsified against current code**. Report it, leave the entry `open` with the measurement recorded, and take the task no further. This is a legitimate outcome and costs nothing but the measurement.
+- **If no reachable state produces it** → the entry is **confirmed already satisfied by current code** — which is the expected outcome. Report `ALREADY-SHIPPED`, record the measurement, take the task no further, and **close the entry in Task 6 using template (ii)**. Do **not** leave it `open`: an entry whose remedy is demonstrably shipped is exactly what template (ii) exists to close, and leaving it open would fail Task 6 Step 3's expected-status table.
 
-**Either way this task ships no code without a demonstrated defect.** The plan's other four fixes stand alone; this one is deliberately gated.
+**Either way this task ships no code without a demonstrated defect.** The plan's other three fixes stand alone; this one is deliberately gated.
 
 - [ ] **Step 4: Commit only if Step 3 produced code**
 
@@ -715,7 +715,7 @@ Expected, **all nine lines** the glob returns — `*.md` matches `_template.md` 
 
 ```bash
 git add agy-autotrain/docs/fix-the-tool-backlog/
-git commit -m "docs(backlog): retire the four LS-bridge entries fixed by this plan"
+git commit -m "docs(backlog): retire four LS-bridge entries (two fixed here, two verified already-shipped)"
 ```
 
 ---
@@ -821,15 +821,42 @@ The peer ruled **(a) FULLY SATISFIED** against the entry's own acceptance text. 
 
 The entry's retirement gate reads *"a permanent regression test asserting the two failure modes map to distinct errors."* Those two tests assert exactly that, in both directions. **Gate met.** Task 3 should therefore close the entry rather than build a second path — but **flipping a KEPT entry to closed is the owner's call**, and Task 6 records it as such.
 
-**PANEL VERDICT: round 3 RED (3 folded), and after these folds the panel proposes GREEN. Awaiting owner adjudication.**
+**PANEL VERDICT: round 3 RED (3 folded).**
+
+## Panel ledger — round 4, the RE-GREEN round
+
+🔴 **Why this round exists, and it is a lesson worth keeping.** GREEN was proposed at `e050d59` — then four more changes were committed on top (`7eb2eba`, `aeebbb3`). **A GREEN never covers commits made after it.** Continuing to cite that GREEN would have shipped unreviewed edits under a reviewed banner. The owner caught it; the capstone discipline already states the rule ("re-extend the range after every fold") and I applied it to code but not to this document.
+
+Solo pass (5) + peer escalation (2). **All 11 palette seats were exhausted by round 3**, so this round used the palette's escape hatch: **Fold Auditor · Cold Reader · Provenance Auditor · Convergence Judge.**
+
+| # | Finding | Fold |
+|---|---|---|
+| 27 | Task 2 Step 3 runs only `Clavity.Ls.Tests`, so Step 3b's new Integration test was **never executed** | run command added to Step 3b |
+| 28 | Task 6's single `Shipped in <sha>` template would **misattribute** an already-shipped fix to this plan | split into templates (i) and (ii) |
+| 29 | The `PARTIAL` cross-reference still said Step 3b after the live probe moved to Step 3c | corrected |
+| 30 | The `conversation-scoped` row said `ALREADY-SHIPPED` leaves the entry `open` — **inverting the intended outcome** | rewritten; that stop now means CLOSE |
+| 31 | Two different steps are both named "Step 3b" (Task 1's and Task 2's) | ambiguity called out where it bites |
+| 32 | Task 5 Step 3 told the executor to leave the entry `open` — **contradicting Task 6's table**, so following it would fail Task 6's own verification | aligned to template (ii) |
+| 33 | Task 6 Step 4's commit message still claimed all four entries were *"fixed by this plan"* — a false provenance claim inside the very fold that added the provenance rule | reworded |
+| 34 | *(found by my own sweep, not the panel)* "the plan's other **four** fixes" survived the shrink to three | corrected |
+| 35 | *(found by my own sweep, not the panel)* **the self-review had itself gone stale, twice over** — claimed `Classify`/`Hint` were the only members added after `StatusFor` was introduced, and described a Task 5 structure that no longer exists | rewritten, with the rot noted in place |
+
+🔴 **Seven of nine round-4 findings were defects the FOLDS created.** That is now eight separate incomplete-folds in this epic, several inside the fix for the previous one. **The Fold Auditor seat earned its place immediately, and the free Law-3 grep out-performed the paid panel twice.**
+
+**Convergence Judge, asked directly whether this is still finding execution defects or merely polishing:** *"The review has converged… Tasks 0, 1, 2, and 4 are fully specified, test-guarded, and executable. Once lines 640 and 718 are aligned, stop reviewing and execute the plan."* Those two are folded (#32, #33), plus two more I found after.
+
+**PANEL VERDICT: round 4 RED (9 folded) — every finding a fold artefact, none touching the C# logic. The panel proposes GREEN at this tip. Awaiting owner adjudication.**
 
 ## Self-review
 
-Run against the four entries and the two owner rulings:
+⚠️ **Rewritten at round 4 because it had gone stale — twice over.** It still claimed `Classify` and `Hint` were the only members added (`StatusFor` was added since) and described a Task 5 step structure that no longer exists. **A self-review is an artifact and rots like any other; re-run it after every round, do not trust the previous pass.**
 
-1. **Coverage.** `grpc-default-max-message-size` → Tasks 1+2 (both halves: the cap *and* the hint, which the entry insists matters as much). `conversation-scoped-tools` → Task 3. `agy-look-tail-truncation` → Task 4. `stalled-reply-recoverable-not-lost` → Task 5. `inbox-snapshot-misses-slash-command-path` is **deliberately excluded** (a hook fix, plan 2) — that is scope, not an omission.
-2. **Ordering holds.** Task 2 precedes Task 5 (the entry's stated sibling constraint). Task 1 precedes 2 and 3 (both attach to the classifier).
-3. **No fabricated wire values.** Task 3's status code is measured, not guessed — the one place this plan could have invented a contract, it refuses to.
-4. **Placeholders.** Task 3 Step 2 and Task 4 Step 2 carry `<MEASURED_*>` / helper markers. These are **measurement outputs**, not deferred decisions: each has a command that produces the value and a stated stop condition if it cannot. Task 5 Steps 2 and 4 are specified as intent rather than exact code because the idle-wait internals must be read first — Step 1 enforces that read, and a `STATE_MISMATCH` stop guards it.
-5. **Type consistency.** `Fault` enum introduced in Task 1 (`TransportDown`, `PayloadTooLarge`), extended in Task 3 (`NoConversation`). `Classify` and `Hint` are the only members added; `IsChannelDown` and `Diagnose` are untouched, so `AgyStatusShapeTests.cs` keeps passing.
-6. **Known risk, stated.** Task 1 changes user-visible hint prose. If another suite pinned the old wording, Task 1 Step 5 catches it and gives a rule for which way to resolve it.
+Run against the four entries in scope and the current task set:
+
+1. **Coverage.** `grpc-default-max-message-size` → Tasks 1 + 2 (both halves: the cap *and* the hint, which the entry insists matters as much). `conversation-scoped-tools` → Task 3 (expected: disposition, no code). `agy-look-tail-truncation` → Task 4. `stalled-reply-recoverable-not-lost` → Task 5 (expected: disposition, no code). `inbox-snapshot-misses-slash-command-path` is **deliberately excluded** (a hook fix, plan 2) — scope, not omission.
+2. **Ordering holds.** Task 1 precedes Task 3 (Task 3 extends the `Fault`/`Classify`/`Hint`/`StatusFor` set Task 1 creates). Task 2 precedes Task 5 (the entry's stated sibling constraint), though Task 5 is now gated and likely writes nothing. Task 4 is independent of all of them.
+3. **No fabricated wire values.** Task 3's status code is measured, never guessed — the one place this plan could have invented a contract, it refuses to, and now stops early because the case appears already handled.
+4. **Placeholders.** Task 3 Step 2 and Task 4 Step 2 carry `<MEASURED_*>` / harness markers. These are **measurement outputs**, not deferred decisions: each has a command that produces the value and a stated stop if it cannot. Task 5 is specified as a decision procedure rather than code **on purpose** — its Step 1 forces a read of the idle-wait internals before any opinion, and Step 3 has two named terminal outcomes.
+5. **Type consistency.** `Fault` is introduced in Task 1 (`TransportDown`, `PayloadTooLarge`) and extended in Task 3 (`NoConversation`). Task 1 adds **three** members — `Fault`, `Classify`, `StatusFor` — and rewrites `Hint`. `IsChannelDown` and `Diagnose` are untouched, so `AgyStatusShapeTests.cs` keeps passing. **Every fault added to `Classify` must also be added to `StatusFor`**, or the status field and the hint contradict each other (round-2 finding 18).
+6. **Wire-contract risk, stated.** Task 1 changes user-visible hint prose **and** introduces new `status` values. `AgyChannelDownTests.cs` asserts the old value across ~7 cases; Task 1 Step 5 runs that suite, and Step 3b's consumer check is a hard `CONTRACT:` stop if anything outside `ChannelDown.cs` switches on `"channel_down"`.
+7. **Provenance.** Two entries close as already-fixed. Task 6 template (ii) forbids citing one of this plan's commits for them, and Step 4's commit message says "two fixed here, two verified already-shipped" rather than claiming all four.
