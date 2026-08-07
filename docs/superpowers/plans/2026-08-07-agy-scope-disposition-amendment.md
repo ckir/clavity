@@ -40,6 +40,12 @@ These are not style preferences. Each one has a gate that fails if you break it.
 4. **Prefer explicit paths over `git add -A`.** It has swept unintended files into commits on this
    public repo before.
 
+4a. **Do NOT push between Task 2 and Task 6.** Task 2 commits a deliberately partial-red test suite.
+   Measured: `.git/hooks/pre-commit` runs ruff on staged Python only, so the red commit itself is not
+   blocked; and `lefthook.yml:19-46` pre-push runs nine gates but NOT Pester, so a mid-sequence push is
+   not blocked either - it just lands red in CI. The suite is green again only after Task 6 Step 5.
+   The owner owns every push regardless.
+
 5. **Do not enroll `adversarial-panel-review` in the checker.** Decided by measurement, not preference:
    it has 69 non-ASCII characters and 0 references to the `$markerConstant` the checker requires, so
    enrolling it fails two gates that have nothing to do with this amendment.
@@ -68,6 +74,7 @@ bash scripts/check-seed-artifacts-synced.sh
 | `clavity-classic/plugin/skills/agy-capstone/SKILL.md` | byte-identical mirror | Copy |
 | `clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md` | taxonomy block + `GAPS FOUND` / marker enums + Outputs reconciliation | Modify |
 | `clavity-classic/plugin/skills/agy-test-audit/SKILL.md` | byte-identical mirror | Copy |
+| `docs/agy-disciplines-marker-contract.md` | hook contract doc restating the marker completion condition | Modify |
 | `clavity-dotnet/plugin/skills/adversarial-panel-review/SKILL.md` | taxonomy block + Outputs enum | Modify |
 | `clavity-classic/plugin/skills/adversarial-panel-review/SKILL.md` | byte-identical mirror | Copy |
 | `clavity-dotnet/plugin/skills/open-issues/SKILL.md` | intake-bar clarification + ROADMAP routing | Modify |
@@ -151,7 +158,10 @@ Expected: `No such file or directory` for **both**. If either exists, STOP and r
 
 - [ ] **Step 2: Create the file**
 
-```markdown
+The outer fence below is FOUR backticks because the file content itself contains three-backtick fences.
+Everything between the four-backtick markers is the literal file content, inner fences included.
+
+````markdown
 # Accepted boundaries
 
 The do-not-re-raise ledger. One entry per line, section-partitioned by product. This file is COMMITTED,
@@ -212,7 +222,7 @@ _(none yet)_
 Root and cross-product code: `scripts/`, root `docs/`, CI workflows.
 
 _(none yet)_
-```
+````
 
 - [ ] **Step 3: Confirm it is NOT added to the user-facing docs roster**
 
@@ -359,8 +369,9 @@ The full list goes in the ephemeral per-run report; a one-line summary of each g
 `.clavity/agy-marks/skipped.log`, in the existing format.
 ```
 
-The block replaces the floor bullet because it subsumes it: `DISCARDED-BELOW-FLOOR` IS the floor, now
-with an evidentiary bar.
+**The block does NOT replace the floor bullet.** It extends it: `DISCARDED-BELOW-FLOOR` IS the floor, now
+with an evidentiary bar, and Step 4a leaves the bullet in place with a pointer appended. Deleting `:99-101`
+would orphan `:102` ("Rotate seats across rounds") out of its list - do not do it.
 
 - [ ] **Step 5: Rewrite the ALIGNED enumeration**
 
@@ -566,6 +577,43 @@ with:
 
 **Do not touch the following line**, which continues `abort writes NO marker ...`.
 
+- [ ] **Step 5b: Fold the SAME enumeration where it is restated OUTSIDE the skill**
+
+`docs/agy-disciplines-marker-contract.md:66-69` is the hook CONTRACT doc - the authority a hook implementer
+reads - and it restates the marker condition Step 5 just rewrote, in the same closed binary that has no slot
+for `UNVERIFIED-ACCEPTED`. It also names "the rolling debt file", which Step 3 just redefined as
+boundaries-only. Leaving it is the incomplete-fold defect this repo keeps re-earning.
+
+Verify state first:
+
+```bash
+awk 'NR>=66&&NR<=69{print NR"|"$0}' docs/agy-disciplines-marker-contract.md
+```
+
+Expected:
+
+```
+66|- `agy-test-audit` writes `agy-test-audit.head` only on a **completed audit**: an `[VERDICT: EXHAUSTIVE]`,
+67|  or a `[VERDICT: GAPS FOUND]` whose every gap is owner-dispositioned (closed or logged as deferred debt
+68|  in the rolling debt file). An `[VERDICT: agy-required-but-unreachable]` abort writes NO marker (re-fires
+69|  next trigger). Content is the audited `git rev-parse HEAD`.
+```
+
+If it differs, STOP and report `STATE_MISMATCH: <what differs>`. Then replace those four lines with:
+
+```
+- `agy-test-audit` writes `agy-test-audit.head` only on a **completed audit**: an `[VERDICT: EXHAUSTIVE]`,
+  or a `[VERDICT: GAPS FOUND]` whose every gap carries one of the five AGY-SCOPE disposition tokens
+  (`FOLDED`, `REJECTED`, `DISCARDED-BELOW-FLOOR`, `DEFERRED-TO-ANOMALIES`, `UNVERIFIED-ACCEPTED`); a
+  material `DEFERRED-TO-ANOMALIES` needs the owner's ruling first. An
+  `[VERDICT: agy-required-but-unreachable]` abort writes NO marker (re-fires
+  next trigger). Content is the audited `git rev-parse HEAD`.
+```
+
+This file is under `docs/`, so it is neither ASCII-gated nor seed-synced - no mirror step, no ASCII check.
+`:64`'s existing "capstone's WAIVED / UNVERIFIED-ACCEPTED distinctions live in the log" needs NO change: it
+already uses the token in the sense this amendment formalises.
+
 - [ ] **Step 6: Verify ASCII, then mirror**
 
 ```bash
@@ -583,7 +631,9 @@ grep -rn "coverage-debt" clavity-dotnet/plugin clavity-classic/plugin scripts do
 ```
 
 Expected: no output. The dominant fold defect in this repo is an INCOMPLETE fold; this is the sweep that
-catches it. If anything is found, fix it in the same task.
+catches it. If anything is found, fix it in the same task **and add its path to Step 9's `git add` line** -
+Step 9 names explicit paths, so a fix outside those paths would otherwise sit unstaged and be swept into a
+later task's commit unlabelled.
 
 - [ ] **Step 8: Run the gates**
 
@@ -599,7 +649,7 @@ Expected: checker exits 0; the `agy-test-audit` rows of both new tests now PASS;
 - [ ] **Step 9: Commit**
 
 ```bash
-git add clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md clavity-classic/plugin/skills/agy-test-audit/SKILL.md
+git add clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md clavity-classic/plugin/skills/agy-test-audit/SKILL.md docs/agy-disciplines-marker-contract.md
 git commit -m "feat(agy-test-audit): disposition taxonomy, completion enums, and the boundaries-file split"
 ```
 
@@ -843,8 +893,11 @@ specific new rows are the failing ones by name; a bare non-zero count is not pro
 Replace `$requiredVerdicts` at `:18-22` with:
 
 ```powershell
-# The AGY-SCOPE disposition taxonomy (spec 2026-08-07). Required in the REVIEW disciplines only -
-# agy-first is a consult discipline and raises no findings to dispose of.
+# The AGY-SCOPE disposition taxonomy (spec 2026-08-07). Required for the two review disciplines ENROLLED
+# in this checker. agy-first is excluded on purpose: it is a consult discipline and raises no findings to
+# dispose of. adversarial-panel-review DOES carry the taxonomy but is not enrolled in $skills at all (it
+# has 69 non-ASCII chars and no marker constant); it is pinned instead by the
+# 'AGY-SCOPE disposition taxonomy' Describe in scripts/tests/check-agy-discipline-skills.Tests.ps1.
 $dispositionTokens = @(
     'FOLDED: '
     'REJECTED: '
@@ -891,12 +944,22 @@ git commit -m "feat(checker): require the disposition tokens, with a mutation ro
 This defect class produced 5 of the spec's findings and one instance survived four review rounds
 undetected. Sweep before declaring done:
 
+**The sweep MUST reach beyond the skills.** The enumeration this class hides in has already been found on a
+NON-skill surface once (`docs/agy-disciplines-marker-contract.md:66-69`, folded into Task 3 Step 5b). A sweep
+scoped to `plugin/skills/` is scoped to miss exactly the case it exists to catch. Grep `docs/` and `scripts/`
+too, and match case-insensitively - the shared block writes "EXACTLY ONE of" in caps.
+
 ```bash
-grep -rn "one of:\|exactly one of\|is legitimately\|A final disposition" clavity-dotnet/plugin/skills/agy-capstone/SKILL.md clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md clavity-dotnet/plugin/skills/adversarial-panel-review/SKILL.md clavity-dotnet/plugin/skills/open-issues/SKILL.md
+grep -rni "one of:\|exactly one of\|is legitimately\|A final disposition\|owner-dispositioned\|deferred debt\|rolling debt file" \
+  clavity-dotnet/plugin/skills docs scripts \
+  --include=*.md --include=*.ps1 --include=*.sh --include=*.txt --include=*.json
 ```
 
-For each hit, decide whether the five tokens must appear in that list. The four known ones are already
-handled by Tasks 2-5. If a NEW one is found, fold it in this task before continuing, and mirror it.
+Exclude hits under `docs/superpowers/` (specs and plans are point-in-time records, not live contracts) and
+`docs/agy-capstone-ledger.md` (append-only history). For every other hit, decide whether the five tokens
+must appear in that list. The five known ones are handled by Tasks 2-5 and Task 3 Step 5b. If a NEW one is
+found, fold it in this task before continuing, mirror it if it lives under `plugin/`, and stage it
+explicitly in Step 6's `git add`.
 
 - [ ] **Step 2: Confirm the mirrors are still byte-identical**
 
@@ -928,16 +991,20 @@ Block on its own `Tests completed` line, never on a process count. Expected: `Fa
 
 - [ ] **Step 5: Mark ROADMAP section 7 shipped**
 
+**The dash in line 494 is an EM-DASH (U+2014), not a hyphen** - measured, and `ROADMAP.md` is not under
+the ASCII gate so it is legitimately there. An exact-string replace typed with ` - ` will NOT match. Copy
+the line from the file rather than retyping it.
+
 Change line 494 from:
 
 ```
-### 7. AGY-SCOPE - "pre-existing defects are always in scope" as a shipped discipline (BRAINSTORM FIRST)
+### 7. AGY-SCOPE — "pre-existing defects are always in scope" as a shipped discipline (BRAINSTORM FIRST)
 ```
 
 to:
 
 ```
-### 7. AGY-SCOPE - "pre-existing defects are always in scope" as a shipped discipline · ✅ **SHIPPED 2026-08-07**
+### 7. AGY-SCOPE — "pre-existing defects are always in scope" as a shipped discipline · ✅ **SHIPPED 2026-08-07**
 ```
 
 Then replace the `⏸️ NO DISPOSITION RECORDED` blockquote at `:498-510` with:
@@ -1006,3 +1073,13 @@ distinct from `[VERDICT: REJECTED - ` and what the mutation test relies on.
 **Known residual risk.** Every Step-1 state verification cites line numbers read at `5c54fa3`. Tasks 2-5
 each shift the line numbers of the file they edit, which is why later steps within a task say to find
 text by content rather than by number.
+
+**Panel round 1 (solo) folded into this revision.** Six findings, all measured: the marker-contract doc
+restating the rewritten enumeration (new Task 3 Step 5b); the Task 7 re-sweep being scoped to `plugin/skills/`
+and so unable to catch it (Step 1 widened to `docs/` + `scripts/`, case-insensitive); ROADMAP:494 carrying an
+em-dash where Task 7 Step 5 quoted a hyphen, which would have failed the exact replace; Task 2 Step 4's
+closing sentence contradicting Step 4a by claiming the block replaces the floor bullet; Task 1 Step 2's file
+content nesting three-backtick fences inside a three-backtick fence; and Task 3 Step 7's "fix it here"
+instruction outrunning Step 9's explicit `git add`. Refuted by measurement and NOT folded: `perl` unavailable
+(5.42.2 present), `coverage-debt` leaking past the two SKILL files (confined to them), the roster exclusion
+being unsafe (`check-user-facing-docs.ps1` warns, never fails, on absent-from-list).
