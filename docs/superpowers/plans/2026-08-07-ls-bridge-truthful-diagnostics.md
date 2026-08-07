@@ -27,12 +27,12 @@ State it plainly, because the answer changed twice and a stale scope claim is th
 | Task | Status after rounds 1-2 |
 |---|---|
 | **1 — `ChannelDown` classifier + `StatusFor`** | **BUILDS.** The core fix. |
-| **2 — gRPC receive limit** | **BUILDS**, but the cap half is unproven until Step 3b's live check; the hint half stands regardless. |
+| **2 — gRPC receive limit** | **BUILDS** — code + a deterministic oversized-message test. Whether the cap *helps in practice* stays open until Step 3c's optional live probe; the hint half stands regardless. |
 | **4 — `agy_look` newestFirst** | **BUILDS.** Smallest and most certain. |
-| 3 — no-open-conversation | **LIKELY BUILDS NOTHING** — the remedy appears already shipped (`waiting_for_human`). Gated on a stop. |
-| 5 — stalled-reply recovery | **LIKELY BUILDS NOTHING** — the entry's remedy is already implemented via `lastProgress`, and the naive fix would regress modal-hang detection. Gated on a stop. |
+| 3 — no-open-conversation | **BUILDS NOTHING — CLOSEABLE.** Remedy shipped (`waiting_for_human`); retirement gate met by `AgyChannelDownTests.cs:284` + `:358`. Peer-confirmed. |
+| 5 — stalled-reply recovery | **BUILDS NOTHING — CLOSEABLE.** Remedy shipped via `lastProgress`; entry names no test gate. Peer-confirmed. |
 
-**So two of the four entries this plan was written to fix may need re-dispositioning rather than code.** That is a success of the review, not a failure of the plan — but it means the plan's *title* promise ("fix four defects") is now only reliably true of two. **Do not let a later reader infer that five tasks means five fixes.**
+🔴 **Two of the four entries this plan was written to fix need a DISPOSITION, not code — both confirmed against their own acceptance text by an independent reviewer.** That is the review working, not the plan failing. But it means the plan delivers **three fixes, not five**: a truthful fault classifier, a deliberate receive ceiling, and a corrected `agy_look` ordering. **Do not let a later reader infer that five tasks means five fixes.**
 
 **Plan 2's gate, recorded so it is not skipped:** ROADMAP §0 states the 1b trigger placement "is to be **decided from 1a's data rather than guessed**". The 1a recorder exists at `scripts/discipline-reaching-report.ps1`. Plan 2's first task must RUN it and choose the trigger from its output. The witness trial (step 3) is KILLED — do not reinstate it.
 
@@ -312,6 +312,7 @@ git commit -m "fix(ls): ChannelDown.Hint names the real fault instead of always 
 
 **Files:**
 - Modify: `clavity-dotnet/src/Clavity.Ls/LsChannel.cs`
+- Modify: `clavity-dotnet/tests/Clavity.Integration.Tests/LsChannelIntegrationTests.cs` (Step 3b's oversized-message test)
 
 - [ ] **Step 1: Confirm the current state**
 
@@ -349,21 +350,50 @@ cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests
 
 Expected: build succeeds, `Failed: 0`.
 
-- [ ] **Step 3b: Confirm the ceiling that actually binds is the client's**
+### The verification splits in two, and only one half needs the live peer
 
-`MaxReceiveMessageSize` is a **client receive** limit. If agy's language server enforces its own **send** cap, raising the client limit moves nothing and this task ships a no-op that looks like a fix.
+`MaxReceiveMessageSize` is a **client receive** limit, so two separate questions decide whether this task is a real fix:
 
-The suite cannot answer this — no unit test crosses a real 4 MB gRPC response. Verify against the live peer: drive a conversation until its trajectory exceeds 4 MB (per the entry's repro, accumulated **bytes**, not step count — asks have succeeded at 996/1111/1203/1290 steps, so never use step count as the trigger), then call `agy_look`.
+1. **Does raising the client limit let an oversized response through at all?** — deterministic, no peer needed.
+2. **Does agy's own server cap what it sends?** — if it does, the client change is inert in practice, and only the live peer can answer.
 
-- **Call succeeds** → the client limit was the binding constraint. Record the measured trajectory size in the entry's Fixed section.
-- **Call still fails `ResourceExhausted`** → a server-side cap binds too. The Task 1 hint is still correct and still valuable (it stops the false shutdown report), but the *cap* half is unfixed. Report `PARTIAL: server-side send cap binds at <size>` and leave `grpc-default-max-message-size` at `status: open` in Task 6.
+An earlier draft asked one expensive live probe to answer both. It cannot: a live success proves both at once, but a live *failure* cannot tell you which half failed.
 
-**If no live peer is available,** do not silently skip: record it as unverified and leave the entry `open`. An unverified ceiling fix is exactly the "confirm X with no deliverable" shape the bar killed §4 for.
+- [ ] **Step 3b: The deterministic half — a permanent regression test, no agy required**
+
+The harness already exists. `clavity-dotnet/tests/Clavity.Integration.Tests/LsChannelIntegrationTests.cs:25-38` stands up an in-process **Kestrel h2c gRPC server** with a `FakeLanguageServer` and drives it through `LsChannel.ForHttpPort(PortOf(app))` — the exact method this task modifies:
+
+```csharp
+private static async Task<WebApplication> StartFakeLsAsync(GetConversationMetadataResponse response)
+{
+    var builder = WebApplication.CreateBuilder();
+    builder.WebHost.ConfigureKestrel(o => o.ConfigureEndpointDefaults(lo => lo.Protocols = HttpProtocols.Http2));
+    builder.WebHost.UseUrls("http://127.0.0.1:0");
+    ...
+}
+```
+
+Add a test to that file which returns a response carrying a payload **larger than gRPC's 4 MB default** (e.g. a ~5 MB string in a proto field) and asserts the round trip **succeeds**.
+
+**Prove it is non-vacuous before trusting it** (the repo's assertion-strength rule, and the reason this plan exists): temporarily revert `MaxReceiveMessageSize` and confirm this specific test goes **red** with `ResourceExhausted`. A test that passes both with and without the fix is measuring nothing. Then restore the fix and confirm it goes green.
+
+**Read the printed test count** — a filtered run that matches nothing exits 0 (preamble item 5).
+
+- [ ] **Step 3c: The live half — a qualification probe, NOT a blocking gate**
+
+This answers only question 2, and it is exploratory. **Do not make it a CI gate**: forcing a real agy trajectory past 4 MB burns quota and wall-clock, and a suite that must inflate a live conversation to pass will simply be disabled. (Measured 2026-08-07: a heavily-used session reached 251 steps across five large round-trips without approaching the ceiling — so reaching it deliberately is costly.)
+
+When convenient, drive a real conversation until its trajectory exceeds 4 MB — accumulated **bytes**, never step count; asks have succeeded at 996 / 1111 / 1203 / 1290 steps — then call `agy_look`.
+
+- **Succeeds** → the client limit was the binding constraint. Record the measured size in the entry's Fixed section.
+- **Still fails `ResourceExhausted`** → a server-side send cap binds too. Task 1's hint half remains correct and valuable; the *cap* half is not effective in practice. Report `PARTIAL: server-side send cap binds at <size>` and leave `grpc-default-max-message-size` at `status: open` in Task 6.
+- **Not run** → say so plainly. Step 3b still stands on its own: it proves the code is right, which is what the commit claims.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add clavity-dotnet/src/Clavity.Ls/LsChannel.cs
+git add clavity-dotnet/src/Clavity.Ls/LsChannel.cs \
+        clavity-dotnet/tests/Clavity.Integration.Tests/LsChannelIntegrationTests.cs
 git commit -m "fix(ls): set MaxReceiveMessageSize deliberately instead of inheriting gRPC's 4 MB default"
 ```
 
@@ -582,7 +612,9 @@ An adversarial panel over this plan (2026-08-07) killed the original version of 
 - The method returns `Task`, not a reply, and has **four** throw sites. "Return the new steps" is not expressible without a signature change.
 - The existing probe is deliberately wrapped in `catch (RpcException) when (!cancellationToken.IsCancellationRequested)` with a comment stating that an unguarded re-fetch would *"ESCAPE the loop as an uncaught RpcException -> central catch -> channel_down"*. An unguarded final readback does exactly that.
 
-**So do not implement a fix here until the defect is demonstrated.** Proceed as measurement-first.
+**✅ CONFIRMED CLOSEABLE, 2026-08-07.** Asked to rule against the entry's own acceptance text, the peer returned **(a) FULLY SATISFIED — close as already-fixed**, quoting the entry's mitigation (*"Only if the step counter is genuinely NOT advancing should the call be reported as stalled"*) against `AgyView.cs:273-281`'s `lastProgress` loop, and noting the entry names **no test retirement gate** in its Notes — unlike `conversation-scoped-tools`, which does. It was explicitly told a prior (a) on a different entry had no bearing here.
+
+**So this task's expected outcome is a DISPOSITION, not code.** Do not implement a fix unless a reachable defect is demonstrated. Proceed as measurement-first; the likely result is that Task 6 closes the entry.
 
 **Files:** none until Step 3 resolves.
 
