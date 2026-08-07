@@ -180,6 +180,50 @@ In `clavity-dotnet/src/Clavity.Ls/ChannelDown.cs`, replace the `Hint` method (th
 
 **Shape note:** the leading text changes from "channel is down" to "channel call failed", because the old wording asserts the very thing that was false. That is deliberate, not incidental.
 
+- [ ] **Step 3b: The machine-readable `status` field must agree with the hint**
+
+**Without this step the plan replaces one lie with another.** `McpTools.RunAsync` emits, in the same JSON object:
+
+```csharp
+                status = ChannelDown.Status,          // the constant "channel_down"
+                diagnostic = diag,
+                hint = ChannelDown.Hint(diag),
+```
+
+So a payload-too-large fault would serialize as `{"status":"channel_down", "hint":"...the peer is NOT down..."}` — the field and the narrative contradicting each other. Any supervisor, hook or script that reads `status` rather than parsing prose still records a dead channel.
+
+The codebase already has the pattern to follow: the same method emits distinct top-level statuses `possible_modal` and `waiting_for_human` for other faults. Add a status per fault:
+
+```csharp
+    /// <summary>The machine-readable status for a fault. MUST track <see cref="Hint"/>: a consumer reading the
+    /// status field and a human reading the hint have to reach the same conclusion.</summary>
+    public static string StatusFor(ChannelDiagnostic d) => Classify(d) switch
+    {
+        Fault.PayloadTooLarge => "payload_too_large",
+        _ => Status,
+    };
+```
+
+Then in `clavity-dotnet/src/Clavity.Mcp/McpTools.cs`, in the `catch (Exception ex) when (ChannelDown.IsChannelDown(ex))` block, change `status = ChannelDown.Status,` to `status = ChannelDown.StatusFor(diag),`. Apply the same change wherever `AgyView.StatusAsync` builds its `AgyStatus` from `ChannelDown.Status`.
+
+Add to `ChannelDownTests.cs`:
+
+```csharp
+    [Fact]
+    public void The_status_field_and_the_hint_never_contradict_each_other()
+    {
+        var big = new ChannelDiagnostic("ResourceExhausted", "Received message exceeds the maximum configured size");
+        Assert.Equal("payload_too_large", ChannelDown.StatusFor(big));
+        Assert.DoesNotContain("shut down or restarted", ChannelDown.Hint(big));
+
+        var dead = new ChannelDiagnostic("Unavailable", "connection refused");
+        Assert.Equal("channel_down", ChannelDown.StatusFor(dead));
+        Assert.Contains("shut down or restarted", ChannelDown.Hint(dead));
+    }
+```
+
+**Consumer check before you commit:** `status` is a wire value other code may switch on. Grep for consumers of `"channel_down"` across the repo and the plugin hooks; if anything matches on it, adding a new value is a contract change that needs the owner's call, not a silent edit.
+
 - [ ] **Step 4: Run the tests and verify they pass**
 
 ```bash
@@ -235,6 +279,8 @@ In `clavity-dotnet/src/Clavity.Ls/LsChannel.cs`, find the return statement whose
                 MaxReceiveMessageSize = 64 * 1024 * 1024,
             });
 ```
+
+**Why a number and not `null`.** Unbounded was rejected so a runaway response still fails loudly instead of exhausting memory. But the ceiling is not free, and the cost is worth stating: `AgyView.StatusAsync` fetches the **entire** `CascadeTrajectory` on every pre-fire check, only to read `CascadeId` and `Steps.Count`. Today the 4 MB default caps that; at 64 MB every `agy_status` call may pull and deserialize up to 64 MB over loopback. That is a **pre-existing inefficiency this change amplifies**, not one it creates — and by the standing rule that a pre-existing defect's age is not a disposition, it is recorded here rather than waved off. Do **not** fix it in this task: note it, and if `agy_status` latency degrades measurably after this lands, raise it as its own tracked item with the measurement attached.
 
 - [ ] **Step 3: Build and run the full suite**
 
@@ -361,34 +407,43 @@ grep -n "BoundedView.Summarize" clavity-dotnet/src/Clavity.Ls/AgyView.cs
 
 Expected: one line reading `return BoundedView.Summarize(trajectory, budgetChars);` — **no** `newestFirst` argument. If it already passes one, STOP.
 
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 2: Write the failing test — against `AgyView`, NOT against `BoundedView`**
 
-Append to `clavity-dotnet/tests/Clavity.Ls.Tests/BoundedViewTests.cs`, inside the existing test class. Match the trajectory-construction helper the neighbouring `Ask_newestFirst_*` tests use — read them first and reuse that helper rather than inventing one:
+🔴 **The obvious test does not work, and it fails in the direction that looks like success.** `BoundedViewTests.cs` already contains `BoundedView.Summarize(t, budgetChars: 8000, maxStepChars: 16000, newestFirst: true)` and it already passes — `BoundedView` is not the broken component. A new test calling `Summarize(..., newestFirst: true)` directly would go **green on the first run**, and an executor following "watch it fail" would either fake the red or conclude the defect is already fixed. The unwired call site is `AgyView`'s `agy_look` path; only a test that goes through **`AgyView.LookAsync`** can pin this.
+
+Write the test against `AgyView.LookAsync` using the fake/canned LS client the existing tests use. Find that harness first:
+
+```bash
+grep -rn "class .*Fake\|CannedHandler\|LsClient" clavity-dotnet/tests/ | head -20
+```
+
+`clavity-dotnet/tests/Clavity.Integration.Tests/LsFramingConformanceTests.cs` builds a client over a `CannedHandler`; if the fake-LS harness lives in `Clavity.Integration.Tests`, put this test there and run it with that project's command. **State in the test file which project it lives in** — the two suites have different run commands and only one is the CI gate.
+
+The test: drive `LookAsync` against a canned trajectory with more steps than the budget allows, then assert **identity** of the boundary steps:
 
 ```csharp
     [Fact]
-    public void Look_keeps_the_newest_steps_when_the_budget_is_tight()
+    public async Task Look_keeps_the_newest_steps_when_the_budget_is_tight()
     {
-        // agy_look's whole purpose is "what just happened", so a tight budget must drop the OLDEST steps.
-        var t = /* same helper the Ask_newestFirst_* tests use, with enough steps to overflow the budget */;
+        // agy_look answers "what just happened", so a tight budget must drop the OLDEST steps.
+        // This goes through AgyView.LookAsync deliberately: BoundedView already handles newestFirst
+        // correctly and testing it directly would pass without exercising the defect.
+        var view = /* AgyView over the fake client, canned with a trajectory that overflows the budget */;
 
-        var v = BoundedView.Summarize(t, budgetChars: 8000, maxStepChars: 16000, newestFirst: true);
+        var v = await view.LookAsync(/* a budget smaller than the trajectory */);
 
-        // Assert IDENTITY of the boundary step, never a count — a count is invariant under any permutation.
-        Assert.Contains("<the newest step's distinctive text>", v);
-        Assert.DoesNotContain("<the oldest step's distinctive text>", v);
+        Assert.Contains("<the NEWEST step's distinctive text>", v);
+        Assert.DoesNotContain("<the OLDEST step's distinctive text>", v);
     }
 ```
 
 **Assertion discipline (this repo's standing rule, and ROADMAP §11's whole subject):** assert *which* step survived, never *how many*. `Count(SortAndTruncate(c, K))` is invariant under any permutation before truncation, so a cardinality assertion passes over reversed sort logic.
 
-- [ ] **Step 3: Run it and watch it fail**
+- [ ] **Step 3: Run it and watch it fail for the RIGHT reason**
 
-```bash
-cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~BoundedViewTests"
-```
+Run the suite the test landed in. Expected: it FAILS because the **oldest** step survived and the newest was dropped.
 
-Expected: the new test FAILS.
+🔴 **If it passes on the first run, do NOT proceed to Step 4.** A green here means the test is not reaching the defect — almost certainly because it is exercising `BoundedView` rather than `AgyView`. Fix the test's target first.
 
 - [ ] **Step 4: Pass `newestFirst` at the `agy_look` call site**
 
@@ -435,38 +490,40 @@ git commit -m "fix(ls): agy_look keeps the newest trajectory steps under a tight
 - Modify: `clavity-dotnet/src/Clavity.Ls/AgyView.cs`
 - Modify: `clavity-dotnet/tests/Clavity.Ls.Tests/AskReplyProjectionTests.cs` (or a new file if the fake-client harness lives elsewhere — read it first)
 
-- [ ] **Step 1: Read the existing wait before changing it**
+### 🔴 STOP — this task's PREMISE is unproven, and the entry's proposed fix is already implemented
 
-Read `WaitForIdleWithProgressAsync` and `BuildModalHang` in full, plus every caller. Confirm the throw site. If the method already performs a trajectory readback on expiry, STOP and report `STATE_MISMATCH: expiry already re-polls`.
+An adversarial panel over this plan (2026-08-07) killed the original version of this task. Measured against `AgyView.WaitForIdleWithProgressAsync`:
 
-- [ ] **Step 2: Write the failing test**
+- The entry's remedy — *"Only if the step counter is genuinely NOT advancing should the call be reported as stalled"* — **is what the code already does.** `lastProgress` starts at `before + 1` and the loop resets its stall window on every advance (`if (total > lastProgress) lastProgress = total;`). It throws only when a full window passed with **no** new steps.
+- Therefore the naive condition "trajectory advanced past `before` ⇒ return it as the reply" is **true on essentially every modal hang** — any turn that emitted a step and then blocked on a dialog. Implementing it would convert genuine modal-hang detection into a false "completed reply", regressing the F5/F2/F3 machinery.
+- The method returns `Task`, not a reply, and has **four** throw sites. "Return the new steps" is not expressible without a signature change.
+- The existing probe is deliberately wrapped in `catch (RpcException) when (!cancellationToken.IsCancellationRequested)` with a comment stating that an unguarded re-fetch would *"ESCAPE the loop as an uncaught RpcException -> central catch -> channel_down"*. An unguarded final readback does exactly that.
 
-Using the fake/canned client harness the existing tests use (find it — `Clavity.Integration.Tests` carries a fake LS), assert: when the idle wait expires **but the trajectory has advanced past the pre-ask snapshot**, the call returns the completed reply instead of throwing.
+**So do not implement a fix here until the defect is demonstrated.** Proceed as measurement-first.
 
-Assert on the returned reply's identity — a distinctive fragment of the final step — not on a count or on "did not throw" alone.
+**Files:** none until Step 3 resolves.
 
-- [ ] **Step 3: Run it and watch it fail**
+- [ ] **Step 1: Read the machinery before forming any opinion**
 
-Expected: it throws the modal-hang exception.
+Read `WaitForIdleWithProgressAsync` in full (all four throw sites), `BuildModalHang`, and every caller. Note that the happy path returns as soon as the server reports fully idle.
 
-- [ ] **Step 4: Implement — a single bounded readback at the throw site**
+- [ ] **Step 2: Derive the precise conditions under which the claimed loss can occur**
 
-Before throwing, perform one final `GetCascadeTrajectoryAsync`. If the trajectory has advanced beyond the `before` snapshot, return the new steps as the reply. Only if the step counter is genuinely **not** advancing does the existing throw stand.
+The turn must have **completed** while the wait still expired. Given the happy path returns on the server's fully-idle signal, that requires the server's idle signal to fail or lag while the turn finished. Write down the exact state that produces it.
 
-Keep the existing exception path intact for the genuinely-stuck case: this is an added branch, not a replacement. Report stalled only when there is no progress.
+Note what the entry's own evidence does and does not cover: its corroboration is verify-harness probe A2, which is a **truncation** result — and the entry itself says *"The truncation path and this stall path differ in mechanism"*. So A2 is **not** evidence for this task's premise.
 
-- [ ] **Step 5: Run the full suite**
+- [ ] **Step 3: Decide, and record the decision**
+
+- **If a reachable state produces the loss** → write the failing test for *that* state through the fake-LS harness, then implement the narrowest fix. Any readback MUST sit inside the existing `RpcException` guard, and the return path MUST distinguish "turn completed" from "made progress then hung" — progress alone is not completion.
+- **If no reachable state produces it** → the entry is **falsified against current code**. Report it, leave the entry `open` with the measurement recorded, and take the task no further. This is a legitimate outcome and costs nothing but the measurement.
+
+**Either way this task ships no code without a demonstrated defect.** The plan's other four fixes stand alone; this one is deliberately gated.
+
+- [ ] **Step 4: Commit only if Step 3 produced code**
 
 ```bash
-cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests && dotnet test tests/Clavity.Integration.Tests
-```
-
-Expected: `Failed: 0` in both.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add clavity-dotnet/src/Clavity.Ls/AgyView.cs clavity-dotnet/tests/Clavity.Ls.Tests
+git add clavity-dotnet/src/Clavity.Ls/AgyView.cs clavity-dotnet/tests
 git commit -m "fix(ls): recover a completed reply on idle-wait expiry instead of discarding it"
 ```
 
@@ -502,7 +559,19 @@ Shipped in `<commit sha>`. Regression test: `<test file>::<test name>`.
 grep -n "^status:" agy-autotrain/docs/fix-the-tool-backlog/*.md
 ```
 
-Expected: the four entries above read `fixed`; `working-vs-stuck-step-delta` stays `wont-fix`; `curate-nudge-age-reads-drain-log-dates` and `idle-wait-false-modal` stay `fixed`; `inbox-snapshot-misses-slash-command-path` stays **`open`** (it belongs to plan 2).
+Expected, **all nine lines** the glob returns — `*.md` matches `_template.md` too, and an expected list that omits it makes a correct run look wrong:
+
+| file | expected `status:` |
+|---|---|
+| `_template.md` | `open` — it is the template, never flip it |
+| `agy-look-tail-truncation.md` | `fixed` |
+| `conversation-scoped-tools-vs-no-open-conversation.md` | `fixed` |
+| `grpc-default-max-message-size.md` | `fixed` — **unless** Task 2 Step 3b reported `PARTIAL`, in which case `open` |
+| `stalled-reply-recoverable-not-lost.md` | `fixed` **only if** Task 5 Step 3 produced code; otherwise `open` |
+| `curate-nudge-age-reads-drain-log-dates.md` | `fixed` (already) |
+| `idle-wait-false-modal.md` | `fixed` (already) |
+| `inbox-snapshot-misses-slash-command-path.md` | `open` — belongs to plan 2 |
+| `working-vs-stuck-step-delta.md` | `wont-fix` |
 
 - [ ] **Step 4: Commit**
 
@@ -552,6 +621,27 @@ Expected: `1` — exactly one occurrence, in the `TransportDown` arm. A `0` mean
 This plan is not complete until a capstone reviews `<PLAN_BASE>..HEAD` — the committed implementation, not this document — and reaches owner-confirmed GREEN. Do not write a completion marker before that.
 
 ---
+
+## Panel ledger — AGY-AFTER round 1, RED (do NOT re-raise)
+
+Solo pass (2 findings) + live-peer escalation (8 findings, 7 seats). **All 10 verified by measurement before folding; none refuted.** Brief: `.clavity/seams/ls-bridge-plan-panel.md`.
+
+| # | Finding | Fold |
+|---|---|---|
+| 1 | Task 3 could ship while the fault never reaches `ChannelDown` — `Hint` is only called under a `when (IsChannelDown(ex))` filter | Task 3 Step 1b: verify admission, STOP if not admitted |
+| 2 | `MaxReceiveMessageSize` is a *client receive* limit; a server send cap would make Task 2 a no-op | Task 2 Step 3b: live verification, `PARTIAL` report |
+| 3 | `status` field would still say `channel_down` while the hint says the peer is healthy | Task 1 Step 3b: `StatusFor()` + consumer check |
+| 4 | Task 4's test called `BoundedView.Summarize` — already green, bypasses the defect entirely | Task 4 Step 2 retargeted at `AgyView.LookAsync` |
+| 5 | Task 5's `total > before` fires on every modal hang that emitted a step | Task 5 gated; premise must be demonstrated first |
+| 6 | `WaitForIdleWithProgressAsync` returns `Task` and has 4 throw sites — "return the steps" is inexpressible | same |
+| 7 | An unguarded final readback escapes as a false `channel_down`, which a code comment explicitly warns against | same |
+| 8 | An un-stabilized snapshot can project a null `Answer` under a success status | same |
+| 9 | 64 MB ceiling amplifies `StatusAsync`'s full-trajectory fetch | Task 2: cost recorded, explicitly not fixed here |
+| 10 | Task 6's `*.md` glob matches `_template.md`, omitted from the expected list | Task 6 Step 3: full nine-row table |
+
+🔴 **The two findings that would have cost the most were both "the test passes when it should fail":** #4 (test targets a component that already works) and #5 (a fix that regresses modal-hang detection while looking correct). Both are Law 1 — defects found by reasoning about *running* code, not by reading the plan.
+
+**Round 2 is owed** (owner's standing ruling: repeat until green). Tasks 1, 4 and 5 changed materially, and in this project a fold has twice spawned its own defect.
 
 ## Self-review
 
