@@ -60,6 +60,46 @@ public class AgyViewIntegrationTests : IDisposable
             });
     }
 
+    // Serves ONE conversation with FIVE ~400-char steps whose oldest and newest carry distinct markers, so a
+    // tight budget (fits only ~2 steps) can prove WHICH end LookAsync keeps. 400 chars/step stays under the
+    // 1000-char per-step truncation cap, so no step is individually truncated — only the step COUNT is bounded.
+    private sealed class NewestFirstFakeLs : LanguageServerService.LanguageServerServiceBase
+    {
+        private const string CascadeIdValue = "cascade-newest-first";
+
+        private static string Pad(string marker) => marker.PadRight(400, '.');
+
+        public override Task<GetAllCascadeTrajectoriesResponse> GetAllCascadeTrajectories(
+            GetAllCascadeTrajectoriesRequest request, ServerCallContext context)
+        {
+            var resp = new GetAllCascadeTrajectoriesResponse();
+            resp.TrajectorySummaries[CascadeIdValue] = new CascadeTrajectorySummary
+            {
+                LastModifiedTime = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+            };
+            return Task.FromResult(resp);
+        }
+
+        public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
+            GetCascadeTrajectoryRequest request, ServerCallContext context)
+            => Task.FromResult(new GetCascadeTrajectoryResponse
+            {
+                NumTotalSteps = 5,
+                Trajectory = new CascadeTrajectory
+                {
+                    CascadeId = CascadeIdValue,
+                    Steps =
+                    {
+                        new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = Pad("OLDEST-STEP-MARKER") } },
+                        new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = Pad("FILLER-STEP-1") } },
+                        new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = Pad("FILLER-STEP-2") } },
+                        new CascadeStep { Kind = 14, UserInput = new CascadeUserInput { Text = Pad("FILLER-STEP-3") } },
+                        new CascadeStep { Kind = 15, AssistantOutput = new CascadeAssistantOutput { Text = Pad("NEWEST-STEP-MARKER") } },
+                    },
+                },
+            });
+    }
+
     // Serves TWO top-level conversations with distinct last_modified_time, and echoes the REQUESTED cascade id
     // back in the trajectory — so a test can assert WHICH conversation AgyView resolved (the most-recent one).
     private sealed class TwoConversationFakeLs : LanguageServerService.LanguageServerServiceBase
@@ -244,5 +284,21 @@ public class AgyViewIntegrationTests : IDisposable
         var bounded = await view.LookAsync();
 
         Assert.Equal(TwoConversationFakeLs.NewerId, bounded.CascadeId);
+    }
+
+    [Fact]
+    public async Task Look_keeps_the_newest_steps_when_the_budget_is_tight()
+    {
+        // agy_look answers "what just happened", so a tight budget must drop the OLDEST steps, not the newest.
+        // This drives AgyView.LookAsync deliberately: BoundedView already handles newestFirst correctly, so a
+        // test calling Summarize directly would pass without ever exercising the defect.
+        await using var app = await StartFakeAsync(new NewestFirstFakeLs());
+        var cliLog = WriteCliLog(PortOf(app));
+
+        var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+        var bounded = await view.LookAsync(budgetChars: 900);
+
+        Assert.Contains(bounded.Steps, s => s.Text != null && s.Text.Contains("NEWEST-STEP-MARKER"));
+        Assert.DoesNotContain(bounded.Steps, s => s.Text != null && s.Text.Contains("OLDEST-STEP-MARKER"));
     }
 }

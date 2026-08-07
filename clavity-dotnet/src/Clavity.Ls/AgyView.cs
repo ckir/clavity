@@ -107,7 +107,9 @@ public sealed class AgyView
         using (client)
         {
             var trajectory = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
-            return BoundedView.Summarize(trajectory, budgetChars);
+            // agy_look answers "what just happened", so a tight budget must drop the OLDEST steps — same
+            // ordering agy_ask already uses. Without this the tail the caller asked for is what gets cut.
+            return BoundedView.Summarize(trajectory, budgetChars, newestFirst: true);
         }
     }
 
