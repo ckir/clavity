@@ -117,14 +117,21 @@ Grpc.Core.RpcException : Status(StatusCode="ResourceExhausted", Detail="Received
 
 — the correct failure reason, not merely *a* failure.
 
-**Half 2 — the hint.** Shipped in `98a6ecc`. `ChannelDown.Hint` now switches on a `Fault` classified from the
-gRPC status code, so `ResourceExhausted` yields "the peer is NOT down, and restarting will not clear it —
-start a fresh cascade" instead of the shutdown narrative. `ChannelDown.StatusFor` moves the machine-readable
-status to `payload_too_large` in the same breath, so the `status` field and the prose cannot contradict each
-other.
+**Half 2 — the hint.** Shipped in `98a6ecc`, then sharpened by the capstone. `ChannelDown.Hint` switches on a
+`Fault` classified from the gRPC status code, so `ResourceExhausted` no longer yields the shutdown narrative.
+`ChannelDown.StatusFor` moves the machine-readable status in the same breath, so the `status` field and the
+prose cannot contradict each other.
+
+⚠️ **The status value is `resource_exhausted`, NOT `payload_too_large`.** The first implementation used
+`payload_too_large`; the capstone showed that `ResourceExhausted` is also gRPC's code for upstream quota and
+rate-limiting, so a status asserting "payload too large" was claiming more than the code can know. Owner
+ruling 2026-08-07: the status mirrors the gRPC code and the hint carries the two-cause explanation.
+Discriminating on the detail string was considered and **rejected** — it would couple a wire status to
+`Grpc.Net.Client`'s internal message text, which is not a contract.
 
 Regression tests, `clavity-dotnet/tests/Clavity.Ls.Tests/ChannelDownTests.cs` ::
 `An_oversized_payload_is_not_reported_as_a_peer_shutdown` · `A_genuine_transport_death_still_reports_a_peer_shutdown`
+· `A_resource_exhausted_that_is_not_about_message_size_does_not_assert_the_size_cause`
 · `The_status_field_and_the_hint_never_contradict_each_other`.
 
 **Retirement gate — the TEST clause is MET; the ADOPTION clause is NOT.** This entry's Notes require "a

@@ -58,10 +58,39 @@ public class ChannelDownTests
     }
 
     [Fact]
+    public void An_auth_refusal_is_not_reported_as_a_peer_shutdown()
+    {
+        // A gRPC auth status PROVES the channel reached the peer and the peer answered with a structured
+        // error -- a dead transport cannot produce one. This bridge authenticates via a keyring, so this is
+        // reachable, and "restart the session" is advice that can never clear it.
+        foreach (var code in new[] { "Unauthenticated", "PermissionDenied" })
+        {
+            var d = new ChannelDiagnostic(code, "keyring token rejected");
+
+            Assert.Equal("auth_failed", ChannelDown.StatusFor(d));
+            Assert.DoesNotContain("shut down or restarted", ChannelDown.Hint(d));
+        }
+    }
+
+    [Fact]
+    public void A_rejected_request_is_not_reported_as_a_peer_shutdown()
+    {
+        // Same proof, different remedy: the peer answered and refused the REQUEST, so the operator must fix
+        // the request (usually a stale cascade id), not restart a healthy process.
+        foreach (var code in new[] { "NotFound", "InvalidArgument", "FailedPrecondition" })
+        {
+            var d = new ChannelDiagnostic(code, "no such cascade");
+
+            Assert.Equal("invalid_request", ChannelDown.StatusFor(d));
+            Assert.DoesNotContain("shut down or restarted", ChannelDown.Hint(d));
+        }
+    }
+
+    [Fact]
     public void The_status_field_and_the_hint_never_contradict_each_other()
     {
         var big = new ChannelDiagnostic("ResourceExhausted", "Received message exceeds the maximum configured size");
-        Assert.Equal("payload_too_large", ChannelDown.StatusFor(big));
+        Assert.Equal("resource_exhausted", ChannelDown.StatusFor(big));
         Assert.DoesNotContain("shut down or restarted", ChannelDown.Hint(big));
 
         var dead = new ChannelDiagnostic("Unavailable", "connection refused");

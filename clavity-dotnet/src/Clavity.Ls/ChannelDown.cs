@@ -36,21 +36,43 @@ public static class ChannelDown
         string.IsNullOrEmpty(rpc.Status.Detail) ? rpc.Message : rpc.Status.Detail;
 
     /// <summary>Why the channel call failed. The bridge used to report every fault as a peer shutdown, which sent
-    /// the operator to inspect a healthy process while the real cause was the response SIZE or a closed
-    /// conversation. Each cause names its own remedy.</summary>
-    public enum Fault { TransportDown, PayloadTooLarge }
+    /// the operator to inspect a healthy process while the real cause was the response SIZE, a refused
+    /// credential, or a bad request. Each cause names its own remedy.
+    /// <para>The load-bearing distinction: a gRPC status code that is NOT a transport failure PROVES the channel
+    /// reached the peer and the peer answered with a structured error frame — a dead transport cannot produce
+    /// one. Reporting those as "the language server shut down" is factually false and sends the operator into a
+    /// restart loop that can never clear the condition.</para></summary>
+    public enum Fault { TransportDown, ResourceExhausted, AuthFailed, InvalidRequest }
 
-    /// <summary>Classify a diagnosed fault by its gRPC status code.</summary>
-    public static Fault Classify(ChannelDiagnostic d) =>
-        d.StatusCode == nameof(Grpc.Core.StatusCode.ResourceExhausted)
-            ? Fault.PayloadTooLarge
-            : Fault.TransportDown;
+    /// <summary>Classify a diagnosed fault by its gRPC status code. Anything not named here — including the
+    /// non-gRPC "ObjectDisposed"/"LsDiscovery" diagnostics and a genuine <c>Unavailable</c> — is a transport
+    /// death, which is the correct default: it is the only class a restart can fix.</summary>
+    public static Fault Classify(ChannelDiagnostic d) => d.StatusCode switch
+    {
+        // Deliberately NOT split by detail text. Discriminating "too large" from "quota" would have to match
+        // Grpc.Net.Client's own message string, which is not a contract and can change with the library
+        // version or localization. The status therefore asserts only what gRPC asserted, and Hint explains
+        // the two possible causes. (Owner ruling, 2026-08-07, converged with the review peer.)
+        nameof(Grpc.Core.StatusCode.ResourceExhausted) => Fault.ResourceExhausted,
+
+        nameof(Grpc.Core.StatusCode.Unauthenticated) or
+        nameof(Grpc.Core.StatusCode.PermissionDenied) => Fault.AuthFailed,
+
+        nameof(Grpc.Core.StatusCode.NotFound) or
+        nameof(Grpc.Core.StatusCode.InvalidArgument) or
+        nameof(Grpc.Core.StatusCode.FailedPrecondition) => Fault.InvalidRequest,
+
+        _ => Fault.TransportDown,
+    };
 
     /// <summary>The machine-readable status for a fault. MUST track <see cref="Hint"/>: a consumer reading the
-    /// status field and a human reading the hint have to reach the same conclusion.</summary>
+    /// status field and a human reading the hint have to reach the same conclusion. Every arm added to
+    /// <see cref="Classify"/> MUST be added here too — the fallback silently reports a fault as a dead channel.</summary>
     public static string StatusFor(ChannelDiagnostic d) => Classify(d) switch
     {
-        Fault.PayloadTooLarge => "payload_too_large",
+        Fault.ResourceExhausted => "resource_exhausted",
+        Fault.AuthFailed => "auth_failed",
+        Fault.InvalidRequest => "invalid_request",
         _ => Status,
     };
 
@@ -64,12 +86,21 @@ public static class ChannelDown
             // would send an operator to edit a message-size limit during a quota event — the same
             // "confidently name the wrong remedy" defect this classifier exists to remove. So the hint names
             // both and points at the detail (echoed in the prefix above) as the discriminator.
-            Fault.PayloadTooLarge =>
+            Fault.ResourceExhausted =>
                 prefix + "The peer is NOT down and restarting will not clear it. If the detail above mentions a " +
                 "message SIZE, the response was too large for the channel's receive limit — start a fresh " +
                 "cascade, or raise MaxReceiveMessageSize in LsChannel.cs (trajectory size, not step count, is " +
                 "what crosses it). If it does not, this is upstream quota or rate-limit exhaustion — wait and " +
                 "retry, or check quota; raising the receive limit will not help.",
+
+            Fault.AuthFailed =>
+                prefix + "The channel is UP and agy answered — it refused the credentials. Restarting the session " +
+                "will NOT fix an auth refusal. Check the keyring entry and agy's authentication state, then retry.",
+
+            Fault.InvalidRequest =>
+                prefix + "The channel is UP and agy answered — it rejected the REQUEST, not the connection. " +
+                "Restarting will not help. The usual cause is a stale or closed conversation id; re-resolve the " +
+                "active cascade, or start a fresh one.",
             _ =>
                 prefix + "agy's language server appears to have shut down or restarted (it does this " +
                 "intermittently). Restart the Claude Code session (or the clavity-ls MCP server) to re-establish " +
