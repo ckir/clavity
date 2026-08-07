@@ -340,16 +340,24 @@ is a ruling against untracked parking lots, and `:182-184` forbids exactly that 
 
 | File | Change |
 |---|---|
-| `{dotnet,classic}/plugin/skills/adversarial-panel-review/SKILL.md` | taxonomy + gate + age clause + anti-sweep + scope boundary |
-| `{dotnet,classic}/plugin/skills/agy-capstone/SKILL.md` | same, **plus a rewrite of the `ALIGNED` disposition enumeration at `:177-179`** to admit all five tokens (§4.2) |
-| `{dotnet,classic}/plugin/skills/agy-test-audit/SKILL.md` | same, plus the §4.6 reconciliation |
-| `{dotnet,classic}/plugin/skills/open-issues/SKILL.md` | §4.7 intake-bar clarification |
+| `{dotnet,classic}/plugin/skills/adversarial-panel-review/SKILL.md` | taxonomy + gate + age clause + anti-sweep + scope boundary; **+ `## Outputs` at `:231-240`** — it enumerates three artifacts and none is the stand-downs section §4.1 requires of this discipline |
+| `{dotnet,classic}/plugin/skills/agy-capstone/SKILL.md` | same; **+ the `ALIGNED` disposition enumeration at `:177-179`**, rewritten to admit all five tokens (§4.2) |
+| `{dotnet,classic}/plugin/skills/agy-test-audit/SKILL.md` | same, plus the §4.6 reconciliation; **+ the `GAPS FOUND` completion condition at `:134-136` and the marker condition at `:154-155`** — both say a gap must be "either closed or recorded as deferred debt", a binary that has no slot for `UNVERIFIED-ACCEPTED` |
+| `{dotnet,classic}/plugin/skills/open-issues/SKILL.md` | §4.7 intake-bar clarification; **+ the PROMOTE target at `:177-178`**, which says only "a `ROADMAP.md` entry" and must carry §4.9's ownership routing — the agent doing triage reads this file, not this spec |
 | `scripts/check-agy-discipline-skills.ps1` | `$requiredVerdicts` additions |
 | `scripts/tests/check-agy-discipline-skills.Tests.ps1` | pinning tests |
 | `docs/accepted-boundaries.md` | **new** |
 | `clavity-dotnet/ROADMAP.md` | §7 marked shipped |
 
 Eight skill files, four logical bodies, each shipping twice byte-identically.
+
+**The bolded edits above are one defect class, and the plan should treat it as such.** This amendment
+adds members to sets that already exist, and an existing exhaustive list left un-updated does not error —
+it silently disagrees with the amendment, and the disagreement only surfaces when a driver reaches a
+terminal condition and finds the new token is not admissible there. Four such lists were found by
+auditing for exactly this, after one of them had already shipped past four review rounds undetected.
+**Before the plan is called done, re-sweep the four amended skills for any remaining enumeration,
+closed set, or "one of:" construction that the five tokens must now appear in.**
 
 ## 6. Testing strategy
 
