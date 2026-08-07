@@ -20,6 +20,8 @@ Describe 'agy-inbox-snapshot' {
         function BakCount { param([string]$Root)
             @(Get-ChildItem -LiteralPath (Join-Path $Root 'knowledge') -Filter 'agy-observations.md.*.bak' -ErrorAction SilentlyContinue).Count
         }
+        # The UserPromptSubmit payload shape: a .prompt string, no .tool_input.
+        function PromptPayload { param([string]$Text) '{"prompt":"' + ($Text -replace '"','\"') + '"}' }
         $script:Good = "# agy observations inbox (raw, project-agnostic)`n`n## Pending`n`n- [assumption] (peer/probabilistic) a rule`n"
     }
 
@@ -250,5 +252,53 @@ Describe 'agy-inbox-snapshot' {
             Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue
         }
+    }
+
+    It 'snapshots when agy-curate is invoked as a SLASH COMMAND' {
+        # The reported defect, verbatim: measured 2026-08-03, no new .bak appeared on this path.
+        $r = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            BakCount $r | Should -Be 1
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT snapshot on an ordinary prompt that merely mentions agy-curate' {
+        # CONTROL. A bare substring match fires on this. The existing jq-absent branch already records why
+        # that is wrong: another skill could merely MENTION agy-curate in its args.
+        $r = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload 'why did agy-curate skip the snapshot last time?') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            BakCount $r | Should -Be 0
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'snapshots on a slash command WITH trailing arguments' {
+        # /agy-autotrain:agy-curate --dry-run is a real invocation and must not be treated as prose.
+        $r = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate --dry-run') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            BakCount $r | Should -Be 1
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'still snapshots on the Skill-tool path' {
+        # Regression guard: the path that already worked must keep working.
+        $r = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            BakCount $r | Should -Be 1
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'burns only ONE slot when both paths fire in the same drain' {
+        # The hook now has two ways to fire in one drain (the user types the slash command AND the skill body
+        # later triggers the Skill tool). The dedup invariant is what prevents that burning two slots.
+        $r = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            BakCount $r | Should -Be 1 -Because 'the dedup invariant exists for exactly this'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

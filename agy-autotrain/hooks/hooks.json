@@ -13,6 +13,9 @@
     "PreCompact": [
       { "matcher": "manual|auto",
         "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-learn-reminder.sh\" PreCompact" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-inbox-snapshot.sh\"" } ] }
     ]
   }
 }

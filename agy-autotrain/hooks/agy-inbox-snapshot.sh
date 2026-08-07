@@ -19,18 +19,39 @@ input=$(cat 2>/dev/null)
 # Opt-out marker, mirroring agy-curate-nudge.sh.
 [ -f "$HOME/.claude/.no-agy" ] && exit 0
 
-# Which skill is being invoked? jq is primary; without it fall back to a FIELD-BOUNDED grep on the
-# skill value. Never a bare substring: another skill could merely MENTION agy-curate in its args.
-skill=""
+# WHICH invocation is this? Two payload shapes reach this hook and they carry different fields:
+#   PreToolUse       -> .tool_input.skill  (the Skill tool was called)
+#   UserPromptSubmit -> .prompt            (the user typed the slash command)
+# The slash-command path is the one the defect was measured on: 2026-08-03, invoking the curator as
+# /agy-autotrain:agy-curate produced NO new .bak, because PreToolUse never fires for it.
+#
+# The match is done HERE, in the script, and NOT with a declarative "matcher" regex in hooks.json.
+# Nothing establishes that a matcher is evaluated against prompt text for UserPromptSubmit: the schema
+# permits the key syntactically, but both first-party plugins that register this event do so BARE and
+# inspect the prompt in their own script. Building on the matcher would be an unchecked assumption, and
+# it would fail SILENTLY -- the hook would simply never fire, which is the defect this closes, restored.
+matched=""
 if command -v jq >/dev/null 2>&1; then
   skill=$(printf '%s' "$input" | jq -r '.tool_input.skill // empty' 2>/dev/null)
-  case "$skill" in
-    *agy-curate) ;;
-    *) exit 0 ;;
-  esac
+  case "$skill" in *agy-curate) matched=1 ;; esac
+  if [ -z "$matched" ]; then
+    prompt=$(printf '%s' "$input" | jq -r '.prompt // empty' 2>/dev/null)
+    # ANCHORED at the start and bounded at the end. An unanchored match fires on a prompt that merely
+    # discusses the curator, which is not an invocation and must not burn a snapshot slot.
+    case "$prompt" in
+      /agy-autotrain:agy-curate|/agy-autotrain:agy-curate\ *) matched=1 ;;
+      /agy-curate|/agy-curate\ *) matched=1 ;;
+    esac
+  fi
 else
-  printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*agy-curate"' || exit 0
+  # FIELD-BOUNDED, never a bare substring -- same reasoning as the jq path above.
+  if printf '%s' "$input" | grep -Eq '"skill"[[:space:]]*:[[:space:]]*"[^"]*agy-curate"'; then
+    matched=1
+  elif printf '%s' "$input" | grep -Eq '"prompt"[[:space:]]*:[[:space:]]*"/(agy-autotrain:)?agy-curate([[:space:]][^"]*)?"'; then
+    matched=1
+  fi
 fi
+[ -z "$matched" ] && exit 0
 
 [ -f "$OBS" ] || exit 0
 
