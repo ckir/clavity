@@ -42,21 +42,31 @@ do not read.
 and read as open. Before dispositioning anything, state its **oracle**: a command, a test name, or a
 `file:line` that decides the question.
 
-> 🔴 **CORRECTED 2026-08-07. This rule used to read "a negative result is decisive" and it was BACKWARDS.**
-> It manufactured three false "still open" verdicts in a single sweep. It also contradicted this same
-> section's own later rule — *"A check that returns the same answer whether the work was done or not is
-> not a check"* — because a grep for a name you invented is exactly such a check. **The triagers were not
-> careless; they were obeying this section.**
+🔴 **THE TEST IS WHO CHOSE THE NAME.** That is the whole rule; everything below is evidence for it.
 
-🔴 **THE TEST IS WHO CHOSE THE NAME.** This is the whole rule, and getting it wrong in *either* direction
-is costly — the first attempt at this correction said "a negative result is never decisive", which would
-have thrown away three sound oracles.
+> *Corrected 2026-08-07 — this rule previously read "a negative result is decisive" and was BACKWARDS. It
+> manufactured three false "still open" verdicts in one sweep, and contradicted this section's own later
+> rule that "a check that returns the same answer whether the work was done or not is not a check" — a
+> grep for a name you invented is exactly such a check. **The triagers were not careless; they were
+> obeying this section.** Getting the correction wrong in the other direction is equally costly: the first
+> attempt read "a negative result is NEVER decisive", which would have discarded a sound oracle.*
 
 - **A name the implementer could NOT have chosen freely** — a framework API (`MaxReceiveMessageSize`), a
-  hook event (`UserPromptSubmit`), a wire field, a config key — **its absence IS strong evidence.** There
-  was no synonym available; if the work had been done, that exact token would be there. The
-  `grpc-default-max-message-size` and `inbox-snapshot-misses-slash-command-path` stamps are of this kind
-  and they are sound.
+  hook event (`UserPromptSubmit`), a wire field, a config key — **its absence IS strong evidence, but only
+  for the ONE mitigation that would have introduced it.** There was no synonym available; if *that* work
+  had been done, that exact token would be there.
+  - ✅ `grpc-default-max-message-size` is sound: its oracle greps `LsChannel.cs` for
+    `MaxReceiveMessageSize`, and the entry proposes exactly one mitigation, which cannot be written
+    without that token.
+  - 🔴 **`inbox-snapshot-misses-slash-command-path` is NOT sound, and it is the trap.** Its oracle checks
+    only for a `UserPromptSubmit` registration in `hooks.json`, but the entry offers **three alternative
+    mitigations** — and the one it ranks *first* is a snapshot inside the `curate-commit` **binary**,
+    which leaves no trace in `hooks.json` at all. Implement the preferred option and that oracle still
+    prints *"confirmed still open."* (Caught by a capstone on 2026-08-07, after this very section had
+    endorsed the stamp as sound.)
+
+  ➡️ **So: when an entry lists alternative mitigations, a negative on one path proves only that THAT path
+  did not land. Check every path the entry names, or say in the stamp which ones you did not check.**
 - **A name YOU invented to describe the fix** — `NoConversation`, "conversation-existence split",
   "idle-expiry poll / retry path" — **its absence proves nothing at all.** The implementer never read your
   entry and had no reason to pick your words.
@@ -96,8 +106,14 @@ negative oracle has to do to be trusted.**
   evidence there is*, not what the status is:
 
   ```
-  last-triaged: <date>   # UNVERIFIED: <check> could not be run because <reason>. Not evidence of open.
+  last-triaged: <date>   # UNVERIFIED: <check> could not be run because <reason>.
+  #                        NOT evidence of open, and NOT evidence of fixed.
   ```
+
+  🔴 **Both halves of that last line matter, and they guard OPPOSITE errors.** §3's disposition table and
+  §4 state the other half — *un-reproduced is not fixed*, which stops you closing an entry you merely
+  failed to reproduce. This bullet adds the mirror: **un-checked is not open either.** A stamp that says
+  only one of the two teaches the next triager to make the error it does not mention.
 
   **An un-runnable check silently becoming "confirmed still open" is how a shipped fix stays on the
   backlog for weeks** — the failure this section exists to prevent. The two words *"confirmed still open"*
@@ -145,7 +161,7 @@ you have not measured the thing the entry is about.
   |---|---|
   | still open, oracle ran | `status: open` + `last-triaged: <date>` |
   | fixed | `status: fixed` + `fixed-by: <sha[, sha]>` + `fixed-on: <the COMMIT's date>` |
-  | oracle could not be run | `status: open` + `last-triaged: <date>` + a comment saying *could not reproduce; NOT evidence of fixed* |
+  | oracle could not be run | `status: open` + `last-triaged: <date>` + a comment saying *UNVERIFIED: could not reproduce. NOT evidence of fixed, and NOT evidence of open* — [§2](#2-measure-never-read--every-entry-needs-a-named-oracle) explains why both halves are needed |
 
   **`fixed-on` is the date the code was fixed, not the date someone noticed.** Find it with
   `git log --oneline -S'<distinctive symbol>' -- <file> | tail -1`.
@@ -163,10 +179,16 @@ you have not measured the thing the entry is about.
 
 Several entries need a live agy peer in a specific state, and cannot be reproduced on demand. **A failed
 reproduction is not evidence of a fix.** Such an entry keeps `status: open` and gains `last-triaged` with
-an explicit *could not reproduce* note.
+an explicit *UNVERIFIED: could not reproduce* note.
 
 Closing on a failed reproduction is the false-clean this whole discipline exists to remove: it converts
 "I could not check" into "it works", and the record then reads identically to a verified fix.
+
+🔴 **And the mirror error is just as costly — see [§2](#2-measure-never-read--every-entry-needs-a-named-oracle).**
+A failed reproduction is equally not evidence that the entry is still *open*. Writing *"confirmed still
+open"* on a check you could not run is how a fix that shipped weeks ago keeps generating planned tasks.
+**Say UNVERIFIED and name what you could not do.** The two errors point in opposite directions and this
+runbook has now been bitten by both.
 
 **The mirror-image rule, for entries that are dropped rather than closed:** a tracked defect must carry the
 command, test name, or `file:line` that reproduces it — otherwise it is a reminder to its author and an
