@@ -244,6 +244,17 @@ cd clavity-dotnet && dotnet build && dotnet test tests/Clavity.Ls.Tests
 
 Expected: build succeeds, `Failed: 0`.
 
+- [ ] **Step 3b: Confirm the ceiling that actually binds is the client's**
+
+`MaxReceiveMessageSize` is a **client receive** limit. If agy's language server enforces its own **send** cap, raising the client limit moves nothing and this task ships a no-op that looks like a fix.
+
+The suite cannot answer this — no unit test crosses a real 4 MB gRPC response. Verify against the live peer: drive a conversation until its trajectory exceeds 4 MB (per the entry's repro, accumulated **bytes**, not step count — asks have succeeded at 996/1111/1203/1290 steps, so never use step count as the trigger), then call `agy_look`.
+
+- **Call succeeds** → the client limit was the binding constraint. Record the measured trajectory size in the entry's Fixed section.
+- **Call still fails `ResourceExhausted`** → a server-side cap binds too. The Task 1 hint is still correct and still valuable (it stops the false shutdown report), but the *cap* half is unfixed. Report `PARTIAL: server-side send cap binds at <size>` and leave `grpc-default-max-message-size` at `status: open` in Task 6.
+
+**If no live peer is available,** do not silently skip: record it as unverified and leave the entry `open`. An unverified ceiling fix is exactly the "confirm X with no deliverable" shape the bar killed §4 for.
+
 - [ ] **Step 4: Commit**
 
 ```bash
@@ -268,6 +279,19 @@ Follow `agy-autotrain/docs/fix-the-tool-backlog/conversation-scoped-tools-vs-no-
 Record verbatim: the `StatusCode` and the `Detail` string. That pair is the mapping input.
 
 **If you cannot reach that state** (no agy host, or a conversation cannot be closed), STOP and report `BLOCKED: cannot reproduce no-open-conversation state`. Do **not** invent a status code — a wrong mapping makes the hint lie in a new way, which is the defect this plan exists to remove.
+
+- [ ] **Step 1b: Verify the fault REACHES the classifier at all — this task is void without it**
+
+`Hint` is only ever called from inside `catch (Exception ex) when (ChannelDown.IsChannelDown(ex))`. `IsChannelDown` admits an `RpcException` (non-`Cancelled`), `ObjectDisposedException`, `LsDiscoveryException`, or an `AgyModelUnavailableException` wrapping one of those — **and nothing else**.
+
+So if the no-open-conversation failure surfaces as anything else (an `InvalidOperationException` from local id resolution, a null-conversation guard, a `Cancelled` status), it never enters the handler, and extending `Classify`/`Hint` **changes nothing while appearing to work**.
+
+Confirm from the Step 1 reproduction which exception type actually escapes, then take one of two paths:
+
+- **It is admitted by `IsChannelDown`** → proceed to Step 2 unchanged.
+- **It is NOT admitted** → the fix is no longer a `Hint` mapping. `IsChannelDown` must be widened to admit it, or the fault caught where it is raised. STOP and report `SCOPE: no-open-conversation escapes as <ExceptionType>, not admitted by IsChannelDown` and let the owner rule before writing code.
+
+A test that constructs a `ChannelDiagnostic` by hand (Step 2) passes either way — it exercises `Hint` directly and cannot see this gap. That is exactly why this step exists and why it is not optional.
 
 - [ ] **Step 2: Write the failing test using the MEASURED values**
 
