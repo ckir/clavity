@@ -89,11 +89,19 @@ negative oracle has to do to be trusted.**
   is the mitigation the entry asked for or an unrelated use of the same words. That judgement cannot be
   pre-written, because it depends on what the hit turns out to be.
 
-- 🔴 **When neither can be established, the verdict is `UNKNOWN` — never `open`.** If the reproduction
-  needs state you cannot reach (a live peer, a >4 MB payload, a timing race), say so in the
-  `last-triaged:` stamp and leave the disposition explicitly unresolved. **An un-runnable check silently
-  becoming "still open" is how a shipped fix stays on the backlog for weeks** — the failure this whole
-  section exists to prevent. `UNKNOWN` costs one honest line; a false `open` costs a planned task.
+- 🔴 **When neither can be established, say `UNVERIFIED` in the stamp — never "confirmed still open".**
+  If the reproduction needs state you cannot reach (a live peer, a >4 MB payload, a timing race), the
+  `status:` field still reads `open` — that enum is `open | fixed | wont-fix` and has no fourth value, so
+  do **not** invent one. What must change is the **`last-triaged:` stamp**, which records *how much
+  evidence there is*, not what the status is:
+
+  ```
+  last-triaged: <date>   # UNVERIFIED: <check> could not be run because <reason>. Not evidence of open.
+  ```
+
+  **An un-runnable check silently becoming "confirmed still open" is how a shipped fix stays on the
+  backlog for weeks** — the failure this section exists to prevent. The two words *"confirmed still open"*
+  are what the next triager inherits as evidence; write them only when something was actually confirmed.
 
 🔴 **Point the oracle at the file the entry's own evidence names, not at the file you assume.** Measured
 2026-08-06, twice in one session:
