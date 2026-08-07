@@ -199,4 +199,35 @@ Describe 'shipped plugin hook registration' {
         Get-OwningGroupCount -Manifest $m -Event 'SessionEnd' -Script 'agy-discipline-reaching.sh' |
             Should -Be 0 -Because '${CLAUDE_PLUGIN_ROOT} does not resolve at SessionEnd; the hook is cancelled and writes nothing'
     }
+
+    It 'registers the capture reminder on UserPromptSubmit in exactly one BARE group - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # COUNT GROUPS, NOT MATCHER VALUES. This group has no "matcher" key by design -- nothing establishes
+        # that a matcher is evaluated against prompt text for this event, so the discrimination lives in the
+        # script. Get-OwningMatchers would yield $null here and every emptiness check would accept it.
+        $m = $script:Manifests[$Driver]
+        Get-OwningGroupCount -Manifest $m -Event 'UserPromptSubmit' -Script 'agy-anomaly-capture-reminder.sh' |
+            Should -Be 1
+    }
+
+    It 'passes the event name as an argument on UserPromptSubmit - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # Without the argument the hook defaults to PreCompact wording and emits the wrong envelope --
+        # a failure that produces no error and looks installed and working.
+        $json = Get-Content -Raw -LiteralPath $script:Manifests[$Driver] | ConvertFrom-Json
+        $cmds = @(foreach ($g in @($json.hooks.UserPromptSubmit)) { foreach ($h in @($g.hooks)) { $h.command } })
+        ($cmds -join ' ') | Should -Match 'agy-anomaly-capture-reminder\.sh.*UserPromptSubmit'
+    }
+
+    It 'keeps the capture reminder on PreCompact manual|auto as well - <Driver>' -ForEach @(
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+    ) {
+        # The new channel ADDS to the compaction channel; it does not replace it. A long session that compacts
+        # should still get the pre-compaction prompt, whose wording is specific to that moment.
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PreCompact' -Script 'agy-anomaly-capture-reminder.sh')
+        $matchers.Count | Should -Be 1
+        $matchers[0]    | Should -BeExactly 'manual|auto'
+    }
 }

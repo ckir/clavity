@@ -63,6 +63,13 @@
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-anomaly-capture-reminder.sh\"" }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-anomaly-capture-reminder.sh\" UserPromptSubmit" }
+        ]
+      }
     ]
   }
 }
