@@ -20,6 +20,20 @@ Owner rulings 2026-08-07: §7 shape = **Option B** (cross-cutting amendment); Ph
 | 2 — hooks | ROADMAP §0 step 1b (direct-driver prompt trigger) + `inbox-snapshot-misses-slash-command-path` | not written; §0 1b needs a measurement first (below) |
 | 3 — assertion strength | ROADMAP §11, both plugins byte-identical + new PostToolUse hook | not written |
 
+### 🔴 What this plan still actually BUILDS, after two review rounds
+
+State it plainly, because the answer changed twice and a stale scope claim is the defect this whole epic exists to remove:
+
+| Task | Status after rounds 1-2 |
+|---|---|
+| **1 — `ChannelDown` classifier + `StatusFor`** | **BUILDS.** The core fix. |
+| **2 — gRPC receive limit** | **BUILDS**, but the cap half is unproven until Step 3b's live check; the hint half stands regardless. |
+| **4 — `agy_look` newestFirst** | **BUILDS.** Smallest and most certain. |
+| 3 — no-open-conversation | **LIKELY BUILDS NOTHING** — the remedy appears already shipped (`waiting_for_human`). Gated on a stop. |
+| 5 — stalled-reply recovery | **LIKELY BUILDS NOTHING** — the entry's remedy is already implemented via `lastProgress`, and the naive fix would regress modal-hang detection. Gated on a stop. |
+
+**So two of the four entries this plan was written to fix may need re-dispositioning rather than code.** That is a success of the review, not a failure of the plan — but it means the plan's *title* promise ("fix four defects") is now only reliably true of two. **Do not let a later reader infer that five tasks means five fixes.**
+
 **Plan 2's gate, recorded so it is not skipped:** ROADMAP §0 states the 1b trigger placement "is to be **decided from 1a's data rather than guessed**". The 1a recorder exists at `scripts/discipline-reaching-report.ps1`. Plan 2's first task must RUN it and choose the trigger from its output. The witness trial (step 3) is KILLED — do not reinstate it.
 
 ---
@@ -33,6 +47,15 @@ These are not general advice. Each one cost a real defect in the epic that produ
 2. **A fix must be RUN, not read.** Re-run every command after you change it.
 3. **A probe needs a control that CAN fail.** Before believing a zero, run the same probe against something known-present.
 4. **`rg` in the Bash tool on this machine is GNU grep 3.0, not ripgrep.** `--no-ignore` and `--glob` produce silent null results. Measured 2026-08-07. Use the Grep tool for repo-wide searches.
+5. 🔴 **`dotnet test --filter` EXITS 0 WHEN IT MATCHES NOTHING — measured, not assumed.** Run 2026-08-07 against this repo:
+
+   ```
+   $ dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~ThisClassDoesNotExistAnywhere"
+   No test matches the given testcase filter `FullyQualifiedName~ThisClassDoesNotExistAnywhere` in ...Clavity.Ls.Tests.dll
+   === EXIT CODE: 0 ===
+   ```
+
+   A typo in a class name, or a test file never added to the project, reports **success**. Every filtered run in this plan is therefore ambiguous between "passed" and "never ran". **Whenever a step says a filtered run should PASS, read the printed test COUNT and confirm it matches the number of tests you wrote** — never accept the absence of a failure as evidence. This is the same class as the plan's own `BoundedView` defect: a green that was never capable of going red.
 5. **Verify a suggested FIX, not just the finding.** A correct finding routinely arrives with a wrong or incomplete remedy.
 
 ---
