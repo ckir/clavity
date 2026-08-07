@@ -27,8 +27,11 @@ public static class BoundedView
     public const int AskMaxStepChars = 16_000;
     /// <summary>Per-step cap for an <c>ActivityItem.Summary</c> (a terse "what agy did", never a tool's full output).</summary>
     public const int ActivitySummaryChars = 200;
-    /// <summary>Max number of <c>ActivityItem</c>s in an <c>agy_ask</c> reply. The char budget alone does NOT bound a
-    /// peer that emits a huge COUNT of zero-text steps (each costs 0 chars) — cap the count so the JSON stays small.</summary>
+    /// <summary>Max step COUNT emitted by either bounded projection — <c>ActivityItem</c>s in an <c>agy_ask</c> reply
+    /// (<see cref="ProjectAskReply"/>) and <c>BoundedStep</c>s in an <c>agy_look</c> view (<see cref="Summarize"/>).
+    /// The char budget alone does NOT bound a peer that emits a huge COUNT of zero-text steps (each costs 0 chars) —
+    /// cap the count so the JSON stays small. Applied to <c>agy_ask</c> from the start; <c>agy_look</c> was left
+    /// uncapped until 2026-08-07 and emitted 750 steps under a 900-char budget.</summary>
     public const int MaxActivitySteps = 500;
 
     public static BoundedTrajectory Summarize(
@@ -54,6 +57,17 @@ public static class BoundedView
                 : null;
             if (text is not null && text.Length > maxStepChars)
                 text = string.Concat(text.AsSpan(0, maxStepChars), "…");
+
+            // A step with no prose costs 0 chars, so `used + cost > budgetChars` can NEVER fire for it and
+            // the char budget alone cannot bound a tool-heavy cascade. ProjectAskReply already caps the
+            // count for exactly this reason (see MaxActivitySteps); Summarize -- the agy_look path -- did
+            // not, and returned one entry per step no matter how tight the budget was. Measured: 750 steps
+            // emitted under a 900-char budget.
+            if (steps.Count >= MaxActivitySteps)
+            {
+                truncated = true;
+                break;
+            }
 
             var cost = text?.Length ?? 0;
             if (used + cost > budgetChars)

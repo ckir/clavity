@@ -59,10 +59,17 @@ public static class ChannelDown
         var prefix = $"clavity-ls -> agy channel call failed ([{d.StatusCode}] {d.Detail}). ";
         return Classify(d) switch
         {
+            // ResourceExhausted covers TWO causes and the code cannot tell them apart from the status alone:
+            // the channel's own receive limit, and upstream quota / rate-limiting. Naming only the first
+            // would send an operator to edit a message-size limit during a quota event — the same
+            // "confidently name the wrong remedy" defect this classifier exists to remove. So the hint names
+            // both and points at the detail (echoed in the prefix above) as the discriminator.
             Fault.PayloadTooLarge =>
-                prefix + "The response was too large for the channel's receive limit — the peer is NOT down, and " +
-                "restarting will not clear it. Start a fresh cascade, or raise MaxReceiveMessageSize in " +
-                "LsChannel.cs. Trajectory size, not step count, is what crosses the limit.",
+                prefix + "The peer is NOT down and restarting will not clear it. If the detail above mentions a " +
+                "message SIZE, the response was too large for the channel's receive limit — start a fresh " +
+                "cascade, or raise MaxReceiveMessageSize in LsChannel.cs (trajectory size, not step count, is " +
+                "what crosses it). If it does not, this is upstream quota or rate-limit exhaustion — wait and " +
+                "retry, or check quota; raising the receive limit will not help.",
             _ =>
                 prefix + "agy's language server appears to have shut down or restarted (it does this " +
                 "intermittently). Restart the Claude Code session (or the clavity-ls MCP server) to re-establish " +

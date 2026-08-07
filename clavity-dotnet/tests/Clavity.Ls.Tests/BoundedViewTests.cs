@@ -15,6 +15,27 @@ public class BoundedViewTests
     }
 
     [Fact]
+    public void A_trajectory_of_zero_text_steps_is_bounded_by_step_count_not_only_by_chars()
+    {
+        // A tool step carries no prose, so text is null and cost is 0 -- and `used + 0 > budgetChars` can
+        // NEVER be true. The char budget is therefore incapable of bounding a tool-heavy cascade: every one
+        // of those steps is emitted regardless of how tight the budget is.
+        //
+        // BoundedView already knows this failure mode: MaxActivitySteps exists precisely because "the char
+        // budget alone does NOT bound a peer that emits a huge COUNT of zero-text steps". But that cap was
+        // applied only in ProjectAskReply (the agy_ask path); Summarize (the agy_look path) had none.
+        var t = new CascadeTrajectory { CascadeId = "tool-heavy" };
+        for (var i = 0; i < BoundedView.MaxActivitySteps + 250; i++)
+            t.Steps.Add(new CascadeStep { Kind = 3 });   // no UserInput, no AssistantOutput => null text, 0 cost
+
+        var v = BoundedView.Summarize(t, budgetChars: 900);
+
+        Assert.True(v.Steps.Count <= BoundedView.MaxActivitySteps,
+            $"emitted {v.Steps.Count} steps under a 900-char budget -- zero-cost steps are unbounded");
+        Assert.True(v.Truncated, "dropping steps must be reported as truncation, not silently");
+    }
+
+    [Fact]
     public void Assistant_step_reply_text_is_surfaced_not_just_user_input()
     {
         // Regression: agy's reply (kind 15) carries prose in assistant_output (field 20), NOT user_input (19).

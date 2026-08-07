@@ -39,6 +39,25 @@ public class ChannelDownTests
     }
 
     [Fact]
+    public void A_resource_exhausted_that_is_not_about_message_size_does_not_assert_the_size_cause()
+    {
+        // ResourceExhausted is ALSO gRPC's standard code for quota depletion and rate limiting. The hint
+        // must not send an operator to raise MaxReceiveMessageSize during a quota event -- that is the same
+        // "confidently name the wrong remedy" defect this whole change exists to remove, just relocated.
+        var d = new ChannelDiagnostic("ResourceExhausted", "429 from upstream");
+        var hint = ChannelDown.Hint(d);
+
+        // CONTROL, and it is load-bearing. Hint() interpolates Detail into its prefix, so asserting on a
+        // word that also appears in Detail would assert on THIS TEST'S OWN INPUT and pass no matter what the
+        // code says. An earlier draft of this test did exactly that and went green against the unfixed hint.
+        // Pinning the input clean is what makes the assertion below capable of failing.
+        Assert.DoesNotContain("quota", d.Detail, StringComparison.OrdinalIgnoreCase);
+
+        Assert.DoesNotContain("shut down or restarted", hint);
+        Assert.Contains("quota", hint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void The_status_field_and_the_hint_never_contradict_each_other()
     {
         var big = new ChannelDiagnostic("ResourceExhausted", "Received message exceeds the maximum configured size");
