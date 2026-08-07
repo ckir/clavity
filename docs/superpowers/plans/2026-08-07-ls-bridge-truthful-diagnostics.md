@@ -375,6 +375,12 @@ private static async Task<WebApplication> StartFakeLsAsync(GetConversationMetada
 
 Add a test to that file which returns a response carrying a payload **larger than gRPC's 4 MB default** (e.g. a ~5 MB string in a proto field) and asserts the round trip **succeeds**.
 
+**Run it — and note Step 3 above does NOT:** Step 3 runs only `Clavity.Ls.Tests`, while this test lives in the Integration project. Without this command the new test is never executed:
+
+```bash
+cd clavity-dotnet && dotnet test tests/Clavity.Integration.Tests
+```
+
 **Prove it is non-vacuous before trusting it** (the repo's assertion-strength rule, and the reason this plan exists): temporarily revert `MaxReceiveMessageSize` and confirm this specific test goes **red** with `ResourceExhausted`. A test that passes both with and without the fix is measuring nothing. Then restore the fix and confirm it goes green.
 
 **Read the printed test count** — a filtered run that matches nothing exits 0 (preamble item 5).
@@ -654,19 +660,36 @@ Only now — an entry is retired by a shipped fix plus its regression test, neve
 - Modify: `agy-autotrain/docs/fix-the-tool-backlog/agy-look-tail-truncation.md`
 - Modify: `agy-autotrain/docs/fix-the-tool-backlog/stalled-reply-recoverable-not-lost.md`
 
+⚠️ **Two different steps in this plan are both called "Step 3b"** — Task 1's (the `status` field) and Task 2's (the oversized-message test). The ledger below inherits that ambiguity. **Always name the task when citing one.**
+
 - [ ] **Step 1: Check each entry's own retirement gate**
 
 `conversation-scoped-tools-vs-no-open-conversation.md` states: *"Retirement gated on a permanent regression test asserting the two failure modes map to distinct errors."* Read each entry's Notes section and confirm its named gate is satisfied by a test you actually ran. **An unsatisfied gate means the entry stays `open`** — say so rather than flipping it.
 
 - [ ] **Step 2: Flip `status:` and record the fix**
 
-For each entry whose gate is satisfied, set `status: fixed` in the frontmatter and append:
+There are **two** cases and they take different text. Using the wrong one writes a false provenance claim.
+
+**(i) Fixed BY this plan** — `agy-look-tail-truncation`, and `grpc-default-max-message-size` if Step 3c did not report `PARTIAL`. Set `status: fixed` and append:
 
 ```markdown
 ## Fixed — 2026-08-07
 
 Shipped in `<commit sha>`. Regression test: `<test file>::<test name>`.
 ```
+
+**(ii) Already fixed BEFORE this plan** — `conversation-scoped-tools-vs-no-open-conversation` and `stalled-reply-recoverable-not-lost`. **There is no commit from this plan to cite, so do not invent one.** Set `status: fixed` and append:
+
+```markdown
+## Already fixed — closed 2026-08-07, no code written
+
+The remedy this entry specifies was already implemented. Evidence: `<file:line of the shipped path>`.
+Retirement gate: `<the test that pins it, or "entry names no test gate">`.
+Recorded open because the triage probe searched for `<the vocabulary it used>`, which the implementation
+does not use — the probe could not return its failing answer.
+```
+
+🔴 **The provenance line is the point.** An entry closed as already-fixed with a `Shipped in <sha>` claim pointing at this plan's commits would tell a future reader this plan fixed it. It did not. That misattribution is the same class of defect this plan exists to remove.
 
 - [ ] **Step 3: Verify no entry was missed and none was flipped early**
 
@@ -679,10 +702,10 @@ Expected, **all nine lines** the glob returns — `*.md` matches `_template.md` 
 | file | expected `status:` |
 |---|---|
 | `_template.md` | `open` — it is the template, never flip it |
-| `agy-look-tail-truncation.md` | `fixed` |
-| `conversation-scoped-tools-vs-no-open-conversation.md` | `fixed` **only if** Task 3 completed — it has TWO stop paths (`BLOCKED: cannot reproduce`, and `SCOPE: … not admitted by IsChannelDown`). If either fired, it stays `open` |
-| `grpc-default-max-message-size.md` | `fixed` — **unless** Task 2 Step 3b reported `PARTIAL`, in which case `open` |
-| `stalled-reply-recoverable-not-lost.md` | `fixed` **only if** Task 5 Step 3 produced code; otherwise `open` |
+| `agy-look-tail-truncation.md` | `fixed` (template i) |
+| `conversation-scoped-tools-vs-no-open-conversation.md` | `fixed` (template **ii**, already-fixed) — peer-confirmed, gate met by `AgyChannelDownTests.cs:284` + `:358`. **`ALREADY-SHIPPED` is the EXPECTED stop and means CLOSE it, not leave it open.** Only stays `open` if Task 3 hit `BLOCKED: cannot reproduce` (state unreachable) or `SCOPE:` (a real mid-session-close defect surfaced) |
+| `grpc-default-max-message-size.md` | `fixed` (template i) — **unless** Task 2 **Step 3c** reported `PARTIAL`, in which case `open` |
+| `stalled-reply-recoverable-not-lost.md` | `fixed` (template **ii**, already-fixed) — peer-confirmed closeable, entry names no test gate. **Only `open` if Task 5 Step 3 found a reachable defect after all** |
 | `curate-nudge-age-reads-drain-log-dates.md` | `fixed` (already) |
 | `idle-wait-false-modal.md` | `fixed` (already) |
 | `inbox-snapshot-misses-slash-command-path.md` | `open` — belongs to plan 2 |
