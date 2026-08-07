@@ -29,10 +29,16 @@ and return it. Only if the step counter is genuinely NOT advancing should the ca
 stalled. This makes "the transport gave up" distinguishable from "the peer is stuck", which is the
 distinction the caller actually needs.
 
-Sibling constraint: trajectory retrieval is currently capped by `grpc-default-max-message-size` (see
-that item) - the channel takes gRPC's 4 MB default, so a large trajectory readback fails
-`ResourceExhausted`. That item should land first or alongside; otherwise this mitigation inherits the
-same ceiling and silently fails on exactly the large replies that most need recovering.
+Sibling constraint: trajectory retrieval was capped by `grpc-default-max-message-size` (see that item) - the
+channel took gRPC's 4 MB default, so a large trajectory readback failed `ResourceExhausted`. That item should
+land first or alongside; otherwise this mitigation inherits the same ceiling and silently fails on exactly the
+large replies that most need recovering.
+
+> ⚠️ **RESOLVED 2026-08-07.** The sibling shipped: `LsChannel` now sets `MaxReceiveMessageSize = 64 MB`
+> (`80a254c`), so this constraint no longer binds. Tense corrected here because the original read "is
+> currently capped" — a present-tense claim about ANOTHER entry's state, which goes stale the moment that
+> entry ships and which no one re-reads. **This entry itself remains closed as already-fixed; nothing about
+> its own disposition changed.**
 
 ## Notes
 The driving-side workaround is ALSO carried as a cheatsheet-adjacent rule and must not be retired when

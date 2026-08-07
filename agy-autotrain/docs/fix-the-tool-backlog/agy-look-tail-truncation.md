@@ -3,8 +3,8 @@ slug: agy-look-tail-truncation
 variant: clavity-dotnet
 observed: 2026-07-10
 source-inbox-entry: "- [anti-pattern] When a synchronous review/consult payload is large enough to exceed the driver's idle-wait window,"
-status: open
-last-triaged: 2026-08-06   # oracle: agy_look (AgyView.cs:110) calls BoundedView.Summarize(trajectory, budgetChars) with newestFirst defaulting to false, and the McpTools.cs:14 description documents neither arm -> confirmed still open. NB the tail-anchored view DOES exist (BoundedView.cs:38-41 `newestFirst`), used only by agy_ask and tests; grep AgyView.cs alone and you will wrongly conclude no such view exists at all.
+status: fixed
+last-triaged: 2026-08-07   # FIXED by this epic. The 2026-08-06 oracle was SOUND (it named an externally-defined symbol, `newestFirst`, that the code really does use) and it correctly found the call site unwired at AgyView.cs:110.
 ---
 
 # Oversized reply's trajectory read-back truncates to the head
@@ -30,3 +30,33 @@ classic has no trajectory-look analogue → does not reproduce; the "decompose t
    ordinary use, not an edge case.
 3. **Mechanism — already built, just not wired.** `BoundedView.cs:38` exposes `newestFirst`, used by
    `agy_ask` and its tests; `AgyView.cs:110` simply does not pass it. No design fork remains.
+
+## Fixed — 2026-08-07
+
+Shipped in `141dcc4`. `AgyView.LookAsync` now calls
+`BoundedView.Summarize(trajectory, budgetChars, newestFirst: true)` — a NAMED argument, because `newestFirst`
+is the FOURTH parameter and a positional third would silently bind `maxStepChars`.
+
+**Regression test:** `clavity-dotnet/tests/Clavity.Integration.Tests/AgyViewIntegrationTests.cs` ::
+`Look_keeps_the_newest_steps_when_the_budget_is_tight`.
+
+**The test was proven non-vacuous before the fix landed.** Verbatim red run against the unfixed call site:
+
+```
+Assert.Contains() Failure: Filter not matched in collection
+Collection: [BoundedStep { Kind = 14, Text = OLDEST-STEP-MARKER... }, BoundedStep { Kind = 14, Text = FILLER-STEP-1... }]
+```
+
+— `agy_look` kept the two OLDEST steps and dropped `NEWEST-STEP-MARKER` entirely, which is exactly this
+entry's complaint.
+
+🔴 **The test drives `AgyView.LookAsync`, NOT `BoundedView.Summarize`, and that is deliberate.** `BoundedView`
+already handled `newestFirst` correctly and its own tests already passed; a test calling `Summarize` directly
+would have gone GREEN on its first run without ever touching the defect. The unwired call site was the bug.
+**Do not "simplify" this test down to a `BoundedView` unit test — that would silently un-cover the defect.**
+
+**Assertion shape:** it asserts WHICH step survived (marker identity), never HOW MANY. A cardinality assertion
+is invariant under reversed ordering and would pass over the bug.
+
+**The carried driving rule stays.** "Decompose the oversized ask into terse turns" remains a cheatsheet rule;
+this fix bounds what `agy_look` drops, it does not remove the underlying budget.
