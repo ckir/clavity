@@ -895,6 +895,11 @@ function Get-HookMessages {
     # after which the budget and tag invariants are reading a fragment.
     foreach ($m in [regex]::Matches($Text, '(?ms)^\s*(?:(?<name>msg[A-Za-z0-9_]*)=|emit\s+)"(?<body>(?:[^"\\]|\\.)*)"')) {
         $body = $m.Groups['body'].Value.Replace('\"', '"')
+        # `emit "$msg"` is a dispatch, not a message - its body is a bare variable reference whose content
+        # was already collected at the assignment. Recording it adds a 4-character pseudo-message that
+        # shows up in diagnostics as if it were injected text. Below the severity floor; filtered because
+        # it costs one line and a noisy diagnostic surface is how an operator learns to skim.
+        if ($body -match '^\s*\$\{?[A-Za-z_][A-Za-z0-9_]*\}?\s*$') { continue }
         $out.Add($body)
         if ($m.Groups['name'].Success) { $vars[$m.Groups['name'].Value] = $body }
     }
@@ -937,6 +942,16 @@ function Get-LongestHookMessage {
 # A probe that shares the defect it is measuring is not a measurement. Re-derive the cap with a
 # quote-aware scan whenever a hook message changes; do not trust this number if the parser changes.
 $script:MaxMessageChars = 1800
+
+# 🔴 WHAT THIS BUDGET ACTUALLY BOUNDS - state it, because a gate that overclaims is this project's subject.
+# Static parsing measures the TEMPLATE, not the payload an agent receives. A hook that interpolates shell
+# variables emits MORE than the template measures: agy-consult-guard-post.sh:89 embeds `$axes`, `$paths`
+# and `$headmsg`, where `$headmsg` (line 86) is `git log --oneline` output computed at runtime. The static
+# body counts those as their literal variable names.
+# So the budget catches PROSE growth - someone writing a longer message - and does NOT bound the
+# interpolated result. Bounding the real payload would need execution, which was rejected on measurement
+# (16 bash spawns = 5.24s against a 0.64s control) and would be vacuous anyway without per-hook fixtures
+# driving each maximal branch. This is an accepted limit, not an oversight.
 ```
 
 - [ ] **Step 4: Run to verify they pass**
