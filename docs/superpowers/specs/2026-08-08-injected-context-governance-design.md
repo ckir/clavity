@@ -457,9 +457,14 @@ Stated plainly, because a governance mechanism that oversells its coverage is it
 
 ---
 
-## 6. Open questions for the owner
+## 6. Owner rulings - all three settled 2026-08-08, none open
 
-### 6.1 Domain boundary - does the gate cover the other three products?
+This section was written as "open questions for the owner" and every one of them has since been answered.
+The heading is corrected rather than left standing, because a section advertising open questions over three
+settled rulings would send an implementer looking for decisions that already exist - a stale deferral in a
+heading is the same defect as a stale deferral in a sentence, and this document is about exactly that.
+
+### 6.1 Domain boundary - RULED: all six roots, no exemption
 
 `agy-autotrain/`, `ghidrust/plugin/`, and `commonmemory/` ship 73 507 B of injected context, all six of
 their markdown files carry non-ASCII, and none has ever been audited. Including them makes the gate
@@ -537,7 +542,7 @@ C4 being fixed inline here does **not** retire the anchor convention in section 
 so the *next* cross-reference is unambiguous by construction rather than by an author remembering; this
 rewrite fixes one instance, not the class.
 
-### 6.3 Disposition of the 10
+### 6.3 Disposition of the 10 - RULED: all carry into the spec
 
 Owner ruled on 2026-08-08: **fix nothing yet, carry all 10 into the spec.** They are this design's
 evidence and its first test cases. The implementation plan must close them as part of standing the gate up
