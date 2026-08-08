@@ -29,7 +29,7 @@ unread surface - that is the whole point of section 6.1's ruling.
 
 ### Deliberately NOT in this plan
 
-- **The anchor convention (spec 4.2).** It buys exactly one anomaly (C4, already closed inline by Task 9's
+- **The anchor convention (spec 4.2).** It buys exactly one anomaly (C4, already closed inline by Task 10's
   message rewrite) and constrains all future cross-reference writing. The spec requires counting existing
   cross-references before committing to it. Deferred as a separate decision; **not silently dropped.**
 - **Rulings-become-ROADMAP-entries (spec 4.3).** Process discipline, no code.
@@ -345,7 +345,7 @@ git commit -m "feat(gate): subtractive domain discovery with a reasoned ignoreli
 - Create: `scripts/injected-context-exemptions.json`
 - Modify: `scripts/tests/check-injected-context.Tests.ps1`
 
-This is the invariant that will be red across the three products until Task 10 sanitises them. That is
+This is the invariant that will be red across the three products until Task 11 sanitises them. That is
 intentional and is why the branch exists.
 
 - [ ] **Step 1: Write the failing tests**
