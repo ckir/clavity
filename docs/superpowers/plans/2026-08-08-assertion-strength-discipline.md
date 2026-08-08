@@ -77,8 +77,15 @@ NOT verified.** Measured 2026-08-08:
 - **Neither PostToolUse test fixture in this repo builds `session_id`.** `agy-after-reminder.Tests.ps1` and
   `agy-test-audit-reminder.Tests.ps1` construct only `cwd`, `file_path`, `hook_event_name`, `tool_input`.
 
-So no hook in this repo has ever read `session_id` on a `PostToolUse` payload. **Task 1 measures it live.**
-Both outcomes have a fully specified design below - the executor never has to invent one.
+So no hook in this repo has ever read `session_id` on a `PostToolUse` payload.
+
+🔴 **RESOLVED 2026-08-08 WITHOUT THE PROBE, by covering both branches instead of choosing one.** The owner
+declined the probe and accepted the per-day fallback. That is safe because **the shipped hook is
+branch-agnostic**: it reads `session_id`, sanitizes it, and falls back to the calendar day only when the
+result is empty, so it is correct either way. The fact was only ever load-bearing for the TEST FIXTURE, and
+the suite now pins BOTH payload shapes (with and without the field). **The unverified fact is retired by
+coverage, not by assumption** - which is strictly stronger than the probe would have been, since a probe
+would have confirmed one shape and left the other untested.
 
 ---
 
@@ -99,6 +106,23 @@ Both outcomes have a fully specified design below - the executor never has to in
 ---
 
 ## Task 1: Settle whether `session_id` reaches a PostToolUse hook
+
+> 🔴 **OWNER RULING 2026-08-08 - THE PROBE IS SKIPPED, AND STEPS 1-4 BELOW ARE NOT TO BE RUN.**
+> The owner declined the temporary registration in `~/.claude/settings.local.json` and accepted the
+> per-day fallback outright: *"I approve. per-day is ok."*
+>
+> **This costs nothing, because the shipped hook is BRANCH-AGNOSTIC.** It reads `session_id`, sanitizes it,
+> and falls back to the calendar day only when the result is empty - so it behaves correctly whether or not
+> the field is present, and the probe was only ever going to decide what the TEST FIXTURE should contain.
+>
+> **Therefore the fixture tests BOTH shapes** rather than guessing one: `New-Payload` keeps its `$Sid`
+> parameter, and the suite carries a `-ForEach` row pair covering a payload WITH `session_id` and one
+> WITHOUT it. That is strictly better than either branch alone - it pins the fallback that now definitely
+> ships AND the session path that may. The "one unverified fact" is removed from the risk surface by
+> covering both, not by assuming either.
+>
+> Steps 1-4 are retained below as the record of what was proposed and declined. **Do not execute them.**
+> Task 1's only executable action is Step 5, recording this ruling.
 
 **Files:**
 - Create (throwaway, deleted in Step 4): `.clavity/scratch/assertion-strength/probe.sh`
