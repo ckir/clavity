@@ -68,6 +68,26 @@ Describe 'assertion-strength-reminder.sh' {
             Should -BeTrue -Because 'registration is an explicit list, not a glob'
     }
 
+    # PINS THE CAPSTONE ROUND-1 FOLD. The hook was first registered as its OWN PostToolUse group with a
+    # matcher overlapping agy-after-reminder's. Whether a runtime dispatches EVERY matching group or only
+    # the FIRST could not be settled by measurement here, and if it is the first, this feature would be
+    # silently inert - installed, registered, and invisible, the exact failure this repo has been burned
+    # by. Owner ruled 2026-08-08 to co-locate it in the ONE group that is directly OBSERVED to fire.
+    # This test converts that from an assumption into an enforced invariant.
+    It 'is registered in the SAME PostToolUse group as agy-after-reminder, in <driver>' -ForEach @(
+        @{ driver = 'clavity-dotnet' }
+        @{ driver = 'clavity-classic' }
+    ) {
+        $manifest = Get-Content -Raw (Join-Path $script:RepoRoot "$driver/plugin/hooks/hooks.json") | ConvertFrom-Json
+        $owning = @($manifest.hooks.PostToolUse | Where-Object {
+            @($_.hooks) | Where-Object { $_.command -like '*assertion-strength-reminder.sh*' }
+        })
+        $owning.Count | Should -Be 1 -Because "$driver must register the hook in exactly one group"
+        @($owning[0].hooks).Count | Should -BeGreaterThan 1 -Because 'co-location is the point: it must share a group, not sit alone'
+        (@($owning[0].hooks) | Where-Object { $_.command -like '*agy-after-reminder.sh*' }).Count |
+            Should -Be 1 -Because 'it must share the group with agy-after-reminder, which is observed to dispatch'
+    }
+
     Context 'test-file predicate (strict filename patterns - owner ruling 2026-08-08)' {
         It 'FIRES on <path>' -ForEach @(
             @{ path = 'C:/repo/scripts/tests/foo.Tests.ps1' }
