@@ -15,10 +15,22 @@ $skills = @('agy-first', 'agy-capstone', 'agy-test-audit')
 # The required ASCII [VERDICT] forms PER SKILL (each discipline has its own vocabulary). agy-first and
 # agy-capstone share the convergent-review set (spec Decision 2.1 + 2.7); agy-test-audit gates coverage,
 # so it declares EXHAUSTIVE / GAPS FOUND / agy-required-but-unreachable instead.
+# The AGY-SCOPE disposition taxonomy (spec 2026-08-07). Required for the two review disciplines ENROLLED
+# in this checker. agy-first is excluded on purpose: it is a consult discipline and raises no findings to
+# dispose of. adversarial-panel-review DOES carry the taxonomy but is not enrolled in $skills at all (it
+# has 69 non-ASCII chars and no marker constant); it is pinned instead by the
+# 'AGY-SCOPE disposition taxonomy' Describe in scripts/tests/check-agy-discipline-skills.Tests.ps1.
+$dispositionTokens = @(
+    'FOLDED: '
+    'REJECTED: '
+    'DISCARDED-BELOW-FLOOR: '
+    'DEFERRED-TO-ANOMALIES: '
+    'UNVERIFIED-ACCEPTED: '
+)
 $requiredVerdicts = @{
     'agy-first'      = @('[VERDICT: ALIGNED]', '[VERDICT: REJECTED - ', '[VERDICT: NEGOTIATE - ', '[VERDICT: SKIPPED-UNREACHABLE]')
-    'agy-capstone'   = @('[VERDICT: ALIGNED]', '[VERDICT: REJECTED - ', '[VERDICT: NEGOTIATE - ', '[VERDICT: SKIPPED-UNREACHABLE]')
-    'agy-test-audit' = @('[VERDICT: EXHAUSTIVE]', '[VERDICT: GAPS FOUND]', '[VERDICT: agy-required-but-unreachable]')
+    'agy-capstone'   = @('[VERDICT: ALIGNED]', '[VERDICT: REJECTED - ', '[VERDICT: NEGOTIATE - ', '[VERDICT: SKIPPED-UNREACHABLE]') + $dispositionTokens
+    'agy-test-audit' = @('[VERDICT: EXHAUSTIVE]', '[VERDICT: GAPS FOUND]', '[VERDICT: agy-required-but-unreachable]') + $dispositionTokens
 }
 # The documented marker-contract constant the skill must reference (Task 5).
 $markerConstant = '.clavity/agy-marks/'

@@ -43,7 +43,17 @@ Describe 'check-agy-discipline-skills' {
         It 'fails when a required [VERDICT] form is missing from <skill>' -ForEach @(
             @{ skill = 'agy-first';      token = '[VERDICT: SKIPPED-UNREACHABLE]' },
             @{ skill = 'agy-capstone';   token = '[VERDICT: SKIPPED-UNREACHABLE]' },
-            @{ skill = 'agy-test-audit'; token = '[VERDICT: EXHAUSTIVE]' }
+            @{ skill = 'agy-test-audit'; token = '[VERDICT: EXHAUSTIVE]' },
+            @{ skill = 'agy-capstone';   token = 'FOLDED: ' },
+            @{ skill = 'agy-capstone';   token = 'REJECTED: ' },
+            @{ skill = 'agy-capstone';   token = 'DISCARDED-BELOW-FLOOR: ' },
+            @{ skill = 'agy-capstone';   token = 'DEFERRED-TO-ANOMALIES: ' },
+            @{ skill = 'agy-capstone';   token = 'UNVERIFIED-ACCEPTED: ' },
+            @{ skill = 'agy-test-audit'; token = 'FOLDED: ' },
+            @{ skill = 'agy-test-audit'; token = 'REJECTED: ' },
+            @{ skill = 'agy-test-audit'; token = 'DISCARDED-BELOW-FLOOR: ' },
+            @{ skill = 'agy-test-audit'; token = 'DEFERRED-TO-ANOMALIES: ' },
+            @{ skill = 'agy-test-audit'; token = 'UNVERIFIED-ACCEPTED: ' }
         ) {
             $scratch = New-ScratchRoot
             $target  = & $script:SkillPath $scratch $skill
