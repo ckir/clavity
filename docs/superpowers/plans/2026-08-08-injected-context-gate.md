@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a fail-closed gate that audits every byte this repository injects into a user's agent context, and close the 10 known anomalies against it.
+**Goal:** Build a fail-closed gate that audits every byte this repository injects into a user's agent context, and close the audited anomalies against it (9 of the 10; A2 withdrawn as a documented ruling - Task 10 Step 2).
 
 **Architecture:** One PowerShell checker (`scripts/check-injected-context.ps1`) plus one Pester suite that generates a test row per (file, invariant). The checker discovers its domain **subtractively** - it walks six roots and subtracts an explicit ignorelist - so a new kind of injected file fails until someone classifies it deliberately. A committed exemptions file is the only escape hatch, validated in both directions so entries cannot rot.
 
@@ -16,7 +16,7 @@
 
 **This plan is STAGE 1 of two.** Owner ruling, 2026-08-08: staged feature branch.
 
-- **Stage 1 (this plan):** build the gate, close the 10 known anomalies, sanitise the **252** non-ASCII
+- **Stage 1 (this plan):** build the gate, close 9 of the 10 known anomalies (A2 withdrawn), sanitise the **252** non-ASCII
   characters across **five** files in the three never-audited products. Everything here is deterministic
   and plannable today. (The three products carry 299 such characters in six files. `agy-observations.md`'s
   47 are not sanitised because that file's encoding is WAIVED BY A DOCUMENTED EXEMPTION - it is in the
@@ -436,7 +436,7 @@ function Get-NonAsciiReport {
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-injected-context.Tests.ps1 -Output Detailed -CI"`
 Expected: `Failed: 0`
 
-- [ ] **Step 5: Create the exemptions file with its single legitimate entry**
+- [ ] **Step 5: Create the exemptions file with its two legitimate entries**
 
 Create `scripts/injected-context-exemptions.json`:
 
@@ -462,7 +462,7 @@ Create `scripts/injected-context-exemptions.json`:
 
 ```bash
 git add scripts/check-injected-context.ps1 scripts/injected-context-exemptions.json scripts/tests/check-injected-context.Tests.ps1
-git commit -m "feat(gate): byte-level encoding invariant, one documented exemption"
+git commit -m "feat(gate): byte-level encoding invariant, two documented exemptions"
 ```
 
 ---
@@ -765,9 +765,12 @@ git commit -m "feat(gate): three-outcome reference resolution, ambiguity never g
             (Test-HasDuplicatedTag -Text '[ASSERTION-STRENGTH] You just touched a test file.') |
                 Should -BeFalse
         }
-        It 'requires the shared namespace on a degraded line' {
-            (Test-DegradedNamespace -Text '[ASSERTION-STRENGTH] guard inactive: missing jq') | Should -BeFalse
-            (Test-DegradedNamespace -Text '[AGY-DISCIPLINES] guard inactive: missing jq')     | Should -BeTrue
+        It 'requires SOME bracketed tag on a degraded line, not one specific tag' {
+            # A2 was withdrawn: ROADMAP.md:714 rules that assertion-strength deliberately drops the AGY-
+            # prefix because it convenes no peer, and Tests.ps1:199-201 pins that. Both tags are valid.
+            (Test-DegradedNamespace -Text '[ASSERTION-STRENGTH] guard inactive: missing jq') | Should -BeTrue
+            (Test-DegradedNamespace -Text '[AGY-DISCIPLINES] guard inactive: missing jq')    | Should -BeTrue
+            (Test-DegradedNamespace -Text 'guard inactive: missing jq')                      | Should -BeFalse
         }
     }
 ```
@@ -792,10 +795,20 @@ function Test-HasDuplicatedTag {
     [bool]([regex]::IsMatch($Text, '\[([A-Z0-9_-]+)\]\s*\1[:\s]'))
 }
 
+# 🔴 THIS CHECKS SHAPE, NOT A SPECIFIC TAG - and that is a correction, not a weakening.
+# Anomaly A2 claimed assertion-strength-reminder.sh's `[ASSERTION-STRENGTH] guard inactive:` was namespace
+# drift from its four siblings' `[AGY-DISCIPLINES] guard inactive:`. IT IS NOT. clavity-dotnet/ROADMAP.md:714
+# records the deliberate ruling - "Drop the AGY- prefix - every AGY-* discipline convenes the peer; this
+# one does not" - and scripts/tests/assertion-strength-reminder.Tests.ps1:199-201 PINS it
+# ("carries no AGY- prefix in its emitted tag"). The prefix is signal, not drift: it says whether the
+# discipline convenes the peer.
+# Requiring [AGY-DISCIPLINES] universally would ship a change contradicting a recorded ruling and redden
+# the test guarding it. So the invariant asserts every degraded line opens with SOME bracketed tag,
+# which is what makes the line greppable at all, and leaves which tag to the discipline's own design.
 function Test-DegradedNamespace {
     param([string]$Text)
     if ($Text -notmatch 'guard inactive:') { return $true }
-    $Text -match '\[AGY-DISCIPLINES\]\s*guard inactive:'
+    $Text -match '^\[[A-Z][A-Z0-9_-]*\]\s*guard inactive:'
 }
 ```
 
@@ -1095,8 +1108,9 @@ $script:AnomalyBlocklist = @(
     @{ Path = 'skills/agy-first/SKILL.md';                  Invariant = 'plan-residue' }
     @{ Path = 'knowledge/agy-capabilities.md';              Invariant = 'reference' }
     @{ Path = 'hooks/assertion-strength-reminder.sh';       Invariant = 'tag-hygiene' }
-    @{ Path = 'hooks/assertion-strength-reminder.sh';       Invariant = 'namespace' }
 )
+# NOTE: there is deliberately no (assertion-strength-reminder.sh, namespace) tuple. A2 was withdrawn -
+# that hook's tag is a documented ruling (ROADMAP.md:714), not a defect. See Task 10 Step 2.
 
 function Test-IsBlocklisted {
     param([string]$Path, [string]$Invariant)
@@ -1179,20 +1193,55 @@ container-not-claim failure this whole project is about, reproduced one level do
         It 'inspects a non-trivial number of files' {
             $script:Corpus.Count | Should -BeGreaterThan 40 -Because 'an empty corpus makes every row below vacuous'
         }
-        It 'produces a violation record carrying file, invariant, finding and the waiver line' {
-            $v = $script:Violations | Select-Object -First 1
-            $v.File      | Should -Not -BeNullOrEmpty
-            $v.Invariant | Should -Not -BeNullOrEmpty
-            $v.Finding   | Should -Not -BeNullOrEmpty
-            $v.WaiverLine | Should -Match '"invariant"\s*:'
+        # 🔴 THESE ROWS USE HERMETIC FIXTURES, AND THAT IS NOT A STYLE CHOICE.
+        # An earlier draft asserted these three properties against the LIVE repository's violations - that
+        # a violation record exists, that it names agy-capabilities.md, that more than one file is
+        # reported. Every one of those becomes FALSE the moment Tasks 10 and 11 close the anomalies, which
+        # is the entire point of the plan. The suite would have gone permanently red on the last commit of
+        # its own execution, and stayed red on every clean CI run afterwards. A test that requires the
+        # repository to remain broken is not a test of the gate; it is a test of the bug.
+        # The mechanism is tested here against fixtures; whether the REPOSITORY is clean is checked by
+        # running the script, at Task 10 Step 9b and Task 11 Step 4.
+        BeforeAll {
+            $script:MakeFixture = {
+                param([hashtable]$Files)   # relative path -> content
+                $d = Join-Path ([IO.Path]::GetTempPath()) ("icv-" + [guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-exemptions.json') (Join-Path $d 'scripts')
+                foreach ($k in $Files.Keys) {
+                    $p = Join-Path $d $k
+                    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $p) | Out-Null
+                    Set-Content -LiteralPath $p -Value $Files[$k] -Encoding ascii
+                }
+                $d
+            }
         }
-        It 'names the specific known defect rather than only counting' {
-            ($script:Violations | Where-Object { $_.File -like '*knowledge/agy-capabilities.md' -and $_.Invariant -eq 'reference' }) |
-                Should -Not -BeNullOrEmpty -Because 'C2 (agy-first-brainstorm.sh) must be named, not summed'
+
+        It 'produces a violation record carrying file, invariant, finding and the waiver line' {
+            $d = & $script:MakeFixture @{ 'seed/x.md' = 'see `doc/typo-prefix.md` here' }
+            $v = Get-InjectedContextViolations -RepoRoot $d -Files @('seed/x.md') | Select-Object -First 1
+            $v.File       | Should -Not -BeNullOrEmpty
+            $v.Invariant  | Should -Not -BeNullOrEmpty
+            $v.Finding    | Should -Not -BeNullOrEmpty
+            $v.WaiverLine | Should -Match '"invariant"\s*:'
+            Remove-Item -Recurse -Force $d
+        }
+        It 'names the specific file and invariant rather than only counting' {
+            $d = & $script:MakeFixture @{ 'seed/dead.md' = 'the hook `agy-first-brainstorm.sh` does this' }
+            $v = Get-InjectedContextViolations -RepoRoot $d -Files @('seed/dead.md')
+            ($v | Where-Object { $_.File -eq 'seed/dead.md' -and $_.Invariant -eq 'reference' }) |
+                Should -Not -BeNullOrEmpty -Because 'a broken reference must be named, not summed'
+            Remove-Item -Recurse -Force $d
         }
         It 'aggregates - more than one file is reported, not just the first' {
-            (@($script:Violations | Select-Object -ExpandProperty File -Unique)).Count |
-                Should -BeGreaterThan 1 -Because 'a short-circuiting runner hides every failure after the first'
+            $d = & $script:MakeFixture @{
+                'seed/a.md' = 'see `doc/typo-one.md`'
+                'seed/b.md' = 'see `script/typo-two.ps1`'
+            }
+            $v = Get-InjectedContextViolations -RepoRoot $d -Files @('seed/a.md','seed/b.md')
+            (@($v | Select-Object -ExpandProperty File -Unique)).Count |
+                Should -Be 2 -Because 'a short-circuiting runner hides every failure after the first'
+            Remove-Item -Recurse -Force $d
         }
 
         It 'ENFORCES the payload budget - an over-budget file produces a payload-budget violation' {
@@ -1339,11 +1388,14 @@ git commit -m "feat(gate): walk the corpus, one violation record per (file, inva
 
 ---
 
-## Task 10: Close the 10 known anomalies
+## Task 10: Close the audited anomalies (9 of 10 - A2 withdrawn)
 
 **Files (each change made in `clavity-dotnet/`, then mirrored by `cp`):**
 - Modify: `clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh:145-146`
-- Modify: `clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh:43`
+- Modify: `scripts/tests/assertion-strength-reminder.Tests.ps1` - its assertions pin the OLD message text
+  and will fail once Step 1 lands. **This file was missing from this list and from Step 12's `git add`,
+  which would have left it modified-but-unstaged after the commit.**
+- ~~`assertion-strength-reminder.sh:43`~~ - **no longer modified; A2 withdrawn, see Step 2.**
 - Modify: `clavity-dotnet/plugin/skills/agy-first/SKILL.md:114`
 - Modify: `clavity-dotnet/plugin/knowledge/agy-capabilities.md:12`
 - Modify: `clavity-dotnet/plugin/skills/open-issues/SKILL.md:95`
@@ -1366,9 +1418,30 @@ Then **line 146 must also change**, or the tag duplicates again:
 jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
 ```
 
-- [ ] **Step 2: A2 - the degraded-line namespace**
+- [ ] **Step 2: A2 - WITHDRAWN. Make no change, and read why before proceeding.**
 
-At `:43`, change `[ASSERTION-STRENGTH] guard inactive:` to `[AGY-DISCIPLINES] guard inactive:`.
+**A2 was not a defect.** The original audit flagged `assertion-strength-reminder.sh:43`'s
+`[ASSERTION-STRENGTH] guard inactive:` as namespace drift from four siblings using `[AGY-DISCIPLINES]`.
+It is a **deliberate, documented, test-pinned decision**:
+
+- `clavity-dotnet/ROADMAP.md:714` - *"Drop the `AGY-` prefix - every `AGY-*` discipline convenes the peer;
+  this one does not."*
+- `scripts/tests/assertion-strength-reminder.Tests.ps1:199-201` - `It 'carries no AGY- prefix in its
+  emitted tag'`, asserting `$raw | Should -Not -Match '\[AGY-DISCIPLINES\]'`.
+
+Making the "fix" would have shipped a change contradicting a recorded ruling **and reddened the test that
+guards it**. The prefix is signal - it says whether the discipline convenes the peer - not drift.
+
+The operator cost the original finding named is real and unresolved: someone grepping `[AGY-DISCIPLINES]`
+for inactive guards will not see this hook. That is a consequence of the ruling, not a defect in the hook,
+and changing it is the owner's call in some future piece of work - not this one.
+
+**Consequences already folded elsewhere in this plan:** `Test-DegradedNamespace` (Task 6) now asserts that
+a degraded line opens with SOME bracketed tag rather than one specific tag, and the
+`(assertion-strength-reminder.sh, namespace)` tuple is gone from the anomaly blocklist (Task 8).
+
+🔴 **The spec's section 3 still lists A2 as an anomaly. It needs the same correction, and that is the
+owner's artifact to amend.** This plan does not silently diverge from it - the divergence is recorded here.
 
 - [ ] **Step 3: C1 - the plan residue**
 
@@ -1417,11 +1490,18 @@ Expected: exit 0, no divergence reported.
 - [ ] **Step 9b: Verify the fixes WHILE the blocklist is still armed**
 
 Run: `pwsh -c "./scripts/check-injected-context.ps1"`
-Expected: exit 0. **Do this before retiring anything.** If a fix in Steps 1-8 was mistyped or incomplete,
-this is where it surfaces cleanly, as a violation naming the file and invariant. Retiring the blocklist
-and its tests first and only then running the suite would mix three indistinguishable causes - an unclosed
-anomaly, a broken invariant, and a stale assertion in `assertion-strength-reminder.Tests.ps1` - into one
-red run with no way to tell them apart.
+
+**Expected: exit 1, with EXACTLY five `encoding` violations, all in `agy-autotrain/`, `ghidrust/plugin/`
+and `commonmemory/`, and NOTHING else.** Not exit 0 - Task 11 has not run yet, so those five files still
+carry their 252 non-ASCII characters. An earlier draft of this step expected exit 0 and was wrong about
+its own sequencing.
+
+**What this step is actually checking is the ABSENCE of any other violation.** Zero from `clavity-dotnet/`,
+`clavity-classic/` and `seed/` means all ten anomaly fixes landed. Any violation outside those three
+products means a fix in Steps 1-8 was mistyped or incomplete, and this is where it surfaces cleanly, named
+by file and invariant, while the blocklist is still armed. Retiring the blocklist first would mix three
+indistinguishable causes into one red run - an unclosed anomaly, a broken invariant, and a stale assertion
+in `assertion-strength-reminder.Tests.ps1`.
 
 - [ ] **Step 10: Retire the blocklist**
 
@@ -1438,8 +1518,8 @@ message text** - update them to the new text; do not revert the message.
 - [ ] **Step 12: Commit**
 
 ```bash
-git add clavity-dotnet/plugin clavity-classic/plugin seed/golden-header.md clavity-dotnet/ROADMAP.md scripts/check-injected-context.ps1 scripts/tests/check-injected-context.Tests.ps1
-git commit -m "fix(injected-context): close all 10 audited anomalies"
+git add clavity-dotnet/plugin clavity-classic/plugin seed/golden-header.md clavity-dotnet/ROADMAP.md scripts/check-injected-context.ps1 scripts/tests/check-injected-context.Tests.ps1 scripts/tests/assertion-strength-reminder.Tests.ps1
+git commit -m "fix(injected-context): close 9 audited anomalies; A2 withdrawn as a documented ruling"
 ```
 
 ---
