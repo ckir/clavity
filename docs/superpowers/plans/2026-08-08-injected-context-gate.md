@@ -16,8 +16,10 @@
 
 **This plan is STAGE 1 of two.** Owner ruling, 2026-08-08: staged feature branch.
 
-- **Stage 1 (this plan):** build the gate, close the 10 known anomalies, sanitise the 299 non-ASCII
-  characters in the three never-audited products. Everything here is deterministic and plannable today.
+- **Stage 1 (this plan):** build the gate, close the 10 known anomalies, sanitise the **252** non-ASCII
+  characters across **five** files in the three never-audited products. Everything here is deterministic
+  and plannable today. (The three products carry 299 such characters in six files; `agy-observations.md`'s
+  47 are out of scope because that file is excluded by domain definition - see the boundary note below.)
 - **Stage 2 (NOT this plan):** the multi-round anomaly sweep of `agy-autotrain/`, `ghidrust/plugin/` and
   `commonmemory/`. Its findings do not exist yet, so no line-level plan can be written for it. It runs on
   the same branch after stage 1, and **the branch does not merge until it is green.**
@@ -62,7 +64,7 @@ with that reason.
 | `clavity-{dotnet,classic}/plugin/skills/open-issues/SKILL.md` | MODIFY. C5 - "four separators" vs three. |
 | `seed/golden-header.md` | MODIFY. C3 - 11 non-ASCII characters. |
 | `clavity-{dotnet,classic}/plugin/skills/{agy-capstone,adversarial-panel-review}/SKILL.md` | MODIFY. B1 - the round cap 3 -> 6. |
-| 6 files in the three products | MODIFY. Sanitise 299 non-ASCII characters. |
+| 5 files in the three products | MODIFY. Sanitise 252 non-ASCII characters (Task 11 names all five). |
 
 **Both plugin trees are byte-identical.** Every plugin change is made in `clavity-dotnet/`, then mirrored
 by `cp` - never retyped - and must pass `scripts/check-seed-artifacts-synced.sh`.
