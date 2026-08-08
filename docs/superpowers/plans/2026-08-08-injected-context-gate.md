@@ -242,6 +242,22 @@ Append inside the `Describe` block:
         ) {
             $script:Files | Should -Not -Contain $path
         }
+        It 'FAILS if a product ships skills that no domain root covers' {
+            # $script:DomainRoots is a hardcoded array, so a SEVENTH product added a year from now would
+            # be silently ignored forever - the gate green, its context never audited, and nothing to
+            # remind anyone. This row is that reminder: it discovers products structurally and fails when
+            # one is not covered, naming it.
+            $covered = { param($p) foreach ($r in $script:DomainRoots) { if ($p -like "$r*") { return $true } }; return $false }
+            $shipsSkills = Get-ChildItem -LiteralPath $script:RepoRoot -Directory |
+                Where-Object { $_.Name -notmatch '^\.' } |
+                ForEach-Object {
+                    $n = $_.Name
+                    if (Test-Path (Join-Path $_.FullName 'skills'))        { "$n/skills" }
+                    if (Test-Path (Join-Path $_.FullName 'plugin/skills')) { "$n/plugin/skills" }
+                }
+            $uncovered = @($shipsSkills | Where-Object { -not (& $covered $_) })
+            $uncovered -join ', ' | Should -BeExactly '' -Because 'a product shipping skills is injected context; add it to $script:DomainRoots or exclude it deliberately'
+        }
         It 'does NOT subtract the agy-learn inbox - it is in the domain and handled by exemption' {
             # agy-curate/SKILL.md:105 ("For each inbox entry - decide") shows an agent reads this file
             # into context. Ignoring it would be an exemption wearing a different name; owner ruled it is
@@ -324,7 +340,13 @@ function Get-InjectedContextFiles {
     $out = [System.Collections.Generic.List[string]]::new()
     foreach ($root in $script:DomainRoots) {
         $full = Join-Path $RepoRoot $root
-        if (-not (Test-Path $full)) { continue }
+        # 🔴 THROW, never `continue`. A renamed or moved root would otherwise be skipped in silence and
+        # the gate would pass GREEN over a smaller corpus - coverage quietly dropping to nothing while
+        # every signal says fine. That is the exact failure mode this whole project is named after, and
+        # it is the single most likely way this gate stops being useful six months from now.
+        if (-not (Test-Path $full)) {
+            throw "domain root missing: $full - if a product moved or was renamed, update `$script:DomainRoots; if it was deleted, remove the root deliberately."
+        }
         # Prune heavy directories at traversal level. Measured 2026-08-08: none currently exist under any
         # domain root (corpus is 130 files), so this is hardening, not a fix.
         Get-ChildItem -LiteralPath $full -Recurse -File -Force |
@@ -1146,11 +1168,22 @@ Append:
             }
         }
         It 'every exemption is still NEEDED - the file must fail the invariant without it' {
+            # Dispatch on the invariant NAME. An earlier draft skipped anything that was not `encoding`,
+            # which silently exempted every future non-encoding waiver from bidirectional validation -
+            # the one rule that stops exemptions rotting. Today both entries are encoding; the guard has
+            # to hold for the third.
             foreach ($e in $script:Ex) {
-                if ($e.invariant -ne 'encoding') { continue }
                 foreach ($p in (Expand-ExemptionPath -Entry $e)) {
-                    (Test-PureAscii -Path (Join-Path $script:RepoRoot $p)) |
-                        Should -BeFalse -Because "unused exemption: '$($e.path)' passes without it"
+                    $full = Join-Path $script:RepoRoot $p
+                    $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
+                    $stillFails = switch ($e.invariant) {
+                        'encoding'      { -not (Test-PureAscii -Path $full) }
+                        'plan-residue'  { Test-HasPlanResidue -Text $text }
+                        'tag-hygiene'   { [bool](@(Get-HookMessages -Text $text | Where-Object { Test-HasDuplicatedTag -Text $_ }).Count) }
+                        'namespace'     { [bool](@(Get-HookMessages -Text $text | Where-Object { -not (Test-DegradedNamespace -Text $_) }).Count) }
+                        default         { throw "exemption names an unknown invariant '$($e.invariant)' - add a case here or fix the entry" }
+                    }
+                    $stillFails | Should -BeTrue -Because "unused exemption: '$($e.path)' passes '$($e.invariant)' without it"
                 }
             }
         }
@@ -1338,7 +1371,8 @@ function Get-InjectedContextViolations {
         }
         $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
         if (-not $exempt.ContainsKey("$f|plan-residue") -and (Test-HasPlanResidue -Text $text)) {
-            $out.Add((New-Violation -File $f -Invariant 'plan-residue' -Finding 'bare (Task N)/(Step N)/(Phase N) pointer'))
+            $hit = [regex]::Match($text, '\((Task|Step|Phase)\s+\d+\)').Value
+            $out.Add((New-Violation -File $f -Invariant 'plan-residue' -Finding "bare plan pointer: $hit"))
         }
         foreach ($m in (Get-HookMessages -Text $text)) {
             if (-not $exempt.ContainsKey("$f|tag-hygiene") -and (Test-HasDuplicatedTag -Text $m)) {
@@ -1350,7 +1384,8 @@ function Get-InjectedContextViolations {
         }
         $longest = Get-LongestHookMessage -Text $text
         if ($longest.Length -gt $script:MaxMessageChars -and -not $exempt.ContainsKey("$f|payload-budget")) {
-            $out.Add((New-Violation -File $f -Invariant 'payload-budget' -Finding "$($longest.Length) chars > $script:MaxMessageChars"))
+            $head = $longest.Substring(0, [Math]::Min(60, $longest.Length))
+            $out.Add((New-Violation -File $f -Invariant 'payload-budget' -Finding "$($longest.Length) chars > $script:MaxMessageChars - starts: $head"))
         }
         foreach ($tok in [regex]::Matches($text, '`([^`\n]{1,80})`')) {
             $t = $tok.Groups[1].Value
@@ -1629,6 +1664,18 @@ would red CI for the length of the branch.
 check-injected-context:
     pwsh -NoProfile -Command "./scripts/check-injected-context.ps1"
 ```
+
+**Deliberately NOT added to the `lint` aggregate.** `justfile:14` reads *"Aggregate lint across every tool
+(each recipe mirrors that tool's CI gate)"* and delegates to `dotnet::lint`, `classic::lint`,
+`ghidrust::lint`. All seven repo-level `check-*` recipes - `check-agy-skills`, `check-doc-stubs`,
+`check-member-docs`, `check-user-facing-docs`, `check-installer-ascii`, `check-register-hash`,
+`check-verify-hook` - sit outside it, because they are repo-level rather than per-tool. Adding this one
+alone would break a convention seven recipes deep.
+
+The real consequence is worth naming rather than hiding: **a local developer running `just lint` will not
+run this gate, and will first learn of a violation in CI.** That is true of all seven siblings, so it is a
+pre-existing repo-wide property, not something this plan introduces - and changing it is a separate
+decision about the whole `check-*` family, not a change to smuggle in here.
 
 - [ ] **Step 2: Run it**
 
