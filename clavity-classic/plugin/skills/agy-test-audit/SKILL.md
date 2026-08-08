@@ -98,6 +98,19 @@ false pass - treat it as peer-unreachable, below).
    (multiple independent guards), not a vacuous test - widen the mutant or accept a multi-guard regression
    target rather than concluding "vacuous."
 
+   **This bar is not audit-only.** It applies to EVERY test authored in this repo, including tests written
+   during ordinary implementation that no audit ever asked for - that is the PINNING-ASSERTION-STRENGTH
+   discipline, and the `assertion-strength-reminder.sh` hook nudges it on the first touch of each test file
+   per session. It convenes no peer, so it carries no `AGY-` prefix. Three structural smells produce a
+   GREEN test over broken code and are worth a deliberate check every time: (1) CARDINALITY over an ordered
+   or filtered collection - a count is invariant under any permutation before truncation, so assert
+   boundary IDENTITY, never count alone; (2) a DUAL-PATH FALLBACK masked by the ambient environment - strip
+   the primary dependency to force the fallback branch to run; (3) a STRUCTURED-TOKEN matcher with no
+   DISTRACTOR case - show it REJECTS a near-miss, not only that it accepts the real thing. A fourth,
+   measured on this very hook: never assert a bare substring that also appears in the artifact's own PATH -
+   the suite passed with no hook on disk because `bash`'s "No such file or directory" error contains the
+   filename, and the matcher matched that.
+
 ## Disposition of findings (AGY-SCOPE)
 
 Every finding raised in any round resolves to EXACTLY ONE of these five tokens. The set is closed -
