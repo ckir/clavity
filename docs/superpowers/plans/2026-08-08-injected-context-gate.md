@@ -843,12 +843,10 @@ jq -nc --arg m "[TAG] $msg" '{}'
             (Get-HookMessages -Text $sh) | Should -Not -Contain '%s'
         }
 
-        It 'FLAGS an over-budget message - the cap is not decorative' {
-            # Without this row nothing proves the budget check works: every shipped hook fits under 1800
-            # with headroom, so inverting or deleting the comparison would leave the suite fully green.
-            $sh = "msg='" + ('X' * ($script:MaxMessageChars + 1)) + "'"
-            (Get-LongestHookMessage -Text $sh).Length |
-                Should -BeGreaterThan $script:MaxMessageChars
+        It 'does not truncate a double-quoted body at an escaped quote' {
+            # MEASURED on agy-after-reminder.sh: `[^"]*` reads 173 of 763 characters.
+            $sh = 'msg="before the \"quoted bit\" and a long tail after it"'
+            (Get-LongestHookMessage -Text $sh) | Should -Match 'long tail after it'
         }
     }
 ```
@@ -884,15 +882,21 @@ function Get-HookMessages {
 
     # Shape 1+2: `msg<suffix>='...'` and `emit '...'`, single-quoted, quote-idiom aware.
     foreach ($m in [regex]::Matches($Text, "(?m)^\s*(?:(?<name>msg[A-Za-z0-9_]*)=|emit\s+)'")) {
-        $body = Read-SingleQuotedBody -Text $Text -Start $m.Index + $m.Length
+        # Parentheses are REQUIRED. PowerShell binds `-Start $m.Index` and then treats `+ $m.Length` as a
+        # separate positional argument - it does not evaluate the sum.
+        $body = Read-SingleQuotedBody -Text $Text -Start ($m.Index + $m.Length)
         if ($null -eq $body) { continue }
         $out.Add($body)
         if ($m.Groups['name'].Success) { $vars[$m.Groups['name'].Value] = $body }
     }
-    # Shape 1+2, double-quoted form.
-    foreach ($m in [regex]::Matches($Text, '(?m)^\s*(?:(?<name>msg[A-Za-z0-9_]*)=|emit\s+)"(?<body>[^"]*)"')) {
-        $out.Add($m.Groups['body'].Value)
-        if ($m.Groups['name'].Success) { $vars[$m.Groups['name'].Value] = $m.Groups['body'].Value }
+    # Shape 1+2, double-quoted form. `[^"]*` is WRONG here: a bash double-quoted string may contain \"
+    # and that pattern stops at the first one. MEASURED on agy-after-reminder.sh, which carries 7 escaped
+    # quotes: `[^"]*` captures 173 characters of a 763-character message - 77% of it silently discarded,
+    # after which the budget and tag invariants are reading a fragment.
+    foreach ($m in [regex]::Matches($Text, '(?ms)^\s*(?:(?<name>msg[A-Za-z0-9_]*)=|emit\s+)"(?<body>(?:[^"\\]|\\.)*)"')) {
+        $body = $m.Groups['body'].Value.Replace('\"', '"')
+        $out.Add($body)
+        if ($m.Groups['name'].Success) { $vars[$m.Groups['name'].Value] = $body }
     }
     # Shape 3: a literal additionalContext payload. `%s` is a printf placeholder, not a message - it would
     # otherwise enter the corpus as a synthetic one-character "message" and pollute every diagnostic.
@@ -1127,6 +1131,40 @@ container-not-claim failure this whole project is about, reproduced one level do
             (@($script:Violations | Select-Object -ExpandProperty File -Unique)).Count |
                 Should -BeGreaterThan 1 -Because 'a short-circuiting runner hides every failure after the first'
         }
+
+        It 'ENFORCES the payload budget - an over-budget file produces a payload-budget violation' {
+            # This row exercises the enforcement branch, not the extractor. An earlier draft asserted
+            # Get-LongestHookMessage(...).Length -gt $cap, which proves only that the parser did not
+            # truncate: delete or invert the comparison inside Get-InjectedContextViolations and that
+            # assertion still passes. Every shipped hook fits under the cap, so without this row nothing
+            # in the suite touches the branch at all.
+            $dir = Join-Path ([IO.Path]::GetTempPath()) ("icv-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            'scripts' , 'seed' | ForEach-Object { New-Item -ItemType Directory -Force -Path (Join-Path $dir $_) | Out-Null }
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-exemptions.json') (Join-Path $dir 'scripts')
+            $rel = 'seed/oversized.sh'
+            Set-Content -LiteralPath (Join-Path $dir $rel) -Value ("msg='" + ('X' * ($script:MaxMessageChars + 1)) + "'") -Encoding ascii
+
+            $v = Get-InjectedContextViolations -RepoRoot $dir -Files @($rel)
+            ($v | Where-Object { $_.Invariant -eq 'payload-budget' }) |
+                Should -Not -BeNullOrEmpty -Because 'the enforcement branch must fire, not merely the parser'
+            Remove-Item -Recurse -Force $dir
+        }
+
+        It 'does NOT flag a file that is within budget' {
+            # The must-pass half. Without it, a check hardcoded to always report payload-budget would
+            # satisfy the row above.
+            $dir = Join-Path ([IO.Path]::GetTempPath()) ("icv-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'scripts') | Out-Null
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'seed') | Out-Null
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-exemptions.json') (Join-Path $dir 'scripts')
+            $rel = 'seed/small.sh'
+            Set-Content -LiteralPath (Join-Path $dir $rel) -Value "msg='short and clean'" -Encoding ascii
+
+            $v = Get-InjectedContextViolations -RepoRoot $dir -Files @($rel)
+            ($v | Where-Object { $_.Invariant -eq 'payload-budget' }) | Should -BeNullOrEmpty
+            Remove-Item -Recurse -Force $dir
+        }
     }
 ```
 
@@ -1150,8 +1188,13 @@ function New-Violation {
 }
 
 function Get-InjectedContextViolations {
-    param([string]$RepoRoot)
-    $files = Get-InjectedContextFiles -RepoRoot $RepoRoot
+    # -Files is a TEST SEAM, and it is load-bearing. Without it the budget branch below cannot be tested:
+    # every shipped hook fits under the cap with headroom, so inverting or deleting the comparison leaves
+    # the whole suite green. Testing `Get-LongestHookMessage(...).Length -gt $cap` instead proves only
+    # that the EXTRACTOR did not truncate - it never reaches the enforcement branch at all. Production
+    # callers omit -Files and get the real discovery.
+    param([string]$RepoRoot, [string[]]$Files)
+    $files = if ($PSBoundParameters.ContainsKey('Files')) { $Files } else { Get-InjectedContextFiles -RepoRoot $RepoRoot }
     $ex    = @((Get-Content (Join-Path $RepoRoot 'scripts/injected-context-exemptions.json') -Raw |
                 ConvertFrom-Json).exemptions)
     $exempt = @{}
