@@ -659,6 +659,12 @@ productize release. It remains undecided and is recorded here so it stops being 
 > still undesigned and goes to the Phase-2 owner gate asking *"spec it, or kill it"*. **A packaging epic
 > for a discipline that may be killed cannot be ranked ahead of the decision that decides it.**
 >
+> ✅ **Resolved 2026-08-07 — that gate has been answered: §7 was specced, shipped and mirrored, so
+> "may not survive" no longer holds.** The paragraph above is preserved as the triage record of
+> 2026-08-06, not as a live claim. The kill itself rests on **clause 1**, which is independent of this
+> second ground and stands unchanged. Whether the resolved gate is reason to REVISIT the kill is an
+> owner call, not a triage one.
+>
 > The owner ruling it carries (*"they are a follow-on, not a re-scope — retroactively widening a stalled
 > epic prevents it closing"*) is preserved above and remains sound; killing this entry does not disturb it.
 
