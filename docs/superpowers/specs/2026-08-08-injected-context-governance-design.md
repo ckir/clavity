@@ -182,21 +182,46 @@ only way to opt out is to write down why. A suite that hard-codes the file list 
   **which invariant** it waives (never a blanket waiver of all of them), and **no exemption may name an
   anomaly in section 3** - closing those is the point, and exempting one to reach green inverts the
   sequencing in section 7.
+  🔴 **That last rule is not self-enforcing, and saying so is the whole point of this document.** A parser
+  matching entries against failing files has no idea what "section 3" contains; because those 10 defects
+  are *actively failing*, an exemption for one passes bidirectional validation and turns CI green,
+  shipping the defect. So the plan must implement it as a **hardcoded blocklist of `(file, invariant)`
+  tuples** that the suite refuses to honour until each anomaly is closed - or state plainly that it is a
+  human review policy rather than an automated invariant. What it must NOT do is leave prose that reads
+  like a gate and enforces nothing. That is the exact failure this design was written to end, and it was
+  reproduced here, inside the design, at round 3.
 - **Exemptions must validate BIDIRECTIONALLY.** Requiring that every failing file has an exemption is only
   half the contract. Without the other half, exemptions become zombies: a file is cleaned up or deleted,
   its entry stays, and when the defect is reintroduced months later the stale entry silently masks the
   regression. So the gate must also assert that **every exemption entry corresponds to a file that exists
   and an invariant that is actively failing** - an entry whose file now passes without it fails the build
   as `unused exemption`. This makes the exemption list self-pruning rather than self-accumulating.
-- **Exemption path keys.** Paths are keyed **relative to the domain root** (`skills/adversarial-panel-review/SKILL.md`),
-  not to the repo root, so a single entry covers both byte-identical plugin trees; keying them at repo root
-  would require duplicating every entry, and exempting only one tree leaves the mirror gate green while CI
-  fails on the other. Keys are normalised to forward slashes regardless of host OS.
+- **Exemption path keys - deduplicated ONLY across the mirrored twins.** Paths are keyed relative to the
+  domain root (`skills/adversarial-panel-review/SKILL.md`) *for the two byte-identical plugin trees only*,
+  which are aliased to a single logical root. Keying those at repo root would require duplicating every
+  entry, and exempting only one tree leaves the mirror gate green while CI fails on the other.
+  🔴 **Every OTHER product keeps its product prefix** (`agy-autotrain/...`, `ghidrust/plugin/...`,
+  `commonmemory/...`, `seed/...`). Stripping the root globally would let `skills/review/SKILL.md` in one
+  product silently waive an invariant for a same-named file in a different product - a real collision once
+  the domain covers six roots, and one that grows more likely as products add skills.
+  Keys are normalised to forward slashes regardless of host OS.
 
 **Operator failure surface.** When the gate fails it must say which file, which invariant, what was found,
 and the exact exemption line that would waive it. A discovery gate that reports only *"file X is not
 covered"* forces the operator to reverse-engineer the check, which is how a gate acquires a reputation for
 being easier to bypass than to satisfy.
+
+**Aggregate, never short-circuit.** Every invariant evaluates the whole domain and reports all violations
+in one summary; the suite must not abort on the first one. Section 7 sequences the gate *before* the 10
+anomalies are fixed, so on the very first run the gate is expected to be red in several places at once.
+A short-circuiting runner would surface one failure, hide the rest, and destroy the red-to-green
+demonstration that is the only evidence each check actually catches the anomaly it was written for.
+
+**Traversal pruning is cheap insurance, not a live problem.** The panel raised build-artifact traversal
+(`target/`, `node_modules/`, `.venv/`, `.git/`) as a cost risk. **Measured and refuted for the current
+tree:** zero such directories exist under any of the six domain roots, and the entire corpus is 130 files.
+Prune them at the directory level anyway - it costs one line and the claim stops being true the day a
+domain root gains build output - but this is hardening, not a defect being fixed.
 
 **Invariants at first cut:**
 
@@ -255,6 +280,32 @@ asserts**, and only assert on the class it can be right about:
   prefix is wrong. Defaulting them to ASSERT re-imports false positives. So an unclassified path-like
   token **fails the build as `unclassified reference`**, and is resolved by adding it to ASSERT's prefix
   list or to SKIP - a deliberate act, recorded in the diff.
+
+**But "contains a `/`" is the wrong candidate filter, and this was measured.** In
+`plugin/skills/*/SKILL.md` plus `plugin/knowledge/*.md` there are **23 backticked slash-bearing tokens
+carrying no file extension and no variable marker**. They are not paths at all:
+
+- **slash-commands** - `/agent`, `/mcp`, `/model`, `/skills`, `/tasks`, `/usage`, `/teamwork-preview`
+- **directory references** - `.clavity/`, `.clavity/agy-marks/`, `.git/`, `.agents/skills/`
+- **prose** - `[doc/user]`
+
+Under a bare "contains `/`" filter all 23 fail the build on day one, and the repair - dumping English and
+command names into SKIP - pollutes the skip list until it means nothing. **Slash-commands are the worst
+case because they recur: every new command adds one.**
+
+**A candidate must therefore be positively identified as a path**, not merely contain a separator:
+it carries a known shipped file extension (`.md`, `.sh`, `.ps1`, `.json`, `.cs`, `.rs`, `.toml`), **or**
+begins with `./` or `../`, **or** begins with a known repo prefix. Everything else is not a reference and
+is never classified.
+
+🔴 **A leading bare `/` must NOT qualify a token as a path.** The panel proposed exactly that, and it is
+wrong on this corpus: `/agent`, `/mcp`, `/skills` and `/tasks` all begin with `/` and are slash-commands,
+so that rule converts seven correct tokens into seven build failures. Recorded because the finding was
+right while its suggested fix was not - the fix needed its own measurement.
+
+Directory references (`.clavity/agy-marks/`, trailing slash, no extension) are their own small class: they
+resolve as directories or they are skipped, and the plan must state which. They must not fall into the
+file-resolution path.
 
 The plan must re-measure the false-positive rate against the **full** domain after implementing this
 classification, and the check does not ship until that rate is zero on the current corpus. A check that
