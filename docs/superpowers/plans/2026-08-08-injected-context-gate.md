@@ -18,8 +18,9 @@
 
 - **Stage 1 (this plan):** build the gate, close the 10 known anomalies, sanitise the **252** non-ASCII
   characters across **five** files in the three never-audited products. Everything here is deterministic
-  and plannable today. (The three products carry 299 such characters in six files; `agy-observations.md`'s
-  47 are out of scope because that file is excluded by domain definition - see the boundary note below.)
+  and plannable today. (The three products carry 299 such characters in six files. `agy-observations.md`'s
+  47 are not sanitised because that file's encoding is WAIVED BY A DOCUMENTED EXEMPTION - it is in the
+  domain and every other invariant applies to it. Owner ruling; see the boundary note below.)
 - **Stage 2 (NOT this plan):** the multi-round anomaly sweep of `agy-autotrain/`, `ghidrust/plugin/` and
   `commonmemory/`. Its findings do not exist yet, so no line-level plan can be written for it. It runs on
   the same branch after stage 1, and **the branch does not merge until it is green.**
@@ -34,18 +35,31 @@ unread surface - that is the whole point of section 6.1's ruling.
   cross-references before committing to it. Deferred as a separate decision; **not silently dropped.**
 - **Rulings-become-ROADMAP-entries (spec 4.3).** Process discipline, no code.
 
-### One boundary question this plan RESOLVES, discovered during planning
+### One boundary question, got WRONG first and corrected by owner ruling
 
 `agy-autotrain/knowledge/agy-observations.md` is the agy-learn **inbox**. It ships
-(`agy-autotrain/installer/agy-autotrain.iss:60`, `Flags: onlyifdoesntexist`) but it is *staging data*, not
-instruction text: agents append to it, `agy-curate` drains it into the golden-header GROWTH region, and
-**GROWTH is what actually reaches context** - already governed by `check-growth-budget.Tests.ps1`. Its
-established line format uses `U+00B7` as a field separator, pinned by
-`scripts/tests/agy-curate-nudge.Tests.ps1:208` (*"the LIVE inbox delimits with U+00B7, not ASCII"*).
+(`agy-autotrain/installer/agy-autotrain.iss:60`, `Flags: onlyifdoesntexist`).
 
-It therefore belongs in the **domain ignorelist**, not the exemptions file. That is a domain-definition
-call, which the no-exemption ruling permits; parking it as an exemption would not be. Task 2 records it
-with that reason.
+**An earlier draft of this plan put it in the domain IGNORELIST**, arguing it was staging data rather than
+instruction text - agents append to it, `agy-curate` drains it into the golden-header GROWTH region, and
+GROWTH is what reaches context.
+
+🔴 **That argument was wrong, and it was wrong in the way this whole project exists to catch.**
+`agy-autotrain/skills/agy-curate/SKILL.md:105` reads *"For each inbox entry - decide"*: **an agent running
+`agy-curate` loads the inbox into its own context.** Under the governing rule - *if something enters agent
+context it gets audited* - the inbox is squarely in the domain, and removing it via the ignorelist was an
+exemption wearing a different name, against a ruling (6.1) that permits none.
+
+**OWNER RULING, 2026-08-08: treat it as a genuine EXEMPTION, encoding only.** It sits in the domain, every
+other invariant applies to it, and one documented entry waives `encoding` alone - exactly the standing
+given `adversarial-panel-review/SKILL.md`'s deliberate 69 characters. The justification is that its
+`U+00B7` field delimiter is a **pre-existing, deliberate, test-pinned design decision**
+(`scripts/tests/agy-curate-nudge.Tests.ps1:207-209`, *"the LIVE inbox delimits with U+00B7, not ASCII"*),
+not debt parked to make the gate go green early - which is the thing 6.1 was written to forbid.
+
+The alternative the owner declined was to sanitise it and change the delimiter in agy-learn's template,
+`agy-curate`'s parser and that pinning test. Recorded because it is the fallback if the exemption is ever
+challenged.
 
 ---
 
@@ -223,9 +237,14 @@ Append inside the `Describe` block:
             @{ path = 'clavity-dotnet/plugin/README.md' }
             @{ path = 'clavity-dotnet/plugin/plugin.json' }
             @{ path = 'clavity-dotnet/plugin/NOTICE' }
-            @{ path = 'agy-autotrain/knowledge/agy-observations.md' }
         ) {
             $script:Files | Should -Not -Contain $path
+        }
+        It 'does NOT subtract the agy-learn inbox - it is in the domain and handled by exemption' {
+            # agy-curate/SKILL.md:105 ("For each inbox entry - decide") shows an agent reads this file
+            # into context. Ignoring it would be an exemption wearing a different name; owner ruled it is
+            # an exemption proper, waiving encoding only.
+            $script:Files | Should -Contain 'agy-autotrain/knowledge/agy-observations.md'
         }
         It 'subtracts nothing silently - every ignored path sits under a recorded reason' {
             $lines = @(Get-Content (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt'))
@@ -268,13 +287,12 @@ Create `scripts/injected-context-ignore.txt`:
 **/installer/**
 **/dist/**
 **/publish/**
-# STAGING DATA, not injected text. The agy-learn inbox is appended to by agents and drained by
-# agy-curate into the golden-header GROWTH region; GROWTH is the artifact that reaches context and is
-# already governed by check-growth-budget.Tests.ps1. Its line format uses U+00B7 as a field separator,
-# pinned by scripts/tests/agy-curate-nudge.Tests.ps1:208. Ignored by DOMAIN DEFINITION, not exempted -
-# the owner's 6.1 ruling forbids exemptions, and this is not one.
-agy-autotrain/knowledge/agy-observations.md
 ```
+
+🔴 **`agy-autotrain/knowledge/agy-observations.md` is deliberately NOT here.** An earlier draft ignored it
+as "staging data"; that was wrong - `agy-curate/SKILL.md:105` shows an agent reads it into context, so it
+is in the domain. It is handled by a documented **exemption** in Task 3 instead, per owner ruling. Do not
+re-add it to this list.
 
 - [ ] **Step 4: Implement discovery**
 
@@ -424,6 +442,11 @@ Create `scripts/injected-context-exemptions.json`:
       "scope": "twin-plugin",
       "invariant": "encoding",
       "reason": "Deliberate and pre-existing: 69 non-ASCII characters, already documented as an intentional exclusion at scripts/check-agy-discipline-skills.ps1:20-22. Not debt, not pending audit."
+    },
+    {
+      "path": "agy-autotrain/knowledge/agy-observations.md",
+      "invariant": "encoding",
+      "reason": "Owner ruling 2026-08-08. The agy-learn inbox IS in the domain - agy-curate/SKILL.md:105 shows an agent reads it into context - but its U+00B7 field delimiter is a deliberate, test-pinned format decision (scripts/tests/agy-curate-nudge.Tests.ps1:207-209, 'the LIVE inbox delimits with U+00B7, not ASCII'). Pre-existing design, not debt parked to reach green. Every other invariant applies."
     }
   ]
 }
@@ -1423,7 +1446,8 @@ git commit -m "fix(injected-context): close all 10 audited anomalies"
 - Modify: `ghidrust/plugin/skills/ghidra-re-driver/SKILL.md` (88)
 
 252 characters across five files. (`agy-autotrain/knowledge/agy-observations.md`'s 47 are **not** included -
-it is ignored by domain definition; see Scope.)
+that file IS in the domain, but its encoding is waived by a documented exemption per owner ruling; see
+Scope and Task 3.)
 
 All five products ship through their own Inno installer (`agy-autotrain/installer/agy-autotrain.iss`,
 `ghidrust/installer/ghidrust.iss`, `commonmemory/installer/commonmemory.iss`), so the mojibake rationale
@@ -1480,6 +1504,9 @@ git commit -m "fix(injected-context): sanitise 252 non-ASCII chars in three prod
 - [ ] `./scripts/check-injected-context.ps1` exits 0 over all six domain roots.
 - [ ] `just test-scripts-fast` green, including `test-suite-registration.Tests.ps1`.
 - [ ] `bash scripts/check-seed-artifacts-synced.sh` exits 0.
-- [ ] The exemptions file holds exactly one entry.
+- [ ] The exemptions file holds exactly **two** entries, both waiving `encoding` only:
+      `adversarial-panel-review/SKILL.md` (deliberate, 69 chars) and
+      `agy-autotrain/knowledge/agy-observations.md` (test-pinned `U+00B7` delimiter, owner ruling).
+      A third entry appearing during execution means something was parked rather than fixed.
 - [ ] `$script:AnomalyBlocklist` is empty.
 - [ ] **The branch is NOT merged.** Stage 2 - the anomaly sweep of the three products - runs first.
