@@ -370,6 +370,27 @@ Describe 'assertion-strength-reminder.sh' {
             ($out -join "`n") | Should -Not -Match 'guard inactive'
         }
 
+        # PINS THE FOLD from panel round 1: the two predicates must fire on the SAME set. The earlier
+        # draft's degraded pattern fired on footests.ps1 and foo.Test.ps1 where the primary `case` stayed
+        # silent - the degraded branch was MORE eager than the primary, which is the direction the owner
+        # ruled against. Both rows below are regression targets, not examples.
+        It 'degraded predicate agrees with the primary predicate on <path> (expect <verdict>)' -ForEach @(
+            @{ path = 'C:/r/foo.Tests.ps1';       verdict = 'FIRE'   }
+            @{ path = 'C:/r/footests.ps1';        verdict = 'silent' }
+            @{ path = 'C:/r/foo.Test.ps1';        verdict = 'silent' }
+            @{ path = 'C:/r/BoundedViewTests.cs'; verdict = 'FIRE'   }
+            @{ path = 'C:/r/AThing.cs';           verdict = 'silent' }
+            @{ path = 'C:/r/tests/test_a.py';     verdict = 'FIRE'   }
+            @{ path = 'C:/r/x.csproj';            verdict = 'silent' }
+        ) {
+            $env:HOME = New-IsolatedHome
+            $primary  = ((Invoke-Hook     (New-Payload -FilePath $path -Cwd 'C:/r')) -join "`n") -match 'ASSERTION-STRENGTH'
+            $env:HOME = New-IsolatedHome
+            $degraded = ((Invoke-HookNoJq (New-Payload -FilePath $path -Cwd 'C:/r')) -join "`n") -match 'guard inactive: missing jq'
+            $degraded | Should -Be $primary -Because "the degraded branch must fire on exactly the same set as the primary one ($path)"
+            $primary  | Should -Be ($verdict -eq 'FIRE')
+        }
+
         It 'warns at most ONCE per session, not on every test-file write' {
             $env:HOME = New-IsolatedHome
             $p = New-Payload -FilePath 'C:/repo/scripts/tests/a.Tests.ps1' -Cwd 'C:/repo'
@@ -434,7 +455,12 @@ if ! command -v jq >/dev/null 2>&1; then
   [ -z "$cwd_path" ] && cwd_path="."
   [ -f "$HOME/.claude/.no-agy" ] && exit 0
   if [ -f "$cwd_path/.no-agy" ]; then exit 0; fi
-  if printf '%s' "$input" | grep -Eq '"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*([Tt]ests?\.ps1|Tests?\.cs|_test\.(py|rs)|test_[^"\\/]*\.(py|rs))"'; then
+  # THIS PATTERN MUST FIRE ON EXACTLY THE SAME SET AS THE `case` PREDICATE BELOW, and it is pinned by the
+  # 'degraded predicate agrees with the primary predicate' test. MEASURED 2026-08-08: an earlier draft used
+  # [Tt]ests?\.ps1, which fired on footests.ps1 and foo.Test.ps1 where the case stayed silent - the degraded
+  # branch was MORE eager than the primary one, the exact direction the owner ruled against. Anchor the dot
+  # and drop the optional s.
+  if printf '%s' "$input" | grep -Eq '"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*([./\\][Tt]ests\.ps1|[Tt]ests\.cs|[Tt]est\.cs|_test\.(py|rs)|[./\\]test_[^"\\/]*\.(py|rs))"'; then
     # DEBOUNCE THE DEGRADED BRANCH TOO, ONCE PER SESSION. agy-after-reminder.sh's degraded branch emits on
     # every match because a spec/plan write is RARE. A test-file write is not - on this trigger an
     # undebounced warning is the high-frequency spam this discipline exists to remove, rebuilt one layer
@@ -515,10 +541,17 @@ seen=""
 for _cand in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
   [ -d "$_cand" ] || mkdir -p "$_cand" 2>/dev/null
   _s="$_cand/.clavity-assert-seen-$sid"
-  if [ -f "$_s" ] || : > "$_s" 2>/dev/null; then
+  # THE EXISTS AND CREATE CASES MUST STAY SEPARATE, and the prune belongs ONLY to create.
+  # agy-anomaly-capture-reminder.sh:96 breaks on an EXISTING marker without pruning; only :97-108, the
+  # create path, prunes, and :99-100 states why: "It runs at most once per session and only on the path
+  # that just proved itself writable, so it never touches the hot path." Collapsing these into a single
+  # `[ -f ] || : >` condition puts `find` - a SUBPROCESS - on EVERY test-file write, which is the hottest
+  # path this plugin has. Do not re-merge them.
+  if [ -f "$_s" ]; then seen=$_s; break; fi
+  if : > "$_s" 2>/dev/null; then
     seen=$_s
-    # Prune only the location that just proved itself writable. -mtime +30, NOT +7: the markers of a session
-    # that is still OPEN are as old as that session (agy-anomaly-capture-reminder.sh:103-106).
+    # -mtime +30, NOT +7: the markers of a session that is still OPEN are as old as that session, and this
+    # prune runs from a DIFFERENT session (agy-anomaly-capture-reminder.sh:103-106).
     find "$_cand" -maxdepth 1 -name '.clavity-assert-seen-*' -mtime +30 -delete 2>/dev/null
     break
   fi
@@ -630,9 +663,15 @@ This step is the whole point of the discipline being shipped; do not skip it. Ne
 never fires:
 
 ```bash
-sed -i 's/^\[ "\$fire" -eq 0 \] && exit 0$/exit 0/' clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh
+H=clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh
+sed -i 's/^\[ "\$fire" -eq 0 \] && exit 0$/exit 0/' "$H"
+# THE MUTANT MUST BE PROVEN TO HAVE APPLIED. A sed whose pattern does not match is a SILENT no-op: the
+# suite then stays green and the executor reads that as "the tests are oracles" when nothing was mutated.
+# This is the same defect class the 2026-08-08 test-audit folded (a fixture that silently fails to mutate).
+git diff --quiet -- "$H" && { echo "MUTANT DID NOT APPLY - the sed pattern missed. STOP; do not read the suite result."; exit 1; }
 pwsh -NoProfile -c "Invoke-Pester 'scripts/tests/assertion-strength-reminder.Tests.ps1' -CI"
-git checkout -- clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh
+git checkout -- "$H"
+git diff --quiet -- "$H" && echo "hook restored clean" || echo "RESTORE FAILED - STOP"
 ```
 
 Expected under the mutant: every `FIRES on <path>` row plus the three-smells row and the positive control go
@@ -642,9 +681,12 @@ STOP and fix them before proceeding.** Record the observed counts in the commit 
 - [ ] **Step 2: Second mutant - prove the debounce test is an oracle**
 
 ```bash
-sed -i 's|^  \[ "\$_line" = "\$norm" \] && exit 0$|  :|' clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh
+H=clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh
+sed -i 's|^  \[ "\$_line" = "\$norm" \] && exit 0$|  :|' "$H"
+git diff --quiet -- "$H" && { echo "MUTANT DID NOT APPLY - the sed pattern missed. STOP; do not read the suite result."; exit 1; }
 pwsh -NoProfile -c "Invoke-Pester 'scripts/tests/assertion-strength-reminder.Tests.ps1' -CI"
-git checkout -- clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh
+git checkout -- "$H"
+git diff --quiet -- "$H" && echo "hook restored clean" || echo "RESTORE FAILED - STOP"
 ```
 
 Expected: exactly the `fires on the FIRST touch and is SILENT on the second touch` row goes RED.
@@ -699,8 +741,19 @@ Records both mutant results from Steps 1-2."
 
 - [ ] **Step 1: Flip section 11's heading to SHIPPED**
 
-Change `### 11. PINNING-ASSERTION-STRENGTH - ship assertion-strength as a mechanical discipline · ✅ **KEPT 2026-08-06 (all three clauses)**`
-to a SHIPPED heading in the same style as section 12's (`ROADMAP.md:735`). Record the commit SHAs.
+Replace the heading at `ROADMAP.md:676` verbatim. FROM:
+
+```
+### 11. PINNING-ASSERTION-STRENGTH - ship assertion-strength as a mechanical discipline · ✅ **KEPT 2026-08-06 (all three clauses)**
+```
+
+TO (substitute the four real SHAs from Tasks 2-6; keep the `·` separator and the check glyph, which are
+the existing style at `ROADMAP.md:735` - this heading is ROADMAP prose, NOT a gated SKILL body, so the
+pure-ASCII rule does not apply to it):
+
+```
+### 11. PINNING-ASSERTION-STRENGTH - ship assertion-strength as a mechanical discipline · ✅ **SHIPPED 2026-08-08** (`<T2>` suite+registration · `<T3>` hook, dotnet · `<T4>` classic mirror · `<T5>` widened Step 5 · `<T6>` this reconcile)
+```
 
 - [ ] **Step 2: Correct the two stale claims inside section 11**
 
