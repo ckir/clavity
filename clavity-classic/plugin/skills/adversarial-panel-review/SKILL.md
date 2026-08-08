@@ -151,7 +151,8 @@ observations — nothing touching correctness, safety, contract behavior, or com
 live challenge" and stops the panel. The instruction to keep reviewing applies to substantive findings, not
 to an unbounded back-and-forth over style between two models. Review is an investment, not a cost to be
 minimized, so keep going as long as the panel is still finding substance — never stop early just to save
-spend.
+spend. Standing a finding down on that floor is the `DISCARDED-BELOW-FLOOR` disposition and carries its
+evidentiary bar - see "Disposition of findings (AGY-SCOPE)" below.
 
 Independent of the severity floor, apply a hard round cap: by default, at round 3, halt and ask the
 operator directly — "still finding substance at round 3, continue or ship?" — rather than looping
@@ -160,6 +161,59 @@ auto-stop. (This is the same halt-and-ask mechanism as the agy-escalation gate i
 human — but a distinct terminal outcome.) If there is no operator to ask (a non-interactive run), reaching
 the cap is itself a hard stop, and the run reports "cap-reached" in its final disposition rather than
 continuing or hanging.
+
+## Disposition of findings (AGY-SCOPE)
+
+Every finding raised in any round resolves to EXACTLY ONE of these five tokens. The set is closed -
+there is no sixth outcome, and nothing may sit "noted" or "acknowledged".
+
+- `FOLDED: <what changed>` - fixed inside the current work.
+- `REJECTED: <measured reason>` - the finding is false, killed by a measurement you quote: a `file:line`
+  or the tool stdout.
+- `DISCARDED-BELOW-FLOOR: <target> unreachable because <guard>` - contrived, exotic or unreachable. You
+  MUST cite the structural guard, invariant or precondition at `file:line` that makes it unreachable.
+  Prose alone is not enough; this token carries the same evidentiary bar as `REJECTED`.
+- `DEFERRED-TO-ANOMALIES: <anchor> * <YYYY-MM-DD>[ * unverified]` - reachable, not fixed now. `<anchor>`
+  is the SOURCE location as `file:line`, or the literal `n/a` when the defect has no single line. The
+  date identifies the inbox entry; never cite an inbox LINE NUMBER, because triage deletes entries and
+  shifts them. Append ` * unverified` when the captured entry is a `reported, unverified:` claim.
+- `UNVERIFIED-ACCEPTED: <finding>` - neither provable nor refutable, and the owner accepted the risk.
+
+**A defect's age is NEVER a disposition.** "Pre-existing", "not introduced by this commit" and "out of
+scope for this change" are not admissible stand-down reasons, and neither is any paraphrase of them. The
+only admissible stand-down is the reachability floor, which is age-blind. This does not make a bad
+stand-down impossible - it forces one to be stated as a falsifiable reachability claim that a peer can
+open the file and contradict.
+
+**Scope bound - age-blind reachability from the touched surface.** In scope: the reviewed diff or
+artifact, plus the contracts, invariants, schemas and execution paths that INTERSECT it. Out of scope:
+open-ended discovery in unrelated modules. If a path or contract touched by the change exposes a defect,
+that defect is in scope regardless of when the faulty line was authored.
+
+**Deferral is bounded by CAUSATION, not by line membership.** `DEFERRED-TO-ANOMALIES` is available only
+for a defect already reachable BEFORE this change, whose failure mode this change did not induce. Any
+failure this change causes must be `FOLDED`, regardless of which line the symptom appears on: a change at
+`x.rs:50` that panics untouched `x.rs:120` was caused by the change and is not deferrable.
+
+**A material deferral does not clear a completing verdict on your own authority.** A `MATERIAL` defect
+disposed as `DEFERRED-TO-ANOMALIES` needs an owner ruling first, exactly like the UNVERIFIED path. A
+`DISCARDED-BELOW-FLOOR` item clears on its own cited guard, because "not material" is what that token
+asserts.
+
+**Order matters.** Append to `.clavity/local-anomalies.md` FIRST, via the `open-issues` skill, then emit
+the token citing it. A token pointing at an entry that was never written is the rot this replaces. The
+peer never writes to that file: a subagent REPORTS, the driver VERIFIES, the driver WRITES.
+
+**Completeness gate.** You may NOT propose a verdict that COMPLETES this run while any raised finding
+lacks one of the five tokens. For this skill that means `GREEN`. Note the interaction with the stop
+conditions above: those stop the ROUNDS, this gate blocks the VERDICT. A run that stops with findings
+untokenized reports the open-findings disposition instead, never `GREEN`.
+
+**Anti-sweep.** Each run lists the top 1-2 findings it discarded below the floor, so a real defect cannot
+be swept under the floor unseen. The full list goes in the ephemeral per-run report; a one-line summary of
+each goes in a `## Stand-downs` section written into the REVIEWED ARTIFACT itself. This discipline reviews
+a pre-implementation artifact and a clean round may produce no commit at all, so the artifact is the only
+durable record available. An `UNVERIFIED-ACCEPTED` goes in that same section.
 
 ## Seat & persona palette
 Pick seats and the panel's overall persona from this palette by rule — never free-invent a seat outside
@@ -233,6 +287,9 @@ panel) and Step 4 (each additional round's rotation) draw from.
   VERDICT for that round.
 - A running ledger of folded findings, which feeds directly into the next round's
   "already-folded — do-NOT-re-raise" list.
+- A `## Stand-downs` section written into the reviewed artifact, listing each `DISCARDED-BELOW-FLOOR` and
+  `UNVERIFIED-ACCEPTED` on one line with its citation. This is the durable record for this discipline,
+  which has neither a ledger file nor a guaranteed commit.
 - A final disposition — one of: **GREEN** (a full panel round landed with no live challenge); a list of the
   open findings together with the fold decisions made on them; or a failure terminal —
   `agy-required-but-unreachable` (a high-leverage run could not reach agy, and no operator was available to
