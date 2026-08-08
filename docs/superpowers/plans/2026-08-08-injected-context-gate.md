@@ -225,13 +225,20 @@ Append inside the `Describe` block:
         ) {
             $script:Files | Should -Not -Contain $path
         }
-        It 'subtracts nothing silently - every ignored path has a recorded reason' {
-            $lines = Get-Content (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt')
+        It 'subtracts nothing silently - every ignored path sits under a recorded reason' {
+            $lines = @(Get-Content (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt'))
             $globs = @($lines | Where-Object { $_ -and -not $_.StartsWith('#') })
             $globs.Count | Should -BeGreaterThan 0
-            foreach ($g in $globs) {
-                $i = [array]::IndexOf($lines, $g)
-                $lines[$i - 1] | Should -Match '^#' -Because "the line above '$g' must be its reason"
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if (-not $lines[$i] -or $lines[$i].StartsWith('#')) { continue }
+                # Scan UPWARD to the nearest comment. One reason may head a block of related globs -
+                # requiring a comment on the immediately preceding line would fail every glob after the
+                # first in each block, and the likeliest "fix" is deleting this assertion, which destroys
+                # the invariant that nothing is ignored without a stated reason.
+                $j = $i - 1
+                while ($j -ge 0 -and $lines[$j] -and -not $lines[$j].StartsWith('#')) { $j-- }
+                ($j -ge 0 -and $lines[$j].StartsWith('#')) |
+                    Should -BeTrue -Because "'$($lines[$i])' must sit under a '#' reason"
             }
         }
     }
@@ -535,8 +542,15 @@ user's machine.
             (Resolve-Reference -Token 'agy-first-brainstorm.sh' -RepoRoot $script:RepoRoot).Outcome |
                 Should -BeExactly 'broken'
         }
-        It 'a uniquely resolving bare filename PASSES' {
+        It 'a mirrored plugin file PASSES - the twin trees canonicalise to one logical path' {
+            # agy-seam-inject.sh exists in BOTH plugin trees. Without canonicalisation this returns
+            # 'ambiguous', and since most bare filenames in shipped text name plugin files, the whole
+            # RESOLVE-THEN-ASSERT class would collapse into permanent ambiguity.
             (Resolve-Reference -Token 'agy-seam-inject.sh' -RepoRoot $script:RepoRoot).Outcome |
+                Should -BeExactly 'ok'
+        }
+        It 'a file unique to one product PASSES' {
+            (Resolve-Reference -Token 'driver-cheatsheet.core.md' -RepoRoot $script:RepoRoot).Outcome |
                 Should -BeExactly 'ok'
         }
         It 'a multiply resolving bare filename is AMBIGUOUS, not broken and not a pass' {
@@ -604,7 +618,16 @@ function Resolve-Reference {
             Get-ChildItem -LiteralPath $base -Recurse -File -Filter $Token -ErrorAction SilentlyContinue |
                 ForEach-Object { $found.Add($_.FullName) }
         }
-        $u = @($found | Sort-Object -Unique)
+        # CANONICALISE THE TWIN TREES BEFORE COUNTING. The two plugin trees are byte-identical by
+        # construction, so ANY bare filename naming a plugin file resolves to exactly two paths and would
+        # be reported 'ambiguous' forever - which would make this class almost useless, since most bare
+        # filenames in shipped text name plugin files. Collapsing the mirror pair to one logical path
+        # restores a meaningful 'ok'. Genuine ambiguity (ROADMAP.md across three products) still counts as
+        # more than one.
+        $canon = $found | ForEach-Object {
+            ($_.Substring($RepoRoot.Length + 1).Replace('\', '/')) -replace '^clavity-(dotnet|classic)/plugin/', 'clavity-TWIN/plugin/'
+        }
+        $u = @($canon | Sort-Object -Unique)
         $o = switch ($u.Count) { 0 { 'broken' } 1 { 'ok' } default { 'ambiguous' } }
         return [pscustomobject]@{ Outcome = $o; Matches = $u }
     }
@@ -799,11 +822,28 @@ Expected: FAIL - `Get-HookMessages` is not defined.
 function Get-HookMessages {
     param([string]$Text)
     $out = [System.Collections.Generic.List[string]]::new()
-    foreach ($m in [regex]::Matches($Text, '(?m)^\s*msg=(["''])(?<body>.*?)\1\s*$', 'Singleline')) {
+    # FOUR emission shapes, all present in the shipped hooks. Measured 2026-08-08: a parser handling only
+    # `msg=` sees NOTHING in agy-seam-inject.sh (3x `emit '...'`), agy-test-audit-reminder.sh (`emit`) or
+    # agy-anomaly-capture-reminder.sh (`msg_precompact=`, `msg_prompt=`) - which silently exempts the
+    # LONGEST messages in the repository from the budget. That is a vacuous check, not a partial one.
+    foreach ($m in [regex]::Matches($Text, '(?ms)^\s*msg[A-Za-z0-9_]*=(["''])(?<body>.*?)\1\s*$')) {
+        $out.Add($m.Groups['body'].Value)
+    }
+    foreach ($m in [regex]::Matches($Text, '(?ms)^\s*emit\s+(["''])(?<body>.*?)\1')) {
         $out.Add($m.Groups['body'].Value)
     }
     foreach ($m in [regex]::Matches($Text, '"additionalContext"\s*:\s*"(?<body>[^"]*)"')) {
         $out.Add($m.Groups['body'].Value)
+    }
+    # The jq WRAPPER, which is where a tag can be prepended to an otherwise-clean body. Without this the
+    # tag-hygiene invariant cannot see anomaly A1 at all: assertion-strength-reminder.sh:145 defines a body
+    # with no bracket tag, and :146 adds `[ASSERTION-STRENGTH] ` in the --arg expression. Composing the two
+    # is the only way the duplicated opening becomes visible to a static check.
+    foreach ($m in [regex]::Matches($Text, '--arg\s+\w+\s+"(?<wrap>[^"]*\$\{?msg[A-Za-z0-9_]*\}?[^"]*)"')) {
+        $w = $m.Groups['wrap'].Value
+        foreach ($b in @($out.ToArray())) {
+            $out.Add(($w -replace '\$\{?msg[A-Za-z0-9_]*\}?', [regex]::Escape($b).Replace('\', '')))
+        }
     }
     $out.ToArray()
 }
@@ -815,9 +855,12 @@ function Get-LongestHookMessage {
     ($all | Sort-Object Length -Descending)[0]
 }
 
-# Budget expressed in CHARACTERS, measured against the longest branch. The shipped messages measure
-# ~760-870 chars; the cap leaves headroom without licensing unbounded growth.
-$script:MaxMessageChars = 1000
+# Budget in CHARACTERS, against the longest branch. CALIBRATED BY MEASUREMENT 2026-08-08, not guessed:
+# the true maximum in the shipped hooks is 1618 (agy-seam-inject.sh, third `emit`), then 1517
+# (agy-test-audit-reminder.sh), then 845-848 (agy-consult-guard-post, assertion-strength).
+# An earlier draft said 1000 - which would have failed three hooks the moment the parser was fixed, and
+# looked plausible only because the parser could not see the long ones.
+$script:MaxMessageChars = 1800
 ```
 
 - [ ] **Step 4: Run to verify they pass**
@@ -1192,6 +1235,15 @@ cp clavity-dotnet/plugin/skills/adversarial-panel-review/SKILL.md clavity-classi
 bash scripts/check-seed-artifacts-synced.sh
 ```
 Expected: exit 0, no divergence reported.
+
+- [ ] **Step 9b: Verify the fixes WHILE the blocklist is still armed**
+
+Run: `pwsh -c "./scripts/check-injected-context.ps1"`
+Expected: exit 0. **Do this before retiring anything.** If a fix in Steps 1-8 was mistyped or incomplete,
+this is where it surfaces cleanly, as a violation naming the file and invariant. Retiring the blocklist
+and its tests first and only then running the suite would mix three indistinguishable causes - an unclosed
+anomaly, a broken invariant, and a stale assertion in `assertion-strength-reminder.Tests.ps1` - into one
+red run with no way to tell them apart.
 
 - [ ] **Step 10: Retire the blocklist**
 
