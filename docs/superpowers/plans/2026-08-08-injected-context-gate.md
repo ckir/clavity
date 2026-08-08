@@ -1369,8 +1369,9 @@ function Invoke-InjectedContextCheck {
 - [ ] **Step 4: Run to verify they pass**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-injected-context.Tests.ps1 -Output Detailed -CI"`
-Expected: `Failed: 0`. The violation rows pass **because the corpus is still dirty** - the 10 anomalies and
-the 252 characters are closed in Tasks 10 and 11.
+Expected: `Failed: 0`. The violation rows pass **because their fixtures are dirty**, not the repository -
+they run against temp directories and are unaffected by Tasks 10 and 11. Only the corpus-size positive
+control reads the live tree.
 
 - [ ] **Step 5: Prove the walker is non-vacuous**
 
@@ -1392,9 +1393,12 @@ git commit -m "feat(gate): walk the corpus, one violation record per (file, inva
 
 **Files (each change made in `clavity-dotnet/`, then mirrored by `cp`):**
 - Modify: `clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh:145-146`
-- Modify: `scripts/tests/assertion-strength-reminder.Tests.ps1` - its assertions pin the OLD message text
-  and will fail once Step 1 lands. **This file was missing from this list and from Step 12's `git add`,
-  which would have left it modified-but-unstaged after the commit.**
+- **NOT modified: `scripts/tests/assertion-strength-reminder.Tests.ps1`.** A round-9 fold added it here on
+  the premise that A2's fix would break its `carries no AGY- prefix` assertion at `:201`. **A2 was withdrawn
+  in the same round, so that premise no longer exists**, and the suite passes against the new message as-is:
+  `:183` matches the opening `[ASSERTION-STRENGTH]` tag, and `:189-191` match `cardinality`, `fallback` and
+  `distractor` - PowerShell's `-Match` is case-insensitive and the new text carries all three in caps.
+  Two folds in one round, and the second invalidated the first.
 - ~~`assertion-strength-reminder.sh:43`~~ - **no longer modified; A2 withdrawn, see Step 2.**
 - Modify: `clavity-dotnet/plugin/skills/agy-first/SKILL.md:114`
 - Modify: `clavity-dotnet/plugin/knowledge/agy-capabilities.md:12`
@@ -1505,20 +1509,21 @@ in `assertion-strength-reminder.Tests.ps1`.
 
 - [ ] **Step 10: Retire the blocklist**
 
-Delete all five tuples from `$script:AnomalyBlocklist` in `scripts/check-injected-context.ps1`, leaving
+Delete all **four** tuples from `$script:AnomalyBlocklist` in `scripts/check-injected-context.ps1`, leaving
 `@()`, and delete `Test-IsBlocklisted`'s two test rows from Task 8's Context. The guarantee now transfers
 to the ordinary invariants, which pass on those files and will fail again if the defects return.
 
 - [ ] **Step 11: Run the affected suites**
 
 Run: `pwsh -c "Invoke-Pester @('scripts/tests/check-injected-context.Tests.ps1','scripts/tests/assertion-strength-reminder.Tests.ps1','scripts/tests/plugin-hooks-payload.Tests.ps1','scripts/tests/check-seed-artifacts-synced.Tests.ps1','scripts/tests/check-agy-discipline-skills.Tests.ps1') -Output Detailed -CI"`
-Expected: `Failed: 0`. **If `assertion-strength-reminder.Tests.ps1` fails, its assertions pin the OLD
-message text** - update them to the new text; do not revert the message.
+Expected: `Failed: 0`, **including `assertion-strength-reminder.Tests.ps1` unmodified** - verified above,
+its three assertions all still hold against the new message. If it DOES fail, the message text was
+mistyped; fix the message, not the test.
 
 - [ ] **Step 12: Commit**
 
 ```bash
-git add clavity-dotnet/plugin clavity-classic/plugin seed/golden-header.md clavity-dotnet/ROADMAP.md scripts/check-injected-context.ps1 scripts/tests/check-injected-context.Tests.ps1 scripts/tests/assertion-strength-reminder.Tests.ps1
+git add clavity-dotnet/plugin clavity-classic/plugin seed/golden-header.md clavity-dotnet/ROADMAP.md scripts/check-injected-context.ps1 scripts/tests/check-injected-context.Tests.ps1
 git commit -m "fix(injected-context): close 9 audited anomalies; A2 withdrawn as a documented ruling"
 ```
 
