@@ -290,7 +290,7 @@ Create `scripts/injected-context-ignore.txt`:
 ```
 
 🔴 **`agy-autotrain/knowledge/agy-observations.md` is deliberately NOT here.** An earlier draft ignored it
-as "staging data"; that was wrong - `agy-curate/SKILL.md:105` shows an agent reads it into context, so it
+as "staging data"; that was wrong - `agy-autotrain/skills/agy-curate/SKILL.md:105` shows an agent reads it into context, so it
 is in the domain. It is handled by a documented **exemption** in Task 3 instead, per owner ruling. Do not
 re-add it to this list.
 
@@ -1191,6 +1191,9 @@ container-not-claim failure this whole project is about, reproduced one level do
         }
 
         It 'inspects a non-trivial number of files' {
+            # MEASURED 2026-08-09: the six roots hold 130 files; 97 survive the ignorelist. The floor is
+            # deliberately loose - the rows above already assert SPECIFIC files are present, so this one
+            # exists only to stop an empty or near-empty corpus making them vacuous.
             $script:Corpus.Count | Should -BeGreaterThan 40 -Because 'an empty corpus makes every row below vacuous'
         }
         # 🔴 THESE ROWS USE HERMETIC FIXTURES, AND THAT IS NOT A STYLE CHOICE.
@@ -1449,23 +1452,24 @@ owner's artifact to amend.** This plan does not silently diverge from it - the d
 
 - [ ] **Step 3: C1 - the plan residue**
 
-At `agy-first/SKILL.md:114`, change `contract doc (Task 5).` to
+At `clavity-dotnet/plugin/skills/agy-first/SKILL.md:114`, change `contract doc (Task 5).` to
 `contract doc, docs/agy-disciplines-marker-contract.md.`
 
 - [ ] **Step 4: C2 - the dead hook reference**
 
-At `agy-capabilities.md:12`, change `` `agy-first-brainstorm.sh` `` to `` `agy-seam-inject.sh` ``.
+At `clavity-dotnet/plugin/knowledge/agy-capabilities.md:12`, change `` `agy-first-brainstorm.sh` `` to `` `agy-seam-inject.sh` ``.
 
 - [ ] **Step 5: C5 - the separator count**
 
-At `open-issues/SKILL.md:95`, change `Keep the four ` to `Keep the three `.
+At `clavity-dotnet/plugin/skills/open-issues/SKILL.md:95`, change `Keep the four ` to `Keep the three `.
 Verify against `:87`: `- [%s] %s * %s * %s * task=%s` contains exactly three ` * ` separators.
 
 - [ ] **Step 6: B1 - the owner's round-cap ruling that never shipped**
 
-At `agy-capstone/SKILL.md:190`, change `MAX_CAPSTONE_ROUNDS = 3` to `MAX_CAPSTONE_ROUNDS = 6`, and
+At `clavity-dotnet/plugin/skills/agy-capstone/SKILL.md:190`, change `MAX_CAPSTONE_ROUNDS = 3` to `MAX_CAPSTONE_ROUNDS = 6`, and
 `at round 3` in the following line to `at round 6`.
-At `adversarial-panel-review/SKILL.md:157-158`, change both `round 3` occurrences to `round 6`.
+At `clavity-dotnet/plugin/skills/adversarial-panel-review/SKILL.md:157-158`, change both `round 3`
+occurrences to `round 6`.
 
 - [ ] **Step 7: C3 - the golden header's 11 non-ASCII characters**
 
