@@ -71,7 +71,9 @@ challenged.
 | `scripts/injected-context-exemptions.json` | CREATE. The only escape hatch. One entry = one path + one invariant + one reason. |
 | `scripts/injected-context-ignore.txt` | CREATE. The subtractive ignorelist - non-injected infrastructure and staging data, one path-glob per line with a `#` reason above it. |
 | `scripts/tests/check-injected-context.Tests.ps1` | CREATE. One `It` row per (file, invariant) via `-ForEach`, plus the exemptions-driven iteration. |
-| `justfile:100-101` | MODIFY. Register the new suite in `test-scripts-fast`. |
+| `justfile:100-101` | MODIFY. Register the new suite in `test-scripts-fast` (Task 1). |
+| `justfile` | MODIFY. Add a `check-injected-context` recipe alongside the existing `check-*` family (Task 12). |
+| `.github/workflows/ci-scripts.yml` | MODIFY. Run the checker in CI, the way `check-installer-ascii.ps1` is run at `:50` (Task 12). **Without this the gate never runs after merge.** |
 | `clavity-{dotnet,classic}/plugin/hooks/assertion-strength-reminder.sh` | MODIFY. Message rewrite (A4/A1/C4) + the `:146` unwrap. |
 | `clavity-{dotnet,classic}/plugin/skills/agy-first/SKILL.md` | MODIFY. C1 - the `(Task 5)` residue. |
 | `clavity-{dotnet,classic}/plugin/knowledge/agy-capabilities.md` | MODIFY. C2 - the dead `agy-first-brainstorm.sh` reference. |
@@ -1186,7 +1188,9 @@ container-not-claim failure this whole project is about, reproduced one level do
     Context 'the gate actually audits the corpus' {
         BeforeAll {
             . $script:Script -RepoRoot $script:RepoRoot
-            $script:Violations = Get-InjectedContextViolations -RepoRoot $script:RepoRoot
+            # No live-repo violation walk here. The draft that asserted against the real tree needed it;
+            # every row now uses a hermetic fixture, so it would be a dead full-repository scan on every
+            # run of the suite.
             $script:Corpus = Get-InjectedContextFiles -RepoRoot $script:RepoRoot
         }
 
@@ -1210,7 +1214,9 @@ container-not-claim failure this whole project is about, reproduced one level do
                 param([hashtable]$Files)   # relative path -> content
                 $d = Join-Path ([IO.Path]::GetTempPath()) ("icv-" + [guid]::NewGuid().ToString('N'))
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
-                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-exemptions.json') (Join-Path $d 'scripts')
+                foreach ($f in 'injected-context-exemptions.json', 'injected-context-ignore.txt') {
+                    Copy-Item (Join-Path $script:RepoRoot "scripts/$f") (Join-Path $d 'scripts')
+                }
                 foreach ($k in $Files.Keys) {
                     $p = Join-Path $d $k
                     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $p) | Out-Null
@@ -1222,7 +1228,7 @@ container-not-claim failure this whole project is about, reproduced one level do
 
         It 'produces a violation record carrying file, invariant, finding and the waiver line' {
             $d = & $script:MakeFixture @{ 'seed/x.md' = 'see `doc/typo-prefix.md` here' }
-            $v = Get-InjectedContextViolations -RepoRoot $d -Files @('seed/x.md') | Select-Object -First 1
+            $v = Get-InjectedContextViolations -RepoRoot $d | Select-Object -First 1
             $v.File       | Should -Not -BeNullOrEmpty
             $v.Invariant  | Should -Not -BeNullOrEmpty
             $v.Finding    | Should -Not -BeNullOrEmpty
@@ -1231,7 +1237,7 @@ container-not-claim failure this whole project is about, reproduced one level do
         }
         It 'names the specific file and invariant rather than only counting' {
             $d = & $script:MakeFixture @{ 'seed/dead.md' = 'the hook `agy-first-brainstorm.sh` does this' }
-            $v = Get-InjectedContextViolations -RepoRoot $d -Files @('seed/dead.md')
+            $v = Get-InjectedContextViolations -RepoRoot $d
             ($v | Where-Object { $_.File -eq 'seed/dead.md' -and $_.Invariant -eq 'reference' }) |
                 Should -Not -BeNullOrEmpty -Because 'a broken reference must be named, not summed'
             Remove-Item -Recurse -Force $d
@@ -1241,7 +1247,7 @@ container-not-claim failure this whole project is about, reproduced one level do
                 'seed/a.md' = 'see `doc/typo-one.md`'
                 'seed/b.md' = 'see `script/typo-two.ps1`'
             }
-            $v = Get-InjectedContextViolations -RepoRoot $d -Files @('seed/a.md','seed/b.md')
+            $v = Get-InjectedContextViolations -RepoRoot $d
             (@($v | Select-Object -ExpandProperty File -Unique)).Count |
                 Should -Be 2 -Because 'a short-circuiting runner hides every failure after the first'
             Remove-Item -Recurse -Force $d
@@ -1260,7 +1266,7 @@ container-not-claim failure this whole project is about, reproduced one level do
             $rel = 'seed/oversized.sh'
             Set-Content -LiteralPath (Join-Path $dir $rel) -Value ("msg='" + ('X' * ($script:MaxMessageChars + 1)) + "'") -Encoding ascii
 
-            $v = Get-InjectedContextViolations -RepoRoot $dir -Files @($rel)
+            $v = Get-InjectedContextViolations -RepoRoot $dir
             ($v | Where-Object { $_.Invariant -eq 'payload-budget' }) |
                 Should -Not -BeNullOrEmpty -Because 'the enforcement branch must fire, not merely the parser'
             Remove-Item -Recurse -Force $dir
@@ -1276,7 +1282,7 @@ container-not-claim failure this whole project is about, reproduced one level do
             $rel = 'seed/small.sh'
             Set-Content -LiteralPath (Join-Path $dir $rel) -Value "msg='short and clean'" -Encoding ascii
 
-            $v = Get-InjectedContextViolations -RepoRoot $dir -Files @($rel)
+            $v = Get-InjectedContextViolations -RepoRoot $dir
             ($v | Where-Object { $_.Invariant -eq 'payload-budget' }) | Should -BeNullOrEmpty
             Remove-Item -Recurse -Force $dir
         }
@@ -1303,13 +1309,14 @@ function New-Violation {
 }
 
 function Get-InjectedContextViolations {
-    # -Files is a TEST SEAM, and it is load-bearing. Without it the budget branch below cannot be tested:
-    # every shipped hook fits under the cap with headroom, so inverting or deleting the comparison leaves
-    # the whole suite green. Testing `Get-LongestHookMessage(...).Length -gt $cap` instead proves only
-    # that the EXTRACTOR did not truncate - it never reaches the enforcement branch at all. Production
-    # callers omit -Files and get the real discovery.
-    param([string]$RepoRoot, [string[]]$Files)
-    $files = if ($PSBoundParameters.ContainsKey('Files')) { $Files } else { Get-InjectedContextFiles -RepoRoot $RepoRoot }
+    # NO TEST SEAM. An earlier draft carried a -Files parameter so tests could drive the enforcement
+    # branch with a synthetic corpus - test-only surface in production code, and a path by which passing
+    # an empty set would silently neuter the gate. It is unnecessary: the tests point -RepoRoot at a temp
+    # directory, and discovery walks THAT tree, so a fixture file is found natively. The fixtures copy
+    # BOTH control files (exemptions and ignorelist) into the temp root, because Get-IgnoreGlobs throws
+    # when the ignorelist is absent - which is what would have broken had the seam simply been deleted.
+    param([string]$RepoRoot)
+    $files = Get-InjectedContextFiles -RepoRoot $RepoRoot
     $ex    = @((Get-Content (Join-Path $RepoRoot 'scripts/injected-context-exemptions.json') -Raw |
                 ConvertFrom-Json).exemptions)
     $exempt = @{}
@@ -1596,9 +1603,77 @@ git commit -m "fix(injected-context): sanitise 252 non-ASCII chars in three prod
 
 ---
 
+## Task 12: ARM THE GATE - wire the checker into `just` and CI
+
+**Files:**
+- Modify: `justfile` (a new `check-injected-context` recipe)
+- Modify: `.github/workflows/ci-scripts.yml`
+
+🔴 **Without this task the entire plan is decoration.** Tasks 1-11 build a checker, prove its mechanism
+with a Pester suite, and run it by hand exactly twice - Task 10 Step 9b and Task 11 Step 4. **The Pester
+suite that IS registered tests the checker's functions; it never audits the repository.** So the moment
+this branch merges, nothing audits injected context again, and the next defect ships exactly as the ten
+did. Eleven rounds of review did not notice, which is precisely the failure this project exists to name:
+a gate that is never invoked is not a gate.
+
+It lands last because the checker exits 1 until Task 11 sanitises the three products - wiring it earlier
+would red CI for the length of the branch.
+
+- [ ] **Step 1: Add the recipe, matching the sibling convention**
+
+`justfile` already carries a `check-*` family - `check-agy-skills:30`, `check-doc-stubs:34`,
+`check-installer-ascii:117`, `check-register-hash:133`. Add one more in the same shape:
+
+```just
+# Audit every byte this repository injects into a user's agent context (spec 2026-08-08).
+check-injected-context:
+    pwsh -NoProfile -Command "./scripts/check-injected-context.ps1"
+```
+
+- [ ] **Step 2: Run it**
+
+Run: `just check-injected-context`
+Expected: `check-injected-context: OK` and exit 0. If it exits 1, a Task 10 or 11 fix is incomplete -
+fix that, do not proceed.
+
+- [ ] **Step 3: Wire it into CI the way its siblings are wired**
+
+`.github/workflows/ci-scripts.yml:50` runs `pwsh -File scripts/check-installer-ascii.ps1` directly, with a
+comment noting the same script runs locally via `just` "so this cannot drift from the local". Follow that
+exactly - add a step alongside it:
+
+```yaml
+      - name: Injected-context gate
+        # Same script `just check-injected-context` runs locally, so this cannot drift from the local.
+        run: pwsh -File scripts/check-injected-context.ps1
+```
+
+- [ ] **Step 4: Prove the CI wiring is non-vacuous**
+
+Temporarily reintroduce one non-ASCII character into `seed/golden-header.md`, run
+`pwsh -File scripts/check-injected-context.ps1`, and confirm it exits **1** naming that file and the
+`encoding` invariant. Revert the character and confirm exit 0.
+
+**A gate nobody has watched fail is a gate nobody knows works.** This is the only step in the plan that
+tests the wiring rather than the checker.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add justfile .github/workflows/ci-scripts.yml
+git commit -m "feat(gate): arm the injected-context checker in just and CI"
+```
+
+---
+
 ## Stage 1 exit criteria
 
 - [ ] `./scripts/check-injected-context.ps1` exits 0 over all six domain roots.
+- [ ] 🔴 **`just check-injected-context` exists and the CI workflow runs the script.** Verify by opening
+      `justfile` and `.github/workflows/ci-scripts.yml` - not by remembering Task 12. **A checker that is
+      not invoked is not a gate, and this plan went eleven review rounds without anyone noticing it was
+      never armed.**
+- [ ] The CI wiring was proven non-vacuous once, by watching it fail (Task 12 Step 4).
 - [ ] `just test-scripts-fast` green, including `test-suite-registration.Tests.ps1`.
 - [ ] `bash scripts/check-seed-artifacts-synced.sh` exits 0.
 - [ ] The exemptions file holds exactly **two** entries, both waiving `encoding` only:
