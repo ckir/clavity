@@ -227,7 +227,25 @@ public sealed class CliVerbsTests : IDisposable
 
         GoldenHeader.CommitGrowth(_dir, "trigger prune\n");
 
-        Assert.Equal(GoldenHeader.SnapshotKeep, Baks(_dir).Length);
+        var survivors = Array.ConvertAll(Baks(_dir), f => Path.GetFileName(f));
+
+        Assert.Equal(GoldenHeader.SnapshotKeep, survivors.Length);
+
+        // IDENTITY, not just cardinality - and this test is the reason that rule exists.
+        // `Assert.Equal(SnapshotKeep, Baks(_dir).Length)` was for a long time the ONLY assertion here, and
+        // a count is invariant under ANY permutation before truncation. MEASURED 2026-08-08: reversing the
+        // sort at GoldenHeader.cs:256 to OrderBy - so the prune keeps the OLDEST slots and deletes the
+        // NEWEST, including the snapshot this very commit had just written - left the count at exactly
+        // SnapshotKeep and this test PASSING (Failed: 0, Passed: 1). It could not tell correct code from
+        // inverted code. This is the founding example of PINNING-ASSERTION-STRENGTH (ROADMAP section 11)
+        // and it stayed blind until after that discipline shipped.
+        //
+        // The rows below assert WHICH slots survive. The real slot carries today's stamp, so it is the
+        // only survivor not named 20260101-*; the seeded ring is evicted oldest-first.
+        Assert.Contains(survivors, f => !f.Contains("20260101-"));
+        Assert.Contains(survivors, f => f.Contains($"20260101-00000{GoldenHeader.SnapshotKeep + 2}"));
+        Assert.DoesNotContain(survivors, f => f.Contains("20260101-000001"));
+        Assert.DoesNotContain(survivors, f => f.Contains("20260101-000002"));
     }
 
     [Fact]
