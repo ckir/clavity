@@ -119,3 +119,42 @@ Describe 'check-agy-discipline-skills' {
         }
     }
 }
+
+Describe 'AGY-SCOPE disposition taxonomy' {
+    BeforeAll {
+        $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+        $script:Tokens = @(
+            'FOLDED: '
+            'REJECTED: '
+            'DISCARDED-BELOW-FLOOR: '
+            'DEFERRED-TO-ANOMALIES: '
+            'UNVERIFIED-ACCEPTED: '
+        )
+    }
+
+    It 'ships every disposition token in <skill>' -ForEach @(
+        @{ skill = 'agy-capstone' }
+        @{ skill = 'agy-test-audit' }
+        @{ skill = 'adversarial-panel-review' }
+    ) {
+        foreach ($driver in @('clavity-dotnet', 'clavity-classic')) {
+            $p = Join-Path $script:RepoRoot "$driver/plugin/skills/$skill/SKILL.md"
+            $raw = Get-Content -Raw $p
+            foreach ($t in $script:Tokens) {
+                $raw.Contains($t) | Should -BeTrue -Because "$driver/$skill must carry the token '$t'"
+            }
+        }
+    }
+
+    It 'forbids age as a disposition in <skill>' -ForEach @(
+        @{ skill = 'agy-capstone' }
+        @{ skill = 'agy-test-audit' }
+        @{ skill = 'adversarial-panel-review' }
+    ) {
+        foreach ($driver in @('clavity-dotnet', 'clavity-classic')) {
+            $p = Join-Path $script:RepoRoot "$driver/plugin/skills/$skill/SKILL.md"
+            (Get-Content -Raw $p).Contains("A defect's age is NEVER a disposition.") |
+                Should -BeTrue -Because "$driver/$skill must carry the age clause"
+        }
+    }
+}

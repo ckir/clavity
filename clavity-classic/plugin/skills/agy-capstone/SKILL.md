@@ -98,7 +98,8 @@ forcing functions, not a flat "find bugs":
   zero / overflow case, a cross-domain failure analogy - never a contrived or exotic edge.
 - **Reachability floor.** Stop nitpicking: a round producing only stylistic or contrived-edge
   observations - nothing touching correctness / safety / contract / completeness - counts as no live
-  challenge.
+  challenge. Standing a finding down on that floor is the `DISCARDED-BELOW-FLOOR` disposition and carries
+  its evidentiary bar - see "Disposition of findings (AGY-SCOPE)" below.
 - **Rotate seats across rounds.** Each additional round seats at least one lens not used in a prior
   round, so the loop surfaces NEW defect-classes instead of re-deriving covered ones.
 
@@ -109,6 +110,56 @@ reachable defects citing file:line. **Commit before the next round:** the peer r
 
 Intermediate fold-and-loop rounds report progress and loop; they emit **no** token. You emit a
 `[VERDICT]` token only at a terminal disposition or completion proposal (below).
+
+## Disposition of findings (AGY-SCOPE)
+
+Every finding raised in any round resolves to EXACTLY ONE of these five tokens. The set is closed -
+there is no sixth outcome, and nothing may sit "noted" or "acknowledged".
+
+- `FOLDED: <what changed>` - fixed inside the current work.
+- `REJECTED: <measured reason>` - the finding is false, killed by a measurement you quote: a `file:line`
+  or the tool stdout.
+- `DISCARDED-BELOW-FLOOR: <target> unreachable because <guard>` - contrived, exotic or unreachable. You
+  MUST cite the structural guard, invariant or precondition at `file:line` that makes it unreachable.
+  Prose alone is not enough; this token carries the same evidentiary bar as `REJECTED`.
+- `DEFERRED-TO-ANOMALIES: <anchor> * <YYYY-MM-DD>[ * unverified]` - reachable, not fixed now. `<anchor>`
+  is the SOURCE location as `file:line`, or the literal `n/a` when the defect has no single line. The
+  date identifies the inbox entry; never cite an inbox LINE NUMBER, because triage deletes entries and
+  shifts them. Append ` * unverified` when the captured entry is a `reported, unverified:` claim.
+- `UNVERIFIED-ACCEPTED: <finding>` - neither provable nor refutable, and the owner accepted the risk.
+
+**A defect's age is NEVER a disposition.** "Pre-existing", "not introduced by this commit" and "out of
+scope for this change" are not admissible stand-down reasons, and neither is any paraphrase of them. The
+only admissible stand-down is the reachability floor, which is age-blind. This does not make a bad
+stand-down impossible - it forces one to be stated as a falsifiable reachability claim that a peer can
+open the file and contradict.
+
+**Scope bound - age-blind reachability from the touched surface.** In scope: the reviewed diff or
+artifact, plus the contracts, invariants, schemas and execution paths that INTERSECT it. Out of scope:
+open-ended discovery in unrelated modules. If a path or contract touched by the change exposes a defect,
+that defect is in scope regardless of when the faulty line was authored.
+
+**Deferral is bounded by CAUSATION, not by line membership.** `DEFERRED-TO-ANOMALIES` is available only
+for a defect already reachable BEFORE this change, whose failure mode this change did not induce. Any
+failure this change causes must be `FOLDED`, regardless of which line the symptom appears on: a change at
+`x.rs:50` that panics untouched `x.rs:120` was caused by the change and is not deferrable.
+
+**A material deferral does not clear a completing verdict on your own authority.** A `MATERIAL` defect
+disposed as `DEFERRED-TO-ANOMALIES` needs an owner ruling first, exactly like the UNVERIFIED path. A
+`DISCARDED-BELOW-FLOOR` item clears on its own cited guard, because "not material" is what that token
+asserts.
+
+**Order matters.** Append to `.clavity/local-anomalies.md` FIRST, via the `open-issues` skill, then emit
+the token citing it. A token pointing at an entry that was never written is the rot this replaces. The
+peer never writes to that file: a subagent REPORTS, the driver VERIFIES, the driver WRITES.
+
+**Completeness gate.** You may NOT propose a verdict that COMPLETES this run while any raised finding
+lacks one of the five tokens. For this skill that means `[VERDICT: ALIGNED]`.
+
+**Anti-sweep.** Each run lists the top 1-2 findings it discarded below the floor, so a real defect cannot
+be swept under the floor unseen. The full list goes in the ephemeral per-run report; a one-line summary of
+each goes in the committed `docs/agy-capstone-ledger.md` row for this run. An `UNVERIFIED-ACCEPTED` is
+recorded as a durable line in `.clavity/agy-marks/skipped.log`, in the existing format.
 
 ## Division of labor: peer REVIEWS, driver MEASURES (the spine)
 The peer must **never run the test suite** - execution is driver-side, once.
@@ -174,9 +225,11 @@ for the human to ask, and do NOT kick the raw disagreement to the human as a for
 ## The [VERDICT] tokens (ASCII only, emitted by disposition)
 ASCII only - no em-dash or other non-ASCII (mojibake risk; this project has hit corruption). You (the
 driver) emit these, keyed to disposition, not a fixed count:
-- `[VERDICT: ALIGNED]` - a **clean terminal round**: every finding across the run has a disposition -
-  folded (fixed + measured clean), killed by measurement (`[VERDICT: REJECTED - ...]`), or explicitly
-  human-accepted as an UNVERIFIED risk - and no material unrefuted defect remains. A run whose findings
+- `[VERDICT: ALIGNED]` - a **clean terminal round**: every finding across the run carries one of the five
+  AGY-SCOPE disposition tokens above - `FOLDED`, `REJECTED`, `DISCARDED-BELOW-FLOOR`,
+  `DEFERRED-TO-ANOMALIES` or `UNVERIFIED-ACCEPTED` - and no material unrefuted defect remains UNRULED: a
+  material `DEFERRED-TO-ANOMALIES` needs the owner's ruling before this verdict, while a
+  `DISCARDED-BELOW-FLOOR` clears on its own cited guard. A run whose findings
   were ALL refuted-by-measurement IS `ALIGNED` (a peer hallucination you kill does not block completion,
   else "run until green" with an eager peer loops forever inventing fresh refuted findings). This
   PROPOSES completion; the human adjudicates GREEN. It **MAY RECUR** - if the human rejects it and you
