@@ -51,10 +51,12 @@ comment states this. They are a user-facing surface, not an agent-facing one.
 | `commonmemory/skills/` | 2 275 B |
 
 **73 507 B of injected context across three products was never enumerated by anyone.** All six markdown
-files in it carry non-ASCII characters (295 in total). Whether that is a *defect* there is an open question
-(see 6.1) - the ASCII rule is currently justified by mojibake risk through the Inno installer and by
-verdict-token integrity, and it is not yet established that all three products ship through that path. The
-*structural* point is not in question: enumerating the domain immediately surfaced more of it.
+files in it carry non-ASCII characters (295 in total). Whether that is a *defect* in those three products
+is a question the phase-1 sweep must answer, not one this section prejudges - the ASCII rule is currently
+justified by mojibake risk through the Inno installer and by verdict-token integrity, and it is not yet
+established that all three ship through that path. What IS settled is that all three are **in the domain
+and get no exemption** - owner ruling, 6.1. The *structural* point was never in question: enumerating the
+domain immediately surfaced more of it.
 
 ---
 
@@ -150,9 +152,9 @@ Four parts. Parts 1 and 2 are code; parts 3 and 4 are decisions about process an
 
 A new Pester suite that **discovers** the injected-context domain rather than listing it.
 
-**Domain roots** (final list to be fixed in the plan, gated on 6.1):
-`clavity-dotnet/plugin/`, `clavity-classic/plugin/`, `seed/`, and - subject to 6.1 - `agy-autotrain/`,
-`ghidrust/plugin/`, `commonmemory/`.
+**Domain roots** - final, ruled by the owner in 6.1, not open:
+`clavity-dotnet/plugin/`, `clavity-classic/plugin/`, `seed/`, `agy-autotrain/`, `ghidrust/plugin/`,
+`commonmemory/`. All six. No product is excluded and none is exempted pending audit.
 
 **The fail-closed property is the load-bearing part.** For every file discovered under a domain root, the
 file must either:
@@ -513,6 +515,23 @@ Three things this single rewrite fixes at once:
 - **A1** - the duplicated `[ASSERTION-STRENGTH] ASSERTION-STRENGTH:` opening is gone; the tag appears once.
 - **C4** - "Step 5" was ambiguous because the target file has two numbered lists with an item 5. The new
   text disambiguates inline: *"Step 5 (the audit round, item 5)"*.
+
+🔴 **A1's closure is CONDITIONAL on a second edit the body alone does not make, and the implementer must be
+told so explicitly.** `assertion-strength-reminder.sh:146` currently reads:
+
+```bash
+jq -nc --arg m "[ASSERTION-STRENGTH] $msg" '{hookSpecificOutput:{...}}'
+```
+
+It **prepends** the tag. The approved body above **opens** with the tag. Pasting the new body and leaving
+line 146 alone therefore re-creates the duplicated opening - which is exactly what A1 is. Line 146 must
+become `--arg m "$msg"`, matching the sibling at `agy-after-reminder.sh:95`, which already passes its
+message bare.
+
+This is worth stating at length because of how it was nearly missed: the panel round that reviewed this
+rewrite reported A1 "verified closed" and buried the precondition inside the verification prose rather than
+raising it as a finding. A conditional closure recorded as an unconditional one is the same defect class
+this document catalogues - a claim that reads as settled and is not.
 
 C4 being fixed inline here does **not** retire the anchor convention in section 4.2. That convention exists
 so the *next* cross-reference is unambiguous by construction rather than by an author remembering; this
