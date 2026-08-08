@@ -822,10 +822,16 @@ specified, differing only in the two lines that compute `$sid`.
 assertion. The marker prefix is `.clavity-assert-seen-` in the hook and in the prune glob.
 
 **Known gaps, stated rather than hidden:**
-1. **`$env:HOME` in the Pester tests governs the hook's `$HOME` only because bash inherits it.** If the
-   execution environment does not propagate it, the debounce tests will share one marker directory and the
-   second-touch test will pass for the wrong reason. Task 3 Step 2's "watch it fail" catches this, but the
-   executor should confirm isolation explicitly if that step looks odd.
+1. ~~`$env:HOME` may not reach bash, making the debounce tests share one marker directory.~~
+   **CLOSED - REFUTED BY MEASUREMENT 2026-08-08.** `$env:HOME` set in PowerShell DOES govern the hook's
+   `$HOME`: a file written by bash to `"$HOME/.clavity-tmp/marker"` under `New-IsolatedHome` A landed
+   inside directory A, and a second shell with `$env:HOME` set to directory B could not see it. Isolation
+   is real; the debounce tests are sound.
+   ⚠️ **Recorded because the FIRST probe of this was wrong and nearly shipped as a defect.** It compared
+   `$env:HOME` to the `$HOME` string bash reported and called them different - but bash renders the same
+   directory in POSIX notation (`C:\Users\...\Temp\asrt-x` -> `/tmp/asrt-x`), so the comparison failed for
+   a reason unrelated to isolation. **A control that fails for the WRONG reason is not a control**; test
+   the BEHAVIOUR (where does the file land) rather than the representation.
 2. **The predicate does not cover Go, Java, or JS/TS test conventions.** Deliberate, per the owner's
    strict-patterns ruling and the false-negative preference. Widening it later is a one-line `case` addition.
 3. **Task 1 Step 2 edits the owner's `~/.claude/settings.local.json`** and therefore STOPS for approval. If
