@@ -146,3 +146,5 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
     (reinforced, no dup).
   - Subagent-CAN-reach-peer-via-CLI → capabilities §F routing.
   - golden-header.md recompiled + version-stamped. -->
+- [anti-pattern] (driver/deterministic) A review brief that names its IN-SCOPE findings with a term and then reuses that SAME term for a closing catch-all section about OUT-OF-SCOPE observations gets a null answer every time: the peer believes it already answered that question above. Use two visibly different labels.  ·  `[corpus]` · 2026-08-08
+- [anti-pattern] (driver/probabilistic) A closing catch-all section that explicitly permits a null answer makes null the cheapest compliant response, so it is chosen regardless of what was noticed. Replace the open invitation with named sub-questions that HAVE no null answer - the least-clear part of the brief and how it was resolved, a file opened outside the review scope and what was noticed in it, an assumption made that the brief did not state. Every artifact has a weakest point and every reviewer makes assumptions.  ·  `[corpus]` · 2026-08-08
