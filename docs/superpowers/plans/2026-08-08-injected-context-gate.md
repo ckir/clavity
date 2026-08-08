@@ -344,8 +344,14 @@ Expected: `Failed: 0`, and at least 9 passing rows.
 - [ ] **Step 6: Prove the discovery is non-vacuous with a logic mutant**
 
 Temporarily change `if (-not (Test-IsIgnored ...))` to `if ($true)`. Re-run.
-Expected: the four `subtracts <path>` rows go RED and name the paths; the "finds" rows stay green.
+Expected: **exactly three** `subtracts <path>` rows go RED and name the paths (`README.md`,
+`plugin.json`, `NOTICE`); every "finds" row stays green, **and so does the `does NOT subtract the
+agy-learn inbox` row** - that one asserts presence, so a mutant that includes everything cannot redden it.
 Revert the mutant and re-run to confirm `Failed: 0`.
+
+The count is stated exactly because a mutant step whose prediction is wrong is worse than no mutant step:
+an executor who sees three reds where the plan promised four cannot tell whether the mutant worked or the
+implementation is broken. This prediction said four until the inbox row was split out of the array.
 
 - [ ] **Step 7: Commit**
 
@@ -546,7 +552,9 @@ function Test-IsPathCandidate {
 - [ ] **Step 4: Run to verify they pass**
 
 Run: `pwsh -c "Invoke-Pester scripts/tests/check-injected-context.Tests.ps1 -Output Detailed -CI"`
-Expected: `Failed: 0`, 13 new rows green.
+Expected: `Failed: 0`, **17** new rows green - 4 candidate, 9 non-candidate, 4 directory-reference.
+(This said 13 until the four directory rows were added; a row count in an expectation is a claim about
+the test file and rots the same way any other number does.)
 
 - [ ] **Step 5: Prove non-vacuity with a logic mutant**
 
