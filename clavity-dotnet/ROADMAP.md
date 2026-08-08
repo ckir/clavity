@@ -673,7 +673,7 @@ productize release. It remains undecided and is recorded here so it stops being 
 and are not in its model. Owner ruling 2026-07-31: they are a follow-on, not a re-scope — retroactively
 widening a stalled epic prevents it closing. This epic closes at four disciplines.
 
-### 11. PINNING-ASSERTION-STRENGTH — ship assertion-strength as a mechanical discipline · ✅ **KEPT 2026-08-06 (all three clauses)**
+### 11. PINNING-ASSERTION-STRENGTH — ship assertion-strength as a mechanical discipline · ✅ **SHIPPED 2026-08-08** (`674b0f1` suite+registration · `c12af5b` hook, dotnet · `318889d` classic mirror · `d045777` widened Step 5 · this reconcile)
 
 > **last-triaged: 2026-08-06.** The only item on this surface to clear the bar outright.
 > - **Clause 1 — MET, and this is the textbook case.** A cardinality assertion prints **PASS** over
@@ -705,7 +705,9 @@ test stays green. Measured, not reasoned: `5071872` records the mutation. Cardin
 - **Mechanical, no peer.** The detector was a test runner, not a reviewer. Routing it through agy adds
   cost without detection power.
 - **Plugin-only home.** Canonical prose is the ONE paragraph at `plugin/skills/agy-test-audit/SKILL.md`
-  Step 5 (`:88-96`), widened to reach tests written during ordinary implementation. That paragraph already
+  Step 5 (**`:88-99` as shipped** — this section long read `:88-96`, which was already stale before
+  execution: the §7 AGY-SCOPE amendment grew the paragraph. Measured 2026-08-08), widened to reach tests
+  written during ordinary implementation. That paragraph already
   specifies logic-mutant-not-structural and "confirm the SPECIFIC new test went red" — the gap was never
   missing prose, only prose scoped to audit-gap tests. **No `CLAUDE.md` copy** (`CLAUDE.md:62,91` record
   the standing decision that disciplines ship with the plugin and leave no residue there).
@@ -726,8 +728,16 @@ test stays green. Measured, not reasoned: `5071872` records the mutation. Cardin
    branch most installs actually run. Every sibling hook carries that fallback.
 3. Its `hooks.json` snippet uses the wrong schema — the real shape is a top-level `hooks` key with a
    nested `hooks:[{type:"command",command:...}]` array.
-4. `agy-test-audit-reminder.sh:10` states it **never** writes a marker, by design. A debounce marker is a
-   different thing from an outcome marker, but the deviation needs a deliberate decision, not a silent one.
+4. ~~`agy-test-audit-reminder.sh:10` states it **never** writes a marker, by design. A debounce marker is a
+   different thing from an outcome marker, but the deviation needs a deliberate decision, not a silent
+   one.~~ 🚫 **NOT AN OPEN DECISION — it was already made in writing, and this entry was wrong to ask.**
+   `agy-anomaly-capture-reminder.sh:49-53` states it outright: a hook marker *"must never live in
+   `.clavity/agy-marks/`, must never be read as evidence that anything was DELIVERED, and must never be
+   named `*.head`"*, and — verbatim — *"That reason does not apply here — this records a fact the hook does
+   know, that it already emitted."* Confirmed by `docs/agy-disciplines-marker-contract.md:1`
+   (*"skill writes, auto-fire hook reads"*). The shipped hook follows that precedent exactly.
+   **Generalises: before treating a ROADMAP "open decision" as open, grep for a sibling that already
+   decided it** — this one cost a design question that had been answered weeks earlier.
 
 **Cost:** ~80 tokens per firing, ~2 firings per session; verification is one targeted test run per
 directional or fallback assertion. Both variants' plugins must change together (byte-identical pair).
