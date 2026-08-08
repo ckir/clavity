@@ -11,8 +11,8 @@ procedure for emptying it.
 
 ## The bar - what to capture
 
-> Capture any reachable code defect, tool misbehavior, or operational blocker that actively degrades or
-> prevents the agent/owner workflow.
+> Capture any reachable code defect; or any tool misbehavior or operational blocker that actively
+> degrades or prevents the agent/owner workflow.
 
 That bar is deliberate on both edges. It is wide enough to catch things that are not code bugs at all -
 a tool that truncates the reply you asked for, a test gate that outgrew its timeout - because those
@@ -175,7 +175,10 @@ A SessionStart hook names the count and the oldest entry until the file is empty
 entry and do exactly one of:
 
 1. **PROMOTE** it to a tracked item with an owner and a slot - a `ROADMAP.md` entry, or a plan, or an
-   immediate fix if it is cheap enough to just do. Then delete the line.
+   immediate fix if it is cheap enough to just do. Then delete the line. **Which `ROADMAP.md`:** this is a
+   monorepo and several exist. Promote into the ROADMAP of the product that OWNS the defective file. For
+   shared or root-level code (`scripts/`, root `docs/`, CI workflows), use `clavity-dotnet/ROADMAP.md`,
+   which already carries the cross-cutting sections.
 2. **DELETE** it with a recorded reason - it was wrong, it was already fixed, it does not meet the bar,
    or it is a duplicate. Say which, in the commit message or to the owner.
 
