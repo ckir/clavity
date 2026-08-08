@@ -808,6 +808,48 @@ msg="this message is considerably longer than the degraded one"
 '@
             (Get-LongestHookMessage -Text $sh).Length | Should -BeGreaterThan 20
         }
+
+        It 'does not truncate a single-quoted body at bash''s quote-escape idiom' {
+            # The idiom is close-escape-reopen. A naive non-greedy regex stops at the first apostrophe.
+            $sh = "emit 'before the driver'`"'`"'s transport and a long tail after it'"
+            $b = Get-LongestHookMessage -Text $sh
+            $b | Should -Match 'long tail after it'
+            $b | Should -Match "driver's transport"
+        }
+
+        It 'composes the jq wrapper with the NAMED variable only' {
+            $sh = @'
+msg='the real body'
+other='unrelated body that must not be composed'
+jq -nc --arg m "[TAG] $msg" '{}'
+'@
+            $all = @(Get-HookMessages -Text $sh)
+            $all | Should -Contain '[TAG] the real body'
+            $all | Should -Not -Contain '[TAG] unrelated body that must not be composed'
+        }
+
+        It 'does not mangle a body containing a dollar sign' {
+            # PowerShell's -replace treats $1/$_ in the REPLACEMENT as capture references. Literal
+            # .Replace() must be used, or this body is silently emptied.
+            $sh = @'
+msg='append task=$task to the line'
+jq -nc --arg m "[TAG] $msg" '{}'
+'@
+            (Get-HookMessages -Text $sh) | Should -Contain '[TAG] append task=$task to the line'
+        }
+
+        It 'ignores a printf placeholder rather than treating it as a message' {
+            $sh = 'printf ''{"hookSpecificOutput":{"additionalContext":"%s"}}\n'' "$msg"'
+            (Get-HookMessages -Text $sh) | Should -Not -Contain '%s'
+        }
+
+        It 'FLAGS an over-budget message - the cap is not decorative' {
+            # Without this row nothing proves the budget check works: every shipped hook fits under 1800
+            # with headroom, so inverting or deleting the comparison would leave the suite fully green.
+            $sh = "msg='" + ('X' * ($script:MaxMessageChars + 1)) + "'"
+            (Get-LongestHookMessage -Text $sh).Length |
+                Should -BeGreaterThan $script:MaxMessageChars
+        }
     }
 ```
 
@@ -819,31 +861,58 @@ Expected: FAIL - `Get-HookMessages` is not defined.
 - [ ] **Step 3: Implement**
 
 ```powershell
+# A bash single-quoted string cannot contain a bare apostrophe; the idiom is to close, escape, reopen -
+# '"'"'. A naive non-greedy regex stops at the FIRST apostrophe and truncates the message.
+# MEASURED 2026-08-08 in agy-seam-inject.sh, where that idiom appears 4 times: true body lengths are
+# 1119, 1401 and 1618, while a naive scan reports 323, 381 and 1618. Two of three messages were being
+# read at a quarter of their real size - so the budget check would have passed them for the wrong reason.
+function Read-SingleQuotedBody {
+    param([string]$Text, [int]$Start)   # $Start = index just after the opening quote
+    $i = $Start
+    while ($true) {
+        $e = $Text.IndexOf("'", $i)
+        if ($e -lt 0) { return $null }
+        if ($e + 5 -le $Text.Length -and $Text.Substring($e, 5) -eq "'`"'`"'") { $i = $e + 5; continue }
+        return $Text.Substring($Start, $e - $Start).Replace("'`"'`"'", "'")
+    }
+}
+
 function Get-HookMessages {
     param([string]$Text)
-    $out = [System.Collections.Generic.List[string]]::new()
-    # FOUR emission shapes, all present in the shipped hooks. Measured 2026-08-08: a parser handling only
-    # `msg=` sees NOTHING in agy-seam-inject.sh (3x `emit '...'`), agy-test-audit-reminder.sh (`emit`) or
-    # agy-anomaly-capture-reminder.sh (`msg_precompact=`, `msg_prompt=`) - which silently exempts the
-    # LONGEST messages in the repository from the budget. That is a vacuous check, not a partial one.
-    foreach ($m in [regex]::Matches($Text, '(?ms)^\s*msg[A-Za-z0-9_]*=(["''])(?<body>.*?)\1\s*$')) {
-        $out.Add($m.Groups['body'].Value)
+    $out  = [System.Collections.Generic.List[string]]::new()
+    $vars = @{}
+
+    # Shape 1+2: `msg<suffix>='...'` and `emit '...'`, single-quoted, quote-idiom aware.
+    foreach ($m in [regex]::Matches($Text, "(?m)^\s*(?:(?<name>msg[A-Za-z0-9_]*)=|emit\s+)'")) {
+        $body = Read-SingleQuotedBody -Text $Text -Start $m.Index + $m.Length
+        if ($null -eq $body) { continue }
+        $out.Add($body)
+        if ($m.Groups['name'].Success) { $vars[$m.Groups['name'].Value] = $body }
     }
-    foreach ($m in [regex]::Matches($Text, '(?ms)^\s*emit\s+(["''])(?<body>.*?)\1')) {
+    # Shape 1+2, double-quoted form.
+    foreach ($m in [regex]::Matches($Text, '(?m)^\s*(?:(?<name>msg[A-Za-z0-9_]*)=|emit\s+)"(?<body>[^"]*)"')) {
         $out.Add($m.Groups['body'].Value)
+        if ($m.Groups['name'].Success) { $vars[$m.Groups['name'].Value] = $m.Groups['body'].Value }
     }
+    # Shape 3: a literal additionalContext payload. `%s` is a printf placeholder, not a message - it would
+    # otherwise enter the corpus as a synthetic one-character "message" and pollute every diagnostic.
     foreach ($m in [regex]::Matches($Text, '"additionalContext"\s*:\s*"(?<body>[^"]*)"')) {
-        $out.Add($m.Groups['body'].Value)
+        $b = $m.Groups['body'].Value
+        if ($b -ne '%s') { $out.Add($b) }
     }
-    # The jq WRAPPER, which is where a tag can be prepended to an otherwise-clean body. Without this the
-    # tag-hygiene invariant cannot see anomaly A1 at all: assertion-strength-reminder.sh:145 defines a body
-    # with no bracket tag, and :146 adds `[ASSERTION-STRENGTH] ` in the --arg expression. Composing the two
-    # is the only way the duplicated opening becomes visible to a static check.
-    foreach ($m in [regex]::Matches($Text, '--arg\s+\w+\s+"(?<wrap>[^"]*\$\{?msg[A-Za-z0-9_]*\}?[^"]*)"')) {
-        $w = $m.Groups['wrap'].Value
-        foreach ($b in @($out.ToArray())) {
-            $out.Add(($w -replace '\$\{?msg[A-Za-z0-9_]*\}?', [regex]::Escape($b).Replace('\', '')))
-        }
+    # Shape 4: the jq WRAPPER, where a tag can be prepended to an otherwise-clean body. Without this the
+    # tag-hygiene invariant cannot see anomaly A1 at all - assertion-strength-reminder.sh:145 defines a
+    # body with no bracket tag and :146 adds `[ASSERTION-STRENGTH] ` in the --arg expression.
+    # Composed by NAME against a variable map, with literal .Replace(). Never `-replace`: that is a REGEX
+    # operator whose replacement string treats `$1`/`$_` as capture references, so any message containing
+    # a dollar sign would be silently mangled or emptied. And never a cross-product over every body
+    # collected so far - that pairs each wrapper with unrelated messages and inflates the maximum the
+    # budget then measures.
+    foreach ($m in [regex]::Matches($Text, '--arg\s+\w+\s+"(?<wrap>[^"]*\$\{?(?<var>msg[A-Za-z0-9_]*)\}?[^"]*)"')) {
+        $name = $m.Groups['var'].Value
+        if (-not $vars.ContainsKey($name)) { continue }
+        $body = $vars[$name]
+        $out.Add($m.Groups['wrap'].Value.Replace('${' + $name + '}', $body).Replace('$' + $name, $body))
     }
     $out.ToArray()
 }
@@ -855,11 +924,14 @@ function Get-LongestHookMessage {
     ($all | Sort-Object Length -Descending)[0]
 }
 
-# Budget in CHARACTERS, against the longest branch. CALIBRATED BY MEASUREMENT 2026-08-08, not guessed:
-# the true maximum in the shipped hooks is 1618 (agy-seam-inject.sh, third `emit`), then 1517
-# (agy-test-audit-reminder.sh), then 845-848 (agy-consult-guard-post, assertion-strength).
-# An earlier draft said 1000 - which would have failed three hooks the moment the parser was fixed, and
-# looked plausible only because the parser could not see the long ones.
+# Budget in CHARACTERS, against the longest branch. CALIBRATED BY MEASUREMENT, and re-measured twice
+# because the first two probes were wrong in the same way the parser was:
+#   draft 1 said 1000  - the parser could not see `emit '...'` at all
+#   draft 2 said 1517  - the probe truncated at bash's '"'"' quote idiom, exactly the bug being hunted
+#   final:      1618   - quote-aware scan, agy-seam-inject.sh third `emit`; then 1517
+#                        (agy-test-audit-reminder.sh), then 845-848.
+# A probe that shares the defect it is measuring is not a measurement. Re-derive the cap with a
+# quote-aware scan whenever a hook message changes; do not trust this number if the parser changes.
 $script:MaxMessageChars = 1800
 ```
 
