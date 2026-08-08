@@ -114,7 +114,7 @@ conceded **5** (6 with the convention in 4.2).
 | A1 | Rendered message opens `[ASSERTION-STRENGTH] ASSERTION-STRENGTH:` - duplicated tag | `assertion-strength-reminder.sh:145-146` | **YES** |
 | A2 | Degraded line uses `[ASSERTION-STRENGTH] guard inactive:`; four siblings use `[AGY-DISCIPLINES] guard inactive:` | `assertion-strength-reminder.sh` | **YES** |
 | A3 | States "~80 tokens per firing" as settled; shipped messages measure ~190-212 | `clavity-dotnet/ROADMAP.md:742` | **NO** |
-| A4 | The only injected message that imperatively demands open-ended work per firing | `assertion-strength-reminder.sh` | **NO** |
+| A4 | The only injected message that imperatively demands open-ended work per firing | `assertion-strength-reminder.sh` | **NO** - RULED, see 6.2 |
 | B1 | Owner ruling of 2026-08-07 (`MAX_CAPSTONE_ROUNDS` 3 -> 6) never shipped; all four files still say 3 | `agy-capstone/SKILL.md:190`, `adversarial-panel-review/SKILL.md:157`, both drivers | **NO** |
 | C1 | "See the marker contract doc (Task 5)." - plan-artifact residue; siblings cite the real path | `agy-first/SKILL.md:114` | **YES** |
 | C2 | Cites hook `agy-first-brainstorm.sh`; `find` returns 0 matches. Real hook is `agy-seam-inject.sh` | `knowledge/agy-capabilities.md:12` | **YES** |
@@ -441,9 +441,11 @@ costs nothing sitting idle and can be run whenever the surface changes materiall
 
 Stated plainly, because a governance mechanism that oversells its coverage is itself the failure mode.
 
-- **A3, A4, C5 are not closed by anything here.** A stale measurement in prose, an ergonomics judgement,
-  and a prose quantifier disagreeing with an adjacent code snippet all require judgement. They are caught
-  by a manual sweep or not at all.
+- **A3 and C5 are not closed by anything here.** A stale measurement in prose and a prose quantifier
+  disagreeing with an adjacent code snippet both require judgement. They are caught by a manual sweep or
+  not at all. (**A4 is closed** - not by a mechanism, but by the owner's ruling in section 6.2 rewriting
+  the message. That is a decision, not a gate: nothing stops the next message from being written the same
+  way.)
 - **The gate cannot check invariants nobody thought to write.** It raises the floor; it is not proof of
   correctness.
 - **Byte-identity between the two plugin trees means a defect committed identically to both is invisible to
@@ -463,21 +465,58 @@ genuinely domain-wide; it also means 295 non-ASCII characters must be either san
 reasons before the gate can go green. Excluding them re-creates, on day one, the exact whitelist gap that
 caused this.
 
-**Recommendation:** include them, with a **per-file, single-invariant** exemption - each of the six files
-waiving *only* the encoding invariant, each carrying the same tracked reason
-(`"not yet audited - tracked at <ROADMAP ref>"`). Every other invariant applies to them from day one.
+**OWNER RULING, 2026-08-08: include all three, and grant NO exemption - audit them first.**
 
-This deliberately avoids a **bulk** exemption, which the solo panel flagged as reintroducing the very
-defect this design exists to remove: a single entry waiving everything for a whole subtree is a whitelist
-wearing a different hat, and it would hide any *reference* or *tag* defect in 73 507 B of never-audited
-text. Six narrow entries keep the debt visible and countable; one broad entry makes it invisible again.
+The owner chose the strictest of the four options on the table, over my recommendation of six narrow
+encoding exemptions. The consequence is explicit and accepted: **the gate does not land until those three
+products have been swept the way the clavity surface was.** No part of the 73 507 B gets a waiver for being
+inconvenient, and no debt is parked in the exemptions file to make the gate green early.
 
-### 6.2 A4 - the ergonomics of the assertion-strength message
+The reasoning is consistent with the rest of this document. An exemption granted at standup for "not yet
+audited" is a promise to come back, and section 4.3 is a case study in what happens to those. A gate that
+goes green over a surface nobody has read is the same category error as a check that measures the
+container: it produces the *appearance* of coverage, which is worse than a visibly missing gate because it
+stops anyone looking.
 
-Deferred here by owner ruling on 2026-08-08. `assertion-strength-reminder.sh` is the only injected message
-that imperatively demands open-ended work (prove a test non-vacuous with a logic mutant) on every first
-touch of every test file, in another user's session. The question is whether it should inform rather than
-command. No script can settle it. To be ruled when the replacement text can be seen in context.
+**This adds a phase to section 7**, and that phase is not small - it is a second multi-round sweep over
+three products, for anomalies of any kind, with every claimed finding verified by measurement.
+
+The exemptions mechanism still earns its place: `adversarial-panel-review/SKILL.md`'s 69 non-ASCII
+characters are a genuine, already-documented deliberate exception. What it does not become is a parking
+lot for unaudited surface.
+
+### 6.2 A4 - the ergonomics of the assertion-strength message - RULED
+
+**OWNER RULING, 2026-08-08: inform, don't command.** A4 is confirmed as a defect and closed by rewriting
+the message, not by any gate.
+
+The three smells are specific, earned, and worth injecting - they stay. What goes is the imperative demand
+for open-ended work on every firing. Proving non-vacuity against a logic mutant remains **mandatory**, but
+in the place an agent enters deliberately - the `agy-test-audit` discipline - rather than as an order
+arriving unbidden in a stranger's session while they are doing something else.
+
+**Approved replacement text**, to be implemented verbatim in both plugin trees:
+
+```
+[ASSERTION-STRENGTH] You just touched a test file. Three structural smells produce a GREEN test over
+broken code:
+(1) CARDINALITY over an ordered or filtered collection - assert boundary IDENTITY, not count.
+(2) A DUAL-PATH FALLBACK masked by the ambient environment - strip the dependency to force it.
+(3) A STRUCTURED-TOKEN matcher with no DISTRACTOR case - show it REJECTS a near-miss.
+The agy-test-audit skill, Step 5 (the audit round, item 5) carries the full procedure, including proving
+non-vacuity against a logic mutant.
+```
+
+Three things this single rewrite fixes at once:
+
+- **A4** - it states what to look for and orders nothing.
+- **A1** - the duplicated `[ASSERTION-STRENGTH] ASSERTION-STRENGTH:` opening is gone; the tag appears once.
+- **C4** - "Step 5" was ambiguous because the target file has two numbered lists with an item 5. The new
+  text disambiguates inline: *"Step 5 (the audit round, item 5)"*.
+
+C4 being fixed inline here does **not** retire the anchor convention in section 4.2. That convention exists
+so the *next* cross-reference is unambiguous by construction rather than by an author remembering; this
+rewrite fixes one instance, not the class.
 
 ### 6.3 Disposition of the 10
 
@@ -516,8 +555,20 @@ evidence and its first test cases. The implementation plan must close them as pa
   was wrong about the very script whose byte-cap this document cites elsewhere. For an ASCII scan
   `ReadAllBytes` is still the more direct instrument than decode-then-recount, but the encoding discipline
   is established, not new.
-- **Order.** Stand up the gate with its exemptions first, then close the 10 anomalies against it, so each
-  fix is demonstrated by a check that goes from red to green. Closing them first and adding the gate
-  afterwards proves nothing about the gate.
+- **Order - now THREE phases, because of the section 6.1 ruling.**
+  1. **Sweep the three unaudited products** (`agy-autotrain/`, `ghidrust/plugin/`, `commonmemory/`) for
+     anomalies of any kind, the way the clavity surface was swept: rounds until clean, every claimed
+     finding verified by measurement, findings dispositioned. This phase exists solely because the owner
+     ruled no exemption may stand in for an audit. **It is the largest unknown in the plan** - 73 507 B
+     that nobody has read with this lens, and the clavity sweep of a comparable surface produced 10
+     anomalies over four rounds. The plan must not assume it is clean.
+  2. **Stand up the gate**, with the only exemption being `adversarial-panel-review`'s documented 69
+     non-ASCII characters.
+  3. **Close the anomalies against it** - the original 10, plus whatever phase 1 turns up - so each fix is
+     demonstrated by a check that goes red to green. Closing them first and adding the gate afterwards
+     proves nothing about the gate.
+
+  Phases 1 and 2 are independent and could run in either order, but the gate must not be *declared done*
+  before phase 1 lands, or it ships green over unread surface - the precise thing the ruling forbids.
 - **Non-vacuity.** Every new check must be shown to fail against a deliberate logic mutant of the thing it
   guards, with per-check attribution - not merely that the suite went non-zero.
