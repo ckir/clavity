@@ -1126,3 +1126,25 @@ The peer also misquoted that sweep (it reported an `-E` form with escaped `\|` a
 does not contain and which would silently match nothing) and then greened its own misquote - so its row
 verdicts are not evidence. Seventh instance of this epic's signature defect class, and the second one that
 only a RUN, never a reading, could find.
+
+**Panel round 3 - GREEN, and the review is closed.** Bespoke Post-State Coherence Auditor (derived from
+exactly how round 2's defect hid: a statement OUTSIDE every edited range, inside an edited file) plus a
+Dependency Cynic rotation. Both seats returned no new findings. Independently, the round-2 technique was
+generalised and run against EVERY other fact this plan changes - the anti-sweep floor rule, the
+`UNVERIFIED-ACCEPTED` recording sites, the `ALIGNED` definition, and the `open-issues` intake bar - each
+swept repo-wide with the superpowers and ledger paths excluded. All four came back with no un-updated
+restatement. The new Step 3b gate was control-checked: its grep returns exactly 1 in both mirrors, a
+deliberately-wrong pattern returns 0, and all four skill pairs remain byte-identical.
+
+Peer reliability, recorded: round 3's reply truncated before its second seat, which was re-asked alone and
+answered cleanly - the verdict-first instruction preserved the verdict through the truncation. Its claimed
+end-of-file line numbers were actual+1 for all four files, a systematic offset rather than invention, so
+its claim to have read to EOF is credible. But two of its post-edit quotes were fabricated: it quoted an
+`open-issues:14-15` rewrite this plan does not specify (the real fix is a semicolon restructure), and it
+substituted `agy-capstone`'s `skipped.log` sentence for `adversarial-panel-review`'s `## Stand-downs` one.
+Both were marked CONSISTENT. Treat its coherence table as a prompt to measure, never as evidence.
+
+FINAL PANEL DISPOSITION: **GREEN** at plan tip `0e89e51` + this record. Three rounds, seven findings folded,
+zero open. Of the seven, six came from the solo floor and one from running a command; none came from a peer
+seat - though the peer's round-1 anchor answers did independently confirm the ROADMAP em-dash and surfaced
+two non-skill surfaces worth checking, one of which was already folded and one of which measured clean.
