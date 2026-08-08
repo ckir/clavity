@@ -64,8 +64,10 @@ duplicate paid consult). SP-C's reader consumes this same constant.
   `content == HEAD` read is uniform across disciplines; capstone's WAIVED / UNVERIFIED-ACCEPTED
   distinctions live in the log above, never in the marker.
 - `agy-test-audit` writes `agy-test-audit.head` only on a **completed audit**: an `[VERDICT: EXHAUSTIVE]`,
-  or a `[VERDICT: GAPS FOUND]` whose every gap is owner-dispositioned (closed or logged as deferred debt
-  in the rolling debt file). An `[VERDICT: agy-required-but-unreachable]` abort writes NO marker (re-fires
+  or a `[VERDICT: GAPS FOUND]` whose every gap carries one of the five AGY-SCOPE disposition tokens
+  (`FOLDED`, `REJECTED`, `DISCARDED-BELOW-FLOOR`, `DEFERRED-TO-ANOMALIES`, `UNVERIFIED-ACCEPTED`); a
+  material `DEFERRED-TO-ANOMALIES` needs the owner's ruling first. An
+  `[VERDICT: agy-required-but-unreachable]` abort writes NO marker (re-fires
   next trigger). Content is the audited `git rev-parse HEAD`.
 - A `SKIPPED-UNREACHABLE` or a review-only breach writes NO `.head` marker (the discipline re-fires next
   trigger); the skip appends to `skipped.log` as above.
