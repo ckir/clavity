@@ -95,6 +95,64 @@ Describe 'check-agy-discipline-skills' {
         }
     }
 
+    Context 'guard census: every linter Fail branch must have a test that reddens if the guard is deleted' {
+        # AGY-TEST-AUDIT over 43c1a9c..614ca00 (2026-08-08) measured the linter's 10 Fail() sites and found
+        # FIVE unguarded: :41 MISSING, :55 malformed-frontmatter, :71 agy_ask, :72 classic transport,
+        # :74 marker constant. Each could be deleted outright with this suite still green at 30/0, while a
+        # positive control (neutering the non-ASCII guard at :68) produced 27/3 - so the greens were real
+        # gaps, not a broken harness. The rows below close all five.
+        #
+        # Each row asserts the FAILURE MESSAGE, not merely `exit 1`. Fail() is non-terminating, so several
+        # diagnostics can co-occur in one run; matching the specific message keeps the row pointed at ITS
+        # guard instead of passing on whichever guard happens to fire. Each fixture also self-checks that
+        # its mutation took effect, so a silent no-op cannot leave the row passing vacuously.
+
+        It 'fails with a MISSING diagnostic when a skill file is absent' {
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'agy-test-audit'
+            Remove-Item -Force $target
+            (Test-Path $target) | Should -BeFalse -Because 'the fixture must actually remove the skill file'
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'MISSING'
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'fails with a malformed-frontmatter diagnostic when the leading --- fences are absent' {
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'agy-test-audit'
+            $real = Get-Content -Raw $target
+            # Strip the whole frontmatter block; the body retains every other invariant, so the ONLY
+            # reachable complaint is the malformed-frontmatter branch.
+            $body = $real -replace "(?s)\A---\r?\n.*?\r?\n---\r?\n", ''
+            $body | Should -Not -Be $real -Because 'the frontmatter block must actually be stripped'
+            $body | Should -Not -Match "\A---" -Because 'the file must no longer open with a fence'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'malformed frontmatter'
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'fails with a "<diagnostic>" diagnostic when <needle> is stripped from the skill' -ForEach @(
+            @{ needle = 'agy_ask';                   diagnostic = 'missing dotnet transport' },
+            @{ needle = 'clavity ask --review-only'; diagnostic = 'missing classic transport' },
+            @{ needle = '.clavity/agy-marks/';       diagnostic = 'missing marker-contract constant' }
+        ) {
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'agy-test-audit'
+            $real = Get-Content -Raw $target
+            $real.Contains($needle) | Should -BeTrue -Because "the fixture needs '$needle' present to strip"
+            $body = $real.Replace($needle, '')
+            $body | Should -Not -Be $real -Because 'the strip must take effect'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match $diagnostic
+            Remove-Item -Recurse -Force $scratch
+        }
+    }
+
     Context 'F3 guard: a skill enrolled in $skills but not mapped in $requiredVerdicts must fail loud' {
         It 'fails LOUD when a skill is enrolled in $skills but has no $requiredVerdicts mapping (F3 guard)' {
             # Build a temp linter whose $skills array has an extra 'phantom-unmapped' entry that is
