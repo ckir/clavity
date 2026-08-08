@@ -491,23 +491,23 @@ changes driver behaviour on a known-failure scenario — so "delivers better dri
 Shares the same empirical-measurement question as the golden-header per-ask backlog stub
 (`docs/backlog/golden-header-per-ask-token-optimization.md`, the anti-drift trade-off). Owner-surfaced 2026-07-11.
 
-### 7. AGY-SCOPE — "pre-existing defects are always in scope" as a shipped discipline (BRAINSTORM FIRST)
-**Status: brainstorming task, not yet designed.** Owner-directed 2026-07-31; to ship, like its siblings, with the
+### 7. AGY-SCOPE — "pre-existing defects are always in scope" as a shipped discipline · ✅ **SHIPPED 2026-08-07**
+**Status: designed, shipped and mirrored.** Owner-directed 2026-07-31; ships, like its siblings, with the
 clavity plugin (alongside `adversarial-panel-review` / `agy-test-audit`, mirrored to clavity-classic).
 
-> ### ⏸️ NO DISPOSITION RECORDED — this item goes to the OWNER at the Phase-2 gate
+> ### ✅ SHIPPED as a CROSS-CUTTING AMENDMENT, not a fourth discipline
 >
-> **State recorded 2026-08-06 (open-work sweep, Task 5 Step 2). Deliberately not judged here.**
-> - It **fails clause 3** on its face: `(BRAINSTORM FIRST)`, *"not yet designed"*, no chosen mechanism.
-> - But it is **owner-directed 2026-07-31**, which meets clause (a) of the §5 exception test, so the bar
->   does not get to kill it silently.
-> - **The sweep found no mechanism for it anywhere.** `AGY-SCOPE` appears only as a *name* — in §10's
->   scope, in the `open-issues` skill's closing "scope boundary" note, and here. No skill, hook, or spec
->   implements it.
+> Owner ruled the shape 2026-08-07. The disposition half ships as a five-token taxonomy inserted into
+> `adversarial-panel-review`, `agy-capstone` and `agy-test-audit`, gated on each skill's completing
+> verdicts, plus an intake-bar and routing clarification in `open-issues`. Pinned by the
+> `AGY-SCOPE disposition taxonomy` Describe and the per-token mutation rows in
+> `scripts/tests/check-agy-discipline-skills.Tests.ps1`.
 >
-> **The owner's question is: SPEC IT, OR KILL IT.** That is a different question from §0's, and the two
-> must not be merged — §0 has a settled mechanism and is asked *"the bar rejects this on clause 1, do you
-> override?"*; §7 has no mechanism and is asked *"is this worth designing at all?"*.
+> Design questions 2-5 are answered in
+> `docs/superpowers/specs/2026-08-07-agy-scope-disposition-design.md`; question 1 was the owner's shape
+> ruling. Deferred deliberately: enrolling `adversarial-panel-review` in the discipline checker (it
+> carries 69 non-ASCII characters and no marker constant, so it fails two unrelated gates), and
+> backfilling the five known coverage gaps onto the conveyor.
 
 **The defect it fixes.** Every review discipline in the family (AGY-AFTER, AGY-CAPSTONE, AGY-TEST-AUDIT) produces
 findings, and none of them says what a finding's **age** means. In practice the driver reaches for "pre-existing /
@@ -662,7 +662,7 @@ productize release. It remains undecided and is recorded here so it stops being 
 > The owner ruling it carries (*"they are a follow-on, not a re-scope — retroactively widening a stalled
 > epic prevents it closing"*) is preserved above and remains sound; killing this entry does not disturb it.
 
-`agy-test-audit` (shipped 2026-07-27) and the planned `AGY-SCOPE` postdate the ship-agy-workflow epic
+`agy-test-audit` (shipped 2026-07-27) and `AGY-SCOPE` (shipped 2026-08-07) postdate the ship-agy-workflow epic
 and are not in its model. Owner ruling 2026-07-31: they are a follow-on, not a re-scope — retroactively
 widening a stalled epic prevents it closing. This epic closes at four disciplines.
 

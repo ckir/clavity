@@ -66,6 +66,11 @@ predates SP-D's commits. This checklist is its closing step.
   their payload by **recursive wildcard** (`clavity-dotnet.iss:40` ships `..\plugin\*`;
   `agy-autotrain.iss:53` ships `..\*`). **It therefore ships with this release regardless of what this
   line says.** What remains a follow-on is productizing it — the docs, the ownership entry, and the
-  epic's own closing steps — not its delivery. `AGY-SCOPE` genuinely is absent: no skill or hook for it
-  exists yet. If something must truly not reach users, exclude it in the `.iss`; a line in this file
-  will not do it.
+  epic's own closing steps — not its delivery.
+
+  ⚠️ **Corrected again 2026-08-07: the same now applies to `AGY-SCOPE`.** It shipped as a cross-cutting
+  amendment rather than a fourth discipline, so there is no `AGY-SCOPE` skill or hook to point at — but
+  its five-token disposition taxonomy is **inside** `adversarial-panel-review`, `agy-capstone` and
+  `agy-test-audit` in both plugin trees, and therefore reaches users by the same recursive wildcard.
+  "Absent" was true when this line was written and is not true now. If something must truly not reach
+  users, exclude it in the `.iss`; a line in this file will not do it.
