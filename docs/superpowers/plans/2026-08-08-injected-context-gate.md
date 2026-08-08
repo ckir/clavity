@@ -470,6 +470,13 @@ enough: measured 2026-08-08, the corpus carries 23 slash-bearing tokens that are
             @{ tok = '[doc/user]' }
             @{ tok = 'read/write' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
+
+        It 'does NOT treat the directory reference <tok> as a file candidate' -ForEach @(
+            @{ tok = '.clavity/' }
+            @{ tok = '.clavity/agy-marks/' }
+            @{ tok = '.git/' }
+            @{ tok = '.agents/skills/' }
+        ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
     }
 ```
 
@@ -497,6 +504,14 @@ function Test-IsPathCandidate {
     # A leading bare '/' does NOT qualify: those are slash-commands (/agent, /mcp, /skills, ...).
     if ($Token.StartsWith('/')) { return $false }
     if ($Token -match '[\[\]]') { return $false }
+    # DIRECTORY REFERENCES - spec 4.1.1 requires the plan to state their disposition, and the answer is
+    # SKIP, never file-resolution. A trailing slash means a directory, and every directory reference in
+    # this corpus is a RUNTIME path that legitimately does not exist in the repository: `.clavity/` and
+    # `.clavity/agy-marks/` are gitignored (.gitignore:45), `.git/` is not shipped content, and
+    # `.agents/skills/` lives on the user's machine. Resolving them as files would report `broken` on
+    # correct text; resolving them as directories would report `broken` on a fresh clone. Neither is a
+    # defect worth reporting, so they are not candidates at all.
+    if ($Token.EndsWith('/')) { return $false }
     $ext = ($Token -split '\.')[-1]
     if ($ext -in $script:ShippedExtensions -and $ext -ne $Token) { return $true }
     return $false
