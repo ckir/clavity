@@ -243,6 +243,13 @@ one: rows generated from **discovery** (file -> invariants), and a separate set 
 **exemptions file** (entry -> must name a path that exists and an invariant that is currently failing).
 Only the second can catch an entry whose subject no longer exists.
 
+🔴 **An aliased key must be validated against BOTH twin trees, not either one.** Because keys for the two
+byte-identical plugin trees are stored once under a single logical root, the exemptions iteration has to
+expand each aliased key back into both concrete paths and require the invariant to be failing in both. If
+it settles for the first tree it finds, one tree can be cleaned up while the other still carries the
+defect, and the exemption goes on masking the survivor - a divergence the mirror gate would catch only if
+the trees differ in bytes, which is exactly what a shared exemption invites people to stop checking.
+
 **Traversal pruning is cheap insurance, not a live problem.** The panel raised build-artifact traversal
 (`target/`, `node_modules/`, `.venv/`, `.git/`) as a cost risk. **Measured and refuted for the current
 tree:** zero such directories exist under any of the six domain roots, and the entire corpus is 130 files.
@@ -315,9 +322,17 @@ asserts**, and only assert on the class it can be right about:
   reference pointing at the *wrong product's* `ROADMAP.md`, and it passes `settings.json` by accidentally
   matching a file that is not the referent. **The check therefore reports three outcomes, not two:**
   resolves nowhere = `broken reference` (a hard failure, and the one that catches C2); resolves to exactly
-  one = pass; resolves to more than one = `ambiguous reference`, reported as a distinct and weaker
-  diagnostic rather than a silent pass. Widening the search set to remove false positives necessarily
-  weakens the positive assertion - saying so is the difference between a check and a comfort.
+  one = pass; resolves to more than one = `ambiguous reference`. Widening the search set to remove false
+  positives necessarily weakens the positive assertion - saying so is the difference between a check and a
+  comfort.
+
+  🔴 **`ambiguous reference` DOES NOT FAIL THE BUILD, and the spec must say so rather than leave it to the
+  implementer.** Describing it only as "a distinct and weaker diagnostic" left the pass/fail question open,
+  and an implementer could reasonably read it either way. It cannot be a hard failure: `ROADMAP.md`
+  resolves to three files today and is a legitimate citation, so failing on ambiguity would red the build
+  on correct text. It is therefore a **non-failing reported diagnostic** - surfaced in the run output and
+  countable over time, never a gate. If that count ever becomes actionable, tightening it is a separate
+  decision with its own evidence, not something to smuggle in as an implementation detail.
 
   `settings.json` also joins the runtime-artifact SKIP list alongside the `golden-header.*` files: bare
   filenames whose referent lives on the user's machine, not in this repository. That list is a small
@@ -492,10 +507,15 @@ evidence and its first test cases. The implementation plan must close them as pa
 - **Encoding reads must be explicit.** Under Windows PowerShell 5.1 a bare `Get-Content` decodes using the
   system ANSI code page, not UTF-8, so multibyte sequences can be transcoded before a `[^\x00-\x7F]` regex
   ever sees them - a platform-dependent false negative in the one check that has to be exact. Read bytes
-  (`[System.IO.File]::ReadAllBytes`) or decode UTF-8 explicitly. The in-repo precedent for the string case
-  is `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1:273`
-  (`$bytes = [Text.Encoding]::UTF8.GetBytes($m)`); there is no precedent yet for the file-read case, so the
-  plan establishes one.
+  (`[System.IO.File]::ReadAllBytes`) or decode UTF-8 explicitly. **Two in-repo precedents already exist and
+  the plan should follow them rather than invent a third:** the string case at
+  `scripts/tests/agy-anomaly-capture-reminder.Tests.ps1:273` (`$bytes = [Text.Encoding]::UTF8.GetBytes($m)`),
+  and the file case at `scripts/check-seed-budget.ps1:32`
+  (`[System.Text.Encoding]::UTF8.GetByteCount([System.IO.File]::ReadAllText($SeedPath))`).
+  An earlier draft of this section asserted that no file-read precedent existed - that was wrong, and it
+  was wrong about the very script whose byte-cap this document cites elsewhere. For an ASCII scan
+  `ReadAllBytes` is still the more direct instrument than decode-then-recount, but the encoding discipline
+  is established, not new.
 - **Order.** Stand up the gate with its exemptions first, then close the 10 anomalies against it, so each
   fix is demonstrated by a check that goes from red to green. Closing them first and adding the gate
   afterwards proves nothing about the gate.
