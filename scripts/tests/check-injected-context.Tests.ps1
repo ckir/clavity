@@ -141,4 +141,45 @@ Describe 'check-injected-context.ps1' {
             @{ tok = '.agents/skills/' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
     }
+
+    Context 'reference resolution outcomes' {
+        BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
+
+        It 'a dead bare filename is BROKEN' {
+            (Resolve-Reference -Token 'agy-first-brainstorm.sh' -RepoRoot $script:RepoRoot).Outcome |
+                Should -BeExactly 'broken'
+        }
+        It 'a mirrored plugin file PASSES - the twin trees canonicalise to one logical path' {
+            # agy-seam-inject.sh exists in BOTH plugin trees. Without canonicalisation this returns
+            # 'ambiguous', and since most bare filenames in shipped text name plugin files, the whole
+            # RESOLVE-THEN-ASSERT class would collapse into permanent ambiguity.
+            (Resolve-Reference -Token 'agy-seam-inject.sh' -RepoRoot $script:RepoRoot).Outcome |
+                Should -BeExactly 'ok'
+        }
+        It 'a file unique to one product PASSES' {
+            (Resolve-Reference -Token 'driver-cheatsheet.core.md' -RepoRoot $script:RepoRoot).Outcome |
+                Should -BeExactly 'ok'
+        }
+        It 'a multiply resolving bare filename is AMBIGUOUS, not broken and not a pass' {
+            (Resolve-Reference -Token 'ROADMAP.md' -RepoRoot $script:RepoRoot).Outcome |
+                Should -BeExactly 'ambiguous'
+        }
+        It 'ambiguous does NOT fail the build' {
+            (Test-ReferenceFails -Outcome 'ambiguous') | Should -BeFalse
+        }
+        It 'broken DOES fail the build' {
+            (Test-ReferenceFails -Outcome 'broken') | Should -BeTrue
+        }
+        It 'a repo-prefixed path that exists PASSES' {
+            (Resolve-Reference -Token 'docs/agy-disciplines-marker-contract.md' -RepoRoot $script:RepoRoot).Outcome |
+                Should -BeExactly 'ok'
+        }
+        It 'a repo-prefixed path with a typo in the prefix is BROKEN, not skipped' {
+            (Resolve-Reference -Token 'doc/agy-disciplines-marker-contract.md' -RepoRoot $script:RepoRoot).Outcome |
+                Should -BeExactly 'unclassified'
+        }
+        It 'unclassified DOES fail the build' {
+            (Test-ReferenceFails -Outcome 'unclassified') | Should -BeTrue
+        }
+    }
 }
