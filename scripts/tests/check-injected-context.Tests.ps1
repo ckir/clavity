@@ -467,6 +467,37 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $paths = Expand-ExemptionPath -Entry ([pscustomobject]@{ path='ghidrust/plugin/skills/x/SKILL.md' })
             $paths | Should -Be @('ghidrust/plugin/skills/x/SKILL.md')
         }
+        It 'REJECTS an exemption when the file is missing from twin tree <Missing> - ORDER-INDEPENDENT' -ForEach @(
+            @{ Missing = 0 }
+            @{ Missing = 1 }
+        ) {
+            # THIS ROW HAS BEEN VACUOUS TWICE, so it is now parameterised over WHICH tree is missing and
+            # cannot be defeated by the order of $script:TwinPluginRoots. Round 4 created the file in
+            # NEITHER tree (so "throws when missing from one" was indistinguishable from "throws only when
+            # missing from both"). Round 5 created it in the SECOND, which a first-path-only implementation
+            # still satisfied - measured 86/0. Capstone round 6 then observed that even the [0] fix only
+            # held because of the array's CURRENT order, so a reorder would silently re-vacate it.
+            #
+            # Present in every tree EXCEPT $Missing: whichever single path a broken implementation happens
+            # to check, one of these two iterations puts the existing file there and the throw must still
+            # fire for the other. No ordering makes both pass.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icx-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+            foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+            Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
+{ "exemptions": [ { "path": "skills/nope/SKILL.md", "scope": "twin-plugin", "invariant": "encoding", "reason": "probe" } ] }
+'@
+            for ($i = 0; $i -lt $script:TwinPluginRoots.Count; $i++) {
+                if ($i -eq $Missing) { continue }
+                $present = Join-Path $d "$($script:TwinPluginRoots[$i])/skills/nope/SKILL.md"
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $present) | Out-Null
+                Set-Content -LiteralPath $present -Value 'present in this tree' -Encoding ascii
+            }
+            { Get-InjectedContextViolations -RepoRoot $d } | Should -Throw -ExpectedMessage '*does not exist*'
+            Remove-Item -Recurse -Force $d
+        }
+
         It 'REJECTS an exemption whose expanded path does not exist on disk' {
             # Capstone round 2, Boundary Smuggler + Literal Implementer, folded together. The gate used to
             # accept these silently: a twin-scoped entry naming a file present in only ONE tree produced a
