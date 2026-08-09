@@ -132,6 +132,12 @@ Describe 'check-injected-context.ps1' {
             @{ tok = '/teamwork-preview' }
             @{ tok = '[doc/user]' }
             @{ tok = 'read/write' }
+            # Commands and source expressions that merely END in something file-shaped. Both of these
+            # are verbatim from the corpus and both were reported as reference violations against
+            # correct text before the whitespace/paren guard existed.
+            @{ tok = 'ghidrust skill --emit > SKILL.md' }
+            @{ tok = 'os.path.dirname(__file__)/SKILL.md' }
+            @{ tok = 'just check-injected-context' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
 
         It 'does NOT treat the directory reference <tok> as a file candidate' -ForEach @(
@@ -140,6 +146,46 @@ Describe 'check-injected-context.ps1' {
             @{ tok = '.git/' }
             @{ tok = '.agents/skills/' }
         ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
+    }
+
+    Context 'domain coverage - the root list must not silently miss an injected tree' {
+        # WHY THIS EXISTS. $script:DomainRoots is a hand-maintained list of product-level paths, which is
+        # structurally an ALLOWLIST - the exact defect this whole gate was built to remove from
+        # check-agy-discipline-skills.ps1:13. Measured 2026-08-09: it missed 3 of the repo's 21 SKILL.md,
+        # and all three were injected context (two include_str!'d into shipping binaries, one a headless
+        # sub-agent's system prompt). Nothing detected that. What finally surfaced it was an unrelated
+        # sibling checker going red, which is luck, not a mechanism.
+        #
+        # This asserts the property the root list is SUPPOSED to have and never had: every skill file in
+        # the repository is either inside a domain root or deliberately ignored.
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            $script:Globs = Get-IgnoreGlobs -RepoRoot $script:RepoRoot
+            $script:AllSkills = @(
+                Get-ChildItem -LiteralPath $script:RepoRoot -Recurse -File -Filter 'SKILL.md' -Force -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -notmatch '[\\/](\.git|node_modules|target|bin|obj|\.venv|__pycache__|dist|publish|\.vs|\.clavity)[\\/]' } |
+                    ForEach-Object { $_.FullName.Substring($script:RepoRoot.Length + 1).Replace('\', '/') }
+            )
+        }
+
+        It 'finds a non-trivial number of skill files' {
+            # Without this, a broken enumeration would make the row below pass over an empty set - the
+            # same vacuity this gate exists to catch, reproduced inside its own test.
+            $script:AllSkills.Count | Should -BeGreaterThan 10 -Because 'an empty enumeration makes the coverage assertion below meaningless'
+        }
+
+        It 'every SKILL.md in the repository is inside a domain root or explicitly ignored' {
+            $uncovered = @(
+                $script:AllSkills | Where-Object {
+                    $p = $_
+                    $inRoot   = @($script:DomainRoots | Where-Object { $p.StartsWith("$_/") }).Count -gt 0
+                    $ignored  = Test-IsIgnored -RelPath $p -Globs $script:Globs
+                    -not ($inRoot -or $ignored)
+                }
+            )
+            # Name them. A count sends a reader hunting; a path sends them to the fix.
+            $uncovered -join ', ' | Should -BeExactly '' -Because 'a skill outside every domain root is injected into an agent and audited by nothing'
+        }
     }
 
     Context 'reference resolution outcomes' {
@@ -392,7 +438,12 @@ jq -nc --arg m "[TAG] $msg" '{}'
                 # renamed product cannot silently drop coverage - and a fixture that creates only the root
                 # it needs would trip that throw rather than exercise the walker. Two folds from different
                 # review rounds, each right on its own, that only collide when the code actually runs.
-                foreach ($r in 'clavity-dotnet/plugin','clavity-classic/plugin','seed','agy-autotrain','ghidrust/plugin','commonmemory') {
+                # DERIVED from $script:DomainRoots, never a hardcoded copy of it. Discovery THROWS on a
+                # missing root - deliberately, so a renamed product cannot silently drop coverage - so a
+                # fixture must create every root. This list was hardcoded once and broke the moment three
+                # roots were added, which is the SECOND time these two correct decisions have collided
+                # here (the first was noted in this file already). Deriving it ends the class.
+                foreach ($r in $script:DomainRoots) {
                     New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null
                 }
                 foreach ($k in $Files.Keys) {

@@ -19,13 +19,26 @@ $ErrorActionPreference = 'Stop'
 
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
 
-# The six roots. Owner ruling 2026-08-08 (spec 6.1): all six, no product excluded.
+# Owner ruling 2026-08-08 (spec 6.1): every product, none excluded. WIDENED by owner ruling 2026-08-09
+# after this list was measured to be exactly the defect the gate exists to remove - a product-level
+# ALLOWLIST. Repo-wide there were 21 SKILL.md; 18 sat inside a root and 3 did not, and all 3 were
+# injected context: two are include_str!'d into shipping binaries (ghidrust/skill/SKILL.md via
+# skill_asset.rs:10, agy_skills/claudavity-responder/SKILL.md via clavity-classic/src/main.rs:29) and
+# agy-mcp-bridge/SKILL.md is a headless sub-agent's system prompt.
+#
+# It was NOT this gate that found them. Sanitising the plugin copy of the responder skill turned
+# check-seed-artifacts-synced.sh red, because its pinned mirror in agy_skills/ was invisible here. A
+# sibling checker caught what this one structurally could not see - which is why the completeness of
+# THIS list is now itself pinned by a test (check-injected-context.Tests.ps1, 'domain coverage').
 $script:DomainRoots = @(
     'clavity-dotnet/plugin'
     'clavity-classic/plugin'
+    'clavity-classic/agy_skills'
+    'clavity-classic/agy-mcp-bridge'
     'seed'
     'agy-autotrain'
     'ghidrust/plugin'
+    'ghidrust/skill'
     'commonmemory'
 )
 
@@ -83,6 +96,13 @@ function Test-IsPathCandidate {
     # A leading bare '/' does NOT qualify: those are slash-commands (/agent, /mcp, /skills, ...).
     if ($Token.StartsWith('/')) { return $false }
     if ($Token -match '[\[\]]') { return $false }
+    # CODE AND COMMANDS, not paths. A backtick span often holds a shell line or a source expression that
+    # merely ENDS in something file-shaped, and the extension test below would happily classify it.
+    # Measured 2026-08-09, both reported as reference violations against correct text the moment three new
+    # roots were added: `ghidrust skill --emit > SKILL.md` (a command) came back 'broken', and
+    # `os.path.dirname(__file__)/SKILL.md` (a Python expression) came back 'unclassified'.
+    # No path in this repository contains whitespace or a parenthesis, so both are safe to exclude.
+    if ($Token -match '[\s()]') { return $false }
     # DIRECTORY REFERENCES - spec 4.1.1 requires the plan to state their disposition, and the answer is
     # SKIP, never file-resolution. A trailing slash means a directory, and every directory reference in
     # this corpus is a RUNTIME path that legitimately does not exist in the repository: `.clavity/` and
