@@ -201,9 +201,11 @@ Describe 'check-injected-context.ps1' {
             # skills/dist/SKILL.md containing a real em dash produced corpus 0 and violations 0. The plugin
             # loader still finds it, so it ships and is injected, having passed no invariant at all.
             #
-            # Pruning cannot simply be dropped - measured, it removes 3188 files from the corpus walk,
-            # almost all of them a Python virtualenv under agy-mcp-bridge. So the bypass is closed here
-            # instead: every skill file must appear in the corpus the gate actually audits.
+            # This row was written when the corpus walk still pruned by NAME. Round 10 removed that -
+            # the name match WAS the bypass - and the walk now skips DESCENT only where an anchored glob
+            # already subtracts the whole directory. The row still earns its place: it asserts the
+            # property rather than the mechanism, so it survived that change unedited, which is exactly
+            # what a guard should do.
             # Scoped to skills UNDER A DOMAIN ROOT. That is what makes the rule both sound and precise:
             # clavity-classic/publish/agy-mcp-bridge/SKILL.md is a published COPY at product level, sits
             # under no domain root, and is legitimately unaudited because its source is. A skill directory
@@ -642,11 +644,13 @@ jq -nc --arg m "[TAG] $msg" '{}'
                         'plan-residue'  { Test-HasPlanResidue -Text $text }
                         'tag-hygiene'   { [bool](@(Get-HookMessages -Text $text | Where-Object { Test-HasDuplicatedTag -Text $_ }).Count) }
                         'namespace'     { [bool](@(Get-HookMessages -Text $text | Where-Object { -not (Test-DegradedNamespace -Text $_) }).Count) }
-                        # build-output waives a DIRECTORY, so it is still "needed" exactly while that
-                        # directory is still there. Without this case the default below would throw on a
-                        # perfectly valid waiver - which is how a bidirectional check turns into a trap of
-                        # its own, the same shape as the unwaivable violation round 12 found.
-                        'build-output'  { Test-Path -LiteralPath $full -PathType Container }
+                        # RE-RUN THE INVARIANT, exactly like every case above. My first version asked only
+                        # "does the directory still exist", which is a weaker proxy and quietly defeats the
+                        # whole point of this check. MEASURED: anchor that directory in the ignorelist and
+                        # the gate stops reporting it - the waiver is DEAD - yet the directory still exists,
+                        # so the proxy called it "needed" and the dead exemption would live forever. The
+                        # bidirectional check only works if the question it asks is the real one.
+                        'build-output'  { (Get-UnexpectedBuildDirs -RepoRoot $script:RepoRoot) -contains $p }
                         default         { throw "exemption names an unknown invariant '$($e.invariant)' - add a case here or fix the entry" }
                     }
                     $stillFails | Should -BeTrue -Because "unused exemption: '$($e.path)' passes '$($e.invariant)' without it"

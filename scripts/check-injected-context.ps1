@@ -63,10 +63,17 @@ $script:DomainRoots = @(
 # One list, one regex, both walks. The two sites previously carried DIFFERENT segment lists; the union is
 # used here because dist/ and publish/ are already ignorelisted for the corpus, so folding them in changes
 # nothing there - verified by comparing corpus and index counts before and after.
-# MEASURED 2026-08-09: pruning removes 3188 files from the corpus walk, essentially all of them the
-# Python virtualenv under clavity-classic/agy-mcp-bridge/.venv/. Pruning is load-bearing and cannot simply
-# be dropped from the corpus walk - doing that would sweep a venv into the audited corpus. That is why the
-# BYPASS below is closed by a coverage assertion rather than by deleting the prune.
+# THIS LIST NOW SERVES THE REFERENCE INDEX ONLY. The corpus walk stopped pruning in round 10, because
+# matching a segment NAME at any depth was itself the bypass - see Get-InjectedContextFiles. What is left
+# here is the whole-repository walk in Get-ReferenceIndex, whose results are resolved against and never
+# audited, so a name-based skip there is safe and keeps it cheap.
+# MEASURED 2026-08-09: skipping these removed 3188 files from a domain-root walk, essentially all of them
+# the Python virtualenv under clavity-classic/agy-mcp-bridge/.venv/ - which is why the corpus walk could
+# not simply enumerate everything either, and instead skips DESCENT where an anchored glob already
+# subtracts the whole directory.
+# (An earlier version of this comment said pruning "cannot simply be dropped from the corpus walk" and
+# that the bypass was therefore closed by a coverage assertion. Round 10 dropped it and round 14 caught
+# the comment still asserting the reversed decision.)
 # The three cache directories were added after a measurement found .ruff_cache/CACHEDIR.TAG sitting in the
 # audited corpus: tool caches are untracked local junk, so leaving them in made the corpus differ between
 # machines and the gate non-reproducible across clones.
@@ -169,7 +176,7 @@ function Get-InjectedContextFiles {
         # The naive fix - keep pruning but only for build output - fails because the subtraction itself was
         # the vector: an UNANCHORED `**/dist/**` in the ignorelist re-opened the same hole. So the build
         # directories are subtracted by their real, anchored paths instead. MEASURED: only seven such
-        # directories exist inside all nine domain roots, four of them nested inside a single .venv, so
+        # directories exist inside all nine domain roots, TWO of them nested inside a single .venv, so
         # anchoring is cheap. Get-ReferenceIndex still prunes - it walks the WHOLE repository for
         # performance and its results are never audited, only resolved against.
         # DESCENT IS SKIPPED ONLY WHERE THE IGNORELIST ALREADY SUBTRACTS THE WHOLE DIRECTORY, which keeps
