@@ -241,6 +241,19 @@ Describe 'check-injected-context.ps1' {
             (Test-IsPrunedPath -RelPath "seed/$Segment")      | Should -BeFalse -Because 'a FILE with that name is content'
         }
 
+        It 'the prune rows COVER the live list - a new segment cannot arrive untested' {
+            # Capstone round 10, Coverage Liar, and the peer was right: I claimed the prune rows were
+            # "derived from the live list", but the -ForEach above is a hardcoded 13-entry array that only
+            # asserts those 13 are IN $script:PrunedSegments. It never asserts the reverse, so ADDING a
+            # segment shipped an untested prune rule and the suite stayed green. Pester evaluates -ForEach
+            # at discovery time, before the script is dot-sourced, so the array cannot itself be derived -
+            # this row closes that gap instead by comparing the two sets.
+            $covered = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs',
+                         '.ruff_cache','.pytest_cache','.mypy_cache')
+            $uncovered = @($script:PrunedSegments | Where-Object { $_ -notin $covered })
+            $uncovered -join ', ' | Should -BeExactly '' -Because 'a pruned segment with no row is an untested rule that silently drops files'
+        }
+
         It 'still finds files when the REPOSITORY ITSELF sits under a pruned directory name' {
             # Capstone round 4, and the worst defect in the branch. Both walks pruned against the ABSOLUTE
             # path, so cloning this repository anywhere under target/, bin/, obj/, dist/ - a CI workspace,
@@ -845,6 +858,64 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $v = New-Violation -File 'seed/x.md' -Invariant 'encoding' -Finding 'probe'
             $v.WaiverLine | Should -Match 'why this is deliberate'
             $v.WaiverLine | Should -Match 'seed/x\.md'
+        }
+    }
+    Context 'round 10 - the gate itself must not be bypassable by a directory name' {
+        BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
+
+        It 'AUDITS a <Class> planted in a directory named after a build segment' -ForEach @(
+            @{ Class = 'hook script'      ; Rel = 'clavity-dotnet/plugin/hooks/dist/evil-hook.sh' }
+            @{ Class = 'knowledge manual' ; Rel = 'clavity-dotnet/plugin/knowledge/target/agy-notes.md' }
+            @{ Class = 'rules file'       ; Rel = 'commonmemory/rules/bin/commonmemory.md' }
+            @{ Class = 'golden header'    ; Rel = 'seed/obj/golden-header.md' }
+            @{ Class = 'skill'            ; Rel = 'clavity-dotnet/plugin/skills/dist/SKILL.md' }
+        ) {
+            # ROUND 9 CLOSED THIS FOR SKILL.md ONLY, AND ONLY IN A TEST - the gate itself still exited 0.
+            # Round 10 measured the rest: a hook, a knowledge manual, a rules file and the golden header,
+            # each carrying a real em dash, each planted under a directory named after a pruned segment,
+            # were ALL invisible. Corpus 0, violations 0, and every one of them still ships and is
+            # injected into an agent.
+            #
+            # These rows assert the property at the GATE, not at the suite: the file must be in the corpus
+            # AND must produce a violation. A row that only checked corpus membership would pass against a
+            # gate that collected the file and then audited nothing.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icb10-" + [guid]::NewGuid().ToString('N'))
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                $full = Join-Path $d $Rel
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $full) | Out-Null
+                [IO.File]::WriteAllText($full, "smuggled text with an em dash $([char]0x2014) in it", (New-Object System.Text.UTF8Encoding($false)))
+
+                @(Get-InjectedContextFiles -RepoRoot $d) |
+                    Should -Contain $Rel -Because 'a file named into a build directory is still injected context'
+                @(Get-InjectedContextViolations -RepoRoot $d) |
+                    Should -Not -BeNullOrEmpty -Because 'the seeded em dash must be reported, not merely collected'
+            } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'still subtracts the REAL build directories, by anchored path' -ForEach @(
+            @{ Rel = 'agy-autotrain/dist/x.md' }
+            @{ Rel = 'commonmemory/dist/x.md' }
+            @{ Rel = 'clavity-classic/agy-mcp-bridge/.venv/Lib/site-packages/absl/app.py' }
+            @{ Rel = 'clavity-classic/agy-mcp-bridge/__pycache__/x.pyc' }
+            @{ Rel = 'agy-autotrain/docs/fix-the-tool-backlog/.ruff_cache/CACHEDIR.TAG' }
+        ) {
+            # The other half of the same fix. Anchoring only closes the bypass if it still removes the
+            # build output it replaced - otherwise the corpus grows by a virtualenv. Measured: the corpus
+            # is 99 before and after the change.
+            (Test-IsIgnored -RelPath $Rel -Globs (Get-IgnoreGlobs -RepoRoot $script:RepoRoot)) |
+                Should -BeTrue -Because 'the anchored globs must still subtract real build output'
+        }
+
+        It 'has NO unanchored build-directory glob left in the ignorelist' {
+            # The subtraction itself was the second half of the vector: an unanchored **/dist/** re-opened
+            # the hole after pruning was removed from the corpus walk. This row stops one being re-added.
+            $globs = @(Get-IgnoreGlobs -RepoRoot $script:RepoRoot)
+            $bad = @($globs | Where-Object { $_ -match '^\*\*/(dist|publish|target|bin|obj|node_modules|\.venv|__pycache__)/' })
+            $bad -join ', ' | Should -BeExactly '' -Because 'a build glob matching by NAME at any depth is a bypass; anchor it to the real path'
         }
     }
 }

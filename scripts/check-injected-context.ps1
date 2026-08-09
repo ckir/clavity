@@ -125,12 +125,24 @@ function Get-InjectedContextFiles {
         if (-not (Test-Path -LiteralPath $full)) {
             throw "domain root missing: $full - if a product moved or was renamed, update `$script:DomainRoots; if it was deleted, remove the root deliberately."
         }
-        # Prune heavy directories. The relative path is computed FIRST and pruned on - see the note on
-        # $script:PrunedSegments for why matching the absolute path silently emptied the whole corpus.
+        # THE CORPUS WALK DOES NOT PRUNE. Every file under a domain root is either audited or subtracted
+        # by an ANCHORED glob in the ignorelist, where a human wrote down why. Nothing is dropped silently.
+        #
+        # This is the round-10 fix for a total bypass. Pruning matched a segment name at ANY depth, so
+        # naming a directory after one - skills/dist/, hooks/dist/, knowledge/target/ - removed it from
+        # the corpus before any invariant ran. MEASURED: five files, one per shipped class (skill, hook,
+        # knowledge manual, rules file, golden header), each carrying a real em dash, all invisible;
+        # corpus 0, violations 0, and every one of them still ships and is injected.
+        #
+        # The naive fix - keep pruning but only for build output - fails because the subtraction itself was
+        # the vector: an UNANCHORED `**/dist/**` in the ignorelist re-opened the same hole. So the build
+        # directories are subtracted by their real, anchored paths instead. MEASURED: only seven such
+        # directories exist inside all nine domain roots, four of them nested inside a single .venv, so
+        # anchoring is cheap. Get-ReferenceIndex still prunes - it walks the WHOLE repository for
+        # performance and its results are never audited, only resolved against.
         Get-ChildItem -LiteralPath $full -Recurse -File -Force |
             ForEach-Object {
                 $rel = $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
-                if (Test-IsPrunedPath -RelPath $rel) { return }
                 if (-not (Test-IsIgnored -RelPath $rel -Globs $globs)) { $out.Add($rel) }
             }
     }
