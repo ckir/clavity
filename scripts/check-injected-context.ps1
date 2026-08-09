@@ -85,6 +85,38 @@ function Test-IsPrunedPath {
     [bool]($RelPath -match $script:PruneRx)
 }
 
+function Test-IsBuildDirName {
+    param([string]$Name)
+    [bool]($Name -in $script:PrunedSegments)
+}
+
+function Get-UnexpectedBuildDirs {
+    param([string]$RepoRoot)
+    # Build output sitting INSIDE shipped plugin content is itself the defect worth reporting. It is not
+    # audited (binaries would drown the encoding invariant in noise) and not silently skipped (that was
+    # the round-9/10 bypass) - it is named. An intentional one is subtracted by an anchored glob, which is
+    # visible in the ignorelist with a reason, exactly like every other subtraction here.
+    $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
+    $globs = Get-IgnoreGlobs -RepoRoot $RepoRoot
+    $out = [System.Collections.Generic.List[string]]::new()
+    foreach ($root in $script:DomainRoots) {
+        $full = Join-Path $RepoRoot $root
+        if (-not (Test-Path -LiteralPath $full)) { continue }
+        $stack = [System.Collections.Generic.Stack[string]]::new()
+        $stack.Push($full)
+        while ($stack.Count) {
+            $dir = $stack.Pop()
+            foreach ($child in Get-ChildItem -LiteralPath $dir -Directory -Force -ErrorAction SilentlyContinue) {
+                $rel = $child.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+                if (Test-IsIgnored -RelPath ($rel + '/__probe__') -Globs $globs) { continue }
+                if (Test-IsBuildDirName -Name $child.Name) { $out.Add($rel); continue }
+                $stack.Push($child.FullName)
+            }
+        }
+    }
+    $out.ToArray()
+}
+
 function Get-IgnoreGlobs {
     param([string]$RepoRoot)
     $p = Join-Path $RepoRoot 'scripts/injected-context-ignore.txt'
@@ -140,11 +172,41 @@ function Get-InjectedContextFiles {
         # directories exist inside all nine domain roots, four of them nested inside a single .venv, so
         # anchoring is cheap. Get-ReferenceIndex still prunes - it walks the WHOLE repository for
         # performance and its results are never audited, only resolved against.
-        Get-ChildItem -LiteralPath $full -Recurse -File -Force |
-            ForEach-Object {
-                $rel = $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+        # DESCENT IS SKIPPED ONLY WHERE THE IGNORELIST ALREADY SUBTRACTS THE WHOLE DIRECTORY, which keeps
+        # the bypass closed and the walk cheap at the same time. Not descending is decided by the SAME
+        # anchored globs that decide subtraction - one source of truth - so `skills/dist/` is descended
+        # into (nothing subtracts it) while `.venv/` is not (an anchored glob does).
+        #
+        # MEASURED, and this is why the skip exists: enumerating everything and filtering afterwards took
+        # 12.4s for the corpus walk and 69s for the whole gate, visiting 3340 files to keep 99 and running
+        # ~67k glob evaluations. Correct, but a gate nobody wants to wait for gets run less often, and a
+        # gate run less often is the failure this project is about.
+        $stack = [System.Collections.Generic.Stack[string]]::new()
+        $stack.Push($full)
+        while ($stack.Count) {
+            $dir = $stack.Pop()
+            foreach ($child in Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue) {
+                $rel = $child.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+                if ($child.PSIsContainer) {
+                    # A probe path under the directory: if the ignorelist subtracts everything inside it,
+                    # there is nothing to audit in there and descending is pure cost.
+                    if (Test-IsIgnored -RelPath ($rel + '/__probe__') -Globs $globs) { continue }
+                    # BUILD-NAMED AND NOT ANCHORED-SUBTRACTED: do not descend, and do not audit what is
+                    # inside. Get-UnexpectedBuildDirs reports the DIRECTORY itself instead.
+                    #
+                    # Dropping name-based pruning (round 10) closed a bypass but traded it for a false
+                    # positive storm: MEASURED, a local bin/, obj/, node_modules/ or .vs/ inside a domain
+                    # root put four binary artifacts into the corpus and produced four encoding failures
+                    # on a developer machine that had merely run a build. Auditing binaries is noise;
+                    # silently skipping them is the bypass. Reporting the directory is neither - it names
+                    # the real problem, which is that build output is sitting inside shipped content.
+                    if (Test-IsBuildDirName -Name $child.Name) { continue }
+                    $stack.Push($child.FullName)
+                    continue
+                }
                 if (-not (Test-IsIgnored -RelPath $rel -Globs $globs)) { $out.Add($rel) }
             }
+        }
     }
     $out.ToArray()
 }
@@ -546,6 +608,13 @@ function Get-InjectedContextViolations {
     }
 
     $out = [System.Collections.Generic.List[object]]::new()
+
+    # Build output inside a domain root, reported as one violation per DIRECTORY rather than as a flood
+    # of encoding failures over its binaries - or, worse, as nothing at all.
+    foreach ($d in (Get-UnexpectedBuildDirs -RepoRoot $RepoRoot)) {
+        $out.Add((New-Violation -File $d -Invariant 'build-output' -Finding "build output inside a domain root - move it out, or subtract it with an anchored glob and a reason"))
+    }
+
     foreach ($f in $files) {
         $full = Join-Path $RepoRoot $f
         # EVERY invariant runs on EVERY file. No short-circuit: the gate is run RED on purpose before the

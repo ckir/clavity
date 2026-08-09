@@ -889,10 +889,42 @@ jq -nc --arg m "[TAG] $msg" '{}'
                 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $full) | Out-Null
                 [IO.File]::WriteAllText($full, "smuggled text with an em dash $([char]0x2014) in it", (New-Object System.Text.UTF8Encoding($false)))
 
+                # THE PROPERTY IS "THE GATE REPORTS IT", not "the file is in the corpus". Round 11 changed
+                # how: a build-named directory inside a domain root is now reported as one build-output
+                # violation instead of having its contents audited, because auditing a local bin/ or
+                # node_modules/ drowned the encoding invariant in binary noise - measured, four artifacts,
+                # four encoding failures, on a machine that had merely run a build. Either way the gate
+                # fails and names the path; asserting corpus membership would pin the mechanism instead of
+                # the guarantee, and this row has to survive the next change to that mechanism.
+                $v = @(Get-InjectedContextViolations -RepoRoot $d)
+                $v | Should -Not -BeNullOrEmpty -Because 'smuggling into a build-named directory must fail the gate'
+                ($v | Where-Object { $Rel -like ($_.File + '*') -or $_.File -eq $Rel }) |
+                    Should -Not -BeNullOrEmpty -Because 'the report must name the smuggled path or the directory holding it'
+            } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+
+        It 'REPORTS build output inside a domain root instead of auditing or hiding it' {
+            # Capstone round 11. Round 10 removed name-based pruning to close the bypass, and the peer
+            # spotted the trade immediately: a developer's local bin/, obj/, node_modules/ or .vs/ inside
+            # a domain root was then fully audited. MEASURED - four binary artifacts, four encoding
+            # failures, on a machine that had merely run a build. Auditing binaries is noise; skipping
+            # them silently is the bypass. Naming the directory is neither.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icbo-" + [guid]::NewGuid().ToString('N'))
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                $bin = Join-Path $d 'clavity-dotnet/plugin/bin'
+                New-Item -ItemType Directory -Force -Path $bin | Out-Null
+                [IO.File]::WriteAllBytes((Join-Path $bin 'artifact.bin'), [byte[]](0x00,0xFF,0xFE,0x80))
+
                 @(Get-InjectedContextFiles -RepoRoot $d) |
-                    Should -Contain $Rel -Because 'a file named into a build directory is still injected context'
-                @(Get-InjectedContextViolations -RepoRoot $d) |
-                    Should -Not -BeNullOrEmpty -Because 'the seeded em dash must be reported, not merely collected'
+                    Should -Not -Contain 'clavity-dotnet/plugin/bin/artifact.bin' -Because 'binaries must not be audited byte by byte'
+                $v = @(Get-InjectedContextViolations -RepoRoot $d)
+                ($v | Where-Object { $_.Invariant -eq 'build-output' -and $_.File -eq 'clavity-dotnet/plugin/bin' }) |
+                    Should -Not -BeNullOrEmpty -Because 'the directory itself is the defect worth naming'
             } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
         }
 
