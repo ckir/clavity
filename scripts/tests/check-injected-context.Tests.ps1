@@ -203,7 +203,19 @@ Describe 'check-injected-context.ps1' {
                 'push'         { ($wf -split 'pull_request:')[0] }
                 'pull_request' { ($wf -split 'pull_request:')[1] }
             }
-            $paths = @([regex]::Matches($section, "(?m)^\s+- '([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+            # THE KEY MUST BE LITERALLY `paths:`. The first version of this test scraped every quoted list
+            # item in the section and ignored the YAML key above it, so renaming the key to `paths-ignore:`
+            # INVERTED the trigger - CI would skip exactly the domain it is meant to watch - and this test
+            # still passed. MEASURED: 83/0 under that one-token edit. A drift guard that fails open under a
+            # plausible edit is worse than none, because it certifies the thing it stopped checking.
+            $section | Should -Match "(?m)^\s+paths:\s*$" -Because "the $Filter trigger must use 'paths:' - 'paths-ignore:' would invert it"
+            # Collect ONLY the list items under that key, stopping at the first line that is not one.
+            $block = ($section -split "(?m)^\s+paths:\s*$")[1]
+            $paths = @()
+            foreach ($line in ($block -split "`r?`n")) {
+                if ($line -match "^\s+- '([^']+)'") { $paths += $Matches[1] }
+                elseif ($line.Trim()) { break }
+            }
             $paths.Count | Should -BeGreaterThan 5 -Because 'a failed parse would make the assertion below vacuous'
             $missing = @($script:DomainRoots | Where-Object { "$_/**" -notin $paths })
             $missing -join ', ' | Should -BeExactly '' -Because "a domain root absent from the $Filter filter means CI never runs the gate on changes to it"
@@ -383,6 +395,23 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $paths = Expand-ExemptionPath -Entry ([pscustomobject]@{ path='ghidrust/plugin/skills/x/SKILL.md' })
             $paths | Should -Be @('ghidrust/plugin/skills/x/SKILL.md')
         }
+        It 'REJECTS an exemption whose expanded path does not exist on disk' {
+            # Capstone round 2, Boundary Smuggler + Literal Implementer, folded together. The gate used to
+            # accept these silently: a twin-scoped entry naming a file present in only ONE tree produced a
+            # phantom key the walk never queries, so one tree could be cleaned while the other kept its
+            # waiver - measured, the suite reddened but the gate exited 0. The same throw catches the
+            # anchoring trap, where a repo-relative path under twin scope doubles the prefix.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icx-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+            foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+            Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
+{ "exemptions": [ { "path": "skills/nope/SKILL.md", "scope": "twin-plugin", "invariant": "encoding", "reason": "probe" } ] }
+'@
+            { Get-InjectedContextViolations -RepoRoot $d } | Should -Throw -ExpectedMessage '*does not exist*'
+            Remove-Item -Recurse -Force $d
+        }
+
         It 'the blocklist is retired - no tuple remains' {
             $script:AnomalyBlocklist.Count | Should -Be 0 -Because 'every audited anomaly is fixed or ruled not-a-defect; the ordinary invariants carry the guarantee now'
         }
@@ -451,11 +480,14 @@ jq -nc --arg m "[TAG] $msg" '{}'
                 param([hashtable]$Files)   # relative path -> content
                 $d = Join-Path ([IO.Path]::GetTempPath()) ("icv-" + [guid]::NewGuid().ToString('N'))
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
-                # BOTH control files. Get-IgnoreGlobs THROWS without the ignorelist, so copying only the
-                # exemptions file makes every fixture row throw instead of testing anything.
-                foreach ($f in 'injected-context-exemptions.json', 'injected-context-ignore.txt') {
-                    Copy-Item (Join-Path $script:RepoRoot "scripts/$f") (Join-Path $d 'scripts')
-                }
+                # The ignorelist is COPIED - Get-IgnoreGlobs throws without it, and its globs are what the
+                # fixtures exercise. The exemptions file is WRITTEN EMPTY rather than copied: the real one
+                # names real repository files that do not exist inside a temp fixture, and the gate now
+                # throws on an exemption path that is missing. Copying it was a hidden coupling anyway -
+                # these rows test violation detection, not the shipped waivers.
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') `
+                            -Value '{ "exemptions": [] }' -Encoding ascii
                 # ALL SIX domain roots must exist. Discovery THROWS on a missing root - deliberately, so a
                 # renamed product cannot silently drop coverage - and a fixture that creates only the root
                 # it needs would trip that throw rather than exercise the walker. Two folds from different

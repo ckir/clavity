@@ -437,7 +437,26 @@ function Get-InjectedContextViolations {
         if (Test-IsBlocklisted -Path $e.path -Invariant $e.invariant) {
             throw "exemption names a known anomaly and cannot be honoured: $($e.path) / $($e.invariant)"
         }
-        foreach ($p in (Expand-ExemptionPath -Entry $e)) { $exempt["$p|$($e.invariant)"] = $true }
+        foreach ($p in (Expand-ExemptionPath -Entry $e)) {
+            # EVERY EXPANDED PATH MUST EXIST. Expand-ExemptionPath's own comment claims the invariant must
+            # be failing in BOTH twin trees, and until now the script enforced none of that - a twin-scoped
+            # entry naming a file present in only one tree produced a phantom key for the other, which the
+            # walk never queries, so one tree could be cleaned while the other kept its waiver. The suite
+            # caught it; the gate exited 0. Measured both.
+            #
+            # This also catches the anchoring trap in the same throw. The `path` field is PLUGIN-relative
+            # under scope 'twin-plugin' and REPO-relative without it, which is easy to get backwards: a
+            # repo-relative path with twin scope expands to clavity-dotnet/plugin/clavity-classic/plugin/...
+            # and would otherwise waive nothing, silently, leaving the author to wonder why.
+            if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $p))) {
+                throw ("exemption path does not exist: $p" +
+                       "`n  from entry: $($e.path)" +
+                       "`n  NOTE: with scope 'twin-plugin' the path is relative to the PLUGIN directory" +
+                       " (skills/... , knowledge/...), NOT the repository root. Without that scope it is" +
+                       " repo-relative. A doubled prefix above means the two were swapped.")
+            }
+            $exempt["$p|$($e.invariant)"] = $true
+        }
     }
 
     $out = [System.Collections.Generic.List[object]]::new()
@@ -489,6 +508,17 @@ function Invoke-InjectedContextCheck {
         Write-Host ("{0}`n  invariant : {1}`n  found     : {2}`n  waive with: {3}" -f $x.File, $x.Invariant, $x.Finding, $x.WaiverLine)
     }
     Write-Host "check-injected-context: $($v.Count) violation(s)"
+    # NAME THE DESTINATION AND THE NESTING. The waiver line above is a bare JSON object, and a developer
+    # meeting this gate for the first time has to go find where it belongs. The obvious guess - append it
+    # to the end of the exemptions file - puts it OUTSIDE the "exemptions" array, which is invalid JSON,
+    # and the next run dies in ConvertFrom-Json for everyone until someone repairs it by hand. The gate
+    # fails closed rather than open, so nothing ships silently; but turning a one-file violation into a
+    # broken gate is a bad trade for a line of output.
+    Write-Host ""
+    Write-Host "A waiver goes INSIDE the `"exemptions`" array in scripts/injected-context-exemptions.json,"
+    Write-Host "as another element - not appended after it. Replace the placeholder reason with a real one;"
+    Write-Host "an exemption whose file stops failing its invariant is reported as unused and must be deleted."
+    Write-Host "Fixing the file is almost always right. A waiver is for something deliberate and permanent."
     exit 1
 }
 
