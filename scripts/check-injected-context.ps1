@@ -66,7 +66,11 @@ $script:DomainRoots = @(
 $script:PrunedSegments = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs')
 # Non-capturing throughout: this regex is only used with -match today, but a capturing group in a regex
 # later handed to -split silently shifts every index, which cost a round-3 fix its correctness.
-$script:PruneRx = '(?:^|/)(?:' + (($script:PrunedSegments | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?:/|$)'
+# THE TRAILING '/' IS REQUIRED, NOT OPTIONAL. These are FILE paths, so a pruned segment is always a
+# DIRECTORY and always has a separator after it. An earlier '(?:/|$)' also matched END-OF-STRING, which
+# pruned a FILE merely NAMED dist, bin or target - measured, seed/dist came back pruned=True. That was a
+# regression introduced by the fix for the absolute-path defect, in the very line that fixed it.
+$script:PruneRx = '(?:^|/)(?:' + (($script:PrunedSegments | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')/'
 
 function Test-IsPrunedPath {
     param([string]$RelPath)
@@ -92,6 +96,12 @@ function Test-IsIgnored {
 
 function Get-InjectedContextFiles {
     param([string]$RepoRoot)
+    # TRIM ANY TRAILING SEPARATOR. $rel is cut with Substring($RepoRoot.Length + 1), so a root passed as
+    # 'C:/repo/' - exactly what shell tab-completion produces - is one character too long and swallows the
+    # first letter of EVERY relative path. Measured: 'clavity-dotnet/...' came back as 'lavity-dotnet/...',
+    # which breaks every ignore glob and every reference resolution at once, turning a tab-completed
+    # invocation into a flood of false violations.
+    $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
     $globs = Get-IgnoreGlobs -RepoRoot $RepoRoot
     $out = [System.Collections.Generic.List[string]]::new()
     foreach ($root in $script:DomainRoots) {
@@ -167,6 +177,9 @@ $script:RefIndexRoot = $null
 
 function Get-ReferenceIndex {
     param([string]$RepoRoot)
+    # Same trailing-separator normalisation as the corpus walk, and for the same Substring reason. It also
+    # keeps the cache key below canonical, so 'C:/repo' and 'C:/repo/' cannot build two different indexes.
+    $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
     if ($null -ne $script:RefIndex -and $script:RefIndexRoot -eq $RepoRoot) { return $script:RefIndex }
     $byName = @{}
     $all    = [System.Collections.Generic.List[string]]::new()
@@ -529,7 +542,12 @@ function Get-InjectedContextViolations {
         $longest = Get-LongestHookMessage -Text $text
         if ($longest.Length -gt $script:MaxMessageChars -and -not $exempt.ContainsKey("$f|payload-budget")) {
             $head = $longest.Substring(0, [Math]::Min(60, $longest.Length))
-            $out.Add((New-Violation -File $f -Invariant 'payload-budget' -Finding "$($longest.Length) chars > $script:MaxMessageChars - starts: $head"))
+            # NAME HOW MANY EXCEED, not just the worst one. Only the longest message is reported, and 18
+            # corpus files carry more than one hook message (4 in the largest, measured), so an operator
+            # who waives this file for payload-budget would silently waive siblings they never saw. The
+            # waiver is per (file, invariant), so the count is the only warning they get.
+            $over = @(Get-HookMessages -Text $text | Where-Object { $_.Length -gt $script:MaxMessageChars }).Count
+            $out.Add((New-Violation -File $f -Invariant 'payload-budget' -Finding "$($longest.Length) chars > $script:MaxMessageChars ($over message(s) in this file exceed it) - starts: $head"))
         }
         foreach ($tok in [regex]::Matches($text, '`([^`\n]{1,80})`')) {
             $t = $tok.Groups[1].Value

@@ -210,6 +210,30 @@ Describe 'check-injected-context.ps1' {
             } finally { Remove-Item -Recurse -Force $base -ErrorAction SilentlyContinue }
         }
 
+        It 'tolerates a RepoRoot passed WITH a trailing separator' {
+            # Capstone round 5. $rel is cut with Substring($RepoRoot.Length + 1), so a root ending in a
+            # separator - exactly what shell tab-completion produces - was one character too long and
+            # swallowed the first letter of EVERY relative path. Measured: 'clavity-dotnet/...' came back
+            # as 'lavity-dotnet/...', which breaks every ignore glob and every reference resolution at
+            # once, and turns a tab-completed invocation into a flood of false violations.
+            $plain    = @(Get-InjectedContextFiles -RepoRoot $script:RepoRoot)
+            $trailing = @(Get-InjectedContextFiles -RepoRoot ($script:RepoRoot + [IO.Path]::DirectorySeparatorChar))
+            $trailing.Count | Should -Be $plain.Count
+            $trailing[0]    | Should -BeExactly $plain[0] -Because 'a trailing separator must not shift the relative path'
+        }
+
+        It 'prunes a DIRECTORY named <seg> but not a FILE named <seg>' -ForEach @(
+            @{ seg = 'dist' }
+            @{ seg = 'bin' }
+            @{ seg = 'target' }
+        ) {
+            # Capstone round 5, and a regression the round-4 fix introduced in the very line that fixed
+            # the absolute-path defect: '(?:/|$)' also matched END-OF-STRING, so a FILE merely named dist
+            # was pruned. These are file paths, so a pruned segment is always a directory.
+            (Test-IsPrunedPath -RelPath "seed/$seg")       | Should -BeFalse -Because "a FILE named $seg is content"
+            (Test-IsPrunedPath -RelPath "seed/$seg/x.md")  | Should -BeTrue  -Because "a DIRECTORY named $seg is build output"
+        }
+
         It 'every domain root is in the CI workflow path filter - <Filter>' -ForEach @(
             @{ Filter = 'push' }
             @{ Filter = 'pull_request' }
@@ -460,7 +484,12 @@ jq -nc --arg m "[TAG] $msg" '{}'
             # creating it in NEITHER, which made it unable to tell "throws when missing from one tree" from
             # "throws only when missing from both" - so an implementation that fell open on the phantom-key
             # bug would have passed the very row written to guard it. One tree is the case that matters.
-            $present = Join-Path $d "$($script:TwinPluginRoots[1])/skills/nope/SKILL.md"
+            # THE FIRST TREE, [0], and the index is the whole point. Round 4 put the file in [1], which
+            # made this row vacuous AGAIN: the loop checks [0] first, [0] was missing, so an implementation
+            # that only ever checked the FIRST path still threw and still passed. Measured - that mutant
+            # returned 86/0. Putting the file in [0] forces the implementation past it to reach [1], so
+            # only an implementation that checks EVERY expanded path can satisfy this row.
+            $present = Join-Path $d "$($script:TwinPluginRoots[0])/skills/nope/SKILL.md"
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $present) | Out-Null
             Set-Content -LiteralPath $present -Value 'present in this tree only' -Encoding ascii
             { Get-InjectedContextViolations -RepoRoot $d } | Should -Throw -ExpectedMessage '*does not exist*'
