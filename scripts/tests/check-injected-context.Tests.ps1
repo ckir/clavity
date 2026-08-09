@@ -723,4 +723,74 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $out  | Should -Match 'ADD A COMMA'
         }
     }
+    Context 'round 8 - defects the peer proved with mutations the suite survived' {
+        BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
+
+        It 'survives a BRACKET in the repository path' {
+            # A bracket is a WILDCARD to PowerShell's -Path parameters. Measured: a repo under a path
+            # containing '[1]' threw "ignorelist missing" naming a file that was sitting right there,
+            # before discovery even reached the domain roots. Reachable - Temp or a user directory can
+            # legitimately contain one - and it fails the gate LOUDLY on correct content, which sends the
+            # operator hunting a file that is not missing.
+            $base = Join-Path ([IO.Path]::GetTempPath()) ("r8[1]-" + [guid]::NewGuid().ToString('N'))
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $base 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $base 'scripts')
+                Set-Content -LiteralPath (Join-Path $base 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $base $r) | Out-Null }
+                Set-Content -LiteralPath (Join-Path $base 'seed/ok.md') -Value 'plain ascii' -Encoding ascii
+                { Get-InjectedContextFiles -RepoRoot $base } | Should -Not -Throw
+                @(Get-InjectedContextFiles -RepoRoot $base).Count | Should -BeGreaterThan 0
+            } finally { Remove-Item -LiteralPath $base -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'subtracts a git-worktree .git FILE - it is plumbing, not injected context' {
+            # My round-6 disposition said this was harmless because '.git' is not a reference candidate.
+            # That answered a DIFFERENT system: candidacy governs backticked text INSIDE a file, pruning
+            # governs which files enter the corpus at all. Measured - a .git file carrying a BOM produced
+            # a real encoding violation, so it was audited all along. The peer was right and I was wrong.
+            $base = Join-Path ([IO.Path]::GetTempPath()) ("r8g-" + [guid]::NewGuid().ToString('N'))
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $base 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $base 'scripts')
+                Set-Content -LiteralPath (Join-Path $base 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $base $r) | Out-Null }
+                [IO.File]::WriteAllText((Join-Path $base 'seed/.git'), 'gitdir: /elsewhere', (New-Object System.Text.UTF8Encoding($true)))
+                @(Get-InjectedContextFiles -RepoRoot $base) | Should -Not -Contain 'seed/.git'
+                @(Get-InjectedContextViolations -RepoRoot $base) | Should -BeNullOrEmpty
+            } finally { Remove-Item -LiteralPath $base -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'parses BOTH bash apostrophe-escape idioms - <Name>' -ForEach @(
+            @{ Name = 'close-doublequote-reopen' ; Idiom = ([char]39 + [char]34 + [char]39 + [char]34 + [char]39) }
+            @{ Name = 'close-backslash-reopen'   ; Idiom = ([char]39 + [char]92 + [char]39 + [char]39) }
+        ) {
+            # The peer proved the .Replace was unexercised: every budget fixture used a plain body, so the
+            # parser only ever met one idiom. Measured before the fix - the backslash form returned
+            # "hello", silently truncating at the apostrophe and under-reporting that hook's payload.
+            $q    = [char]39
+            $text = "msg=" + $q + "hello" + $Idiom + "world" + $q
+            $body = Read-SingleQuotedBody -Text $text -Start ($text.IndexOf($q) + 1)
+            $body | Should -BeExactly ("hello" + $q + "world")
+        }
+
+        It 'CACHES the reference index instead of rebuilding it per call' {
+            # The peer named deleting the cache short-circuit as a mutation the whole suite survived, and
+            # it was right: nothing asserted caching. The index is a full repository walk, so losing the
+            # cache turns a per-token resolution back into the 5-minute behaviour this design replaced.
+            $a = Get-ReferenceIndex -RepoRoot $script:RepoRoot
+            $b = Get-ReferenceIndex -RepoRoot $script:RepoRoot
+            [object]::ReferenceEquals($a, $b) | Should -BeTrue -Because 'the second call must return the cached instance, not a rebuild'
+        }
+
+        It 'emits a waiver line carrying the placeholder reason an operator must replace' {
+            # Also unexercised: the rows asserted the waiver line had an "invariant" key but never its
+            # CONTENT, so changing the placeholder to anything at all survived. The placeholder is the
+            # instruction to the operator; if it silently became 'foo' the gate would be telling people to
+            # paste a waiver with a meaningless justification.
+            $v = New-Violation -File 'seed/x.md' -Invariant 'encoding' -Finding 'probe'
+            $v.WaiverLine | Should -Match 'why this is deliberate'
+            $v.WaiverLine | Should -Match 'seed/x\.md'
+        }
+    }
 }

@@ -23,3 +23,9 @@
 # coverage. Every .py in the whole domain lives under that one root; nothing else is affected.
 **/*.py
 **/.env.example
+# A git WORKTREE marks its checkout with a .git FILE (contents: "gitdir: <path>"), not a directory, and
+# the prune only removes .git as a DIRECTORY - deliberately, since requiring a trailing separator is what
+# stops a file merely NAMED dist or bin being dropped. So the marker file lands in the corpus and takes
+# every invariant. MEASURED 2026-08-09: a .git file carrying a BOM produced a real encoding violation. It
+# is git plumbing, not injected context, so it is subtracted here rather than pruned.
+**/.git

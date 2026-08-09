@@ -80,7 +80,10 @@ function Test-IsPrunedPath {
 function Get-IgnoreGlobs {
     param([string]$RepoRoot)
     $p = Join-Path $RepoRoot 'scripts/injected-context-ignore.txt'
-    if (-not (Test-Path $p)) { throw "ignorelist missing: $p" }
+    # -LiteralPath, or a BRACKET in the path is treated as a WILDCARD and this reports the file missing
+    # when it is sitting right there. MEASURED 2026-08-09: a repository under a path containing '[1]' died
+    # HERE first - before the domain-root check - with "ignorelist missing" naming the file that exists.
+    if (-not (Test-Path -LiteralPath $p)) { throw "ignorelist missing: $p" }
     @(Get-Content -LiteralPath $p | Where-Object { $_ -and -not $_.StartsWith('#') })
 }
 
@@ -110,7 +113,8 @@ function Get-InjectedContextFiles {
         # the gate would pass GREEN over a smaller corpus - coverage quietly dropping to nothing while
         # every signal says fine. That is the exact failure mode this whole project is named after, and
         # it is the single most likely way this gate stops being useful six months from now.
-        if (-not (Test-Path $full)) {
+        # -LiteralPath for the same bracket-as-wildcard reason as Get-IgnoreGlobs above.
+        if (-not (Test-Path -LiteralPath $full)) {
             throw "domain root missing: $full - if a product moved or was renamed, update `$script:DomainRoots; if it was deleted, remove the root deliberately."
         }
         # Prune heavy directories. The relative path is computed FIRST and pruned on - see the note on
@@ -345,8 +349,14 @@ function Read-SingleQuotedBody {
     while ($true) {
         $e = $Text.IndexOf("'", $i)
         if ($e -lt 0) { return $null }
+        # TWO escape idioms, not one. Bash cannot put a bare apostrophe inside a single-quoted string, so
+        # both of these are standard and both appear in real hooks: close-doublequote-reopen ('"'"', five
+        # characters) and close-backslash-reopen ('\'', four). Handling only the first silently TRUNCATED
+        # the body at the apostrophe - measured, a message written with the backslash form came back as
+        # "hello" instead of "hello'world", which would under-report the payload budget for that hook.
         if ($e + 5 -le $Text.Length -and $Text.Substring($e, 5) -eq "'`"'`"'") { $i = $e + 5; continue }
-        return $Text.Substring($Start, $e - $Start).Replace("'`"'`"'", "'")
+        if ($e + 4 -le $Text.Length -and $Text.Substring($e, 4) -eq "'\''")    { $i = $e + 4; continue }
+        return $Text.Substring($Start, $e - $Start).Replace("'`"'`"'", "'").Replace("'\''", "'")
     }
 }
 
@@ -478,7 +488,7 @@ function Get-InjectedContextViolations {
     # directory and discovery walks THAT tree, so a fixture file is found natively.
     param([string]$RepoRoot)
     $files = Get-InjectedContextFiles -RepoRoot $RepoRoot
-    $ex    = @((Get-Content (Join-Path $RepoRoot 'scripts/injected-context-exemptions.json') -Raw |
+    $ex    = @((Get-Content -LiteralPath (Join-Path $RepoRoot 'scripts/injected-context-exemptions.json') -Raw |
                 ConvertFrom-Json).exemptions)
     $exempt = @{}
     foreach ($e in $ex) {
