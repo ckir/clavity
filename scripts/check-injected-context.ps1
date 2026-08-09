@@ -220,11 +220,34 @@ function Get-NonAsciiReport {
     $hits -join "`n"
 }
 
+function Get-PlanResidue {
+    param([string]$Text)
+    # A bare plan pointer with NO REFERENT: "(Task 5)", "(Step 12)", "(Phase 3)" left behind by the
+    # implementation plan that produced the file, pointing at something no reader of the SHIPPED file
+    # can see. "(item 5)" is deliberately NOT matched - a legitimate intra-document pointer.
+    #
+    # THE REFERENT CHECK IS THE POINT, and the first cut of this function omitted it - it matched the
+    # shape and called that residue. MEASURED 2026-08-09: that reported adversarial-panel-review/SKILL.md
+    # for "(Step 4)" on line 271, which points at that same file's own "### Step 4" heading on line 123.
+    # A pointer the reader can follow inside the document they are already reading is a cross-reference,
+    # not residue. So resolve it: a pointer is residue only when this document has no heading for it.
+    #
+    # Known and accepted limit: a whole leaked plan carrying BOTH "## Task 5" and "(Task 5)" resolves and
+    # passes. That is a different defect (a plan shipped as content) and this invariant does not hunt it.
+    $out = [System.Collections.Generic.List[string]]::new()
+    foreach ($m in [regex]::Matches($Text, '\((Task|Step|Phase)\s+(\d+)\)')) {
+        $kind = $m.Groups[1].Value
+        $num  = $m.Groups[2].Value
+        # Heading forms this repo actually uses: an ATX heading, or a bolded lead-in.
+        # The trailing \b stops "Step 1" from resolving against a "### Step 12" heading.
+        if (-not [regex]::IsMatch($Text, "(?m)^(#{1,6}\s*|\*\*)$kind\s+$num\b")) { $out.Add($m.Value) }
+    }
+    $out.ToArray()
+}
+
 function Test-HasPlanResidue {
     param([string]$Text)
-    # A bare plan pointer with no referent: "(Task 5)", "(Step 12)", "(Phase 3)".
-    # "(item 5)" is deliberately NOT matched - it is a legitimate intra-document pointer.
-    [bool]([regex]::IsMatch($Text, '\((Task|Step|Phase)\s+\d+\)'))
+    [bool](@(Get-PlanResidue -Text $Text).Count)
 }
 
 function Test-HasDuplicatedTag {
@@ -406,9 +429,12 @@ function Get-InjectedContextViolations {
             $out.Add((New-Violation -File $f -Invariant 'encoding' -Finding (Get-NonAsciiReport -Path $full)))
         }
         $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
-        if (-not $exempt.ContainsKey("$f|plan-residue") -and (Test-HasPlanResidue -Text $text)) {
-            $hit = [regex]::Match($text, '\((Task|Step|Phase)\s+\d+\)').Value
-            $out.Add((New-Violation -File $f -Invariant 'plan-residue' -Finding "bare plan pointer: $hit"))
+        # Report the first UNRESOLVED pointer. Re-matching the raw regex here would name the first pointer
+        # of any kind, so a file holding one resolvable cross-reference and one dangling pointer would be
+        # correctly flagged and then send the operator to the wrong line.
+        $residue = @(Get-PlanResidue -Text $text)
+        if (-not $exempt.ContainsKey("$f|plan-residue") -and $residue.Count) {
+            $out.Add((New-Violation -File $f -Invariant 'plan-residue' -Finding "bare plan pointer: $($residue[0])"))
         }
         foreach ($m in (Get-HookMessages -Text $text)) {
             if (-not $exempt.ContainsKey("$f|tag-hygiene") -and (Test-HasDuplicatedTag -Text $m)) {

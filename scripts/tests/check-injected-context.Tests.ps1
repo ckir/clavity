@@ -196,6 +196,29 @@ Describe 'check-injected-context.ps1' {
             (Test-HasPlanResidue -Text 'the audit round (item 5) carries it') | Should -BeFalse
         }
 
+        It 'does not flag a pointer whose referent is a heading in the SAME document' -ForEach @(
+            @{ txt = "### Step 4 - Additional rounds`n`nEvery round (Step 4) must add a seat." }
+            @{ txt = "## Task 5`n`nsee the contract doc (Task 5)." }
+            @{ txt = "**Phase 3** begins here`n`nas (Phase 3) describes" }
+        ) { (Test-HasPlanResidue -Text $txt) | Should -BeFalse -Because 'a pointer the reader can follow inside this document is a cross-reference, not residue' }
+
+        It 'still flags a dangling pointer in a document that has OTHER resolvable headings' {
+            # The mixed case. A referent check that gave the whole file a pass as soon as ANY heading
+            # matched would let real residue ride along behind a legitimate cross-reference.
+            (Test-HasPlanResidue -Text "### Step 4 - Additional rounds`n`nsee (Step 4) and also (Task 9).") |
+                Should -BeTrue
+        }
+
+        It 'reports the DANGLING pointer, not the resolvable one that appears first' {
+            $r = @(Get-PlanResidue -Text "### Step 4 - Additional rounds`n`nsee (Step 4) and also (Task 9).")
+            $r.Count | Should -Be 1
+            $r[0]    | Should -Be '(Task 9)' -Because 'naming (Step 4) would send the operator to a line that is correct'
+        }
+
+        It 'does not resolve "Step 1" against a "Step 12" heading' {
+            (Test-HasPlanResidue -Text "### Step 12 - later`n`nsee (Step 1) here") | Should -BeTrue
+        }
+
         It 'flags a duplicated tag opening' {
             (Test-HasDuplicatedTag -Text '[ASSERTION-STRENGTH] ASSERTION-STRENGTH: you just touched') |
                 Should -BeTrue
