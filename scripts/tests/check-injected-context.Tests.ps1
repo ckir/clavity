@@ -292,12 +292,25 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $paths = Expand-ExemptionPath -Entry ([pscustomobject]@{ path='ghidrust/plugin/skills/x/SKILL.md' })
             $paths | Should -Be @('ghidrust/plugin/skills/x/SKILL.md')
         }
-        It 'refuses to honour an exemption naming a section-3 anomaly' {
-            (Test-IsBlocklisted -Path 'seed/golden-header.md' -Invariant 'encoding') | Should -BeTrue
+        It 'the blocklist is retired - no tuple remains' {
+            $script:AnomalyBlocklist.Count | Should -Be 0 -Because 'every audited anomaly is fixed or ruled not-a-defect; the ordinary invariants carry the guarantee now'
         }
-        It 'permits an exemption on a file that is not blocklisted' {
-            (Test-IsBlocklisted -Path 'skills/adversarial-panel-review/SKILL.md' -Invariant 'encoding') |
-                Should -BeFalse
+        It 'the blocklist MECHANISM still matches on both path suffix and invariant' {
+            # The two rows this replaced asserted against the four live tuples, so retiring the data would
+            # have left Test-IsBlocklisted - which is still called on every exemption - with no test at
+            # all, and a future audit would re-populate an unverified matcher. Inject a list instead: this
+            # pins the matching LOGIC rather than the retired DATA, and it is non-vacuous where an
+            # assertion against the empty production list cannot be (everything is false in an empty list).
+            $saved = $script:AnomalyBlocklist
+            try {
+                $script:AnomalyBlocklist = @(@{ Path = 'seed/probe.md'; Invariant = 'encoding' })
+                (Test-IsBlocklisted -Path 'seed/probe.md'          -Invariant 'encoding') | Should -BeTrue
+                # Suffix match, not equality - the twin-plugin paths arrive product-prefixed.
+                (Test-IsBlocklisted -Path 'x/y/seed/probe.md'      -Invariant 'encoding') | Should -BeTrue
+                # BOTH halves must match. An invariant-blind matcher would waive unrelated invariants.
+                (Test-IsBlocklisted -Path 'seed/probe.md'          -Invariant 'reference') | Should -BeFalse
+                (Test-IsBlocklisted -Path 'seed/unrelated.md'      -Invariant 'encoding')  | Should -BeFalse
+            } finally { $script:AnomalyBlocklist = $saved }
         }
     }
 

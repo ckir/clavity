@@ -354,17 +354,16 @@ function Expand-ExemptionPath {
     @($Entry.path)
 }
 
-# TEMPORARY standup scaffolding. Each tuple is deleted by its anomaly's fix commit; the last one removes
-# this list entirely. Without it, an exemption for an actively-failing section-3 anomaly would pass
-# bidirectional validation and ship the defect.
-$script:AnomalyBlocklist = @(
-    @{ Path = 'seed/golden-header.md';                      Invariant = 'encoding' }
-    @{ Path = 'skills/agy-first/SKILL.md';                  Invariant = 'plan-residue' }
-    @{ Path = 'knowledge/agy-capabilities.md';              Invariant = 'reference' }
-    @{ Path = 'hooks/assertion-strength-reminder.sh';       Invariant = 'tag-hygiene' }
-)
-# NOTE: there is deliberately no (assertion-strength-reminder.sh, namespace) tuple. A2 was withdrawn -
-# that hook's tag is a documented ruling (ROADMAP.md:714), not a defect. See Task 10 Step 2.
+# RETIRED, deliberately EMPTY. This was standup scaffolding: while the ten audited anomalies were still
+# live, an exemption naming one of them would have passed bidirectional validation and shipped the defect
+# under a waiver. Every one of them is now either fixed or ruled not-a-defect, so the guarantee transfers
+# to the ordinary invariants - they pass on those files today and go red again if a defect returns, which
+# is a stronger guard than a hardcoded list because it needs no maintenance.
+#
+# The list stays (rather than deleting the mechanism) as the seam a future audit re-populates. Note the
+# consequence honestly: with no tuples, Test-IsBlocklisted always returns $false and the throw it guards
+# in Get-InjectedContextViolations is unreachable. That is the intended end state, not an oversight.
+$script:AnomalyBlocklist = @()
 
 function Test-IsBlocklisted {
     param([string]$Path, [string]$Invariant)
