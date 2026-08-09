@@ -335,6 +335,42 @@ $script:MaxMessageChars = 1800
 # measurement (16 bash spawns = 5.24s against a 0.64s control) and vacuous without per-hook fixtures
 # driving each maximal branch. An accepted limit, not an oversight.
 
+function Assert-ExemptionShape {
+    param([psobject]$Entry)
+    foreach ($f in @('path','invariant','reason')) {
+        if (-not $Entry.PSObject.Properties.Name.Contains($f)) { throw "exemption missing '$f': $($Entry | ConvertTo-Json -Compress)" }
+        if ([string]::IsNullOrWhiteSpace([string]$Entry.$f)) { throw "exemption has empty '$f'" }
+    }
+}
+
+function Expand-ExemptionPath {
+    param([psobject]$Entry)
+    $scope = if ($Entry.PSObject.Properties.Name.Contains('scope')) { $Entry.scope } else { '' }
+    if ($scope -eq 'twin-plugin') {
+        # One entry covers both byte-identical trees, and the invariant must be failing in BOTH. Settling
+        # for the first tree found would let one be cleaned while the other keeps the defect.
+        return @("clavity-dotnet/plugin/$($Entry.path)", "clavity-classic/plugin/$($Entry.path)")
+    }
+    @($Entry.path)
+}
+
+# TEMPORARY standup scaffolding. Each tuple is deleted by its anomaly's fix commit; the last one removes
+# this list entirely. Without it, an exemption for an actively-failing section-3 anomaly would pass
+# bidirectional validation and ship the defect.
+$script:AnomalyBlocklist = @(
+    @{ Path = 'seed/golden-header.md';                      Invariant = 'encoding' }
+    @{ Path = 'skills/agy-first/SKILL.md';                  Invariant = 'plan-residue' }
+    @{ Path = 'knowledge/agy-capabilities.md';              Invariant = 'reference' }
+    @{ Path = 'hooks/assertion-strength-reminder.sh';       Invariant = 'tag-hygiene' }
+)
+# NOTE: there is deliberately no (assertion-strength-reminder.sh, namespace) tuple. A2 was withdrawn -
+# that hook's tag is a documented ruling (ROADMAP.md:714), not a defect. See Task 10 Step 2.
+
+function Test-IsBlocklisted {
+    param([string]$Path, [string]$Invariant)
+    [bool](@($script:AnomalyBlocklist | Where-Object { $Path -like "*$($_.Path)" -and $_.Invariant -eq $Invariant }).Count)
+}
+
 # DOT-SOURCE / EXECUTE SPLIT. The test suite dot-sources this file to reach the functions above, so the
 # main body must NOT run in that case - otherwise every dot-source would walk the tree and set an exit
 # code. `$MyInvocation.InvocationName` is '.' exactly when dot-sourced.

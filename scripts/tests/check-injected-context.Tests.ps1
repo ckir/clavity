@@ -272,4 +272,68 @@ jq -nc --arg m "[TAG] $msg" '{}'
             (Get-LongestHookMessage -Text $sh) | Should -Match 'long tail after it'
         }
     }
+    Context 'exemption lifecycle' {
+        BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
+
+        It 'rejects a blanket exemption with no named invariant' {
+            { Assert-ExemptionShape -Entry ([pscustomobject]@{ path='x'; reason='y' }) } | Should -Throw
+        }
+        It 'rejects an exemption with an empty reason' {
+            { Assert-ExemptionShape -Entry ([pscustomobject]@{ path='x'; invariant='encoding'; reason='' }) } |
+                Should -Throw
+        }
+        It 'expands a twin-scoped key into BOTH plugin trees' {
+            $paths = Expand-ExemptionPath -Entry ([pscustomobject]@{ path='skills/adversarial-panel-review/SKILL.md'; scope='twin-plugin' })
+            $paths | Should -Contain 'clavity-dotnet/plugin/skills/adversarial-panel-review/SKILL.md'
+            $paths | Should -Contain 'clavity-classic/plugin/skills/adversarial-panel-review/SKILL.md'
+            $paths.Count | Should -Be 2
+        }
+        It 'leaves a product-scoped key alone' {
+            $paths = Expand-ExemptionPath -Entry ([pscustomobject]@{ path='ghidrust/plugin/skills/x/SKILL.md' })
+            $paths | Should -Be @('ghidrust/plugin/skills/x/SKILL.md')
+        }
+        It 'refuses to honour an exemption naming a section-3 anomaly' {
+            (Test-IsBlocklisted -Path 'seed/golden-header.md' -Invariant 'encoding') | Should -BeTrue
+        }
+        It 'permits an exemption on a file that is not blocklisted' {
+            (Test-IsBlocklisted -Path 'skills/adversarial-panel-review/SKILL.md' -Invariant 'encoding') |
+                Should -BeFalse
+        }
+    }
+
+    Context 'exemptions iterate independently of discovery' {
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            $script:Ex = (Get-Content (Join-Path $script:RepoRoot 'scripts/injected-context-exemptions.json') -Raw |
+                          ConvertFrom-Json).exemptions
+        }
+        It 'every exemption names a path that exists on disk' {
+            foreach ($e in $script:Ex) {
+                foreach ($p in (Expand-ExemptionPath -Entry $e)) {
+                    Test-Path (Join-Path $script:RepoRoot $p) |
+                        Should -BeTrue -Because "exemption '$($e.path)' names a path that no longer exists"
+                }
+            }
+        }
+        It 'every exemption is still NEEDED - the file must fail the invariant without it' {
+            # Dispatch on the invariant NAME. An earlier draft skipped anything that was not encoding,
+            # which silently exempted every future non-encoding waiver from bidirectional validation -
+            # the one rule that stops exemptions rotting. Today both entries are encoding; the guard has
+            # to hold for the third.
+            foreach ($e in $script:Ex) {
+                foreach ($p in (Expand-ExemptionPath -Entry $e)) {
+                    $full = Join-Path $script:RepoRoot $p
+                    $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
+                    $stillFails = switch ($e.invariant) {
+                        'encoding'      { -not (Test-PureAscii -Path $full) }
+                        'plan-residue'  { Test-HasPlanResidue -Text $text }
+                        'tag-hygiene'   { [bool](@(Get-HookMessages -Text $text | Where-Object { Test-HasDuplicatedTag -Text $_ }).Count) }
+                        'namespace'     { [bool](@(Get-HookMessages -Text $text | Where-Object { -not (Test-DegradedNamespace -Text $_) }).Count) }
+                        default         { throw "exemption names an unknown invariant '$($e.invariant)' - add a case here or fix the entry" }
+                    }
+                    $stillFails | Should -BeTrue -Because "unused exemption: '$($e.path)' passes '$($e.invariant)' without it"
+                }
+            }
+        }
+    }
 }
