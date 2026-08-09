@@ -186,6 +186,28 @@ Describe 'check-injected-context.ps1' {
             # Name them. A count sends a reader hunting; a path sends them to the fix.
             $uncovered -join ', ' | Should -BeExactly '' -Because 'a skill outside every domain root is injected into an agent and audited by nothing'
         }
+
+        It 'every domain root is in the CI workflow path filter - <Filter>' -ForEach @(
+            @{ Filter = 'push' }
+            @{ Filter = 'pull_request' }
+        ) {
+            # $script:DomainRoots and the workflow's path filter are TWO COPIES OF ONE FACT, and they
+            # drifted within a single commit: three roots were added and the filter was not updated, so
+            # a change under ghidrust/skill/ would not have triggered the gate that audits it. A gate
+            # wired to a filter that does not cover its own domain is the same "never invoked" failure
+            # this workflow was split out to avoid, one level further in.
+            #
+            # Parsed rather than eyeballed because eyeballing is exactly what missed it.
+            $wf = Get-Content -LiteralPath (Join-Path $script:RepoRoot '.github/workflows/ci-injected-context.yml') -Raw
+            $section = switch ($Filter) {
+                'push'         { ($wf -split 'pull_request:')[0] }
+                'pull_request' { ($wf -split 'pull_request:')[1] }
+            }
+            $paths = @([regex]::Matches($section, "(?m)^\s+- '([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+            $paths.Count | Should -BeGreaterThan 5 -Because 'a failed parse would make the assertion below vacuous'
+            $missing = @($script:DomainRoots | Where-Object { "$_/**" -notin $paths })
+            $missing -join ', ' | Should -BeExactly '' -Because "a domain root absent from the $Filter filter means CI never runs the gate on changes to it"
+        }
     }
 
     Context 'reference resolution outcomes' {
