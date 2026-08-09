@@ -1,28 +1,28 @@
 ---
 name: agy-curate
-description: Periodic maintenance — drain the agy-observations inbox into the GROWTH region of the shared golden-header, dedupe against the driver-owned SEED, re-verify testable claims, and empty the inbox. Run when the inbox grows or before promoting knowledge to global.
+description: Periodic maintenance - drain the agy-observations inbox into the GROWTH region of the shared golden-header, dedupe against the driver-owned SEED, re-verify testable claims, and empty the inbox. Run when the inbox grows or before promoting knowledge to global.
 ---
 
-# agy-curate — drain the inbox, extend the golden-header GROWTH region
+# agy-curate - drain the inbox, extend the golden-header GROWTH region
 
 Deliberate and offline. This is the optimiser of the loop. Under the **EXTEND** model it owns **only** the
-GROWTH region of the shared golden-header — the driver owns the SEED (the baseline + the agy manuals), which
+GROWTH region of the shared golden-header - the driver owns the SEED (the baseline + the agy manuals), which
 this skill reads as a floor but never edits.
 
 **Inputs:**
-- `../../knowledge/agy-observations.md` — the capture inbox (what you drain).
+- `../../knowledge/agy-observations.md` - the capture inbox (what you drain).
 - The **runtime SEED floor**: the shared `%USERPROFILE%\.clavity\golden-header.seed.md` that the driver
   actually injects (honor a `CLAVITY_GOLDEN_HEADER` **directory** override; default `%USERPROFILE%\.clavity\`).
-  Read it to dedupe — a rule already stated in SEED must NOT be repeated in GROWTH. Resolve it at the RUNTIME
-  shared path, NOT a repo-relative `../../../seed/…` path: once installed this skill lives under
-  `{app}\plugins\agy-autotrain\…`, where a relative hop to `seed/` does not exist. If no `golden-header.seed.md`
+  Read it to dedupe - a rule already stated in SEED must NOT be repeated in GROWTH. Resolve it at the RUNTIME
+  shared path, NOT a repo-relative `../../../seed/...` path: once installed this skill lives under
+  `{app}\plugins\agy-autotrain\...`, where a relative hop to `seed/` does not exist. If no `golden-header.seed.md`
   is present yet (a pre-seed install), treat the dedup floor as empty.
-- `../../verify/assertions.md` — the probe harness (testable claims still gate here before entering GROWTH).
+- `../../verify/assertions.md` - the probe harness (testable claims still gate here before entering GROWTH).
 
-Under EXTEND you do **not** read or edit the `agy-assumptions.md` / `agy-capabilities.md` manuals — they are
+Under EXTEND you do **not** read or edit the `agy-assumptions.md` / `agy-capabilities.md` manuals - they are
 driver-owned static SEED (they ship in each driver's `plugin/knowledge/`), refreshed only on a driver release.
 
-## First-pass triage gate (run BEFORE deciding promote/reinforce/contradict/drop — spec §4/§5.C-A)
+## First-pass triage gate (run BEFORE deciding promote/reinforce/contradict/drop - spec section 4/section 5.C-A)
 
 For EACH pending entry, in order:
 
@@ -31,39 +31,39 @@ For EACH pending entry, in order:
    **nature** = a peer judgment tendency (`probabilistic`) or a reproducible tool/bridge behavior
    (`deterministic`)?
 
-2. **Route by the matrix (no entry is ever dropped — spec §4):**
+2. **Route by the matrix (no entry is ever dropped - spec section 4):**
    | audience \ nature | probabilistic | deterministic |
    |---|---|---|
-   | **peer** | → golden-header GROWTH (unchanged) | → golden-header GROWTH (a peer behavior is P's, not our code — never "fix the tool") |
-   | **driver** | → driver cheatsheet (§ "Compile the core driver-cheatsheet") | → **fix-the-tool backlog** *iff* tool-fixable, else → driver cheatsheet rule |
+   | **peer** | -> golden-header GROWTH (unchanged) | -> golden-header GROWTH (a peer behavior is P's, not our code - never "fix the tool") |
+   | **driver** | -> driver cheatsheet (section  "Compile the core driver-cheatsheet") | -> **fix-the-tool backlog** *iff* tool-fixable, else -> driver cheatsheet rule |
 
 3. **The determinism refusal gate is MECHANICAL, not honor-system.** To route a `driver/deterministic`
    entry to `fix-the-tool`, you MUST be able to fill BOTH blocks of the backlog schema
    (`docs/fix-the-tool-backlog/_template.md`):
-   - **Steps to Reproduce** — the exact reproduction on the owning variant's bridge.
-   - **Code-level Mitigation** — the specific change to the bridge/tool *execution path* that removes it.
+   - **Steps to Reproduce** - the exact reproduction on the owning variant's bridge.
+   - **Code-level Mitigation** - the specific change to the bridge/tool *execution path* that removes it.
 
    If you CANNOT state a concrete **Code-level Mitigation** (the only fix is a *driving move*, e.g.
-   "feed the peer ground truth"), then by construction it is NOT tool-fixable → it stays a **driver
+   "feed the peer ground truth"), then by construction it is NOT tool-fixable -> it stays a **driver
    cheatsheet rule**, never a backlog item. Determinism is a PER-VARIANT judgment: the SAME observation
    may be `fix-the-tool` on one variant (its transport exposes the needed signal) and a carried
-   `driver` cheatsheet rule on another (its transport cannot) — record which.
+   `driver` cheatsheet rule on another (its transport cannot) - record which.
 
 4. **Emit the backlog item** for each tool-fixable `driver/deterministic` entry: one file per entry at
-   `docs/fix-the-tool-backlog/<slug>.md` from `_template.md` (append-only; never a single shared file —
+   `docs/fix-the-tool-backlog/<slug>.md` from `_template.md` (append-only; never a single shared file -
    offline curate runs on different branches would merge-conflict). Committing the file IS the routing;
    automated ingest into a tracker is a phase-2 hardening, not required here.
 
 Only entries that survive the gate (peer entries, and `driver/probabilistic` + non-tool-fixable
 `driver/deterministic` entries) proceed to the promote/reinforce/contradict/drop decision below.
 
-### Retirement is conservative + manual (spec §5.C-D)
+### Retirement is conservative + manual (spec section 5.C-D)
 
 Emitting a backlog item does NOT strip the corresponding rule from the driver cheatsheet. A carried
-workaround rule may be deleted only when **BOTH gates hold (spec §5.C-B + §5.C-D / acceptance 5):**
+workaround rule may be deleted only when **BOTH gates hold (spec section 5.C-B + section 5.C-D / acceptance 5):**
 1. a **permanent CI regression test** for the fixed quirk is **green AND committed** in the owning product,
    on **every variant the quirk reproduced on** (the standing test is what auto-resurfaces the rule if an
-   agy update re-opens the quirk — deleting the rule without it would leave the driver blind on the next
+   agy update re-opens the quirk - deleting the rule without it would leave the driver blind on the next
    drift); AND
 2. the fix is **widely adopted among end-users** (a rule costs ~1 line, so carrying it through the adoption
    tail is cheap and safe).
@@ -71,82 +71,82 @@ workaround rule may be deleted only when **BOTH gates hold (spec §5.C-B + §5.C
 There is deliberately **no maintainer-side build-time version gate** (curate runs on the maintainer's box,
 which always has the newest driver, so a local check would ship a stripped cheatsheet that still bites a
 not-yet-updated end-user). Do not remove a carried rule as part of triage; retirement is a separate,
-deliberate, later decision — and this MVP does not retire any current entry (the fixes + CI tests are
+deliberate, later decision - and this MVP does not retire any current entry (the fixes + CI tests are
 deferred; see "Deferred work").
 
-### Compile the core driver-cheatsheet (spec §5.C-C)
+### Compile the core driver-cheatsheet (spec section 5.C-C)
 
 The `driver/probabilistic` entries that survived the gate are the durable driver knowledge. Distil the
-variant-agnostic core (peer psychology — identical for both drivers) into a lean ≤ ~150-token / ~3-bullet
+variant-agnostic core (peer psychology - identical for both drivers) into a lean <= ~150-token / ~3-bullet
 cheatsheet. The canonical text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync there.
 
-**⚠️ THREE files are pinned byte-identical — editing `driver-cheatsheet.core.md` alone RED-GATES both binaries.** A pinning
-test in each driver asserts its compiled-in baseline equals `driver-cheatsheet.core.md` (normalized CRLF→LF, then trimmed).
+**[!] THREE files are pinned byte-identical - editing `driver-cheatsheet.core.md` alone RED-GATES both binaries.** A pinning
+test in each driver asserts its compiled-in baseline equals `driver-cheatsheet.core.md` (normalized CRLF->LF, then trimmed).
 If you change `driver-cheatsheet.core.md` you MUST also update:
-- `clavity-classic/src/driver_cheatsheet.rs` → `BASELINE_FLOOR` (single-line `\n` literal)
-- `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` → `BaselineFloor` (multi-line `+ "…\n"` concatenation)
+- `clavity-classic/src/driver_cheatsheet.rs` -> `BASELINE_FLOOR` (single-line `\n` literal)
+- `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` -> `BaselineFloor` (multi-line `+ "...\n"` concatenation)
 
-Oracles — run BOTH before committing a drain; a drain that reds these is not done:
+Oracles - run BOTH before committing a drain; a drain that reds these is not done:
 - `cd clavity-classic && cargo test --all --features test-fakes`
-  → expect `test driver_cheatsheet::tests::baseline_floor_matches_canonical_core_source ... ok`
+  -> expect `test driver_cheatsheet::tests::baseline_floor_matches_canonical_core_source ... ok`
 - `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests`
-  → expect `DriverCheatsheetTests.BaselineFloor_matches_the_canonical_core_source` passing
+  -> expect `DriverCheatsheetTests.BaselineFloor_matches_the_canonical_core_source` passing
 
 Escape the literals mechanically (embedded `"` and em-dashes are easy to corrupt by hand); do not retype
 the text through a terminal, whose codepage can mangle non-ASCII characters.
 
 Write the compiled core to the shared runtime path so every driver surface reads ONE file:
 `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md`, using the SAME atomic
-`.tmp`→rename the golden-header uses (a reader must never see a half-written file). Prefer the binary's
+`.tmp`->rename the golden-header uses (a reader must never see a half-written file). Prefer the binary's
 `curate-commit` path if it grows a cheatsheet subcommand; otherwise write the file directly with an atomic
-rename. Do NOT lengthen it to cover per-variant transport mechanics — those belong in each variant's
+rename. Do NOT lengthen it to cover per-variant transport mechanics - those belong in each variant's
 driving skill appendix, not the shared core.
 
-## For each inbox entry — decide
+## For each inbox entry - decide
 
 Entries that survive the triage gate above (peer entries, and carried `driver` cheatsheet rules) get one of
-these dispositions. A `driver/deterministic` entry already routed to the fix-the-tool backlog is done — it
+these dispositions. A `driver/deterministic` entry already routed to the fix-the-tool backlog is done - it
 does not re-enter here; a carried `driver` cheatsheet rule is appended to the cheatsheet, not GROWTH.
 
-- **promote** — into the compiled GROWTH header, subject to the **promotion rubric** below, and only if the
-  rule is not already stated in the SEED floor (dedupe — see Inputs).
-- **reinforce** — already carried by a prior GROWTH run: GROWTH is regenerated wholesale each run, so just keep
+- **promote** - into the compiled GROWTH header, subject to the **promotion rubric** below, and only if the
+  rule is not already stated in the SEED floor (dedupe - see Inputs).
+- **reinforce** - already carried by a prior GROWTH run: GROWTH is regenerated wholesale each run, so just keep
   the strongest phrasing when you recompile.
-- **contradict** — conflicts with a SEED claim: prefer **dropping** the candidate (SEED is the driver-owned
+- **contradict** - conflicts with a SEED claim: prefer **dropping** the candidate (SEED is the driver-owned
   floor) unless you have strong, verified evidence agy's behavior actually changed for the current version; if
   sources genuinely disagree, record a `[conflict]`.
-- **drop** — noise, too specific, duplicate, or already covered by SEED. (Dropping a genuinely-noise candidate
+- **drop** - noise, too specific, duplicate, or already covered by SEED. (Dropping a genuinely-noise candidate
   here is a deliberate curation decision; it does not violate the triage gate's no-drop invariant, which
   guarantees every observation is *routed and considered*, not silently lost.)
 
-## Promotion rubric (curation-fatigue guard — do not skip)
+## Promotion rubric (curation-fatigue guard - do not skip)
 
-- A **Heuristic** promotes only with **≥2 independent observations across different sessions**
+- A **Heuristic** promotes only with **>=2 independent observations across different sessions**
   (one-off impressions stay in the inbox).
 - An **Empirical Assumption** promotes only after a **100% pass in the verify harness**:
 
-  > 🛑 STOP: before promoting any Empirical Assumption you MUST open `../../verify/run-verification.md`,
+  > [STOP] STOP: before promoting any Empirical Assumption you MUST open `../../verify/run-verification.md`,
   > physically execute its synthetic `clavity ask` probe against the live agy, and record the real
   > outcome in `../../verify/assertions.md`. Never mark a probe "pass" from memory or assumption.
   > Recording the outcome means BOTH: the evidence in the narrative cell, AND the status cell for the
-  > driver the probe actually ran under (`dotnet` or `classic`). They are one edit, not two — the hook
+  > driver the probe actually ran under (`dotnet` or `classic`). They are one edit, not two - the hook
   > reads only the status cell and never the prose, so a status left stale is invisible drift.
-  > Tokens: `PASS <ver>` · `FAIL <ver>` · `PARTIAL <ver>` (some parts unrun — always nags) ·
-  > `ACKED <ver>` (verified, unresolvable by us, disposition recorded) · `N/A` (not applicable to that
-  > driver). A probe you did not run under the OTHER driver stays `PARTIAL` there — do not guess it.
+  > Tokens: `PASS <ver>` * `FAIL <ver>` * `PARTIAL <ver>` (some parts unrun - always nags) *
+  > `ACKED <ver>` (verified, unresolvable by us, disposition recorded) * `N/A` (not applicable to that
+  > driver). A probe you did not run under the OTHER driver stays `PARTIAL` there - do not guess it.
 
   If a probe **fails**, that is drift: keep/return the item to the inbox and fix its probe alongside.
 
-**SCOPE OF THIS RUBRIC — read before applying it.** It gates **promotion into GROWTH** and nothing else.
+**SCOPE OF THIS RUBRIC - read before applying it.** It gates **promotion into GROWTH** and nothing else.
 An entry the triage matrix routes to the **driver cheatsheet** or the **fix-the-tool backlog** never
 reaches this rubric, so a stale verify harness does NOT block it, whatever its `[assumption]` class tag
 says. Class (`assumption|heuristic|anti-pattern`) and audience (`peer|driver`) are independent axes:
 the rubric keys on the DESTINATION, not on the class tag. Applying the harness gate to a driver-routed
-entry strands it for no reason — MEASURED: the 2026-08-01 drain held 8 entries as harness-blocked when
+entry strands it for no reason - MEASURED: the 2026-08-01 drain held 8 entries as harness-blocked when
 only the 2 `peer`-audience ones were, the other 6 being `driver`-audience with a legal move available
 the whole time.
 
-### HELD — the fourth disposition, for an entry that is neither promotable nor droppable
+### HELD - the fourth disposition, for an entry that is neither promotable nor droppable
 
 An Empirical Assumption whose probe CANNOT BE RUN is not promotable (the rubric forbids it) and not
 droppable (it may well be true). Before this state existed the skill had no legal move for it, and the
@@ -155,76 +155,76 @@ stranded 8** because `assertions.md` was stamped against agy 1.1.1 while the liv
 Finish step said empty the inbox; the rubric said these may not promote; nothing said what to do.
 
 An entry may be marked **HELD** only when all three hold:
-1. it is `[assumption]` class **and routed to GROWTH** (i.e. `peer` audience — see the scope note above;
+1. it is `[assumption]` class **and routed to GROWTH** (i.e. `peer` audience - see the scope note above;
    a `driver`-routed entry is never HELD, because the harness does not gate it),
 2. its probe could not be executed, and the reason is recorded verbatim, and
-3. the RELEASE CONDITION is named — the specific thing that would let it promote.
+3. the RELEASE CONDITION is named - the specific thing that would let it promote.
 
 Write it as a normal inbox bullet with a `held=` field appended:
 
-    - [assumption] (peer/probabilistic) <the rule>  ·  `[corpus]` · <date> · held=verify-harness-stale-1.1.1-vs-1.1.9
+    - [assumption] (peer/probabilistic) <the rule>  *  `[corpus]` * <date> * held=verify-harness-stale-1.1.1-vs-1.1.9
 
 **HELD is not a parking space.** It is a claim that a NAMED blocker exists, and it expires when that
 blocker clears. A HELD entry with no release condition, or one whose condition has since cleared, is a
-drain that did not finish — treat it as pending on the next run.
+drain that did not finish - treat it as pending on the next run.
 
 ## Compile + commit the GROWTH region (via the binary, never a raw edit)
 
-**Migrate a pre-split flat header first (one-time — preserves upgrading users' wisdom, spec Acceptance #4).**
+**Migrate a pre-split flat header first (one-time - preserves upgrading users' wisdom, spec Acceptance #4).**
 If a legacy flat `%USERPROFILE%\.clavity\golden-header.md` is present **and** no `golden-header.growth.md`
 exists yet, this is an upgrading user whose accumulated learned wisdom lives in that flat file. **Before
-compiling, read it and FOLD its learned rules into this first GROWTH compile** — dropping anything already
+compiling, read it and FOLD its learned rules into this first GROWTH compile** - dropping anything already
 stated in the SEED floor (the old baseline is now driver-owned SEED; keep only the user's learned additions).
 Once this run writes `golden-header.growth.md`, the binary stops reading the legacy file (read-precedence), so
-this fold is what keeps the wisdom alive — do it with **no user action required**. Leave the legacy file in
-place afterwards (do not rename it — panel agy-R3-c).
+this fold is what keeps the wisdom alive - do it with **no user action required**. Leave the legacy file in
+place afterwards (do not rename it - panel agy-R3-c).
 
 Compile the dense, payload-ready GROWTH header from the verified, newly-learned inbox rules (plus any folded
-legacy wisdom above) — the ones NOT already in the SEED floor:
+legacy wisdom above) - the ones NOT already in the SEED floor:
 
-1. **`[⚠️ CRITICAL ANTI-PATTERNS]` first** for any newly-learned failure modes — knowing how *not* to prompt
+1. **`[[!] CRITICAL ANTI-PATTERNS]` first** for any newly-learned failure modes - knowing how *not* to prompt
    agy is the most actionable context.
 2. The handful of newly-learned load-bearing **Empirical Assumptions**.
-3. Keep it short — GROWTH is prepended (after SEED) to *every* ask; trim anything not decision-changing.
+3. Keep it short - GROWTH is prepended (after SEED) to *every* ask; trim anything not decision-changing.
 
 **GROWTH must fit the REMAINING budget.** The binary injects `SEED + GROWTH` only when their **combined** size
 is within the 16 KB cap; over that it silently degrades to SEED-only, so a GROWTH that fits the per-file cap but
 overflows the combined cap is written yet **never injected**. Compile GROWTH to fit roughly
-`16 KB − (current size of golden-header.seed.md)` — check the seed size and keep GROWTH lean.
+`16 KB - (current size of golden-header.seed.md)` - check the seed size and keep GROWTH lean.
 
-**🛑 Human-review gate — before any runtime write.** This skill publishes directly to the **live** runtime
+**[STOP] Human-review gate - before any runtime write.** This skill publishes directly to the **live** runtime
 header; the standalone path has no separate maintainer `accept-drain` review step (that generation-vs-publish
 split exists only in the dev repo flow). So the human review the EXTEND trust model relies on happens HERE:
 before publishing, PAUSE, show the user the compiled GROWTH proposal (the anti-patterns and assumptions you
-are about to make law for *every* future ask), and ask for explicit approval — "Reply `approve` to publish
+are about to make law for *every* future ask), and ask for explicit approval - "Reply `approve` to publish
 to your runtime header, or request changes." **Do not publish until the user approves.** These are untrusted
 machine-local captures about to become a live injection into every ask; the human gate is the safeguard the
 model depends on, not a formality.
 
 Then, once approved, **commit it through the binary** so it lands at the resolved shared GROWTH path
-(`%USERPROFILE%\.clavity\golden-header.growth.md`) with an atomic write + a `.sha256` **integrity** sidecar —
+(`%USERPROFILE%\.clavity\golden-header.growth.md`) with an atomic write + a `.sha256` **integrity** sidecar -
 NOT a security control (anyone who can rewrite the header can equally rewrite or delete the sidecar); it exists
 to catch torn writes, filesystem corruption, and a hand-edited header. It is **verified on read**: absent or
 unreadable is accepted unchanged (a fresh install seeds SEED with no sidecar); mismatched or over its own 1 KiB
 cap causes that region to be skipped with a warning. Only the binary knows `CLAVITY_GOLDEN_HEADER`.
 
-**Publish via the binary's STDIN as RAW BYTES — never a shell redirect or pipe.** A multi-line markdown
+**Publish via the binary's STDIN as RAW BYTES - never a shell redirect or pipe.** A multi-line markdown
 header blows past command-line quoting/length limits (so it must go via STDIN, not an argument); and on
 Windows a bare `curate-commit < file` is unsupported for external commands, while a text pipe
 (`Get-Content file | curate-commit`, `printf '%s' "$growth" | curate-commit`) re-encodes the stream through
-the console OEM code page (CP437) — corrupting non-ASCII (an em dash becomes `Γ Ç ö`), the exact mojibake
+the console OEM code page (CP437) - corrupting non-ASCII (an em dash becomes the three characters U+0393 U+00C7 U+00F6), the exact mojibake
 `curate-commit`'s raw-byte transport exists to reject. Feed the file's raw UTF-8 bytes to the process's
 stdin base stream instead. GROWTH is **regenerated wholesale** each run, so the publish is idempotent:
 
 **Compile GROWTH as pure ASCII.** This is a rule about what we WRITE, not a restriction on what the
-transport may carry — `curate-commit` remains a faithful byte transport and will accept legitimate
+transport may carry - `curate-commit` remains a faithful byte transport and will accept legitimate
 non-ASCII. It carries a tripwire for known mojibake families, which is a heuristic and not a proof, so the
 authoring policy is what covers the general case. GROWTH is a compiled, machine-generated artifact with no
 present need for typography, and non-ASCII in it bought nothing while costing 13 days of silently corrupt
 injection into every ask.
 
     # Resolve the driver (dotnet `clavity-ls` or classic `clavity`) and stream RAW bytes to its stdin.
-    # Both variants' `curate-commit` write ONLY golden-header.growth.md (SEED untouched) — transport is identical.
+    # Both variants' `curate-commit` write ONLY golden-header.growth.md (SEED untouched) - transport is identical.
     $exe = (Get-Command clavity-ls -EA SilentlyContinue) ?? (Get-Command clavity -EA SilentlyContinue)
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $exe.Source; $psi.ArgumentList.Add('curate-commit')
@@ -236,20 +236,20 @@ injection into every ask.
 
 `curate-commit` (both variants) writes **only** `golden-header.growth.md`; it never touches the SEED. Do NOT edit
 the shared files by hand, and do **not rename or remove** a legacy flat `%USERPROFILE%\.clavity\golden-header.md`
-if one is present — the binary reads it as a one-time migration fallback (GROWTH present → legacy ignored), and
+if one is present - the binary reads it as a one-time migration fallback (GROWTH present -> legacy ignored), and
 renaming it would defeat that migration for an upgrading user.
 
 **No driver installed?** If no clavity binary is on PATH, still compile and write `golden-header.growth.md`
-(create the `.clavity` dir if absent) and emit a **non-blocking** warning — e.g. "no clavity driver detected;
+(create the `.clavity` dir if absent) and emit a **non-blocking** warning - e.g. "no clavity driver detected;
 the learned header won't be injected until a driver is installed." Do NOT hard-fail; the capture still has value.
 
 **Variant-agnostic ONLY.** GROWTH carries cross-cutting agy *reasoning* wisdom (anti-patterns, load-bearing
-assumptions) — forbid BOTH project nouns AND variant-specific driving mechanics (e.g. `agy_ask` argument shaping
+assumptions) - forbid BOTH project nouns AND variant-specific driving mechanics (e.g. `agy_ask` argument shaping
 vs `clavity ask` flags). Those belong in the per-variant core driving skill, not the shared header.
 
 **Anti-poisoning circuit-breaker.** You (the curator) are the gate, not a transcriber. Critically evaluate each
 candidate before compiling it into a law that shapes every future ask: REJECT a self-reported "learning" that is
-unverified, over-general, or a one-off impression — a wrong heuristic frozen into the header poisons every
+unverified, over-general, or a one-off impression - a wrong heuristic frozen into the header poisons every
 downstream call. When in doubt, leave it in the inbox.
 
 ## Finish
@@ -260,16 +260,16 @@ downstream call. When in doubt, leave it in the inbox.
   perform the `## Pending` reset described in the next bullet (which is a reset to the still-pending
   entries, NOT to zero lines). Resetting first means a failed publish loses the entries and produces no
   GROWTH to show for them. If `curate-commit` returns non-zero, STOP and leave the inbox untouched.
-- **Empty the inbox** — every entry must reach a terminal disposition: promoted into GROWTH, compiled into
+- **Empty the inbox** - every entry must reach a terminal disposition: promoted into GROWTH, compiled into
   the driver cheatsheet, emitted as a fix-the-tool backlog item, dropped as noise, or marked **HELD** with
   a recorded blocker and release condition. Reset `## Pending` to contain the HELD entries **and any entry
-  the promotion rubric explicitly parks there** — a one-off Heuristic awaiting a second independent
+  the promotion rubric explicitly parks there** - a one-off Heuristic awaiting a second independent
   observation is the case that exists today. **Capstone round 2 found this deadlock:** a single-observation
   `[heuristic]` cannot promote (the rubric says it stays in the inbox), is not noise so cannot be dropped,
   and is not `[assumption]` class so cannot be HELD. Wording that said "only the HELD entries" left it with
-  no legal move at all — the same unsatisfiable shape this section was written to remove, reintroduced one
+  no legal move at all - the same unsatisfiable shape this section was written to remove, reintroduced one
   layer down. A rubric-parked entry is dispositioned: its disposition is "wait for corroboration".
-  **"Empty" means every entry is dispositioned, not that the file has zero lines** — the earlier wording
+  **"Empty" means every entry is dispositioned, not that the file has zero lines** - the earlier wording
   was unsatisfiable whenever the verify harness was stale, which is a state this skill has no power to fix
   and therefore must be able to survive.
 - If the loop has proven out in-project, this is the point to **promote** the skills + knowledge to the

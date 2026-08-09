@@ -27,13 +27,13 @@ printf '#!/bin/sh\nexit 0\n'           > "$stub/clavity-ls"; chmod +x "$stub/cla
 # nothing to do with the code under test.
 # Check EVERY tool the hook invokes, not just the two obvious ones. A missing `timeout` (no GNU
 # coreutils) makes the hook's version lookup fail, so it exits silent and the nag cases fail with
-# "expected nag, got silent" — a confusing symptom pointing nowhere near the real cause.
+# "expected nag, got silent" - a confusing symptom pointing nowhere near the real cause.
 for req in cat jq awk timeout grep head; do
-  command -v "$req" >/dev/null 2>&1 || { echo "$req not found — the hook cannot run without it"; exit 1; }
+  command -v "$req" >/dev/null 2>&1 || { echo "$req not found - the hook cannot run without it"; exit 1; }
 done
 
 # run_case <name> <fixture> <expect: nag|silent> [driver]
-#   driver: dotnet (default — stub supplies clavity-ls, host state irrelevant)
+#   driver: dotnet (default - stub supplies clavity-ls, host state irrelevant)
 #         | dotnet-only (needs EXACTLY dotnet detectable; skips if host has clavity)
 #         | none        (needs NO driver detectable; skips if host has either CLI)
 #         | broken-awk  (awk on PATH but failing; the gate must nag, never fall silent)
@@ -74,7 +74,7 @@ run_case() {
     # hook see BOTH drivers, switch to cols="both", read the classic column and nag -- failing a test
     # that expects silence, for a reason that has nothing to do with the gate.
     if command -v clavity >/dev/null 2>&1; then
-      printf 'skip %s — host has clavity (classic) on PATH, so dotnet-only cannot be isolated\n' "$name"
+      printf 'skip %s - host has clavity (classic) on PATH, so dotnet-only cannot be isolated\n' "$name"
       rm -rf "$sandbox" "$empty"; return
     fi
   elif [ "$driver" = "broken-awk" ]; then
@@ -103,7 +103,7 @@ run_case() {
   if [ "$got" = "$expect" ]; then
     printf 'ok   %s\n' "$name"; pass=$((pass+1))
   else
-    printf 'FAIL %s — expected %s, got %s\n     output: %s\n' "$name" "$expect" "$got" "$out"
+    printf 'FAIL %s - expected %s, got %s\n     output: %s\n' "$name" "$expect" "$got" "$out"
     fail=$((fail+1))
   fi
   rm -rf "$sandbox"

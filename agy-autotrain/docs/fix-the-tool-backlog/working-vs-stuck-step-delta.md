@@ -18,16 +18,16 @@ fire a heavy pure-reasoning ask; the fixed idle-wait reports modal while the cas
 ## Notes
 classic = carried driver rule (F6b), lower retirement confidence.
 
-## Disposition — open-work sweep, 2026-08-06
+## Disposition - open-work sweep, 2026-08-06
 
-🚫 **KILLED — subsumed by `stalled-reply-recoverable-not-lost.md`.**
+[X] **KILLED - subsumed by `stalled-reply-recoverable-not-lost.md`.**
 
 **Verified by reading both entries, not assumed.** This entry asks to *"distinguish working-vs-stuck by the
 cascade step-delta before reporting modal."* The mitigation in `stalled-reply-recoverable-not-lost` ends:
 *"Only if the step counter is genuinely NOT advancing should the call be reported as [stalled]."*
-**That final clause IS this discriminator** — implementing that entry necessarily implements this one.
+**That final clause IS this discriminator** - implementing that entry necessarily implements this one.
 Both carry `variant: clavity-dotnet`, so the overlap is total rather than per-driver.
 
-⚠️ **Killed as a duplicate, not as a non-problem.** The false modal it describes is real; it is simply the
+[!] **Killed as a duplicate, not as a non-problem.** The false modal it describes is real; it is simply the
 same defect seen from the caller's side, and tracking one defect twice is how a backlog inflates. If the
 surviving entry is ever narrowed to exclude the step-delta check, this must come back.

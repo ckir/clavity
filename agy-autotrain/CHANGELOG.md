@@ -1,5 +1,5 @@
-# agy-autotrain — changelog
-## 0.4.0 — 2026-08-03
+# agy-autotrain - changelog
+## 0.4.0 - 2026-08-03
 
 ### Features
 - feat(agy-autotrain): cheatsheet - check the clean round, not just license it
@@ -10,7 +10,7 @@
 - fix(agy-autotrain): read the bullet RECORD and its trailing stamp, not the leftmost date
 - fix(agy-autotrain): anchor the curate-nudge age scan to pending bullets
 
-## 0.3.0 — 2026-08-03
+## 0.3.0 - 2026-08-03
 
 ### Features
 - feat(cheatsheet): sanction the null answer; verify the fix, not just the finding
@@ -31,17 +31,17 @@
 - fix(agy-autotrain): register with Claude Code only, never agy
 - fix(docs): correct stale golden-header injection claim in agy-autotrain README
 
-## 0.2.2 — 2026-07-24
+## 0.2.2 - 2026-07-24
 
 ### Fixes
 - fix(installer): anchor agy-autotrain's dev-folder excludes to the source root
 
-## 0.2.1 — 2026-07-21
+## 0.2.1 - 2026-07-21
 
 ### Fixes
 - fix(installer): resolve the 5.1 interpreter with {sys}, not {sysnative}
 
-## 0.2.0 — 2026-07-20
+## 0.2.0 - 2026-07-20
 
 ### Features
 - feat(panel): make the negotiation turn point at files, not at your evidence
@@ -54,7 +54,7 @@
 - fix(installer): stop the upgrade from destroying the capture inbox
 - fix(agy-autotrain): resync both BASELINE_FLOOR constants to driver-cheatsheet.core.md
 
-## 0.1.5 — 2026-07-13
+## 0.1.5 - 2026-07-13
 
 ### Fixes
 - fix(installer): refuse uninstall while Claude Code is running (symmetric clobber guard)
@@ -64,18 +64,18 @@
 Prior version history lives in `git log`; this changelog starts at 0.1.3.
 
 ## 0.1.4
-- Move the `adversarial-panel-review` skill (de-transported) + AGY-AFTER hook into each driver's plugin —
+- Move the `adversarial-panel-review` skill (de-transported) + AGY-AFTER hook into each driver's plugin -
   the panel discipline is now driver-native. agy-autotrain retains the learning loop (learn/curate/verify +
   observations inbox). (The agnostic manuals + golden-header baseline move to the driver seed in Phase 3.)
 
 ## 0.1.3
-- Add the **`adversarial-panel-review`** skill — convene an adversarial multi-seat panel to tear down a
+- Add the **`adversarial-panel-review`** skill - convene an adversarial multi-seat panel to tear down a
   spec, plan, or other high-leverage artifact before it is acted on: a palette of distinct expert seats
   (each hunting a different defect-class), a live-agy escalation round, fold-with-verification, and a
   PANEL VERDICT. Codifies the AGY-AFTER team-panel review discipline that previously lived as prose in
   the global driving instructions.
 - Ship the **AGY-AFTER reminder** as a plugin hook (`hooks/agy-after-reminder.sh`, PostToolUse on
   spec/plan edits) that points at the `adversarial-panel-review` skill. The discipline now installs,
-  updates, and uninstalls entirely with the plugin — no edits to the user's global `CLAUDE.md`.
+  updates, and uninstalls entirely with the plugin - no edits to the user's global `CLAUDE.md`.
 - Capture 3 agy driving observations (forcing-functions beat vague volume/creativity dials; genuine
   creativity is unlocked by a clear goal + a verifiable success criterion + full method latitude).

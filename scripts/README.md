@@ -30,6 +30,7 @@ directly.
 | `sync-register-hash.ps1` | Regenerate `register-plugin-hash.iss` with the current SHA-256 of `register-plugin.ps1` | `just sync-register-hash` |
 | `check-agy-discipline-skills.ps1` | Lints shipped agy-driving discipline skills (frontmatter, ASCII-only [VERDICT] grammar, transports, marker constant) | `just check-agy-skills` (pre-push) |
 | `check-plugin-namespace.ps1` | SP-0 namespace-rename completeness gate: fails if the mass rename left any stray old plugin-namespace, skill-dir, or plugin-identity reference | lefthook pre-push (`check-plugin-namespace`); run directly, no `just` recipe |
+| `check-injected-context.ps1` | Audit every file this repo injects into an agent's context (encoding, plan-residue, tag-hygiene, namespace, payload-budget, reference resolution). Discovery is SUBTRACTIVE: walk `$script:DomainRoots`, subtract `injected-context-ignore.txt`; per-file waivers live in `injected-context-exemptions.json` | `just check-injected-context` |
 
 ## Seed / golden-header integrity
 

@@ -20,11 +20,11 @@ status: open        # open | fixed | wont-fix
 # <one-line title of the quirk>
 
 ## Steps to Reproduce
-<the exact reproduction on the named variant's bridge — concrete, runnable>
+<the exact reproduction on the named variant's bridge - concrete, runnable>
 
 ## Code-level Mitigation
 <the specific change to the bridge/tool execution path that removes the quirk. If you cannot state one,
-this entry does NOT belong in the backlog — it is a driver-cheatsheet rule instead.>
+this entry does NOT belong in the backlog - it is a driver-cheatsheet rule instead.>
 
 ## Notes
 <per-variant determinism, retirement gating, links to the carried cheatsheet rule>

@@ -10,3 +10,9 @@
 **/installer/**
 **/dist/**
 **/publish/**
+# Owner ruling 2026-08-09. These ship to a user's machine through the installers' recursive wildcard, so
+# the mojibake half of the encoding rationale technically reaches them - but the DOMAIN is "what enters an
+# agent's context", and neither of these ever does. A .gitignore is consumed by git and a tmux.conf by the
+# psmux session; no agent reads either. Auditing them was discovery drift, not coverage.
+**/.gitignore
+**/tmux.conf
