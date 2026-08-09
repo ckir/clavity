@@ -336,4 +336,89 @@ jq -nc --arg m "[TAG] $msg" '{}'
             }
         }
     }
+    Context 'the gate actually audits the corpus' {
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            # No live-repo violation walk here. The draft that asserted against the real tree needed it;
+            # every row now uses a hermetic fixture, so it would be a dead full-repository scan.
+            $script:Corpus = Get-InjectedContextFiles -RepoRoot $script:RepoRoot
+
+            $script:MakeFixture = {
+                param([hashtable]$Files)   # relative path -> content
+                $d = Join-Path ([IO.Path]::GetTempPath()) ("icv-" + [guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                # BOTH control files. Get-IgnoreGlobs THROWS without the ignorelist, so copying only the
+                # exemptions file makes every fixture row throw instead of testing anything.
+                foreach ($f in 'injected-context-exemptions.json', 'injected-context-ignore.txt') {
+                    Copy-Item (Join-Path $script:RepoRoot "scripts/$f") (Join-Path $d 'scripts')
+                }
+                # ALL SIX domain roots must exist. Discovery THROWS on a missing root - deliberately, so a
+                # renamed product cannot silently drop coverage - and a fixture that creates only the root
+                # it needs would trip that throw rather than exercise the walker. Two folds from different
+                # review rounds, each right on its own, that only collide when the code actually runs.
+                foreach ($r in 'clavity-dotnet/plugin','clavity-classic/plugin','seed','agy-autotrain','ghidrust/plugin','commonmemory') {
+                    New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null
+                }
+                foreach ($k in $Files.Keys) {
+                    $p = Join-Path $d $k
+                    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $p) | Out-Null
+                    Set-Content -LiteralPath $p -Value $Files[$k] -Encoding ascii
+                }
+                $d
+            }
+        }
+
+        It 'inspects a non-trivial number of files' {
+            # MEASURED 2026-08-09: the six roots hold 130 files; 97 survive the ignorelist. The floor is
+            # deliberately loose - other rows already assert SPECIFIC files are present, so this one
+            # exists only to stop an empty or near-empty corpus making them vacuous.
+            $script:Corpus.Count | Should -BeGreaterThan 40 -Because 'an empty corpus makes every row below vacuous'
+        }
+
+        It 'produces a violation record carrying file, invariant, finding and the waiver line' {
+            $d = & $script:MakeFixture @{ 'seed/x.md' = 'see `doc/typo-prefix.md` here' }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)[0]
+            $v.File       | Should -Not -BeNullOrEmpty
+            $v.Invariant  | Should -Not -BeNullOrEmpty
+            $v.Finding    | Should -Not -BeNullOrEmpty
+            $v.WaiverLine | Should -Match '"invariant"\s*:'
+            Remove-Item -Recurse -Force $d
+        }
+        It 'names the specific file and invariant rather than only counting' {
+            $d = & $script:MakeFixture @{ 'seed/dead.md' = 'the hook `agy-first-brainstorm.sh` does this' }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.File -eq 'seed/dead.md' -and $_.Invariant -eq 'reference' }) |
+                Should -Not -BeNullOrEmpty -Because 'a broken reference must be named, not summed'
+            Remove-Item -Recurse -Force $d
+        }
+        It 'aggregates - more than one file is reported, not just the first' {
+            $d = & $script:MakeFixture @{
+                'seed/a.md' = 'see `doc/typo-one.md`'
+                'seed/b.md' = 'see `script/typo-two.ps1`'
+            }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            (@($v | Select-Object -ExpandProperty File -Unique)).Count |
+                Should -Be 2 -Because 'a short-circuiting runner hides every failure after the first'
+            Remove-Item -Recurse -Force $d
+        }
+        It 'ENFORCES the payload budget - an over-budget file produces a payload-budget violation' {
+            # This row exercises the enforcement branch, not the extractor. An earlier draft asserted
+            # Get-LongestHookMessage(...).Length -gt the cap, which proves only that the parser did not
+            # truncate: delete or invert the comparison inside the walker and that assertion still passes.
+            # Every shipped hook fits under the cap, so without this row nothing touches the branch.
+            $d = & $script:MakeFixture @{ 'seed/oversized.sh' = ("msg='" + ('X' * ($script:MaxMessageChars + 1)) + "'") }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.Invariant -eq 'payload-budget' }) |
+                Should -Not -BeNullOrEmpty -Because 'the enforcement branch must fire, not merely the parser'
+            Remove-Item -Recurse -Force $d
+        }
+        It 'does NOT flag a file that is within budget' {
+            # The must-pass half. Without it, a check hardcoded to always report payload-budget would
+            # satisfy the row above.
+            $d = & $script:MakeFixture @{ 'seed/small.sh' = "msg='short and clean'" }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.Invariant -eq 'payload-budget' }) | Should -BeNullOrEmpty
+            Remove-Item -Recurse -Force $d
+        }
+    }
 }

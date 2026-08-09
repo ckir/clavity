@@ -371,6 +371,82 @@ function Test-IsBlocklisted {
     [bool](@($script:AnomalyBlocklist | Where-Object { $Path -like "*$($_.Path)" -and $_.Invariant -eq $Invariant }).Count)
 }
 
+function New-Violation {
+    param([string]$File, [string]$Invariant, [string]$Finding)
+    # The waiver line is emitted verbatim so an operator can paste it rather than reverse-engineer the
+    # schema. A gate that reports only "file X is not covered" teaches people to bypass it.
+    $waiver = (@{ path = $File; invariant = $Invariant; reason = '<why this is deliberate>' } |
+               ConvertTo-Json -Compress)
+    [pscustomobject]@{ File = $File; Invariant = $Invariant; Finding = $Finding; WaiverLine = $waiver }
+}
+
+function Get-InjectedContextViolations {
+    # NO TEST SEAM. An earlier draft carried a -Files parameter so tests could drive the enforcement
+    # branch with a synthetic corpus - test-only surface in production code, and a path by which passing
+    # an empty set would silently neuter the gate. Unnecessary: the tests point -RepoRoot at a temp
+    # directory and discovery walks THAT tree, so a fixture file is found natively.
+    param([string]$RepoRoot)
+    $files = Get-InjectedContextFiles -RepoRoot $RepoRoot
+    $ex    = @((Get-Content (Join-Path $RepoRoot 'scripts/injected-context-exemptions.json') -Raw |
+                ConvertFrom-Json).exemptions)
+    $exempt = @{}
+    foreach ($e in $ex) {
+        Assert-ExemptionShape -Entry $e
+        if (Test-IsBlocklisted -Path $e.path -Invariant $e.invariant) {
+            throw "exemption names a known anomaly and cannot be honoured: $($e.path) / $($e.invariant)"
+        }
+        foreach ($p in (Expand-ExemptionPath -Entry $e)) { $exempt["$p|$($e.invariant)"] = $true }
+    }
+
+    $out = [System.Collections.Generic.List[object]]::new()
+    foreach ($f in $files) {
+        $full = Join-Path $RepoRoot $f
+        # EVERY invariant runs on EVERY file. No short-circuit: the gate is run RED on purpose before the
+        # anomalies are closed, and hiding all but the first would destroy the red-to-green evidence.
+        if (-not $exempt.ContainsKey("$f|encoding") -and -not (Test-PureAscii -Path $full)) {
+            $out.Add((New-Violation -File $f -Invariant 'encoding' -Finding (Get-NonAsciiReport -Path $full)))
+        }
+        $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
+        if (-not $exempt.ContainsKey("$f|plan-residue") -and (Test-HasPlanResidue -Text $text)) {
+            $hit = [regex]::Match($text, '\((Task|Step|Phase)\s+\d+\)').Value
+            $out.Add((New-Violation -File $f -Invariant 'plan-residue' -Finding "bare plan pointer: $hit"))
+        }
+        foreach ($m in (Get-HookMessages -Text $text)) {
+            if (-not $exempt.ContainsKey("$f|tag-hygiene") -and (Test-HasDuplicatedTag -Text $m)) {
+                $out.Add((New-Violation -File $f -Invariant 'tag-hygiene' -Finding "duplicated tag: $($m.Substring(0, [Math]::Min(60, $m.Length)))"))
+            }
+            if (-not $exempt.ContainsKey("$f|namespace") -and -not (Test-DegradedNamespace -Text $m)) {
+                $out.Add((New-Violation -File $f -Invariant 'namespace' -Finding 'degraded line carries no bracketed tag'))
+            }
+        }
+        $longest = Get-LongestHookMessage -Text $text
+        if ($longest.Length -gt $script:MaxMessageChars -and -not $exempt.ContainsKey("$f|payload-budget")) {
+            $head = $longest.Substring(0, [Math]::Min(60, $longest.Length))
+            $out.Add((New-Violation -File $f -Invariant 'payload-budget' -Finding "$($longest.Length) chars > $script:MaxMessageChars - starts: $head"))
+        }
+        foreach ($tok in [regex]::Matches($text, '`([^`\n]{1,80})`')) {
+            $t = $tok.Groups[1].Value
+            if (-not (Test-IsPathCandidate -Token $t)) { continue }
+            $r = Resolve-Reference -Token $t -RepoRoot $RepoRoot -FromFile $f
+            if ((Test-ReferenceFails -Outcome $r.Outcome) -and -not $exempt.ContainsKey("$f|reference")) {
+                $out.Add((New-Violation -File $f -Invariant 'reference' -Finding "$($r.Outcome): $t"))
+            }
+        }
+    }
+    $out.ToArray()
+}
+
+function Invoke-InjectedContextCheck {
+    param([string]$RepoRoot)
+    $v = @(Get-InjectedContextViolations -RepoRoot $RepoRoot)
+    if (-not $v.Count) { Write-Host 'check-injected-context: OK' -ForegroundColor Green; exit 0 }
+    foreach ($x in $v) {
+        Write-Host ("{0}`n  invariant : {1}`n  found     : {2}`n  waive with: {3}" -f $x.File, $x.Invariant, $x.Finding, $x.WaiverLine)
+    }
+    Write-Host "check-injected-context: $($v.Count) violation(s)"
+    exit 1
+}
+
 # DOT-SOURCE / EXECUTE SPLIT. The test suite dot-sources this file to reach the functions above, so the
 # main body must NOT run in that case - otherwise every dot-source would walk the tree and set an exit
 # code. `$MyInvocation.InvocationName` is '.' exactly when dot-sourced.
