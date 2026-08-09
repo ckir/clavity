@@ -1,0 +1,67 @@
+name: ci-injected-context
+
+# The injected-context gate. Audits every file this repository injects into an AI agent's context
+# (spec 2026-08-08): encoding, plan-residue, tag-hygiene, namespace, payload-budget, and reference
+# resolution.
+#
+# WHY THIS IS ITS OWN WORKFLOW rather than a step in ci-scripts.yml. That workflow fires only on
+# scripts/**, installer/_shared/**, justfile and its own file - and this gate audits MEMBER folders:
+# clavity-dotnet/plugin, clavity-classic/plugin, seed, agy-autotrain, ghidrust/plugin, commonmemory.
+# There is ZERO overlap between the two path sets, so a step added to ci-scripts.yml would never fire
+# on the case it guards: someone adds an em dash to a shipped SKILL.md, ci-scripts does not trigger,
+# and the gate that exists to catch it never runs. ci-member-docs.yml split out for exactly this
+# reason and says so in its own header; this follows that precedent. One script, seconds to run.
+#
+# The gate script AND its two data files are in the path filter deliberately. Without them, breaking
+# the gate itself - emptying the ignorelist, adding a bogus exemption, deleting a domain root - would
+# be a change no CI run exercises.
+#
+# NOTE: every run block below is deliberately pure ASCII, matching the repo-wide convention. Actions
+# writes a run block to a BOM-less temp .ps1, so non-ASCII here would hit the very class of bug this
+# gate exists to prevent.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'clavity-dotnet/plugin/**'
+      - 'clavity-classic/plugin/**'
+      - 'seed/**'
+      - 'agy-autotrain/**'
+      - 'ghidrust/plugin/**'
+      - 'commonmemory/**'
+      - 'scripts/check-injected-context.ps1'
+      - 'scripts/injected-context-ignore.txt'
+      - 'scripts/injected-context-exemptions.json'
+      - '.github/workflows/ci-injected-context.yml'
+  pull_request:
+    paths:
+      - 'clavity-dotnet/plugin/**'
+      - 'clavity-classic/plugin/**'
+      - 'seed/**'
+      - 'agy-autotrain/**'
+      - 'ghidrust/plugin/**'
+      - 'commonmemory/**'
+      - 'scripts/check-injected-context.ps1'
+      - 'scripts/injected-context-ignore.txt'
+      - 'scripts/injected-context-exemptions.json'
+      - '.github/workflows/ci-injected-context.yml'
+
+concurrency:
+  group: ci-injected-context-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  injected-context:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Injected-context gate
+        # pwsh 7: this is a maintainer-only dev script and only ever runs under pwsh 7 (justfile,
+        # and this workflow). Gating a dev script on Windows PowerShell 5.1 buys nothing and reports
+        # phantom failures - that contract belongs to the end-user installer surface. See the header
+        # of ci-scripts.yml, which spells the split out.
+        #
+        # Same script `just check-injected-context` runs locally, so this cannot drift from the local
+        # gate.
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/check-injected-context.ps1

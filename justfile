@@ -117,6 +117,18 @@ test-scripts:
 check-installer-ascii:
     pwsh -File scripts/check-installer-ascii.ps1
 
+# Audit every byte this repository injects into a user's agent context (spec 2026-08-08): encoding,
+# plan-residue, tag-hygiene, namespace, payload-budget, and reference resolution. Discovery is
+# SUBTRACTIVE - walk the domain roots and subtract scripts/injected-context-ignore.txt - because an
+# additive role-matcher is an allowlist, which is the drift this gate exists to remove.
+# DELIBERATELY NOT in the `lint` aggregate: that recipe delegates per-tool (dotnet/classic/ghidrust),
+# and all seven repo-level check-* recipes sit outside it. The consequence is worth naming rather than
+# hiding - a developer running `just lint` will not run this gate and will first see a violation in CI.
+# That is true of all seven siblings, so it is a pre-existing repo-wide property, and changing it is a
+# decision about the whole check-* family rather than something to smuggle in here.
+check-injected-context:
+    pwsh -NoProfile -Command "./scripts/check-injected-context.ps1"
+
 # Prepare + gate + push a live umbrella release (auto semver + CHANGELOG from conventional commits).
 release:
     pwsh -File scripts/release.ps1
