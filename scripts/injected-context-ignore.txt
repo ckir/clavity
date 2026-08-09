@@ -1,0 +1,12 @@
+# Package manifests and marketplace metadata - read by the plugin loader, never by a model.
+**/plugin.json
+**/.claude-plugin/**
+**/.mcp.json
+# Human-facing repository documentation - shipped, but not loaded into an agent's context.
+**/README.md
+**/NOTICE
+**/LICENSE
+# Build and packaging inputs, not instruction text.
+**/installer/**
+**/dist/**
+**/publish/**
