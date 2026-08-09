@@ -72,4 +72,43 @@ Describe 'check-injected-context.ps1' {
             }
         }
     }
+
+    Context 'encoding invariant' {
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            # [System.Text.Encoding]::UTF8 EMITS A BOM (EF BB BF), which is itself non-ASCII. Writing
+            # fixtures with it made 'passes a pure-ASCII file' fail, and - worse - made the em-dash row
+            # pass for the wrong reason: the BOM alone would have failed it, so it never tested the
+            # em-dash at all. Every fixture below uses a BOM-less encoder so each row tests what it names.
+            $script:NoBom = New-Object System.Text.UTF8Encoding($false)
+            function New-TmpFile { Join-Path ([IO.Path]::GetTempPath()) ("ic-" + [guid]::NewGuid().ToString('N') + '.md') }
+        }
+
+        It 'reads bytes, not decoded text - a BOM-less em-dash is caught' {
+            $tmp = New-TmpFile
+            [System.IO.File]::WriteAllText($tmp, "a$([char]0x2014)b", $script:NoBom)
+            (Test-PureAscii -Path $tmp) | Should -BeFalse
+            Remove-Item -Force $tmp
+        }
+        It 'passes a pure-ASCII file' {
+            $tmp = New-TmpFile
+            [System.IO.File]::WriteAllText($tmp, "plain ascii", $script:NoBom)
+            (Test-PureAscii -Path $tmp) | Should -BeTrue
+            Remove-Item -Force $tmp
+        }
+        It 'FLAGS a UTF-8 BOM - it is non-ASCII bytes and can drive the same mojibake' {
+            # Pinned deliberately rather than left as the accident that exposed it. A BOM is EF BB BF at
+            # the head of the file; the gate must not treat "the text is ASCII" as "the file is ASCII".
+            $tmp = New-TmpFile
+            [System.IO.File]::WriteAllText($tmp, "plain ascii", (New-Object System.Text.UTF8Encoding($true)))
+            (Test-PureAscii -Path $tmp) | Should -BeFalse
+            Remove-Item -Force $tmp
+        }
+        It 'reports the exact offending codepoints, not just a count' {
+            $tmp = New-TmpFile
+            [System.IO.File]::WriteAllText($tmp, "x$([char]0x2192)y", $script:NoBom)
+            (Get-NonAsciiReport -Path $tmp) | Should -Match '0x2192'
+            Remove-Item -Force $tmp
+        }
+    }
 }

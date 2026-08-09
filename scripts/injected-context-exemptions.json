@@ -1,0 +1,15 @@
+{
+  "exemptions": [
+    {
+      "path": "skills/adversarial-panel-review/SKILL.md",
+      "scope": "twin-plugin",
+      "invariant": "encoding",
+      "reason": "Deliberate and pre-existing: 69 non-ASCII characters, already documented as an intentional exclusion at scripts/check-agy-discipline-skills.ps1:20-22. Not debt, not pending audit."
+    },
+    {
+      "path": "agy-autotrain/knowledge/agy-observations.md",
+      "invariant": "encoding",
+      "reason": "Owner ruling 2026-08-08. The agy-learn inbox IS in the domain - agy-curate/SKILL.md:105 shows an agent reads it into context - but its U+00B7 field delimiter is a deliberate, test-pinned format decision (scripts/tests/agy-curate-nudge.Tests.ps1:207-209, 'the LIVE inbox delimits with U+00B7, not ASCII'). Pre-existing design, not debt parked to reach green. Every other invariant applies. NOTE: this file is DRAINED by agy-curate, so its entry content is transient; the exemption currently stays 'needed' only because line 7 of the header carries 3x U+00B7 and 1x U+2265. If that header line is ever ASCII-fied, a fully drained inbox would pass encoding without the waiver and the bidirectional check would correctly report 'unused exemption' - at which point delete this entry rather than re-adding non-ASCII to keep it alive."
+    }
+  ]
+}

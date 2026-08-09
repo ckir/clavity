@@ -71,6 +71,27 @@ function Get-InjectedContextFiles {
     $out.ToArray()
 }
 
+# Read BYTES. Under Windows PowerShell 5.1 a bare Get-Content decodes using the system ANSI code page,
+# so multibyte sequences can be transcoded before any [^\x00-\x7F] regex sees them - a platform-dependent
+# false negative in the one check that must be exact. In-repo precedents: check-seed-budget.ps1:32 and
+# scripts/tests/agy-anomaly-capture-reminder.Tests.ps1:273.
+function Test-PureAscii {
+    param([string]$Path)
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    -not ($bytes | Where-Object { $_ -gt 127 } | Select-Object -First 1)
+}
+
+function Get-NonAsciiReport {
+    param([string]$Path)
+    $text = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    $lines = $text -split "`n"
+    $hits = for ($i = 0; $i -lt $lines.Count; $i++) {
+        $bad = @($lines[$i].ToCharArray() | Where-Object { [int]$_ -gt 127 } | ForEach-Object { '0x{0:x4}' -f [int]$_ })
+        if ($bad.Count) { "  line $($i + 1): $($bad -join ' ')" }
+    }
+    $hits -join "`n"
+}
+
 # DOT-SOURCE / EXECUTE SPLIT. The test suite dot-sources this file to reach the functions above, so the
 # main body must NOT run in that case - otherwise every dot-source would walk the tree and set an exit
 # code. `$MyInvocation.InvocationName` is '.' exactly when dot-sourced.
