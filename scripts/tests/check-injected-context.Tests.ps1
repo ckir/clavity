@@ -642,6 +642,11 @@ jq -nc --arg m "[TAG] $msg" '{}'
                         'plan-residue'  { Test-HasPlanResidue -Text $text }
                         'tag-hygiene'   { [bool](@(Get-HookMessages -Text $text | Where-Object { Test-HasDuplicatedTag -Text $_ }).Count) }
                         'namespace'     { [bool](@(Get-HookMessages -Text $text | Where-Object { -not (Test-DegradedNamespace -Text $_) }).Count) }
+                        # build-output waives a DIRECTORY, so it is still "needed" exactly while that
+                        # directory is still there. Without this case the default below would throw on a
+                        # perfectly valid waiver - which is how a bidirectional check turns into a trap of
+                        # its own, the same shape as the unwaivable violation round 12 found.
+                        'build-output'  { Test-Path -LiteralPath $full -PathType Container }
                         default         { throw "exemption names an unknown invariant '$($e.invariant)' - add a case here or fix the entry" }
                     }
                     $stillFails | Should -BeTrue -Because "unused exemption: '$($e.path)' passes '$($e.invariant)' without it"
@@ -903,6 +908,34 @@ jq -nc --arg m "[TAG] $msg" '{}'
             } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
         }
 
+
+It 'a build-output violation can actually be WAIVED with the line the gate prints' {
+            # Capstone round 12, highest severity. Every other invariant is waivable and this one printed a
+            # waiver line while ignoring it - MEASURED, pasting the gate's own suggested waiver produced the
+            # identical violation on the next run. A gate that tells you how to proceed and then refuses is
+            # worse than one that offers nothing: it costs a debugging session to learn the advice was false.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icw-" + [guid]::NewGuid().ToString('N'))
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'clavity-dotnet/plugin/bin') | Out-Null
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
+{ "exemptions": [ { "path": "clavity-dotnet/plugin/bin", "invariant": "build-output", "reason": "probe" } ] }
+'@
+                @(Get-InjectedContextViolations -RepoRoot $d) |
+                    Should -BeNullOrEmpty -Because 'the waiver the gate itself prints must actually work'
+            } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'no ignore glob matches an arbitrary directory probe path' {
+            # Descent is skipped when "$rel/__probe__" matches a glob, so a glob able to match ANY probe
+            # would empty the corpus and pass the gate green over nothing. None can today - this row is
+            # what stops one being added. Measured: 0 of the current globs match a synthetic probe.
+            $globs = @(Get-IgnoreGlobs -RepoRoot $script:RepoRoot)
+            $matched = @($globs | Where-Object { Test-IsIgnored -RelPath 'no/such/dir/__probe__' -Globs @($_) })
+            $matched -join ', ' | Should -BeExactly '' -Because 'a glob matching every probe path would silently empty the corpus'
+        }
 
         It 'REPORTS build output inside a domain root instead of auditing or hiding it' {
             # Capstone round 11. Round 10 removed name-based pruning to close the bypass, and the peer

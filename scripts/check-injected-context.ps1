@@ -272,7 +272,13 @@ function Get-ReferenceIndex {
     Get-ChildItem -LiteralPath $RepoRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
         ForEach-Object {
             $rel = $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
-            # Prune on the RELATIVE path, same reason as the corpus walk above.
+            # THE INDEX STILL PRUNES BY NAME, and the corpus walk above no longer does - that asymmetry is
+            # deliberate, not drift. This walk covers the WHOLE repository for reference resolution and its
+            # results are never audited, only matched against; name-based pruning is what keeps it cheap.
+            # The corpus walk cannot afford the same shortcut, because there a silent skip is a bypass.
+            # (An earlier version of this comment said "same reason as the corpus walk above", which stopped
+            # being true the moment that walk changed - and my round-11 commit message claimed to have fixed
+            # it when it had not. Round 12 found the claim was false.)
             if (Test-IsPrunedPath -RelPath $rel) { return }
             # Canonicalise the byte-identical twin trees at INDEX time, so any bare filename naming a
             # plugin file resolves to one logical path instead of being 'ambiguous' forever.
@@ -611,7 +617,13 @@ function Get-InjectedContextViolations {
 
     # Build output inside a domain root, reported as one violation per DIRECTORY rather than as a flood
     # of encoding failures over its binaries - or, worse, as nothing at all.
+    # THE EXEMPTION CHECK IS NOT OPTIONAL HERE. Every other invariant is waivable, and this one printed a
+    # waiver line while ignoring it: MEASURED, an operator who pasted the gate's own suggested waiver saw
+    # the identical violation on the next run, with no way out. A gate that tells you how to proceed and
+    # then refuses is worse than one that offers nothing, because it costs a debugging session to learn
+    # the instruction was false.
     foreach ($d in (Get-UnexpectedBuildDirs -RepoRoot $RepoRoot)) {
+        if ($exempt.ContainsKey("$d|build-output")) { continue }
         $out.Add((New-Violation -File $d -Invariant 'build-output' -Finding "build output inside a domain root - move it out, or subtract it with an anchored glob and a reason"))
     }
 
