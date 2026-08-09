@@ -39,7 +39,7 @@ if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).
 # restate: renaming a tree here is now sufficient.
 $script:TwinPluginRoots = @('clavity-dotnet/plugin', 'clavity-classic/plugin')
 # Built from that one list so the canonicaliser cannot drift from it either.
-$script:TwinCanonRx = '^(' + (($script:TwinPluginRoots | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')/'
+$script:TwinCanonRx = '^(?:' + (($script:TwinPluginRoots | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')/'
 
 $script:DomainRoots = @(
     $script:TwinPluginRoots
@@ -51,6 +51,27 @@ $script:DomainRoots = @(
     'ghidrust/skill'
     'commonmemory'
 )
+
+# PRUNING IS RELATIVE TO THE REPOSITORY ROOT, NEVER ABSOLUTE - and that is a fix, not a preference.
+# MEASURED 2026-08-09: both walks matched these segments against $_.FullName, the ABSOLUTE path. Clone
+# this repository anywhere under a directory called target/, bin/, obj/, dist/ or the like - a CI
+# workspace, C:/Projects/target/, anything - and EVERY file's absolute path contains a pruned segment, so
+# the whole corpus is dropped. Probed: corpus 0, violations 0, and the gate printed OK over a file with a
+# real U+2014 in it. A silent false GREEN in the gate whose entire purpose is to stop silent false GREENs.
+# Anchoring to the relative path makes the check depend only on the repository's own shape.
+#
+# One list, one regex, both walks. The two sites previously carried DIFFERENT segment lists; the union is
+# used here because dist/ and publish/ are already ignorelisted for the corpus, so folding them in changes
+# nothing there - verified by comparing corpus and index counts before and after.
+$script:PrunedSegments = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs')
+# Non-capturing throughout: this regex is only used with -match today, but a capturing group in a regex
+# later handed to -split silently shifts every index, which cost a round-3 fix its correctness.
+$script:PruneRx = '(?:^|/)(?:' + (($script:PrunedSegments | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?:/|$)'
+
+function Test-IsPrunedPath {
+    param([string]$RelPath)
+    [bool]($RelPath -match $script:PruneRx)
+}
 
 function Get-IgnoreGlobs {
     param([string]$RepoRoot)
@@ -82,12 +103,12 @@ function Get-InjectedContextFiles {
         if (-not (Test-Path $full)) {
             throw "domain root missing: $full - if a product moved or was renamed, update `$script:DomainRoots; if it was deleted, remove the root deliberately."
         }
-        # Prune heavy directories at traversal level. Measured 2026-08-08: none currently exist under any
-        # domain root (corpus is 130 files), so this is hardening, not a fix.
+        # Prune heavy directories. The relative path is computed FIRST and pruned on - see the note on
+        # $script:PrunedSegments for why matching the absolute path silently emptied the whole corpus.
         Get-ChildItem -LiteralPath $full -Recurse -File -Force |
-            Where-Object { $_.FullName -notmatch '[\\/](\.git|node_modules|target|bin|obj|\.venv|__pycache__)[\\/]' } |
             ForEach-Object {
                 $rel = $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+                if (Test-IsPrunedPath -RelPath $rel) { return }
                 if (-not (Test-IsIgnored -RelPath $rel -Globs $globs)) { $out.Add($rel) }
             }
     }
@@ -150,9 +171,10 @@ function Get-ReferenceIndex {
     $byName = @{}
     $all    = [System.Collections.Generic.List[string]]::new()
     Get-ChildItem -LiteralPath $RepoRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notmatch '[\\/](\.git|node_modules|target|bin|obj|\.venv|__pycache__|dist|publish|\.vs)[\\/]' } |
         ForEach-Object {
             $rel = $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+            # Prune on the RELATIVE path, same reason as the corpus walk above.
+            if (Test-IsPrunedPath -RelPath $rel) { return }
             # Canonicalise the byte-identical twin trees at INDEX time, so any bare filename naming a
             # plugin file resolves to one logical path instead of being 'ambiguous' forever.
             # Derived from $script:TwinPluginRoots, not restated. The canonical form only has to be the
@@ -402,8 +424,10 @@ function Expand-ExemptionPath {
     param([psobject]$Entry)
     $scope = if ($Entry.PSObject.Properties.Name.Contains('scope')) { $Entry.scope } else { '' }
     if ($scope -eq 'twin-plugin') {
-        # One entry covers both byte-identical trees, and the invariant must be failing in BOTH. Settling
-        # for the first tree found would let one be cleaned while the other keeps the defect.
+        # One entry covers both byte-identical trees, and BOTH expanded paths must exist - enforced by the
+        # throw in Get-InjectedContextViolations, which is what stops one tree being cleaned while the
+        # other keeps its waiver. Until that throw existed this comment described an intention that
+        # nothing actually checked, which is how the phantom-key defect survived two rounds.
         return @($script:TwinPluginRoots | ForEach-Object { "$_/$($Entry.path)" })
     }
     @($Entry.path)
@@ -535,7 +559,9 @@ function Invoke-InjectedContextCheck {
     # broken gate is a bad trade for a line of output.
     Write-Host ""
     Write-Host "A waiver goes INSIDE the `"exemptions`" array in scripts/injected-context-exemptions.json,"
-    Write-Host "as another element - not appended after it. Replace the placeholder reason with a real one;"
+    Write-Host "as another element - not appended after it. ADD A COMMA after the previous element: the"
+    Write-Host "line above is a bare object and pasting it without one is invalid JSON, which fails this"
+    Write-Host "gate for everyone on the next run. Replace the placeholder reason with a real one;"
     Write-Host "an exemption whose file stops failing its invariant is reported as unused and must be deleted."
     Write-Host "Fixing the file is almost always right. A waiver is for something deliberate and permanent."
     exit 1

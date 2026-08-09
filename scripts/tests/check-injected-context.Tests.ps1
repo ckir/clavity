@@ -187,6 +187,29 @@ Describe 'check-injected-context.ps1' {
             $uncovered -join ', ' | Should -BeExactly '' -Because 'a skill outside every domain root is injected into an agent and audited by nothing'
         }
 
+        It 'still finds files when the REPOSITORY ITSELF sits under a pruned directory name' {
+            # Capstone round 4, and the worst defect in the branch. Both walks pruned against the ABSOLUTE
+            # path, so cloning this repository anywhere under target/, bin/, obj/, dist/ - a CI workspace,
+            # C:/Projects/target/ - made every file's absolute path contain a pruned segment and dropped the
+            # entire corpus. Probed: corpus 0, violations 0, gate printed OK over a file containing a real
+            # U+2014. A silent false GREEN inside the gate built to stop silent false GREENs.
+            #
+            # The 'corpus is non-trivial' row above cannot catch this: it runs against the real repository
+            # root, which is not under a pruned name.
+            $base = Join-Path ([IO.Path]::GetTempPath()) ("target/icp-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path (Join-Path $base 'scripts') | Out-Null
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $base 'scripts')
+            Set-Content -LiteralPath (Join-Path $base 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+            foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $base $r) | Out-Null }
+            [IO.File]::WriteAllText((Join-Path $base 'seed/violator.md'), "em dash $([char]0x2014) here", (New-Object System.Text.UTF8Encoding($false)))
+            try {
+                @(Get-InjectedContextFiles -RepoRoot $base).Count |
+                    Should -BeGreaterThan 0 -Because 'a repository under a pruned directory name must still be walked'
+                @(Get-InjectedContextViolations -RepoRoot $base) |
+                    Should -Not -BeNullOrEmpty -Because 'the seeded U+2014 must still be reported'
+            } finally { Remove-Item -Recurse -Force $base -ErrorAction SilentlyContinue }
+        }
+
         It 'every domain root is in the CI workflow path filter - <Filter>' -ForEach @(
             @{ Filter = 'push' }
             @{ Filter = 'pull_request' }
@@ -399,7 +422,8 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $paths = Expand-ExemptionPath -Entry ([pscustomobject]@{ path='skills/adversarial-panel-review/SKILL.md'; scope='twin-plugin' })
             $paths | Should -Contain 'clavity-dotnet/plugin/skills/adversarial-panel-review/SKILL.md'
             $paths | Should -Contain 'clavity-classic/plugin/skills/adversarial-panel-review/SKILL.md'
-            $paths.Count | Should -Be 2
+            # Derived, not hardcoded: a third twin tree is a config change, not a test failure.
+            $paths.Count | Should -Be $script:TwinPluginRoots.Count
         }
         It 'DERIVES the twin prefixes from $script:TwinPluginRoots rather than restating them' {
             # Capstone round 3. The twin-plugin pair was hardcoded in three places - the domain root list,
@@ -432,6 +456,13 @@ jq -nc --arg m "[TAG] $msg" '{}'
             Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
 { "exemptions": [ { "path": "skills/nope/SKILL.md", "scope": "twin-plugin", "invariant": "encoding", "reason": "probe" } ] }
 '@
+            # THE FILE EXISTS IN EXACTLY ONE TREE. Capstone round 4 caught the first version of this row
+            # creating it in NEITHER, which made it unable to tell "throws when missing from one tree" from
+            # "throws only when missing from both" - so an implementation that fell open on the phantom-key
+            # bug would have passed the very row written to guard it. One tree is the case that matters.
+            $present = Join-Path $d "$($script:TwinPluginRoots[1])/skills/nope/SKILL.md"
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $present) | Out-Null
+            Set-Content -LiteralPath $present -Value 'present in this tree only' -Encoding ascii
             { Get-InjectedContextViolations -RepoRoot $d } | Should -Throw -ExpectedMessage '*does not exist*'
             Remove-Item -Recurse -Force $d
         }
