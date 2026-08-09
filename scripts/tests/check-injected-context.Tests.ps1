@@ -219,4 +219,57 @@ Describe 'check-injected-context.ps1' {
             (Test-DegradedNamespace -Text 'guard inactive: missing jq')                      | Should -BeFalse
         }
     }
+    Context 'payload budget' {
+        BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
+
+        It 'extracts the message body from a msg= assignment' {
+            $sh = @'
+msg="ASSERTION-STRENGTH: hello there"
+jq -nc --arg m "$msg" '{}'
+'@
+            (Get-HookMessages -Text $sh) | Should -Contain 'ASSERTION-STRENGTH: hello there'
+        }
+        It 'extracts a literal additionalContext payload too' {
+            $sh = 'printf ''%s\n'' ''{"hookSpecificOutput":{"additionalContext":"[AGY-DISCIPLINES] guard inactive: missing jq"}}'''
+            (Get-HookMessages -Text $sh) | Should -Contain '[AGY-DISCIPLINES] guard inactive: missing jq'
+        }
+        It 'finds the LONGEST branch, not the first' {
+            $sh = @'
+printf '%s\n' '{"hookSpecificOutput":{"additionalContext":"short"}}'
+msg="this message is considerably longer than the degraded one"
+'@
+            (Get-LongestHookMessage -Text $sh).Length | Should -BeGreaterThan 20
+        }
+        It 'does not truncate a single-quoted body at bash''s quote-escape idiom' {
+            $sh = "emit 'before the driver'`"'`"'s transport and a long tail after it'"
+            $b = Get-LongestHookMessage -Text $sh
+            $b | Should -Match 'long tail after it'
+            $b | Should -Match "driver's transport"
+        }
+        It 'composes the jq wrapper with the NAMED variable only' {
+            $sh = @'
+msg='the real body'
+other='unrelated body that must not be composed'
+jq -nc --arg m "[TAG] $msg" '{}'
+'@
+            $all = @(Get-HookMessages -Text $sh)
+            $all | Should -Contain '[TAG] the real body'
+            $all | Should -Not -Contain '[TAG] unrelated body that must not be composed'
+        }
+        It 'does not mangle a body containing a dollar sign' {
+            $sh = @'
+msg='append task=$task to the line'
+jq -nc --arg m "[TAG] $msg" '{}'
+'@
+            (Get-HookMessages -Text $sh) | Should -Contain '[TAG] append task=$task to the line'
+        }
+        It 'ignores a printf placeholder rather than treating it as a message' {
+            $sh = 'printf ''{"hookSpecificOutput":{"additionalContext":"%s"}}\n'' "$msg"'
+            (Get-HookMessages -Text $sh) | Should -Not -Contain '%s'
+        }
+        It 'does not truncate a double-quoted body at an escaped quote' {
+            $sh = 'msg="before the \"quoted bit\" and a long tail after it"'
+            (Get-LongestHookMessage -Text $sh) | Should -Match 'long tail after it'
+        }
+    }
 }

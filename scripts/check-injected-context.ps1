@@ -244,6 +244,97 @@ function Test-DegradedNamespace {
     $Text -match '^\[[A-Z][A-Z0-9_-]*\]\s*guard inactive:'
 }
 
+# A bash single-quoted string cannot contain a bare apostrophe; the idiom is to close, escape, reopen -
+# '"'"'. A naive non-greedy regex stops at the FIRST apostrophe and truncates the message.
+# MEASURED 2026-08-08 in agy-seam-inject.sh, where that idiom appears 4 times: true body lengths are
+# 1119, 1401 and 1618, while a naive scan reports 323, 381 and 1618. Two of three messages were being
+# read at a quarter of their real size - so the budget check would have passed them for the wrong reason.
+function Read-SingleQuotedBody {
+    param([string]$Text, [int]$Start)   # $Start = index just after the opening quote
+    $i = $Start
+    while ($true) {
+        $e = $Text.IndexOf("'", $i)
+        if ($e -lt 0) { return $null }
+        if ($e + 5 -le $Text.Length -and $Text.Substring($e, 5) -eq "'`"'`"'") { $i = $e + 5; continue }
+        return $Text.Substring($Start, $e - $Start).Replace("'`"'`"'", "'")
+    }
+}
+
+function Get-HookMessages {
+    param([string]$Text)
+    $out  = [System.Collections.Generic.List[string]]::new()
+    $vars = @{}
+
+    # Shape 1+2: msg<suffix>='...' and emit '...', single-quoted, quote-idiom aware.
+    foreach ($m in [regex]::Matches($Text, "(?m)^\s*(?:(?<name>msg[A-Za-z0-9_]*)=|emit\s+)'")) {
+        # Parentheses are REQUIRED. PowerShell binds -Start $m.Index and then treats + $m.Length as a
+        # separate positional argument - it does not evaluate the sum.
+        $body = Read-SingleQuotedBody -Text $Text -Start ($m.Index + $m.Length)
+        if ($null -eq $body) { continue }
+        $out.Add($body)
+        if ($m.Groups['name'].Success) { $vars[$m.Groups['name'].Value] = $body }
+    }
+    # Shape 1+2, double-quoted form. [^"]* is WRONG here: a bash double-quoted string may contain \"
+    # and that pattern stops at the first one. MEASURED on agy-after-reminder.sh, which carries 7 escaped
+    # quotes: it captured 173 characters of a 763-character message - 77% silently discarded, after which
+    # the budget and tag invariants are reading a fragment.
+    foreach ($m in [regex]::Matches($Text, '(?ms)^\s*(?:(?<name>msg[A-Za-z0-9_]*)=|emit\s+)"(?<body>(?:[^"\\]|\\.)*)"')) {
+        $body = $m.Groups['body'].Value.Replace('\"', '"')
+        # emit "$msg" is a dispatch, not a message - its body is a bare variable reference whose content
+        # was already collected at the assignment. Recording it adds a pseudo-message to diagnostics.
+        if ($body -match '^\s*\$\{?[A-Za-z_][A-Za-z0-9_]*\}?\s*$') { continue }
+        $out.Add($body)
+        if ($m.Groups['name'].Success) { $vars[$m.Groups['name'].Value] = $body }
+    }
+    # Shape 3: a literal additionalContext payload. %s is a printf placeholder, not a message.
+    foreach ($m in [regex]::Matches($Text, '"additionalContext"\s*:\s*"(?<body>[^"]*)"')) {
+        $b = $m.Groups['body'].Value
+        if ($b -ne '%s') { $out.Add($b) }
+    }
+    # Shape 4: the jq WRAPPER, where a tag can be prepended to an otherwise-clean body. Without this the
+    # tag-hygiene invariant cannot see anomaly A1 at all - assertion-strength-reminder.sh:145 defines a
+    # body with no bracket tag and :146 adds the tag in the --arg expression.
+    # Composed by NAME against a variable map, with literal .Replace(). Never -replace: that is a REGEX
+    # operator whose replacement string treats $1/$_ as capture references, so any message containing a
+    # dollar sign would be silently mangled. And never a cross-product over every body collected so far -
+    # that pairs each wrapper with unrelated messages and inflates the maximum the budget then measures.
+    foreach ($m in [regex]::Matches($Text, '--arg\s+\w+\s+"(?<wrap>[^"]*\$\{?(?<var>msg[A-Za-z0-9_]*)\}?[^"]*)"')) {
+        $name = $m.Groups['var'].Value
+        if (-not $vars.ContainsKey($name)) { continue }
+        $body = $vars[$name]
+        $out.Add($m.Groups['wrap'].Value.Replace('${' + $name + '}', $body).Replace('$' + $name, $body))
+    }
+    $out.ToArray()
+}
+
+function Get-LongestHookMessage {
+    param([string]$Text)
+    $all = @(Get-HookMessages -Text $Text)
+    if (-not $all.Count) { return '' }
+    # The @( ) is NOT optional. Sort-Object with a SINGLE input returns a scalar string, and [0] on a
+    # string yields its first CHARACTER. Measured: this returned "b" for a 54-character message. Most
+    # hooks emit exactly one message, so the payload budget would have measured ONE CHARACTER for nearly
+    # every file in the domain - a totally vacuous check that no row here would have caught except the
+    # two truncation rows, which failed for what looked like a parser bug.
+    @($all | Sort-Object Length -Descending)[0]
+}
+
+# Budget in CHARACTERS, against the longest branch. CALIBRATED BY MEASUREMENT, re-measured twice because
+# the first two probes were wrong in the same way the parser was:
+#   draft 1 said 1000  - the parser could not see emit '...' at all
+#   draft 2 said 1517  - the probe truncated at bash's close-escape-reopen idiom, the very bug hunted
+#   final:      1618   - quote-aware scan, agy-seam-inject.sh third emit; then 1517; then 845-848.
+# A probe that shares the defect it is measuring is not a measurement.
+$script:MaxMessageChars = 1800
+
+# WHAT THIS BUDGET ACTUALLY BOUNDS - stated, because a gate that overclaims is this project's subject.
+# Static parsing measures the TEMPLATE, not the payload an agent receives. agy-consult-guard-post.sh:89
+# interpolates $axes, $paths and $headmsg, and $headmsg (line 86) is git log output computed at runtime;
+# the static body counts those as their literal variable names. So the budget catches PROSE growth and
+# does NOT bound the interpolated result. Bounding the real payload would need execution, rejected on
+# measurement (16 bash spawns = 5.24s against a 0.64s control) and vacuous without per-hook fixtures
+# driving each maximal branch. An accepted limit, not an oversight.
+
 # DOT-SOURCE / EXECUTE SPLIT. The test suite dot-sources this file to reach the functions above, so the
 # main body must NOT run in that case - otherwise every dot-source would walk the tree and set an exit
 # code. `$MyInvocation.InvocationName` is '.' exactly when dot-sourced.
