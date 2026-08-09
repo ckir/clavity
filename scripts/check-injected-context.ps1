@@ -30,9 +30,19 @@ if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).
 # check-seed-artifacts-synced.sh red, because its pinned mirror in agy_skills/ was invisible here. A
 # sibling checker caught what this one structurally could not see - which is why the completeness of
 # THIS list is now itself pinned by a test (check-injected-context.Tests.ps1, 'domain coverage').
+# THE TWIN PLUGIN TREES, NAMED ONCE. This pair was hardcoded in THREE places - this list,
+# Expand-ExemptionPath's literal prefixes, and Get-ReferenceIndex's canonicalisation regex - and the
+# duplication was reachable, not theoretical: Get-InjectedContextFiles tells a maintainer "if a product
+# moved or was renamed, update $script:DomainRoots", and doing exactly that left the other two copies
+# pointing at a path that no longer exists. Since the gate now THROWS on a missing exemption path, a
+# maintainer following the instruction in the error message would have taken CI down. Derive, never
+# restate: renaming a tree here is now sufficient.
+$script:TwinPluginRoots = @('clavity-dotnet/plugin', 'clavity-classic/plugin')
+# Built from that one list so the canonicaliser cannot drift from it either.
+$script:TwinCanonRx = '^(' + (($script:TwinPluginRoots | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')/'
+
 $script:DomainRoots = @(
-    'clavity-dotnet/plugin'
-    'clavity-classic/plugin'
+    $script:TwinPluginRoots
     'clavity-classic/agy_skills'
     'clavity-classic/agy-mcp-bridge'
     'seed'
@@ -145,7 +155,9 @@ function Get-ReferenceIndex {
             $rel = $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
             # Canonicalise the byte-identical twin trees at INDEX time, so any bare filename naming a
             # plugin file resolves to one logical path instead of being 'ambiguous' forever.
-            $canon = $rel -replace '^clavity-(dotnet|classic)/plugin/', 'clavity-TWIN/plugin/'
+            # Derived from $script:TwinPluginRoots, not restated. The canonical form only has to be the
+            # SAME for both trees, so it deliberately does not encode the trees' own directory names.
+            $canon = $rel -replace $script:TwinCanonRx, 'clavity-TWIN/'
             $all.Add($canon)
             if (-not $byName.ContainsKey($_.Name)) { $byName[$_.Name] = [System.Collections.Generic.HashSet[string]]::new() }
             [void]$byName[$_.Name].Add($canon)
@@ -392,7 +404,7 @@ function Expand-ExemptionPath {
     if ($scope -eq 'twin-plugin') {
         # One entry covers both byte-identical trees, and the invariant must be failing in BOTH. Settling
         # for the first tree found would let one be cleaned while the other keeps the defect.
-        return @("clavity-dotnet/plugin/$($Entry.path)", "clavity-classic/plugin/$($Entry.path)")
+        return @($script:TwinPluginRoots | ForEach-Object { "$_/$($Entry.path)" })
     }
     @($Entry.path)
 }
@@ -441,8 +453,9 @@ function Get-InjectedContextViolations {
             # EVERY EXPANDED PATH MUST EXIST. Expand-ExemptionPath's own comment claims the invariant must
             # be failing in BOTH twin trees, and until now the script enforced none of that - a twin-scoped
             # entry naming a file present in only one tree produced a phantom key for the other, which the
-            # walk never queries, so one tree could be cleaned while the other kept its waiver. The suite
-            # caught it; the gate exited 0. Measured both.
+            # walk never queries, so one tree could be cleaned while the other kept its waiver. MEASURED
+            # 2026-08-09, BEFORE the throw below existed: the suite reddened on that case and the gate
+            # still exited 0. The throw is what changed the second half - the gate now fails too.
             #
             # This also catches the anchoring trap in the same throw. The `path` field is PLUGIN-relative
             # under scope 'twin-plugin' and REPO-relative without it, which is easy to get backwards: a

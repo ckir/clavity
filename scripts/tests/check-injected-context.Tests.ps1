@@ -391,6 +391,20 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $paths | Should -Contain 'clavity-classic/plugin/skills/adversarial-panel-review/SKILL.md'
             $paths.Count | Should -Be 2
         }
+        It 'DERIVES the twin prefixes from $script:TwinPluginRoots rather than restating them' {
+            # Capstone round 3. The twin-plugin pair was hardcoded in three places - the domain root list,
+            # this expansion, and the reference canonicaliser - while Get-InjectedContextFiles' own error
+            # message invites a maintainer to rename a root. Following that instruction left the other two
+            # copies pointing at a path that no longer exists, and since the gate now throws on a missing
+            # exemption path, it would have taken CI down. This row fails if anyone re-hardcodes them.
+            $saved = $script:TwinPluginRoots
+            try {
+                $script:TwinPluginRoots = @('alpha/plugin', 'beta/plugin')
+                $p = @(Expand-ExemptionPath -Entry ([pscustomobject]@{ path='skills/x/SKILL.md'; scope='twin-plugin' }))
+                $p | Should -Be @('alpha/plugin/skills/x/SKILL.md', 'beta/plugin/skills/x/SKILL.md')
+            } finally { $script:TwinPluginRoots = $saved }
+        }
+
         It 'leaves a product-scoped key alone' {
             $paths = Expand-ExemptionPath -Entry ([pscustomobject]@{ path='ghidrust/plugin/skills/x/SKILL.md' })
             $paths | Should -Be @('ghidrust/plugin/skills/x/SKILL.md')
