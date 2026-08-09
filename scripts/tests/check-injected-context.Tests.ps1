@@ -111,4 +111,34 @@ Describe 'check-injected-context.ps1' {
             Remove-Item -Force $tmp
         }
     }
+
+    Context 'reference candidate identification' {
+        BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
+
+        It 'treats <tok> as a candidate' -ForEach @(
+            @{ tok = 'docs/agy-disciplines-marker-contract.md' }
+            @{ tok = 'assertion-strength-reminder.sh' }
+            @{ tok = './hooks/agy-seam-inject.sh' }
+            @{ tok = '../knowledge/agy-capabilities.md' }
+        ) { (Test-IsPathCandidate -Token $tok) | Should -BeTrue }
+
+        It 'does NOT treat <tok> as a candidate' -ForEach @(
+            @{ tok = '/agent' }
+            @{ tok = '/mcp' }
+            @{ tok = '/model' }
+            @{ tok = '/skills' }
+            @{ tok = '/tasks' }
+            @{ tok = '/usage' }
+            @{ tok = '/teamwork-preview' }
+            @{ tok = '[doc/user]' }
+            @{ tok = 'read/write' }
+        ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
+
+        It 'does NOT treat the directory reference <tok> as a file candidate' -ForEach @(
+            @{ tok = '.clavity/' }
+            @{ tok = '.clavity/agy-marks/' }
+            @{ tok = '.git/' }
+            @{ tok = '.agents/skills/' }
+        ) { (Test-IsPathCandidate -Token $tok) | Should -BeFalse }
+    }
 }

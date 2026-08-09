@@ -71,6 +71,31 @@ function Get-InjectedContextFiles {
     $out.ToArray()
 }
 
+$script:ShippedExtensions = @('md','sh','ps1','json','cs','rs','toml')
+
+function Test-IsPathCandidate {
+    param([string]$Token)
+    if ([string]::IsNullOrWhiteSpace($Token)) { return $false }
+    # Variables, placeholders and home-relative paths are never resolved here.
+    if ($Token -match '[%$~]' -or $Token -match '<[^>]+>') { return $false }
+    # Explicitly relative.
+    if ($Token.StartsWith('./') -or $Token.StartsWith('../')) { return $true }
+    # A leading bare '/' does NOT qualify: those are slash-commands (/agent, /mcp, /skills, ...).
+    if ($Token.StartsWith('/')) { return $false }
+    if ($Token -match '[\[\]]') { return $false }
+    # DIRECTORY REFERENCES - spec 4.1.1 requires the plan to state their disposition, and the answer is
+    # SKIP, never file-resolution. A trailing slash means a directory, and every directory reference in
+    # this corpus is a RUNTIME path that legitimately does not exist in the repository: `.clavity/` and
+    # `.clavity/agy-marks/` are gitignored (.gitignore:45), `.git/` is not shipped content, and
+    # `.agents/skills/` lives on the user's machine. Resolving them as files would report `broken` on
+    # correct text; resolving them as directories would report `broken` on a fresh clone. Neither is a
+    # defect worth reporting, so they are not candidates at all.
+    if ($Token.EndsWith('/')) { return $false }
+    $ext = ($Token -split '\.')[-1]
+    if ($ext -in $script:ShippedExtensions -and $ext -ne $Token) { return $true }
+    return $false
+}
+
 # Read BYTES. Under Windows PowerShell 5.1 a bare Get-Content decodes using the system ANSI code page,
 # so multibyte sequences can be transcoded before any [^\x00-\x7F] regex sees them - a platform-dependent
 # false negative in the one check that must be exact. In-repo precedents: check-seed-budget.ps1:32 and
