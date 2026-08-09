@@ -467,64 +467,62 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $paths = Expand-ExemptionPath -Entry ([pscustomobject]@{ path='ghidrust/plugin/skills/x/SKILL.md' })
             $paths | Should -Be @('ghidrust/plugin/skills/x/SKILL.md')
         }
-        It 'REJECTS an exemption when the file is missing from twin tree <Missing> - ORDER-INDEPENDENT' -ForEach @(
-            @{ Missing = 0 }
-            @{ Missing = 1 }
-        ) {
-            # THIS ROW HAS BEEN VACUOUS TWICE, so it is now parameterised over WHICH tree is missing and
-            # cannot be defeated by the order of $script:TwinPluginRoots. Round 4 created the file in
-            # NEITHER tree (so "throws when missing from one" was indistinguishable from "throws only when
-            # missing from both"). Round 5 created it in the SECOND, which a first-path-only implementation
-            # still satisfied - measured 86/0. Capstone round 6 then observed that even the [0] fix only
-            # held because of the array's CURRENT order, so a reorder would silently re-vacate it.
+        It 'REJECTS an exemption missing from ANY twin tree - order- and count-independent' {
+            # THIS ROW HAS BEEN VACUOUS THREE TIMES. Round 4 created the file in NEITHER tree, so it could
+            # not tell "throws when missing from one" from "throws only when missing from both". Round 5
+            # created it in the SECOND, which a first-path-only implementation still satisfied (measured
+            # 86/0). Round 6 parameterised it over Missing=0 and Missing=1 - which still only held for a
+            # TWO-entry array: with three trees, an implementation that checks [0] and [1] but skips [2]
+            # passes both iterations, because the file is missing from [0] or [1] either way.
             #
-            # Present in every tree EXCEPT $Missing: whichever single path a broken implementation happens
-            # to check, one of these two iterations puts the existing file there and the throw must still
-            # fire for the other. No ordering makes both pass.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icx-" + [guid]::NewGuid().ToString('N'))
-            New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
-            Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
-            foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
-            Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
+            # So the loop is over EVERY index, derived from the array. For each tree in turn, the file is
+            # present in all the others and absent from that one, and the throw must fire. No ordering and
+            # no count can defeat it: any implementation that skips even one expanded path fails the
+            # iteration where that path is the missing one.
+            for ($miss = 0; $miss -lt $script:TwinPluginRoots.Count; $miss++) {
+                $d = Join-Path ([IO.Path]::GetTempPath()) ("icx-" + [guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
 { "exemptions": [ { "path": "skills/nope/SKILL.md", "scope": "twin-plugin", "invariant": "encoding", "reason": "probe" } ] }
 '@
-            for ($i = 0; $i -lt $script:TwinPluginRoots.Count; $i++) {
-                if ($i -eq $Missing) { continue }
-                $present = Join-Path $d "$($script:TwinPluginRoots[$i])/skills/nope/SKILL.md"
-                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $present) | Out-Null
-                Set-Content -LiteralPath $present -Value 'present in this tree' -Encoding ascii
+                for ($i = 0; $i -lt $script:TwinPluginRoots.Count; $i++) {
+                    if ($i -eq $miss) { continue }
+                    $present = Join-Path $d "$($script:TwinPluginRoots[$i])/skills/nope/SKILL.md"
+                    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $present) | Out-Null
+                    Set-Content -LiteralPath $present -Value 'present in this tree' -Encoding ascii
+                }
+                { Get-InjectedContextViolations -RepoRoot $d } |
+                    Should -Throw -ExpectedMessage '*does not exist*' -Because "the exemption is missing from tree $miss"
+                Remove-Item -Recurse -Force $d
             }
-            { Get-InjectedContextViolations -RepoRoot $d } | Should -Throw -ExpectedMessage '*does not exist*'
-            Remove-Item -Recurse -Force $d
         }
 
-        It 'REJECTS an exemption whose expanded path does not exist on disk' {
-            # Capstone round 2, Boundary Smuggler + Literal Implementer, folded together. The gate used to
-            # accept these silently: a twin-scoped entry naming a file present in only ONE tree produced a
-            # phantom key the walk never queries, so one tree could be cleaned while the other kept its
-            # waiver - measured, the suite reddened but the gate exited 0. The same throw catches the
-            # anchoring trap, where a repo-relative path under twin scope doubles the prefix.
-            $d = Join-Path ([IO.Path]::GetTempPath()) ("icx-" + [guid]::NewGuid().ToString('N'))
-            New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
-            Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
-            foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
-            Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
-{ "exemptions": [ { "path": "skills/nope/SKILL.md", "scope": "twin-plugin", "invariant": "encoding", "reason": "probe" } ] }
+        It 'ENFORCES the blocklist - an exemption naming a blocklisted anomaly is refused' {
+            # Capstone round 7, and the peer was RIGHT where I was wrong. I had rated this below the floor
+            # on the grounds that $script:AnomalyBlocklist is deliberately empty, so the throw is
+            # unreachable "by design". That conflated PRODUCTION state with TESTABILITY: the suite already
+            # injects a blocklist tuple elsewhere in this file, so the enforcement branch is perfectly
+            # reachable under test. Deleting that throw left the whole suite green, which is a real
+            # coverage gap and not a consequence of the empty array.
+            $saved = $script:AnomalyBlocklist
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icb-" + [guid]::NewGuid().ToString('N'))
+            try {
+                $script:AnomalyBlocklist = @(@{ Path = 'seed/blocked.md'; Invariant = 'encoding' })
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                Set-Content -LiteralPath (Join-Path $d 'seed/blocked.md') -Value 'x' -Encoding ascii
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
+{ "exemptions": [ { "path": "seed/blocked.md", "invariant": "encoding", "reason": "probe" } ] }
 '@
-            # THE FILE EXISTS IN EXACTLY ONE TREE. Capstone round 4 caught the first version of this row
-            # creating it in NEITHER, which made it unable to tell "throws when missing from one tree" from
-            # "throws only when missing from both" - so an implementation that fell open on the phantom-key
-            # bug would have passed the very row written to guard it. One tree is the case that matters.
-            # THE FIRST TREE, [0], and the index is the whole point. Round 4 put the file in [1], which
-            # made this row vacuous AGAIN: the loop checks [0] first, [0] was missing, so an implementation
-            # that only ever checked the FIRST path still threw and still passed. Measured - that mutant
-            # returned 86/0. Putting the file in [0] forces the implementation past it to reach [1], so
-            # only an implementation that checks EVERY expanded path can satisfy this row.
-            $present = Join-Path $d "$($script:TwinPluginRoots[0])/skills/nope/SKILL.md"
-            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $present) | Out-Null
-            Set-Content -LiteralPath $present -Value 'present in this tree only' -Encoding ascii
-            { Get-InjectedContextViolations -RepoRoot $d } | Should -Throw -ExpectedMessage '*does not exist*'
-            Remove-Item -Recurse -Force $d
+                { Get-InjectedContextViolations -RepoRoot $d } |
+                    Should -Throw -ExpectedMessage '*cannot be honoured*'
+            } finally {
+                $script:AnomalyBlocklist = $saved
+                Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue
+            }
         }
 
         It 'the blocklist is retired - no tuple remains' {
@@ -675,6 +673,54 @@ jq -nc --arg m "[TAG] $msg" '{}'
             $v = @(Get-InjectedContextViolations -RepoRoot $d)
             ($v | Where-Object { $_.Invariant -eq 'payload-budget' }) | Should -BeNullOrEmpty
             Remove-Item -Recurse -Force $d
+        }
+    }
+    Context 'the CLI contract - exit codes and operator output' {
+        # Capstone round 7, Completeness Critic. Six rounds audited discovery, the reference index and the
+        # invariant engine, and NONE of them touched Invoke-InjectedContextCheck - the layer that decides
+        # the EXIT CODE. That code is the entire contract with CI and with the just recipe: everything
+        # else in this file could be perfect and a wrong exit status would still ship the defect.
+        #
+        # It has to run as a CHILD PROCESS. The function calls `exit`, which would terminate the Pester
+        # runner itself, so dot-sourcing cannot reach it - which is precisely why it had no coverage.
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            $script:NewGateFixture = {
+                param([switch]$WithViolation)
+                $d = Join-Path ([IO.Path]::GetTempPath()) ("icc-" + [guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                if ($WithViolation) {
+                    [IO.File]::WriteAllText((Join-Path $d 'seed/bad.md'), "em dash $([char]0x2014) here", (New-Object System.Text.UTF8Encoding($false)))
+                }
+                $d
+            }
+        }
+
+        It 'exits 0 and says OK when the corpus is clean' {
+            $d = & $script:NewGateFixture
+            $out = & pwsh -NoProfile -File $script:Script -RepoRoot $d 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue
+            $code | Should -Be 0 -Because 'CI and the just recipe both gate on this exit status'
+            $out  | Should -Match 'check-injected-context: OK'
+        }
+
+        It 'exits 1 and names the file, the invariant and the waiver destination on a violation' {
+            # Asserts the OPERATOR-FACING content, not just the status. A gate that fails without naming
+            # what failed, or without saying where a waiver goes, sends people to the wrong fix - which is
+            # how the round-4 Cold Operator walked into a broken JSON paste.
+            $d = & $script:NewGateFixture -WithViolation
+            $out = & pwsh -NoProfile -File $script:Script -RepoRoot $d 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue
+            $code | Should -Be 1 -Because 'a violation must fail the build, not merely print'
+            $out  | Should -Match 'seed/bad\.md'
+            $out  | Should -Match 'encoding'
+            $out  | Should -Match 'injected-context-exemptions\.json'
+            $out  | Should -Match 'ADD A COMMA'
         }
     }
 }
