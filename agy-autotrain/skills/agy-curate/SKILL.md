@@ -80,9 +80,9 @@ The `driver/probabilistic` entries that survived the gate are the durable driver
 variant-agnostic core (peer psychology — identical for both drivers) into a lean ≤ ~150-token / ~3-bullet
 cheatsheet. The canonical text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync there.
 
-**⚠️ THREE files are pinned byte-identical — editing `core.md` alone RED-GATES both binaries.** A pinning
-test in each driver asserts its compiled-in baseline equals `core.md` (normalized CRLF→LF, then trimmed).
-If you change `core.md` you MUST also update:
+**⚠️ THREE files are pinned byte-identical — editing `driver-cheatsheet.core.md` alone RED-GATES both binaries.** A pinning
+test in each driver asserts its compiled-in baseline equals `driver-cheatsheet.core.md` (normalized CRLF→LF, then trimmed).
+If you change `driver-cheatsheet.core.md` you MUST also update:
 - `clavity-classic/src/driver_cheatsheet.rs` → `BASELINE_FLOOR` (single-line `\n` literal)
 - `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` → `BaselineFloor` (multi-line `+ "…\n"` concatenation)
 

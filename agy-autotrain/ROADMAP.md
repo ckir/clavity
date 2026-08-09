@@ -176,7 +176,8 @@ only guidance is a soft "keep it lean." Separately, the *Promotion rubric* (~:10
 (Heuristic ≥2 independent observations; Empirical Assumption 100 % verify-harness pass) but there is **no single
 explicit anti-poisoning gate**.
 
-**Port** (source: the flaui-mcp repo's `plugins/flaui-mcp/skills/flaui-curate/SKILL.md`, its *"USER promote →
+**Port** (source: the flaui-mcp repo's plugins/flaui-mcp/skills/flaui-curate/SKILL.md - a SIBLING REPO,
+not a path in this one, which is why it carries no code span, its *"USER promote →
 the project-local growth file"* section):
 1. A **line-density cap** on the compiled GROWTH region **plus an ordered breach procedure**, placed **in front
    of** the existing 16 KB byte cap so active compression happens *before* the silent-degrade cliff. Adapt the
