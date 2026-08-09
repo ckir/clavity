@@ -462,11 +462,17 @@ function Get-InjectedContextViolations {
             # repo-relative path with twin scope expands to clavity-dotnet/plugin/clavity-classic/plugin/...
             # and would otherwise waive nothing, silently, leaving the author to wonder why.
             if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $p))) {
+                # NAME BOTH CAUSES, most likely first, the way the domain-root throw above does. The first
+                # version led with the anchoring lecture, which is the RARER cause: someone who simply
+                # deleted a file and left its exemption behind got a paragraph about plugin-relative
+                # prefixes they never used, and no mention of the orphan they actually created.
                 throw ("exemption path does not exist: $p" +
                        "`n  from entry: $($e.path)" +
-                       "`n  NOTE: with scope 'twin-plugin' the path is relative to the PLUGIN directory" +
-                       " (skills/... , knowledge/...), NOT the repository root. Without that scope it is" +
-                       " repo-relative. A doubled prefix above means the two were swapped.")
+                       "`n  If the file was DELETED, delete this exemption too - it is now orphaned." +
+                       "`n  If the file still exists, the path is anchored wrongly: under scope" +
+                       " 'twin-plugin' it is relative to the PLUGIN directory (skills/... , knowledge/...)," +
+                       " and repo-relative without that scope. A doubled prefix above means the two were" +
+                       " swapped.")
             }
             $exempt["$p|$($e.invariant)"] = $true
         }

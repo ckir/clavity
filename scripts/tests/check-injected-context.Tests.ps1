@@ -208,9 +208,19 @@ Describe 'check-injected-context.ps1' {
             # INVERTED the trigger - CI would skip exactly the domain it is meant to watch - and this test
             # still passed. MEASURED: 83/0 under that one-token edit. A drift guard that fails open under a
             # plausible edit is worse than none, because it certifies the thing it stopped checking.
-            $section | Should -Match "(?m)^\s+paths:\s*$" -Because "the $Filter trigger must use 'paths:' - 'paths-ignore:' would invert it"
-            # Collect ONLY the list items under that key, stopping at the first line that is not one.
-            $block = ($section -split "(?m)^\s+paths:\s*$")[1]
+            # The key may legitimately carry a YAML anchor or a trailing comment (`paths: &shared`), so
+            # match those rather than reddening on valid YAML - measured, the stricter `\s*$` form failed
+            # on `paths: &my-paths`. It still cannot match `paths-ignore:`, which has no `paths:` substring.
+            # NON-CAPTURING groups are load-bearing, not style. `-split` inserts every PARTICIPATING
+            # capture group into the result, so with capturing groups the normal case passed (neither
+            # optional group participates) while an anchored key shifted the block from [1] to [2] and
+            # emptied the list - a fix whose own defect only appeared under the input it was written for.
+            $keyRx = "(?m)^\s+paths:[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?$"
+            $section | Should -Match $keyRx -Because "the $Filter trigger must use 'paths:' - 'paths-ignore:' would invert it"
+            # Collect ONLY the list items under that key, stopping at the first line that is not one. That
+            # stop is what makes a SECOND `paths:` key elsewhere in the section harmless - measured: with an
+            # extra trigger's paths: inserted, this still collected the right block and stayed green.
+            $block = ($section -split $keyRx)[1]
             $paths = @()
             foreach ($line in ($block -split "`r?`n")) {
                 if ($line -match "^\s+- '([^']+)'") { $paths += $Matches[1] }
