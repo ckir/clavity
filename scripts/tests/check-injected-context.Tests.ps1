@@ -163,7 +163,13 @@ Describe 'check-injected-context.ps1' {
             $script:Globs = Get-IgnoreGlobs -RepoRoot $script:RepoRoot
             $script:AllSkills = @(
                 Get-ChildItem -LiteralPath $script:RepoRoot -Recurse -File -Filter 'SKILL.md' -Force -ErrorAction SilentlyContinue |
-                    Where-Object { $_.FullName -notmatch '[\\/](\.git|node_modules|target|bin|obj|\.venv|__pycache__|dist|publish|\.vs|\.clavity)[\\/]' } |
+                    # ONLY VCS internals and runtime state are excluded here. This list used to mirror
+                    # $script:PrunedSegments, which gave the guard the SAME BLIND SPOT as the thing it
+                    # guards: a skill planted at skills/dist/SKILL.md was filtered out of this very
+                    # enumeration, so the corpus check below could not see it and passed. Measured - the
+                    # planted bypass produced a green run. A guard that shares its target's blind spot is
+                    # not a guard.
+                    Where-Object { $_.FullName -notmatch '[\\/](\.git|\.clavity)[\\/]' } |
                     ForEach-Object { $_.FullName.Substring($script:RepoRoot.Length + 1).Replace('\', '/') }
             )
         }
@@ -185,6 +191,54 @@ Describe 'check-injected-context.ps1' {
             )
             # Name them. A count sends a reader hunting; a path sends them to the fix.
             $uncovered -join ', ' | Should -BeExactly '' -Because 'a skill outside every domain root is injected into an agent and audited by nothing'
+        }
+
+        It 'every SKILL.md is in the AUDITED CORPUS, not merely under a domain root' {
+            # THE GATE-BYPASS GUARD. Capstone round 9 showed that "inside a domain root" is a weaker
+            # property than "actually audited": pruning drops a whole directory before the ignorelist is
+            # consulted, so naming a skill directory after any pruned segment - dist, target, bin, obj,
+            # node_modules, .venv, publish, .vs - removes it from the corpus entirely. MEASURED: a skill at
+            # skills/dist/SKILL.md containing a real em dash produced corpus 0 and violations 0. The plugin
+            # loader still finds it, so it ships and is injected, having passed no invariant at all.
+            #
+            # Pruning cannot simply be dropped - measured, it removes 3188 files from the corpus walk,
+            # almost all of them a Python virtualenv under agy-mcp-bridge. So the bypass is closed here
+            # instead: every skill file must appear in the corpus the gate actually audits.
+            # Scoped to skills UNDER A DOMAIN ROOT. That is what makes the rule both sound and precise:
+            # clavity-classic/publish/agy-mcp-bridge/SKILL.md is a published COPY at product level, sits
+            # under no domain root, and is legitimately unaudited because its source is. A skill directory
+            # merely NAMED after a pruned segment, by contrast, is inside a root and must be audited.
+            $corpus = @(Get-InjectedContextFiles -RepoRoot $script:RepoRoot)
+            $missing = @(
+                $script:AllSkills | Where-Object {
+                    $p = $_
+                    # NO IGNORELIST ESCAPE. The bypass is doubly protected - skills/dist/ is BOTH pruned
+                    # and matched by the **/dist/** glob - so allowing "explicitly ignored" here let the
+                    # planted skill through a second time. Measured twice: the guard passed until this
+                    # clause was removed. A SKILL.md inside a domain root is injected context by
+                    # definition and is never legitimately ignorable; if one ever must be, it belongs in
+                    # the exemptions file with a reason, where it is visible and bidirectionally checked.
+                    $inRoot = @($script:DomainRoots | Where-Object { $p.StartsWith("$_/") }).Count -gt 0
+                    $inRoot -and ($corpus -notcontains $p)
+                }
+            )
+            $missing -join ', ' | Should -BeExactly '' -Because 'a skill the corpus never sees is shipped and injected having passed no invariant'
+        }
+
+        It 'PRUNES <Segment> - every segment in the list is actually load-bearing' -ForEach @(
+            @{ Segment = '.git' }        ; @{ Segment = 'node_modules' } ; @{ Segment = 'target' }
+            @{ Segment = 'bin' }         ; @{ Segment = 'obj' }          ; @{ Segment = '.venv' }
+            @{ Segment = '__pycache__' } ; @{ Segment = 'dist' }         ; @{ Segment = 'publish' }
+            @{ Segment = '.vs' }         ; @{ Segment = '.ruff_cache' }  ; @{ Segment = '.pytest_cache' }
+            @{ Segment = '.mypy_cache' }
+        ) {
+            # Capstone round 9, Coverage Liar: only dist, bin and target had rows, so deleting any OTHER
+            # entry from $script:PrunedSegments left the whole suite green. Its quoted array was wrong -
+            # it listed .github and .vscode, which this repository has never had - but the gap it named
+            # was real, and this row is derived from the live list so a new segment cannot arrive untested.
+            $script:PrunedSegments | Should -Contain $Segment
+            (Test-IsPrunedPath -RelPath "seed/$Segment/x.md") | Should -BeTrue
+            (Test-IsPrunedPath -RelPath "seed/$Segment")      | Should -BeFalse -Because 'a FILE with that name is content'
         }
 
         It 'still finds files when the REPOSITORY ITSELF sits under a pruned directory name' {

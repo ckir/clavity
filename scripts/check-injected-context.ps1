@@ -63,7 +63,15 @@ $script:DomainRoots = @(
 # One list, one regex, both walks. The two sites previously carried DIFFERENT segment lists; the union is
 # used here because dist/ and publish/ are already ignorelisted for the corpus, so folding them in changes
 # nothing there - verified by comparing corpus and index counts before and after.
-$script:PrunedSegments = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs')
+# MEASURED 2026-08-09: pruning removes 3188 files from the corpus walk, essentially all of them the
+# Python virtualenv under clavity-classic/agy-mcp-bridge/.venv/. Pruning is load-bearing and cannot simply
+# be dropped from the corpus walk - doing that would sweep a venv into the audited corpus. That is why the
+# BYPASS below is closed by a coverage assertion rather than by deleting the prune.
+# The three cache directories were added after a measurement found .ruff_cache/CACHEDIR.TAG sitting in the
+# audited corpus: tool caches are untracked local junk, so leaving them in made the corpus differ between
+# machines and the gate non-reproducible across clones.
+$script:PrunedSegments = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs',
+                           '.ruff_cache','.pytest_cache','.mypy_cache')
 # Non-capturing throughout: this regex is only used with -match today, but a capturing group in a regex
 # later handed to -split silently shifts every index, which cost a round-3 fix its correctness.
 # THE TRAILING '/' IS REQUIRED, NOT OPTIONAL. These are FILE paths, so a pruned segment is always a
