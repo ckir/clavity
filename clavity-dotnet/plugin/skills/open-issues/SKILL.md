@@ -92,7 +92,7 @@ printf -- '- [%s] %s * %s * %s * task=%s\n' \
 `[tool misbehavior]`. The hook tolerates other bracketed tokens when counting, but the three types are
 what the triage procedure sorts on, so an invented type makes the entry harder to act on.
 
-**Keep the four ` * ` separators.** The hook reads the capture date from the field before `task=`, by
+**Keep the three ` * ` separators.** The hook reads the capture date from the field before `task=`, by
 position. An entry missing a separator still counts, but its age cannot be read.
 
 Two things about that snippet are deliberate:

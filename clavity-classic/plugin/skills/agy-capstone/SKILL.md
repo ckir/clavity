@@ -187,8 +187,8 @@ brief** (the peer's context can truncate across a long review; a shorthand "see 
 something it no longer holds). Ledger entries are plain factual findings, not your rationale.
 
 ## Round cap + human-adjudicated GREEN + override re-entry
-- **`MAX_CAPSTONE_ROUNDS = 3` (tunable).** At the cap, **halt and ask your human** ("still finding
-  substance at round 3 - continue or ship?") rather than looping or silently stopping.
+- **`MAX_CAPSTONE_ROUNDS = 6` (tunable).** At the cap, **halt and ask your human** ("still finding
+  substance at round 6 - continue or ship?") rather than looping or silently stopping.
 - **GREEN is human-adjudicated** - you cannot self-declare it. A self-reported clean round is a proposal
   the human confirms or rejects at the superpowers completion breakpoint (or in-chat under manual
   invocation, which has no breakpoint).

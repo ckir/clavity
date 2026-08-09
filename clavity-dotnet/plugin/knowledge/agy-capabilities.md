@@ -9,7 +9,7 @@
 > [`agy-remote-control-protocol.md`](https://github.com/ckir/clavity/blob/main/docs/agy-remote-control-protocol.md).
 > That link is absolute deliberately: this manual ships byte-identical inside two plugins at different
 > depths, so no single relative path can resolve from both.
-> The auto-consult policy (when to ask agy before showing the user) is the `agy-first-brainstorm.sh` hook.
+> The auto-consult policy (when to ask agy before showing the user) is the `agy-seam-inject.sh` hook.
 >
 > **agy is a dynamic, multi-model platform, not a static model:** effective capability =
 > *active model + agy's orchestration + native tools + currently-loaded skills & MCP servers*. The

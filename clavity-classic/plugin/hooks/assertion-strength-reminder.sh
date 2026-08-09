@@ -142,6 +142,6 @@ while IFS= read -r _line; do
 done < "$seen"
 printf '%s\n' "$norm" >> "$seen"
 
-msg="ASSERTION-STRENGTH: you just touched a test file. Before you move on, check this test against the three structural smells that produce a GREEN test over broken code. (1) CARDINALITY over an ordered or filtered collection - asserting only how MANY survived is invariant under any permutation, so assert boundary IDENTITY (which item is first/last/absent), never count alone. (2) A DUAL-PATH FALLBACK masked by the ambient environment - if the primary dependency happens to be present, the fallback branch never runs; strip the dependency to force it. (3) A STRUCTURED-TOKEN matcher with no DISTRACTOR case - a pattern that matches the right token must also be shown to REJECT a near-miss. If you cannot show the test failing against a deliberate logic mutant of the code it guards, it is decoration. Full procedure: the agy-test-audit skill, Step 5."
-jq -nc --arg m "[ASSERTION-STRENGTH] $msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+msg="[ASSERTION-STRENGTH] You just touched a test file. Three structural smells produce a GREEN test over broken code: (1) CARDINALITY over an ordered or filtered collection - assert boundary IDENTITY, not count. (2) A DUAL-PATH FALLBACK masked by the ambient environment - strip the dependency to force it. (3) A STRUCTURED-TOKEN matcher with no DISTRACTOR case - show it REJECTS a near-miss. The agy-test-audit skill, Step 5 (the audit round, item 5) carries the full procedure, including proving non-vacuity against a logic mutant."
+jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
 exit 0

@@ -111,7 +111,7 @@ commit sha to the marker:
   byte-identical skill body cannot carry a per-plugin literal, and the two drivers are mutually exclusive
   (only one `clavity` plugin installed; both-installed is a transient migration state where a shared
   marker correctly debounces the shared phase and *prevents* a duplicate paid consult). See the marker
-  contract doc (Task 5).
+  contract doc, docs/agy-disciplines-marker-contract.md.
 - **Content:** the output of `git rev-parse HEAD` at consult time, nothing else. **If `git rev-parse
   HEAD` cannot resolve** (not a git repo / a repo with no commits), skip writing the marker entirely -
   the discipline simply re-fires next trigger, which is safe.

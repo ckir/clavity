@@ -739,7 +739,7 @@ test stays green. Measured, not reasoned: `5071872` records the mutation. Cardin
    **Generalises: before treating a ROADMAP "open decision" as open, grep for a sibling that already
    decided it** — this one cost a design question that had been answered weeks earlier.
 
-**Cost:** ~80 tokens per firing, ~2 firings per session; verification is one targeted test run per
+**Cost:** ~190-220 tokens per firing, ~2 firings per session; verification is one targeted test run per
 directional or fallback assertion. Both variants' plugins must change together (byte-identical pair).
 
 ### 12. Post-plan-2 leftovers — two guards that overstate what they verify · ✅ **SHIPPED 2026-08-07**
