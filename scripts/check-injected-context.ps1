@@ -220,6 +220,30 @@ function Get-NonAsciiReport {
     $hits -join "`n"
 }
 
+function Test-HasPlanResidue {
+    param([string]$Text)
+    # A bare plan pointer with no referent: "(Task 5)", "(Step 12)", "(Phase 3)".
+    # "(item 5)" is deliberately NOT matched - it is a legitimate intra-document pointer.
+    [bool]([regex]::IsMatch($Text, '\((Task|Step|Phase)\s+\d+\)'))
+}
+
+function Test-HasDuplicatedTag {
+    param([string]$Text)
+    [bool]([regex]::IsMatch($Text, '\[([A-Z0-9_-]+)\]\s*\1[:\s]'))
+}
+
+# THIS CHECKS SHAPE, NOT A SPECIFIC TAG - and that is a correction, not a weakening.
+# Anomaly A2 claimed assertion-strength-reminder.sh's tag was namespace drift from its four siblings.
+# IT IS NOT. clavity-dotnet/ROADMAP.md:714 records the deliberate ruling - "Drop the AGY- prefix - every
+# AGY-* discipline convenes the peer; this one does not" - and
+# scripts/tests/assertion-strength-reminder.Tests.ps1:199-201 PINS it. The prefix is signal, not drift.
+# Requiring one specific tag would ship a change contradicting a recorded ruling and redden its guard.
+function Test-DegradedNamespace {
+    param([string]$Text)
+    if ($Text -notmatch 'guard inactive:') { return $true }
+    $Text -match '^\[[A-Z][A-Z0-9_-]*\]\s*guard inactive:'
+}
+
 # DOT-SOURCE / EXECUTE SPLIT. The test suite dot-sources this file to reach the functions above, so the
 # main body must NOT run in that case - otherwise every dot-source would walk the tree and set an exit
 # code. `$MyInvocation.InvocationName` is '.' exactly when dot-sourced.

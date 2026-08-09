@@ -182,4 +182,41 @@ Describe 'check-injected-context.ps1' {
             (Test-ReferenceFails -Outcome 'unclassified') | Should -BeTrue
         }
     }
+
+    Context 'text invariants' {
+        BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
+
+        It 'flags plan residue "<txt>"' -ForEach @(
+            @{ txt = 'See the marker contract doc (Task 5).' }
+            @{ txt = 'described in (Step 12) above' }
+            @{ txt = 'per (Phase 3)' }
+        ) { (Test-HasPlanResidue -Text $txt) | Should -BeTrue }
+
+        It 'does not flag ordinary parenthetical prose' {
+            (Test-HasPlanResidue -Text 'the audit round (item 5) carries it') | Should -BeFalse
+        }
+
+        It 'flags a duplicated tag opening' {
+            (Test-HasDuplicatedTag -Text '[ASSERTION-STRENGTH] ASSERTION-STRENGTH: you just touched') |
+                Should -BeTrue
+        }
+        It 'does not flag a single tag opening' {
+            (Test-HasDuplicatedTag -Text '[ASSERTION-STRENGTH] You just touched a test file.') |
+                Should -BeFalse
+        }
+        It 'does not flag a DIFFERENT all-caps word after the tag - the backreference is load-bearing' {
+            # Neither fixture above exercises the backreference: 'You' is not all-caps, so NO pattern
+            # flags it, and a non-backreferencing regex would pass both. This row is the one that can
+            # tell them apart - a different tag is not a duplication.
+            (Test-HasDuplicatedTag -Text '[AGY-DISCIPLINES] AGY-FIRST: consult the peer') |
+                Should -BeFalse
+        }
+        It 'requires SOME bracketed tag on a degraded line, not one specific tag' {
+            # A2 was withdrawn: ROADMAP.md:714 rules that assertion-strength deliberately drops the AGY-
+            # prefix because it convenes no peer, and Tests.ps1:199-201 pins that. Both tags are valid.
+            (Test-DegradedNamespace -Text '[ASSERTION-STRENGTH] guard inactive: missing jq') | Should -BeTrue
+            (Test-DegradedNamespace -Text '[AGY-DISCIPLINES] guard inactive: missing jq')    | Should -BeTrue
+            (Test-DegradedNamespace -Text 'guard inactive: missing jq')                      | Should -BeFalse
+        }
+    }
 }
