@@ -129,10 +129,27 @@ function Test-IsBuildDirName {
 # Windows PowerShell 5.1 and pwsh 7 (measured on a live junction in both).
 function Get-WalkIdentity {
     param([System.IO.FileSystemInfo]$Item)
-    $p = $Item.FullName
-    if ($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-        $t = @($Item.Target)[0]
-        if ($t) { $p = $t }
+    # RESOLVE THE WHOLE CHAIN, NOT ONE HOP. A single resolution looks sufficient and is not: a junction
+    # whose target is ITSELF a junction yields another ALIAS, not a canonical path. MEASURED, capstone
+    # round 20 - with a domain root that is a junction and a junction inside it pointing back at that
+    # root, one-hop resolution produced two identities for one directory and the same file entered the
+    # corpus twice (`seed/a.md` and `seed/inner/back/a.md`). The first attempt at this fix resolved once
+    # and the control still returned 2; only following the chain collapsed it to 1.
+    #
+    # THE CAP IS LOAD-BEARING, not defensive dressing: two junctions pointing at each other (A -> B,
+    # B -> A) make this loop forever, and a hang inside the walk is precisely what the visited-set exists
+    # to prevent - resolving the identity must not re-introduce the failure the identity is guarding
+    # against. 32 is far beyond any real nesting; on hitting it we keep the last path resolved, which is
+    # still a better identity than the alias we started with.
+    $p   = $Item.FullName
+    $cur = $Item
+    for ($i = 0; $i -lt 32; $i++) {
+        if (-not ($cur.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) { break }
+        $t = @($cur.Target)[0]
+        if (-not $t) { break }
+        $p   = $t
+        $cur = Get-Item -LiteralPath $t -ErrorAction SilentlyContinue
+        if (-not $cur) { break }
     }
     $p.TrimEnd('\', '/')
 }
@@ -242,24 +259,48 @@ function Get-InjectedContextFiles {
         # 12.4s for the corpus walk and 69s for the whole gate, visiting 3340 files to keep 99 and running
         # ~67k glob evaluations. Correct, but a gate nobody wants to wait for gets run less often, and a
         # gate run less often is the failure this project is about.
-        $stack = [System.Collections.Generic.Stack[string]]::new()
+        # THE STACK CARRIES TWO PATHS PER DIRECTORY, and the second one is why. `Path` is how the walk got
+        # here, and it is what `$rel` - the reported path, the exemption key - must be derived from.
+        # `Phys` is WHERE IT PHYSICALLY IS, with every reparse point on the way resolved. They differ only
+        # under a junction, and that is exactly the case that was broken.
+        #
+        # MEASURED, capstone round 20, with a domain root that is ITSELF a junction and a junction inside
+        # it pointing back: the walk TERMINATED (the round-17 cycle guard held) but returned a corpus of
+        # TWO for a tree containing ONE physical file - `seed/a.md` and `seed/inner/back/a.md`. The
+        # visited-set deduped DIRECTORIES by resolved target, while FILES were added by relative path with
+        # no dedup at all, so one file entered the corpus under two aliases.
+        #
+        # That is not cosmetic. Every invariant would run on it twice, and worse, AN EXEMPTION IS KEYED ON
+        # THE RELATIVE PATH - so a waiver written for `seed/a.md` does not cover `seed/inner/back/a.md`,
+        # and a file the operator believes is waived still fails the gate under its other name.
+        #
+        # Deduping on Phys fixes both, and fixes the identity drift underneath them: a NON-reparse
+        # directory reached through a junction used to take its literal path as identity, so it looked new
+        # on every lap. Derived from the parent's Phys instead, it is stable.
+        $stack = [System.Collections.Generic.Stack[object]]::new()
         $seen  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-        $stack.Push($full)
+        $seenFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         # -ErrorAction SilentlyContinue, and the fallback is the point. A bare Get-Item here was the ONLY
         # unguarded filesystem call left outside the per-file try/catch, so a domain root that is deleted
         # between the Test-Path above and this line, or that denies access, killed the whole gate through
         # NEITHER documented exit - the exact defect class round 17 fixed for the READS, re-introduced by
         # round 17's own fix in the visited-set seeding it added. Capstone round 19.
-        # Seeding the raw path instead is strictly weaker only for a root that is ITSELF a reparse point,
-        # and that root is about to fail its walk anyway; termination is unaffected because every CHILD
-        # still resolves its target.
         $rootItem = Get-Item -LiteralPath $full -ErrorAction SilentlyContinue
-        if ($rootItem) { [void]$seen.Add((Get-WalkIdentity -Item $rootItem)) }
-        else           { [void]$seen.Add($full.TrimEnd('\', '/')) }
+        $rootPhys = if ($rootItem) { Get-WalkIdentity -Item $rootItem } else { $full.TrimEnd('\', '/') }
+        [void]$seen.Add($rootPhys)
+        $stack.Push([pscustomobject]@{ Path = $full; Phys = $rootPhys })
         while ($stack.Count) {
-            $dir = $stack.Pop()
+            $node = $stack.Pop()
+            $dir  = $node.Path
             foreach ($child in Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue) {
                 $rel = $child.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+                # A reparse point resolves to its target; anything else is its parent's physical location
+                # plus its own name. Never $child.FullName, which is the alias we are trying to collapse.
+                $childPhys = if ($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                    Get-WalkIdentity -Item $child
+                } else {
+                    (Join-Path $node.Phys $child.Name).TrimEnd('\', '/')
+                }
                 if ($child.PSIsContainer) {
                     # A probe path under the directory: if the ignorelist subtracts everything inside it,
                     # there is nothing to audit in there and descending is pure cost.
@@ -275,10 +316,14 @@ function Get-InjectedContextFiles {
                     # the real problem, which is that build output is sitting inside shipped content.
                     if (Test-IsBuildDirName -Name $child.Name) { continue }
                     # HashSet.Add returns false when the identity was already present - the cycle guard.
-                    if (-not $seen.Add((Get-WalkIdentity -Item $child))) { continue }
-                    $stack.Push($child.FullName)
+                    if (-not $seen.Add($childPhys)) { continue }
+                    $stack.Push([pscustomobject]@{ Path = $child.FullName; Phys = $childPhys })
                     continue
                 }
+                # DEDUPE THE FILE ON ITS PHYSICAL IDENTITY, NOT ITS RELATIVE PATH. The first alias reached
+                # wins and is what gets reported and waived; a second route to the same bytes is dropped
+                # rather than audited again under a name no exemption covers.
+                if (-not $seenFiles.Add($childPhys)) { continue }
                 if (-not (Test-IsIgnored -RelPath $rel -Globs $globs)) { $out.Add($rel) }
             }
         }
