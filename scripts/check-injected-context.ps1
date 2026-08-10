@@ -348,6 +348,28 @@ function Get-InjectedContextFiles {
                 }
                 # The ignore check comes FIRST so an ignored alias can never displace a kept canonical
                 # path, and never occupies a slot in the map at all.
+                #
+                # SUBTRACTION IS EVALUATED PER ROUTE, AND THAT IS INTENDED - capstone round 22 raised the
+                # asymmetry and it is being documented rather than redesigned. If a file's canonical route
+                # is subtracted by a glob while an alias route is not, the alias is audited. MEASURED:
+                # corpus came back holding `seed/alias/shared.md` with `commonmemory/**` ignored.
+                #
+                # WHY THIS IS NOT WORTH A REDESIGN. This gate audits SHIPPED, GIT-TRACKED plugin content
+                # for content invariants - encoding, plan residue, tag hygiene, namespace, payload budget,
+                # references. Its corpus is 99 files that arrive via `git checkout`. The asymmetry needs a
+                # junction or symlink INSIDE a domain root, and: git creates neither on checkout, a file
+                # symlink needs elevation on Windows (MEASURED - mklink refuses without it), and this tree
+                # contains ZERO reparse points (MEASURED). The only junctions that have ever existed here
+                # were created by the gate's OWN TEST FIXTURES to exercise the walk.
+                #
+                # It also fails CLOSED: the file is audited MORE, never less, so no content reaches an
+                # agent's context unaudited - which is the only guarantee this gate actually makes.
+                #
+                # An earlier draft of this epic was heading toward a corpus-entry model with canonical
+                # identity threaded through every consumer. That solves a class that does not occur in
+                # shipped content, and it would put undefined corners into the core walk (a domain root
+                # that is itself a junction pointing outside the repository has no canonical relative path
+                # at all). Documented and bounded beats redesigned and speculative.
                 if (Test-IsIgnored -RelPath $rel -Globs $globs) { continue }
                 # DEDUPE ON PHYSICAL IDENTITY, PREFERRING THE CANONICAL PATH. Same bytes reached twice:
                 # the route that did NOT pass through a link replaces the one that did. Two aliases and no
