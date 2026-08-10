@@ -642,6 +642,13 @@ jq -nc --arg m "[TAG] $msg" '{}'
             # which silently exempted every future non-encoding waiver from bidirectional validation -
             # the one rule that stops exemptions rotting. Today both entries are encoding; the guard has
             # to hold for the third.
+            # COLLECT EVERY PROBLEM, DO NOT THROW ON THE FIRST. Capstone round 20: a `throw` inside this
+            # It block exits it entirely, so the FIRST bad exemption left every remaining one unchecked -
+            # with ten exemptions and a problem in the first, nine went untested until someone fixed it,
+            # and then a second run could reveal a second problem, and so on. That is a slow serial hunt
+            # where one run should name everything. Aggregating also matches how the domain-coverage row
+            # already reports ("name them; a count sends a reader hunting").
+            $problems = [System.Collections.Generic.List[string]]::new()
             foreach ($e in $script:Ex) {
                 foreach ($p in (Expand-ExemptionPath -Entry $e)) {
                     $full = Join-Path $script:RepoRoot $p
@@ -663,7 +670,8 @@ jq -nc --arg m "[TAG] $msg" '{}'
                     # is still needed. The guarded read above fixed the round-18 crash and introduced this
                     # edge in the same stroke; before it, the read simply threw. Fail accurately instead.
                     if ($readErr -and $e.invariant -ne 'unreadable') {
-                        throw "exemption '$p' names invariant '$($e.invariant)' but the file cannot be READ ($($readErr.Exception.GetType().Name)) - that invariant's question is unanswerable here, which is NOT the same as the exemption being unused"
+                        $problems.Add("exemption '$p' names invariant '$($e.invariant)' but the file cannot be READ ($($readErr.Exception.GetType().Name)) - that invariant's question is unanswerable here, which is NOT the same as the exemption being unused")
+                        continue
                     }
                     $stillFails = switch ($e.invariant) {
                         'encoding'      { -not (Test-PureAscii -Path $full) }
@@ -684,11 +692,20 @@ jq -nc --arg m "[TAG] $msg" '{}'
                         # RE-RUN THE INVARIANT, like every case above: the file still fails `unreadable`
                         # exactly when it still cannot be read. $readErr is set by the guarded read above.
                         'unreadable'    { $null -ne $readErr }
-                        default         { throw "exemption names an unknown invariant '$($e.invariant)' - add a case here or fix the entry" }
+                        # Emits NOTHING (List.Add returns void), so $stillFails lands $null and is told
+                        # apart from a genuine $false below - an unknown invariant is a DIFFERENT problem
+                        # from an unused exemption and must not be reported as one.
+                        default         { $problems.Add("exemption '$p' names an unknown invariant '$($e.invariant)' - add a case to this switch or fix the entry") }
                     }
-                    $stillFails | Should -BeTrue -Because "unused exemption: '$($e.path)' passes '$($e.invariant)' without it"
+                    # $null means the default arm already recorded an unknown-invariant problem; only a
+                    # real $false is an unused exemption.
+                    if ($null -ne $stillFails -and -not $stillFails) {
+                        $problems.Add("unused exemption: '$($e.path)' passes '$($e.invariant)' without it")
+                    }
                 }
             }
+            # ONE assertion naming EVERY problem, in the same shape the domain-coverage row uses.
+            $problems -join "`n" | Should -BeExactly '' -Because 'every exemption must still be NEEDED, and one bad entry must not hide the rest'
         }
     }
     Context 'the gate actually audits the corpus' {
