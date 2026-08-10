@@ -856,7 +856,7 @@ on this platform — Windows `jq` terminates with `\r\n`, `printf` with `\n` (61
   `case` patterns are a deliberate complete set. **Below the reachability floor** — recorded in the backlog
   entry's *Known limit* section, not tracked here.
 
-### 13. Anomaly promotions — three defects surfaced by the 2026-08-10 triages · ▶ **OPEN**
+### 13. Anomaly promotions — three entries from the 2026-08-10 triages (13c later corrected) · ▶ **OPEN**
 
 Promoted from `.clavity/local-anomalies.md`. Every one was **verified by measurement at triage**, not
 accepted on reading; two other entries in that file were deleted with recorded reasons (see the triage
@@ -916,46 +916,44 @@ the **do-not-re-raise ledger grows monotonically** across an iterated review (�
 while the artifact barely changed) and was the only monotonic variable across the degradation — so
 compress it each round.
 
-#### 13c. `check-growth-budget.ps1` certifies a budget it never measures · ▶ **OPEN**
+#### 13c. `check-growth-budget.ps1` — the capture was a MISDIAGNOSIS; small residue only · ▶ **OPEN (downgraded)**
 
-**The guard fails open, and its own test cannot catch it.** Captured by another session; every figure
-below RE-MEASURED at triage.
+**Corrected 2026-08-10, hours after promotion. The original entry claimed a fail-open with 7 467
+unmeasured bytes. That is WRONG and is retained here only as the method lesson.**
 
-`scripts/check-growth-budget.ps1:31` reads its GROWTH input from
-`docs/agy-golden-header.growth.md`. **That file does not exist, and nothing in this repository ever
-writes it** — a repo-wide grep finds the path in exactly two places: this gate, and the fixture its own
-test manufactures. `Get-RawBytes:26` returns `0` for a missing path **with no warning**, so the gate
-prints and exits 0:
+**What the gate actually is.** `docs/agy-golden-header.growth.md` is a **transient in-repo PROPOSAL**,
+compiled by `just drain-knowledge` and deleted after `just accept-drain` publishes it to the runtime
+header. The budget gate runs as **step 7 INSIDE that drain**, while the proposal exists.
+`docs/drain-knowledge-runbook.md:229-231` states explicitly that the file's absence is a **legitimate
+state** — "a docs-only drain … nothing to publish". So `GROWTH (0B)` when run standalone is CORRECT
+behaviour, not a fail-open: there is no proposal in flight. The gate's subject is the PROPOSAL, never the
+runtime region, so comparing its output against `~/.clavity/golden-header.growth.md` (7 984 B) compares
+two different things. The test creating its fixture at that path is likewise correct — it simulates the
+drain's own output, not a wiring error.
 
-```
-check-growth-budget: OK - SEED (5173B) + GROWTH (0B) = 5173B <= 16384B
-```
+🔴 **THE METHOD LESSON, which is the only durable part of this entry.** The capture reproduced perfectly
+— file absent, `Get-RawBytes:26` returns 0 silently, gate prints `OK … GROWTH (0B)` and exits 0 — and
+every one of those observations is TRUE. It was still a misdiagnosis, because **nobody checked what the
+gate was FOR before calling its behaviour a defect.** One grep of the runbook settles it.
+**Reproducing a symptom is not verifying a finding.** This is the same discipline applied to a peer's
+claims every capstone round; it was not applied to a claim arriving from another session, and the
+unverified diagnosis was promoted to this ROADMAP with confident numbers attached.
 
-**The live GROWTH region is real and large.** It lives at `$env:USERPROFILE\.clavity\golden-header.growth.md`
-— the path the three `build-*.yml` workflows assert on — measured **7 984 B on disk** (≈7 465 B after the
-binary's leading-comment strip). So the true figure is **5 173 + 2 + 7 465 = 12 640 B, 77.1 % of the
-16 384 B cap**, while the gate reports **5 173 B, 31.6 %**. **7 467 bytes — 46 % of the cap — are never
-measured.** This is the failure the gate exists to prevent: if the combined region crosses the cap the
-binary injects SEED-only and silently drops GROWTH.
+**The residue that IS real, and it is small:** a missing input silently measuring 0 cannot distinguish
+"docs-only drain, nothing proposed" (legitimate, and the common case) from "the path moved or was
+typo'd" (a wiring error that would pass green). Making the gate say which it thinks it is — one line —
+costs nothing and removes the ambiguity that made this misdiagnosis so easy to reach.
 
-**Why the suite never caught it — the part worth keeping.** `scripts/tests/check-growth-budget.Tests.ps1:12`
-creates its own fixture AT the path the gate reads. So the test proves the ARITHMETIC and never the
-WIRING, and it passes identically whether or not that path is the right one. A vacuous oracle guarding a
-fail-open guard: **ask which test goes red if the input path is wrong — none does.**
+⚠ **One genuinely OPEN question, explicitly UNMEASURED — do not repeat it as fact.** The runtime region
+has **two** writers (`accept-drain`'s `curate-commit`, and the `agy-curate` skill via the same call). If a
+write APPENDS rather than REPLACES, the runtime region could grow past what any single pre-publish
+proposal check ever saw, and the combined cap would go unenforced between drains. `drain-knowledge-runbook.md:100`
+says the runtime header "is touched at exactly one point in the whole flow", which suggests replacement —
+but **this was not measured**, and it is the only path by which the original fail-open claim could turn
+out to have been accidentally right for a reason nobody stated. Measure before acting on it.
 
-**Two candidate dispositions, and the choice is a real design question, not a typo fix:**
-1. **The path is stale** — repoint the gate at the runtime region and accept that a repo-side gate is
-   reading user-profile state (which makes it machine-dependent and unrunnable in CI).
-2. **The gate is obsolete** — it was written for a *proposed* growth file committed at that path
-   ("Trim the proposal", `:40`), a workflow that no longer exists now that GROWTH is generated at runtime
-   by `agy-curate`. If so, delete it rather than leave a green light nobody should trust.
-
-Either way the fix must **make a missing input LOUD** — returning 0 for an absent file is what converted a
-wrong path into a passing gate.
-
-⚠ **Scheduling, same warning as 13a:** a fix lands on `feature/injected-context-governance`, which has an
-**open AGY-CAPSTONE**, so it extends that review range. It belongs with that epic's remaining work or
-after it — not as a drive-by.
+**Disposition:** low priority, off the critical path. Not a fail-open. Belongs with the knowledge-storage
+design work rather than as a standalone fix, since where GROWTH lives is exactly what that work decides.
 
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
