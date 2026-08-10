@@ -655,6 +655,16 @@ jq -nc --arg m "[TAG] $msg" '{}'
                     $readErr = $null
                     try { $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8) }
                     catch [System.IO.IOException], [System.UnauthorizedAccessException] { $readErr = $_ }
+                    # AN UNREADABLE FILE MAKES EVERY OTHER INVARIANT'S QUESTION UNANSWERABLE, and answering
+                    # it anyway is worse than failing. MEASURED with $text null: Test-HasPlanResidue returns
+                    # False, Get-HookMessages returns 0, Get-LongestHookMessage returns length 0 - so every
+                    # text-based case would evaluate to $false, the row would report
+                    # "unused exemption: ... passes without it", and a maintainer would DELETE a waiver that
+                    # is still needed. The guarded read above fixed the round-18 crash and introduced this
+                    # edge in the same stroke; before it, the read simply threw. Fail accurately instead.
+                    if ($readErr -and $e.invariant -ne 'unreadable') {
+                        throw "exemption '$p' names invariant '$($e.invariant)' but the file cannot be READ ($($readErr.Exception.GetType().Name)) - that invariant's question is unanswerable here, which is NOT the same as the exemption being unused"
+                    }
                     $stillFails = switch ($e.invariant) {
                         'encoding'      { -not (Test-PureAscii -Path $full) }
                         'plan-residue'  { Test-HasPlanResidue -Text $text }
