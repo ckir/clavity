@@ -237,7 +237,14 @@ Describe 'check-injected-context.ps1' {
             # Capstone round 9, Coverage Liar: only dist, bin and target had rows, so deleting any OTHER
             # entry from $script:PrunedSegments left the whole suite green. Its quoted array was wrong -
             # it listed .github and .vscode, which this repository has never had - but the gap it named
-            # was real, and this row is derived from the live list so a new segment cannot arrive untested.
+            # was real.
+            #
+            # THIS ROW IS NOT DERIVED FROM THE LIVE LIST. The -ForEach array above is hardcoded, because
+            # Pester evaluates -ForEach at DISCOVERY time, before BeforeAll dot-sources the script, so
+            # $script:PrunedSegments is not in scope yet. What this row proves is one DIRECTION only: each
+            # segment named here is still in the live list, which catches a DELETION. The other direction -
+            # an ADDED segment arriving with no row - is closed by the set-comparison row below, not here.
+            # (An earlier version of this comment claimed the opposite and contradicted line 248.)
             $script:PrunedSegments | Should -Contain $Segment
             (Test-IsPrunedPath -RelPath "seed/$Segment/x.md") | Should -BeTrue
             (Test-IsPrunedPath -RelPath "seed/$Segment")      | Should -BeFalse -Because 'a FILE with that name is content'
