@@ -152,7 +152,17 @@ function Get-UnexpectedBuildDirs {
         $stack = [System.Collections.Generic.Stack[string]]::new()
         $seen  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $stack.Push($full)
-        [void]$seen.Add((Get-WalkIdentity -Item (Get-Item -LiteralPath $full)))
+        # -ErrorAction SilentlyContinue, and the fallback is the point. A bare Get-Item here was the ONLY
+        # unguarded filesystem call left outside the per-file try/catch, so a domain root that is deleted
+        # between the Test-Path above and this line, or that denies access, killed the whole gate through
+        # NEITHER documented exit - the exact defect class round 17 fixed for the READS, re-introduced by
+        # round 17's own fix in the visited-set seeding it added. Capstone round 19.
+        # Seeding the raw path instead is strictly weaker only for a root that is ITSELF a reparse point,
+        # and that root is about to fail its walk anyway; termination is unaffected because every CHILD
+        # still resolves its target.
+        $rootItem = Get-Item -LiteralPath $full -ErrorAction SilentlyContinue
+        if ($rootItem) { [void]$seen.Add((Get-WalkIdentity -Item $rootItem)) }
+        else           { [void]$seen.Add($full.TrimEnd('\', '/')) }
         while ($stack.Count) {
             $dir = $stack.Pop()
             foreach ($child in Get-ChildItem -LiteralPath $dir -Directory -Force -ErrorAction SilentlyContinue) {
@@ -235,7 +245,17 @@ function Get-InjectedContextFiles {
         $stack = [System.Collections.Generic.Stack[string]]::new()
         $seen  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $stack.Push($full)
-        [void]$seen.Add((Get-WalkIdentity -Item (Get-Item -LiteralPath $full)))
+        # -ErrorAction SilentlyContinue, and the fallback is the point. A bare Get-Item here was the ONLY
+        # unguarded filesystem call left outside the per-file try/catch, so a domain root that is deleted
+        # between the Test-Path above and this line, or that denies access, killed the whole gate through
+        # NEITHER documented exit - the exact defect class round 17 fixed for the READS, re-introduced by
+        # round 17's own fix in the visited-set seeding it added. Capstone round 19.
+        # Seeding the raw path instead is strictly weaker only for a root that is ITSELF a reparse point,
+        # and that root is about to fail its walk anyway; termination is unaffected because every CHILD
+        # still resolves its target.
+        $rootItem = Get-Item -LiteralPath $full -ErrorAction SilentlyContinue
+        if ($rootItem) { [void]$seen.Add((Get-WalkIdentity -Item $rootItem)) }
+        else           { [void]$seen.Add($full.TrimEnd('\', '/')) }
         while ($stack.Count) {
             $dir = $stack.Pop()
             foreach ($child in Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue) {
