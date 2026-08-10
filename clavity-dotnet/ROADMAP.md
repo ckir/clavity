@@ -856,11 +856,11 @@ on this platform — Windows `jq` terminates with `\r\n`, `printf` with `\n` (61
   `case` patterns are a deliberate complete set. **Below the reachability floor** — recorded in the backlog
   entry's *Known limit* section, not tracked here.
 
-### 13. Anomaly promotions — two defects surfaced by the 2026-08-10 triage · ▶ **OPEN**
+### 13. Anomaly promotions — three defects surfaced by the 2026-08-10 triages · ▶ **OPEN**
 
-Promoted from `.clavity/local-anomalies.md`. Both were **verified by measurement at triage**, not accepted
-on reading; the other two entries in that file were deleted with recorded reasons (see the triage note
-there).
+Promoted from `.clavity/local-anomalies.md`. Every one was **verified by measurement at triage**, not
+accepted on reading; two other entries in that file were deleted with recorded reasons (see the triage
+note there). 13c arrived in a later triage the same day, captured by a different session.
 
 #### 13a. The gate tells operators it reports unused exemptions — no code path can · ▶ **OPEN**
 
@@ -915,6 +915,47 @@ a failed consult, not a terse one; (c) the brief carries an explicit reply-lengt
 the **do-not-re-raise ledger grows monotonically** across an iterated review (≈40 entries by round 10
 while the artifact barely changed) and was the only monotonic variable across the degradation — so
 compress it each round.
+
+#### 13c. `check-growth-budget.ps1` certifies a budget it never measures · ▶ **OPEN**
+
+**The guard fails open, and its own test cannot catch it.** Captured by another session; every figure
+below RE-MEASURED at triage.
+
+`scripts/check-growth-budget.ps1:31` reads its GROWTH input from
+`docs/agy-golden-header.growth.md`. **That file does not exist, and nothing in this repository ever
+writes it** — a repo-wide grep finds the path in exactly two places: this gate, and the fixture its own
+test manufactures. `Get-RawBytes:26` returns `0` for a missing path **with no warning**, so the gate
+prints and exits 0:
+
+```
+check-growth-budget: OK - SEED (5173B) + GROWTH (0B) = 5173B <= 16384B
+```
+
+**The live GROWTH region is real and large.** It lives at `$env:USERPROFILE\.clavity\golden-header.growth.md`
+— the path the three `build-*.yml` workflows assert on — measured **7 984 B on disk** (≈7 465 B after the
+binary's leading-comment strip). So the true figure is **5 173 + 2 + 7 465 = 12 640 B, 77.1 % of the
+16 384 B cap**, while the gate reports **5 173 B, 31.6 %**. **7 467 bytes — 46 % of the cap — are never
+measured.** This is the failure the gate exists to prevent: if the combined region crosses the cap the
+binary injects SEED-only and silently drops GROWTH.
+
+**Why the suite never caught it — the part worth keeping.** `scripts/tests/check-growth-budget.Tests.ps1:12`
+creates its own fixture AT the path the gate reads. So the test proves the ARITHMETIC and never the
+WIRING, and it passes identically whether or not that path is the right one. A vacuous oracle guarding a
+fail-open guard: **ask which test goes red if the input path is wrong — none does.**
+
+**Two candidate dispositions, and the choice is a real design question, not a typo fix:**
+1. **The path is stale** — repoint the gate at the runtime region and accept that a repo-side gate is
+   reading user-profile state (which makes it machine-dependent and unrunnable in CI).
+2. **The gate is obsolete** — it was written for a *proposed* growth file committed at that path
+   ("Trim the proposal", `:40`), a workflow that no longer exists now that GROWTH is generated at runtime
+   by `agy-curate`. If so, delete it rather than leave a green light nobody should trust.
+
+Either way the fix must **make a missing input LOUD** — returning 0 for an absent file is what converted a
+wrong path into a passing gate.
+
+⚠ **Scheduling, same warning as 13a:** a fix lands on `feature/injected-context-governance`, which has an
+**open AGY-CAPSTONE**, so it extends that review range. It belongs with that epic's remaining work or
+after it — not as a drive-by.
 
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
