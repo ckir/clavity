@@ -800,6 +800,59 @@ jq -nc --arg m "[TAG] $msg" '{}'
             ($v | Where-Object { $_.Invariant -eq 'payload-budget' }) | Should -BeNullOrEmpty
             Remove-Item -Recurse -Force $d
         }
+
+        # AGY-TEST-AUDIT, 2026-08-10. The six rows below close a gap 23 capstone rounds could not see,
+        # because the capstone asks "is the code correct" and never "would a test notice if it stopped".
+        # `plan-residue`, `tag-hygiene` and `namespace` had well-covered DETECTORS - Test-HasPlanResidue,
+        # Test-HasDuplicatedTag, Test-DegradedNamespace, sixteen rows between them - and NOT ONE row
+        # asserting Get-InjectedContextViolations ever EMITS the violation. Their invariant names appeared
+        # in this file only inside the exemption-liveness switch, which asks whether a waiver is still
+        # needed, not whether the gate reports the invariant.
+        # MEASURED: appending `-and $false` to all three emission conditions left the suite at 133/0.
+        # Three of the gate's nine invariants could stop firing entirely, the gate would print
+        # `check-injected-context: OK` and exit 0, and a duplicated tag or bare plan pointer would ride
+        # into an agent's context unreported. DETECTOR COVERAGE IS NOT WIRING COVERAGE, and only a row
+        # that runs the walker can tell the two apart.
+        It 'ENFORCES plan-residue - a bare plan pointer produces a plan-residue violation' {
+            $d = & $script:MakeFixture @{ 'seed/residue.md' = 'See the marker contract doc (Task 5).' }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.Invariant -eq 'plan-residue' -and $_.File -eq 'seed/residue.md' }) |
+                Should -Not -BeNullOrEmpty -Because 'the emission branch must fire, not merely the detector'
+            Remove-Item -Recurse -Force $d
+        }
+        It 'does NOT flag ordinary parenthetical prose as plan-residue' {
+            # The must-pass half. Without it a walker hardcoded to always report plan-residue passes above.
+            $d = & $script:MakeFixture @{ 'seed/prose.md' = 'the audit round (item 5) carries it' }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.Invariant -eq 'plan-residue' }) | Should -BeNullOrEmpty
+            Remove-Item -Recurse -Force $d
+        }
+        It 'ENFORCES tag-hygiene - a hook message with a duplicated tag produces a tag-hygiene violation' {
+            $d = & $script:MakeFixture @{ 'seed/duptag.sh' = "msg='[ASSERTION-STRENGTH] ASSERTION-STRENGTH: you just touched a test file'" }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.Invariant -eq 'tag-hygiene' -and $_.File -eq 'seed/duptag.sh' }) |
+                Should -Not -BeNullOrEmpty -Because 'the emission branch must fire, not merely the detector'
+            Remove-Item -Recurse -Force $d
+        }
+        It 'does NOT flag a single tag opening as tag-hygiene' {
+            $d = & $script:MakeFixture @{ 'seed/onetag.sh' = "msg='[ASSERTION-STRENGTH] You just touched a test file.'" }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.Invariant -eq 'tag-hygiene' }) | Should -BeNullOrEmpty
+            Remove-Item -Recurse -Force $d
+        }
+        It 'ENFORCES namespace - a degraded line carrying no bracketed tag produces a namespace violation' {
+            $d = & $script:MakeFixture @{ 'seed/degraded.sh' = "msg='guard inactive: missing jq'" }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.Invariant -eq 'namespace' -and $_.File -eq 'seed/degraded.sh' }) |
+                Should -Not -BeNullOrEmpty -Because 'the emission branch must fire, not merely the detector'
+            Remove-Item -Recurse -Force $d
+        }
+        It 'does NOT flag a degraded line that DOES carry a bracketed tag' {
+            $d = & $script:MakeFixture @{ 'seed/tagged.sh' = "msg='[ASSERTION-STRENGTH] guard inactive: missing jq'" }
+            $v = @(Get-InjectedContextViolations -RepoRoot $d)
+            ($v | Where-Object { $_.Invariant -eq 'namespace' }) | Should -BeNullOrEmpty
+            Remove-Item -Recurse -Force $d
+        }
     }
     Context 'the CLI contract - exit codes and operator output' {
         # Capstone round 7, Completeness Critic. Six rounds audited discovery, the reference index and the
@@ -1138,6 +1191,34 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
                 $v = @(Get-InjectedContextViolations -RepoRoot $d)
                 ($v | Where-Object { $_.Invariant -eq 'build-output' -and $_.File -eq 'clavity-dotnet/plugin/bin' }) |
                     Should -Not -BeNullOrEmpty -Because 'the directory itself is the defect worth naming'
+            } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'REPORTS a nested git checkout as nested-checkout, NOT as build output' {
+            # AGY-TEST-AUDIT, 2026-08-10. Capstone round 18 split this invariant off precisely because
+            # calling a git worktree "build output" told the operator three untrue things at once, and
+            # a gate that lies spends the credibility that makes anyone act on it. NOTHING PINNED THE
+            # SPLIT: delete the $isCheckout branch and every nested worktree is reported as build-output
+            # while this suite stays green, because the gate still fails and still names the path.
+            # THE ASSERTION HERE IS THE IDENTITY OF THE INVARIANT, not merely that something was reported
+            # - which is the only form that can catch a fix regressing back into the round-18 message.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icnc-" + [guid]::NewGuid().ToString('N'))
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                # A worktree INSIDE a domain root. The ignorelist's `.worktrees/**` is anchored at the
+                # repository root, so it does not cover this path - which is exactly why the gate has to.
+                $wt = Join-Path $d 'clavity-dotnet/plugin/.worktrees'
+                New-Item -ItemType Directory -Force -Path $wt | Out-Null
+                Set-Content -LiteralPath (Join-Path $wt 'placeholder.md') -Value 'content' -Encoding ascii
+
+                $v = @(Get-InjectedContextViolations -RepoRoot $d)
+                ($v | Where-Object { $_.Invariant -eq 'nested-checkout' -and $_.File -eq 'clavity-dotnet/plugin/.worktrees' }) |
+                    Should -Not -BeNullOrEmpty -Because 'a second checkout of this repository must be named as one'
+                ($v | Where-Object { $_.Invariant -eq 'build-output' -and $_.File -eq 'clavity-dotnet/plugin/.worktrees' }) |
+                    Should -BeNullOrEmpty -Because 'calling a git worktree build output is the round-18 lie this split removed'
             } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
         }
 
