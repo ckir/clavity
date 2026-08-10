@@ -645,7 +645,16 @@ jq -nc --arg m "[TAG] $msg" '{}'
             foreach ($e in $script:Ex) {
                 foreach ($p in (Expand-ExemptionPath -Entry $e)) {
                     $full = Join-Path $script:RepoRoot $p
-                    $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
+                    # GUARDED, AND THE GUARD IS THE POINT. This read was UNCONDITIONAL and ran BEFORE the
+                    # dispatch below, so an `unreadable` waiver - the very waiver the gate PRINTS for that
+                    # invariant - threw an unhandled IO exception right here and never reached the
+                    # `default` arm that exists to tell a maintainer to add a case. An operator following
+                    # the gate's own advice got a stack trace instead of guidance: the round-12 "advice
+                    # that does not work" defect, re-made for a new invariant. Capstone round 18.
+                    $text = $null
+                    $readErr = $null
+                    try { $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8) }
+                    catch [System.IO.IOException], [System.UnauthorizedAccessException] { $readErr = $_ }
                     $stillFails = switch ($e.invariant) {
                         'encoding'      { -not (Test-PureAscii -Path $full) }
                         'plan-residue'  { Test-HasPlanResidue -Text $text }
@@ -658,6 +667,13 @@ jq -nc --arg m "[TAG] $msg" '{}'
                         # so the proxy called it "needed" and the dead exemption would live forever. The
                         # bidirectional check only works if the question it asks is the real one.
                         'build-output'  { (Get-UnexpectedBuildDirs -RepoRoot $script:RepoRoot) -contains $p }
+                        # Same walk, different report - the gate distinguishes a nested git checkout from
+                        # build output because calling a worktree "build output" was a lie (round 18), but
+                        # both come from the same function, so the "is it still reported" question is one.
+                        'nested-checkout' { (Get-UnexpectedBuildDirs -RepoRoot $script:RepoRoot) -contains $p }
+                        # RE-RUN THE INVARIANT, like every case above: the file still fails `unreadable`
+                        # exactly when it still cannot be read. $readErr is set by the guarded read above.
+                        'unreadable'    { $null -ne $readErr }
                         default         { throw "exemption names an unknown invariant '$($e.invariant)' - add a case here or fix the entry" }
                     }
                     $stillFails | Should -BeTrue -Because "unused exemption: '$($e.path)' passes '$($e.invariant)' without it"

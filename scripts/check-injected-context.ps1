@@ -677,9 +677,28 @@ function Get-InjectedContextViolations {
     # the identical violation on the next run, with no way out. A gate that tells you how to proceed and
     # then refuses is worse than one that offers nothing, because it costs a debugging session to learn
     # the instruction was false.
+    # THE WALK SKIPS BOTH, BUT THEY ARE NOT THE SAME THING AND MUST NOT BE REPORTED AS IF THEY WERE.
+    # `.worktrees` joined $script:PrunedSegments in fddde70 so the reference index would stop indexing a
+    # second checkout. Test-IsBuildDirName reads that same list, so a worktree inside a domain root was
+    # reported as "build output ... move it out" - three lies in one message: it is a git checkout and not
+    # a compiler artifact, the suggested waiver names the wrong invariant, and "move it out" is wrong
+    # advice for a supported workflow. Capstone round 18 caught it; a gate that lies to an operator spends
+    # its diagnostic credibility, which is the only thing that makes anyone act on it.
+    #
+    # The DECISION not to descend is correct for both and is unchanged. Only the REPORT differs, and it is
+    # derived from the leaf name here rather than by splitting the list - splitting it would stop the walk
+    # skipping a nested worktree, and the ignorelist's `.worktrees/**` is anchored at the REPOSITORY ROOT
+    # so it would not cover `<domain-root>/.worktrees/` either. One list, two messages.
     foreach ($d in (Get-UnexpectedBuildDirs -RepoRoot $RepoRoot)) {
-        if ($exempt.ContainsKey("$d|build-output")) { continue }
-        $out.Add((New-Violation -File $d -Invariant 'build-output' -Finding "build output inside a domain root - move it out, or subtract it with an anchored glob and a reason"))
+        $isCheckout = (Split-Path -Leaf $d) -eq '.worktrees'
+        $inv = if ($isCheckout) { 'nested-checkout' } else { 'build-output' }
+        if ($exempt.ContainsKey("$d|$inv")) { continue }
+        $finding = if ($isCheckout) {
+            'a git worktree inside a domain root - a second checkout of this repository is shipped content it is not; move the worktree outside the domain root, or subtract it with an anchored glob and a reason'
+        } else {
+            'build output inside a domain root - move it out, or subtract it with an anchored glob and a reason'
+        }
+        $out.Add((New-Violation -File $d -Invariant $inv -Finding $finding))
     }
 
     foreach ($f in $files) {
