@@ -856,6 +856,66 @@ on this platform — Windows `jq` terminates with `\r\n`, `printf` with `\n` (61
   `case` patterns are a deliberate complete set. **Below the reachability floor** — recorded in the backlog
   entry's *Known limit* section, not tracked here.
 
+### 13. Anomaly promotions — two defects surfaced by the 2026-08-10 triage · ▶ **OPEN**
+
+Promoted from `.clavity/local-anomalies.md`. Both were **verified by measurement at triage**, not accepted
+on reading; the other two entries in that file were deleted with recorded reasons (see the triage note
+there).
+
+#### 13a. The gate tells operators it reports unused exemptions — no code path can · ▶ **OPEN**
+
+`scripts/check-injected-context.ps1:701` prints:
+
+> `an exemption whose file stops failing its invariant is reported as unused and must be deleted.`
+
+**MEASURED 2026-08-10:** the gate has **no unused-exemption reporting at all**.
+`Get-InjectedContextViolations` reads `$exempt` only via `.ContainsKey()` and never iterates it after the
+walk, so nothing can emit that report — the string `unused` appears exactly **once** in the whole script,
+in that message. The guarantee exists **only** in `scripts/tests/check-injected-context.Tests.ps1:663`,
+which an operator running the gate does not run.
+
+**Why it matters:** an operator who waives a file, later fixes it, and waits for the gate to tell them the
+waiver is now stale will wait forever. The stale exemption then reddens CI through a *different* surface
+with a *different* message.
+
+**Two candidate dispositions — the owner scopes which:**
+
+1. **Correct the sentence** (one line): say that CI's test suite reports unused exemptions, not the gate.
+   Cheapest, honest, no behaviour change.
+2. **Implement the reporting** in the gate: track which `$exempt` keys were queried during the walk and
+   report the unqueried ones. Real work, and it makes the gate's own claim true.
+
+⚠ **This lands on `feature/injected-context-governance`, which has an OPEN AGY-CAPSTONE.** Any fix extends
+that review range — schedule it with that epic's remaining work (Stage 2, AGY-TEST-AUDIT), not as a
+drive-by.
+
+#### 13b. No discipline requires a peer's ANSWER to survive truncation · ▶ **OPEN**
+
+All four peer-review disciplines (`agy-capstone`, `agy-test-audit`, `adversarial-panel-review`,
+`agy-first`) send the peer an **input** path and a scratch dir, but **nothing specifies where the peer's
+reply must land**. A completed review is therefore lost whenever the channel caps.
+
+**Measured three times now, across two different peers and two transports:**
+
+- a compressed restate silently dropped **2 of 4** findings (2026-08-09);
+- a reply died on the wire with the review stranded in the peer's console (2026-08-09);
+- 🔴 **2026-08-10 — a new and worse mode:** the peer returned a lone verdict line whose prose claimed *"the
+  full review has been printed to stdout"* when nothing else was emitted, then on retry returned the
+  literal string `... [output truncated]`. Both on exit code 0, through a pipeline that had carried 15 KB
+  and 16.5 KB replies minutes earlier.
+
+**That third case refines the original framing and must be folded into any fix:** the loss was **not**
+transport truncation — it was the model truncating **itself** and, once, asserting otherwise. So
+"have the peer write to a file" is *not* a sufficient remedy, and it is often impossible: a review-only
+peer has no write permission by construction.
+
+**What actually works, measured:** (a) the driver captures the reply itself; (b) the driver
+**byte-counts** it against that peer's *own recent replies* — 300 bytes where the last three were 15 KB is
+a failed consult, not a terse one; (c) the brief carries an explicit reply-length budget. Also measured:
+the **do-not-re-raise ledger grows monotonically** across an iterated review (≈40 entries by round 10
+while the artifact barely changed) and was the only monotonic variable across the degradation — so
+compress it each round.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
