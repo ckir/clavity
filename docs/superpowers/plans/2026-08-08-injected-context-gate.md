@@ -1729,3 +1729,23 @@ git commit -m "feat(gate): arm the injected-context checker in just and CI"
       A third entry appearing during execution means something was parked rather than fixed.
 - [ ] `$script:AnomalyBlocklist` is empty.
 - [ ] **The branch is NOT merged.** Stage 2 - the anomaly sweep of the three products - runs first.
+
+---
+
+## What execution changed (recorded 2026-08-10)
+
+All twelve tasks shipped. Two task descriptions no longer match the code, and both are recorded here
+rather than edited above, so the plan stays a record of what was intended.
+
+- **Task 2, Step 4** instructs the builder to prune traversal with
+  `Where-Object { $_.FullName -notmatch '[\/](\.git|node_modules|target|bin|obj|\.venv|__pycache__)[\/]' }`.
+  That line is gone. It matched a directory NAME at any depth, which let a skill, hook, knowledge manual
+  or rules file be smuggled past every invariant by placing it in a folder named `dist` or `target` -
+  measured, corpus 0 and violations 0 while the file still shipped. It also matched the ABSOLUTE path, so
+  cloning the repository under any directory called `target` emptied the corpus entirely. Discovery now
+  subtracts only by anchored path.
+- **The domain roots** are nine, not the six this plan was written against - owner ruling 2026-08-09.
+
+Fifteen capstone rounds followed execution and folded forty-seven defects. Not one round came back green,
+and the three most serious findings arrived at rounds nine, ten and eleven - well past the point where
+stopping would have felt reasonable. The plan's own exit criteria were all met; they were not sufficient.
