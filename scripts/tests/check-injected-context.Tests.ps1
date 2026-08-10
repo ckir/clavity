@@ -232,7 +232,7 @@ Describe 'check-injected-context.ps1' {
             @{ Segment = 'bin' }         ; @{ Segment = 'obj' }          ; @{ Segment = '.venv' }
             @{ Segment = '__pycache__' } ; @{ Segment = 'dist' }         ; @{ Segment = 'publish' }
             @{ Segment = '.vs' }         ; @{ Segment = '.ruff_cache' }  ; @{ Segment = '.pytest_cache' }
-            @{ Segment = '.mypy_cache' }
+            @{ Segment = '.mypy_cache' } ; @{ Segment = '.worktrees' }
         ) {
             # Capstone round 9, Coverage Liar: only dist, bin and target had rows, so deleting any OTHER
             # entry from $script:PrunedSegments left the whole suite green. Its quoted array was wrong -
@@ -258,7 +258,7 @@ Describe 'check-injected-context.ps1' {
             # at discovery time, before the script is dot-sourced, so the array cannot itself be derived -
             # this row closes that gap instead by comparing the two sets.
             $covered = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs',
-                         '.ruff_cache','.pytest_cache','.mypy_cache')
+                         '.ruff_cache','.pytest_cache','.mypy_cache','.worktrees')
             $uncovered = @($script:PrunedSegments | Where-Object { $_ -notin $covered })
             $uncovered -join ', ' | Should -BeExactly '' -Because 'a pruned segment with no row is an untested rule that silently drops files'
         }

@@ -77,8 +77,19 @@ $script:DomainRoots = @(
 # The three cache directories were added after a measurement found .ruff_cache/CACHEDIR.TAG sitting in the
 # audited corpus: tool caches are untracked local junk, so leaving them in made the corpus differ between
 # machines and the gate non-reproducible across clones.
+# .worktrees is NOT build output, and it is here for the reference index specifically. A git worktree is a
+# COMPLETE SECOND COPY of the repository, so without this every indexed file has a twin and
+# Resolve-Reference stops returning 'ok'. MEASURED 2026-08-10, capstone round 17: with a worktree present,
+# 'a mirrored plugin file PASSES - the twin trees canonicalise to one logical path' returned 'ambiguous'.
+#
+# THE REAL DANGER IS NOT THE AMBIGUOUS OUTCOME, IT IS A FAIL-OPEN. Test-ReferenceFails counts only
+# 'broken' and 'unclassified', so a reference whose target was DELETED from the primary tree can still
+# match the copy inside the worktree, come back ambiguous instead of broken, and PASS. The gate would go
+# green over a dangling pointer - the exact class the reference invariant exists to catch. Subtracting
+# .worktrees/** in the ignorelist does not reach this: that governs the corpus, and the reference index
+# is a whole-repository walk pruned by NAME.
 $script:PrunedSegments = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs',
-                           '.ruff_cache','.pytest_cache','.mypy_cache')
+                           '.ruff_cache','.pytest_cache','.mypy_cache','.worktrees')
 # Non-capturing throughout: this regex is only used with -match today, but a capturing group in a regex
 # later handed to -split silently shifts every index, which cost a round-3 fix its correctness.
 # THE TRAILING '/' IS REQUIRED, NOT OPTIONAL. These are FILE paths, so a pruned segment is always a
