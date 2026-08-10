@@ -1020,6 +1020,42 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             }
         }
 
+        It 'one file reachable from two domain roots is reported ONCE, under its CANONICAL path' {
+            # Capstone round 21. A junction from one domain root into another put the SAME physical file
+            # into the corpus TWICE - MEASURED, `seed/alias/shared.md` and `commonmemory/shared.md`.
+            #
+            # THIS ROW EXISTS FOR THE SECOND HALF, WHICH IS THE EASY THING TO GET WRONG. Deduping alone is
+            # not enough: the walk reaches `seed` BEFORE `commonmemory` in $script:DomainRoots, so a plain
+            # first-wins dedupe keeps the ALIAS and drops the canonical path - an exemption written for
+            # `commonmemory/shared.md` would then match nothing, and which path survived would depend on
+            # the ORDER of the root list. So this asserts WHICH path survives, not merely how many.
+            #
+            # Unlike the two walk-level guards (which need a filesystem race or a permission-denied
+            # directory and are documented as unpinned), this one IS portably testable: a junction needs
+            # no elevation.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icx-" + [guid]::NewGuid().ToString('N'))
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                Set-Content -LiteralPath (Join-Path $d 'commonmemory/shared.md') -Value 'shared' -Encoding ascii
+                cmd /c mklink /J "$(Join-Path $d 'seed\alias')" "$(Join-Path $d 'commonmemory')" | Out-Null
+                (Test-Path -LiteralPath (Join-Path $d 'seed/alias')) |
+                    Should -BeTrue -Because 'the fixture needs a REAL junction or this row proves nothing'
+
+                $corpus = @(Get-InjectedContextFiles -RepoRoot $d)
+                @($corpus | Where-Object { $_ -like '*shared.md' }) |
+                    Should -HaveCount 1 -Because 'one physical file must enter the corpus once, not once per route'
+                $corpus | Should -Contain 'commonmemory/shared.md' -Because 'the CANONICAL path must be the survivor'
+                $corpus | Should -Not -Contain 'seed/alias/shared.md' -Because 'the alias must not displace the canonical path, whichever root is walked first'
+            } finally {
+                # Remove the LINK first: a recursive delete that follows a junction deletes the TARGET.
+                cmd /c rmdir "$(Join-Path $d 'seed\alias')" 2>&1 | Out-Null
+                Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'a corpus file that cannot be READ is reported as a violation, not thrown' {
             # Capstone round 17. The gate had THREE unguarded read sites - Test-PureAscii's ReadAllBytes,
             # Get-NonAsciiReport's ReadAllText, and the violation loop's own ReadAllText. MEASURED against

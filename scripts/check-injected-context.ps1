@@ -224,7 +224,25 @@ function Get-InjectedContextFiles {
     # invocation into a flood of false violations.
     $RepoRoot = $RepoRoot -replace '[\\/]+$', ''
     $globs = Get-IgnoreGlobs -RepoRoot $RepoRoot
-    $out = [System.Collections.Generic.List[string]]::new()
+    # KEYED ON PHYSICAL IDENTITY, ACROSS ALL DOMAIN ROOTS - and each value remembers whether the path it
+    # holds was reached THROUGH A LINK, because that is what decides which of two aliases survives.
+    #
+    # MEASURED, capstone round 21: a junction from one domain root into another (no elevation needed) put
+    # ONE physical file into the corpus TWICE - `seed/alias/shared.md` AND `commonmemory/shared.md`. The
+    # dedupe set was per-root, so nothing collapsed them.
+    #
+    # THE OBVIOUS FIX - hoist the per-root set and take first-wins - IS WRONG, and measurably so. The walk
+    # reaches `seed` (5th in $script:DomainRoots) before `commonmemory` (9th), so first-wins KEEPS THE
+    # ALIAS and DROPS THE CANONICAL PATH: an exemption written for `commonmemory/shared.md` would then
+    # match nothing, and WHICH path survived would depend on the ORDER OF THE ROOT LIST. That is a worse
+    # defect than the duplicate it removes, and it is what the peer proposed.
+    #
+    # So the canonical path wins: an entry NOT reached through a link REPLACES one that was, whenever both
+    # resolve to the same bytes. When BOTH are aliases there is no canonical answer to prefer, so
+    # first-seen wins - deterministic, because the root list and the walk are both deterministic.
+    # [ordered] keeps the corpus in walk order rather than hash order, and re-assigning an existing key
+    # keeps its original position, so replacing an alias with its canonical path does not reshuffle.
+    $byPhys = [ordered]@{}
     foreach ($root in $script:DomainRoots) {
         $full = Join-Path $RepoRoot $root
         # THROW, never `continue`. A renamed or moved root would otherwise be skipped in silence and
@@ -279,7 +297,10 @@ function Get-InjectedContextFiles {
         # on every lap. Derived from the parent's Phys instead, it is stable.
         $stack = [System.Collections.Generic.Stack[object]]::new()
         $seen  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-        $seenFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        # NOTE: the per-root file set that used to live here is gone - file dedupe is now GLOBAL, in
+        # $byPhys above. $seen stays per-root: it guards DESCENT within one root's walk, and sharing it
+        # across roots would stop a second root descending into a directory the first already visited,
+        # which is a different question from which alias of a FILE to report.
         # -ErrorAction SilentlyContinue, and the fallback is the point. A bare Get-Item here was the ONLY
         # unguarded filesystem call left outside the per-file try/catch, so a domain root that is deleted
         # between the Test-Path above and this line, or that denies access, killed the whole gate through
@@ -287,8 +308,10 @@ function Get-InjectedContextFiles {
         # round 17's own fix in the visited-set seeding it added. Capstone round 19.
         $rootItem = Get-Item -LiteralPath $full -ErrorAction SilentlyContinue
         $rootPhys = if ($rootItem) { Get-WalkIdentity -Item $rootItem } else { $full.TrimEnd('\', '/') }
+        # A domain root that is ITSELF a link makes everything under it an alias, so the flag starts true.
+        $rootViaLink = [bool]($rootItem -and ($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint))
         [void]$seen.Add($rootPhys)
-        $stack.Push([pscustomobject]@{ Path = $full; Phys = $rootPhys })
+        $stack.Push([pscustomobject]@{ Path = $full; Phys = $rootPhys; ViaLink = $rootViaLink })
         while ($stack.Count) {
             $node = $stack.Pop()
             $dir  = $node.Path
@@ -296,11 +319,14 @@ function Get-InjectedContextFiles {
                 $rel = $child.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
                 # A reparse point resolves to its target; anything else is its parent's physical location
                 # plus its own name. Never $child.FullName, which is the alias we are trying to collapse.
-                $childPhys = if ($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                $childIsLink = [bool]($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+                $childPhys = if ($childIsLink) {
                     Get-WalkIdentity -Item $child
                 } else {
                     (Join-Path $node.Phys $child.Name).TrimEnd('\', '/')
                 }
+                # Once a walk has stepped through ANY link, everything below it is an alias.
+                $childViaLink = ($node.ViaLink -or $childIsLink)
                 if ($child.PSIsContainer) {
                     # A probe path under the directory: if the ignorelist subtracts everything inside it,
                     # there is nothing to audit in there and descending is pure cost.
@@ -317,18 +343,26 @@ function Get-InjectedContextFiles {
                     if (Test-IsBuildDirName -Name $child.Name) { continue }
                     # HashSet.Add returns false when the identity was already present - the cycle guard.
                     if (-not $seen.Add($childPhys)) { continue }
-                    $stack.Push([pscustomobject]@{ Path = $child.FullName; Phys = $childPhys })
+                    $stack.Push([pscustomobject]@{ Path = $child.FullName; Phys = $childPhys; ViaLink = $childViaLink })
                     continue
                 }
-                # DEDUPE THE FILE ON ITS PHYSICAL IDENTITY, NOT ITS RELATIVE PATH. The first alias reached
-                # wins and is what gets reported and waived; a second route to the same bytes is dropped
-                # rather than audited again under a name no exemption covers.
-                if (-not $seenFiles.Add($childPhys)) { continue }
-                if (-not (Test-IsIgnored -RelPath $rel -Globs $globs)) { $out.Add($rel) }
+                # The ignore check comes FIRST so an ignored alias can never displace a kept canonical
+                # path, and never occupies a slot in the map at all.
+                if (Test-IsIgnored -RelPath $rel -Globs $globs) { continue }
+                # DEDUPE ON PHYSICAL IDENTITY, PREFERRING THE CANONICAL PATH. Same bytes reached twice:
+                # the route that did NOT pass through a link replaces the one that did. Two aliases and no
+                # canonical route: first-seen stays, which is deterministic.
+                if ($byPhys.Contains($childPhys)) {
+                    if ($byPhys[$childPhys].ViaLink -and -not $childViaLink) {
+                        $byPhys[$childPhys] = [pscustomobject]@{ Rel = $rel; ViaLink = $false }
+                    }
+                    continue
+                }
+                $byPhys[$childPhys] = [pscustomobject]@{ Rel = $rel; ViaLink = $childViaLink }
             }
         }
     }
-    $out.ToArray()
+    @($byPhys.Values | ForEach-Object { $_.Rel })
 }
 
 $script:ShippedExtensions = @('md','sh','ps1','json','cs','rs','toml')
