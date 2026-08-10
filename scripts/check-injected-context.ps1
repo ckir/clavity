@@ -97,6 +97,35 @@ function Test-IsBuildDirName {
     [bool]($Name -in $script:PrunedSegments)
 }
 
+# The identity a walk dedupes on. BOTH walks below descend with a manual stack and neither had any guard
+# against re-visiting, so a directory junction pointing at an ancestor walked forever - MEASURED with a
+# real `mklink /J` loop: a naive stack walk over a two-directory tree was still going after 12 pops, and
+# `Get-ChildItem -Force` hands back the junction as a container with the ReparsePoint attribute set, so
+# nothing stopped it being pushed. Reachability in THIS repository is currently nil (measured: zero
+# reparse points, and `node_modules`/`.venv` - the obvious sources - are pruned before the push), so this
+# is a termination guarantee against a latent hang, not a fix for a live failure.
+#
+# RESOLVING THE TARGET IS THE WHOLE POINT. Deduping on FullName alone does NOT terminate a cycle, because
+# every lap produces a NEW path (root/link/link/link/...). The junction's target is fixed, so keying on it
+# closes the loop on the second visit.
+#
+# NOT "skip reparse points". That was the obvious fix and it is a FAIL-OPEN: a legitimately linked
+# directory inside a domain root would stop being audited while the gate still reported OK - certifying
+# content it had quietly stopped reading, which is the exact failure class this gate exists to catch.
+# Deduping instead means linked content is audited ONCE and a cycle still terminates.
+#
+# OrdinalIgnoreCase because Windows paths are case-insensitive; `.Target` is verified present on both
+# Windows PowerShell 5.1 and pwsh 7 (measured on a live junction in both).
+function Get-WalkIdentity {
+    param([System.IO.FileSystemInfo]$Item)
+    $p = $Item.FullName
+    if ($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        $t = @($Item.Target)[0]
+        if ($t) { $p = $t }
+    }
+    $p.TrimEnd('\', '/')
+}
+
 function Get-UnexpectedBuildDirs {
     param([string]$RepoRoot)
     # Build output sitting INSIDE shipped plugin content is itself the defect worth reporting. It is not
@@ -110,13 +139,17 @@ function Get-UnexpectedBuildDirs {
         $full = Join-Path $RepoRoot $root
         if (-not (Test-Path -LiteralPath $full)) { continue }
         $stack = [System.Collections.Generic.Stack[string]]::new()
+        $seen  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $stack.Push($full)
+        [void]$seen.Add((Get-WalkIdentity -Item (Get-Item -LiteralPath $full)))
         while ($stack.Count) {
             $dir = $stack.Pop()
             foreach ($child in Get-ChildItem -LiteralPath $dir -Directory -Force -ErrorAction SilentlyContinue) {
                 $rel = $child.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
                 if (Test-IsIgnored -RelPath ($rel + '/__probe__') -Globs $globs) { continue }
                 if (Test-IsBuildDirName -Name $child.Name) { $out.Add($rel); continue }
+                # HashSet.Add returns false when the identity was already present - the cycle guard.
+                if (-not $seen.Add((Get-WalkIdentity -Item $child))) { continue }
                 $stack.Push($child.FullName)
             }
         }
@@ -189,7 +222,9 @@ function Get-InjectedContextFiles {
         # ~67k glob evaluations. Correct, but a gate nobody wants to wait for gets run less often, and a
         # gate run less often is the failure this project is about.
         $stack = [System.Collections.Generic.Stack[string]]::new()
+        $seen  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $stack.Push($full)
+        [void]$seen.Add((Get-WalkIdentity -Item (Get-Item -LiteralPath $full)))
         while ($stack.Count) {
             $dir = $stack.Pop()
             foreach ($child in Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue) {
@@ -208,6 +243,8 @@ function Get-InjectedContextFiles {
                     # silently skipping them is the bypass. Reporting the directory is neither - it names
                     # the real problem, which is that build output is sitting inside shipped content.
                     if (Test-IsBuildDirName -Name $child.Name) { continue }
+                    # HashSet.Add returns false when the identity was already present - the cycle guard.
+                    if (-not $seen.Add((Get-WalkIdentity -Item $child))) { continue }
                     $stack.Push($child.FullName)
                     continue
                 }
@@ -636,43 +673,68 @@ function Get-InjectedContextViolations {
 
     foreach ($f in $files) {
         $full = Join-Path $RepoRoot $f
-        # EVERY invariant runs on EVERY file. No short-circuit: the gate is run RED on purpose before the
-        # anomalies are closed, and hiding all but the first would destroy the red-to-green evidence.
-        if (-not $exempt.ContainsKey("$f|encoding") -and -not (Test-PureAscii -Path $full)) {
-            $out.Add((New-Violation -File $f -Invariant 'encoding' -Finding (Get-NonAsciiReport -Path $full)))
-        }
-        $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
-        # Report the first UNRESOLVED pointer. Re-matching the raw regex here would name the first pointer
-        # of any kind, so a file holding one resolvable cross-reference and one dangling pointer would be
-        # correctly flagged and then send the operator to the wrong line.
-        $residue = @(Get-PlanResidue -Text $text)
-        if (-not $exempt.ContainsKey("$f|plan-residue") -and $residue.Count) {
-            $out.Add((New-Violation -File $f -Invariant 'plan-residue' -Finding "bare plan pointer: $($residue[0])"))
-        }
-        foreach ($m in (Get-HookMessages -Text $text)) {
-            if (-not $exempt.ContainsKey("$f|tag-hygiene") -and (Test-HasDuplicatedTag -Text $m)) {
-                $out.Add((New-Violation -File $f -Invariant 'tag-hygiene' -Finding "duplicated tag: $($m.Substring(0, [Math]::Min(60, $m.Length)))"))
+        # READABILITY IS AN INVARIANT, NOT AN ASSUMPTION. Every invariant below reads this file - three
+        # separate read sites (Test-PureAscii, Get-NonAsciiReport, and the ReadAllText here) - and NONE of
+        # them was guarded. A file locked by another process, or deleted between the corpus walk and this
+        # loop, threw an unhandled exception that escaped through NEITHER documented exit: the gate died
+        # with a stack trace where it promises a violation report. The window is real, not theoretical -
+        # the walk enumerates and this loop reads, so anything touching the tree in between hits it.
+        #
+        # WRAPPED AROUND THE WHOLE BODY, and the exception types are NARROW ON PURPOSE. A bare `catch`
+        # here would swallow a genuine logic error in any invariant and report it as "unreadable", which
+        # is the fail-open this gate exists to prevent - it would certify a file whose invariants never
+        # actually ran. IOException (FileNotFoundException derives from it) and UnauthorizedAccessException
+        # (which does NOT) are the two an inaccessible file actually raises; a null-ref or index error is
+        # neither, and still crashes loudly.
+        #
+        # REPORTED AS A VIOLATION, NEVER SKIPPED. Skipping would mark a file the gate never read as
+        # passing. Waivable like every other invariant, because an unwaivable violation was itself a
+        # folded defect (build-output, round 12) - and if anyone ever waives it, the exemption suite's
+        # `default` arm throws and tells them to add a case, which is exactly the intended workflow.
+        try {
+            # EVERY invariant runs on EVERY file. No short-circuit: the gate is run RED on purpose before
+            # the anomalies are closed, and hiding all but the first would destroy the red-to-green evidence.
+            if (-not $exempt.ContainsKey("$f|encoding") -and -not (Test-PureAscii -Path $full)) {
+                $out.Add((New-Violation -File $f -Invariant 'encoding' -Finding (Get-NonAsciiReport -Path $full)))
             }
-            if (-not $exempt.ContainsKey("$f|namespace") -and -not (Test-DegradedNamespace -Text $m)) {
-                $out.Add((New-Violation -File $f -Invariant 'namespace' -Finding 'degraded line carries no bracketed tag'))
+            $text = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
+            # Report the first UNRESOLVED pointer. Re-matching the raw regex here would name the first
+            # pointer of any kind, so a file holding one resolvable cross-reference and one dangling
+            # pointer would be correctly flagged and then send the operator to the wrong line.
+            $residue = @(Get-PlanResidue -Text $text)
+            if (-not $exempt.ContainsKey("$f|plan-residue") -and $residue.Count) {
+                $out.Add((New-Violation -File $f -Invariant 'plan-residue' -Finding "bare plan pointer: $($residue[0])"))
+            }
+            foreach ($m in (Get-HookMessages -Text $text)) {
+                if (-not $exempt.ContainsKey("$f|tag-hygiene") -and (Test-HasDuplicatedTag -Text $m)) {
+                    $out.Add((New-Violation -File $f -Invariant 'tag-hygiene' -Finding "duplicated tag: $($m.Substring(0, [Math]::Min(60, $m.Length)))"))
+                }
+                if (-not $exempt.ContainsKey("$f|namespace") -and -not (Test-DegradedNamespace -Text $m)) {
+                    $out.Add((New-Violation -File $f -Invariant 'namespace' -Finding 'degraded line carries no bracketed tag'))
+                }
+            }
+            $longest = Get-LongestHookMessage -Text $text
+            if ($longest.Length -gt $script:MaxMessageChars -and -not $exempt.ContainsKey("$f|payload-budget")) {
+                $head = $longest.Substring(0, [Math]::Min(60, $longest.Length))
+                # NAME HOW MANY EXCEED, not just the worst one. Only the longest message is reported, and 18
+                # corpus files carry more than one hook message (4 in the largest, measured), so an operator
+                # who waives this file for payload-budget would silently waive siblings they never saw. The
+                # waiver is per (file, invariant), so the count is the only warning they get.
+                $over = @(Get-HookMessages -Text $text | Where-Object { $_.Length -gt $script:MaxMessageChars }).Count
+                $out.Add((New-Violation -File $f -Invariant 'payload-budget' -Finding "$($longest.Length) chars > $script:MaxMessageChars ($over message(s) in this file exceed it) - starts: $head"))
+            }
+            foreach ($tok in [regex]::Matches($text, '`([^`\n]{1,80})`')) {
+                $t = $tok.Groups[1].Value
+                if (-not (Test-IsPathCandidate -Token $t)) { continue }
+                $r = Resolve-Reference -Token $t -RepoRoot $RepoRoot -FromFile $f
+                if ((Test-ReferenceFails -Outcome $r.Outcome) -and -not $exempt.ContainsKey("$f|reference")) {
+                    $out.Add((New-Violation -File $f -Invariant 'reference' -Finding "$($r.Outcome): $t"))
+                }
             }
         }
-        $longest = Get-LongestHookMessage -Text $text
-        if ($longest.Length -gt $script:MaxMessageChars -and -not $exempt.ContainsKey("$f|payload-budget")) {
-            $head = $longest.Substring(0, [Math]::Min(60, $longest.Length))
-            # NAME HOW MANY EXCEED, not just the worst one. Only the longest message is reported, and 18
-            # corpus files carry more than one hook message (4 in the largest, measured), so an operator
-            # who waives this file for payload-budget would silently waive siblings they never saw. The
-            # waiver is per (file, invariant), so the count is the only warning they get.
-            $over = @(Get-HookMessages -Text $text | Where-Object { $_.Length -gt $script:MaxMessageChars }).Count
-            $out.Add((New-Violation -File $f -Invariant 'payload-budget' -Finding "$($longest.Length) chars > $script:MaxMessageChars ($over message(s) in this file exceed it) - starts: $head"))
-        }
-        foreach ($tok in [regex]::Matches($text, '`([^`\n]{1,80})`')) {
-            $t = $tok.Groups[1].Value
-            if (-not (Test-IsPathCandidate -Token $t)) { continue }
-            $r = Resolve-Reference -Token $t -RepoRoot $RepoRoot -FromFile $f
-            if ((Test-ReferenceFails -Outcome $r.Outcome) -and -not $exempt.ContainsKey("$f|reference")) {
-                $out.Add((New-Violation -File $f -Invariant 'reference' -Finding "$($r.Outcome): $t"))
+        catch [System.IO.IOException], [System.UnauthorizedAccessException] {
+            if (-not $exempt.ContainsKey("$f|unreadable")) {
+                $out.Add((New-Violation -File $f -Invariant 'unreadable' -Finding "cannot be read: $($_.Exception.GetType().Name)"))
             }
         }
     }

@@ -42,3 +42,17 @@ agy-autotrain/docs/fix-the-tool-backlog/.ruff_cache/**
 # every invariant. MEASURED 2026-08-09: a .git file carrying a BOM produced a real encoding violation. It
 # is git plumbing, not injected context, so it is subtracted here rather than pruned.
 **/.git
+# ...and the CHECKOUT THAT MARKER SITS IN. Subtracting the marker file was only half the job: a worktree
+# is a COMPLETE SECOND COPY of the repository, so every domain root, skill and hook exists twice on disk.
+# MEASURED 2026-08-10, capstone round 17: creating a worktree at the location this repository's own
+# worktree skill defaults to turned the suite RED - three rows in 'domain coverage', which walk the
+# FILESYSTEM rather than git, reported every SKILL.md in the second checkout as "outside every domain root
+# and audited by nothing". They were duplicates of files already audited in the primary tree.
+#
+# THE SUPPORTED WORKFLOW WAS THE TRIGGER, which is what makes this worth subtracting rather than
+# documenting: the skill creates worktrees here by default, and git only ignores the directory through
+# .git/info/exclude - a LOCAL, UNCOMMITTED file - so a fresh clone does not ignore it at all.
+#
+# The gate's own corpus never included these (it walks domain roots, and this is not under one), so this
+# changes no violation. It is the coverage QUERY, which walks the whole repository, that needed telling.
+.worktrees/**

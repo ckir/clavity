@@ -939,6 +939,96 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
         }
 
+        It 'a directory junction pointing at an ancestor does not walk forever' {
+            # Capstone round 17. BOTH walks descend with a manual stack and NEITHER had a visited-set, so a
+            # junction pointing at an ancestor had nothing to stop it. MEASURED against the pre-fix script on
+            # this exact fixture: it had still not returned after 45 seconds, while the fixed one returns a
+            # corpus of 1. Deduping on FullName alone does NOT terminate - every lap produces a new path
+            # (seed/sub/loop/sub/loop/...) - so the guard resolves the reparse TARGET and dedupes on that.
+            #
+            # RUN IN A JOB WITH A TIMEOUT, deliberately. If this guard regresses the walk does not fail, it
+            # HANGS, and a hang inside Pester wedges the whole suite instead of reddening one row. The
+            # timeout converts a regression back into an ordinary failure.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icj-" + [guid]::NewGuid().ToString('N'))
+            $j = $null
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                Set-Content -LiteralPath (Join-Path $d 'seed/a.md') -Value 'hello' -Encoding ascii
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'seed/sub') | Out-Null
+                cmd /c mklink /J "$(Join-Path $d 'seed\sub\loop')" "$(Join-Path $d 'seed')" | Out-Null
+                # A junction needs no elevation, but if the filesystem ever refuses one this row would pass
+                # vacuously against a walk that never met a cycle. Fail loudly instead.
+                (Test-Path -LiteralPath (Join-Path $d 'seed/sub/loop')) |
+                    Should -BeTrue -Because 'the fixture needs a REAL junction or this row proves nothing'
+
+                $j = Start-Job { param($s, $dd) . $s -RepoRoot $dd; @(Get-InjectedContextFiles -RepoRoot $dd).Count } -ArgumentList $script:Script, $d
+                (Wait-Job $j -Timeout 60) | Should -Not -BeNullOrEmpty -Because 'the corpus walk must TERMINATE on a junction cycle'
+                (Receive-Job $j) | Should -Be 1 -Because 'seed/a.md is the only corpus file - the junction must not multiply or re-audit it'
+            } finally {
+                if ($j) { Stop-Job $j -ErrorAction SilentlyContinue; Remove-Job $j -Force -ErrorAction SilentlyContinue }
+                # REMOVE THE LINK ITSELF FIRST. A recursive delete that follows a junction deletes the
+                # TARGET's contents, and the target here is the fixture's own seed/ - rmdir removes the
+                # reparse point without touching what it points at.
+                cmd /c rmdir "$(Join-Path $d 'seed\sub\loop')" 2>&1 | Out-Null
+                Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'a corpus file that cannot be READ is reported as a violation, not thrown' {
+            # Capstone round 17. The gate had THREE unguarded read sites - Test-PureAscii's ReadAllBytes,
+            # Get-NonAsciiReport's ReadAllText, and the violation loop's own ReadAllText. MEASURED against
+            # the pre-fix script on this fixture: an exclusively-locked corpus file threw out of the loop and
+            # killed the gate, escaping through NEITHER documented exit - a stack trace where the gate
+            # promises a violation report. The window is real, not theoretical: the walk enumerates and the
+            # loop reads, so anything touching the tree in between (an editor lock, a delete) lands in it.
+            #
+            # REPORTED, NEVER SKIPPED. Skipping would mark a file the gate never read as passing, which is
+            # the fail-open this gate exists to catch.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icu-" + [guid]::NewGuid().ToString('N'))
+            $fs = $null
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                Set-Content -LiteralPath (Join-Path $d 'seed/locked.md') -Value 'content' -Encoding ascii
+                # FileShare.None - the same exclusive lock another process holds on a file it is writing.
+                $fs = [System.IO.File]::Open((Join-Path $d 'seed/locked.md'), 'Open', 'Read', 'None')
+                $v = @(Get-InjectedContextViolations -RepoRoot $d)
+                ($v | Where-Object { $_.Invariant -eq 'unreadable' -and $_.File -eq 'seed/locked.md' }) |
+                    Should -Not -BeNullOrEmpty -Because 'an unreadable corpus file must be NAMED, not skipped and not thrown'
+            } finally {
+                if ($fs) { $fs.Dispose() }
+                Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'an unreadable violation can be WAIVED like every other invariant' {
+            # An unwaivable violation was itself a folded defect (build-output, capstone round 12), so a new
+            # invariant that could not be waived would re-make it. Note the consequence, which is deliberate:
+            # waiving this one waives the file ENTIRELY, because no invariant can run on bytes nobody can read.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("icuw-" + [guid]::NewGuid().ToString('N'))
+            $fs = $null
+            try {
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'scripts') | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $d 'scripts')
+                foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $d $r) | Out-Null }
+                Set-Content -LiteralPath (Join-Path $d 'seed/locked.md') -Value 'content' -Encoding ascii
+                Set-Content -LiteralPath (Join-Path $d 'scripts/injected-context-exemptions.json') -Encoding ascii -Value @'
+{ "exemptions": [ { "path": "seed/locked.md", "invariant": "unreadable", "reason": "probe" } ] }
+'@
+                $fs = [System.IO.File]::Open((Join-Path $d 'seed/locked.md'), 'Open', 'Read', 'None')
+                @(Get-InjectedContextViolations -RepoRoot $d) |
+                    Should -BeNullOrEmpty -Because 'the waiver line the gate prints for unreadable must actually work'
+            } finally {
+                if ($fs) { $fs.Dispose() }
+                Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'no ignore glob matches an arbitrary directory probe path' {
             # Descent is skipped when "$rel/__probe__" matches a glob, so a glob able to match ANY probe
             # would empty the corpus and pass the gate green over nothing. None can today - this row is
