@@ -44,9 +44,14 @@ function Fail([string]$msg) {
 # it is in the drain's protected-path list; and this script's own Pester suite asserts Test-Path on the
 # real canonical before invoking it. Making a budget checker fail on absence would break the fresh-clone
 # case its sibling exists to protect.
+# Measure the RAW BYTES ON DISK, never a decoded string. ReadAllText detects and STRIPS a UTF-8 BOM
+# before returning, so UTF8.GetByteCount over its result under-reports a BOM'd file by exactly 3 bytes
+# (measured: 8 bytes on disk, 5 counted). The consumer this budget protects reads raw bytes, so a
+# decoded count is measuring something the runtime never sees - and the gap only shows up at the
+# boundary, which is precisely where a budget gate is supposed to be right.
 $bytes = 0
 if (Test-Path $Path) {
-    $bytes = [System.Text.Encoding]::UTF8.GetByteCount([System.IO.File]::ReadAllText($Path))
+    $bytes = [System.IO.File]::ReadAllBytes($Path).Length
 }
 
 if ($bytes -gt $MaxBytes) {

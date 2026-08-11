@@ -43,8 +43,13 @@ Describe "check-cheatsheet-budget.ps1" {
         # meaning a future commit that raises the default AND grows the cheatsheet passes both. Pinning
         # the number here makes raising the budget a deliberate, visible test edit rather than a silent
         # side effect of the change that needed the extra room.
+        # (?m)^\s* ANCHORS the match to the start of a line, so it can only be satisfied by the real
+        # declaration - never by the same text sitting inside a comment. Unanchored, `-Match` searches
+        # the whole file as one string, so raising the default to 8192 while leaving `# [int]$MaxBytes
+        # = 4096` anywhere in the file would keep this row green: the assertion would be pinning a
+        # comment rather than the code it exists to pin.
         $src = Get-Content -Raw -LiteralPath $script:Script
-        $src | Should -Match '\[int\]\$MaxBytes\s*=\s*4096' -Because 'raising the budget must be a conscious edit to this test, not an invisible default shift'
+        $src | Should -Match '(?m)^\s*\[int\]\$MaxBytes\s*=\s*4096' -Because 'raising the budget must be a conscious edit to this test, not an invisible default shift'
     }
 
     It "the REAL canonical cheatsheet is within the committed default budget" {

@@ -230,7 +230,29 @@ model depends on, not a formality.
 **No interactive approval channel?** If this skill runs where no interactive approval can be obtained (a
 headless or otherwise non-interactive session), do **NOT** publish. Emit a **non-blocking** message - "no
 interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to
-publish." - and exit without error. Publishing unreviewed GROWTH is the one outcome this gate exists to
+publish." - on **STDERR**, and **exit 2**.
+
+**The exit code is the state, not just a pass/fail flag.** This run has three distinct outcomes and each
+gets its own code, so a caller can tell them apart without parsing any text:
+
+| exit | state | inbox `## Pending` |
+|------|-------|--------------------|
+| 0 | GROWTH published (or nothing pending to publish) | reset |
+| 2 | NOT published - no interactive approval channel. Deliberate, not a fault | left intact |
+| 1 | error - something went wrong | left intact |
+
+Exit 0 here would be actively misleading: it is indistinguishable from a successful publish to anything
+reading only the status code, so a pipeline that expected GROWTH to land reports SUCCESS while nothing
+was written. That is the silent-success blindspot this branch exists in the first place to avoid.
+Exit 2 composes correctly with the ordering below, which resets `## Pending` only on `curate-commit`
+exit 0 - 2 is not 0, so the inbox survives by the rule already written, with no special case.
+
+> This is the SKILL's exit contract and is unrelated to the `exit 2` convention used by the repository's
+> **hooks** (see `clavity-classic/plugin/hooks/agy-liveness-check.sh`), where 2 means "advisory on stderr"
+> and is non-blocking on SessionStart but BLOCKING on some other events. Nothing here is a hook; the codes
+> above do not inherit that meaning.
+
+Publishing unreviewed GROWTH is the one outcome this gate exists to
 prevent, so this path fails **CLOSED**. **The inbox is deliberately left unreset and nothing is lost:** the
 Finish ordering below resets `## Pending` only when `curate-commit` exits 0, so an unpublished run leaves
 every entry in place and a later interactive run simply recompiles them. Only compute is wasted, and only
