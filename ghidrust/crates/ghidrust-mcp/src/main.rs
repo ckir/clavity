@@ -28,10 +28,12 @@ async fn main() {
             if args.any(|a| a == "--emit") {
                 // stdout is safe here: `skill` is a one-shot CLI utility invocation, NOT the `serve`
                 // MCP JSON-RPC channel. `print!` (no trailing newline) keeps the output byte-identical
-                // to skill/SKILL.md so the installer's `ghidrust skill --emit > SKILL.md` round-trips.
-                // (`ghidrust::` is the LIB crate — `main.rs` is a separate bin crate in this package,
+                // to the SHIPPED PLUGIN COPY - not to skill/SKILL.md, whose maintainer-facing HTML
+                // comment header `emit_bytes()` strips - so `ghidrust skill --emit > SKILL.md` round-trips
+                // into plugin/skills/ghidra-re-driver/SKILL.md exactly. Pinned by tests/skill_emit.rs.
+                // (`ghidrust::` is the LIB crate - `main.rs` is a separate bin crate in this package,
                 // exactly as the existing `ghidrust::config::` / `ghidrust::server::` uses above.)
-                print!("{}", ghidrust::skill_asset::DRIVER_SKILL);
+                print!("{}", ghidrust::skill_asset::emit_bytes());
             } else {
                 eprintln!(
                     "usage: ghidrust skill --emit   (writes the embedded driver skill to stdout)"
