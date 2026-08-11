@@ -8,6 +8,30 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
+- [anti-pattern] (driver/deterministic) `[corpus]` A peer holding a LONG-LIVED conversation carries
+  instructions from EARLIER tasks and can act on them inside a new, unrelated request - measured: it
+  created a working file for a prior task's topic that the current request never mentioned, while
+  otherwise following the current one. The stale directive fires silently and its side effects read as
+  part of the current task. Scope each request explicitly and forbid acting on any earlier task's
+  instructions by name, rather than assuming a fresh request resets the peer's obligations.
+  - 2026-08-12 - agy 1.1.12
+
+- [assumption] (driver/probabilistic) `[verified]` A peer's QUOTED TEXT is reliable while its LINE
+  NUMBERS are not: in one review every one of six citations quoted real code and every one named the
+  wrong line, several off by hundreds and one citing a line beyond the file's length. Measured on two
+  different underlying models, so treat it as general rather than a property of one. Anchor every
+  finding on the quoted string and re-locate it yourself; never act on a peer's line number, and never
+  dismiss a finding because its line number is wrong.
+  - 2026-08-12 - agy 1.1.12
+
+- [anti-pattern] (driver/deterministic) `[corpus]` A forbidden-actions banner that states the same
+  permission TWICE in conflicting terms - forbidding a scratch location and then offering one inside
+  it - leaves the peer to resolve the contradiction, and it may resolve it by writing somewhere worse
+  (the repository root). The resulting write looks like a breach but is caused by the instruction.
+  State each permission exactly once, name the single permitted write location positively, and forbid
+  creation everywhere else in the same clause.
+  - 2026-08-12 - agy 1.1.12
+
 - [heuristic] (driver/probabilistic) `[corpus]` An INDEPENDENT-MODEL adversarial round earns its cost most on
   GATE / COMPARISON logic: given a scoped artifact plus a concrete drift scenario to reason about, the peer
   caught a structural FALSE-GREEN -- a diff-based gate whose selector PROJECTED AWAY a load-bearing
