@@ -4,7 +4,8 @@ Enhancement backlog for the agy-autotrain plugin (the thin, driver-composed agy 
 `agy-learn` capture -> inbox; `agy-curate` offline drain -> the machine-wide golden-header GROWTH region).
 
 Other planning surfaces already exist and are NOT replaced by this file: the external cohesive-distribution
-spec (`docs/superpowers/specs/2026-07-11-cohesive-distribution-design.md`, referenced by section -numbers), the
+design spec (a LOCAL, gitignored artifact under `docs/superpowers/specs/`, referenced by section -numbers,
+and absent from a fresh clone by design), the
 `CHANGELOG.md` (shipped changes), and `docs/fix-the-tool-backlog/` (tool *defects*). This file holds
 *enhancement* tasks that fit none of those - one heading per task, newest first.
 
