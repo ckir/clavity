@@ -18,11 +18,15 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 328 tests, measured 429,46s solo**
-  (2026-08-06; the 429,46s was taken at 327 tests — see the count-correction entry below).
-  A second sample read 665,4s but was taken WHILE the slow half ran and is not comparable;
-  see the contention entry below, which is the operationally important one — **the fast half is now
-  cap-adjacent, not cap-safe.**
+- `just test-scripts-fast` — the agent inner-loop gate. **28 suites, 554 tests; two samples on 2026-08-11
+  read 410,05s and 913,08s.** The previous line here read `25 suites, 328 tests, 429,46s solo` (2026-08-06;
+  that 429,46s was taken at 327 tests — see the count-correction entry below). **The counts are firm; the
+  time is not.** Samples across this recipe now span **255 / 410 / 429 / 738 / 913s**, and no sample in
+  this file was taken with machine load actually measured — "solo" here has only ever meant "the driver
+  believed nothing else was running", and **the driver shares a CPU with the suite, so a driver that works
+  during a run slows it down by construction** (see the contention entries below). **Do not quote any
+  single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
+  one sample, and background it rather than assuming it fits the 600s foreground cap.
 - `just test-scripts-slow` — everything else. **13 suites, 257 tests, measured 819,2s solo** (2026-08-06).
   NOT on any git hook; it is **well past the 600s foreground tool cap** — 653,5s, 761,28s, now 819,2s —
   and must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line, never by
@@ -234,6 +238,30 @@ The `## Measured runtimes` table below is also NOT self-maintaining: `agy-inbox-
 was in `test-scripts-slow` and absent from the table entirely. To find that class of omission,
 diff the recipe membership against the table rather than reading down it.
 
+**2026-08-11 — the Stage 2 fix batch.** ONE new fast suite: `check-cheatsheet-budget` (6 tests), the
+enforcement half of the driver-cheatsheet budget. Fast went 27 suites / 548 tests to **28 suites /
+554 tests**, measured **410,05s**.
+
+🔴 **THE DRIVING AGENT AND THIS SUITE SHARE ONE CPU. Driver activity during a run is contention BY
+CONSTRUCTION, not bad luck.** The agent's harness process, every tool subprocess it spawns (`pwsh`,
+`python3`, `rg`, `git`), and the lefthook/rtk hooks that fire on each command all compete with the suite
+for the same cores. This is the mechanism behind every "contended" figure in this file, and it is
+structural — there is no configuration in which an agent works during a run and does not slow it down.
+
+**Measured 2026-08-11, same commit, same 554 tests, minutes apart: 913,08s with the driver working
+(`python3` edits, `rg`/`awk` greps, `wc`, file writes) against 410,05s with the driver idle — 2,23x**, and
+the working sample sat 313s past the 600s foreground cap. Caveat on all five samples: **machine load has
+never actually been instrumented for any figure in this file.** "Solo" has only ever meant "the driver
+believed nothing else was running," so treat the ratio as the expected size of the effect, not as a
+controlled measurement.
+
+Recorded for the near-miss it produced: the 913,08s figure was about to be written into the summary line
+above as if it were solo, which would have made it the fourth decayed number in a file that documents its
+own decay three times. **Two samples disagreeing is not a tie — it is an unrun measurement**, the same
+lesson this file already draws from the 327/328 count dispute. Operationally: if you need this recipe's
+*time*, run it as the sole command and stay idle; if you only need its *count*, background it and keep
+working — the count is unaffected.
+
 ## Measured runtimes
 
 These are per-file numbers taken in one sweep and are INDICATIVE ONLY — the section above explains why a
@@ -307,6 +335,7 @@ agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-
 agy-test-audit-reminder.Tests.ps1                50,8s   18 tests   <- SLOW, re-measured 2026-08-06 (+4)
 BashHookHelpers.Tests.ps1                         1,7s    4 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   14 tests   <- FAST, re-measured 2026-08-05
+check-cheatsheet-budget.Tests.ps1                21,7s    6 tests   <- FAST, measured 2026-08-11
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-growth-budget.Tests.ps1                    15,3s    7 tests   <- FAST, re-measured 2026-08-05
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05

@@ -38,6 +38,7 @@ directly.
 |---|---|---|
 | `check-seed-artifacts-synced.sh` | Fail if the seed agent artifacts (adversarial-panel-review skill, the AGY-AFTER, auto-fire seam-inject, and SessionStart liveness hooks, the two driver knowledge manuals, `hooks.json`'s shared PostToolUse + PreToolUse blocks + the shared SessionStart liveness entry) drift between the two driver plugins | `just seed-sync-check` |
 | `check-seed-budget.ps1` | Assert the injected golden-header SEED alone is within its committed byte budget (default 7992 B) | CI (`build-dotnet.yml`, `build-classic.yml`); run directly, no `just` recipe |
+| `check-cheatsheet-budget.ps1` | Assert the canonical driver cheatsheet (`driver-cheatsheet.core.md`) is within its committed byte budget (default 4096 B) | CI (`build-dotnet.yml`, `build-classic.yml`); run directly, no `just` recipe |
 | `check-core-integrity.ps1` | Assert every protected driver-owned file (the SEED, the four driver manuals, `driver-cheatsheet.core.md`) is byte-identical to its committed HEAD version after a drain | invoked by `drain-knowledge.ps1` |
 | `check-growth-budget.ps1` | Warn-only gate: assert SEED+GROWTH combined size fits the binary's 16 KiB injection cap | invoked by `drain-knowledge.ps1` (warn-only) |
 

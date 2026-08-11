@@ -50,6 +50,10 @@ Append to `../../knowledge/agy-observations.md` (create it with the header below
 - [<class>] (<audience>/<nature>) <General Rule>  *  `[corpus]` * <YYYY-MM-DD> * agy <version-if-known>
 ```
 
+**The separator shown above is an ASCII asterisk so this document itself stays pure ASCII. The LIVE inbox
+delimits with U+00B7 MIDDLE DOT, not an asterisk** - match the existing bullets in the file you are
+appending to, not this rendering.
+
 where `<class>`  in  `assumption | heuristic | anti-pattern`, `<audience>`  in  `peer | driver`,
 `<nature>`  in  `probabilistic | deterministic`. Then return to your task immediately -
 do not curate now. The inbox is drained later by **agy-curate**.
@@ -67,3 +71,7 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 ```
+
+**Same caveat as above:** the provenance-tag separators rendered here as `*` are **U+00B7 MIDDLE DOT** in
+the live inbox. `agy-observations.md` carries a standing `encoding` exemption for exactly that reason; this
+file does not, which is why the code point is named rather than pasted.

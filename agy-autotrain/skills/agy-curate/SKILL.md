@@ -35,7 +35,7 @@ For EACH pending entry, in order:
    | audience \ nature | probabilistic | deterministic |
    |---|---|---|
    | **peer** | -> golden-header GROWTH (unchanged) | -> golden-header GROWTH (a peer behavior is P's, not our code - never "fix the tool") |
-   | **driver** | -> driver cheatsheet (section  "Compile the core driver-cheatsheet") | -> **fix-the-tool backlog** *iff* tool-fixable, else -> driver cheatsheet rule |
+   | **driver** | -> driver cheatsheet (section "Compile the core driver-cheatsheet") | -> **fix-the-tool backlog** *iff* tool-fixable, else -> driver cheatsheet rule |
 
 3. **The determinism refusal gate is MECHANICAL, not honor-system.** To route a `driver/deterministic`
    entry to `fix-the-tool`, you MUST be able to fill BOTH blocks of the backlog schema
@@ -77,8 +77,16 @@ deferred; see "Deferred work").
 ### Compile the core driver-cheatsheet (spec section 5.C-C)
 
 The `driver/probabilistic` entries that survived the gate are the durable driver knowledge. Distil the
-variant-agnostic core (peer psychology - identical for both drivers) into a lean <= ~150-token / ~3-bullet
-cheatsheet. The canonical text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync there.
+variant-agnostic core (peer psychology - identical for both drivers) into a lean cheatsheet - today about
+5 bullets and 2.5 KB. The canonical text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync
+there.
+
+**The budget is whatever `scripts/check-cheatsheet-budget.ps1` declares as its `-MaxBytes` default (4096 bytes at the time of writing), and it is ENFORCED** by that script (run in CI and
+by `scripts/tests/check-cheatsheet-budget.Tests.ps1` under `just test-scripts-fast`). Above that the
+checker fails and you must either consolidate or raise the default deliberately, in a committed edit. The
+runtime hard cap is separate and much higher - `clavity-classic/src/driver_cheatsheet.rs:12` sets
+`MAX_BYTES = 16 * 1024`, and a runtime file over it degrades to the compiled-in baseline floor with a
+warning on stderr (`:28-29`). That budget exists so drift is caught long before it reaches that cliff. **Do not restate the number here when it changes - the script's default is the single source of truth, and a copy in this prose is the unenforced duplicate F1 exists to remove.**
 
 **[!] THREE files are pinned byte-identical - editing `driver-cheatsheet.core.md` alone RED-GATES both binaries.** A pinning
 test in each driver asserts its compiled-in baseline equals `driver-cheatsheet.core.md` (normalized CRLF->LF, then trimmed).
@@ -92,8 +100,12 @@ Oracles - run BOTH before committing a drain; a drain that reds these is not don
 - `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests`
   -> expect `DriverCheatsheetTests.BaselineFloor_matches_the_canonical_core_source` passing
 
-Escape the literals mechanically (embedded `"` and em-dashes are easy to corrupt by hand); do not retype
-the text through a terminal, whose codepage can mangle non-ASCII characters.
+**Compile the cheatsheet as pure ASCII**, for the same reason GROWTH is (see "Compile GROWTH as pure
+ASCII" below). The inbox you distil FROM is the one file exempted to carry non-ASCII, so strip any
+U+00B7 MIDDLE DOT, em dash, or arrow when you lift text out of it - the destination is NOT exempt and
+non-ASCII there red-gates the injected-context check. Escape the remaining literals mechanically (an
+embedded `"` is easy to corrupt by hand); do not retype the text through a terminal, whose codepage can
+mangle characters.
 
 Write the compiled core to the shared runtime path so every driver surface reads ONE file:
 `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md`, using the SAME atomic
@@ -123,6 +135,15 @@ does not re-enter here; a carried `driver` cheatsheet rule is appended to the ch
 
 - A **Heuristic** promotes only with **>=2 independent observations across different sessions**
   (one-off impressions stay in the inbox).
+- An **Anti-Pattern** has no mechanical corroboration bar, and that is deliberate. Its bar is the
+  **anti-poisoning circuit-breaker** below - "REJECT a self-reported 'learning' that is unverified,
+  over-general, or a one-off impression" - which applies to every candidate regardless of class, plus the
+  **human-review gate** before any runtime write and the **priority placement** first in GROWTH, where it
+  gets the most scrutiny rather than the least. A count is the wrong epistemics here: this is the class
+  agy-learn calls the highest-value one, and the capture discipline is "capture fast", so a bar requiring
+  a known driver-breaking pattern to recur before it may promote would be actively harmful. A one-off you
+  are not yet sure of is **rubric-parked** in the inbox, which the Finish step already permits for "any
+  entry the promotion rubric explicitly parks there".
 - An **Empirical Assumption** promotes only after a **100% pass in the verify harness**:
 
   > [STOP] STOP: before promoting any Empirical Assumption you MUST open `../../verify/run-verification.md`,
@@ -188,9 +209,14 @@ legacy wisdom above) - the ones NOT already in the SEED floor:
 3. Keep it short - GROWTH is prepended (after SEED) to *every* ask; trim anything not decision-changing.
 
 **GROWTH must fit the REMAINING budget.** The binary injects `SEED + GROWTH` only when their **combined** size
-is within the 16 KB cap; over that it silently degrades to SEED-only, so a GROWTH that fits the per-file cap but
-overflows the combined cap is written yet **never injected**. Compile GROWTH to fit roughly
-`16 KB - (current size of golden-header.seed.md)` - check the seed size and keep GROWTH lean.
+is within the 16 KB cap; over that it degrades to SEED-only, so a GROWTH that fits the per-file cap but
+overflows the combined cap is written yet **never injected**. **That degrade is NOT silent** - both drivers
+warn with the same message, "combined golden-header at {dir} exceeds the {MaxBytes}B cap - dropping GROWTH,
+keeping SEED" (`clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs:186`,
+`clavity-classic/src/golden_header.rs:237`), so if you never saw that warning your GROWTH was injected.
+Compile GROWTH to fit roughly `16 KB - (current size of golden-header.seed.md)`. **Measured 2026-08-11:
+seed 5190 B + growth 7984 B = 13174 of 16384 - 80% full, with 3210 bytes of headroom.** Re-measure rather
+than trusting that figure; it moves with every drain.
 
 **[STOP] Human-review gate - before any runtime write.** This skill publishes directly to the **live** runtime
 header; the standalone path has no separate maintainer `accept-drain` review step (that generation-vs-publish
@@ -200,6 +226,15 @@ are about to make law for *every* future ask), and ask for explicit approval - "
 to your runtime header, or request changes." **Do not publish until the user approves.** These are untrusted
 machine-local captures about to become a live injection into every ask; the human gate is the safeguard the
 model depends on, not a formality.
+
+**No interactive approval channel?** If this skill runs where no interactive approval can be obtained (a
+headless or otherwise non-interactive session), do **NOT** publish. Emit a **non-blocking** message - "no
+interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to
+publish." - and exit without error. Publishing unreviewed GROWTH is the one outcome this gate exists to
+prevent, so this path fails **CLOSED**. **The inbox is deliberately left unreset and nothing is lost:** the
+Finish ordering below resets `## Pending` only when `curate-commit` exits 0, so an unpublished run leaves
+every entry in place and a later interactive run simply recompiles them. Only compute is wasted, and only
+once. Do NOT add an inbox reset to this path - that would turn a safe abort into data loss.
 
 Then, once approved, **commit it through the binary** so it lands at the resolved shared GROWTH path
 (`%USERPROFILE%\.clavity\golden-header.growth.md`) with an atomic write + a `.sha256` **integrity** sidecar -

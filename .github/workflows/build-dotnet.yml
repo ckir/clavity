@@ -78,6 +78,9 @@ jobs:
       - name: SEED byte-budget gate
         run: pwsh -File ../scripts/check-seed-budget.ps1
 
+      - name: Driver-cheatsheet byte-budget gate
+        run: pwsh -File ../scripts/check-cheatsheet-budget.ps1
+
       - name: Build installer (ISCC)
         shell: pwsh
         run: |
