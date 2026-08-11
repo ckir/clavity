@@ -3,9 +3,10 @@ slug: curate-nudge-age-reads-drain-log-dates
 variant: both
 observed: 2026-08-03
 source-inbox-entry: "(found during the 2026-08-03 drain, not from an inbox bullet)"
-status: fixed
+status: released
 fixed-by: 7c2de2b, a357d7a, 8099813, 5dc8822
 fixed-on: 2026-08-03
+released-in: clavity-v17
 ---
 
 > **FIXED 2026-08-03.** The age scan is anchored to pending bullets and a stamp is now treated as

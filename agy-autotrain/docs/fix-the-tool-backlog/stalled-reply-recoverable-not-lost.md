@@ -3,7 +3,8 @@ slug: stalled-reply-recoverable-not-lost
 variant: clavity-dotnet
 observed: 2026-07-31
 source-inbox-entry: "- [assumption] (driver/deterministic) A review transport can stall mid-step while the peer's work continues to completion"
-status: fixed
+status: released
+released-in: clavity-v17
 last-triaged: 2026-08-07   # CORRECTED. The 2026-08-06 stamp read "no idle-expiry poll / retry path in AgyView.cs -> confirmed still open". FALSE NEGATIVE on invented vocabulary (see docs/backlog-triage-runbook.md section 2): the shipped mechanism is the lastProgress loop in WaitForIdleWithProgressAsync, which IS the step-counter discriminator this entry asks for.
 ---
 

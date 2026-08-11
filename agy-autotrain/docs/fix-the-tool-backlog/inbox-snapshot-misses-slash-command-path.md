@@ -3,7 +3,7 @@ slug: inbox-snapshot-misses-slash-command-path
 variant: both
 observed: 2026-08-03
 source-inbox-entry: "the pre-drain snapshot hook did not fire when agy-curate was invoked as a"
-status: fixed
+status: fixed-in-repo
 last-triaged: 2026-08-07   # FIXED in 704a2e5. Mitigation 2 shipped, but NOT in the form proposed below - see "Fixed" section. Mitigation 1 was deliberately NOT implemented and should not be. The earlier PARTIAL note read: "covers mitigation 2 ONLY ... UNVERIFIED for mitigation 1 (a snapshot inside the curate-commit BINARY, which leaves no trace in hooks.json) and mitigation 3"; that caution was right, and investigating mitigation 1 properly is what showed it to be architecturally wrong.
 ---
 

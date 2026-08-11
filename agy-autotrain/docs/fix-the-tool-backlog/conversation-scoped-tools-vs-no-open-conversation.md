@@ -3,7 +3,8 @@ slug: conversation-scoped-tools-vs-no-open-conversation
 variant: clavity-dotnet
 observed: 2026-08-03
 source-inbox-entry: "Endpoint-reachable is not conversation-open: when every peer tool is scoped"
-status: fixed
+status: released
+released-in: clavity-v17
 last-triaged: 2026-08-07   # CORRECTED. The 2026-08-06 stamp read "no NoConversation/conversation-existence split in Clavity.Ls/*.cs -> confirmed still open". That was a FALSE NEGATIVE on invented vocabulary (see docs/backlog-triage-runbook.md section 2): the shipped path is AgyConversationPendingException, and it is partly in Clavity.Mcp, outside the grep's scope.
 ---
 

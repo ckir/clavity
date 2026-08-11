@@ -3,8 +3,17 @@ slug: <kebab-case-unique-slug>
 variant: <clavity-dotnet | clavity-classic | both>
 observed: <YYYY-MM-DD>
 source-inbox-entry: "<verbatim first ~12 words of the agy-observations bullet>"
-status: open        # open | fixed | wont-fix
-# On `fixed`, ALSO add:  fixed-by: <sha, sha>   fixed-on: <YYYY-MM-DD>
+status: open        # open | fixed-in-repo | released | wont-fix
+# On `fixed-in-repo` or `released`, ALSO add:  fixed-by: <sha, sha>   fixed-on: <YYYY-MM-DD>
+# On `released`, ALSO add:  released-in: <release tag or sha range>
+#
+# `fixed-in-repo` vs `released` is the distinction this enum exists to force, and it is MEASURABLE, not a
+# judgement call: an item is `released` when its fix commits are ANCESTORS OF THE LATEST RELEASE TAG, and
+# `fixed-in-repo` when they are not. Check it, do not infer it from a commit date - a commit can predate
+# the last release and still not be in it:
+#     git merge-base --is-ancestor <fix-sha> "$(git tag --sort=-creatordate | head -1)"
+# The old single `fixed` value conflated the two, and the conflation was REACHABLE: on 2026-08-11 the
+# installed plugin tree was missing the UserPromptSubmit hook whose backlog item read `status: fixed`.
 ---
 
 <!-- CLOSING AN ITEM. Until 2026-08-03 this template offered only `open`, so nothing ever prompted an

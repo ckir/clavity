@@ -11,8 +11,9 @@ Describe 'shipped plugin hook registration' {
     BeforeAll {
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Manifests = @{
-            dotnet  = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/hooks.json'
-            classic = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+            dotnet    = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/hooks.json'
+            classic   = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+            autotrain = Join-Path $script:RepoRoot 'agy-autotrain/hooks/hooks.json'
         }
 
         # Return the matcher values of every object under $Event whose hooks array mentions $Script.
@@ -113,7 +114,7 @@ Describe 'shipped plugin hook registration' {
     }
 
     It 'names only hook files that EXIST in that plugin - <Driver>' -ForEach @(
-        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }, @{ Driver = 'autotrain' }
     ) {
         # A typo in a command path registers a hook that can never fire, and a hook that never fires
         # cannot report its own absence.
@@ -131,7 +132,7 @@ Describe 'shipped plugin hook registration' {
     }
 
     It 'ships no hook file that is reachable from nowhere - <Driver>' -ForEach @(
-        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }, @{ Driver = 'autotrain' }
     ) {
         # THE OTHER DIRECTION, and nothing tested it before. The test above checks every registered
         # command has a file; this checks every file is registered. A hook that ships but appears in no
@@ -229,5 +230,19 @@ Describe 'shipped plugin hook registration' {
         $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PreCompact' -Script 'agy-anomaly-capture-reminder.sh')
         $matchers.Count | Should -Be 1
         $matchers[0]    | Should -BeExactly 'manual|auto'
+    }
+
+    It 'registers <Script> on SessionStart startup|resume|clear|compact - agy-autotrain' -ForEach @(
+        @{ Script = 'agy-learn-reminder.sh' }
+        @{ Script = 'agy-curate-nudge.sh' }
+    ) {
+        # agy-autotrain/hooks/hooks.json was covered by NOTHING until now: the suite was parameterised
+        # over dotnet/classic only, and its two SessionStart matchers had drifted to complementary,
+        # non-overlapping SUBSETS of the convention - 'startup|clear|compact' and 'startup|resume'. The
+        # visible consequence was that the agy-LEARN reminder never fired on a RESUMED session.
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests['autotrain'] -Event 'SessionStart' -Script $Script)
+        $matchers.Count | Should -Be 1 -Because 'exactly one SessionStart object may own this hook'
+        # -BeExactly, matching the sibling assertions: a future PARTIAL subset must fail, not pass quietly.
+        $matchers[0] | Should -BeExactly 'startup|resume|clear|compact' -Because 'this repo pins all four sources; a subset silently drops a channel'
     }
 }
