@@ -94,6 +94,7 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
   framing in early rounds with an explicit floor + permission-to-be-clean in the closing round. (1st observation
   of the convergence-permission variant.)
 
+- [anti-pattern] (driver/deterministic) A peer's file-DISCOVERY tools may honour the repository's ignore-file, so an artifact living under an ignored path reads to the peer as NON-EXISTENT even though a direct read by exact path would succeed - it may then report the file missing and refuse the whole task. Measured: a glob of the containing directory returned 3 entries where the directory held 60. When pointing a peer at an ignored or untracked artifact, give the EXACT path, state plainly that discovery will not list it, and instruct a direct read; require it to quote the read error rather than infer absence from a listing.  ·  `[corpus]` · 2026-08-11
 <!-- Drain log 2026-07-19 (agy peer; 2 pending → recompiled GROWTH + driver cheatsheet):
   1) [assumption] (driver/deterministic) oversized-REASONING-reply truncates-to-HEAD (NOT a hang) — REFINEMENT
      of the already-promoted oversized-turn anti-pattern. Not tool-fixable (recovery = decompose / file-transport,
