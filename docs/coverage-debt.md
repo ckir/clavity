@@ -67,3 +67,72 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   so no content reaches an agent unaudited even if the topology did occur.
 - **Note:** the per-route subtraction asymmetry was ruled out of scope and documented as intended in
   `06a39af`. Re-raising this family is a wrong answer unless the reachability facts above change.
+
+### D. `.iss` references are unresolvable by design (Stage 2, D1)
+
+`$ShippedExtensions` in `scripts/check-injected-context.ps1` omits `iss`, so every `.iss` token is dropped
+before reference resolution. A genuinely broken `.iss` reference will not be reported.
+
+**Compensation:** installer content is packaging input, never injected context, so it is outside what this
+gate is for. The two dead references that existed were rewritten (`commonmemory/ROADMAP.md:20-21`, `:31`)
+so no deleted file is cited as a live backticked path.
+**Anchor (its disappearance voids this entry):** the ABSENCE of `'iss'` from `$script:ShippedExtensions` in `scripts/check-injected-context.ps1`. Adding that extension is what would close this gap, so the entry must void when it appears. **Deliberately NOT the explanatory comment above `$AssertPrefixes`** - a comment can be reworded or deleted with the gate's behaviour completely unchanged, so anchoring there would void the entry while the `.iss` blind spot it documents remained exactly as it was.
+
+### E. `ghidrust/crates/ghidrust-mcp/src/tools.rs` has zero automated coverage (Stage 2, D3)
+
+19 `pub const DESC_*` blocks totalling roughly 12 KB of description text, delivered to every agent by MCP `tools/list` (all 19 verified wired into `server.rs`, not dead constants). `ghidrust/crates`
+is not a domain root and is deliberately not being added: the encoding invariant exists for the Inno /
+CP437 route, and these descriptions travel UTF-8 JSON-RPC over stdio, so adding the file would red-gate
+correct content.
+
+**Compensation:** accuracy hand-verified 2026-08-11 - all 19 documented tool names exist in
+`ghidrust/crates/`, and all 5 tools the skill says will "dead-end" are genuinely absent.
+**Re-check trigger: a tool is added or renamed.**
+**Anchor (its disappearance voids this entry):** the ABSENCE of `ghidrust/crates` from `$script:DomainRoots` in `scripts/check-injected-context.ps1`. Adding that root is precisely what would close this gap, so the entry must void the moment it appears. Anchoring on the `DESC_*` block instead would anchor on something that exists as long as the file does and could therefore never void anything.
+
+### F. Repo-vs-install drift is undetected (Stage 2, D2)
+
+Nothing detects that a fix committed to the repo has not reached a user's installed tree. A CI check was
+rejected: CI cannot see a user-machine artifact, so it would be green-by-absence - a guard that fails open.
+
+**Compensation:** the backlog status enum now makes "fixed for the user" a distinct, required state
+(`open | fixed-in-repo | released | wont-fix`), decided by commit ancestry against the latest release tag
+rather than by guess. Escalation path if this recurs: an **install-time** diagnostic inside the installer,
+which reaches the user rather than CI.
+**Anchor:** the `status:` enum line in `agy-autotrain/docs/fix-the-tool-backlog/_template.md`.
+
+### G. commonmemory's agy-native recall rule is never verified to load (Stage 2, R5-O2)
+
+`commonmemory/rules/commonmemory.md` is audited as injected context, but `commonmemory/README.md:22`
+and `:77` annotate it "agy-native proactive-recall rule (Claude ignores it)", and `:57-58` leaves the
+loading mechanism unconfirmed - "if your agy auto-applies plugin `rules/` ... verify once". Neither
+manifest declares a `rules/` surface, and that "verify once" appears never to have happened. Whether
+commonmemory's core recall mechanism fires for agy at all is unknown.
+
+**Compensation:** the failure mode is inert, not wrong - a rule that never loads is a no-op, not an
+incorrect action. The gate auditing it anyway is fail-safe over-coverage.
+**Re-check trigger: the next time a live agy peer is reachable.** Closing this needs an empirical test
+against a live agy, which is out of scope for a doc-and-test batch.
+**Anchor:** the "verify once" sentence at `commonmemory/README.md:57-58`.
+
+### H. The backlog `status:` enum has no durable enforcement (Stage 2, D2)
+
+D2 replaces `open | fixed | wont-fix` with `open | fixed-in-repo | released | wont-fix`, and requires
+`released-in:` alongside `released`. **Nothing enforces either.** Measured 2026-08-11: several scripts read
+`agy-autotrain/docs/fix-the-tool-backlog/` (`drain-lib.ps1`, `abort-drain.ps1`, `check-user-facing-docs.ps1`,
+the injected-context gate) but **no test asserts a `status:` value is in the enum**, and none checks that a
+`released` item carries `released-in:`. A future item typed `fixed-in-repos`, or marked `released` with no
+version, passes every gate.
+
+This is the exact defect shape F1 addresses elsewhere in this batch: a stated rule with no mechanism drifts,
+and the drift is invisible because the file still looks well-formed.
+
+**Compensation:** the batch's own backfill is verified at execution time - Task 2 Step 8 asserts the exact
+population (`4x released, 3x fixed-in-repo, 1x wont-fix, 1x open`, no bare `fixed`), so the *current* state
+is known-good. What is missing is a guard against the *next* edit. The `_template.md` enum line carries the
+rule and the measurable ancestry test for deciding `released`, so an author following the template is
+steered correctly.
+**Re-check trigger: the next time an item is added or its status changed.** Closing it means a Pester row
+over that directory asserting the enum and the `released` -> `released-in:` pairing - deliberately not done
+here, because it needs a new registered suite and this batch's scope is the seventeen findings.
+**Anchor (its disappearance voids this entry):** the **ancestry-rule comment block** beneath the `status:` line in `agy-autotrain/docs/fix-the-tool-backlog/_template.md` - the paragraph beginning `fixed-in-repo` vs `released` is the distinction this enum exists to force. **Deliberately NOT the bare `status:` enum line**, which entry F already anchors on: two entries sharing one anchor means a single edit voids both, and these document different gaps (F is repo-vs-install drift, H is the absent enforcement). An anchor that cannot tell its own entry apart from another's cannot do the job the file's header assigns it.

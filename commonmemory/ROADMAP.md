@@ -17,8 +17,8 @@ T1 is **shipped**. No open items remain.
 
 **Status:** [x] SHIPPED - resolved umbrella-wide, not commonmemory-only.
 
-**The problem it fixed.** commonmemory used to register and deregister its plugin through
-`installer/_shared/plugin-registration.iss` - roughly 13.6 KB of Inno-Pascal that hand-transliterated
+**The problem it fixed.** commonmemory used to register and deregister its plugin through a former
+Inno-Pascal registrar under installer/_shared/ - roughly 13.6 KB of Pascal that hand-transliterated
 the CLI argument vectors from `clavity-dotnet/src/Clavity.Ls/Install/PluginInstaller.cs` (its own header
 called them "VERBATIM FROM THE ORACLE"). That is duplicated logic with no compiler and no test behind
 it: any change to the vectors, the idempotency strategy, or agent detection on the C# side silently
@@ -28,7 +28,7 @@ drifted the Pascal copy out of agreement.
 B: thin the Pascal to dumb `Exec` calls; C: keep the copy and add a drift guard). The delivered design
 goes further than any of them - the duplication was **removed**, not shrunk or policed:
 
-- **`installer/_shared/plugin-registration.iss` is deleted.** The Pascal implementation no longer exists.
+- **The Inno-Pascal registrar under `installer/_shared/` has been deleted.** The Pascal implementation no longer exists.
 - **`installer/_shared/register-plugin.ps1` is now the single registrar.** All registration logic -
   agent detection, the CLI vectors, idempotency, read-back verification, per-agent exit-code mapping -
   lives in one PowerShell script.

@@ -1270,4 +1270,44 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             $bad -join ', ' | Should -BeExactly '' -Because 'a build glob matching by NAME at any depth is a bypass; anchor it to the real path'
         }
     }
+
+    Context 'hook message extraction reaches every emitting hook' {
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            # Every .sh under a domain root. The gate's own $script:DomainRoots is the source of truth.
+            $script:HookFiles = @(
+                foreach ($root in $script:DomainRoots) {
+                    $dir = Join-Path $script:RepoRoot $root
+                    if (Test-Path $dir) { Get-ChildItem -Path $dir -Recurse -File -Filter '*.sh' }
+                }
+            )
+        }
+
+        It 'enumerates a plausible hook population' {
+            # Non-vacuity guard. If the walk breaks, the row below iterates an empty set and passes by
+            # comparing nothing to nothing - the exact false-clean shape this repo keeps paying for.
+            $script:HookFiles.Count | Should -BeGreaterThan 20 -Because 'an empty enumeration would make the assertion below vacuous'
+        }
+
+        It 'extracts at least one message from every corpus hook that actually emits one' {
+            $misses = @()
+            foreach ($f in $script:HookFiles) {
+                $text = [System.IO.File]::ReadAllText($f.FullName)
+                # THE DISCRIMINATOR: actual emission on a NON-COMMENT line. Keying on "the file mentions
+                # additionalContext" would RED two CORRECT hooks - agy-liveness-check.sh and
+                # agy-anomaly-reminder.sh each mention it exactly once, inside a comment explaining why they
+                # deliberately do NOT use it, and emit via stderr + `exit 2` instead (11 and 5 exit-2 sites).
+                # Hooks that emit only to stderr are OUT OF SCOPE BY CONSTRUCTION, not an oversight.
+                $emits = @($text -split "`n" | Where-Object {
+                    $_ -match '(systemMessage|additionalContext)' -and $_ -notmatch '^\s*#'
+                })
+                if ($emits.Count -eq 0) { continue }
+                if (@(Get-HookMessages -Text $text).Count -eq 0) {
+                    $misses += $f.FullName.Substring($script:RepoRoot.Length + 1).Replace('\', '/')
+                }
+            }
+            # Name them: a count sends a reader hunting, a name sends them to the file to fix.
+            $misses -join ', ' | Should -BeExactly '' -Because 'Get-HookMessages binds msg[A-Za-z0-9_]* only, so a hook building its payload in a differently-named variable is invisible to the budget and tag-hygiene invariants'
+        }
+    }
 }

@@ -45,3 +45,17 @@ either - they are a matched pair.
 There is no compile step, so the gates that apply are the repo-wide ones: run `just check-member-docs`
 and `just test-scripts` from the repo root, plus the two suites above if you touched the cheatsheet.
 Sign off your commits per the DCO requirement in the umbrella [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
+## Writing a hook that shows the agent a message
+
+Build the message in a variable named `msg`, or `msg<Suffix>` (`msgOverdue`, `msgStale`, ...). Nothing
+else works.
+
+`scripts/check-injected-context.ps1` extracts hook messages to enforce the payload-budget and tag-hygiene
+invariants, and `Get-HookMessages` binds `msg[A-Za-z0-9_]*` only. A message assembled in `body`,
+`payload`, or any other name is invisible to it - both invariants then pass by measuring nothing, which
+looks exactly like compliance. Widening the extractor is a deliberate non-goal (the shape space is
+open-ended), so the convention is the contract.
+
+A hook that reports only via stderr and a non-zero exit is out of scope and needs no `msg` variable -
+`agy-liveness-check.sh` and `agy-anomaly-reminder.sh` are the two examples in this repo.

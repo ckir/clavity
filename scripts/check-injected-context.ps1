@@ -424,6 +424,12 @@ function Test-IsPathCandidate {
     return $false
 }
 
+# 'installer/' is asserted for .ps1 ONLY. `.iss` is absent from $ShippedExtensions above, so
+# Test-IsPathCandidate drops every .iss token before Resolve-Reference ever sees it - deliberately:
+# installer content is PACKAGING INPUT, not injected context, and the extension test runs before any
+# prefix logic here. MEASURED 2026-08-11: installer/_shared/anything.iss -> candidate False, while
+# installer/_shared/register-plugin.ps1 (the only .ps1 under installer/) -> True. The cost is accepted
+# and logged in docs/coverage-debt.md: a genuinely broken .iss reference sails past this gate.
 $script:AssertPrefixes = @('docs/','scripts/','clavity-dotnet/','clavity-classic/','seed/','installer/','agy-autotrain/','ghidrust/','commonmemory/')
 # Bare filenames whose referent lives on the USER's machine, not in this repository.
 $script:RuntimeArtifacts = @('golden-header.md','golden-header.seed.md','golden-header.growth.md','settings.json')
@@ -624,6 +630,18 @@ function Read-SingleQuotedBody {
     }
 }
 
+# CONVENTION, and it is load-bearing: a hook's agent-visible message must be built in a variable named
+# `msg` or `msg<Suffix>`. All three variable-bearing shapes below bind `msg[A-Za-z0-9_]*` and nothing else,
+# so a payload assembled in a differently-named variable - `body=$(...)`, `payload="$a$b"` - yields ZERO
+# extracted messages, and the payload-budget and tag-hygiene invariants then silently measure nothing.
+# MEASURED 2026-08-11 with a control: a hook using msg='...' + `jq --arg m "$msg"` is caught; the same
+# message carried in `body` or `payload` produced 0 extracted messages and no tag-hygiene violation even
+# though the message duplicated a bracket tag.
+# Widening this to follow command substitution and concatenation is an explicit NON-GOAL: the shape space
+# is open-ended so it cannot be made complete, and it would be a behaviour change requiring a re-capstone.
+# The convention is enforced by test instead - see scripts/tests/check-injected-context.Tests.ps1,
+# 'extracts at least one message from every corpus hook that actually emits one' - and documented for
+# contributors in agy-autotrain/CONTRIBUTING.md.
 function Get-HookMessages {
     param([string]$Text)
     $out  = [System.Collections.Generic.List[string]]::new()
