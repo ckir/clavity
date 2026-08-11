@@ -172,6 +172,11 @@ Describe 'check-injected-context.ps1' {
                     Where-Object { $_.FullName -notmatch '[\\/](\.git|\.clavity)[\\/]' } |
                     ForEach-Object { $_.FullName.Substring($script:RepoRoot.Length + 1).Replace('\', '/') }
             )
+            # ONE definition, shared by the path-filter rows below AND the line-ending guard that
+            # protects them. A guard that copies the regex it protects can pass while the real
+            # regex stays broken - the fail-open shape this suite exists to catch - so both read
+            # this single variable.
+            $script:PathsKeyRx = "(?m)^\s+paths:[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?\r?$"
         }
 
         It 'finds a non-trivial number of skill files' {
@@ -338,7 +343,7 @@ Describe 'check-injected-context.ps1' {
             # capture group into the result, so with capturing groups the normal case passed (neither
             # optional group participates) while an anchored key shifted the block from [1] to [2] and
             # emptied the list - a fix whose own defect only appeared under the input it was written for.
-            $keyRx = "(?m)^\s+paths:[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?$"
+            $keyRx = $script:PathsKeyRx   # defined once in BeforeAll; see the line-ending guard below
             $section | Should -Match $keyRx -Because "the $Filter trigger must use 'paths:' - 'paths-ignore:' would invert it"
             # Collect ONLY the list items under that key, stopping at the first line that is not one. That
             # stop is what makes a SECOND `paths:` key elsewhere in the section harmless - measured: with an
@@ -352,6 +357,27 @@ Describe 'check-injected-context.ps1' {
             $paths.Count | Should -BeGreaterThan 5 -Because 'a failed parse would make the assertion below vacuous'
             $missing = @($script:DomainRoots | Where-Object { "$_/**" -notin $paths })
             $missing -join ', ' | Should -BeExactly '' -Because "a domain root absent from the $Filter filter means CI never runs the gate on changes to it"
+        }
+
+        It 'the paths: key regex still matches under <Ending> line endings' -ForEach @(
+            @{ Ending = 'LF';   Nl = "`n" }
+            @{ Ending = 'CRLF'; Nl = "`r`n" }
+        ) {
+            # REGRESSION GUARD for the two rows above - and it reads THEIR regex, not a copy. In .NET,
+            # `$` under (?m) matches before \n and NEVER before \r, so a key regex ending `[ \t]*$`
+            # silently fails on any CRLF working tree. A fresh clone of this repository produces exactly
+            # that - core.autocrlf is true and .gitattributes pins no rule for .yml - while the tree
+            # these tests were authored in happens to hold LF. MEASURED: both path-filter rows passed in
+            # the authoring tree and went RED in a clean worktree, and ci-scripts.yml runs this whole
+            # directory on windows-latest, so the first push would have been the first anyone noticed.
+            $yaml = @('on:', '  push:', '    paths:', "      - 'agy-autotrain/**'", '') -join $Nl
+            $yaml | Should -Match $script:PathsKeyRx -Because "the paths: key must be found under $Ending"
+            $items = @()
+            foreach ($line in ((($yaml -split $script:PathsKeyRx)[1]) -split "`r?`n")) {
+                if ($line -match "^\s+- '([^']+)'") { $items += $Matches[1] }
+                elseif ($line.Trim()) { break }
+            }
+            $items -join ',' | Should -BeExactly 'agy-autotrain/**' -Because "the list under the key must parse under $Ending"
         }
     }
 
