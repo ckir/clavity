@@ -2,12 +2,13 @@
 #
 # THE SCOPE IS scripts/tests/, AND THAT IS NARROWER THAN THIS FILE USED TO CLAIM. It said "every Pester
 # suite on disk", which is false: `$script:OnDisk` enumerates `$PSScriptRoot` and nothing else, so a
-# suite anywhere else in the repository is invisible here. That wording was not harmless - MEASURED
-# 2026-08-12, `clavity-dotnet/install/clavity-install.Tests.ps1` exists and is referenced by no justfile,
-# no workflow, and nothing else in the repository, so it runs in no gate at all. That is exactly the
-# exists-passes-never-runs defect this file was written to prevent, and the false claim is what made it
-# look already covered. It is captured for triage rather than fixed here: widening this guard
-# repo-wide is a scoping decision about other products' suites, not a fold.
+# suite anywhere else in the repository is invisible here. That wording was not harmless: ON 2026-08-12 a
+# review found a suite outside this directory that no justfile, workflow, or anything else referenced,
+# so it ran in no gate at all - the exists-passes-never-runs defect this file exists to prevent, and the
+# overstated claim is what made it look already covered. That finding is recorded where findings live,
+# not restated here as a standing fact about another product's file: a present-tense claim about someone
+# else's wiring goes stale the moment they fix it, and nobody fixing it has a reason to read this header.
+# Widening this guard repo-wide is a scoping decision about other products' suites, not a fold.
 #
 # WHY THIS EXISTS. Registration is an EXPLICIT LIST in the justfile, not a glob. `just test-scripts` does
 # glob scripts/tests and so reports an unregistered suite green - but neither gate anyone actually runs
@@ -33,7 +34,15 @@ Describe 'test suite registration' {
             param([string]$Recipe)
             $m = [regex]::Match($script:Justfile, "(?m)^$([regex]::Escape($Recipe)):\r?\n(?<body>(?:[ \t]+.*\r?\n?)+)")
             if (-not $m.Success) { return @() }
-            @([regex]::Matches($m.Groups['body'].Value, "scripts/tests/(?<n>[A-Za-z0-9._-]+\.Tests\.ps1)") |
+            # THE TRAILING LOOKAHEAD IS LOAD-BEARING. Without it the pattern is unanchored at its
+            # suffix, so a recipe entry pointing at a disabled or renamed path - `foo.Tests.ps1.bak`,
+            # `foo.Tests.ps1_disabled` - still CAPTURES `foo.Tests.ps1`. MEASURED: the registration row
+            # would then certify the real suite as gated while the recipe runs something else, which is
+            # the false certification this whole file exists to prevent. It also made the two parses
+            # disagree: the census regex bounds its match and rejects exactly what this one accepted.
+            # With the lookahead such an entry matches nothing, so the real suite reports UNREGISTERED -
+            # loud, and correct.
+            @([regex]::Matches($m.Groups['body'].Value, "scripts/tests/(?<n>[A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._-])") |
                 ForEach-Object { $_.Groups['n'].Value } | Sort-Object -Unique)
         }
 
@@ -80,7 +89,7 @@ Describe 'test suite registration' {
 
         $nested = @($all | Where-Object { $_.DirectoryName -ne $PSScriptRoot } |
             ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) })
-        $nested -join ', ' | Should -BeExactly '' -Because 'a suite in a subdirectory is invisible to $script:OnDisk, to Get-RecipeSuites, and to the table census - to allow one, all three must learn about paths first'
+        $nested -join ', ' | Should -BeExactly '' -Because 'a nested suite can never be MATCHED to a registration or a table row: Get-RecipeSuites forbids a directory separator and the runtimes table is a flat list of file names - to allow one, both must learn about paths first'
     }
 
     It 'registers every suite in scripts/tests in the fast or slow gate' {
