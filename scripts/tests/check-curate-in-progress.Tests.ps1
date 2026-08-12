@@ -163,6 +163,68 @@ Describe 'check-curate-in-progress.ps1' {
         $out | Should -Match 'WARNING' -Because 'the destructive branch must announce that it destroys the human own edits too'
     }
 
+    It 'offers a discard command covering ALL THREE pinned files, not only the staged one' {
+        # CAPSTONE R2-F1, and it is the fix to the R1 fold rather than to the original code - which is
+        # exactly why it needs its own row. R1 rescoped the discard command to the OFFENDING files, which
+        # reads as tidier and is a hole: a curate run writes all three pinned files together, so a human
+        # who staged one, ran the offered command and cleared the marker would leave the other two dirty
+        # with unreviewed content and no marker guarding them.
+        #
+        # Stage exactly ONE file, then assert the offered command names all three. Without this row the
+        # scoping silently reverts and every other row stays green - the command's SHAPE is what changed,
+        # not whether it blocks.
+        Set-Content -LiteralPath $script:Marker -Value '' -NoNewline
+        New-StagedFile -Root $script:Tmp -Paths 'clavity-classic/src/driver_cheatsheet.rs'
+        $out = & pwsh -NoProfile -File $script:Script -RepoRoot $script:Tmp -MarkerPath $script:Marker 2>&1 | Out-String
+        $discard = @($out -split "`n" | Where-Object { $_ -match 'git restore --staged --worktree' })
+        $discard.Count | Should -Be 1 -Because 'exactly one discard command should be offered'
+        foreach ($p in $script:Pinned) {
+            $discard[0] | Should -Match ([regex]::Escape($p)) -Because "the discard must cover $p even though only one file is staged"
+        }
+    }
+
+    It 'BLOCKS an outbound rename too - the pinned file renamed AWAY' {
+        # CAPSTONE R2-F3. With git's rename detection on, a rename is ONE entry reporting only the
+        # DESTINATION, so `git mv <pinned> other.rs` showed the guard `other.rs` alone and the pinned
+        # source vanished - it passed, and the unreviewed content shipped under a new name. MEASURED, and
+        # measured in the other direction too: `--no-renames` makes git report the pair as delete + add,
+        # so whichever half is pinned is visible. This row covers the outbound half; the row above covers
+        # the inbound half. Two holes, one flag - if someone removes --no-renames, both rows go red.
+        Set-Content -LiteralPath $script:Marker -Value '' -NoNewline
+        New-StagedFile -Root $script:Tmp -Paths 'clavity-classic/src/driver_cheatsheet.rs'
+        git -C $script:Tmp -c user.email=t@t -c user.name=t commit -qm base 2>&1 | Out-Null
+        git -C $script:Tmp mv 'clavity-classic/src/driver_cheatsheet.rs' 'clavity-classic/src/renamed-away.rs' 2>&1 | Out-Null
+
+        # The fixture must really have produced a rename, or this row proves nothing about the flag.
+        (@(git -C $script:Tmp diff --cached --name-status) -join ' ') | Should -Match '^R' -Because 'this row is meaningless unless git actually recorded a rename'
+
+        & pwsh -NoProfile -File $script:Script -RepoRoot $script:Tmp -MarkerPath $script:Marker | Out-Null
+        $LASTEXITCODE | Should -Be 1 -Because 'renaming the file away still ships its unreviewed content'
+    }
+
+    It 'resolves its OWN defaults - the parameters production never passes' {
+        # CAPSTONE R2-F4. Every other row overrides BOTH -RepoRoot and -MarkerPath, so the two default
+        # assignments were dead code in the suite while being the ONLY path lefthook uses. A mutant like
+        # `$MarkerPath = "vacuous-bypass"` escaped every row.
+        #
+        # This row runs the script the way the hook does - no arguments at all - against the REAL
+        # repository, with the REAL marker briefly present. It asserts the OUTSTANDING message, which the
+        # script only prints when it resolved the default marker path and found the file. Under the mutant
+        # it would resolve elsewhere, find nothing, and print "no agy-curate run outstanding" instead.
+        #
+        # It deliberately stages NOTHING, so it never touches the real index and cannot block anything.
+        $realMarker = Join-Path $script:RepoRoot '.clavity/curate-in-progress'
+        (Test-Path -LiteralPath $realMarker) | Should -BeFalse -Because 'this row must not run while a real curate run is outstanding, and must not clobber its marker'
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $realMarker) | Out-Null
+        try {
+            Set-Content -LiteralPath $realMarker -Value '' -NoNewline
+            $out = & pwsh -NoProfile -File $script:Script 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 0 -Because 'nothing is staged, so an outstanding run must not block'
+            $out | Should -Match 'a run is outstanding' -Because 'the default MarkerPath must resolve to the real marker; a wrong default would report none outstanding'
+        }
+        finally { Remove-Item -LiteralPath $realMarker -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'guards three paths that ACTUALLY EXIST in this repository' {
         # NON-VACUITY, and the only row that looks at the real tree. Every row above creates its own
         # fixture files, so all of them would still pass if the guard's pinned list were three typos.

@@ -87,7 +87,14 @@ try {
     # safe only because all three pinned files are tracked - the guard would be relying on an incidental
     # fact about the repository rather than on its own logic. Taking every staged status costs nothing:
     # a staged deletion of a pinned file also blocks, which is not wrong.
-    $StagedFiles = @(git -C $RepoRoot diff --cached --name-only 2>&1)
+    # --no-renames closes the whole rename CLASS rather than either instance of it. With rename detection
+    # on, git collapses a rename into one entry and reports only the DESTINATION path, so MEASURED:
+    # renaming a pinned file AWAY (`git mv <pinned> foo.rs`) reports only `foo.rs` and the pinned source
+    # is invisible - the guard passes and the content ships under a new name. --no-renames makes git
+    # report the pair as a delete plus an add, so BOTH paths appear and whichever one is pinned is seen.
+    # Verified in both directions: outbound now lists the pinned source, inbound still lists the pinned
+    # destination. Two separate holes, one flag - do not replace this with a patch for either direction.
+    $StagedFiles = @(git -C $RepoRoot diff --cached --name-only --no-renames 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "git could not list staged files in '$RepoRoot' (exit $LASTEXITCODE): $($StagedFiles -join '; ')"
     }
@@ -108,6 +115,21 @@ try {
         exit 0
     }
 
+    # THE DISCARD COMMAND HAS BEEN WRONG TWICE, IN TWO DIFFERENT WAYS. Both forms are recorded here
+    # because the failure mode is recurrence across edits, not carelessness within one - and the second
+    # form was written to fix the first.
+    #   1. `git checkout -- <all three>` - WRONG COMMAND. This message only ever prints while the content
+    #      is STAGED, and in that state `git checkout --` restores the worktree FROM THE INDEX: the
+    #      unreviewed content survives in both, while the human's unstaged edits are destroyed. It failed
+    #      at its stated purpose and destroyed work, and the human would then clear the marker believing
+    #      they were clean.
+    #   2. `git restore --staged --worktree -- <offending only>` - RIGHT COMMAND, WRONG SCOPE. Written to
+    #      fix (1), and it introduced a new hole: a curate run writes all three pinned files, so a human
+    #      who staged only one would restore only that one, clear the marker, and leave the other two
+    #      dirty and unguarded.
+    # CURRENT: the right command over ALL THREE. Scope and command are independent; getting one right is
+    # not getting the other right.
+    #
     # Name the files. A count sends a reader hunting; a name sends them to the file.
     Write-Host ""
     Write-Host "check-curate-in-progress: BLOCKED" -ForegroundColor Red
@@ -123,16 +145,21 @@ try {
     Write-Host ""
     Write-Host "  Then choose one - the marker clears itself on the first path, by hand on the others:"
     Write-Host ""
-    Write-Host "    KEEP the work   re-run the agy-curate skill and let it finish normally. Nothing is"
-    Write-Host "                    lost by re-running: an abnormal ending leaves the inbox's pending"
-    Write-Host "                    entries intact by design, so they are re-distilled, not discarded."
-    Write-Host "                    THIS IS THE ONLY OPTION HERE THAT DESTROYS NOTHING."
+    Write-Host "    KEEP the work   re-run the agy-curate skill and let it finish normally. The curate"
+    Write-Host "                    work itself is not lost by re-running: an abnormal ending leaves the"
+    Write-Host "                    inbox's pending entries intact by design, so they are re-distilled."
+    Write-Host "                    NOTE - a re-run REWRITES these files from the inbox. If you had hand"
+    Write-Host "                    edits of your own sitting in them, save those elsewhere first."
     Write-Host ""
-    Write-Host "    DISCARD it      git restore --staged --worktree -- $($offending -join ' ')"
+    Write-Host "    DISCARD it      git restore --staged --worktree -- $($script:PinnedFiles -join ' ')"
     Write-Host "                    then:  Remove-Item '$MarkerPath'"
+    Write-Host "                    ALL THREE files, deliberately - not only the one that is staged. A"
+    Write-Host "                    curate run writes all three together, so restoring just the staged"
+    Write-Host "                    one and clearing the marker would leave the other two dirty with"
+    Write-Host "                    unreviewed content and nothing left to guard them."
     Write-Host "                    WARNING - this throws away EVERY change to those files, staged and"
     Write-Host "                    unstaged alike, including any edit of your own that happens to sit in"
-    Write-Host "                    the same file. There is no undo. Read the diff above first."
+    Write-Host "                    them. There is no undo. Read the diff above first."
     Write-Host ""
     Write-Host "    KEEP IT ANYWAY  you have read the diff above and vouch for the content yourself:"
     Write-Host "                    Remove-Item '$MarkerPath'"
