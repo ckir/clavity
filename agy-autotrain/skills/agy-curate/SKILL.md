@@ -244,8 +244,12 @@ gets its own code, so a caller can tell them apart without parsing any text:
 Exit 0 here would be actively misleading: it is indistinguishable from a successful publish to anything
 reading only the status code, so a pipeline that expected GROWTH to land reports SUCCESS while nothing
 was written. That is the silent-success blindspot this branch exists in the first place to avoid.
-Exit 2 composes correctly with the ordering below, which resets `## Pending` only on `curate-commit`
-exit 0 - 2 is not 0, so the inbox survives by the rule already written, with no special case.
+
+**Exit 2 ENDS the run here. Do not continue to the Finish step below.** The inbox is left intact
+because nothing ever reaches the code that would reset it - not because the reset rule evaluated `2` and
+declined. Those are different mechanisms and only the first one is true on this path: the Finish step
+resets `## Pending` on `curate-commit` exit 0, and on this path `curate-commit` is never invoked at all.
+Read this branch as terminal.
 
 > This is the SKILL's exit contract and is unrelated to the `exit 2` convention used by the repository's
 > **hooks** (see `clavity-classic/plugin/hooks/agy-liveness-check.sh`), where 2 means "advisory on stderr"

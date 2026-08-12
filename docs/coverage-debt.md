@@ -28,6 +28,26 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   those five paths, against a fixture that actually plants them.
 - **Deferred by the owner:** 2026-08-10, AGY-TEST-AUDIT on `c17bcbe..06a39af`. Verified by reading the row.
 
+### 2. The `curate-commit` invocation snippet dereferences a driver that may not exist
+
+- **Where:** `agy-autotrain/skills/agy-curate/SKILL.md`, the publish snippet - `$exe = (Get-Command clavity-ls -EA SilentlyContinue) ?? (Get-Command clavity -EA SilentlyContinue)` followed two lines later by `$psi.FileName = $exe.Source`.
+- **The gap:** nothing between those two lines checks `$exe` for `$null`. Both lookups use
+  `-EA SilentlyContinue`, so on a machine with no clavity driver on PATH both return nothing and the
+  dereference throws.
+- **Why it matters, and why it is not merely cosmetic:** the same file states the intended behaviour for
+  exactly that case - *"If no clavity binary is on PATH, still compile and write `golden-header.growth.md`
+  ... Do NOT hard-fail; the capture still has value."* The snippet an agent copies contradicts the
+  instruction twelve lines below it, so following the guide produces the one outcome the guide forbids.
+- **The regression that would slip through:** a user without the driver installed runs the curate flow,
+  the snippet throws, and the run ends in the error state (1) rather than the not-published state (2) -
+  mapping a deliberate, benign condition onto a fault.
+- **The fix that should exist:** guard the dereference and branch to the documented no-driver path.
+- **Deferred by the owner:** 2026-08-12, AGY-CAPSTONE round 2 on `90cb0b5..00e3291`. **Verified
+  PRE-EXISTING:** `git diff 90cb0b5..00e3291 -- <that file>` shows the snippet as an unchanged line, so
+  it predates the reviewed range. Raised by the peer, which then withdrew it from the capstone's scope on
+  that evidence while maintaining the defect is real. Recorded here rather than fixed inside a batch
+  scoped to other work.
+
 ---
 
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
@@ -135,4 +155,6 @@ steered correctly.
 **Re-check trigger: the next time an item is added or its status changed.** Closing it means a Pester row
 over that directory asserting the enum and the `released` -> `released-in:` pairing - deliberately not done
 here, because it needs a new registered suite and this batch's scope is the seventeen findings.
-**Anchor (its disappearance voids this entry):** the **ancestry-rule comment block** beneath the `status:` line in `agy-autotrain/docs/fix-the-tool-backlog/_template.md` - the paragraph beginning `fixed-in-repo` vs `released` is the distinction this enum exists to force. **Deliberately NOT the bare `status:` enum line**, which entry F already anchors on: two entries sharing one anchor means a single edit voids both, and these document different gaps (F is repo-vs-install drift, H is the absent enforcement). An anchor that cannot tell its own entry apart from another's cannot do the job the file's header assigns it.
+**Anchor (its disappearance voids this entry):** the **ABSENCE of the enum tokens `fixed-in-repo` and `wont-fix` from every registered Pester suite** under `scripts/tests/`. Measured at the time of writing: no suite mentions either token, so nothing asserts the enum. Adding a row that does is precisely what closes this gap, so the entry must void the moment those tokens appear in a suite.
+
+> **Why not the `_template.md` comment block, which this entry originally named.** Entry D above states the rule directly - *"a comment can be reworded or deleted with the gate's behaviour completely unchanged, so anchoring there would void the entry while the blind spot it documents remained exactly as it was"* - and this entry then anchored on a comment block anyway. Moving that paragraph into a contributing guide, an ordinary tidy-up, would have voided the entry while the absent enforcement stayed exactly as absent. It also resolves the original concern that drove that choice: it does not collide with entry F's anchor (the `status:` enum line), because absence-of-a-test and presence-of-an-enum-line are different facts that no single edit changes together.

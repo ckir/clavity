@@ -43,13 +43,25 @@ Describe "check-cheatsheet-budget.ps1" {
         # meaning a future commit that raises the default AND grows the cheatsheet passes both. Pinning
         # the number here makes raising the budget a deliberate, visible test edit rather than a silent
         # side effect of the change that needed the extra room.
-        # (?m)^\s* ANCHORS the match to the start of a line, so it can only be satisfied by the real
-        # declaration - never by the same text sitting inside a comment. Unanchored, `-Match` searches
-        # the whole file as one string, so raising the default to 8192 while leaving `# [int]$MaxBytes
-        # = 4096` anywhere in the file would keep this row green: the assertion would be pinning a
-        # comment rather than the code it exists to pin.
-        $src = Get-Content -Raw -LiteralPath $script:Script
-        $src | Should -Match '(?m)^\s*\[int\]\$MaxBytes\s*=\s*4096' -Because 'raising the budget must be a conscious edit to this test, not an invisible default shift'
+        #
+        # PIN THE BEHAVIOUR, NOT THE SOURCE TEXT. Two earlier forms of this row matched the declaration
+        # as a string and both were defeated: an unanchored match was satisfied by the number sitting in
+        # any comment, and an `(?m)^\s*` anchored match was satisfied by the declaration wrapped in a
+        # PowerShell block comment (`<# ... #>`) with a different live default underneath. MEASURED: a
+        # 6000-byte file passed that mutant while this row stayed green, so the gate certified a budget
+        # it was not enforcing. A regex cannot close this - it is not a lexer and cannot pair `<#`/`#>`.
+        # Invoking the script at the boundary sidesteps the whole class: it reads the default that is
+        # actually in force, and is indifferent to comment style, to the parameter's type annotation,
+        # and to whether the default is a literal or an expression.
+        $under = Join-Path $script:Tmp 'boundary-4096.md'
+        $over  = Join-Path $script:Tmp 'boundary-4097.md'
+        [System.IO.File]::WriteAllBytes($under, [byte[]]::new(4096))
+        [System.IO.File]::WriteAllBytes($over,  [byte[]]::new(4097))
+
+        & pwsh -File $script:Script -Path $under | Out-Null
+        $LASTEXITCODE | Should -Be 0 -Because 'exactly 4096 bytes is within the committed default budget'
+        & pwsh -File $script:Script -Path $over  | Out-Null
+        $LASTEXITCODE | Should -Be 1 -Because 'one byte over the committed default must fail; if this passes, the default is no longer 4096'
     }
 
     It "the REAL canonical cheatsheet is within the committed default budget" {
