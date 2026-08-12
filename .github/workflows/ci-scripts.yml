@@ -17,6 +17,11 @@ name: ci-scripts
 # NOTE: every `run:` block below is deliberately pure ASCII. Actions writes a run block to a BOM-less
 # temp .ps1, so non-ASCII in a `shell: powershell` block would hit the very bug the ASCII gate exists
 # to prevent.
+#
+# `lefthook.yml` IS IN THE PATHS FILTER, and it is not decoration. The scripts suite now asserts the
+# pre-commit wiring lives there, so an edit that disarms the guard - commenting out the block, dropping
+# a glob - is exactly the change that must run this workflow. Without it that edit touches no filtered
+# path, no job runs, and the broken config merges with a green check because nothing ever ran.
 on:
   push:
     branches: [main]
@@ -24,12 +29,14 @@ on:
       - 'scripts/**'
       - 'installer/_shared/**'
       - 'justfile'
+      - 'lefthook.yml'
       - '.github/workflows/ci-scripts.yml'
   pull_request:
     paths:
       - 'scripts/**'
       - 'installer/_shared/**'
       - 'justfile'
+      - 'lefthook.yml'
       - '.github/workflows/ci-scripts.yml'
 
 concurrency:
@@ -92,6 +99,26 @@ jobs:
           $env:PATH = "C:\ProgramData\chocolatey\bin;$env:PATH"
           rg --version
           if ($LASTEXITCODE -ne 0) { throw "ripgrep install failed: rg is not on PATH" }
+
+      - name: Install lefthook
+        shell: pwsh
+        # check-curate-in-progress.Tests.ps1 proves the pre-commit WIRING behaviourally - it runs the real
+        # lefthook binary against the real lefthook.yml, because a config parse cannot show the hook
+        # actually fires. That row THROWS rather than skipping when lefthook is absent: a wiring proof
+        # that skips itself certifies exactly what it stopped checking. So CI must supply the binary.
+        # The npm package is the route this repo already uses on the dev box - note the SCOPE, there is
+        # no bare `lefthook` package. Same assert-by-name discipline as the ripgrep step above: a silent
+        # install failure must fail HERE, not resurface as an unrelated-looking assertion failure.
+        run: |
+          npm install -g @evilmartians/lefthook
+          # Prepend npm's global prefix to GITHUB_PATH so the LATER Pester step sees the binary, exactly
+          # as the ripgrep step does for choco. On Windows npm places global shims directly in the
+          # prefix directory, not in a bin/ subdirectory.
+          $prefix = (npm prefix -g).Trim()
+          $prefix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "$prefix;$env:PATH"
+          lefthook version
+          if ($LASTEXITCODE -ne 0) { throw "lefthook install failed: lefthook is not on PATH" }
 
       - name: Install Pester v5
         shell: pwsh

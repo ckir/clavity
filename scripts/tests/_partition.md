@@ -18,11 +18,18 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **29 suites, 572 tests** (2026-08-12, measured by
-  running the recipe; `check-curate-in-progress.Tests.ps1` joined it at 11 tests, on top of the single row
-  `plugin-hooks-registration.Tests.ps1` gained the same day). **No duration for that run: it was
-  backgrounded without a timer, and this file's own rule is to record what was measured rather than an
-  estimate — so it contributes a count and no time.** The line previously read `28 suites, 554 tests`, with
+- `just test-scripts-fast` — the agent inner-loop gate. **29 suites, 581 tests, 680,47s** (2026-08-12,
+  measured by running the recipe and reading its `Tests Passed:` line). **That duration is CONTENDED and
+  must not be quoted as a clean figure:** the driver was editing files and running greps throughout, and
+  this box has measured 2,23x contention. The count is firm; the time is an upper bound.
+  `check-curate-in-progress.Tests.ps1` reached **20 rows** here — it joined at 11, took 5 more across the
+  capstone folds, and gained 4 in the test-audit closure (a behavioural lefthook-wiring row, a glob
+  set-equality row, a conditional-key row, and a marker-coupling row). **The behavioural row runs the real
+  `lefthook` binary and is the single most expensive row in this half at ~13s**, nearly all of it lefthook
+  plus pwsh cold start; it THROWS rather than skipping when lefthook is absent, so this half now has a
+  hard dependency on `lefthook` being on PATH (CI installs it — see `.github/workflows/ci-scripts.yml`).
+  Earlier lines read `29 suites, 572 tests` (no duration — that run was backgrounded without a timer) and
+  before it `28 suites, 554 tests`, with
   two samples on 2026-08-11 reading 410,05s and 913,08s. The previous line here read
   `25 suites, 328 tests, 429,46s solo` (2026-08-06;
   that 429,46s was taken at 327 tests — see the count-correction entry below). **The counts are firm; the
