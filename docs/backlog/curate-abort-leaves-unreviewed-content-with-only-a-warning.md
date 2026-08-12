@@ -7,11 +7,18 @@
 
 ## The defect
 
-When `agy-curate` aborts at the human approval gate — no interactive channel, or the human does not
-approve — it leaves `knowledge/driver-cheatsheet.core.md` and its two compiled-in pins
-(`driver_cheatsheet.rs` `BASELINE_FLOOR`, `DriverCheatsheet.cs` `BaselineFloor`) modified in the working
-tree. Those edits carry content distilled from what the skill itself calls untrusted machine-local
-captures.
+When `agy-curate` **ends in any way other than completing normally** it can leave
+`knowledge/driver-cheatsheet.core.md` and its two compiled-in pins (`driver_cheatsheet.rs`
+`BASELINE_FLOOR`, `DriverCheatsheet.cs` `BaselineFloor`) modified in the working tree. Those edits carry
+content distilled from what the skill itself calls untrusted machine-local captures.
+
+⚠ **SCOPE — corrected 2026-08-12, and it changes what must be built.** This stub originally said "aborts
+at the human approval gate". That is narrower than the rule the skill now states. Across capstone rounds
+8-13 that rule was reformulated six times and settled on **any ending that is not a normal completion**,
+which covers the two gate aborts (exits 2 and 3) *and* an error exit (1) at any point — including one
+struck **inside** the Finish step, after some work has already landed. **A guard built only for gate
+aborts would miss the error paths**, so the marker below must be written on every abnormal ending, not
+just when the gate is refused.
 
 The only protection is a STDERR message instructing that the files must neither be committed nor built.
 **Nothing enforces it.** An agent can satisfy the instruction exactly; a human running through a wrapper,
@@ -50,10 +57,15 @@ commit in this repository, so a mechanical guard costs no new conceptual machine
 
 ## What to build
 
-A `lefthook.yml` pre-commit check that fails the commit when an abort marker is present AND any of the
-three pinned files is staged. The marker is written by the abort path and cleared by an explicit act.
-`.clavity/` is the right home for the marker: the threat is the same developer on the same box committing
-after their own aborted run, and CI never runs `agy-curate`.
+A `lefthook.yml` pre-commit check that fails the commit when the marker is present AND any of the
+three pinned files is staged. **The marker is written on every ending that is not a normal completion**
+(see the SCOPE note above — gate aborts *and* error exits, not gate aborts alone) and cleared by an
+explicit act. `.clavity/` is the right home for it: the threat is the same developer on the same box
+committing after their own failed run, and CI never runs `agy-curate`.
+
+**Do not re-derive the trigger condition from the exit codes.** The skill enumerates five formulations
+that were each tried and were each wrong, with the case each one gets wrong; the guard must use the same
+predicate the skill settled on, not a code list.
 
 **Deliberately NOT implemented inside a capstone fold.** This branch is mid-AGY-CAPSTONE and is being
 driven to GREEN; adding new executable machinery to the range under review injects unreviewed code into
