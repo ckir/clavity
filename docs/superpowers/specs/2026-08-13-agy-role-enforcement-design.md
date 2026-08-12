@@ -5,6 +5,13 @@
 doesn't know what we are looking for."* This covers **every AGY-\* consult** - AGY-FIRST, AGY-AFTER,
 AGY-CAPSTONE, AGY-TEST-AUDIT - not capstone rounds alone.
 
+> 🔴 **WHAT THIS BUILD ACTUALLY COVERS IS NARROWER THAN THAT RULING, AND THE GAP IS UNRESOLVED.** The
+> design gates the `agy_ask` MCP tool. It does **not** gate `clavity ask --review-only`, which is the
+> transport three of the four disciplines name for subagents and the only transport clavity-classic
+> has. See **residual 4** - it carries the measurement and three options, and needs an owner decision
+> before this ships. Stated here because a reader who takes the ruling above at face value would
+> believe the coverage is total.
+
 ## Why - the principle, which is not what I first thought it was
 
 Named seats were treated here as a review-thoroughness device: rotate a lens, cover a new defect-class,
@@ -133,13 +140,27 @@ Three constraints, each from a round-2 finding:
   it is **refuted by this project's own documented behaviour** - the `open-issues` skill records that a
   single short append is atomic on POSIX, so concurrent writers interleave lines rather than scrambling
   them. That is why the append must stay one short line and never a read-modify-write.
-- **Bounded.** The log is truncated to its last 500 lines when it exceeds that. A headless agent
-  retrying against a blocked gate would otherwise spam it faster than a human can read it.
+- **Bounded by ROTATION, not truncation - round 3 caught these two bullets contradicting each other
+  three lines apart.** The round-2 fold said "truncated to its last 500 lines", and truncation
+  (`tail -n 500 f > tmp && mv tmp f`) **is** a read-modify-write - precisely what the bullet above
+  forbids, and it drops any append that lands mid-shuffle. The atomicity argument that refuted the
+  corruption claim was undone by the bound folded next to it. **Resolution: when the log exceeds 500
+  lines, `mv` it to `.clavity/role-check.log.1` and let the next append create a fresh file.** A rename
+  is atomic, at most two files ever exist, and **no line is ever lost** - a racing appender writes into
+  the rotated inode, which is a line in `.log.1` rather than a line destroyed.
 - **A degraded-mode sentinel, not a log line.** If `jq` is absent the hook cannot tell `agy_ask` from a
   routine `ls`, so it cannot log per-invocation without writing on every shell command - which is the
   Cascade Analyst finding that the round-1 blind spot returns exactly when infrastructure fails.
   Instead it touches `.clavity/role-check.degraded` **once**, and SessionStart surfaces that file's
   existence. Telemetry without spam.
+- **The readers are part of the build, or none of this is observability.** Round 3: the round-2 fold was
+  booked complete while its read half had no build row at all - a sentinel with a writer and no reader,
+  and a log nothing surfaces. `.clavity/` is gitignored, so neither file is visible to review or to CI;
+  three separate mechanisms (skip-token usage, block frequency, degraded mode) all terminated in
+  artifacts nobody reads. **Both readers are now build rows in section 13.** The sentinel is surfaced by
+  extending an existing SessionStart hook rather than adding a fourth; the log is surfaced only as a
+  count of skip-token uses since the last session, which is the number that matters and the one that
+  keeps the escape hatch honest.
 
 ## 7. The block message must not read as a channel failure
 
@@ -160,6 +181,11 @@ what that seat hunts. The message must say so, for the same reason the test-audi
 itself: a guard that overstates its reach manufactures the blind spot it claims to cover.
 
 ## 9. AGY-FIRST must ask the peer for ITS OWN solution, before showing it a menu
+
+> **STATUS: DEFERRED - discipline only, NOT in this build.** Section 10's table always said so; this
+> section did not, and stated a bare "Requirement" that reads as in scope. Round 3 measured it: lines
+> 162-196 contained no deferral marker at all while section 15 claimed *"9 and 10 deferred - stated at
+> each"*. An implementer reading in order would have built it.
 
 **Owner observation, 2026-08-13: an AGY-FIRST consult was not asking the peer to propose its own
 solution.** It was handed a numbered menu and asked to pick.
@@ -190,9 +216,23 @@ Step 3 is not optional politeness: the driver's options may contain constraints 
 infer, and a proposal that ignores them still has to be reconciled. But it comes second, so what
 arrives at step 2 is the peer's design rather than a selection from the driver's.
 
-**This is checkable by the same mechanism as the roles.** The seam template for a design fork carries
-an `OPEN-PROPOSAL:` block, and the hook treats a fork seam that names options without one the same way
-it treats a missing role marker.
+**This is NOT checkable by the mechanism the roles use, and the round-3 panel killed the claim that it
+was.** The withdrawn sentence said a seam template carries an `OPEN-PROPOSAL:` block and the hook treats
+"a fork seam that names options" without one like a missing role marker. Two independent defects:
+
+1. **It invoked a template that section 2 had already deleted.** The template was removed there and the
+   removal was never swept forward - the incomplete-fold failure this project has recorded as its
+   dominant defect class, reproduced inside the document that records it.
+2. **Deciding a seam "names options" requires parsing prose - the exact mechanism section 1 killed**
+   (`:64` - *"no prose to parse beyond one narrow, stable path shape"*). Applied unconditionally instead,
+   it would demand an `OPEN-PROPOSAL:` block on every capstone and audit seam, where the concept is
+   meaningless.
+
+**So `OPEN-PROPOSAL` has no enforcement design, and that is the honest status.** The requirement in this
+section stands as a discipline; the mechanism is an open problem for its own cycle, alongside the
+`NEGOTIATED` predicate in section 10a. Both share one unsolved question: how a hook distinguishes the
+KIND of consult without reading prose. A plausible direction, unevaluated here: have the seam declare its
+own kind in a marker the way `PANEL-SEATS:` does, so the classification is asserted rather than inferred.
 
 ## 10. The discipline: agent disagreements are settled by negotiation BEFORE the owner sees them
 
@@ -247,9 +287,18 @@ the fix the peer wrote alone, and this session produced repeated evidence of bot
 with the role check would put a fail-closed gate on `AskUserQuestion` - the tool used to ask the human
 for help. That is the one path that must stay open when everything else is broken.
 
-**Measured, and this is why the gap existed at all:** no hook matcher covers `AskUserQuestion`.
-Enumerating `hooks.json` gives eight - `Skill`, `Agent|Task`, `Bash|PowerShell|mcp__.*agy_ask`,
-`Write|Edit`, `Bash|Write|Edit`, `manual|auto`, `startup`, `startup|resume|clear|compact`. The boundary
+**Measured, and this is why the gap existed at all:** no tool matcher covers `AskUserQuestion`.
+
+**The first version of this measurement was wrong, and round 3 corrected it** - a completeness argument
+resting on a miscount. It claimed "eight" entries and listed eight distinct matcher STRINGS. Re-measured
+against `clavity-dotnet/plugin/hooks/hooks.json`: **nine entries**, because
+`Bash|PowerShell|mcp__.*agy_ask` appears twice (`:17` PreToolUse and `:38` PostToolUse), and the
+`UserPromptSubmit` entry at `:68-73` **has no `matcher` key at all** and was missing from the list
+entirely. The conclusion survives - a matcher-less `UserPromptSubmit` entry fires on a prompt, not on a
+tool, so `AskUserQuestion` is still unguarded - but the shape that was omitted is exactly the shape that
+would falsify a completeness claim, which is why the correction is recorded rather than quietly applied.
+
+The boundary
 where a disagreement actually reaches the human is unguarded, while the obligation to negotiate is
 written six times in `skills/agy-first/SKILL.md` and once in the driver's memory. **A documented rule
 with no mechanism - the exact failure this document exists to close, appearing a third time.**
@@ -303,7 +352,17 @@ the driver's pushback.
   detour**: the agent now needs a third attempt, straining the second-attempt criterion rather than
   meeting it.
 
-Both are worth building. Neither is a seal, and the spec says so rather than implying otherwise.
+- **THE THIRD STATE - extraction succeeds but returns the wrong thing - was asked about during the
+  negotiation and never answered. Round 3 answered it.** Move the `END` delimiter a hundred lines down
+  and the extraction is a large block of unrelated markdown. The test row passes, because it asserts
+  non-empty. The fallback does not fire, because it triggers on empty. The agent is handed a wall of
+  garbage inline, with zero signal that anything went wrong. **Empty is the only failure either
+  mitigation can see.** Fix: bound the extraction - if it exceeds a sane line count, treat it exactly as
+  an empty extraction (fallback + a log line), and give the test a row that reds when the block grows
+  past the bound. A wrong-but-plausible extraction is the one case worth spending an assertion on,
+  because it is the only one that fails silently.
+
+All three are worth building. None is a seal, and the spec says so rather than implying otherwise.
 
 ## 12. The block message - a repair kit, per the owner's ruling
 
@@ -312,8 +371,16 @@ successful **retry**, not a refusal. The message therefore carries, in order:
 
 1. One line naming what is missing and stating **this is a local role check - the peer was never
    contacted** (section 7).
-2. The palette, extracted between the delimiters.
-3. The in-band skip token `ROLE-CHECK: SKIP <reason>` (section 5).
+2. The palette, extracted between the delimiters - **or, when extraction is empty OR over-long, the
+   fallback text naming where the palette lives.** Round 3: this branch existed only in section 11's
+   prose and was absent from the ordered list that specifies the message, so a literal build emitted an
+   empty item 2 on a broken delimiter - the exact trap section 11 claims to mitigate.
+3. The in-band skip token `ROLE-CHECK: SKIP <reason>` (section 5), **last, and named as an escape rather
+   than an option.** Round 3, Boundary Smuggler: the block's cheapest exit is a 25-character skip line,
+   against the work of pruning an eleven-seat palette, and the block message is required to spell that
+   line out verbatim. The hatch stays - section 5's argument for it is sound and a trapped agent needs
+   it - but its only counterweight was a log nobody read. That counterweight is now built (section 6),
+   and ordering the token last keeps the palette, not the bypass, as the first thing read.
 
 ## 13. Build surface - measured, and larger than "a hook"
 
@@ -323,9 +390,21 @@ successful **retry**, not a refusal. The message therefore carries, in order:
 | `clavity-classic/plugin/hooks/<name>.sh` | **byte-identical**; the two products ship the same hook set and parity is tested |
 | both `hooks.json` files | a **NEW entry** matching `mcp__.*agy_ask` ALONE - not an extension of the existing `Bash\|PowerShell\|mcp__.*agy_ask` entry, which would put the check on every shell command. This retires section 4's concern by construction. |
 | `adversarial-panel-review/SKILL.md` (both copies) | the two delimiter lines |
+| an existing SessionStart hook, both products | **round 3** - surfaces `.clavity/role-check.degraded` and the skip-token count. Section 6's telemetry was written with no reader; extending an existing hook avoids a fourth SessionStart script |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
 | `justfile` | suite registration is an explicit list, not a glob |
 | `scripts/tests/_partition.md` | a measured row - **the census gate added this session now enforces this**, so omitting it reds the suite |
+
+**On locating the palette file: use `"$(dirname "$0")/../skills/..."`, NOT `${CLAUDE_PLUGIN_ROOT}`.**
+Round 3, and the measurement overturned this document's own stated residual. Residual 2 claimed
+`${CLAUDE_PLUGIN_ROOT}` is safe "as the existing consult hook already assumes them" - measured,
+`agy-consult-guard-pre.sh` contains **zero** occurrences of it, and only **1 of 13** hook bodies reads it
+at all. The precedent did not exist. With the variable unset the path collapses to an absolute
+`/skills/...`, extraction returns empty, and the fallback then hands the agent a path that cannot be
+opened - a rescue that guarantees a second failure. The repo's actual idiom is
+`agy-liveness-check.sh:126` (`"$(dirname "$0")/hooks.json"`), which resolves from the script's own
+location and cannot be unset. Verified: that form resolves to a readable `SKILL.md`, and a deliberately
+bogus sibling path does not resolve - the control fails for the right reason.
 
 ## 14. Testing
 
@@ -335,15 +414,27 @@ invocation rather than inspecting source text.
 
 Rows, each with the mutant that must red it:
 
+**Round 3 rewrote this table.** Two of the seven rows had no mutant that could red them - one was marked
+`n/a` outright, the other named a mutant that reached only half of what the row asserted. **A hook whose
+body was replaced with an unconditional `exit 0` passed both**, which is the failure mode this project
+states as its own rule: ask which test goes RED if the guard is deleted, and if the answer is none, the
+row certifies nothing. A fail-open assertion cannot be mutation-proved in isolation - `exit 0` is what it
+expects - so its guard is that the SAME mutant must red a blocking row in the same suite. That coupling
+is now written into the table instead of left implicit.
+
 | row | mutant that must red it |
 |---|---|
 | a seam WITH a role marker passes | remove the marker -> must block |
 | a seam WITHOUT one blocks | add a marker -> must pass |
-| a payload naming no seam fails OPEN | n/a - asserts the fail-open branch |
-| missing `jq` fails OPEN and touches the degraded sentinel | remove the sentinel write -> row reds |
+| a payload naming no seam fails OPEN | **replace the hook body with `exit 0`** -> this row still passes, but the two blocking rows above RED. The suite, not the row, is the oracle |
+| missing `jq` fails OPEN | same coupling: `exit 0` reds the blocking rows |
+| missing `jq` touches the degraded sentinel | remove the sentinel write -> row reds |
 | the block message contains the extracted palette | break a delimiter -> extraction empties, fallback text appears |
+| **the extracted block is NON-EMPTY** | move `END` above `START` -> extraction empties -> row reds |
+| **an over-long extraction is treated as a failure** | move `END` 100 lines down -> block exceeds the bound -> fallback must appear, not the wall of text |
 | the delimiters exist in BOTH shipped SKILL.md copies | delete one -> row reds |
 | the skip token passes with a reason | omit the reason -> must block |
+| **a skip reason containing a newline logs ONE line** | feed a two-line reason -> unsanitised, the log gains a forged line -> row reds |
 
 ## 15. Exhaustiveness self-audit - run before handing this over
 
@@ -361,9 +452,10 @@ evaporated once the block message became a repair kit. Resolved in favour of **n
 | the hook's filename | plan, task 1 - must not collide with the existing `agy-consult-guard-*` pair |
 | exact marker syntax: line-anchored? case? what counts as non-empty? | plan, with the test row that pins it |
 | the seam-path regex, concretely | plan - the peer's sketch was `\.clavity/seams/[^"'\s]+\.md`; it needs a Windows-path case, since consult payloads here carry `C:/Users/...` forms |
-| log line format and field order | plan - one short line, format fixed there |
+| log line format and field order | plan - one short line, format fixed there. **Round 3 adds a hard requirement rather than leaving it to taste: every agent-authored field (the seam path, the skip reason) must be newline-stripped and length-capped before it is logged.** Both are free text an agent controls, and the log is the only audit trail for the escape hatch - an unsanitised reason forges lines in the record of its own use |
+| the over-long-extraction bound, concretely | plan - section 11's third state needs a number |
 | when `.clavity/role-check.degraded` is CLEARED | plan - an uncleared sentinel becomes permanent noise, the same overstay failure this project has hit before |
-| truncation mechanism for the 500-line bound | plan |
+| ~~truncation mechanism for the 500-line bound~~ | **RESOLVED IN SECTION 6 by round 3, no longer a plan-time gap** - rotation by `mv`, because truncation was the read-modify-write the adjacent bullet forbids |
 | a payload naming MULTIPLE seam paths | plan - check all, or the first? unresolved and reachable |
 | a seam path that does not exist yet at PreToolUse time | plan - falls under fail-open, but the ordering deserves an explicit row |
 
@@ -372,7 +464,16 @@ and self-repairing -> 3, 5, 12; roles-only scope with 9 and 10 deferred -> state
 mirror -> 13; test posture -> 14.
 
 **KNOWN AND ACCEPTED, not gaps:** the hook proves syntactic compliance only (section 8); a seam outside
-`.clavity/seams/` escapes the block (residual 3); both mitigations in section 11 are partial.
+`.clavity/seams/` escapes the block (residual 3); all three mitigations in section 11 are partial.
+
+**NOT ACCEPTED - BLOCKS THE BUILD UNTIL THE OWNER RULES:** residual 4, the `clavity ask` transport gap.
+Everything else above is either folded or scoped to the plan; this one changes what the build is for.
+
+**ROUND-3 CORRECTION TO THIS SELF-AUDIT.** The audit above declared the template contradiction "CLOSED
+HERE" after fixing one of its two sites, and declared sections 9 and 10 deferred "stated at each" when
+section 9 stated no such thing. **A self-audit that greps for the symptom it just fixed will find it
+fixed.** What caught both was a panel that had never seen the sections - which is the argument for
+running the panel on the whole artifact rather than on the parts believed to be new.
 
 ## Deliberately NOT in scope
 
@@ -403,7 +504,11 @@ The predicate it objected to no longer exists.
 
 1. **Path extraction can still miss** - an unusual quoting of the seam path. It fails open, so the worst
    case is an unchecked consult, never a blocked one.
-2. **`jq` and `${CLAUDE_PLUGIN_ROOT}` are assumed**, as the existing consult hook already assumes them.
+2. **`jq` is assumed** - and the existing consult hook does assume it, at
+   `agy-consult-guard-pre.sh:11`, where it guards it fail-open (`command -v jq ... || exit 0`). **The
+   half of this residual about `${CLAUDE_PLUGIN_ROOT}` was FALSE and is withdrawn** (round 3): that hook
+   contains zero occurrences of the variable, so there was no precedent to lean on. Section 13 now
+   specifies `dirname "$0"` instead, which removes the assumption rather than documenting it.
 3. **A seam authored outside `.clavity/seams/` escapes the BLOCK.** The round-2 Mechanism Gamer seat
    sharpened this fairly: a driver working from memory is exactly the one who writes `capstone-r1.md`
    to the repo root, so keying the gate on a path convention leaves a gap shaped like the failure it
@@ -412,6 +517,27 @@ The predicate it objected to no longer exists.
    fail-open outside the canonical directory, fail-closed inside it. That closes most of the gap
    without re-opening the keyword false-positive surface, and the warning is visible in the log rather
    than silent. It remains a gap, not a seal.
+4. **THE GATE COVERS ONE OF THE TWO TRANSPORTS, AND IS INERT IN ONE OF THE TWO PRODUCTS.** Round 3,
+   Mechanism Gamer, and this is the largest gap in the document because it sits directly against the
+   scope ruling at the top ("every AGY-* consult"). Measured: all four disciplines name two transports -
+   `agy_ask` (clavity-dotnet) and `clavity ask --review-only` (clavity-classic) - and three of them add
+   the same parenthetical, **"(subagents use the CLI form, not the MCP bus)"**: `agy-first/SKILL.md:29`,
+   `agy-capstone/SKILL.md:31`, `agy-test-audit/SKILL.md:27`. Section 13 requires the new entry match
+   `mcp__.*agy_ask` ALONE, and section 4 refuses the `Bash` matcher for a good reason. The consequences:
+   - **every subagent consult passes ungated**, because subagents are told to use the CLI form;
+   - **clavity-classic is entirely ungated**, since its transport is a shell command. The mirrored hook
+     installs there and can never fire - and `clavity-classic/plugin/hooks/hooks.json:17,38` already
+     carry an `mcp__.*agy_ask` matcher, so the parity test section 13 cites will pass on a dead hook.
+
+   **Not resolved here, because the honest options trade against section 4's ruling and that is an
+   owner-level call, not an implementer's.** Three exist: (a) accept it and narrow the document's scope
+   claim from "every consult" to "every MCP consult from the main thread"; (b) add a second, separately
+   scoped check on the `Bash` matcher that greps only for a `clavity ask` invocation - narrow enough
+   that section 4's "do not put a fail-closed check on every shell command" objection may not apply,
+   since a non-matching command exits 0 immediately; (c) move the enforcement out of the hook layer
+   into the transport itself. **What must NOT happen is shipping this while the document still claims
+   to cover every AGY-* consult** - that is a guard certifying what it never checked, which is the
+   failure this project has already paid for.
 
 ## Round-2 panel findings and their disposition
 
@@ -419,13 +545,49 @@ The predicate it objected to no longer exists.
 |---|---|---|
 | Axiom Breaker | the env-var escape hatch is unreachable by an MCP agent | **folded** - hatch is now the in-band `ROLE-CHECK: SKIP <reason>` line |
 | Cascade Analyst | missing `jq` produces zero telemetry, restoring the round-1 blind spot | **folded** - one-time `.clavity/role-check.degraded` sentinel surfaced at SessionStart |
-| Resource Vampire | the log is unbounded and a retrying agent spams it | **folded** - truncated to the last 500 lines |
+| Resource Vampire | the log is unbounded and a retrying agent spams it | **folded** - bounded at 500 lines. ⚠ **The truncation MECHANISM chosen here was overturned in round 3** - it was a read-modify-write; see section 6 |
 | Mechanism Gamer | the path convention is itself a memory item | **folded as a mitigation** - warn-and-pass outside the canonical directory; residual 3 |
 | State Corruptor | concurrent appends corrupt the log | **REFUTED in part** - the `open-issues` skill records that a single short append is atomic on POSIX and interleaves rather than scrambling. The valid residue is folded: the append must stay one short `printf`, never read-modify-write. |
 
 **Round 2 withdrew the round-1 buildability objection after re-deriving it against the rewritten
 predicate** - *"the design is buildable as written"* - which is the clearest evidence the round-1 fold
 worked rather than merely moving the problem.
+
+## Round-3 panel findings and their disposition
+
+**Rounds 1 and 2 reviewed sections 1-8 only. Sections 9-15 had never been reviewed by anyone** - they
+were written after round 2 and shipped straight into the self-audit. Round 3 seated nine lenses,
+rotating in **Boundary Smuggler**, the one palette seat the review had never used. Sixteen findings; all
+folded above. The peer was sent the file, the palette, the do-not-re-raise ledger and a quote-check
+control, and **none of the driver's own findings** - so agreement below is corroboration, not echo.
+
+| seat | finding | source | disposition |
+|---|---|---|---|
+| Axiom Breaker | `:193` still invoked the template section 2 deleted; the self-audit booked the contradiction CLOSED having fixed only one of two sites | **both** | **folded** - section 9's enforcement claim withdrawn entirely |
+| Mechanism Gamer | enforcing `OPEN-PROPOSAL` needs the hook to recognise "a fork seam that names options" - prose parsing, which section 1 killed at `:64` | **peer only** | **folded** - the deeper defect; the driver's panel found the symptom (section 9 unmarked) and missed the cause |
+| Mechanism Gamer | the gate misses `clavity ask`, so every subagent consult and all of clavity-classic pass ungated | driver only | **folded as residual 4, unresolved by design** - the fix trades against section 4 and is an owner call |
+| Cascade Analyst | `${CLAUDE_PLUGIN_ROOT}` unset makes the fallback hand over an unopenable path - the rescue guarantees a second failure | **peer only** | **folded, and the measurement went further than the finding**: residual 2's precedent claim was false (zero occurrences in that hook); `dirname "$0"` removes the assumption |
+| Cascade Analyst | section 12's ordered message had no fallback branch, so a literal build emits an empty palette | driver only | **folded** - branch written into the list |
+| Activation Auditor | the 500-line bound mandates the read-modify-write forbidden three lines above it | **both** | **folded** - rotation by `mv` instead of truncation; no line is lost |
+| Activation Auditor | section 10a's enumeration miscounted entries and omitted a matcher-less one | driver only | **folded** - re-measured; conclusion survives, count corrected |
+| Blindspot Auditor | a displaced `END` yields a large WRONG extraction that is non-empty, so neither the test nor the fallback sees it | **peer only** | **folded** - the third state the negotiation asked about and section 11 never answered; bounded, with a test row |
+| Blindspot Auditor | the sentinel had a writer and no reader; the log had no reader at all | driver only | **folded** - both readers are build rows now |
+| Boundary Smuggler | the block message spells out a 25-character bypass at the moment of correction, counterweighted only by an unread log | driver only | **folded** - hatch kept, ordered last, counterweight built |
+| Boundary Smuggler | agent-authored fields are logged unsanitised, forging lines in the escape hatch's own audit trail | driver only | **folded** - sanitisation is a requirement plus a test row |
+| Literal Implementer | two of seven test rows had no mutant; an `exit 0` hook passed both | driver only | **folded** - table rewritten, fail-open rows coupled to blocking rows |
+| Literal Implementer | section 11 demanded a non-empty assertion that section 14 never carried | driver only | **folded** - now a row |
+
+**Quote-check control: 4 of 5 byte-exact**, including a line dense with escaped pipes - the peer
+demonstrably read the artifact rather than pattern-matching its summary. The fifth asked for line 436 of
+a 435-line file and required the literal `DOES NOT EXIST`; the peer answered *"(empty line)"*. Not a
+fabrication, but not a report of absence either, and worth recording: **this control has caught a
+confident answer about content past the end of a file before.**
+
+**Where the two panels diverged is the useful part.** The peer found three defects the driver's panel
+missed, and every one of them was a place where a fold had created a NEW defect - the semantic-parsing
+requirement that arrived with section 9, the fallback that arrived with section 11, the truncation bound
+that arrived with round 2. The driver found ten the peer missed, mostly coverage and mutation gaps. The
+overlap was two. **Neither panel alone would have produced this round.**
 
 ## Open, for the implementer
 
