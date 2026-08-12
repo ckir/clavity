@@ -48,6 +48,66 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   that evidence while maintaining the defect is real. Recorded here rather than fixed inside a batch
   scoped to other work.
 
+### 3. The `agy-curate` skill's exit-code, dirty-path and routing contracts have no test at all
+
+- **Where:** `agy-autotrain/skills/agy-curate/SKILL.md` - the exit table at `:278`, the cross-cutting
+  dirty-path rule ("READ THIS BEFORE THE BRANCHES BELOW"), and the routing rule at `:121`.
+- **The gap:** nothing asserts any of it. `scripts/tests/check-agy-discipline-skills.Tests.ps1` resolves
+  its targets under `clavity-dotnet/plugin/skills/<skill>/SKILL.md` (`:15`, `:20`, `:209`, `:223`) and
+  never reaches `agy-autotrain/skills/`. This is the single largest change in the batch - 152 lines
+  matured over fifteen adversarial rounds - and it is entirely unguarded.
+- **NOT the regression:** the audit peer first stated this as "silently breaking the downstream hook
+  scripts that parse these values". **Measured, twice: nothing parses them.** `agy-curate-nudge.sh` and
+  `agy-inbox-snapshot.sh` match on the skill NAME only. The peer withdrew that wording when asked to
+  name a consumer.
+- **The regression, stated in two phases because the second half does not exist yet:**
+  1. **Today** the STDERR warning is the ONLY mitigation, precisely because the pre-commit guard below
+     was deliberately not built. If the dirty-path predicate drifts, the executing agent emits the wrong
+     warning or none at all, and the operator is told nothing about unreviewed machine-generated content
+     sitting in the working tree.
+  2. **Once the guard in `docs/backlog/curate-abort-leaves-unreviewed-content-with-only-a-warning.md`
+     ships**, it will be keyed on this same predicate, so the same drift additionally fails to arm the
+     marker and the guard fails open.
+  **Do not restate this as "the lefthook guard fails open" alone** - `lefthook.yml` exists but carries no
+  curate/marker/abort hook, so that phrasing describes a mechanism that is not there.
+- **The consumer is the executing agent, not a script.** That is what makes the drift reachable: this
+  document IS the program, and the file itself enumerates FIVE previously-rejected formulations of the
+  dirty-path rule, two of which mutually reverted. Drift here is demonstrated, not hypothetical.
+- 🔴 **NO MECHANICAL TEST FORM SURVIVES, AND THAT WAS MEASURED RATHER THAN ASSUMED.** A text pin was
+  proposed (assert the literal exit-code rows remain in the file) and rejected: `.Contains` searches RAW
+  markdown, so wrapping the real table in `<!-- ... -->` above a drifted live table keeps the assertion
+  green. This is the same class already recorded at `scripts/tests/check-cheatsheet-budget.Tests.ps1:47-52`,
+  where two text-matching forms were defeated and a 6000-byte file passed while the row stayed green.
+  **Same shape as accepted boundary H below: a stated manual condition beats a proxy anchor looser than
+  the condition it stands for.**
+- **Re-check trigger:** any edit to the exit table, the dirty-path rule, or the routing rule in that file.
+- **Deferred by the owner:** 2026-08-12, AGY-TEST-AUDIT on `90cb0b5..a3ce038`.
+
+### 4. The hook-population walk fails OPEN where the gate it tests fails CLOSED
+
+- **Where:** `scripts/tests/check-injected-context.Tests.ps1:1279-1283` - the `BeforeAll` of the
+  `hook message extraction reaches every emitting hook` context builds its own file list with
+  `foreach ($root in $script:DomainRoots) { ... if (Test-Path $dir) { Get-ChildItem ... } }`.
+- **The gap:** that `if (Test-Path $dir)` **silently skips** a domain root that has moved or been renamed.
+  The gate it tests does the opposite deliberately - **measured** with a control that asserts its own
+  precondition (`CONTROL A -> RAN=yes FILES=1 THREW=no`, `CONTROL B -> THREW=YES`): discovery raises
+  `domain root missing: <path> - if a product moved or was renamed, update $script:DomainRoots`. That
+  closed-failure design is documented in prose at `:756-764` of this same file.
+- **The regression that would slip through:** the non-vacuity guard at `:1286` asserts the population is
+  `-BeGreaterThan 20`. **Measured population is 31, unevenly spread:** `clavity-dotnet/plugin` 13,
+  `clavity-classic/plugin` 14, `agy-autotrain` 4, and the remaining six roots contribute ZERO. So losing
+  either large root reds the guard (18, 17), but **losing `agy-autotrain` (4 -> 27) does not** - and that
+  is the root most actively edited here.
+- **Why this is LOW and not High:** the audit peer rated it High on the claim that dropped hooks "evade
+  all budget/hygiene audits". They do not - sibling rows in this file call discovery, which throws, so a
+  missing root reds the suite elsewhere and the corpus never silently shrinks. What remains is a real
+  inconsistency in one block's helper, compensated by those rows.
+- **The test that should exist:** `every domain root contributes to the hook population` - assert
+  per-root that a root either yields at least one `.sh` or is on an explicit known-empty list, rather
+  than asserting a single aggregate floor. Closing it means deciding what to do about the six roots that
+  legitimately hold no hooks today, which is why it is not a one-line fix.
+- **Deferred by the owner:** 2026-08-12, AGY-TEST-AUDIT round 2 on `90cb0b5..a3ce038`.
+
 ---
 
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
