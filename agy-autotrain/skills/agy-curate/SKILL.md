@@ -232,6 +232,9 @@ headless or otherwise non-interactive session), do **NOT** publish. Emit a **non
 interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to
 publish." - on **STDERR**, and **exit 2**.
 
+**If the run left any repository file modified, name every dirty path in that same STDERR message, and
+state in it that those files carry unreviewed content and must not be committed.**
+
 **The exit code is the state, not just a pass/fail flag.** This run has three distinct outcomes and each
 gets its own code, so a caller can tell them apart without parsing any text:
 
@@ -261,15 +264,16 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 | `golden-header.growth.md` (the GROWTH publish) | **never written** | - this is exactly what the gate withheld |
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
-**Do not delete any of it. Do NOT commit the repository edits.** Name the dirty paths in the stderr
-message alongside the `AGY-CURATE: NOT-PUBLISHED` line.
+**Do not delete any of it, and do NOT commit the repository edits.** The STDERR message required at
+`:230-236` names those paths and carries the do-not-commit warning out of this process.
 
 **`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
 in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
 
 **The cheatsheet is outside the human gate's scope.** That gate shows the compiled GROWTH proposal
-(`:224`); carried `driver` cheatsheet rules go to the cheatsheet, not GROWTH (`:121`). Moving the write
-below the gate would not subject it to review. Gap recorded at
+(`:224`). The cheatsheet is compiled from the `driver/probabilistic` entries (`:79`), and a carried
+`driver` rule is appended to it rather than to GROWTH (`:121`); neither route reaches that gate. Moving
+the write below it would not subject it to review. Gap recorded at
 `docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md`.
 
 > This is the SKILL's exit contract and is unrelated to the `exit 2` convention used by the repository's

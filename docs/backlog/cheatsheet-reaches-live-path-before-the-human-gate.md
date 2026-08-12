@@ -1,11 +1,11 @@
-# Backlog stub — the driver cheatsheet reaches a live path before the human review gate
+# Backlog stub — the driver cheatsheet reaches a live path outside the human review gate's scope
 
-**Status:** 🔴 **OPEN.** Pre-existing ordering defect. A doc note in `agy-curate/SKILL.md` now describes
-it accurately; nothing yet changes the ordering.
+**Status:** 🔴 **OPEN.** Pre-existing SCOPE defect. A doc note in `agy-curate/SKILL.md` now describes it
+accurately; nothing yet changes what the gate covers.
 **Raised:** 2026-08-12, AGY-CAPSTONE round 4. The peer challenged a safety claim the driver had written
 into the skill; verifying the claim showed the claim was false and the underlying gap real.
-**Scope:** `agy-autotrain/skills/agy-curate/SKILL.md` — the ordering of the cheatsheet write against the
-human approval gate.
+**Scope:** `agy-autotrain/skills/agy-curate/SKILL.md` — what the human approval gate covers, and what it
+does not.
 
 ## The defect
 
