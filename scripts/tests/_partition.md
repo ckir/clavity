@@ -25,9 +25,10 @@ load once and accumulates across files.
   `check-curate-in-progress.Tests.ps1` reached **20 rows** here — it joined at 11, took 5 more across the
   capstone folds, and gained 4 in the test-audit closure (a behavioural lefthook-wiring row, a glob
   set-equality row, a conditional-key row, and a marker-coupling row). **The behavioural row runs the real
-  `lefthook` binary and is the single most expensive row in this half at ~13s**, nearly all of it lefthook
-  plus pwsh cold start; it THROWS rather than skipping when lefthook is absent, so this half now has a
-  hard dependency on `lefthook` being on PATH (CI installs it — see `.github/workflows/ci-scripts.yml`).
+  `lefthook` binary and cost 13,5s of that**, nearly all of it lefthook plus pwsh cold start — expensive
+  for one row, though this file has no per-row census to call it the most expensive and does not claim
+  one. It THROWS rather than skipping when lefthook is absent, so this half now has a hard dependency on
+  `lefthook` being on PATH (CI installs it — see `.github/workflows/ci-scripts.yml`).
   Earlier lines read `29 suites, 572 tests` (no duration — that run was backgrounded without a timer) and
   before it `28 suites, 554 tests`, with
   two samples on 2026-08-11 reading 410,05s and 913,08s. The previous line here read
@@ -358,11 +359,23 @@ agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
 agy-test-audit-reminder.Tests.ps1                50,8s   18 tests   <- SLOW, re-measured 2026-08-06 (+4)
+assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- FAST, measured 2026-08-12 with the driver
+                                                                      resident - the same CPU runs the
+                                                                      tests and the agent, as this file
+                                                                      already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    4 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   14 tests   <- FAST, re-measured 2026-08-05
 check-cheatsheet-budget.Tests.ps1                43,1s    6 tests   <- FAST, re-measured 2026-08-12
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
+check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, measured 2026-08-12 with the driver
+                                                                      resident - the same CPU runs the
+                                                                      tests and the agent, as this file
+                                                                      already warns above.
 check-growth-budget.Tests.ps1                    15,3s    7 tests   <- FAST, re-measured 2026-08-05
+check-injected-context.Tests.ps1                 91,5s  144 tests   <- FAST, measured 2026-08-12 with the driver
+                                                                      resident - the same CPU runs the
+                                                                      tests and the agent, as this file
+                                                                      already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05

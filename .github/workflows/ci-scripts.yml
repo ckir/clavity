@@ -30,6 +30,7 @@ on:
       - 'installer/_shared/**'
       - 'justfile'
       - 'lefthook.yml'
+      - 'agy-autotrain/skills/agy-curate/SKILL.md'
       - '.github/workflows/ci-scripts.yml'
   pull_request:
     paths:
@@ -37,6 +38,7 @@ on:
       - 'installer/_shared/**'
       - 'justfile'
       - 'lefthook.yml'
+      - 'agy-autotrain/skills/agy-curate/SKILL.md'
       - '.github/workflows/ci-scripts.yml'
 
 concurrency:
