@@ -123,7 +123,14 @@ Describe 'check-curate-in-progress.ps1' {
         $out | Should -Match ([regex]::Escape('clavity-classic/src/driver_cheatsheet.rs'))
         $out | Should -Match ([regex]::Escape('curate-in-progress'))
         $out | Should -Match 'agy-curate'
-        $out | Should -Match 'git diff --cached'
+        $out | Should -Match 'diff --cached'
+        # CAPSTONE R3-F1. The marker is binary: it records that a run did not finish, and cannot know
+        # whether that run had written anything yet. A run that stopped during triage - a long window -
+        # leaves the marker set and the tree untouched, so a later legitimate hand edit to a pinned file
+        # meets this message and its destructive DISCARD branch. The guard cannot tell the two apart, but
+        # the HUMAN can by reading the diff, so the message must say so. Without this assertion that
+        # paragraph is one careless trim away from vanishing, and what is left is a trap.
+        $out | Should -Match 'stale marker' -Because 'the human must be told how to recognise a marker that outlived the run that set it'
     }
 
     It 'BLOCKS a pinned file staged as a RENAME, not only as a modify' {
@@ -159,7 +166,7 @@ Describe 'check-curate-in-progress.ps1' {
         New-StagedFile -Root $script:Tmp -Paths 'clavity-classic/src/driver_cheatsheet.rs'
         $out = & pwsh -NoProfile -File $script:Script -RepoRoot $script:Tmp -MarkerPath $script:Marker 2>&1 | Out-String
         $out | Should -Not -Match 'git checkout' -Because 'it discards nothing staged and destroys unstaged work'
-        $out | Should -Match ([regex]::Escape('git restore --staged --worktree')) -Because 'this is the command that actually restores both index and worktree'
+        $out | Should -Match ([regex]::Escape('restore --staged --worktree')) -Because 'this is the command that actually restores both index and worktree'
         $out | Should -Match 'WARNING' -Because 'the destructive branch must announce that it destroys the human own edits too'
     }
 
@@ -176,10 +183,19 @@ Describe 'check-curate-in-progress.ps1' {
         Set-Content -LiteralPath $script:Marker -Value '' -NoNewline
         New-StagedFile -Root $script:Tmp -Paths 'clavity-classic/src/driver_cheatsheet.rs'
         $out = & pwsh -NoProfile -File $script:Script -RepoRoot $script:Tmp -MarkerPath $script:Marker 2>&1 | Out-String
-        $discard = @($out -split "`n" | Where-Object { $_ -match 'git restore --staged --worktree' })
+        $discard = @($out -split "`n" | Where-Object { $_ -match 'restore --staged --worktree' })
         $discard.Count | Should -Be 1 -Because 'exactly one discard command should be offered'
         foreach ($p in $script:Pinned) {
             $discard[0] | Should -Match ([regex]::Escape($p)) -Because "the discard must cover $p even though only one file is staged"
+        }
+
+        # CAPSTONE R3-Q2a, the THIRD axis this one command has been wrong on. The paths are repo-relative
+        # but `git restore` resolves a pathspec against the CURRENT directory, so a human who ran
+        # `git commit` from a subdirectory and pasted this line got "pathspec did not match any file(s)"
+        # and no discard at all. Anchoring with `git -C <root>` makes it correct from anywhere. Every
+        # command the message prints must be anchored, not just this one.
+        foreach ($line in @($out -split "`n" | Where-Object { $_ -match '\bgit\b' -and $_ -notmatch '^\s*#' })) {
+            $line | Should -Match 'git -C ' -Because "a command the human is meant to paste must work from any directory: $($line.Trim())"
         }
     }
 
@@ -207,22 +223,28 @@ Describe 'check-curate-in-progress.ps1' {
         # assignments were dead code in the suite while being the ONLY path lefthook uses. A mutant like
         # `$MarkerPath = "vacuous-bypass"` escaped every row.
         #
-        # This row runs the script the way the hook does - no arguments at all - against the REAL
-        # repository, with the REAL marker briefly present. It asserts the OUTSTANDING message, which the
-        # script only prints when it resolved the default marker path and found the file. Under the mutant
-        # it would resolve elsewhere, find nothing, and print "no agy-curate run outstanding" instead.
+        # CAPSTONE R3-Q4. An earlier version of this row wrote the REAL marker into the REAL repository
+        # inside a try/finally. That is not safe: `finally` does not run if the process is killed or Pester
+        # aborts, and the residue is not inert - a stray `.clavity/curate-in-progress` BLOCKS the
+        # developer's next commit of a pinned file. A test whose crash-residue is the very condition the
+        # product treats as a fault has no business touching the live tree.
         #
-        # It deliberately stages NOTHING, so it never touches the real index and cannot block anything.
-        $realMarker = Join-Path $script:RepoRoot '.clavity/curate-in-progress'
-        (Test-Path -LiteralPath $realMarker) | Should -BeFalse -Because 'this row must not run while a real curate run is outstanding, and must not clobber its marker'
-        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $realMarker) | Out-Null
-        try {
-            Set-Content -LiteralPath $realMarker -Value '' -NoNewline
-            $out = & pwsh -NoProfile -File $script:Script 2>&1 | Out-String
-            $LASTEXITCODE | Should -Be 0 -Because 'nothing is staged, so an outstanding run must not block'
-            $out | Should -Match 'a run is outstanding' -Because 'the default MarkerPath must resolve to the real marker; a wrong default would report none outstanding'
-        }
-        finally { Remove-Item -LiteralPath $realMarker -Force -ErrorAction SilentlyContinue }
+        # Instead, COPY THE SCRIPT into the fixture repo and run it there with no arguments. The script
+        # derives its RepoRoot from `Join-Path $PSScriptRoot '..'`, so a copy at <fixture>/scripts/ makes
+        # both defaults resolve inside the fixture - exercising exactly the production path, with every
+        # side effect confined to a temp directory that AfterEach removes.
+        $fixtureScripts = Join-Path $script:Tmp 'scripts'
+        New-Item -ItemType Directory -Force -Path $fixtureScripts | Out-Null
+        Copy-Item -LiteralPath $script:Script -Destination (Join-Path $fixtureScripts 'check-curate-in-progress.ps1')
+        Set-Content -LiteralPath $script:Marker -Value '' -NoNewline   # the fixture's own .clavity marker
+
+        $out = & pwsh -NoProfile -File (Join-Path $fixtureScripts 'check-curate-in-progress.ps1') 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0 -Because 'nothing is staged, so an outstanding run must not block'
+        $out | Should -Match 'a run is outstanding' -Because 'the default MarkerPath must resolve to <root>/.clavity/curate-in-progress; a wrong default would report none outstanding'
+
+        # And prove the row would notice the live repository being touched instead of the fixture.
+        (Test-Path -LiteralPath (Join-Path $script:RepoRoot '.clavity/curate-in-progress')) |
+            Should -BeFalse -Because 'this row must never leave a marker in the real repository'
     }
 
     It 'guards three paths that ACTUALLY EXIST in this repository' {

@@ -103,9 +103,14 @@ try {
     # drop. An earlier version also tried to strip an absolute repo-root prefix; since git never emits
     # one, that branch could never run. It was removed rather than left as reassurance: dead defensive
     # code is untestable by construction, and a mutant inside it would have escaped the suite silently.
+    # CAPSTONE R3-F2, and it was an INCOMPLETE FOLD of R1-F3 sitting directly under the comment above
+    # that describes the fix: the absolute-prefix branch was removed while `.Replace('\','/')` was left
+    # beside it, equally dead, as equally untestable reassurance. git emits forward slashes on Windows,
+    # so it never had anything to replace and removing it left the suite green. Trim stays - stderr is
+    # merged into this stream by `2>&1`, so a stray blank or padded line is possible.
     $normalised = @(foreach ($f in $StagedFiles) {
         if ([string]::IsNullOrWhiteSpace($f)) { continue }
-        $f.Trim().Replace('\', '/')
+        $f.Trim()
     })
 
     $offending = @($normalised | Where-Object { $_ -in $script:PinnedFiles })
@@ -118,17 +123,26 @@ try {
     # THE DISCARD COMMAND HAS BEEN WRONG TWICE, IN TWO DIFFERENT WAYS. Both forms are recorded here
     # because the failure mode is recurrence across edits, not carelessness within one - and the second
     # form was written to fix the first.
-    #   1. `git checkout -- <all three>` - WRONG COMMAND. This message only ever prints while the content
-    #      is STAGED, and in that state `git checkout --` restores the worktree FROM THE INDEX: the
-    #      unreviewed content survives in both, while the human's unstaged edits are destroyed. It failed
-    #      at its stated purpose and destroyed work, and the human would then clear the marker believing
-    #      they were clean.
+    #   1. `git checkout -- <all three>` - WRONG COMMAND. `git checkout --` restores the worktree FROM
+    #      THE INDEX, so its effect SPLITS across the set and neither half is what the message promised:
+    #      for a STAGED file the index already holds the unreviewed content, so it survives in both index
+    #      and worktree - it discarded nothing; for an UNSTAGED file the index still matches HEAD, so the
+    #      worktree is overwritten and any hand edit there is destroyed. So it failed at its stated
+    #      purpose on exactly the file it was invoked for, destroyed work on the others, and the human
+    #      would then clear the marker believing they were clean.
+    #      (This description was itself wrong once - it claimed the content survived across the whole set,
+    #      which is only true of the staged file. An inaccurate record of a failure is worse than none.)
     #   2. `git restore --staged --worktree -- <offending only>` - RIGHT COMMAND, WRONG SCOPE. Written to
     #      fix (1), and it introduced a new hole: a curate run writes all three pinned files, so a human
     #      who staged only one would restore only that one, clear the marker, and leave the other two
     #      dirty and unguarded.
-    # CURRENT: the right command over ALL THREE. Scope and command are independent; getting one right is
-    # not getting the other right.
+    #   3. The same command WITHOUT `git -C <root>` - RIGHT COMMAND AND SCOPE, WRONG WORKING DIRECTORY.
+    #      The paths printed are repo-relative, but `git restore` resolves a pathspec against the CURRENT
+    #      directory, so a human who ran `git commit` from a subdirectory and pasted the line got
+    #      "pathspec did not match any file(s)" and no discard at all.
+    # CURRENT: the right command, over ALL THREE, anchored with `git -C`. THREE INDEPENDENT AXES have
+    # each been wrong once - command, scope, working directory. Getting one right is not getting the
+    # others right, so change this line only with all three in mind.
     #
     # Name the files. A count sends a reader hunting; a name sends them to the file.
     Write-Host ""
@@ -141,7 +155,13 @@ try {
     Write-Host "  captures that NO human approved. Do not commit them, and do not build from them,"
     Write-Host "  until you have looked at them:"
     Write-Host ""
-    Write-Host "      git diff --cached -- $($offending -join ' ')"
+    Write-Host "      git -C '$RepoRoot' diff --cached -- $($offending -join ' ')"
+    Write-Host ""
+    Write-Host "  READ THAT DIFF BEFORE CHOOSING. The marker only records that a run did not finish; it"
+    Write-Host "  cannot know whether that run had written anything yet. A run that stopped during triage"
+    Write-Host "  leaves the marker set and the files untouched - so if the diff is YOUR OWN work and"
+    Write-Host "  nothing distilled, this is a stale marker: clear it and keep your changes. Do NOT reach"
+    Write-Host "  for the discard command below on that evidence; it would destroy your work."
     Write-Host ""
     Write-Host "  Then choose one - the marker clears itself on the first path, by hand on the others:"
     Write-Host ""
@@ -151,7 +171,7 @@ try {
     Write-Host "                    NOTE - a re-run REWRITES these files from the inbox. If you had hand"
     Write-Host "                    edits of your own sitting in them, save those elsewhere first."
     Write-Host ""
-    Write-Host "    DISCARD it      git restore --staged --worktree -- $($script:PinnedFiles -join ' ')"
+    Write-Host "    DISCARD it      git -C '$RepoRoot' restore --staged --worktree -- $($script:PinnedFiles -join ' ')"
     Write-Host "                    then:  Remove-Item '$MarkerPath'"
     Write-Host "                    ALL THREE files, deliberately - not only the one that is staged. A"
     Write-Host "                    curate run writes all three together, so restoring just the staged"
