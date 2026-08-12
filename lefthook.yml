@@ -58,3 +58,25 @@ pre-commit:
         - "clavity-classic/agy-mcp-bridge/**/*.py"
       run: uv run --project clavity-classic/agy-mcp-bridge ruff check --fix {staged_files} && uv run --project clavity-classic/agy-mcp-bridge ruff format {staged_files}
       stage_fixed: true
+    curate-in-progress:
+      # Refuse to commit driver-cheatsheet content that an agy-curate run left behind without
+      # finishing. Those three files are pinned byte-identical to each other and are written to the
+      # tree BEFORE the human approval gate on purpose, so that a `git diff` can be inspected while
+      # deciding - which means an aborted run leaves unreviewed, machine-distilled content staged and
+      # ready to commit, protected by nothing but a STDERR line the human may never see.
+      #
+      # THE GLOB IS THE COST CONTROL, and it is why this belongs in pre-commit at all. The header
+      # above measures pwsh cold start at ~6s, which is far too much to spend on every commit. Listing
+      # the three paths means lefthook invokes this ONLY when one of them is actually staged - a rare
+      # commit - and every other commit pays nothing. It also happens to express half the guard's own
+      # predicate, so the script never has to ask "is this commit even relevant".
+      #
+      # No {staged_files} argument on purpose: the script asks git itself. Passing them through
+      # `pwsh -File` silently mis-binds a multi-value argument, and this guard FAILS CLOSED, so the
+      # symptom would have been a blocked commit rather than an obvious crash. See the .NOTES block
+      # in the script.
+      glob:
+        - "agy-autotrain/knowledge/driver-cheatsheet.core.md"
+        - "clavity-classic/src/driver_cheatsheet.rs"
+        - "clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs"
+      run: pwsh -NoProfile -File scripts/check-curate-in-progress.ps1

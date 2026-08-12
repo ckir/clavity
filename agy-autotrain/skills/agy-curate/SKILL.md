@@ -22,6 +22,37 @@ this skill reads as a floor but never edits.
 Under EXTEND you do **not** read or edit the `agy-assumptions.md` / `agy-capabilities.md` manuals - they are
 driver-owned static SEED (they ship in each driver's `plugin/knowledge/`), refreshed only on a driver release.
 
+## STEP ZERO - arm the in-progress marker, before anything else
+
+**Before reading a single inbox entry**, create the marker file `.clavity/curate-in-progress` at the
+repository root. Empty content; its existence is the whole signal. Create `.clavity/` first if absent.
+
+**Delete it in exactly one place: the Finish step, once the run has completed normally.** Nowhere else.
+Not on an abort, not in an error handler, not "to tidy up" - **every path that is not a normal completion
+must leave it exactly where it is.**
+
+**Why it is armed HERE and cleared THERE, rather than written when something goes wrong.** This skill
+writes cheatsheet content into three repository files well before the human approval gate, so that the
+human can read `git diff` while deciding. Anything that stops the run after that leaves unreviewed,
+machine-distilled content sitting in the tree. The marker is the durable, machine-readable signal that
+this happened, so a repository can enforce mechanically what this skill can otherwise only advise.
+
+**Write the marker whether or not anything is currently reading it.** A repository that installs a
+companion pre-commit guard will refuse to commit those files while the marker exists; one that does not
+simply keeps a truthful record that a run is outstanding. **This skill ships to repositories it knows
+nothing about, so it must not claim that a commit WILL be blocked** - it can only guarantee the signal.
+
+Two things follow, and both are the reason for the inversion:
+
+- **A marker written on failure requires the run to survive long enough to write it.** A killed process,
+  an exhausted machine, or a power cut writes nothing, and the guard would then pass silently on exactly
+  the endings that most deserve blocking. Armed first, the marker is already on disk before anything can
+  go wrong.
+- **There is no predicate to evaluate.** The rule at the top of the terminal-exit section below is one
+  this file has recorded getting WRONG in five distinct formulations. Creating a file unconditionally, as
+  the first act, cannot be got wrong; deleting it on the single normal path cannot either. **Do not
+  re-derive the trigger from exit codes, and do not add a condition to either half.**
+
 ## First-pass triage gate (run BEFORE deciding promote/reinforce/contradict/drop - spec section 4/section 5.C-A)
 
 For EACH pending entry, in order:
@@ -236,6 +267,12 @@ nor BUILT. Do this as part of ending the run, **before** the exit itself.
 
 - **It is a message in its own right**, not an addition to another one - an error exit has no template to
   append to.
+- **LEAVE `.clavity/curate-in-progress` EXACTLY WHERE IT IS.** You created it at Step Zero; you are now on
+  a path that is not a normal completion, so it stays. It is what makes the warning above enforceable
+  rather than advisory wherever a repository installs a guard that reads it - such a guard refuses the
+  very commit this message is asking you not to make. **Removing it here, as cleanup or courtesy,
+  silently converts a mechanical guard back into a message a human can miss** - which is the whole defect
+  this pair was built to close. The next run re-arms it; there is nothing to tidy.
 - **It is keyed on the run NOT COMPLETING NORMALLY.** Only a run that ran to a normal end produced those
   edits deliberately; every other ending may have left them half-made and unreviewed.
 - **This rule has been written wrong FIVE times. Do not restate it as any of these:**
@@ -406,3 +443,15 @@ downstream call. When in doubt, leave it in the inbox.
   and therefore must be able to survive.
 - If the loop has proven out in-project, this is the point to **promote** the skills + knowledge to the
   global config (the trial-then-globalise step).
+- **LAST OF ALL, and only if everything above completed normally: delete `.clavity/curate-in-progress`.**
+  This is the ONLY place that file is ever removed. It was created as Step Zero before any work began,
+  and while it exists it is what lets a repository's own guard refuse cheatsheet content this run never
+  got a human to approve.
+  - **Delete it after the inbox reset, not before.** A failure between the two would leave the marker
+    gone and the tree still dirty, which is precisely the state the marker exists to advertise. Last
+    means last.
+  - **If anything above failed, leave the marker alone and stop.** Do not delete it on the way out of an
+    error path, and do not delete it "because the important part succeeded". The run either finished
+    normally or it did not.
+  - The next run arms it again at Step Zero, so there is no state to reconcile and nothing to clean up
+    later.

@@ -1,9 +1,14 @@
 # Backlog stub — the agy-curate abort path protects the working tree with an unenforced warning
 
-**Status:** 🔴 **OPEN — direction DECIDED (A2), implementation not started.**
+**Status:** ✅ **BUILT — 2026-08-12.** `scripts/check-curate-in-progress.ps1` +
+`scripts/tests/check-curate-in-progress.Tests.ps1`, wired at `lefthook.yml` `pre-commit`, armed by
+`agy-autotrain/skills/agy-curate/SKILL.md` "STEP ZERO" and cleared by its "Finish" step.
 **Raised:** 2026-08-12, AGY-CAPSTONE round 7 (F4).
 **Decided:** 2026-08-12, after a two-turn negotiation with the agy peer. The owner delegated the call.
-**Scope:** `agy-autotrain/skills/agy-curate/SKILL.md` (the terminal-exit block) plus `lefthook.yml`.
+**Built:** 2026-08-12, owner-approved after a design consult that **changed the mechanism** — see
+"What was actually built" below, which supersedes the original "What to build".
+**Scope:** `agy-autotrain/skills/agy-curate/SKILL.md` (Step Zero + Finish) plus `lefthook.yml`,
+`scripts/check-curate-in-progress.ps1` and its suite.
 
 ## The defect
 
@@ -55,21 +60,33 @@ commit in this repository, so a mechanical guard costs no new conceptual machine
   `git commit -a` runs no `just` recipe. `.clavity/` is also gitignored, so a fresh clone or CI checkout
   never sees it.
 
-## What to build
+## What was actually built — and the one way it departs from the original plan
 
-A `lefthook.yml` pre-commit check that fails the commit when the marker is present AND any of the
-three pinned files is staged. **The marker is written on every ending that is not a normal completion**
-(see the SCOPE note above — gate aborts *and* error exits, not gate aborts alone) and cleared by an
-explicit act. `.clavity/` is the right home for it: the threat is the same developer on the same box
-committing after their own failed run, and CI never runs `agy-curate`.
+A `lefthook.yml` pre-commit check that fails the commit when the marker is present AND any of the three
+pinned files is staged. `.clavity/` is the right home for the marker: the threat is the same developer
+on the same box committing after their own failed run, and CI never runs `agy-curate`.
 
-**Do not re-derive the trigger condition from the exit codes.** The skill enumerates five formulations
-that were each tried and were each wrong, with the case each one gets wrong; the guard must use the same
-predicate the skill settled on, not a code list.
+🔴 **THE MARKER IS INVERTED RELATIVE TO WHAT THIS STUB ORIGINALLY SPECIFIED.** The original text read
+*"the marker is written on every ending that is not a normal completion"*. It is instead **written at
+STARTUP, as the skill's first act, and deleted ONLY on a normal completion** — so its presence *is* the
+predicate "a run started and did not finish normally", with nothing to evaluate.
 
-**Deliberately NOT implemented inside a capstone fold.** This branch is mid-AGY-CAPSTONE and is being
-driven to GREEN; adding new executable machinery to the range under review injects unreviewed code into
-the very thing being reviewed. It must be built as its own unit and reviewed on its own.
+The design consult raised this and it holds on two independent grounds:
+
+1. **Write-on-abort needs the dying run to still be able to write.** A `kill -9`, an OOM, or a power cut
+   writes no marker at all, so the guard would pass silently on exactly the endings that most deserve
+   blocking — a guard that fails open, certifying what it stopped checking.
+2. **Write-on-abort makes the agent evaluate a predicate at exit time.** That predicate is the one this
+   skill records getting wrong in five distinct formulations, two of which mutually reverted. Creating a
+   file unconditionally as the first act cannot be got wrong. **The inversion removes the class rather
+   than restating the rule correctly a sixth time.**
+
+The original instruction — *"do not re-derive the trigger condition from the exit codes"* — survives
+intact and is in fact strengthened: there is now no code, and no condition, on either half.
+
+**Deliberately NOT implemented inside a capstone fold.** The branch was mid-AGY-CAPSTONE when this was
+raised; adding new executable machinery to the range under review injects unreviewed code into the very
+thing being reviewed. Built as its own unit after that capstone went GREEN and its test audit closed.
 
 ## Known limit
 

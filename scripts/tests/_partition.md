@@ -18,8 +18,13 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **28 suites, 554 tests; two samples on 2026-08-11
-  read 410,05s and 913,08s.** The previous line here read `25 suites, 328 tests, 429,46s solo` (2026-08-06;
+- `just test-scripts-fast` — the agent inner-loop gate. **29 suites, 572 tests** (2026-08-12, measured by
+  running the recipe; `check-curate-in-progress.Tests.ps1` joined it at 11 tests, on top of the single row
+  `plugin-hooks-registration.Tests.ps1` gained the same day). **No duration for that run: it was
+  backgrounded without a timer, and this file's own rule is to record what was measured rather than an
+  estimate — so it contributes a count and no time.** The line previously read `28 suites, 554 tests`, with
+  two samples on 2026-08-11 reading 410,05s and 913,08s. The previous line here read
+  `25 suites, 328 tests, 429,46s solo` (2026-08-06;
   that 429,46s was taken at 327 tests — see the count-correction entry below). **The counts are firm; the
   time is not.** Samples across this recipe now span **255 / 410 / 429 / 738 / 913s**, and no sample in
   this file was taken with machine load actually measured — "solo" here has only ever meant "the driver
