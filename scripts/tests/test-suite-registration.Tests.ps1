@@ -1,14 +1,9 @@
 # Every Pester suite IN scripts/tests/ must be registered in exactly one half of the fast/slow partition.
 #
-# THE SCOPE IS scripts/tests/, AND THAT IS NARROWER THAN THIS FILE USED TO CLAIM. It said "every Pester
-# suite on disk", which is false: `$script:OnDisk` enumerates `$PSScriptRoot` and nothing else, so a
-# suite anywhere else in the repository is invisible here. That wording was not harmless: ON 2026-08-12 a
-# review found a suite outside this directory that no justfile, workflow, or anything else referenced,
-# so it ran in no gate at all - the exists-passes-never-runs defect this file exists to prevent, and the
-# overstated claim is what made it look already covered. That finding is recorded where findings live,
-# not restated here as a standing fact about another product's file: a present-tense claim about someone
-# else's wiring goes stale the moment they fix it, and nobody fixing it has a reason to read this header.
-# Widening this guard repo-wide is a scoping decision about other products' suites, not a fold.
+# THE SCOPE IS scripts/tests/ ONLY. A suite anywhere else in the repository is invisible to this guard,
+# and a review has already found one running in no gate at all. Do not read a green result here as
+# "every suite in the repo is gated". Widening the scope is a decision about other products' suites,
+# not a fold.
 #
 # WHY THIS EXISTS. Registration is an EXPLICIT LIST in the justfile, not a glob. `just test-scripts` does
 # glob scripts/tests and so reports an unregistered suite green - but neither gate anyone actually runs
@@ -28,33 +23,28 @@ Describe 'test suite registration' {
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Justfile = Get-Content -LiteralPath (Join-Path $script:RepoRoot 'justfile') -Raw
 
-        # Read each partition recipe's OWN body rather than grepping the whole justfile: a suite named in
-        # a comment, or in the `test-scripts` glob recipe, must not count as registered in a gate.
+        # TWO FILTERS, BOTH LOAD-BEARING: read each recipe's OWN body, and drop COMMENT lines from it.
+        # A suite named in an indented comment inside a recipe - the natural way to note why one was
+        # retired - otherwise reads as registered while `just` never runs it.
         function Get-RecipeSuites {
             param([string]$Recipe)
             $m = [regex]::Match($script:Justfile, "(?m)^$([regex]::Escape($Recipe)):\r?\n(?<body>(?:[ \t]+.*\r?\n?)+)")
             if (-not $m.Success) { return @() }
-            # THE TRAILING LOOKAHEAD IS LOAD-BEARING. Without it the pattern is unanchored at its
-            # suffix, so a recipe entry pointing at a disabled or renamed path - `foo.Tests.ps1.bak`,
-            # `foo.Tests.ps1_disabled` - still CAPTURES `foo.Tests.ps1`. MEASURED: the registration row
-            # would then certify the real suite as gated while the recipe runs something else, which is
-            # the false certification this whole file exists to prevent. It also made the two parses
-            # disagree: the census regex bounds its match and rejects exactly what this one accepted.
-            # With the lookahead such an entry matches nothing, so the real suite reports UNREGISTERED -
-            # loud, and correct.
-            @([regex]::Matches($m.Groups['body'].Value, "scripts/tests/(?<n>[A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._-])") |
+            $body = ($m.Groups['body'].Value -split "`n" | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+            # THE TRAILING LOOKAHEAD IS LOAD-BEARING. Without it, a recipe entry naming a disabled
+            # path (`foo.Tests.ps1.bak`) still captures `foo.Tests.ps1`, so the row certifies a suite
+            # the recipe never runs. It also keeps this parse and the census parse in agreement.
+            @([regex]::Matches($body, "scripts/tests/(?<n>[A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._-])") |
                 ForEach-Object { $_.Groups['n'].Value } | Sort-Object -Unique)
         }
 
         $script:Fast = Get-RecipeSuites 'test-scripts-fast'
         $script:Slow = Get-RecipeSuites 'test-scripts-slow'
-        # RECURSIVE, and holding a path relative to this directory - which for today's flat layout is
-        # just the file name, so every comparison below is unchanged. It matters when the layout is NOT
-        # flat: with a non-recursive enumeration the flat-layout row would fail while the registration
-        # and census rows, blind to the same file, still reported GREEN. Pester does not stop a Describe
-        # on a failed It, so the file would have simultaneously announced the violation and asserted that
-        # every suite on disk was registered. A suite this file cannot see must never be a suite it
-        # certifies.
+        # RECURSIVE, and relative to this directory - identical to the file name under today's flat
+        # layout. Non-recursive, a nested suite would fail the flat-layout row while these rows, blind
+        # to the same file, still reported GREEN: Pester does not stop a Describe on a failed It, so one
+        # run would announce the violation and certify the registration. A suite this file cannot see
+        # must never be a suite it certifies.
         $script:OnDisk = @(
             Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.Tests.ps1' |
                 ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) -replace '\\', '/' } |
@@ -72,18 +62,10 @@ Describe 'test suite registration' {
     }
 
     It 'sees every suite in scripts/tests - the FLAT layout all three parses here assume' {
-        # A NESTED SUITE CANNOT BE REGISTERED HERE, SO IT MUST BE STOPPED LOUDLY. $script:OnDisk now
-        # recurses, so a nested suite is at least VISIBLE - but `Get-RecipeSuites`' regex still forbids a
-        # directory separator, and the runtimes table is a flat list of file names, so such a suite can
-        # never be matched to a registration or to a row no matter what anyone writes in those files.
-        # Meanwhile CI runs `Invoke-Pester scripts/tests`, which DOES recurse, so it would run there
-        # while belonging to neither half: the exists-passes-never-runs defect this file exists to
-        # prevent, reappearing underneath it.
-        #
-        # Rather than teach three parses about paths speculatively, ASSERT THE ASSUMPTION. If someone
-        # genuinely needs a subdirectory, this row stops them with the list of what to extend first.
-        # `fixtures/` already exists and is fine - it holds data, not suites - so this asserts
-        # specifically that no *.Tests.ps1 lives below the top level.
+        # A NESTED SUITE CANNOT BE REGISTERED HERE, SO IT IS STOPPED RATHER THAN TOLERATED. The recipe
+        # regex forbids a directory separator and the runtimes table is a flat list of names, so no
+        # edit to those files could gate it - while CI's `Invoke-Pester scripts/tests` would run it
+        # anyway. `fixtures/` is fine: it holds data, not suites.
         $all = @(Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.Tests.ps1')
         $all.Count | Should -BeGreaterThan 20 -Because 'a recursive enumeration that found almost nothing means the walk broke, not that the directory is empty'
 
@@ -116,18 +98,10 @@ Describe 'test suite registration' {
     }
 
     It 'the _partition.md runtimes table is a complete census of the suites in scripts/tests' {
-        # THE TABLE CLAIMS TO BE THE SUITE SET, SO SOMETHING MUST HOLD IT TO THAT. It drifted silently
-        # to THREE missing suites - including check-injected-context, the largest in the fast half - and
-        # the omissions were found only because a review happened to look. A maintainer scanning that
-        # table to decide what to move between halves was reading an inventory with holes in it.
-        #
-        # This is the same shape as the two inventory gates this repo already runs: the justfile
-        # membership rows above, and `scripts-readme-inventory.Tests.ps1` for scripts/README.md.
-        #
-        # It asserts PRESENCE OF A ROW, not that the figure is current - a time cannot be verified by
-        # reading it, and this file's header says the figures are indicative and decay. The cost is that
-        # adding a suite now means measuring it and adding a row, which is the same commit that already
-        # has to register it in the justfile above.
+        # The table claims to be the suite set, so something must hold it to that - it had silently
+        # drifted to three missing rows. Same shape as `scripts-readme-inventory.Tests.ps1`.
+        # It asserts PRESENCE OF A ROW, never that the figure is current: a time cannot be verified by
+        # reading it, and _partition.md calls its own figures indicative.
         $partition = Join-Path $PSScriptRoot '_partition.md'
         Test-Path -LiteralPath $partition | Should -BeTrue -Because 'the partition record must exist for this row to mean anything'
         $lines = @(Get-Content -LiteralPath $partition)
@@ -143,10 +117,10 @@ Describe 'test suite registration' {
         $fences = @(for ($i = $h + 1; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^```') { $i } })
         $fences.Count | Should -BeGreaterThan 1 -Because 'the table must be a fenced block with an opening and a closing fence'
 
-        $inTable = @(for ($i = $fences[0] + 1; $i -lt $fences[1]; $i++) {
+        $inTable = @(@(for ($i = $fences[0] + 1; $i -lt $fences[1]; $i++) {
             $m = [regex]::Match($lines[$i], '^([A-Za-z0-9._-]+\.Tests\.ps1)\s')
             if ($m.Success) { $m.Groups[1].Value }
-        } ) | Sort-Object -Unique
+        }) | Sort-Object -Unique)
 
         # Non-vacuity: a parse that found nothing would make both comparisons below pass by comparing
         # nothing to nothing, which is the false-clean shape this repo keeps paying for.
