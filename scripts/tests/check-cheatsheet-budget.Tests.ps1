@@ -15,25 +15,25 @@ Describe "check-cheatsheet-budget.ps1" {
 
     It "passes when the cheatsheet is under budget" {
         Set-Content -NoNewline -Path $script:File -Value ('x' * 100)
-        & pwsh -File $script:Script -Path $script:File -MaxBytes 200
+        & pwsh -NoProfile -File $script:Script -Path $script:File -MaxBytes 200
         $LASTEXITCODE | Should -Be 0
     }
 
     It "fails when the cheatsheet exceeds budget" {
         Set-Content -NoNewline -Path $script:File -Value ('x' * 300)
-        & pwsh -File $script:Script -Path $script:File -MaxBytes 200
+        & pwsh -NoProfile -File $script:Script -Path $script:File -MaxBytes 200
         $LASTEXITCODE | Should -Be 1
     }
 
     It "passes (0 bytes) when the file is absent (fresh clone)" {
-        & pwsh -File $script:Script -Path (Join-Path $script:Tmp 'missing.md') -MaxBytes 200
+        & pwsh -NoProfile -File $script:Script -Path (Join-Path $script:Tmp 'missing.md') -MaxBytes 200
         $LASTEXITCODE | Should -Be 0
     }
 
     It "measures UTF-8 BYTES not characters (multibyte)" {
         # 100 x EUR SIGN = 300 UTF-8 bytes but 100 chars; must FAIL a 200-byte budget.
         Set-Content -NoNewline -Path $script:File -Value ([string]([char]0x20AC) * 100) -Encoding utf8
-        & pwsh -File $script:Script -Path $script:File -MaxBytes 200
+        & pwsh -NoProfile -File $script:Script -Path $script:File -MaxBytes 200
         $LASTEXITCODE | Should -Be 1
     }
 
@@ -58,9 +58,9 @@ Describe "check-cheatsheet-budget.ps1" {
         [System.IO.File]::WriteAllBytes($under, [byte[]]::new(4096))
         [System.IO.File]::WriteAllBytes($over,  [byte[]]::new(4097))
 
-        & pwsh -File $script:Script -Path $under | Out-Null
+        & pwsh -NoProfile -File $script:Script -Path $under | Out-Null
         $LASTEXITCODE | Should -Be 0 -Because 'exactly 4096 bytes is within the committed default budget'
-        & pwsh -File $script:Script -Path $over  | Out-Null
+        & pwsh -NoProfile -File $script:Script -Path $over  | Out-Null
         $LASTEXITCODE | Should -Be 1 -Because 'one byte over the committed default must fail; if this passes, the default is no longer 4096'
     }
 
@@ -70,7 +70,7 @@ Describe "check-cheatsheet-budget.ps1" {
         # actually enforces. It and the default-pin row above are the only two that consult the script's
         # own default, which is why a mutant on that default reddens exactly this pair (Step 15).
         Test-Path $script:Canonical | Should -BeTrue -Because 'the assertion below is vacuous without it'
-        & pwsh -File $script:Script
+        & pwsh -NoProfile -File $script:Script
         $LASTEXITCODE | Should -Be 0 -Because 'agy-curate/SKILL.md states this budget; an unenforced number is how it drifted to 4x before'
     }
 }

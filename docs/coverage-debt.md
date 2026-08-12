@@ -155,10 +155,20 @@ steered correctly.
 **Re-check trigger: the next time an item is added or its status changed.** Closing it means a Pester row
 over that directory asserting the enum and the `released` -> `released-in:` pairing - deliberately not done
 here, because it needs a new registered suite and this batch's scope is the seventeen findings.
-**Anchor (its disappearance voids this entry):** the **ABSENCE of a registered suite for this concern** - no `scripts/tests/backlog-*.Tests.ps1` in the explicit `test-scripts-fast` / `test-scripts-slow` lists in `justfile`. Registration here is an explicit list, never a glob (`scripts/tests/test-suite-registration.Tests.ps1` enforces that), so adding enforcement means adding a named, registered suite - and that is what must void this entry.
+**Void condition (stated, deliberately NOT a pattern-match):** this entry is closed when **a registered Pester suite asserts the `status:` frontmatter of `agy-autotrain/docs/fix-the-tool-backlog/*.md`** - the permitted values, and the `released` -> `released-in:` pairing. Whoever adds that assertion closes this entry BY HAND, in the same commit.
 
-> **Why not the enum tokens themselves, which this entry named first.** An earlier form anchored on the absence of the strings `fixed-in-repo` and `wont-fix` from any suite. One ordinary comment - `# we wont-fix this edge case` in any unrelated test - would have satisfied "the tokens appeared" and **voided the entry while the gap stayed wide open.** That is the same failure this file warns about for comment anchors, in a new costume: a proxy loose enough to be tripped by text that has nothing to do with enforcement.
+**Re-check trigger:** the next time an item is added to that directory or its status changed. Verify with `rg -n '^status:' agy-autotrain/docs/fix-the-tool-backlog/*.md` and confirm no registered suite asserts those values.
+
+> 🔴 **This entry has no mechanical anchor, and that is the finding rather than an omission.** Three were tried and each was defeated by an ordinary edit:
 >
-> **The two failure directions are not equally bad, and that is what settles the choice.** A too-loose anchor VANISHES while the gap remains, silently and with nobody looking. A too-strict one LINGERS after the gap closes, and someone re-reading the ledger notices a stale entry and deletes it. This anchor is deliberately the strict kind: if enforcement is ever added as a row inside an existing suite rather than a new registered file, this entry will outlive its gap and must be closed by hand. **An anchor that overstays is a chore; an anchor that disappears early is a lie.**
+> | attempt | defeated by |
+> |---|---|
+> | the ancestry-rule **comment block** in `_template.md` | moving that paragraph into a contributing guide |
+> | the **ABSENCE of the tokens** `fixed-in-repo` / `wont-fix` from any suite | one comment - `# we wont-fix this edge case` - anywhere in `scripts/tests/` |
+> | the **ABSENCE of a `backlog-*.Tests.ps1`** registered suite | naming an unrelated suite `backlog-parser.Tests.ps1` |
+>
+> Every one was a proxy looser than the condition it stood for, and each failed the same way: **it would have voided the entry while the gap stayed wide open.** The pattern is the lesson - "no enforcement exists anywhere" is a claim about behaviour that no filename or string test can express, so a fourth proxy would fail too.
+>
+> **The two failure directions are not equally bad, and that is what settles it.** A too-loose anchor VANISHES while the gap remains, silently and with nobody looking. A stated condition plus a re-check trigger can only LINGER - it stays until a human closes it, and a stale entry is something a reader notices and deletes. **An anchor that overstays is a chore; an anchor that disappears early is a lie.** Prefer the honest manual condition over an automatic one that is quietly wrong.
 
 > **Why not the `_template.md` comment block, which this entry originally named.** Entry D above states the rule directly - *"a comment can be reworded or deleted with the gate's behaviour completely unchanged, so anchoring there would void the entry while the blind spot it documents remained exactly as it was"* - and this entry then anchored on a comment block anyway. Moving that paragraph into a contributing guide, an ordinary tidy-up, would have voided the entry while the absent enforcement stayed exactly as absent. It also resolves the original concern that drove that choice: it does not collide with entry F's anchor (the `status:` enum line), because absence-of-a-test and presence-of-an-enum-line are different facts that no single edit changes together.

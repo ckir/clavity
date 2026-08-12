@@ -254,17 +254,28 @@ Read this branch as terminal.
 **What this run has ALREADY done by the time it reaches here, and does NOT undo.** The terminal exit is
 not a rollback, so state the partial effect rather than leaving an executor to guess at it:
 
-| already happened | reverted on exit 2? |
-|---|---|
-| the compiled cheatsheet core was written to `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md` (see "Write the compiled core to the shared runtime path" above) | **no** - and deliberately so; that file is not the artifact this gate protects |
-| `golden-header.growth.md` (the GROWTH publish) | **never written** - this is exactly what the gate withheld |
-| the inbox `## Pending` section | untouched, per the paragraph above |
+| already happened | reverted on exit 2? | where it lives |
+|---|---|---|
+| the compiled cheatsheet was written to `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md` | **no** | user profile - **live, and read by both drivers** |
+| `knowledge/driver-cheatsheet.core.md` and its two byte-identical pins may have been edited | **no** | **IN THE REPOSITORY - these are uncommitted edits in the working tree** |
+| `golden-header.growth.md` (the GROWTH publish) | **never written** | - this is exactly what the gate withheld |
+| the inbox `## Pending` section | untouched, per the paragraph above | - |
 
-Note the cheatsheet write lands under the **user profile**, not in a repository, so it dirties no working
-tree and needs no cleanup. Leaving it in place is correct: it is unreviewed-content-free by construction
-(it is distilled, not captured), and a later interactive run simply overwrites it atomically. Do NOT add
-a cleanup step here - removing it would strip a driver surface of its cheatsheet as a side effect of an
-approval gate that has nothing to do with it.
+**Leave all of it in place, and do NOT add a cleanup step.** Deleting the runtime cheatsheet would strip
+a driver surface of its cheatsheet as a side effect of an approval gate that has nothing to do with it,
+and reverting the repository edits would discard work the run legitimately did. Report the uncommitted
+repo edits to the human instead - they are a normal working-tree state for a run that stopped early, not
+damage to undo.
+
+> **Do NOT claim the runtime cheatsheet is unreviewed-content-free. It is not.** An earlier revision of
+> this block asserted it was "unreviewed-content-free by construction (it is distilled, not captured)".
+> That is false, and it mattered: it presented a real gap as safe. The cheatsheet is distilled from the
+> same `driver/probabilistic` inbox entries the human gate below exists to review - "survived the gate"
+> in that sentence means the promotion rubric, applied by this skill, not the human approval this section
+> is about. Distilling untrusted input does not make it trusted. So on this path the cheatsheet reaches a
+> live path that both drivers read **without any human having seen it**, which is a genuine partial bypass
+> of the safeguard described below. It is recorded as a defect rather than papered over here; the write
+> ordering predates this note and is not this section's to change.
 
 > This is the SKILL's exit contract and is unrelated to the `exit 2` convention used by the repository's
 > **hooks** (see `clavity-classic/plugin/hooks/agy-liveness-check.sh`), where 2 means "advisory on stderr"
