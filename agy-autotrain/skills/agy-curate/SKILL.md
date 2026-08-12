@@ -261,21 +261,16 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 | `golden-header.growth.md` (the GROWTH publish) | **never written** | - this is exactly what the gate withheld |
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
-**Leave all of it in place, and do NOT add a cleanup step.** Deleting the runtime cheatsheet would strip
-a driver surface of its cheatsheet as a side effect of an approval gate that has nothing to do with it,
-and reverting the repository edits would discard work the run legitimately did. Report the uncommitted
-repo edits to the human instead - they are a normal working-tree state for a run that stopped early, not
-damage to undo.
+**Do not delete any of it. Do NOT commit the repository edits.** Name the dirty paths in the stderr
+message alongside the `AGY-CURATE: NOT-PUBLISHED` line.
 
-> **Do NOT claim the runtime cheatsheet is unreviewed-content-free. It is not.** An earlier revision of
-> this block asserted it was "unreviewed-content-free by construction (it is distilled, not captured)".
-> That is false, and it mattered: it presented a real gap as safe. The cheatsheet is distilled from the
-> same `driver/probabilistic` inbox entries the human gate below exists to review - "survived the gate"
-> in that sentence means the promotion rubric, applied by this skill, not the human approval this section
-> is about. Distilling untrusted input does not make it trusted. So on this path the cheatsheet reaches a
-> live path that both drivers read **without any human having seen it**, which is a genuine partial bypass
-> of the safeguard described below. It is recorded as a defect rather than papered over here; the write
-> ordering predates this note and is not this section's to change.
+**`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
+in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
+
+**The cheatsheet is outside the human gate's scope.** That gate shows the compiled GROWTH proposal
+(`:224`); carried `driver` cheatsheet rules go to the cheatsheet, not GROWTH (`:121`). Moving the write
+below the gate would not subject it to review. Gap recorded at
+`docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md`.
 
 > This is the SKILL's exit contract and is unrelated to the `exit 2` convention used by the repository's
 > **hooks** (see `clavity-classic/plugin/hooks/agy-liveness-check.sh`), where 2 means "advisory on stderr"

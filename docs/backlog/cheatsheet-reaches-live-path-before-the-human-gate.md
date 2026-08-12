@@ -42,14 +42,25 @@ real gap as a settled design property — the kind of invented rationale that be
 because it sounds like it was reasoned. The claim has been removed and replaced with an accurate
 description; this stub records the gap it was covering.
 
+## It is a SCOPE gap, not an ORDERING gap
+
+🔴 **Corrected 2026-08-12.** An earlier revision of this stub described the defect as the cheatsheet being
+written *before* the gate, and proposed moving the write below it. **That fix would not work.**
+
+`SKILL.md:121` routes carried `driver` cheatsheet rules to the cheatsheet, **not to GROWTH**.
+`SKILL.md:224` instructs the gate to show **the compiled GROWTH proposal**. The cheatsheet is therefore
+outside the gate's scope **at any ordering** — moving the write below it changes when an ungated artifact
+is produced, not whether it is gated.
+
 ## Candidate fixes — not chosen
 
-1. **Move the cheatsheet write after the approval gate**, so both artifacts share one safeguard. Cleanest,
-   but changes when a driver surface gets its cheatsheet, and the headless path would then produce neither.
+1. **Extend the gate's scope** to show the compiled cheatsheet alongside the GROWTH proposal, and withhold
+   both until approval. Closes the gap directly. Costs the headless path both artifacts rather than one.
 2. **Gate the two separately** — a lighter confirmation for the cheatsheet, on the argument that it is
-   driver guidance rather than peer-facing content. Preserves the headless path's usefulness.
-3. **Accept and document** that the cheatsheet is agent-reviewed only, and say so where the gate is
+   driver guidance rather than peer-facing content. Preserves some headless usefulness.
+3. **Accept and document** that the cheatsheet is rubric-reviewed only, and say so where the gate is
    described, so the asymmetry is deliberate and visible rather than implicit.
 
-Option 3 is the smallest and is partly done already; options 1 and 2 are real design changes and belong
-to the owner.
+Option 3 is the smallest and is done: `SKILL.md` now states the scope limit at the exit-2 branch. Options
+1 and 2 are design changes and belong to the owner. **Any fix must change the gate's SCOPE; none can work
+by changing the write ORDER alone.**
