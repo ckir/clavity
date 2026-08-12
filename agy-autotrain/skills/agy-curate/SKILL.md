@@ -227,6 +227,21 @@ to your runtime header, or request changes." **Do not publish until the user app
 machine-local captures about to become a live injection into every ask; the human gate is the safeguard the
 model depends on, not a formality.
 
+**READ THIS BEFORE THE BRANCHES BELOW - it applies to all of them, and to any exit added later.** If the
+run ends **without having published GROWTH** and has left **any repository file modified**, emit on
+**STDERR** every dirty path together with the statement that those files carry unreviewed content and
+must neither be COMMITTED nor BUILT. Do this as part of ending the run, **before** the exit itself.
+
+- **It is a message in its own right**, not an addition to another one - an error exit has no template to
+  append to.
+- **It is keyed on what the run DID, not on which code it returns.** Do not restate it as a list of codes
+  and do not restate it as "any non-zero exit": a later code could mean published-with-warnings, and that
+  run needs no such warning.
+
+**No message in this section is "non-blocking".** That word belongs to the repository's HOOK convention,
+which the note at the end of this section explicitly disclaims for this skill; every exit described here
+is terminal, so "non-blocking" states the opposite of what happens.
+
 **No interactive approval channel?** If this skill runs where no interactive approval can be obtained (a
 headless or otherwise non-interactive session), do **NOT** publish. Emit a message - "no
 interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to
@@ -239,22 +254,11 @@ do NOT take the same path:
   terminal state: do not exit, and do not publish until an approval is actually given. A gate that
   invites "request changes" and then treats it as an abort is not a gate, it is a trap.
 - **A refusal, or no answer at all** - do **NOT** publish. Emit on **STDERR** - "the human did not
-  approve; the compiled GROWTH was NOT published." - and **exit 3**.
-
-**Do not call any of these messages "non-blocking".** That word belongs to the repository's HOOK
-convention, which the note at the end of this section explicitly disclaims for this skill; every exit
-described here is terminal, so "non-blocking" states the opposite of what happens.
-
-Write that message out in full rather than deriving it from the exit-2 wording above. A substitution rule
-across two separate strings silently stops applying the moment either one is reworded, and the exit-2
-message ends by telling the reader to re-run interactively - advice that is nonsense for a human who just
-declined in an interactive session.
-
-**BEFORE ANY NON-ZERO EXIT - whatever the code, including one added after this was written:**
-if the run left any repository file modified, emit on **STDERR** every dirty path together with the
-statement that those files carry unreviewed content and
-must neither be COMMITTED nor BUILT. **This is a message in its own right**, not an addition to another
-one: exit 1 has no template to append to.
+  approve; the compiled GROWTH was NOT published." - and **exit 3**. **Write that exit-3 message out in
+  full**, rather than deriving it from the exit-2 wording above: a substitution across two separate
+  strings silently stops applying the moment either one is reworded, and the exit-2 message ends by
+  telling the reader to re-run interactively, which is nonsense for a human who just declined in an
+  interactive session.
 
 **The exit code is the state, not just a pass/fail flag.** This run has four distinct outcomes and each
 gets its own code, so a caller can tell them apart without parsing any text. **A caller needs to act
@@ -266,7 +270,7 @@ must never share a code:
 | 0 | GROWTH published (or nothing pending to publish) | reset |
 | 2 | NOT published - no interactive approval channel. Deliberate, not a fault | left intact |
 | 3 | NOT published - the human reviewed it and did not approve. Deliberate, not a fault | left intact |
-| 1 | error - something went wrong | left intact |
+| 1 | error - something went wrong | left intact **unless the error struck after the Finish step's reset** - see below |
 
 Exit 0 here would be actively misleading: it is indistinguishable from a successful publish to anything
 reading only the status code, so a pipeline that expected GROWTH to land reports SUCCESS while nothing
@@ -289,14 +293,14 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
 **This block describes the GATE's terminal paths only** - exit 2 and exit 3, the two that arrive here. An
-error exit (1) can happen anywhere, including before any of the writes above, so it has no single
-documented state to state. That is exactly why the dirty-path rule above is keyed on the exit being
-non-zero rather than on a list of codes: it still covers an error exit, even though this table cannot.
-**Non-zero and not "did not publish"** - exit 0 also covers a run with nothing pending to publish, and
-that run needs no warning.
+error exit (1) can happen anywhere - before any of the writes above, or after the Finish step has already
+reset `## Pending` - so it has no single working-tree state to state, and it is the one code whose inbox
+row in the table above is conditional rather than absolute. That is exactly why the dirty-path rule is
+keyed on what the run DID rather than on which code it returns: it still covers an error exit, even
+though this table cannot.
 
 **Do not delete any of it, and do NOT commit the repository edits.** The STDERR message required at
-`:253-257` names those paths and carries the do-not-commit-or-build warning out of this process.
+`:230-239` names those paths and carries the do-not-commit-or-build warning out of this process.
 
 **`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
 in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
