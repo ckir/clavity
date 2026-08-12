@@ -242,6 +242,19 @@ diff the recipe membership against the table rather than reading down it.
 enforcement half of the driver-cheatsheet budget. Fast went 27 suites / 548 tests to **28 suites /
 554 tests**, measured **410,05s**.
 
+**2026-08-12 — that suite DOUBLED, 21,7s -> 43,1s, on a capstone fix.** No test was added; the row count
+is still 6. A capstone round defeated the default-pinning assertion twice (once through a `#` comment,
+then through a `<#  #>` block comment), so it was rewritten to stop matching source text and instead
+INVOKE the script at the byte boundary. That replaced an in-memory string match with two more `pwsh`
+spawns - the suite went from 5 to 7 - and process cold-start is what the extra ~21s buys.
+
+🔴 **The correctness of that guard is not in question; the accounting is the point.** The peer flagged the
+cost and called it "massive"; the driver dismissed it and estimated "+2-4s" from an assumed 1-2s per cold
+start. **Measured solo, it is +21,4s - the peer was closer.** A guard that runs the real thing costs real
+process time, and a suite half this file already describes as sitting near a 600s cap has that much less
+headroom. Recorded here rather than absorbed silently, because absorbing it silently is exactly the decay
+this file exists to catch.
+
 🔴 **THE DRIVING AGENT AND THIS SUITE SHARE ONE CPU. Driver activity during a run is contention BY
 CONSTRUCTION, not bad luck.** The agent's harness process, every tool subprocess it spawns (`pwsh`,
 `python3`, `rg`, `git`), and the lefthook/rtk hooks that fire on each command all compete with the suite
@@ -335,7 +348,7 @@ agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-
 agy-test-audit-reminder.Tests.ps1                50,8s   18 tests   <- SLOW, re-measured 2026-08-06 (+4)
 BashHookHelpers.Tests.ps1                         1,7s    4 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   14 tests   <- FAST, re-measured 2026-08-05
-check-cheatsheet-budget.Tests.ps1                21,7s    6 tests   <- FAST, measured 2026-08-11
+check-cheatsheet-budget.Tests.ps1                43,1s    6 tests   <- FAST, re-measured 2026-08-12
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-growth-budget.Tests.ps1                    15,3s    7 tests   <- FAST, re-measured 2026-08-05
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
