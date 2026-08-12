@@ -270,14 +270,14 @@ do NOT take the same path:
   telling the reader to re-run interactively, which is nonsense for a human who just declined in an
   interactive session.
 
-**The exit code is the state, not just a pass/fail flag.** This run has four distinct outcomes and each
-gets its own code, so a caller can tell them apart without parsing any text. **A caller needs to act
-differently on 2 than on 3** - one means fix the environment, the other means edit the rules - so they
-must never share a code:
+**The exit code is the state, not just a pass/fail flag.** Every outcome below gets its own code, so a
+caller can tell them apart without parsing any text. **A caller needs to act differently on 2 than on
+3** - one means fix the environment, the other means edit the rules - so they must never share a code.
+The table is the count; do not restate how many there are in prose:
 
 | exit | state | inbox `## Pending` |
 |------|-------|--------------------|
-| 0 | GROWTH published (or nothing pending to publish) | reset |
+| 0 | ran to a normal end - GROWTH published, or nothing for GROWTH to publish (an empty inbox, or one holding only carried `driver` rules, which go to the cheatsheet per `:121`) | reset |
 | 2 | NOT published - no interactive approval channel. Deliberate, not a fault | left intact |
 | 3 | NOT published - the human reviewed it and did not approve. Deliberate, not a fault | left intact |
 | 1 | error - something went wrong | left intact **unless the error struck after the Finish step's reset** - see below |
@@ -293,7 +293,7 @@ declined. Those are different mechanisms and only the first one is true on this 
 resets `## Pending` on `curate-commit` exit 0, and on this path `curate-commit` is never invoked at all.
 Read this branch as terminal.
 
-**What this run has ALREADY done by the time it reaches here, and does NOT undo.** The terminal exit is
+**What this run has ALREADY done by the time it reaches here, and does NOT undo.** A gate abort is
 not a rollback, so state the partial effect rather than leaving an executor to guess at it:
 
 | already happened | reverted when the run reaches this block? | where it lives |
@@ -310,9 +310,8 @@ whose inbox row in the table above is conditional rather than absolute. **The di
 of this section still covers it** - that rule fires on any ending that is not a normal completion, which
 is why it can protect a case this table cannot describe.
 
-**What to do about all of it is stated once, at the top of this section, and is deliberately not repeated
-here:** leave the files in place, revert nothing, and emit the dirty paths with the
-do-not-commit-or-build warning before exiting.
+**What to DO about all of it is the rule at the top of this section, and is deliberately not restated
+here** - restating it is how the two copies drift apart.
 
 **`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
 in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
