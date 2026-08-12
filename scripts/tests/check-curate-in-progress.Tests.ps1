@@ -393,7 +393,7 @@ Describe 'check-curate-in-progress.ps1' {
             $m = [regex]::Match($line, '^\s*-\s*"(.+)"\s*$')
             if ($m.Success) { $m.Groups[1].Value }
         })
-        $globs.Count | Should -BeGreaterThan 0 -Because 'a glob list that parsed as empty would make the comparison below compare nothing to nothing'
+        $globs.Count | Should -BeGreaterThan 0 -Because 'a glob list that parsed as empty would make the SECOND comparison below vacuous - the first one reds loudly, so this guard is what catches the quiet half'
 
         $inScript = Get-ScriptPinnedFiles
         $inScript.Count | Should -BeGreaterThan 0 -Because 'the script pin list must parse, or this row proves nothing'

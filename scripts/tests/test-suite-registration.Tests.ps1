@@ -144,8 +144,11 @@ Describe 'test suite registration' {
             if ($m.Success) { $m.Groups[1].Value }
         }) | Sort-Object -Unique)
 
-        # Non-vacuity: a parse that found nothing would make both comparisons below pass by comparing
-        # nothing to nothing, which is the false-clean shape this repo keeps paying for.
+        # Non-vacuity, and it is NOT the false-clean guard it used to claim to be: MEASURED, an empty
+        # parse makes the first comparison list every suite on disk and red loudly. What it catches is
+        # the QUIETER half - a parse that returns a few rows, where the second comparison then reports
+        # phantom entries that are really just parse damage. Same correction as row 1's; this copy was
+        # missed when that one was fixed.
         $inTable.Count | Should -BeGreaterThan 20 -Because 'a table parse that found almost no rows means the parse broke, not that the table is empty'
 
         @($script:OnDisk | Where-Object { $_ -notin $inTable }) -join ', ' |
