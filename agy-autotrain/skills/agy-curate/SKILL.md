@@ -232,29 +232,43 @@ headless or otherwise non-interactive session), do **NOT** publish. Emit a **non
 interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to
 publish." - on **STDERR**, and **exit 2**.
 
-**The human did not approve?** If the human answered the gate with anything other than approval - a
-change request, a refusal, or no answer - do **NOT** publish, and **exit 2**. Emit the same non-blocking
-message with "the human did not approve" in place of "no interactive approval channel".
+**The human did not approve?** The gate above offers two answers that are NOT the same outcome, and they
+do NOT take the same path:
 
-**ON EVERY NON-PUBLISHING EXIT, whatever the reason:** if the run left any repository file modified, name
-every dirty path in that STDERR message, and state in it that those files carry unreviewed content and
-must neither be COMMITTED nor BUILT.
+- **A change request** - revise the proposal and **RETURN TO THE GATE**. This is iteration, not a
+  terminal state: do not exit, and do not publish until an approval is actually given. A gate that
+  invites "request changes" and then treats it as an abort is not a gate, it is a trap.
+- **A refusal, or no answer at all** - do **NOT** publish. Emit a **non-blocking** message on **STDERR** -
+  "the human did not approve; the compiled GROWTH was NOT published." - and **exit 3**.
 
-**The exit code is the state, not just a pass/fail flag.** This run has three distinct outcomes and each
-gets its own code, so a caller can tell them apart without parsing any text:
+Write that message out in full rather than deriving it from the exit-2 wording above. A substitution rule
+across two separate strings silently stops applying the moment either one is reworded, and the exit-2
+message ends by telling the reader to re-run interactively - advice that is nonsense for a human who just
+declined in an interactive session.
+
+**BEFORE ANY NON-PUBLISHING EXIT - 1, 2 and 3 alike:** if the run left any repository file modified, emit
+on **STDERR** every dirty path together with the statement that those files carry unreviewed content and
+must neither be COMMITTED nor BUILT. **This is a message in its own right**, not an addition to another
+one: exit 1 has no template to append to.
+
+**The exit code is the state, not just a pass/fail flag.** This run has four distinct outcomes and each
+gets its own code, so a caller can tell them apart without parsing any text. **A caller needs to act
+differently on 2 than on 3** - one means fix the environment, the other means edit the rules - so they
+must never share a code:
 
 | exit | state | inbox `## Pending` |
 |------|-------|--------------------|
 | 0 | GROWTH published (or nothing pending to publish) | reset |
-| 2 | NOT published - no approval obtained (no interactive channel, or the human did not approve). Deliberate, not a fault | left intact |
+| 2 | NOT published - no interactive approval channel. Deliberate, not a fault | left intact |
+| 3 | NOT published - the human reviewed it and did not approve. Deliberate, not a fault | left intact |
 | 1 | error - something went wrong | left intact |
 
 Exit 0 here would be actively misleading: it is indistinguishable from a successful publish to anything
 reading only the status code, so a pipeline that expected GROWTH to land reports SUCCESS while nothing
 was written. That is the silent-success blindspot this branch exists in the first place to avoid.
 
-**Exit 2 ENDS the run here. Do not continue to the Finish step below.** The inbox is left intact
-because nothing ever reaches the code that would reset it - not because the reset rule evaluated `2` and
+**Exit 2 and exit 3 both END the run here. Do not continue to the Finish step below.** The inbox is left
+intact because nothing ever reaches the code that would reset it - not because the reset rule evaluated and
 declined. Those are different mechanisms and only the first one is true on this path: the Finish step
 resets `## Pending` on `curate-commit` exit 0, and on this path `curate-commit` is never invoked at all.
 Read this branch as terminal.
@@ -262,7 +276,7 @@ Read this branch as terminal.
 **What this run has ALREADY done by the time it reaches here, and does NOT undo.** The terminal exit is
 not a rollback, so state the partial effect rather than leaving an executor to guess at it:
 
-| already happened | reverted on exit 2? | where it lives |
+| already happened | reverted on a non-publishing exit (2 or 3)? | where it lives |
 |---|---|---|
 | the compiled cheatsheet was written to `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md` | **no** | user profile - **live, and read by both drivers** |
 | `knowledge/driver-cheatsheet.core.md` and its two byte-identical pins may have been edited | **no** | **IN THE REPOSITORY - these are uncommitted edits in the working tree** |
@@ -270,7 +284,7 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
 **Do not delete any of it, and do NOT commit the repository edits.** The STDERR message required at
-`:239-241` names those paths and carries the do-not-commit-or-build warning out of this process.
+`:249-252` names those paths and carries the do-not-commit-or-build warning out of this process.
 
 **`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
 in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
