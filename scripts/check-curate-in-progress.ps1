@@ -87,13 +87,11 @@ try {
     # safe only because all three pinned files are tracked - the guard would be relying on an incidental
     # fact about the repository rather than on its own logic. Taking every staged status costs nothing:
     # a staged deletion of a pinned file also blocks, which is not wrong.
-    # --no-renames closes the whole rename CLASS rather than either instance of it. With rename detection
-    # on, git collapses a rename into one entry and reports only the DESTINATION path, so MEASURED:
-    # renaming a pinned file AWAY (`git mv <pinned> foo.rs`) reports only `foo.rs` and the pinned source
-    # is invisible - the guard passes and the content ships under a new name. --no-renames makes git
-    # report the pair as a delete plus an add, so BOTH paths appear and whichever one is pinned is seen.
-    # Verified in both directions: outbound now lists the pinned source, inbound still lists the pinned
-    # destination. Two separate holes, one flag - do not replace this with a patch for either direction.
+    # --no-renames is load-bearing. With rename detection on, git collapses a rename into ONE entry
+    # naming only the DESTINATION, so `git mv <pinned> foo.rs` hides the pinned source and the content
+    # ships under a new name. Without a filter, --no-renames reports the pair as a delete plus an add so
+    # whichever half is pinned is visible - one flag covering both directions. Both are pinned by rows;
+    # do not narrow this to a patch for one direction.
     $StagedFiles = @(git -C $RepoRoot diff --cached --name-only --no-renames 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "git could not list staged files in '$RepoRoot' (exit $LASTEXITCODE): $($StagedFiles -join '; ')"
@@ -103,11 +101,11 @@ try {
     # drop. An earlier version also tried to strip an absolute repo-root prefix; since git never emits
     # one, that branch could never run. It was removed rather than left as reassurance: dead defensive
     # code is untestable by construction, and a mutant inside it would have escaped the suite silently.
-    # CAPSTONE R3-F2, and it was an INCOMPLETE FOLD of R1-F3 sitting directly under the comment above
-    # that describes the fix: the absolute-prefix branch was removed while `.Replace('\','/')` was left
-    # beside it, equally dead, as equally untestable reassurance. git emits forward slashes on Windows,
-    # so it never had anything to replace and removing it left the suite green. Trim stays - stderr is
-    # merged into this stream by `2>&1`, so a stray blank or padded line is possible.
+    # git emits repo-relative forward-slash paths, so there is nothing to rewrite - only stray lines to
+    # drop. Trim is NOT redundant with the whitespace check beside it: that check skips a line which is
+    # ENTIRELY whitespace, while Trim handles a line that has content AND padding, which `2>&1` can
+    # merge in from stderr. (A capstone round claimed the check made Trim dead; measured false -
+    # IsNullOrWhiteSpace(' path ') is False, so Trim is the only thing that strips it.)
     $normalised = @(foreach ($f in $StagedFiles) {
         if ([string]::IsNullOrWhiteSpace($f)) { continue }
         $f.Trim()
@@ -120,29 +118,13 @@ try {
         exit 0
     }
 
-    # THE DISCARD COMMAND HAS BEEN WRONG TWICE, IN TWO DIFFERENT WAYS. Both forms are recorded here
-    # because the failure mode is recurrence across edits, not carelessness within one - and the second
-    # form was written to fix the first.
-    #   1. `git checkout -- <all three>` - WRONG COMMAND. `git checkout --` restores the worktree FROM
-    #      THE INDEX, so its effect SPLITS across the set and neither half is what the message promised:
-    #      for a STAGED file the index already holds the unreviewed content, so it survives in both index
-    #      and worktree - it discarded nothing; for an UNSTAGED file the index still matches HEAD, so the
-    #      worktree is overwritten and any hand edit there is destroyed. So it failed at its stated
-    #      purpose on exactly the file it was invoked for, destroyed work on the others, and the human
-    #      would then clear the marker believing they were clean.
-    #      (This description was itself wrong once - it claimed the content survived across the whole set,
-    #      which is only true of the staged file. An inaccurate record of a failure is worse than none.)
-    #   2. `git restore --staged --worktree -- <offending only>` - RIGHT COMMAND, WRONG SCOPE. Written to
-    #      fix (1), and it introduced a new hole: a curate run writes all three pinned files, so a human
-    #      who staged only one would restore only that one, clear the marker, and leave the other two
-    #      dirty and unguarded.
-    #   3. The same command WITHOUT `git -C <root>` - RIGHT COMMAND AND SCOPE, WRONG WORKING DIRECTORY.
-    #      The paths printed are repo-relative, but `git restore` resolves a pathspec against the CURRENT
-    #      directory, so a human who ran `git commit` from a subdirectory and pasted the line got
-    #      "pathspec did not match any file(s)" and no discard at all.
-    # CURRENT: the right command, over ALL THREE, anchored with `git -C`. THREE INDEPENDENT AXES have
-    # each been wrong once - command, scope, working directory. Getting one right is not getting the
-    # others right, so change this line only with all three in mind.
+    # THE DISCARD LINE HAS THREE INDEPENDENT AXES AND HAS BEEN WRONG ON EACH OF THEM ONCE: the COMMAND
+    # (`git checkout --` restores from the index, so it discarded nothing on the staged file and
+    # destroyed hand edits on the others), the SCOPE (offending-only left the other two pinned files
+    # dirty and unguarded), and the WORKING DIRECTORY (`git restore` resolves a pathspec against the
+    # current directory, so an unanchored line pasted from a subdirectory matched nothing).
+    # Getting one right is not getting the others right. Each axis is now pinned by a row in
+    # check-curate-in-progress.Tests.ps1 - change this line and run that suite, which is the record.
     #
     # Name the files. A count sends a reader hunting; a name sends them to the file.
     Write-Host ""
