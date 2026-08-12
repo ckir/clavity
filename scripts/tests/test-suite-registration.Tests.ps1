@@ -29,16 +29,23 @@ Describe 'test suite registration' {
         # covers a whole-line comment and a trailing one with one expression; handling only whole-line
         # comments left the trailing case wide open.
         #
-        # ONLY a WHITESPACE-PRECEDED `#` is a comment, which is also the shell's rule. Stripping every
-        # `#` was worse than it looked: `'scripts/tests/foo.Tests.ps1#bak'` - disabling a suite by
-        # suffixing its path - would have had the suffix stripped and the suite certified as registered,
-        # while Invoke-Pester silently skips the path that does not exist. Both suffix rules below also
-        # exclude `#`, so that form now matches nothing and the suite reports UNREGISTERED - loud.
+        # THREE COMMENT FORMS, each found by a different round. A `<# ... #>` PAIR goes first: that is
+        # how a suite gets disabled inside the `pwsh -c` string, and this repo has already had a text
+        # guard defeated by exactly that syntax. An UNCLOSED `<#` then strips to end of line. Last, a
+        # WHITESPACE-PRECEDED `#` - the shell's own rule - and deliberately NOT every `#`, because
+        # stripping the suffix off `'scripts/tests/foo.Tests.ps1#bak'` certified a suite Invoke-Pester
+        # silently skips.
+        #
+        # THE PAIR MUST BE REMOVED AS A PAIR. Treating `<#` as "strip to end of line" also deletes the
+        # real suites AFTER an inline block comment - measured: it dropped a still-registered suite,
+        # trading a false pass for a false failure. Both suffix rules below exclude `#`.
         function Get-RecipeSuites {
             param([string]$Recipe)
-            $m = [regex]::Match($script:Justfile, "(?m)^$([regex]::Escape($Recipe)):\r?\n(?<body>(?:[ \t]+.*\r?\n?)+)")
+            $m = [regex]::Match($script:Justfile, "(?m)^$([regex]::Escape($Recipe)):\r?\n(?<body>(?:[ \t]+.*\r?\n?|[ \t]*\r?\n)+)")
             if (-not $m.Success) { return @() }
-            $body = ($m.Groups['body'].Value -split "`n" | ForEach-Object { $_ -replace '(^|\s)#.*$', '' }) -join "`n"
+            $body = ($m.Groups['body'].Value -split "`n" | ForEach-Object {
+                ($_ -replace '<#.*?#>', '') -replace '(^|\s)<#.*$', '' -replace '(^|\s)#.*$', ''
+            }) -join "`n"
             # THE TRAILING LOOKAHEAD IS LOAD-BEARING. Without it, a recipe entry naming a disabled
             # path (`foo.Tests.ps1.bak`) still captures `foo.Tests.ps1`, so the row certifies a suite
             # the recipe never runs. It also keeps this parse and the census parse in agreement.
@@ -60,15 +67,17 @@ Describe 'test suite registration' {
         )
     }
 
-    It 'found both partition recipes' {
-        # THIS ROW NAMES THE CAUSE; it is not what stops a false clean. MEASURED by making the parse
-        # return nothing: the registration row below reds anyway, reporting every suite on disk as
-        # unregistered - so the gate does not go quietly green. What it does report is a symptom that
-        # sends the reader hunting through the justfile for a registration problem that is not there,
-        # while the phantom and both-halves rows pass vacuously on two empty sets. This row says "the
-        # parse broke" instead.
-        $script:Fast.Count | Should -BeGreaterThan 5 -Because 'an empty fast list means the recipe parse broke, not that the gate is empty'
-        $script:Slow.Count | Should -BeGreaterThan 5 -Because 'an empty slow list means the recipe parse broke'
+    It 'parsed a plausible population out of both partition recipes' {
+        # THIS ROW NAMES THE CAUSE. It does not stop a false clean and suppresses nothing: MEASURED by
+        # making the parse return nothing, the registration row reds too, and Pester runs every row
+        # regardless, so the reader sees BOTH. The value is that one of them says "the parse broke"
+        # rather than listing every suite on disk as unregistered, which sends someone hunting through
+        # the justfile for a problem that is not there.
+        #
+        # The threshold is a PLAUSIBILITY floor, not an emptiness check: a half-broken parse is the
+        # likelier failure, and four names is as wrong as none.
+        $script:Fast.Count | Should -BeGreaterThan 5 -Because 'far too few suites parsed out of test-scripts-fast - the recipe parse is broken, not the gate empty'
+        $script:Slow.Count | Should -BeGreaterThan 5 -Because 'far too few suites parsed out of test-scripts-slow - the recipe parse is broken, not the gate empty'
     }
 
     It 'sees every suite in scripts/tests - the FLAT layout all three parses here assume' {
