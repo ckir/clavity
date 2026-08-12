@@ -245,4 +245,38 @@ Describe 'shipped plugin hook registration' {
         # -BeExactly, matching the sibling assertions: a future PARTIAL subset must fail, not pass quietly.
         $matchers[0] | Should -BeExactly 'startup|resume|clear|compact' -Because 'this repo pins all four sources; a subset silently drops a channel'
     }
+
+    It 'pins the SessionStart matcher of EVERY agy-autotrain hook, not a named list - agy-autotrain' {
+        # THE ROW ABOVE NAMES ITS TWO HOOKS IN A -ForEach LITERAL, so a THIRD SessionStart hook added
+        # tomorrow inherits NO matcher assertion at all - and a partial matcher is exactly the drift that
+        # pair exists to catch. It has already happened once here: the two matchers diverged to
+        # complementary subsets ('startup|clear|compact' and 'startup|resume') and the visible consequence
+        # was the agy-LEARN reminder never firing on a RESUMED session. An enumerated list cannot see the
+        # hook it was never told about.
+        #
+        # Both SIBLING rows in this file already sweep instead of enumerating - 'names only hook files that
+        # EXIST' walks Get-AllCommands, and 'ships no hook file that is reachable from nowhere' walks the
+        # directory. This row closes the asymmetry rather than adding a new mechanism.
+        #
+        # Deliberately NOT parameterised over dotnet/classic: those two register agy-liveness-check.sh on
+        # 'startup' ALONE on purpose (see 'keeps agy-liveness-check.sh on startup ALONE' above), so a blanket
+        # convention assertion is TRUE for agy-autotrain and FALSE for them. If agy-autotrain ever gains a
+        # deliberate startup-only hook, this row must fail and be amended by hand - that is the intended
+        # cost, not an oversight: a convention worth pinning is worth a deliberate edit to depart from.
+        $json   = Get-Content -Raw -LiteralPath $script:Manifests['autotrain'] | ConvertFrom-Json
+        $groups = @($json.hooks.SessionStart)
+
+        # Non-vacuity guard. Without it, a manifest whose SessionStart array went missing or empty would
+        # make the assertion below compare nothing to nothing and pass - the false-clean shape this repo
+        # keeps paying for.
+        $groups.Count | Should -BeGreaterThan 0 -Because 'an empty SessionStart array would make the assertion below vacuous'
+
+        # Name the offenders, not a count: a count sends a reader hunting, a name sends them to the file.
+        $bad = @(foreach ($g in $groups) {
+            if ($g.matcher -ne 'startup|resume|clear|compact') {
+                foreach ($h in @($g.hooks)) { "$($h.command) [matcher=$($g.matcher)]" }
+            }
+        })
+        $bad -join ', ' | Should -BeExactly '' -Because 'every agy-autotrain SessionStart hook must pin all four sources; a subset silently drops a channel'
+    }
 }
