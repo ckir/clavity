@@ -71,8 +71,8 @@ workaround rule may be deleted only when **BOTH gates hold (spec section 5.C-B +
 There is deliberately **no maintainer-side build-time version gate** (curate runs on the maintainer's box,
 which always has the newest driver, so a local check would ship a stripped cheatsheet that still bites a
 not-yet-updated end-user). Do not remove a carried rule as part of triage; retirement is a separate,
-deliberate, later decision - and this MVP does not retire any current entry (the fixes + CI tests are
-deferred; see "Deferred work").
+deliberate, later decision - and this MVP does not retire any current entry (neither the fixes nor their
+CI regression tests are built yet, so gate 1 above cannot hold for any entry).
 
 ### Compile the core driver-cheatsheet (spec section 5.C-C)
 
@@ -232,8 +232,13 @@ headless or otherwise non-interactive session), do **NOT** publish. Emit a **non
 interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to
 publish." - on **STDERR**, and **exit 2**.
 
-**If the run left any repository file modified, name every dirty path in that same STDERR message, and
-state in it that those files carry unreviewed content and must not be committed.**
+**The human did not approve?** If the human answered the gate with anything other than approval - a
+change request, a refusal, or no answer - do **NOT** publish, and **exit 2**. Emit the same non-blocking
+message with "the human did not approve" in place of "no interactive approval channel".
+
+**ON EVERY NON-PUBLISHING EXIT, whatever the reason:** if the run left any repository file modified, name
+every dirty path in that STDERR message, and state in it that those files carry unreviewed content and
+must neither be COMMITTED nor BUILT.
 
 **The exit code is the state, not just a pass/fail flag.** This run has three distinct outcomes and each
 gets its own code, so a caller can tell them apart without parsing any text:
@@ -241,7 +246,7 @@ gets its own code, so a caller can tell them apart without parsing any text:
 | exit | state | inbox `## Pending` |
 |------|-------|--------------------|
 | 0 | GROWTH published (or nothing pending to publish) | reset |
-| 2 | NOT published - no interactive approval channel. Deliberate, not a fault | left intact |
+| 2 | NOT published - no approval obtained (no interactive channel, or the human did not approve). Deliberate, not a fault | left intact |
 | 1 | error - something went wrong | left intact |
 
 Exit 0 here would be actively misleading: it is indistinguishable from a successful publish to anything
@@ -265,7 +270,7 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
 **Do not delete any of it, and do NOT commit the repository edits.** The STDERR message required at
-`:230-236` names those paths and carries the do-not-commit warning out of this process.
+`:239-241` names those paths and carries the do-not-commit-or-build warning out of this process.
 
 **`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
 in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
