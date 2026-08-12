@@ -1,4 +1,13 @@
-# Every Pester suite on disk must be registered in exactly one half of the fast/slow partition.
+# Every Pester suite IN scripts/tests/ must be registered in exactly one half of the fast/slow partition.
+#
+# THE SCOPE IS scripts/tests/, AND THAT IS NARROWER THAN THIS FILE USED TO CLAIM. It said "every Pester
+# suite on disk", which is false: `$script:OnDisk` enumerates `$PSScriptRoot` and nothing else, so a
+# suite anywhere else in the repository is invisible here. That wording was not harmless - MEASURED
+# 2026-08-12, `clavity-dotnet/install/clavity-install.Tests.ps1` exists and is referenced by no justfile,
+# no workflow, and nothing else in the repository, so it runs in no gate at all. That is exactly the
+# exists-passes-never-runs defect this file was written to prevent, and the false claim is what made it
+# look already covered. It is captured for triage rather than fixed here: widening this guard
+# repo-wide is a scoping decision about other products' suites, not a fold.
 #
 # WHY THIS EXISTS. Registration is an EXPLICIT LIST in the justfile, not a glob. `just test-scripts` does
 # glob scripts/tests and so reports an unregistered suite green - but neither gate anyone actually runs
@@ -30,9 +39,17 @@ Describe 'test suite registration' {
 
         $script:Fast = Get-RecipeSuites 'test-scripts-fast'
         $script:Slow = Get-RecipeSuites 'test-scripts-slow'
+        # RECURSIVE, and holding a path relative to this directory - which for today's flat layout is
+        # just the file name, so every comparison below is unchanged. It matters when the layout is NOT
+        # flat: with a non-recursive enumeration the flat-layout row would fail while the registration
+        # and census rows, blind to the same file, still reported GREEN. Pester does not stop a Describe
+        # on a failed It, so the file would have simultaneously announced the violation and asserted that
+        # every suite on disk was registered. A suite this file cannot see must never be a suite it
+        # certifies.
         $script:OnDisk = @(
-            Get-ChildItem -LiteralPath $PSScriptRoot -File -Filter '*.Tests.ps1' |
-                Select-Object -ExpandProperty Name | Sort-Object
+            Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.Tests.ps1' |
+                ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) -replace '\\', '/' } |
+                Sort-Object
         )
     }
 
@@ -42,21 +59,22 @@ Describe 'test suite registration' {
         # false-clean this repo keeps paying for.
         $script:Fast.Count | Should -BeGreaterThan 5 -Because 'an empty fast list means the recipe parse broke, not that the gate is empty'
         $script:Slow.Count | Should -BeGreaterThan 5 -Because 'an empty slow list means the recipe parse broke'
-        $script:OnDisk.Count | Should -BeGreaterThan 20 -Because 'an empty disk enumeration would make every comparison below vacuous'
+        $script:OnDisk.Count | Should -BeGreaterThan 20 -Because 'an empty enumeration of scripts/tests would make every comparison below vacuous'
     }
 
-    It 'sees every suite on disk - the FLAT layout all three parses here assume' {
-        # THIS SUITE IS BLIND BELOW THE TOP LEVEL, AND THE BLINDNESS IS SILENT. $script:OnDisk uses
-        # Get-ChildItem WITHOUT -Recurse, and Get-RecipeSuites' regex forbids a directory separator, so a
-        # suite at scripts/tests/<sub>/x.Tests.ps1 is invisible to BOTH sides of every comparison below -
-        # they would pass by comparing two incomplete sets. Meanwhile CI runs `Invoke-Pester scripts/tests`,
-        # which DOES recurse, so that suite would run there while being registered in neither half: exactly
-        # the exists-passes-never-runs defect this file was written to prevent, reintroduced underneath it.
+    It 'sees every suite in scripts/tests - the FLAT layout all three parses here assume' {
+        # A NESTED SUITE CANNOT BE REGISTERED HERE, SO IT MUST BE STOPPED LOUDLY. $script:OnDisk now
+        # recurses, so a nested suite is at least VISIBLE - but `Get-RecipeSuites`' regex still forbids a
+        # directory separator, and the runtimes table is a flat list of file names, so such a suite can
+        # never be matched to a registration or to a row no matter what anyone writes in those files.
+        # Meanwhile CI runs `Invoke-Pester scripts/tests`, which DOES recurse, so it would run there
+        # while belonging to neither half: the exists-passes-never-runs defect this file exists to
+        # prevent, reappearing underneath it.
         #
-        # Rather than teach three parses about paths, ASSERT THE ASSUMPTION. If someone genuinely needs a
-        # subdirectory, this row stops them with the list of what to extend, which is the loud version of a
-        # failure that would otherwise be silent. `fixtures/` already exists and is fine - it holds data,
-        # not suites - so this asserts specifically that no *.Tests.ps1 lives below the top level.
+        # Rather than teach three parses about paths speculatively, ASSERT THE ASSUMPTION. If someone
+        # genuinely needs a subdirectory, this row stops them with the list of what to extend first.
+        # `fixtures/` already exists and is fine - it holds data, not suites - so this asserts
+        # specifically that no *.Tests.ps1 lives below the top level.
         $all = @(Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.Tests.ps1')
         $all.Count | Should -BeGreaterThan 20 -Because 'a recursive enumeration that found almost nothing means the walk broke, not that the directory is empty'
 
@@ -65,7 +83,7 @@ Describe 'test suite registration' {
         $nested -join ', ' | Should -BeExactly '' -Because 'a suite in a subdirectory is invisible to $script:OnDisk, to Get-RecipeSuites, and to the table census - to allow one, all three must learn about paths first'
     }
 
-    It 'registers every suite on disk in the fast or slow gate' {
+    It 'registers every suite in scripts/tests in the fast or slow gate' {
         $registered = @($script:Fast + $script:Slow | Sort-Object -Unique)
         $unregistered = @($script:OnDisk | Where-Object { $_ -notin $registered })
         # Name them, AND name the file to edit. A count sends a reader hunting; a name sends them to the
@@ -88,7 +106,7 @@ Describe 'test suite registration' {
         $both -join ', ' | Should -BeExactly '' -Because 'fast and slow are a partition; a suite in both is paid for twice and its measured timing is wrong - remove it from one recipe in the repo-root justfile'
     }
 
-    It 'the _partition.md runtimes table is a complete census of the suites on disk' {
+    It 'the _partition.md runtimes table is a complete census of the suites in scripts/tests' {
         # THE TABLE CLAIMS TO BE THE SUITE SET, SO SOMETHING MUST HOLD IT TO THAT. It drifted silently
         # to THREE missing suites - including check-injected-context, the largest in the fast half - and
         # the omissions were found only because a review happened to look. A maintainer scanning that

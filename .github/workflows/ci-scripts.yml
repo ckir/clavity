@@ -33,13 +33,11 @@ name: ci-scripts
 # Adding the whole `agy-autotrain/**` tree instead was rejected: it would fire this workflow on every
 # knowledge-inbox capture.
 #
-# MOVING one of these files, rather than editing it, is the case NOT established either way here, and it
-# is deliberately not asserted. It turns on whether the platform reports a rename as a change to the OLD
-# path or collapses it to the destination - and this repository has MEASURED the collapse happening in
-# git itself, which is the entire reason the guard runs `git diff --cached --no-renames`. Verifying the
-# CI side needs a push, so the claim is left open rather than stated wrongly in either direction. The
-# backstop does not depend on the answer: the suite's own Test-Path on that file reds the moment it is
-# not where the guard expects it.
+# MOVING one of these files is covered regardless of this filter: the suite's own Test-Path reds the
+# moment the file is not where the guard expects it. Whether the filter ALSO fires is unestablished -
+# it turns on whether the platform reports a rename as a change to the old path or collapses it to the
+# destination, as git's own rename detection does - and settling that needs a push, so it is asserted
+# in neither direction here.
 on:
   push:
     branches: [main]
