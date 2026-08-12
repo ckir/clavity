@@ -250,7 +250,7 @@ across two separate strings silently stops applying the moment either one is rew
 message ends by telling the reader to re-run interactively - advice that is nonsense for a human who just
 declined in an interactive session.
 
-**BEFORE ANY EXIT THAT DID NOT PUBLISH - whatever its code, including one added after this was written:**
+**BEFORE ANY NON-ZERO EXIT - whatever the code, including one added after this was written:**
 if the run left any repository file modified, emit on **STDERR** every dirty path together with the
 statement that those files carry unreviewed content and
 must neither be COMMITTED nor BUILT. **This is a message in its own right**, not an addition to another
@@ -290,8 +290,10 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 
 **This block describes the GATE's terminal paths only** - exit 2 and exit 3, the two that arrive here. An
 error exit (1) can happen anywhere, including before any of the writes above, so it has no single
-documented state to state. That is exactly why the dirty-path rule above is keyed on "did not publish"
-rather than on a list of codes: it still covers an error exit, even though this table cannot.
+documented state to state. That is exactly why the dirty-path rule above is keyed on the exit being
+non-zero rather than on a list of codes: it still covers an error exit, even though this table cannot.
+**Non-zero and not "did not publish"** - exit 0 also covers a run with nothing pending to publish, and
+that run needs no warning.
 
 **Do not delete any of it, and do NOT commit the repository edits.** The STDERR message required at
 `:253-257` names those paths and carries the do-not-commit-or-build warning out of this process.
