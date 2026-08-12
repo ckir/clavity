@@ -188,25 +188,46 @@ arrives at step 2 is the peer's design rather than a selection from the driver's
 an `OPEN-PROPOSAL:` block, and the hook treats a fork seam that names options without one the same way
 it treats a missing role marker.
 
-## 10. NEGOTIATE before presenting a fork - the third member of this family
+## 10. The discipline: agent disagreements are settled by negotiation BEFORE the owner sees them
 
-**Owner observation, 2026-08-13, demonstrated in the same session that produced it: the owner had to
-type "Negotiate with your proposals to agree."** The driver had consulted the peer, formed two additions
-of its own, and was about to hand the owner "the peer's design plus my improvements" - without ever
-putting those improvements back to the peer. Nothing prompted it.
+**Owner's statement of the principle, 2026-08-13:** *"disagreements between agents should be solved by
+negotiation before presented to owner."*
 
-**Measured:**
+This is **broader than the fork case that prompted it**, and the widening is the point. It covers every
+shape of agent disagreement, not just a design fork:
 
-- The obligation is written twice - `skills/agy-first/SKILL.md` carries it six times, and the driver's
-  own memory records *"NEVER hand the owner 'agy's rec' vs 'my rec' - NEGOTIATE first, bring the
-  converged answer."*
-- **No hook matcher covers `AskUserQuestion`.** Enumerating `hooks.json` gives eight matchers -
-  `Skill`, `Agent|Task`, `Bash|PowerShell|mcp__.*agy_ask`, `Write|Edit`, `Bash|Write|Edit`,
-  `manual|auto`, `startup`, `startup|resume|clear|compact`. The boundary where a fork actually reaches
-  the human is unguarded.
+- a design/approach/sequencing fork - the case that surfaced it;
+- **a review finding the driver refutes** by measurement;
+- **a finding the driver rules below a severity floor**;
+- **a finding the driver accepts while rejecting the FIX proposed with it** - which happened five times
+  in the capstone preceding this spec, each time settled unilaterally.
 
-So this is a documented rule with no mechanism - **the exact failure mode this whole document exists to
-close**, appearing a third time in the same family:
+**The owner is the tie-break of last resort, not the referee of first instance.** An unresolved
+disagreement between two agents must not be the owner's first sight of it.
+
+### The boundary that must be written down, not assumed
+
+**Genuine impasse stays presentable.** If this discipline is read as "never present a disagreement" it
+inverts into something worse: a real deadlock stalls silently, or the driver manufactures agreement to
+satisfy the rule. The existing `agy-first` skill already has the right shape - negotiate to a cap, then
+declare IMPASSE and hand the human both positions **with their measured support**.
+
+So the rule is: **negotiate first; present only what negotiation could not settle, and present it as
+both positions rather than as a preference.** What is forbidden is handing the owner "agy says X, I say
+Y" as an opening move.
+
+### The cost, stated honestly
+
+Every refutation becomes a round-trip. In the capstone preceding this spec that would have added roughly
+five extra consults - five real defects were reported with fixes that measurement showed were wrong or
+incomplete, and each was corrected without going back to the peer. The discipline says that correction
+should itself be negotiated, because a fix authored by one agent and unreviewed by the other is exactly
+the unreviewed-code shape the capstone keeps finding.
+
+**That cost is the argument FOR it, not against it:** the fix I write alone is no more trustworthy than
+the fix the peer wrote alone, and this session produced repeated evidence of both being wrong.
+
+### Enforcement - same family, different boundary
 
 | requirement | boundary | status |
 |---|---|---|
@@ -214,18 +235,23 @@ close**, appearing a third time in the same family:
 | `OPEN-PROPOSAL` - ask the peer first, menu second (section 9) | `mcp__.*agy_ask` | deferred, own cycle |
 | `NEGOTIATED` - converge before presenting (this section) | **`AskUserQuestion`** | deferred, own cycle |
 
-**Shape of the check, so the follow-up cycle starts from something concrete:** a `PreToolUse` hook on
-`AskUserQuestion` that, when a fork seam was consulted since the last presentation, requires that seam
-to carry a `NEGOTIATED:` line recording what converged and on what evidence. Same failure posture as the
-role marker - fail open on infrastructure, closed on a positively-detected violation.
+## 10a. Why it is a separate hook, and what it cannot yet decide
 
-**Why it is a separate hook rather than an extension:** it fires on a different tool at a different
-moment, and conflating them would put a fail-closed check on the tool used to ask the human for help -
-which is the one path that must never be blocked when everything else is.
+**Separate hook, by necessity.** It fires on a different tool at a different moment, and conflating it
+with the role check would put a fail-closed gate on `AskUserQuestion` - the tool used to ask the human
+for help. That is the one path that must stay open when everything else is broken.
 
-**Unresolved, and the reason this needs its own cycle rather than a paragraph here:** what counts as
-"a fork worth negotiating". Not every `AskUserQuestion` follows a consult, and most should not require
-one. Getting that predicate wrong blocks routine questions, which is worse than the gap it closes.
+**Measured, and this is why the gap existed at all:** no hook matcher covers `AskUserQuestion`.
+Enumerating `hooks.json` gives eight - `Skill`, `Agent|Task`, `Bash|PowerShell|mcp__.*agy_ask`,
+`Write|Edit`, `Bash|Write|Edit`, `manual|auto`, `startup`, `startup|resume|clear|compact`. The boundary
+where a disagreement actually reaches the human is unguarded, while the obligation to negotiate is
+written six times in `skills/agy-first/SKILL.md` and once in the driver's memory. **A documented rule
+with no mechanism - the exact failure this document exists to close, appearing a third time.**
+
+**Unresolved, and the reason this needs its own cycle rather than a paragraph here: what counts as a
+disagreement worth negotiating.** Most `AskUserQuestion` calls follow no consult and must not require
+one. A predicate that is too eager blocks routine questions, which is worse than the gap it closes; one
+that is too lax reproduces the gap. Deciding it needs its own design pass, not an inline guess.
 
 ## Deliberately NOT in scope
 
