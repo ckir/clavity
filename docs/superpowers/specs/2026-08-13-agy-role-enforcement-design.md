@@ -133,7 +133,7 @@ log where a human can see how often it is used. The block message must name it v
 With infrastructure failures exiting 0 silently, the gate can vanish and nobody learns. **Every
 decision - pass, block, or skip-with-reason - appends ONE SHORT LINE to `.clavity/role-check.log`.**
 
-Three constraints, each from a round-2 finding:
+Four constraints - the first three from round-2 findings, the fourth from round 3:
 
 - **One short `printf` append, never read-modify-write.** The Resource Vampire seat is right that this
   file is written on every consult; the State Corruptor seat's claim that concurrent writers *corrupt*
@@ -155,12 +155,48 @@ Three constraints, each from a round-2 finding:
   existence. Telemetry without spam.
 - **The readers are part of the build, or none of this is observability.** Round 3: the round-2 fold was
   booked complete while its read half had no build row at all - a sentinel with a writer and no reader,
-  and a log nothing surfaces. `.clavity/` is gitignored, so neither file is visible to review or to CI;
+  and a log nothing surfaces. `.clavity/` is gitignored **here**, so neither file is visible to review or to CI;
   three separate mechanisms (skip-token usage, block frequency, degraded mode) all terminated in
   artifacts nobody reads. **Both readers are now build rows in section 13.** The sentinel is surfaced by
   extending an existing SessionStart hook rather than adding a fourth; the log is surfaced only as a
   count of skip-token uses since the last session, which is the number that matters and the one that
   keeps the escape hatch honest.
+
+## 6a. This ships to OTHER PEOPLE'S machines - what that changes
+
+**Owner ruling, 2026-08-13: this ships with the plugin when the implementation completes; it is not a
+local fixture.** Every section above was reasoned about this repository, and two of those assumptions do
+not survive the crossing.
+
+**1. `.clavity/` IS NOT GITIGNORED ON A REPOSITORY WE DO NOT CONTROL.** Section 6 justifies writing the
+log and the sentinel there partly because they stay private. That privacy is a property of *this*
+repo's `.gitignore`, not of the directory name. Measured: **eight shipped hooks already write into
+`.clavity/`, and not one of them asserts the shield** - only `open-issues/SKILL.md:79` does, with
+`[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"`, and that skill
+explains why it re-asserts the shield on *every* capture rather than only at creation: a deleted or
+`git clean -Xdf`-removed shield would otherwise leave the directory git-visible forever after.
+
+> **Requirement: the hook asserts the `.clavity/.gitignore` shield before its first write, on every
+> invocation, exactly as `open-issues` does.** Without it this hook drops a file containing seam paths
+> and agent-authored skip reasons into a stranger's repository, where a routine `git add .` publishes
+> it. That is a privacy leak we would be shipping, not a tidiness issue.
+>
+> A test row must pin it: **delete the shield, run the hook, assert the shield is restored** - and the
+> mutant is removing the re-assertion so the row reds.
+
+*(The eight pre-existing hooks are a separate defect and are captured as an anomaly rather than fixed
+here - but note that this design cannot lean on their behaviour as precedent, because the precedent is
+the bug.)*
+
+**2. The "standard Windows only" constraint applies to the end-user box, not to this one.** This
+project's standing rule is that end-user machines get standard Windows plus the shipped binary. The
+gate's fail-open posture (section 3) is what carries this, and it is now load-bearing in a way it was
+not when the audience was one machine: `jq` absent, `sed` absent, a `bash` that is not Git Bash - each
+must exit 0 and leave the session working. **The degraded sentinel is what keeps that from being
+silent**, which is the argument for building its reader (section 6) rather than deferring it.
+
+**Unresolved and now sharper: residual 4.** Shipping makes the clavity-classic gap a claim we make to
+other people, not an internal inconsistency. See residual 4.
 
 ## 7. The block message must not read as a channel failure
 
@@ -435,6 +471,7 @@ is now written into the table instead of left implicit.
 | the delimiters exist in BOTH shipped SKILL.md copies | delete one -> row reds |
 | the skip token passes with a reason | omit the reason -> must block |
 | **a skip reason containing a newline logs ONE line** | feed a two-line reason -> unsanitised, the log gains a forged line -> row reds |
+| **the `.clavity/.gitignore` shield is re-asserted before the first write** | delete the shield, run the hook -> remove the re-assertion and the row reds. **Section 6a: without this the hook publishes a log into a stranger's repo** |
 
 ## 15. Exhaustiveness self-audit - run before handing this over
 
