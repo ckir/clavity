@@ -228,7 +228,7 @@ machine-local captures about to become a live injection into every ask; the huma
 model depends on, not a formality.
 
 **No interactive approval channel?** If this skill runs where no interactive approval can be obtained (a
-headless or otherwise non-interactive session), do **NOT** publish. Emit a **non-blocking** message - "no
+headless or otherwise non-interactive session), do **NOT** publish. Emit a message - "no
 interactive approval channel; the compiled GROWTH was NOT published. Re-run agy-curate interactively to
 publish." - on **STDERR**, and **exit 2**.
 
@@ -238,16 +238,21 @@ do NOT take the same path:
 - **A change request** - revise the proposal and **RETURN TO THE GATE**. This is iteration, not a
   terminal state: do not exit, and do not publish until an approval is actually given. A gate that
   invites "request changes" and then treats it as an abort is not a gate, it is a trap.
-- **A refusal, or no answer at all** - do **NOT** publish. Emit a **non-blocking** message on **STDERR** -
-  "the human did not approve; the compiled GROWTH was NOT published." - and **exit 3**.
+- **A refusal, or no answer at all** - do **NOT** publish. Emit on **STDERR** - "the human did not
+  approve; the compiled GROWTH was NOT published." - and **exit 3**.
+
+**Do not call any of these messages "non-blocking".** That word belongs to the repository's HOOK
+convention, which the note at the end of this section explicitly disclaims for this skill; every exit
+described here is terminal, so "non-blocking" states the opposite of what happens.
 
 Write that message out in full rather than deriving it from the exit-2 wording above. A substitution rule
 across two separate strings silently stops applying the moment either one is reworded, and the exit-2
 message ends by telling the reader to re-run interactively - advice that is nonsense for a human who just
 declined in an interactive session.
 
-**BEFORE ANY NON-PUBLISHING EXIT - 1, 2 and 3 alike:** if the run left any repository file modified, emit
-on **STDERR** every dirty path together with the statement that those files carry unreviewed content and
+**BEFORE ANY EXIT THAT DID NOT PUBLISH - whatever its code, including one added after this was written:**
+if the run left any repository file modified, emit on **STDERR** every dirty path together with the
+statement that those files carry unreviewed content and
 must neither be COMMITTED nor BUILT. **This is a message in its own right**, not an addition to another
 one: exit 1 has no template to append to.
 
@@ -276,15 +281,20 @@ Read this branch as terminal.
 **What this run has ALREADY done by the time it reaches here, and does NOT undo.** The terminal exit is
 not a rollback, so state the partial effect rather than leaving an executor to guess at it:
 
-| already happened | reverted on a non-publishing exit (2 or 3)? | where it lives |
+| already happened | reverted when the run reaches this block? | where it lives |
 |---|---|---|
 | the compiled cheatsheet was written to `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md` | **no** | user profile - **live, and read by both drivers** |
 | `knowledge/driver-cheatsheet.core.md` and its two byte-identical pins may have been edited | **no** | **IN THE REPOSITORY - these are uncommitted edits in the working tree** |
 | `golden-header.growth.md` (the GROWTH publish) | **never written** | - this is exactly what the gate withheld |
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
+**This block describes the GATE's terminal paths only** - exit 2 and exit 3, the two that arrive here. An
+error exit (1) can happen anywhere, including before any of the writes above, so it has no single
+documented state to state. That is exactly why the dirty-path rule above is keyed on "did not publish"
+rather than on a list of codes: it still covers an error exit, even though this table cannot.
+
 **Do not delete any of it, and do NOT commit the repository edits.** The STDERR message required at
-`:249-252` names those paths and carries the do-not-commit-or-build warning out of this process.
+`:253-257` names those paths and carries the do-not-commit-or-build warning out of this process.
 
 **`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
 in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
