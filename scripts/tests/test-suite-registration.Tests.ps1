@@ -29,18 +29,20 @@ Describe 'test suite registration' {
         # covers a whole-line comment and a trailing one with one expression; handling only whole-line
         # comments left the trailing case wide open.
         #
-        # A `#` inside a quoted argument would be stripped too. That direction is SAFE: names after it
-        # go unseen, so a genuinely registered suite reports UNREGISTERED and the row reds loudly rather
-        # than certifying something silently. Measured today: no recipe body here contains a `#` at all.
+        # ONLY a WHITESPACE-PRECEDED `#` is a comment, which is also the shell's rule. Stripping every
+        # `#` was worse than it looked: `'scripts/tests/foo.Tests.ps1#bak'` - disabling a suite by
+        # suffixing its path - would have had the suffix stripped and the suite certified as registered,
+        # while Invoke-Pester silently skips the path that does not exist. Both suffix rules below also
+        # exclude `#`, so that form now matches nothing and the suite reports UNREGISTERED - loud.
         function Get-RecipeSuites {
             param([string]$Recipe)
             $m = [regex]::Match($script:Justfile, "(?m)^$([regex]::Escape($Recipe)):\r?\n(?<body>(?:[ \t]+.*\r?\n?)+)")
             if (-not $m.Success) { return @() }
-            $body = ($m.Groups['body'].Value -split "`n" | ForEach-Object { $_ -replace '#.*$', '' }) -join "`n"
+            $body = ($m.Groups['body'].Value -split "`n" | ForEach-Object { $_ -replace '(^|\s)#.*$', '' }) -join "`n"
             # THE TRAILING LOOKAHEAD IS LOAD-BEARING. Without it, a recipe entry naming a disabled
             # path (`foo.Tests.ps1.bak`) still captures `foo.Tests.ps1`, so the row certifies a suite
             # the recipe never runs. It also keeps this parse and the census parse in agreement.
-            @([regex]::Matches($body, "scripts/tests/(?<n>[A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._-])") |
+            @([regex]::Matches($body, "scripts/tests/(?<n>[A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._#-])") |
                 ForEach-Object { $_.Groups['n'].Value } | Sort-Object -Unique)
         }
 
@@ -58,13 +60,15 @@ Describe 'test suite registration' {
         )
     }
 
-    It 'found both partition recipes and a plausible suite population' {
-        # The non-vacuity guard. If the recipe regex ever stops matching, every set below goes empty and a
-        # set-difference assertion passes by comparing nothing to nothing - which is precisely the shape of
-        # false-clean this repo keeps paying for.
+    It 'found both partition recipes' {
+        # THIS ROW NAMES THE CAUSE; it is not what stops a false clean. MEASURED by making the parse
+        # return nothing: the registration row below reds anyway, reporting every suite on disk as
+        # unregistered - so the gate does not go quietly green. What it does report is a symptom that
+        # sends the reader hunting through the justfile for a registration problem that is not there,
+        # while the phantom and both-halves rows pass vacuously on two empty sets. This row says "the
+        # parse broke" instead.
         $script:Fast.Count | Should -BeGreaterThan 5 -Because 'an empty fast list means the recipe parse broke, not that the gate is empty'
         $script:Slow.Count | Should -BeGreaterThan 5 -Because 'an empty slow list means the recipe parse broke'
-        $script:OnDisk.Count | Should -BeGreaterThan 20 -Because 'an empty enumeration of scripts/tests would make every comparison below vacuous'
     }
 
     It 'sees every suite in scripts/tests - the FLAT layout all three parses here assume' {
@@ -127,7 +131,7 @@ Describe 'test suite registration' {
             # SAME SUFFIX RULE AS Get-RecipeSuites, deliberately. Requiring whitespace here rejected a
             # row ending exactly at `.ps1` that the other parse accepted, so the two could disagree
             # about the same fact - and the row then told a maintainer to add the row they had added.
-            $m = [regex]::Match($lines[$i], '^([A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._-])')
+            $m = [regex]::Match($lines[$i], '^([A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._#-])')
             if ($m.Success) { $m.Groups[1].Value }
         }) | Sort-Object -Unique)
 
@@ -136,7 +140,7 @@ Describe 'test suite registration' {
         $inTable.Count | Should -BeGreaterThan 20 -Because 'a table parse that found almost no rows means the parse broke, not that the table is empty'
 
         @($script:OnDisk | Where-Object { $_ -notin $inTable }) -join ', ' |
-            Should -BeExactly '' -Because 'a suite with no row is invisible to anyone reading that table to decide what the gate costs - measure it and add a row to the Measured runtimes table in scripts/tests/_partition.md'
+            Should -BeExactly '' -Because 'a suite with no row is invisible to anyone reading that table to decide what the gate costs - measure it and add a row to the Measured runtimes table in scripts/tests/_partition.md, starting with the BARE file name as every existing row does, not a path'
         @($inTable | Where-Object { $_ -notin $script:OnDisk }) -join ', ' |
             Should -BeExactly '' -Because 'a row for a suite that no longer exists is a figure nobody can ever re-measure - remove it from the Measured runtimes table in scripts/tests/_partition.md'
     }
