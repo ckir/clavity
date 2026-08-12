@@ -45,11 +45,34 @@ Describe 'test suite registration' {
         $script:OnDisk.Count | Should -BeGreaterThan 20 -Because 'an empty disk enumeration would make every comparison below vacuous'
     }
 
+    It 'sees every suite on disk - the FLAT layout all three parses here assume' {
+        # THIS SUITE IS BLIND BELOW THE TOP LEVEL, AND THE BLINDNESS IS SILENT. $script:OnDisk uses
+        # Get-ChildItem WITHOUT -Recurse, and Get-RecipeSuites' regex forbids a directory separator, so a
+        # suite at scripts/tests/<sub>/x.Tests.ps1 is invisible to BOTH sides of every comparison below -
+        # they would pass by comparing two incomplete sets. Meanwhile CI runs `Invoke-Pester scripts/tests`,
+        # which DOES recurse, so that suite would run there while being registered in neither half: exactly
+        # the exists-passes-never-runs defect this file was written to prevent, reintroduced underneath it.
+        #
+        # Rather than teach three parses about paths, ASSERT THE ASSUMPTION. If someone genuinely needs a
+        # subdirectory, this row stops them with the list of what to extend, which is the loud version of a
+        # failure that would otherwise be silent. `fixtures/` already exists and is fine - it holds data,
+        # not suites - so this asserts specifically that no *.Tests.ps1 lives below the top level.
+        $all = @(Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.Tests.ps1')
+        $all.Count | Should -BeGreaterThan 20 -Because 'a recursive enumeration that found almost nothing means the walk broke, not that the directory is empty'
+
+        $nested = @($all | Where-Object { $_.DirectoryName -ne $PSScriptRoot } |
+            ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) })
+        $nested -join ', ' | Should -BeExactly '' -Because 'a suite in a subdirectory is invisible to $script:OnDisk, to Get-RecipeSuites, and to the table census - to allow one, all three must learn about paths first'
+    }
+
     It 'registers every suite on disk in the fast or slow gate' {
         $registered = @($script:Fast + $script:Slow | Sort-Object -Unique)
         $unregistered = @($script:OnDisk | Where-Object { $_ -notin $registered })
-        # Name them. A count sends a reader hunting; a name sends them to the justfile line to edit.
-        $unregistered -join ', ' | Should -BeExactly '' -Because 'a suite in neither gate exists, passes under `just test-scripts`, and never runs in the gates anyone uses'
+        # Name them, AND name the file to edit. A count sends a reader hunting; a name sends them to the
+        # file. Whoever trips this is usually adding their first suite and has no idea what governs the
+        # gate - being told "it is missing" without being told WHERE is how a gate teaches people to
+        # distrust it.
+        $unregistered -join ', ' | Should -BeExactly '' -Because 'a suite in neither gate exists, passes under `just test-scripts`, and never runs in the gates anyone uses - add it to test-scripts-fast or test-scripts-slow in the repo-root justfile'
     }
 
     It 'names no suite that is missing from disk' {
@@ -57,12 +80,12 @@ Describe 'test suite registration' {
         $phantom = @($registered | Where-Object { $_ -notin $script:OnDisk })
         # Invoke-Pester is not an error on a path that does not exist, so a renamed-but-not-updated entry
         # silently drops that suite from the gate rather than failing it.
-        $phantom -join ', ' | Should -BeExactly '' -Because 'a recipe naming a file that does not exist silently shrinks the gate'
+        $phantom -join ', ' | Should -BeExactly '' -Because 'a recipe naming a file that does not exist silently shrinks the gate - fix or remove the entry in the repo-root justfile'
     }
 
     It 'puts each suite in exactly ONE half of the partition' {
         $both = @($script:Fast | Where-Object { $_ -in $script:Slow })
-        $both -join ', ' | Should -BeExactly '' -Because 'fast and slow are a partition; a suite in both is paid for twice and its measured timing in _partition.md is wrong'
+        $both -join ', ' | Should -BeExactly '' -Because 'fast and slow are a partition; a suite in both is paid for twice and its measured timing is wrong - remove it from one recipe in the repo-root justfile'
     }
 
     It 'the _partition.md runtimes table is a complete census of the suites on disk' {
@@ -103,8 +126,8 @@ Describe 'test suite registration' {
         $inTable.Count | Should -BeGreaterThan 20 -Because 'a table parse that found almost no rows means the parse broke, not that the table is empty'
 
         @($script:OnDisk | Where-Object { $_ -notin $inTable }) -join ', ' |
-            Should -BeExactly '' -Because 'a suite with no row is invisible to anyone reading that table to decide what the gate costs'
+            Should -BeExactly '' -Because 'a suite with no row is invisible to anyone reading that table to decide what the gate costs - measure it and add a row to the Measured runtimes table in scripts/tests/_partition.md'
         @($inTable | Where-Object { $_ -notin $script:OnDisk }) -join ', ' |
-            Should -BeExactly '' -Because 'a row for a suite that no longer exists is a figure nobody can ever re-measure'
+            Should -BeExactly '' -Because 'a row for a suite that no longer exists is a figure nobody can ever re-measure - remove it from the Measured runtimes table in scripts/tests/_partition.md'
     }
 }
