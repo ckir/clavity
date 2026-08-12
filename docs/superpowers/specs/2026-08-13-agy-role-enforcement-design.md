@@ -66,8 +66,14 @@ false-positive on, and no prose to parse beyond one narrow, stable path shape.
 
 ## 2. The marker, and why the check never reads the palette
 
-The seam template ships a literal marker line - `PANEL-SEATS:` followed by the seated roles. The hook
-checks the marker exists and is non-empty. **It does not parse the palette out of
+**THE MARKER IS A CONVENTION, NOT A SHIPPED TEMPLATE FILE.** An earlier draft said "the seam template
+ships the marker line", which contradicted sections 11 and 13: no new artifact type is introduced and
+the build surface lists no template file. **The template evaporated once the block message became a
+repair kit** - the block delivers the palette at the moment of failure, which is what a template would
+have been for. Resolved in favour of no template: one fewer artifact to ship, mirror and keep in sync.
+
+The seam carries a literal line - `PANEL-SEATS:` followed by the seated roles. The hook checks the
+marker exists and is non-empty. **It does not parse the palette out of
 `adversarial-panel-review/SKILL.md`**: the round-1 Dependency Cynic finding is correct that regexing
 markdown for a valid-seat list breaks when a bullet style or heading changes, and that parse failure
 would silently disable the gate. A generic marker check has no such coupling and stays correct when the
@@ -252,6 +258,121 @@ with no mechanism - the exact failure this document exists to close, appearing a
 disagreement worth negotiating.** Most `AskUserQuestion` calls follow no consult and must not require
 one. A predicate that is too eager blocks routine questions, which is worse than the gap it closes; one
 that is too lax reproduces the gap. Deciding it needs its own design pass, not an inline guess.
+
+## 11. Where the role content lives - the peer's design, converged over two negotiation rounds
+
+**The palette stays in `skills/adversarial-panel-review/SKILL.md`, wrapped in
+`<!-- AGY_PALETTE_START -->` / `<!-- AGY_PALETTE_END -->`, and the hook extracts between those
+delimiters with `sed` - structure-blind, never parsing markdown.**
+
+This is the peer's own design, produced with **no menu offered** (per section 9). Verified before
+accepting:
+
+- **HTML comments are precedented, not novel** - `clavity-dotnet/plugin/skills/ls-driving/SKILL.md`
+  already contains one.
+- **Skills are not ASCII-constrained** - `adversarial-panel-review/SKILL.md` carries 64 non-ASCII lines,
+  so the delimiters break no encoding rule.
+
+### Why not a structured `palette.json`
+
+The peer argued for it, then against it, and the reversal is recorded because it affects how much weight
+this convergence deserves.
+
+- **For:** the palette is genuinely structured - `grep -cE '^- \*\*[A-Z][a-z]+ [A-Z][a-z]+\*\*'` returns
+  **11**, eleven uniform seats each carrying a name, a trigger and a defect-class.
+- **The objection that turned out not to separate the options:** "it needs a new artifact type". Measured
+  - **no hook reads any non-`.sh` file from the plugin today**, so the delimiter design is equally new in
+  that respect. This measurement moved the driver toward the JSON, not away from it.
+- **Against, and decisive:** JSON is a hostile medium for the prose whose teaching value *is* the
+  content. The seats read *"hunts contradictory constraints, circular logic, unstated invariants"*; in
+  JSON fields, with no comments and escaping required, those sentences shorten until they stop teaching.
+  Keeping SKILL.md as the source with generated prose would need a generator plus a sync gate, mirrored
+  into both products - unjustified for displaying eleven sentences.
+
+⚠ **Weight this convergence less than a first-pass agreement.** The peer moved three times: delimiters
+fine -> "dead-end debt, build JSON now" -> "delimiters are the terminal state". Each position carried a
+substantive and *different* argument, so it is not pure capitulation, but it is a peer partly tracking
+the driver's pushback.
+
+### What the two mitigations do and do not do - stated as partial, per the peer's fair critique
+
+- **A test row pinning the delimiters and asserting the extracted block is non-empty** protects the
+  MAINLINE. It does **not** rescue an agent trapped at execution time by a broken delimiter in a dirty
+  tree - a test fires at suite time, the trap springs at consult time.
+- **A runtime fallback** naming the skill path when extraction is empty **relabels the trap as a
+  detour**: the agent now needs a third attempt, straining the second-attempt criterion rather than
+  meeting it.
+
+Both are worth building. Neither is a seal, and the spec says so rather than implying otherwise.
+
+## 12. The block message - a repair kit, per the owner's ruling
+
+The owner's ruling was *"retry the consult with roles this time"*, which makes the block's purpose a
+successful **retry**, not a refusal. The message therefore carries, in order:
+
+1. One line naming what is missing and stating **this is a local role check - the peer was never
+   contacted** (section 7).
+2. The palette, extracted between the delimiters.
+3. The in-band skip token `ROLE-CHECK: SKIP <reason>` (section 5).
+
+## 13. Build surface - measured, and larger than "a hook"
+
+| artifact | why |
+|---|---|
+| `clavity-dotnet/plugin/hooks/<name>.sh` | the check |
+| `clavity-classic/plugin/hooks/<name>.sh` | **byte-identical**; the two products ship the same hook set and parity is tested |
+| both `hooks.json` files | a **NEW entry** matching `mcp__.*agy_ask` ALONE - not an extension of the existing `Bash\|PowerShell\|mcp__.*agy_ask` entry, which would put the check on every shell command. This retires section 4's concern by construction. |
+| `adversarial-panel-review/SKILL.md` (both copies) | the two delimiter lines |
+| `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
+| `justfile` | suite registration is an explicit list, not a glob |
+| `scripts/tests/_partition.md` | a measured row - **the census gate added this session now enforces this**, so omitting it reds the suite |
+
+## 14. Testing
+
+The suite must prove the gate BLOCKS, not merely that it parses - the same posture as the
+`check-curate-in-progress` suite built this session, whose rows assert an exit code from a real
+invocation rather than inspecting source text.
+
+Rows, each with the mutant that must red it:
+
+| row | mutant that must red it |
+|---|---|
+| a seam WITH a role marker passes | remove the marker -> must block |
+| a seam WITHOUT one blocks | add a marker -> must pass |
+| a payload naming no seam fails OPEN | n/a - asserts the fail-open branch |
+| missing `jq` fails OPEN and touches the degraded sentinel | remove the sentinel write -> row reds |
+| the block message contains the extracted palette | break a delimiter -> extraction empties, fallback text appears |
+| the delimiters exist in BOTH shipped SKILL.md copies | delete one -> row reds |
+| the skip token passes with a reason | omit the reason -> must block |
+
+## 15. Exhaustiveness self-audit - run before handing this over
+
+Owner ruling: **details get resolved at the plan stage.** So gaps are named here with where each is
+settled, rather than guessed at now. One was a contradiction and was closed in-document instead.
+
+**CLOSED HERE (a contradiction, not a detail):** section 2 said a seam TEMPLATE ships the marker, while
+sections 11 and 13 introduce no new artifact and list no template file. The template had quietly
+evaporated once the block message became a repair kit. Resolved in favour of **no template**.
+
+**RESOLVED AT PLAN TIME - each has an owner and a home:**
+
+| gap | where |
+|---|---|
+| the hook's filename | plan, task 1 - must not collide with the existing `agy-consult-guard-*` pair |
+| exact marker syntax: line-anchored? case? what counts as non-empty? | plan, with the test row that pins it |
+| the seam-path regex, concretely | plan - the peer's sketch was `\.clavity/seams/[^"'\s]+\.md`; it needs a Windows-path case, since consult payloads here carry `C:/Users/...` forms |
+| log line format and field order | plan - one short line, format fixed there |
+| when `.clavity/role-check.degraded` is CLEARED | plan - an uncleared sentinel becomes permanent noise, the same overstay failure this project has hit before |
+| truncation mechanism for the 500-line bound | plan |
+| a payload naming MULTIPLE seam paths | plan - check all, or the first? unresolved and reachable |
+| a seam path that does not exist yet at PreToolUse time | plan - falls under fail-open, but the ordering deserves an explicit row |
+
+**REQUIREMENT COVERAGE:** owner's scope ruling (roles in every AGY-* prompt) -> sections 1-2; fail-closed
+and self-repairing -> 3, 5, 12; roles-only scope with 9 and 10 deferred -> stated at each; two-driver
+mirror -> 13; test posture -> 14.
+
+**KNOWN AND ACCEPTED, not gaps:** the hook proves syntactic compliance only (section 8); a seam outside
+`.clavity/seams/` escapes the block (residual 3); both mitigations in section 11 are partial.
 
 ## Deliberately NOT in scope
 
