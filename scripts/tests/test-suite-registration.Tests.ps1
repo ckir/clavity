@@ -64,4 +64,47 @@ Describe 'test suite registration' {
         $both = @($script:Fast | Where-Object { $_ -in $script:Slow })
         $both -join ', ' | Should -BeExactly '' -Because 'fast and slow are a partition; a suite in both is paid for twice and its measured timing in _partition.md is wrong'
     }
+
+    It 'the _partition.md runtimes table is a complete census of the suites on disk' {
+        # THE TABLE CLAIMS TO BE THE SUITE SET, SO SOMETHING MUST HOLD IT TO THAT. It drifted silently
+        # to THREE missing suites - including check-injected-context, the largest in the fast half - and
+        # the omissions were found only because a review happened to look. A maintainer scanning that
+        # table to decide what to move between halves was reading an inventory with holes in it.
+        #
+        # This is the same shape as the two inventory gates this repo already runs: the justfile
+        # membership rows above, and `scripts-readme-inventory.Tests.ps1` for scripts/README.md.
+        #
+        # It asserts PRESENCE OF A ROW, not that the figure is current - a time cannot be verified by
+        # reading it, and this file's header says the figures are indicative and decay. The cost is that
+        # adding a suite now means measuring it and adding a row, which is the same commit that already
+        # has to register it in the justfile above.
+        $partition = Join-Path $PSScriptRoot '_partition.md'
+        Test-Path -LiteralPath $partition | Should -BeTrue -Because 'the partition record must exist for this row to mean anything'
+        $lines = @(Get-Content -LiteralPath $partition)
+
+        # Scope to the fenced block under the heading. The file names suites in prose all over, so an
+        # unscoped grep would count a suite as present because a paragraph happened to mention it.
+        $h = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^##\s+Measured runtimes') { $h = $i; break }
+        }
+        $h | Should -BeGreaterThan -1 -Because 'the Measured runtimes heading must be findable, or this row silently checks nothing'
+
+        $fences = @(for ($i = $h + 1; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^```') { $i } })
+        $fences.Count | Should -BeGreaterThan 1 -Because 'the table must be a fenced block with an opening and a closing fence'
+
+        $inTable = @(for ($i = $fences[0] + 1; $i -lt $fences[1]; $i++) {
+            $m = [regex]::Match($lines[$i], '^([A-Za-z0-9._-]+\.Tests\.ps1)\s')
+            if ($m.Success) { $m.Groups[1].Value }
+        } ) | Sort-Object -Unique
+
+        # Non-vacuity: a parse that found nothing would make both comparisons below pass by comparing
+        # nothing to nothing, which is the false-clean shape this repo keeps paying for.
+        $inTable.Count | Should -BeGreaterThan 20 -Because 'a table parse that found almost no rows means the parse broke, not that the table is empty'
+
+        @($script:OnDisk | Where-Object { $_ -notin $inTable }) -join ', ' |
+            Should -BeExactly '' -Because 'a suite with no row is invisible to anyone reading that table to decide what the gate costs'
+        @($inTable | Where-Object { $_ -notin $script:OnDisk }) -join ', ' |
+            Should -BeExactly '' -Because 'a row for a suite that no longer exists is a figure nobody can ever re-measure'
+    }
 }

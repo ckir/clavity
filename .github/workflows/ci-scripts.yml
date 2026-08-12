@@ -18,10 +18,22 @@ name: ci-scripts
 # temp .ps1, so non-ASCII in a `shell: powershell` block would hit the very bug the ASCII gate exists
 # to prevent.
 #
-# `lefthook.yml` IS IN THE PATHS FILTER, and it is not decoration. The scripts suite now asserts the
-# pre-commit wiring lives there, so an edit that disarms the guard - commenting out the block, dropping
-# a glob - is exactly the change that must run this workflow. Without it that edit touches no filtered
-# path, no job runs, and the broken config merges with a green check because nothing ever ran.
+# THE RULE FOR THE `paths:` FILTER, stated once so the next addition does not have to rediscover it:
+# EVERY FILE THE SCRIPTS SUITE READS AND ASSERTS AGAINST MUST APPEAR BELOW. A suite can only gate what
+# CI actually runs it on, so a file the suite asserts against but the filter omits produces the worst
+# outcome available - the assertion reds on a developer's machine and the same edit merges with a green
+# check, because no job ever ran.
+#
+# Two such files sit outside `scripts/**` today and are listed for that reason, not as decoration:
+#   - `lefthook.yml`, because the suite asserts the pre-commit wiring lives there (block present, glob
+#     set equal to the guard's own pin list, no conditional key).
+#   - `agy-autotrain/skills/agy-curate/SKILL.md`, because the suite asserts the marker path that skill
+#     ARMS is the one the guard READS, and that its Step Zero section still exists.
+# The second was MISSED when the first was added, in the very commit that added the row reading it.
+# Adding the whole `agy-autotrain/**` tree instead was rejected: it would fire this workflow on every
+# knowledge-inbox capture. The stated residual is that MOVING one of these files, rather than editing
+# it, still escapes the filter - caught only by the suite's own Test-Path on the next run that happens
+# for another reason.
 on:
   push:
     branches: [main]
@@ -111,8 +123,14 @@ jobs:
         # The npm package is the route this repo already uses on the dev box - note the SCOPE, there is
         # no bare `lefthook` package. Same assert-by-name discipline as the ripgrep step above: a silent
         # install failure must fail HERE, not resurface as an unrelated-looking assertion failure.
+        #
+        # PIN THE MAJOR LINE, for the same reason the Pester step above pins v5: an unpinned install
+        # silently rolls forward, and a major bump can change `lefthook run`'s exit semantics or its
+        # config schema - which is precisely what the behavioural row and the config-parse rows read.
+        # The floor is the version the dev box runs, so CI and a developer cannot diverge across a
+        # major. Bump this deliberately, after running the suite against the new line.
         run: |
-          npm install -g @evilmartians/lefthook
+          npm install -g '@evilmartians/lefthook@^2.1.10'
           # Prepend npm's global prefix to GITHUB_PATH so the LATER Pester step sees the binary, exactly
           # as the ripgrep step does for choco. On Windows npm places global shims directly in the
           # prefix directory, not in a bin/ subdirectory.
