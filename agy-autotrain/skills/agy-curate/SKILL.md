@@ -228,15 +228,20 @@ machine-local captures about to become a live injection into every ask; the huma
 model depends on, not a formality.
 
 **READ THIS BEFORE THE BRANCHES BELOW - it applies to all of them, and to any exit added later.** If the
-run ends **without having published GROWTH** and has left **any repository file modified**, emit on
-**STDERR** every dirty path together with the statement that those files carry unreviewed content and
-must neither be COMMITTED nor BUILT. Do this as part of ending the run, **before** the exit itself.
+run **does not reach the Finish step** - because the approval gate was not passed, or because of an
+error - and has left **any repository file modified**, then: leave those files in place, delete and
+revert nothing, and emit on **STDERR** every dirty path together with the statement that they carry
+unreviewed content and must neither be COMMITTED nor BUILT. Do this as part of ending the run,
+**before** the exit itself.
 
 - **It is a message in its own right**, not an addition to another one - an error exit has no template to
   append to.
-- **It is keyed on what the run DID, not on which code it returns.** Do not restate it as a list of codes
-  and do not restate it as "any non-zero exit": a later code could mean published-with-warnings, and that
-  run needs no such warning.
+- **It is keyed on the run NOT REACHING FINISH, not on which code it returns.** Three narrower forms have
+  each been tried and each was wrong, so do not restate it as any of them: a **list of codes** goes stale
+  when a code is added; **"any non-zero exit"** would fire on a future published-with-warnings code; and
+  **"did not publish GROWTH"** fires on a perfectly good run whose inbox held only carried `driver` rules
+  (`:121` routes those to the cheatsheet, not GROWTH), which edits the pins, publishes nothing, reaches
+  Finish and exits 0. **A run that reaches Finish never needs this warning.**
 
 **No message in this section is "non-blocking".** That word belongs to the repository's HOOK convention,
 which the note at the end of this section explicitly disclaims for this skill; every exit described here
@@ -276,7 +281,8 @@ Exit 0 here would be actively misleading: it is indistinguishable from a success
 reading only the status code, so a pipeline that expected GROWTH to land reports SUCCESS while nothing
 was written. That is the silent-success blindspot this branch exists in the first place to avoid.
 
-**Exit 2 and exit 3 both END the run here. Do not continue to the Finish step below.** The inbox is left
+**Every gate abort path - currently exit 2 and exit 3 - ENDS the run here. Do not continue to the Finish
+step below.** The inbox is left
 intact because nothing ever reaches the code that would reset it - not because the reset rule evaluated and
 declined. Those are different mechanisms and only the first one is true on this path: the Finish step
 resets `## Pending` on `curate-commit` exit 0, and on this path `curate-commit` is never invoked at all.
@@ -299,8 +305,9 @@ row in the table above is conditional rather than absolute. That is exactly why 
 keyed on what the run DID rather than on which code it returns: it still covers an error exit, even
 though this table cannot.
 
-**Do not delete any of it, and do NOT commit the repository edits.** The STDERR message required at
-`:230-239` names those paths and carries the do-not-commit-or-build warning out of this process.
+**What to do about all of it is stated once, at the top of this section, and is deliberately not repeated
+here:** leave the files in place, revert nothing, and emit the dirty paths with the
+do-not-commit-or-build warning before exiting.
 
 **`driver_cheatsheet.rs` and `DriverCheatsheet.cs` are COMPILED-IN baselines (`:93-95`)** - content left
 in them is built by the next `cargo build` / `dotnet build` and shipped by the next `git commit -a`.
