@@ -188,6 +188,45 @@ arrives at step 2 is the peer's design rather than a selection from the driver's
 an `OPEN-PROPOSAL:` block, and the hook treats a fork seam that names options without one the same way
 it treats a missing role marker.
 
+## 10. NEGOTIATE before presenting a fork - the third member of this family
+
+**Owner observation, 2026-08-13, demonstrated in the same session that produced it: the owner had to
+type "Negotiate with your proposals to agree."** The driver had consulted the peer, formed two additions
+of its own, and was about to hand the owner "the peer's design plus my improvements" - without ever
+putting those improvements back to the peer. Nothing prompted it.
+
+**Measured:**
+
+- The obligation is written twice - `skills/agy-first/SKILL.md` carries it six times, and the driver's
+  own memory records *"NEVER hand the owner 'agy's rec' vs 'my rec' - NEGOTIATE first, bring the
+  converged answer."*
+- **No hook matcher covers `AskUserQuestion`.** Enumerating `hooks.json` gives eight matchers -
+  `Skill`, `Agent|Task`, `Bash|PowerShell|mcp__.*agy_ask`, `Write|Edit`, `Bash|Write|Edit`,
+  `manual|auto`, `startup`, `startup|resume|clear|compact`. The boundary where a fork actually reaches
+  the human is unguarded.
+
+So this is a documented rule with no mechanism - **the exact failure mode this whole document exists to
+close**, appearing a third time in the same family:
+
+| requirement | boundary | status |
+|---|---|---|
+| `PANEL-SEATS` - roles on every consult | `mcp__.*agy_ask` | **in scope for this build** |
+| `OPEN-PROPOSAL` - ask the peer first, menu second (section 9) | `mcp__.*agy_ask` | deferred, own cycle |
+| `NEGOTIATED` - converge before presenting (this section) | **`AskUserQuestion`** | deferred, own cycle |
+
+**Shape of the check, so the follow-up cycle starts from something concrete:** a `PreToolUse` hook on
+`AskUserQuestion` that, when a fork seam was consulted since the last presentation, requires that seam
+to carry a `NEGOTIATED:` line recording what converged and on what evidence. Same failure posture as the
+role marker - fail open on infrastructure, closed on a positively-detected violation.
+
+**Why it is a separate hook rather than an extension:** it fires on a different tool at a different
+moment, and conflating them would put a fail-closed check on the tool used to ask the human for help -
+which is the one path that must never be blocked when everything else is.
+
+**Unresolved, and the reason this needs its own cycle rather than a paragraph here:** what counts as
+"a fork worth negotiating". Not every `AskUserQuestion` follows a consult, and most should not require
+one. Getting that predicate wrong blocks routine questions, which is worse than the gap it closes.
+
 ## Deliberately NOT in scope
 
 - **A `clavity capstone init` CLI.** The peer proposed one to own the framing. Heavier than needed: the
