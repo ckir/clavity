@@ -228,20 +228,25 @@ machine-local captures about to become a live injection into every ask; the huma
 model depends on, not a formality.
 
 **READ THIS BEFORE THE BRANCHES BELOW - it applies to all of them, and to any exit added later.** If the
-run **does not reach the Finish step** - because the approval gate was not passed, or because of an
-error - and has left **any repository file modified**, then: leave those files in place, delete and
-revert nothing, and emit on **STDERR** every dirty path together with the statement that they carry
-unreviewed content and must neither be COMMITTED nor BUILT. Do this as part of ending the run,
-**before** the exit itself.
+run **ends in any way other than completing normally** - the approval gate was not passed, or an error
+struck at any point, **including inside the Finish step** - and has left **any repository file
+modified**, then: leave those files in place, delete and revert nothing, and emit on **STDERR** every
+dirty path together with the statement that they carry unreviewed content and must neither be COMMITTED
+nor BUILT. Do this as part of ending the run, **before** the exit itself.
 
 - **It is a message in its own right**, not an addition to another one - an error exit has no template to
   append to.
-- **It is keyed on the run NOT REACHING FINISH, not on which code it returns.** Three narrower forms have
-  each been tried and each was wrong, so do not restate it as any of them: a **list of codes** goes stale
-  when a code is added; **"any non-zero exit"** would fire on a future published-with-warnings code; and
-  **"did not publish GROWTH"** fires on a perfectly good run whose inbox held only carried `driver` rules
-  (`:121` routes those to the cheatsheet, not GROWTH), which edits the pins, publishes nothing, reaches
-  Finish and exits 0. **A run that reaches Finish never needs this warning.**
+- **It is keyed on the run NOT COMPLETING NORMALLY.** Only a run that ran to a normal end produced those
+  edits deliberately; every other ending may have left them half-made and unreviewed.
+- **This rule has been written wrong FIVE times. Do not restate it as any of these:**
+  1. **a list of codes** - goes stale the moment a code is added;
+  2. **"any exit that did not publish"** - sweeps in exit 0, which also covers "nothing pending";
+  3. **"any non-zero exit"** - would fire on a future published-with-warnings code;
+  4. **"did not publish GROWTH"** - fires on a perfectly good run whose inbox held only carried `driver`
+     rules (`:121` routes those to the cheatsheet, not GROWTH), which edits the pins, publishes nothing
+     and ends normally;
+  5. **"does not reach the Finish step"** - a run can REACH Finish and fail INSIDE it (a `curate-commit`
+     error), which leaves the tree dirty and unpublished while the predicate reads false.
 
 **No message in this section is "non-blocking".** That word belongs to the repository's HOOK convention,
 which the note at the end of this section explicitly disclaims for this skill; every exit described here
@@ -298,12 +303,12 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 | `golden-header.growth.md` (the GROWTH publish) | **never written** | - this is exactly what the gate withheld |
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
-**This block describes the GATE's terminal paths only** - exit 2 and exit 3, the two that arrive here. An
-error exit (1) can happen anywhere - before any of the writes above, or after the Finish step has already
-reset `## Pending` - so it has no single working-tree state to state, and it is the one code whose inbox
-row in the table above is conditional rather than absolute. That is exactly why the dirty-path rule is
-keyed on what the run DID rather than on which code it returns: it still covers an error exit, even
-though this table cannot.
+**This block describes the GATE's abort paths only** - the ones that arrive here, currently exit 2 and
+exit 3. An error exit (1) can happen anywhere: before any of the writes above, or after the Finish step
+has already reset `## Pending`. So it has no single working-tree state to state, and it is the one code
+whose inbox row in the table above is conditional rather than absolute. **The dirty-path rule at the top
+of this section still covers it** - that rule fires on any ending that is not a normal completion, which
+is why it can protect a case this table cannot describe.
 
 **What to do about all of it is stated once, at the top of this section, and is deliberately not repeated
 here:** leave the files in place, revert nothing, and emit the dirty paths with the
