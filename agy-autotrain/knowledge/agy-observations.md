@@ -8,6 +8,39 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
+- [assumption] (driver/deterministic) `[verified]` A peer materializes large diffs into its WORKING
+  DIRECTORY regardless of instruction. Measured twice: once under a self-contradictory banner, and again
+  under a corrected one that explicitly forbade repository-root writes AND named a scratch directory for
+  exactly that purpose - it wrote two diff files to the root and left the offered scratch directory empty.
+  This is not a prompt-wording problem and cannot be fixed by a louder banner. Plan to DETECT and REMOVE
+  the artifacts after each consult (they are untracked, so an explicit-path commit never picks them up),
+  and do not read their presence as evidence of a breach worth escalating.
+  - 2026-08-12 - agy 1.1.12
+
+- [heuristic] (driver/probabilistic) `[corpus]` Late-round finding MANUFACTURE tracks an exhausted TARGET,
+  not an exhausted round budget. The known anti-pattern says a long review thread starts inventing findings
+  once it runs dry. Measured across four rounds on one range where each round was given genuinely NEW
+  unreviewed code (the previous round's fix commit): counts ran 6, 6, 4, 4 - never reaching zero - yet the
+  FOURTH round's findings were all verified real, including three defects inside the driver's own fixes.
+  So a non-zero late count is not itself the tell. Re-read the tell as: findings that rest on premises not
+  in the artifact. Give a late round fresh unreviewed material and it stays productive; give it the same
+  material again and it starts padding.
+  - 2026-08-12 - agy 1.1.12
+
+- [assumption] (driver/deterministic) `[verified]` Citation accuracy is STEERABLE by one instruction.
+  A peer's quoted text is reliable while its line numbers are not. Adding the explicit direction
+  "re-derive the line number from the file you actually read rather than estimating it" moved accuracy
+  from 0 of 6 correct to 4 of 6 in the next round on the same corpus. It is a cheap, measurable lever -
+  and worth spending, because a wrong line number costs the driver verification time on a real finding.
+  - 2026-08-12 - agy 1.1.12
+
+- [heuristic] (driver/probabilistic) `[corpus]` LICENSING the null answer gets honest nulls. Told in the
+  brief that "no new findings" and "I could not find one" were named, correct, valid replies, a peer used
+  both - including on the seat aimed directly at the construct under test, and on a question that asked it
+  to enumerate bypasses. Those abstentions are evidence the construct held; without the licence the same
+  slots return padding that has to be verified and discarded.
+  - 2026-08-12 - agy 1.1.12
+
 - [anti-pattern] (driver/deterministic) `[corpus]` A peer holding a LONG-LIVED conversation carries
   instructions from EARLIER tasks and can act on them inside a new, unrelated request - measured: it
   created a working file for a prior task's topic that the current request never mentioned, while
@@ -27,7 +60,8 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 - [anti-pattern] (driver/deterministic) `[corpus]` A forbidden-actions banner that states the same
   permission TWICE in conflicting terms - forbidding a scratch location and then offering one inside
   it - leaves the peer to resolve the contradiction, and it may resolve it by writing somewhere worse
-  (the repository root). The resulting write looks like a breach but is caused by the instruction.
+  (the repository root). **REFUTED THE SAME SESSION - see the entry below: a CORRECTED, non-contradictory
+  banner did not stop it either, so the contradiction was not the cause.**
   State each permission exactly once, name the single permitted write location positively, and forbid
   creation everywhere else in the same clause.
   - 2026-08-12 - agy 1.1.12
