@@ -277,7 +277,7 @@ The table is the count; do not restate how many there are in prose:
 
 | exit | state | inbox `## Pending` |
 |------|-------|--------------------|
-| 0 | ran to a normal end - GROWTH published, or nothing for GROWTH to publish (an empty inbox, or one holding only carried `driver` rules, which go to the cheatsheet per `:121`) | reset |
+| 0 | ran to a normal end - GROWTH published, or nothing for GROWTH to publish (an empty inbox, or one holding only carried `driver` rules) | reset |
 | 2 | NOT published - no interactive approval channel. Deliberate, not a fault | left intact |
 | 3 | NOT published - the human reviewed it and did not approve. Deliberate, not a fault | left intact |
 | 1 | error - something went wrong | left intact **unless the error struck after the Finish step's reset** - see below |
