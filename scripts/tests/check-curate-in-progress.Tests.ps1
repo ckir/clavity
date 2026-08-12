@@ -126,12 +126,56 @@ Describe 'check-curate-in-progress.ps1' {
         $out | Should -Match 'git diff --cached'
     }
 
+    It 'BLOCKS a pinned file staged as a RENAME, not only as a modify' {
+        # CAPSTONE R1-F2. The guard used `git diff --cached --diff-filter=ACM`, and ACM EXCLUDES status R.
+        # MEASURED: `git mv other.md <pinned>` where the destination is absent from HEAD reports `R100`,
+        # and --diff-filter=ACM then returns an EMPTY list - the pinned path is invisible and the guard
+        # passes with the marker present. The same move onto a destination that IS in HEAD reports `M` and
+        # was caught, which is why today's tree happened to be safe: not because the guard was right, but
+        # because all three pinned files are tracked. This row pins the shape that has no such luck.
+        Set-Content -LiteralPath $script:Marker -Value '' -NoNewline
+        Set-Content -LiteralPath (Join-Path $script:Tmp 'source.md') -Value ('x' * 400) -NoNewline
+        git -C $script:Tmp add -- 'source.md' 2>&1 | Out-Null
+        git -C $script:Tmp -c user.email=t@t -c user.name=t commit -qm base 2>&1 | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $script:Tmp 'agy-autotrain/knowledge') | Out-Null
+        git -C $script:Tmp mv 'source.md' 'agy-autotrain/knowledge/driver-cheatsheet.core.md' 2>&1 | Out-Null
+
+        # Assert the fixture really produced a RENAME. Without this the row could pass against a plain
+        # add and prove nothing about the filter at all.
+        (@(git -C $script:Tmp diff --cached --name-status) -join ' ') | Should -Match '^R' -Because 'this row is meaningless unless git actually recorded a rename'
+
+        & pwsh -NoProfile -File $script:Script -RepoRoot $script:Tmp -MarkerPath $script:Marker | Out-Null
+        $LASTEXITCODE | Should -Be 1 -Because 'a rename onto a pinned path ships exactly the content this guard exists to stop'
+    }
+
+    It 'never tells the human to run a bare git checkout' {
+        # CAPSTONE R1-F1, and the measurement made it worse than the finding. The message used to offer
+        # `git checkout -- <files>` as its DISCARD branch. MEASURED: with the unreviewed content STAGED -
+        # which is the only state in which this message is ever printed - `git checkout --` restores the
+        # worktree FROM THE INDEX, so the unreviewed content survives in both, while any unstaged edit of
+        # the human's own is destroyed. It failed at its stated purpose AND destroyed work, and the human
+        # would then clear the marker believing they were clean.
+        Set-Content -LiteralPath $script:Marker -Value '' -NoNewline
+        New-StagedFile -Root $script:Tmp -Paths 'clavity-classic/src/driver_cheatsheet.rs'
+        $out = & pwsh -NoProfile -File $script:Script -RepoRoot $script:Tmp -MarkerPath $script:Marker 2>&1 | Out-String
+        $out | Should -Not -Match 'git checkout' -Because 'it discards nothing staged and destroys unstaged work'
+        $out | Should -Match ([regex]::Escape('git restore --staged --worktree')) -Because 'this is the command that actually restores both index and worktree'
+        $out | Should -Match 'WARNING' -Because 'the destructive branch must announce that it destroys the human own edits too'
+    }
+
     It 'guards three paths that ACTUALLY EXIST in this repository' {
         # NON-VACUITY, and the only row that looks at the real tree. Every row above creates its own
-        # fixture files, so all of them would still pass if the script's pinned list were three typos
-        # guarding nothing. A rename that orphans the list reds HERE.
-        $missing = @($script:Pinned | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepoRoot $_)) })
-        $missing -join ', ' | Should -BeExactly '' -Because 'the guard protects nothing if its pinned paths do not resolve'
+        # fixture files, so all of them would still pass if the guard's pinned list were three typos.
+        #
+        # READS THE LIST OUT OF THE SCRIPT, not out of this suite. CAPSTONE R1-F4: it used to test
+        # $script:Pinned - the suite's own array - so a typo in the SCRIPT would leave this row green and
+        # the check rested entirely on the sync row below. The row's name claims to validate the guard's
+        # configuration, so it now validates the guard's configuration.
+        $src = Get-Content -Raw -LiteralPath $script:Script
+        $inScript = @([regex]::Matches($src, "(?m)^\s+'([^']+\.(?:md|rs|cs))'\s*$") | ForEach-Object { $_.Groups[1].Value })
+        $inScript.Count | Should -BeGreaterThan 0 -Because 'a regex that matched nothing would make this row vacuous'
+        $missing = @($inScript | Where-Object { -not (Test-Path -LiteralPath (Join-Path $script:RepoRoot $_)) })
+        $missing -join ', ' | Should -BeExactly '' -Because 'the guard protects nothing if the paths IT pins do not resolve'
     }
 
     It 'pins exactly the three files this suite exercises - both directions' {

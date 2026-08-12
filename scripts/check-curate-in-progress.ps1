@@ -79,20 +79,26 @@ try {
     # cannot read the index returns nothing and the empty list below reads as "no pinned file staged" -
     # the guard would wave the commit through on the strength of an error. That is the fail-open shape
     # this whole script exists to avoid, and it would be invisible.
-    $StagedFiles = @(git -C $RepoRoot diff --cached --name-only --diff-filter=ACM 2>&1)
+    # NO --diff-filter. An earlier version passed --diff-filter=ACM and that is a hole: a staged RENAME
+    # reports status R, which ACM excludes, so the destination path vanishes from this list entirely and
+    # the guard passes while the marker is present. MEASURED both ways - `git mv other.md <pinned>` on a
+    # destination absent from HEAD yields `R100` and `--diff-filter=ACM` returns EMPTY, while the same
+    # move onto a destination that IS in HEAD yields `M` and is caught. So today's tree happens to be
+    # safe only because all three pinned files are tracked - the guard would be relying on an incidental
+    # fact about the repository rather than on its own logic. Taking every staged status costs nothing:
+    # a staged deletion of a pinned file also blocks, which is not wrong.
+    $StagedFiles = @(git -C $RepoRoot diff --cached --name-only 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "git could not list staged files in '$RepoRoot' (exit $LASTEXITCODE): $($StagedFiles -join '; ')"
     }
 
-    # Normalise both sides before comparing: git reports forward slashes, lefthook on Windows can hand
-    # back either, and a caller may pass an absolute path. Compare on the repo-relative forward-slash
-    # form or the comparison silently matches nothing and the guard passes while the marker is present.
-    $rootPrefix = $RepoRoot.Replace('\', '/').TrimEnd('/') + '/'
+    # git reports repo-relative, forward-slash paths, so there is nothing to strip - only blank lines to
+    # drop. An earlier version also tried to strip an absolute repo-root prefix; since git never emits
+    # one, that branch could never run. It was removed rather than left as reassurance: dead defensive
+    # code is untestable by construction, and a mutant inside it would have escaped the suite silently.
     $normalised = @(foreach ($f in $StagedFiles) {
         if ([string]::IsNullOrWhiteSpace($f)) { continue }
-        $n = $f.Trim().Replace('\', '/')
-        if ($n.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) { $n = $n.Substring($rootPrefix.Length) }
-        $n
+        $f.Trim().Replace('\', '/')
     })
 
     $offending = @($normalised | Where-Object { $_ -in $script:PinnedFiles })
@@ -120,11 +126,15 @@ try {
     Write-Host "    KEEP the work   re-run the agy-curate skill and let it finish normally. Nothing is"
     Write-Host "                    lost by re-running: an abnormal ending leaves the inbox's pending"
     Write-Host "                    entries intact by design, so they are re-distilled, not discarded."
+    Write-Host "                    THIS IS THE ONLY OPTION HERE THAT DESTROYS NOTHING."
     Write-Host ""
-    Write-Host "    DISCARD it      git checkout -- $($script:PinnedFiles -join ' ')"
+    Write-Host "    DISCARD it      git restore --staged --worktree -- $($offending -join ' ')"
     Write-Host "                    then:  Remove-Item '$MarkerPath'"
+    Write-Host "                    WARNING - this throws away EVERY change to those files, staged and"
+    Write-Host "                    unstaged alike, including any edit of your own that happens to sit in"
+    Write-Host "                    the same file. There is no undo. Read the diff above first."
     Write-Host ""
-    Write-Host "    KEEP IT ANYWAY  you have read the diff above and vouch for it yourself:"
+    Write-Host "    KEEP IT ANYWAY  you have read the diff above and vouch for the content yourself:"
     Write-Host "                    Remove-Item '$MarkerPath'"
     Write-Host ""
     Write-Host "  Clearing the marker without doing one of those three is how unreviewed content ships."
