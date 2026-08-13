@@ -56,7 +56,42 @@ The predicate is total because a standing rule already constrains every consult 
 files, never at a pasted summary - so every AGY-* consult names a seam. A payload naming no seam path
 **fails open**: that is a violation of a different rule and not this gate's business.
 
-**Producing a seam without roles therefore means DELETING a line, not forgetting to add one.**
+**Producing a seam without roles therefore means DELETING a line, not forgetting to add one** - **and
+that sentence is FALSE until the convention ships. It is the most dangerous claim in this document.**
+
+> **Measured, and it inverts the gate's risk profile:**
+>
+> ```
+> shipped skills mentioning PANEL-SEATS      : 0     (both plugin trees, zero occurrences)
+> seam files on disk                         : 564
+> carrying a PANEL-SEATS line                : 6
+> would BLOCK on day one                     : 558
+> CONTROL - which 6 pass? exactly the six panel seams written while drafting THIS spec
+> ```
+>
+> **No skill has ever told anyone to write that line.** So an author omitting it is not deleting a
+> guard, they are failing to add a marker nobody taught them - **the exact "forgetting" failure mode
+> this sentence claims is impossible.** As specified, enabling the gate would block essentially every
+> consult on day one, for every user, including the author.
+>
+> **The control is the part worth keeping.** The only seams that pass are the ones written this session
+> while dogfooding an unbuilt spec. **My own compliance manufactured the appearance of an existing
+> convention**, which is why six adversarial rounds looked at this predicate and none asked whether the
+> marker was something anyone actually writes.
+
+**Two requirements follow, and they are sequencing requirements, not features:**
+
+1. **The convention must SHIP BEFORE OR WITH the gate.** `adversarial-panel-review/SKILL.md` - and every
+   discipline whose seams this predicate covers - must instruct the author to write a `PANEL-SEATS:`
+   line, in the same release. A gate for a convention that does not exist is a trap, not a floor.
+2. **Until a repository's seams carry the marker, the gate has nothing legitimate to enforce.** The
+   build surface carries the skill edits (section 10); **they are not optional companions, they are the
+   half that makes the other half safe.**
+
+**Historical seams are not the problem the number suggests.** Each consult writes a NEW seam, so the 558
+are mostly inert history that will never be re-consulted. The live risk is the first consult after
+install, not a migration of the back catalogue - but a re-consult naming an old seam does block, and
+that is stated rather than discovered.
 
 ## 3. Two hooks, and they are NOT byte-identical
 
@@ -583,7 +618,9 @@ own auto-memory layout is not a contract for anyone else.
 | **`clavity-classic/plugin/hooks/agy-consult-guard-pre.sh` - EXTENDED, not a new script** | the gate, shell form. Section 3b: classic already runs this hook on `Bash\|PowerShell\|mcp__.*agy_ask`, and a second script on the same trigger doubles the largest cost in the design (~300-400ms of interpreter startup on **every** shell command). **The ROLES check is added here** |
 | `clavity-dotnet/plugin/hooks/hooks.json` | a NEW `mcp__.*agy_ask` entry. **Classic's `hooks.json` does NOT change** - it already registers the hook the check now lives in (section 3b) |
 | an existing SessionStart hook, both products | surfaces the per-reason-code counts over the retained log. Extend one rather than adding a fourth script |
-| `clavity-dotnet/plugin/skills/{agy-first,agy-capstone,agy-test-audit,adversarial-panel-review}/SKILL.md` | subagents consult over `agy_ask`, not the CLI |
+| **`clavity-*/plugin/skills/adversarial-panel-review/SKILL.md` - TEACH THE `PANEL-SEATS:` LINE** | **the half that makes the gate safe, and it was missing.** Measured: **zero** shipped skills mention `PANEL-SEATS`, so nothing has ever instructed an author to write it. The skill must state the line's exact form and that a consult payload naming a seam requires it. **This ships in the same release as the gate or before it - never after** |
+| the other multi-round disciplines' `SKILL.md` | same convention, stated where each seam is written |
+| `clavity-dotnet/plugin/skills/{agy-first,agy-capstone,agy-test-audit,adversarial-panel-review}/SKILL.md` | subagents consult over `agy_ask`, not the CLI. **See the OPEN item in section 13a - this edit is under challenge** |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
 | `plugin-hooks-payload.Tests.ps1` | **must change** - an explicit, named byte-identity exemption for the gate pair |
 | `justfile` | suite registration is an explicit list, not a glob |
@@ -621,6 +658,8 @@ inspecting source text.
 | **dotnet's gate entry matches `mcp__.*agy_ask` ALONE, not a `Bash`-bearing matcher** | merge it into the existing combined entry -> assert the new entry's matcher string -> row reds. **Section 3 mandated this from the start and no row pinned it: an implementer could put the gate on every shell command and the suite would pass** |
 | **all three subagent-routing skill edits are present** | ship the hooks without the skill edits -> assert none of `agy-first`, `agy-capstone`, `agy-test-audit` still tells subagents to use the CLI form -> row reds. **Without the edits, subagent consults never reach the dotnet matcher and the gate is invisible to exactly the actor it was built for** |
 | **the block message names `adversarial-panel-review/SKILL.md` literally** | derive the path from the payload -> there is nothing to derive from -> row reds. Pins the section 6 correction |
+| **`adversarial-panel-review/SKILL.md` contains the `PANEL-SEATS:` instruction** | ship the gate without the skill edit -> row reds. **This is a CONVENTION-EXISTS row, and it is the one that stops the gate shipping as a trap: measured, 0 skills teach the marker and 558 of 564 seams on disk lack it** |
+| **a seam written by following the updated skill PASSES the gate** | change either side without the other -> row reds. **Couples the two halves: it fails if the skill teaches a form the hook does not accept, which no single-sided row can catch** |
 | **a `no-seam` outcome does NOT create `.clavity/` when it is absent** | `mkdir -p` unconditionally -> a fixture repo with no `.clavity/` gains one from a command that merely mentions the string -> row reds |
 | **rotation fires when the count lands anywhere in the 5-line window, not only on the exact multiple** | require an exact multiple -> a fixture with two concurrent appends stepping 99 to 101 never rotates -> row reds |
 | **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
