@@ -215,8 +215,8 @@ agrees - `agy-liveness-check.sh:128-129` records *"bash itself is ~455ms and eac
 
 > **Requirement: in clavity-classic the ROLES check is added to the EXISTING per-command hook, not
 > registered as a new one.** Section 10's build surface reflects this. **dotnet keeps its own new
-> script**, because its matcher fires only on `agy_ask` - where a consult already costs a peer
-> round-trip measured in seconds and 400ms is invisible.
+> script**, because it fires only on consults - where a peer round-trip already costs seconds and a
+> hook startup is invisible. **Not because the slot is empty; it is not (below).**
 
 **Two integration facts round 7 established by reading the registrations, and the first corrects the
 paragraph above:**
