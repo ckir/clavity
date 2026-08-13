@@ -145,9 +145,18 @@ Four constraints - the first three from round-2 findings, the fourth from round 
   (`tail -n 500 f > tmp && mv tmp f`) **is** a read-modify-write - precisely what the bullet above
   forbids, and it drops any append that lands mid-shuffle. The atomicity argument that refuted the
   corruption claim was undone by the bound folded next to it. **Resolution: when the log exceeds 500
-  lines, `mv` it to `.clavity/role-check.log.1` and let the next append create a fresh file.** A rename
-  is atomic, at most two files ever exist, and **no line is ever lost** - a racing appender writes into
-  the rotated inode, which is a line in `.log.1` rather than a line destroyed.
+  lines, `mv` it to `.clavity/role-check.log.1` and let the next append create a fresh file.** At most two
+  files ever exist, and on POSIX a racing appender writes into the rotated inode - a line in `.log.1`
+  rather than a line destroyed.
+  - ⚠ **"No line is ever lost" was overclaimed and round 4 struck it.** On Windows - now the shipping
+    target - renaming a file another handle holds open fails rather than succeeding atomically, so the
+    rotation can simply not happen. Under the fail-open posture that is harmless (the hook exits 0), but
+    the *bound* is then unenforced and the log grows. **Rotation is BEST-EFFORT: attempt it, ignore
+    failure, never let it fail the hook.** The honest guarantee is "bounded on POSIX, best-effort on
+    Windows", not "bounded".
+  - **Any reader must span BOTH files.** Round 4: the rotation fix silently broke the reader fix built
+    three bullets below it - a mid-session rotation would zero the skip-token count exactly when the
+    hatch is being used most. Two folds from the same round, each correct alone, wrong together.
 - **A degraded-mode sentinel, not a log line.** If `jq` is absent the hook cannot tell `agy_ask` from a
   routine `ls`, so it cannot log per-invocation without writing on every shell command - which is the
   Cascade Analyst finding that the round-1 blind spot returns exactly when infrastructure fails.
@@ -183,6 +192,16 @@ explains why it re-asserts the shield on *every* capture rather than only at cre
 >
 > A test row must pin it: **delete the shield, run the hook, assert the shield is restored** - and the
 > mutant is removing the re-assertion so the row reds.
+
+**The shield is `*` - the WHOLE directory - and that is deliberate. Do not narrow it.** Round 4 read the
+`*` as collateral damage, on the reasoning that it also hides `.clavity/seams/` and so stops a user
+committing their own consult artifacts, and proposed targeting the log files explicitly instead.
+**Refuted by measurement: nothing under `.clavity/` has ever been tracked** (`git ls-files .clavity/`
+returns empty) and `.gitignore:45` ignores the directory outright - seams are runtime state, not source,
+and are not meant to be committed. **The proposed narrowing would be a privacy regression, not a fix:**
+it would leave seams - which carry consult payloads and local filesystem paths - git-visible in a
+stranger's repository, which is the exact exposure `open-issues` cites the shield to prevent. Recorded
+here because the next reader will have the same instinct, and the instinct is wrong.
 
 *(The eight pre-existing hooks are a separate defect and are captured as an anomaly rather than fixed
 here - but note that this design cannot lean on their behaviour as precedent, because the precedent is
@@ -489,7 +508,7 @@ evaporated once the block message became a repair kit. Resolved in favour of **n
 | the hook's filename | plan, task 1 - must not collide with the existing `agy-consult-guard-*` pair |
 | exact marker syntax: line-anchored? case? what counts as non-empty? | plan, with the test row that pins it |
 | the seam-path regex, concretely | plan - the peer's sketch was `\.clavity/seams/[^"'\s]+\.md`; it needs a Windows-path case, since consult payloads here carry `C:/Users/...` forms |
-| log line format and field order | plan - one short line, format fixed there. **Round 3 adds a hard requirement rather than leaving it to taste: every agent-authored field (the seam path, the skip reason) must be newline-stripped and length-capped before it is logged.** Both are free text an agent controls, and the log is the only audit trail for the escape hatch - an unsanitised reason forges lines in the record of its own use |
+| log line format and field order | plan - one short line, format fixed there. **Round 3 adds a hard requirement rather than leaving it to taste: every agent-authored field (the seam path, the skip reason) must be stripped of ALL control characters and of whatever delimiter the record uses, then length-capped, before it is logged.** Round 4 sharpened this: newline-stripping alone stops vertical forging and leaves horizontal forging open - a literal tab in an agent-authored reason shifts every column of a tab-delimited record. Sanitise against the format actually chosen, not against newlines specifically. Both fields are free text an agent controls, and the log is the only audit trail for the escape hatch |
 | the over-long-extraction bound, concretely | plan - section 11's third state needs a number |
 | when `.clavity/role-check.degraded` is CLEARED | plan - an uncleared sentinel becomes permanent noise, the same overstay failure this project has hit before |
 | ~~truncation mechanism for the 500-line bound~~ | **RESOLVED IN SECTION 6 by round 3, no longer a plan-time gap** - rotation by `mv`, because truncation was the read-modify-write the adjacent bullet forbids |
@@ -572,7 +591,14 @@ The predicate it objected to no longer exists.
    scoped check on the `Bash` matcher that greps only for a `clavity ask` invocation - narrow enough
    that section 4's "do not put a fail-closed check on every shell command" objection may not apply,
    since a non-matching command exits 0 immediately; (c) move the enforcement out of the hook layer
-   into the transport itself. **What must NOT happen is shipping this while the document still claims
+   into the transport itself; **(d) unify the transport instead of duplicating the guard** - change the
+   disciplines so subagents consult over `agy_ask` rather than the CLI, bringing them under the existing
+   matcher by construction. **(d) came from the round-4 peer and is the only option that shrinks the
+   problem rather than adding a second guard**, which is why it is recorded even though it is not free:
+   measured, `clavity-dotnet/plugin/.mcp.json` registers the `clavity-ls` server but **clavity-classic's
+   plugin registers no MCP server at all** - its `agy-mcp-bridge/` is vendored and unregistered. So (d)
+   costs a three-line skill edit for clavity-dotnet and an architectural change for clavity-classic, and
+   the two products may not want the same answer. **What must NOT happen is shipping this while the document still claims
    to cover every AGY-* consult** - that is a guard certifying what it never checked, which is the
    failure this project has already paid for.
 
@@ -619,6 +645,27 @@ demonstrably read the artifact rather than pattern-matching its summary. The fif
 a 435-line file and required the literal `DOES NOT EXIST`; the peer answered *"(empty line)"*. Not a
 fabrication, but not a report of absence either, and worth recording: **this control has caught a
 confident answer about content past the end of a file before.**
+
+## Round-4 panel findings and their disposition
+
+Round 4 reviewed **the fold itself**, under the shipped-to-end-users premise, seating a bespoke **Fold
+Auditor** (all eleven palette seats were used by round 3) and seating **Protocol Pedant** for the first
+time, because the fold created a field-structured log record where before there was only "one line".
+
+| seat | finding | disposition |
+|---|---|---|
+| Fold Auditor | the `*` shield also hides `.clavity/seams/`, so a user can never commit their own seams | **REFUTED, and its fix would have been a regression.** `git ls-files .clavity/` returns empty and `.gitignore:45` ignores the directory - seams are runtime state, never tracked. Narrowing the shield to the log files would leave consult payloads and local paths git-visible in a stranger's repo. Recorded in 6a because the instinct will recur |
+| Axiom Breaker | rotation to `.log.1` zeroes the skip-token count the reader was built to surface | **folded** - the reader spans both files. **Two folds from the same round, each correct alone and wrong together** |
+| Cascade Analyst | `mv` is not atomic on Windows against a held handle, so the bound can silently not apply | **folded** - "no line is ever lost" was overclaimed and is struck; rotation is best-effort, bounded on POSIX only |
+| Protocol Pedant | newline-stripping stops vertical forging and leaves a tab to shift every column | **folded** - sanitise against the chosen delimiter and all control characters |
+| Mechanism Gamer | residual 4's option space missed unifying the transport instead of duplicating the guard | **folded as option (d), the only one that shrinks the problem** - bounded by measurement: clavity-classic's plugin registers no MCP server, so it is a skill edit for one product and an architectural change for the other |
+
+**Quote-check: 5 of 5 exact, including `DOES NOT EXIST` past EOF** - the round-3 soft failure was fixed
+by tightening MY prompt, not by the peer improving. The instruction now says explicitly that a past-EOF
+line requires the literal token rather than a description of blankness.
+
+**Every round-4 finding but one was a defect the ROUND-3 FOLD created.** That is the case for running a
+round after every fold, and the reason the Fold Auditor seat exists.
 
 **Where the two panels diverged is the useful part.** The peer found three defects the driver's panel
 missed, and every one of them was a place where a fold had created a NEW defect - the semantic-parsing
