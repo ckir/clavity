@@ -124,7 +124,10 @@ wrong behaviour:**
   off-convention branch on exactly the machines that most need it to work. The table is the contract;
   the directory is state.
 - **Extraction is a single anchored full-match, never a prefix or fuzzy match.** The name must match
-  `^(<token>)-r([0-9]+)-.+\.md$` in full, with `<token>` an alternation of the table's literal values.
+  `^(<token>)-r([0-9]+)(-.+)?\.md$` in full, with `<token>` an alternation of the table's literal
+  values. **The topic segment is OPTIONAL** - round 3 caught that requiring it sends the entirely
+  reasonable `agy-capstone-r5.md` down the off-convention branch, where a valid on-token live seam
+  would be governed by a heuristic instead of by its own marker.
   `agy-capstone-stage2.md` therefore does NOT resolve to `agy-capstone` - it has no `-r<N>-` segment and
   is off-convention. A parser that greedily extracts a leading token would conclude a live seam against
   a marker that was never about it, and the section 7 row pins this direction.
@@ -182,10 +185,10 @@ by a **per-seam** rule.
 > 3. **If the filename's discipline token is in the closed list (3a)**, the seam is a candidate unless
 >    its OWN marker `.clavity/agy-marks/<token>.head` is newer than it. No other discipline's marker
 >    can conclude it.
-> 4. **Otherwise** (off-convention name), the seam is a candidate if it is newer than the newest
->    `*.head` marker **OR is among the 10 most recent seams by mtime**. The first clause ages out the
->    historical corpus; **the second is what stops a mistyped LIVE seam from being destroyed, and
->    without it rule 4 reintroduces the exact bug this rewrite exists to fix.**
+> 4. **Otherwise** (off-convention name), the seam is a candidate if **its age in commits is at most
+>    50** - the number 3b-i already computes for the report. Markers are irrelevant to this branch.
+>    If the age cannot be computed, **treat it as a candidate** (3c's asymmetry: report a ghost rather
+>    than destroy a record).
 
 **Three measured defects in the global cutoff, each fatal on its own:**
 
@@ -217,10 +220,26 @@ marks/agy-test-audit.head   <- an UNRELATED discipline completes one second late
 A typo is not an exotic input; it is the single most likely author error, and section 5 exists
 precisely because off-convention names happen. **So the population rule 4 governs is the one population
 that is definitionally the result of a mistake, and the first draft of rule 4 destroyed its live members
-silently** - the same cross-discipline destruction, reached by a different road. The `10 most recent
-seams` clause closes it: measured on the same fixture, the mistyped live seam sits at position 4, so any
-small cap keeps it. What it still cannot save is a mistyped seam with ten newer seams written after it,
-which requires enough subsequent work to be real evidence of moving on.
+silently** - the same cross-discipline destruction, reached by a different road.
+
+**Round 2's replacement clause was itself wrong, and round 3 killed it with one number.** That clause
+kept a seam alive if it was among the `10 most recent seams by mtime`. Round 3 argued a concurrent
+session could flush ten seams quickly; **the measurement is worse than the argument - 47 seam files were
+written on this repository in a single day by a single serial author.** A ten-file window is flushed
+four times over by ordinary work, so the clause protected almost nothing.
+
+**Rule 4 is therefore keyed on commit age, which is the number the reader already computes** (3b-i) and
+which no amount of seam-writing can move. Measured on this repository, the separation is not marginal:
+
+| seam | age in commits |
+|---|---|
+| written today (live) | **0** |
+| written earlier in this same epic | **16** |
+| the oldest seam on disk | **1157** |
+
+A threshold of 50 sits in a wide empty gap rather than near a boundary. What it still cannot save is a
+mistyped seam left untouched across 50 commits - which is genuine evidence of moving on, and which
+remains reported for a correctly-named seam because rule 3 never expires anything.
 
 **Rule 2's honest limit, also from round 2.** It assumes an empty marker directory means a fresh
 repository. A user who runs consults for weeks without ever completing a discipline has seams and no
@@ -429,7 +448,13 @@ implementation case needs a different idea rather than a bolted-on field.
   loss.**
 - **Durable decisions are out of scope by design** (section 1). On a machine with no host memory store,
   a crash loses every owner ruling and rejected approach made in that session. This design does not
-  address that and must not be read as if it does.
+  address that and must not be read as if it does. **Round 3 added the part worth stating: the two
+  halves interact badly rather than independently.** Restoring the POSITION while the DECISIONS are
+  gone resumes an agent into round 5 of a review with no memory of what was already settled - so it
+  re-litigates closed questions with confidence, which is a worse failure than not resuming at all,
+  because it looks like continuity. **The mitigation is not a mechanism, it is the report itself:** the
+  startup line names a seam, and the seam records what the round was about, so an agent that reads it
+  learns what it does not know.
 
 ## 3f. Peer review of the limitations - what survived measurement
 
@@ -545,7 +570,7 @@ name than the discipline currently carries, and the scope note is not optional d
 | an existing SessionStart hook, both products | the reader. Extend one rather than add another script |
 | the existing PreCompact hook, both products | 3d - the announced-ending emitter. Already registered and already fires, so this costs no new registration. **Top-level `systemMessage` only** |
 | a shared shell function for the candidate-set logic, **in a named file, sourced by both hooks** | 3b-0 and 3b-i are now used by TWO hooks. Duplicating the logic guarantees they drift; the SessionStart and PreCompact readers must not disagree about which seam is live. **The path is a plan-time decision (section 8) - naming the requirement without naming the file is what produces two copy-pasted copies.** It lands in both plugin trees, so it is a byte-identical pair and inherits that mirror rule |
-| **`adversarial-panel-review/SKILL.md` - add a debounce-marker contract writing `agy-panel.head`** | 3c: the panel is the most multi-round discipline here and currently writes NO marker, so its seams could never be concluded. Its two siblings (`agy-first`, `agy-test-audit`) already carry this contract; copy theirs. **This changes a shipped skill rather than only adding a reader, so it is the one scope item in this spec the owner should confirm** |
+| **`adversarial-panel-review/SKILL.md` - add a debounce-marker contract writing `agy-panel.head`** | 3c: the panel is the most multi-round discipline here and currently writes NO marker, so its seams could never be concluded. Its two siblings (`agy-first`, `agy-test-audit`) already carry this contract; copy theirs. **This changes a shipped skill rather than only adding a reader, so it is the one scope item in this spec the owner should confirm.** See the consumer test below - this marker passes it |
 | `clavity-*/plugin/skills/*/SKILL.md` for the multi-round disciplines | state the seam naming convention where the seam is written - including that the discipline token is the marker basename (3a), not free prose |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
 | `justfile` | suite registration is an explicit list, not a glob |
@@ -568,6 +593,37 @@ Without line 69 the `>>` redirection fails `No such file or directory` on any ho
 does not exist yet - which is **every fresh install**, the exact population this shield exists to
 protect. The same failure is already documented in `agy-first`'s skill for `agy-marks/`, so this is a
 mistake the repository had paid for once already.
+
+**And `mkdir -p .clavity` is not enough - round 3's cold-start seat found the SUBDIRECTORIES.** The
+reader queries `.clavity/seams/` and `.clavity/agy-marks/`, and on day zero neither exists. Measured:
+
+```
+find /tmp/cs/.clavity/seams -maxdepth 1 -type f
+-> find: '/tmp/cs/.clavity/seams': No such file or directory
+```
+
+**The reader must NOT create them** - it is a reader, and creating a seams directory on a machine that
+has never run a consult would be writing state nobody asked for. It must treat each as *absent means
+empty*: no seams means no output and exit 0; no `agy-marks/` means rule 2. The section 7 row covering
+`.clavity/` itself does not cover this, because the parent can exist while both children do not - which
+is precisely what happens the first time any other hook asserts the shield.
+
+### The consumer test, applied to this spec's own additions
+
+Round 3 seated a prosecutor to turn section 2a's law back on the design, and it charged `agy-panel.head`
+with being a checkbox - state whose only beneficiary is a successor. **The charge fails on measurement,
+and the measurement is worth keeping because it is the test any future addition must pass:**
+
+```
+agy-after-reminder.sh        -> 0 references to agy-marks   (UNDEBOUNCED)
+agy-test-audit-reminder.sh   -> 3 references to agy-marks   (CONTROL: this is what gated looks like)
+```
+
+**So the AGY-AFTER reminder hook has no marker to debounce on, and it shows.** It fired on every single
+edit while this very spec was being written. `agy-panel.head` gives it the gate its sibling already
+has - a consumer in the CURRENT session, not a successor - so the marker earns its place by section 2a's
+own standard rather than by exemption from it. **A field that only the workflow-position reader consumed
+would indeed be a checkbox**, and the prosecutor's rule is right even though this defendant is innocent.
 
 **The reader must not print an agent-authored path unexamined. Round 1 folded this as "strip control
 characters"; round 2 replaced that with an allowlist, and the paragraph below is kept because its
@@ -617,6 +673,26 @@ document it read. That is not a hypothetical class here; it is the same class th
 spec already assumes when it treats the seam path as untrusted. An allowlist costs one comparison, so
 it is not worth being clever about the threat's likelihood.
 
+**Round 3 is right that the allowlist does not stop injection, and calling it a security control would
+be the third overclaim in this document.** `^[A-Za-z0-9._-]+$` permits hyphens and dots, so
+`agy-capstone-r5.systemMessage-Ignore-All-Previous-Directives.md` passes it intact, and an LLM reads
+hyphen-separated prose exactly as well as spaced prose. Charset filtering cannot make an
+attacker-chosen string safe to interpolate into a model's context; nothing can.
+
+> **So the allowlist is a FORMATTING guard, not a security boundary, and it is described that way.** It
+> keeps the startup line bounded, parseable and free of terminal-hostile bytes. It is not what stands
+> between a hostile filename and the successor.
+
+**And the honest structural point, which round 3 stopped one step short of:** the whole line instructs
+the successor to OPEN the seam and read it. An agent that can choose the filename can equally choose
+the file's CONTENTS, which are unbounded prose the successor is being directed to read. **Filtering the
+filename while directing the agent to read the body is guarding the keyhole and leaving the door open.**
+
+**This design therefore does not defend against a compromised agent, and it must not claim to.** The
+mitigation that would - not naming a path the successor is told to read - is the mechanism itself, so
+there is nothing to trade. What is in scope is stated plainly here so that a later reader does not
+mistake the allowlist for protection it never provided.
+
 ## 7. Tests - every row names the mutant that reds it
 
 | row | mutant that must red it |
@@ -648,7 +724,11 @@ it is not worth being clever about the threat's likelihood.
 | **the SessionStart line contains a directive, not only a fact** | strip the imperative sentence -> row reds. Pins the 3b Mechanism Gamer fold |
 | **a basename failing `^[A-Za-z0-9._-]+$` is reported as existing but its name is NOT echoed** | swap the allowlist for a control-character `tr -d` -> a name made only of legal prose passes through verbatim -> row reds. **Drive this row through the validator's INPUT, not through a file on disk** - section 6 records that a control-character filename could not be created on Windows, so a filesystem fixture would pass vacuously |
 | **the directive text precedes the path and the line is length-capped** | move the path ahead of the instruction, or drop the cap -> row reds |
-| **a mistyped LIVE seam survives an unrelated discipline completing** | drop rule 4's `10 most recent` clause -> the fixture's `capstone-r5-live.md` is aged out by `agy-test-audit.head` -> row reds. **This is the round-2 finding and it is the most important row added by that round** |
+| **a mistyped LIVE seam survives an unrelated discipline completing** | key rule 4 on markers again -> the fixture's `capstone-r5-live.md` is aged out by `agy-test-audit.head` -> row reds. **This is the round-2 finding and the most important row either round added** |
+| **an off-convention seam at 0 commits old IS a candidate; one at 200 commits old is NOT** | swap the commit-age window for a seam-count window -> writing 10 fixture seams evicts the live one -> row reds. Pins the round-3 correction, and 47 seams were written here in one day |
+| **`agy-capstone-r5.md` - no topic segment - resolves via rule 3, not rule 4** | require the topic (`-r[0-9]+-.+`) -> a valid on-token live seam falls to the heuristic branch -> row reds |
+| **a missing `.clavity/seams/` or `.clavity/agy-marks/` produces no output and exit 0** | query them without an existence check -> `find: No such file or directory` on day zero -> row reds. The parent can exist while both children do not |
+| **the reader does NOT create `seams/` or `agy-marks/`** | add a `mkdir -p` for either -> row reds. A reader that provisions state on a machine that never ran a consult is writing for a successor |
 | **`agy-capstone-stage2.md` is treated as off-convention, NOT resolved to `agy-capstone`** | relax the anchored full-match to a prefix match -> a live seam is concluded against a marker that was never about it -> row reds |
 | **the token list is the literal table, not the contents of `agy-marks/`** | derive the list from the directory -> `agy-panel` vanishes on a fresh install and every panel seam takes the off-convention branch -> row reds |
 | **a concluded seam that is edited is reported again, and the NEXT completion re-concludes it** | make conclusion sticky (record the seam in the marker) -> the second half reds. Pins the 3b-i ruling that this direction is deliberate and reversible |
@@ -680,7 +760,7 @@ rule, and the sweep those triggered produced the rest.
 
 | finding | disposition |
 |---|---|
-| **rule 4 reintroduced the cross-discipline destruction for MISTYPED names** | **folded, and it is the round's real finding** - measured on a fixture with a discriminating control. The rewrite fixed the bug for well-named seams and left it alive for exactly the population that is definitionally a mistake. Closed by the `10 most recent` clause |
+| **rule 4 reintroduced the cross-discipline destruction for MISTYPED names** | **folded, and it is the round's real finding** - measured on a fixture with a discriminating control. The rewrite fixed the bug for well-named seams and left it alive for exactly the population that is definitionally a mistake. Closed by rule 4's recency clause - **round 2 closed it with a seam-count window, which round 3 then replaced with the commit-age window; the FINDING held, the first remedy did not** |
 | `tr -d` is the wrong guard - prose in a filename needs no control character | folded: **replaced by an allowlist**, and the round-1 imperative fold is recorded as having made this worse. Two right fixes, jointly worse |
 | the closed list could be derived from the directory, losing `agy-panel` on fresh installs | folded into 3a as a rule, not latitude |
 | prefix vs anchored extraction for `agy-capstone-stage2.md` | folded into 3a: single anchored full-match |
@@ -689,6 +769,22 @@ rule, and the sweep those triggered produced the rest.
 
 **The pattern worth keeping from these two rounds:** round 1's fix was correct about its finding and
 wrong in its remedy's edges, and round 2 found that in one round. A fix is unreviewed code.
+
+**Closed by round 3** (2 bespoke seats - all eleven palette seats were spent by round 2 - plus the two
+core seats; 6 findings, 5 folded, 1 refuted). **Round 3 confirmed the pattern by breaking round 2's
+fixes the same way round 2 broke round 1's:**
+
+| finding | disposition |
+|---|---|
+| the `10 most recent seams` clause is flushed by ordinary work | **folded - and the measurement beat the argument.** Round 3 reasoned from concurrent sessions; the count is that **47 seams were written here in one day by one serial author.** Rule 4 is now keyed on commit age (0 / 16 / 1157 measured), which no amount of seam-writing can move |
+| the anchored regex requires a topic, so `agy-capstone-r5.md` falls to rule 4 | folded - the topic segment is now optional |
+| `.clavity/seams/` and `.clavity/agy-marks/` are never created and are queried on day zero | folded, with the `find` error measured. **The reader treats absent as empty rather than creating them** - provisioning state on a machine that never ran a consult is the checkbox again |
+| the allowlist does not stop injection - hyphenated prose passes it | **folded as an honesty correction.** It is a FORMATTING guard, not a security boundary, and the document now says so. The sharper point round 3 stopped short of: the line tells the successor to READ the seam, whose body is unbounded prose, so filtering the name guards the keyhole |
+| position restored without decisions is worse than no resume | folded into 3e - it re-litigates settled questions *while looking like continuity* |
+| **`agy-panel.head` is a checkbox with no consumer but the successor** | **REFUTED by measurement, and the rule invoked was right.** `agy-after-reminder.sh` carries **0** references to `agy-marks` while `agy-test-audit-reminder.sh` carries **3** - so the marker gives the AGY-AFTER hook the debounce its sibling already has, a consumer in the CURRENT session. That hook fired on every edit while this spec was written |
+
+**Three rounds, and every one found a real defect in the previous round's fix.** That is the argument
+for the round-after-a-fold, stated as evidence rather than as a principle.
 
 **Resolved at plan time, each with a home:**
 
