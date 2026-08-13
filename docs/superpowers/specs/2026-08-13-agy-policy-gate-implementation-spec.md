@@ -38,7 +38,7 @@ file"*.
 | N20 | `outside-repo` means **the SEAM path resolves outside the repository root**, not that the hook ran outside a repo - that case writes nothing at all (N7). | 4a |
 | N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). **`no-seam` is a DECISION reason** - it is the outcome of the invocation, not a property of some seam - so the decision set is `block`/`pass`/`skip`/`no-seam`. **The two reason-code sets are DISJOINT, which is what keeps them separable** - the reader counts decisions by the first set and anomalies by the second, and needs no extra column. Invocation counts come from decision lines only. | 8 |
 | N11 | Block message, in order: what is missing + the peer was not contacted; the literal path `adversarial-panel-review/SKILL.md`; what the check cannot do; the skip token. **Written per product.** | 6 |
-| N12 | dotnet: a NEW entry matching `mcp__.*agy_ask` alone. classic: **no new entry** - the check joins the existing per-command hook, and **must not merge its control flow**. | 3, 3b |
+| N12 | **Both products: no new entry.** The check joins the hook already registered on `Bash\|PowerShell\|mcp__.*agy_ask`, covering the MCP and CLI forms, and **must not merge that hook's control flow**. Subagents cannot use `agy_ask` (3-0), so an MCP-only gate would miss them entirely. | 3, 3-0, 3b |
 | N13 | **`adversarial-panel-review/SKILL.md` must teach the `PANEL-SEATS:` line, shipping with or before the gate.** Measured: 0 skills teach it today. | 2 |
 | N14 | The SessionStart reader surfaces counts by reason over `policy.log` **and** `policy.log.1`, and **skips lines it cannot parse** rather than failing the session. | 8, 11a |
 | N15 | **Sanitise both agent-authored fields** - the seam path and the skip reason - by stripping control characters **and the TAB delimiter**, then length-capping. Newline-stripping alone leaves horizontal forging open. | 8 |
@@ -138,21 +138,47 @@ This is the one place the two products genuinely diverge, and it is an owner rul
 
 | product | matcher | how it finds the seam path |
 |---|---|---|
-| clavity-dotnet | a **NEW** entry matching `mcp__.*agy_ask` ALONE | `jq` over the MCP tool payload |
+| clavity-dotnet | **no new entry** - the check joins the hook already registered on `Bash\|PowerShell\|mcp__.*agy_ask` (3-0, 3b) | `jq` over the MCP payload **and** the shell-command form, since subagents can only use the CLI |
 | clavity-classic | **no new entry** - the check is added to the hook already registered on `Bash\|PowerShell\|mcp__.*agy_ask` (section 3b) | exits 0 immediately unless the command is a `clavity ask`; then string-extracts the path |
 
-**The dotnet entry must NOT extend the existing `Bash|PowerShell|mcp__.*agy_ask` entry**, which would
-put this check on every shell command in the session.
+**An earlier version forbade dotnet from extending that entry**, on the grounds that it would put the check on every shell command. **Section 3-0 inverts it:** subagents cannot use `agy_ask`, so a gate that only watches the MCP tool never sees them. The check must run on the shell form too - and the existing entry is exactly where that already happens, at no extra process cost (3b).
 
-**clavity-dotnet additionally changes its skills so subagents consult over `agy_ask`** rather than
-`clavity ask --review-only`, which brings subagent consults under the matcher by construction.
+### 3-0. SUBAGENTS CANNOT USE `agy_ask` - measured, and it removes three edits and adds a gap
 
-**Measured, because the count matters to the edit list:** exactly **three** skills carry the subagent
-parenthetical *"(subagents use the CLI form, not the MCP bus)"* - `agy-first`, `agy-capstone` and
-`agy-test-audit`. **`adversarial-panel-review` does NOT** (zero occurrences); it names the classic CLI
-transport generally, without routing subagents to it. So three skills need the subagent sentence
-changed, and the fourth needs only its transport line checked for consistency - do not edit it blindly
-to match the others.
+An earlier version of this section said **"clavity-dotnet additionally changes its skills so subagents
+consult over `agy_ask`, which brings subagent consults under the matcher by construction."** A panel
+seat guessed the risk was a blocking modal. **Both are wrong, and the recorded reason is sharper than
+either:**
+
+> `clavity-dotnet/plugin/knowledge/agy-capabilities.md:151-154` - *"A Claude subagent CAN reach the peer
+> via the self-contained driver->peer CLI (binary on PATH); the MCP signal-bus path is
+> **main-thread-only (subagents lack the MCP tools)**, so the CLI front door is what makes the peer
+> subagent-accessible."*
+
+**Subagents do not have the MCP tools at all.** So:
+
+1. **The three skill edits are DELETED from this build.** Telling a subagent to consult over `agy_ask`
+   instructs it to call a tool it does not have. The edits are not merely inert - **they would break
+   subagent consults**, and the skills' current wording is correct.
+2. **A gap this build must close, which the deleted edits were hiding.** Subagents keep using the CLI -
+   `clavity ask`, a **Bash** command. A dotnet gate matching `mcp__.*agy_ask` **alone never sees them**,
+   so **every subagent consult would bypass the dotnet gate** - and subagent-driven work is a primary
+   consumer of these disciplines.
+3. **Therefore dotnet, like classic, extends the hook already registered on
+   `Bash|PowerShell|mcp__.*agy_ask`** rather than adding a new one. That matcher already covers both
+   transports, so the gap closes with no new registration and no second interpreter startup (3b).
+
+> **This contradicts a standing owner ruling on a point of fact, and it is flagged rather than assumed.**
+> The ruling *"split by product: dotnet MCP plus subagents onto `agy_ask`; classic a separate Bash
+> hook"* was made when routing subagents onto `agy_ask` looked possible. **It is not possible.** The
+> design here follows the measurement; **the owner should ratify or redirect it.** A consequence worth
+> noting: if both products now put the same check in the same existing hook, the pair may no longer need
+> the byte-identity exemption in section 10 at all.
+
+**Still measured and still true, for whoever edits the skills for a different reason later:** exactly
+**three** carry the parenthetical *"(subagents use the CLI form, not the MCP bus)"* - `agy-first`,
+`agy-capstone` and `agy-test-audit`. **`adversarial-panel-review` does NOT.** Those sentences are now
+**correct as they stand** and must be left alone.
 
 **Ordering is a requirement, not an implementation detail (round 1's Resource Vampire).** The classic
 hook fires on **every** `Bash|PowerShell` command in the session. It **MUST** do the cheap in-process
@@ -783,15 +809,15 @@ own auto-memory layout is not a contract for anyone else.
 
 | artifact | why |
 |---|---|
-| `clavity-dotnet/plugin/hooks/agy-policy-roles-pre.sh` | the gate, MCP form. Name must not collide with the existing `agy-consult-guard-*` pair |
+| **`clavity-dotnet/plugin/hooks/agy-consult-guard-pre.sh` - EXTENDED, not a new script** | the gate. Same treatment as classic (3-0, 3b): the existing hook already matches both transports, and subagents can reach only the CLI one |
 | **`clavity-classic/plugin/hooks/agy-consult-guard-pre.sh` - EXTENDED, not a new script** | the gate, shell form. Section 3b: classic already runs this hook on `Bash\|PowerShell\|mcp__.*agy_ask`, and a second script on the same trigger doubles the largest cost in the design (~300-400ms of interpreter startup on **every** shell command). **The ROLES check is added here** |
-| `clavity-dotnet/plugin/hooks/hooks.json` | a NEW `mcp__.*agy_ask` entry. **Classic's `hooks.json` does NOT change** - it already registers the hook the check now lives in (section 3b) |
+| ~~`hooks.json` in either product~~ | **NEITHER changes.** Both already register the hook the check now lives in |
 | an existing SessionStart hook, both products | surfaces the per-reason-code counts over the retained log. Extend one rather than adding a fourth script |
 | **`clavity-*/plugin/skills/adversarial-panel-review/SKILL.md` - TEACH THE `PANEL-SEATS:` LINE** | **the half that makes the gate safe, and it was missing.** Measured: **zero** shipped skills mention `PANEL-SEATS`, so nothing has ever instructed an author to write it. The skill must state the line's exact form and that a consult payload naming a seam requires it. **This ships in the same release as the gate or before it - never after** |
 | the other multi-round disciplines' `SKILL.md` | same convention, stated where each seam is written |
-| `clavity-dotnet/plugin/skills/{agy-first,agy-capstone,agy-test-audit,adversarial-panel-review}/SKILL.md` | subagents consult over `agy_ask`, not the CLI. **See the OPEN item in section 13a - this edit is under challenge** |
+| ~~the three subagent-routing skill edits~~ | **DELETED from this build (3-0).** Subagents lack the MCP tools, so the edit would instruct them to call a tool they do not have and **break their consults**. The current wording is correct |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
-| `plugin-hooks-payload.Tests.ps1` | **must change** - an explicit, named byte-identity exemption for the gate pair |
+| `plugin-hooks-payload.Tests.ps1` | **may need NO change at all.** With both products extending the same hook with the same two-transport logic, the pair may stay byte-identical. **Confirm at plan time; do not add an exemption that is not needed** |
 | `justfile` | suite registration is an explicit list, not a glob |
 | `scripts/tests/_partition.md` | a measured row; the census gate reds the suite if omitted |
 
@@ -979,7 +1005,7 @@ break.
 | **the `sed` test row was vacuous** - it asserted source text, which section 11's own preamble forbids | **folded: row deleted.** A behavioural test cannot detect a redundant probe on a host that has `sed`. **A vacuous row is worse than a missing one - it certifies what it fails to test** |
 | **`${CLAUDE_PLUGIN_ROOT}` was mandated in section 5 with NO test row** | **folded: row added.** The failure mode is a collapsed path, an infrastructure failure and a silent bypass - **exactly the class this suite exists to catch, uncovered for five rounds** |
 
-### Round 6 - 4 bespoke seats, 7 findings: 6 folded, 1 OPEN for the owner
+### Round 6 - 4 bespoke seats, 7 findings: 6 folded, 1 later REFUTED (round 12a)
 
 | finding | disposition |
 |---|---|
@@ -989,7 +1015,7 @@ break.
 | **repository pollution for a user who never consults** | **folded.** Classic's loose test means `git commit -m "fix clavity ask"` would create `.clavity/` and a log in a stranger's repo. `mkdir` now runs only for outcomes that matter, and `no-seam` is logged only where `.clavity/` already exists |
 | **the exact-multiple rotation trigger is skipped by concurrent appends** | **folded.** Two writers step 99 to 101 and the trigger never fires - **in exactly the concurrent case the atomic-append design exists to support.** The window is 5 lines wide now |
 | **the dotnet skip token named "a JSON field" but never a key** | **folded.** There is no separate key: the token is prose inside the `message` string in both products, which is also why one static block message describes it correctly for both |
-| **routing subagents onto `agy_ask` may pop a blocking modal and freeze them** | **OPEN - surfaced, not folded.** This challenges an owner ruling, and the existing skills say the opposite (*"subagents use the CLI form, not the MCP bus"*) without stating why. **I could not verify the modal claim cheaply, and folding or dismissing it unilaterally would both be wrong.** See below |
+| **routing subagents onto `agy_ask` may pop a blocking modal and freeze them** | **CLOSED in round 12a - REFUTED, and the truth is worse.** `agy-capabilities.md:151-154` records that **subagents lack the MCP tools entirely**; it was never a modal. So the three skill edits would have told subagents to call a tool they do not have. **And the deleted edits were hiding a gap:** subagents use the CLI, which an MCP-only matcher never sees, so every subagent consult would have bypassed the dotnet gate. See 3-0 |
 
 ### Round 5a and 6a - the OWNER's findings, which six rounds of panel never asked
 
@@ -1084,9 +1110,9 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 | **classic's adjacent-word test is defeated by ordinary shell forms** | folded: `clavity   ask`, `clavity 'ask'` and line continuations all break a strict adjacency match. Normalise whitespace before testing, and accept that quoting games remain in classic's stated best-effort bucket |
 | **GREEN-CHECK VERDICT: NOT READY** - extracting security-critical paths from prose guarantees endless normalisation bugs | **ESCALATED to the owner, not folded.** The seat is right about the root cause, and N22 answers most of it: containment testing dissolves the normalisation class that produced these findings. **What it cannot dissolve is that the path is still SCRAPED from prose.** The structural alternative - a dedicated `seam` parameter on `agy_ask` and a `--seam` flag on `clavity ask` - would make the path a declared input rather than a guess, and it **changes a tool contract, which is outside this spec's scope.** See below |
 
-### OPEN for the owner - TWO items
+### OPEN for the owner - ONE item, plus one ratification
 
-**2. The path is SCRAPED, not DECLARED - and a seat has called that a build blocker.**
+**The path is SCRAPED, not DECLARED - and a seat has called that a build blocker.**
 
 Round 12's Green-Check Auditor was asked to argue the document is ready and **ruled it NOT READY**, with
 one named cause: the gate decides whether to block based on a path it **guesses out of conversational
@@ -1097,6 +1123,21 @@ a traversal, a case difference - and the seat's claim is that this class never e
 **dissolves the normalisation class rather than patching another instance** - traversal, backslashes and
 case all become the operating system's problem, which it already solves. That is a real answer to most
 of the finding. **What it does not change is that the path is still scraped.**
+
+> **Owner correction, and it fixes how this item was framed.** An earlier version of this section
+> recommended the declared parameter because it "deletes the entire extraction surface", as though
+> removal were the goal. **That is a plumbing argument dressed as a design argument.**
+>
+> **The purpose of this gate is that the ROLES END UP IN THE AGENT'S CONTEXT** - the seam carries
+> `PANEL-SEATS:`, so an agent that writes or reads the seam has the adversarial lenses in front of it.
+> **A declared seam parameter contributes NOTHING to that.** It only makes the hook's job of *finding
+> the file* reliable. The roles requirement, the block, the message and everything about how the seats
+> reach the agent are **identical either way.**
+>
+> So the honest statement of the trade is narrow: **a declared parameter buys robustness in path
+> resolution and costs a tool-contract change.** It is not an improvement to the feature, and the
+> section that actually serves the purpose is **N13** - the skill must teach the `PANEL-SEATS:` line,
+> because measured, **zero skills teach it today.** The gate only makes its absence visible.
 
 **The structural alternative, priced:** give the consult a **declared** seam parameter - a `seam` field
 on the `agy_ask` MCP tool and a `--seam <path>` flag on `clavity ask`. The hook would then read a
@@ -1114,20 +1155,11 @@ normalisation case, classic's whole "best-effort" concession - **disappears.**
 testing makes the scraped version defensible for this build; the declared version would make the whole
 extraction section unnecessary in the next one. **I would ship this and schedule that.**
 
-### OPEN for the owner - item 1, a round-6 finding I did not fold
+### RESOLVED in round 12a - the former item 1
 
-**Routing subagent consults over `agy_ask` (section 3) may freeze them.** The claim is that MCP tool
-calls surface a blocking modal, which a background subagent cannot answer. **What is verifiable:** the
-three skills currently say *"subagents use the CLI form, not the MCP bus"* - so the CLI routing is
-deliberate and its reason is nowhere recorded. **What is not:** whether the modal behaviour is real
-here. **The change is an owner ruling, so it is surfaced rather than folded or dismissed.** If the modal
-risk is real, section 3's subagent routing needs a different mechanism and the three skill edits come
-out of the build; if it is not, the reason the skills say the opposite should be written down before it
-is reversed a second time.
-
-## 14. Provenance
-
-Every requirement above was earned, most of them adversarially. The reasoning - four panel rounds, ~20
-findings, the arguments for and against a `palette.json`, the delimiter design and why it was abandoned
-- lives in the ADR: `2026-08-13-agy-role-enforcement-design.md`. Read it when asking "why is this like
-this"; do not build from it.
+**Routing subagents over `agy_ask` was never a modal risk; subagents cannot use MCP tools at all.**
+Measured at `clavity-dotnet/plugin/knowledge/agy-capabilities.md:151-154`. The three skill edits are
+deleted from the build, the skills' current wording is correct, and section 3-0 carries the gap that
+discovery exposed: **an MCP-only dotnet gate would never see a subagent consult.** The remaining
+owner question is narrow and named in 3-0 - the *split by product* ruling rested on a premise that
+measurement refutes, so it wants ratification or redirection rather than silent replacement.
