@@ -92,13 +92,51 @@ existing `-REPLY` suffix.
 This is a free rider on a decision the author must make anyway - the file needs *a* name - so it adds no
 step to remember. It is not free of error, and section 5 covers what happens when it is wrong.
 
+**The `<discipline>` token is a CLOSED list, and it is the marker's basename - not free prose.** The
+round-1 panel found this, and without it the design's only clearing mechanism can never fire:
+
+> **Measured on this repository: 27 seams already match the shape `<something>-r<N>-<topic>.md`, and
+> ZERO of their 8 distinct prefixes map to any marker file.** Authors wrote `capstone-stage2`,
+> `capstone-injected`, `sp2-capstone`, `python-gate-plan-review`, `drain-knowledge-panel-agy` - all
+> natural, all unresolvable. The markers on disk are `agy-capstone`, `agy-first`, `agy-test-audit`.
+
+So an unconstrained token is not a convention, it is a wish. The permitted tokens are exactly the marker
+basenames, and the conclusion test in 3b-i resolves `<token>` to `.clavity/agy-marks/<token>.head` by
+string equality with no normalisation:
+
+| token | marker | multi-round? |
+|---|---|---|
+| `agy-capstone` | `agy-capstone.head` | yes - the primary case |
+| `agy-panel` | `agy-panel.head` | yes - **the marker does not exist yet; see section 6** |
+| `agy-test-audit` | `agy-test-audit.head` | rarely, but it can re-round after a refactor |
+| `agy-first` | `agy-first.head` | no - single-shot, listed so the token resolves if used |
+
+Anything else is an off-convention name and takes the degrade path in section 5. The example above is
+correct precisely because `agy-capstone` is a marker basename; a plausible-looking `capstone-r5-x.md`
+is NOT.
+
 ### 3b. SessionStart surfaces EXISTENCE and AGE. Never CONTENT.
 
-One line per open seam:
+One line per open seam, **and it must carry a DIRECTIVE, not only a fact**:
 
 ```
-workflow position: agy-capstone r5 (.clavity/seams/agy-capstone-r5-a2-audit.md), written 4 commits ago
+workflow position: agy-capstone r5 (.clavity/seams/agy-capstone-r5-a2-audit.md), written 4 commits ago.
+Read that seam before starting new work, or say why you are not resuming it.
 ```
+
+**Why the second sentence exists.** The round-1 panel's Mechanism Gamer argued the whole design is
+theatre: it surfaces the state, satisfies its own success criterion, and produces zero resumptions,
+because a model does not autonomously open a path printed in its startup context.
+
+**Its conclusion is overstated and this session refutes it, but the residue is real and cheap to fix.**
+Measured here: the shipped anomaly hook's `SessionStart` line - *"3 untriaged in
+`.clavity/local-anomalies.md`. Triage before new work via the open-issues skill"* - **did** cause the
+file to be opened before any other work this session. So a startup line demonstrably can drive action.
+**The difference is that it carries an imperative.** The declarative line first drafted here ("workflow
+position: ... written 4 commits ago") states a fact and asks for nothing, and it is the version the
+Gamer's objection actually lands on.
+
+This costs one sentence, so there is no reason to ship the version the objection kills.
 
 **It must never inject the seam's body into the context.** A single abandoned review would otherwise
 poison the startup of every future session with a ghost, permanently. Naming the path lets the agent
@@ -109,19 +147,54 @@ the ruling already made for the policy gate's block message: point at the file, 
 abandoned branch; commit distance measures how much work has happened since, which is the thing a reader
 actually wants to weigh.
 
-### 3b-0. The CANDIDATE SET is seams newer than the newest discipline marker
+### 3b-0. The CANDIDATE SET is decided PER SEAM, never by one global cutoff
 
 **Found by this spec's own panel, and it would have killed the mechanism.** The reader must not consider
 every seam on disk. Measured on this repository: **434 agent-written seams exist, and only 25 match the
-naming convention below** - 5.8%. Under section 5's "report, never skip" rule, a first run would have
-announced three seams and *"406 more unrecognised"*. That is noise, and noise trains a reader to ignore
-the line - the checkbox outcome reached by a different road.
+naming convention's SHAPE** - 5.8%, and per 3a **none of them match its closed token list**. Under
+section 5's "report, never skip" rule, a first run would have announced three seams and *"406 more
+unrecognised"*. That is noise, and noise trains a reader to ignore the line - the checkbox outcome
+reached by a different road.
 
-> **The reader considers only seams NEWER than the most recent file in `.clavity/agy-marks/`.**
+The first draft of this rule was **one global cutoff** - *"only seams newer than the most recent file in
+`.clavity/agy-marks/`"*. The round-1 panel killed it, and the measurements below are why. It is replaced
+by a **per-seam** rule.
 
-Measured with the same command the hook will use: **11 candidates, 423 filtered out**, with a control
-confirming the predicate varies (a 2020 reference matches all 536). Historical seams age out on their
-own, with no migration, no cleanup, and no convention applied retroactively.
+> **The candidate rule, evaluated per seam:**
+>
+> 1. **A `-REPLY` file is never a candidate.** It is peer output, not a position record.
+> 2. **If no `*.head` marker exists at all**, every remaining seam is a candidate. Nothing has ever
+>    concluded, so nothing can be aged out.
+> 3. **If the filename's discipline token is in the closed list (3a)**, the seam is a candidate unless
+>    its OWN marker `.clavity/agy-marks/<token>.head` is newer than it. No other discipline's marker
+>    can conclude it.
+> 4. **Otherwise** (off-convention name), the seam is a candidate only if it is newer than the newest
+>    `*.head` marker. This is what ages out the historical corpus.
+
+**Three measured defects in the global cutoff, each fatal on its own:**
+
+- **It let one discipline conclude another's live work.** On this repository right now,
+  `agy-first.head` (2026-08-13 01:41:58) is **five hours newer** than `agy-capstone.head`
+  (2026-08-12 20:29:33). Any capstone seam written in that window is silently dropped from the
+  candidate set while the capstone is still unconcluded. **That is the destructive action on an
+  inference that 3c forbids**, committed by the design's own filter.
+- **`skipped.log` is a file in `.clavity/agy-marks/`, and the global rule counted it.** It is not a
+  marker: agy-first appends to it precisely when a consult is SKIPPED and deliberately writes no
+  marker, so the discipline re-fires. Under the old rule a recorded NON-completion advanced the cutoff
+  and aged out live seams. **Rule 4 reads `*.head` only** - never every file in the directory.
+- **It was unspecified when the directory is empty or absent, and both concrete forms misbehave.**
+  Measured: with the directory absent, the filter errors -
+  `find: '/tmp/pv2/marks/': No such file or directory`. With it present but empty, the argument
+  degenerates to the directory itself and `find` silently uses the DIRECTORY's mtime as the cutoff -
+  an arbitrary timestamp that still excluded an older seam in a control where one existed. Neither is
+  the intended "nothing has concluded". **Rule 2 states it outright.**
+
+**What the rule still buys, and what it does not.** The noise problem it was invented for is real:
+measured today, **28 of 549 seam files are candidates, and only 2 of the 28 match the convention**, so a
+first run would report 3 and *"25 more unrecognised"*. Rule 1 removes the 14 `-REPLY` files from that
+count immediately. The rest age out as markers advance past them, with no migration, no cleanup and no
+convention applied retroactively - but **be honest that this shrinks the noise rather than eliminating
+it**, and that the cap in section 5 is what bounds it in the meantime.
 
 **Section 5's "never skip" rule is scoped to THIS candidate set**, not to the whole directory. An
 unparseable name among live seams is still reported; a three-month-old seam is simply not a candidate.
@@ -136,13 +209,26 @@ successor - which section 2a says goes to zero.**
 **Use the file's mtime.** It costs nobody anything, because the filesystem records it whether we ask or
 not - the same free-rider logic as the filename.
 
-- **age in commits:** `git rev-list --count --since="<seam mtime>" HEAD`
-- **concluded?** the discipline's marker file is newer than the seam - `[ "$marker" -nt "$seam" ]`
+- **age in commits:** `git rev-list --count --since="@$(date -r "$seam" +%s)" HEAD`
+- **concluded?** the seam's OWN discipline marker is newer than it - `[ "$marker" -nt "$seam" ]`, where
+  `$marker` is `.clavity/agy-marks/<token>.head` for the token parsed in 3a, and **no other file**. If
+  that marker does not exist, the seam is not concluded.
 
-Verified on this repository: `date -r` yields the mtime, the `--since` count returns 0 for a seam
-written after the last commit and 1334 for a 2020 baseline (so the counter genuinely varies rather than
-always returning the same number), and `-nt` correctly reports the existing capstone marker as OLDER
-than a seam written today.
+**The date is passed as `@<epoch>`, never as `date -r`'s default output.** The round-1 panel's
+Dependency Cynic claimed the default output would be misparsed under a non-C locale. **That mechanism
+did not reproduce here** - measured, `date -r` prints `Thu Aug 13 16:01:08 GTBDT 2026` and git parses
+it to exactly the same answer as the epoch form (both `1`), with a control that discriminates (a 2020
+reference gives `1341` in both forms, 2030 gives `0`). So the claim as stated is refuted on this box.
+
+**What survives the refutation is worse, and it is why the fix is adopted anyway:** `git` never errors
+on a date it cannot parse. Measured, `--since="zzz not a date zzz"` returns `0` and
+`--since="Do 13 Aug 2026 10:15:00 CEST"` returns `1` - both plausible numbers, silently wrong, on a
+zero exit code. There is no signal to detect. Since `+%s` is locale-independent, costs nothing, and
+was measured to agree with the current form, shipping the form that *can* fail silently would be
+choosing the riskier of two equal-cost options.
+
+Also verified on this repository: `-nt` correctly reports the existing capstone marker as OLDER than a
+seam written today.
 
 **Named dependency, checked rather than assumed:** the age report uses `date -r`, which is GNU. Measured
 here, `date` resolves to `/usr/bin/date` - GNU coreutils 8.32, which Git Bash ships by default - so this
@@ -175,9 +261,25 @@ design exists to preserve. **Never take the destructive action on an inference.*
 
 **Clearing is therefore explicit and human-or-discipline driven**, never automatic:
 - a discipline that COMPLETES writes its `.clavity/agy-marks/<name>.head` marker as it already does;
-  a seam whose discipline marker is NEWER than the seam (3b-i) is CONCLUDED and is not surfaced.
+  a seam whose OWN discipline marker is NEWER than the seam (3b-i) is CONCLUDED and is not surfaced.
 - anything else stays surfaced until someone deletes it. Being nagged about a dead review costs a line;
   the alternative costs the work.
+
+**This is the design's ONLY clearing mechanism, so a discipline with no marker can never clear.**
+Measured: markers exist for `agy-capstone`, `agy-first` and `agy-test-audit`, and **the panel
+discipline writes none at all** - `adversarial-panel-review` has no debounce-marker contract, unlike
+its two siblings. A panel is the most multi-round discipline here, so every panel seam would be
+surfaced forever and the section 5 cap would carry a permanently growing remainder. **Section 6 carries
+the fix, and it is a change to a shipped skill rather than to this reader.**
+
+**One clearing failure is accepted rather than fixed, and it is stated because 3c's own rule condemns
+it.** If two sessions run the SAME discipline concurrently, the first to finish writes the marker and
+the second's live seam is instantly "concluded" - a destructive action taken on an inference, which is
+exactly what this section forbids. It is not fixed because the honest fix is a per-session marker, and
+that is a new artifact whose only reader is a successor: section 2a says it goes to zero. **It
+self-heals on the next round**, because that round writes a newer seam. The unrecovered case is a crash
+in the window between the other session's marker and the next seam. Two sessions on one repository is
+ordinary here; two running the same discipline at once is not.
 
 ## 3d. The ANNOUNCED ending - PreCompact, and why the agent cannot help
 
@@ -225,6 +327,17 @@ sees the seam path whether or not the summariser cooperates, which is the more r
 **A note worth passing to the human rather than burying:** since the mechanism is the turn and not the
 question, *any* message before `/compact` grants it. The habit that works is "give the agent one turn
 before compacting" - the phrasing is incidental.
+
+**But that note must ship with its precondition, or it is a placebo.** The round-1 panel's Blindspot
+Auditor is right: **a turn is only worth something if the agent has somewhere durable to write.** The
+author's host provides one; a stranger's may not, and this spec deliberately ships no index (section 1).
+On a bare host the extra turn produces an agent saying "ready" and writing nothing - a habit that feels
+protective and is not.
+
+**So the turn is an OWNER-side bonus, never the stranger's protection.** What protects the stranger is
+the hook path above, which gathers the state itself and needs no habit, no phrasing and no host memory
+store. **Any documentation of the habit must say which of the two it is**, otherwise it teaches a
+stranger to rely on the half that does not work for them.
 
 ## 3e. Does this actually survive a crash? Traced, not assumed
 
@@ -376,16 +489,47 @@ name than the discipline currently carries, and the scope note is not optional d
 |---|---|
 | an existing SessionStart hook, both products | the reader. Extend one rather than add another script |
 | the existing PreCompact hook, both products | 3d - the announced-ending emitter. Already registered and already fires, so this costs no new registration. **Top-level `systemMessage` only** |
-| a shared shell function for the candidate-set logic | 3b-0 and 3b-i are now used by TWO hooks. Duplicating the logic guarantees they drift; the SessionStart and PreCompact readers must not disagree about which seam is live |
-| `clavity-*/plugin/skills/*/SKILL.md` for the multi-round disciplines | state the seam naming convention where the seam is written |
+| a shared shell function for the candidate-set logic, **in a named file, sourced by both hooks** | 3b-0 and 3b-i are now used by TWO hooks. Duplicating the logic guarantees they drift; the SessionStart and PreCompact readers must not disagree about which seam is live. **The path is a plan-time decision (section 8) - naming the requirement without naming the file is what produces two copy-pasted copies.** It lands in both plugin trees, so it is a byte-identical pair and inherits that mirror rule |
+| **`adversarial-panel-review/SKILL.md` - add a debounce-marker contract writing `agy-panel.head`** | 3c: the panel is the most multi-round discipline here and currently writes NO marker, so its seams could never be concluded. Its two siblings (`agy-first`, `agy-test-audit`) already carry this contract; copy theirs. **This changes a shipped skill rather than only adding a reader, so it is the one scope item in this spec the owner should confirm** |
+| `clavity-*/plugin/skills/*/SKILL.md` for the multi-round disciplines | state the seam naming convention where the seam is written - including that the discipline token is the marker basename (3a), not free prose |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
 | `justfile` | suite registration is an explicit list, not a glob |
 | `scripts/tests/_partition.md` | a measured row; the census gate reds the suite if omitted |
 
-**The reader must assert the `.clavity/.gitignore` shield** (`[ -f ... ] || printf '%s\n' '*' >> ...`)
-before any write, on every invocation, exactly as `open-issues/SKILL.md:79` does. It writes nothing
-today, but it will run in a stranger's repository where `.clavity/` is not ignored unless the shield
-exists.
+**The reader must assert the `.clavity/.gitignore` shield** before any write, on every invocation. It
+writes nothing today, but it will run in a stranger's repository where `.clavity/` is not ignored
+unless the shield exists.
+
+**And it must `mkdir -p` first - the earlier draft cited the wrong line and would have shipped a broken
+first run.** The round-1 panel's Activation Auditor caught it. The idiom in `open-issues/SKILL.md` is
+two lines, not one, and this spec quoted only the second:
+
+```sh
+mkdir -p "$R/.clavity"                                                    # SKILL.md:69
+[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"   # SKILL.md:79
+```
+
+Without line 69 the `>>` redirection fails `No such file or directory` on any host where `.clavity/`
+does not exist yet - which is **every fresh install**, the exact population this shield exists to
+protect. The same failure is already documented in `agy-first`'s skill for `agy-marks/`, so this is a
+mistake the repository had paid for once already.
+
+**The reader must strip control characters from the seam path before printing it, and the honest
+reason is cost asymmetry - not a demonstrated attack.** A seam filename is agent-authored, and this
+reader's whole job is to echo it into the next session's context. The sibling policy-gate spec already
+mandates exactly this for exactly this field, and states why: newline-stripping alone stops vertical
+forging while a literal tab still shifts every column of a delimited record.
+
+> **Stated plainly because the measurement did not go my way: I could not demonstrate that a control
+> character is reachable in a real seam filename on Windows.** The probe's own control failed twice - a
+> colon, which Win32 must reject, was accepted by `touch` under Git Bash - and when the directory was
+> then enumerated from Windows it contained nothing, which indicates MSYS remapped the illegal bytes
+> rather than creating the file. **So this is an unproven threat, and it is recorded as unproven.**
+
+It is adopted anyway because one `tr -d` costs nothing, the sibling spec's reader already pays it, and
+the failure it prevents - arbitrary text injected into an agent's startup context - is silent and
+unbounded. **A cheap guard against an unproven risk is fine; a confident claim about an unproven risk
+is not**, and a later reader must not inherit this as a demonstrated one.
 
 ## 7. Tests - every row names the mutant that reds it
 
@@ -407,12 +551,38 @@ exists.
 | PreCompact with no candidate seam emits NOTHING | emit an empty header -> row reds |
 | SessionStart and PreCompact agree on which seam is live | give them separate copies of the candidate logic and change one -> row reds |
 | the shield is asserted before any write | remove the assertion -> row reds |
+| **the shield assertion runs when `.clavity/` does not exist yet** | drop the `mkdir -p` -> the fixture's fresh-install case fails `No such file or directory` -> row reds. Pins the section 6 correction |
+| **a paused `agy-capstone` seam is STILL reported after `agy-test-audit` completes** | replace the per-seam rule with one global cutoff -> row reds. This is the round-1 finding measured live (`agy-first.head` five hours newer than `agy-capstone.head`) and it is the single most important row here |
+| **appending to `skipped.log` concludes nothing** | let rule 4 read every file in `agy-marks/` instead of `*.head` -> the fixture's live seam vanishes -> row reds |
+| **with `agy-marks/` empty, every seam is a candidate; with it absent, the hook still exits 0** | pass the directory itself as the `-newer` argument -> the empty case silently filters by the directory's mtime and the absent case errors -> row reds. Both were measured |
+| **a `-REPLY` file is never reported** | drop rule 1 -> the fixture's 14 replies double the report -> row reds |
+| **an off-convention token is reported as unrecognised, never resolved to a marker** | add prefix or fuzzy matching so `capstone-stage2` resolves to `agy-capstone.head` -> a live seam is wrongly concluded -> row reds. Pins 3a's closed list |
+| **a panel seam is concluded once `agy-panel.head` is written** | omit the panel's marker contract -> the seam is reported forever -> row reds |
+| **the reported age equals the fixture's known commit count** | pass a date string git cannot parse instead of `@<epoch>` -> git returns a plausible wrong number on exit 0 rather than erroring -> row reds. This is the only way to pin 3b-i behaviourally: the failure has no error to assert on |
+| **the SessionStart line contains a directive, not only a fact** | strip the imperative sentence -> row reds. Pins the 3b Mechanism Gamer fold |
+| **the printed seam path carries no control characters** | remove the `tr -d` -> row reds. **Drive this row through the sanitiser's INPUT, not through a file on disk** - section 6 records that such a filename could not be created on Windows, so a filesystem fixture would pass vacuously and prove nothing |
 
 ## 8. Self-audit
 
 **Closed in-document:** the earlier draft's transient-facts store (removed, section 1); its commit-
 detection hook (removed, section 4); the HEAD TTL (refuted with a counter-example, 3c); the "structural
 vs administrative" framing (corrected to consumer-vs-no-consumer, 2a).
+
+**Closed by round 1 of the panel** (peer escalation, 2026-08-13 - 8 findings raised, 6 folded, 2
+refuted by measurement, plus 3 the panel did not find): the single global cutoff (replaced by the
+per-seam rule, 3b-0); `skipped.log` counting as a completion (3b-0 rule 4); the empty and absent
+marker-directory cases (3b-0 rule 2); free-prose discipline tokens (closed list, 3a); the panel
+discipline having no marker at all (section 6); the missing `mkdir -p` before the shield (section 6);
+the purely declarative startup line (3b); the unscoped "give the agent a turn" note (3d); `date -r`'s
+default format (3b-i - **the stated locale mechanism was refuted here and the fix adopted anyway**,
+because git returns a plausible wrong number rather than an error); and unsanitised echoing of an
+agent-authored path (section 6 - **adopted on cost asymmetry, with the reachability explicitly recorded
+as UNPROVEN** after the probe's control failed twice).
+
+**Three of those the panel did not raise** - `skipped.log`, the token-to-marker mapping, and the panel
+discipline's missing marker - and they are the three that would have broken the mechanism outright. The
+panel's value here was not the count; two of its nine seats produced the findings that reframed the
+rule, and the sweep those triggered produced the rest.
 
 **Resolved at plan time, each with a home:**
 
@@ -422,8 +592,15 @@ vs administrative" framing (corrected to consumer-vs-no-consumer, 2a).
 | **does bare `sync` actually flush, and at what cost** | **plan - 3g. The probe needs a control that must fail (exit 0 already proved nothing) and a cost measured under concurrent load, not on an idle box.** This one settles the name |
 | which SessionStart hook is extended, per product | plan - dotnet and classic have different SessionStart sets |
 | the exact filename regex, including a Windows-path case | plan, pinned by the off-convention test row |
-| whether `-REPLY` files are ever reported | plan - they are peer output, so probably not, but it is reachable and should be an explicit row |
-| which disciplines are multi-round enough to need the convention | plan - capstone and panel certainly; first and test-audit are single-shot |
+| **the file the shared candidate-set function lives in, and how each hook sources it** | plan - section 6 now names the requirement AND flags that naming a requirement without naming a file is what produces two divergent copies. It is a byte-identical pair across both plugin trees |
+| **owner confirmation that `adversarial-panel-review` may gain a marker contract** | plan - section 6. Everything else here is additive; this one edits a shipped skill, so it is the only item that changes existing behaviour |
+
+**Closed by the round-1 panel, and no longer open questions:**
+
+| was open | now |
+|---|---|
+| whether `-REPLY` files are ever reported | **DECIDED: never.** 3b-0 rule 1, with a test row. They are peer output, not a position record, and they were 14 of the 28 live candidates |
+| which disciplines need the convention | **DECIDED by 3a's closed token table**, because the token must equal a marker basename for the conclusion test to resolve at all. Measured: 0 of 8 real prefixes resolved under the free-prose version |
 
 **Known and accepted, not gaps:** this is a floor, not a guarantee (5); a seam's primary consumer stays
 the peer, and that is deliberate (2a); abandonment cannot be detected (3c).
