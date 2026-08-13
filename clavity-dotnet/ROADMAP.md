@@ -955,6 +955,37 @@ out to have been accidentally right for a reason nobody stated. Measure before a
 **Disposition:** low priority, off the critical path. Not a fail-open. Belongs with the knowledge-storage
 design work rather than as a standalone fix, since where GROWTH lives is exactly what that work decides.
 
+### §14 — three anomalies promoted at the 2026-08-13 triage
+
+All three were **verified by measurement at triage**, not accepted on reading. Each names the measurement
+so a later reader can re-check rather than re-derive.
+
+**§14a — `PrunedSegments` omits `.clavity`, so scratch files enter the reference index.**
+`scripts/check-injected-context.ps1:91-92` lists `.git, node_modules, target, bin, obj, .venv,
+__pycache__, dist, publish, .vs, .ruff_cache, .pytest_cache, .mypy_cache, .worktrees` — and **not
+`.clavity`**. The reference index is a whole-repository walk pruned by NAME, so anything under
+`.clavity/scratch/` is indexed and can flip a unique filename to ambiguous. Measured by the reporting
+session: five scratch fixtures named `driver-cheatsheet.core.md` turned `check-injected-context.Tests.ps1:398`
+RED. **This is the same half-fold shape as the `.worktrees` fix in `fddde70`**, and `.clavity/scratch` is
+the directory the disciplines *mandate* for scratch output, so the collision is reachable by following
+our own rules. Fix is one array element plus a pinning row.
+
+**§14b — `clavity-dotnet/install/clavity-install.Tests.ps1` is an orphan suite.** Registration is an
+explicit list in the **root** `justfile` (lines 101 and 108). Measured with a discriminating control: a
+registered suite (`generate-scoped-manifest.Tests.ps1`) appears there once; `clavity-install.Tests.ps1`
+appears **zero** times in either the root or `clavity-dotnet/justfile`. It exists, passes under raw
+Pester, and **never runs in any gate**. `test-suite-registration.Tests.ps1` cannot see it because it
+scans only `scripts/tests` while claiming to cover "every Pester suite on disk" — so the guard's own
+scope is narrower than its stated contract. Decide: register it, move it, or delete it.
+
+**§14c — 7 shipped hooks write into `.clavity/` and none assert the `.gitignore` shield.** Measured:
+7 hooks under `clavity-dotnet/plugin/hooks/` reference `.clavity/` with a write construct; **0** contain
+`clavity/.gitignore`. The only place that asserts the shield is `plugin/skills/open-issues/SKILL.md:79`
+(preceded by `mkdir -p` at `:69` — both lines are needed). On an end-user repository whose `.gitignore`
+we do not control, that runtime state is **git-visible**, and a `git add .` would publish it. The
+workflow-position spec (`docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md`,
+section 6) mandates the shield for the *new* reader; **this entry is the existing seven.**
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
