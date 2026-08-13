@@ -32,6 +32,11 @@ file"*.
 | N8 | Rotate at 500 lines, attempting only when `count % 100 < 5`. Best-effort; unbounded growth accepted where `mv` cannot succeed. | 8 |
 | N9 | Resolve plugin paths with `dirname "$0"`. **Never `${CLAUDE_PLUGIN_ROOT}`.** | 5 |
 | N10 | **Invoke `jq` with `-r`.** Without it the path arrives quoted, `[ -f ]` fails, and the gate fails open silently on every call. | 13 |
+| N18 | **Extract candidate paths from ALL string values under `.tool_input`, recursively** (`[.tool_input // {} \| .. \| strings] \| join("
+")`), then match the seam shape against that text. Never key on one field name: a renamed or added field would silently disable the gate. | 3 |
+| N19 | **Fixed order: resolve root -> (a seam was named?) create `.clavity/` and assert the shield -> evaluate skip -> evaluate seams -> log -> exit.** The skip short-circuits the DECISION, never the setup that makes logging possible. | 4, 8a |
+| N20 | `outside-repo` means **the SEAM path resolves outside the repository root**, not that the hook ran outside a repo - that case writes nothing at all (N7). | 4a |
+| N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). Counting decisions and counting anomalies stay separable. | 8 |
 | N11 | Block message, in order: what is missing + the peer was not contacted; the literal path `adversarial-panel-review/SKILL.md`; what the check cannot do; the skip token. **Written per product.** | 6 |
 | N12 | dotnet: a NEW entry matching `mcp__.*agy_ask` alone. classic: **no new entry** - the check joins the existing per-command hook, and **must not merge its control flow**. | 3, 3b |
 | N13 | **`adversarial-panel-review/SKILL.md` must teach the `PANEL-SEATS:` line, shipping with or before the gate.** Measured: 0 skills teach it today. | 2 |
@@ -156,6 +161,13 @@ on the critical path of every `ls`.
 
 **The dotnet hook has no such exposure** - its matcher selects the MCP tool directly, so every
 invocation is already a consult.
+
+**Classic must handle BOTH transports, and round 10 caught it handling one.** Its matcher is
+`Bash|PowerShell|mcp__.*agy_ask` - the same entry in both products - so **a classic user consulting over
+the MCP tool reaches this hook and the shell string test misses them entirely**, failing open silently.
+The consult test is therefore two tests: **a `clavity ask` command word pair for the shell form, and an
+`agy_ask` tool name for the MCP form**, with the payload extraction of N18 for the latter. **A gate that
+covers one of two supported transports is a gate for half the users.**
 
 ### 3a. What each product can actually GUARANTEE - the requirements are not equally satisfiable
 
@@ -345,6 +357,36 @@ between them:
 
 **This makes the skip count in section 8 load-bearing rather than decorative**, which section 6 already
 anticipated when it accepted that a static block message makes the token relatively cheaper.
+
+### 4a-0. THE TELEMETRY RULING - what the log is, and what it will never be
+
+**Nine rounds produced 27 findings touching the log - more than double any other area - and round 10
+named why: they are not nine bugs, they are one unresolved tension being patched repeatedly.**
+
+> **The tension:** section 4a wants a bypass to be COUNTABLE, which argues for recording every outcome.
+> Section 8a wants no footprint in the repositories of people who never use the feature, which argues
+> for writing nothing until they do. **Both are right, and every round has tried to satisfy both by
+> adjusting the boundary** - real seam, named seam, in-repo, virgin repo. **A boundary that moves every
+> round is a decision that was never made.**
+
+**The decision, made once, so this stops:**
+
+1. **The log is REPOSITORY-LOCAL telemetry, not global auditing.** It records what happened in a
+   repository that is already using the disciplines. It is not, and will never be, a complete account
+   of everything an agent did anywhere.
+2. **It exists only where `.clavity/` exists**, and `.clavity/` appears only when a seam path is named
+   inside a git repository. **Everything outside that is out of scope by construction, not by
+   oversight** - a consult from a non-repo directory, from a repo that has never used the workflow, or
+   naming no seam at all, is invisible to this mechanism and that is now a stated property.
+3. **Therefore section 4a's countability claim is scoped:** it makes bypasses visible **to a team
+   already using the disciplines in a git repository**. It is not evidence about anyone else. Any future
+   finding of the form "outcome X is not recorded in situation Y" is answered by this ruling unless it
+   describes a repository that already has `.clavity/`.
+
+**What this ruling refuses, and why.** Logging to a user-global location would capture the missing cases
+- and would put one repository's seam paths in a file shared with every other repository, on a machine
+whose home directory this design has no business writing to. **The gate's subject is a repository; its
+telemetry lives with its subject.**
 
 ### 4a. Every fail-open outcome is LOGGED with its own reason code
 
@@ -621,7 +663,15 @@ to stand, and the telemetry the gate depends on **fragments across the filesyste
 accumulating** in one place a human ever reads.
 
 > **No repository, no gate and no trace.** The gate's whole subject is a repository's seams; outside one
-> there is nothing to protect and nothing to record. **This is the third time in this document a
+> there is nothing to protect and nothing to record.
+
+**This makes the gate GIT-SCOPED, and round 10 is right that it is a real limitation.** A Mercurial
+checkout, an SVN working copy or a plain directory gets no gate at all. **It is accepted rather than
+solved:** `.clavity/` is gitignored by construction, the shield idiom is a `.gitignore`, the markers
+live beside git state, and every discipline this enforces already assumes git. **A VCS-agnostic root
+resolution would buy coverage this project has no other part of** - and the alternative that round 9
+deleted, falling back to `pwd`, bought that coverage by littering. **Stated here so a Mercurial user
+learns it from the document rather than from silence.** **This is the third time in this document a
 > convenience fallback turned out to be the defect** - `default` for the session id, `pwd` for the root,
 > and `[ -f ]` for the shield. **A fallback that silently produces a plausible wrong answer is worse
 > than a failure**, because nothing downstream can tell the difference.
@@ -983,6 +1033,18 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 | **a test row demanded `no-seam` logging while the footprint rule says it writes nothing in a virgin repo** | **folded: the row now names its fixture and gained a twin.** Two rows, one behaviour, differing only in whether `.clavity/` exists. **A row whose fixture is implicit reads as a contradiction of the rule it is meant to pin** |
 | **classic's strict extraction can misclassify `outside-repo` as `no-seam`** | folded into section 12's accepted list - a consequence of best-effort extraction, now stated rather than discovered |
 | **the code block still carried the `pwd` fallback the prose had just deleted** | **found by my own sweep, not the panel.** The prose and the code disagreed for the length of one edit. **Every fold that changes a rule must grep for the rule's own code sample** |
+
+### Round 10 - 2 new seats, 7 findings, all folded. The round that found the TENSION
+
+| finding | disposition |
+|---|---|
+| **the log churn is ONE unresolved tension, not nine bugs** | **folded as section 4a-0, and it is the most valuable finding of the review.** Countability argues for recording everything; footprint argues for writing nothing until the user opts in. **Every round moved the boundary instead of deciding**, which is why "log" appears 27 times in the fold records - more than double any other area, measured. **The decision is now made once: the log is REPOSITORY-LOCAL telemetry, existing only where `.clavity/` exists**, and any future "outcome X is unrecorded in situation Y" is answered by that ruling unless Y already has `.clavity/` |
+| **the payload JSON shape was never defined** - the implementer cannot write the `jq` | **folded as N18.** Extract from ALL strings under `.tool_input` recursively, never one field name: **a renamed field would silently disable the gate**, which is this document's signature failure mode |
+| **`outside-repo` was unreachable as written** - round 9 made a non-repo write nothing at all | **folded as N20:** it means the SEAM resolves outside the root, not that the hook ran outside a repo. Two different situations had one reason code |
+| **"one line per decision" precluded recording a missing seam when another seam passed** | **folded as N21:** one DECISION line plus zero or more DIAGNOSTIC lines. Counting decisions and counting anomalies stay separable, which the single-line rule had quietly made impossible |
+| **classic covers only ONE of the two transports it is registered for** | **folded.** Its matcher includes `mcp__.*agy_ask`, so a classic user consulting over MCP reaches the hook and the shell string test misses them entirely. **A gate that covers one of two supported transports is a gate for half the users** |
+| **skip-first could log before `mkdir` had run** | **folded as N19**, a fixed order: resolve root, create and shield if a seam was named, then skip, then seams, then log. The skip short-circuits the DECISION, never the setup that makes logging possible |
+| **the gate is git-scoped, so hg/svn/plain directories get nothing** | **folded as a stated limitation.** Accepted: `.clavity/` is gitignored by construction and every discipline here assumes git. The alternative round 9 deleted bought that coverage by littering |
 
 ### OPEN for the owner - one round-6 finding I did not fold
 
