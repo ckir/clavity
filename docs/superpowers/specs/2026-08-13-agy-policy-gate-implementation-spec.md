@@ -9,6 +9,34 @@ repository on a standard Windows box, not for the author's machine.
 
 ---
 
+## 0. THE NORMATIVE SET - build from this section; the rest is why
+
+**Round 8's Signal-to-Noise Auditor asked whether an implementer can still find the requirements in
+here, and the answer was no.** Measured: **15% of this file is round-by-round fold history, and 39 more
+lines inside the "normative" sections narrate a past state rather than state a requirement.** At least
+one real constraint (`jq -r`) existed **only** inside a historical table. **A requirement an implementer
+cannot find is a requirement that will not be built** - and this file's header says *"build from THIS
+file"*.
+
+**Everything below this section is rationale, provenance and correction history. This is the contract:**
+
+| # | requirement | where the reasoning lives |
+|---|---|---|
+| N1 | A payload naming a path under `.clavity/seams/` ending `.md` requires a non-empty `PANEL-SEATS:` line in that file, else **block (exit 2)**. | 2 |
+| N2 | **Check ALL named seams; any one violating blocks.** Guaranteed in dotnet, best-effort in classic. | 2, 3a |
+| N3 | **Evaluate the skip token FIRST** - a valid `AGY-SKIP: ROLES <reason>` exits 0 - **but extract the seam anyway so the log names it.** | 4, 7 |
+| N4 | A hook honours **only** a skip naming its own rule; a bare `AGY-SKIP:` never skips. | 7 |
+| N5 | Infrastructure failure **never causes a block and never prevents one**. Every error path exits 0. | 4 |
+| N6 | **Log every decision it can record**, with a reason code, TAB-delimited: `<iso8601-utc> <rule> <reason> <seam> <detail>`, empty fields as `-`. Failures of the logging substrate itself are unloggable. | 4a, 8 |
+| N7 | `mkdir -p` and the shield run whenever a seam path was **named**; a payload naming none writes nothing. **The shield asserts CONTENT** (`grep -qx '\*'`), never `[ -f ]`. | 8a |
+| N8 | Rotate at 500 lines, attempting only when `count % 100 < 5`. Best-effort; unbounded growth accepted where `mv` cannot succeed. | 8 |
+| N9 | Resolve plugin paths with `dirname "$0"`. **Never `${CLAUDE_PLUGIN_ROOT}`.** | 5 |
+| N10 | **Invoke `jq` with `-r`.** Without it the path arrives quoted, `[ -f ]` fails, and the gate fails open silently on every call. | 13 |
+| N11 | Block message, in order: what is missing + the peer was not contacted; the literal path `adversarial-panel-review/SKILL.md`; what the check cannot do; the skip token. **Written per product.** | 6 |
+| N12 | dotnet: a NEW entry matching `mcp__.*agy_ask` alone. classic: **no new entry** - the check joins the existing per-command hook, and **must not merge its control flow**. | 3, 3b |
+| N13 | **`adversarial-panel-review/SKILL.md` must teach the `PANEL-SEATS:` line, shipping with or before the gate.** Measured: 0 skills teach it today. | 2 |
+| N14 | The SessionStart reader surfaces counts by reason over `policy.log` **and** `policy.log.1`, and **skips lines it cannot parse** rather than failing the session. | 8, 11a |
+
 ## 1. What this builds
 
 **ONE thing, plus the generic infrastructure a later tenant will reuse.**
@@ -295,6 +323,10 @@ between them:
 > `AGY-SKIP: ROLES <reason>` short-circuits to `exit 0` and is logged as `skip`, whatever the seams
 > would have said. **A hatch that a violation can override is not a hatch** - it would open only when
 > nothing was wrong, which is precisely when nobody needs it.
+>
+> **But the DECISION short-circuits, not the RECORD.** Round 8: extracting the seam path is cheap and
+> already done, and a `skip` line logging `-` for the seam **loses the only fact that makes the skip
+> count actionable - WHICH review was waved through.** Extract the seam, then skip: the log names it.
 
 **This makes the skip count in section 8 load-bearing rather than decorative**, which section 6 already
 anticipated when it accepted that a static block message makes the token relatively cheaper.
@@ -508,8 +540,16 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
 ```sh
 R="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 mkdir -p "$R/.clavity" || exit 0
-[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
+grep -qx '\*' "$R/.clavity/.gitignore" 2>/dev/null || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
 ```
+
+**Assert the CONTENT, not the FILE - round 8, and the shipped idiom has this bug.** The version this was
+copied from (`open-issues/SKILL.md:79`) tests `[ -f ]`, which **passes on a zero-byte file**. Measured:
+an emptied `.gitignore` leaves `[ -f ]` true while `grep -qx` correctly reports the shield missing, with
+a properly shielded file as the control. So a shield emptied by hand, by a merge or by a tool is **never
+restored, and the directory stays git-visible for ever** - the exact failure that
+"re-assert on every invocation" exists to prevent. **Testing the container instead of the claim is how a
+guard certifies what it stopped checking.** The shipped occurrence is captured for separate triage.
 
 **But the gate must NOT create `.clavity/` for an outcome that changes nothing** - round 6's Cost
 Auditor priced a footprint nobody had. Classic's consult test is deliberately loose (section 3a), so
@@ -518,7 +558,11 @@ reading - **create a `.clavity/` directory and a `policy.log` in the repository 
 consulted a peer and never will.** A gate that leaves litter in the repos of people it does not serve
 has a cost they never agreed to.
 
-> **`mkdir -p` runs only on a path that BLOCKS, SKIPS, or PASSES a real seam.** A `no-seam` outcome is
+> **`mkdir -p` runs whenever the payload NAMED a seam path at all** - block, skip, pass, missing,
+> unreadable or outside-repo. Round 8 caught the first draft restricting it to a "real seam", which
+> would also have dropped `seam-missing` and `outside-repo` - **two bypass modes - on day zero.**
+> Naming a seam path is the signal that this user is using the workflow; only a payload naming **no**
+> seam leaves no trace. A `no-seam` outcome is
 > logged **only if `.clavity/` already exists**; if it does not, the hook exits 0 and writes nothing.
 > The count section 4a relies on is preserved exactly where it means something - a repository already
 > using the disciplines - and is silently absent where it would be noise about a feature nobody uses.
@@ -885,6 +929,16 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 | **no uninstall story** | folded into 11a: the litter is accepted and stated, because a hook cannot clean up after its own removal - **but only in repositories the user actually consulted from** |
 | **the block hands over the skip token while moving the seats behind a file read, making bypass cheaper than compliance** | **sharpened rather than folded.** Section 6 already accepted this trade when it deleted the palette; round 7 states it more honestly than the original did. The counterweight remains the skip count, and section 4a's blind spot above makes that counterweight weaker than it read |
 | **a seam drafted outside `.clavity/seams/` bypasses the gate** | **PARTLY REFUTED, and the contrast is the point.** Measured: **3 shipped skills teach the `.clavity/seams/<topic>.md` convention; 0 teach `PANEL-SEATS`.** So the directory convention is genuinely established and this failure mode is far weaker than the marker gap - which is exactly why the marker gap mattered |
+
+### Round 8 - 4 bespoke seats, 6 findings: 5 folded, 1 partly refuted
+
+| finding | disposition |
+|---|---|
+| **an implementer cannot find the requirements in here** | **folded as new section 0, and it is the most useful change of the round.** Measured: 15% of the file is fold history and 39 further lines narrate a past state inside the normative sections. **`jq -r` existed ONLY in a historical table.** Section 0 is now the contract; everything else is why |
+| **the shield tests `[ -f ]`, so an EMPTIED `.gitignore` is never restored** | **folded, and the shipped idiom has the same bug.** Measured with a control: `[ -f ]` passes on a zero-byte file while `grep -qx` correctly reports the shield missing. **Testing the container instead of the claim is how a guard certifies what it stopped checking.** The occurrence in `open-issues/SKILL.md:79` is captured for separate triage |
+| **skipping short-circuits before the seam is extracted, so the log records `-`** | **folded.** The DECISION short-circuits; the RECORD must not. A `skip` line that does not name the review it waved through **loses the only fact that makes the skip count actionable** |
+| **the footprint rule also drops `seam-missing` and `outside-repo` on day zero** | **folded, and it widens what round 7 stated.** Those are two bypass modes, not tidy edge cases. `mkdir` now runs whenever a seam path was NAMED at all; only a payload naming none writes nothing |
+| **the generic `<rule>` token and log column pre-pay for tenants that may never arrive** | **PARTLY REFUTED.** The `<rule>` in the token is not future-proofing: **it is the wildcard-bypass guard** - without it, one `AGY-SKIP:` disables every present and future gate at once, which section 7 folded long before a second tenant was contemplated. The log's `<rule>` column is genuinely near-free generality and stays. **The challenge was right to ask; the answer is that this piece earns its place today** |
 
 ### OPEN for the owner - one round-6 finding I did not fold
 
