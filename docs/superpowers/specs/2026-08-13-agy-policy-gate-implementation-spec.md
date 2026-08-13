@@ -23,7 +23,7 @@ file"*.
 | # | requirement | where the reasoning lives |
 |---|---|---|
 | N1 | A payload naming a path under `.clavity/seams/` ending `.md` requires a non-empty `PANEL-SEATS:` line in that file, else **block (exit 2)**. | 2 |
-| N2 | **Check ALL named seams; any one violating blocks.** Guaranteed in dotnet, best-effort in classic. | 2, 3a |
+| N2 | **Check ALL named seams; any one violating blocks.** **Guaranteed on the MCP transport, best-effort on the CLI one - a property of the TRANSPORT, not the product.** Since subagents can only use the CLI (3-0), dotnet's subagent consults get the same best-effort extraction classic does. | 2, 3a, 3-0 |
 | N3 | **Evaluate the skip token FIRST** - a valid `AGY-SKIP: ROLES <reason>` exits 0 - **but extract the seam anyway so the log names it.** | 4, 7 |
 | N4 | A hook honours **only** a skip naming its own rule; a bare `AGY-SKIP:` never skips. | 7 |
 | N5 | Infrastructure failure **never causes a block and never prevents one**. Every error path exits 0. | 4 |
@@ -36,13 +36,13 @@ file"*.
 ")`), then RESOLVE each candidate and test containment per N22 - never match a shape. Never key on one field name: a renamed or added field would silently disable the gate. | 3 |
 | N19 | **Fixed order: resolve root -> EXTRACT candidate seam paths -> (any named?) create `.clavity/` and assert the shield -> evaluate skip -> evaluate seams -> log -> exit.** Extraction comes first because the create-or-not branch depends on its result; round 11 caught the earlier ordering asking a question before the step that answers it.** The skip short-circuits the DECISION, never the setup that makes logging possible. | 4, 8a |
 | N20 | `outside-repo` means **the SEAM path resolves outside the repository root**, not that the hook ran outside a repo - that case writes nothing at all (N7). | 4a |
-| N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). **`no-seam` is a DECISION reason** - it is the outcome of the invocation, not a property of some seam - so the decision set is `block`/`pass`/`skip`/`no-seam`. **The two reason-code sets are DISJOINT, which is what keeps them separable** - the reader counts decisions by the first set and anomalies by the second, and needs no extra column. Invocation counts come from decision lines only. | 8 |
+| N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). **`no-seam` is NOT a reason code at all** (4a-00): a payload naming no seam is outside this gate's jurisdiction and is never written. The decision set is `block`/`pass`/`skip`. **The two reason-code sets are DISJOINT, which is what keeps them separable** - the reader counts decisions by the first set and anomalies by the second, and needs no extra column. Invocation counts come from decision lines only. | 8 |
 | N11 | Block message, in order: what is missing + the peer was not contacted; the literal path `adversarial-panel-review/SKILL.md`; what the check cannot do; the skip token. **Written per product.** | 6 |
 | N12 | **Both products: no new entry.** The check joins the hook already registered on `Bash\|PowerShell\|mcp__.*agy_ask`, covering the MCP and CLI forms, and **must not merge that hook's control flow**. Subagents cannot use `agy_ask` (3-0), so an MCP-only gate would miss them entirely. | 3, 3-0, 3b |
 | N13 | **`adversarial-panel-review/SKILL.md` must teach the `PANEL-SEATS:` line, shipping with or before the gate.** Measured: 0 skills teach it today. | 2 |
 | N14 | The SessionStart reader surfaces counts by reason over `policy.log` **and** `policy.log.1`, and **skips lines it cannot parse** rather than failing the session. | 8, 11a |
 | N15 | **Sanitise both agent-authored fields** - the seam path and the skip reason - by stripping control characters **and the TAB delimiter**, then length-capping. Newline-stripping alone leaves horizontal forging open. | 8 |
-| N16 | Classic identifies a consult by matching `clavity` and `ask` as **adjacent command words**, never as a free substring, and logs `no-seam` only for invocations it identified that way. | 3a |
+| N16 | Classic identifies a consult by matching `clavity` and `ask` as **adjacent command words**, never as a free substring, and **writes nothing at all** for an invocation that names no seam (4a-00), so a false positive on this test costs one wasted process and leaves no trace. | 3a, 4a-00 |
 | N22 | **Do NOT decide seam-hood by the path's SHAPE. Extract candidate tokens, RESOLVE them, and test CONTAINMENT under `<root>/.clavity/seams/`.** Measured, shape-matching silently misses `.clavity\seams\x.md`, `.clavity/scratch/../seams/x.md` and `.CLAVITY/SEAMS/X.MD` while the OS opens all three - three fail-opens from one regex. Resolution handles the whole class. **Normalise BOTH sides through the same function first:** measured, `git rev-parse --show-toplevel` returns `C:/Users/...` while `pwd` returns `/tmp/cn` for the same directory, and comparing them raw yields a false 'outside' - which here means fail-open. | 13 |
 | N23 | **A seam path containing a SPACE must still be extracted.** Measured: `[^[:space:]"]*\.clavity/seams/[^[:space:]"]+\.md` silently fails on `.clavity/seams/my seam.md` while extracting the space-free control - **so the obvious regex is a silent bypass anyone can trigger by naming a file normally on Windows.** In the MCP form each string is its own line after the `
 ` join, so match to end-of-line; in the shell form, honour quoting around the path. | 13 |
@@ -188,8 +188,10 @@ command test first and `exit 0` before it spends a subprocess or touches the fil
 responsible for**, not every shell command the user runs. Getting this backwards puts a `git` process
 on the critical path of every `ls`.
 
-**The dotnet hook has no such exposure** - its matcher selects the MCP tool directly, so every
-invocation is already a consult.
+**Since round 12a, dotnet has the SAME exposure** - it extends the same `Bash|PowerShell|mcp__.*agy_ask`
+hook, so it fires on every shell command too. **The ordering rule above therefore binds BOTH products,
+not just classic.** The earlier text said dotnet had no such exposure because its matcher selected the
+MCP tool directly; that stopped being true the moment subagents forced the CLI form into scope.
 
 **Classic must handle BOTH transports, and round 10 caught it handling one.** Its matcher is
 `Bash|PowerShell|mcp__.*agy_ask` - the same entry in both products - so **a classic user consulting over
@@ -213,22 +215,23 @@ requirement; it is a latent implementation divergence.**
 
 **The command test's SHAPE was never specified, and left loose it corrupts the metric.** A bare
 substring match for `clavity ask` fires on `echo "run clavity ask"` and on
-`history | grep 'clavity ask'`. Harmless on its own - but section 4a now logs a `no-seam` outcome for a
-consult with no path, so **every false positive would record a bypass that never happened and inflate
-the exact count section 4a asks a human to trust.**
+`history | grep 'clavity ask'`. **Since 4a-00 that costs nothing but a wasted process** - a command
+naming no seam writes no log line and creates no directory. **The earlier version of this paragraph
+argued the shape mattered because false positives would inflate the bypass count; deleting `no-seam`
+logging removed that consequence entirely.** The shape still matters for cost, not for correctness.
 
 > **Classic matches `clavity` and `ask` as ADJACENT COMMAND WORDS, wherever they appear** - never as a
 > free substring inside a longer word. Residual false positives are accepted and **must not** be chased
 > with a shell parser.
 >
-> **And classic logs `no-seam` ONLY for an invocation it identified as a consult by that test.** A
-> command that merely mentions the string is not a consult and writes nothing.
+> **A command that merely mentions the string names no seam, so it writes nothing** (4a-00) - the test's
+> precision is now a performance property, not a data-quality one.
 
 **The earlier version anchored to the START of the command (or just after a `;`, `&&`, `||` or `|`), and
 round 5 showed that leaks.** Any leading word defeats it, and the ones a stranger's box supplies are
 ordinary: `time clavity ask`, `sudo clavity ask`, `env FOO=1 clavity ask`, `nice clavity ask`, or a
 shell alias or function that prepends anything at all. **A wrapped consult would evade the gate
-silently and log nothing** - no block, no `no-seam`, no trace.
+silently and leave no trace** - no block, no diagnostic, nothing.
 
 > **Do not name a specific wrapper here, and do not use one as a fixture.** An earlier version of this
 > paragraph justified the rule with a command-rewriting wrapper that exists on the AUTHOR's machine.
@@ -238,8 +241,8 @@ silently and log nothing** - no block, no `no-seam`, no trace.
 > an author-machine assumption wearing a rationale.
 
 > **The trade is deliberate and it goes toward VISIBILITY.** A looser test admits some false positives,
-> each of which writes one `no-seam` line a human can inspect. A tighter test admits silent bypasses,
-> which write nothing. **Section 4a's entire argument is that a bypass must be countable, so a rule that
+> each of which costs one wasted process and writes nothing. A tighter test admits silent bypasses of
+> real consults, which is the failure that matters. **Section 4a's entire argument is that a bypass must be countable, so a rule that
 > trades a visible false positive for an invisible miss contradicts it.** Prefer the noisy failure.
 
 **The block message must therefore show the token in the form the reader's product needs** (section 6):
@@ -387,6 +390,33 @@ between them:
 **This makes the skip count in section 8 load-bearing rather than decorative**, which section 6 already
 anticipated when it accepted that a static block message makes the token relatively cheaper.
 
+### 4a-00. `no-seam` IS NOT LOGGED - the gate has no jurisdiction there
+
+**Round 13's Purpose-Fidelity Auditor pointed at something section 2 had said all along and the
+telemetry rules then ignored:** a payload naming no seam is *"a violation of a different rule and not
+this gate's business."* **Logging it polices that other rule.** The gate's purpose is that adversarial
+roles reach the agent's context; recording that someone broke a neighbouring convention does not serve
+it.
+
+> **`no-seam` is removed from the reason codes and is never written.** The gate logs only what it has
+> jurisdiction over: `block`, `pass`, `skip`, and the per-seam diagnostics for seams it was actually
+> given.
+
+**This one deletion dissolves four accumulated problems**, which is how it was recognisable as scope
+creep rather than a feature:
+
+| problem, and the round that found it | why it disappears |
+|---|---|
+| classic's loose consult test inflating the bypass count with false positives (round 3) | a false positive names no seam, so nothing is written |
+| repository pollution for a user who never consults (round 7) | `.clavity/` is created only for a payload naming a seam - the false-positive path no longer reaches it |
+| the day-zero blind spot where `seam-missing` and `outside-repo` went unrecorded (round 8) | those name a seam, so they are in jurisdiction and always recorded |
+| the telemetry blind spot for a user who never completes a compliant consult (rounds 7, 11) | shrinks to "a user who never names a seam", which is not this gate's subject |
+
+**What is lost, stated plainly:** bypass-by-omission - naming no seam at all - becomes invisible again.
+**That was already true in substance** (section 12 concedes the gate cannot stop it), and round 1's
+argument for recording it treated the gate as an enforcer of the point-at-files rule, which it is not.
+**A gate that logs its neighbour's violations is not more rigorous, it is out of scope.**
+
 ### 4a-0. THE TELEMETRY RULING - what the log is, and what it will never be
 
 **Nine rounds produced 27 findings touching the log - more than double any other area - and round 10
@@ -442,7 +472,7 @@ outcome to stop being invisible.**
   another rule's business. **But it is also the cheapest bypass in the design**, and nothing recorded it.
 
 > **Requirement: the hook writes a log line for EVERY decision it is able to record, with a reason code
-> distinguishing them** - at minimum `pass`, `block`, `skip`, `no-seam`, `seam-missing`,
+> distinguishing them** - at minimum `pass`, `block`, `skip`, `seam-missing`,
 > `seam-unreadable`, `outside-repo`, `no-jq`, `no-git-bash`. The SessionStart reader (section 8)
 > surfaces counts by reason, not only skips.
 
@@ -661,7 +691,7 @@ has a cost they never agreed to.
 > unreadable or outside-repo. Round 8 caught the first draft restricting it to a "real seam", which
 > would also have dropped `seam-missing` and `outside-repo` - **two bypass modes - on day zero.**
 > Naming a seam path is the signal that this user is using the workflow; only a payload naming **no**
-> seam leaves no trace. A `no-seam` outcome is
+> seam leaves no trace, and writes no log line either (4a-00). A payload naming no seam is
 > logged **only if `.clavity/` already exists**; if it does not, the hook exits 0 and writes nothing.
 > The count section 4a relies on is preserved exactly where it means something - a repository already
 > using the disciplines - and is silently absent where it would be noise about a feature nobody uses.
@@ -836,9 +866,10 @@ inspecting source text.
 | **`.clavity/` is created when absent, and the gate still works on a repo that has never had one** | drop the `mkdir -p` -> the day-zero fixture fails open silently -> row reds. **Assert the gate's DECISION, not just that it exited 0** - exit 0 is what the bug looks like |
 | **a payload naming TWO seams, one compliant and one not, BLOCKS** | check only the first -> row reds. This is the smuggling row |
 | **the block message says what the check cannot do** | drop the floor disclaimer -> row reds. Section 6 item 3 |
-| **every fail-open outcome writes a log line with its own reason code** | drop the logging on the no-seam path -> the bypass leaves no trace -> row reds. Cover `no-seam`, `seam-missing`, `seam-unreadable`, `outside-repo`, `no-jq` and `no-git-bash` as separate rows sharing one fixture |
+| **every IN-JURISDICTION fail-open writes a log line with its own reason code** | drop the logging on any of them -> row reds. Cover `seam-missing`, `seam-unreadable`, `outside-repo`, `no-jq` and `no-git-bash` as separate rows sharing one fixture |
+| **a payload naming NO seam writes NOTHING - no log line, no directory** | log a `no-seam` reason -> row reds. **Pins 4a-00: the gate does not police a neighbouring rule** |
 | **a payload naming a MARKERLESS seam and a MISSING seam BLOCKS** | let the missing seam force exit 0 -> row reds. **Pins the round-2 precedence rule; without it the multi-seam check reopens as a two-character bypass** |
-| **classic does NOT treat `echo "run clavity ask"` as a consult** - no log line, no subprocess | use a bare substring match -> the fixture records a phantom `no-seam` bypass -> row reds |
+| **classic does NOT treat `echo "run clavity ask"` as a consult** - no subprocess beyond its own startup | use a bare substring match -> the fixture spends a `git` process on a command that names no seam -> row reds |
 | **classic DOES treat `foo && clavity ask "..."` as a consult** | anchor only to start-of-string -> row reds. **Both directions, or the test pins nothing** |
 | **the classic block message shows the skip token inside the payload string** | ship the dotnet message text in classic -> the token reads as bare positional arguments -> row reds |
 | **a valid skip token beats a positive violation** - a payload with BOTH exits 0 and logs `skip` | evaluate the seams first -> the fixture blocks despite a well-formed token -> row reds. **Pins round 4's precedence rule; a hatch a violation can override opens only when nothing is wrong** |
@@ -850,13 +881,13 @@ inspecting source text.
 | **the reader counts by reason code over BOTH `policy.log` and `policy.log.1`** | read only the live file -> a fixture that rotates mid-run undercounts -> row reds |
 | **classic detects `sudo clavity ask "..."`, `time clavity ask "..."` and `env FOO=1 clavity ask "..."`** | anchor the test to start-of-command -> the wrapped fixtures evade the gate silently -> row reds. **Fixtures must use wrappers that exist on a stranger's box** - naming a tool specific to the author's machine would make the suite pass for the wrong reason there and be meaningless everywhere else |
 | **classic does NOT add a second PreToolUse registration** | register a new script instead of extending the existing hook -> assert the classic `hooks.json` PreToolUse entry count is unchanged -> row reds. **Pins section 3b: a second hook doubles a ~300-400ms per-command cost** |
-| **dotnet's gate entry matches `mcp__.*agy_ask` ALONE, not a `Bash`-bearing matcher** | merge it into the existing combined entry -> assert the new entry's matcher string -> row reds. **Section 3 mandated this from the start and no row pinned it: an implementer could put the gate on every shell command and the suite would pass** |
+| **NEITHER product adds a PreToolUse entry** | add one -> assert both `hooks.json` PreToolUse entry counts are unchanged -> row reds. **This row was the exact inverse until round 12a**: it demanded dotnet match `mcp__.*agy_ask` alone, which would now leave every subagent consult unseen |
 | **all three subagent-routing skill edits are present** | ship the hooks without the skill edits -> assert none of `agy-first`, `agy-capstone`, `agy-test-audit` still tells subagents to use the CLI form -> row reds. **Without the edits, subagent consults never reach the dotnet matcher and the gate is invisible to exactly the actor it was built for** |
 | **the block message names `adversarial-panel-review/SKILL.md` literally** | derive the path from the payload -> there is nothing to derive from -> row reds. Pins the section 6 correction |
 | **`adversarial-panel-review/SKILL.md` contains the `PANEL-SEATS:` instruction** | ship the gate without the skill edit -> row reds. **This is a CONVENTION-EXISTS row, and it is the one that stops the gate shipping as a trap: measured, 0 skills teach the marker and 558 of 564 seams on disk lack it** |
 | **a seam written by following the updated skill PASSES the gate** | change either side without the other -> row reds. **Couples the two halves: it fails if the skill teaches a form the hook does not accept, which no single-sided row can catch** |
-| **a `no-seam` outcome does NOT create `.clavity/` when it is absent** | `mkdir -p` unconditionally -> a fixture repo with no `.clavity/` gains one from a command that merely mentions the string -> row reds |
-| **a `no-seam` outcome IS logged in a repo that ALREADY has `.clavity/`** | drop the logging -> row reds. **Both rows share one behaviour and differ only in the fixture; round 9 caught the first standing alone, which read as a contradiction of the logging requirement** |
+| **a payload naming no seam does NOT create `.clavity/`** | `mkdir -p` unconditionally -> a fixture repo with no `.clavity/` gains one from a command that merely mentions the string -> row reds |
+| **a `seam-missing` diagnostic IS logged in a repo that already has `.clavity/`** | drop the logging -> row reds. **Round 9's paired-fixture lesson survives the 4a-00 deletion: the in-jurisdiction case still needs both halves** |
 | **no `.clavity/` is created OUTSIDE a git repository** | fall back to `pwd` -> a fixture run from a temp dir gains a `.clavity/` tree -> row reds |
 | **a ROLES-stage failure inside the merged classic hook does NOT stop the existing guard** | use `|| exit 0` in the merged form -> assert the VCS baseline is still written when `.clavity/` cannot be created -> row reds |
 | **rotation fires when the count lands anywhere in the 5-line window, not only on the exact multiple** | require an exact multiple -> a fixture with two concurrent appends stepping 99 to 101 never rotates -> row reds |
@@ -886,8 +917,7 @@ Round 7 walked it and found the document only ever described the middle.
   `policy.log.1` and the `.gitignore` shield in every repository the user consulted from.
   **This is accepted and stated rather than solved:** the files are small, gitignored and inert, and a
   hook cannot clean up after its own removal. **What is NOT acceptable is leaving them somewhere the
-  user never opted in** - which is why section 8a creates nothing for a `no-seam` outcome in a
-  repository that has no `.clavity/`.
+  user never opted in** - which is why a payload naming no seam creates nothing anywhere (4a-00).
 
 ## 12. What this is and is not
 
@@ -907,10 +937,10 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 - **The log is not tamper-resistant.** The agent has shell write access to it. Sanitisation protects the
   record format from agent-authored fields; it does not defend against an agent that edits the file.
 - clavity-classic's extraction is fragile and fails open more often than dotnet's. **Its CHECK-ALL guarantee is best-effort**, so the multi-seam smuggle is closed in dotnet and only mitigated in classic (section 3a).
-- **Classic's extraction is not merely unreliable, it is STEERABLE, and that is a stronger claim.** An agent that writes the path in a form the parser misses - `--file=".clavity/seams/x.md"`, an unusual quoting, a variable - produces a `no-seam` outcome and passes. The gate is a floor in dotnet and a speed bump in classic; **section 4a's counting is what remains, and for classic it is most of the value.**
+- **Classic's extraction is not merely unreliable, it is STEERABLE, and that is a stronger claim.** An agent that writes the path in a form the parser misses - `--file=".clavity/seams/x.md"`, an unusual quoting, a variable - names no seam as far as the hook can tell, and passes **silently** (4a-00). The gate is a floor on the MCP transport and a speed bump on the CLI one; **what remains for the CLI is that a well-formed consult is still checked.**
 - **Classic's consult test admits residual false positives** by design; chasing them with a shell parser is explicitly rejected.
 - **`outside-repo` is itself a bypass mode:** a seam-shaped path outside the repository root passes. Counted, not prevented, like every other bypass this design admits it cannot stop (4a-0).
-- **Classic can misclassify an `outside-repo` seam as `no-seam`**, suppressing both the directory creation and the telemetry for that call. A consequence of best-effort extraction, stated rather than discovered.
+- **Classic can fail to recognise an out-of-repo seam as a seam at all**, so the call writes nothing rather than an `outside-repo` diagnostic. A consequence of best-effort extraction, stated rather than discovered.
 - Rotation is best-effort on Windows.
 - The skip token is honest but cheap; the per-rule skip count is its only counterweight.
 
@@ -1109,6 +1139,20 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 | **N21 classified neither `no-seam` as decision nor diagnostic** | **folded - also mine.** It is a DECISION reason: the outcome of the invocation, not a property of a seam. Left unplaced, it would have vanished from the invocation count |
 | **classic's adjacent-word test is defeated by ordinary shell forms** | folded: `clavity   ask`, `clavity 'ask'` and line continuations all break a strict adjacency match. Normalise whitespace before testing, and accept that quoting games remain in classic's stated best-effort bucket |
 | **GREEN-CHECK VERDICT: NOT READY** - extracting security-critical paths from prose guarantees endless normalisation bugs | **ESCALATED to the owner, not folded.** The seat is right about the root cause, and N22 answers most of it: containment testing dissolves the normalisation class that produced these findings. **What it cannot dissolve is that the path is still SCRAPED from prose.** The structural alternative - a dedicated `seam` parameter on `agy_ask` and a `--seam` flag on `clavity ask` - would make the path a declared input rather than a guess, and it **changes a tool contract, which is outside this spec's scope.** See below |
+
+### Round 13 - 2 new seats, 6 findings, all folded. THREE were consequences of round 12a
+
+| finding | disposition |
+|---|---|
+| **`no-seam` logging polices a DIFFERENT rule** | **folded as 4a-00, and it is the round's best finding.** Section 2 always said a payload naming no seam is *"a violation of a different rule and not this gate's business"* - and the telemetry rules then logged it anyway. **Deleting it dissolves FOUR accumulated problems at once** (rounds 3, 7, 8 and 11), which is how it was recognisable as scope creep rather than a feature. **A gate that logs its neighbour's violations is not more rigorous, it is out of scope** |
+| **section 3 still claimed dotnet has no per-command exposure** | **folded - a 12a consequence.** dotnet now extends the same `Bash\|PowerShell` hook, so the ordering rule binds both products. The sentence was true when written and false one commit later |
+| **a test row still demanded dotnet match `mcp__.*agy_ask` ALONE** | **folded - the row is now its own inverse.** It would have pinned the exact design that leaves every subagent consult unseen |
+| **N2's "guaranteed in dotnet" was falsified by 12a** | **folded:** the guarantee is a property of the TRANSPORT, not the product. Since subagents can only use the CLI, dotnet's subagent consults get the same best-effort extraction classic does |
+| **N19's order can silence its own telemetry** | folded: reason codes unreachable under the fixed order are pruned rather than left as aspirational |
+| **N22's containment breaks if a whole prose line is resolved as a path** | folded: N18 extracts **tokens**, and a token that does not resolve to an existing file is not a seam - which is the `seam-missing` case, already handled |
+
+**Three of six were defects introduced by round 12a, one round earlier.** The fix-regression pattern
+holds at 13 rounds: **every substantial fold needs the round after it.**
 
 ### OPEN for the owner - ONE item, plus one ratification
 
