@@ -1,6 +1,29 @@
-# Enforcing named roles on every AGY-* peer consult
+# ADR - Enforcing named roles on every AGY-* peer consult
 
-**Status:** design, owner-approved 2026-08-13. Build AFTER the in-flight capstone converges.
+> # 🔴 FROZEN AS AN ARCHITECTURE DECISION RECORD. DO NOT BUILD FROM THIS FILE.
+>
+> **Build from `2026-08-13-agy-policy-gate-implementation-spec.md` instead.**
+>
+> This document is a transcript of four adversarial panel rounds. It records **why** each decision was
+> made, including decisions that were later reversed, and it interleaves superseded requirements with
+> live ones. An implementer reading it linearly would build the read-modify-write truncation, then the
+> `OPEN-PROPOSAL` prose parser, then tear both out four hundred lines later. Its value is the reasoning,
+> not the requirements.
+>
+> **Three rulings landed AFTER the last round and supersede parts of this file:**
+> 1. **The block message no longer extracts a palette.** It is a static pointer to the consulting
+>    discipline's own `SKILL.md`. **Sections 11 and 12's delimiter design, the `sed` extraction, the
+>    over-long bound and the fallback are DELETED** - along with the two negotiation rounds that produced
+>    them. Do not resurrect them from this file.
+> 2. **The transport gap splits by product** (residual 4): clavity-dotnet gates `agy_ask` and moves
+>    subagents onto the MCP bus; clavity-classic ships a separate `Bash` hook. **The hooks are therefore
+>    no longer byte-identical.**
+> 3. **The observability artifacts are generic, not role-specific** - `.clavity/policy.log`,
+>    `.clavity/policy.degraded`, and an `AGY-SKIP: <rule> <reason>` token. Roles is the first tenant.
+>
+> Everything else here still holds, and the implementation spec carries it forward in imperative form.
+
+**Status:** FROZEN ADR, 2026-08-13. Superseded in part; see the banner above.
 **Scope ruling (owner):** *"Roles should always be used at all your prompts to peer otherwise it
 doesn't know what we are looking for."* This covers **every AGY-\* consult** - AGY-FIRST, AGY-AFTER,
 AGY-CAPSTONE, AGY-TEST-AUDIT - not capstone rounds alone.
