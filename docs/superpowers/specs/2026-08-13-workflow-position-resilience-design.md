@@ -102,6 +102,23 @@ the ruling already made for the policy gate's block message: point at the file, 
 abandoned branch; commit distance measures how much work has happened since, which is the thing a reader
 actually wants to weigh.
 
+### 3b-0. The CANDIDATE SET is seams newer than the newest discipline marker
+
+**Found by this spec's own panel, and it would have killed the mechanism.** The reader must not consider
+every seam on disk. Measured on this repository: **434 agent-written seams exist, and only 25 match the
+naming convention below** - 5.8%. Under section 5's "report, never skip" rule, a first run would have
+announced three seams and *"406 more unrecognised"*. That is noise, and noise trains a reader to ignore
+the line - the checkbox outcome reached by a different road.
+
+> **The reader considers only seams NEWER than the most recent file in `.clavity/agy-marks/`.**
+
+Measured with the same command the hook will use: **11 candidates, 423 filtered out**, with a control
+confirming the predicate varies (a 2020 reference matches all 536). Historical seams age out on their
+own, with no migration, no cleanup, and no convention applied retroactively.
+
+**Section 5's "never skip" rule is scoped to THIS candidate set**, not to the whole directory. An
+unparseable name among live seams is still reported; a three-month-old seam is simply not a candidate.
+
 ### 3b-i. The reference point is the seam's MTIME - the design stores no SHA
 
 The self-audit caught this: an earlier draft's rules referred to "the seam's own SHA", but the filename
@@ -119,6 +136,13 @@ Verified on this repository: `date -r` yields the mtime, the `--since` count ret
 written after the last commit and 1334 for a 2020 baseline (so the counter genuinely varies rather than
 always returning the same number), and `-nt` correctly reports the existing capstone marker as OLDER
 than a seam written today.
+
+**Named dependency, checked rather than assumed:** the age report uses `date -r`, which is GNU. Measured
+here, `date` resolves to `/usr/bin/date` - GNU coreutils 8.32, which Git Bash ships by default - so this
+is not an author-machine assumption, and a panel seat that suspected one was wrong. The conclusion test
+needs no `date` at all: `[ "$marker" -nt "$seam" ]` and `find -newer` are POSIX test primitives.
+**If `date -r` fails anyway, degrade: report the seam without its age.** Never drop the seam because a
+decoration could not be computed.
 
 **Stated limitation:** mtime is not preserved by copy or clone, and a `touch` resets it. That is
 acceptable precisely here - `.clavity/` is gitignored, never cloned, and purely local runtime state,
