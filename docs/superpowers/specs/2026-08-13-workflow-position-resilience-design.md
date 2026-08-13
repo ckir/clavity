@@ -172,6 +172,53 @@ design exists to preserve. **Never take the destructive action on an inference.*
 - anything else stays surfaced until someone deletes it. Being nagged about a dead review costs a line;
   the alternative costs the work.
 
+## 3d. The ANNOUNCED ending - PreCompact, and why the agent cannot help
+
+A session ends one of two ways, and section 3 covers only one of them.
+
+| ending | today |
+|---|---|
+| **unannounced** - crash, power cut | the seam, harvested for free (3, 3a-3c) |
+| **announced** - the human compacts | **nothing.** `PreCompact` fires exactly one hook, the anomaly reminder, and **no shipped hook mentions the index at all** |
+
+**The owner's observation, which started this section:** typing *"I will /compact then continue. Are you
+ready?"* reliably produces correct state capture, and **without the question it does not**.
+
+**My explanation was wrong, and the panel's Mechanism Gamer objection killed it.** I proposed that a
+question forces verification where a statement invites acknowledgement. But a model can answer "yes"
+without checking anything, so grammar cannot be the mechanism.
+
+**The real mechanism: the question grants a conversational TURN.** It is a turn allocator, not an
+interrogation. The agent needs a turn to run `git status`, read the index and write to it; a question
+creates one, and a bare statement followed immediately by `/compact` does not. That explains the
+observation exactly, and it has a consequence the original idea did not survive:
+
+> **A hook cannot yield a turn to the agent.** It injects context and the session proceeds. So any
+> `PreCompact` design that depends on the AGENT gathering state is structurally impossible - the agent
+> is paralysed for the entire window. **Do not port the question into a hook; it would be swallowed in
+> silence.**
+
+**What survives is the second half of the idea.** At `/compact` the successor is guaranteed and seconds
+away, which satisfies section 2a's consumer rule exactly - this is the one boundary where writing for a
+successor is not a checkbox. **So the HOOK gathers the state itself**, reusing the candidate-set and
+mtime logic already specified in 3b-0 and 3b-i, and emits the active seam's path and age.
+
+**Hard constraint, measured, and it would have broken the naive implementation:**
+`agy-anomaly-capture-reminder.sh:13-14` records that **`hookSpecificOutput` is INVALID for `PreCompact`**
+- Claude Code rejects the payload outright and the user sees a schema-validation dump instead of the
+message. **PreCompact must emit a top-level `systemMessage`.** That is prior art already paid for in this
+repository; do not rediscover it.
+
+**Honest limit on what this can claim.** Whether the compaction summariser *consumes* the message is not
+verifiable from here, and a design that depended on that would be asserting something it cannot check.
+It does not need to: **measured in this session, a `PreCompact` `systemMessage` reaches the continuing
+post-compact context** - the anomaly reminder's text arrived intact after compaction. So the new session
+sees the seam path whether or not the summariser cooperates, which is the more robust of the two paths.
+
+**A note worth passing to the human rather than burying:** since the mechanism is the turn and not the
+question, *any* message before `/compact` grants it. The habit that works is "give the agent one turn
+before compacting" - the phrasing is incidental.
+
 ## 4. What we do NOT build
 
 - No `.clavity/session.state`, no WAL, no resume file of any kind.
@@ -198,6 +245,8 @@ design exists to preserve. **Never take the destructive action on an inference.*
 | artifact | why |
 |---|---|
 | an existing SessionStart hook, both products | the reader. Extend one rather than add another script |
+| the existing PreCompact hook, both products | 3d - the announced-ending emitter. Already registered and already fires, so this costs no new registration. **Top-level `systemMessage` only** |
+| a shared shell function for the candidate-set logic | 3b-0 and 3b-i are now used by TWO hooks. Duplicating the logic guarantees they drift; the SessionStart and PreCompact readers must not disagree about which seam is live |
 | `clavity-*/plugin/skills/*/SKILL.md` for the multi-round disciplines | state the seam naming convention where the seam is written |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
 | `justfile` | suite registration is an explicit list, not a glob |
@@ -223,6 +272,10 @@ exists.
 | age is reported in commits | switch to wall-clock -> row reds |
 | no seams at all produces NO output | emit an empty header -> row reds |
 | the hook exits 0 when `.clavity/` does not exist | fail on a missing directory -> row reds |
+| **PreCompact emits a top-level `systemMessage`, never `hookSpecificOutput`** | emit `hookSpecificOutput` -> row reds. Pins the constraint recorded at `agy-anomaly-capture-reminder.sh:13-14`, which a naive implementation would rediscover as a schema dump in the user's face |
+| PreCompact names the active seam's path | drop the path, keep the prose -> row reds |
+| PreCompact with no candidate seam emits NOTHING | emit an empty header -> row reds |
+| SessionStart and PreCompact agree on which seam is live | give them separate copies of the candidate logic and change one -> row reds |
 | the shield is asserted before any write | remove the assertion -> row reds |
 
 ## 8. Self-audit
