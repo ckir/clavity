@@ -424,7 +424,7 @@ the record of that failure. **"EVERY decision" was unsatisfiable as written** - 
 > mode being guarded against.
 
 **What countability actually buys, scoped honestly.** The gate cannot stop an agent that omits the seam
-path; nothing local can. Logging makes the omission **countable**, so a driver that routinely bypasses
+path; nothing local can. Logging makes the omission **countable within the scope 4a-0 sets**, so a driver that routinely bypasses
 shows up as a number a human reads at session start.
 
 > **Round 2's Axiom Breaker is right that this is no answer to an ADVERSARIAL agent** - it owns the
@@ -862,7 +862,7 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 - **An agent that omits the seam path, or names one that does not exist, bypasses the gate.** Nothing
   running locally can prevent this. **It is made COUNTABLE rather than prevented** (section 4a): every
   such outcome is logged with its own reason code and surfaced at SessionStart. The design's honest
-  claim is that a routine bypasser becomes visible as a number, not that bypass is impossible.
+  claim is that a routine bypasser becomes visible as a number **in a repository already using the disciplines** (4a-0), not that bypass is impossible.
 - **The log is not tamper-resistant.** The agent has shell write access to it. Sanitisation protects the
   record format from agent-authored fields; it does not defend against an agent that edits the file.
 - clavity-classic's extraction is fragile and fails open more often than dotnet's. **Its CHECK-ALL guarantee is best-effort**, so the multi-seam smuggle is closed in dotnet and only mitigated in classic (section 3a).
