@@ -190,9 +190,36 @@ syntactic. A hook cannot distinguish "I forgot the index" from "no update was wa
 would fire on read-only exploration and make dummy index updates the cheapest compliance. It would also
 gate a stranger's session on a file in their home directory tied to a memory feature they may not use.
 
+### 9a. How the nudge detects a commit - do NOT port the personal hook's approach unexamined
+
+The personal hook greps the agent's shell command for `git commit` as a word. **An earlier draft of this
+spec listed "rtk-prefix tolerance" among the properties to preserve. That was wrong and is struck.**
+`rtk` is a command-rewriting wrapper on the AUTHOR's machine, not a property of this discipline, and a
+shipped hook must assume no such wrapper exists. Measured, the regex
+`git[[:space:]]+commit([[:space:]]|$)` behaves like this:
+
+| command | matches? | |
+|---|---|---|
+| `git commit -m x` | yes | intended |
+| `rtk git commit -m x` | yes | not a designed accommodation - the pattern is simply unanchored |
+| `sudo git commit` | yes | same reason |
+| `echo remember to git commit later` | **yes** | **false positive** - it nudges on a command that commits nothing |
+| `git commit --dry-run` | **yes** | which is why the second exclusion grep is load-bearing |
+| `git commit-graph write` | no | already rejected by the trailing-whitespace requirement, so the `commit-graph` exclusion term is **redundant** |
+
+**Requirement: detect the EFFECT, not the command text.** The nudge fires when `HEAD` actually moved -
+compare `git rev-parse HEAD` against the value stored at the previous invocation. This removes every row
+of the table above at once: no wrapper assumptions, no false positive on a command that merely mentions
+committing, no `--dry-run` special case (a dry run does not move `HEAD`), and no `commit-graph` term.
+It also catches a commit made by any route the string match would miss, such as an amend or a
+`git rebase --continue`.
+
+**Stated limit either way:** a `PostToolUse` hook only observes commits made through the agent's own
+shell tool. A commit the human makes in another terminal is invisible to it. That is inherent to the
+mechanism, is true of the personal hook today, and is acceptable for a nudge - but it must not be
+described as complete coverage.
+
 **Preserve these, which are measured and were nearly lost in the move:**
-- **Fires only on a real commit** - `git commit` as a word, tolerant of an `rtk` prefix, **excluding
-  `commit-graph` and `--dry-run`**, neither of which lands a commit.
 - **The message addresses the orchestrator explicitly and says so.** The hook fires in every context
   that runs a commit, including inside a dispatched subagent. Measured 2026-08-07: a haiku subagent
   obeyed it and wrote a memory file outside its dispatch's FILES list, while two sonnet subagents
