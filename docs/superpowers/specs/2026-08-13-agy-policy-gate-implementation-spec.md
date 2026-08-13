@@ -22,7 +22,7 @@ future release** (2026-08-13). Sections 9 and 9a are retained as INPUT to that s
 marked DO-NOT-BUILD. **This paragraph exists because the summary sentence outlived the decision** - the
 same drift that a sibling spec's scope line suffered, caught there in review.
 
-The infrastructure - the skip token, the log, the degraded sentinel, the SessionStart reader - is built
+The infrastructure - the skip token, the log, the SessionStart reader - is built
 **generic from the start**, because further tenants are already named and deferred: `OPEN-PROPOSAL`,
 `NEGOTIATED`, and a future stateless form of power-failure. Naming these artifacts generically now costs
 nothing; renaming them later would migrate files users already have.
@@ -50,7 +50,7 @@ This is the one place the two products genuinely diverge, and it is an owner rul
 | product | matcher | how it finds the seam path |
 |---|---|---|
 | clavity-dotnet | a **NEW** entry matching `mcp__.*agy_ask` ALONE | `jq` over the MCP tool payload |
-| clavity-classic | `Bash\|PowerShell` | exits 0 immediately unless the command is a `clavity ask`; then string-extracts the path |
+| clavity-classic | **no new entry** - the check is added to the hook already registered on `Bash\|PowerShell\|mcp__.*agy_ask` (section 3b) | exits 0 immediately unless the command is a `clavity ask`; then string-extracts the path |
 
 **The dotnet entry must NOT extend the existing `Bash|PowerShell|mcp__.*agy_ask` entry**, which would
 put this check on every shell command in the session.
@@ -95,12 +95,23 @@ substring match for `clavity ask` fires on `echo "run clavity ask"` and on
 consult with no path, so **every false positive would record a bypass that never happened and inflate
 the exact count section 4a asks a human to trust.**
 
-> **Classic matches `clavity` as a COMMAND WORD followed by `ask` as its first argument** - at the start
-> of the command or immediately after a `;`, `&&`, `||` or `|` - never as a free substring. Residual
-> false positives are accepted and **must not** be chased with a shell parser.
+> **Classic matches `clavity` and `ask` as ADJACENT COMMAND WORDS, wherever they appear** - never as a
+> free substring inside a longer word. Residual false positives are accepted and **must not** be chased
+> with a shell parser.
 >
 > **And classic logs `no-seam` ONLY for an invocation it identified as a consult by that test.** A
 > command that merely mentions the string is not a consult and writes nothing.
+
+**The earlier version anchored to the START of the command (or just after a `;`, `&&`, `||` or `|`), and
+round 5 showed that leaks.** Any wrapper defeats it - `time clavity ask`, `sudo clavity ask`, and
+notably `rtk clavity ask`, since `rtk` is a command-rewriting wrapper this project's own tooling uses.
+**A wrapped consult would evade the gate silently and log nothing at all** - no block, no `no-seam`, no
+trace.
+
+> **The trade is deliberate and it goes toward VISIBILITY.** A looser test admits some false positives,
+> each of which writes one `no-seam` line a human can inspect. A tighter test admits silent bypasses,
+> which write nothing. **Section 4a's entire argument is that a bypass must be countable, so a rule that
+> trades a visible false positive for an invisible miss contradicts it.** Prefer the noisy failure.
 
 **The block message must therefore show the token in the form the reader's product needs** (section 6):
 one static message per product, not one string shared by both. This is the same divergence section 3
@@ -112,6 +123,46 @@ already accepts for the hooks themselves.
 - **clavity-classic's gate is knowingly leakier.** Extracting a path from an arbitrary shell command is
   fragile against piping, aliases and quoting. It fails open when extraction fails. This is accepted;
   state it in the classic hook's header comment so the next reader does not treat it as a bug.
+
+### 3b. The LATENCY budget - measured, and it changes the classic registration
+
+**Five panel rounds folded 27 findings and not one asked what this gate COSTS.** The owner did. Measured
+on this box with the driver idle (N=40 per row), because a prior attempt run while the driver was busy
+produced numbers inflated enough to be useless:
+
+| | ms/call |
+|---|---|
+| control floor - no process at all | **28** |
+| `bash -c 'exit 0'` | **379** (and a repeat of the identical row: **293**) |
+| classic fast path: startup + string test + exit | **521** |
+| + `git rev-parse` | 496 |
+| + `jq` on a payload | 520 |
+
+**Read the ratio, not the milliseconds.** The two identical baseline rows differ by 86ms, so no single
+figure here is precise. What is unambiguous is the shape: **a registered hook costs roughly 10-13x the
+harness floor before it does anything**, process startup is 60-75% of the total, and **every row that
+does real work is within noise of the row that does none.** The repository's own prior measurement
+agrees - `agy-liveness-check.sh:128-129` records *"bash itself is ~455ms and each additional fork
+~126ms"* - and `agy-discipline-reaching.sh:2` declares *"CAPTURE ONLY, NO SUBPROCESSES"* for this reason.
+
+**Two consequences, and the second changes the build:**
+
+1. **Section 3's ordering rule is nearly cosmetic on Windows, and must not be sold as a performance
+   fix.** Doing the cheap string test before spending a subprocess saves a *fork* (~126ms) out of a
+   ~400ms floor the hook has already paid by existing. It is still correct - a fork saved is a fork
+   saved - but the dominant cost is incurred at registration, not at branch time.
+2. **clavity-classic must NOT add a second script on a matcher it already occupies.** It already runs
+   `agy-consult-guard-pre.sh` on `Bash|PowerShell|mcp__.*agy_ask`. A second hook on the same trigger
+   means **two full interpreter startups on every shell command in the session** - the largest single
+   cost in this design, doubled, to run a test that is free once bash is up.
+
+> **Requirement: in clavity-classic the ROLES check is added to the EXISTING per-command hook, not
+> registered as a new one.** Section 10's build surface reflects this. **dotnet keeps its own new
+> script**, because its matcher fires only on `agy_ask` - where a consult already costs a peer
+> round-trip measured in seconds and 400ms is invisible.
+
+**This is the same principle section 10 already applies to SessionStart** (*"Extend one rather than
+adding a fourth script"*), which the classic gate was quietly violating.
 
 ## 4. Fail OPEN on error, fail CLOSED on a violation
 
@@ -303,63 +354,54 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
   - **A failed rotation must not retry on every invocation.** Round 1's Dependency Cynic: if `mv` fails,
     the file is still over the bound, so the next call attempts the same doomed rename, and the next -
     **the "bound" is violated AND a subprocess is spent on every consult to violate it.**
-  - **Round 2 killed the first fix for depending on state the hook cannot see.** It said to rotate only
-    if `policy.log.1` is "older than the current session", and **a `PreToolUse` hook has no way to know
-    when the session began**. An unevaluable condition is worse than none: the implementer either drops
-    the safeguard or invents a heuristic, and the retry loop returns.
 
-    > **Use the `session_id` the payload already carries.** Verified present and already consumed by the
-    > sibling hook - `agy-consult-guard-pre.sh:19` reads `.session_id // "default"` with a second
-    > `default` fallback on line 20. **Attempt rotation at most once per session:** record the attempting
-    > session id in `.clavity/policy.rot`; if it already names this session, skip straight to the
-    > append. One read and one compare, and it needs no clock and no session-start time.
-    >
-    > **The literal `default` is NEVER written to the guard and never matches it.** Round 3 caught that
-    > this fix carried the same disease it was fixing: without `jq` the id degrades to `default`, so the
-    > first degraded invocation would write `default`, and **every degraded invocation in every future
-    > session would match it and skip rotation for ever** - a one-session retry loop turned into
-    > permanent, silent disablement. **The literal `default` is never written and never matched.**
-    >
-    > **Round 4 then caught the replacement reinstating the original bug.** "When the id is unknown, do
-    > not write the guard and do not skip" means a degraded session with a locked log retries the same
-    > doomed `mv` on **every** consult - exactly the loop round 1 outlawed, just confined to degraded
-    > environments. **A session-scoped guard needs a session, so when there is no session id, bound the
-    > COST instead of the attempts:** with no known id, attempt rotation only when the line count is an
-    > exact multiple of 100. That caps the wasted renames at 1% of invocations, needs no clock, no
-    > session and no new state, and stops entirely the moment a rotation succeeds.
+    > **Attempt rotation only when the line count is an exact multiple of 100.** That is the whole rule.
+    > It caps wasted renames at 1% of invocations, needs no clock, no session id and **no state file**,
+    > and it stops entirely the moment a rotation succeeds.
+
+    **Three rounds were spent inventing a session-scoped guard that this deletes.** Round 2 keyed
+    rotation on "older than the current session" (a `PreToolUse` hook cannot observe that); round 3
+    rekeyed it on the payload's `session_id` in a `.clavity/policy.rot` file (which trapped on the
+    literal `default` when `jq` was missing, disabling rotation for ever); round 4 exempted the unknown
+    case (which reinstated the original retry loop for degraded sessions). **Round 5's Simplification
+    Auditor observed that round 4's modulo bound, applied universally, subsumes all of it.** The
+    `policy.rot` file, the `session_id` read and every special case are **deleted**.
 
     **State the resulting guarantee honestly: on a host where rotation cannot succeed, the log grows
     unbounded and the design accepts that** rather than pretending a bound it cannot enforce.
-- **Degraded sentinel - and its rationale was written for a hook shape section 3 rejected.** The
-  original text said that without `jq` the hook "cannot tell an `agy_ask` payload from a routine shell
-  command, so it cannot log per-invocation without writing on every command". **That is true only of a
-  single hook registered on the combined `Bash|PowerShell|mcp__.*agy_ask` matcher - which is exactly
-  what section 3 forbids.** Under the split, each hook knows what it is looking at:
+- **There is NO degraded sentinel. `.clavity/policy.degraded` is deleted from this design.** It existed
+  because a single hook on the combined `Bash|PowerShell|mcp__.*agy_ask` matcher could not tell a
+  consult from a routine command without `jq`, so it could not log per-invocation without writing on
+  every command. **Section 3 forbids that hook shape.** Under the split, each hook knows what it is
+  looking at - dotnet by its matcher, classic by its string test - so **both can simply log `no-jq` to
+  `policy.log` like any other outcome**, and the reader already parses that file.
 
-  | product | matcher | without `jq` |
-  |---|---|---|
-  | dotnet | `mcp__.*agy_ask` alone | **every invocation IS a consult**, so it logs `no-jq` and exits 0. No ambiguity, no flood |
-  | classic | `Bash\|PowerShell` | it identifies a `clavity ask` by **string test, not `jq`** (section 3), so it logs `no-jq` only for commands it has already identified as consults |
+  > Deleting it removes an artifact, a write path, a read path, a clearing rule, and **the race that
+  > cost round 1 a finding** - a healthy agent deleting the sentinel a degraded sibling had just raised.
+  > **The race is gone because the thing that raced is gone.** Nothing else changes: a human still
+  > learns `jq` is missing, from a `no-jq` count in the same reader that surfaces the skips.
+- **The RECORD FORMAT, pinned here rather than deferred, because section 8's sanitisation depends on the
+  delimiter and the reader depends on the fields.** One line, TAB-delimited, fixed order:
 
-  **So neither hook faces the flood the sentinel was invented to avoid, and both can log the outcome.**
-  The sentinel is still written - it is what the SessionStart reader surfaces so a human learns `jq` is
-  missing at all - but it is **no longer the only record**, and the reason it exists is the human
-  notice, not an inability to log. Found while sweeping this round's own fold: adding a `no-jq` reason
-  code collided with a paragraph that said such a code was impossible.
-- **The SessionStart reader is a build row, not a someday.** It surfaces (a) the existence of
-  `.clavity/policy.degraded`, and (b) the **skip count grouped by rule** since the last session.
-  **It must read BOTH `policy.log` and `policy.log.1`**, or a mid-session rotation zeroes the count
-  exactly when the hatch is being used most.
-- **Specify when the sentinel is CLEARED - and the GATE must not be what clears it.** An uncleared
-  sentinel becomes permanent noise, so the first draft cleared it on any successful `jq`-capable
-  invocation. **Round 1's State Corruptor killed that:** two agents on one repository, one with `jq` and
-  one without, race - the capable one deletes the sentinel the degraded one just raised, over and over,
-  and **the human is never told that one of their agents is failing open.** The observability artifact
-  is destroyed by the very condition it exists to report.
+  ```
+  <iso8601-utc>\t<rule>\t<reason-code>\t<seam-or-->\t<detail-or-->
+  2026-08-13T19:28:40Z    ROLES   block   .clavity/seams/x.md     -
+  ```
 
-  > **The SessionStart READER clears it, after it has surfaced it** - never the gate. That makes the
-  > lifecycle "raised by any degraded invocation, cleared once a human has been told", which is the
-  > property actually wanted, and it cannot be raced away by a healthy sibling.
+  TAB is the delimiter, so **TAB is among the characters stripped** from the two agent-authored fields
+  (section 8), and a field that would be empty is written as a literal `-` so the column count never
+  varies. The timestamp uses `date -u +%Y-%m-%dT%H:%M:%SZ`, which needs no `jq`.
+
+- **The SessionStart reader is a build row, not a someday.** It surfaces **counts grouped by reason code
+  over the retained log**, and **it must read BOTH `policy.log` and `policy.log.1`**, or a mid-session
+  rotation zeroes the count exactly when the hatch is being used most.
+
+  > **It does NOT claim "since the last session", and an earlier draft did.** Round 5's Axiom Breaker
+  > showed that claim was unsatisfiable: nothing in the record identified a session, so the reader could
+  > not separate today's lines from months-old ones in the rotated file. **The fix is to correct the
+  > claim, not to build machinery for it** - a session-scoped count would need either a session id in
+  > every line (unavailable without `jq`) or a last-seen marker file, and the retained window answers
+  > the operator's real question ("is this hatch being leaned on?") with no state at all.
 
 ### 8a. The `.clavity/.gitignore` shield is mandatory and re-asserted on EVERY invocation
 
@@ -411,7 +453,7 @@ to `pwd`. A relative path writes into whatever subdirectory the caller happened 
 > They share only the `.clavity/` infrastructure this build already provides.
 >
 > **What this build still owes it:** nothing but the generic infrastructure in sections 7 and 8 -
-> `.clavity/policy.log`, `.clavity/policy.degraded`, and the `AGY-SKIP: <rule> <reason>` token - which
+> `.clavity/policy.log` and the `AGY-SKIP: <rule> <reason>` token - which
 > exist so a future tenant does not reinvent them. **No power-failure artifact ships from this plan.**
 >
 > The text below is preserved verbatim as INPUT to that separate design, not as a requirement here.
@@ -486,9 +528,9 @@ own auto-memory layout is not a contract for anyone else.
 | artifact | why |
 |---|---|
 | `clavity-dotnet/plugin/hooks/agy-policy-roles-pre.sh` | the gate, MCP form. Name must not collide with the existing `agy-consult-guard-*` pair |
-| `clavity-classic/plugin/hooks/agy-policy-roles-pre.sh` | the gate, shell form. **Not byte-identical to the above** |
-| both `hooks/hooks.json` | dotnet: a NEW `mcp__.*agy_ask` entry. classic: a `Bash\|PowerShell` entry |
-| an existing SessionStart hook, both products | surfaces the degraded sentinel and the per-rule skip counts. Extend one rather than adding a fourth script |
+| **`clavity-classic/plugin/hooks/agy-consult-guard-pre.sh` - EXTENDED, not a new script** | the gate, shell form. Section 3b: classic already runs this hook on `Bash\|PowerShell\|mcp__.*agy_ask`, and a second script on the same trigger doubles the largest cost in the design (~300-400ms of interpreter startup on **every** shell command). **The ROLES check is added here** |
+| `clavity-dotnet/plugin/hooks/hooks.json` | a NEW `mcp__.*agy_ask` entry. **Classic's `hooks.json` does NOT change** - it already registers the hook the check now lives in (section 3b) |
+| an existing SessionStart hook, both products | surfaces the per-reason-code counts over the retained log. Extend one rather than adding a fourth script |
 | `clavity-dotnet/plugin/skills/{agy-first,agy-capstone,agy-test-audit,adversarial-panel-review}/SKILL.md` | subagents consult over `agy_ask`, not the CLI |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
 | `plugin-hooks-payload.Tests.ps1` | **must change** - an explicit, named byte-identity exemption for the gate pair |
@@ -507,23 +549,23 @@ inspecting source text.
 | a seam with an EMPTY marker (`PANEL-SEATS:` and nothing) blocks | give it content -> must pass |
 | a payload naming no seam fails OPEN | **replace the hook body with `exit 0`** -> this row still passes, but every blocking row REDS. The suite, not the row, is the oracle |
 | missing `jq` fails OPEN | same coupling: `exit 0` reds the blocking rows |
-| missing `jq` touches the degraded sentinel | remove the sentinel write -> row reds |
-| **the GATE never clears the sentinel** - a healthy invocation leaves a raised sentinel raised | make the gate clear it -> the mixed-agent fixture (one degraded call, then one healthy call) loses the sentinel -> row reds. **Pins the round-1 race** |
-| **the SessionStart READER clears the sentinel after surfacing it** | drop the clear -> the sentinel is reported on every session for ever -> row reds |
 | **`.clavity/` is created when absent, and the gate still works on a repo that has never had one** | drop the `mkdir -p` -> the day-zero fixture fails open silently -> row reds. **Assert the gate's DECISION, not just that it exited 0** - exit 0 is what the bug looks like |
 | **a payload naming TWO seams, one compliant and one not, BLOCKS** | check only the first -> row reds. This is the smuggling row |
 | **the block message says what the check cannot do** | drop the floor disclaimer -> row reds. Section 6 item 3 |
 | **every fail-open outcome writes a log line with its own reason code** | drop the logging on the no-seam path -> the bypass leaves no trace -> row reds. Cover `no-seam`, `seam-missing`, `seam-unreadable`, `outside-repo`, `no-jq` and `no-git-bash` as separate rows sharing one fixture |
 | **a payload naming a MARKERLESS seam and a MISSING seam BLOCKS** | let the missing seam force exit 0 -> row reds. **Pins the round-2 precedence rule; without it the multi-seam check reopens as a two-character bypass** |
-| **rotation is attempted at most once per session** | drop the `policy.rot` session guard -> a fixture whose `mv` always fails attempts it on every invocation -> row reds. Assert the attempt count, not the file size |
-| **a degraded invocation never writes `default` into `policy.rot`, and rotation still happens in a LATER session** | write the fallback id -> the second degraded session skips rotation for ever -> row reds. **Pins round 3's regression: the guard must not outlive the session it guards** |
 | **classic does NOT treat `echo "run clavity ask"` as a consult** - no log line, no subprocess | use a bare substring match -> the fixture records a phantom `no-seam` bypass -> row reds |
 | **classic DOES treat `foo && clavity ask "..."` as a consult** | anchor only to start-of-string -> row reds. **Both directions, or the test pins nothing** |
 | **the classic block message shows the skip token inside the payload string** | ship the dotnet message text in classic -> the token reads as bare positional arguments -> row reds |
 | **a valid skip token beats a positive violation** - a payload with BOTH exits 0 and logs `skip` | evaluate the seams first -> the fixture blocks despite a well-formed token -> row reds. **Pins round 4's precedence rule; a hatch a violation can override opens only when nothing is wrong** |
 | **a payload with a violating seam AND an unreadable one exits 2** | let an infrastructure failure force exit 0 -> row reds. Pins that a failure never PREVENTS a block |
-| **a degraded session with a permanently failing `mv` attempts rotation on ~1% of appends, not all of them** | remove the modulo bound -> the fixture counts one attempt per invocation -> row reds. **Pins round 4's catch that round 3's fix reinstated round 1's loop** |
-| **the spec's error paths do not mention `sed`** | reintroduce a `sed` probe -> row reds. A dependency the design does not have must not appear in its failure table |
+| **a session with a permanently failing `mv` attempts rotation on ~1% of appends, not all of them** | remove the modulo bound -> the fixture counts one attempt per invocation -> row reds |
+| **the hook still resolves its own directory when `${CLAUDE_PLUGIN_ROOT}` is UNSET** | replace `dirname "$0"` with the variable -> run the fixture with it unset -> the path collapses, the hook fails open, and a seam with no marker PASSES -> row reds. **Section 5 mandated this for five rounds with no row; a silent bypass would have been certified** |
+| **a `no-jq` outcome appears in `policy.log` with its reason code** | reintroduce a sentinel-only path -> the reader reports nothing -> row reds |
+| **every log line has exactly 5 TAB-separated fields, empty ones written as `-`** | let an empty field collapse -> a fixture with no detail shifts every later column -> row reds |
+| **the reader counts by reason code over BOTH `policy.log` and `policy.log.1`** | read only the live file -> a fixture that rotates mid-run undercounts -> row reds |
+| **classic detects `rtk clavity ask "..."` and `sudo clavity ask "..."`** | anchor the test to start-of-command -> the wrapped fixtures evade the gate silently -> row reds. **Round 5's leak, and `rtk` is a wrapper this project's own tooling uses** |
+| **classic does NOT add a second PreToolUse registration** | register a new script instead of extending the existing hook -> assert the classic `hooks.json` PreToolUse entry count is unchanged -> row reds. **Pins section 3b: a second hook doubles a ~300-400ms per-command cost** |
 | **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
 | the block message names the discipline's SKILL.md path | remove the pointer -> row reds |
 | the block message states the peer was not contacted | remove that line -> row reds |
@@ -564,7 +606,7 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 |---|---|
 | exact marker syntax - line-anchored? case-sensitive? what counts as non-empty? | pin it with the test row that asserts it |
 | the seam-path regex, concretely | needs a Windows-path case: payloads here carry `C:/Users/...` forms |
-| the log record format and field order | one short line; fix the delimiter here, since section 8's sanitisation depends on it |
+| ~~the log record format and field order~~ | **RESOLVED in section 8** - TAB-delimited, `<iso8601-utc> <rule> <reason> <seam> <detail>`, empty fields written as `-`. Deferring it made the reader's "since the last session" claim unfalsifiable for five rounds |
 | the over-long / length cap for sanitised fields | a number |
 | ~~a payload naming MULTIPLE seam paths~~ | **RESOLVED by round 1 - a design hole wearing a plan-time label. CHECK ALL; BLOCK IF ANY LACKS THE MARKER - GUARANTEED in dotnet, BEST-EFFORT in classic (section 3a).** Checking only the first is a one-line bypass: name a compliant seam first and smuggle the real consult behind it. Deferring it would also have shipped two implementations, one of which enforces nothing |
 | **`jq` is invoked with `-r`** | pin it. Without `-r` the extracted path arrives wrapped in literal double quotes, `[ -f ... ]` fails, and section 4 sends that to a silent `exit 0` - **the gate would fail open on every single invocation while looking healthy.** The repo idiom is already `jq -r` (`agy-consult-guard-pre.sh:16-19`) |
@@ -638,6 +680,24 @@ were all about the ORIGINAL design rather than the repairs.
 **Four rounds, and the fix-regression rate is falling** - three regressions in round 2, three in round
 3, one in round 4. The absolutes pass found the fourth and, more usefully, reported what it could not
 break.
+
+### Round 5 - 4 bespoke seats, 5 findings, all folded. The round that DELETED things
+
+| finding | disposition |
+|---|---|
+| **the `policy.rot` session guard can be deleted entirely** | **folded, and it retires three rounds of work.** Round 4's modulo-100 bound, applied universally, subsumes the guard, the `session_id` read and every special case. Rounds 2, 3 and 4 each rewrote a session-scoped rotation rule and each was defective; **the stateless version was sitting inside round 4's own exception all along** |
+| **the `policy.degraded` sentinel can be deleted entirely** | **folded.** It existed only because a single hook on the combined matcher could not tell a consult from a routine command without `jq` - a shape section 3 forbids. Both hooks can log `no-jq` like any other outcome. **This also deletes the race that cost round 1 a finding: the thing that raced is gone** |
+| **"skip count since the last session" is unsatisfiable** - nothing in the record identifies a session | **folded by correcting the CLAIM, not by building machinery.** The reader reports counts over the retained log. The record format is now pinned (TAB-delimited, timestamped) instead of deferred - it had been deferred for five rounds while a section elsewhere depended on fields it did not define |
+| **the `sed` test row was vacuous** - it asserted source text, which section 11's own preamble forbids | **folded: row deleted.** A behavioural test cannot detect a redundant probe on a host that has `sed`. **A vacuous row is worse than a missing one - it certifies what it fails to test** |
+| **`${CLAUDE_PLUGIN_ROOT}` was mandated in section 5 with NO test row** | **folded: row added.** The failure mode is a collapsed path, an infrastructure failure and a silent bypass - **exactly the class this suite exists to catch, uncovered for five rounds** |
+
+### Round 5a - the OWNER's finding, which five rounds of panel never asked
+
+**What does the gate COST?** Nobody had measured it. Section 3b now carries the numbers and the
+consequence: **classic must extend its existing per-command hook rather than register a second one**,
+because process startup is the dominant cost and a second registration doubles it on every shell
+command. The first attempt at this measurement was discarded - it ran while the driver was busy, and
+this project has measured its own load moving its own benchmarks by up to 6x.
 
 ## 14. Provenance
 
