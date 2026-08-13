@@ -147,11 +147,48 @@ One line per open seam, **and it must carry a DIRECTIVE, not only a fact**:
 
 ```
 workflow position: agy-capstone r5 (.clavity/seams/agy-capstone-r5-a2-audit.md), written 4 commits ago.
-REPLY RECEIVED - the peer has answered and the answer has not been folded.
-Read that seam and its -REPLY before starting new work, or say why you are not resuming it.
+Read that seam before starting new work, or say why you are not resuming it.
 ```
 
-**The `REPLY RECEIVED` line is round 5's finding and it is the difference between resuming and
+**Every branch's exact text, because round 6 found three of them undefined and an undefined output is
+where two implementers diverge.** These five lines are the whole vocabulary:
+
+```
+(1) named seam, no reply on disk
+    workflow position: <token> r<N> (<path>), written <M> commits ago.
+    Read that seam before starting new work, or say why you are not resuming it.
+
+(2) named seam, a -REPLY exists
+    workflow position: <token> r<N> (<path>), written <M> commits ago.
+    A -REPLY EXISTS on disk. It may or may not have been folded already - check before re-folding it.
+    Read that seam and its -REPLY before starting new work, or say why you are not resuming it.
+
+(3) on-convention seams beyond the cap
+    <K> more open seams are not shown. List .clavity/seams/ yourself before starting new work.
+
+(4) off-convention seams beyond the cap
+    <K> unrecognised seams are not shown. If you are resuming work you cannot see listed above,
+    list .clavity/seams/ yourself before starting.
+
+(5) seams whose name fails the allowlist
+    <K> unrecognised seams could not be named. If you are resuming work you cannot see listed above,
+    list .clavity/seams/ yourself before starting.
+
+no candidates at all -> print NOTHING. Not a header, not an empty section.
+```
+
+**Line (3) is a defect round 6 caught, not a formatting detail.** The recovery directive had been
+written only for names that fail the allowlist, so a fourth live on-convention discipline fell past the
+cap into a bare number **with no instruction to go and look** - the design silently burying exactly the
+work it exists to surface, in its best-behaved case.
+
+**And (2) no longer claims the reply is unfolded.** The earlier wording said *"the peer has answered and
+the answer has not been folded"*, which the existence test cannot know: clearing is manual, so a reply
+stays on disk after it is folded, and an agent that folded a reply and then crashed before concluding
+the discipline would be ordered to fold it again. **`[ -f ... ]` proves existence, so the line says
+existence** - the fourth overclaim caught in this document, and the cheapest to fix.
+
+**The reply flag is round 5's finding and it is the difference between resuming and
 redoing.** A consult has two halves, and the crash window that matters most sits between them: the peer
 has written its answer and the author has not yet read it. **In that window the seam alone is the
 question, and pointing a successor at the question while the answer sits unread beside it invites it to
@@ -471,22 +508,47 @@ observation exactly, and it has a consequence the original idea did not survive:
 > is paralysed for the entire window. **Do not port the question into a hook; it would be swallowed in
 > silence.**
 
-**What survives is the second half of the idea.** At `/compact` the successor is guaranteed and seconds
-away, which satisfies section 2a's consumer rule exactly - this is the one boundary where writing for a
-successor is not a checkbox. **So the HOOK gathers the state itself**, reusing the candidate-set and
-mtime logic already specified in 3b-0 and 3b-i, and emits the active seam's path and age.
+**And round 6 removed the mechanism entirely - there is NO `PreCompact` hook in this design.**
 
-**Hard constraint, measured, and it would have broken the naive implementation:**
-`agy-anomaly-capture-reminder.sh:13-14` records that **`hookSpecificOutput` is INVALID for `PreCompact`**
-- Claude Code rejects the payload outright and the user sees a schema-validation dump instead of the
-message. **PreCompact must emit a top-level `systemMessage`.** That is prior art already paid for in this
-repository; do not rediscover it.
+The Simplification Auditor argued `PreCompact` was redundant because "a compacted session is by
+definition a new session". **That reasoning is false and this session disproves it:** `/compact` emitted
+only `PreCompact` hooks and the transcript continued under the same session id. **But the conclusion is
+right for a reason the seat never cited**, found by reading the registration rather than the argument:
 
-**Honest limit on what this can claim.** Whether the compaction summariser *consumes* the message is not
-verifiable from here, and a design that depended on that would be asserting something it cannot check.
-It does not need to: **measured in this session, a `PreCompact` `systemMessage` reaches the continuing
-post-compact context** - the anomaly reminder's text arrived intact after compaction. So the new session
-sees the seam path whether or not the summariser cooperates, which is the more robust of the two paths.
+```
+SessionStart  matcher "startup"
+SessionStart  matcher "startup|resume|clear|compact"   <- fires on compaction
+PreCompact    matcher "manual|auto"
+```
+
+**Claude Code already fires `SessionStart` on `compact`.** So a reader registered under that matcher
+runs after every compaction on its own, and does it *better* than the `PreCompact` version would: it
+emits into the fresh post-compact context rather than upstream of a summariser whose cooperation this
+design cannot verify.
+
+> **Nearly refuted a correct finding because its argument was wrong.** The claim had a false premise and
+> a true conclusion; checking only the premise would have preserved a redundant hook, a second
+> registration, and the shared-function requirement that existed solely to keep two readers agreeing.
+> **Verify the claim, not the reasoning offered for it.**
+
+**What this deletes:** the `PreCompact` registration, its `systemMessage`-versus-`hookSpecificOutput`
+constraint, its test rows, and section 6's shared-function requirement - which existed only because two
+hooks needed the same candidate logic. One reader, one copy, nothing to drift.
+
+**What this keeps:** the analysis above, which is still the reason the design does not ask the agent to
+do anything at compaction time.
+
+**Two facts from the deleted design, kept because they cost real work to establish and the next person
+to reach for `PreCompact` will need them - they are NOT requirements of this build:**
+
+- `agy-anomaly-capture-reminder.sh:13-14` records that **`hookSpecificOutput` is INVALID for
+  `PreCompact`**: Claude Code rejects the payload and the user sees a schema-validation dump. A
+  `PreCompact` hook must emit a top-level `systemMessage`.
+- **A `PreCompact` `systemMessage` does reach the continuing post-compact context** - measured in this
+  session, the anomaly reminder's text arrived intact after compaction - so it never depended on the
+  summariser cooperating.
+
+Neither is load-bearing now, because this design registers no `PreCompact` hook at all.
 
 **A note worth passing to the human rather than burying:** since the mechanism is the turn and not the
 question, *any* message before `/compact` grants it. The habit that works is "give the agent one turn
@@ -657,11 +719,17 @@ name than the discipline currently carries, and the scope note is not optional d
 
 **The entire build is a SessionStart reader plus a naming convention.**
 
+**That sentence was written in the first draft, went quietly FALSE when round 1 added a `PreCompact`
+emitter, and round 6 made it true again by deleting it.** Worth noticing: the summary line was the
+earliest and most accurate statement of the design, and four rounds of addition drifted away from it
+without anyone re-reading it. **A one-line claim about scope is a cheap invariant to check against the
+build surface after every amendment.**
+
 ## 5. Failure modes, each with what it costs
 
 | failure | what happens | cost |
 |---|---|---|
-| the author names a seam off-convention | the reader cannot parse discipline or round | **it must degrade, not vanish**, and **the degraded line carries the same DIRECTIVE as the normal one** (3b): `an unrecognised seam exists (<path>), written N commits ago. Read it before starting new work, or say why you are not resuming it.` Round 4 caught that the round-1 imperative fix had been applied to the normal line and not to this one, leaving the degrade path in exactly the shape the Mechanism Gamer objection kills. **The path is echoed ONLY if its basename passes section 6's allowlist**; if it does not, report `N unrecognised seams could not be named` and nothing else - a bare count, never a description of the file |
+| the author names a seam off-convention | the reader cannot parse discipline or round | **it must degrade, not vanish**, and **the degraded line carries the same DIRECTIVE as the normal one** (3b): `an unrecognised seam exists (<path>), written N commits ago. Read it before starting new work, or say why you are not resuming it.` Round 4 caught that the round-1 imperative fix had been applied to the normal line and not to this one, leaving the degrade path in exactly the shape the Mechanism Gamer objection kills. **The path is echoed ONLY if its basename passes section 6's allowlist**; if it does not, use branch (5) of 3b's output vocabulary - a bare count with a recovery directive, never a description of the file |
 | a review is genuinely abandoned | the seam is surfaced forever until deleted | one line per session. Accepted, by the asymmetry in 3c |
 | many seams accumulate | the startup line becomes a wall | cap the report at **3 seams, filled from RANK 1 first** (3b-0), most recent first within a rank, and state the remainder as a count **per rank**. A cap that is silent is a lie; the count must be printed. **Rank-blind capping was a real defect** - round 5 showed three mistyped seams burying a live on-convention review, which is the cutoff's failure arriving through the cap |
 | the successor is told a seam exists and does not read it | resume is no better than today | accepted: this is a floor, not a guarantee. The seam's primary consumer remains the peer, which is what keeps it written at all |
@@ -672,8 +740,7 @@ name than the discipline currently carries, and the scope note is not optional d
 | artifact | why |
 |---|---|
 | an existing SessionStart hook, both products | the reader. Extend one rather than add another script |
-| the existing PreCompact hook, both products | 3d - the announced-ending emitter. Already registered and already fires, so this costs no new registration. **Top-level `systemMessage` only** |
-| a shared shell function for the candidate-set logic, **in a named file, sourced by both hooks** | 3b-0 and 3b-i are now used by TWO hooks. Duplicating the logic guarantees they drift; the SessionStart and PreCompact readers must not disagree about which seam is live. **The path is a plan-time decision (section 8) - naming the requirement without naming the file is what produces two copy-pasted copies.** It lands in both plugin trees, so it is a byte-identical pair and inherits that mirror rule |
+| **the SessionStart registration must use the `startup|resume|clear|compact` matcher** | 3d - that matcher already exists in `hooks.json` and is what makes the reader fire after a compaction. Registering only under `startup` is the defect that made a separate PreCompact hook look necessary |
 | **`adversarial-panel-review/SKILL.md` - add a debounce-marker contract writing `agy-panel.head`** | 3c: the panel is the most multi-round discipline here and currently writes NO marker, so its seams could never be concluded. Its two siblings (`agy-first`, `agy-test-audit`) already carry this contract; copy theirs. **This changes a shipped skill rather than only adding a reader, so it is the one scope item in this spec the owner should confirm.** See the consumer test below - this marker passes it |
 | `clavity-*/plugin/skills/*/SKILL.md` for the multi-round disciplines | state the seam naming convention where the seam is written - including that the discipline token is the marker basename (3a), not free prose |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
@@ -766,7 +833,7 @@ an instruction rather than beside a bare fact. The two folds are individually ri
 > byte is dangerous.
 >
 > - **matches** - print it; it is a path and nothing else.
-> - **does not match** - report **a bare count**: `N unrecognised seams could not be named`. Round 4
+> - **does not match** - report **a bare count** (branch (5) in 3b, which carries a recovery directive). Round 4
 >   asked what "its position in the directory" meant and the honest answer was that I had not decided,
 >   which is how two implementers produce two different outputs. A count needs no definition, leaks
 >   nothing, and satisfies section 5's "degrade, never vanish" - which required reporting the
@@ -816,21 +883,21 @@ mistake the allowlist for protection it never provided.
 | age is reported in commits | switch to wall-clock -> row reds |
 | no seams at all produces NO output | emit an empty header -> row reds |
 | the hook exits 0 when `.clavity/` does not exist | fail on a missing directory -> row reds |
-| **PreCompact emits a top-level `systemMessage`, never `hookSpecificOutput`** | emit `hookSpecificOutput` -> row reds. Pins the constraint recorded at `agy-anomaly-capture-reminder.sh:13-14`, which a naive implementation would rediscover as a schema dump in the user's face |
-| PreCompact names the active seam's path | drop the path, keep the prose -> row reds |
-| PreCompact with no candidate seam emits NOTHING | emit an empty header -> row reds |
-| SessionStart and PreCompact agree on which seam is live | give them separate copies of the candidate logic and change one -> row reds |
+| **the reader fires after a compaction, not only at startup** | register it under the `startup` matcher alone -> the post-compact case emits nothing -> row reds. This is what replaced the deleted PreCompact hook |
 | the shield is asserted before any write | remove the assertion -> row reds |
 | **the shield assertion runs when `.clavity/` does not exist yet** | drop the `mkdir -p` -> the fixture's fresh-install case fails `No such file or directory` -> row reds. Pins the section 6 correction |
 | **a paused `agy-capstone` seam is STILL reported after `agy-test-audit` completes** | replace the per-seam rule with one global cutoff -> row reds. This is the round-1 finding measured live (`agy-first.head` five hours newer than `agy-capstone.head`) and it is the single most important row here |
 | **appending to `skipped.log` concludes nothing** | let the conclusion test read any file in `agy-marks/` rather than exactly `<token>.head` -> the fixture's live seam is marked concluded by a recorded NON-completion -> row reds |
 | **with `agy-marks/` empty, every seam is a candidate; with it absent, the hook still exits 0** | pass the directory itself as the `-newer` argument -> the empty case silently filters by the directory's mtime and the absent case errors -> row reds. Both were measured |
 | **a `-REPLY` file is never a candidate of its own** | drop rule 1 -> the fixture's 14 replies double the report -> row reds |
-| **a candidate whose `-REPLY` exists is reported with `REPLY RECEIVED`; one without it is not** | drop the reply check -> the successor is pointed at the question while the answer sits unread -> row reds. **Both halves, or the flag is decoration** |
+| **a candidate whose `-REPLY` exists gets output branch (2); one without it gets branch (1)** | drop the reply check -> the successor is pointed at the question while the answer sits unread -> row reds. **Both halves, or the flag is decoration.** Assert the exact strings in 3b - an undefined branch is where implementers diverge |
 | **an off-convention token is reported as unrecognised, never resolved to a marker** | add prefix or fuzzy matching so `capstone-stage2` resolves to `agy-capstone.head` -> a live seam is wrongly concluded -> row reds. Pins 3a's closed list |
 | **a panel seam is concluded once `agy-panel.head` is written** | omit the panel's marker contract -> the seam is reported forever -> row reds |
 | **the reported age equals the fixture's known commit count** | pass a date string git cannot parse instead of `@<epoch>` -> git returns a plausible wrong number on exit 0 rather than erroring -> row reds. This is the only way to pin 3b-i behaviourally: the failure has no error to assert on |
 | **the SessionStart line contains a directive, not only a fact** | strip the imperative sentence -> row reds. Pins the 3b Mechanism Gamer fold |
+| **an on-convention seam pushed past the cap gets branch (3), which tells the agent to list the directory** | reuse the off-convention count line, or emit a bare number -> a live discipline is buried with no recovery instruction -> row reds. **Round 6's finding: the design silently burying the work it exists to surface, in its best-behaved case** |
+| **each of the five output branches emits its exact specified text, and no candidates emits NOTHING** | leave any branch's string to the implementer -> row reds. Assert the strings, not their shape |
+| **the reply line claims EXISTENCE, never that the reply is unfolded** | assert "has not been folded" -> the fold-then-crash fixture makes it false -> row reds |
 | **a basename failing `^[A-Za-z0-9._-]+$` is reported as existing but its name is NOT echoed** | swap the allowlist for a control-character `tr -d` -> a name made only of legal prose passes through verbatim -> row reds. **Drive this row through the validator's INPUT, not through a file on disk** - section 6 records that a control-character filename could not be created on Windows, so a filesystem fixture would pass vacuously |
 | **the directive text precedes the path and the line is length-capped** | move the path ahead of the instruction, or drop the cap -> row reds |
 | **a mistyped LIVE seam survives an unrelated discipline completing** | key rule 4 on markers again -> the fixture's `capstone-r5-live.md` is aged out by `agy-test-audit.head` -> row reds |
@@ -925,9 +992,26 @@ refuted:**
 | **the convention epoch moves, so it is a TTL too** | **folded, and it ends the rule-4 saga.** Writing your first correctly-named seam establishes the epoch and instantly drops every older mistyped one; deleting that seam advances it again. **Five exclusion rules in five rounds, all wrong.** The requirement was never to EXCLUDE the historical corpus but to stop it DROWNING the signal - different problems. **3b-0 now excludes nothing and only RANKS** |
 | the rank-blind cap buries a live review under three fresh typos | folded - the cap fills from rank 1 first. **This is the cutoff's own failure arriving through the cap**, which is why removing the cutoff alone would not have been enough |
 | the bare-count degrade line is declarative, contradicting "must carry a DIRECTIVE" | folded - the directive rule is **scoped** rather than weakened: a line that names a resumable seam carries a resume directive; an aggregate line carries a different one, never none |
-| **dropping `-REPLY` severs the consult loop** | **folded, and it is the round's most useful finding.** The crash window that matters most is between the peer answering and the author reading; pointing a successor at the question while the answer sits unread invites it to re-ask. One `[ -f ... ]` test, one `REPLY RECEIVED` flag, no new candidate. **This was live while the spec was written** |
+| **dropping `-REPLY` severs the consult loop** | **folded, and it is the round's most useful finding.** The crash window that matters most is between the peer answering and the author reading; pointing a successor at the question while the answer sits unread invites it to re-ask. One `[ -f ... ]` test, one flag, no new candidate. **This was live while the spec was written** |
 | `.clavity/seams/` drifts into the graveyard section 1 swore off | folded as an honesty note - the accumulation predates this design and is not read by it, but "we ship no competitor" is a claim about what we BUILD and must not be allowed to imply more |
 | **the seam cannot mitigate lost decisions - "a round 5 seam contains only round 5"** | **REFUTED by measurement, with a caveat kept.** A panel seam carries a running ledger by mandate: the round-5 seam names Rounds 1-4 and an owner ruling, the round-3 seam names Rounds 1-2, and a **control** (a non-panel consult seam) has none. So the mitigation holds exactly as far as a discipline inlines a ledger - and no further |
+
+**Closed by round 6, the final round under the owner's cap** (bespoke seats: a Simplification Auditor
+asked what could be DELETED - a question nobody had put after five rounds of addition - and a First-Run
+Narrator asked to print the literal output of a first run and a resume). **6 findings: 4 folded, 1
+confirmed on evidence the seat did not cite, 1 rejected with reasons:**
+
+| finding | disposition |
+|---|---|
+| **delete the `PreCompact` hook - it is redundant** | **CONFIRMED, but its argument was false.** The seat reasoned "a compacted session is by definition a new session"; this session disproves that - `/compact` emitted only PreCompact hooks and the transcript continued under one session id. **Reading the registration instead of the argument showed the conclusion is right anyway:** `SessionStart` is already registered `startup\|resume\|clear\|compact`. **I nearly refuted a correct finding by checking its premise instead of its claim.** Deleting it also removed a second registration, three test rows, and the shared-function requirement that existed only to keep two readers agreeing |
+| **the output text is undefined in three branches** | folded - 3b now specifies **all five branches verbatim** plus the empty case. An undefined output is not a formatting gap; it is where two implementers produce two behaviours |
+| **an on-convention seam past the cap is buried with no recovery directive** | folded - branch (3). The recovery instruction had been written only for names failing the allowlist, so **the best-behaved case was the one that lost work** |
+| **`[ -f ...-REPLY.md ]` cannot know the reply is UNFOLDED** | folded - **the fourth overclaim caught in this document.** Clearing is manual, so a reply stays on disk after folding; an agent that folded and then crashed would be ordered to fold again. The line now claims existence, which is what the test proves |
+| **delete the commit-age calculation - nothing reads it** | **REJECTED, with the reason recorded.** It is genuinely cosmetic and genuinely fragile, and that is the trade. **3c refuses to infer abandonment automatically - which obliges the design to hand the human the number they need to judge it themselves.** Ranking conveys relative order; only the age separates "paused ten minutes ago" from "dead 300 commits back". It already degrades to silence when it cannot be computed, so its failure mode is free |
+
+**What six rounds cost and bought:** the candidate rule was rewritten in every single round, five
+exclusion rules were written and all five were wrong, and the final answer - rank, exclude nothing - is
+simpler than any of them. **Four of six rounds found a defect in the previous round's fix.**
 
 **Resolved at plan time, each with a home:**
 
@@ -937,14 +1021,14 @@ refuted:**
 | **does bare `sync` actually flush, and at what cost** | **plan - 3g. The probe needs a control that must fail (exit 0 already proved nothing) and a cost measured under concurrent load, not on an idle box.** This one settles the name |
 | which SessionStart hook is extended, per product | plan - dotnet and classic have different SessionStart sets |
 | a Windows-path case in the filename match | plan - the regex itself is now fixed in 3a; only path-casing behaviour is open |
-| **the file the shared candidate-set function lives in, and how each hook sources it** | plan - section 6 now names the requirement AND flags that naming a requirement without naming a file is what produces two divergent copies. It is a byte-identical pair across both plugin trees |
+| ~~the file the shared candidate-set function lives in~~ | **CLOSED by round 6 - the question no longer exists.** Deleting the PreCompact hook left ONE reader, so there is no second copy to keep in sync and nothing to name |
 | **owner confirmation that `adversarial-panel-review` may gain a marker contract** | plan - section 6. Everything else here is additive; this one edits a shipped skill, so it is the only item that changes existing behaviour |
 
 **Closed by the round-1 panel, and no longer open questions:**
 
 | was open | now |
 |---|---|
-| whether `-REPLY` files are ever reported | **DECIDED: never as a candidate of their own** (3b-0 rule 1; they were 14 of the 28 live candidates) - **but round 5 corrected the other half: a candidate whose reply EXISTS must be flagged `REPLY RECEIVED`.** The crash window between the peer answering and the author reading is the one where a successor would otherwise re-ask a question that is already answered |
+| whether `-REPLY` files are ever reported | **DECIDED: never as a candidate of their own** (3b-0 rule 1; they were 14 of the 28 live candidates) - **but round 5 corrected the other half: a candidate whose reply EXISTS must say so.** The crash window between the peer answering and the author reading is the one where a successor would otherwise re-ask a question that is already answered |
 | which disciplines need the convention | **DECIDED by 3a's closed token table**, because the token must equal a marker basename for the conclusion test to resolve at all. Measured: 0 of 8 real prefixes resolved under the free-prose version |
 
 **Known and accepted, not gaps:** this is a floor, not a guarantee (5); a seam's primary consumer stays
