@@ -76,6 +76,36 @@ on the critical path of every `ls`.
 **The dotnet hook has no such exposure** - its matcher selects the MCP tool directly, so every
 invocation is already a consult.
 
+### 3a. What each product can actually GUARANTEE - the requirements are not equally satisfiable
+
+Round 3 seated an auditor to walk every requirement against both hook forms, and it found rules written
+as absolutes that only one product can meet. **A requirement one product cannot satisfy is not a
+requirement; it is a latent implementation divergence.**
+
+| requirement | dotnet (MCP payload, `jq`) | classic (arbitrary shell command, string test) |
+|---|---|---|
+| find the seam path | **reliable** - a structured field | **best-effort** - already conceded as "knowingly leakier" |
+| **CHECK ALL seam paths** (round 1) | **guaranteed** | **BEST-EFFORT ONLY.** Shell strings carry quoting, flags and interpolation; no substring pass reliably isolates every `.md` path. **So the multi-seam smuggle is CLOSED in dotnet and MITIGATED in classic** - say so rather than writing CHECK ALL as absolute in both |
+| identify the invocation as a consult | **by matcher** - certain | **by string test** - see the shape below |
+| the skip token | inside a JSON field - inert | **must sit INSIDE the quoted payload argument.** Appended bare it becomes positional arguments to `clavity ask` |
+
+**The command test's SHAPE was never specified, and left loose it corrupts the metric.** A bare
+substring match for `clavity ask` fires on `echo "run clavity ask"` and on
+`history | grep 'clavity ask'`. Harmless on its own - but section 4a now logs a `no-seam` outcome for a
+consult with no path, so **every false positive would record a bypass that never happened and inflate
+the exact count section 4a asks a human to trust.**
+
+> **Classic matches `clavity` as a COMMAND WORD followed by `ask` as its first argument** - at the start
+> of the command or immediately after a `;`, `&&`, `||` or `|` - never as a free substring. Residual
+> false positives are accepted and **must not** be chased with a shell parser.
+>
+> **And classic logs `no-seam` ONLY for an invocation it identified as a consult by that test.** A
+> command that merely mentions the string is not a consult and writes nothing.
+
+**The block message must therefore show the token in the form the reader's product needs** (section 6):
+one static message per product, not one string shared by both. This is the same divergence section 3
+already accepts for the hooks themselves.
+
 **Consequences to handle, not discover:**
 - `plugin-hooks-payload.Tests.ps1` asserts byte-identity for the shipped hook pair. **It must change** to
   exempt this pair, and the exemption must be explicit and named, never a loosened glob.
@@ -129,14 +159,23 @@ outcome to stop being invisible.**
 > `seam-unreadable`, `outside-repo`, `no-jq`, `no-git-bash`. The SessionStart reader (section 8)
 > surfaces counts by reason, not only skips.
 
-**EXACTLY ONE fail-open path cannot be logged, and pretending otherwise was a contradiction round 2
-caught.** The log lives in `.clavity/`, so if `mkdir -p "$R/.clavity"` fails there is nowhere to write
-the record of that failure. **"EVERY decision" was therefore unsatisfiable as written** - it collided
-with the `|| exit 0` that the same round-1 fold introduced. The honest rule:
+**Any failure of the LOGGING SUBSTRATE ITSELF is unloggable, and no count of such paths should be
+asserted.** The log lives in `.clavity/`, so `mkdir -p "$R/.clavity"` failing leaves nowhere to write
+the record of that failure. **"EVERY decision" was unsatisfiable as written** - it collided with the
+`|| exit 0` that the same round-1 fold introduced.
 
-> **`mkdir` failure is the one unloggable outcome.** It means the repository root is unwritable, which
-> a stranger's session has larger problems with than this gate. It exits 0 and is invisible, and that is
-> stated here rather than contradicted two sections apart.
+> **The unloggable set is "the logging substrate failed", not an enumerated list.** It includes at
+> least: `mkdir` failure, and an append that fails because `policy.log` is locked (ordinary on Windows)
+> or its permissions changed. All exit 0 and are invisible. **A repository where this happens has
+> larger problems than this gate.**
+
+> **THE THIRD FALSE ABSOLUTE IN THIS DOCUMENT, AND THE PATTERN IS THE FINDING.** Round 1 struck *"the
+> log must not be forgeable by the thing it audits"*; round 2 struck *"a log line for EVERY decision"*;
+> round 3 struck *"EXACTLY ONE fail-open path cannot be logged"* - **which was itself round 2's
+> replacement for the previous absolute.** Each was written to sound rigorous and each was falsified by
+> one counter-example. **Prefer a scoped claim with its exceptions named over a total one that reads
+> better**; in a document about a gate that fails open, an overstated guarantee is the exact failure
+> mode being guarded against.
 
 **What countability actually buys, scoped honestly.** The gate cannot stop an agent that omits the seam
 path; nothing local can. Logging makes the omission **countable**, so a driver that routinely bypasses
@@ -172,7 +211,7 @@ Unset, it collapses a path to an absolute `/skills/...` that cannot be opened. T
    a human; a driver who misreads a block as a channel failure halts for an outage that never happened.
 2. **A static pointer to where the seats are defined** - the consulting discipline's own `SKILL.md`,
    named by path.
-3. **One line saying what this check does NOT do** - it verifies a marker is present and non-empty, and
+3. **One line saying what this check does NOT do**  *(and note: this message is written PER PRODUCT - section 3a, because the skip token's safe form differs between the MCP and shell hooks)* - it verifies a marker is present and non-empty, and
    **cannot** tell whether the seats are appropriate or the panel is real.
 4. **The skip token, last** (section 7).
 
@@ -198,6 +237,7 @@ section 8 is load-bearing rather than decorative.
 **Format: `AGY-SKIP: <rule> <reason>`**, in-band in the payload. Example:
 `AGY-SKIP: ROLES verifying the gate blocks`.
 
+- **In-band, and section 3a says WHERE per product:** a JSON field in dotnet, and **inside the quoted payload argument** in classic, where appending it bare would become positional arguments to `clavity ask`.
 - **In-band, not an environment variable.** The agent invokes an MCP tool with a JSON payload and cannot
   set an env var for that call; an env-var hatch is reachable only by a human in a shell, which is a
   phantom for the actor it exists to rescue.
@@ -242,10 +282,18 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
     the safeguard or invents a heuristic, and the retry loop returns.
 
     > **Use the `session_id` the payload already carries.** Verified present and already consumed by the
-    > sibling hook - `agy-consult-guard-pre.sh:19` reads `.session_id // "default"` with a `default`
-    > fallback on the next line. **Attempt rotation at most once per session:** record the attempting
+    > sibling hook - `agy-consult-guard-pre.sh:19` reads `.session_id // "default"` with a second
+    > `default` fallback on line 20. **Attempt rotation at most once per session:** record the attempting
     > session id in `.clavity/policy.rot`; if it already names this session, skip straight to the
     > append. One read and one compare, and it needs no clock and no session-start time.
+    >
+    > **The literal `default` is NEVER written to the guard and never matches it.** Round 3 caught that
+    > this fix carried the same disease it was fixing: without `jq` the id degrades to `default`, so the
+    > first degraded invocation would write `default`, and **every degraded invocation in every future
+    > session would match it and skip rotation for ever** - a one-session retry loop turned into
+    > permanent, silent disablement. When the id is unknown, **do not write the guard and do not skip**:
+    > attempt the rotation. That restores the old cost (one failed `mv`) on a rare path instead of
+    > buying it with an unbounded log.
 
     **State the resulting guarantee honestly: on a host where rotation cannot succeed, the log grows
     unbounded and the design accepts that** rather than pretending a bound it cannot enforce.
@@ -435,6 +483,10 @@ inspecting source text.
 | **every fail-open outcome writes a log line with its own reason code** | drop the logging on the no-seam path -> the bypass leaves no trace -> row reds. Cover `no-seam`, `seam-missing`, `seam-unreadable`, `outside-repo`, `no-jq` and `no-git-bash` as separate rows sharing one fixture |
 | **a payload naming a MARKERLESS seam and a MISSING seam BLOCKS** | let the missing seam force exit 0 -> row reds. **Pins the round-2 precedence rule; without it the multi-seam check reopens as a two-character bypass** |
 | **rotation is attempted at most once per session** | drop the `policy.rot` session guard -> a fixture whose `mv` always fails attempts it on every invocation -> row reds. Assert the attempt count, not the file size |
+| **a degraded invocation never writes `default` into `policy.rot`, and rotation still happens in a LATER session** | write the fallback id -> the second degraded session skips rotation for ever -> row reds. **Pins round 3's regression: the guard must not outlive the session it guards** |
+| **classic does NOT treat `echo "run clavity ask"` as a consult** - no log line, no subprocess | use a bare substring match -> the fixture records a phantom `no-seam` bypass -> row reds |
+| **classic DOES treat `foo && clavity ask "..."` as a consult** | anchor only to start-of-string -> row reds. **Both directions, or the test pins nothing** |
+| **the classic block message shows the skip token inside the quoted payload** | ship the dotnet message text in classic -> the token reads as bare positional arguments -> row reds |
 | **the spec's error paths do not mention `sed`** | reintroduce a `sed` probe -> row reds. A dependency the design does not have must not appear in its failure table |
 | **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
 | the block message names the discipline's SKILL.md path | remove the pointer -> row reds |
@@ -465,7 +517,8 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
   claim is that a routine bypasser becomes visible as a number, not that bypass is impossible.
 - **The log is not tamper-resistant.** The agent has shell write access to it. Sanitisation protects the
   record format from agent-authored fields; it does not defend against an agent that edits the file.
-- clavity-classic's extraction is fragile and fails open more often than dotnet's.
+- clavity-classic's extraction is fragile and fails open more often than dotnet's. **Its CHECK-ALL guarantee is best-effort**, so the multi-seam smuggle is closed in dotnet and only mitigated in classic (section 3a).
+- **Classic's consult test admits residual false positives** by design; chasing them with a shell parser is explicitly rejected.
 - Rotation is best-effort on Windows.
 - The skip token is honest but cheap; the per-rule skip count is its only counterweight.
 
@@ -477,7 +530,7 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 | the seam-path regex, concretely | needs a Windows-path case: payloads here carry `C:/Users/...` forms |
 | the log record format and field order | one short line; fix the delimiter here, since section 8's sanitisation depends on it |
 | the over-long / length cap for sanitised fields | a number |
-| ~~a payload naming MULTIPLE seam paths~~ | **RESOLVED by round 1 - this was a design hole wearing a plan-time label. CHECK ALL; BLOCK IF ANY LACKS THE MARKER.** Checking only the first is a one-line bypass: name a compliant seam first and smuggle the real consult behind it. Deferring it would also have shipped two implementations, one of which enforces nothing |
+| ~~a payload naming MULTIPLE seam paths~~ | **RESOLVED by round 1 - a design hole wearing a plan-time label. CHECK ALL; BLOCK IF ANY LACKS THE MARKER - GUARANTEED in dotnet, BEST-EFFORT in classic (section 3a).** Checking only the first is a one-line bypass: name a compliant seam first and smuggle the real consult behind it. Deferring it would also have shipped two implementations, one of which enforces nothing |
 | **`jq` is invoked with `-r`** | pin it. Without `-r` the extracted path arrives wrapped in literal double quotes, `[ -f ... ]` fails, and section 4 sends that to a silent `exit 0` - **the gate would fail open on every single invocation while looking healthy.** The repo idiom is already `jq -r` (`agy-consult-guard-pre.sh:16-19`) |
 | is the `<rule>` in `AGY-SKIP:` case-sensitive? | pin it with the row that asserts a non-matching rule does not skip |
 | a seam path that resolves OUTSIDE the repository root | fails open under section 4, but the ordering deserves an explicit row so it is not discovered later |
@@ -499,7 +552,7 @@ The four rounds in the ADR reviewed its predecessor. **This file's own review st
 | the log is not forgery-proof - the agent owns the filesystem | **folded as an honesty correction.** The original sentence claimed the log *"must not be forgeable by the thing it audits"*. It is. Sanitisation buys record integrity, not tamper-resistance |
 | a failed `mv` rotation retries forever and the bound is never met | **folded** - rotation is attempted only on a crossing, and the guarantee is stated honestly for hosts where it cannot succeed |
 | the degraded sentinel is raced away by a healthy sibling agent | **folded, and it is the sharpest finding.** Clearing on any healthy invocation means a capable agent deletes the sentinel a degraded one just raised - **the observability artifact destroyed by the condition it reports.** The SessionStart READER now clears it, after surfacing it |
-| multiple seam paths in one payload was deferred to plan time | **folded - it was a design hole wearing a plan-time label.** CHECK ALL, BLOCK IF ANY FAILS. Checking the first is a one-line smuggle |
+| multiple seam paths in one payload was deferred to plan time | **folded - it was a design hole wearing a plan-time label.** CHECK ALL, BLOCK IF ANY FAILS. Checking the first is a one-line smuggle. **Round 3 later scoped this per product - see section 3a; classic's guarantee is best-effort** |
 | `git rev-parse` before the command test on every shell command | **folded as an ordering REQUIREMENT** in section 3. Classic fires on every `Bash|PowerShell` call; a `git` process on the critical path of every `ls` is not acceptable |
 | `jq` without `-r` returns quoted paths | **pinned in section 13.** The finding is conditional - the spec never said to omit `-r` - but the failure mode it describes is real and silent, so the flag is now explicit rather than idiomatic |
 | **the `mcp__.*agy_ask` matcher is a typo; real MCP tools use a single underscore** | **REFUTED by measurement.** The live tool on this host is `mcp__plugin_clavity_clavity-ls__agy_ask` - **double** underscore - and `mcp__.*agy_ask` is already shipped and working at `clavity-dotnet/plugin/hooks/hooks.json:17` and `:38`. Had this been folded it would have broken a matcher that works today |
@@ -522,6 +575,20 @@ this repository has been shipping for months.
 
 **Three of round 2's seven findings were defects in round 1's fixes.** The pattern holds from the
 sibling spec: a fix is unreviewed code, and the round after a fold is the highest-yield one.
+
+### Round 3 - 4 bespoke seats, 5 findings, all folded. The pattern held a THIRD time
+
+| finding | disposition |
+|---|---|
+| **the `session_id` rotation guard permanently disables rotation in degraded environments** | **folded - round 2's fix carried the disease it was fixing.** Without `jq` the id degrades to the literal `default` (`agy-consult-guard-pre.sh:19` and again at `:20`), so the first degraded invocation writes `default` and **every degraded invocation in every future session matches it and skips rotation for ever.** A one-session retry loop became permanent silent disablement. Now: when the id is unknown, do not write the guard and do not skip |
+| **"EXACTLY ONE fail-open path cannot be logged" is false** - a locked or permission-denied `policy.log` is another | **folded, and the PATTERN is the real finding.** This is the **third** absolute this document has asserted and had falsified: the unforgeable log (round 1), "EVERY decision" (round 2), and "exactly one unloggable path" - **which was round 2's own replacement for the previous absolute.** The unloggable set is now "the logging substrate failed", stated without a count |
+| **classic cannot guarantee CHECK ALL** - shell strings resist reliable multi-path extraction | **folded as section 3a.** CHECK ALL was written as an absolute in round 1 and only dotnet can meet it. **A requirement one product cannot satisfy is a latent implementation divergence, not a requirement.** The multi-seam smuggle is CLOSED in dotnet, MITIGATED in classic, and the document now says which |
+| **the skip token appended bare to a shell command becomes positional arguments** | **folded.** It must sit inside the quoted payload argument in classic, and the block message is therefore per-product - the same divergence section 3 already accepts for the hooks |
+| **classic's consult test was never given a SHAPE**, so a substring match fires on `echo "run clavity ask"` | **folded, and it mattered because of round 1's own fix.** Harmless alone - but 4a now logs `no-seam`, so **every false positive would record a bypass that never happened and inflate the count 4a asks a human to trust.** Now anchored to a command word, with `no-seam` logged only for identified consults |
+
+**Three consecutive rounds have each found real defects in the previous round's fixes** - eight such
+regressions in total. The document is converging, but it has not yet produced a round whose findings
+were all about the ORIGINAL design rather than the repairs.
 
 ## 14. Provenance
 
