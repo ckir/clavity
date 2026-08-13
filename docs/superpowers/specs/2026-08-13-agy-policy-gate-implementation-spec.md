@@ -32,6 +32,21 @@ nothing; renaming them later would migrate files users already have.
 > **If the tool payload names a path under `.clavity/seams/` ending in `.md`, that file MUST contain a
 > non-empty `PANEL-SEATS:` line. If it does not, block.**
 
+**What `PANEL-SEATS:` is, and which discipline owns it - because six panel rounds never said.** The
+marker is the seat list required by **AGY-AFTER**, the `adversarial-panel-review` discipline: its palette
+of adversarial seats, and its rule that a review names them rather than convening a panel from memory.
+**This gate is AGY-AFTER's enforcement mechanism, and until the owner pointed it out this document named
+the discipline exactly once - in a DO-NOT-BUILD section, as an aside about an unrelated migration.**
+
+That gap was not cosmetic. It is why section 6's block message pointed at *"the consulting discipline's
+own `SKILL.md`"* - a target the hook cannot derive - for six rounds: **a document that never names the
+discipline it enforces cannot name the file that documents it.** Six rounds reviewed this spec against
+itself; the gap was only visible from outside, by asking what the gate is FOR.
+
+**The rule stays discipline-agnostic in its PREDICATE** - any seam under `.clavity/seams/` is checked,
+whoever wrote it - **and discipline-specific in its REMEDY**, because there is exactly one place the
+seat vocabulary is defined.
+
 Nothing else is inferred. No discipline is detected, no keyword is matched, no prose is parsed beyond
 one narrow path shape. This is deliberate and load-bearing: any predicate requiring the driver to label
 the consult would fail exactly when the driver is working from memory, which is the failure being
@@ -87,7 +102,7 @@ requirement; it is a latent implementation divergence.**
 | find the seam path | **reliable** - a structured field | **best-effort** - already conceded as "knowingly leakier" |
 | **CHECK ALL seam paths** (round 1) | **guaranteed** | **BEST-EFFORT ONLY.** Shell strings carry quoting, flags and interpolation; no substring pass reliably isolates every `.md` path. **So the multi-seam smuggle is CLOSED in dotnet and MITIGATED in classic** - say so rather than writing CHECK ALL as absolute in both |
 | identify the invocation as a consult | **by matcher** - certain | **by string test** - see the shape below |
-| the skip token | inside a JSON field - inert | **goes in the payload TEXT itself** - inside the existing `clavity ask "<payload>"` string, alongside the prose. Never as an extra argument, and never appended bare after the closing quote |
+| the skip token | **in the payload TEXT** - the `message` string of the `agy_ask` call, not a separate JSON key | **goes in the payload TEXT itself** - inside the existing `clavity ask "<payload>"` string, alongside the prose. Never as an extra argument, and never appended bare after the closing quote |
 
 **The command test's SHAPE was never specified, and left loose it corrupts the metric.** A bare
 substring match for `clavity ask` fires on `echo "run clavity ask"` and on
@@ -291,8 +306,20 @@ Unset, it collapses a path to an absolute `/skills/...` that cannot be opened. T
 1. **One line stating what is missing AND that this is a local role check - the peer was never
    contacted.** Every AGY-* discipline has an `agy-required-but-unreachable` terminal that halts and asks
    a human; a driver who misreads a block as a channel failure halts for an outage that never happened.
-2. **A static pointer to where the seats are defined** - the consulting discipline's own `SKILL.md`,
-   named by path.
+2. **A static pointer to where the seats are defined:** the literal path
+   `clavity-*/plugin/skills/adversarial-panel-review/SKILL.md`, hardcoded.
+
+   > **This said "the consulting discipline's own `SKILL.md`" and that is not implementable.** The
+   > payload carries a seam path, not a skill; the hook is deliberately generic and cannot know which
+   > discipline is consulting. **Round 6 found it underivable and the owner found the reason: this
+   > document never names AGY-AFTER at all.**
+   >
+   > **`AGY-AFTER` - the `adversarial-panel-review` discipline - is what defines `PANEL-SEATS:`, and it
+   > is the only correct target.** The gate exists to enforce that discipline's seat requirement, so the
+   > pointer is static, fixed, and the same for every consult regardless of which discipline sent it.
+   > That is exactly what section 6 already demanded when it deleted the palette extraction for
+   > hardcoding one skill's path - **the right fix was to hardcode the one skill that owns the
+   > vocabulary, not to derive a skill the hook cannot see.**
 3. **One line saying what this check does NOT do**  *(and note: this message is written PER PRODUCT - section 3a, because the skip token's safe form differs between the MCP and shell hooks)* - it verifies a marker is present and non-empty, and
    **cannot** tell whether the seats are appropriate or the panel is real.
 4. **The skip token, last** (section 7).
@@ -319,7 +346,7 @@ section 8 is load-bearing rather than decorative.
 **Format: `AGY-SKIP: <rule> <reason>`**, in-band in the payload. Example:
 `AGY-SKIP: ROLES verifying the gate blocks`.
 
-- **In-band, and section 3a says WHERE per product:** a JSON field in dotnet, and **inside the existing payload string** in classic - `clavity ask "...prose... AGY-SKIP: ROLES <reason>" --review-only`. **Verified: `clavity ask`'s first positional IS the payload**, so a token inside that string is inert. Round 4 argued this would crash the CLI by being read as a file path; that requires appending it as a SEPARATE argument, which this rule forbids. **The claim is refuted, and the wording was tightened anyway because it was ambiguous enough to be misread.**
+- **In-band means inside the PAYLOAD TEXT in BOTH products** - the `message` string of the `agy_ask` call in dotnet, and the existing `clavity ask "<payload>"` string in classic. **Round 6 caught that "a JSON field" in dotnet named no key**, which would have had the hook and the skill author each guess a different one and silently break every skip. There is no separate key: the token is prose inside the message, which is also why one static block message describes it correctly for both - `clavity ask "...prose... AGY-SKIP: ROLES <reason>" --review-only`. **Verified: `clavity ask`'s first positional IS the payload**, so a token inside that string is inert. Round 4 argued this would crash the CLI by being read as a file path; that requires appending it as a SEPARATE argument, which this rule forbids. **The claim is refuted, and the wording was tightened anyway because it was ambiguous enough to be misread.**
 - **In-band, not an environment variable.** The agent invokes an MCP tool with a JSON payload and cannot
   set an env var for that call; an env-var hatch is reachable only by a human in a shell, which is a
   phantom for the actor it exists to rescue.
@@ -362,9 +389,15 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
     the file is still over the bound, so the next call attempts the same doomed rename, and the next -
     **the "bound" is violated AND a subprocess is spent on every consult to violate it.**
 
-    > **Attempt rotation only when the line count is an exact multiple of 100.** That is the whole rule.
-    > It caps wasted renames at 1% of invocations, needs no clock, no session id and **no state file**,
-    > and it stops entirely the moment a rotation succeeds.
+    > **Attempt rotation when the line count is at least the bound AND `count % 100 < 5`.** That is the
+    > whole rule. It caps wasted renames at ~5% of invocations, needs no clock, no session id and **no
+    > state file**, and it stops entirely the moment a rotation succeeds.
+    >
+    > **The window is 5 lines wide, not an exact multiple, and round 6 is why.** This log is designed
+    > for CONCURRENT atomic appends, so two writers can take the count from 99 to 101 and an
+    > exact-match trigger is skipped entirely - **the rotation silently never fires for that cycle, in
+    > exactly the concurrent case the append design exists to support.** A single append cannot step
+    > over a 5-wide window.
 
     **Three rounds were spent inventing a session-scoped guard that this deletes.** Round 2 keyed
     rotation on "older than the current session" (a `PreToolUse` hook cannot observe that); round 3
@@ -417,6 +450,18 @@ R="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 mkdir -p "$R/.clavity" || exit 0
 [ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
 ```
+
+**But the gate must NOT create `.clavity/` for an outcome that changes nothing** - round 6's Cost
+Auditor priced a footprint nobody had. Classic's consult test is deliberately loose (section 3a), so
+`git commit -m "fix clavity ask"` is identified as a consult, finds no seam, and would - under a naive
+reading - **create a `.clavity/` directory and a `policy.log` in the repository of a user who has never
+consulted a peer and never will.** A gate that leaves litter in the repos of people it does not serve
+has a cost they never agreed to.
+
+> **`mkdir -p` runs only on a path that BLOCKS, SKIPS, or PASSES a real seam.** A `no-seam` outcome is
+> logged **only if `.clavity/` already exists**; if it does not, the hook exits 0 and writes nothing.
+> The count section 4a relies on is preserved exactly where it means something - a repository already
+> using the disciplines - and is silently absent where it would be noise about a feature nobody uses.
 
 **The `mkdir -p` is not decoration and it was missing.** Round 1's Axiom Breaker found that this spec
 never created `.clavity/` anywhere, while three separate requirements append into it. On a stranger's
@@ -573,6 +618,11 @@ inspecting source text.
 | **the reader counts by reason code over BOTH `policy.log` and `policy.log.1`** | read only the live file -> a fixture that rotates mid-run undercounts -> row reds |
 | **classic detects `sudo clavity ask "..."`, `time clavity ask "..."` and `env FOO=1 clavity ask "..."`** | anchor the test to start-of-command -> the wrapped fixtures evade the gate silently -> row reds. **Fixtures must use wrappers that exist on a stranger's box** - naming a tool specific to the author's machine would make the suite pass for the wrong reason there and be meaningless everywhere else |
 | **classic does NOT add a second PreToolUse registration** | register a new script instead of extending the existing hook -> assert the classic `hooks.json` PreToolUse entry count is unchanged -> row reds. **Pins section 3b: a second hook doubles a ~300-400ms per-command cost** |
+| **dotnet's gate entry matches `mcp__.*agy_ask` ALONE, not a `Bash`-bearing matcher** | merge it into the existing combined entry -> assert the new entry's matcher string -> row reds. **Section 3 mandated this from the start and no row pinned it: an implementer could put the gate on every shell command and the suite would pass** |
+| **all three subagent-routing skill edits are present** | ship the hooks without the skill edits -> assert none of `agy-first`, `agy-capstone`, `agy-test-audit` still tells subagents to use the CLI form -> row reds. **Without the edits, subagent consults never reach the dotnet matcher and the gate is invisible to exactly the actor it was built for** |
+| **the block message names `adversarial-panel-review/SKILL.md` literally** | derive the path from the payload -> there is nothing to derive from -> row reds. Pins the section 6 correction |
+| **a `no-seam` outcome does NOT create `.clavity/` when it is absent** | `mkdir -p` unconditionally -> a fixture repo with no `.clavity/` gains one from a command that merely mentions the string -> row reds |
+| **rotation fires when the count lands anywhere in the 5-line window, not only on the exact multiple** | require an exact multiple -> a fixture with two concurrent appends stepping 99 to 101 never rotates -> row reds |
 | **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
 | the block message names the discipline's SKILL.md path | remove the pointer -> row reds |
 | the block message states the peer was not contacted | remove that line -> row reds |
@@ -603,6 +653,7 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 - **The log is not tamper-resistant.** The agent has shell write access to it. Sanitisation protects the
   record format from agent-authored fields; it does not defend against an agent that edits the file.
 - clavity-classic's extraction is fragile and fails open more often than dotnet's. **Its CHECK-ALL guarantee is best-effort**, so the multi-seam smuggle is closed in dotnet and only mitigated in classic (section 3a).
+- **Classic's extraction is not merely unreliable, it is STEERABLE, and that is a stronger claim.** An agent that writes the path in a form the parser misses - `--file=".clavity/seams/x.md"`, an unusual quoting, a variable - produces a `no-seam` outcome and passes. The gate is a floor in dotnet and a speed bump in classic; **section 4a's counting is what remains, and for classic it is most of the value.**
 - **Classic's consult test admits residual false positives** by design; chasing them with a shell parser is explicitly rejected.
 - Rotation is best-effort on Windows.
 - The skip token is honest but cheap; the per-rule skip count is its only counterweight.
@@ -698,13 +749,52 @@ break.
 | **the `sed` test row was vacuous** - it asserted source text, which section 11's own preamble forbids | **folded: row deleted.** A behavioural test cannot detect a redundant probe on a host that has `sed`. **A vacuous row is worse than a missing one - it certifies what it fails to test** |
 | **`${CLAUDE_PLUGIN_ROOT}` was mandated in section 5 with NO test row** | **folded: row added.** The failure mode is a collapsed path, an infrastructure failure and a silent bypass - **exactly the class this suite exists to catch, uncovered for five rounds** |
 
-### Round 5a - the OWNER's finding, which five rounds of panel never asked
+### Round 6 - 4 bespoke seats, 7 findings: 6 folded, 1 OPEN for the owner
 
-**What does the gate COST?** Nobody had measured it. Section 3b now carries the numbers and the
+| finding | disposition |
+|---|---|
+| **the block message's pointer target is underivable** - the payload has a seam path, not a skill | **folded, and it is the same defect the owner found from outside** (below). Fixed to the literal `adversarial-panel-review/SKILL.md` |
+| **no test row for the three subagent-routing skill edits** | **folded.** Ship the hooks without the skill edits and subagent consults never reach the dotnet matcher - **the gate would be invisible to the exact actor it was built for, and the suite would pass** |
+| **no test row for dotnet's registration isolation** | **folded.** Section 3 mandated it from round zero; an implementer merging it into the combined entry would put the gate on every shell command and go green |
+| **repository pollution for a user who never consults** | **folded.** Classic's loose test means `git commit -m "fix clavity ask"` would create `.clavity/` and a log in a stranger's repo. `mkdir` now runs only for outcomes that matter, and `no-seam` is logged only where `.clavity/` already exists |
+| **the exact-multiple rotation trigger is skipped by concurrent appends** | **folded.** Two writers step 99 to 101 and the trigger never fires - **in exactly the concurrent case the atomic-append design exists to support.** The window is 5 lines wide now |
+| **the dotnet skip token named "a JSON field" but never a key** | **folded.** There is no separate key: the token is prose inside the `message` string in both products, which is also why one static block message describes it correctly for both |
+| **routing subagents onto `agy_ask` may pop a blocking modal and freeze them** | **OPEN - surfaced, not folded.** This challenges an owner ruling, and the existing skills say the opposite (*"subagents use the CLI form, not the MCP bus"*) without stating why. **I could not verify the modal claim cheaply, and folding or dismissing it unilaterally would both be wrong.** See below |
+
+### Round 5a and 6a - the OWNER's findings, which six rounds of panel never asked
+
+**5a: what does the gate COST?** Nobody had measured it. Section 3b now carries the numbers and the
 consequence: **classic must extend its existing per-command hook rather than register a second one**,
 because process startup is the dominant cost and a second registration doubles it on every shell
 command. The first attempt at this measurement was discarded - it ran while the driver was busy, and
 this project has measured its own load moving its own benchmarks by up to 6x.
+
+**5b: `rtk` had become a shipped prerequisite.** Round 5's anchor fix justified itself with a
+command-rewriting wrapper that exists on the author's machine and used it as a test fixture - in a
+document whose section 9a already says *"a shipped hook must assume no such wrapper exists"*. The
+requirement was right; the justification imported the banned assumption. **Fourth author-machine leak on
+these specs, and the first where the document already contained the ruling forbidding it.**
+
+**6a: this document never named AGY-AFTER.** The gate enforces the seat requirement of the
+`adversarial-panel-review` discipline, and until the owner asked, **`AGY-AFTER` appeared exactly once in
+the whole spec - in a DO-NOT-BUILD section, as an aside about an unrelated migration.** Section 2 now
+states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves to a real file.
+
+> **The pattern across all three: six panel rounds reviewed this document against ITSELF and found
+> internal contradictions well. Every finding that required standing outside it - what it costs, what it
+> assumes about the machine, what it is FOR - came from the owner.** A panel is bounded by the frame the
+> payload gives it.
+
+### OPEN for the owner - one round-6 finding I did not fold
+
+**Routing subagent consults over `agy_ask` (section 3) may freeze them.** The claim is that MCP tool
+calls surface a blocking modal, which a background subagent cannot answer. **What is verifiable:** the
+three skills currently say *"subagents use the CLI form, not the MCP bus"* - so the CLI routing is
+deliberate and its reason is nowhere recorded. **What is not:** whether the modal behaviour is real
+here. **The change is an owner ruling, so it is surfaced rather than folded or dismissed.** If the modal
+risk is real, section 3's subagent routing needs a different mechanism and the three skill edits come
+out of the build; if it is not, the reason the skills say the opposite should be written down before it
+is reversed a second time.
 
 ## 14. Provenance
 
