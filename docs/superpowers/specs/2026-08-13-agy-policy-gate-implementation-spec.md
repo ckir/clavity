@@ -87,7 +87,7 @@ requirement; it is a latent implementation divergence.**
 | find the seam path | **reliable** - a structured field | **best-effort** - already conceded as "knowingly leakier" |
 | **CHECK ALL seam paths** (round 1) | **guaranteed** | **BEST-EFFORT ONLY.** Shell strings carry quoting, flags and interpolation; no substring pass reliably isolates every `.md` path. **So the multi-seam smuggle is CLOSED in dotnet and MITIGATED in classic** - say so rather than writing CHECK ALL as absolute in both |
 | identify the invocation as a consult | **by matcher** - certain | **by string test** - see the shape below |
-| the skip token | inside a JSON field - inert | **must sit INSIDE the quoted payload argument.** Appended bare it becomes positional arguments to `clavity ask` |
+| the skip token | inside a JSON field - inert | **goes in the payload TEXT itself** - inside the existing `clavity ask "<payload>"` string, alongside the prose. Never as an extra argument, and never appended bare after the closing quote |
 
 **The command test's SHAPE was never specified, and left loose it corrupts the metric.** A bare
 substring match for `clavity ask` fires on `echo "run clavity ask"` and on
@@ -115,9 +115,15 @@ already accepts for the hooks themselves.
 
 ## 4. Fail OPEN on error, fail CLOSED on a violation
 
-- **Any infrastructure failure exits 0.** No `jq`, unreadable file, unresolvable path, a `bash` that is
-  not Git Bash, a seam that does not exist yet at PreToolUse time. A broken hook must never paralyse a
-  stranger's session.
+- **An infrastructure failure never CAUSES a block - and never PREVENTS one.** No `jq`, unreadable file,
+  unresolvable path, a `bash` that is not Git Bash, a seam that does not exist yet at PreToolUse time.
+  On its own, each exits 0: a broken hook must never paralyse a stranger's session.
+  - **The earlier wording was "ANY infrastructure failure exits 0", and round 4's Absolutes Auditor
+    falsified it with the precedence rule below**: a payload naming a violating seam AND an unreadable
+    one exits **2**, so an infrastructure failure demonstrably does not always exit 0. **The rule was
+    never about the failure's exit code; it was about the failure not being allowed to decide.** Stated
+    that way it survives the counter-example - and it is the fourth absolute in this document to need
+    scoping.
   - **`sed` was in this list and is struck.** Round 2's census flagged it as an unlogged fail-open path;
     it is not a path at all - **the only thing that used `sed` was the palette extraction section 6
     deleted**, and this line outlived it. A dependency listed in an error table that the design no
@@ -141,6 +147,24 @@ The two rules gave contradictory instructions and the document did not say which
 **And it closes the smuggle the multi-seam rule exists to prevent.** If a missing seam could force
 exit 0, naming one alongside a real consult would be a two-character bypass - which is the same hole
 round 1 closed by requiring all seams to be checked, reopened through a different door.
+
+**A valid skip token BEATS a positive violation. That is what a hatch is, and the document never said
+it.** Round 4's narrator walked a consult carrying both - a seam with no marker AND a well-formed
+`AGY-SKIP: ROLES <reason>` - and found two rules giving opposite instructions with no precedence
+between them:
+
+| rule | says |
+|---|---|
+| section 4 | *a positive violation on ANY named seam BLOCKS* |
+| section 7 | the hook *MUST honour* a skip naming its own rule |
+
+> **Order of evaluation, stated once so no implementer guesses: check the skip token FIRST.** A valid
+> `AGY-SKIP: ROLES <reason>` short-circuits to `exit 0` and is logged as `skip`, whatever the seams
+> would have said. **A hatch that a violation can override is not a hatch** - it would open only when
+> nothing was wrong, which is precisely when nobody needs it.
+
+**This makes the skip count in section 8 load-bearing rather than decorative**, which section 6 already
+anticipated when it accepted that a static block message makes the token relatively cheaper.
 
 ### 4a. Every fail-open outcome is LOGGED with its own reason code
 
@@ -237,11 +261,14 @@ section 8 is load-bearing rather than decorative.
 **Format: `AGY-SKIP: <rule> <reason>`**, in-band in the payload. Example:
 `AGY-SKIP: ROLES verifying the gate blocks`.
 
-- **In-band, and section 3a says WHERE per product:** a JSON field in dotnet, and **inside the quoted payload argument** in classic, where appending it bare would become positional arguments to `clavity ask`.
+- **In-band, and section 3a says WHERE per product:** a JSON field in dotnet, and **inside the existing payload string** in classic - `clavity ask "...prose... AGY-SKIP: ROLES <reason>" --review-only`. **Verified: `clavity ask`'s first positional IS the payload**, so a token inside that string is inert. Round 4 argued this would crash the CLI by being read as a file path; that requires appending it as a SEPARATE argument, which this rule forbids. **The claim is refuted, and the wording was tightened anyway because it was ambiguous enough to be misread.**
 - **In-band, not an environment variable.** The agent invokes an MCP tool with a JSON payload and cannot
   set an env var for that call; an env-var hatch is reachable only by a human in a shell, which is a
   phantom for the actor it exists to rescue.
 - **The reason is mandatory.** A token with a rule and no reason does not skip.
+- **The skip is evaluated BEFORE the seams** (section 4). A valid token short-circuits to `exit 0` and
+  logs `skip`, whatever the seams would have said - stated here too because an implementer reading only
+  this section would otherwise have to infer the order.
 - **A hook MUST honour only a skip naming ITS OWN rule.** A bare `AGY-SKIP:`, or one naming a different
   rule, does not skip this gate. Without this, one token disables every present and future gate at once
   - a wildcard bypass, and the more dangerous failure direction than a hatch that fails to open.
@@ -291,9 +318,15 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
     > this fix carried the same disease it was fixing: without `jq` the id degrades to `default`, so the
     > first degraded invocation would write `default`, and **every degraded invocation in every future
     > session would match it and skip rotation for ever** - a one-session retry loop turned into
-    > permanent, silent disablement. When the id is unknown, **do not write the guard and do not skip**:
-    > attempt the rotation. That restores the old cost (one failed `mv`) on a rare path instead of
-    > buying it with an unbounded log.
+    > permanent, silent disablement. **The literal `default` is never written and never matched.**
+    >
+    > **Round 4 then caught the replacement reinstating the original bug.** "When the id is unknown, do
+    > not write the guard and do not skip" means a degraded session with a locked log retries the same
+    > doomed `mv` on **every** consult - exactly the loop round 1 outlawed, just confined to degraded
+    > environments. **A session-scoped guard needs a session, so when there is no session id, bound the
+    > COST instead of the attempts:** with no known id, attempt rotation only when the line count is an
+    > exact multiple of 100. That caps the wasted renames at 1% of invocations, needs no clock, no
+    > session and no new state, and stops entirely the moment a rotation succeeds.
 
     **State the resulting guarantee honestly: on a host where rotation cannot succeed, the log grows
     unbounded and the design accepts that** rather than pretending a bound it cannot enforce.
@@ -486,7 +519,10 @@ inspecting source text.
 | **a degraded invocation never writes `default` into `policy.rot`, and rotation still happens in a LATER session** | write the fallback id -> the second degraded session skips rotation for ever -> row reds. **Pins round 3's regression: the guard must not outlive the session it guards** |
 | **classic does NOT treat `echo "run clavity ask"` as a consult** - no log line, no subprocess | use a bare substring match -> the fixture records a phantom `no-seam` bypass -> row reds |
 | **classic DOES treat `foo && clavity ask "..."` as a consult** | anchor only to start-of-string -> row reds. **Both directions, or the test pins nothing** |
-| **the classic block message shows the skip token inside the quoted payload** | ship the dotnet message text in classic -> the token reads as bare positional arguments -> row reds |
+| **the classic block message shows the skip token inside the payload string** | ship the dotnet message text in classic -> the token reads as bare positional arguments -> row reds |
+| **a valid skip token beats a positive violation** - a payload with BOTH exits 0 and logs `skip` | evaluate the seams first -> the fixture blocks despite a well-formed token -> row reds. **Pins round 4's precedence rule; a hatch a violation can override opens only when nothing is wrong** |
+| **a payload with a violating seam AND an unreadable one exits 2** | let an infrastructure failure force exit 0 -> row reds. Pins that a failure never PREVENTS a block |
+| **a degraded session with a permanently failing `mv` attempts rotation on ~1% of appends, not all of them** | remove the modulo bound -> the fixture counts one attempt per invocation -> row reds. **Pins round 4's catch that round 3's fix reinstated round 1's loop** |
 | **the spec's error paths do not mention `sed`** | reintroduce a `sed` probe -> row reds. A dependency the design does not have must not appear in its failure table |
 | **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
 | the block message names the discipline's SKILL.md path | remove the pointer -> row reds |
@@ -589,6 +625,19 @@ sibling spec: a fix is unreviewed code, and the round after a fold is the highes
 **Three consecutive rounds have each found real defects in the previous round's fixes** - eight such
 regressions in total. The document is converging, but it has not yet produced a round whose findings
 were all about the ORIGINAL design rather than the repairs.
+
+### Round 4 - 4 bespoke seats, 4 findings: 3 folded, 1 refuted
+
+| finding | disposition |
+|---|---|
+| **"ANY infrastructure failure exits 0" is false** - a violating seam beside an unreadable one exits 2 | **folded, and the Absolutes Auditor seat earned its place.** The rule was never about the exit code; it was about the failure **not being allowed to decide**. Restated as "never CAUSES a block, never PREVENTS one", which survives the counter-example. **Fourth absolute in this document to need scoping** - and the seat also reported one claim it tried and could NOT falsify, which is what makes the pass credible |
+| **skip token versus positive violation had no precedence** | **folded - a genuine hole, not a detail.** Section 4 said any violation blocks; section 7 said the hook MUST honour a valid skip. **The skip wins and is evaluated first:** a hatch a violation can override opens only when nothing is wrong, which is exactly when nobody needs it |
+| **round 3's rotation fix reinstated round 1's retry loop** for degraded sessions | **folded.** "No session id -> always attempt" means a locked log retries the doomed `mv` on every consult. **A session-scoped guard needs a session, so with no id, bound the COST instead of the attempts** - attempt only on line counts divisible by 100, capping waste at 1% with no clock and no new state |
+| **the classic skip token would crash `clavity ask` as an unresolvable file path** | **REFUTED by measurement.** `clavity ask "<payload>" --review-only` takes the **payload** as its first positional, so a token inside that string is inert. The crash needs the token as a SEPARATE argument, which the rule forbids. **The wording was tightened anyway** - it was ambiguous enough that a careful reader misread it, which is its own defect |
+
+**Four rounds, and the fix-regression rate is falling** - three regressions in round 2, three in round
+3, one in round 4. The absolutes pass found the fourth and, more usefully, reported what it could not
+break.
 
 ## 14. Provenance
 
