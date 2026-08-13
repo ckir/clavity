@@ -1,10 +1,9 @@
 # Workflow-position resilience - surviving a session death
 
 **Status:** design, 2026-08-13. Ships with the plugin to end-user machines.
-🔴 **ONE OPEN DECISION BLOCKS THIS SPEC: the NAME (see 3f).** The mechanism recovers interrupted
-consults; it does not survive power loss, does not cover implementation work, and does not retain
-decisions. Shipping it under a name that promises power-failure resilience overclaims on three counts.
-**The owner decides the name; nothing else here is waiting.**
+**The NAME is DEFERRED TO PLAN TIME, gated on a measurement** (owner ruling, 2026-08-13). It is not
+renamed now, because whether "power-failure" is honest depends on a probe that has not been run -
+deciding first would be guessing. **Nothing else blocks this spec.** The decision rule is in 3g.
 **Replaces:** the POWER-FAILURE sections 9/9a of `2026-08-13-agy-policy-gate-implementation-spec.md`,
 which are marked DO-NOT-BUILD and retained there only as input.
 
@@ -307,8 +306,48 @@ structural consumer and would land at 0 out of 1,233 exactly like the plan check
 
 **So the remedy is the other option it offered: rename.** This mechanism recovers interrupted CONSULTS.
 It does not survive power loss, does not cover implementation, and does not retain decisions. **A name
-that says so is free; a mechanism that delivers the promise is not.** The name is the owner's call, and
-it is the one open decision blocking this spec.
+that says so is free; a mechanism that delivers the promise is not.**
+
+**The owner has since ruled the name DEFERRED to plan time and gated on a measurement (3g), so it no
+longer blocks this spec.** Note what that defers and what it does not: the power-loss overclaim is a
+live empirical question, but the other two - implementation coverage and decision retention - are
+settled permanently against this mechanism, so even a successful probe yields a narrower name than the
+discipline carries today.
+
+## 3g. The naming decision - deferred to plan time, with the measurement that settles it
+
+**Owner ruling: do not rename now. Defer the name, and attach a named measurement.** The point of the
+deferral is that one of the three overclaims is an open empirical question, and the other two are
+already settled - so plan time inherits a test rather than an argument.
+
+### The probe that must run
+
+> **Does bare `sync` actually flush to disk on this platform, and what does it cost?**
+>
+> **Not** "does it exit 0" - it already does, and that proved nothing. The probe needs a control that
+> must fail: something that distinguishes a real flush from a no-op. And the cost must be measured
+> under a concurrent build, not on an idle box, because the hook would fire after every agent write.
+> **Run it with the driver's own load accounted for** - this project has measured its benchmarks moving
+> by up to 6x under its own load, so an idle-box number is not the number.
+
+### The decision rule, so the name is not re-argued
+
+| overclaim | status | settled by |
+|---|---|---|
+| **does not survive power loss** | **OPEN** | the probe above |
+| **does not cover implementation work** | **SETTLED - permanent** | 3e/3f: 435 of 435 seams are consult payloads, and the peer's own search found no structural artifact to harvest |
+| **does not retain decisions** | **SETTLED - permanent** | section 1: deliberately out of scope, and an enforced index is the checkbox (0 of 1,233) |
+
+**Therefore:**
+- **If the probe SUCCEEDS** (bare `sync` demonstrably flushes at acceptable cost), the mechanism does
+  survive power loss for the work it covers. A power-failure name becomes defensible **provided the
+  scope note travels with it** - it recovers interrupted consults, not implementation and not decisions.
+- **If the probe FAILS** (no evidence of a flush, or the cost is unacceptable), **all three overclaims
+  stand and the name must change.** "Consult recovery" is the accurate description; the name is the
+  owner's, but it must not promise power-failure resilience.
+
+**Two of the three are permanent regardless of the probe.** So even the best outcome yields a narrower
+name than the discipline currently carries, and the scope note is not optional decoration.
 
 ## 4. What we do NOT build
 
@@ -379,6 +418,8 @@ vs administrative" framing (corrected to consumer-vs-no-consumer, 2a).
 
 | gap | where |
 |---|---|
+| **THE NAME** | **plan, and it is gated on a MEASUREMENT, not on taste - 3g carries the probe and the decision rule.** Owner ruling 2026-08-13: do not rename now, because one of the three overclaims is an open empirical question |
+| **does bare `sync` actually flush, and at what cost** | **plan - 3g. The probe needs a control that must fail (exit 0 already proved nothing) and a cost measured under concurrent load, not on an idle box.** This one settles the name |
 | which SessionStart hook is extended, per product | plan - dotnet and classic have different SessionStart sets |
 | the exact filename regex, including a Windows-path case | plan, pinned by the off-convention test row |
 | whether `-REPLY` files are ever reported | plan - they are peer output, so probably not, but it is reachable and should be an explicit row |
