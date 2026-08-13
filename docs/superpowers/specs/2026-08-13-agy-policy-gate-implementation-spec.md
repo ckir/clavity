@@ -178,7 +178,26 @@ filesystem paths. Recorded because the next reader will want to narrow it.
 **Resolve the repository root, never a relative path** - `git rev-parse --show-toplevel`, falling back
 to `pwd`. A relative path writes into whatever subdirectory the caller happened to be in.
 
-## 9. POWER-FAILURE, productised - a NUDGE, never a gate
+## 9. POWER-FAILURE - EXTRACTED. DO NOT BUILD SECTIONS 9 OR 9a FROM THIS FILE.
+
+> 🔴 **These two sections are OUT OF SCOPE for this build and are retained only until their own spec
+> exists.** Owner ruling: calling this a *productisation* was wrong. A productisation moves a working
+> thing; this changed **the detection mechanism** (command-text grep -> `HEAD` moved), **the trigger
+> gating** (always-on -> marker opt-in) and **the index-location contract** (the author's auto-memory
+> path -> "whatever the host provides"). That is a new design, and a new design earns its own
+> brainstorm, its own spec and its own review rather than riding in as a subsection of an unrelated gate.
+>
+> It is also a different *kind* of thing: this document specifies a stateless, syntactic check on a file
+> named in a payload. Power-failure resilience is a stateful discipline about surviving session death.
+> They share only the `.clavity/` infrastructure this build already provides.
+>
+> **What this build still owes it:** nothing but the generic infrastructure in sections 7 and 8 -
+> `.clavity/policy.log`, `.clavity/policy.degraded`, and the `AGY-SKIP: <rule> <reason>` token - which
+> exist so a future tenant does not reinvent them. **No power-failure artifact ships from this plan.**
+>
+> The text below is preserved verbatim as INPUT to that separate design, not as a requirement here.
+
+### (retained as input only) POWER-FAILURE as a nudge, never a gate
 
 Move the discipline out of the personal, unshipped
 `~/.claude/hooks/power-failure-index-reminder.sh` and into the plugin, so it installs, updates and
@@ -252,9 +271,6 @@ own auto-memory layout is not a contract for anyone else.
 | both `hooks/hooks.json` | dotnet: a NEW `mcp__.*agy_ask` entry. classic: a `Bash\|PowerShell` entry |
 | an existing SessionStart hook, both products | surfaces the degraded sentinel and the per-rule skip counts. Extend one rather than adding a fourth script |
 | `clavity-dotnet/plugin/skills/{agy-first,agy-capstone,agy-test-audit,adversarial-panel-review}/SKILL.md` | subagents consult over `agy_ask`, not the CLI |
-| `clavity-*/plugin/skills/power-failure-resilience/SKILL.md` | the productised discipline, both products |
-| `clavity-*/plugin/hooks/power-failure-index-reminder.sh` | the productised nudge, both products, marker-gated |
-| both `hooks/hooks.json` (PostToolUse) | registers the nudge on `Bash\|PowerShell` |
 | `scripts/tests/<name>.Tests.ps1` | every hook here has its own suite |
 | `plugin-hooks-payload.Tests.ps1` | **must change** - an explicit, named byte-identity exemption for the gate pair |
 | `justfile` | suite registration is an explicit list, not a glob |
@@ -284,8 +300,6 @@ inspecting source text.
 | the `.clavity/.gitignore` shield is restored before the first write | remove the re-assertion -> row reds |
 | the log rotates at the bound and the reader still counts | make the reader read only `policy.log` -> the count drops after rotation -> row reds |
 | classic: a non-`clavity ask` shell command exits 0 without reading anything | make it parse every command -> row reds |
-| the power-failure nudge does NOT fire without its marker | fire unconditionally -> row reds |
-| the power-failure nudge does NOT fire on `--dry-run` or `commit-graph` | drop the exclusions -> row reds |
 
 ## 12. What this is and is not
 
@@ -315,7 +329,6 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 | a seam path that resolves OUTSIDE the repository root | fails open under section 4, but the ordering deserves an explicit row so it is not discovered later |
 | the seam file exists but is unreadable (permissions) | fails open under section 4; name it so the implementer does not add a fail-closed branch for it |
 | which existing SessionStart hook is extended, per product | dotnet and classic have different SessionStart sets |
-| the power-failure skill's name and marker-creation step | must not collide with an existing skill name |
 
 ## 14. Provenance
 
