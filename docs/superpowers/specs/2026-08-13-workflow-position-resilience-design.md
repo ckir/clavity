@@ -41,6 +41,15 @@ resume state into a graveyard. This spec covers only the transient half. The dur
 the host already keeps it, and we ship no competitor to it - which is what would have created the
 two-index problem this design was accused of creating.
 
+**An honest wrinkle round 5 raised, and it is a real one.** Seam files DO accumulate durable content -
+a panel seam carries findings and rulings - and nothing here ever deletes one, so `.clavity/seams/`
+does drift toward exactly the graveyard this paragraph warns about. **Two things are true and both
+matter:** that accumulation predates this design and is not caused by it (434 seams existed before a
+line of this was written), and this design does not READ seams as a decisions store - it reports a path
+and stops. **But "we ship no competitor" is a claim about what we build, not about what the directory
+becomes**, and it would be dishonest to let the sentence imply the second. If `.clavity/seams/` is ever
+to be pruned, that is its own decision with its own owner, and it is not made here.
+
 ## 2. The measurement that decided the design
 
 Two mechanisms, same agent, same repository, full history:
@@ -138,8 +147,20 @@ One line per open seam, **and it must carry a DIRECTIVE, not only a fact**:
 
 ```
 workflow position: agy-capstone r5 (.clavity/seams/agy-capstone-r5-a2-audit.md), written 4 commits ago.
-Read that seam before starting new work, or say why you are not resuming it.
+REPLY RECEIVED - the peer has answered and the answer has not been folded.
+Read that seam and its -REPLY before starting new work, or say why you are not resuming it.
 ```
+
+**The `REPLY RECEIVED` line is round 5's finding and it is the difference between resuming and
+redoing.** A consult has two halves, and the crash window that matters most sits between them: the peer
+has written its answer and the author has not yet read it. **In that window the seam alone is the
+question, and pointing a successor at the question while the answer sits unread beside it invites it to
+re-ask** - paying for the consult twice and, worse, presenting a fresh answer as if the first had never
+arrived. **This was live while this very spec was written:** the round-5 reply existed on disk during
+the window in which its findings were unfolded.
+
+It is one `[ -f "${seam%.md}-REPLY.md" ]` test, and it adds no candidate - just one bit to a line that
+was already being printed.
 
 **Why the second sentence exists.** The round-1 panel's Mechanism Gamer argued the whole design is
 theatre: it surfaces the state, satisfies its own success criterion, and produces zero resumptions,
@@ -154,6 +175,23 @@ position: ... written 4 commits ago") states a fact and asks for nothing, and it
 Gamer's objection actually lands on.
 
 This costs one sentence, so there is no reason to ship the version the objection kills.
+
+**Scope of the directive rule, because round 5 caught it contradicting section 5.** As written, "every
+line must carry a directive" collided with the aggregate count line section 5 emits for seams that
+cannot be named - a count is a bare fact, so the reader could not obey both. The rule is therefore
+scoped, not weakened:
+
+> **Every line that NAMES a resumable seam must carry a directive.** An aggregate line names nothing to
+> resume, so it carries a different one - **what to do if the agent believes its own work is inside
+> that bucket** - rather than none at all.
+
+```
+3 unrecognised seams could not be named. If you are resuming work you cannot see listed above,
+list .clavity/seams/ yourself before starting.
+```
+
+A line with no actionable ending is the shape the Mechanism Gamer objection kills, and that is as true
+of a count as of a path.
 
 **It must never inject the seam's body into the context.** A single abandoned review would otherwise
 poison the startup of every future session with a ghost, permanently. Naming the path lets the agent
@@ -179,16 +217,35 @@ by a **per-seam** rule.
 
 > **The candidate rule, evaluated per seam:**
 >
-> 1. **A `-REPLY` file is never a candidate.** It is peer output, not a position record.
-> 2. **If no `*.head` marker exists at all**, every remaining seam is a candidate. Nothing has ever
->    concluded, so nothing can be aged out.
-> 3. **If the filename's discipline token is in the closed list (3a)**, the seam is a candidate unless
->    its OWN marker `.clavity/agy-marks/<token>.head` is newer than it. No other discipline's marker
->    can conclude it.
-> 4. **Otherwise** (off-convention name), the seam is a candidate if it is **at least as new as the
->    OLDEST on-convention seam on disk** - the CONVENTION EPOCH. Nothing expires with time, and no
->    marker is consulted. If no on-convention seam exists yet, the epoch is undefined and **every seam
->    is a candidate** (fail toward reporting, never toward dropping).
+> **Nothing is ever excluded. There is no cutoff, no epoch and no expiry - only RANKING.**
+>
+> 1. **A `-REPLY` file is not a candidate in its own right.** It is peer output, not a position record.
+>    **But if a candidate has a matching `-REPLY`, its line must say so** - see below; round 5 found
+>    that dropping the reply severs the loop it exists to close.
+> 2. **On-convention seams** (token in 3a's closed list) are **concluded** if their OWN marker
+>    `.clavity/agy-marks/<token>.head` is newer than them. No other discipline's marker can conclude
+>    them. Unconcluded ones are **RANK 1**.
+> 3. **Off-convention seams are RANK 2.** They are never concluded (their discipline is unknowable) and
+>    **never dropped**.
+> 4. **Section 5's cap fills from rank 1 first**, most recent first within a rank. Everything that does
+>    not fit is reported as a count, by rank.
+
+**Why every version of a cutoff was wrong, including the two I wrote after being told so.** Rule 4 went
+through four exclusion rules in four rounds - newest marker, a 10-seam window, a 50-commit window, a
+convention epoch - and **round 5 broke the epoch the same way**: it is computed from the oldest
+on-convention seam, so **writing your first correctly-named seam instantly and automatically drops every
+older mistyped one**, and deleting that seam advances the boundary again. Automatic clearing, triggered
+by an unrelated act. 3c forbids exactly that.
+
+> **The lesson, stated so the sixth version is not attempted: the requirement was never to EXCLUDE the
+> historical corpus. It was to stop it DROWNING the live signal.** Those are different problems, and
+> four rounds were spent solving the wrong one. Ranking solves the real one and cannot lose anything,
+> because it removes nothing.
+
+This also closes a defect round 5 found independently in the cap: with a single ranked list, **three
+mistyped seams written on Friday pushed a live on-convention review from Wednesday out of the report
+entirely** - the signal buried by the noise, which is the failure the cutoff was invented to prevent,
+arriving through the cap instead. Rank 1 cannot be displaced by rank 2.
 
 **Three measured defects in the global cutoff, each fatal on its own:**
 
@@ -214,7 +271,7 @@ by a **per-seam** rule.
 seams/capstone-r5-live.md   <- a LIVE seam, mistyped (no agy- prefix) -> rule 4 branch
 marks/agy-test-audit.head   <- an UNRELATED discipline completes one second later
 -> newer than the newest *.head marker?  NO - SILENTLY DROPPED
-   CONTROL: a correctly-named seam survives via rule 3   -> candidate
+   CONTROL: a correctly-named seam survives via the on-convention rule -> candidate
 ```
 
 A typo is not an exotic input; it is the single most likely author error, and section 5 exists
@@ -244,15 +301,17 @@ historical corpus is not old-and-therefore-stale; it is **pre-convention** - wri
 rule existed, so it was never subject to it. Calling those files "unrecognised" is a category error, and
 expiring them is solving a one-time cutover with a rolling window.
 
-So the epoch is **the oldest on-convention seam on disk**: the moment the convention started being used
-is the moment it starts applying. Nothing ages out, nothing is destroyed by the passage of time, and 3c
-holds. A typo made after the convention began is newer than the epoch and is therefore reported **for
-ever**, exactly as 3c and section 5 both require.
+Round 4 therefore set the epoch to **the oldest on-convention seam on disk**, reasoning that the moment
+the convention started being used is the moment it starts applying. **Round 5 killed that too, and the
+kill is instructive:** the epoch is computed from repository state, so it MOVES - writing your first
+correctly-named seam establishes it and instantly drops every older mistyped one, and deleting that
+seam advances it again. **A boundary derived from mutable state is a TTL wearing a file's clothes**,
+however fixed it looks in prose.
 
-**One candidate epoch was considered and rejected, because it fails the way the last three rules did.**
-Deriving the epoch from the hook script's own mtime looks equivalent and is cheaper - but **a plugin
-update rewrites that mtime**, which would instantly reclassify every live seam as pre-convention and
-drop it silently. Deriving it from seam files is immune: reinstalling the plugin does not touch them.
+**Two epochs were considered and both rejected**, and they are recorded so a sixth attempt is not made:
+the hook script's own mtime (a plugin update rewrites it, silently reclassifying every live seam), and
+the oldest on-convention seam (above). **The correct move was to stop excluding anything at all** - see
+the ranking rule above.
 
 **Rule 2's honest limit, also from round 2.** It assumes an empty marker directory means a fresh
 repository. A user who runs consults for weeks without ever completing a discipline has seams and no
@@ -359,7 +418,10 @@ design exists to preserve. **Never take the destructive action on an inference.*
 > was a TTL, which this heading forbids. Each round argued the parameter and none questioned the
 > framing. **If a future round proposes any rule under which a seam stops being reported merely because
 > time or work has passed, it is re-breaking this axiom.** The only permitted boundary is the fixed
-> convention epoch in 3b-0, which never moves and expires nothing.
+> **There is no permitted boundary at all.** Round 4 wrote an exemption here for a "fixed convention
+> epoch"; round 5 showed that epoch moved too, because it was derived from repository state. 3b-0 now
+> excludes NOTHING and only ranks. **Any future rule that decides a seam is no longer worth reporting is
+> re-breaking this axiom, whatever it is keyed on.**
 
 **Clearing is therefore explicit and human-or-discipline driven**, never automatic:
 - a discipline that COMPLETES writes its `.clavity/agy-marks/<name>.head` marker as it already does;
@@ -484,6 +546,20 @@ implementation case needs a different idea rather than a bolted-on field.
   startup line names a seam, and the seam records what the round was about, so an agent that reads it
   learns what it does not know.
 
+  **Round 5 attacked that mitigation as false - "a round 5 seam contains only round 5" - and the
+  measurement refutes it for the discipline that matters, with a caveat worth keeping.** A panel seam
+  carries a running do-not-re-raise ledger by mandate, so it accumulates every earlier round:
+
+  ```
+  agy-panel-r5-....md : ledger present, names Round 1: Round 2: Round 3: Round 4:, 1 owner ruling
+  agy-panel-r3-....md : ledger present, names Round 1: Round 2:,                   1 owner ruling
+  CONTROL limitations-open.md (a non-panel consult) : no ledger at all
+  ```
+
+  **So the mitigation holds exactly as far as the discipline inlines a ledger, and no further** - the
+  control is a real seam on this disk with none. It is a partial mitigation for multi-round reviews, not
+  a general answer to lost decisions, and section 1's exclusion still stands.
+
 ## 3f. Peer review of the limitations - what survived measurement
 
 The three limitations in 3e were put to the peer with instructions to attack them. Its dispositions,
@@ -587,7 +663,7 @@ name than the discipline currently carries, and the scope note is not optional d
 |---|---|---|
 | the author names a seam off-convention | the reader cannot parse discipline or round | **it must degrade, not vanish**, and **the degraded line carries the same DIRECTIVE as the normal one** (3b): `an unrecognised seam exists (<path>), written N commits ago. Read it before starting new work, or say why you are not resuming it.` Round 4 caught that the round-1 imperative fix had been applied to the normal line and not to this one, leaving the degrade path in exactly the shape the Mechanism Gamer objection kills. **The path is echoed ONLY if its basename passes section 6's allowlist**; if it does not, report `N unrecognised seams could not be named` and nothing else - a bare count, never a description of the file |
 | a review is genuinely abandoned | the seam is surfaced forever until deleted | one line per session. Accepted, by the asymmetry in 3c |
-| many seams accumulate | the startup line becomes a wall | cap the report at the **3 most recent unconcluded** seams and state the count of the remainder. A cap that is silent is a lie; the count must be printed |
+| many seams accumulate | the startup line becomes a wall | cap the report at **3 seams, filled from RANK 1 first** (3b-0), most recent first within a rank, and state the remainder as a count **per rank**. A cap that is silent is a lie; the count must be printed. **Rank-blind capping was a real defect** - round 5 showed three mistyped seams burying a live on-convention review, which is the cutoff's failure arriving through the cap |
 | the successor is told a seam exists and does not read it | resume is no better than today | accepted: this is a floor, not a guarantee. The seam's primary consumer remains the peer, which is what keeps it written at all |
 | the user uninstalls the plugin | seams remain in `.clavity/`, unread | harmless: gitignored runtime state, no residue outside the directory |
 
@@ -632,7 +708,9 @@ find /tmp/cs/.clavity/seams -maxdepth 1 -type f
 
 **The reader must NOT create them** - it is a reader, and creating a seams directory on a machine that
 has never run a consult would be writing state nobody asked for. It must treat each as *absent means
-empty*: no seams means no output and exit 0; no `agy-marks/` means rule 2. The section 7 row covering
+empty*: no seams means no output and exit 0; **no `agy-marks/` means no discipline has concluded, so
+every on-convention seam is unconcluded and ranks first** - the reader must not treat a missing marker
+directory as a reason to report nothing. The section 7 row covering
 `.clavity/` itself does not cover this, because the parent can exist while both children do not - which
 is precisely what happens the first time any other hook asserts the shield.
 
@@ -729,7 +807,7 @@ mistake the allowlist for protection it never provided.
 |---|---|
 | an unconcluded seam is reported with discipline and round | remove the filename parse -> row reds |
 | the report names the PATH and does NOT contain the seam's body | inline the content -> row reds |
-| **a seam OLDER than every discipline marker is not a candidate at all** | drop the candidate filter -> the fixture's 400 historical seams flood the report -> row reds. Pins 3b-0 |
+| **400 historical seams do not flood the report** | rank blind, or emit every candidate by name -> the fixture's 400 pre-convention seams bury the live ones -> row reds. **Note what this row does NOT say: they are not excluded, they are ranked below and counted.** The round-1 version of this row demanded exclusion and was wrong for five rounds |
 | a seam whose discipline marker is NEWER than it is NOT reported | drop the marker check -> row reds |
 | a seam NEWER than its discipline marker IS reported | invert the `-nt` comparison -> row reds. Pins the direction, which a one-sided row would not |
 | **a seam is still reported after HEAD has moved** | add a HEAD-based TTL -> row reds. This pins the 3c refutation |
@@ -745,9 +823,10 @@ mistake the allowlist for protection it never provided.
 | the shield is asserted before any write | remove the assertion -> row reds |
 | **the shield assertion runs when `.clavity/` does not exist yet** | drop the `mkdir -p` -> the fixture's fresh-install case fails `No such file or directory` -> row reds. Pins the section 6 correction |
 | **a paused `agy-capstone` seam is STILL reported after `agy-test-audit` completes** | replace the per-seam rule with one global cutoff -> row reds. This is the round-1 finding measured live (`agy-first.head` five hours newer than `agy-capstone.head`) and it is the single most important row here |
-| **appending to `skipped.log` concludes nothing** | let rule 4 read every file in `agy-marks/` instead of `*.head` -> the fixture's live seam vanishes -> row reds |
+| **appending to `skipped.log` concludes nothing** | let the conclusion test read any file in `agy-marks/` rather than exactly `<token>.head` -> the fixture's live seam is marked concluded by a recorded NON-completion -> row reds |
 | **with `agy-marks/` empty, every seam is a candidate; with it absent, the hook still exits 0** | pass the directory itself as the `-newer` argument -> the empty case silently filters by the directory's mtime and the absent case errors -> row reds. Both were measured |
-| **a `-REPLY` file is never reported** | drop rule 1 -> the fixture's 14 replies double the report -> row reds |
+| **a `-REPLY` file is never a candidate of its own** | drop rule 1 -> the fixture's 14 replies double the report -> row reds |
+| **a candidate whose `-REPLY` exists is reported with `REPLY RECEIVED`; one without it is not** | drop the reply check -> the successor is pointed at the question while the answer sits unread -> row reds. **Both halves, or the flag is decoration** |
 | **an off-convention token is reported as unrecognised, never resolved to a marker** | add prefix or fuzzy matching so `capstone-stage2` resolves to `agy-capstone.head` -> a live seam is wrongly concluded -> row reds. Pins 3a's closed list |
 | **a panel seam is concluded once `agy-panel.head` is written** | omit the panel's marker contract -> the seam is reported forever -> row reds |
 | **the reported age equals the fixture's known commit count** | pass a date string git cannot parse instead of `@<epoch>` -> git returns a plausible wrong number on exit 0 rather than erroring -> row reds. This is the only way to pin 3b-i behaviourally: the failure has no error to assert on |
@@ -758,11 +837,11 @@ mistake the allowlist for protection it never provided.
 | **the degraded off-convention line carries the same directive as the normal line** | drop the imperative from the degrade path only -> row reds. Round 1's fix was applied to one of the two lines and round 4 found the other |
 | **a basename failing the allowlist produces a bare COUNT and no description** | print any per-file detail (position, length, a redacted form) -> row reds |
 | **an off-convention seam NEWER than the oldest on-convention seam is reported, and STILL reported after 200 further commits** | reintroduce any expiry - marker recency, a seam-count window, a commit-age window -> row reds. **This is the round-4 row and it pins 3c's axiom against the rule that broke it three times** |
-| **an off-convention seam OLDER than the oldest on-convention seam is not a candidate** | drop the epoch -> the fixture's 400 pre-convention seams flood the report -> row reds |
-| **with no on-convention seam on disk, every seam is a candidate** | treat an undefined epoch as "exclude everything" -> row reds. Fail toward reporting |
-| **the epoch survives touching the hook script** | derive the epoch from the hook's own mtime -> a simulated plugin update reclassifies every live seam as pre-convention -> row reds. The rejected alternative, pinned so it is not re-adopted |
+| **NO seam is ever excluded - every one appears either by name or in a count** | add any exclusion rule (marker recency, a seam-count or commit-age window, an epoch from the oldest on-convention seam, the hook's own mtime) -> a fixture seam vanishes from both the list and the counts -> row reds. **Five exclusion rules were written and all five were wrong; this row is what stops a sixth** |
+| **a live on-convention seam is reported even when 3 newer off-convention seams exist** | rank by mtime alone instead of rank-then-mtime -> the live review is pushed into the remainder -> row reds |
+| **writing the first on-convention seam does not change what else is reported** | derive any boundary from repository state -> the fixture's older mistyped seams drop the moment a well-named one appears -> row reds |
 | **no candidacy decision reads the reported age** | make any branch of the candidate rule depend on the commit age -> row reds. A branch switch would then silently evict seams |
-| **`agy-capstone-r5.md` - no topic segment - resolves via rule 3, not rule 4** | require the topic (`-r[0-9]+-.+`) -> a valid on-token live seam falls to the heuristic branch -> row reds |
+| **`agy-capstone-r5.md` - no topic segment - is treated as ON-convention, not off** | require the topic (`-r[0-9]+-.+`) -> a valid on-token live seam falls to the heuristic branch -> row reds |
 | **a missing `.clavity/seams/` or `.clavity/agy-marks/` produces no output and exit 0** | query them without an existence check -> `find: No such file or directory` on day zero -> row reds. The parent can exist while both children do not |
 | **the reader does NOT create `seams/` or `agy-marks/`** | add a `mkdir -p` for either -> row reds. A reader that provisions state on a machine that never ran a consult is writing for a successor |
 | **`agy-capstone-stage2.md` is treated as off-convention, NOT resolved to `agy-capstone`** | relax the anchored full-match to a prefix match -> a live seam is concluded against a marker that was never about it -> row reds |
@@ -778,7 +857,7 @@ vs administrative" framing (corrected to consumer-vs-no-consumer, 2a).
 **Closed by round 1 of the panel** (peer escalation, 2026-08-13 - 8 findings raised, 6 folded, 2
 refuted by measurement, plus 3 the panel did not find): the single global cutoff (replaced by the
 per-seam rule, 3b-0); `skipped.log` counting as a completion (3b-0 rule 4); the empty and absent
-marker-directory cases (3b-0 rule 2); free-prose discipline tokens (closed list, 3a); the panel
+marker-directory cases (3b-0, the no-marker case); free-prose discipline tokens (closed list, 3a); the panel
 discipline having no marker at all (section 6); the missing `mkdir -p` before the shield (section 6);
 the purely declarative startup line (3b); the unscoped "give the agent a turn" note (3d); `date -r`'s
 default format (3b-i - **the stated locale mechanism was refuted here and the fix adopted anyway**,
@@ -800,7 +879,7 @@ rule, and the sweep those triggered produced the rest.
 | `tr -d` is the wrong guard - prose in a filename needs no control character | folded: **replaced by an allowlist**, and the round-1 imperative fold is recorded as having made this worse. Two right fixes, jointly worse |
 | the closed list could be derived from the directory, losing `agy-panel` on fresh installs | folded into 3a as a rule, not latitude |
 | prefix vs anchored extraction for `agy-capstone-stage2.md` | folded into 3a: single anchored full-match |
-| rule 2 floods if consults run for weeks with no completion | folded as a stated, bounded limit - section 5's cap holds it, and one `agy-first` completion ends it |
+| the no-marker case floods if consults run for weeks with no completion | folded as a stated, bounded limit - section 5's cap holds it, and one `agy-first` completion ends it |
 | editing a concluded seam "irreversibly corrupts" state | **confirmed as a mechanism, refuted as severity** - measured reversible in 3 steps, and it fails in the direction 3c already chose |
 
 **The pattern worth keeping from these two rounds:** round 1's fix was correct about its finding and
@@ -828,13 +907,27 @@ all folded, and one of them is why the whole review was worth running:**
 
 | finding | disposition |
 |---|---|
-| **every version of rule 4 was a TTL, and section 3c is titled "No TTL, no auto-delete"** | **folded, and it is the best finding of the review.** Verified verbatim: 3c's heading against rule 4's `age <= 50`. **Three rewrites all argued the PARAMETER; none questioned that off-convention seams needed automatic expiry at all** - the shared assumption the Historian was seated to find. Replaced by a fixed convention EPOCH that expires nothing, and 3c now carries a guard against re-breaking it |
+| **every version of rule 4 was a TTL, and section 3c is titled "No TTL, no auto-delete"** | **folded, and it is the best finding of the review.** Verified verbatim: 3c's heading against rule 4's `age <= 50`. **Three rewrites all argued the PARAMETER; none questioned that off-convention seams needed automatic expiry at all** - the shared assumption the Historian was seated to find. Replaced by a convention EPOCH - **which round 5 then killed as well, because an epoch derived from repository state moves. See the round-5 table: the answer was to stop excluding anything** |
 | the commit age is unstable across branch switches and rebases | folded - and it stopped mattering, because rule 4 no longer reads it. The age is explicitly a decoration again, and the document now says the word is load-bearing |
 | "its position in the directory" is undefined | folded - **the honest answer was that I had not decided**, which is precisely how two implementers produce two outputs. Replaced by a bare count |
 | the degrade path is purely declarative, which the design itself says produces nothing | folded - round 1's imperative fix had been applied to one of the two lines and not the other |
 
 **A correct measurement of the wrong quantity is still a wrong rule.** Round 3's commit-age numbers were
 real, the separation was wide, and the rule built on them violated an axiom stated two sections away.
+
+**Closed by round 5** (bespoke seats: a Section-Conflict Auditor collecting every "must/never/only" and
+comparing them pairwise ACROSS sections, and an Owner-Ruling Auditor checking whether four rounds of
+amendment still honoured the recorded rulings; plus the two core seats). **6 findings, 5 folded, 1
+refuted:**
+
+| finding | disposition |
+|---|---|
+| **the convention epoch moves, so it is a TTL too** | **folded, and it ends the rule-4 saga.** Writing your first correctly-named seam establishes the epoch and instantly drops every older mistyped one; deleting that seam advances it again. **Five exclusion rules in five rounds, all wrong.** The requirement was never to EXCLUDE the historical corpus but to stop it DROWNING the signal - different problems. **3b-0 now excludes nothing and only RANKS** |
+| the rank-blind cap buries a live review under three fresh typos | folded - the cap fills from rank 1 first. **This is the cutoff's own failure arriving through the cap**, which is why removing the cutoff alone would not have been enough |
+| the bare-count degrade line is declarative, contradicting "must carry a DIRECTIVE" | folded - the directive rule is **scoped** rather than weakened: a line that names a resumable seam carries a resume directive; an aggregate line carries a different one, never none |
+| **dropping `-REPLY` severs the consult loop** | **folded, and it is the round's most useful finding.** The crash window that matters most is between the peer answering and the author reading; pointing a successor at the question while the answer sits unread invites it to re-ask. One `[ -f ... ]` test, one `REPLY RECEIVED` flag, no new candidate. **This was live while the spec was written** |
+| `.clavity/seams/` drifts into the graveyard section 1 swore off | folded as an honesty note - the accumulation predates this design and is not read by it, but "we ship no competitor" is a claim about what we BUILD and must not be allowed to imply more |
+| **the seam cannot mitigate lost decisions - "a round 5 seam contains only round 5"** | **REFUTED by measurement, with a caveat kept.** A panel seam carries a running ledger by mandate: the round-5 seam names Rounds 1-4 and an owner ruling, the round-3 seam names Rounds 1-2, and a **control** (a non-panel consult seam) has none. So the mitigation holds exactly as far as a discipline inlines a ledger - and no further |
 
 **Resolved at plan time, each with a home:**
 
@@ -851,7 +944,7 @@ real, the separation was wide, and the rule built on them violated an axiom stat
 
 | was open | now |
 |---|---|
-| whether `-REPLY` files are ever reported | **DECIDED: never.** 3b-0 rule 1, with a test row. They are peer output, not a position record, and they were 14 of the 28 live candidates |
+| whether `-REPLY` files are ever reported | **DECIDED: never as a candidate of their own** (3b-0 rule 1; they were 14 of the 28 live candidates) - **but round 5 corrected the other half: a candidate whose reply EXISTS must be flagged `REPLY RECEIVED`.** The crash window between the peer answering and the author reading is the one where a successor would otherwise re-ask a question that is already answered |
 | which disciplines need the convention | **DECIDED by 3a's closed token table**, because the token must equal a marker basename for the conclusion test to resolve at all. Measured: 0 of 8 real prefixes resolved under the free-prose version |
 
 **Known and accepted, not gaps:** this is a floor, not a guarantee (5); a seam's primary consumer stays
