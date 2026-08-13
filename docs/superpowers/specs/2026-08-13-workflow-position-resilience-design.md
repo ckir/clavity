@@ -11,8 +11,12 @@ personal hook would have kept its mechanism, and every part of that mechanism ch
 
 ## 1. The problem, stated precisely
 
-A session dies without warning - power cut, box reset, context loss. A fresh session must resume the
-work. The question is what it needs that it cannot already get.
+A session dies without warning - the process is killed, the box resets, context is lost. A fresh session
+must resume the work. The question is what it needs that it cannot already get.
+
+**Scope of the claim, stated up front because section 3e narrows it twice:** this design addresses
+**session death**, not **power loss**, and it covers **consult-driven work**, not implementation. Both
+limits are traced in 3e. Do not read the title as a broader promise than that.
 
 **Git holds the past.** `git log` gives what landed, `git status` gives what is dirty, `git stash list`
 gives stashes. None of that needs saving.
@@ -178,7 +182,7 @@ A session ends one of two ways, and section 3 covers only one of them.
 
 | ending | today |
 |---|---|
-| **unannounced** - crash, power cut | the seam, harvested for free (3, 3a-3c) |
+| **unannounced** - the session dies | the seam, harvested for free (3, 3a-3c) - **for consult-driven work only, and not against power loss; see 3e** |
 | **announced** - the human compacts | **nothing.** `PreCompact` fires exactly one hook, the anomaly reminder, and **no shipped hook mentions the index at all** |
 
 **The owner's observation, which started this section:** typing *"I will /compact then continue. Are you
@@ -218,6 +222,40 @@ sees the seam path whether or not the summariser cooperates, which is the more r
 **A note worth passing to the human rather than burying:** since the mechanism is the turn and not the
 question, *any* message before `/compact` grants it. The habit that works is "give the agent one turn
 before compacting" - the phrasing is incidental.
+
+## 3e. Does this actually survive a crash? Traced, not assumed
+
+**Answer: for consult-driven work, yes. For implementation work, NO - and that is the design's real
+hole, stated here rather than discovered later.**
+
+**The path that works.** A crash writes no marker, because `.clavity/agy-marks/<name>.head` is written
+only when a discipline COMPLETES. So a seam from an interrupted review is necessarily newer than the
+newest marker, which makes it a candidate under 3b-0. The next session starts (`SessionStart` matcher
+`startup`), the reader names the seam and its age, and the agent gets a turn on the human's first
+message in which to read it. Every link in that chain holds.
+
+**The hole, measured: 435 of 435 agent-written seams are consult payloads.** A seam is *by definition*
+what an agent writes to ask the peer something. **A session that edits code, runs tests and commits -
+with no consult - produces no seam at all.** After a crash the successor gets git, which says what
+landed, and nothing that says which task was in flight. The plan's checkboxes cannot fill that hole
+either: 0 ticked out of 1,233.
+
+**This is not fixable by trying harder.** Implementation work has no structural artifact to harvest - no
+write the agent must make for its own immediate reasons - so any record of "which task am I on" would be
+written purely for a successor, which section 2a says goes to zero. **Inventing one would reproduce the
+checkbox.** The honest position is that this design covers reviews and not implementation, and that the
+implementation case needs a different idea rather than a bolted-on field.
+
+**Two further limits, both real:**
+- **Process crash versus power cut.** A seam already written and closed survives a process death. A
+  seam written seconds before a POWER cut may still sit in the OS buffer and be lost - the file is
+  written by the host's tooling, which this design does not control, so it cannot force an `fsync`. The
+  earlier WAL proposal carried an explicit `sync` for exactly this reason; that guarantee went away with
+  the WAL and is not recoverable here. **Claim resilience against session death, not against power
+  loss.**
+- **Durable decisions are out of scope by design** (section 1). On a machine with no host memory store,
+  a crash loses every owner ruling and rejected approach made in that session. This design does not
+  address that and must not be read as if it does.
 
 ## 4. What we do NOT build
 
