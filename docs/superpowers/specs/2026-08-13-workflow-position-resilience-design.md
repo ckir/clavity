@@ -1,6 +1,10 @@
 # Workflow-position resilience - surviving a session death
 
-**Status:** design, owner-approved 2026-08-13. Ships with the plugin to end-user machines.
+**Status:** design, 2026-08-13. Ships with the plugin to end-user machines.
+🔴 **ONE OPEN DECISION BLOCKS THIS SPEC: the NAME (see 3f).** The mechanism recovers interrupted
+consults; it does not survive power loss, does not cover implementation work, and does not retain
+decisions. Shipping it under a name that promises power-failure resilience overclaims on three counts.
+**The owner decides the name; nothing else here is waiting.**
 **Replaces:** the POWER-FAILURE sections 9/9a of `2026-08-13-agy-policy-gate-implementation-spec.md`,
 which are marked DO-NOT-BUILD and retained there only as input.
 
@@ -251,11 +255,60 @@ implementation case needs a different idea rather than a bolted-on field.
   seam written seconds before a POWER cut may still sit in the OS buffer and be lost - the file is
   written by the host's tooling, which this design does not control, so it cannot force an `fsync`. The
   earlier WAL proposal carried an explicit `sync` for exactly this reason; that guarantee went away with
-  the WAL and is not recoverable here. **Claim resilience against session death, not against power
+  the WAL. **Superseded in part by 3f: the peer found a hook surface that could carry a flush, so this
+  may be closable - but its proposed mechanism failed measurement and the fix is unproven. Until the
+  probe named in 3f exists, this limitation stands as written.** **Claim resilience against session
+  death, not against power
   loss.**
 - **Durable decisions are out of scope by design** (section 1). On a machine with no host memory store,
   a crash loses every owner ruling and rejected approach made in that session. This design does not
   address that and must not be read as if it does.
+
+## 3f. Peer review of the limitations - what survived measurement
+
+The three limitations in 3e were put to the peer with instructions to attack them. Its dispositions,
+each checked before folding.
+
+**Limitation 1, the implementation gap - CONFIRMED as an accepted hole.** The peer went looking for a
+structural artifact in implementation work and reports finding none that encodes workflow position:
+modified source shows the result, not the position in the plan. It agrees that demanding a declaration
+recreates the checkbox. No change.
+
+**Limitation 2, power loss - finding accepted, FIX NOT ADOPTED.** The peer correctly identified that a
+`PostToolUse` hook on `Write|Edit` already exists (`hooks.json:25`) and could carry a flush. **But its
+mechanism failed on measurement:**
+
+```
+sync -d <a file I own, just created>   ->  sync: error syncing '...': Permission denied
+sync -d <a path that does not exist>   ->  sync: error opening '...': No such file or directory
+```
+
+The control distinguishes the two, so the `Permission denied` is real and not a probe artifact: **the
+cheap per-file forms (`-d`, `-f`) do not work here.** Bare `sync` exits 0, but an exit code is not
+evidence that data reached the disk, and the peer asserted the flush without testing it. Its cost claim
+("negligible") is likewise unmeasured - a system-wide `sync` after every agent write blocks on every
+filesystem and affects unrelated processes.
+
+> **Plan-time item, with the measurement it requires:** before adopting any flush, prove that bare
+> `sync` actually flushes on this platform - not that it exits 0 - and measure its cost under a
+> concurrent build. **Until that probe exists, section 3e's power-loss limitation stands.**
+
+**Limitation 3, durable decisions - the peer's FINDING is right and its FIX contradicts its own
+reasoning.** It calls the omission fatal: a stranger installing something advertised as POWER-FAILURE
+RESILIENCE reasonably expects a crash not to vaporise the session's decisions, and *"the user does not
+distinguish between 'the agent forgot what round it was on' and 'the agent forgot we decided to drop
+Redis'"*. **That is correct, and it is the same class of defect the owner caught when he rejected the
+word "productisation": a name that promises more than the mechanism delivers.**
+
+Its proposed remedy - ship a durable index plus *"a mechanism to enforce its use"* - **is the checkbox it
+had just declared unbuildable four paragraphs earlier**, where it wrote that any mechanism demanding a
+declaration is administrative and will not be complied with. An enforced decisions-index has no
+structural consumer and would land at 0 out of 1,233 exactly like the plan checkboxes.
+
+**So the remedy is the other option it offered: rename.** This mechanism recovers interrupted CONSULTS.
+It does not survive power loss, does not cover implementation, and does not retain decisions. **A name
+that says so is free; a mechanism that delivers the promise is not.** The name is the owner's call, and
+it is the one open decision blocking this spec.
 
 ## 4. What we do NOT build
 
