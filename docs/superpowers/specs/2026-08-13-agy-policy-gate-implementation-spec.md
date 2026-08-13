@@ -36,14 +36,15 @@ file"*.
 ")`), then match the seam shape against that text. Never key on one field name: a renamed or added field would silently disable the gate. | 3 |
 | N19 | **Fixed order: resolve root -> EXTRACT candidate seam paths -> (any named?) create `.clavity/` and assert the shield -> evaluate skip -> evaluate seams -> log -> exit.** Extraction comes first because the create-or-not branch depends on its result; round 11 caught the earlier ordering asking a question before the step that answers it.** The skip short-circuits the DECISION, never the setup that makes logging possible. | 4, 8a |
 | N20 | `outside-repo` means **the SEAM path resolves outside the repository root**, not that the hook ran outside a repo - that case writes nothing at all (N7). | 4a |
-| N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). **The two reason-code sets are DISJOINT, which is what keeps them separable** - the reader counts decisions by the first set and anomalies by the second, and needs no extra column. Invocation counts come from decision lines only. | 8 |
+| N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). **`no-seam` is a DECISION reason** - it is the outcome of the invocation, not a property of some seam - so the decision set is `block`/`pass`/`skip`/`no-seam`. **The two reason-code sets are DISJOINT, which is what keeps them separable** - the reader counts decisions by the first set and anomalies by the second, and needs no extra column. Invocation counts come from decision lines only. | 8 |
 | N11 | Block message, in order: what is missing + the peer was not contacted; the literal path `adversarial-panel-review/SKILL.md`; what the check cannot do; the skip token. **Written per product.** | 6 |
 | N12 | dotnet: a NEW entry matching `mcp__.*agy_ask` alone. classic: **no new entry** - the check joins the existing per-command hook, and **must not merge its control flow**. | 3, 3b |
 | N13 | **`adversarial-panel-review/SKILL.md` must teach the `PANEL-SEATS:` line, shipping with or before the gate.** Measured: 0 skills teach it today. | 2 |
 | N14 | The SessionStart reader surfaces counts by reason over `policy.log` **and** `policy.log.1`, and **skips lines it cannot parse** rather than failing the session. | 8, 11a |
 | N15 | **Sanitise both agent-authored fields** - the seam path and the skip reason - by stripping control characters **and the TAB delimiter**, then length-capping. Newline-stripping alone leaves horizontal forging open. | 8 |
 | N16 | Classic identifies a consult by matching `clavity` and `ask` as **adjacent command words**, never as a free substring, and logs `no-seam` only for invocations it identified that way. | 3a |
-| N22 | **A seam path containing a SPACE must still be extracted.** Measured: `[^[:space:]"]*\.clavity/seams/[^[:space:]"]+\.md` silently fails on `.clavity/seams/my seam.md` while extracting the space-free control - **so the obvious regex is a silent bypass anyone can trigger by naming a file normally on Windows.** In the MCP form each string is its own line after the `
+| N22 | **Do NOT decide seam-hood by the path's SHAPE. Extract candidate tokens, RESOLVE them, and test CONTAINMENT under `<root>/.clavity/seams/`.** Measured, shape-matching silently misses `.clavity\seams\x.md`, `.clavity/scratch/../seams/x.md` and `.CLAVITY/SEAMS/X.MD` while the OS opens all three - three fail-opens from one regex. Resolution handles the whole class. **Normalise BOTH sides through the same function first:** measured, `git rev-parse --show-toplevel` returns `C:/Users/...` while `pwd` returns `/tmp/cn` for the same directory, and comparing them raw yields a false 'outside' - which here means fail-open. | 13 |
+| N23 | **A seam path containing a SPACE must still be extracted.** Measured: `[^[:space:]"]*\.clavity/seams/[^[:space:]"]+\.md` silently fails on `.clavity/seams/my seam.md` while extracting the space-free control - **so the obvious regex is a silent bypass anyone can trigger by naming a file normally on Windows.** In the MCP form each string is its own line after the `
 ` join, so match to end-of-line; in the shell form, honour quoting around the path. | 13 |
 | N17 | The log's `<seam>` column names the seam that **decided** the outcome, with a `+N` suffix when the payload named others. One line per decision, never one per seam. | 8 |
 
@@ -1072,7 +1073,48 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 | **`outside-repo` is a bypass** - name a seam-shaped path outside the root and pass | folded into section 12's accepted list: it is counted, not prevented, like every other bypass this design admits it cannot stop |
 | **N18 joins payload strings with spaces, breaking paths that contain spaces** | **PARTLY REFUTED, and the residue is worse than the claim.** N18 joins with `\n`, not spaces - so that premise is wrong. **But the space problem is real and independent:** measured, `[^[:space:]"]*\.clavity/seams/[^[:space:]"]+\.md` silently fails on `.clavity/seams/my seam.md` while extracting the space-free control. **A filename with a space - ordinary on Windows - is a silent bypass.** Folded as N22 |
 
-### OPEN for the owner - one round-6 finding I did not fold
+### Round 12 - 2 new seats, 6 findings: 5 folded, 1 escalated to the owner
+
+| finding | disposition |
+|---|---|
+| **shape-matching the seam path has three measured silent bypasses** | **folded as N22, and it changes the approach rather than patching the regex.** `.clavity\seams\x.md`, `.clavity/scratch/../seams/x.md` and `.CLAVITY/SEAMS/X.MD` are all missed while the OS opens them. **Stop deciding seam-hood by SHAPE; resolve the token and test CONTAINMENT.** That dissolves the class instead of adding a fourth alternative to a regex |
+| **and canonicalisation has its own trap** | **folded into N22, found by my own probe FAILING.** `git rev-parse --show-toplevel` returns `C:/Users/...` while `pwd` returns `/tmp/cn` for the same directory; compared raw, a legitimate seam reports "outside" and fails open. **My first probe concluded canonicalisation did not work - the control is what showed the probe was broken, not the technique** |
+| **N22's "match to end-of-line" drops a path embedded mid-sentence** | **folded - my own bug from round 11.** A consult saying *"Check .clavity/seams/a.md please"* would have failed open. Containment testing replaces the anchoring question entirely |
+| **N21 classified neither `no-seam` as decision nor diagnostic** | **folded - also mine.** It is a DECISION reason: the outcome of the invocation, not a property of a seam. Left unplaced, it would have vanished from the invocation count |
+| **classic's adjacent-word test is defeated by ordinary shell forms** | folded: `clavity   ask`, `clavity 'ask'` and line continuations all break a strict adjacency match. Normalise whitespace before testing, and accept that quoting games remain in classic's stated best-effort bucket |
+| **GREEN-CHECK VERDICT: NOT READY** - extracting security-critical paths from prose guarantees endless normalisation bugs | **ESCALATED to the owner, not folded.** The seat is right about the root cause, and N22 answers most of it: containment testing dissolves the normalisation class that produced these findings. **What it cannot dissolve is that the path is still SCRAPED from prose.** The structural alternative - a dedicated `seam` parameter on `agy_ask` and a `--seam` flag on `clavity ask` - would make the path a declared input rather than a guess, and it **changes a tool contract, which is outside this spec's scope.** See below |
+
+### OPEN for the owner - TWO items
+
+**2. The path is SCRAPED, not DECLARED - and a seat has called that a build blocker.**
+
+Round 12's Green-Check Auditor was asked to argue the document is ready and **ruled it NOT READY**, with
+one named cause: the gate decides whether to block based on a path it **guesses out of conversational
+prose.** Rounds 11 and 12 alone produced four silent bypasses from that surface - a space, a backslash,
+a traversal, a case difference - and the seat's claim is that this class never ends.
+
+**What I did about it, and where it stops.** N22 replaces shape-matching with resolve-and-contain, which
+**dissolves the normalisation class rather than patching another instance** - traversal, backslashes and
+case all become the operating system's problem, which it already solves. That is a real answer to most
+of the finding. **What it does not change is that the path is still scraped.**
+
+**The structural alternative, priced:** give the consult a **declared** seam parameter - a `seam` field
+on the `agy_ask` MCP tool and a `--seam <path>` flag on `clavity ask`. The hook would then read a
+parameter instead of guessing, and the entire extraction surface - both transports, every quoting and
+normalisation case, classic's whole "best-effort" concession - **disappears.**
+
+**Why it is the owner's call and not mine:**
+- **it changes a tool contract**, which this spec does not own;
+- it makes the gate's predicate depend on callers passing the parameter, which is a **new compliance
+  surface** where today there is none;
+- and section 2's predicate - "if the payload names a seam path" - is an **owner-settled decision**, so
+  replacing its input is a decision at the same level.
+
+**My read:** the declared parameter is the better design and the current one is shippable. Containment
+testing makes the scraped version defensible for this build; the declared version would make the whole
+extraction section unnecessary in the next one. **I would ship this and schedule that.**
+
+### OPEN for the owner - item 1, a round-6 finding I did not fold
 
 **Routing subagent consults over `agy_ask` (section 3) may freeze them.** The claim is that MCP tool
 calls surface a blocking modal, which a background subagent cannot answer. **What is verifiable:** the
