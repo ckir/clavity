@@ -214,6 +214,7 @@ exists.
 |---|---|
 | an unconcluded seam is reported with discipline and round | remove the filename parse -> row reds |
 | the report names the PATH and does NOT contain the seam's body | inline the content -> row reds |
+| **a seam OLDER than every discipline marker is not a candidate at all** | drop the candidate filter -> the fixture's 400 historical seams flood the report -> row reds. Pins 3b-0 |
 | a seam whose discipline marker is NEWER than it is NOT reported | drop the marker check -> row reds |
 | a seam NEWER than its discipline marker IS reported | invert the `-nt` comparison -> row reds. Pins the direction, which a one-sided row would not |
 | **a seam is still reported after HEAD has moved** | add a HEAD-based TTL -> row reds. This pins the 3c refutation |
