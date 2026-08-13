@@ -34,15 +34,17 @@ file"*.
 | N10 | **Invoke `jq` with `-r`.** Without it the path arrives quoted, `[ -f ]` fails, and the gate fails open silently on every call. | 13 |
 | N18 | **Extract candidate paths from ALL string values under `.tool_input`, recursively** (`[.tool_input // {} \| .. \| strings] \| join("
 ")`), then match the seam shape against that text. Never key on one field name: a renamed or added field would silently disable the gate. | 3 |
-| N19 | **Fixed order: resolve root -> (a seam was named?) create `.clavity/` and assert the shield -> evaluate skip -> evaluate seams -> log -> exit.** The skip short-circuits the DECISION, never the setup that makes logging possible. | 4, 8a |
+| N19 | **Fixed order: resolve root -> EXTRACT candidate seam paths -> (any named?) create `.clavity/` and assert the shield -> evaluate skip -> evaluate seams -> log -> exit.** Extraction comes first because the create-or-not branch depends on its result; round 11 caught the earlier ordering asking a question before the step that answers it.** The skip short-circuits the DECISION, never the setup that makes logging possible. | 4, 8a |
 | N20 | `outside-repo` means **the SEAM path resolves outside the repository root**, not that the hook ran outside a repo - that case writes nothing at all (N7). | 4a |
-| N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). Counting decisions and counting anomalies stay separable. | 8 |
+| N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). **The two reason-code sets are DISJOINT, which is what keeps them separable** - the reader counts decisions by the first set and anomalies by the second, and needs no extra column. Invocation counts come from decision lines only. | 8 |
 | N11 | Block message, in order: what is missing + the peer was not contacted; the literal path `adversarial-panel-review/SKILL.md`; what the check cannot do; the skip token. **Written per product.** | 6 |
 | N12 | dotnet: a NEW entry matching `mcp__.*agy_ask` alone. classic: **no new entry** - the check joins the existing per-command hook, and **must not merge its control flow**. | 3, 3b |
 | N13 | **`adversarial-panel-review/SKILL.md` must teach the `PANEL-SEATS:` line, shipping with or before the gate.** Measured: 0 skills teach it today. | 2 |
 | N14 | The SessionStart reader surfaces counts by reason over `policy.log` **and** `policy.log.1`, and **skips lines it cannot parse** rather than failing the session. | 8, 11a |
 | N15 | **Sanitise both agent-authored fields** - the seam path and the skip reason - by stripping control characters **and the TAB delimiter**, then length-capping. Newline-stripping alone leaves horizontal forging open. | 8 |
 | N16 | Classic identifies a consult by matching `clavity` and `ask` as **adjacent command words**, never as a free substring, and logs `no-seam` only for invocations it identified that way. | 3a |
+| N22 | **A seam path containing a SPACE must still be extracted.** Measured: `[^[:space:]"]*\.clavity/seams/[^[:space:]"]+\.md` silently fails on `.clavity/seams/my seam.md` while extracting the space-free control - **so the obvious regex is a silent bypass anyone can trigger by naming a file normally on Windows.** In the MCP form each string is its own line after the `
+` join, so match to end-of-line; in the shell form, honour quoting around the path. | 13 |
 | N17 | The log's `<seam>` column names the seam that **decided** the outcome, with a `+N` suffix when the payload named others. One line per decision, never one per seam. | 8 |
 
 ## 1. What this builds
@@ -387,6 +389,18 @@ named why: they are not nine bugs, they are one unresolved tension being patched
 - and would put one repository's seam paths in a file shared with every other repository, on a machine
 whose home directory this design has no business writing to. **The gate's subject is a repository; its
 telemetry lives with its subject.**
+
+**"Repository-local" means the log LIVES IN and DESCRIBES the activity of one repository - not that it
+may only mention paths inside it.** Round 11 read the ruling as forbidding an `outside-repo` diagnostic
+and was right to ask: a consult **issued from this repository** that names a path outside it **is this
+repository's activity**, and recording it is exactly in scope. What is out of scope is a consult issued
+from somewhere that has no `.clavity/` at all - **nothing to write to, and nobody who asked for a log.**
+
+**The reversal cost, recorded so a future owner can price it rather than re-derive it.** Reversing this
+ruling means a user-global log (`~/.clavity/policy.log` or similar) **plus a source-repository column**,
+and it buys complete visibility across non-repo and never-onboarded directories. **It costs the "never
+write to the home directory" boundary, and it pools one repository's seam paths with every other
+repository's on a shared machine.** That trade is available; it is not made here.
 
 ### 4a. Every fail-open outcome is LOGGED with its own reason code
 
@@ -868,6 +882,7 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 - clavity-classic's extraction is fragile and fails open more often than dotnet's. **Its CHECK-ALL guarantee is best-effort**, so the multi-seam smuggle is closed in dotnet and only mitigated in classic (section 3a).
 - **Classic's extraction is not merely unreliable, it is STEERABLE, and that is a stronger claim.** An agent that writes the path in a form the parser misses - `--file=".clavity/seams/x.md"`, an unusual quoting, a variable - produces a `no-seam` outcome and passes. The gate is a floor in dotnet and a speed bump in classic; **section 4a's counting is what remains, and for classic it is most of the value.**
 - **Classic's consult test admits residual false positives** by design; chasing them with a shell parser is explicitly rejected.
+- **`outside-repo` is itself a bypass mode:** a seam-shaped path outside the repository root passes. Counted, not prevented, like every other bypass this design admits it cannot stop (4a-0).
 - **Classic can misclassify an `outside-repo` seam as `no-seam`**, suppressing both the directory creation and the telemetry for that call. A consequence of best-effort extraction, stated rather than discovered.
 - Rotation is best-effort on Windows.
 - The skip token is honest but cheap; the per-rule skip count is its only counterweight.
@@ -1045,6 +1060,17 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 | **classic covers only ONE of the two transports it is registered for** | **folded.** Its matcher includes `mcp__.*agy_ask`, so a classic user consulting over MCP reaches the hook and the shell string test misses them entirely. **A gate that covers one of two supported transports is a gate for half the users** |
 | **skip-first could log before `mkdir` had run** | **folded as N19**, a fixed order: resolve root, create and shield if a seam was named, then skip, then seams, then log. The skip short-circuits the DECISION, never the setup that makes logging possible |
 | **the gate is git-scoped, so hg/svn/plain directories get nothing** | **folded as a stated limitation.** Accepted: `.clavity/` is gitignored by construction and every discipline here assumes git. The alternative round 9 deleted bought that coverage by littering |
+
+### Round 11 - 2 new seats, 6 findings: 5 folded, 1 partly refuted
+
+| finding | disposition |
+|---|---|
+| **4a-0 appears to forbid the `outside-repo` diagnostic it elsewhere requires** | **folded as a clarification, and the question was fair.** "Repository-local" means the log LIVES IN and DESCRIBES one repository's activity - a consult **issued from here** naming a path elsewhere is this repository's activity. What is out of scope is a consult from a directory with no `.clavity/` at all |
+| **the ruling was never stress-tested; argue the reverse** | **folded as a recorded REVERSAL COST.** A global log plus a source-repository column buys the missing coverage and costs the never-write-to-home boundary, pooling one repo's seam paths with every other's. **A ruling nobody priced the reverse of is a preference written in bold** |
+| **N19's order asks "was a seam named?" before the step that answers it** | **folded.** Extraction now precedes the create-or-not branch. My own ordering rule had the dependency backwards |
+| **N21's decision and diagnostic lines corrupt the reader's counts** | **folded as a clarification:** the two reason-code sets are DISJOINT, which is exactly what keeps them separable with no extra column. Invocation counts come from decision lines only |
+| **`outside-repo` is a bypass** - name a seam-shaped path outside the root and pass | folded into section 12's accepted list: it is counted, not prevented, like every other bypass this design admits it cannot stop |
+| **N18 joins payload strings with spaces, breaking paths that contain spaces** | **PARTLY REFUTED, and the residue is worse than the claim.** N18 joins with `\n`, not spaces - so that premise is wrong. **But the space problem is real and independent:** measured, `[^[:space:]"]*\.clavity/seams/[^[:space:]"]+\.md` silently fails on `.clavity/seams/my seam.md` while extracting the space-free control. **A filename with a space - ordinary on Windows - is a silent bypass.** Folded as N22 |
 
 ### OPEN for the owner - one round-6 finding I did not fold
 
