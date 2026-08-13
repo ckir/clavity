@@ -103,10 +103,17 @@ the exact count section 4a asks a human to trust.**
 > command that merely mentions the string is not a consult and writes nothing.
 
 **The earlier version anchored to the START of the command (or just after a `;`, `&&`, `||` or `|`), and
-round 5 showed that leaks.** Any wrapper defeats it - `time clavity ask`, `sudo clavity ask`, and
-notably `rtk clavity ask`, since `rtk` is a command-rewriting wrapper this project's own tooling uses.
-**A wrapped consult would evade the gate silently and log nothing at all** - no block, no `no-seam`, no
-trace.
+round 5 showed that leaks.** Any leading word defeats it, and the ones a stranger's box supplies are
+ordinary: `time clavity ask`, `sudo clavity ask`, `env FOO=1 clavity ask`, `nice clavity ask`, or a
+shell alias or function that prepends anything at all. **A wrapped consult would evade the gate
+silently and log nothing** - no block, no `no-seam`, no trace.
+
+> **Do not name a specific wrapper here, and do not use one as a fixture.** An earlier version of this
+> paragraph justified the rule with a command-rewriting wrapper that exists on the AUTHOR's machine.
+> **Section 9a of this same document already forbids that** - *"a shipped hook must assume no such
+> wrapper exists"* - so the requirement was right and its justification imported the exact assumption
+> the document had banned. **The rule stands on wrappers that ship with the OS**; anything narrower is
+> an author-machine assumption wearing a rationale.
 
 > **The trade is deliberate and it goes toward VISIBILITY.** A looser test admits some false positives,
 > each of which writes one `no-seam` line a human can inspect. A tighter test admits silent bypasses,
@@ -564,7 +571,7 @@ inspecting source text.
 | **a `no-jq` outcome appears in `policy.log` with its reason code** | reintroduce a sentinel-only path -> the reader reports nothing -> row reds |
 | **every log line has exactly 5 TAB-separated fields, empty ones written as `-`** | let an empty field collapse -> a fixture with no detail shifts every later column -> row reds |
 | **the reader counts by reason code over BOTH `policy.log` and `policy.log.1`** | read only the live file -> a fixture that rotates mid-run undercounts -> row reds |
-| **classic detects `rtk clavity ask "..."` and `sudo clavity ask "..."`** | anchor the test to start-of-command -> the wrapped fixtures evade the gate silently -> row reds. **Round 5's leak, and `rtk` is a wrapper this project's own tooling uses** |
+| **classic detects `sudo clavity ask "..."`, `time clavity ask "..."` and `env FOO=1 clavity ask "..."`** | anchor the test to start-of-command -> the wrapped fixtures evade the gate silently -> row reds. **Fixtures must use wrappers that exist on a stranger's box** - naming a tool specific to the author's machine would make the suite pass for the wrong reason there and be meaningless everywhere else |
 | **classic does NOT add a second PreToolUse registration** | register a new script instead of extending the existing hook -> assert the classic `hooks.json` PreToolUse entry count is unchanged -> row reds. **Pins section 3b: a second hook doubles a ~300-400ms per-command cost** |
 | **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
 | the block message names the discipline's SKILL.md path | remove the pointer -> row reds |
