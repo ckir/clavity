@@ -34,7 +34,7 @@ file"*.
 | N10 | **Invoke `jq` with `-r`.** Without it the path arrives quoted, `[ -f ]` fails, and the gate fails open silently on every call. | 13 |
 | N18 | **Extract candidate paths from ALL string values under `.tool_input`, recursively** (`[.tool_input // {} \| .. \| strings] \| join("
 ")`), then RESOLVE each candidate and test containment per N22 - never match a shape. Never key on one field name: a renamed or added field would silently disable the gate. | 3 |
-| N19 | **Fixed order: resolve root -> EXTRACT candidate seam paths -> (any named?) create `.clavity/` and assert the shield -> evaluate skip -> evaluate seams -> log -> exit.** Extraction comes first because the create-or-not branch depends on its result; round 11 caught the earlier ordering asking a question before the step that answers it.** The skip short-circuits the DECISION, never the setup that makes logging possible. | 4, 8a |
+| N19 | **Fixed order: resolve root -> EXTRACT candidate seam paths -> (any named, OR a valid skip token present?) create `.clavity/` and assert the shield -> evaluate skip -> evaluate seams -> log -> exit.** **A valid skip ALWAYS creates the directory and is ALWAYS logged**, even when it names no seam - round 14 caught that a skip with no seam would have silently lost the one record the hatch's counterweight depends on.** Extraction comes first because the create-or-not branch depends on its result; round 11 caught the earlier ordering asking a question before the step that answers it.** The skip short-circuits the DECISION, never the setup that makes logging possible. | 4, 8a |
 | N20 | `outside-repo` means **the SEAM path resolves outside the repository root**, not that the hook ran outside a repo - that case writes nothing at all (N7). | 4a |
 | N21 | One **decision** line per invocation (`block`/`pass`/`skip`), plus zero or more **diagnostic** lines for individually anomalous seams (`seam-missing`, `seam-unreadable`, `outside-repo`). **`no-seam` is NOT a reason code at all** (4a-00): a payload naming no seam is outside this gate's jurisdiction and is never written. The decision set is `block`/`pass`/`skip`. **The two reason-code sets are DISJOINT, which is what keeps them separable** - the reader counts decisions by the first set and anomalies by the second, and needs no extra column. Invocation counts come from decision lines only. | 8 |
 | N11 | Block message, in order: what is missing + the peer was not contacted; the literal path `adversarial-panel-review/SKILL.md`; what the check cannot do; the skip token. **Written per product.** | 6 |
@@ -44,9 +44,10 @@ file"*.
 | N15 | **Sanitise both agent-authored fields** - the seam path and the skip reason - by stripping control characters **and the TAB delimiter**, then length-capping. Newline-stripping alone leaves horizontal forging open. | 8 |
 | N16 | Classic identifies a consult by matching `clavity` and `ask` as **adjacent command words**, never as a free substring, and **writes nothing at all** for an invocation that names no seam (4a-00), so a false positive on this test costs one wasted process and leaves no trace. | 3a, 4a-00 |
 | N22 | **Do NOT decide seam-hood by the path's SHAPE. Extract candidate tokens, RESOLVE them, and test CONTAINMENT under `<root>/.clavity/seams/`.** Measured, shape-matching silently misses `.clavity\seams\x.md`, `.clavity/scratch/../seams/x.md` and `.CLAVITY/SEAMS/X.MD` while the OS opens all three - three fail-opens from one regex. Resolution handles the whole class. **Normalise BOTH sides through the same function first:** measured, `git rev-parse --show-toplevel` returns `C:/Users/...` while `pwd` returns `/tmp/cn` for the same directory, and comparing them raw yields a false 'outside' - which here means fail-open. | 13 |
+| N24 | **TOKENISE before resolving, per transport, because N22 forbids shape-matching and N23 requires space support - and round 14 showed those two together left no viable method.** **MCP:** each string under `.tool_input` is already one token after the `\n` join; take whole lines. **CLI:** split the command the way a shell does - a quoted argument is ONE token, unquoted text splits on whitespace. Then resolve each token and test containment. **Never resolve a whole line of prose as a path**: a sentence resolves outside the root and yields a silent bypass. | 3, 13 |
 | N23 | **A seam path containing a SPACE must still be extracted.** Measured: `[^[:space:]"]*\.clavity/seams/[^[:space:]"]+\.md` silently fails on `.clavity/seams/my seam.md` while extracting the space-free control - **so the obvious regex is a silent bypass anyone can trigger by naming a file normally on Windows.** In the MCP form each string is its own line after the `
 ` join, so match to end-of-line; in the shell form, honour quoting around the path. | 13 |
-| N17 | The log's `<seam>` column names the seam that **decided** the outcome, with a `+N` suffix when the payload named others. One line per decision, never one per seam. | 8 |
+| N17 | The log's `<seam>` column names the seam that **decided** the outcome, with a `+N` suffix when the payload named others. **On a `skip` there is no deciding seam** - the skip short-circuits before evaluation - so it names the **first extracted** seam, or `-` when none was named. One line per decision, never one per seam. | 8 |
 
 ## 1. What this builds
 
@@ -324,8 +325,11 @@ the whole script** - so a repository where `.clavity/` cannot be created would s
 `agy-consult-guard-pre.sh` writing the VCS baseline it has always written, **breaking a guard that has
 nothing to do with this one.**
 
-> **Inside the merged hook, no ROLES-stage failure may call `exit`.** Every early return in that stage
-> skips **the ROLES stage only** and falls through to the existing logic. The `|| exit 0` form is
+> **Inside the merged hook, no ROLES-stage FAILURE or PASS may call `exit`** - it must fall through so
+> the existing guard still runs. **A positive violation is the one exception: it exits 2, which blocks
+> the tool call outright**, so there is no downstream work left to protect. Round 14 caught this stated
+> as an absolute ("never call `exit`") while sections 4 and 7 mandate exits for skip and block - **the
+> rule was always about not swallowing the OTHER guard, not about refusing to block.** The `|| exit 0` form is
 > correct for the standalone dotnet script and **wrong for the merged one** - the same line means
 > different things in the two products, which is precisely the kind of divergence section 3a exists to
 > make visible.
@@ -699,7 +703,13 @@ has a cost they never agreed to.
 > **The blind spot this buys, stated because round 7 is right that it exists:** a driver who NEVER
 > completes one compliant consult never creates the directory, so **100% of their bypasses go
 > unrecorded** - the observability depends on the user succeeding once before it can count their
-> failures. **It is bounded and it is the right trade:** one compliant consult arms the counting for
+> failures. **Round 14: this defence is now VACUOUS and is kept only as a record of what changed.** Once
+> `no-seam` stopped being logged (4a-00), bypass-by-omission became permanently unrecorded whether or not
+> `.clavity/` exists, so "arm the counting" no longer describes anything. What survives is narrower and
+> still true: **in-jurisdiction outcomes are recorded from the first consult that names a seam.** The
+> superseded wording follows.
+>
+> ~~It is bounded and it is the right trade: one compliant consult arms the counting for
 > good, and the alternative is littering the repositories of people who never use the feature. **But it
 > is a real hole in section 4a's countability argument and must not be sold as complete coverage.**
 
@@ -868,6 +878,10 @@ inspecting source text.
 | **the block message says what the check cannot do** | drop the floor disclaimer -> row reds. Section 6 item 3 |
 | **every IN-JURISDICTION fail-open writes a log line with its own reason code** | drop the logging on any of them -> row reds. Cover `seam-missing`, `seam-unreadable`, `outside-repo`, `no-jq` and `no-git-bash` as separate rows sharing one fixture |
 | **a payload naming NO seam writes NOTHING - no log line, no directory** | log a `no-seam` reason -> row reds. **Pins 4a-00: the gate does not police a neighbouring rule** |
+| **a valid `AGY-SKIP` naming NO seam still creates `.clavity/` and logs `skip`** | gate the directory on a named seam only -> the virgin-repo fixture loses the skip record -> row reds. **The hatch's counterweight is the skip count; a skip that writes nothing is a hatch with no counter** |
+| **in the merged classic hook, a PASS falls through and a VIOLATION exits 2** | make the ROLES stage exit on a pass -> assert the existing guard's VCS baseline is still written on a passing consult -> row reds. Both halves, or it pins nothing |
+| **a seam path with a space is extracted on BOTH transports** | tokenise on whitespace only -> the quoted CLI fixture and the MCP line fixture both miss -> row reds. Pins N24 |
+| **a whole prose line is never resolved as a path** | resolve the joined line instead of its tokens -> a consult whose message mentions a seam mid-sentence resolves outside the root and passes -> row reds |
 | **a payload naming a MARKERLESS seam and a MISSING seam BLOCKS** | let the missing seam force exit 0 -> row reds. **Pins the round-2 precedence rule; without it the multi-seam check reopens as a two-character bypass** |
 | **classic does NOT treat `echo "run clavity ask"` as a consult** - no subprocess beyond its own startup | use a bare substring match -> the fixture spends a `git` process on a command that names no seam -> row reds |
 | **classic DOES treat `foo && clavity ask "..."` as a consult** | anchor only to start-of-string -> row reds. **Both directions, or the test pins nothing** |
@@ -1153,6 +1167,21 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 
 **Three of six were defects introduced by round 12a, one round earlier.** The fix-regression pattern
 holds at 13 rounds: **every substantial fold needs the round after it.**
+
+### Round 14 - 2 seats (one re-seated), 7 findings: 5 folded, 1 already fixed, 1 not reproduced
+
+| finding | disposition |
+|---|---|
+| **a valid skip that names NO seam would never be logged** | **folded, and it is the round's sharpest.** N19 created `.clavity/` only when a seam was named, so a bare `AGY-SKIP` in a virgin repository wrote nothing - **silently losing the one record the hatch's entire counterweight depends on.** A valid skip now always creates the directory and is always logged |
+| **section 3b says the merged hook must NEVER `exit`, while sections 4 and 7 mandate exits** | **folded - my own rule stated as an absolute.** It was always about not swallowing the OTHER guard, never about refusing to block. A violation still exits 2 (which stops the tool call, so there is no downstream work to protect); a pass or a stage failure must fall through |
+| **N22 forbids shape-matching while N23 requires space support, leaving no viable extraction** | **folded as N24.** Tokenise per transport first - whole lines for MCP, shell-style quoting for the CLI - then resolve each token. **Two rules that were each right made a third thing impossible, and neither round noticed** |
+| **N17's "deciding seam" is undefined on a skip** | folded: a skip short-circuits before evaluation, so it names the first extracted seam, or `-` |
+| **8a's "one compliant consult arms the counting" is now vacuous** | **folded.** Round 13's deletion made bypass-by-omission permanently unrecorded, so the sentence describes nothing. Kept struck-through as a record of what changed rather than quietly removed |
+| 8a still claims a no-seam payload is logged | **NOT REPRODUCED** - already reconciled in round 13's sweep; the passage says the opposite |
+| the `mkdir` test row misstates its mutant as failing open | **NOT REPRODUCED** as quoted - that row's wording had already changed. **Left alone rather than "fixed" on an unverified quote** |
+
+**Round 13 deleted a requirement and round 14 found five consequences.** The rule holds without
+exception at fourteen rounds: **a deletion needs the round after it exactly as much as an addition does.**
 
 ### OPEN for the owner - ONE item, plus one ratification
 
