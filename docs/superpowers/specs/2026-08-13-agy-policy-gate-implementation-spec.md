@@ -85,13 +85,32 @@ invocation is already a consult.
 
 ## 4. Fail OPEN on error, fail CLOSED on a violation
 
-- **Any infrastructure failure exits 0.** No `jq`, no `sed`, unreadable file, unresolvable path, a
-  `bash` that is not Git Bash, a seam that does not exist yet at PreToolUse time. A broken hook must
-  never paralyse a stranger's session.
+- **Any infrastructure failure exits 0.** No `jq`, unreadable file, unresolvable path, a `bash` that is
+  not Git Bash, a seam that does not exist yet at PreToolUse time. A broken hook must never paralyse a
+  stranger's session.
+  - **`sed` was in this list and is struck.** Round 2's census flagged it as an unlogged fail-open path;
+    it is not a path at all - **the only thing that used `sed` was the palette extraction section 6
+    deleted**, and this line outlived it. A dependency listed in an error table that the design no
+    longer has is worse than harmless: an implementer adds a probe for it, and a reviewer counts a
+    branch that will never execute.
 - **A positively-detected violation blocks.** The payload named a seam, the hook read it, the marker is
   absent or empty. That is policy, not error.
 
 *Absence of evidence fails open; evidence of absence fails closed.*
+
+**Precedence when one payload produces BOTH verdicts - round 2 found this unresolved and it is not a
+detail.** A payload can name two seams: one that exists and lacks the marker (a positive violation,
+which mandates block) and one that does not exist (an infrastructure failure, which mandates exit 0).
+The two rules gave contradictory instructions and the document did not say which won.
+
+> **A positive violation on ANY named seam BLOCKS, whatever the other seams did.** Missing, unreadable
+> or out-of-repo seams contribute a log line and **never veto a block**. This follows from the axiom
+> rather than overriding it: a seam that was read and lacks the marker IS evidence of absence, and no
+> amount of *unknown* about a sibling path turns known-bad into unknown.
+
+**And it closes the smuggle the multi-seam rule exists to prevent.** If a missing seam could force
+exit 0, naming one alongside a real consult would be a two-character bypass - which is the same hole
+round 1 closed by requiring all seams to be checked, reopened through a different door.
 
 ### 4a. Every fail-open outcome is LOGGED with its own reason code
 
@@ -105,15 +124,30 @@ outcome to stop being invisible.**
 - **A payload naming no seam at all** exits 0 by design (section 2), and that is correct - it is
   another rule's business. **But it is also the cheapest bypass in the design**, and nothing recorded it.
 
-> **Requirement: the hook writes a log line for EVERY decision, including every fail-open, with a reason
-> code distinguishing them** - at minimum `pass`, `block`, `skip`, `no-seam`, `seam-missing`,
-> `seam-unreadable`, `outside-repo`, `degraded`. The SessionStart reader (section 8) surfaces counts by
-> reason, not only skips.
+> **Requirement: the hook writes a log line for EVERY decision it is able to record, with a reason code
+> distinguishing them** - at minimum `pass`, `block`, `skip`, `no-seam`, `seam-missing`,
+> `seam-unreadable`, `outside-repo`, `no-jq`, `no-git-bash`. The SessionStart reader (section 8)
+> surfaces counts by reason, not only skips.
 
-**This is the design's real answer to gaming, and it should be stated as such rather than implied.** The
-gate cannot stop an agent that omits the path - nothing local can. What it *can* do is make the
-omission **countable**, so a driver that routinely bypasses shows up as a number a human reads at
-session start. **A hatch you can see used is a different object from a hatch you cannot.**
+**EXACTLY ONE fail-open path cannot be logged, and pretending otherwise was a contradiction round 2
+caught.** The log lives in `.clavity/`, so if `mkdir -p "$R/.clavity"` fails there is nowhere to write
+the record of that failure. **"EVERY decision" was therefore unsatisfiable as written** - it collided
+with the `|| exit 0` that the same round-1 fold introduced. The honest rule:
+
+> **`mkdir` failure is the one unloggable outcome.** It means the repository root is unwritable, which
+> a stranger's session has larger problems with than this gate. It exits 0 and is invisible, and that is
+> stated here rather than contradicted two sections apart.
+
+**What countability actually buys, scoped honestly.** The gate cannot stop an agent that omits the seam
+path; nothing local can. Logging makes the omission **countable**, so a driver that routinely bypasses
+shows up as a number a human reads at session start.
+
+> **Round 2's Axiom Breaker is right that this is no answer to an ADVERSARIAL agent** - it owns the
+> filesystem and can delete the log before anyone reads it, which section 8 already concedes. **The
+> claim is therefore scoped to the actor this gate was actually built for: a driver working from memory
+> who omits the roles without meaning to.** Negligence leaves the count; malice removes it. Calling
+> countability "the design's real answer to gaming" - as an earlier draft of this paragraph did - was
+> the second overclaim in this document, and section 12 already concedes the adversarial case.
 
 **Exit code 2 BLOCKS on PreToolUse.** That is the mechanism, and it is why every error path above must
 reach `exit 0` instead.
@@ -201,14 +235,36 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
     is "bounded on POSIX, best-effort on Windows".
   - **A failed rotation must not retry on every invocation.** Round 1's Dependency Cynic: if `mv` fails,
     the file is still over the bound, so the next call attempts the same doomed rename, and the next -
-    **the "bound" is violated AND a subprocess is spent on every consult to violate it.** Attempt
-    rotation only when the line count crosses the bound **and** `policy.log.1` is absent or older than
-    the current session; otherwise skip straight to the append. **State the resulting guarantee
-    honestly: on a host where rotation cannot succeed, the log grows unbounded and the design accepts
-    that** rather than pretending a bound it cannot enforce.
-- **Degraded sentinel.** If `jq` is absent the hook cannot tell an `agy_ask` payload from a routine
-  shell command, so it cannot log per-invocation without writing on every command. Instead it touches
-  `.clavity/policy.degraded` **once**.
+    **the "bound" is violated AND a subprocess is spent on every consult to violate it.**
+  - **Round 2 killed the first fix for depending on state the hook cannot see.** It said to rotate only
+    if `policy.log.1` is "older than the current session", and **a `PreToolUse` hook has no way to know
+    when the session began**. An unevaluable condition is worse than none: the implementer either drops
+    the safeguard or invents a heuristic, and the retry loop returns.
+
+    > **Use the `session_id` the payload already carries.** Verified present and already consumed by the
+    > sibling hook - `agy-consult-guard-pre.sh:19` reads `.session_id // "default"` with a `default`
+    > fallback on the next line. **Attempt rotation at most once per session:** record the attempting
+    > session id in `.clavity/policy.rot`; if it already names this session, skip straight to the
+    > append. One read and one compare, and it needs no clock and no session-start time.
+
+    **State the resulting guarantee honestly: on a host where rotation cannot succeed, the log grows
+    unbounded and the design accepts that** rather than pretending a bound it cannot enforce.
+- **Degraded sentinel - and its rationale was written for a hook shape section 3 rejected.** The
+  original text said that without `jq` the hook "cannot tell an `agy_ask` payload from a routine shell
+  command, so it cannot log per-invocation without writing on every command". **That is true only of a
+  single hook registered on the combined `Bash|PowerShell|mcp__.*agy_ask` matcher - which is exactly
+  what section 3 forbids.** Under the split, each hook knows what it is looking at:
+
+  | product | matcher | without `jq` |
+  |---|---|---|
+  | dotnet | `mcp__.*agy_ask` alone | **every invocation IS a consult**, so it logs `no-jq` and exits 0. No ambiguity, no flood |
+  | classic | `Bash\|PowerShell` | it identifies a `clavity ask` by **string test, not `jq`** (section 3), so it logs `no-jq` only for commands it has already identified as consults |
+
+  **So neither hook faces the flood the sentinel was invented to avoid, and both can log the outcome.**
+  The sentinel is still written - it is what the SessionStart reader surfaces so a human learns `jq` is
+  missing at all - but it is **no longer the only record**, and the reason it exists is the human
+  notice, not an inability to log. Found while sweeping this round's own fold: adding a `no-jq` reason
+  code collided with a paragraph that said such a code was impossible.
 - **The SessionStart reader is a build row, not a someday.** It surfaces (a) the existence of
   `.clavity/policy.degraded`, and (b) the **skip count grouped by rule** since the last session.
   **It must read BOTH `policy.log` and `policy.log.1`**, or a mid-session rotation zeroes the count
@@ -376,7 +432,10 @@ inspecting source text.
 | **`.clavity/` is created when absent, and the gate still works on a repo that has never had one** | drop the `mkdir -p` -> the day-zero fixture fails open silently -> row reds. **Assert the gate's DECISION, not just that it exited 0** - exit 0 is what the bug looks like |
 | **a payload naming TWO seams, one compliant and one not, BLOCKS** | check only the first -> row reds. This is the smuggling row |
 | **the block message says what the check cannot do** | drop the floor disclaimer -> row reds. Section 6 item 3 |
-| **every fail-open outcome writes a log line with its own reason code** | drop the logging on the no-seam path -> the bypass leaves no trace -> row reds. Cover `no-seam`, `seam-missing` and `seam-unreadable` as separate rows sharing one fixture |
+| **every fail-open outcome writes a log line with its own reason code** | drop the logging on the no-seam path -> the bypass leaves no trace -> row reds. Cover `no-seam`, `seam-missing`, `seam-unreadable`, `outside-repo`, `no-jq` and `no-git-bash` as separate rows sharing one fixture |
+| **a payload naming a MARKERLESS seam and a MISSING seam BLOCKS** | let the missing seam force exit 0 -> row reds. **Pins the round-2 precedence rule; without it the multi-seam check reopens as a two-character bypass** |
+| **rotation is attempted at most once per session** | drop the `policy.rot` session guard -> a fixture whose `mv` always fails attempts it on every invocation -> row reds. Assert the attempt count, not the file size |
+| **the spec's error paths do not mention `sed`** | reintroduce a `sed` probe -> row reds. A dependency the design does not have must not appear in its failure table |
 | **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
 | the block message names the discipline's SKILL.md path | remove the pointer -> row reds |
 | the block message states the peer was not contacted | remove that line -> row reds |
@@ -448,6 +507,21 @@ The four rounds in the ADR reviewed its predecessor. **This file's own review st
 **The one that would have cost most if folded is the one that was false.** Nine of eleven findings were
 real and two of those were silent fail-open paths; the eleventh was a confident claim about a matcher
 this repository has been shipping for months.
+
+### Round 2 - 4 bespoke seats, 7 findings, all folded. THREE were caused by round 1's own fixes
+
+| finding | disposition |
+|---|---|
+| **`mkdir -p ... \|\| exit 0` created a fail-open that CANNOT be logged**, contradicting 4a's "EVERY decision" | **folded.** Round 1 added both rules and they cannot both hold - the log lives in the directory that failed to exist. Named as the single unloggable outcome rather than contradicted two sections apart |
+| **"BLOCK IF ANY FAILS" collided with "a missing seam exits 0"** | **folded as an explicit precedence rule.** A positive violation on any seam blocks; missing or unreadable siblings never veto it. **Without this the multi-seam rule round 1 added reopens as a two-character bypass** - name a nonexistent seam beside the real one |
+| **rotation keyed on "older than the current session", which a `PreToolUse` hook cannot observe** | **folded.** An unevaluable condition is worse than none. Rekeyed on the `session_id` the payload already carries - **verified present** at `agy-consult-guard-pre.sh:19` - so rotation is attempted at most once per session with no clock |
+| **countability is no defence against an adversarial agent** | **folded as a scoping correction - the second overclaim in this document.** The agent owns the log file, as section 8 concedes. The claim now names the actor it is actually for: a driver working from memory. **Negligence leaves the count; malice removes it** |
+| `sed` listed as an error path | **folded - it is not a path at all.** The only consumer of `sed` was the palette extraction section 6 deleted; the failure line outlived it. A phantom dependency makes an implementer add a probe and a reviewer count a branch that never runs |
+| a non-Git-Bash `bash` had no reason code | folded into 4a's code list (`no-git-bash`) |
+| a missing `jq` raised the sentinel but had no log reason | folded into 4a's code list (`no-jq`) |
+
+**Three of round 2's seven findings were defects in round 1's fixes.** The pattern holds from the
+sibling spec: a fix is unreviewed code, and the round after a fold is the highest-yield one.
 
 ## 14. Provenance
 
