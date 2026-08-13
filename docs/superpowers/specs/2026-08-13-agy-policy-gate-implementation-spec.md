@@ -28,7 +28,7 @@ file"*.
 | N4 | A hook honours **only** a skip naming its own rule; a bare `AGY-SKIP:` never skips. | 7 |
 | N5 | Infrastructure failure **never causes a block and never prevents one**. Every error path exits 0. | 4 |
 | N6 | **Log every decision it can record**, with a reason code, TAB-delimited: `<iso8601-utc> <rule> <reason> <seam> <detail>`, empty fields as `-`. Failures of the logging substrate itself are unloggable. | 4a, 8 |
-| N7 | `mkdir -p` and the shield run whenever a seam path was **named**; a payload naming none writes nothing. **The shield asserts CONTENT** (`grep -qx '\*'`), never `[ -f ]`. | 8a |
+| N7 | **Inside a git repository only.** If `git rev-parse --show-toplevel` fails, exit 0 and write nothing - never fall back to `pwd`. Within a repo, `mkdir -p` and the shield run whenever a seam path was **named**; a payload naming none writes nothing. **The shield asserts CONTENT** (`grep -qx '\*'`), never `[ -f ]`. | 8a |
 | N8 | Rotate at 500 lines, attempting only when `count % 100 < 5`. Best-effort; unbounded growth accepted where `mv` cannot succeed. | 8 |
 | N9 | Resolve plugin paths with `dirname "$0"`. **Never `${CLAUDE_PLUGIN_ROOT}`.** | 5 |
 | N10 | **Invoke `jq` with `-r`.** Without it the path arrives quoted, `[ -f ]` fails, and the gate fails open silently on every call. | 13 |
@@ -36,6 +36,9 @@ file"*.
 | N12 | dotnet: a NEW entry matching `mcp__.*agy_ask` alone. classic: **no new entry** - the check joins the existing per-command hook, and **must not merge its control flow**. | 3, 3b |
 | N13 | **`adversarial-panel-review/SKILL.md` must teach the `PANEL-SEATS:` line, shipping with or before the gate.** Measured: 0 skills teach it today. | 2 |
 | N14 | The SessionStart reader surfaces counts by reason over `policy.log` **and** `policy.log.1`, and **skips lines it cannot parse** rather than failing the session. | 8, 11a |
+| N15 | **Sanitise both agent-authored fields** - the seam path and the skip reason - by stripping control characters **and the TAB delimiter**, then length-capping. Newline-stripping alone leaves horizontal forging open. | 8 |
+| N16 | Classic identifies a consult by matching `clavity` and `ask` as **adjacent command words**, never as a free substring, and logs `no-seam` only for invocations it identified that way. | 3a |
+| N17 | The log's `<seam>` column names the seam that **decided** the outcome, with a `+N` suffix when the payload named others. One line per decision, never one per seam. | 8 |
 
 ## 1. What this builds
 
@@ -270,6 +273,18 @@ clavity-classic PreToolUse  matcher "Bash|PowerShell|mcp__.*agy_ask"  -> agy-con
 > from running, and the existing guard cannot prevent it.** The only shared early exit is the one both
 > already agree on: not a tool this hook handles at all. **A merge that saves a process must not merge
 > the control flow.**
+
+**Round 9 found the concrete instance, and it is two of this document's own rules colliding.** Section 8a
+writes `mkdir -p "$R/.clavity" || exit 0`. Dropped into the shared classic hook, **that `exit 0` ends
+the whole script** - so a repository where `.clavity/` cannot be created would silently stop
+`agy-consult-guard-pre.sh` writing the VCS baseline it has always written, **breaking a guard that has
+nothing to do with this one.**
+
+> **Inside the merged hook, no ROLES-stage failure may call `exit`.** Every early return in that stage
+> skips **the ROLES stage only** and falls through to the existing logic. The `|| exit 0` form is
+> correct for the standalone dotnet script and **wrong for the merged one** - the same line means
+> different things in the two products, which is precisely the kind of divergence section 3a exists to
+> make visible.
 
 **This is the same principle section 10 already applies to SessionStart** (*"Extend one rather than
 adding a fourth script"*), which the classic gate was quietly violating.
@@ -538,8 +553,9 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
 ### 8a. The `.clavity/.gitignore` shield is mandatory and re-asserted on EVERY invocation
 
 ```sh
-R="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-mkdir -p "$R/.clavity" || exit 0
+R="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -n "$R" ] || exit 0
+mkdir -p "$R/.clavity" || exit 0     # standalone dotnet script only - see 3b for the merged classic form
 grep -qx '\*' "$R/.clavity/.gitignore" 2>/dev/null || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
 ```
 
@@ -595,8 +611,20 @@ covers `.clavity/seams/`, which is correct: nothing under `.clavity/` has ever b
 (`git ls-files .clavity/` is empty), seams are runtime state, and they carry consult payloads and local
 filesystem paths. Recorded because the next reader will want to narrow it.
 
-**Resolve the repository root, never a relative path** - `git rev-parse --show-toplevel`, falling back
-to `pwd`. A relative path writes into whatever subdirectory the caller happened to be in.
+**Resolve the repository root with `git rev-parse --show-toplevel`, and if that FAILS, write nothing and
+exit 0.** A relative path writes into whatever subdirectory the caller happened to be in.
+
+**The `pwd` fallback is deleted, and round 9 is why.** Combined with round 8's widening of `mkdir` to
+"whenever a seam path was named", a fallback to `pwd` **turns directory creation into a weapon**: a
+consult issued from anywhere outside a repository drops a `.clavity/` tree wherever the caller happened
+to stand, and the telemetry the gate depends on **fragments across the filesystem instead of
+accumulating** in one place a human ever reads.
+
+> **No repository, no gate and no trace.** The gate's whole subject is a repository's seams; outside one
+> there is nothing to protect and nothing to record. **This is the third time in this document a
+> convenience fallback turned out to be the defect** - `default` for the session id, `pwd` for the root,
+> and `[ -f ]` for the shield. **A fallback that silently produces a plausible wrong answer is worse
+> than a failure**, because nothing downstream can tell the difference.
 
 ## 9. POWER-FAILURE - EXTRACTED. DO NOT BUILD SECTIONS 9 OR 9a FROM THIS FILE.
 
@@ -737,6 +765,9 @@ inspecting source text.
 | **`adversarial-panel-review/SKILL.md` contains the `PANEL-SEATS:` instruction** | ship the gate without the skill edit -> row reds. **This is a CONVENTION-EXISTS row, and it is the one that stops the gate shipping as a trap: measured, 0 skills teach the marker and 558 of 564 seams on disk lack it** |
 | **a seam written by following the updated skill PASSES the gate** | change either side without the other -> row reds. **Couples the two halves: it fails if the skill teaches a form the hook does not accept, which no single-sided row can catch** |
 | **a `no-seam` outcome does NOT create `.clavity/` when it is absent** | `mkdir -p` unconditionally -> a fixture repo with no `.clavity/` gains one from a command that merely mentions the string -> row reds |
+| **a `no-seam` outcome IS logged in a repo that ALREADY has `.clavity/`** | drop the logging -> row reds. **Both rows share one behaviour and differ only in the fixture; round 9 caught the first standing alone, which read as a contradiction of the logging requirement** |
+| **no `.clavity/` is created OUTSIDE a git repository** | fall back to `pwd` -> a fixture run from a temp dir gains a `.clavity/` tree -> row reds |
+| **a ROLES-stage failure inside the merged classic hook does NOT stop the existing guard** | use `|| exit 0` in the merged form -> assert the VCS baseline is still written when `.clavity/` cannot be created -> row reds |
 | **rotation fires when the count lands anywhere in the 5-line window, not only on the exact multiple** | require an exact multiple -> a fixture with two concurrent appends stepping 99 to 101 never rotates -> row reds |
 | **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
 | the block message names the discipline's SKILL.md path | remove the pointer -> row reds |
@@ -787,6 +818,7 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 - clavity-classic's extraction is fragile and fails open more often than dotnet's. **Its CHECK-ALL guarantee is best-effort**, so the multi-seam smuggle is closed in dotnet and only mitigated in classic (section 3a).
 - **Classic's extraction is not merely unreliable, it is STEERABLE, and that is a stronger claim.** An agent that writes the path in a form the parser misses - `--file=".clavity/seams/x.md"`, an unusual quoting, a variable - produces a `no-seam` outcome and passes. The gate is a floor in dotnet and a speed bump in classic; **section 4a's counting is what remains, and for classic it is most of the value.**
 - **Classic's consult test admits residual false positives** by design; chasing them with a shell parser is explicitly rejected.
+- **Classic can misclassify an `outside-repo` seam as `no-seam`**, suppressing both the directory creation and the telemetry for that call. A consequence of best-effort extraction, stated rather than discovered.
 - Rotation is best-effort on Windows.
 - The skip token is honest but cheap; the per-rule skip count is its only counterweight.
 
@@ -939,6 +971,18 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 | **skipping short-circuits before the seam is extracted, so the log records `-`** | **folded.** The DECISION short-circuits; the RECORD must not. A `skip` line that does not name the review it waved through **loses the only fact that makes the skip count actionable** |
 | **the footprint rule also drops `seam-missing` and `outside-repo` on day zero** | **folded, and it widens what round 7 stated.** Those are two bypass modes, not tidy edge cases. `mkdir` now runs whenever a seam path was NAMED at all; only a payload naming none writes nothing |
 | **the generic `<rule>` token and log column pre-pay for tenants that may never arrive** | **PARTLY REFUTED.** The `<rule>` in the token is not future-proofing: **it is the wildcard-bypass guard** - without it, one `AGY-SKIP:` disables every present and future gate at once, which section 7 folded long before a second tenant was contemplated. The log's `<rule>` column is genuinely near-free generality and stays. **The challenge was right to ask; the answer is that this piece earns its place today** |
+
+### Round 9 - 4 seats (one re-seated), 7 findings, all folded
+
+| finding | disposition |
+|---|---|
+| **section 0 omits binding requirements** - sanitisation, and classic's command-test shape | **folded as N15-N17.** Section 0 declares itself the contract and everything else rationale, so **anything binding that is missing from it has been silently demoted.** A summary that diverges from its document is worse than no summary |
+| **`pwd` as the repo-root fallback weaponises round 8's widened `mkdir`** | **folded: no repository, no gate and no trace.** A consult from outside a repo would drop a `.clavity/` tree wherever the caller stood and **fragment the telemetry across the filesystem instead of accumulating it where a human reads.** **Third convenience fallback in this document to turn out to be the defect** - `default`, `pwd`, `[ -f ]` |
+| **`mkdir -p ... \|\| exit 0` inside the merged classic hook kills the existing guard** | **folded, and it is two of this document's own rules colliding.** That `exit 0` ends the whole script, so a repo where `.clavity/` cannot be created would silently stop the VCS baseline being written - **breaking a guard with nothing to do with this one.** No ROLES-stage failure may call `exit` in the merged form |
+| **the multi-seam case is undefined for a single `<seam>` column** | folded as N17: the column names the **deciding** seam with a `+N` suffix. One line per decision, never one per seam, so the counts stay comparable |
+| **a test row demanded `no-seam` logging while the footprint rule says it writes nothing in a virgin repo** | **folded: the row now names its fixture and gained a twin.** Two rows, one behaviour, differing only in whether `.clavity/` exists. **A row whose fixture is implicit reads as a contradiction of the rule it is meant to pin** |
+| **classic's strict extraction can misclassify `outside-repo` as `no-seam`** | folded into section 12's accepted list - a consequence of best-effort extraction, now stated rather than discovered |
+| **the code block still carried the `pwd` fallback the prose had just deleted** | **found by my own sweep, not the panel.** The prose and the code disagreed for the length of one edit. **Every fold that changes a rule must grep for the rule's own code sample** |
 
 ### OPEN for the owner - one round-6 finding I did not fold
 
