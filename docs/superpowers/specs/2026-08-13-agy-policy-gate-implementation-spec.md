@@ -65,6 +65,17 @@ transport generally, without routing subagents to it. So three skills need the s
 changed, and the fourth needs only its transport line checked for consistency - do not edit it blindly
 to match the others.
 
+**Ordering is a requirement, not an implementation detail (round 1's Resource Vampire).** The classic
+hook fires on **every** `Bash|PowerShell` command in the session. It **MUST** do the cheap in-process
+command test first and `exit 0` before it spends a subprocess or touches the filesystem - **no
+`git rev-parse`, no `mkdir`, no shield assertion, no log** until the command is known to be a
+`clavity ask`. Section 8a's "re-assert on every invocation" means every invocation **this gate is
+responsible for**, not every shell command the user runs. Getting this backwards puts a `git` process
+on the critical path of every `ls`.
+
+**The dotnet hook has no such exposure** - its matcher selects the MCP tool directly, so every
+invocation is already a consult.
+
 **Consequences to handle, not discover:**
 - `plugin-hooks-payload.Tests.ps1` asserts byte-identity for the shipped hook pair. **It must change** to
   exempt this pair, and the exemption must be explicit and named, never a loosened glob.
@@ -81,6 +92,28 @@ to match the others.
   absent or empty. That is policy, not error.
 
 *Absence of evidence fails open; evidence of absence fails closed.*
+
+### 4a. Every fail-open outcome is LOGGED with its own reason code
+
+Round 1 found two silent bypasses, and neither needs the axiom above to change - **they need the
+outcome to stop being invisible.**
+
+- **A named seam that does not exist on disk** exits 0 today. An agent that names
+  `.clavity/seams/ghost.md` - by hallucination, by typo, or deliberately - passes the gate with no
+  trace. (The consult is broken either way, since the peer is meant to read that file, but the *gate*
+  was still bypassed.)
+- **A payload naming no seam at all** exits 0 by design (section 2), and that is correct - it is
+  another rule's business. **But it is also the cheapest bypass in the design**, and nothing recorded it.
+
+> **Requirement: the hook writes a log line for EVERY decision, including every fail-open, with a reason
+> code distinguishing them** - at minimum `pass`, `block`, `skip`, `no-seam`, `seam-missing`,
+> `seam-unreadable`, `outside-repo`, `degraded`. The SessionStart reader (section 8) surfaces counts by
+> reason, not only skips.
+
+**This is the design's real answer to gaming, and it should be stated as such rather than implied.** The
+gate cannot stop an agent that omits the path - nothing local can. What it *can* do is make the
+omission **countable**, so a driver that routinely bypasses shows up as a number a human reads at
+session start. **A hatch you can see used is a different object from a hatch you cannot.**
 
 **Exit code 2 BLOCKS on PreToolUse.** That is the mechanism, and it is why every error path above must
 reach `exit 0` instead.
@@ -105,7 +138,15 @@ Unset, it collapses a path to an absolute `/skills/...` that cannot be opened. T
    a human; a driver who misreads a block as a channel failure halts for an outage that never happened.
 2. **A static pointer to where the seats are defined** - the consulting discipline's own `SKILL.md`,
    named by path.
-3. **The skip token, last** (section 7).
+3. **One line saying what this check does NOT do** - it verifies a marker is present and non-empty, and
+   **cannot** tell whether the seats are appropriate or the panel is real.
+4. **The skip token, last** (section 7).
+
+**Item 3 was missing and section 12 already required it.** Round 1's Blindspot Auditor put the two side
+by side: section 12 states *"The block message must say so"* about the gate being a floor, and this
+enumeration - which says *"in this order"*, so a literal implementer treats it as complete - listed only
+three items and not that one. **A spec that mandates a disclaimer in one section and omits it from the
+authoritative list manufactures exactly the blind spot it claims to prevent.**
 
 **The block does NOT extract or inject a palette.** An earlier design extracted one between HTML-comment
 delimiters. It is deleted, with its delimiters, its `sed`, its over-long bound and its empty-extraction
@@ -142,14 +183,29 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
 - **Sanitise every agent-authored field** - the seam path and the skip reason - by stripping ALL control
   characters and whatever delimiter the record uses, then length-capping. Newline-stripping alone stops
   vertical forging and leaves horizontal forging open: a literal tab shifts every column of a
-  tab-delimited record. The log is the only audit trail for the escape hatch, so it must not be forgeable
-  by the thing it audits.
+  tab-delimited record.
+
+  > **Correction from round 1, because the original sentence overclaimed.** It read *"the log is the only
+  > audit trail for the escape hatch, so it must not be forgeable by the thing it audits"*. **It IS
+  > forgeable by the thing it audits** - the gate runs in the agent's own environment, and the agent has
+  > shell write access to `.clavity/policy.log`; it can truncate, delete or rewrite it without going
+  > near this hook. **Sanitisation buys record INTEGRITY, not tamper-resistance:** it stops an
+  > agent-authored field from silently forging a *column or a row* in a record the hook itself writes.
+  > A determined agent is out of scope for anything local, and saying otherwise manufactures the
+  > confidence this document elsewhere warns against.
 - **Bound by ROTATION, not truncation.** At 500 lines, `mv` the log to `.clavity/policy.log.1` and let
   the next append create a fresh file. Truncation (`tail -n 500 f > tmp && mv tmp f`) is a
   read-modify-write and drops any append landing mid-shuffle.
   - **Rotation is BEST-EFFORT.** On Windows, renaming a file another handle holds open fails rather than
     succeeding atomically. Attempt it, ignore failure, never let it fail the hook. The honest guarantee
     is "bounded on POSIX, best-effort on Windows".
+  - **A failed rotation must not retry on every invocation.** Round 1's Dependency Cynic: if `mv` fails,
+    the file is still over the bound, so the next call attempts the same doomed rename, and the next -
+    **the "bound" is violated AND a subprocess is spent on every consult to violate it.** Attempt
+    rotation only when the line count crosses the bound **and** `policy.log.1` is absent or older than
+    the current session; otherwise skip straight to the append. **State the resulting guarantee
+    honestly: on a host where rotation cannot succeed, the log grows unbounded and the design accepts
+    that** rather than pretending a bound it cannot enforce.
 - **Degraded sentinel.** If `jq` is absent the hook cannot tell an `agy_ask` payload from a routine
   shell command, so it cannot log per-invocation without writing on every command. Instead it touches
   `.clavity/policy.degraded` **once**.
@@ -157,14 +213,32 @@ skip - appends **one short sanitised line** to `.clavity/policy.log`.
   `.clavity/policy.degraded`, and (b) the **skip count grouped by rule** since the last session.
   **It must read BOTH `policy.log` and `policy.log.1`**, or a mid-session rotation zeroes the count
   exactly when the hatch is being used most.
-- **Specify when the sentinel is CLEARED.** An uncleared sentinel becomes permanent noise. Clear it on a
-  successful `jq`-capable invocation.
+- **Specify when the sentinel is CLEARED - and the GATE must not be what clears it.** An uncleared
+  sentinel becomes permanent noise, so the first draft cleared it on any successful `jq`-capable
+  invocation. **Round 1's State Corruptor killed that:** two agents on one repository, one with `jq` and
+  one without, race - the capable one deletes the sentinel the degraded one just raised, over and over,
+  and **the human is never told that one of their agents is failing open.** The observability artifact
+  is destroyed by the very condition it exists to report.
+
+  > **The SessionStart READER clears it, after it has surfaced it** - never the gate. That makes the
+  > lifecycle "raised by any degraded invocation, cleared once a human has been told", which is the
+  > property actually wanted, and it cannot be raced away by a healthy sibling.
 
 ### 8a. The `.clavity/.gitignore` shield is mandatory and re-asserted on EVERY invocation
 
 ```sh
+R="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+mkdir -p "$R/.clavity" || exit 0
 [ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
 ```
+
+**The `mkdir -p` is not decoration and it was missing.** Round 1's Axiom Breaker found that this spec
+never created `.clavity/` anywhere, while three separate requirements append into it. On a stranger's
+repository the directory is absent on day zero, so `>>` fails `No such file or directory`, section 4
+sends that to `exit 0`, and **the gate silently fails open on its very first real use** - the exact
+population it ships for. The same omission was caught and fixed in the sibling workflow-position spec;
+`open-issues/SKILL.md` has carried the two-line idiom (`mkdir -p` at `:69`, the shield at `:79`) all
+along, and both specs quoted only the second line.
 
 `.clavity/` is gitignored **in this repository**, which is a property of this repo's `.gitignore` and
 not of the directory name. On a repository we do not control it is git-visible unless this shield
@@ -297,7 +371,13 @@ inspecting source text.
 | a payload naming no seam fails OPEN | **replace the hook body with `exit 0`** -> this row still passes, but every blocking row REDS. The suite, not the row, is the oracle |
 | missing `jq` fails OPEN | same coupling: `exit 0` reds the blocking rows |
 | missing `jq` touches the degraded sentinel | remove the sentinel write -> row reds |
-| the sentinel is CLEARED on a healthy invocation | remove the clear -> row reds |
+| **the GATE never clears the sentinel** - a healthy invocation leaves a raised sentinel raised | make the gate clear it -> the mixed-agent fixture (one degraded call, then one healthy call) loses the sentinel -> row reds. **Pins the round-1 race** |
+| **the SessionStart READER clears the sentinel after surfacing it** | drop the clear -> the sentinel is reported on every session for ever -> row reds |
+| **`.clavity/` is created when absent, and the gate still works on a repo that has never had one** | drop the `mkdir -p` -> the day-zero fixture fails open silently -> row reds. **Assert the gate's DECISION, not just that it exited 0** - exit 0 is what the bug looks like |
+| **a payload naming TWO seams, one compliant and one not, BLOCKS** | check only the first -> row reds. This is the smuggling row |
+| **the block message says what the check cannot do** | drop the floor disclaimer -> row reds. Section 6 item 3 |
+| **every fail-open outcome writes a log line with its own reason code** | drop the logging on the no-seam path -> the bypass leaves no trace -> row reds. Cover `no-seam`, `seam-missing` and `seam-unreadable` as separate rows sharing one fixture |
+| **classic: a non-`clavity ask` command spawns NO subprocess and touches NO file** | resolve the repo root before the command test -> assert on a fixture that would fail if `git` ran (a non-repo cwd, or a `PATH` with no `git`) -> row reds. **A timing assertion would be flaky; assert the observable side effect instead** |
 | the block message names the discipline's SKILL.md path | remove the pointer -> row reds |
 | the block message states the peer was not contacted | remove that line -> row reds |
 | `AGY-SKIP: ROLES <reason>` passes | omit the reason -> must block |
@@ -320,6 +400,12 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 **Known and accepted:**
 - A seam authored outside `.clavity/seams/` escapes the block. Mitigated, not sealed: a `.md` path named
   elsewhere in the payload that carries no marker is **logged as a warning and passed**.
+- **An agent that omits the seam path, or names one that does not exist, bypasses the gate.** Nothing
+  running locally can prevent this. **It is made COUNTABLE rather than prevented** (section 4a): every
+  such outcome is logged with its own reason code and surfaced at SessionStart. The design's honest
+  claim is that a routine bypasser becomes visible as a number, not that bypass is impossible.
+- **The log is not tamper-resistant.** The agent has shell write access to it. Sanitisation protects the
+  record format from agent-authored fields; it does not defend against an agent that edits the file.
 - clavity-classic's extraction is fragile and fails open more often than dotnet's.
 - Rotation is best-effort on Windows.
 - The skip token is honest but cheap; the per-rule skip count is its only counterweight.
@@ -332,11 +418,36 @@ it of itself: a guard that overstates its reach manufactures the blind spot it c
 | the seam-path regex, concretely | needs a Windows-path case: payloads here carry `C:/Users/...` forms |
 | the log record format and field order | one short line; fix the delimiter here, since section 8's sanitisation depends on it |
 | the over-long / length cap for sanitised fields | a number |
-| a payload naming MULTIPLE seam paths | check all, or the first? Reachable and unresolved |
+| ~~a payload naming MULTIPLE seam paths~~ | **RESOLVED by round 1 - this was a design hole wearing a plan-time label. CHECK ALL; BLOCK IF ANY LACKS THE MARKER.** Checking only the first is a one-line bypass: name a compliant seam first and smuggle the real consult behind it. Deferring it would also have shipped two implementations, one of which enforces nothing |
+| **`jq` is invoked with `-r`** | pin it. Without `-r` the extracted path arrives wrapped in literal double quotes, `[ -f ... ]` fails, and section 4 sends that to a silent `exit 0` - **the gate would fail open on every single invocation while looking healthy.** The repo idiom is already `jq -r` (`agy-consult-guard-pre.sh:16-19`) |
 | is the `<rule>` in `AGY-SKIP:` case-sensitive? | pin it with the row that asserts a non-matching rule does not skip |
 | a seam path that resolves OUTSIDE the repository root | fails open under section 4, but the ordering deserves an explicit row so it is not discovered later |
 | the seam file exists but is unreadable (permissions) | fails open under section 4; name it so the implementer does not add a fail-closed branch for it |
 | which existing SessionStart hook is extended, per product | dotnet and classic have different SessionStart sets |
+
+## 13a. Panel rounds on THIS document
+
+The four rounds in the ADR reviewed its predecessor. **This file's own review starts here.**
+
+### Round 1 - 11 seats, 11 findings: 9 folded, 1 refuted, 1 pinned
+
+| finding | disposition |
+|---|---|
+| **the spec never creates `.clavity/`** while three requirements append into it | **folded.** Zero `mkdir` in the whole document, measured. On a stranger's box the first `>>` fails and section 4 turns that into a silent `exit 0` - **the gate fails open on its first real use, in the exact population it ships for** |
+| **section 6's block-message list omits the disclaimer section 12 mandates** | **folded.** Verified verbatim: section 12 says the message *"must say so"*; section 6 says *"in this order"* and lists three items without it. A spec that requires a thing in one section and omits it from the authoritative list manufactures the blind spot it warns about |
+| a named seam that does not exist bypasses the gate silently | **folded as 4a** - the axiom stays, the invisibility goes. Logged with its own reason code |
+| a payload naming no seam bypasses with no audit trail | **folded as 4a.** Nothing local can prevent it; **4a makes it countable**, which is a different object |
+| the log is not forgery-proof - the agent owns the filesystem | **folded as an honesty correction.** The original sentence claimed the log *"must not be forgeable by the thing it audits"*. It is. Sanitisation buys record integrity, not tamper-resistance |
+| a failed `mv` rotation retries forever and the bound is never met | **folded** - rotation is attempted only on a crossing, and the guarantee is stated honestly for hosts where it cannot succeed |
+| the degraded sentinel is raced away by a healthy sibling agent | **folded, and it is the sharpest finding.** Clearing on any healthy invocation means a capable agent deletes the sentinel a degraded one just raised - **the observability artifact destroyed by the condition it reports.** The SessionStart READER now clears it, after surfacing it |
+| multiple seam paths in one payload was deferred to plan time | **folded - it was a design hole wearing a plan-time label.** CHECK ALL, BLOCK IF ANY FAILS. Checking the first is a one-line smuggle |
+| `git rev-parse` before the command test on every shell command | **folded as an ordering REQUIREMENT** in section 3. Classic fires on every `Bash|PowerShell` call; a `git` process on the critical path of every `ls` is not acceptable |
+| `jq` without `-r` returns quoted paths | **pinned in section 13.** The finding is conditional - the spec never said to omit `-r` - but the failure mode it describes is real and silent, so the flag is now explicit rather than idiomatic |
+| **the `mcp__.*agy_ask` matcher is a typo; real MCP tools use a single underscore** | **REFUTED by measurement.** The live tool on this host is `mcp__plugin_clavity_clavity-ls__agy_ask` - **double** underscore - and `mcp__.*agy_ask` is already shipped and working at `clavity-dotnet/plugin/hooks/hooks.json:17` and `:38`. Had this been folded it would have broken a matcher that works today |
+
+**The one that would have cost most if folded is the one that was false.** Nine of eleven findings were
+real and two of those were silent fail-open paths; the eleventh was a confident claim about a matcher
+this repository has been shipping for months.
 
 ## 14. Provenance
 
