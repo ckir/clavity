@@ -218,6 +218,31 @@ agrees - `agy-liveness-check.sh:128-129` records *"bash itself is ~455ms and eac
 > script**, because its matcher fires only on `agy_ask` - where a consult already costs a peer
 > round-trip measured in seconds and 400ms is invisible.
 
+**Two integration facts round 7 established by reading the registrations, and the first corrects the
+paragraph above:**
+
+```
+clavity-dotnet  PreToolUse  matcher "Bash|PowerShell|mcp__.*agy_ask"  -> agy-consult-guard-pre.sh
+clavity-classic PreToolUse  matcher "Bash|PowerShell|mcp__.*agy_ask"  -> agy-consult-guard-pre.sh
+```
+
+1. **dotnet ALREADY has a hook on `mcp__.*agy_ask`.** So a new dotnet entry means **two hooks fire on
+   every dotnet consult**, not one. The latency conclusion still holds - a consult costs seconds, so a
+   second ~400ms startup is invisible there, which is exactly why dotnet can afford a separate script
+   and classic cannot. **But "its matcher fires only on `agy_ask`" implied the slot was empty, and it
+   was not.** The two hooks write different files and do not race; the requirement is simply that the
+   implementer knows both will run.
+2. **Merging the ROLES check into `agy-consult-guard-pre.sh` must not short-circuit that script's own
+   logic.** It categorises the call (`agy_guard_category`) and writes a VCS baseline for consults,
+   exiting 0 at `:27` for everything else. **An early `exit 0` for "not a `clavity ask`" placed at the
+   top would skip the baseline write for calls the guard does care about** - the ROLES test and the
+   guard's categorisation are different predicates and neither may gate the other.
+
+> **Requirement: the ROLES check runs as an INDEPENDENT stage that cannot prevent the existing guard
+> from running, and the existing guard cannot prevent it.** The only shared early exit is the one both
+> already agree on: not a tool this hook handles at all. **A merge that saves a process must not merge
+> the control flow.**
+
 **This is the same principle section 10 already applies to SessionStart** (*"Extend one rather than
 adding a fourth script"*), which the classic gate was quietly violating.
 
@@ -355,7 +380,7 @@ Unset, it collapses a path to an absolute `/skills/...` that cannot be opened. T
    > That is exactly what section 6 already demanded when it deleted the palette extraction for
    > hardcoding one skill's path - **the right fix was to hardcode the one skill that owns the
    > vocabulary, not to derive a skill the hook cannot see.**
-3. **One line saying what this check does NOT do**  *(and note: this message is written PER PRODUCT - section 3a, because the skip token's safe form differs between the MCP and shell hooks)* - it verifies a marker is present and non-empty, and
+3. **One line saying what this check does NOT do**  *(the message is written PER PRODUCT, but NOT because the token differs - round 6 made the token identical prose in both. It differs because the surrounding EXAMPLE does: an `agy_ask` message field versus a `clavity ask "..."` command line. Round 7 caught section 6 still giving the superseded reason while section 7 stated the opposite.)* - it verifies a marker is present and non-empty, and
    **cannot** tell whether the seats are appropriate or the panel is real.
 4. **The skip token, last** (section 7).
 
@@ -497,6 +522,13 @@ has a cost they never agreed to.
 > logged **only if `.clavity/` already exists**; if it does not, the hook exits 0 and writes nothing.
 > The count section 4a relies on is preserved exactly where it means something - a repository already
 > using the disciplines - and is silently absent where it would be noise about a feature nobody uses.
+>
+> **The blind spot this buys, stated because round 7 is right that it exists:** a driver who NEVER
+> completes one compliant consult never creates the directory, so **100% of their bypasses go
+> unrecorded** - the observability depends on the user succeeding once before it can count their
+> failures. **It is bounded and it is the right trade:** one compliant consult arms the counting for
+> good, and the alternative is littering the repositories of people who never use the feature. **But it
+> is a real hole in section 4a's countability argument and must not be sold as complete coverage.**
 
 **The `mkdir -p` is not decoration and it was missing.** Round 1's Axiom Breaker found that this spec
 never created `.clavity/` anywhere, while three separate requirements append into it. On a stranger's
@@ -674,6 +706,23 @@ inspecting source text.
 | the log rotates at the bound and the reader still counts | make the reader read only `policy.log` -> the count drops after rotation -> row reds |
 | classic: a non-`clavity ask` shell command exits 0 without reading anything | make it parse every command -> row reds |
 
+## 11a. Rollout, upgrade and uninstall - the artifact's whole life
+
+Round 7 walked it and found the document only ever described the middle.
+
+- **Install and first consult.** The gate is inert until a seam is named. **It must ship with the skill
+  that teaches `PANEL-SEATS:` (section 2), or it blocks the first consult a user ever makes.**
+- **Upgrade.** The log format is pinned (section 8). **The reader must SKIP a line it cannot parse and
+  continue, never fail the session** - a format change in a later version would otherwise break session
+  start for everyone holding an older log. There is no legacy format today, which is precisely when
+  this costs one `continue` instead of a migration.
+- **Uninstall.** Removing the plugin removes the hooks; it leaves `.clavity/policy.log`,
+  `policy.log.1` and the `.gitignore` shield in every repository the user consulted from.
+  **This is accepted and stated rather than solved:** the files are small, gitignored and inert, and a
+  hook cannot clean up after its own removal. **What is NOT acceptable is leaving them somewhere the
+  user never opted in** - which is why section 8a creates nothing for a `no-seam` outcome in a
+  repository that has no `.clavity/`.
+
 ## 12. What this is and is not
 
 **It is a floor.** It proves syntactic compliance: a marker exists and is non-empty. It **cannot** check
@@ -823,6 +872,19 @@ states what `PANEL-SEATS:` is and who owns it, and section 6's pointer resolves 
 > internal contradictions well. Every finding that required standing outside it - what it costs, what it
 > assumes about the machine, what it is FOR - came from the owner.** A panel is bounded by the frame the
 > payload gives it.
+
+### Round 7 - 4 bespoke seats, 8 findings: 6 folded, 1 sharpened, 1 partly refuted
+
+| finding | disposition |
+|---|---|
+| **section 6 and section 7 contradicted each other on the block message** | **folded - and round 6 created it.** Unifying the token into payload prose removed the stated reason for a per-product message while section 6 still gave it. The message IS per-product, for a different reason: the surrounding example differs |
+| **dotnet already has a hook on `mcp__.*agy_ask`** | **folded.** Verified in both `hooks.json` files. Two hooks now fire on every dotnet consult. The latency conclusion survives - a consult costs seconds - but *"its matcher fires only on `agy_ask`"* implied an empty slot that was never empty |
+| **merging the ROLES check into the shared classic hook can disable that hook's own logic** | **folded, and it is the sharpest.** `agy-consult-guard-pre.sh` categorises the call and writes a VCS baseline, exiting 0 at `:27` otherwise. An early "not a `clavity ask`, exit 0" at the top would skip baselines the guard needs. **A merge that saves a process must not merge the control flow** |
+| **the footprint rule blinds the telemetry for a user who never complies once** | **folded as a stated hole.** Bounded - one compliant consult arms counting for good - but it is a real gap in section 4a's countability argument and is no longer sold as complete |
+| **no upgrade story for the pinned log format** | folded into new section 11a: the reader SKIPS unparseable lines. Costs one `continue` today; costs a migration later |
+| **no uninstall story** | folded into 11a: the litter is accepted and stated, because a hook cannot clean up after its own removal - **but only in repositories the user actually consulted from** |
+| **the block hands over the skip token while moving the seats behind a file read, making bypass cheaper than compliance** | **sharpened rather than folded.** Section 6 already accepted this trade when it deleted the palette; round 7 states it more honestly than the original did. The counterweight remains the skip count, and section 4a's blind spot above makes that counterweight weaker than it read |
+| **a seam drafted outside `.clavity/seams/` bypasses the gate** | **PARTLY REFUTED, and the contrast is the point.** Measured: **3 shipped skills teach the `.clavity/seams/<topic>.md` convention; 0 teach `PANEL-SEATS`.** So the directory convention is genuinely established and this failure mode is far weaker than the marker gap - which is exactly why the marker gap mattered |
 
 ### OPEN for the owner - one round-6 finding I did not fold
 
