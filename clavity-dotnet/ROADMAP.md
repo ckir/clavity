@@ -986,6 +986,35 @@ we do not control, that runtime state is **git-visible**, and a `git add .` woul
 workflow-position spec (`docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md`,
 section 6) mandates the shield for the *new* reader; **this entry is the existing seven.**
 
+### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
+
+**Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`,
+tracked — note `docs/superpowers/*` is gitignored, so it needed `git add -f`).
+
+**Status: deferred, not cancelled.** The spec is complete and has been through **six adversarial panel
+rounds, all folded**. It is not blocked on quality; it is deprioritised behind the policy gate, which is
+the approved deliverable. Do not restart the design — read the spec.
+
+**What it would build:** a single SessionStart reader (registered `startup|resume|clear|compact`) that
+surfaces unconcluded consult seams so a session that dies leaves its successor able to resume, plus a
+seam naming convention. Explicitly no resume file, no WAL, no decisions index.
+
+**Two things it inherits unresolved, and the first is a gate on the name:**
+- **The discipline's NAME is deferred pending a measurement** — does bare `sync` actually flush on this
+  platform, and at what cost under concurrent load. **Not "does it exit 0"** — that was measured and
+  proved nothing. Probe passes → a power-failure name is defensible *with a scope note*. Probe fails →
+  the name must change. **Two of the three overclaims (implementation coverage, decision retention) are
+  settled against the mechanism either way**, so even the best outcome yields a narrower name.
+- A Windows-path casing case in the filename match.
+
+**One scope item needs owner confirmation before it is built:** the spec adds a debounce-marker contract
+to `adversarial-panel-review/SKILL.md` (writing `agy-panel.head`). Everything else is additive; that one
+edits a shipped skill.
+
+**Honest scope, recorded so a later reader does not over-read the name:** it recovers interrupted
+*consults*. It does not cover implementation work (435 of 435 agent-written seams are consult payloads),
+does not retain decisions, and does not defend against a compromised agent.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.

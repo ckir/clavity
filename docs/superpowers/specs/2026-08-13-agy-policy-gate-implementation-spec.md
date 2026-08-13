@@ -11,17 +11,21 @@ repository on a standard Windows box, not for the author's machine.
 
 ## 1. What this builds
 
-Two things, sharing one piece of infrastructure.
+**ONE thing, plus the generic infrastructure a later tenant will reuse.**
 
 1. **A policy gate** that refuses an AGY-* peer consult whose seam file names no adversarial roles. Its
    first and only rule in this build is `ROLES`.
-2. **A productised POWER-FAILURE nudge** - the durable-execution-index discipline, moved out of a
-   personal unshipped hook and into the plugin, as a **reminder, never a gate** (section 9).
 
-The infrastructure both use - the skip token, the log, the degraded sentinel, the SessionStart reader -
-is built **generic from the start**, because three further tenants are already named and deferred:
-`OPEN-PROPOSAL`, `NEGOTIATED`, and a future stateless form of power-failure. Naming these artifacts
-generically now costs nothing; renaming them later would migrate files users already have.
+**This section previously said "two things", the second being a productised POWER-FAILURE nudge. That is
+no longer in this build** - it was extracted to its own design and then **deferred by the owner to a
+future release** (2026-08-13). Sections 9 and 9a are retained as INPUT to that separate spec and are
+marked DO-NOT-BUILD. **This paragraph exists because the summary sentence outlived the decision** - the
+same drift that a sibling spec's scope line suffered, caught there in review.
+
+The infrastructure - the skip token, the log, the degraded sentinel, the SessionStart reader - is built
+**generic from the start**, because further tenants are already named and deferred: `OPEN-PROPOSAL`,
+`NEGOTIATED`, and a future stateless form of power-failure. Naming these artifacts generically now costs
+nothing; renaming them later would migrate files users already have.
 
 ## 2. The predicate
 
@@ -180,8 +184,12 @@ to `pwd`. A relative path writes into whatever subdirectory the caller happened 
 
 ## 9. POWER-FAILURE - EXTRACTED. DO NOT BUILD SECTIONS 9 OR 9a FROM THIS FILE.
 
-> 🔴 **These two sections are OUT OF SCOPE for this build and are retained only until their own spec
-> exists.** Owner ruling: calling this a *productisation* was wrong. A productisation moves a working
+> 🔴 **These two sections are OUT OF SCOPE for this build.** Their own spec now exists -
+> `2026-08-13-workflow-position-resilience-design.md` - and the owner has **deferred it to a future
+> release as second priority** (2026-08-13; tracked in `clavity-dotnet/ROADMAP.md`). So this text is
+> input to an artifact that is itself parked: **nothing here is on anyone's critical path.**
+>
+> Owner ruling: calling this a *productisation* was wrong. A productisation moves a working
 > thing; this changed **the detection mechanism** (command-text grep -> `HEAD` moved), **the trigger
 > gating** (always-on -> marker opt-in) and **the index-location contract** (the author's auto-memory
 > path -> "whatever the host provides"). That is a new design, and a new design earns its own
