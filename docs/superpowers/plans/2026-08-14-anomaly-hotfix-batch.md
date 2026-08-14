@@ -998,10 +998,12 @@ else
   # here: round 1 measured that it concatenates onto a shield with no trailing newline, and round 2
   # caught that exact idiom being re-pasted into a fallback branch one task over.
   mkdir -p "$R/.clavity" 2>/dev/null
-  if [ ! -f "$R/.clavity/.gitignore" ]; then
+  # `! -s` covers MISSING and EMPTY together. Measured (panel R3): the `[ ! -f ] ... elif [ -s ]` form ran
+  # neither branch for a zero-byte shield, leaving the 14d defect itself unfixed in the fallback.
+  if [ ! -s "$R/.clavity/.gitignore" ]; then
     printf '%s\n' '*' >> "$R/.clavity/.gitignore"
-  elif [ -s "$R/.clavity/.gitignore" ]; then
-    grep -qx '*' "$R/.clavity/.gitignore" 2>/dev/null || printf '\n%s\n' '*' >> "$R/.clavity/.gitignore"
+  elif ! grep -qx '*' "$R/.clavity/.gitignore" 2>/dev/null; then
+    printf '\n%s\n' '*' >> "$R/.clavity/.gitignore"
   fi
 fi
 ```
@@ -1168,6 +1170,23 @@ nothing and would pass while asserting nothing.
             (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/discipline-reaching.jsonl')) | Should -Match '"v":3'
         }
 
+        It 'the FALLBACK restores an EMPTIED shield when the helper cannot be sourced (panel R3)' {
+            # THE FALLBACK PATH NEEDS ITS OWN ORACLE. Every other row here exercises the helper, so a
+            # broken else-branch is invisible to all of them - and it WAS broken: measured, the
+            # `[ ! -f ] ... elif [ -s ]` form ran neither branch against a zero-byte shield, leaving the
+            # 14d defect itself unfixed on exactly the path that exists to be a floor.
+            $d = New-ReachingFixture -Shield ''
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            # Copy the hook WITHOUT agy-shield-lib.sh beside it, so the source fails and the else runs.
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-x'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+            $payload | & bash ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2>$null | Out-Null
+            (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')) |
+                Should -Match '(?m)^\*$' -Because 'the fallback is the floor; an emptied shield must still be restored without the helper'
+            Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
         It 'FORWARDS the payload session_id as the debounce key' {
             # THE ORACLE IS A LINE COUNT AGAINST A PERSISTENT FAULT, and it has to be: Stage A runs
             # unconditionally and ignores the key entirely, so a hook passing an empty or hard-coded key
@@ -1252,10 +1271,15 @@ else
   # into this brand-new else branch, recreating the defect it had just closed one task over. A fix is
   # unreviewed code; this is what that costs when it is not re-reviewed.
   mkdir -p "$root/.clavity" 2>/dev/null
-  if [ ! -f "$root/.clavity/.gitignore" ]; then
+  # `! -s` COVERS MISSING **AND** EMPTY IN ONE TEST, and that is the whole point. PANEL R3 measured that
+  # the round-2 form - `if [ ! -f ] ... elif [ -s ] ...` - ran NEITHER branch for a shield that exists at
+  # zero bytes, leaving an EMPTIED shield unrestored. That is the literal 14d defect, reintroduced in the
+  # fallback by the fix for the previous round's defect. Third consecutive round in which a fix created
+  # one; do not "simplify" this test back apart.
+  if [ ! -s "$root/.clavity/.gitignore" ]; then
     printf '%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
-  elif [ -s "$root/.clavity/.gitignore" ]; then
-    grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null || printf '\n%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
+  elif ! grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null; then
+    printf '\n%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
   fi
 fi
 
@@ -2087,8 +2111,17 @@ Describe 'generate-cheatsheet-literals.ps1' {
             Copy-Item -LiteralPath $script:Cs -Destination $outCs
             & pwsh -NoProfile -File $script:Gen -CoreSource $fx -RustTarget $outRs -CsTarget $outCs
             $LASTEXITCODE | Should -Be 0
-            ([IO.File]::ReadAllText($outRs)) | Should -Not -Match '\\r' -Because 'a bare \r must never be baked into the literal'
-            ([IO.File]::ReadAllText($outCs)) | Should -Not -Match '\\r'
+            # ASSERT ON BYTES, NOT ON A REGEX - panel R3 caught the first version of these two lines as a
+            # VACUOUS ORACLE. They read `Should -Not -Match '\\r'`, and in a PowerShell single-quoted
+            # string that is backslash-backslash-r, which as a regex matches the two-character TEXT \r -
+            # not a carriage return. Deleting the generator's normalisation leaves RAW 0x0D bytes in the
+            # output, which do not match that pattern at all, so the row stayed GREEN against the exact
+            # break it names. The -Because text said "a bare \r" while the pattern tested the escaped
+            # form: intent and implementation disagreed, which is what made it look correct.
+            ([IO.File]::ReadAllBytes($outRs) | Where-Object { $_ -eq 13 }).Count |
+                Should -Be 0 -Because 'a raw CR (0x0D) must never be baked into the Rust literal'
+            ([IO.File]::ReadAllBytes($outCs) | Where-Object { $_ -eq 13 }).Count |
+                Should -Be 0 -Because 'a raw CR (0x0D) must never be baked into the C# literal'
         }
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -2229,6 +2262,15 @@ $coreText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($CoreSource)
 # NORMALISE, THEN ESCAPE. The pinning tests normalise only the FILE side and compare it to the literal
 # AS-IS, so a generator that bakes \r\n into the literals reddens the exact gate it exists to protect.
 $coreText = $coreText.Replace("`r`n", "`n").Trim()
+# STRIP A LEADING BOM EXPLICITLY - .Trim() does NOT remove it. Measured: [char]::IsWhiteSpace(0xFEFF) is
+# FALSE in .NET, so a BOM survives Trim() and would be baked verbatim into the START of both literals.
+# ReadAllBytes + UTF8.GetString is used deliberately here (Get-Content would hide the problem by
+# stripping it), so this decode keeps the BOM as U+FEFF. core.md has NO BOM today (measured: it starts
+# 44 72 69), which makes this latent rather than live - and latent is exactly when it is cheap to close.
+# Left unhandled it would fail LOUDLY but confusingly: the pinning tests read the file with
+# File.ReadAllText, which DOES strip the BOM, so only the literal would carry it, and U+FEFF is
+# non-ASCII so the injected-context gate would red as well.
+$coreText = $coreText.TrimStart([char]0xFEFF)
 
 if ($coreText.Length -eq 0) { Fail "canonical source is empty after trim: $CoreSource" }
 
