@@ -103,6 +103,18 @@ These are not per-item; they apply to the whole batch and to the plan built from
    fold, and a paraphrase evades a phrase-shaped grep.
 5. **Read the count, not the exit code.** `dotnet test --filter` exits 0 when its filter matches nothing.
    Any gate that shells out to a filtered test run must assert the test COUNT.
+6. **EVERY file this batch creates or edits inside a `$DomainRoots` tree inherits the injected-context
+   invariants - and three of them do.** Measured at `scripts/check-injected-context.ps1:40-53`, the
+   governed roots include `clavity-dotnet/plugin`, `clavity-classic/plugin` and `agy-autotrain`. So:
+   - the **14d shield helper**, if it lands under `clavity-*/plugin/`, is governed - it must be pure
+     ASCII, and it must satisfy the twin-plugin byte-identical rule the same canonicaliser enforces;
+   - the **14e `agy-curate/SKILL.md` edit** is governed, because `agy-autotrain` is a DomainRoot;
+   - `core.md` is governed, which section 4.3 already says.
+
+   An earlier draft flagged only the third. **The author of a rule is not exempt from it** - this
+   repository has already had a commit rejected by the very ASCII gate that commit was shipping. Run
+   `just check-injected-context` (or the script directly) before committing any of the three, and treat a
+   rejection as expected feedback rather than a surprise.
 
 ---
 
@@ -265,6 +277,14 @@ out="$root/.clavity"
 name.** A count with no stated predicate is not a measurement. Both products' hook directories are in
 scope.
 
+**The set is fixed BEFORE 14e exists, so 14e must not join it after the fact.** 14c lands at step 3 and
+14e at step 4; if 14e's pre-commit check wrote its scratch output under `.clavity/`, it would become a
+hook writing into `.clavity/` that 14c's sweep never saw - shipped un-wired and unprotected, and the
+14c tests would still pass because its set was closed. **14e's scratch path therefore must NOT be inside
+`.clavity/`** (a system temp location, unique per invocation per the note in 4.1). Stated as a constraint
+rather than solved by re-ordering, because the 14c set has to close somewhere and a rule holds for the
+NEXT hook too, not just this one.
+
 **Tests.** For each hook in the established set, assert the hook ACTUALLY INVOKES the shield check with
 effect - not that the helper exists, and not that the hook merely sources it. Neutering the call site must
 turn a test RED.
@@ -305,6 +325,14 @@ merely detectable, and no literal-unescaping logic is written a third time.
    REJECTED by a comparison against the committed (HEAD) versions - the hook would block precisely the
    correct workflow it exists to enforce. It reports the difference; it does not silently repair it.
    Repair is the author running the `just` task deliberately.
+
+   **BOTH SIDES MUST COME FROM THE INDEX - input as well as output.** Comparing staged literals against
+   output generated from the WORKING-TREE `core.md` breaks partial commits: an author who stages only
+   some of `core.md`'s hunks with `git add -p` gets literals generated from the unstaged text, a false
+   mismatch, and a permanently blocked commit that no amount of regenerating fixes. **In the hook, the
+   generator is fed `git show :<core.md path>`.** This also removes the CRLF hazard at its root on that
+   path - the index blob is LF - though constraint 1b still binds the `just` task, which reads the
+   working tree by design.
 2. **It must assert the generator's own exit status FIRST.** If the generator crashes, the working tree
    is untouched, so a bare `git diff --quiet` returns 0 and the hook PASSES - committing diverged
    literals with a green check. **A generator that failed to run is not evidence of parity.** This is
@@ -442,15 +470,35 @@ into a hard failure would break the drain.
 
 ## 5. Ordering and commit unit
 
-**One forced dependency: 14d before 14c.** 14c wires hooks to the helper 14d builds. ROADMAP `:991`
-states it directly - fix 14d first, or 14c's hooks inherit the weak idiom.
+**Two forced dependencies, not one.**
 
-Everything else is independent. Suggested order, cheapest-risk last:
+1. **14d before 14c.** 14c wires hooks to the helper 14d builds. ROADMAP `:991` states it directly - fix
+   14d first, or 14c's hooks inherit the weak idiom.
+2. **14a FIRST, before everything.** An earlier draft listed it last as "independent, small". It is
+   neither: `.clavity` is absent from `PrunedSegments`, so the injected-context gate walks that directory
+   today - which is the whole reason 14a exists - and **this batch actively creates content there**
+   (consult seams, discipline markers, the anomalies file). Global rule 6 requires running that gate over
+   three of this batch's own artifacts. Landing 14a last means every gate run during the batch is taken
+   over a tree the gate is mis-scanning. It is one array entry; doing it first removes a class of
+   spurious failures from the rest of the work.
 
-1. 14d (helper + its four-state tests, mirrored across the pair)
-2. 14c (wire the established hook set; count fixed at Step 0)
-3. 14e (generator + build task + hook assertion)
-4. 14a, 14b, 13a, 13c (independent, small)
+Revised order:
+
+1. **14a** (one array entry; unblocks clean gate runs for everything after it)
+2. 14d (helper + its Stage A/B tests, mirrored across the pair)
+3. 14c (wire the established hook set; count fixed at Step 0)
+4. 14e (generator + build task + hook assertion + the `SKILL.md` companion change)
+5. 14b, 13a, 13c (independent, small)
+
+**Revert order is the inverse, and it is NOT free - state it before it is needed.**
+
+- **14d cannot be reverted while 14c stands.** 14c's hooks source and call the helper; removing the
+  helper leaves every wired hook sourcing a function that no longer exists. Revert 14c first, or revert
+  both together.
+- **14e's two halves revert together.** The generator and the `agy-curate/SKILL.md` companion change are
+  one unit: reverting the generator while the skill still says "run the generator" recreates the
+  incomplete fold this batch exists to avoid, pointed the other way.
+- 14a, 14b, 13a and 13c are independently revertible.
 
 **Commit unit.** The batch forms ONE review boundary, per the section 8 ruling. Individual commits within
 it are fine; the AGY-CAPSTONE runs over the batch as a range, immediately on completion, at low context.
