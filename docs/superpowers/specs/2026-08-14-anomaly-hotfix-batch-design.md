@@ -142,6 +142,7 @@ These are not per-item; they apply to the whole batch and to the plan built from
    | `agy-first/SKILL.md` | 14c | yes, both plugins |
    | `agy-capstone/SKILL.md` | 14c | yes, both plugins |
    | `agy-test-audit/SKILL.md` | 14c | yes, both plugins |
+   | `open-issues/SKILL.md` | **14d** | yes, both plugins |
    | `agy-curate/SKILL.md` | 14e | no - single copy |
 
    `core.md` is governed too, which section 4.3 already says.
@@ -445,6 +446,7 @@ has seven, and three of them have no row in that matrix. The required set:
 | **fresh clone: no `.clavity/` directory at all (A1)** | the directory is created and the shield written. Every other row assumes the directory already exists, so **A1 was untestable by the rest of the matrix** - and A1 is the branch that exists because a bare `>>` fails `No such file or directory` |
 | **`mkdir` fails (A1 failure path)** | returns 0, writes nothing, does not hard-block |
 | **persistent fault repeated with the SAME debounce key** | emitted once, not twice |
+| **the same persistent fault under a DIFFERENT debounce key** | emitted AGAIN. **Without this row the key is never actually exercised**: an implementation that ignores `$AGY_SESSION_ID` entirely and writes one hardcoded global marker satisfies every other row in this table - the same-key row passes trivially - while destroying the per-session isolation the key exists for. One session's fault would then silence it for every other session on the machine, permanently. **A same-key row alone tests that SOMETHING is debounced, never that it is debounced BY THE KEY** |
 | **validation failure repeated with the same key** | emitted BOTH times - validation is never debounced, and only a repeat test can tell the two policies apart |
 | idempotence | three consecutive runs leave exactly one `*` line |
 | **every SILENT branch asserts stderr is EMPTY** | A1-success, A2 (all three cases), B1 and B2 are silent by contract, and **an effect-only assertion cannot detect a branch that started talking**. A helper that emits on the healthy path runs on every capture and trains the operator to ignore the channel - the same failure the debounce exists to prevent. Without an empty-stderr assertion the "silent unless it acted or found a fault" row has no oracle at all |
@@ -582,7 +584,8 @@ that weighed only markers and logs was ranking an incomplete set. It is also arb
 markdown, so it **cannot travel through `argv`**, and no content-carrying mode should be invented for it.
 
 **Because the shield is per-DIRECTORY, it does not need to.** The skill calls
-`agy-mark.sh prepare seams/<topic>.md` (or `prepare scratch/<topic>/<name>`) naming the FILE it is about
+`bash "<path>/agy-mark.sh" prepare seams/<topic>.md` (or `prepare scratch/<topic>/<name>`) - **always
+through an explicit interpreter, never as a bare path; see the contract table below** - naming the FILE it is about
 to write; the script creates and shields the parent directory and verifies the effect for that exact
 path, then the skill writes the file with its ordinary tooling. Stating this explicitly is required: without it an implementer either invents a `file` mode that
 takes content on the command line, or leaves the highest-exposure writes unshielded because no mode
@@ -811,8 +814,14 @@ merely detectable, and no literal-unescaping logic is written a third time.
    module, retiring the pin) hits an unhandled `fatal:` and a rejected commit with no guidance at all -
    strictly worse than the misleading message this rule was written to prevent, because there is no
    message. **Check all three for presence in the index before extracting any of them**, and when a
-   literal's deletion is staged, say so by name and skip the parity assertion for the same reason: a pin
-   with no target is not a parity failure.
+   literal's deletion is staged, say so by name and skip the parity assertion **FOR THAT LITERAL ONLY**.
+
+   **Skipping parity WHOLESALE when any one path is being deleted is a fail-open, and it is one this
+   rule would otherwise have introduced.** The two literals are checked independently: if the `.rs`
+   deletion is staged while the `.cs` has diverged, a blanket skip exits 0 and **silently certifies the
+   diverged survivor** - the precise outcome item 14e exists to prevent, reached through the guard added
+   to make deletion survivable. A path being removed has no pin to assert; every path still present must
+   still be asserted. **"Skip" is per-path, never per-run.**
 
    **The original rationale for this rule is now STALE, and saying so matters because a stale rationale
    invites someone to delete the rule.** It was introduced to stop partial commits being falsely blocked.
@@ -853,6 +862,7 @@ alone:
 | generator exits non-zero | hook FAILS - it must not pass on an untouched tree |
 | **`core.md` DELETION staged** | hook PASSES, with a message naming the skip reason. **Measured: `git show :<path>` exits 128 there**, so without this the hook fails every attempt to delete or rename the canonical source and the operator cannot get past it |
 | **a LITERAL's deletion staged** (either one) | hook PASSES, naming WHICH literal is being removed. Same 128, same crash, and guarding only `core.md` leaves it: the operator gets a raw `fatal:` and a rejected commit with no guidance |
+| **one literal's deletion staged AND the OTHER literal diverged** | hook **FAILS** on the surviving literal. This is the row that catches a per-run skip: a blanket "any deletion means skip parity" passes here while certifying a diverged pin, which is exactly what 14e exists to stop |
 | **the hook is run against a fixture `core.md` containing a byte a pwsh text pipeline would alter** | the hook's generated output reproduces that byte EXACTLY. A hook that pipes the content as text turns this RED; a hook using raw-byte transport passes. **The fixture is constructed in a throwaway repo, so the ASCII rule that governs the real `core.md` does not constrain it** |
 | **hook temp file after every exit path, including the failure paths** | no temp file survives the run |
 | `core.md` staged, literals staged and correct | hook PASSES (the correct workflow is not blocked) |
