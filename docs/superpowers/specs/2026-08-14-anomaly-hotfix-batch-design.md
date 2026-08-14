@@ -410,8 +410,14 @@ name. **Unique-per-invocation plus no cleanup is unbounded growth**, and both ob
   delete the sibling's markers on its own schedule, and one that pruned a broader glob would delete them
   all. **A prune instruction with an undefined prefix is worse than no prune**, which is why it is fixed
   here rather than left to the implementer.
-- **The A2 prepend's temp file** is covered by the same obligation - unique per invocation, consumed by
-  the `mv` on success, removed on every failure path.
+- **The A2 prepend's temp file** is unique per invocation, consumed by the `mv` on success, and removed
+  on every failure path. **But a cleanup trap does not survive a SIGKILL, and that file lives INSIDE
+  `<root>/.clavity/` where neither prune reaches it** - the marker prune runs over `$TMPDIR` and
+  `$HOME/.clavity-tmp`, not the repository. So it needs a recognisable name and its own sweep: name it
+  `.gitignore.tmp.<unique>` beside the shield, and have A1 remove any `.gitignore.tmp.*` older than the
+  same `-mtime +30` window before it does anything else. **Without that, an interrupted prepend leaks
+  permanently into the exact directory this helper exists to protect** - and a `git status` in a repo
+  whose shield is briefly broken would show them.
 
 **Tests. The four-state matrix is the STARTING point, not the whole set - the decision tree grew past it.**
 An earlier draft said "all four states above", which was written when the tree had four branches. It now
@@ -580,6 +586,7 @@ the same glob. **No registration in `hooks.json` is required or wanted** - it is
 | form | an EXECUTABLE `.sh` (not sourced), so `exit` is correct here - the opposite of the 4.1 helper's `return`-only rule, and the difference is load-bearing |
 | root | resolved with `git rev-parse --show-toplevel`. A subprocess is affordable here because this runs once per discipline event, not per turn. **If it cannot resolve, REFUSE and exit non-zero** |
 | modes | `head <discipline> <sha>` (write `.clavity/agy-marks/<discipline>.head`), `log <discipline> <status> <sha> [text...]` (append one line to `.clavity/agy-marks/skipped.log`), `prepare <relpath>` (create the parent directory of `.clavity/<relpath>` and shield it, for the `seams/` and `scratch/` cases) |
+| **EVERY mode creates the directory it writes into - `head` and `log` included** | Stage A1 of the 4.1 helper creates `<root>/.clavity/` and **nothing below it**, so `.clavity/agy-marks/` does not exist on a fresh clone. `prepare` was told to create its parent; `head` and `log` were not, and **this batch simultaneously removes the `mkdir` instructions the skills carried for themselves** - so on a fresh clone both modes would fail `No such file or directory` on the first discipline that ran. The very failure the shipped `open-issues` snippet already guards against at its own `:69` |
 | **`head`'s PAYLOAD is already contracted elsewhere - cite it, do not invent it** | the file contains **the bare sha and nothing else**. `docs/agy-disciplines-marker-contract.md:18` states it: "the commit sha from `git rev-parse HEAD` at consult time, and nothing else". An earlier draft of this table named the PATH and left the CONTENT undefined, which is not enough to implement from - `touch`ing the file and ignoring the argument would satisfy the words. **A trailing newline happens to be tolerated** because the reader compares `"$(cat "$marker")"` against `"$(git rev-parse HEAD)"` (`agy-seam-inject.sh:125`) and command substitution strips trailing newlines from both sides - but write it bare regardless, because the contract says "nothing else" and the tolerance is a property of the current reader, not a promise |
 | **`prepare` takes the FILE path, not the directory - and this is the whole point of the mode** | An earlier draft called it `dir` and passed `seams`. That throws the filename away, and the helper's Stage B then evaluates the DIRECTORY: `check-ignore` on `.clavity/seams` returns 0 under the `*` rule, B2 says "done", and **the file about to be written is never evaluated at all** - so a `!seams/<topic>.md` negation goes undetected and the effect check silently covers nothing. `git check-ignore` works on paths that do not exist yet, so passing the eventual file path costs nothing and restores the guarantee. **A mode that cannot see the file it is preparing for is a shield with a blind spot exactly where the payload lands** |
 | **the script owns the log LINE FORMAT** | `log` emits `<iso-8601>  <discipline>  <status>  HEAD=<sha>[  <text>]`, generating the timestamp and the `HEAD=` prefix itself. **The callers must NOT pass a preformatted line.** TWO of the three rewritten skills document that shape in their own prose today (`agy-first:96`, `agy-capstone:180` and `:253`; `agy-test-audit` writes only a `.head` marker and never uses `log`); moving it into the script is the entire point of having a script, and leaving it in the callers keeps copies of a format that must agree |
@@ -632,6 +639,17 @@ one. Stage A runs unconditionally and ignores the key entirely, so a hook passin
 key restores the shield, passes every test above, and ships with its debounce silently wrong. The hook
 already parses `session_id` (`agy-discipline-reaching.sh:42`); assert it forwards THAT value, and a
 mutation replacing the argument with an empty string must turn a test RED.
+
+**That mutation cannot turn ANY of the rows above red, and saying so is the point.** Stage A runs
+unconditionally and ignores the key entirely, so an empty key still restores the shield - and shield
+restoration is the only observable those rows assert. **A demand for a red that no listed row can
+produce is an unimplementable instruction**, and an implementer meeting it either invents an oracle or
+quietly drops the requirement. The oracle it needs is stated here instead: **run the hook TWICE against
+a repository in a PERSISTENT fault state** (the tracked-file case, which reports on every call until a
+human intervenes) and **count the helper's lines on stderr**. With the real `session_id` forwarded the
+fault is reported ONCE; with an empty key it is reported TWICE. That difference is the only thing that
+distinguishes a correct forward from a broken one, and it needs the persistent fault - against a healthy
+shield the helper is silent under both.
 
 **For `agy-mark.sh`**: one row per mode against a broken shield asserting restoration plus the correct
 write; the fail-closed rows (helper unloadable, root unresolvable) asserting NOTHING is written and the
@@ -725,8 +743,29 @@ merely detectable, and no literal-unescaping logic is written a third time.
    documents the identical trap for `curate-commit`: a text pipe "re-encodes the stream through the
    console OEM code page (CP437)". `core.md` is pure ASCII today (measured: 0 bytes above 127), so the
    character-mangling half is latent rather than live - **the line-ending half is not**, and it lands
-   directly on the LF-versus-CRLF invariant this whole item turns on. Redirect the bytes to a temp file
-   or read the process's raw stdout stream; do not interpolate the content through a variable or a pipe.
+   directly on the LF-versus-CRLF invariant this whole item turns on.
+
+   **DO NOT USE `>` FOR THIS, and the reason is measured rather than argued.** In PowerShell `>` is not
+   a byte redirect - it is `Out-File`, which decodes the stream and re-encodes it. Measured 2026-08-14
+   with `git show :<core.md>` on both engines:
+
+   | engine | `git show ... > file` |
+   |---|---|
+   | pwsh 7 | 3508 bytes, 0 CRLF, 7 LF - **byte-identical to the index blob** |
+   | Windows PowerShell 5.1 | **7032 bytes** (exactly double), 0 CRLF - **UTF-16LE** |
+
+   So the hazard is real but it is an ENCODING hazard, not the line-ending one you would predict: 5.1's
+   `>` defaults to Unicode and silently doubles the file. **pwsh 7 happens to be byte-exact today**, and
+   `lefthook.yml:82` does invoke the hook as `pwsh`, so the shipped path is currently safe - **which is
+   exactly the kind of incidental safety this spec already refused to rely on for CRLF.** A future
+   `powershell.exe` invocation, or a change in `Out-File`'s defaults, breaks it silently.
+
+   **Use an explicit byte-exact mechanism:** start git through `ProcessStartInfo` with
+   `RedirectStandardOutput`, and copy `StandardOutput.BaseStream` straight into a `FileStream`. This is
+   the mirror image of the transport the `agy-curate` skill already mandates in the other direction
+   (writing raw bytes into a process's `StandardInput.BaseStream` rather than piping text), so it is an
+   established pattern here, not a new one. Never interpolate the content through a variable, a pipe, or
+   `>`.
 
    **A STAGED DELETION of `core.md` must be handled BEFORE the generator runs, or the hook traps the
    operator in a loop they cannot exit.** Measured 2026-08-14: with `core.md` deleted and the deletion
