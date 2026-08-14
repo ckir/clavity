@@ -148,8 +148,12 @@ file must never suppress Stage A.
 
 **Stage A - shield integrity, unconditional:**
 
-A0. **Validate the inputs, or return 0 without writing.** The root must be an existing directory, and the
-    path must resolve UNDER `<root>/.clavity/`. Both matter: the helper repairs
+A0. **Validate the inputs. On failure: WARN LOUDLY on stderr, then return 0 without writing** - the
+    warning is not optional and is never debounced, because a bad argument means the CALLER is broken and
+    is about to write private data anyway. (Stated here as well as in the contract table deliberately: an
+    implementer translating this tree into code reads THIS line, and an earlier draft said only "return 0
+    without writing", which yields a silent no-op that hides a broken caller.) The root must be an
+    existing directory, and the path must resolve UNDER `<root>/.clavity/`. Both matter: the helper repairs
     `<root>/.clavity/.gitignore` and nothing else, so a path outside that directory cannot be fixed by
     repairing that shield. Restoring it and reporting success for, say, `docs/secret.md` would be a
     false GREEN for a file left fully exposed.
@@ -205,7 +209,7 @@ the only remedy that works.
 | input validation | **the root must be an existing directory and the path must resolve under `<root>/.clavity/`, or the helper WARNS LOUDLY on stderr and returns 0 without writing.** An unvalidated root is a footgun: the contract forbids re-deriving it, so an empty or wrong value is silently trusted, and `mkdir -p "$1/.clavity"` with an empty `$1` would create a directory at the filesystem root |
 | **bad-argument output is NOT optional** | A bad argument means the CALLER is broken, and the caller is about to write private data. Silence here is a fail-open: a hook that passes the wrong path gets a clean return, proceeds to write its anomaly, and the file is unshielded with nothing reported. **A validation failure is a FAULT for output purposes** - it is loud, it is NOT debounced (a broken caller must not be silenced by a marker), and it names the argument it rejected |
 | effect | **inside the repository:** may create `<root>/.clavity/` and create or append to `<root>/.clavity/.gitignore`, and nothing else. **Outside it:** may write ONE debounce marker under `$TMPDIR` or `$HOME/.clavity-tmp`, exactly as the sibling hooks do. An earlier draft said "touches nothing else" while also requiring a seen-marker, which is unsatisfiable - the marker cannot live in the repository, because a marker inside `.clavity/` would be a file the shield is supposed to be protecting |
-| output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture. **Subject to the debounce below** |
+| output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture. **Three fault classes, and the debounce differs by class:** (a) **PERSISTENT** (tracked file, negation line) - debounced per key, because it is a true state a human fixes once; (b) **VALIDATION** (bad root, path outside `.clavity/`) - **never** debounced, because the CALLER is broken and must be visible on every call; (c) **ENVIRONMENT** (B4: `check-ignore` fails 128 inside a work tree) - debounced per key like (a), because it is a condition of the machine rather than of the caller, and Stage A has already restored the shield regardless. Every branch of the tree falls into exactly one class |
 | return | **`return 0`, ALWAYS - never `exit`.** See the sourcing hazard below |
 | tracked-file case (B3, tracked) | emits the `git rm --cached` remedy on stderr, debounced; returns 0. Stage A has already secured the shield, so this is a notice, not a repair |
 | negation-line case (B3, untracked) | the path is still unignored after Stage A restored the shield text, so a `!` line is overriding it. Emits a loud notice naming the file and the offending line, debounced; **returns 0 and does NOT rewrite the shield**. Present in the contract because an earlier draft described it only in prose - an implementer reads this table for return states |
@@ -256,6 +260,7 @@ has seven, and three of them have no row in that matrix. The required set:
 | **root argument empty or not a directory** | returns 0, writes NOTHING, creates no directory, **and WARNS on stderr** |
 | **path argument outside `<root>/.clavity/`** | returns 0, writes NOTHING, **and WARNS on stderr** - no false "repaired" report, and no silence either |
 | **outside a git work tree** | text fallback runs; no `check-ignore` invoked |
+| **`check-ignore` fails with 128 INSIDE a work tree (B4)** | Stage A's restoration still happened, the error is reported, and the helper returns 0. Without this row B4 could be deleted with the suite still green |
 | idempotence | three consecutive runs leave exactly one `*` line |
 
 **Plus one mutation control per branch** - deleting any branch must turn at least one row RED. If deleting
@@ -408,11 +413,17 @@ turn RED. If it stays green, the assertion is decorative.
 identical second failure - the user runs a no-op and is rejected again with the same text. The hook
 distinguishes three cases and names the remedy that actually works:
 
-| what the hook observes | message must say |
-|---|---|
-| staged literals differ from generated, and the literals are UNSTAGED in the worktree | "regenerated output is already in your worktree - **`git add` the two literals**" (running the task again changes nothing) |
-| staged literals differ from generated, worktree literals also stale | "**run `just <task>`, then `git add` the two literals**" |
-| **staged `core.md` differs from worktree `core.md`** (a partial stage) | "**partial staging of `core.md` is not supported.** The literals are generated from the STAGED text, and the `just` task reads the WORKTREE, so the two cannot agree. Stage `core.md` in full, or commit it on its own." |
+**These cases OVERLAP, so the evaluation order is part of the contract - case 3 is tested FIRST and
+short-circuits.** A partial stage also satisfies case 1 or case 2, so a hook that checks them in table
+order emits "`git add` the literals" or "run `just <task>`" to a user whose real problem is the partial
+stage. Following that advice stages full literals against a partially-staged `core.md` and fails again -
+the exact loop this table exists to prevent. **Order: 3, then 1, then 2.**
+
+| # | what the hook observes | message must say |
+|---|---|---|
+| **3** (evaluated FIRST) | **staged `core.md` differs from worktree `core.md`** - a partial stage | "**partial staging of `core.md` is not supported.** The literals are generated from the STAGED text, and the `just` task reads the WORKTREE, so the two cannot agree. Stage `core.md` in full, or commit it on its own." |
+| 1 | staged literals differ from generated, and the literals are UNSTAGED in the worktree | "regenerated output is already in your worktree - **`git add` the two literals**" (running the task again changes nothing) |
+| 2 | staged literals differ from generated, worktree literals also stale | "**run `just <task>`, then `git add` the two literals**" |
 
 The third case is the one an earlier draft got wrong by asserting it would pass. It cannot: the hook
 compares index-to-index, so valid staged literals must be generated from the STAGED `core.md`, and the
