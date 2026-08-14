@@ -397,6 +397,30 @@ Describe 'agy-shield-lib.sh' {
             $res.Err | Should -BeNullOrEmpty -Because 'A1-success is a SILENT branch'
         }
 
+        It 'does NOT concatenate onto a shield with NO trailing newline (panel R1)' {
+            # MEASURED with a control: `printf '%s\n' '*' >> file` against a file ending `foo.txt` with no
+            # final newline produced the single line `foo.txt*`, while the same append against a file that
+            # DID end in a newline produced two lines. The bare * then never exists as its own line, the
+            # [ -f ] test still passes, and the shield is silently broken - so this branch would corrupt
+            # the file again on every subsequent call.
+            $r = New-FixtureRepo -Shield 'foo.txt'   # New-FixtureRepo writes it verbatim, no trailing LF
+            Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' | Out-Null
+            $lines = (Get-Shield $r) -split "`n"
+            $lines | Should -Contain '*' -Because 'the bare * must be its OWN line, not appended to foo.txt'
+            (Get-Shield $r) | Should -Not -Match 'foo\.txt\*'
+        }
+
+        It 'treats a CRLF shield as already correct - it must not append forever (panel R1)' {
+            # This shield is gitignored and never checked out, so .gitattributes cannot normalise it and a
+            # human editing it on Windows can leave CRLF - the "created by hand" case 14d exists for.
+            # Measured on Git Bash `grep -qx '*'` DID match `*\r\n` (LF control also matched), but that is
+            # a platform property, not a guarantee. This row pins the behaviour on BOTH.
+            $r = New-FixtureRepo
+            [IO.File]::WriteAllText((Join-Path $r '.clavity/.gitignore'), "*`r`n")
+            1..3 | ForEach-Object { Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' | Out-Null }
+            ([regex]::Matches((Get-Shield $r), '\*')).Count | Should -Be 1 -Because 'a shield that never matches would be appended to on every call and grow without bound'
+        }
+
         It 'is IDEMPOTENT - three runs leave exactly one bare * line' {
             $r = New-FixtureRepo -Shield ''
             1..3 | ForEach-Object { Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' | Out-Null }
@@ -607,6 +631,8 @@ Create `clavity-dotnet/plugin/hooks/agy-shield-lib.sh`. **Pure ASCII. LF line en
 #       $3 = debounce key (the caller's session id; EMPTY is legal and disables debouncing)
 # Returns: 0, always.
 
+_AS_CR=$(printf '\r')   # a literal CR, for the optional-trailing-CR shield match in A2.
+
 # Emit one line on stderr, at most once per (key, class). An empty key disables debouncing.
 # Class VALIDATION is NEVER debounced - a broken caller must be visible on every call.
 _agy_shield_say() {
@@ -694,13 +720,32 @@ agy_shield() {
     # does not exist, so a sweep running first has nothing to sweep and fails every time. Stderr is
     # redirected because a GENUINE failure (a read-only mount) must not break a silent branch - not
     # because it is hiding the avoidable error the ordering already removes.
-    find "$_as_dir" -maxdepth 1 -name '.gitignore.tmp.*' -mtime +30 -delete 2>/dev/null
+    #
+    # GATED, NOT UNCONDITIONAL - and the sibling hooks say why in terms. assertion-strength-reminder.sh
+    # :114-119: "THE EXISTS AND CREATE CASES MUST STAY SEPARATE, and the prune belongs ONLY to create...
+    # Collapsing these into a single `[ -f ] || : >` condition puts `find` - a SUBPROCESS - on EVERY
+    # test-file write, which is the hottest path this plugin has. Do not re-merge them." An unconditional
+    # sweep here is that same anti-pattern one level over, and it lands in a hook registered with
+    # "timeout": 10 (hooks.json:56). So it runs ONLY when this session has not swept yet, keyed off the
+    # same marker directory the debounce uses - at most once per session, never on the hot path.
+    _as_sweep="${TMPDIR:-/tmp}/.clavity-shield-swept-${_as_key:-nosession}"
+    if [ ! -f "$_as_sweep" ]; then
+        : > "$_as_sweep" 2>/dev/null
+        find "$_as_dir" -maxdepth 1 -name '.gitignore.tmp.*' -mtime +30 -delete 2>/dev/null
+    fi
 
     # ---------------------------------------------------------------- A2: ensure the shield text.
     # THREE cases, not two. Treating ANY non-zero grep as "absent" is required: on a missing file
     # grep exits 2, and an implementer keying on `exit 1` alone fails to restore a shield that does
     # not exist - the original 14d defect, reintroduced.
-    if grep -qx '*' "$_as_shield" 2>/dev/null; then
+    # AN OPTIONAL TRAILING CR IS ACCEPTED, and the reason is a measurement that came out the OTHER way.
+    # This shield is gitignored and never checked out, so .gitattributes cannot normalise it, and a human
+    # editing it on Windows can leave CRLF - which is exactly the "created by hand" case 14d exists for.
+    # MEASURED on Git Bash: `grep -qx '*'` DID match a `*\r\n` shield, with a passing LF control. That is a
+    # property of THIS platform's grep, not a guarantee: on Linux `*\r` is a different line, and a shield
+    # that never matches would be appended to on every single call and grow without bound. Costs one extra
+    # grep, and only on the path where the first already failed.
+    if grep -qx '*' "$_as_shield" 2>/dev/null || grep -qx "*$_AS_CR" "$_as_shield" 2>/dev/null; then
         :                                       # a bare * is present: append nothing.
     elif [ -f "$_as_shield" ] && grep -q '^!' "$_as_shield" 2>/dev/null; then
         # PREPEND. .gitignore is LAST-MATCH-WINS, so appending * to a file that begins with a
@@ -725,7 +770,17 @@ agy_shield() {
             fi
         fi
     else
-        printf '%s\n' '*' >> "$_as_shield" 2>/dev/null
+        # A FILE WHOSE LAST LINE HAS NO TRAILING NEWLINE WOULD OTHERWISE CONCATENATE. Measured, with a
+        # control: a shield containing `foo.txt` with no final newline became the single line `foo.txt*`,
+        # while the same append against a file that DID end in a newline correctly produced two lines. The
+        # bare `*` then never exists as its own line, so the shield is still broken, this branch runs
+        # again on the next call, and the file grows a corrupted line every time.
+        # $(...) strips trailing NEWLINES but not a CR, so a last byte of \n yields an empty substitution.
+        if [ -s "$_as_shield" ] && [ -n "$(tail -c 1 "$_as_shield" 2>/dev/null)" ]; then
+            printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null
+        else
+            printf '%s\n' '*' >> "$_as_shield" 2>/dev/null
+        fi
     fi
 
     # ---------------------------------------------------------------- Stage B: verify the EFFECT.
@@ -808,6 +863,9 @@ suite green, that branch is untested regardless of how many rows exist.
 | change the A2 prepend back to an append (`>> "$_as_shield"`) | `(a) the human INTENT survives` |
 | change the A2 prepend to writing nothing | `(b) the DIRECTORY is protected` |
 | delete the `elif ... grep -q '^!'` branch entirely | both (a) and (b) |
+| drop the trailing-newline probe from the append branch | `does NOT concatenate onto a shield with NO trailing newline` |
+| drop the optional-CR alternative from the A2 match | `treats a CRLF shield as already correct` |
+| make the A1 temp sweep unconditional again | **NONE - this is a COST regression, not a correctness one, and no row can catch it.** Verify by reading that the sweep stays gated behind `$_as_sweep`. Recorded here rather than left implied, because a mutation table with a silent gap is how a guard gets credited with coverage it does not have |
 | delete the `ls-files --error-unmatch` split in B3 | `reports the git rm --cached remedy` |
 | make Stage A conditional on B3's outcome | `restores an EMPTIED shield even when the path is TRACKED` |
 | replace `_ass_marker` with a fixed global name (ignore `$_ass_key`) | `emits the SAME fault AGAIN under a DIFFERENT key` |
@@ -838,7 +896,32 @@ git commit -m "feat(shield): 14d - effect-checking .clavity shield helper, mirro
 
 ---
 
-## Task 4: Item 14d - `open-issues/SKILL.md` calls the helper
+## Task 4: Item 14d - `open-issues/SKILL.md` calls the helper (GATED on Task 1)
+
+> **GATED ON TASK 1, exactly as Tasks 6 and 7 are.** Panel round 1 measured that this task's first draft
+> would have shipped 14d as a **pure no-op** - see the box below. If Task 1 recorded **BLOCKED**, this
+> task ships the *append-corruption* fix only (Step 1b) and the helper call is deferred with 14c's skill
+> half.
+
+### PANEL R1 - the locator in this task's first draft was broken, and it would have shipped silently
+
+The first draft sourced the helper with `. "$(dirname "${BASH_SOURCE[0]:-$0}")/../../hooks/agy-shield-lib.sh"`.
+**That does not resolve.** Measured in an agent-run shell snippet, with a control:
+
+```
+dirname $0      = [/usr/bin]
+BASH_SOURCE[0]  = [<empty>]
+ls /usr/bin/../../hooks/  ->  No such file or directory
+```
+
+A `SKILL.md` snippet is text an agent pastes into an arbitrary shell; `$0` is the SHELL, not the skill
+file. So the `source` would fail **every time**, `command -v agy_shield` would be false **every time**, and
+the `else` fallback would run the OLD content-blind idiom **every time**. 14d - the item this whole batch
+is named for - would have shipped as a no-op that passes its own presence-grep.
+
+**This is the same defect as M1, one task over**, and it is why Task 4 is now gated on the same
+measurement. The peer's independent seat found it too; its stated mechanism (`dirname` yields `.`) was
+wrong - the measured value is `/usr/bin` - but the conclusion was right.
 
 **Files:**
 - Modify: `clavity-dotnet/plugin/skills/open-issues/SKILL.md:62-89`
@@ -878,7 +961,12 @@ Replacement text for `:70-79`:
 # nothing else: measured in a throwaway repo it passes while the directory is leaking in three other
 # states - an EMPTIED shield, a shield carrying a `!` negation, and a file already TRACKED by git.
 # The helper always returns 0 and never blocks a capture.
-. "$(dirname "${BASH_SOURCE[0]:-$0}")/../../hooks/agy-shield-lib.sh" 2>/dev/null || true
+#
+# <BASE> IS THE LOCATOR RECORDED BY TASK 1 - this skill's own base directory, supplied by the harness at
+# invocation time. It is NOT $0 and NOT ${BASH_SOURCE[0]}: measured, in an agent-run shell snippet those
+# give /usr/bin and the empty string, so a path built from them resolves nowhere and this whole block
+# would silently degrade to the else branch on every single capture.
+. "<BASE>/../../hooks/agy-shield-lib.sh" 2>/dev/null || true
 if command -v agy_shield >/dev/null 2>&1; then
   agy_shield "$R" ".clavity/local-anomalies.md" "${AGY_SESSION_ID:-}"
 else
@@ -887,12 +975,37 @@ else
 fi
 ```
 
-**The `else` branch is deliberate and is not a weakening.** This snippet is pasted by an agent into an
-arbitrary shell, where the helper's path may not resolve; falling back to the OLD idiom is strictly
+**The `else` branch is deliberate and is not a weakening.** Falling back to the OLD idiom is strictly
 better than capturing with no shield at all. The helper is the improvement; the fallback is the floor.
 
-**Note that `mkdir -p "$R/.clavity"` at `:69` is now redundant when the helper runs** (Stage A1 does it),
-but it is kept because the `else` branch needs it. Do not delete it.
+**`mkdir -p "$R/.clavity"` at `:69` stays, and it is NOT redundant.** It runs UNCONDITIONALLY, above this
+whole block, so the directory exists whichever branch is taken - including the case where the helper loads
+but its own Stage A1 `mkdir` fails and it returns 0 by contract. **Do not move it inside the `else`, and
+do not delete it:** a reviewer read the first draft as putting it inside the `else` and concluded the
+capture would be dropped. It is outside; that reading is wrong, and this line is here so the next reader
+does not have to re-derive it.
+
+- [ ] **Step 1b: The append-corruption fix - ships EVEN IF Task 1 recorded BLOCKED**
+
+Independent of the helper, the fallback idiom's own append is unsafe on a shield whose last line has no
+trailing newline. **Measured, with a control:** appending `*` to a file containing `foo.txt` with no final
+newline produced the single line `foo.txt*`, while the same append against a file that DID end in a
+newline correctly produced two lines. So the bare `*` never becomes its own line, the `[ -f ]` test still
+passes, and the shield is silently broken.
+
+```bash
+[ -f "$F" ] || printf '%s\n\n' '# Untriaged anomalies (local, never committed)' >> "$F"
+```
+
+is unaffected, but the shield fallback must become:
+
+```bash
+if [ ! -f "$R/.clavity/.gitignore" ]; then
+  printf '%s\n' '*' >> "$R/.clavity/.gitignore"
+elif [ -s "$R/.clavity/.gitignore" ] && [ -n "$(tail -c 1 "$R/.clavity/.gitignore")" ]; then
+  printf '\n%s\n' '*' >> "$R/.clavity/.gitignore"
+fi
+```
 
 - [ ] **Step 2: Mirror to classic and verify byte-identity**
 
@@ -1096,6 +1209,13 @@ out="$root/.clavity"
 . "$(dirname "$0")/agy-shield-lib.sh" 2>/dev/null || true
 if command -v agy_shield >/dev/null 2>&1; then
   agy_shield "$root" ".clavity/discipline-reaching.jsonl" "$sid"
+else
+  # FALLBACK, and its absence was a real asymmetry. If the helper is missing, unreadable, or contains a
+  # syntax error, `|| true` swallows the failure and `command -v` correctly reports it gone - and without
+  # this branch the hook would proceed to write into an UNSHIELDED .clavity/ and exit 0 with nothing said.
+  # The old content-blind idiom is a weak shield; no shield at all is the leak this item exists to stop.
+  mkdir -p "$root/.clavity" 2>/dev/null
+  [ -f "$root/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
 fi
 
 [ -d "$out" ] || mkdir -p "$out" 2>/dev/null || exit 0
@@ -1115,7 +1235,8 @@ Expected: all rows PASS.
 
 | mutation | row that must turn RED |
 |---|---|
-| delete the `agy_shield` call | `RESTORES an emptied shield` |
+| delete the `agy_shield` call **and** the new `else` fallback | `RESTORES an emptied shield` |
+| delete ONLY the `else` fallback, then make the helper unsourceable | a new row must assert the shield is STILL restored by the fallback - add it if absent |
 | replace `"$sid"` with `""` in the call | `FORWARDS the payload session_id as the debounce key` |
 | replace `"$sid"` with a hard-coded literal | same row |
 
@@ -1578,7 +1699,7 @@ Per-file edits, by verified line:
 | `agy-first/SKILL.md` | `:37` | add: name the seam file to `prepare` before writing it. |
 | `agy-capstone/SKILL.md` | `:179-180`, `:252-253` | replace both `skipped.log` write instructions with `log` invocations; delete both format literals. |
 | `agy-capstone/SKILL.md` | `:265` | replace the marker instruction with a `head` invocation. |
-| `agy-capstone/SKILL.md` | `:41`, `:43`, `:174` | add `prepare` for the seam file and the scratch directory. |
+| `agy-capstone/SKILL.md` | `:41`, `:43`, `:174` | add `prepare` for the seam file and for a concrete file inside the scratch directory - **never the directory itself**, see below. |
 | `agy-test-audit/SKILL.md` | `:221-222` | replace the marker instruction with a `head` invocation. |
 | `agy-test-audit/SKILL.md` | `:36`, `:38` | add `prepare` for the seam file and the scratch directory. |
 
@@ -1590,6 +1711,15 @@ The canonical invocation block to paste (adjust mode and arguments per site):
 # base directory, which the harness supplies at invocation time.
 bash "<BASE>/../../hooks/agy-mark.sh" head agy-first "$(git rev-parse HEAD)"
 ```
+
+**`prepare` ALWAYS takes a FILE path, never a directory - and for a scratch DIRECTORY that is a trap.**
+`agy-mark.sh` resolves the target with `_parent=$(dirname "$root/$rel")`, so passing `scratch/<topic>/`
+creates `.clavity/scratch` and **not** `.clavity/scratch/<topic>` - the directory the discipline is about
+to fill still does not exist, and the next write fails mid-run. Pass a concrete file that will live in
+that directory, e.g. `prepare "scratch/<topic>/notes.md"`, which creates and shields
+`.clavity/scratch/<topic>/`. **Do not invent a dummy-file convention** and do not add a directory mode:
+the file path is what Stage B needs in order to evaluate the tracked-file check for the thing actually
+being written.
 
 - [ ] **Step 2: Make the three skills ACT on a `prepare` refusal**
 
