@@ -329,7 +329,7 @@ the only remedy that works.
 |---|---|
 | form | a POSIX `sh` **function**, defined in a sourceable file - the hooks are `.sh` and run under the agent's shell |
 | input | **three arguments: the repository root, the path to protect** (relative to that root), **and a debounce key** (the caller's session id, or empty to disable debouncing). It must NOT re-derive the root - callers already have it, and two derivations can disagree. The path is an argument, not a baked-in constant, because branches 2-3 both test a specific file. **The debounce key must be passed IN because the helper cannot derive it**: sibling hooks parse `session_id` out of the hook's stdin payload (`agy-anomaly-capture-reminder.sh:61`), and a sourced function has no payload of its own |
-| **the DEBOUNCE KEY is validated too - it lands in a filename** | The key is interpolated into the marker path (`.clavity-shield-<class>-<key>`), so an unvalidated key is a path-traversal primitive: `AGY_SESSION_ID=../../something` escapes `$TMPDIR` and writes wherever it resolves. **The helper validates root and path but an earlier draft did not validate the key at all.** Reject any key that is not `[A-Za-z0-9._-]+`, and on rejection treat it as an EMPTY key - debouncing off, warning every time - rather than refusing to run: a malformed session id must never disable a data-leak guard |
+| **the DEBOUNCE KEY is validated too - it lands in a filename** | The key is interpolated into the marker path (`.clavity-shield-<class>-<key>`), so an unvalidated key is a path-traversal primitive: `AGY_SESSION_ID=../../something` escapes `$TMPDIR` and writes wherever it resolves. **The helper validates root and path but an earlier draft did not validate the key at all.** **An EMPTY key is LEGAL and must not be validated** - it is the sanctioned way to disable debouncing. Validate only a NON-empty key, rejecting any that is not `[A-Za-z0-9._-]+`, and on rejection treat it as empty: debouncing off, warning every time, rather than refusing to run - a malformed session id must never disable a data-leak guard. **An earlier draft ran the regex over every key, and `[A-Za-z0-9._-]+` requires at least one character, so the legal empty key failed it - and since a validation failure is a loud, NEVER-debounced fault, the sanctioned input would have printed an error on every single call, breaking the silent-path contract outright** |
 | input validation | **the root must be an existing directory and the path must resolve under `<root>/.clavity/`, or the helper WARNS LOUDLY on stderr and returns 0 without writing.** An unvalidated root is a footgun: the contract forbids re-deriving it, so an empty or wrong value is silently trusted, and `mkdir -p "$1/.clavity"` with an empty `$1` would create a directory at the filesystem root |
 | **bad-argument output is NOT optional** | A bad argument means the CALLER is broken, and the caller is about to write private data. Silence here is a fail-open: a hook that passes the wrong path gets a clean return, proceeds to write its anomaly, and the file is unshielded with nothing reported. **A validation failure is a FAULT for output purposes** - it is loud, it is NOT debounced (a broken caller must not be silenced by a marker), and it names the argument it rejected |
 | effect | **inside the repository:** may create `<root>/.clavity/`; may create, APPEND TO, or PREPEND TO `<root>/.clavity/.gitignore`; and may create **one transient temp file inside `<root>/.clavity/`**, consumed by the prepend's `mv` or removed on failure. That temp file is a deliberate exception to "nothing else" - the prepend's atomicity requires it to sit on the same filesystem as the shield - and it is named here because an earlier draft's "nothing else" would have forbidden the only correct implementation. **Prepending is a third write shape, not a kind of appending** - an earlier draft of this row said "create or append", which contradicted A2's middle case and would have sent an implementer back to the append that inverts a negation. **Outside it:** may write ONE debounce marker under `$TMPDIR` or `$HOME/.clavity-tmp`, exactly as the sibling hooks do. An earlier draft said "touches nothing else" while also requiring a seen-marker, which is unsatisfiable - the marker cannot live in the repository, because a marker inside `.clavity/` would be a file the shield is supposed to be protecting |
@@ -441,7 +441,7 @@ has seven, and three of them have no row in that matrix. The required set:
 | **root argument empty or not a directory** | returns 0, writes NOTHING, creates no directory, **and WARNS on stderr** |
 | **path argument outside `<root>/.clavity/`** | returns 0, writes NOTHING, **and WARNS on stderr** - no false "repaired" report, and no silence either |
 | **outside a git work tree** | text fallback runs; no `check-ignore` invoked |
-| **`check-ignore` fails with 128 INSIDE a work tree (B4)** | Stage A's restoration still happened, the error is reported, and the helper returns 0. Without this row B4 could be deleted with the suite still green |
+| ~~**`check-ignore` fails with 128 INSIDE a work tree (B4)**~~ | **DELETED, deliberately - option (b) of the choice the B4 paragraph above sets out.** Through the public entry point B4 is reachable only by genuine repository corruption, because A0 rejects every cheap way of producing a 128. The two ways to keep a row were a test-only seam that bypasses A0 - new surface in a shipped guard, to reach a branch that only reports - or a mocked `git`, which the spec forbids. **B4 is therefore a defensive branch with NO oracle, and this table says so instead of implying one exists.** An earlier version left the row in place while the prose above declared leaving it "NOT acceptable"; the table and the prose now agree |
 | **fresh clone: no `.clavity/` directory at all (A1)** | the directory is created and the shield written. Every other row assumes the directory already exists, so **A1 was untestable by the rest of the matrix** - and A1 is the branch that exists because a bare `>>` fails `No such file or directory` |
 | **`mkdir` fails (A1 failure path)** | returns 0, writes nothing, does not hard-block |
 | **persistent fault repeated with the SAME debounce key** | emitted once, not twice |
@@ -487,6 +487,16 @@ human has edited, changing its first line. That is a real mutation of user conte
 but it is ADDITIVE and order-preserving, and the alternative measured in round 1 (write nothing) exposed
 every other file in the directory. **The narrow, honest statement of the residual is therefore: the
 negated path leaks until a human acts; nothing else in the directory does.**
+
+**And that residual is NARROWER than this section alone would suggest - it reaches only files sitting
+DIRECTLY in `.clavity/`.** Measured 2026-08-14: git cannot re-include a file whose parent directory is
+excluded, and the bare `*` excludes every subdirectory, so a negation naming a NESTED path is inert -
+`check-ignore` on `.clavity/seams/x.md` returns **0, still ignored**, under a shield of `*` plus
+`!seams/x.md`, while the top-level control returns 1. **So `local-anomalies.md` and the other top-level
+files are the only ones this residual can touch; `seams/`, `scratch/` and `agy-marks/` are protected
+absolutely, negation line or not.** The measurement is recorded again in section 4.2 where it also
+governs `prepare`; it is repeated here because this is where the residual is DEFINED, and a reader who
+only reaches this paragraph would otherwise generalise it to the whole directory.
 
 ### 4.2 Item 14c - Step 0 is DONE, and it changed what this item IS
 
@@ -772,6 +782,15 @@ merely detectable, and no literal-unescaping logic is written a third time.
    (writing raw bytes into a process's `StandardInput.BaseStream` rather than piping text), so it is an
    established pattern here, not a new one. Never interpolate the content through a variable, a pipe, or
    `>`.
+
+   **THIS BINDS EVERY INDEX EXTRACTION THE HOOK MAKES, NOT ONLY THE GENERATOR'S INPUT - and scoping it
+   to the input alone GUARANTEES the comparison fails.** Parity compares the generator's byte-exact
+   output against the **STAGED LITERALS**, which the hook must also read out of the index
+   (`git show :<literal path>`). If that second extraction goes through ordinary stdout capture it is
+   re-encoded by the same mechanism - UTF-16LE under Windows PowerShell 5.1, measured above - while the
+   generated side is byte-exact. **The two sides would then be produced by different transports, and
+   parity is an EXACT comparison** (only remedy 1's diagnosis normalises). That is not a risk of a
+   mismatch, it is a certainty of one on the affected engine. **Extract both sides the same way.**
 
    **A STAGED DELETION of `core.md` must be handled BEFORE the generator runs, or the hook traps the
    operator in a loop they cannot exit.** Measured 2026-08-14: with `core.md` deleted and the deletion
@@ -1315,7 +1334,10 @@ Plus two mutation controls, **and they belong to DIFFERENT suites** - an earlier
 gate's tests, where the second cannot possibly fire:
 - **On the gate's suite:** collapse the missing and empty branches back into one, and at least one row
   above must turn RED.
-- **On the CALLER's suite** (`drain-knowledge`): a test that runs the drain with the seed absent and
+- **On the CALLER's suite** (`scripts/tests/drain-knowledge.Tests.ps1` - **it already exists**: 6.8 KB,
+  registered once in the slow partition, `_partition.md` records 40,5s / 7 tests. A reviewer objected
+  that this control demanded building an integration harness from scratch; measured, the home for it is
+  already there): a test that runs the drain with the seed absent and
   asserts the operator-visible text names a missing seed rather than an overflow. Restoring
   `drain-knowledge.ps1:146`'s single hardcoded warning must turn THAT row red. **A mutation in the
   caller can never redden a unit test of the gate** - the two are separate scripts with separate
