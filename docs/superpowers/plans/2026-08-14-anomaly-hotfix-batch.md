@@ -2212,6 +2212,28 @@ Describe 'generate-cheatsheet-literals.ps1' {
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'SKIPS a target given as an empty string, and still writes the other (panel R6)' {
+        # The 14e hook needs this: a literal whose deletion is staged is gone from the worktree, so there
+        # is nothing to splice into. Without an empty-target skip the hook must Copy-Item a file that does
+        # not exist, which throws under $ErrorActionPreference='Stop' and CRASHES the hook on exactly the
+        # case its own test table says must PASS.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genskip-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $outCs = Join-Path $tmp 'x.cs'
+            Copy-Item -LiteralPath $script:Cs -Destination $outCs
+            & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget '' -CsTarget $outCs
+            $LASTEXITCODE | Should -Be 0 -Because 'an empty target means SKIP, not error'
+            [IO.File]::ReadAllBytes($outCs) | Should -Be ([IO.File]::ReadAllBytes($script:Cs))
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FAILS when BOTH targets are empty - a no-op run must not report success' {
+        & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget '' -CsTarget '' *> $null
+        $LASTEXITCODE | Should -Not -Be 0
+    }
+
     It 'preserves pure ASCII (core.md is inside the ASCII-gated domain)' {
         ([IO.File]::ReadAllBytes($script:Rs) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
         ([IO.File]::ReadAllBytes($script:Cs) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
@@ -2278,8 +2300,16 @@ function Fail([string]$msg) {
 }
 
 if (-not (Test-Path -LiteralPath $CoreSource)) { Fail "canonical source not found: $CoreSource" }
-if (-not (Test-Path -LiteralPath $RustTarget)) { Fail "rust target not found: $RustTarget" }
-if (-not (Test-Path -LiteralPath $CsTarget))   { Fail "C# target not found: $CsTarget" }
+# AN EMPTY TARGET MEANS "SKIP THAT HALF", and it is a real requirement, not a convenience. The 14e
+# pre-commit hook must generate for only the literals it will compare: a literal whose deletion is staged
+# is gone from the worktree, so there is nothing to splice into, and demanding both targets would make
+# the hook crash on exactly the case its test table says must PASS. Only a path that is BOTH non-empty
+# AND missing is an error.
+$doRust = -not [string]::IsNullOrWhiteSpace($RustTarget)
+$doCs   = -not [string]::IsNullOrWhiteSpace($CsTarget)
+if (-not $doRust -and -not $doCs) { Fail 'both targets were empty - nothing to generate' }
+if ($doRust -and -not (Test-Path -LiteralPath $RustTarget)) { Fail "rust target not found: $RustTarget" }
+if ($doCs   -and -not (Test-Path -LiteralPath $CsTarget))   { Fail "C# target not found: $CsTarget" }
 
 # READ AS BYTES AND DECODE EXPLICITLY. Get-Content -Raw would go through the host encoding.
 $coreText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($CoreSource))
@@ -2364,8 +2394,8 @@ $csOut += $csSegments
 if ($csEnd + 1 -lt $csLines.Count) { $csOut += $csLines[($csEnd + 1)..($csLines.Count - 1)] }
 
 # ONE LF-JOINED STRING, WRITTEN ONCE. Never an array - the array form joins with the platform newline.
-[IO.File]::WriteAllText($RustTarget, ($rustLines -join "`n"), (New-Object Text.UTF8Encoding($false)))
-[IO.File]::WriteAllText($CsTarget,   ($csOut     -join "`n"), (New-Object Text.UTF8Encoding($false)))
+if ($doRust) { [IO.File]::WriteAllText($RustTarget, ($rustLines -join "`n"), (New-Object Text.UTF8Encoding($false))) }
+if ($doCs)   { [IO.File]::WriteAllText($CsTarget,   ($csOut     -join "`n"), (New-Object Text.UTF8Encoding($false))) }
 
 Write-Host "generate-cheatsheet-literals: OK - regenerated both literals from $CoreSource" -ForegroundColor Green
 exit 0
@@ -2540,6 +2570,19 @@ $Cs   = 'clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs'
 # bytes byte-identical to the index blob, while Windows PowerShell 5.1 produced 7032 bytes - exactly
 # double - as UTF-16LE. lefthook invokes this as `pwsh` today, so the shipped path is currently safe,
 # which is exactly the kind of incidental safety this item refuses to rely on.
+# EVERY temp path this hook creates is registered here as it is handed out, so the finally block at the
+# very bottom can remove all of them on EVERY exit path. Panel R6 caught the first draft of this step
+# calling New-TempPath four times and iterating $temps once while DEFINING NEITHER - under StrictMode
+# that crashes on the first call, and the cleanup block would have thrown as well, stranding the temps it
+# exists to remove. Declare them before any function that uses them.
+$temps = New-Object System.Collections.ArrayList
+function New-TempPath {
+    param([string]$Suffix)
+    $p = Join-Path ([IO.Path]::GetTempPath()) ('cheatsheet-parity-' + [guid]::NewGuid().ToString('N') + $Suffix)
+    [void]$temps.Add($p)
+    return $p
+}
+
 function Get-IndexBytes {
     param([string]$Path, [string]$OutFile)
     $psi = [Diagnostics.ProcessStartInfo]::new()
@@ -2577,8 +2620,10 @@ the panel's Execution Realist seat named it as the one step that "cannot be perf
 it isn't written".)
 
 ```powershell
-$failed = $false
-function Fail([string]$msg) { Write-Host "check-cheatsheet-parity: $msg" -ForegroundColor Red; $script:failed = $true }
+# Fail REPORTS; it does not decide. Every call site below exits explicitly on the next line, so there is
+# deliberately no accumulated $failed flag: a flag nothing reads implies a code path that does not exist,
+# and the next reader would add one.
+function Fail([string]$msg) { Write-Host "check-cheatsheet-parity: $msg" -ForegroundColor Red }
 
 try {
     # ---- 1. PRESENCE, for ALL THREE, before extracting ANY of them. `git show :<path>` exits 128 with a
@@ -2626,9 +2671,14 @@ try {
     # ---- 4. Generate into temp copies, then ASSERT THE GENERATOR'S EXIT STATUS FIRST. If the generator
     # crashes the tree is untouched, so any later "no difference" result means "nothing ran", not "nothing
     # differed" - a generator that failed to run is not evidence of parity.
-    $genRs = New-TempPath '.gen.rs'; $genCs = New-TempPath '.gen.cs'
-    Copy-Item -LiteralPath (Join-Path $RepoRoot $Rs) -Destination $genRs
-    Copy-Item -LiteralPath (Join-Path $RepoRoot $Cs) -Destination $genCs
+    # ONLY SCAFFOLD THE TARGETS WE WILL ACTUALLY COMPARE. The generator SPLICES into an existing source
+    # file, so it needs a copy to work on - but a literal whose deletion is staged is gone from the
+    # worktree too, and an unconditional Copy-Item throws under $ErrorActionPreference='Stop'. That would
+    # CRASH the hook on exactly the path test-table row 10 says must PASS. An empty target tells the
+    # generator to skip that half (see Task 10).
+    $genRs = ''; $genCs = ''
+    if ($rsIn) { $genRs = New-TempPath '.gen.rs'; Copy-Item -LiteralPath (Join-Path $RepoRoot $Rs) -Destination $genRs }
+    if ($csIn) { $genCs = New-TempPath '.gen.cs'; Copy-Item -LiteralPath (Join-Path $RepoRoot $Cs) -Destination $genCs }
     & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'generate-cheatsheet-literals.ps1') `
         -CoreSource $coreTmp -RustTarget $genRs -CsTarget $genCs *> $null
     if ($LASTEXITCODE -ne 0) { Fail "the generator exited $LASTEXITCODE - parity was NOT established (a generator that failed to run is not evidence of parity)."; exit 1 }
@@ -2708,7 +2758,13 @@ finally {
    satisfies case 1 or 2, so a hook checking them in table order sends the user advice whose remedy
    fails again.
 
-The three diagnosis messages:
+The three diagnosis messages. **This table specifies the required CONTENT, not the exact wording** - the
+script body in Step 3 is the authority on the literal text. Panel R6 flagged the two as differing (the
+script interpolates the full `$Core` path and says "literal(s)" where the table says "core.md" and "the
+two literals"). **The tests assert the DISTINGUISHING phrase from each row - "partial staging", "but not
+`core.md` itself", "already in your worktree", "run `just`" - never a whole sentence.** A test pinned to a
+full sentence reddens on any reword and pushes an implementer to edit the message back instead of fixing a
+real problem, which is the opposite of what the "assert the message TEXT" row exists for.
 
 | # | detection | message |
 |---|---|---|
