@@ -853,10 +853,17 @@ comparing). The "never raw bytes" instruction belongs to Case 3 and to Case 3 on
    **unchanged**; `git add --renormalize .` normalised the **INDEX** blob to LF but left the **WORKTREE
    still CRLF**. So the sequence matters and the verification must be by bytes, not by assumption:
 
+   0. **PRECONDITION, and it is not optional: the three paths must be CLEAN in the working tree before
+      step 3 runs.** Step 3 overwrites the working tree from the index, so a developer who runs this
+      sequence mid-edit **silently destroys their own uncommitted changes to `core.md` or a literal**.
+      Check `git status --short -- <the three paths>` and refuse to proceed if any is dirty; commit or
+      stash first. This repository already carries the narrower version of that rule - a targeted
+      per-file `git checkout`, never a broad one - and the destructive step here is exactly the case it
+      exists for.
    1. add the attribute lines;
    2. `git add --renormalize` the three paths (fixes what the repo stores);
-   3. **force the working tree to be re-checked-out** for those paths, then **measure the bytes** - do not
-      infer that it worked;
+   3. **force the working tree to be re-checked-out** for those paths, naming each path explicitly and
+      never a directory, then **measure the bytes** - do not infer that it worked;
    4. confirm the pinning suites are still green afterwards, because step 3 changes files they compare.
 
    **This is why the normalisation stays load-bearing rather than belt-and-braces on any tree that
@@ -879,6 +886,22 @@ comparing). The "never raw bytes" instruction belongs to Case 3 and to Case 3 on
 3. **Escaping is per-target and mechanical**: backslash, double-quote and newline, into a single-line
    `\n`-escaped Rust literal and a concatenated multi-line C# literal. It must never be retyped through a
    terminal, whose code page mangles bytes in transit.
+
+   **THE ORDER IS PART OF THE CONTRACT, not an implementation detail. Backslash FIRST, always.** Escaping
+   the newline before the backslash means the generator escapes its OWN output: `LF` becomes the two
+   characters `\n`, and a subsequent backslash pass turns that into `\\n`, which both compilers read as a
+   literal backslash followed by `n` rather than a newline. The literal then compiles cleanly and fails
+   the pinning test with a diff no one can see at a glance. Order: backslash, then double-quote, then
+   newline.
+
+   **The C# target needs LINE-BOUNDARY logic that a whole-string replace cannot produce, and the spec
+   must say so rather than leaving it to be discovered.** Measured against the current artifact: the
+   first segment carries no `+` (`DriverCheatsheet.cs:31`), every middle segment is `+ "...\n"`
+   (`:32-36`), and the LAST segment has **no trailing `\n` and ends with `;`** (`:37`). So the generator
+   splits on LF and treats first and last specially; a single `.Replace()` over the whole text produces
+   either a dangling `+` or a trailing `\n` the file side does not have. The Rust target has the opposite
+   shape - one line, no splitting - which is why "escaping is mechanical" is true per-target and
+   misleading if read as one shared routine.
 4. **The generator is itself covered by a test** - it is new code in the trust path of a pinned artifact,
    and an unproven generator is a worse failure mode than the manual mirroring it replaces.
 5. **The generator writes ONE LF-joined string, and must NOT emit a line ARRAY.** The escaped content
@@ -934,10 +957,41 @@ segment match rejects, e.g. `.clavity-tmp/foo.md` or `x.clavity/foo.md`: `PruneR
 `(?:^|/)<segment>/`, so a prefix or suffix variant must NOT prune. Pruning is relative to the repository
 root, never absolute - the existing comment at `:55-58` records why, and the test must not regress it.
 
+> **NOT a defect - checked, and recorded so a later round does not re-derive it.** A reviewer argued the
+> near-miss controls are gameable because an unescaped `.` in `.clavity` would act as a wildcard, letting
+> a broken regex pass `x.clavity/foo.md` while wrongly pruning `xclavity/foo.md`. **That state is
+> unreachable: the escaping is applied by the regex BUILDER, not per entry.**
+> `scripts/check-injected-context.ps1:99` reads
+> `$script:PruneRx = '(?:^|/)(?:' + (($script:PrunedSegments | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')/'`,
+> so every segment added to the array is escaped by construction and there is nowhere to add one
+> unescaped. The two named controls are sound as written.
+
 ### 4.5 Item 14b - register the orphan suite
 
 Add `clavity-install.Tests.ps1` to the explicit registration list in the root `justfile`. Registration is
 an explicit list, not a glob, enforced by `test-suite-registration.Tests.ps1`.
+
+**That covers the LOCAL gates and NOT CI, and the difference has to be stated because this item's whole
+purpose is "it never runs in any gate".** Measured 2026-08-14: CI does not use the fast/slow partitions
+at all - `.github/workflows/ci-scripts.yml:155` runs `Invoke-Pester scripts/tests` over the whole
+DIRECTORY in one invocation - and **no workflow anywhere references `clavity-install.Tests.ps1`** (grep
+across `.github/workflows/` returns nothing). The suite lives at `clavity-dotnet/install/`, outside that
+glob. So adding it to the `justfile` makes it run in the inner loop and leaves it **invisible to CI**.
+
+**A registered-but-CI-invisible suite is the same fail-open shape this section already refuses for a
+registered-but-skipped one.** The plan must therefore do one of two things, explicitly and visibly, never
+by omission: (a) also add the suite to `ci-scripts.yml` so a gate that actually blocks a merge runs it, or
+(b) record the CI gap as a named residual for the owner. **(a) is the smaller change and completes the
+item; (b) leaves 14b half-done and must say so in those words.**
+
+**The registration guard cannot see it either, and that is by design - do not widen it.**
+`test-suite-registration.Tests.ps1:52` matches only `scripts/tests/<name>.Tests.ps1`, so an entry naming a
+path outside that directory is invisible to every row in that file: it is neither certified nor rejected.
+The file's own header at `:3-6` says the scope is deliberate and that "widening the scope is a decision
+about other products' suites, not a fold". **So the plan adds a narrow pin instead of widening it** - a
+row asserting that the recipes name `clavity-dotnet/install/clavity-install.Tests.ps1` AND that the file
+exists on disk. Without the first half the pin passes when the entry is deleted; without the second it
+passes when the file is renamed.
 
 **No contingency is needed.** The suite was run: **Passed 12, Failed 0** in 4.77s. It is a pure unit
 suite - it mocks, dot-sources the installer so `main` never runs, and makes no mutating calls. It is
@@ -952,6 +1006,14 @@ added.** Registering a suite that pushes its partition over the cap converts a c
 aborted run - and an aborted run has no `Tests Passed:` line at all, which is not a pass, so the failure
 would present as a mystery rather than as this change. If the fast partition cannot absorb 4.77s, it goes
 in the slow one.
+
+> **NOT a defect - checked, and recorded so a later round does not re-derive it.** A reviewer read the
+> "two Pester suites must never run concurrently" constraint as meaning the fast and slow partitions run
+> in parallel in CI, so that moving a suite between them would still collide. **They are not run in
+> parallel; they are not run in CI at all.** `.github/workflows/ci-scripts.yml:155` invokes
+> `Invoke-Pester scripts/tests` as a single sequential run over the directory. The partitions exist for
+> the local agent loop and the 600s foreground tool cap, which is a constraint on the DRIVER, not on CI.
+> The concurrency rule is about not starting two Pester processes on one machine by hand.
 
 ### 4.6 Item 13a - replace the false promise
 
