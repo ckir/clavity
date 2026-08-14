@@ -1253,9 +1253,59 @@ folding; it is the reason each fold gets the round after it.
 getting narrower each time** (a whole mechanism, then a definition, then case sensitivity, then a
 trailing period). **That is what convergence looks like from the inside, but it is not the same as done.**
 
-### OPEN for the owner - ONE item, plus one ratification
+### Round 19 - 1 new seat, 3 findings, all folded. The seat TRACED a payload instead of reading stages
 
-**The path is SCRAPED, not DECLARED - and a seat has called that a build blocker.**
+**The seat was an Extraction-Pipeline Adversary, and its method is the finding.** Rounds 15-18 each read
+the extraction rules and found a rule wrong. This seat carried one payload end to end through every rule
+in order - and found the pipeline **broken on BOTH transports with trivially reachable inputs**, at a
+point where four consecutive rounds of narrowing had made it look nearly done.
+
+| finding | disposition |
+|---|---|
+| **MCP: a paragraph containing a seam yields `seam-missing` instead of checking the file** | **folded into N24.** N18's `\n` join gives one LINE per payload string, and N24 treated a line as a token - so a paragraph mentioning a seam is ONE token. It survives the pre-filter (it contains `clavity` and `seams`), survives punctuation stripping, resolves literally, fails existence, and reports the seam missing. **The gate reads a payload that names a real, present seam and does not open it** |
+| **CLI: N27 stripped only TRAILING punctuation, so a leading character is a one-character bypass** | **folded into N27.** `--file=.clavity/seams/x.md` and `"(see .clavity/seams/x.md)"` both survive a trailing-only strip, resolve literally, and **downgrade a BLOCK to a non-blocking `seam-missing`.** Round 18 fixed the trailing full stop; **the same class was live on the other end of the token the whole time.** Now both ends, plus any leading `--flag=` or `key=` prefix |
+| **N21's "one decision line per invocation" was violated by N21's own fail-open logic** | **folded.** A consult naming only a missing seam exited with ZERO decision lines - **so the invocation count that row exists to make countable was corrupted by the row's own error path.** A missing-seam-only consult now yields `pass` (nothing was blocked) plus the diagnostics |
+
+**The round's Convergence Auditor - the same seat that correctly identified the telemetry tension in
+round 10 - declined to call this convergence.** Its reading: five consecutive rounds of
+extraction-pipeline defects, each introduced by the previous round's fix, is not a sequence that is
+ending; it is a **second unresolved decision**, sitting underneath the one already open below. **That
+judgement goes to the owner rather than into another patch**, which is why this round folded its three
+defects and escalated instead of opening a sixth.
+
+#### Found while WRITING this record, and deliberately NOT folded - N24 now contradicts N23
+
+**Writing the fold record produced a sixth defect, with no panel round involved.** Round 15 resolved a
+collision between these two rows; round 16 re-checked it and recorded **NOT REPRODUCED**, "the two are
+consistent as they stand". **Round 19's MCP fix silently invalidated the resolution that made them
+consistent**, and both rows are live in the build contract at once:
+
+| row | what it requires on MCP |
+|---|---|
+| **N23** | a seam path containing a SPACE **is extracted** - "each string is its own token, so a space is no obstacle"; "match to **end-of-line**" |
+| **N24** | "the `\n` join gives one LINE per payload string - **a line is not a token**"; "**split each line on whitespace as well**"; "**never resolve a whole line** as a path" |
+
+**A path with a space cannot survive both.** Whitespace tokenisation turns `.clavity/seams/my seam.md`
+into `my` and `seam.md`, neither of which resolves - the exact silent failure N23 was written from a
+measurement to prevent.
+
+**The resolution is constructive and is NOT a design fork, because N23 already decides it.** Emit BOTH
+candidates on MCP: the whole line (which is what recovers a space-bearing path) **and** its
+whitespace-separated tokens (which is what recovers a seam mentioned inside prose). Neither is
+sufficient alone - the whole line alone is round 19's traced defect, the tokens alone are N23's - and
+both are cheap because N26's pre-filter already bounds what gets resolved. **Round 15's "never resolve a
+whole line" was another of my unqualified absolutes**: its real content is *the whole line must never be
+the ONLY candidate*, which is precisely the defect this round traced. That makes it the **fifth**
+unqualified always/never of mine that a later round has had to qualify.
+
+**It is recorded here rather than folded on purpose.** The open question below is whether this document
+is converging. A sixth defect, found without a panel, in the round that was escalating on exactly that
+question, is evidence for that decision - and folding it quietly would have removed the evidence while
+answering nothing.
+
+### OPEN for the owner - TWO items, plus one ratification
+
+**Item 1 - the path is SCRAPED, not DECLARED, and a seat has called that a build blocker.**
 
 Round 12's Green-Check Auditor was asked to argue the document is ready and **ruled it NOT READY**, with
 one named cause: the gate decides whether to block based on a path it **guesses out of conversational
@@ -1294,11 +1344,64 @@ normalisation case, classic's whole "best-effort" concession - **disappears.**
 - and section 2's predicate - "if the payload names a seam path" - is an **owner-settled decision**, so
   replacing its input is a decision at the same level.
 
-**My read:** the declared parameter is the better design and the current one is shippable. Containment
-testing makes the scraped version defensible for this build; the declared version would make the whole
-extraction section unnecessary in the next one. **I would ship this and schedule that.**
+**My read, REWRITTEN after round 19 - the previous one said "I would ship this and schedule that", and
+round 19 refuted the half that mattered.** That read rested on the claim that the scraped version is
+**shippable**, on the grounds that containment testing had made it defensible. Round 19 did not argue
+with that; it **traced a payload** and found the pipeline broken on **both** transports at once, on
+inputs nobody has to construct: a seam mentioned inside an ordinary paragraph (MCP), and
+`--file=.clavity/seams/x.md` or `"(see .clavity/seams/x.md)"` (CLI). Each failure has the same shape -
+the gate reports the seam **missing** and **does not open a file that is right there**.
 
-### RESOLVED in round 12a - the former item 1
+**Measured against the owner's own success criterion, that is not a cosmetic defect.** The correction
+above fixes the purpose in place: **the point of this gate is that the ROLES END UP IN THE AGENT'S
+CONTEXT.** A gate that a leading parenthesis or a prose sentence turns into a non-blocking diagnostic
+does not get roles into context - it reports that it could not find them. **The extraction surface is
+not plumbing beneath the feature; on these inputs it IS whether the feature happens.**
+
+**What that does and does not change about the trade.** It does **not** revive the deleted argument:
+the declared parameter still contributes nothing to how roles reach the agent, and N13 is still the
+section that serves the purpose. What it changes is the **price of the scraped version**, which the
+earlier read set too low - it is not "defensible with containment testing", it is "correct only for
+payloads that survive five rounds' worth of tokenisation rules, with round 19 finding two that do not
+and this write-up finding a third."
+
+**Item 2 - is this document converging? The round-19 Convergence Auditor says no, and I agree with it.**
+
+Rounds 15-19 produced defects that were each **caused by the previous round's fix**, narrowing each
+time: a whole mechanism, then a definition, then case sensitivity, then a trailing period, then a
+leading one. **The narrowing is real and it is not the same as approaching zero** - and the record above
+is the sharpest evidence available, because **the sixth defect was found by writing up the fifth**, with
+no seat, no round, and no new reviewer. **A defect stream that a fold record can extend on its own has
+not run out.**
+
+**Why the two items are one decision seen twice.** Item 1 asks whether to keep scraping the path. Item 2
+asks whether the rounds spent on scraping are converging. **The defects in item 2 are all defects of the
+surface in item 1** - every one of rounds 15-19's findings, and the one above, is a tokenisation,
+normalisation or punctuation defect that exists only because the path is guessed out of prose. **Settle
+item 1 and item 2 stops being a question.** That is the honest structure, and it is why round 19
+escalated rather than folding a sixth time.
+
+**The three dispositions, priced, for the owner to choose between:**
+
+1. **Fold and continue.** Cheapest per round, and the only option that needs no decision from anyone.
+   **What the record above argues against it:** five rounds have not closed the class, and the sixth
+   defect arrived without a round. There is no evidence in this document about when it ends.
+2. **Adopt the declared seam parameter** (`seam` on `agy_ask`, `--seam <path>` on `clavity ask`). Removes
+   the surface that generates the class, rather than the next instance of it. **Costs a tool-contract
+   change this spec does not own**, and creates a new compliance surface - callers must pass it - where
+   today there is none. **Buys nothing for the gate's purpose**, per the correction above; it buys the
+   end of item 2.
+3. **Ship scraped, with the class named and BOUNDED rather than called solved.** Keep extraction, and
+   state in the spec exactly which payload shapes the gate is guaranteed to catch and which it is
+   known to miss - so a miss is a documented limit rather than a silent fail-open. **This is the option
+   the earlier read was reaching for and mis-stated as "shippable".**
+
+**I do not have a recommendation that is mine to make here.** Between 1 and 3 I would take 3, because a
+named limit is honest and a fifth round of "nearly" is not. Choosing 2 is a tool-contract decision at
+the same level as section 2's owner-settled predicate, and the record above is the evidence for it, not
+an argument I should be making on the owner's behalf.
+
+### RESOLVED in round 12a - the former item 1 (that numbering predates round 19's two-item split above)
 
 **Routing subagents over `agy_ask` was never a modal risk; subagents cannot use MCP tools at all.**
 Measured at `clavity-dotnet/plugin/knowledge/agy-capabilities.md:151-154`. The three skill edits are
