@@ -128,17 +128,24 @@ These are not per-item; they apply to the whole batch and to the plan built from
    are a false-positive ZERO**; an earlier wording of this rule invited reading the 14e case as being
    about the generator's non-zero exit, which is the FIX rather than the hazard.
 6. **EVERY file this batch creates or edits inside a `$DomainRoots` tree inherits the injected-context
-   invariants - and three of them do.** Measured at `scripts/check-injected-context.ps1:40-53`, the
-   governed roots include `clavity-dotnet/plugin`, `clavity-classic/plugin` and `agy-autotrain`. So:
+   invariants - and after the 14c amendment, SIX of them do.** Measured at
+   `scripts/check-injected-context.ps1:40-53`, the governed roots include `clavity-dotnet/plugin`,
+   `clavity-classic/plugin` and `agy-autotrain`. So:
    - the **14d shield helper**, if it lands under `clavity-*/plugin/`, is governed - it must be pure
      ASCII, and it must satisfy the twin-plugin byte-identical rule the same canonicaliser enforces;
+   - the **new 14c `agy-mark.sh`** is governed for the same reason and on the same two counts;
+   - the **four 14c SKILL.md edits** (`agy-first`, `agy-capstone`, `agy-test-audit`, and the hook's own
+     product mirror) are governed - they live under `clavity-*/plugin/skills/`;
    - the **14e `agy-curate/SKILL.md` edit** is governed, because `agy-autotrain` is a DomainRoot;
    - `core.md` is governed, which section 4.3 already says.
 
-   An earlier draft flagged only the third. **The author of a rule is not exempt from it** - this
-   repository has already had a commit rejected by the very ASCII gate that commit was shipping. Run
-   `just check-injected-context` (or the script directly) before committing any of the three, and treat a
-   rejection as expected feedback rather than a surprise.
+   An earlier draft flagged only the last. **A second draft said "three of them do" and was left
+   unchanged when the 14c amendment added a shipped executable and four skill edits inside the same
+   governed trees** - so the rule's own enumeration under-counted the files it governs, and its closing
+   instruction named "the three". **The author of a rule is not exempt from it, and neither is the
+   amender** - this repository has already had a commit rejected by the very ASCII gate that commit was
+   shipping. Run `just check-injected-context` (or the script directly) before committing ANY governed
+   file in this batch, and treat a rejection as expected feedback rather than a surprise.
 
 ---
 
@@ -194,25 +201,40 @@ A2. **Ensure the shield text is present**, in THREE cases, not two. The two-case
       "silent unless it acted or found a fault"; without treating 2 like 1, an implementer who keys on
       `exit 1` alone fails to restore a shield that does not exist - the original 14d defect,
       reintroduced.
-    - **no bare `*`, but the file contains at least one `!` line**: **DO NOT APPEND.** Emit the
-      negation fault (loud, debounced, class PERSISTENT) and fall through to Stage B. See below.
+    - **no bare `*`, but the file contains at least one `!` line**: **PREPEND `*` as the FIRST line,
+      preserving everything already in the file.** Do not append, and do not report - Stage B3 is the
+      reporting branch and will still fire for the negated path.
     - **no bare `*` and no `!` line** (missing, empty, or unrelated content): append `*`.
 
     **Why the middle case exists - MEASURED 2026-08-14 in a throwaway repo, with a discriminating
     control.** `.gitignore` is last-match-wins, so appending `*` to the END of a file that begins with a
     negation INVERTS that negation:
 
-    | shield content | `check-ignore -q` on the named file |
-    |---|---|
-    | `!local-anomalies.md` alone | **1** - not ignored |
-    | after a blind A2 append: `!local-anomalies.md` then `*` | **0** - now IGNORED |
-    | control, the other order: `*` then `!local-anomalies.md` | **1** - not ignored |
+    | shield content | `check-ignore -q` on the NAMED file | on ANOTHER file in the directory |
+    |---|---|---|
+    | `!local-anomalies.md` alone | **1** - not ignored | **1** - not ignored |
+    | after a blind APPEND: `!local-anomalies.md` then `*` | **0** - now IGNORED | 0 |
+    | **PREPEND: `*` then `!local-anomalies.md`** | **1** - not ignored | **0** - protected |
 
     So a blind append **silently overrides a line a human deliberately wrote**, and it does so invisibly:
     `check-ignore` then returns 0, B2 says "done", and **the negation report at B3 is never reached.**
     That is precisely the destructive-footgun class the second known residual below refuses to commit,
     arriving through the restore path instead of through a rewrite. It also means the negation residual
     was only ever reachable in ONE of the two orderings, which is why twelve rounds did not surface it.
+
+    **PREPENDING is what satisfies both obligations at once, and the first attempt at this fix did not.**
+    Re-panel round 1 corrected the append to "do not write anything", which preserved the human's intent
+    and **left the entire directory exposed to protect one file** - measured, `git add -A` then staged
+    `.clavity/other-marker.md` and `.clavity/local-anomalies.md` alike. That is the same inversion the
+    tracked-file callout below spends a whole paragraph forbidding: **a per-file condition suppressing a
+    per-directory guarantee**, re-created by the fix for a different per-file condition. It also broke
+    Stage B's premise: with no `*` present, an untracked file the negation never named ALSO returns 1, so
+    B3 fires and blames a negation line for a file it has nothing to do with - a false root cause.
+
+    **Prepending fixes all of it, because `.gitignore` is last-match-wins:** the human's `!` line still
+    wins for the file it names (measured: exit 1, and `git add -A` stages exactly that one file), while
+    `*` covers everything else (measured: exit 0). Stage A's guarantee "a bare `*` line is always present
+    afterwards" is restored, so B1's and B3's wording below remains true as written.
 
     **This step runs regardless of the state of any individual FILE in the directory** - that is what
     makes Stage A a per-directory guarantee and why Stage B may never skip it. Conditioning on the
@@ -336,9 +358,20 @@ The caller has already parsed it; it passes it in. **An empty key disables debou
 a caller with no session context still gets the warning, just every time, which is the safe direction for
 a data-leak notice.
 
-**Temp files must not collide.** Two sessions can be open on the same repository at once - the open-issues
-skill already designs for that - so any scratch path the helper or the 14e generator uses must be unique
-per invocation, never a fixed name.
+**Temp files must not collide - AND they must not accumulate. Uniqueness without a lifetime is a leak.**
+Two sessions can be open on the same repository at once - the open-issues skill already designs for that -
+so any scratch path the helper or the 14e generator uses must be unique per invocation, never a fixed
+name. **Unique-per-invocation plus no cleanup is unbounded growth**, and both obligations bind here:
+
+- **The 14e hook's generated temp file** is created on every commit that stages one of the three pinned
+  paths. It must be removed on EVERY exit path, including the failure paths, not only the happy one.
+- **The 4.1 helper's debounce markers** are one file per session per fault class under `$TMPDIR` or
+  `$HOME/.clavity-tmp`, and nothing in this spec ever deletes them. **Both sibling hooks that use this
+  exact mechanism already prune** - `agy-anomaly-capture-reminder.sh:107` and
+  `assertion-strength-reminder.sh:125` each run `find "$_cand" -maxdepth 1 -name '<prefix>-*' -mtime +30
+  -delete`, and each does so at most once per session rather than on the hot path. The helper adopts the
+  same prune, with the same once-per-session gating and the same `-mtime +30` window. **Inventing a
+  different retention here would be drift, not a decision.**
 
 **Tests. The four-state matrix is the STARTING point, not the whole set - the decision tree grew past it.**
 An earlier draft said "all four states above", which was written when the tree had four branches. It now
@@ -349,8 +382,9 @@ has seven, and three of them have no row in that matrix. The required set:
 | shield `*`, untracked | helper leaves it untouched (control - it must not churn a healthy shield) |
 | shield emptied, untracked | shield restored |
 | shield `*` + `!<name>`, untracked | reported loudly, shield NOT rewritten (the negation residual, ordering 1) |
-| **shield is `!<name>` ALONE, no bare `*`, untracked** | **NOTHING is appended**, the negation fault is reported, and the file is STILL not ignored afterwards. **This is the A2 middle case and it is the regression test for a measured silent-override**: the two-case version appended `*`, git's last-match-wins then IGNORED the file, and B3 never fired. Assert the shield's bytes are UNCHANGED and that `check-ignore -q` still exits 1 - asserting only "a fault was reported" would pass against the broken version too |
-| **mutation: delete A2's middle case** | the row above must turn RED. If it stays green the case is decorative |
+| **shield is `!<name>` ALONE, no bare `*`, untracked** | `*` is PREPENDED as the first line and the human's `!` line survives unchanged BELOW it. **Assert all three properties, because each one failed in a different draft of this branch:** (a) `check-ignore -q` on the NAMED file still exits **1** - the human's intent survives, which the blind-append version destroyed; (b) `check-ignore -q` on ANOTHER file in the same directory exits **0** - the directory is protected, which the write-nothing version broke; (c) the `!` line is still present and unmodified. **Asserting only "a fault was reported" passes against BOTH broken versions** |
+| **mutation: change the prepend back to an append** | property (a) must turn RED |
+| **mutation: change the prepend to writing nothing** | property (b) must turn RED. Two mutations, because one fix here already re-broke what the other fixed |
 | shield `*`, path TRACKED | `git rm --cached` remedy emitted, shield still intact afterwards |
 | **shield emptied, path TRACKED** | **shield restored anyway** - the Stage A regression test. This is the case that was broken until round 2; without it the fix is unpinned |
 | **root argument empty or not a directory** | returns 0, writes NOTHING, creates no directory, **and WARNS on stderr** |
@@ -382,23 +416,23 @@ orderings.** Two shapes reach it, and an earlier draft handled only the first:
 
 - **`*` then `!<something>`:** A2's first case matches (a bare `*` IS present), nothing is appended, and
   B3's untracked branch fires.
-- **`!<something>` with no bare `*`:** A2's MIDDLE case fires - it reports and appends nothing - and B3's
-  untracked branch fires as well. **Before the middle case existed, A2 appended `*` here and silently
-  made the file ignored, so B3 was unreachable and the human's intent was destroyed with no report.**
+- **`!<something>` with no bare `*`:** A2's MIDDLE case PREPENDS `*` and B3's untracked branch fires.
+  **Before the middle case existed, A2 APPENDED `*` here, git's last-match-wins silently made the file
+  ignored, B3 was unreachable, and the human's intent was destroyed with no report.**
 
-In both, the helper reports loudly and does NOT rewrite the file. Auto-deleting - or silently outranking -
-a line a human deliberately wrote is the destructive-footgun class: a missing shield is trivially
-restorable, a destroyed intent is not. The leak persists until a human acts, which is why the report must
-be loud rather than silent. **If that trade is wrong, it is an owner call to invert** - the alternative is
-the helper rewriting the shield to exactly `*`, which closes the leak automatically at the cost of
-overwriting user edits to a file we created.
+In both shapes the helper **never deletes, edits or reorders a line a human wrote**, and it never lets a
+negation outrank the `*`. Auto-deleting a deliberate line is the destructive-footgun class: a missing
+shield is trivially restorable, a destroyed intent is not. **What the helper does NOT do is close the
+leak for the negated path** - that file stays visible to git until a human acts, which is why B3's report
+must be loud. **If that trade is wrong, it is an owner call to invert** - the alternative is the helper
+rewriting the shield to exactly `*`, which closes the leak automatically at the cost of discarding a user
+edit to a file we created.
 
-**The cost of this correction, stated so it is not discovered as a surprise:** in the `!`-only shape the
-directory now stays UNSHIELDED after the helper runs, where the previous (wrong) behaviour left it
-shielded. That is deliberate - the previous behaviour bought shielding by silently discarding intent - but
-it means a repository in that state leaks until a human reads the report. **That is the one state where
-this helper makes the leak visible instead of closing it**, and the report's wording must say so plainly
-rather than reading like a repair notice.
+**What prepending costs, stated so it is not discovered as a surprise:** the helper writes into a file a
+human has edited, changing its first line. That is a real mutation of user content and it is not free -
+but it is ADDITIVE and order-preserving, and the alternative measured in round 1 (write nothing) exposed
+every other file in the directory. **The narrow, honest statement of the residual is therefore: the
+negated path leaks until a human acts; nothing else in the directory does.**
 
 ### 4.2 Item 14c - Step 0 is DONE, and it changed what this item IS
 
@@ -686,7 +720,8 @@ alone:
 |---|---|
 | generator exits non-zero | hook FAILS - it must not pass on an untouched tree |
 | **`core.md` DELETION staged** | hook PASSES, with a message naming the skip reason. **Measured: `git show :<path>` exits 128 there**, so without this the hook fails every attempt to delete or rename the canonical source and the operator cannot get past it |
-| **generated output fed through a pwsh TEXT pipe rather than raw bytes** | the produced literal differs from the raw-byte path. Pin it with a fixture whose bytes the pipeline would alter, or this constraint is unenforced prose |
+| **the hook is run against a fixture `core.md` containing a byte a pwsh text pipeline would alter** | the hook's generated output reproduces that byte EXACTLY. A hook that pipes the content as text turns this RED; a hook using raw-byte transport passes. **The fixture is constructed in a throwaway repo, so the ASCII rule that governs the real `core.md` does not constrain it** |
+| **hook temp file after every exit path, including the failure paths** | no temp file survives the run |
 | `core.md` staged, literals staged and correct | hook PASSES (the correct workflow is not blocked) |
 | `core.md` staged, literals stale in the index, **correct output already in the worktree** | hook FAILS with **remedy 1** - says `git add` the literals and does NOT name the `just` task (re-running it is a no-op) |
 | `core.md` staged, literals stale in the index **and in the worktree** | hook FAILS with **remedy 2** - names the `just` task |
@@ -707,6 +742,16 @@ that the generator is invoked with `git show :<path>` - not through observed hoo
 cannot fail against a correct implementation is exactly what the other four vacuous oracles this review
 removed looked like**; adding one back to cover a non-load-bearing rule would be the same mistake.
 | hook run twice | working tree unchanged both times (it must never write in place) |
+
+**The text-pipe row above was rewritten at re-panel round 2, and the shape it replaced is worth naming
+because it is easy to write again.** The first version asserted "output fed through a text pipe DIFFERS
+from the raw-byte path". That is a true statement about PowerShell and a useless one about this hook: a
+correct hook never uses a text pipe, so the assertion cannot be run against it at all, and the only way to
+make the row green is a detached fixture that pipes something through `Out-String` and confirms pwsh
+mutates it. **The developer then satisfies the table in full while shipping a hook that still uses a
+pipeline.** The rule is general: **a row must assert something about the ARTIFACT UNDER TEST, exercised
+through its real entry point.** A row that demonstrates a property of the toolchain is documentation
+wearing a test's clothes.
 
 **The CRLF test belongs on the `just` task, NOT here - and putting it here would have been a vacuous
 oracle.** An earlier draft of this table asserted "`core.md` CRLF in the worktree -> generated literals
