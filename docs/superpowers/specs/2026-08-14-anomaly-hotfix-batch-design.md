@@ -417,11 +417,19 @@ name. **Unique-per-invocation plus no cleanup is unbounded growth**, and both ob
   `<root>/.clavity/` where neither prune reaches it** - the marker prune runs over `$TMPDIR` and
   `$HOME/.clavity-tmp`, not the repository. So it needs a recognisable name and its own sweep: name it
   `.gitignore.tmp.<unique>` beside the shield, and have A1 remove any `.gitignore.tmp.*` older than the
-  same `-mtime +30` window - **AFTER its `mkdir`, never before it, and with stderr redirected.** The
-  ordering is not cosmetic: on a fresh clone `<root>/.clavity/` does not exist, so a sweep that runs
-  first fails `No such file or directory`, and **A1 is a SILENT branch whose test asserts stderr is
-  empty** - so the sweep would redden the A1-success row on every fresh clone. An earlier wording said
-  "before it does anything else", which is exactly backwards. **Without that, an interrupted prepend leaks
+  same `-mtime +30` window - **AFTER its `mkdir`, never before it, and with stderr redirected.** An
+  earlier wording said "before it does anything else", which is exactly backwards: on a fresh clone
+  `<root>/.clavity/` does not exist, so a sweep running first has nothing to sweep and fails
+  `No such file or directory` every time.
+
+  **Both instructions stand, and the reason for the ordering is NOT the stderr assertion.** An earlier
+  draft justified the order by saying the sweep's error would otherwise redden the A1-success row, which
+  asserts stderr is empty - **but the redirect this same line mandates would swallow that error, so the
+  justification refuted itself.** The ordering is right because sweeping a directory before creating it
+  is simply wrong, and the redirect is right because a GENUINE failure (permissions, a read-only mount)
+  must not break a silent branch. **Relying on the redirect to hide an avoidable error is how a redirect
+  ends up hiding an unavoidable one** - which is the whole reason this helper redirects deliberately,
+  probe by probe, rather than globally. **Without that, an interrupted prepend leaks
   permanently into the exact directory this helper exists to protect** - and a `git status` in a repo
   whose shield is briefly broken would show them.
 
@@ -878,20 +886,32 @@ alone:
 | **literals staged, `core.md` edited but NOT staged at all** | hook FAILS with the "you staged the generated literals but not `core.md` itself" message, **not** the partial-staging one. Assert the message TEXT, not merely that it failed - both branches fail, and only the text distinguishes a correct diagnosis from a misleading one |
 | **`core.md` staged complete, literals staged and correct, then FURTHER unstaged edits made to `core.md`** | hook **PASSES**. This is an ordinary iterative workflow and the staged content is self-consistent, which is the only thing the hook validates. **A draft that evaluated case 3 before parity rejected this**, and a gate that rejects a correct commit teaches its users `--no-verify` |
 | worktree `core.md` CRLF, index LF, literals correct | hook PASSES. **This does NOT prove the hook reads the index** - see below; it is a regression pin against CRLF breaking the run, nothing more |
-**There is deliberately NO end-to-end row proving the hook reads the index, because no such row can
-exist.** Round 10 added one requiring a CONTENT difference between index and worktree. It is unreachable:
-**Case 3 is evaluated FIRST and aborts on exactly that state**, so a correct hook never reaches generation
-there - only a hook with a BROKEN Case 3 could reach it and pass. And a line-ending-only difference is
-erased by the generator's normalisation before anything can observe it. **Case 3 excludes every state in
-which reading the worktree would differ from reading the index**, so the property is unobservable through
-the hook's behaviour by construction.
+**THE INDEX-READ PROPERTY IS NOW OBSERVABLE, AND THE ROW DIRECTLY ABOVE IS THE TEST.** This paragraph
+previously argued the opposite - that no end-to-end row could exist, because "Case 3 is evaluated FIRST
+and aborts on exactly that state", so a correct hook never reached generation with worktree and index
+differing. **Round 5 moved PARITY ahead of the diagnosis cases and reduced Case 3 to a diagnosis reached
+only after parity fails** (it was rejecting correct commits). That reordering destroyed this paragraph's
+premise, and the paragraph outlived it by nine rounds while the row that refutes it sat immediately
+above.
 
-This is consistent with the rule's status, not a hole: reading the index is retained as belt-and-braces
-(it states precisely what is being validated, and Case 3's detection could regress), and it is explicitly
-**not separately testable end to end**. If it ever needs pinning, it must be asserted at the call site -
-that the generator is invoked with `git show :<path>` - not through observed hook output. **A row that
-cannot fail against a correct implementation is exactly what the other four vacuous oracles this review
-removed looked like**; adding one back to cover a non-load-bearing rule would be the same mistake.
+The state is now plainly reachable: **`core.md` staged complete with correct literals, then further
+unstaged edits to `core.md`.** A hook reading the INDEX generates from the staged text, matches the
+staged literals, and PASSES. A hook reading the WORKTREE generates from the edited text, does not match,
+and FAILS. **So that row IS the end-to-end proof, and it carries a mutation control: point the generator
+at the worktree instead of `git show :<path>`, and it must turn RED.** Reading the index is therefore
+load-bearing and pinned, not belt-and-braces.
+
+**What remains genuinely unobservable is only the LINE-ENDING case** - a CRLF-versus-LF difference is
+erased by the generator's normalisation before anything can see it, which is why the CRLF row above says
+in terms that it does not prove the hook reads the index. That row is a regression pin against CRLF
+breaking the run, and nothing more.
+
+**The rule this paragraph originally protected still stands, aimed at the right target now: a row that
+cannot fail against a correct implementation is what the vacuous oracles this review removed looked
+like.** The CONTENT row can fail against a wrong implementation, so it earns its place; the LINE-ENDING
+row cannot, so it must not be asked to carry a claim it cannot support. **The lesson from nine rounds of
+this paragraph being wrong is narrower and more useful than the paragraph was: "untestable" is a claim
+with a shelf life, and reordering the thing under test can silently expire it.**
 | hook run twice | working tree unchanged both times (it must never write in place) |
 
 **The text-pipe row above was rewritten at re-panel round 2, and the shape it replaced is worth naming
