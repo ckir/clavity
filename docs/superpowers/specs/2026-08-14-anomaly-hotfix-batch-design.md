@@ -407,13 +407,18 @@ merely detectable, and no literal-unescaping logic is written a third time.
    correct workflow it exists to enforce. It reports the difference; it does not silently repair it.
    Repair is the author running the `just` task deliberately.
 
-   **BOTH SIDES MUST COME FROM THE INDEX - input as well as output.** Comparing staged literals against
-   output generated from the WORKING-TREE `core.md` breaks partial commits: an author who stages only
-   some of `core.md`'s hunks with `git add -p` gets literals generated from the unstaged text, a false
-   mismatch, and a permanently blocked commit that no amount of regenerating fixes. **In the hook, the
-   generator is fed `git show :<core.md path>`.** This also removes the CRLF hazard at its root on that
-   path - the index blob is LF - though constraint 1b still binds the `just` task, which reads the
-   working tree by design.
+   **BOTH SIDES MUST COME FROM THE INDEX - input as well as output. In the hook, the generator is fed
+   `git show :<core.md path>`.** The hook validates what is about to be COMMITTED, and the index is the
+   only faithful statement of that.
+
+   **The original rationale for this rule is now STALE, and saying so matters because a stale rationale
+   invites someone to delete the rule.** It was introduced to stop partial commits being falsely blocked.
+   Case 3 later made partial staging fail outright and is evaluated FIRST, so past Case 3 the worktree and
+   index agree on `core.md` except in line endings - which the generator normalises anyway. **On that
+   path, reading the worktree would produce identical output, so the rule is no longer load-bearing for
+   the reason it was written.** It is kept because it is free, because it states precisely what is being
+   validated, and because Case 3's own detection could regress. What it is NOT is a fix for partial
+   commits; that is Case 3's job now.
 2. **It must assert the generator's own exit status FIRST.** If the generator crashes, the working tree
    is untouched, so a bare `git diff --quiet` returns 0 and the hook PASSES - committing diverged
    literals with a green check. **A generator that failed to run is not evidence of parity.** This is
@@ -447,7 +452,8 @@ alone:
 | `core.md` staged, literals stale in the index, **correct output already in the worktree** | hook FAILS with **remedy 1** - says `git add` the literals and does NOT name the `just` task (re-running it is a no-op) |
 | `core.md` staged, literals stale in the index **and in the worktree** | hook FAILS with **remedy 2** - names the `just` task |
 | **partial stage: `core.md` hunks split with `git add -p`** | hook FAILS, **and its message says partial staging of `core.md` is unsupported** - see the remedy rules below. An earlier draft claimed this PASSES, which was wrong |
-| worktree `core.md` CRLF, index LF, literals correct | hook PASSES - proves the hook really reads the INDEX and not the worktree |
+| worktree `core.md` CRLF, index LF, literals correct | hook PASSES. **This does NOT prove the hook reads the index** - see below; it is a regression pin against CRLF breaking the run, nothing more |
+| **index `core.md` differs in CONTENT from a committed-but-unstaged worktree edit** | the generated literals match the INDEX text, not the worktree text. **This is the only assertion that can distinguish the two sources**, because a line-ending-only difference is erased by the generator's normalisation before it can be observed |
 | hook run twice | working tree unchanged both times (it must never write in place) |
 
 **The CRLF test belongs on the `just` task, NOT here - and putting it here would have been a vacuous
@@ -459,8 +465,15 @@ the hook reads the index. The CRLF assertion moves to the `just` task's tests:
 
 | `just` task case | asserts |
 |---|---|
-| worktree `core.md` has CRLF | generated literals contain no `\r` |
+| **a FIXTURE file whose bytes explicitly contain `\r\n`** | generated literals contain no `\r` |
 | mutation: delete the CRLF normalisation | the row above turns RED |
+
+**The fixture must be CONSTRUCTED, never the live `core.md`.** Its line endings depend on the host: CRLF
+on this Windows checkout, **LF on Linux and in CI**. A test that feeds the live file processes LF there,
+emits LF, and stays green - and so does the mutant with normalisation deleted. **The test and its own
+mutation control would both pass on CI while proving nothing**, which is the worst kind of green: it is
+platform-dependent, so it would look correct on the machine where it was written. Write `\r\n` bytes into
+a temp fixture and feed that.
 
 This split matters because the two entry points genuinely differ: **the hook reads the index (always LF),
 the `just` task reads the working tree (CRLF on Windows today, measured).** Only the second can exercise
@@ -483,7 +496,7 @@ the exact loop this table exists to prevent. **Order: 3, then 1, then 2.**
 | # | what the hook observes | message must say |
 |---|---|---|
 | **3** (evaluated FIRST) | **staged `core.md` differs from worktree `core.md`** - a partial stage. **Detect with `git diff --quiet -- <core.md>`, NEVER a byte comparison** - see below | "**partial staging of `core.md` is not supported.** The literals are generated from the STAGED text, and the `just` task reads the WORKTREE, so the two cannot agree. Stage `core.md` in full, or commit it on its own." |
-| 1 | staged literals differ from generated, and the literals are UNSTAGED in the worktree | "regenerated output is already in your worktree - **`git add` the two literals**" (running the task again changes nothing) |
+| 1 | staged literals differ from generated, and the literals are UNSTAGED in the worktree. **Compare the worktree literals CRLF-agnostically** - `git diff --quiet`, never raw bytes | "regenerated output is already in your worktree - **`git add` the two literals**" (running the task again changes nothing) |
 | 2 | staged literals differ from generated, worktree literals also stale | "**run `just <task>`, then `git add` the two literals**" |
 
 The third case is the one an earlier draft got wrong by asserting it would pass. It cannot: the hook
@@ -509,6 +522,23 @@ reappearing in the DETECTION path rather than the generation path** - the same t
    two. The plan may choose otherwise only by naming what makes `pwsh` unsuitable. **A constraint list
    that eliminates candidates without naming the survivor is not actionable** - this line exists because
    an earlier draft did exactly that.
+
+1a. **PIN ALL THREE FILES TO `eol=lf` IN `.gitattributes` - this kills the whole CRLF class at its root,
+   and the repository already uses exactly this mechanism.** Measured 2026-08-14: `core.autocrlf` is
+   **true**, and `git check-attr text eol` reports **`unspecified`** for both `driver-cheatsheet.core.md`
+   and `driver_cheatsheet.rs`. So nothing pins them, and **a fresh clone checks out all three as CRLF**.
+   The existing `.gitattributes` already does this for `*.sh` ("*.sh text eol=lf") for the same reason -
+   a CRLF byte breaking a consumer that expects LF.
+
+   **This also corrects a measurement that looked reassuring and was not.** Today the two literals ARE LF
+   in this working tree (measured byte-equal to the index), which suggests there is no hazard. That is an
+   artifact of THIS tree - the files were last written by an editor, not re-checked-out - and it would
+   not hold on a fresh clone or in CI. **A control run in the current working tree reports a false pass
+   here**, exactly as it does for the shield when the root `.gitignore` masks a broken one.
+
+   With the pin, the generator's normalisation and every CRLF-agnostic comparison below become
+   belt-and-braces rather than load-bearing. **Keep them anyway** - the pin protects new clones, and the
+   normalisation protects a tree that predates the pin.
 
 1b. **NORMALISE CRLF TO LF BEFORE ESCAPING - this is live on this machine, not hypothetical.** Measured
    2026-08-14: `core.md` is **CRLF in the working tree** (7 CRLF, 0 bare LF) and **LF as committed**
@@ -572,9 +602,12 @@ so this does not incur the mirror cost.
 
 Add `.clavity` to the array at `scripts/check-injected-context.ps1:91-92`, alongside `.worktrees`.
 
-**Tests.** A `.clavity/...` path is pruned; a control path that must NOT be pruned still is not. Pruning
-is relative to the repository root, never absolute - the existing comment at `:55-58` records why, and
-the test must not regress it.
+**Tests.** A `.clavity/...` path is pruned, and a control path that must NOT be pruned still is not.
+**The control must be LEXICALLY ADJACENT, not arbitrary** - a control like `src/foo.md` proves nothing
+about the new entry, because it would pass before the change too. Use a near-miss that only an exact
+segment match rejects, e.g. `.clavity-tmp/foo.md` or `x.clavity/foo.md`: `PruneRx` is built as
+`(?:^|/)<segment>/`, so a prefix or suffix variant must NOT prune. Pruning is relative to the repository
+root, never absolute - the existing comment at `:55-58` records why, and the test must not regress it.
 
 ### 4.5 Item 14b - register the orphan suite
 
@@ -586,9 +619,14 @@ suite - it mocks, dot-sources the installer so `main` never runs, and makes no m
 registered as-is. **A registered-but-skipped suite is not an acceptable outcome**: a guard that fails open
 certifies what it stopped checking.
 
-**Placement.** It must join a partition that respects the suite cadence: `test-scripts-fast` is
-cap-adjacent, and two Pester suites must never run concurrently (file-lock false red). The plan states
-which partition and why.
+**Placement, and the partition's runtime must be MEASURED after adding - not assumed.** The suite takes
+**4.77s** (measured). `test-scripts-fast` is already **cap-adjacent** against the 600s ceiling, and two
+Pester suites must never run concurrently (file-lock false red). So "pick a partition" is not the whole
+task: the plan states which partition, why, **and the measured wall-clock of that partition WITH the suite
+added.** Registering a suite that pushes its partition over the cap converts a coverage gain into an
+aborted run - and an aborted run has no `Tests Passed:` line at all, which is not a pass, so the failure
+would present as a mystery rather than as this change. If the fast partition cannot absorb 4.77s, it goes
+in the slow one.
 
 ### 4.6 Item 13a - replace the false promise
 
@@ -617,9 +655,23 @@ Two properties are required of whatever wording lands: it states that THIS gate 
 condition, and it names where the detection actually lives. A sentence that only deletes the false claim
 satisfies neither.
 
-**Tests.** Assert the gate's output does not contain the false claim, and does name the suite as the
-enforcement point. **No behaviour change** - the reporting feature is explicitly not built (owner-scoped
-2026-08-14).
+**Tests - and the obvious test is VACUOUS, measured.** The message lives inside the violations block:
+`scripts/check-injected-context.ps1:920-934` opens with `"$($v.Count) violation(s)"` and closes with
+`exit 1`. **It is printed ONLY when there is at least one violation.** So a test that runs the gate over a
+clean tree and asserts "the output does not contain the false claim" passes against ANY implementation -
+the string never appears on that path, whether or not it was ever fixed.
+
+The test must therefore:
+
+| step | requirement |
+|---|---|
+| setup | construct a state that PRODUCES a violation (the block is unreachable otherwise) |
+| assert | the printed guidance does NOT contain the old claim |
+| assert | it DOES name the test suite as the enforcement point |
+| assert | exit code is still **1** - the block ends in `exit 1` and this item changes text, not behaviour |
+| mutation | revert the message to its old wording; the first assertion must turn RED |
+
+**No behaviour change** - the reporting feature is explicitly not built (owner-scoped 2026-08-14).
 
 ### 4.7 Item 13c - name which input is missing
 
