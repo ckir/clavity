@@ -598,7 +598,8 @@ the same glob. **No registration in `hooks.json` is required or wanted** - it is
 
 | aspect | contract |
 |---|---|
-| form | an EXECUTABLE `.sh` (not sourced), so `exit` is correct here - the opposite of the 4.1 helper's `return`-only rule, and the difference is load-bearing |
+| form | a standalone `.sh` RUN as a process (not sourced), so `exit` is correct here - the opposite of the 4.1 helper's `return`-only rule, and the difference is load-bearing |
+| **the skills invoke it through an explicit interpreter - `bash "<path>/agy-mark.sh" ...` - never as a bare path** | **Measured 2026-08-14: all 13 shipped hooks in `clavity-dotnet/plugin/hooks/` are tracked `100644`**, i.e. WITHOUT the executable bit - including `agy-discipline-reaching.sh`, which is a live registered hook that works. That is the repository's uniform convention, and it holds because nothing in this tree is invoked via its shebang. **A new file invoked as a bare path would be the first, and would fail `Permission denied` on Linux and in CI** while working on Windows, where the bit is not enforced - a platform-dependent break that would look correct on the machine it was authored on. **The fix is the interpreter, NOT `git add --chmod=+x`:** setting the bit on one file would make it the only executable in the payload, diverging from twelve siblings and from whatever the installer expects, to buy something an explicit `bash` already provides |
 | root | resolved with `git rev-parse --show-toplevel`. A subprocess is affordable here because this runs once per discipline event, not per turn. **If it cannot resolve, REFUSE and exit non-zero** |
 | modes | `head <discipline> <sha>` (write `.clavity/agy-marks/<discipline>.head`), `log <discipline> <status> <sha> [text...]` (append one line to `.clavity/agy-marks/skipped.log`), `prepare <relpath>` (create the parent directory of `.clavity/<relpath>` and shield it, for the `seams/` and `scratch/` cases) |
 | **EVERY mode creates the directory it writes into - `head` and `log` included** | Stage A1 of the 4.1 helper creates `<root>/.clavity/` and **nothing below it**, so `.clavity/agy-marks/` does not exist on a fresh clone. `prepare` was told to create its parent; `head` and `log` were not, and **this batch simultaneously removes the `mkdir` instructions the skills carried for themselves** - so on a fresh clone both modes would fail `No such file or directory` on the first discipline that ran. The very failure the shipped `open-issues` snippet already guards against at its own `:69` |
@@ -803,6 +804,16 @@ merely detectable, and no literal-unescaping logic is written a third time.
    says plainly that it is skipping because the canonical source is being removed. Deleting the pinned
    source is a real decision, but it is the pinning TESTS' job to fail on it, not this hook's.
 
+   **THE SAME PRESENCE CHECK BINDS THE TWO LITERALS, and guarding only `core.md` leaves the identical
+   crash on the other side.** The hook now reads three paths out of the index - `core.md` and both
+   literals - and `git show :<path>` exits 128 for ANY of them whose deletion is staged, not just the
+   first. An operator who stages the removal of `driver_cheatsheet.rs` (renaming it, splitting the
+   module, retiring the pin) hits an unhandled `fatal:` and a rejected commit with no guidance at all -
+   strictly worse than the misleading message this rule was written to prevent, because there is no
+   message. **Check all three for presence in the index before extracting any of them**, and when a
+   literal's deletion is staged, say so by name and skip the parity assertion for the same reason: a pin
+   with no target is not a parity failure.
+
    **The original rationale for this rule is now STALE, and saying so matters because a stale rationale
    invites someone to delete the rule.** It was introduced to stop partial commits being falsely blocked.
    Case 3 later made partial staging fail outright and is evaluated FIRST, so past Case 3 the worktree and
@@ -841,6 +852,7 @@ alone:
 |---|---|
 | generator exits non-zero | hook FAILS - it must not pass on an untouched tree |
 | **`core.md` DELETION staged** | hook PASSES, with a message naming the skip reason. **Measured: `git show :<path>` exits 128 there**, so without this the hook fails every attempt to delete or rename the canonical source and the operator cannot get past it |
+| **a LITERAL's deletion staged** (either one) | hook PASSES, naming WHICH literal is being removed. Same 128, same crash, and guarding only `core.md` leaves it: the operator gets a raw `fatal:` and a rejected commit with no guidance |
 | **the hook is run against a fixture `core.md` containing a byte a pwsh text pipeline would alter** | the hook's generated output reproduces that byte EXACTLY. A hook that pipes the content as text turns this RED; a hook using raw-byte transport passes. **The fixture is constructed in a throwaway repo, so the ASCII rule that governs the real `core.md` does not constrain it** |
 | **hook temp file after every exit path, including the failure paths** | no temp file survives the run |
 | `core.md` staged, literals staged and correct | hook PASSES (the correct workflow is not blocked) |
