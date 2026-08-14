@@ -1028,6 +1028,47 @@ round-8 panel — which is where this anomaly was captured. **So this is an INCO
 fold defect**: the round fixed its own artifact's line and never swept the source it was copied from.
 Like §13a it lands on `feature/injected-context-governance`, so it belongs with that epic's remaining work.
 
+**§14e — the only local gate on the three byte-pinned files checks provenance, not parity.** ▶ **OPEN**
+`lefthook.yml:78-82` globs **exactly** the three pinned paths — `driver-cheatsheet.core.md`,
+`clavity-classic/src/driver_cheatsheet.rs`, `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` — and its
+own comment at `:63` states they "are pinned byte-identical to each other". It then runs
+`check-curate-in-progress.ps1`, which asserts something else entirely: *was an agy-curate run left
+mid-flight* (`:4-5`). **Provenance, not parity.** So an edit to one pinned file that does not regenerate
+the other two fires the hook, passes it, and commits.
+
+That is not hypothetical — it is how this anomaly was created. Measured:
+
+| measurement | result |
+|---|---|
+| `b2a6cc0` (2026-08-09) ASCII-sanitised `core.md` | 10 em dashes → 0, pins not regenerated |
+| the pre-commit hook on that commit | **fired** (core.md was staged) and **passed** — wrong invariant |
+| `dotnet test tests/Clavity.Ls.Tests` at `fc968fb~2` | **Failed 1, Passed 8** — fails at pos 21, expected `—`, actual `-` |
+| `cargo test --features test-fakes driver_cheatsheet` at the same point | **9 passed, 1 failed** — measured, not presumed from the dotnet result |
+| RED window | 2026-08-09 → 2026-08-14, **5 days**, closed by `d664002` |
+
+**Why CI did not close it, which is the part worth tracking.** The oracles *are* wired —
+`.github/workflows/ci-dotnet.yml:26` runs `dotnet test tests/Clavity.Ls.Tests` and `ci-classic.yml:46`
+runs `cargo test --all --features test-fakes`. Neither can fire on an **unpushed** branch, and this one is
+**152 commits ahead of `origin/main`**. On a long-lived local branch, CI is not a safety net; it is a
+report you get later. **A capstone-GREEN declaration was made while both suites were red** — the marker
+was never evidence the gate ran.
+
+**The marginal cost of the fix is near zero, which is what makes it worth doing.** The expensive part —
+a ~6s pwsh cold start, paid only when one of the three paths is staged (`lefthook.yml:68-72`) — is
+**already being paid** on exactly the right trigger. The parity assertion would ride along on it.
+
+**Candidate dispositions, both with their known trap named:**
+- **Extend the existing job** to also assert parity. Needs the Rust/C# literals un-escaped (`\n`, `\"`)
+  in PowerShell — the logic exists in-language in both test suites and would be duplicated a third time,
+  so the new check becomes a fourth thing that can drift from the other three.
+- **Shell out to the two existing suites** instead of reimplementing. Avoids the duplication but is far
+  slower than 6s, and `dotnet test --filter` **exits 0 on no match** — a filtered invocation that stops
+  matching would fail open silently, which is the failure mode this whole entry is about. Any such fix
+  must read the test COUNT, not the exit code.
+
+Like §13a and §14d this lands on `feature/injected-context-governance`, so it belongs with that epic's
+remaining work rather than as a drive-by.
+
 ### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
 
 **Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`,
