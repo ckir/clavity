@@ -453,7 +453,20 @@ alone:
 | `core.md` staged, literals stale in the index **and in the worktree** | hook FAILS with **remedy 2** - names the `just` task |
 | **partial stage: `core.md` hunks split with `git add -p`** | hook FAILS, **and its message says partial staging of `core.md` is unsupported** - see the remedy rules below. An earlier draft claimed this PASSES, which was wrong |
 | worktree `core.md` CRLF, index LF, literals correct | hook PASSES. **This does NOT prove the hook reads the index** - see below; it is a regression pin against CRLF breaking the run, nothing more |
-| **index `core.md` differs in CONTENT from a committed-but-unstaged worktree edit** | the generated literals match the INDEX text, not the worktree text. **This is the only assertion that can distinguish the two sources**, because a line-ending-only difference is erased by the generator's normalisation before it can be observed |
+**There is deliberately NO end-to-end row proving the hook reads the index, because no such row can
+exist.** Round 10 added one requiring a CONTENT difference between index and worktree. It is unreachable:
+**Case 3 is evaluated FIRST and aborts on exactly that state**, so a correct hook never reaches generation
+there - only a hook with a BROKEN Case 3 could reach it and pass. And a line-ending-only difference is
+erased by the generator's normalisation before anything can observe it. **Case 3 excludes every state in
+which reading the worktree would differ from reading the index**, so the property is unobservable through
+the hook's behaviour by construction.
+
+This is consistent with the rule's status, not a hole: reading the index is retained as belt-and-braces
+(it states precisely what is being validated, and Case 3's detection could regress), and it is explicitly
+**not separately testable end to end**. If it ever needs pinning, it must be asserted at the call site -
+that the generator is invoked with `git show :<path>` - not through observed hook output. **A row that
+cannot fail against a correct implementation is exactly what the other four vacuous oracles this review
+removed looked like**; adding one back to cover a non-load-bearing rule would be the same mistake.
 | hook run twice | working tree unchanged both times (it must never write in place) |
 
 **The CRLF test belongs on the `just` task, NOT here - and putting it here would have been a vacuous
@@ -536,9 +549,22 @@ reappearing in the DETECTION path rather than the generation path** - the same t
    not hold on a fresh clone or in CI. **A control run in the current working tree reports a false pass
    here**, exactly as it does for the shield when the root `.gitignore` masks a broken one.
 
-   With the pin, the generator's normalisation and every CRLF-agnostic comparison below become
-   belt-and-braces rather than load-bearing. **Keep them anyway** - the pin protects new clones, and the
-   normalisation protects a tree that predates the pin.
+   **The pin governs FUTURE checkouts and does NOT rewrite an existing working tree - measured, with a
+   control.** In a throwaway repo with `core.autocrlf=true`: adding `*.md text eol=lf` left a CRLF file
+   **unchanged**; `git add --renormalize .` normalised the **INDEX** blob to LF but left the **WORKTREE
+   still CRLF**. So the sequence matters and the verification must be by bytes, not by assumption:
+
+   1. add the attribute lines;
+   2. `git add --renormalize` the three paths (fixes what the repo stores);
+   3. **force the working tree to be re-checked-out** for those paths, then **measure the bytes** - do not
+      infer that it worked;
+   4. confirm the pinning suites are still green afterwards, because step 3 changes files they compare.
+
+   **This is why the normalisation stays load-bearing rather than belt-and-braces on any tree that
+   predates the pin** - including this one, where `core.md` is CRLF today. An implementer who applies the
+   pin, measures `core.md`, still sees CRLF and concludes the pin failed would be reading a correct
+   result wrongly. Keep the generator's normalisation and every CRLF-agnostic comparison regardless: the
+   pin protects new clones, the normalisation protects every tree that already exists.
 
 1b. **NORMALISE CRLF TO LF BEFORE ESCAPING - this is live on this machine, not hypothetical.** Measured
    2026-08-14: `core.md` is **CRLF in the working tree** (7 CRLF, 0 bare LF) and **LF as committed**
