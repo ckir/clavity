@@ -130,42 +130,68 @@ masked locally. A control that does not account for that reports a false pass.)
 
 **Required behaviour - a shared helper implementing this decision tree:**
 
-0. **Ensure `<root>/.clavity/` exists** (`mkdir -p`) before any branch that may write. Every restoring
-   branch appends, and an append into a missing directory fails `No such file or directory` on a fresh
-   clone. If the `mkdir` itself fails, return 0 without writing - the helper never hard-blocks.
+**Two INDEPENDENT concerns, and conflating them is what an earlier draft got wrong.** Stage A protects the
+DIRECTORY and runs unconditionally. Stage B verifies the EFFECT for one named path. The state of any single
+file must never suppress Stage A.
 
-1. **Not inside a git work tree** (`git rev-parse --is-inside-work-tree` non-zero): the effect check
-   cannot run - `git check-ignore` returns 128 here, which is indistinguishable from a genuine error.
-   Fall back to the text assertion (`grep -qx '*'`, restoring if absent). Isolate this case exactly as
-   `scripts/check-core-integrity.ps1:39-46` already does for the same ambiguity.
-2. **`check-ignore` exit 0**: the file is ignored. Do nothing.
-3. **`check-ignore` exit 1**: AMBIGUOUS - two different faults share this code. Disambiguate with
-   `git ls-files --error-unmatch <path>`:
-   - exit 0 => the file is **TRACKED**. The shield is not broken and rewriting it fixes nothing; git
-     ignores `.gitignore` for tracked paths. **Report, naming `git rm --cached` as the remedy. Do NOT
-     rewrite the shield.**
-   - non-zero => the shield is genuinely broken. Restore it.
-4. **`check-ignore` exit 128 while inside a work tree**: a real git error. Fail toward restoring the
-   shield (the safe direction for a data-leak guard) and say so.
+**Stage A - shield integrity, unconditional:**
 
-**Why branch 3 exists.** Measured: with a correct `*` shield and the file force-tracked, `check-ignore`
-returns **1** and `git add -A` **stages the file anyway**. A naive "non-zero implies rewrite the shield"
-helper would rewrite a correct shield forever and never fix the leak.
+A0. **Validate the inputs, or return 0 without writing.** The root must be an existing directory, and the
+    path must resolve UNDER `<root>/.clavity/`. Both matter: the helper repairs
+    `<root>/.clavity/.gitignore` and nothing else, so a path outside that directory cannot be fixed by
+    repairing that shield. Restoring it and reporting success for, say, `docs/secret.md` would be a
+    false GREEN for a file left fully exposed.
+A1. **`mkdir -p <root>/.clavity`.** Every restoring step appends, and an append into a missing directory
+    fails `No such file or directory` on a fresh clone. If the `mkdir` fails, return 0 - never hard-block.
+A2. **Ensure the shield text is present** (`grep -qx '*'`; append `*` if absent). **This runs regardless
+    of the state of any individual file.** It is the only step that protects the OTHER files in the
+    directory, and it is why Stage B may never skip it.
 
-> **Refuted, twice, and recorded so it is not re-raised:** a reviewer twice claimed that `check-ignore`
-> returns **0** for a tracked file matching the pattern - which would put the tracked case under branch 2
-> ("do nothing") and make it a silent false-GREEN. **It returns 1.** Measured with a control in a
+**Stage B - effect verification for the named path** (adds detection Stage A cannot do alone):
+
+B1. **Not inside a git work tree** (`git rev-parse --is-inside-work-tree` non-zero): stop here. The effect
+    check cannot run - `git check-ignore` returns 128 outside a repo, indistinguishable from a genuine
+    error. Stage A has already guaranteed the shield text. Isolate this case exactly as
+    `scripts/check-core-integrity.ps1:39-46` does for the same ambiguity.
+B2. **`check-ignore` exit 0**: the path is ignored. Done.
+B3. **`check-ignore` exit 1**: AMBIGUOUS - disambiguate with `git ls-files --error-unmatch <path>`:
+    - exit 0 => the path is **TRACKED**. Stage A has already secured the directory; this file cannot be
+      fixed by any shield edit, because git ignores `.gitignore` for tracked paths. **Report the
+      `git rm --cached` remedy (debounced). Do not treat this as a shield fault.**
+    - non-zero => untracked and still not ignored **after Stage A restored the shield text**. The only
+      way to reach this is a negation line (`!...`) inside the shield. **Report loudly; do NOT silently
+      rewrite.** See the residual below.
+B4. **`check-ignore` exit 128 inside a work tree**: a real git error. Stage A has already restored the
+    shield text, which is the safe direction for a data-leak guard. Say so and stop.
+
+> **Why Stage A is unconditional - measured, with a control.** With `local-anomalies.md` TRACKED,
+> `check-ignore` on it returns **1 whether the shield is intact or emptied** - the two are
+> indistinguishable from that probe. An earlier draft therefore said "do NOT rewrite the shield" in the
+> tracked case, which meant **one tracked file disabled protection for the whole directory**. Measured in
+> a throwaway repo: tracked file exit 1 in both states, while a second, untracked file in the same
+> directory went from **0 (protected)** to **1 (leaking)**, and `git add -A` then staged
+> `.clavity/other-marker.md`. **A per-file condition was suppressing a per-directory guarantee.**
+
+**Why B3 splits on tracked-ness.** Measured: with a correct `*` shield and the file force-tracked,
+`check-ignore` returns **1** and `git add -A` **stages the file anyway**. Without the split, a naive
+"non-zero implies the shield is broken" helper would keep rewriting a correct shield and never surface
+the only remedy that works.
+
+> **Refuted, twice, and recorded so it is not raised a third time:** a reviewer twice claimed
+> `check-ignore` returns **0** for a tracked file matching the pattern - which would route the tracked
+> case to B2 ("done") and make it a silent false-GREEN. **It returns 1.** Measured with a control in a
 > throwaway repo: tracked file matching `*` -> **exit 1**; untracked control in the same directory ->
-> **exit 0**. The tracked case is therefore reached by branch 3, which handles it. The concern is real
-> and is already folded; the mechanism claimed for it is not.
+> **exit 0**. The tracked case is reached by B3, which handles it. The concern is real and folded; the
+> mechanism claimed for it is not.
 
 **Helper contract.** The plan chooses the exact path; the CONTRACT is fixed here:
 
 | aspect | contract |
 |---|---|
 | form | a POSIX `sh` **function**, defined in a sourceable file - the hooks are `.sh` and run under the agent's shell |
-| input | **two arguments: the repository root, and the path to protect** (relative to that root). It must NOT re-derive the root - callers already have it, and two derivations can disagree. The path is an argument, not a baked-in constant, because branches 2-3 both test a specific file |
-| effect | may create the directory `<root>/.clavity/` **and** create or append to `<root>/.clavity/.gitignore`. It touches nothing else |
+| input | **three arguments: the repository root, the path to protect** (relative to that root), **and a debounce key** (the caller's session id, or empty to disable debouncing). It must NOT re-derive the root - callers already have it, and two derivations can disagree. The path is an argument, not a baked-in constant, because branches 2-3 both test a specific file. **The debounce key must be passed IN because the helper cannot derive it**: sibling hooks parse `session_id` out of the hook's stdin payload (`agy-anomaly-capture-reminder.sh:61`), and a sourced function has no payload of its own |
+| input validation | **the root must be a existing directory, or the helper returns 0 immediately without writing.** An unvalidated root is a footgun: the contract forbids re-deriving it, so an empty or wrong value is silently trusted, and `mkdir -p "$1/.clavity"` with an empty `$1` would create a directory at the filesystem root |
+| effect | **inside the repository:** may create `<root>/.clavity/` and create or append to `<root>/.clavity/.gitignore`, and nothing else. **Outside it:** may write ONE debounce marker under `$TMPDIR` or `$HOME/.clavity-tmp`, exactly as the sibling hooks do. An earlier draft said "touches nothing else" while also requiring a seen-marker, which is unsatisfiable - the marker cannot live in the repository, because a marker inside `.clavity/` would be a file the shield is supposed to be protecting |
 | output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture. **Subject to the debounce below** |
 | return | **`return 0`, ALWAYS - never `exit`.** See the sourcing hazard below |
 | tracked-file case | emits the `git rm --cached` remedy on stderr and returns 0 without writing |
@@ -186,18 +212,37 @@ shipped snippet already does `mkdir -p "$R/.clavity"` (`open-issues/SKILL.md:69`
 exactly this reason. The helper does the same, and the contract above now says so.
 
 **Output debounce.** In the tracked-file case the fault persists until a human runs `git rm --cached`, so
-an undebounced helper prints the same remedy on EVERY capture forever. It must emit that line at most
-once per session, using the same seen-marker approach the sibling hooks already use
-(`agy-anomaly-capture-reminder.sh` and `assertion-strength-reminder.sh` both do this). A permanent
-unsuppressible nag is how an operator learns to ignore the channel.
+an undebounced helper prints the same remedy on EVERY capture forever, and a permanent unsuppressible nag
+is how an operator learns to ignore the channel. It emits that line at most once per debounce key, using
+the same seen-marker approach the sibling hooks already use (`agy-anomaly-capture-reminder.sh` and
+`assertion-strength-reminder.sh` both do this).
+
+**The key is an ARGUMENT, and an earlier draft of this section made that impossible.** It said "once per
+session" while the contract gave the helper only the root and the path. The session id lives in the hook's
+stdin payload, which a sourced function does not see, so the requirement was unimplementable as written.
+The caller has already parsed it; it passes it in. **An empty key disables debouncing rather than failing** -
+a caller with no session context still gets the warning, just every time, which is the safe direction for
+a data-leak notice.
+
+**Temp files must not collide.** Two sessions can be open on the same repository at once - the open-issues
+skill already designs for that - so any scratch path the helper or the 14e generator uses must be unique
+per invocation, never a fixed name.
 
 **Tests.** All four states above, each asserted, plus a control proving the helper leaves a correct
 shield untouched. Idempotence: three consecutive runs leave exactly one line. Plus one mutation test per
 branch of the decision tree - deleting any branch must turn a test RED.
 
 **Known residual, stated rather than discovered later.** The helper protects the shield; it does not
-un-track an already-tracked file. Branch 3 reports rather than repairs, deliberately - automatic
+un-track an already-tracked file. B3 reports rather than repairs, deliberately - automatic
 `git rm --cached` is a destructive action a guard should not take unattended.
+
+**Second known residual: a negation line is reported, not removed.** If the shield reads `*` followed by
+`!<something>`, Stage A's text check passes (a `*` line IS present) and B3's untracked branch fires. The
+helper reports it loudly and does NOT rewrite the file. Auto-deleting a line a human deliberately wrote is
+the destructive-footgun class: a missing shield is trivially restorable, a destroyed intent is not. The
+leak persists until a human acts, which is why the report must be loud rather than silent. **If that trade
+is wrong, it is an owner call to invert** - the alternative is the helper rewriting the shield to exactly
+`*`, which closes the leak automatically at the cost of overwriting user edits to a file we created.
 
 ### 4.2 Item 14c - one shared helper, and the count is a Step 0 obligation
 
@@ -252,10 +297,14 @@ merely detectable, and no literal-unescaping logic is written a third time.
 **The pre-commit check is NON-DESTRUCTIVE and checks TWO things, not one.** An earlier draft said only
 "runs the generator and asserts the tree is clean", which is wrong twice over:
 
-1. **It must not regenerate in place.** Writing into the working tree during a commit hands the author
-   files they did not edit and can collide with deliberate work in progress. The hook generates to a
-   TEMPORARY location and compares against the committed literals. It reports the difference; it does not
-   silently repair it. Repair is the author running the `just` task deliberately.
+1. **It must not regenerate in place, and it must compare against the INDEX - not HEAD.** Writing into
+   the working tree during a commit hands the author files they did not edit and can collide with
+   deliberate work in progress, so the hook generates to a TEMPORARY location and compares. **It compares
+   against the STAGED content** (`git show :<path>`), because a pre-commit hook runs while the author is
+   committing: someone who legitimately edits `core.md` and stages the regenerated literals would be
+   REJECTED by a comparison against the committed (HEAD) versions - the hook would block precisely the
+   correct workflow it exists to enforce. It reports the difference; it does not silently repair it.
+   Repair is the author running the `just` task deliberately.
 2. **It must assert the generator's own exit status FIRST.** If the generator crashes, the working tree
    is untouched, so a bare `git diff --quiet` returns 0 and the hook PASSES - committing diverged
    literals with a green check. **A generator that failed to run is not evidence of parity.** This is
