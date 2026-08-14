@@ -128,24 +128,36 @@ These are not per-item; they apply to the whole batch and to the plan built from
    are a false-positive ZERO**; an earlier wording of this rule invited reading the 14e case as being
    about the generator's non-zero exit, which is the FIX rather than the hazard.
 6. **EVERY file this batch creates or edits inside a `$DomainRoots` tree inherits the injected-context
-   invariants - and after the 14c amendment, SIX of them do.** Measured at
+   invariants, and this batch touches governed trees in SEVEN distinct places.** Measured at
    `scripts/check-injected-context.ps1:40-53`, the governed roots include `clavity-dotnet/plugin`,
-   `clavity-classic/plugin` and `agy-autotrain`. So:
-   - the **14d shield helper**, if it lands under `clavity-*/plugin/`, is governed - it must be pure
-     ASCII, and it must satisfy the twin-plugin byte-identical rule the same canonicaliser enforces;
-   - the **new 14c `agy-mark.sh`** is governed for the same reason and on the same two counts;
-   - the **four 14c SKILL.md edits** (`agy-first`, `agy-capstone`, `agy-test-audit`, and the hook's own
-     product mirror) are governed - they live under `clavity-*/plugin/skills/`;
-   - the **14e `agy-curate/SKILL.md` edit** is governed, because `agy-autotrain` is a DomainRoot;
-   - `core.md` is governed, which section 4.3 already says.
+   `clavity-classic/plugin` and `agy-autotrain`. Every entry below is governed: it must be pure ASCII,
+   and everything under `clavity-*/plugin/` must additionally satisfy the twin-plugin byte-identical rule
+   the same canonicaliser enforces.
 
-   An earlier draft flagged only the last. **A second draft said "three of them do" and was left
-   unchanged when the 14c amendment added a shipped executable and three skill edits inside the same
-   governed trees** - so the rule's own enumeration under-counted the files it governs, and its closing
-   instruction named "the three". **The author of a rule is not exempt from it, and neither is the
-   amender** - this repository has already had a commit rejected by the very ASCII gate that commit was
-   shipping. Run `just check-injected-context` (or the script directly) before committing ANY governed
-   file in this batch, and treat a rejection as expected feedback rather than a surprise.
+   | governed thing this batch creates or edits | item | mirrored? |
+   |---|---|---|
+   | the shield helper (`agy-shield-lib.sh`) | 14d | yes, both plugins |
+   | `agy-mark.sh` | 14c | yes, both plugins |
+   | `agy-discipline-reaching.sh` (the hook wiring) | 14c | yes, both plugins |
+   | `agy-first/SKILL.md` | 14c | yes, both plugins |
+   | `agy-capstone/SKILL.md` | 14c | yes, both plugins |
+   | `agy-test-audit/SKILL.md` | 14c | yes, both plugins |
+   | `agy-curate/SKILL.md` | 14e | no - single copy |
+
+   `core.md` is governed too, which section 4.3 already says.
+
+   **THE TOTAL IS DELIBERATELY NOT STATED, because every draft that stated one got it wrong.** The first
+   said "three of them do" and named only `core.md`'s neighbours. The 14c amendment then added an
+   executable, a hook edit and three skill edits without touching the count. Round 2 changed it to "six"
+   and round 3 changed the skill count underneath it, leaving "six" describing a list that no longer had
+   six anything - and a bullet that said "the four 14c SKILL.md edits" while listing three skills plus a
+   bash script. **A running total in prose is a claim that has to be re-derived on every edit and silently
+   rots when it is not. The table is the enumeration; count it if you need a number.**
+
+   **The author of a rule is not exempt from it, and neither is the amender** - this repository has
+   already had a commit rejected by the very ASCII gate that commit was shipping. Run
+   `just check-injected-context` (or the script directly) before committing ANY row above, and treat a
+   rejection as expected feedback rather than a surprise.
 
 ---
 
@@ -519,9 +531,10 @@ file paths and quoted source - far more sensitive than a SHA or a timestamp**, a
 that weighed only markers and logs was ranking an incomplete set. It is also arbitrary multi-kilobyte
 markdown, so it **cannot travel through `argv`**, and no content-carrying mode should be invented for it.
 
-**Because the shield is per-DIRECTORY, it does not need to.** The skill calls `agy-mark.sh dir seams`
-(or `dir scratch/<topic>`) to create and shield the directory, then writes the file with its ordinary
-tooling. Stating this explicitly is required: without it an implementer either invents a `file` mode that
+**Because the shield is per-DIRECTORY, it does not need to.** The skill calls
+`agy-mark.sh prepare seams/<topic>.md` (or `prepare scratch/<topic>/<name>`) naming the FILE it is about
+to write; the script creates and shields the parent directory and verifies the effect for that exact
+path, then the skill writes the file with its ordinary tooling. Stating this explicitly is required: without it an implementer either invents a `file` mode that
 takes content on the command line, or leaves the highest-exposure writes unshielded because no mode
 covered them.
 
@@ -537,13 +550,14 @@ the same glob. **No registration in `hooks.json` is required or wanted** - it is
 |---|---|
 | form | an EXECUTABLE `.sh` (not sourced), so `exit` is correct here - the opposite of the 4.1 helper's `return`-only rule, and the difference is load-bearing |
 | root | resolved with `git rev-parse --show-toplevel`. A subprocess is affordable here because this runs once per discipline event, not per turn. **If it cannot resolve, REFUSE and exit non-zero** |
-| modes | `head <discipline> <sha>` (write `.clavity/agy-marks/<discipline>.head`), `log <discipline> <status> <sha> [text...]` (append one line to `.clavity/agy-marks/skipped.log`), `dir <relpath>` (create and shield `.clavity/<relpath>/`, which is how `seams/` and `scratch/<topic>/` are handled - see above) |
+| modes | `head <discipline> <sha>` (write `.clavity/agy-marks/<discipline>.head`), `log <discipline> <status> <sha> [text...]` (append one line to `.clavity/agy-marks/skipped.log`), `prepare <relpath>` (create the parent directory of `.clavity/<relpath>` and shield it, for the `seams/` and `scratch/` cases) |
+| **`prepare` takes the FILE path, not the directory - and this is the whole point of the mode** | An earlier draft called it `dir` and passed `seams`. That throws the filename away, and the helper's Stage B then evaluates the DIRECTORY: `check-ignore` on `.clavity/seams` returns 0 under the `*` rule, B2 says "done", and **the file about to be written is never evaluated at all** - so a `!seams/<topic>.md` negation goes undetected and the effect check silently covers nothing. `git check-ignore` works on paths that do not exist yet, so passing the eventual file path costs nothing and restores the guarantee. **A mode that cannot see the file it is preparing for is a shield with a blind spot exactly where the payload lands** |
 | **the script owns the log LINE FORMAT** | `log` emits `<iso-8601>  <discipline>  <status>  HEAD=<sha>[  <text>]`, generating the timestamp and the `HEAD=` prefix itself. **The callers must NOT pass a preformatted line.** TWO of the three rewritten skills document that shape in their own prose today (`agy-first:96`, `agy-capstone:180` and `:253`; `agy-test-audit` writes only a `.head` marker and never uses `log`); moving it into the script is the entire point of having a script, and leaving it in the callers keeps copies of a format that must agree |
 | **it validates its OWN arguments - it cannot delegate that** | `<discipline>` and `<relpath>` are interpolated into a path, so a value containing `/` or `..` escapes the directory. **The 4.1 helper cannot catch this for it:** that helper returns 0 on a validation fault BY CONTRACT, so `agy-mark.sh` receives success and would proceed to write. It must therefore reject any `<discipline>` that is not `[A-Za-z0-9._-]+`, and any `<relpath>` containing `..` or a leading `/`, BEFORE calling the helper and before any write |
 | shield | calls the 4.1 helper BEFORE any write, on every mode, with no way to skip it. The helper's return value carries no information (always 0) and must not be branched on |
 | exit codes | `0` wrote successfully; `1` refused, NOTHING written (bad argument, helper unloadable, root unresolvable); `2` wrote partially or the write itself failed. **A caller must be able to tell "refused" from "wrote", and a single non-zero cannot express that** |
-| **failure direction - and it is NOT uniform across modes** | `head` and `dir` **fail CLOSED**: write nothing, exit 1. That is safe precisely because an absent marker makes the discipline RE-FIRE next trigger, which every one of these skills already documents (`agy-test-audit/SKILL.md:225`: "If HEAD cannot resolve, skip writing (the discipline re-fires next trigger - safe)"). **`log` has NO such re-fire path** - `skipped.log` is a durable audit breadcrumb, and `agy-first/SKILL.md:99-101` describes it as surviving normal operation - so a refused `log` write destroys a record with nothing to recreate it. **`log` must therefore emit BOTH the line it could not write AND the reason it could not write it to STDERR**, then exit 1. Emitting only the payload leaves the operator holding a log line with no idea why it never reached disk - the environmental fault that caused the refusal is exactly what they need in order to fix it. An earlier draft justified fail-closed for all three modes with the re-fire argument, which is true only for two of them, and a later one degraded the payload without the diagnosis |
-| **`dir` fails closed too, but the caller must ACT on it - the re-fire argument does not cover this either** | `dir` creates the directory a discipline is about to fill with a seam or a scratch file. If it refuses, the directory does not exist, and the agent's very next write fails with `No such file or directory` **in the middle of the discipline** rather than re-firing cleanly. Refusing is still correct - creating an unshielded directory for a review brief is the leak this item exists to stop - but **the three rewritten skills must check the exit status and ABORT the discipline with a named reason**, exactly as they already do for an unreachable peer. A skill that invokes `dir` and ignores its exit code converts a clean refusal into a mid-run crash |
+| **failure direction - and it is NOT uniform across modes** | `head` and `prepare` **fail CLOSED**: write nothing, exit 1. That is safe precisely because an absent marker makes the discipline RE-FIRE next trigger, which every one of these skills already documents (`agy-test-audit/SKILL.md:225`: "If HEAD cannot resolve, skip writing (the discipline re-fires next trigger - safe)"). **`log` has NO such re-fire path** - `skipped.log` is a durable audit breadcrumb, and `agy-first/SKILL.md:99-101` describes it as surviving normal operation - so a refused `log` write destroys a record with nothing to recreate it. **`log` must therefore emit BOTH the line it could not write AND the reason it could not write it to STDERR**, then exit 1. Emitting only the payload leaves the operator holding a log line with no idea why it never reached disk - the environmental fault that caused the refusal is exactly what they need in order to fix it. An earlier draft justified fail-closed for all three modes with the re-fire argument, which is true only for two of them, and a later one degraded the payload without the diagnosis |
+| **`prepare` fails closed too, but the caller must ACT on it - the re-fire argument does not cover this either** | `prepare` creates the directory a discipline is about to fill with a seam or a scratch file. If it refuses, the directory does not exist, and the agent's very next write fails with `No such file or directory` **in the middle of the discipline** rather than re-firing cleanly. Refusing is still correct - creating an unshielded directory for a review brief is the leak this item exists to stop - but **the three rewritten skills must check the exit status and ABORT the discipline with a named reason**, exactly as they already do for an unreachable peer. A skill that invokes `prepare` and ignores its exit code converts a clean refusal into a mid-run crash |
 | **all three modes are the OPPOSITE of the 4.1 helper's fail-open rule, deliberately** | the helper runs inside a PreToolUse chain where a non-zero exit BLOCKS an agent; this script is invoked directly by a skill, where a refusal blocks nothing. **Do not harmonise them** |
 | concurrency | `log` appends with ONE `printf ... >>`, never read-modify-write. Two sessions can be open on the same repository at once - `open-issues/SKILL.md:80-85` already reasons about exactly this - and a single short append is atomic on POSIX, so concurrent writers interleave lines rather than corrupting them |
 | debounce key | `${AGY_SESSION_ID:-}` from the environment, forwarded to the helper. Empty disables debouncing, which is the safe direction for a leak notice |
@@ -728,7 +742,8 @@ alone:
 | `core.md` staged, literals staged and correct | hook PASSES (the correct workflow is not blocked) |
 | `core.md` staged, literals stale in the index, **correct output already in the worktree** | hook FAILS with **remedy 1** - says `git add` the literals and does NOT name the `just` task (re-running it is a no-op) |
 | `core.md` staged, literals stale in the index **and in the worktree** | hook FAILS with **remedy 2** - names the `just` task |
-| **partial stage: `core.md` hunks split with `git add -p`** | hook FAILS, **and its message says partial staging of `core.md` is unsupported** - see the remedy rules below. An earlier draft claimed this PASSES, which was wrong |
+| **partial stage: `core.md` hunks split with `git add -p`, literals generated from the WORKTREE** | hook FAILS, **and its message says partial staging of `core.md` is unsupported** - see the remedy rules below. Parity fails first (the `just` task read the full worktree text), and case 3 is what names the real cause. An earlier draft claimed this PASSES, which was wrong |
+| **`core.md` staged complete, literals staged and correct, then FURTHER unstaged edits made to `core.md`** | hook **PASSES**. This is an ordinary iterative workflow and the staged content is self-consistent, which is the only thing the hook validates. **A draft that evaluated case 3 before parity rejected this**, and a gate that rejects a correct commit teaches its users `--no-verify` |
 | worktree `core.md` CRLF, index LF, literals correct | hook PASSES. **This does NOT prove the hook reads the index** - see below; it is a regression pin against CRLF breaking the run, nothing more |
 **There is deliberately NO end-to-end row proving the hook reads the index, because no such row can
 exist.** Round 10 added one requiring a CONTENT difference between index and worktree. It is unreachable:
@@ -787,11 +802,24 @@ turn RED. If it stays green, the assertion is decorative.
 identical second failure - the user runs a no-op and is rejected again with the same text. The hook
 distinguishes three cases and names the remedy that actually works:
 
-**These cases OVERLAP, so the evaluation order is part of the contract - case 3 is tested FIRST and
-short-circuits.** A partial stage also satisfies case 1 or case 2, so a hook that checks them in table
-order emits "`git add` the literals" or "run `just <task>`" to a user whose real problem is the partial
-stage. Following that advice stages full literals against a partially-staged `core.md` and fails again -
-the exact loop this table exists to prevent. **Order: 3, then 1, then 2.**
+**PARITY IS EVALUATED FIRST, AND IT IS THE ONLY THING THAT CAN PASS THE HOOK. The three cases below are
+DIAGNOSIS, reached only after parity has already failed.** An earlier draft tested case 3 first and
+short-circuited on it, which **blocks a correct commit**: `git diff --quiet -- <core.md>` compares the
+worktree to the index, so it fires whenever the author has staged a complete change and then started
+follow-up edits to `core.md` before typing `git commit` - an ordinary iterative workflow. In that state
+the staged literals may agree perfectly with the staged `core.md`, which is the only thing the hook is
+entitled to validate. **A gate that rejects a valid commit because of unstaged work it is not validating
+will not survive first real use, and the first thing its users will learn is `--no-verify`.**
+
+So: generate from the staged `core.md`, compare against the staged literals, and if they agree, **PASS
+and stop** - whatever the worktree looks like. Only when they DISAGREE does the hook need to tell the
+author why, and only then do the overlapping cases below matter.
+
+**Within the diagnosis, the order is part of the contract - case 3 is tested FIRST and short-circuits.**
+A partial stage also satisfies case 1 or case 2, so a hook that checks them in table order emits "`git
+add` the literals" or "run `just <task>`" to a user whose real problem is the partial stage. Following
+that advice stages full literals against a partially-staged `core.md` and fails again - the exact loop
+this table exists to prevent. **Diagnosis order: 3, then 1, then 2.**
 
 | # | what the hook observes | message must say |
 |---|---|---|
@@ -1060,6 +1088,16 @@ The test must therefore:
 
 **No behaviour change** - the reporting feature is explicitly not built (owner-scoped 2026-08-14).
 
+**Known residual, and it is inherent to declining the feature rather than a flaw in the wording.** The
+replacement sentence lives inside the violations block, which prints only when there is at least one
+violation. **A stale exemption produces ZERO violations** - that is precisely what "the file stopped
+failing its invariant" means - so the guidance about stale exemptions is never shown at the moment a
+stale exemption exists. It appears only alongside some unrelated failure. This item **corrects a false
+claim; it does not make the guidance reachable at the time of the fault**, and it cannot, because
+reaching it would require the unused-exemption detection that 13a explicitly declines to build. Stated
+here so the residual is a recorded decision rather than something a later reader discovers and mistakes
+for an oversight.
+
 ### 4.7 Item 13c - name which input is missing
 
 **Current behaviour.** `Get-RawBytes` (`scripts/check-growth-budget.ps1:26`) returns 0 for a missing path,
@@ -1071,7 +1109,26 @@ fail-open.
 `:7` states: `drain-knowledge.ps1 runs this WARN-only (breach does not abort the drain)`. Turning this
 into a hard failure would break the drain.
 
-**Tests.** Distinct messages for missing vs present-but-empty; exit code 0 in both.
+**`Get-RawBytes` has TWO call sites, and the second one is NOT the same case.** Measured:
+`scripts/check-growth-budget.ps1:30-31` calls it for the SEED (`seed/golden-header.md`) as well as for
+the GROWTH proposal. For GROWTH, absence is legitimate - a docs-only drain has nothing to publish, which
+is why this item is a reporting defect and not a fail-open. **For SEED it is not legitimate at all.** A
+missing seed silently measures 0, `$combined` becomes 0, `:39` compares `0 -gt 16384`, and `:44` prints
+`check-growth-budget: OK - SEED (0B) + GROWTH (0B) = 0B <= 16384B` and exits 0. **The gate reports a
+clean pass having measured nothing** - which IS the fail-open shape, sitting on the call site nobody
+looked at because the anomaly was captured against the other one.
+
+**So this item covers both call sites, and says which is which:** a missing GROWTH is reported as a
+legitimate absence and still exits 0; a missing SEED is reported as an ANOMALY, because there is no
+correct state in which the driver-owned baseline is absent while a budget check is meaningful. Whether
+a missing seed should also change the EXIT CODE is deliberately left as the one open question here -
+`:7` states the script is run WARN-only by the drain, so turning it into a hard failure is a behaviour
+change of exactly the kind this item otherwise refuses. **Name it in the message; do not change the exit
+code without an owner ruling.**
+
+**Tests.** Distinct messages for missing vs present-but-empty, for BOTH call sites; exit code 0 in all
+four combinations; and a mutation control - collapse the missing and empty branches back into one and at
+least one row must turn RED.
 
 ---
 
@@ -1085,9 +1142,8 @@ into a hard failure would break the drain.
    neither: `.clavity` is absent from `PrunedSegments`, so the injected-context gate walks that directory
    today - which is the whole reason 14a exists - and **this batch actively creates content there**
    (consult seams, discipline markers, the anomalies file). Global rule 6 requires running that gate over
-   SIX of this batch's own artifacts (it said three until the 14c amendment added a shipped executable
-   and three skill edits inside the same governed trees). Landing 14a last means every gate run during
-   the batch is taken
+   every governed artifact in global rule 6's table - which the 14c amendment grew substantially.
+   Landing 14a last means every gate run during the batch is taken
    over a tree the gate is mis-scanning. It is one array entry; doing it first removes a class of
    spurious failures from the rest of the work.
 
@@ -1182,9 +1238,14 @@ is entangled with the ownership ruling, unlike 14e's.
 
 ## 8. Provenance
 
-The seven dispositions were settled through an AGY-FIRST consult plus two negotiation rounds, with every
-factual claim verified at source before folding. Recorded because the reasoning matters more than the
-conclusions:
+Six of the seven dispositions were settled through an AGY-FIRST consult plus two negotiation rounds, with
+every factual claim verified at source before folding. **14c's was settled TWICE**, and the second time
+is the one that governs: after the plan's Step 0 measurement invalidated it, a further three-round
+negotiation converged on the narrower option (wire the hook, track the skills), and **the owner overruled
+that convergence in favour of the full fix** - a new shipped executable with three skill rewrites. So the
+provenance of 14c is: consult, negotiation, measurement, re-negotiation, owner override. Recorded because
+the reasoning matters more than the conclusions, and because "agreed with the peer" was NOT the final
+input on this one:
 
 - The peer's first recommendation on 14d (text check) was **inverted** by the four-state matrix; it
   reversed, then contributed the already-tracked state that neither of us had tested.
