@@ -68,6 +68,15 @@ for Task 6.
 8. **`docs/superpowers/*` is gitignored** (`.gitignore:32`). Committing this plan or the spec needs
    `git add -f`. **Never force-add `.clavity/`.**
 
+### A line number this plan itself invalidates is not a citation (panel R4)
+
+**Five tasks register a test suite, and the first one to run makes every later task's line citation
+stale.** Tasks 3, 6, 11 and 13 all add an entry to the same `test-scripts-slow` recipe and Task 10 adds
+one to `test-scripts-fast`; each edit changes that line's content, and any edit above it moves its number.
+So this plan names the **RECIPE**, never the line, for every `justfile` registration - and the same rule
+binds anything else this plan edits more than once. **Re-derive a line number at the moment you use it;
+a citation that was true when the plan was written is a claim about a file the plan is actively changing.**
+
 ### Stated toolchain assumptions (panel R2, Dependency Cynic)
 
 The shipped helper calls `grep`, `find`, `mkdir`, `mv`, `mktemp` and `git`. **These are pre-existing
@@ -863,7 +872,7 @@ Expected: the two hashes are IDENTICAL. If they differ, the copy re-encoded the 
 - [ ] **Step 5: Register the new suite in the SLOW partition**
 
 Registration is an EXPLICIT LIST, not a glob, enforced by `test-suite-registration.Tests.ps1`. Add
-`'scripts/tests/agy-shield-lib.Tests.ps1'` to the array in `justfile:108` (`test-scripts-slow`). It is a
+`'scripts/tests/agy-shield-lib.Tests.ps1'` to the array in the `test-scripts-slow` recipe in `justfile`. It is a
 fixture-heavy suite that shells out to `git` and `bash` many times; the fast half is cap-adjacent.
 
 Then add a row for it to the `## Measured runtimes` fenced table in `scripts/tests/_partition.md` -
@@ -1033,12 +1042,19 @@ passes, and the shield is silently broken.
 is unaffected, but the shield fallback must become:
 
 ```bash
-if [ ! -f "$R/.clavity/.gitignore" ]; then
+if [ ! -s "$R/.clavity/.gitignore" ]; then
   printf '%s\n' '*' >> "$R/.clavity/.gitignore"
-elif [ -s "$R/.clavity/.gitignore" ] && [ -n "$(tail -c 1 "$R/.clavity/.gitignore")" ]; then
+elif ! grep -qx '*' "$R/.clavity/.gitignore" 2>/dev/null; then
   printf '\n%s\n' '*' >> "$R/.clavity/.gitignore"
 fi
 ```
+
+> **PANEL R4 - this block was the LAST unswept copy, and it had accumulated BOTH earlier defects.** Until
+> round 4 it read `if [ ! -f ] ... elif [ -s ] && [ -n "$(tail -c 1 ...)" ]`, which carried the round-2
+> `tail` probe that round 2 removed everywhere else, AND the round-3 zero-byte fail-open that round 3 fixed
+> everywhere else. **Two consecutive rounds each fixed this defect in the sibling sites and missed this
+> one.** The lesson is the plan's own global rule 4, turned on the plan itself: when a fix changes a FACT,
+> grep the whole document for every copy of that fact before calling it folded.
 
 - [ ] **Step 2: Mirror to classic and verify byte-identity**
 
@@ -1058,12 +1074,20 @@ instruction at runtime) leaves the string sitting in the file. **A presence-grep
 cannot close that hole, because they compare the two PRODUCTS against each other, so a file left unedited
 in BOTH passes byte-identity happily.
 
+**Grep for the thing this task actually shipped, which depends on Task 1** - under BLOCKED only Step 1b
+lands, and it contains no `agy_shield` at all, so an `agy_shield` grep returns 0 and reads as a task that
+was never done.
+
 ```bash
+# Task 1 = RESOLVED:
 grep -c 'agy_shield' clavity-dotnet/plugin/skills/open-issues/SKILL.md
 grep -c 'agy_shield' clavity-classic/plugin/skills/open-issues/SKILL.md
+# Task 1 = BLOCKED (Step 1b only):
+grep -c '! -s "\$R/.clavity/.gitignore"' clavity-dotnet/plugin/skills/open-issues/SKILL.md
+grep -c '! -s "\$R/.clavity/.gitignore"' clavity-classic/plugin/skills/open-issues/SKILL.md
 ```
 
-Expected: a non-zero count from BOTH. Record both in the Task 16 checklist.
+Expected: a non-zero count from BOTH, for whichever pair applies. Record both in the Task 16 checklist.
 
 - [ ] **Step 4: Run the gates**
 
@@ -1331,7 +1355,7 @@ git commit -m "feat(shield): 14c - the SessionStart recorder asserts the shield 
 - Create: `clavity-dotnet/plugin/hooks/agy-mark.sh`
 - Create: `clavity-classic/plugin/hooks/agy-mark.sh` (byte-identical mirror)
 - Create: `scripts/tests/agy-mark.Tests.ps1`
-- Modify: `justfile:108` (SLOW partition) and `scripts/tests/_partition.md`
+- Modify: the `test-scripts-slow` recipe in `justfile` (SLOW partition) and `scripts/tests/_partition.md`
 
 ### M2 - the root anchor is cwd, NOT `git rev-parse --show-toplevel`
 
@@ -1699,7 +1723,7 @@ cp clavity-dotnet/plugin/hooks/agy-mark.sh clavity-classic/plugin/hooks/agy-mark
 git hash-object clavity-dotnet/plugin/hooks/agy-mark.sh clavity-classic/plugin/hooks/agy-mark.sh
 ```
 
-Add `'scripts/tests/agy-mark.Tests.ps1'` to `justfile:108` (SLOW) and a row to `_partition.md`'s census
+Add `'scripts/tests/agy-mark.Tests.ps1'` to the `test-scripts-slow` recipe in `justfile` and a row to `_partition.md`'s census
 table. Then:
 
 ```bash
@@ -2041,7 +2065,7 @@ git commit -m "chore(eol): 14e - pin the three cheatsheet paths to eol=lf and re
 - Create: `scripts/tests/generate-cheatsheet-literals.Tests.ps1`
 - Modify: `justfile` (a new recipe, alongside the `check-*` family around `:117-130`)
 - Modify: `scripts/README.md` (**required** - `scripts-readme-inventory.Tests.ps1:33` reds otherwise)
-- Modify: `justfile:101` or `:108` (register the new suite) and `scripts/tests/_partition.md`
+- Modify: the `test-scripts-fast` or `test-scripts-slow` recipe in `justfile` (register the new suite) and `scripts/tests/_partition.md`
 
 **Verified target shapes** - the generator must reproduce these byte-for-byte:
 
@@ -2367,7 +2391,7 @@ Required - `scripts/tests/scripts-readme-inventory.Tests.ps1:33` asserts every t
 
 - [ ] **Step 6: Register the new suite and run it**
 
-Add `'scripts/tests/generate-cheatsheet-literals.Tests.ps1'` to `justfile:101` (FAST - it is a pure
+Add `'scripts/tests/generate-cheatsheet-literals.Tests.ps1'` to the `test-scripts-fast` recipe in `justfile` (FAST - it is a pure
 file-transform suite with no `git` fixtures) and a row to `_partition.md`'s census table.
 
 ```bash
@@ -2587,8 +2611,18 @@ In `scripts/tests/check-curate-in-progress.Tests.ps1`, immediately after `:358`,
         # (cheatsheet-parity, ROADMAP 14e) globbing the same three paths this fixture stages. Without
         # its script present, lefthook fails for a reason that has nothing to do with this suite and
         # the control row below - which asserts exit 0 - goes red.
-        Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'scripts/check-cheatsheet-parity.ps1') -Destination (Join-Path $fixtureScripts 'check-cheatsheet-parity.ps1')
-        Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'scripts/generate-cheatsheet-literals.ps1') -Destination (Join-Path $fixtureScripts 'generate-cheatsheet-literals.ps1')
+        # A STUB, NOT THE REAL SCRIPT - and panel R4 caught why copying the real one does not work.
+        # This fixture stages clavity-classic/src/driver_cheatsheet.rs (:359) and contains NO core.md at
+        # all. The real parity hook would find a literal present in the index with no canonical source,
+        # which by Task 11's own rules is the "source gone, literal left behind" case and exits non-zero -
+        # so lefthook fails and the control row below (`Should -Be 0`) goes RED. Copying the real script
+        # trades one failure for another.
+        #
+        # A stub is the CORRECT isolation here, not a dodge: this row's claim is that lefthook invokes
+        # THE CURATE GUARD and propagates ITS refusal. Any other pre-commit command is noise for that
+        # claim, and the parity hook's real behaviour is covered by its own suite in Task 11 - which is
+        # where a wiring break in it must be caught, not here.
+        Set-Content -LiteralPath (Join-Path $fixtureScripts 'check-cheatsheet-parity.ps1') -Value 'exit 0'
 ```
 
 - [ ] **Step 6: Run BOTH suites**
@@ -2617,7 +2651,7 @@ fix did not take. Never run them concurrently (file-lock false red).
 
 - [ ] **Step 8: Register, index, commit**
 
-Add the suite to `justfile:108` (SLOW - it builds many git fixtures), add a `_partition.md` row, and add
+Add the suite to the `test-scripts-slow` recipe in `justfile` (SLOW - it builds many git fixtures), add a `_partition.md` row, and add
 `check-cheatsheet-parity.ps1` to `scripts/README.md`.
 
 ```bash
@@ -2700,7 +2734,7 @@ git commit -m "docs(curate): 14e - the two pins are generated output, not hand-e
 three parts below leaves the item's own premise true.**
 
 **Files:**
-- Modify: `justfile:108` (SLOW partition) and `scripts/tests/_partition.md`
+- Modify: the `test-scripts-slow` recipe in `justfile` (SLOW partition) and `scripts/tests/_partition.md`
 - Modify: `.github/workflows/ci-scripts.yml` - both `paths:` lists AND both jobs
 - Modify: `scripts/tests/test-suite-registration.Tests.ps1` (a narrow pin, NOT a widening)
 
@@ -2781,7 +2815,7 @@ to a BOM-less temp `.ps1`).
 - [ ] **Step 3: Part 3 - the `justfile` registration, in the SLOW partition**
 
 Registration is an EXPLICIT LIST, not a glob. Add
-`'clavity-dotnet/install/clavity-install.Tests.ps1'` to the array in `justfile:108`.
+`'clavity-dotnet/install/clavity-install.Tests.ps1'` to the array in the `test-scripts-slow` recipe in `justfile`.
 
 **It goes SLOW, and the reasoning is on the record.** The fast half is the agent inner-loop recipe and
 `scripts/tests/_partition.md` is explicit that it is **cap-adjacent, not cap-safe** against the 600s
@@ -2842,7 +2876,7 @@ Expected: **Passed 12, Failed 0** from the first; all green from the second, inc
 
 - [ ] **Step 7: Mutation control**
 
-Delete the `clavity-dotnet/install/...` entry from `justfile:108` - the new pin's FIRST assertion must turn
+Delete the `clavity-dotnet/install/...` entry from the `test-scripts-slow` recipe in `justfile` - the new pin's FIRST assertion must turn
 RED. Restore it, then temporarily rename the suite file - the SECOND assertion must turn RED. Restore.
 
 - [ ] **Step 8: Check the YAML by READING - it cannot be exercised before merge**
@@ -3066,6 +3100,20 @@ asserting "0 everywhere" would contradict the table above.**
             $r.Out | Should -Match '(?i)\bempty\b'
             $r.Rc  | Should -Not -Be 0
         }
+        It 'SEED over the cap with GROWTH ABSENT: still FAILS (panel R4 - the early-return fail-open)' {
+            # THE ROW THAT CATCHES 13c's OWN REGRESSION. The first draft returned 0 here while printing
+            # "SEED <n>B <= <cap>B" without testing it. The ORIGINAL code had no such hole: with GROWTH
+            # absent the separator is 0 and $combined is just $seedBytes, so the cap comparison still ran.
+            # Without this row, an early return for the legitimate GROWTH-absent case silently deletes the
+            # only check an oversized seed would ever fail - and prints a false statement in green.
+            $r = Invoke-Budget (New-BudgetFixture -NoGrowth) -MaxBytes 50   # seed fixture is 200B
+            $r.Rc  | Should -Not -Be 0 -Because 'a seed over the cap on its own must never pass, GROWTH present or not'
+            $r.Out | Should -Not -Match '(?i)\bOK\b'
+        }
+        It 'SEED over the cap with GROWTH EMPTY: still FAILS' {
+            $r = Invoke-Budget (New-BudgetFixture -EmptyGrowth) -MaxBytes 50
+            $r.Rc | Should -Not -Be 0
+        }
         It 'both present, over cap: the EXISTING overflow message, non-zero (unchanged)' {
             $r = Invoke-Budget (New-BudgetFixture -GrowthBytes 500) -MaxBytes 300
             $r.Out | Should -Match '(?i)exceeds|FAIL'
@@ -3119,8 +3167,21 @@ if ($seedBytes -eq 0) {
     exit 1
 }
 
+# THE SEED MUST STILL BE CHECKED AGAINST THE CAP BEFORE ANY EARLY RETURN. Panel R4 caught this as a
+# FAIL-OPEN INTRODUCED BY 13c'S OWN FIX: the first draft of these two branches printed
+# "SEED ${seedBytes}B <= ${MaxBytes}B" and exited 0 WITHOUT EVER TESTING THAT CLAIM. The original code
+# had no such hole - with GROWTH absent, `$separator` is 0 and `$combined` is just `$seedBytes`, so `:39`
+# still compared it to the cap. Adding an early return for the legitimate GROWTH-absent case silently
+# deleted the only check that a seed OVER the cap on its own would ever fail, and printed a
+# mathematically false sentence in green while doing it. A reporting fix that removes an assertion is not
+# a reporting fix.
+if ($seedBytes -gt $MaxBytes) {
+    Write-Host "check-growth-budget: FAIL: SEED (${seedBytes}B) alone exceeds ${MaxBytes}B, before any GROWTH is added." -ForegroundColor Red
+    exit 1
+}
+
 # For GROWTH, ABSENCE IS LEGITIMATE - a docs-only drain has nothing to publish - so this half is a
-# reporting fix and stays exit 0.
+# reporting fix and stays exit 0. Safe to return here ONLY because the seed was just checked above.
 if ($growthMissing) {
     Write-Host "check-growth-budget: OK - the GROWTH proposal is ABSENT at $growthPath (a docs-only drain publishes nothing). SEED ${seedBytes}B <= ${MaxBytes}B." -ForegroundColor Green
     exit 0
@@ -3225,7 +3286,7 @@ Walk **every row** of the governed-artifacts table and confirm each file was act
 | `plugin/skills/agy-first/SKILL.md` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if BLOCKED)* |
 | `plugin/skills/agy-capstone/SKILL.md` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if BLOCKED)* |
 | `plugin/skills/agy-test-audit/SKILL.md` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if BLOCKED)* |
-| `plugin/skills/open-issues/SKILL.md` | **14d** | both plugins | ☐ dotnet ☐ classic |
+| `plugin/skills/open-issues/SKILL.md` | **14d** | both plugins | ☐ dotnet ☐ classic — **check the RIGHT thing:** under Task 1 = RESOLVED grep for `agy_shield`; under **BLOCKED** only Step 1b ships, so grep for `! -s` instead. **A `agy_shield` grep returns 0 under BLOCKED and would read as a skipped task.** |
 | `agy-autotrain/skills/agy-curate/SKILL.md` | 14e | single copy | ☐ |
 
 ```bash
