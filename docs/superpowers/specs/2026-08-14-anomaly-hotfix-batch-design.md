@@ -206,7 +206,8 @@ the only remedy that works.
 | effect | **inside the repository:** may create `<root>/.clavity/` and create or append to `<root>/.clavity/.gitignore`, and nothing else. **Outside it:** may write ONE debounce marker under `$TMPDIR` or `$HOME/.clavity-tmp`, exactly as the sibling hooks do. An earlier draft said "touches nothing else" while also requiring a seen-marker, which is unsatisfiable - the marker cannot live in the repository, because a marker inside `.clavity/` would be a file the shield is supposed to be protecting |
 | output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture. **Subject to the debounce below** |
 | return | **`return 0`, ALWAYS - never `exit`.** See the sourcing hazard below |
-| tracked-file case | emits the `git rm --cached` remedy on stderr and returns 0 without writing |
+| tracked-file case (B3, tracked) | emits the `git rm --cached` remedy on stderr, debounced; returns 0. Stage A has already secured the shield, so this is a notice, not a repair |
+| negation-line case (B3, untracked) | the path is still unignored after Stage A restored the shield text, so a `!` line is overriding it. Emits a loud notice naming the file and the offending line, debounced; **returns 0 and does NOT rewrite the shield**. Present in the contract because an earlier draft described it only in prose - an implementer reads this table for return states |
 
 **`return`, NEVER `exit` - measured, and it would have shipped.** The helper is SOURCED into the calling
 hook, so `exit` terminates the CALLER, not the helper. Measured in a throwaway script: a sourced snippet
@@ -240,9 +241,24 @@ a data-leak notice.
 skill already designs for that - so any scratch path the helper or the 14e generator uses must be unique
 per invocation, never a fixed name.
 
-**Tests.** All four states above, each asserted, plus a control proving the helper leaves a correct
-shield untouched. Idempotence: three consecutive runs leave exactly one line. Plus one mutation test per
-branch of the decision tree - deleting any branch must turn a test RED.
+**Tests. The four-state matrix is the STARTING point, not the whole set - the decision tree grew past it.**
+An earlier draft said "all four states above", which was written when the tree had four branches. It now
+has seven, and three of them have no row in that matrix. The required set:
+
+| case | asserts |
+|---|---|
+| shield `*`, untracked | helper leaves it untouched (control - it must not churn a healthy shield) |
+| shield emptied, untracked | shield restored |
+| shield `*` + `!<name>`, untracked | reported loudly, shield NOT rewritten (the negation residual) |
+| shield `*`, path TRACKED | `git rm --cached` remedy emitted, shield still intact afterwards |
+| **shield emptied, path TRACKED** | **shield restored anyway** - the Stage A regression test. This is the case that was broken until round 2; without it the fix is unpinned |
+| **root argument empty or not a directory** | returns 0, writes NOTHING, creates no directory |
+| **path argument outside `<root>/.clavity/`** | returns 0, writes NOTHING - no false "repaired" report |
+| **outside a git work tree** | text fallback runs; no `check-ignore` invoked |
+| idempotence | three consecutive runs leave exactly one `*` line |
+
+**Plus one mutation control per branch** - deleting any branch must turn at least one row RED. If deleting
+a branch leaves the suite green, that branch is untested regardless of how many rows exist.
 
 **Known residual, stated rather than discovered later.** The helper protects the shield; it does not
 un-track an already-tracked file. B3 reports rather than repairs, deliberately - automatic
@@ -354,6 +370,38 @@ CURRENT artifact byte-for-byte; only then is it fed the new input and shown to d
 expected delta. Both existing pinning tests stay and must remain green - they are the oracle the
 generator is proven against, and are not to be edited to match generator output.
 
+**The HOOK needs its own tests, and an earlier draft tested only the generator.** Every rule added to the
+hook above is a branch that can silently invert, and none of them is exercised by testing the generator
+alone:
+
+| case | asserts |
+|---|---|
+| generator exits non-zero | hook FAILS - it must not pass on an untouched tree |
+| `core.md` staged, literals staged and correct | hook PASSES (the correct workflow is not blocked) |
+| `core.md` staged, literals stale in the index | hook FAILS and names the `just` task |
+| **partial stage: `core.md` hunks split with `git add -p`** | hook PASSES - both sides come from the index, so the unstaged remainder is irrelevant |
+| worktree `core.md` CRLF, index LF, literals correct | hook PASSES - proves the hook really reads the INDEX and not the worktree |
+| hook run twice | working tree unchanged both times (it must never write in place) |
+
+**The CRLF test belongs on the `just` task, NOT here - and putting it here would have been a vacuous
+oracle.** An earlier draft of this table asserted "`core.md` CRLF in the worktree -> generated literals
+contain no `\r`" as a HOOK test. The hook feeds the generator `git show :<path>`, and an index blob is
+already LF, so the worktree's line endings are invisible to it: **that row would pass even if the
+generator's CRLF handling were entirely deleted.** The hook row above is the correct one - it pins that
+the hook reads the index. The CRLF assertion moves to the `just` task's tests:
+
+| `just` task case | asserts |
+|---|---|
+| worktree `core.md` has CRLF | generated literals contain no `\r` |
+| mutation: delete the CRLF normalisation | the row above turns RED |
+
+This split matters because the two entry points genuinely differ: **the hook reads the index (always LF),
+the `just` task reads the working tree (CRLF on Windows today, measured).** Only the second can exercise
+constraint 1b.
+
+**Mutation control:** neuter the generator's exit-status assertion and the "generator crashed" row must
+turn RED. If it stays green, the assertion is decorative.
+
 **Generator constraints - these are design-level, not plan-level, because they eliminate candidates:**
 
 1. **It must run on Windows and in CI**, in both products' pipelines. **The surviving candidate is
@@ -387,7 +435,7 @@ and shipping one without the other is an incomplete fold:
 | line | says today | after 14e |
 |---|---|---|
 | `SKILL.md:124` | "If you change `driver-cheatsheet.core.md` you **MUST also update**" both pins | wrong - the generator produces them; hand-editing them is now the error the hook catches |
-| `SKILL.md:122-123` | "THREE files are pinned byte-identical ... editing `core.md` alone RED-GATES both binaries" | must instead say: edit `core.md`, then RUN THE GENERATOR; the hook asserts the tree is clean |
+| `SKILL.md:122-123` | "THREE files are pinned byte-identical ... editing `core.md` alone RED-GATES both binaries" | must instead say: edit `core.md`, run the generator, and **stage all three together** - the hook compares what is STAGED |
 | `SKILL.md:339` | documents core.md "and its two byte-identical pins may have been edited" as expected uncommitted state | still true, but the pins are now generated output rather than hand-edits |
 | `SKILL.md:112` | "keep it in sync there" | unchanged - `core.md` remains the canonical text, and is now the ONLY hand-edited one |
 
