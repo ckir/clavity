@@ -4,8 +4,10 @@
 measured current state. The implementation plan re-derives every line number (see "Citation drift" below)
 and establishes the one count this spec deliberately leaves open.
 
-**Branch:** `feature/injected-context-governance` (checked out; 154 commits ahead of `origin/main`,
-nothing pushed).
+**Branch:** `feature/injected-context-governance` (checked out; well ahead of `origin/main` and **nothing
+pushed**). **No ahead-count is recorded here on purpose** - an earlier draft pinned one, and its own
+commit invalidated it. Read it live with `git rev-list --count origin/main..HEAD`; what matters to this
+spec is only that the branch is unpushed, which is why CI cannot gate any of this.
 
 ---
 
@@ -128,6 +130,10 @@ masked locally. A control that does not account for that reports a false pass.)
 
 **Required behaviour - a shared helper implementing this decision tree:**
 
+0. **Ensure `<root>/.clavity/` exists** (`mkdir -p`) before any branch that may write. Every restoring
+   branch appends, and an append into a missing directory fails `No such file or directory` on a fresh
+   clone. If the `mkdir` itself fails, return 0 without writing - the helper never hard-blocks.
+
 1. **Not inside a git work tree** (`git rev-parse --is-inside-work-tree` non-zero): the effect check
    cannot run - `git check-ignore` returns 128 here, which is indistinguishable from a genuine error.
    Fall back to the text assertion (`grep -qx '*'`, restoring if absent). Isolate this case exactly as
@@ -146,19 +152,44 @@ masked locally. A control that does not account for that reports a false pass.)
 returns **1** and `git add -A` **stages the file anyway**. A naive "non-zero implies rewrite the shield"
 helper would rewrite a correct shield forever and never fix the leak.
 
+> **Refuted, twice, and recorded so it is not re-raised:** a reviewer twice claimed that `check-ignore`
+> returns **0** for a tracked file matching the pattern - which would put the tracked case under branch 2
+> ("do nothing") and make it a silent false-GREEN. **It returns 1.** Measured with a control in a
+> throwaway repo: tracked file matching `*` -> **exit 1**; untracked control in the same directory ->
+> **exit 0**. The tracked case is therefore reached by branch 3, which handles it. The concern is real
+> and is already folded; the mechanism claimed for it is not.
+
 **Helper contract.** The plan chooses the exact path; the CONTRACT is fixed here:
 
 | aspect | contract |
 |---|---|
-| form | a POSIX `sh` function or sourceable snippet - the hooks are `.sh` and run under the agent's shell |
-| input | one argument: the repository root. It must NOT re-derive the root itself - callers already have it, and two derivations can disagree |
-| effect | may create or append to `<root>/.clavity/.gitignore`. It touches NOTHING else |
-| output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture |
-| exit code | **always 0.** It is advisory. A shield helper that can abort a PreToolUse hook would convert a cosmetic fault into a blocked tool call, and `exit 2` on PreToolUse is BLOCKING |
+| form | a POSIX `sh` **function**, defined in a sourceable file - the hooks are `.sh` and run under the agent's shell |
+| input | **two arguments: the repository root, and the path to protect** (relative to that root). It must NOT re-derive the root - callers already have it, and two derivations can disagree. The path is an argument, not a baked-in constant, because branches 2-3 both test a specific file |
+| effect | may create the directory `<root>/.clavity/` **and** create or append to `<root>/.clavity/.gitignore`. It touches nothing else |
+| output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture. **Subject to the debounce below** |
+| return | **`return 0`, ALWAYS - never `exit`.** See the sourcing hazard below |
 | tracked-file case | emits the `git rm --cached` remedy on stderr and returns 0 without writing |
 
-**The always-0 rule is load-bearing.** These hooks fail open by design; a new helper must not become the
-first thing in the chain that can hard-block an agent.
+**`return`, NEVER `exit` - measured, and it would have shipped.** The helper is SOURCED into the calling
+hook, so `exit` terminates the CALLER, not the helper. Measured in a throwaway script: a sourced snippet
+containing `exit 0` ended the parent before its next line ran - the parent's remaining guards were
+silently skipped and the parent still reported success. **A helper written to "always exit 0" would
+therefore disable every check that follows it in every hook that sources it** - the exact fail-open class
+this batch exists to remove. The intent behind "always 0" stands: these hooks fail open by design and a
+shield fault must never hard-block an agent (`exit 2` on PreToolUse is BLOCKING). The mechanism is
+`return`.
+
+**It must create the directory, and that is not a contract violation.** An earlier draft said the helper
+"touches NOTHING else" while requiring it to append into `<root>/.clavity/` - which is unsatisfiable on a
+fresh clone, where the directory does not exist and a bare `>>` fails `No such file or directory`. The
+shipped snippet already does `mkdir -p "$R/.clavity"` (`open-issues/SKILL.md:69`) before its append, for
+exactly this reason. The helper does the same, and the contract above now says so.
+
+**Output debounce.** In the tracked-file case the fault persists until a human runs `git rm --cached`, so
+an undebounced helper prints the same remedy on EVERY capture forever. It must emit that line at most
+once per session, using the same seen-marker approach the sibling hooks already use
+(`agy-anomaly-capture-reminder.sh` and `assertion-strength-reminder.sh` both do this). A permanent
+unsuppressible nag is how an operator learns to ignore the channel.
 
 **Tests.** All four states above, each asserted, plus a control proving the helper leaves a correct
 shield untouched. Idempotence: three consecutive runs leave exactly one line. Plus one mutation test per
@@ -189,8 +220,16 @@ out="$root/.clavity"
 name.** A count with no stated predicate is not a measurement. Both products' hook directories are in
 scope.
 
-**Tests.** For each hook in the established set, assert the hook EMITS the shield assertion - not that
-the helper exists, and not that the hook merely sources it. Neutering the call site must turn a test RED.
+**Tests.** For each hook in the established set, assert the hook ACTUALLY INVOKES the shield check with
+effect - not that the helper exists, and not that the hook merely sources it. Neutering the call site must
+turn a test RED.
+
+**The test must BREAK the shield first, and the earlier wording hid that.** The helper is silent on the
+healthy path by contract, so a test run against a healthy repository observes nothing and would pass while
+asserting nothing - a false GREEN that looks like coverage. Each hook's test therefore: (a) sets up a repo
+with a BROKEN shield, (b) runs the hook, (c) asserts the shield was restored (an observable effect), and
+(d) as the mutation control, removes the hook's call to the helper and asserts the same test goes RED.
+"Asserts the hook emits something" is not a testable predicate against a helper designed to stay quiet.
 
 ### 4.3 Item 14e - make parity structural by generating the literals
 
@@ -207,13 +246,31 @@ invariant is: the DECODED literal equals the markdown file's content.** Both exi
 before comparing. Any gate built on file-level hash equality could never pass.
 
 **Required behaviour.** `agy-autotrain/knowledge/driver-cheatsheet.core.md` becomes the single source of
-truth. A `just` task regenerates both literals from it. The pre-commit hook runs the generator and
-asserts the tree is clean for the two generated files. Divergence becomes **uncommittable** rather than
+truth. A `just` task regenerates both literals from it. Divergence becomes **uncommittable** rather than
 merely detectable, and no literal-unescaping logic is written a third time.
 
-**Why generation is right here specifically.** `core.md` is driver-owned (section 7), so a generator that
-only ever READS it does not touch the contested ownership question - it removes the manual multi-file
-mirroring that made the ownership violation dangerous in the first place.
+**The pre-commit check is NON-DESTRUCTIVE and checks TWO things, not one.** An earlier draft said only
+"runs the generator and asserts the tree is clean", which is wrong twice over:
+
+1. **It must not regenerate in place.** Writing into the working tree during a commit hands the author
+   files they did not edit and can collide with deliberate work in progress. The hook generates to a
+   TEMPORARY location and compares against the committed literals. It reports the difference; it does not
+   silently repair it. Repair is the author running the `just` task deliberately.
+2. **It must assert the generator's own exit status FIRST.** If the generator crashes, the working tree
+   is untouched, so a bare `git diff --quiet` returns 0 and the hook PASSES - committing diverged
+   literals with a green check. **A generator that failed to run is not evidence of parity.** This is
+   global rule 5 ("read the count, not the exit code") applied to this item: a non-zero generator exit
+   fails the hook, and only after a zero exit is the comparison meaningful.
+
+**Why generation is right here specifically, stated WITHOUT presuming the ownership answer.** An earlier
+draft justified this by asserting "`core.md` is driver-owned" - which **contradicts section 7 and ROADMAP
+14f**, where that ownership is exactly what is unresolved and awaiting an owner ruling. The spec must not
+settle in 4.3 the question it defers in section 7.
+
+The correct argument does not need the answer: **the generator only ever READS `core.md`, so it is
+correct under EITHER resolution of 14f.** Whoever turns out to own the file, generation removes the manual
+multi-file mirroring that made a mistaken edit dangerous - it narrows the hand-edited surface from three
+files to one, which is an improvement regardless of who is permitted to make that edit.
 
 **Tests - the generator-control pattern.** Fed the PRE-change input, the generator must reproduce the
 CURRENT artifact byte-for-byte; only then is it fed the new input and shown to differ by exactly the
@@ -222,8 +279,21 @@ generator is proven against, and are not to be edited to match generator output.
 
 **Generator constraints - these are design-level, not plan-level, because they eliminate candidates:**
 
-1. **It must run on Windows and in CI**, in both products' pipelines. That rules out anything not already
-   a build dependency here.
+1. **It must run on Windows and in CI**, in both products' pipelines. **The surviving candidate is
+   PowerShell (`pwsh`)** - it is already required by `lefthook.yml`, by every script in `scripts/`, and by
+   the drain flow, so it adds no dependency. Python exists in this tree only for the classic bridge's
+   linting and is not a build dependency of either product; Rust and C# would each run in only one of the
+   two. The plan may choose otherwise only by naming what makes `pwsh` unsuitable. **A constraint list
+   that eliminates candidates without naming the survivor is not actionable** - this line exists because
+   an earlier draft did exactly that.
+
+1b. **NORMALISE CRLF TO LF BEFORE ESCAPING - this is live on this machine, not hypothetical.** Measured
+   2026-08-14: `core.md` is **CRLF in the working tree** (7 CRLF, 0 bare LF) and **LF as committed**
+   (0 CRLF, 7 LF), because `core.autocrlf` is in effect. The pinning tests normalise only the FILE side -
+   `DriverCheatsheetTests.cs:92` reads `File.ReadAllText(...).Replace("\r\n", "\n").Trim()` and compares
+   it to the literal AS-IS. So a generator that reads the working-tree copy and escapes newlines naively
+   bakes `\r\n` into both literals, the file side is normalised to `\n`, and **the pinning test fails -
+   the generator would redden the exact gate it exists to protect.** Normalise, then escape.
 2. **`core.md` is inside the ASCII-gated domain** - `agy-autotrain` is one of `$script:DomainRoots` in
    `scripts/check-injected-context.ps1`. The generator must therefore preserve pure ASCII and must not
    introduce any non-ASCII escape of its own. This is the exact rule `b2a6cc0` was enforcing when it
@@ -345,7 +415,10 @@ it are fine; the AGY-CAPSTONE runs over the batch as a range, immediately on com
 | Shield helper is new SHIPPED surface in both plugins | byte-identical mirror + `plugin-hooks-payload.Tests.ps1` + `check-seed-artifacts-synced.sh` |
 | Generator touches both products' builds - largest blast radius | generator-control pattern; both existing pinning tests stay green as the oracle |
 | 14c's hook set is unknown until Step 0 | Step 0 must state its predicate and enumerate by name; a bare count is rejected |
-| Nothing is pushed (154 ahead), so CI cannot gate any of this | run the oracles locally BY NAME; never infer a gate from a marker |
+| Nothing is pushed, so CI cannot gate any of this | run the oracles locally BY NAME; never infer a gate from a marker |
+| The generator bakes CRLF into the literals and reddens the pinning gate | normalise CRLF->LF before escaping; `core.md` is CRLF in the worktree TODAY (measured) |
+| A sourced helper using `exit` silently kills its calling hook | contract mandates `return`; measured - a sourced `exit 0` ended the parent before its next line |
+| The pre-commit generator check passes because the generator CRASHED | assert the generator's exit status BEFORE trusting any diff |
 | Fixes land on a branch with an OPEN capstone | accepted deliberately - section 8 says early review at low context is the cheap direction |
 | Editing an LF file can silently convert it to CRLF | judge by what is COMMITTED (`git show HEAD:<f>`), never "normalise" a clean file |
 
