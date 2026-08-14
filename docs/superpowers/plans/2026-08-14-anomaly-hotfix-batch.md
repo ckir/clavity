@@ -2337,16 +2337,24 @@ function ConvertTo-EscapedLiteral([string]$s) {
 }
 
 # ---------------------------------------------------------------------- Rust: ONE line, no splitting.
-$rustLiteral = ConvertTo-EscapedLiteral $coreText
-$rustLine    = 'pub const BASELINE_FLOOR: &str = "' + $rustLiteral + '";'
+# THE GUARD WRAPS THE READ, NOT ONLY THE WRITE. Panel R7 measured that the first version of the
+# empty-target skip guarded only the two WriteAllText calls while reading both targets unconditionally -
+# and [IO.File]::ReadAllBytes('') THROWS (measured; control: a missing path throws too). So the skip
+# crashed the generator, the hook read a non-zero exit, and it aborted BEFORE evaluating parity for the
+# literal that was still present - violating the very test row (11) the skip was added to satisfy.
+$rustLines = @()
+if ($doRust) {
+    $rustLiteral = ConvertTo-EscapedLiteral $coreText
+    $rustLine    = 'pub const BASELINE_FLOOR: &str = "' + $rustLiteral + '";'
 
-$rustText  = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($RustTarget)).Replace("`r`n", "`n")
-$rustLines = $rustText -split "`n", -1
-$rustAnchor = @($rustLines | Where-Object { $_ -like 'pub const BASELINE_FLOOR: &str = *' })
-# A SPLICE ON A NON-UNIQUE ANCHOR DELETES THE SPAN BETWEEN MATCHES. Refuse rather than mangle.
-if ($rustAnchor.Count -ne 1) { Fail "expected exactly ONE 'pub const BASELINE_FLOOR' line in $RustTarget, found $($rustAnchor.Count)" }
-for ($i = 0; $i -lt $rustLines.Count; $i++) {
-    if ($rustLines[$i] -like 'pub const BASELINE_FLOOR: &str = *') { $rustLines[$i] = $rustLine; break }
+    $rustText  = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($RustTarget)).Replace("`r`n", "`n")
+    $rustLines = $rustText -split "`n", -1
+    $rustAnchor = @($rustLines | Where-Object { $_ -like 'pub const BASELINE_FLOOR: &str = *' })
+    # A SPLICE ON A NON-UNIQUE ANCHOR DELETES THE SPAN BETWEEN MATCHES. Refuse rather than mangle.
+    if ($rustAnchor.Count -ne 1) { Fail "expected exactly ONE 'pub const BASELINE_FLOOR' line in $RustTarget, found $($rustAnchor.Count)" }
+    for ($i = 0; $i -lt $rustLines.Count; $i++) {
+        if ($rustLines[$i] -like 'pub const BASELINE_FLOOR: &str = *') { $rustLines[$i] = $rustLine; break }
+    }
 }
 
 # ------------------------------------------------------- C#: LINE-BOUNDARY logic, not a whole-string replace.
@@ -2355,6 +2363,7 @@ for ($i = 0; $i -lt $rustLines.Count; $i++) {
 # or a trailing \n the file side does not have.
 $indent = '        '
 $csSegments = @()
+$csOut = @()
 $coreLines = $coreText -split "`n", -1
 for ($i = 0; $i -lt $coreLines.Count; $i++) {
     $esc = ConvertTo-EscapedLiteral $coreLines[$i]
@@ -2371,6 +2380,7 @@ for ($i = 0; $i -lt $coreLines.Count; $i++) {
 # The FIRST segment must not carry a trailing \n when it is also the last.
 if ($coreLines.Count -eq 1) { $csSegments = @($indent + '"' + (ConvertTo-EscapedLiteral $coreLines[0]) + '";') }
 
+if ($doCs) {
 $csText  = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($CsTarget)).Replace("`r`n", "`n")
 $csLines = $csText -split "`n", -1
 $csStart = -1
@@ -2388,10 +2398,10 @@ for ($i = $csStart + 1; $i -lt $csLines.Count; $i++) {
 }
 if ($csEnd -lt 0) { Fail "could not find the end of the BaselineFloor literal in $CsTarget" }
 
-$csOut = @()
 $csOut += $csLines[0..$csStart]
 $csOut += $csSegments
 if ($csEnd + 1 -lt $csLines.Count) { $csOut += $csLines[($csEnd + 1)..($csLines.Count - 1)] }
+}   # end if ($doCs)
 
 # ONE LF-JOINED STRING, WRITTEN ONCE. Never an array - the array form joins with the platform newline.
 if ($doRust) { [IO.File]::WriteAllText($RustTarget, ($rustLines -join "`n"), (New-Object Text.UTF8Encoding($false))) }
@@ -2761,10 +2771,14 @@ finally {
 The three diagnosis messages. **This table specifies the required CONTENT, not the exact wording** - the
 script body in Step 3 is the authority on the literal text. Panel R6 flagged the two as differing (the
 script interpolates the full `$Core` path and says "literal(s)" where the table says "core.md" and "the
-two literals"). **The tests assert the DISTINGUISHING phrase from each row - "partial staging", "but not
-`core.md` itself", "already in your worktree", "run `just`" - never a whole sentence.** A test pinned to a
-full sentence reddens on any reword and pushes an implementer to edit the message back instead of fixing a
-real problem, which is the opposite of what the "assert the message TEXT" row exists for.
+two literals"). **The bar is the SPEC's bar, and it is not weaker than the spec's:** `spec:953` says the failure message
+is part of the contract *"because a wrong remedy is a trap"*, and the spec's own test row requires
+asserting the text because *"only the text distinguishes a correct diagnosis from a misleading one"*.
+**So each test asserts the DISTINGUISHING phrase of its row** - "partial staging", "but not ... itself",
+"already in your worktree", "run `just`" - **which is exactly strong enough to tell the two branches
+apart, and it must not be weakened below that.** What it does not do is pin a whole sentence: that
+reddens on any reword and pushes an implementer to edit the message back instead of fixing a real
+problem, which would defeat the rule rather than enforce it.
 
 | # | detection | message |
 |---|---|---|
