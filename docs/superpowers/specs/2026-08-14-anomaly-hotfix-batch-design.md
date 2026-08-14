@@ -218,6 +218,29 @@ the only remedy that works.
 | return | **`return 0`, ALWAYS - never `exit`.** See the sourcing hazard below |
 | tracked-file case (B3, tracked) | emits the `git rm --cached` remedy on stderr, debounced; returns 0. Stage A has already secured the shield, so this is a notice, not a repair |
 | negation-line case (B3, untracked) | the path is still unignored after Stage A restored the shield text, so a `!` line is overriding it. Emits a loud notice naming the file and the offending line, debounced; **returns 0 and does NOT rewrite the shield**. Present in the contract because an earlier draft described it only in prose - an implementer reads this table for return states |
+| **`-q` decides, `-v` only explains - never one invocation for both** | **Measured: `git check-ignore -v` exits 0 on a file that is NOT ignored** (it prints the matching `!` line and treats having output as success), while `git check-ignore -q` exits **1** on that same file. So the DECISION must come from a `-q` call and the message text from a separate `-v` call. Reusing a single `-v` invocation for both inverts B2 and B3: a leaking file would be read as ignored, and the guard would pass on exactly the state it exists to catch |
+
+**EVERY probe redirects stderr, not just the `grep` - and this was an incomplete fold until round 8.**
+Round 7 added `2>/dev/null` to A2's `grep` and stopped there. The same fault class sits in the git probes,
+measured 2026-08-14:
+
+| probe | on which branch | what it writes to stderr unredirected |
+|---|---|---|
+| `git rev-parse --is-inside-work-tree` | **B1 - outside a repo** | `fatal: not a git repository (or any of the parent directories): .git` |
+| `git ls-files --error-unmatch <path>` | **B3 - the ordinary UNTRACKED case** | `error: pathspec '<path>' did not match any file(s) known to git` **plus** `Did you forget to 'git add'?` |
+| `grep -qx '*' <shield>` | A2 on a fresh clone | `No such file or directory` (folded in round 7) |
+
+**Both git cases fire on NORMAL paths, not error paths.** B1 is the expected state for a skill that ships
+into directories which are not repositories at all, and B3-untracked is the routine "shield was broken,
+restore it" case. Worse, `ls-files` volunteers *"Did you forget to `git add`?"* - advice exactly backwards
+here, since the entire point is that the file must NOT be added. **Every probe in this helper redirects
+stderr and is judged by its exit code alone.** The helper's own messages are the only thing it may print.
+
+> **NOT a defect - checked, and recorded so a later round does not re-derive it:** I suspected the
+> unescaped `grep -qx '*'` pattern was a portability hazard, since a BRE treats a leading `*` as literal.
+> Measured against a line containing exactly `*`, with a passing negative control: `grep -qx '*'`,
+> `grep -qx '\*'` and `grep -qxF '*'` **all return 0**, and `-F` correctly returns 1 on a non-matching
+> line. Any of the three is fine; the spec need not mandate one.
 
 **`return`, NEVER `exit` - measured, and it would have shipped.** The helper is SOURCED into the calling
 hook, so `exit` terminates the CALLER, not the helper. Measured in a throwaway script: a sourced snippet
@@ -482,6 +505,21 @@ reappearing in the DETECTION path rather than the generation path** - the same t
    terminal, whose code page mangles bytes in transit.
 4. **The generator is itself covered by a test** - it is new code in the trust path of a pinned artifact,
    and an unproven generator is a worse failure mode than the manual mirroring it replaces.
+5. **The generator writes ONE LF-joined string, and must NOT emit a line ARRAY.** The escaped content
+   being LF is not sufficient - the container file's own line endings matter, because the hook compares
+   its output against an LF index blob. Measured on this machine with pwsh 7:
+
+   | how the file is written | result |
+   |---|---|
+   | `Set-Content -Value <single string containing LF>` | **LF preserved**, 0 CRLF |
+   | `Out-File <single string containing LF>` | **LF preserved**, 0 CRLF |
+   | `[System.IO.File]::WriteAllText(<single string>)` | **LF preserved**, 0 CRLF |
+   | `Set-Content -Value @("line1","line2","line3")` | **3 CRLF** - the array form joins with the PLATFORM newline |
+
+   So the hazard is specifically the ARRAY form, not pwsh in general: build the whole artifact as one
+   string joined with `"`n"` and write it once. A generated file that is CRLF would mismatch the LF index
+   blob on every commit - the same class as Case 3's byte comparison, in the output path instead of the
+   input path. **A test asserting the generated temp file contains no `\r` is the pin.**
 
 **REQUIRED companion change - `agy-curate/SKILL.md`.** Generation makes an existing instruction wrong,
 and shipping one without the other is an incomplete fold:
