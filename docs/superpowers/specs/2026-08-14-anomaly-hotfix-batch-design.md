@@ -140,7 +140,7 @@ These are not per-item; they apply to the whole batch and to the plan built from
    - `core.md` is governed, which section 4.3 already says.
 
    An earlier draft flagged only the last. **A second draft said "three of them do" and was left
-   unchanged when the 14c amendment added a shipped executable and four skill edits inside the same
+   unchanged when the 14c amendment added a shipped executable and three skill edits inside the same
    governed trees** - so the rule's own enumeration under-counted the files it governs, and its closing
    instruction named "the three". **The author of a rule is not exempt from it, and neither is the
    amender** - this repository has already had a commit rejected by the very ASCII gate that commit was
@@ -301,8 +301,10 @@ the only remedy that works.
 | input | **three arguments: the repository root, the path to protect** (relative to that root), **and a debounce key** (the caller's session id, or empty to disable debouncing). It must NOT re-derive the root - callers already have it, and two derivations can disagree. The path is an argument, not a baked-in constant, because branches 2-3 both test a specific file. **The debounce key must be passed IN because the helper cannot derive it**: sibling hooks parse `session_id` out of the hook's stdin payload (`agy-anomaly-capture-reminder.sh:61`), and a sourced function has no payload of its own |
 | input validation | **the root must be an existing directory and the path must resolve under `<root>/.clavity/`, or the helper WARNS LOUDLY on stderr and returns 0 without writing.** An unvalidated root is a footgun: the contract forbids re-deriving it, so an empty or wrong value is silently trusted, and `mkdir -p "$1/.clavity"` with an empty `$1` would create a directory at the filesystem root |
 | **bad-argument output is NOT optional** | A bad argument means the CALLER is broken, and the caller is about to write private data. Silence here is a fail-open: a hook that passes the wrong path gets a clean return, proceeds to write its anomaly, and the file is unshielded with nothing reported. **A validation failure is a FAULT for output purposes** - it is loud, it is NOT debounced (a broken caller must not be silenced by a marker), and it names the argument it rejected |
-| effect | **inside the repository:** may create `<root>/.clavity/` and create or append to `<root>/.clavity/.gitignore`, and nothing else. **Outside it:** may write ONE debounce marker under `$TMPDIR` or `$HOME/.clavity-tmp`, exactly as the sibling hooks do. An earlier draft said "touches nothing else" while also requiring a seen-marker, which is unsatisfiable - the marker cannot live in the repository, because a marker inside `.clavity/` would be a file the shield is supposed to be protecting |
-| output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture. **Three fault classes, and the debounce differs by class:** (a) **PERSISTENT** (tracked file, negation line) - debounced per key, because it is a true state a human fixes once; (b) **VALIDATION** (bad root, path outside `.clavity/`) - **never** debounced, because the CALLER is broken and must be visible on every call; (c) **ENVIRONMENT** (B4: `check-ignore` fails 128 inside a work tree) - debounced per key like (a), because it is a condition of the machine rather than of the caller, and Stage A has already restored the shield regardless. Every branch of the tree falls into exactly one class |
+| effect | **inside the repository:** may create `<root>/.clavity/`, and may create, APPEND TO, or PREPEND TO `<root>/.clavity/.gitignore`, and nothing else. **Prepending is a third write shape, not a kind of appending** - an earlier draft of this row said "create or append", which contradicted A2's middle case and would have sent an implementer back to the append that inverts a negation. **Outside it:** may write ONE debounce marker under `$TMPDIR` or `$HOME/.clavity-tmp`, exactly as the sibling hooks do. An earlier draft said "touches nothing else" while also requiring a seen-marker, which is unsatisfiable - the marker cannot live in the repository, because a marker inside `.clavity/` would be a file the shield is supposed to be protecting |
+| output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture. **Three fault classes, and the debounce differs by class:** (a) **PERSISTENT** (tracked file, negation line) - debounced per key, because it is a true state a human fixes once; (b) **VALIDATION** (bad root, path outside `.clavity/`) - **never** debounced, because the CALLER is broken and must be visible on every call; (c) **ENVIRONMENT** (B4: `check-ignore` fails 128 inside a work tree; **and A1's `mkdir` failure**) - debounced per key like (a), because it is a condition of the machine rather than of the caller. **Every branch that REPORTS falls into exactly one class; the branches that report nothing are named explicitly rather than left to inference: A1-success, A2 (all three cases), B1 and B2 are SILENT.** An earlier wording said "every branch of the tree falls into exactly one class", which was false the moment any branch was silent - it left A1's failure path with no class at all, and made A2's new prepend case look like an omission rather than a decision |
+| A1 `mkdir` failure | returns 0 without writing, reports as class ENVIRONMENT, and does NOT hard-block. Listed as its own row because the decision tree and the test table both carried this branch while this table did not |
+| B1, outside a git work tree | Stage A has already run to completion; Stage B is skipped entirely and NOTHING is reported. Listed for the same reason - the branch existed in the tree and the test table and was absent here |
 | return | **`return 0`, ALWAYS - never `exit`.** See the sourcing hazard below |
 | tracked-file case (B3, tracked) | emits the `git rm --cached` remedy on stderr, debounced; returns 0. Stage A has already secured the shield, so this is a notice, not a repair |
 | negation-line case (B3, untracked) | the path is still unignored after Stage A restored the shield text, so a `!` line is overriding it. Emits a loud notice naming the file and the offending line, debounced; **returns 0 and does NOT rewrite the shield**. Present in the contract because an earlier draft described it only in prose - an implementer reads this table for return states |
@@ -536,11 +538,12 @@ the same glob. **No registration in `hooks.json` is required or wanted** - it is
 | form | an EXECUTABLE `.sh` (not sourced), so `exit` is correct here - the opposite of the 4.1 helper's `return`-only rule, and the difference is load-bearing |
 | root | resolved with `git rev-parse --show-toplevel`. A subprocess is affordable here because this runs once per discipline event, not per turn. **If it cannot resolve, REFUSE and exit non-zero** |
 | modes | `head <discipline> <sha>` (write `.clavity/agy-marks/<discipline>.head`), `log <discipline> <status> <sha> [text...]` (append one line to `.clavity/agy-marks/skipped.log`), `dir <relpath>` (create and shield `.clavity/<relpath>/`, which is how `seams/` and `scratch/<topic>/` are handled - see above) |
-| **the script owns the log LINE FORMAT** | `log` emits `<iso-8601>  <discipline>  <status>  HEAD=<sha>[  <text>]`, generating the timestamp and the `HEAD=` prefix itself. **The callers must NOT pass a preformatted line.** The four skills currently each document that shape in their own prose (`agy-first:96`, `agy-capstone:180`, `:253`); moving it into the script is the entire point of having a script, and leaving it in the callers would keep four copies of a format that must agree |
+| **the script owns the log LINE FORMAT** | `log` emits `<iso-8601>  <discipline>  <status>  HEAD=<sha>[  <text>]`, generating the timestamp and the `HEAD=` prefix itself. **The callers must NOT pass a preformatted line.** TWO of the three rewritten skills document that shape in their own prose today (`agy-first:96`, `agy-capstone:180` and `:253`; `agy-test-audit` writes only a `.head` marker and never uses `log`); moving it into the script is the entire point of having a script, and leaving it in the callers keeps copies of a format that must agree |
 | **it validates its OWN arguments - it cannot delegate that** | `<discipline>` and `<relpath>` are interpolated into a path, so a value containing `/` or `..` escapes the directory. **The 4.1 helper cannot catch this for it:** that helper returns 0 on a validation fault BY CONTRACT, so `agy-mark.sh` receives success and would proceed to write. It must therefore reject any `<discipline>` that is not `[A-Za-z0-9._-]+`, and any `<relpath>` containing `..` or a leading `/`, BEFORE calling the helper and before any write |
 | shield | calls the 4.1 helper BEFORE any write, on every mode, with no way to skip it. The helper's return value carries no information (always 0) and must not be branched on |
 | exit codes | `0` wrote successfully; `1` refused, NOTHING written (bad argument, helper unloadable, root unresolvable); `2` wrote partially or the write itself failed. **A caller must be able to tell "refused" from "wrote", and a single non-zero cannot express that** |
-| **failure direction - and it is NOT uniform across modes** | `head` and `dir` **fail CLOSED**: write nothing, exit 1. That is safe precisely because an absent marker makes the discipline RE-FIRE next trigger, which every one of these skills already documents (`agy-test-audit/SKILL.md:225`: "If HEAD cannot resolve, skip writing (the discipline re-fires next trigger - safe)"). **`log` has NO such re-fire path** - `skipped.log` is a durable audit breadcrumb, and `agy-first/SKILL.md:99-101` describes it as surviving normal operation - so a refused `log` write destroys a record with nothing to recreate it. **`log` must therefore emit its line to STDERR when it cannot write it**, so the record degrades to the transcript instead of vanishing, and still exit 1. An earlier draft justified fail-closed for all three modes with the re-fire argument, which is true only for two of them |
+| **failure direction - and it is NOT uniform across modes** | `head` and `dir` **fail CLOSED**: write nothing, exit 1. That is safe precisely because an absent marker makes the discipline RE-FIRE next trigger, which every one of these skills already documents (`agy-test-audit/SKILL.md:225`: "If HEAD cannot resolve, skip writing (the discipline re-fires next trigger - safe)"). **`log` has NO such re-fire path** - `skipped.log` is a durable audit breadcrumb, and `agy-first/SKILL.md:99-101` describes it as surviving normal operation - so a refused `log` write destroys a record with nothing to recreate it. **`log` must therefore emit BOTH the line it could not write AND the reason it could not write it to STDERR**, then exit 1. Emitting only the payload leaves the operator holding a log line with no idea why it never reached disk - the environmental fault that caused the refusal is exactly what they need in order to fix it. An earlier draft justified fail-closed for all three modes with the re-fire argument, which is true only for two of them, and a later one degraded the payload without the diagnosis |
+| **`dir` fails closed too, but the caller must ACT on it - the re-fire argument does not cover this either** | `dir` creates the directory a discipline is about to fill with a seam or a scratch file. If it refuses, the directory does not exist, and the agent's very next write fails with `No such file or directory` **in the middle of the discipline** rather than re-firing cleanly. Refusing is still correct - creating an unshielded directory for a review brief is the leak this item exists to stop - but **the three rewritten skills must check the exit status and ABORT the discipline with a named reason**, exactly as they already do for an unreachable peer. A skill that invokes `dir` and ignores its exit code converts a clean refusal into a mid-run crash |
 | **all three modes are the OPPOSITE of the 4.1 helper's fail-open rule, deliberately** | the helper runs inside a PreToolUse chain where a non-zero exit BLOCKS an agent; this script is invoked directly by a skill, where a refusal blocks nothing. **Do not harmonise them** |
 | concurrency | `log` appends with ONE `printf ... >>`, never read-modify-write. Two sessions can be open on the same repository at once - `open-issues/SKILL.md:80-85` already reasons about exactly this - and a single short append is atomic on POSIX, so concurrent writers interleave lines rather than corrupting them |
 | debounce key | `${AGY_SESSION_ID:-}` from the environment, forwarded to the helper. Empty disables debouncing, which is the safe direction for a leak notice |
@@ -551,7 +554,7 @@ the same glob. **No registration in `hooks.json` is required or wanted** - it is
 `$CLAUDE_PLUGIN_ROOT` is set for HOOK invocations; whether it resolves in a skill-context shell call is
 **unmeasured**, and this repository has already been bitten by that exact variable failing to resolve in
 one lifecycle event and not another (`agy-discipline-reaching.sh:9-12`: it "DOES NOT RESOLVE at
-SessionEnd", measured 3/3). Writing it into four shipped skills on the strength of it working for hooks
+SessionEnd", measured 3/3). Writing it into three shipped skills on the strength of it working for hooks
 would be the same class of error this spec has already corrected twice.
 
 **And a hand-rolled fallback is blocked by an invariant this repository has already recorded.** The skills
@@ -590,7 +593,7 @@ mutation replacing the argument with an empty string must turn a test RED.
 write; the fail-closed rows (helper unloadable, root unresolvable) asserting NOTHING is written and the
 exit is non-zero; and the mutation control - neuter the helper call and every restoration row must go RED.
 
-**For the four skills there is deliberately NO behavioural test, and the plan says so rather than writing
+**For the three rewritten skills there is deliberately NO behavioural test, and the plan says so rather than writing
 a weak one.** The strongest available oracle would assert the `.md` contains the invocation string, which
 cannot fail against a model that ignores it. The executable is where the strength lives; the skills are
 its callers and are covered by the residuals below. **Writing a presence-grep here and calling the skills
@@ -603,7 +606,7 @@ compare the two PRODUCTS against each other, so a skill left unedited in BOTH pa
 happily. **A presence-grep is a vacuous oracle for "does the model obey the instruction" and a sound one
 for "was the file edited at all"** - these are different questions, and conflating them is what would
 otherwise leave the omission undetected. The plan therefore carries an explicit per-file completion check
-over the eight paths, stated as a checklist item and NOT dressed up as coverage of the skills' runtime
+over the six paths (three skills times two products), stated as a checklist item and NOT dressed up as coverage of the skills' runtime
 behaviour.
 
 #### Residuals, stated rather than discovered later
@@ -1020,7 +1023,9 @@ into a hard failure would break the drain.
    neither: `.clavity` is absent from `PrunedSegments`, so the injected-context gate walks that directory
    today - which is the whole reason 14a exists - and **this batch actively creates content there**
    (consult seams, discipline markers, the anomalies file). Global rule 6 requires running that gate over
-   three of this batch's own artifacts. Landing 14a last means every gate run during the batch is taken
+   SIX of this batch's own artifacts (it said three until the 14c amendment added a shipped executable
+   and three skill edits inside the same governed trees). Landing 14a last means every gate run during
+   the batch is taken
    over a tree the gate is mis-scanning. It is one array entry; doing it first removes a class of
    spurious failures from the rest of the work.
 
@@ -1028,8 +1033,9 @@ Revised order:
 
 1. **14a** (one array entry; unblocks clean gate runs for everything after it)
 2. 14d (helper + its Stage A/B tests, mirrored across the pair)
-3. 14c (the new `agy-mark.sh` executable, the hook wiring, the four skill rewrites, and the ROADMAP
-   section 14c rewrite - set fixed at Step 0, enumerated in 4.2)
+3. 14c (the new `agy-mark.sh` executable, the hook wiring, the THREE skill rewrites - `agy-first`,
+   `agy-capstone`, `agy-test-audit`; `open-issues` is item 14d and is NOT rewritten here - and the
+   ROADMAP section 14c rewrite; set fixed at Step 0, enumerated in 4.2)
 4. 14e (generator + build task + hook assertion + the `SKILL.md` companion change)
 5. 14b, 13a, 13c (independent, small)
 
@@ -1039,10 +1045,10 @@ Revised order:
   removing the helper leaves both sourcing a function that no longer exists. Revert 14c first, or revert
   both together.
 - **14c is now FOUR things that revert together**, and reverting a subset is worse than reverting none:
-  `agy-mark.sh`, the hook wiring, the four skill rewrites, and the ROADMAP section 14c rewrite. Reverting
-  the script while the skills still invoke it leaves four shipped skills naming an executable that does
-  not exist - a hard failure on a path that previously worked. Reverting the skills while the script
-  stands is harmless but pointless. **Revert all four or none.**
+  `agy-mark.sh`, the hook wiring, the THREE skill rewrites, and the ROADMAP section 14c rewrite.
+  Reverting the script while the skills still invoke it leaves three shipped skills naming an executable
+  that does not exist - a hard failure on a path that previously worked. Reverting the skills while the
+  script stands is harmless but pointless. **Revert all four parts or none.**
 - **14e's two halves revert together.** The generator and the `agy-curate/SKILL.md` companion change are
   one unit: reverting the generator while the skill still says "run the generator" recreates the
   incomplete fold this batch exists to avoid, pointed the other way.
@@ -1060,12 +1066,13 @@ it are fine; the AGY-CAPSTONE runs over the batch as a range, immediately on com
 | Shield helper is new SHIPPED surface in both plugins | byte-identical mirror + `plugin-hooks-payload.Tests.ps1` + `check-seed-artifacts-synced.sh` |
 | Generator touches both products' builds - largest blast radius | generator-control pattern; both existing pinning tests stay green as the oracle |
 | 14c's writer set is unknown until Step 0 | RESOLVED - Step 0 ran, stated its predicate and enumerated 5 artifacts by name (4.2). ROADMAP section 14c's "7 hooks" was wrong in kind and in count |
-| 14c grew from "wire N hooks" to a new shipped executable plus four skill rewrites | accepted by owner decision 2026-08-14 after a three-round negotiation. It is a change to the shield's DELIVERY MODEL, not only to this item - see 4.2. The batch is no longer purely a debt sweep, and the capstone range grows accordingly |
+| 14c grew from "wire N hooks" to a new shipped executable plus three skill rewrites | accepted by owner decision 2026-08-14 after a three-round negotiation. It is a change to the shield's DELIVERY MODEL, not only to this item - see 4.2. The batch is no longer purely a debt sweep, and the capstone range grows accordingly |
 | `agy-mark.sh` fails CLOSED while the 4.1 helper fails OPEN - an implementer may "harmonise" them | the two run in different places and the difference is the point: the helper runs inside a PreToolUse chain where non-zero BLOCKS an agent; the script is invoked by a skill, where a refusal only makes the discipline re-fire. **Both directions are stated in 4.2's contract table; changing either is a design change, not a tidy-up** |
 | Four shipped skills gain an invocation of a path they must locate at runtime | `$CLAUDE_PLUGIN_ROOT` is measured for HOOKS only. **The plan measures it FIRST, and the outcome is bounded in 4.2: if it does not resolve, 14c's skill half is BLOCKED and returns to the owner** - the byte-identity invariant (`agy-first/SKILL.md:111-112`) forbids a per-plugin literal, and a glob is ambiguous in the both-installed migration state that line declares supported |
 | The A2 restore step silently inverted a human's deliberate `!` line | FOUND at re-panel round 1 and folded into 4.1: A2 now has THREE cases and appends nothing when a negation is present with no bare `*`. Measured with a control - a blind append flipped `check-ignore` from 1 to 0 and made the B3 report unreachable |
 | The largest-exposure writes (`.clavity/seams/`) were missing from the 14c enumeration | FOUND at re-panel round 1. Enumeration corrected; handled by `agy-mark.sh dir`, because a multi-kilobyte seam cannot travel through `argv` and no content-carrying mode should be invented for it |
-| A skill edit is simply NOT MADE, and no gate notices | the cross-product gates compare the two products to each other, so a file left unedited in BOTH passes. Closed by an explicit per-file completion check over the eight paths, stated as a checklist item rather than dressed up as behavioural coverage |
+| A skill edit is simply NOT MADE, and no gate notices | the cross-product gates compare the two products to each other, so a file left unedited in BOTH passes. Closed by an explicit per-file completion check over the six paths (three skills times two products), stated as a checklist item rather than dressed up as behavioural coverage |
+| **A count in the amendment said "four skills" where three are rewritten** | FOUND at re-panel round 3. The WRITER set is five artifacts (one hook, four skills); the REWRITE set is three, because `open-issues` is item 14d and is explicitly carved out. Ten sites carried the wrong number. **Both counts are now stated with their scope attached wherever either appears** - a bare "four" was what let the error propagate |
 | Nothing is pushed, so CI cannot gate any of this | run the oracles locally BY NAME; never infer a gate from a marker |
 | The generator bakes CRLF into the literals and reddens the pinning gate | normalise CRLF->LF before escaping; `core.md` is CRLF in the worktree TODAY (measured) |
 | A sourced helper using `exit` silently kills its calling hook | contract mandates `return`; measured - a sourced `exit 0` ended the parent before its next line |
