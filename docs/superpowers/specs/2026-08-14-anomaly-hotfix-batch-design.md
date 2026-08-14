@@ -101,8 +101,20 @@ These are not per-item; they apply to the whole batch and to the plan built from
 4. **Sweep the fact, not the line.** When an item's fix changes a FACT, grep the whole repository for
    that fact in several wordings before calling it done. The dominant fold defect here is an incomplete
    fold, and a paraphrase evades a phrase-shaped grep.
-5. **Read the count, not the exit code.** `dotnet test --filter` exits 0 when its filter matches nothing.
-   Any gate that shells out to a filtered test run must assert the test COUNT.
+5. **A ZERO EXIT IS NOT EVIDENCE THAT WORK HAPPENED.** Two concrete instances, one live in this batch and
+   one guarding a rejected option:
+   - **Live (14e):** if the generator crashes, the working tree is untouched, so `git diff --quiet`
+     returns **0** and the hook passes. The zero means "nothing differed", which is indistinguishable
+     from "nothing ran".
+   - **Guarding the rejected option:** `dotnet test --filter` exits **0** when its filter matches nothing,
+     so a gate shelling out to a filtered test run must assert the test COUNT. **No item in this batch
+     does that** - 14e chose generation over shelling out to the suites - so this half is a warning
+     against reintroducing it, not a requirement on any current item. It is kept because that option was
+     seriously considered and its trap is easy to walk back into.
+
+   The shared rule is that a gate must establish its precondition ran, then read its result. **Both cases
+   are a false-positive ZERO**; an earlier wording of this rule invited reading the 14e case as being
+   about the generator's non-zero exit, which is the FIX rather than the hazard.
 6. **EVERY file this batch creates or edits inside a `$DomainRoots` tree inherits the injected-context
    invariants - and three of them do.** Measured at `scripts/check-injected-context.ps1:40-53`, the
    governed roots include `clavity-dotnet/plugin`, `clavity-classic/plugin` and `agy-autotrain`. So:
@@ -357,6 +369,14 @@ with a BROKEN shield, (b) runs the hook, (c) asserts the shield was restored (an
 (d) as the mutation control, removes the hook's call to the helper and asserts the same test goes RED.
 "Asserts the hook emits something" is not a testable predicate against a helper designed to stay quiet.
 
+**And it must assert the hook PASSES ITS DEBOUNCE KEY - shield restoration alone cannot detect a broken
+one.** Stage A runs unconditionally and ignores the key entirely, so a hook that passes an empty or
+hard-coded key restores the shield, passes every test above, and ships with its debounce silently wrong:
+either warning on every capture, or sharing one key across all sessions so a real fault is suppressed for
+everyone after the first. Each hook's test therefore also asserts that the key it forwards is the
+`session_id` from its own payload - the value each hook already parses (`agy-anomaly-capture-reminder.sh:61`)
+- and a mutation replacing that argument with an empty string must turn a test RED.
+
 ### 4.3 Item 14e - make parity structural by generating the literals
 
 **Current behaviour.** `lefthook.yml:78-82` globs exactly the three pinned paths, and its own comment at
@@ -397,8 +417,9 @@ merely detectable, and no literal-unescaping logic is written a third time.
 2. **It must assert the generator's own exit status FIRST.** If the generator crashes, the working tree
    is untouched, so a bare `git diff --quiet` returns 0 and the hook PASSES - committing diverged
    literals with a green check. **A generator that failed to run is not evidence of parity.** This is
-   global rule 5 ("read the count, not the exit code") applied to this item: a non-zero generator exit
-   fails the hook, and only after a zero exit is the comparison meaningful.
+   global rule 5 applied here: **`git diff --quiet`'s ZERO is the false-positive zero** - it reports
+   "nothing differed", which is indistinguishable from "nothing ran". So a non-zero GENERATOR exit fails
+   the hook outright, and only after a zero generator exit does the diff carry any information.
 
 **Why generation is right here specifically, stated WITHOUT presuming the ownership answer.** An earlier
 draft justified this by asserting "`core.md` is driver-owned" - which **contradicts section 7 and ROADMAP
@@ -664,7 +685,7 @@ it are fine; the AGY-CAPSTONE runs over the batch as a range, immediately on com
 | A sourced helper using `exit` silently kills its calling hook | contract mandates `return`; measured - a sourced `exit 0` ended the parent before its next line |
 | The pre-commit generator check passes because the generator CRASHED | assert the generator's exit status BEFORE trusting any diff |
 | Fixes land on a branch with an OPEN capstone | accepted deliberately - section 8 says early review at low context is the cheap direction |
-| Editing an LF file can silently convert it to CRLF | judge by what is COMMITTED (`git show HEAD:<f>`), never "normalise" a clean file |
+| Editing an LF file can silently convert it to CRLF | **When judging BY HAND whether an edit changed a file's line endings**, read what is COMMITTED (`git show HEAD:<f>`) and never "normalise" a clean file. **This is a human diagnostic and is NOT the hook's comparison basis** - 14e's hook compares INDEX to INDEX, never HEAD, and building it against HEAD would reject the correct staged workflow (4.3, rule 1). The two uses of HEAD are unrelated: one asks "did I accidentally rewrite this file", the other asks "do the staged artifacts agree" |
 
 ---
 
