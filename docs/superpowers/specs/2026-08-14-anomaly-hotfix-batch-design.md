@@ -202,7 +202,8 @@ the only remedy that works.
 |---|---|
 | form | a POSIX `sh` **function**, defined in a sourceable file - the hooks are `.sh` and run under the agent's shell |
 | input | **three arguments: the repository root, the path to protect** (relative to that root), **and a debounce key** (the caller's session id, or empty to disable debouncing). It must NOT re-derive the root - callers already have it, and two derivations can disagree. The path is an argument, not a baked-in constant, because branches 2-3 both test a specific file. **The debounce key must be passed IN because the helper cannot derive it**: sibling hooks parse `session_id` out of the hook's stdin payload (`agy-anomaly-capture-reminder.sh:61`), and a sourced function has no payload of its own |
-| input validation | **the root must be a existing directory, or the helper returns 0 immediately without writing.** An unvalidated root is a footgun: the contract forbids re-deriving it, so an empty or wrong value is silently trusted, and `mkdir -p "$1/.clavity"` with an empty `$1` would create a directory at the filesystem root |
+| input validation | **the root must be an existing directory and the path must resolve under `<root>/.clavity/`, or the helper WARNS LOUDLY on stderr and returns 0 without writing.** An unvalidated root is a footgun: the contract forbids re-deriving it, so an empty or wrong value is silently trusted, and `mkdir -p "$1/.clavity"` with an empty `$1` would create a directory at the filesystem root |
+| **bad-argument output is NOT optional** | A bad argument means the CALLER is broken, and the caller is about to write private data. Silence here is a fail-open: a hook that passes the wrong path gets a clean return, proceeds to write its anomaly, and the file is unshielded with nothing reported. **A validation failure is a FAULT for output purposes** - it is loud, it is NOT debounced (a broken caller must not be silenced by a marker), and it names the argument it rejected |
 | effect | **inside the repository:** may create `<root>/.clavity/` and create or append to `<root>/.clavity/.gitignore`, and nothing else. **Outside it:** may write ONE debounce marker under `$TMPDIR` or `$HOME/.clavity-tmp`, exactly as the sibling hooks do. An earlier draft said "touches nothing else" while also requiring a seen-marker, which is unsatisfiable - the marker cannot live in the repository, because a marker inside `.clavity/` would be a file the shield is supposed to be protecting |
 | output | a single human-readable line on stderr **only when it acted or found a fault**; silent on the healthy path, because it runs on every capture. **Subject to the debounce below** |
 | return | **`return 0`, ALWAYS - never `exit`.** See the sourcing hazard below |
@@ -252,8 +253,8 @@ has seven, and three of them have no row in that matrix. The required set:
 | shield `*` + `!<name>`, untracked | reported loudly, shield NOT rewritten (the negation residual) |
 | shield `*`, path TRACKED | `git rm --cached` remedy emitted, shield still intact afterwards |
 | **shield emptied, path TRACKED** | **shield restored anyway** - the Stage A regression test. This is the case that was broken until round 2; without it the fix is unpinned |
-| **root argument empty or not a directory** | returns 0, writes NOTHING, creates no directory |
-| **path argument outside `<root>/.clavity/`** | returns 0, writes NOTHING - no false "repaired" report |
+| **root argument empty or not a directory** | returns 0, writes NOTHING, creates no directory, **and WARNS on stderr** |
+| **path argument outside `<root>/.clavity/`** | returns 0, writes NOTHING, **and WARNS on stderr** - no false "repaired" report, and no silence either |
 | **outside a git work tree** | text fallback runs; no `check-ignore` invoked |
 | idempotence | three consecutive runs leave exactly one `*` line |
 
@@ -379,7 +380,7 @@ alone:
 | generator exits non-zero | hook FAILS - it must not pass on an untouched tree |
 | `core.md` staged, literals staged and correct | hook PASSES (the correct workflow is not blocked) |
 | `core.md` staged, literals stale in the index | hook FAILS and names the `just` task |
-| **partial stage: `core.md` hunks split with `git add -p`** | hook PASSES - both sides come from the index, so the unstaged remainder is irrelevant |
+| **partial stage: `core.md` hunks split with `git add -p`** | hook FAILS, **and its message says partial staging of `core.md` is unsupported** - see the remedy rules below. An earlier draft claimed this PASSES, which was wrong |
 | worktree `core.md` CRLF, index LF, literals correct | hook PASSES - proves the hook really reads the INDEX and not the worktree |
 | hook run twice | working tree unchanged both times (it must never write in place) |
 
@@ -401,6 +402,22 @@ constraint 1b.
 
 **Mutation control:** neuter the generator's exit-status assertion and the "generator crashed" row must
 turn RED. If it stays green, the assertion is decorative.
+
+**The failure MESSAGE is part of the contract, because a wrong remedy is a trap, not an inconvenience.**
+"Run the `just` task" is the wrong advice in two of the three failure modes, and following it produces an
+identical second failure - the user runs a no-op and is rejected again with the same text. The hook
+distinguishes three cases and names the remedy that actually works:
+
+| what the hook observes | message must say |
+|---|---|
+| staged literals differ from generated, and the literals are UNSTAGED in the worktree | "regenerated output is already in your worktree - **`git add` the two literals**" (running the task again changes nothing) |
+| staged literals differ from generated, worktree literals also stale | "**run `just <task>`, then `git add` the two literals**" |
+| **staged `core.md` differs from worktree `core.md`** (a partial stage) | "**partial staging of `core.md` is not supported.** The literals are generated from the STAGED text, and the `just` task reads the WORKTREE, so the two cannot agree. Stage `core.md` in full, or commit it on its own." |
+
+The third case is the one an earlier draft got wrong by asserting it would pass. It cannot: the hook
+compares index-to-index, so valid staged literals must be generated from the STAGED `core.md`, and the
+`just` task - which reads the working tree - cannot produce those. **Detecting it and saying so plainly
+is the fix; silently failing with generic advice is the trap.**
 
 **Generator constraints - these are design-level, not plan-level, because they eliminate candidates:**
 
@@ -435,14 +452,21 @@ and shipping one without the other is an incomplete fold:
 | line | says today | after 14e |
 |---|---|---|
 | `SKILL.md:124` | "If you change `driver-cheatsheet.core.md` you **MUST also update**" both pins | wrong - the generator produces them; hand-editing them is now the error the hook catches |
-| `SKILL.md:122-123` | "THREE files are pinned byte-identical ... editing `core.md` alone RED-GATES both binaries" | must instead say: edit `core.md`, run the generator, and **stage all three together** - the hook compares what is STAGED |
+| `SKILL.md:122-123` | "THREE files are pinned byte-identical ... editing `core.md` alone RED-GATES both binaries" | must instead say: **whoever edits `core.md`** runs the generator and **stages all three together** - the hook compares what is STAGED |
 | `SKILL.md:339` | documents core.md "and its two byte-identical pins may have been edited" as expected uncommitted state | still true, but the pins are now generated output rather than hand-edits |
 | `SKILL.md:112` | "keep it in sync there" | unchanged - `core.md` remains the canonical text, and is now the ONLY hand-edited one |
 
-**Do not widen this into the ownership question.** Whether the curator may edit `core.md` AT ALL is
-tracked separately as ROADMAP section 14f and needs an owner ruling. This change is narrower and is
-decision-free: *given* that someone edits `core.md`, they must now run the generator instead of
-hand-editing two literals. That is true under either resolution of 14f.
+**Do not widen this into the ownership question - and mind the grammar, because it is easy to widen it by
+accident.** Whether the curator may edit `core.md` AT ALL is tracked separately as ROADMAP section 14f and
+needs an owner ruling. This change is narrower and decision-free: *given* that someone edits `core.md`,
+they must run the generator instead of hand-editing two literals. That holds under either resolution.
+
+**The replacement text must therefore be written in the third person - "whoever edits `core.md` must ..."
+- not the second person addressed to the curator.** `SKILL.md` is the CURATOR's document, so wording like
+"edit `core.md`, then run the generator" tells the curator it may edit that file, which is precisely what
+14f leaves open. That is the same defect this spec already fixed once in the paragraph above, recurring
+one layer down in the document it edits. The mechanical instruction is what changes; **who is entitled to
+trigger it is not this batch's to say.**
 
 **Known cost.** This is the largest blast radius in the batch: it touches both products' builds, and now
 one shipped skill document. `agy-curate/SKILL.md` is a SINGLE copy (measured - not a byte-identical pair),
