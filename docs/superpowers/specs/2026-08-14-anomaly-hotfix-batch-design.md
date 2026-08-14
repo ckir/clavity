@@ -48,8 +48,9 @@ wrong, and the plan should not repeat that framing.
 - **13b** (no discipline requires a peer's ANSWER to survive truncation) - a design change, not a hot fix.
   Including it would turn a debt sweep into an epic.
 - **Section 15** (workflow-position resilience) - parked by owner decision 2026-08-13.
-- **The `core.md` ownership contradiction** - found while specifying 14e, captured as an untriaged
-  anomaly, deliberately deferred. See section 7.
+- **The `core.md` ownership contradiction** - found while specifying 14e, triaged 2026-08-14 and promoted
+  to ROADMAP section 14f. It needs an owner ruling, not a fix. See section 7. **Its one decision-free
+  consequence IS in scope** - the `agy-curate/SKILL.md` companion change in section 4.3.
 
 ---
 
@@ -233,7 +234,24 @@ generator is proven against, and are not to be edited to match generator output.
 4. **The generator is itself covered by a test** - it is new code in the trust path of a pinned artifact,
    and an unproven generator is a worse failure mode than the manual mirroring it replaces.
 
-**Known cost.** This is the largest blast radius in the batch: it touches both products' builds.
+**REQUIRED companion change - `agy-curate/SKILL.md`.** Generation makes an existing instruction wrong,
+and shipping one without the other is an incomplete fold:
+
+| line | says today | after 14e |
+|---|---|---|
+| `SKILL.md:124` | "If you change `driver-cheatsheet.core.md` you **MUST also update**" both pins | wrong - the generator produces them; hand-editing them is now the error the hook catches |
+| `SKILL.md:122-123` | "THREE files are pinned byte-identical ... editing `core.md` alone RED-GATES both binaries" | must instead say: edit `core.md`, then RUN THE GENERATOR; the hook asserts the tree is clean |
+| `SKILL.md:339` | documents core.md "and its two byte-identical pins may have been edited" as expected uncommitted state | still true, but the pins are now generated output rather than hand-edits |
+| `SKILL.md:112` | "keep it in sync there" | unchanged - `core.md` remains the canonical text, and is now the ONLY hand-edited one |
+
+**Do not widen this into the ownership question.** Whether the curator may edit `core.md` AT ALL is
+tracked separately as ROADMAP section 14f and needs an owner ruling. This change is narrower and is
+decision-free: *given* that someone edits `core.md`, they must now run the generator instead of
+hand-editing two literals. That is true under either resolution of 14f.
+
+**Known cost.** This is the largest blast radius in the batch: it touches both products' builds, and now
+one shipped skill document. `agy-curate/SKILL.md` is a SINGLE copy (measured - not a byte-identical pair),
+so this does not incur the mirror cost.
 
 ### 4.4 Item 14a - `.clavity` joins `PrunedSegments`
 
@@ -350,9 +368,22 @@ disagree about who owns it:
 which is the one that actually edits these files, never invokes it. Verified: drain commit `fc968fb`
 modified `core.md` and no gate fired.
 
-**Deferred deliberately, and it is safe to defer**: 14e's generator only READS `core.md`, so this batch
-does not depend on which side of the contradiction is the defect. Captured as an untriaged anomaly; it
-gets its own triage and its own item.
+**TRIAGED 2026-08-14 and PROMOTED to `clavity-dotnet/ROADMAP.md` section 14f.** It was explicitly assessed
+for folding into this batch and is NOT foldable: the two candidate resolutions are OPPOSITE edits to
+DIFFERENT files (either the skill proposes rather than applies, or the protected list is scoped to the
+in-repo flow and the standalone path invokes the gate). That needs an owner ruling, and a spec cannot
+specify "do one of these".
+
+**Deferring is safe, on a narrower ground than "the generator only reads it".** The generator does only
+read `core.md`, but 14e still changes the surrounding workflow - which is why section 4.3 now carries a
+REQUIRED companion change to `agy-curate/SKILL.md`. That companion change is **decision-free**: given that
+someone edits `core.md`, they must run the generator instead of hand-editing two literals, and that holds
+under either resolution of 14f. The batch therefore depends on the ownership question having AN answer
+eventually, but not on WHICH answer.
+
+**The protected-file gate gap is the same class as 14e** - `check-core-integrity.ps1` exists and never
+fires on the path that edits protected files. It is tracked in 14f rather than fixed here because its fix
+is entangled with the ownership ruling, unlike 14e's.
 
 ---
 

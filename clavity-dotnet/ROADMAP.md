@@ -1069,6 +1069,41 @@ a ~6s pwsh cold start, paid only when one of the three paths is staged (`lefthoo
 Like §13a and §14d this lands on `feature/injected-context-governance`, so it belongs with that epic's
 remaining work rather than as a drive-by.
 
+**§14f — two shipped artifacts disagree about who owns `driver-cheatsheet.core.md`, and the gate that
+would catch it never runs on the flow that edits it.** ▶ **OPEN — needs an owner ruling, not a fix**
+
+Both sides are internally coherent and describe different flows, which is why neither reads as a bug from
+inside itself:
+
+| artifact | says |
+|---|---|
+| `scripts/drain-lib.ps1:214`, listing the file at `:223` | "Driver-owned files the curator must **NEVER** touch (asserted byte-unchanged by `check-core-integrity.ps1`)" |
+| `scripts/drain-knowledge-prompt.md:4` | "never the seed, never `driver-cheatsheet.core.md`" |
+| `scripts/drain-knowledge-prompt.md:56` | "any `driver-cheatsheet.core.md` edit you WANT but **may not auto-apply**" |
+| `agy-autotrain/skills/agy-curate/SKILL.md:112` | "The canonical text lives at `driver-cheatsheet.core.md`; **keep it in sync there**" |
+| `agy-autotrain/skills/agy-curate/SKILL.md:124` | "If you change `driver-cheatsheet.core.md` you **MUST also update**" both pins |
+| `agy-autotrain/skills/agy-curate/SKILL.md:339` | documents core.md "and its two byte-identical pins **may have been edited**" as uncommitted working-tree state |
+
+**The gate cannot catch the disagreement.** `check-core-integrity.ps1` is invoked from exactly one place -
+`scripts/drain-knowledge.ps1:126`, the in-repo `just drain-knowledge` flow. The standalone skill path,
+which is the one that actually edits these files, never invokes it. **Measured: drain commit `fc968fb`
+modified `core.md` and no gate fired.** A protected-file gate that does not run on the flow that edits
+protected files is the same class as §14e - the gate exists and does not fire on the real path.
+
+**Why this is a RULING and not a fix, which is why it is tracked rather than folded into the hot-fix
+batch:** the two dispositions are opposite edits to different files.
+
+1. **`core.md` is driver-owned** => the `agy-curate` skill is the defect: its cheatsheet-compilation
+   section must PROPOSE an edit rather than apply one, matching `drain-knowledge-prompt.md:56`, and the
+   drain flow grows the step that applies it.
+2. **`core.md` is curator-owned in the standalone flow** => the protected list and the prompt are
+   over-broad: they must be scoped to the in-repo flow, and the standalone path must invoke the gate.
+
+**Scope note:** the 2026-08-14 hot-fix batch spec deliberately EXCLUDES this, and that exclusion is safe -
+§14e's generator only READS `core.md`. **But §14e does have one mechanical consequence that belongs to the
+batch, not here:** once the literals are generated, `SKILL.md:122-124`'s instruction to hand-edit both pins
+becomes wrong, so the batch must update it. That is tracked in the spec, not in this item.
+
 ### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
 
 **Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`,
