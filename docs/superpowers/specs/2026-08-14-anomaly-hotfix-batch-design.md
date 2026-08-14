@@ -216,6 +216,16 @@ A2. **Ensure the shield text is present**, in THREE cases, not two. The two-case
     - **no bare `*`, but the file contains at least one `!` line**: **PREPEND `*` as the FIRST line,
       preserving everything already in the file.** Do not append, and do not report - Stage B3 is the
       reporting branch and will still fire for the negated path.
+
+      **A prepend is not an append, and POSIX gives you no atomic one - so the mechanism is part of the
+      contract.** Write the new content (the `*` line followed by the existing bytes) to a temp path
+      that is **unique per invocation**, then `mv` it over the shield: a rename within one filesystem is
+      atomic, so a concurrent reader sees either the old file or the new one and never a truncated one.
+      **Do not read-modify-write the shield in place**, and do not use a fixed temp name - two sessions
+      can be open on the same repository, and a fixed name races exactly when the guard matters. **On any
+      failure path, remove the temp file**; on success the `mv` consumes it. Without this stated, an
+      implementer picks between a leak (unique names never cleaned up) and a race (a fixed name), which
+      is the trap that made this worth writing down.
     - **no bare `*` and no `!` line** (missing, empty, or unrelated content): append `*`.
 
     **Why the middle case exists - MEASURED 2026-08-14 in a throwaway repo, with a discriminating
@@ -386,6 +396,14 @@ name. **Unique-per-invocation plus no cleanup is unbounded growth**, and both ob
   -delete`, and each does so at most once per session rather than on the hot path. The helper adopts the
   same prune, with the same once-per-session gating and the same `-mtime +30` window. **Inventing a
   different retention here would be drift, not a decision.**
+- **The marker PREFIX must be its own, and the spec has to name it or the prune is dangerous.** The
+  siblings prune `-name '.clavity-anomaly-*'` and `-name '.clavity-assert-*'` respectively; the shield
+  helper uses **`.clavity-shield-*`** and prunes only that. A helper that reused a sibling's prefix would
+  delete the sibling's markers on its own schedule, and one that pruned a broader glob would delete them
+  all. **A prune instruction with an undefined prefix is worse than no prune**, which is why it is fixed
+  here rather than left to the implementer.
+- **The A2 prepend's temp file** is covered by the same obligation - unique per invocation, consumed by
+  the `mv` on success, removed on every failure path.
 
 **Tests. The four-state matrix is the STARTING point, not the whole set - the decision tree grew past it.**
 An earlier draft said "all four states above", which was written when the tree had four branches. It now
@@ -410,6 +428,9 @@ has seven, and three of them have no row in that matrix. The required set:
 | **persistent fault repeated with the SAME debounce key** | emitted once, not twice |
 | **validation failure repeated with the same key** | emitted BOTH times - validation is never debounced, and only a repeat test can tell the two policies apart |
 | idempotence | three consecutive runs leave exactly one `*` line |
+| **every SILENT branch asserts stderr is EMPTY** | A1-success, A2 (all three cases), B1 and B2 are silent by contract, and **an effect-only assertion cannot detect a branch that started talking**. A helper that emits on the healthy path runs on every capture and trains the operator to ignore the channel - the same failure the debounce exists to prevent. Without an empty-stderr assertion the "silent unless it acted or found a fault" row has no oracle at all |
+| **A1 `mkdir` failure reports class ENVIRONMENT** | assert the message appears once, and NOT twice for the same debounce key. The existing row asserts only "returns 0, writes nothing" - which passes whether the branch is debounced, undebounced, or silent, so the fault CLASS is unpinned |
+| **the A2 prepend leaves no temp file behind** | after a prepend, and after a prepend forced to fail mid-write, no `.clavity`-adjacent temp path survives. This is the row that catches the leak-versus-race trap named above |
 
 **Plus one mutation control per branch** - deleting any branch must turn at least one row RED. If deleting
 a branch leaves the suite green, that branch is untested regardless of how many rows exist.
@@ -606,6 +627,16 @@ mutation replacing the argument with an empty string must turn a test RED.
 **For `agy-mark.sh`**: one row per mode against a broken shield asserting restoration plus the correct
 write; the fail-closed rows (helper unloadable, root unresolvable) asserting NOTHING is written and the
 exit is non-zero; and the mutation control - neuter the helper call and every restoration row must go RED.
+
+**Plus one row per remaining CONTRACT row, because a contract line with no oracle is a suggestion.** A
+completeness pass over the contract table found four rules stated and untested:
+
+| case | asserts |
+|---|---|
+| **`<discipline>` containing `/` or `..`, and `<relpath>` containing `..` or a leading `/`** | REFUSED, exit 1, **nothing created anywhere** - and specifically nothing outside `.clavity/`. The contract requires `agy-mark.sh` to validate these ITSELF because the helper returns 0 on a validation fault; without this row that requirement is unenforced and a traversal payload writes wherever it likes |
+| **a write that fails partway** | exits **2**, not 1. The two codes mean different things to a caller - refused-nothing-written versus wrote-something-and-failed - and a suite that only ever sees 1 cannot tell they were ever distinguished |
+| **`log` refused (root unresolvable)** | stderr carries BOTH the log line it could not write AND the reason. Asserting only "nothing written, non-zero" passes against a silent refusal, which is exactly the record-destroying behaviour the contract added this rule to prevent |
+| **`agy-mark.sh` forwards `${AGY_SESSION_ID:-}` to the helper** | with the variable set, a repeated persistent fault emits once; with it empty, it emits every time. The hook's own forwarding is already pinned; **the wrapper's was not**, and it is a separate code path |
 
 **For the three rewritten skills there is deliberately NO behavioural test, and the plan says so rather than writing
 a weak one.** The strongest available oracle would assert the `.md` contains the invocation string, which
@@ -1036,6 +1067,14 @@ runs in BOTH jobs on purpose: it must hold under either engine." **Run it in bot
 5.1 coverage is needed or wanted: the coverage is real and measured, and pinning it to pwsh 7 alone would
 have left a blindspot on the exact runtime the installer targets.
 
+**"Run it in both" is NOT symmetrical, and reading it as symmetrical silently skips one of the two.** The
+two jobs invoke Pester differently: `installer-5-1` names a specific FILE (`:93`,
+`Invoke-Pester scripts/tests/register-plugin.Tests.ps1`), so adding the suite there is another named
+invocation. **`dev-scripts` SWEEPS A DIRECTORY** (`:155`, `Invoke-Pester scripts/tests`), and the orphan
+suite lives in `clavity-dotnet/install/`, which that sweep will never reach. **So the pwsh 7 half needs a
+NEW explicit step; it is not covered by the existing sweep, and assuming it is produces a green job that
+ran nothing.** That assumption is the same shape as the defect 14b exists to fix, one level up.
+
 **Part 3 - the `justfile` registration**, as described above.
 
 **The registration guard cannot see it either, and that is by design - do not widen it.**
@@ -1174,6 +1213,15 @@ badly; it validates a falsified equation and returns green.**
 | GROWTH (`:31`) | legitimate - a docs-only drain has nothing to publish | distinct message, **exit 0** |
 | SEED (`:30`) | never legitimate while a budget check is meaningful | distinct message, **exit NON-ZERO** |
 
+**The MECHANISM is named here, because "emit distinct messages" is not implementable against the current
+signature.** `Get-RawBytes` returns `0` for a missing path (`:26`) and also `0` for a present-but-empty
+one, so a caller handed `0` cannot tell them apart - the spec would be asking for a distinction the
+function has already destroyed. **The call sites test `Test-Path` themselves before calling
+`Get-RawBytes`, and `Get-RawBytes` is left alone.** Changing it to return `-1` or `$null` for a missing
+path would push a sentinel into the arithmetic at `:36-37`, where `$seedBytes -gt 0` and the addition
+both silently accept it; changing it to throw would turn a WARN-only gate into a crashing one. Testing
+presence at the call site costs one `Test-Path` per path and touches nothing else.
+
 **Part two, and without it part one produces a confidently wrong diagnosis:** `drain-knowledge.ps1:146`
 prints a single hardcoded warning for ANY non-zero from this gate - *"SEED + GROWTH exceeds the 16 KiB
 combined cap; GROWTH would not be injected. Trim docs/agy-golden-header.growth.md and re-drain."* For a
@@ -1181,10 +1229,20 @@ missing seed the cap has NOT been exceeded, and trimming the proposal does nothi
 **The caller must stop asserting a cause it has not established** - either by distinguishing the two, or
 by deferring to the gate's own message rather than substituting its own.
 
-**Named residual, from the negotiation:** on a sparse checkout that excludes `seed/`, the operator now
+**Named residual 1, from the negotiation:** on a sparse checkout that excludes `seed/`, the operator now
 sees a non-zero on every drain and may normalise it, dulling the signal for a genuine overflow. Two
 DISTINCT messages are what keep that signal alive - a missing seed and an overflow must never print the
 same line, which is precisely what part two fixes.
+
+**Named residual 2, and it is the reason part two carries the whole weight.** Making the gate exit
+non-zero does NOT stop the drain, and this item deliberately does not change that. Measured:
+`drain-knowledge.ps1:145-147` warns and continues, then `:169` prints a GREEN
+`drain-knowledge: done (run <id>)...` banner and `:175` exits **0**. So on a missing seed the operator
+still ends with a green banner over a GROWTH proposal whose budget was never validly checked. **The
+warning is the only signal there is**, which is exactly why it must name the real cause rather than
+inherit the overflow text. **Making the drain ABORT on a missing seed is a larger behaviour change than
+13c is scoped for** - 13c was scoped as a reporting fix - so it is recorded here as tracked debt rather
+than absorbed. If the owner wants the drain to stop, that is a separate item with its own blast radius.
 
 **Tests.** Distinct messages for missing vs present-but-empty at BOTH call sites, and **the exit codes now
 DIFFER by call site, so a row asserting "0 everywhere" would contradict the table above**:
