@@ -68,6 +68,24 @@ for Task 6.
 8. **`docs/superpowers/*` is gitignored** (`.gitignore:32`). Committing this plan or the spec needs
    `git add -f`. **Never force-add `.clavity/`.**
 
+### Stated toolchain assumptions (panel R2, Dependency Cynic)
+
+The shipped helper calls `grep`, `find`, `mkdir`, `mv`, `mktemp` and `git`. **These are pre-existing
+platform assumptions of every hook this plugin already ships**, not new ones this batch introduces:
+`assertion-strength-reminder.sh:125` and `agy-anomaly-capture-reminder.sh:107` both already run
+`find ... -maxdepth 1 ... -delete`, and every hook greps. They are recorded here rather than engineered
+around, because the failure modes are real but shared:
+
+| tool | if absent or failing | disposition |
+|---|---|---|
+| `grep` | A2 falls through to the append branch on **every** call, so the shield grows without bound while Stage B still reports it effective | pre-existing; a plugin without `grep` has larger problems. The idempotence row pins the normal case |
+| `find` | the two sweeps fail silently (stderr is redirected); temp files and markers leak | pre-existing and identical to the two sibling hooks. Leakage is bounded by the `-mtime +30` intent, not by correctness |
+| `mktemp` | the A2 prepend writes nothing; B3 then correctly reports the negation, so the outcome is a **loud** no-repair rather than a silent one | acceptable - it degrades to reporting, which is Stage B's job |
+
+**`tail` was deliberately removed from the append branch** in favour of an unconditional leading newline on
+a non-empty file - one less tool assumed, one less silent failure mode, and a blank line in `.gitignore` is
+inert.
+
 ### Suite cadence (the 600s foreground cap)
 
 - `just test-scripts-fast` - **cap-adjacent**; background it, block on its `Tests Passed:` line.
@@ -776,7 +794,13 @@ agy_shield() {
         # bare `*` then never exists as its own line, so the shield is still broken, this branch runs
         # again on the next call, and the file grows a corrupted line every time.
         # $(...) strips trailing NEWLINES but not a CR, so a last byte of \n yields an empty substitution.
-        if [ -s "$_as_shield" ] && [ -n "$(tail -c 1 "$_as_shield" 2>/dev/null)" ]; then
+        # NO `tail` PROBE, and that is the point: an unconditional leading newline on a NON-EMPTY file is
+        # both simpler and safer than probing for the last byte. A blank line in .gitignore is ignored by
+        # git, so the worst case is one cosmetic empty line - whereas a `tail` that is missing, shadowed,
+        # or fails for any reason makes the probe return empty, silently selects the bare append, and
+        # reproduces the exact corruption this branch exists to prevent. One less subprocess, one less
+        # tool assumed present, and no silent failure mode.
+        if [ -s "$_as_shield" ]; then
             printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null
         else
             printf '%s\n' '*' >> "$_as_shield" 2>/dev/null
@@ -970,8 +994,15 @@ Replacement text for `:70-79`:
 if command -v agy_shield >/dev/null 2>&1; then
   agy_shield "$R" ".clavity/local-anomalies.md" "${AGY_SESSION_ID:-}"
 else
+  # THE SAFE APPEND, not the shipped idiom - see Step 1b. Do not paste `[ -f ] || printf '%s\n' '*' >>`
+  # here: round 1 measured that it concatenates onto a shield with no trailing newline, and round 2
+  # caught that exact idiom being re-pasted into a fallback branch one task over.
   mkdir -p "$R/.clavity" 2>/dev/null
-  [ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
+  if [ ! -f "$R/.clavity/.gitignore" ]; then
+    printf '%s\n' '*' >> "$R/.clavity/.gitignore"
+  elif [ -s "$R/.clavity/.gitignore" ]; then
+    grep -qx '*' "$R/.clavity/.gitignore" 2>/dev/null || printf '\n%s\n' '*' >> "$R/.clavity/.gitignore"
+  fi
 fi
 ```
 
@@ -1214,8 +1245,18 @@ else
   # syntax error, `|| true` swallows the failure and `command -v` correctly reports it gone - and without
   # this branch the hook would proceed to write into an UNSHIELDED .clavity/ and exit 0 with nothing said.
   # The old content-blind idiom is a weak shield; no shield at all is the leak this item exists to stop.
+  #
+  # PANEL R2 - THIS FALLBACK USES THE SAFE APPEND, NOT THE SHIPPED IDIOM. Round 1 proved
+  # `[ -f ] || printf '%s\n' '*' >>` corrupts a shield whose last line has no trailing newline (measured:
+  # `foo.txt` + `*` -> the single line `foo.txt*`). Round 1's own fix then pasted that unpatched idiom
+  # into this brand-new else branch, recreating the defect it had just closed one task over. A fix is
+  # unreviewed code; this is what that costs when it is not re-reviewed.
   mkdir -p "$root/.clavity" 2>/dev/null
-  [ -f "$root/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
+  if [ ! -f "$root/.clavity/.gitignore" ]; then
+    printf '%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
+  elif [ -s "$root/.clavity/.gitignore" ]; then
+    grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null || printf '\n%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
+  fi
 fi
 
 [ -d "$out" ] || mkdir -p "$out" 2>/dev/null || exit 0
