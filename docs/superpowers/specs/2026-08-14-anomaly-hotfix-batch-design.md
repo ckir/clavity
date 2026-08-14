@@ -1007,10 +1007,36 @@ across `.github/workflows/` returns nothing). The suite lives at `clavity-dotnet
 glob. So adding it to the `justfile` makes it run in the inner loop and leaves it **invisible to CI**.
 
 **A registered-but-CI-invisible suite is the same fail-open shape this section already refuses for a
-registered-but-skipped one.** The plan must therefore do one of two things, explicitly and visibly, never
-by omission: (a) also add the suite to `ci-scripts.yml` so a gate that actually blocks a merge runs it, or
-(b) record the CI gap as a named residual for the owner. **(a) is the smaller change and completes the
-item; (b) leaves 14b half-done and must say so in those words.**
+registered-but-skipped one.** Settled 2026-08-14 by a two-round negotiation plus a measurement, and
+**owner-accepted including the CI-config widening**: 14b is THREE parts, and shipping any subset leaves
+the item's own premise true.
+
+**Part 1 - the `paths:` filter, and this is not optional; it is the repository's own written rule.**
+`.github/workflows/ci-scripts.yml:21-25` states it once, for exactly this situation: "EVERY FILE THE
+SCRIPTS SUITE READS AND ASSERTS AGAINST MUST APPEAR BELOW. A suite can only gate what CI actually runs it
+on, so a file the suite asserts against but the filter omits produces the worst outcome available - the
+assertion reds on a developer's machine and the same edit merges with a green check, because no job ever
+ran." `clavity-dotnet/install/**` is absent from both the `push` and the `pull_request` lists (`:44-58`).
+**Add it to BOTH.** `:32` records this precise omission happening once already - "MISSED when the first
+was added, in the very commit that added the row reading it" - so it is a known repeat, not a
+hypothetical.
+
+**Part 2 - the engine, and it is MEASURED rather than argued.** `:3` states the split is "by where the
+code actually RUNS, not by folder taste", and `:5-9` puts the installer on "an END-USER Windows box,
+where only Windows PowerShell 5.1 is guaranteed" - which is an argument for the 5.1 job. Against that,
+the suite had only ever been run under pwsh 7. **So it was run under both.** Measured 2026-08-14:
+
+| engine | result |
+|---|---|
+| pwsh 7 | Passed 12, Failed 0, 4.77s |
+| Windows PowerShell 5.1 (`5.1.26100.9168`) | **Passed 12, Failed 0, 6.49s** |
+
+It holds under either engine, so `:15`'s existing precedent applies exactly - "register-plugin.Tests.ps1
+runs in BOTH jobs on purpose: it must hold under either engine." **Run it in both.** No disclaimer about
+5.1 coverage is needed or wanted: the coverage is real and measured, and pinning it to pwsh 7 alone would
+have left a blindspot on the exact runtime the installer targets.
+
+**Part 3 - the `justfile` registration**, as described above.
 
 **The registration guard cannot see it either, and that is by design - do not widen it.**
 `test-suite-registration.Tests.ps1:52` matches only `scripts/tests/<name>.Tests.ps1`, so an entry naming a
@@ -1032,8 +1058,17 @@ Pester suites must never run concurrently (file-lock false red). So "pick a part
 task: the plan states which partition, why, **and the measured wall-clock of that partition WITH the suite
 added.** Registering a suite that pushes its partition over the cap converts a coverage gain into an
 aborted run - and an aborted run has no `Tests Passed:` line at all, which is not a pass, so the failure
-would present as a mystery rather than as this change. If the fast partition cannot absorb 4.77s, it goes
-in the slow one.
+would present as a mystery rather than as this change.
+
+**It goes in the SLOW partition, and the reasoning is on the record rather than left to the plan.** The
+fast half is the agent inner-loop recipe and `scripts/tests/_partition.md` measures it at **429,46s solo
+and 665,4s under contention against a 600s foreground cap**, with its own instruction to "treat the fast
+half as cap-adjacent, not cap-safe". The suite costs 4,77s under pwsh 7 and 6,49s under 5.1 - small, but
+spent on every inner-loop run to gate an INSTALLER, which is not code the agent loop edits. The slow half
+is already backgrounded and well past the foreground cap, so it absorbs this at no cost to the loop.
+**The plan still measures the slow partition's wall-clock WITH the suite added** - backgrounded, blocking
+on its `Tests completed` line, never on a process count - because a partition figure that is asserted
+rather than measured is exactly what this paragraph exists to forbid.
 
 > **NOT a defect - checked, and recorded so a later round does not re-derive it.** A reviewer read the
 > "two Pester suites must never run concurrently" constraint as meaning the fast and slow partitions run
@@ -1105,9 +1140,17 @@ silently, so "the GROWTH proposal is absent" and "the GROWTH proposal is empty" 
 is a LEGITIMATE state - a docs-only drain has nothing to publish - so this is a reporting defect, not a
 fail-open.
 
-**Required behaviour.** Distinguish the two in the message. **Still exit 0.** The script's own header at
-`:7` states: `drain-knowledge.ps1 runs this WARN-only (breach does not abort the drain)`. Turning this
-into a hard failure would break the drain.
+**Required behaviour.** Distinguish the two in the message, and **for GROWTH still exit 0** - absence is
+legitimate there.
+
+> **REFUTED 2026-08-14, and the refuted sentence was mine.** This section previously read: "Turning this
+> into a hard failure would break the drain", citing the script's header at `:7`
+> (`drain-knowledge.ps1 runs this WARN-only (breach does not abort the drain)`). **That is not what
+> WARN-only means here.** Measured at source: `scripts/drain-knowledge.ps1:144-147` invokes the gate,
+> tests `if ($LASTEXITCODE -ne 0)`, prints a warning, and **continues**. The drain is ALREADY built to
+> absorb a non-zero exit from this script - that is exactly what makes it warn-only - so a non-zero exit
+> cannot break it. A grep confirms `drain-knowledge.ps1:144` is the only production caller; no CI
+> workflow invokes the script. **The constraint I built this item's disposition on did not exist.**
 
 **`Get-RawBytes` has TWO call sites, and the second one is NOT the same case.** Measured:
 `scripts/check-growth-budget.ps1:30-31` calls it for the SEED (`seed/golden-header.md`) as well as for
@@ -1118,17 +1161,46 @@ missing seed silently measures 0, `$combined` becomes 0, `:39` compares `0 -gt 1
 clean pass having measured nothing** - which IS the fail-open shape, sitting on the call site nobody
 looked at because the anomaly was captured against the other one.
 
-**So this item covers both call sites, and says which is which:** a missing GROWTH is reported as a
-legitimate absence and still exits 0; a missing SEED is reported as an ANOMALY, because there is no
-correct state in which the driver-owned baseline is absent while a budget check is meaningful. Whether
-a missing seed should also change the EXIT CODE is deliberately left as the one open question here -
-`:7` states the script is run WARN-only by the drain, so turning it into a hard failure is a behaviour
-change of exactly the kind this item otherwise refuses. **Name it in the message; do not change the exit
-code without an owner ruling.**
+**Why the seed case is worse than a bad message, and it is not merely cosmetic.** With the seed measured
+at 0, the budget arithmetic certifies a GROWTH proposal of up to the FULL cap (`0 + 16384 <= 16384`
+passes at `:39`). The binary then combines the REAL seed with that proposal, overflows, and silently
+drops GROWTH - which is the exact failure this gate exists to prevent. **The gate does not merely report
+badly; it validates a falsified equation and returns green.**
 
-**Tests.** Distinct messages for missing vs present-but-empty, for BOTH call sites; exit code 0 in all
-four combinations; and a mutation control - collapse the missing and empty branches back into one and at
-least one row must turn RED.
+**So this item covers both call sites, and they get DIFFERENT dispositions:**
+
+| call site | absence is | disposition |
+|---|---|---|
+| GROWTH (`:31`) | legitimate - a docs-only drain has nothing to publish | distinct message, **exit 0** |
+| SEED (`:30`) | never legitimate while a budget check is meaningful | distinct message, **exit NON-ZERO** |
+
+**Part two, and without it part one produces a confidently wrong diagnosis:** `drain-knowledge.ps1:146`
+prints a single hardcoded warning for ANY non-zero from this gate - *"SEED + GROWTH exceeds the 16 KiB
+combined cap; GROWTH would not be injected. Trim docs/agy-golden-header.growth.md and re-drain."* For a
+missing seed the cap has NOT been exceeded, and trimming the proposal does nothing to restore the seed.
+**The caller must stop asserting a cause it has not established** - either by distinguishing the two, or
+by deferring to the gate's own message rather than substituting its own.
+
+**Named residual, from the negotiation:** on a sparse checkout that excludes `seed/`, the operator now
+sees a non-zero on every drain and may normalise it, dulling the signal for a genuine overflow. Two
+DISTINCT messages are what keep that signal alive - a missing seed and an overflow must never print the
+same line, which is precisely what part two fixes.
+
+**Tests.** Distinct messages for missing vs present-but-empty at BOTH call sites, and **the exit codes now
+DIFFER by call site, so a row asserting "0 everywhere" would contradict the table above**:
+
+| state | message | exit |
+|---|---|---|
+| GROWTH missing | names it as absent, not empty | 0 |
+| GROWTH present but empty | names it as empty, not absent | 0 |
+| SEED missing | names the missing seed, never an overflow | non-zero |
+| SEED present but empty | names it as empty | non-zero |
+| both present, over cap | the existing overflow message | non-zero (unchanged) |
+| both present, under cap | the existing OK line | 0 (unchanged) |
+
+Plus two mutation controls: collapse the missing and empty branches back into one and at least one row
+must turn RED; and restore `drain-knowledge.ps1:146`'s single hardcoded warning and the missing-seed row
+must turn RED, because otherwise part two is decorative.
 
 ---
 
@@ -1170,7 +1242,14 @@ Revised order:
 - **14e's two halves revert together.** The generator and the `agy-curate/SKILL.md` companion change are
   one unit: reverting the generator while the skill still says "run the generator" recreates the
   incomplete fold this batch exists to avoid, pointed the other way.
-- 14a, 14b, 13a and 13c are independently revertible.
+- 14a and 13a are independently revertible.
+- **14b is independently revertible but is THREE files** - the root `justfile`, `.github/workflows/ci-scripts.yml`
+  (both the job steps and both `paths:` lists), and the narrow registration pin. Reverting the workflow
+  while the pin stands leaves a test asserting a CI wiring that no longer exists.
+- **13c is independently revertible but is TWO files** - `scripts/check-growth-budget.ps1` and
+  `scripts/drain-knowledge.ps1`. Reverting the gate while the caller's warning stays split is harmless;
+  reverting the CALLER while the gate distinguishes a missing seed restores the confidently-wrong
+  "exceeds the cap" advice for a state that is not an overflow.
 
 **Commit unit.** The batch forms ONE review boundary, per the section 8 ruling. Individual commits within
 it are fine; the AGY-CAPSTONE runs over the batch as a range, immediately on completion, at low context.
@@ -1192,6 +1271,8 @@ it are fine; the AGY-CAPSTONE runs over the batch as a range, immediately on com
 | A skill edit is simply NOT MADE, and no gate notices | the cross-product gates compare the two products to each other, so a file left unedited in BOTH passes. Closed by an explicit per-file completion check over the six paths (three skills times two products), stated as a checklist item rather than dressed up as behavioural coverage |
 | **A count in the amendment said "four skills" where three are rewritten** | FOUND at re-panel round 3. The WRITER set is five artifacts (one hook, four skills); the REWRITE set is three, because `open-issues` is item 14d and is explicitly carved out. Ten sites carried the wrong number. **Both counts are now stated with their scope attached wherever either appears** - a bare "four" was what let the error propagate |
 | Nothing is pushed, so CI cannot gate any of this | run the oracles locally BY NAME; never infer a gate from a marker |
+| **14b now edits `.github/workflows/ci-scripts.yml`, and that edit cannot be exercised before merge** | owner-accepted 2026-08-14. The two risks it carries were retired by measurement rather than by argument: the engine choice is settled (the suite passes 12/0 under BOTH pwsh 7 and Windows PowerShell 5.1, so `:15`'s both-jobs precedent applies), and the `paths:` entry is mandated by the workflow's own rule at `:21-25`. What remains unexercised is YAML correctness, which the plan checks by reading, not by pushing |
+| **13c now changes an exit code, on a gate the drain treats as warn-only** | measured: `drain-knowledge.ps1:144-147` already tests `$LASTEXITCODE -ne 0` and continues, so the drain cannot be broken by this. The spec's previous claim that it would be was refuted at re-panel round 5 - it had survived every prior round |
 | The generator bakes CRLF into the literals and reddens the pinning gate | normalise CRLF->LF before escaping; `core.md` is CRLF in the worktree TODAY (measured) |
 | A sourced helper using `exit` silently kills its calling hook | contract mandates `return`; measured - a sourced `exit 0` ended the parent before its next line |
 | The pre-commit generator check passes because the generator CRASHED | assert the generator's exit status BEFORE trusting any diff |
