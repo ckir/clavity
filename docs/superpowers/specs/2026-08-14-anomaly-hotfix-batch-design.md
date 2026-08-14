@@ -698,7 +698,7 @@ compare the two PRODUCTS against each other, so a skill left unedited in BOTH pa
 happily. **A presence-grep is a vacuous oracle for "does the model obey the instruction" and a sound one
 for "was the file edited at all"** - these are different questions, and conflating them is what would
 otherwise leave the omission undetected. The plan therefore carries an explicit per-file completion check
-over the six paths (three skills times two products), stated as a checklist item and NOT dressed up as coverage of the skills' runtime
+over **every row of global rule 6's governed-artifacts table** - which includes `open-issues/SKILL.md`, whose 14d edit has no behavioural test either, so the checklist is its only guarantee. **The checklist names the TABLE and never a count**: an earlier version said "six paths (three skills times two products)", which silently stopped covering `open-issues` the moment round 12 added it to the table - the identical rot that made global rule 6 abandon totals in the first place. Stated as a checklist item and NOT dressed up as coverage of the skills' runtime
 behaviour.
 
 #### Residuals, stated rather than discovered later
@@ -803,9 +803,14 @@ merely detectable, and no literal-unescaping logic is written a third time.
    hook outright - so an operator legitimately deleting or renaming the file is blocked on every attempt,
    with a message about parity that has nothing to do with what they did. **The hook must first ask
    whether `core.md` is present in the index at all.** If it is absent because its deletion is staged,
-   there is no canonical source and therefore no parity to assert: the hook PASSES the parity check and
-   says plainly that it is skipping because the canonical source is being removed. Deleting the pinned
-   source is a real decision, but it is the pinning TESTS' job to fail on it, not this hook's.
+   there is no canonical source and therefore no parity to assert. **But the hook does NOT simply pass:
+   it asserts that BOTH literals' deletions are staged too, and fails naming any that is not.** Deleting
+   the pinned source is a real decision; deleting it while leaving its generated outputs behind - or
+   worse, leaving them behind MUTATED - is the fail-open, because a wholesale pass would certify those
+   survivors on the way out. **This is the same per-path principle the literals get below, applied to the
+   source: a path being removed has no pin to assert, and every path still present must still be
+   asserted.** An earlier draft passed wholesale here and defended it as "the pinning TESTS' job", which
+   is true of the eventual red but says nothing about what this hook certifies on the way past.
 
    **THE SAME PRESENCE CHECK BINDS THE TWO LITERALS, and guarding only `core.md` leaves the identical
    crash on the other side.** The hook now reads three paths out of the index - `core.md` and both
@@ -860,7 +865,8 @@ alone:
 | case | asserts |
 |---|---|
 | generator exits non-zero | hook FAILS - it must not pass on an untouched tree |
-| **`core.md` DELETION staged** | hook PASSES, with a message naming the skip reason. **Measured: `git show :<path>` exits 128 there**, so without this the hook fails every attempt to delete or rename the canonical source and the operator cannot get past it |
+| **`core.md` DELETION staged, and BOTH literals' deletions staged too** | hook PASSES, with a message naming the skip reason. **Measured: `git show :<path>` exits 128 there**, so without this the hook fails every attempt to delete or rename the canonical source and the operator cannot get past it |
+| **`core.md` deletion staged but a literal still present** | hook **FAILS**, naming the literal left behind. A wholesale pass here certifies a surviving - possibly mutated - generated output on its way out, which is the same fail-open as a per-run skip, one level up |
 | **a LITERAL's deletion staged** (either one) | hook PASSES, naming WHICH literal is being removed. Same 128, same crash, and guarding only `core.md` leaves it: the operator gets a raw `fatal:` and a rejected commit with no guidance |
 | **one literal's deletion staged AND the OTHER literal diverged** | hook **FAILS** on the surviving literal. This is the row that catches a per-run skip: a blanket "any deletion means skip parity" passes here while certifying a diverged pin, which is exactly what 14e exists to stop |
 | **the hook is run against a fixture `core.md` containing a byte a pwsh text pipeline would alter** | the hook's generated output reproduces that byte EXACTLY. A hook that pipes the content as text turns this RED; a hook using raw-byte transport passes. **The fixture is constructed in a throwaway repo, so the ASCII rule that governs the real `core.md` does not constrain it** |
@@ -1430,9 +1436,9 @@ it are fine; the AGY-CAPSTONE runs over the batch as a range, immediately on com
 | 14c grew from "wire N hooks" to a new shipped executable plus three skill rewrites | accepted by owner decision 2026-08-14 after a three-round negotiation. It is a change to the shield's DELIVERY MODEL, not only to this item - see 4.2. The batch is no longer purely a debt sweep, and the capstone range grows accordingly |
 | `agy-mark.sh` fails CLOSED while the 4.1 helper fails OPEN - an implementer may "harmonise" them | the two run in different places and the difference is the point: the helper runs inside a PreToolUse chain where non-zero BLOCKS an agent; the script is invoked by a skill, where a refusal only makes the discipline re-fire. **Both directions are stated in 4.2's contract table; changing either is a design change, not a tidy-up** |
 | Four shipped skills gain an invocation of a path they must locate at runtime | `$CLAUDE_PLUGIN_ROOT` is measured for HOOKS only. **The plan measures it FIRST, and the outcome is bounded in 4.2: if it does not resolve, 14c's skill half is BLOCKED and returns to the owner** - the byte-identity invariant (`agy-first/SKILL.md:111-112`) forbids a per-plugin literal, and a glob is ambiguous in the both-installed migration state that line declares supported |
-| The A2 restore step silently inverted a human's deliberate `!` line | FOUND at re-panel round 1 and folded into 4.1: A2 now has THREE cases and appends nothing when a negation is present with no bare `*`. Measured with a control - a blind append flipped `check-ignore` from 1 to 0 and made the B3 report unreachable |
+| The A2 restore step silently inverted a human's deliberate `!` line | FOUND at re-panel round 1 and folded into 4.1: A2 now has THREE cases and **PREPENDS `*`** when a negation is present with no bare `*`. Measured with a control - a blind APPEND flipped `check-ignore` from 1 to 0 and made the B3 report unreachable. **This row said "appends nothing" until round 13**, which was round 1's draft; round 2 measured that writing nothing left every OTHER file in the directory exposed and replaced it with the prepend. A stale row in a risk table is read as normative by anyone who reaches it before section 4.1 |
 | The largest-exposure writes (`.clavity/seams/`) were missing from the 14c enumeration | FOUND at re-panel round 1. Enumeration corrected; handled by `agy-mark.sh dir`, because a multi-kilobyte seam cannot travel through `argv` and no content-carrying mode should be invented for it |
-| A skill edit is simply NOT MADE, and no gate notices | the cross-product gates compare the two products to each other, so a file left unedited in BOTH passes. Closed by an explicit per-file completion check over the six paths (three skills times two products), stated as a checklist item rather than dressed up as behavioural coverage |
+| A skill edit is simply NOT MADE, and no gate notices | the cross-product gates compare the two products to each other, so a file left unedited in BOTH passes. Closed by an explicit per-file completion check over **every row of global rule 6's governed-artifacts table** - never a restated count, which stops covering whatever the table gains next |
 | **A count in the amendment said "four skills" where three are rewritten** | FOUND at re-panel round 3. The WRITER set is five artifacts (one hook, four skills); the REWRITE set is three, because `open-issues` is item 14d and is explicitly carved out. Ten sites carried the wrong number. **Both counts are now stated with their scope attached wherever either appears** - a bare "four" was what let the error propagate |
 | Nothing is pushed, so CI cannot gate any of this | run the oracles locally BY NAME; never infer a gate from a marker |
 | **14b now edits `.github/workflows/ci-scripts.yml`, and that edit cannot be exercised before merge** | owner-accepted 2026-08-14. The two risks it carries were retired by measurement rather than by argument: the engine choice is settled (the suite passes 12/0 under BOTH pwsh 7 and Windows PowerShell 5.1, so `:15`'s both-jobs precedent applies), and the `paths:` entry is mandated by the workflow's own rule at `:21-25`. What remains unexercised is YAML correctness, which the plan checks by reading, not by pushing |
