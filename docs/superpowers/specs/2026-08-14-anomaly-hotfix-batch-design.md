@@ -1,8 +1,20 @@
 # Anomaly hot-fix batch - design
 
-**Status:** owner-approved 2026-08-14. **This is a SPEC, not a plan.** It carries intent, contracts and
-measured current state. The implementation plan re-derives every line number (see "Citation drift" below)
-and establishes the one count this spec deliberately leaves open.
+**Status:** owner-approved 2026-08-14; **AMENDED the same day and re-panelled.** **This is a SPEC, not a
+plan.** It carries intent, contracts and measured current state. The implementation plan re-derives every
+line number (see "Citation drift" below).
+
+**What the amendment changed, and why the AGY-AFTER GREEN at round 12 no longer covered it.** The plan's
+Step 0 - the one measurement this spec deliberately deferred - ran, and its result invalidated section
+4.2. That section specified item 14c entirely in terms of HOOKS; the measured set is one hook and four
+SKILLS, which cannot be wired the way a hook can. The owner then decided the scope (a new shipped
+executable rather than the narrower option), which changes what 14c IS. Sections 1, 2, 4.2, 5 and 6 were
+amended together. **A GREEN is a statement about the artifact that was reviewed, not about this one** -
+hence the re-panel.
+
+**Deliberately NOT changed by the amendment:** section 4.1's helper contract. `agy-mark.sh` is a new
+CALLER of that helper, not a change to it. Section 4.2's contract table states the one place the two
+differ - fail-closed versus fail-open - and says why.
 
 **Branch:** `feature/injected-context-governance` (checked out; well ahead of `origin/main` and **nothing
 pushed**). **No ahead-count is recorded here on purpose** - an earlier draft pinned one, and its own
@@ -38,7 +50,7 @@ wrong, and the plan should not repeat that framing.
 | item | one-line statement |
 |---|---|
 | 14d | the sole `.clavity/.gitignore` shield assertion is content-blind |
-| 14c | hooks write into `.clavity/` and none assert the shield |
+| 14c | five shipped artifacts write into `.clavity/` and none asserts the shield (one hook, four skills) |
 | 14e | the only local gate on the three byte-pinned files checks provenance, not parity |
 | 14a | `PrunedSegments` omits `.clavity` |
 | 14b | `clavity-install.Tests.ps1` is an orphan suite |
@@ -67,7 +79,7 @@ not a substitute for Step 0.
 | 14a | `PrunedSegments` contents, `scripts/check-injected-context.ps1:91-92` | lists `.worktrees`; **`.clavity` absent** |
 | 14b | `clavity-install.Tests.ps1` occurrences in root `justfile` | **0**; control (a registered suite) = 1 |
 | 14b | `Invoke-Pester clavity-dotnet/install/clavity-install.Tests.ps1` | **Passed 12, Failed 0**, 4.77s |
-| 14c | hooks writing into `.clavity/` | **NOT ESTABLISHED** - see section 4.2 |
+| 14c | artifacts writing into `<repo>/.clavity/`, traced to the resolved target | **1 hook + 4 skills**, enumerated by name in section 4.2 (measured 2026-08-14; ROADMAP's "7 hooks" is wrong in kind and in count) |
 | 14d | four shield states in a throwaway repo | see the matrix in section 4.1 |
 | 14e | sizes/hashes of the three "byte-pinned" files | **3515 / 11544 / 7801 bytes, three distinct hashes** |
 | 13a | occurrences of `unused` in the gate script | **exactly 1** - inside the false message itself |
@@ -329,53 +341,142 @@ leak persists until a human acts, which is why the report must be loud rather th
 is wrong, it is an owner call to invert** - the alternative is the helper rewriting the shield to exactly
 `*`, which closes the leak automatically at the cost of overwriting user edits to a file we created.
 
-### 4.2 Item 14c - one shared helper, and the count is a Step 0 obligation
+### 4.2 Item 14c - Step 0 is DONE, and it changed what this item IS
 
-**Required behaviour.** Every hook that writes into `.clavity/` calls the 4.1 helper. **One shared
-implementation, not N copies.** Duplicating the assertion into each hook re-creates the propagation
-problem 14d exists to end, and is the choice that fails if the number of such hooks grows.
+**AMENDED 2026-08-14, after the plan's Step 0 ran.** The previous text of this section specified "every
+hook that writes into `.clavity/` calls the 4.1 helper" and left the count open. Step 0 has now run, and
+**both halves of that framing were wrong**: the count was wrong, and so was the CATEGORY. The section
+below replaces it. The original obligation - "a count with no stated predicate is not a measurement" -
+was correct and is what surfaced this.
 
-**The count is deliberately NOT fixed in this spec.** ROADMAP section 14c records "7 hooks". A naive grep
-for the string gives 8. Two attempts at a precise write-predicate probe failed outright (one returned 0,
-one classified 8 of 8). The peer consulted on this returned "cannot determine a defensible count via
-static grep" and gave the reason: hooks write indirectly through variables, e.g.
-`agy-discipline-reaching.sh:96-97`:
+**The predicate, stated.** A shipped plugin artifact that CREATES or WRITES a path under
+`<repo-root>/.clavity/`, traced through variable assignments to the resolved target - not by proximity of
+a write construct to the token `.clavity`.
 
-```
-out="$root/.clavity"
-[ -d "$out" ] || mkdir -p "$out" 2>/dev/null || exit 0
-```
+**The enumeration, by name.** Identical in both products (every file below is a byte-identical pair,
+verified by `git hash-object`):
 
-**Step 0 of the plan MUST establish the set by stating its predicate and enumerating the matches by
-name.** A count with no stated predicate is not a measurement. Both products' hook directories are in
-scope.
+| artifact | write sites | asserts the shield today |
+|---|---|---|
+| `plugin/hooks/agy-discipline-reaching.sh` | `:96-97` (`mkdir`), `:108-109` (appends `discipline-reaching.jsonl`) | **no** |
+| `plugin/skills/agy-first/SKILL.md` | `:93`, `:96` (`agy-marks/`, `skipped.log`), `:105` (the `.head` marker) | **no** |
+| `plugin/skills/agy-capstone/SKILL.md` | `:179-180`, `:252-253` (`skipped.log`), `:265` (the `.head` marker), `:43` (`.clavity/scratch/`) | **no** |
+| `plugin/skills/agy-test-audit/SKILL.md` | `:221-222` (the `.head` marker), `:38` (`.clavity/scratch/`) | **no** |
+| `plugin/skills/open-issues/SKILL.md` | `:69` (`mkdir`), `:86`, `:88` (appends `local-anomalies.md`) | weakly, at `:79` - **this is item 14d** |
 
-**The set is fixed BEFORE 14e exists, so 14e must not join it after the fact.** 14c lands at step 3 and
-14e at step 4; if 14e's pre-commit check wrote its scratch output under `.clavity/`, it would become a
-hook writing into `.clavity/` that 14c's sweep never saw - shipped un-wired and unprotected, and the
-14c tests would still pass because its set was closed. **14e's scratch path therefore must NOT be inside
-`.clavity/`** (a system temp location, unique per invocation per the note in 4.1). Stated as a constraint
-rather than solved by re-ordering, because the 14c set has to close somewhere and a rule holds for the
-NEXT hook too, not just this one.
+**Excluded, with the reason:** `adversarial-panel-review/SKILL.md:203` names the path but delegates the
+write ("via the `open-issues` skill"), so it is not an independent writer. The six other hooks that
+mention `.clavity` write to `${TMPDIR:-/tmp}` or `$HOME/.clavity-tmp` - a DIFFERENT directory, and they
+say so themselves (`agy-anomaly-capture-reminder.sh:49`, `assertion-strength-reminder.sh:9`: the marker
+"must never live in `.clavity/agy-marks/`"). `agy-consult-guard-lib.sh:49-50` and
+`agy-consult-guard-pre.sh:41` write under `${TMPDIR:-/tmp}/claude-agy-consult-guard`.
 
-**Tests.** For each hook in the established set, assert the hook ACTUALLY INVOKES the shield check with
-effect - not that the helper exists, and not that the hook merely sources it. Neutering the call site must
-turn a test RED.
+**So ROADMAP section 14c is wrong in KIND as well as in count: the set is five artifacts, and four of
+them are SKILLS, not hooks.** Its "7 shipped hooks" came from a proximity predicate, stated in its own
+sentence as hooks that "reference `.clavity/` with a write construct". **Owner decision 2026-08-14: that
+entry is REWRITTEN IN PLACE**, not annotated with a correction, so no future reader meets the wrong
+sentence at all. The follow-up at ROADMAP `:991` ("section 14c's seven hooks") is part of the same fact
+and must be swept with it - global rule 4.
 
-**The test must BREAK the shield first, and the earlier wording hid that.** The helper is silent on the
-healthy path by contract, so a test run against a healthy repository observes nothing and would pass while
-asserting nothing - a false GREEN that looks like coverage. Each hook's test therefore: (a) sets up a repo
-with a BROKEN shield, (b) runs the hook, (c) asserts the shield was restored (an observable effect), and
-(d) as the mutation control, removes the hook's call to the helper and asserts the same test goes RED.
-"Asserts the hook emits something" is not a testable predicate against a helper designed to stay quiet.
+#### The contract problem, and why it decides the design
 
-**And it must assert the hook PASSES ITS DEBOUNCE KEY - shield restoration alone cannot detect a broken
-one.** Stage A runs unconditionally and ignores the key entirely, so a hook that passes an empty or
-hard-coded key restores the shield, passes every test above, and ships with its debounce silently wrong:
-either warning on every capture, or sharing one key across all sessions so a real fault is suppressed for
-everyone after the first. Each hook's test therefore also asserts that the key it forwards is the
-`session_id` from its own payload - the value each hook already parses (`agy-anomaly-capture-reminder.sh:61`)
-- and a mutation replacing that argument with an empty string must turn a test RED.
+Four of the five callers are `SKILL.md` files. **A skill is markdown an agent reads, not an executable.**
+`agy-first/SKILL.md:93-96` does not run; it TELLS an agent to create a directory and append a line. Two
+consequences, and they are one decision, not two:
+
+1. **Prose cannot satisfy a wiring contract.** "The caller invokes the helper" has no referent when the
+   caller is a language model reading instructions. It may write the marker with a shorter command of its
+   own and never touch the helper.
+2. **No non-vacuous oracle exists for a prose caller.** The only available test is a regex asserting the
+   `.md` file CONTAINS the instruction. The mutation that must turn it red - the model ignoring the
+   instruction at runtime - leaves the string sitting in the file. That is exactly the presence-not-mutation
+   anti-pattern global rule 2 forbids.
+
+**This argument applies equally to `open-issues/SKILL.md:79`**, the shield line the whole batch exists to
+improve, which is itself a fenced snippet inside a skill. That was raised as a reason to keep 14c narrow -
+adopting a fix here changes the shield's DELIVERY MODEL, not just this item. **Owner decision 2026-08-14:
+proceed anyway, with the full fix.** The delivery-model change is accepted deliberately and is no longer
+grounds for deferral.
+
+#### Required behaviour - the caller becomes an executable
+
+**A new shipped executable, `plugin/hooks/agy-mark.sh`, becomes the ONLY sanctioned way to write under
+`<repo>/.clavity/`.** It is hard-wired to call the 4.1 shield helper before every write. The four skills
+stop describing the write and instead invoke it. The one real hook sources the 4.1 helper directly, as a
+hook already can.
+
+That turns an untestable prose contract into a testable executable one: the oracle runs `agy-mark.sh`
+against a broken shield and asserts restoration, and neutering its call to the helper turns that test RED.
+
+**It lives in `plugin/hooks/` even though it is not a hook.** That is the existing precedent, not a
+category error: `agy-consult-guard-lib.sh` is a non-hook file in the same directory, sourced by
+`agy-consult-guard-pre.sh:14` as `. "$(dirname "$0")/agy-consult-guard-lib.sh"`. Placing it there also
+means it is picked up automatically by the two gates that matter - `check-seed-artifacts-synced.sh:63-64`
+enumerates `hooks skills knowledge` in both plugins and requires byte-identity, and
+`plugin-hooks-payload.Tests.ps1` asserts pure ASCII (`:32`) and cross-driver byte-identity (`:47`) over
+the same glob. **No registration in `hooks.json` is required or wanted** - it is not an event hook.
+
+| aspect | contract |
+|---|---|
+| form | an EXECUTABLE `.sh` (not sourced), so `exit` is correct here - the opposite of the 4.1 helper's `return`-only rule, and the difference is load-bearing |
+| root | resolved with `git rev-parse --show-toplevel`. A subprocess is affordable here because this runs once per discipline event, not per turn. **If it cannot resolve, REFUSE and exit non-zero** |
+| modes | `head <discipline> <sha>` (write `.clavity/agy-marks/<discipline>.head`), `log <discipline> <status> <sha> [text...]` (append a line to `.clavity/agy-marks/skipped.log`), `dir <relpath>` (create `.clavity/<relpath>/`, for the `scratch/` case) |
+| shield | calls the 4.1 helper BEFORE any write, on every mode, with no way to skip it |
+| **failure direction** | **fail CLOSED on the write.** If the helper cannot be loaded, or the root cannot be resolved, it writes NOTHING and exits non-zero. This is safe precisely because a missing marker makes the discipline RE-FIRE next trigger - a behaviour every one of these skills already documents (`agy-test-audit/SKILL.md:225`: "If HEAD cannot resolve, skip writing (the discipline re-fires next trigger - safe)"). **It is the opposite of the 4.1 helper's fail-open rule, and deliberately so: the helper runs inside a PreToolUse chain where a non-zero exit BLOCKS an agent; this script is invoked directly by a skill, where it blocks nothing** |
+| debounce key | `${AGY_SESSION_ID:-}` from the environment, forwarded to the helper. Empty disables debouncing, which is the safe direction for a leak notice |
+
+**How a skill locates it is a Step 0 measurement, not an assumption.** `$CLAUDE_PLUGIN_ROOT` is set for
+HOOK invocations; whether it resolves in a skill-context shell call is **unmeasured**, and this repository
+has already been bitten by that exact variable failing to resolve in one lifecycle event and not another
+(`agy-discipline-reaching.sh:9-12`: it "DOES NOT RESOLVE at SessionEnd", measured 3/3). **The plan MUST
+measure it before writing the invocation into four shipped skills, and define the fallback if it does not
+resolve.** Writing `$CLAUDE_PLUGIN_ROOT` into the skills on the strength of it working for hooks would be
+the same class of error this spec has already corrected twice.
+
+#### Tests
+
+**For the hook** (`agy-discipline-reaching.sh`): (a) set up a repo with a BROKEN shield, (b) run the hook,
+(c) assert the shield was restored - an observable effect, (d) mutation: remove the hook's call and assert
+the same test goes RED. **The test must break the shield first**, because the helper is silent on the
+healthy path by contract, so a run against a healthy repository observes nothing and would pass while
+asserting nothing.
+
+**And it must assert the hook PASSES ITS DEBOUNCE KEY** - shield restoration alone cannot detect a broken
+one. Stage A runs unconditionally and ignores the key entirely, so a hook passing an empty or hard-coded
+key restores the shield, passes every test above, and ships with its debounce silently wrong. The hook
+already parses `session_id` (`agy-discipline-reaching.sh:42`); assert it forwards THAT value, and a
+mutation replacing the argument with an empty string must turn a test RED.
+
+**For `agy-mark.sh`**: one row per mode against a broken shield asserting restoration plus the correct
+write; the fail-closed rows (helper unloadable, root unresolvable) asserting NOTHING is written and the
+exit is non-zero; and the mutation control - neuter the helper call and every restoration row must go RED.
+
+**For the four skills there is deliberately NO test, and the plan says so rather than writing a weak
+one.** The strongest available oracle would assert the `.md` contains the invocation string, which cannot
+fail against a model that ignores it. The executable is where the strength lives; the skills are its
+callers and are covered by the residual below. **Writing a presence-grep here and calling the skills
+covered would be the fifth vacuous oracle this review has removed.**
+
+#### Residuals, stated rather than discovered later
+
+- **The skills are still prose.** `agy-mark.sh` is invocable, not compulsory; a model may still write a
+  marker by hand. The change narrows the unshielded surface from four described writes to one described
+  INVOCATION, and makes the thing invoked correct by construction. It does not make invocation certain.
+- **`agy-discipline-reaching.sh` runs at SessionStart, before any skill can run**, so in the common case
+  it creates and shields `.clavity/` first and every later marker write lands in an already-shielded
+  directory. **That is a mitigation, not the fix**, and it has a named hole: the hook exits early when
+  `.no-agy` is present (`:53`, `:87`) or there is no `.git` (`:81`), and a user can still invoke
+  `agy-capstone` by hand in that state.
+- **The 4.1 helper's debounce key is `<session>-<fault-class>`, not per-path**, so a second distinct file
+  with the same fault class in the same session is suppressed. Accepted; the alternative needs a
+  subprocess to sanitise a path into a filename.
+
+**The set is fixed BEFORE 14e exists, so 14e must not join it after the fact.** 14c lands before 14e; if
+14e's pre-commit check wrote its scratch output under `.clavity/`, it would become a writer that 14c's
+sweep never saw - shipped un-wired and unprotected, and the 14c tests would still pass because its set was
+closed. **14e's scratch path therefore must NOT be inside `.clavity/`** (a system temp location, unique
+per invocation per the note in 4.1). Stated as a constraint rather than solved by re-ordering, because the
+set has to close somewhere and the rule holds for the NEXT writer too, not just this one.
 
 ### 4.3 Item 14e - make parity structural by generating the literals
 
@@ -732,15 +833,21 @@ Revised order:
 
 1. **14a** (one array entry; unblocks clean gate runs for everything after it)
 2. 14d (helper + its Stage A/B tests, mirrored across the pair)
-3. 14c (wire the established hook set; count fixed at Step 0)
+3. 14c (the new `agy-mark.sh` executable, the hook wiring, the four skill rewrites, and the ROADMAP
+   section 14c rewrite - set fixed at Step 0, enumerated in 4.2)
 4. 14e (generator + build task + hook assertion + the `SKILL.md` companion change)
 5. 14b, 13a, 13c (independent, small)
 
 **Revert order is the inverse, and it is NOT free - state it before it is needed.**
 
-- **14d cannot be reverted while 14c stands.** 14c's hooks source and call the helper; removing the
-  helper leaves every wired hook sourcing a function that no longer exists. Revert 14c first, or revert
+- **14d cannot be reverted while 14c stands.** 14c's hook sources the helper and `agy-mark.sh` calls it;
+  removing the helper leaves both sourcing a function that no longer exists. Revert 14c first, or revert
   both together.
+- **14c is now FOUR things that revert together**, and reverting a subset is worse than reverting none:
+  `agy-mark.sh`, the hook wiring, the four skill rewrites, and the ROADMAP section 14c rewrite. Reverting
+  the script while the skills still invoke it leaves four shipped skills naming an executable that does
+  not exist - a hard failure on a path that previously worked. Reverting the skills while the script
+  stands is harmless but pointless. **Revert all four or none.**
 - **14e's two halves revert together.** The generator and the `agy-curate/SKILL.md` companion change are
   one unit: reverting the generator while the skill still says "run the generator" recreates the
   incomplete fold this batch exists to avoid, pointed the other way.
@@ -757,7 +864,10 @@ it are fine; the AGY-CAPSTONE runs over the batch as a range, immediately on com
 |---|---|
 | Shield helper is new SHIPPED surface in both plugins | byte-identical mirror + `plugin-hooks-payload.Tests.ps1` + `check-seed-artifacts-synced.sh` |
 | Generator touches both products' builds - largest blast radius | generator-control pattern; both existing pinning tests stay green as the oracle |
-| 14c's hook set is unknown until Step 0 | Step 0 must state its predicate and enumerate by name; a bare count is rejected |
+| 14c's writer set is unknown until Step 0 | RESOLVED - Step 0 ran, stated its predicate and enumerated 5 artifacts by name (4.2). ROADMAP section 14c's "7 hooks" was wrong in kind and in count |
+| 14c grew from "wire N hooks" to a new shipped executable plus four skill rewrites | accepted by owner decision 2026-08-14 after a three-round negotiation. It is a change to the shield's DELIVERY MODEL, not only to this item - see 4.2. The batch is no longer purely a debt sweep, and the capstone range grows accordingly |
+| `agy-mark.sh` fails CLOSED while the 4.1 helper fails OPEN - an implementer may "harmonise" them | the two run in different places and the difference is the point: the helper runs inside a PreToolUse chain where non-zero BLOCKS an agent; the script is invoked by a skill, where a refusal only makes the discipline re-fire. **Both directions are stated in 4.2's contract table; changing either is a design change, not a tidy-up** |
+| Four shipped skills gain an invocation of a path they must locate at runtime | `$CLAUDE_PLUGIN_ROOT` is measured for HOOKS only; the plan MUST measure it in a skill-context shell call and define the fallback before writing it into eight files. This exact variable already failed to resolve in one lifecycle event and not another (`agy-discipline-reaching.sh:9-12`) |
 | Nothing is pushed, so CI cannot gate any of this | run the oracles locally BY NAME; never infer a gate from a marker |
 | The generator bakes CRLF into the literals and reddens the pinning gate | normalise CRLF->LF before escaping; `core.md` is CRLF in the worktree TODAY (measured) |
 | A sourced helper using `exit` silently kills its calling hook | contract mandates `return`; measured - a sourced `exit 0` ended the parent before its next line |
