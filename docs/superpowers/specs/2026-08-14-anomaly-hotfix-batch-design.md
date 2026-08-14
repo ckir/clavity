@@ -159,9 +159,14 @@ A0. **Validate the inputs. On failure: WARN LOUDLY on stderr, then return 0 with
     false GREEN for a file left fully exposed.
 A1. **`mkdir -p <root>/.clavity`.** Every restoring step appends, and an append into a missing directory
     fails `No such file or directory` on a fresh clone. If the `mkdir` fails, return 0 - never hard-block.
-A2. **Ensure the shield text is present** (`grep -qx '*'`; append `*` if absent). **This runs regardless
-    of the state of any individual file.** It is the only step that protects the OTHER files in the
-    directory, and it is why Stage B may never skip it.
+A2. **Ensure the shield text is present** - `grep -qx '*' "<shield>" 2>/dev/null`; append `*` on ANY
+    non-zero exit. **Both the redirection and "any non-zero" are required, and measured:** on a missing
+    file `grep` exits **2** (not 1) **and writes `No such file or directory` to stderr**. Without
+    `2>/dev/null` the helper leaks grep's error on every fresh clone, breaking the contract's "silent
+    unless it acted or found a fault"; without treating 2 like 1, an implementer who keys on `exit 1`
+    alone fails to restore a shield that does not exist - the original 14d defect, reintroduced.
+    **This step runs regardless of the state of any individual file.** It is the only step that protects
+    the OTHER files in the directory, and it is why Stage B may never skip it.
 
 **Stage B - effect verification for the named path** (adds detection Stage A cannot do alone):
 
@@ -261,10 +266,21 @@ has seven, and three of them have no row in that matrix. The required set:
 | **path argument outside `<root>/.clavity/`** | returns 0, writes NOTHING, **and WARNS on stderr** - no false "repaired" report, and no silence either |
 | **outside a git work tree** | text fallback runs; no `check-ignore` invoked |
 | **`check-ignore` fails with 128 INSIDE a work tree (B4)** | Stage A's restoration still happened, the error is reported, and the helper returns 0. Without this row B4 could be deleted with the suite still green |
+| **fresh clone: no `.clavity/` directory at all (A1)** | the directory is created and the shield written. Every other row assumes the directory already exists, so **A1 was untestable by the rest of the matrix** - and A1 is the branch that exists because a bare `>>` fails `No such file or directory` |
+| **`mkdir` fails (A1 failure path)** | returns 0, writes nothing, does not hard-block |
+| **persistent fault repeated with the SAME debounce key** | emitted once, not twice |
+| **validation failure repeated with the same key** | emitted BOTH times - validation is never debounced, and only a repeat test can tell the two policies apart |
 | idempotence | three consecutive runs leave exactly one `*` line |
 
 **Plus one mutation control per branch** - deleting any branch must turn at least one row RED. If deleting
 a branch leaves the suite green, that branch is untested regardless of how many rows exist.
+
+**The plan verifies this MECHANICALLY, as a cross-product, not by reading.** Every branch of the tree
+(A0, A1 and its failure path, A2, B1, B2, B3-tracked, B3-negation, B4) must appear in ALL FOUR of: the
+decision tree, the helper contract, this test table, and the output fault-class taxonomy. **Two rounds of
+this review found the same defect class - a branch present in one table and absent from another** (B4 had
+a branch and no test; A1 had a branch and no test because every other row presupposed the directory it
+creates). A reading pass keeps missing it; a cross-product does not. Build the grid and show it filled.
 
 **Known residual, stated rather than discovered later.** The helper protects the shield; it does not
 un-track an already-tracked file. B3 reports rather than repairs, deliberately - automatic
@@ -384,7 +400,8 @@ alone:
 |---|---|
 | generator exits non-zero | hook FAILS - it must not pass on an untouched tree |
 | `core.md` staged, literals staged and correct | hook PASSES (the correct workflow is not blocked) |
-| `core.md` staged, literals stale in the index | hook FAILS and names the `just` task |
+| `core.md` staged, literals stale in the index, **correct output already in the worktree** | hook FAILS with **remedy 1** - says `git add` the literals and does NOT name the `just` task (re-running it is a no-op) |
+| `core.md` staged, literals stale in the index **and in the worktree** | hook FAILS with **remedy 2** - names the `just` task |
 | **partial stage: `core.md` hunks split with `git add -p`** | hook FAILS, **and its message says partial staging of `core.md` is unsupported** - see the remedy rules below. An earlier draft claimed this PASSES, which was wrong |
 | worktree `core.md` CRLF, index LF, literals correct | hook PASSES - proves the hook really reads the INDEX and not the worktree |
 | hook run twice | working tree unchanged both times (it must never write in place) |
@@ -421,7 +438,7 @@ the exact loop this table exists to prevent. **Order: 3, then 1, then 2.**
 
 | # | what the hook observes | message must say |
 |---|---|---|
-| **3** (evaluated FIRST) | **staged `core.md` differs from worktree `core.md`** - a partial stage | "**partial staging of `core.md` is not supported.** The literals are generated from the STAGED text, and the `just` task reads the WORKTREE, so the two cannot agree. Stage `core.md` in full, or commit it on its own." |
+| **3** (evaluated FIRST) | **staged `core.md` differs from worktree `core.md`** - a partial stage. **Detect with `git diff --quiet -- <core.md>`, NEVER a byte comparison** - see below | "**partial staging of `core.md` is not supported.** The literals are generated from the STAGED text, and the `just` task reads the WORKTREE, so the two cannot agree. Stage `core.md` in full, or commit it on its own." |
 | 1 | staged literals differ from generated, and the literals are UNSTAGED in the worktree | "regenerated output is already in your worktree - **`git add` the two literals**" (running the task again changes nothing) |
 | 2 | staged literals differ from generated, worktree literals also stale | "**run `just <task>`, then `git add` the two literals**" |
 
@@ -429,6 +446,15 @@ The third case is the one an earlier draft got wrong by asserting it would pass.
 compares index-to-index, so valid staged literals must be generated from the STAGED `core.md`, and the
 `just` task - which reads the working tree - cannot produce those. **Detecting it and saying so plainly
 is the fix; silently failing with generic advice is the trap.**
+
+**Case 3 MUST be detected with `git diff --quiet`, and a byte comparison would block every commit in this
+repository.** Measured 2026-08-14: worktree `core.md` is **3515 bytes**, the index blob is **3508** -
+**not byte-equal**, because `core.autocrlf` stores LF and checks out CRLF. They ARE equal after LF
+normalisation. So a naive "does `git show :<path>` differ from the file on disk" check evaluates TRUE on
+every commit, firing Case 3 unconditionally and telling every user their commit is an unsupported partial
+stage. `git diff --quiet -- <core.md>` returns **0** on that same state (measured), because git compares
+through the same normalisation it applies on checkout. **This is the CRLF hazard of constraint 1b
+reappearing in the DETECTION path rather than the generation path** - the same trap, one layer over.
 
 **Generator constraints - these are design-level, not plan-level, because they eliminate candidates:**
 
