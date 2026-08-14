@@ -955,10 +955,11 @@ out to have been accidentally right for a reason nobody stated. Measure before a
 **Disposition:** low priority, off the critical path. Not a fail-open. Belongs with the knowledge-storage
 design work rather than as a standalone fix, since where GROWTH lives is exactly what that work decides.
 
-### §14 — three anomalies promoted at the 2026-08-13 triage
+### §14 — anomalies promoted at the 2026-08-13 and 2026-08-14 triages
 
-All three were **verified by measurement at triage**, not accepted on reading. Each names the measurement
-so a later reader can re-check rather than re-derive.
+All four were **verified by measurement at triage**, not accepted on reading. Each names the measurement
+so a later reader can re-check rather than re-derive. §14a–c came from the 2026-08-13 triage; §14d from
+2026-08-14, and it **corrects a sentence in §14c**.
 
 **§14a — `PrunedSegments` omits `.clavity`, so scratch files enter the reference index.**
 `scripts/check-injected-context.ps1:91-92` lists `.git, node_modules, target, bin, obj, .venv,
@@ -985,6 +986,47 @@ scope is narrower than its stated contract. Decide: register it, move it, or del
 we do not control, that runtime state is **git-visible**, and a `git add .` would publish it. The
 workflow-position spec (`docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md`,
 section 6) mandates the shield for the *new* reader; **this entry is the existing seven.**
+
+> ⚠ **CORRECTED 2026-08-14 by §14d: `SKILL.md:79` is NOT a good reference to copy.** It tests file
+> EXISTENCE, not content. Fix §14d first, or §14c's seven hooks inherit the weak idiom.
+
+**§14d — the sole shield assertion is content-blind, and five artifacts propagate it.** ▶ **OPEN**
+`SKILL.md:79` reads `[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> ...`, so it restores a
+**deleted** shield but never an **emptied or hand-edited** one. Its own comment at `:74-78` claims it
+covers "the file was created by hand", which is exactly the case it misses. Measured at triage in a
+throwaway repo, every claim with a passing control:
+
+| measurement | result |
+|---|---|
+| `[ -f ]` on a 0-byte `.clavity/.gitignore` | **TRUE** — idiom does not restore |
+| `grep -qx '\*'` on the same file | FALSE — correctly restores |
+| control: `grep -qx '\*'` on a properly shielded file | TRUE — correctly leaves it alone |
+| **consequence**, shield emptied: `git add -A` | stages `.clavity/local-anomalies.md` — **the private file is published** |
+| control, shield present: `git add -A` | stages nothing |
+
+**The fix was verified too, not just the finding.** `grep -qx '\*' ... || printf '%s\n' '*' >> ...` is
+idempotent (1 line after 3 consecutive runs) and subsumes the missing-file case the current idiom already
+handled. **Residual limit, measured rather than papered over:** a shield reading `*` followed by
+`!local-anomalies.md` passes `grep -qx` and still leaks — the fix is a strict improvement, not a proof.
+
+**The blast radius is why this is tracked rather than a drive-by.** The weak idiom is live in five places
+outside the shipped pair, found by sweeping the FACT rather than patching the reported line:
+
+- `clavity-dotnet/plugin/skills/open-issues/SKILL.md:79` and `clavity-classic/plugin/skills/open-issues/SKILL.md:79`
+  — **shipped, byte-identical pair**, so any fix must mirror and pass `plugin-hooks-payload.Tests.ps1`
+  + `check-seed-artifacts-synced.sh`.
+- `docs/superpowers/specs/2026-08-13-agy-role-enforcement-design.md:207` and `:211` — a **FROZEN ADR**
+  that quotes the weak line and *requires* hooks to assert it that way. Amending a frozen artifact is an
+  owner call.
+- `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md:760` — prescribes it for a
+  not-yet-built reader, citing `# SKILL.md:79` in the comment. That spec is **§15, parked**.
+- `docs/superpowers/plans/2026-08-01-anomaly-capture.md:562` and `:815` — the shipping plan; historical.
+
+**The correct idiom already exists in the tree** at
+`docs/superpowers/specs/2026-08-13-agy-policy-gate-implementation-spec.md:688`, folded during that spec's
+round-8 panel — which is where this anomaly was captured. **So this is an INCOMPLETE FOLD, the dominant
+fold defect**: the round fixed its own artifact's line and never swept the source it was copied from.
+Like §13a it lands on `feature/injected-context-governance`, so it belongs with that epic's remaining work.
 
 ### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
 
