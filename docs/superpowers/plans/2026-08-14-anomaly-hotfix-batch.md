@@ -2600,9 +2600,19 @@ flat() { tr -d '\r' < "$1" | tr '\n' ' ' | tr -s ' '; }
 # `while` loop - the same defect class, one layer down. MEASURED: under `set -u` the caller died with
 # `unbound variable`, the LOUD version of the bug; without `set -u` it would have read silently as
 # "no error". A count is never negative, so -1 is unambiguous.
+# SQUEEZE BOTH SIDES, and the argument for it is a CORRECTION of the one written above `flat`.
+# That comment claimed squeezing "can only make a match more tolerant, never less, so it cannot
+# manufacture a false pass". THAT IS FALSE FOR `absent`, whose pass condition is a count of ZERO. The
+# file is squeezed and the payload was not, so a payload carrying two consecutive spaces could never
+# match a squeezed file, `count` returned 0, and `absent` reported the old text GONE while it sat in
+# the file untouched - a fail-open, in the one verb whose whole job is to prove a deletion happened.
+# Measured: zero payloads carry consecutive spaces today, so it was LATENT - but the ARGUMENT was
+# wrong, and a wrong justification is worse than none because it tells the next reader not to check.
+# Squeezing the needle too makes the two sides symmetric, which is what the argument assumed.
 count() {
   if [ ! -r "$1" ]; then echo -1; return; fi
-  flat "$1" | grep -oF -e "$2" | grep -c .
+  _needle=$(printf '%s' "$2" | tr -s ' ')
+  flat "$1" | grep -oF -e "$_needle" | grep -c .
 }
 
 # lineof FILE TEXT -> the first matching line number, or empty. Line-based of necessity, since a
@@ -2621,7 +2631,13 @@ blankness() {
 
 # ---- VERBS. Each is the ONLY implementation of its assertion. ---------------------------------
 
-say_fail() { echo "  FAIL: $*" >&2; FAIL=1; }
+# `printf '%s\n'`, NOT `echo`. POSIX leaves `echo`'s handling of backslashes IMPLEMENTATION-DEFINED,
+# and a shell that interprets them (dash does) would mangle or truncate a failure message carrying a
+# payload with `\n` or `\c` in it - on the one output path that has to stay readable. MEASURED on this
+# box: `sh -c 'echo "a\nb"'` prints the backslashes literally, so it does NOT reproduce here; this
+# plan avoids `grep -P` for exactly the same class of reason, so the consistent move is to spend one
+# character on `printf` rather than rely on which `sh` the executor happens to have.
+say_fail() { printf '%s\n' "  FAIL: $*" >&2; FAIL=1; }
 
 # absent / once / exactly all land here: one cardinality assertion, three names at the table.
 v_count() {  # $1=file  $2=text  $3=want  $4=verb-name
@@ -2853,6 +2869,15 @@ atleast|plugin/skills/agy-test-audit/SKILL.md|<BASE>|1|
 exactly|plugin/skills/agy-first/SKILL.md|agy-mark.sh|3|
 exactly|plugin/skills/agy-capstone/SKILL.md|agy-mark.sh|6|
 exactly|plugin/skills/agy-test-audit/SKILL.md|agy-mark.sh|3|
+# The four rows below are the 14c SURVIVORS. Rows 1, 2, 5 and 8 of the edit table each name text that
+# MUST SURVIVE the edit, in bold, and each records an earlier draft that would have deleted it - row
+# 2's is the clause telling the peer to notify the human. Like the 14h tail, these are deliberately
+# NOT discriminators of "the edit happened": the text is present before the edit too, so on their own
+# they would pass on an untouched file. The `exactly` counts above are what prove the edit happened;
+# these prove it did not take a bystander with it. The pair covers the row, neither half alone.
+# (The row-9 row in the always-table above is the OPPOSITE case and must not be "simplified" to match
+# these: its payload is text the edit INSERTS, measured absent before and present after, so it IS a
+# discriminator. Same verb, opposite role - do not assume every `once` row is one kind.)
 once|plugin/skills/agy-first/SKILL.md|the auto-fire hook does not re-inject this discipline for the same cycle||
 once|plugin/skills/agy-first/SKILL.md|tell your human in-chat that the consult was skipped and name the fork it skipped||
 once|plugin/skills/agy-capstone/SKILL.md|does not re-inject the capstone for the same||
