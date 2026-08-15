@@ -3497,9 +3497,6 @@ if ($doCs   -and -not (Test-Path -LiteralPath $CsTarget))   { Fail "C# target no
 
 # READ AS BYTES AND DECODE EXPLICITLY. Get-Content -Raw would go through the host encoding.
 $coreText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($CoreSource))
-# NORMALISE, THEN ESCAPE. The pinning tests normalise only the FILE side and compare it to the literal
-# AS-IS, so a generator that bakes \r\n into the literals reddens the exact gate it exists to protect.
-$coreText = $coreText.Replace("`r`n", "`n").Trim()
 # STRIP A LEADING BOM EXPLICITLY - .Trim() does NOT remove it. Measured: [char]::IsWhiteSpace(0xFEFF) is
 # FALSE in .NET, so a BOM survives Trim() and would be baked verbatim into the START of both literals.
 # ReadAllBytes + UTF8.GetString is used deliberately here (Get-Content would hide the problem by
@@ -3508,7 +3505,15 @@ $coreText = $coreText.Replace("`r`n", "`n").Trim()
 # Left unhandled it would fail LOUDLY but confusingly: the pinning tests read the file with
 # File.ReadAllText, which DOES strip the BOM, so only the literal would carry it, and U+FEFF is
 # non-ASCII so the injected-context gate would red as well.
+#
+# ORDER IS LOAD-BEARING, and an earlier draft had it backwards. With the BOM stripped AFTER Trim(),
+# a file beginning BOM + whitespace KEEPS that whitespace: Trim() halts at the BOM because U+FEFF is
+# not whitespace, and TrimStart() then removes only the BOM. MEASURED on "<BOM>  Driver text" -
+# Trim-then-strip yields "  Driver text" (13 chars); strip-then-Trim yields "Driver text" (11).
 $coreText = $coreText.TrimStart([char]0xFEFF)
+# NORMALISE, THEN ESCAPE. The pinning tests normalise only the FILE side and compare it to the literal
+# AS-IS, so a generator that bakes \r\n into the literals reddens the exact gate it exists to protect.
+$coreText = $coreText.Replace("`r`n", "`n").Trim()
 
 if ($coreText.Length -eq 0) { Fail "canonical source is empty after trim: $CoreSource" }
 
