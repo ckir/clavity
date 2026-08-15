@@ -2271,25 +2271,46 @@ The two items must be counted **separately**. A combined count passes when one i
 other was not, which is exactly the failure a completion check exists to catch.
 
 ```bash
-# 14c: the agy-mark.sh invocations. SKIP this loop if Task 1 recorded BLOCKED.
-for p in clavity-dotnet clavity-classic; do
-  for s in agy-first agy-capstone agy-test-audit; do
-    printf '14c %s/%s: %s\n' "$p" "$s" "$(grep -c 'agy-mark.sh' $p/plugin/skills/$s/SKILL.md)"
+set -u
+FAIL=0
+
+# Resolve Task 1's recorded consequence ONCE, in code. A comment reading "skip this if BLOCKED" is
+# not a conditional: an executor runs a fenced block as one unit and bash discards comments, so the
+# loop would run on the BLOCKED path against unedited files, print zeros, and contradict the
+# "expected six non-zero counts" line below it.
+M=docs/superpowers/plans/2026-08-14-anomaly-hotfix-batch-task1-measurement.md
+TASK1=$(grep -oE '^- \[[xX]\] \*\*(RESOLVED|BLOCKED)\*\*' "$M" | grep -oE 'RESOLVED|BLOCKED')
+if [ "$(printf '%s\n' "$TASK1" | grep -c .)" -ne 1 ]; then
+  echo "ABORT: expected exactly one ticked consequence in $M, got: '$TASK1'." >&2; exit 1
+fi
+
+# 14c: the agy-mark.sh invocations. Runs ONLY on the RESOLVED path.
+if [ "$TASK1" = "RESOLVED" ]; then
+  for p in clavity-dotnet clavity-classic; do
+    for s in agy-first agy-capstone agy-test-audit; do
+      n=$(grep -c 'agy-mark.sh' $p/plugin/skills/$s/SKILL.md)
+      printf '14c %s/%s: %s\n' "$p" "$s" "$n"
+      [ "$n" -gt 0 ] || { echo "  FAIL: $p/$s has no agy-mark.sh invocation" >&2; FAIL=1; }
+    done
   done
-done
+else
+  echo "14c: SKIPPED - Task 1 recorded BLOCKED."
+fi
 
 # 14h: the seat instruction. ALWAYS runs - it is not conditional on Task 1.
 # The REMOVAL half is a DIFFERENT string per file, because the defective text differs per file.
 # A shared removal-grep is vacuous on the file that never contained it.
+check_14h() {  # $1=file  $2=removal string  $3=label
+  se=$(grep -c 'Axiom Breaker' "$1")
+  ro=$(grep -c 'rotate seats' "$1")
+  ol=$(grep -c "$2" "$1")
+  echo "14h $3: seats=$se rotate=$ro old_removed=$ol"
+  [ "$se" -ge 1 ] && [ "$ro" -ge 1 ] && [ "$ol" -eq 0 ] \
+    || { echo "  FAIL: $3 expected seats>=1 rotate>=1 old_removed=0" >&2; FAIL=1; }
+}
 for p in clavity-dotnet clavity-classic; do
-  printf '14h %s/agy-first: seats=%s rotate=%s old_removed=%s\n' "$p" \
-    "$(grep -c 'Axiom Breaker' $p/plugin/skills/agy-first/SKILL.md)" \
-    "$(grep -c 'rotate seats' $p/plugin/skills/agy-first/SKILL.md)" \
-    "$(grep -c 'Default persona: bold inventive' $p/plugin/skills/agy-first/SKILL.md)"
-  printf '14h %s/agy-test-audit: seats=%s rotate=%s old_removed=%s\n' "$p" \
-    "$(grep -c 'Axiom Breaker' $p/plugin/skills/agy-test-audit/SKILL.md)" \
-    "$(grep -c 'rotate seats' $p/plugin/skills/agy-test-audit/SKILL.md)" \
-    "$(grep -c 'Optional per-run mitigation' $p/plugin/skills/agy-test-audit/SKILL.md)"
+  check_14h "$p/plugin/skills/agy-first/SKILL.md" 'Default persona: bold inventive' "$p/agy-first"
+  check_14h "$p/plugin/skills/agy-test-audit/SKILL.md" 'Optional per-run mitigation' "$p/agy-test-audit"
 done
 
 # ASCII invariant on every file touched by either item.
@@ -2305,7 +2326,12 @@ HIBYTE=$(printf '[\200-\377]')
 for p in clavity-dotnet clavity-classic; do
   for s in agy-first agy-capstone agy-test-audit; do
     f=$p/plugin/skills/$s/SKILL.md
-    LC_ALL=C grep -n "$HIBYTE" "$f" && echo "NON-ASCII in $f - FIX BEFORE COMMIT"
+    # `grep && echo` PRINTS and exits 0. A guard that only prints does not guard: the executor runs
+    # this block and the next one, and the contaminated file is committed with a warning scrolled
+    # past above it. Set the failure flag; Step 5 exits non-zero at the end and Step 6 never runs.
+    if LC_ALL=C grep -n "$HIBYTE" "$f"; then
+      echo "  FAIL: NON-ASCII in $f" >&2; FAIL=1
+    fi
   done
 done
 
@@ -2313,17 +2339,36 @@ done
 # A presence-grep alone is satisfied by appending the required words anywhere - including inside a
 # trailing HTML comment - so it cannot distinguish "inserted into the instructions" from "pasted at
 # the bottom". Compare LINE NUMBERS against an anchor that must follow the insertion.
+# BOUND THE INSERTION ON BOTH SIDES. A one-sided "seat < anchor" test is satisfied by dumping the
+# text at line 1 - 1 is less than any anchor, so the guard says OK for text sitting above the
+# document's own title. The insertion point is an INTERVAL, so assert the interval: it must fall
+# AFTER the section it belongs to opens and BEFORE the line that must follow it.
+check_pos() {  # $1=file  $2=seat string  $3=opening anchor  $4=closing anchor  $5=label
+  s=$(grep -n "$2" "$1" | head -1 | cut -d: -f1)
+  o=$(grep -n "$3" "$1" | head -1 | cut -d: -f1)
+  c=$(grep -n "$4" "$1" | head -1 | cut -d: -f1)
+  if [ -n "$s" ] && [ -n "$o" ] && [ -n "$c" ] && [ "$s" -gt "$o" ] && [ "$s" -lt "$c" ]; then
+    echo "14h-pos $5: seat=$s in ($o,$c) OK"
+  else
+    echo "14h-pos $5: seat=$s open=$o close=$c MISPLACED" >&2; FAIL=1
+  fi
+}
 for p in clavity-dotnet clavity-classic; do
-  f=$p/plugin/skills/agy-first/SKILL.md
-  seat=$(grep -n 'Seat a panel, not a persona' "$f" | head -1 | cut -d: -f1)
-  anch=$(grep -n 'The peer is empowered to CHALLENGE' "$f" | head -1 | cut -d: -f1)
-  echo "14h-pos $p/agy-first: seat=$seat anchor=$anch $( [ -n "$seat" ] && [ -n "$anch" ] && [ "$seat" -lt "$anch" ] && echo OK || echo MISPLACED )"
-
-  f=$p/plugin/skills/agy-test-audit/SKILL.md
-  seat=$(grep -n 'Seat the audit, do not send one voice' "$f" | head -1 | cut -d: -f1)
-  anch=$(grep -n 'Ask for a coverage verdict in a parseable form' "$f" | head -1 | cut -d: -f1)
-  echo "14h-pos $p/agy-test-audit: seat=$seat anchor=$anch $( [ -n "$seat" ] && [ -n "$anch" ] && [ "$seat" -lt "$anch" ] && echo OK || echo MISPLACED )"
+  check_pos "$p/plugin/skills/agy-first/SKILL.md" \
+    'Seat a panel, not a persona' \
+    'Frame the fork as a GOAL' \
+    'The peer is empowered to CHALLENGE' \
+    "$p/agy-first"
+  check_pos "$p/plugin/skills/agy-test-audit/SKILL.md" \
+    'Seat the audit, do not send one voice' \
+    '## The audit round' \
+    'Ask for a coverage verdict in a parseable form' \
+    "$p/agy-test-audit"
 done
+
+# One exit for the whole step. Step 6 must be unreachable if any check above failed.
+[ "$FAIL" -eq 0 ] || { echo "STEP 5 FAILED - do not proceed to Step 6." >&2; exit 1; }
+echo "Step 5: all checks passed."
 ```
 
 Expected, 14c: **six** non-zero counts. A zero means that file was not edited - which no cross-product
@@ -2398,14 +2443,28 @@ if ! just check-injected-context; then
   echo "GATE FAILED: check-injected-context. Nothing staged, nothing committed." >&2; exit 1
 fi
 
-# Stage the SIX files by name. Never `git add <directory>`: a directory stage sweeps whatever else
-# happens to be untracked or modified under it into this commit.
-git add clavity-dotnet/plugin/skills/agy-first/SKILL.md \
-        clavity-dotnet/plugin/skills/agy-capstone/SKILL.md \
-        clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md \
-        clavity-classic/plugin/skills/agy-first/SKILL.md \
-        clavity-classic/plugin/skills/agy-capstone/SKILL.md \
-        clavity-classic/plugin/skills/agy-test-audit/SKILL.md
+# Stage BY NAME, and stage only the files THIS PATH actually edits. Never `git add <directory>`: a
+# directory stage sweeps whatever else happens to be untracked or modified under it. And on the
+# BLOCKED path `agy-capstone` is never edited, so naming it there would sweep in any unrelated WIP
+# edit sitting in that file under a message asserting only 14h was done.
+PATHS="clavity-dotnet/plugin/skills/agy-first/SKILL.md
+clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md
+clavity-classic/plugin/skills/agy-first/SKILL.md
+clavity-classic/plugin/skills/agy-test-audit/SKILL.md"
+if [ "$TASK1" = "RESOLVED" ]; then
+  PATHS="$PATHS
+clavity-dotnet/plugin/skills/agy-capstone/SKILL.md
+clavity-classic/plugin/skills/agy-capstone/SKILL.md"
+fi
+
+# `git add` can fail - an index.lock, a missing path, a permissions error. Unchecked, its failure
+# leaves the index empty and the NEXT check reports "Step 1 made no edit", which sends the operator
+# to the wrong place entirely.
+if ! printf '%s\n' "$PATHS" | xargs git add --; then
+  echo "STAGING FAILED: git add returned non-zero (index.lock? missing path? permissions?)." >&2
+  echo "      This is NOT 'no edit was made' - fix the staging error itself." >&2
+  exit 1
+fi
 
 # An EMPTY index here is not a gate failure - it means this task made no edit at all. Say so, and do
 # NOT tell the operator to "re-run": re-running reproduces it forever.
