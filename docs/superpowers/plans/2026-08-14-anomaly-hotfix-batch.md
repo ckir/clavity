@@ -2297,11 +2297,32 @@ done
 # > 127 and nothing else, so tab and every other control character are LEGAL. A guard written as
 # '[^ -~]' would reject tab and be STRICTER than the gate it stands in for - a local check that
 # red-lights a file the real gate accepts is a false alarm, not extra safety.
+#
+# The byte class is built with printf and NOT written as grep -P '[\x80-\xFF]'. -P is PCRE, which is
+# a GNU grep extension absent from BSD grep and BusyBox; this plan is the only place in the repo that
+# would have required it, so it would have introduced a toolchain dependency nothing else here needs.
+HIBYTE=$(printf '[\200-\377]')
 for p in clavity-dotnet clavity-classic; do
   for s in agy-first agy-capstone agy-test-audit; do
     f=$p/plugin/skills/$s/SKILL.md
-    LC_ALL=C grep -nP '[\x80-\xFF]' "$f" && echo "NON-ASCII in $f - FIX BEFORE COMMIT"
+    LC_ALL=C grep -n "$HIBYTE" "$f" && echo "NON-ASCII in $f - FIX BEFORE COMMIT"
   done
+done
+
+# POSITIONAL check for 14h: the seat text must land in the RIGHT PLACE, not merely exist in the file.
+# A presence-grep alone is satisfied by appending the required words anywhere - including inside a
+# trailing HTML comment - so it cannot distinguish "inserted into the instructions" from "pasted at
+# the bottom". Compare LINE NUMBERS against an anchor that must follow the insertion.
+for p in clavity-dotnet clavity-classic; do
+  f=$p/plugin/skills/agy-first/SKILL.md
+  seat=$(grep -n 'Seat a panel, not a persona' "$f" | head -1 | cut -d: -f1)
+  anch=$(grep -n 'The peer is empowered to CHALLENGE' "$f" | head -1 | cut -d: -f1)
+  echo "14h-pos $p/agy-first: seat=$seat anchor=$anch $( [ -n "$seat" ] && [ -n "$anch" ] && [ "$seat" -lt "$anch" ] && echo OK || echo MISPLACED )"
+
+  f=$p/plugin/skills/agy-test-audit/SKILL.md
+  seat=$(grep -n 'Seat the audit, do not send one voice' "$f" | head -1 | cut -d: -f1)
+  anch=$(grep -n 'Ask for a coverage verdict in a parseable form' "$f" | head -1 | cut -d: -f1)
+  echo "14h-pos $p/agy-test-audit: seat=$seat anchor=$anch $( [ -n "$seat" ] && [ -n "$anch" ] && [ "$seat" -lt "$anch" ] && echo OK || echo MISPLACED )"
 done
 ```
 
@@ -2327,7 +2348,21 @@ item 14h does not touch it.
 
 Expected, ASCII: no output at all from the third loop. **Verified control for that guard:** on a fixture
 containing an em-dash line and a tab-indented line it reports exactly **one** match - it catches the
-em-dash and ignores the tab, which is the behaviour the repo gate defines.
+em-dash and ignores the tab, which is the behaviour the repo gate defines. The `printf`-built byte class
+was measured to give the identical result to the `grep -P` form it replaces.
+
+Expected, 14h-pos: **four** rows, every one ending `OK`. A `MISPLACED` means the seat text exists in the
+file but NOT before the anchor that must follow it - the presence-grep above would still have said
+`seats=1`.
+
+> 🔴 **Why a positional check and not just a presence-grep.** `grep -c 'Axiom Breaker'` is satisfied by
+> the string existing ANYWHERE - including a trailing `<!-- Axiom Breaker rotate seats -->` that no
+> reader ever sees. Presence proves a string was typed; **position proves it was inserted into the
+> instruction flow.** This is the same weakness this task already admits to for the 14c half ("no
+> behavioural test... the strongest available oracle asserts the `.md` contains the invocation string,
+> which cannot fail against a model that ignores it") - the positional form is strictly stronger and
+> costs one `grep` per file, so 14h takes it. It still does not prove the model OBEYS the instruction;
+> nothing in a markdown check can.
 
 - [ ] **Step 6: Gates and commit**
 
@@ -2355,11 +2390,37 @@ else
   exit 1
 fi
 
-bash scripts/check-seed-artifacts-synced.sh \
-  && just check-injected-context \
-  && git add clavity-dotnet/plugin/skills clavity-classic/plugin/skills \
-  && git commit -m "$MSG" \
-  || { echo "GATE OR COMMIT FAILED - nothing was committed. Fix and re-run." >&2; exit 1; }
+# Gates first, on their own. A gate failure must never be confusable with anything downstream.
+if ! bash scripts/check-seed-artifacts-synced.sh; then
+  echo "GATE FAILED: check-seed-artifacts-synced. Nothing staged, nothing committed." >&2; exit 1
+fi
+if ! just check-injected-context; then
+  echo "GATE FAILED: check-injected-context. Nothing staged, nothing committed." >&2; exit 1
+fi
+
+# Stage the SIX files by name. Never `git add <directory>`: a directory stage sweeps whatever else
+# happens to be untracked or modified under it into this commit.
+git add clavity-dotnet/plugin/skills/agy-first/SKILL.md \
+        clavity-dotnet/plugin/skills/agy-capstone/SKILL.md \
+        clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md \
+        clavity-classic/plugin/skills/agy-first/SKILL.md \
+        clavity-classic/plugin/skills/agy-capstone/SKILL.md \
+        clavity-classic/plugin/skills/agy-test-audit/SKILL.md
+
+# An EMPTY index here is not a gate failure - it means this task made no edit at all. Say so, and do
+# NOT tell the operator to "re-run": re-running reproduces it forever.
+if git diff --cached --quiet; then
+  echo "STOP: nothing staged. The gates passed, so this is NOT a gate failure - Step 1 made no edit" >&2
+  echo "      to any of the six files. Go back to Step 1; do not re-run this step." >&2
+  exit 1
+fi
+
+if ! git commit -m "$MSG"; then
+  echo "COMMIT FAILED (a hook rejected it, or identity is unset). NOTE: the six files are STILL" >&2
+  echo "      STAGED - the index is dirty. Fix the cause, then commit the existing index; do not" >&2
+  echo "      re-run the git add." >&2
+  exit 1
+fi
 ```
 
 > 🔴 **Why `&&` and not `; echo "RC=$?"`.** An earlier draft of this step ran the gate, echoed its exit
