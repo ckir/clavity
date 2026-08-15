@@ -26,10 +26,27 @@ this skill reads as a floor but never edits.
      `git -C <base> rev-parse --is-inside-work-tree` answers `true` for a checkout or worktree and
      non-zero for an installed tree. Install roots vary by platform and product, so pattern-matching the
      install path wrongly excludes real installs.
-  3. If it IS a work tree, **STOP - do not drain it.** Say so and ask which install to drain.
+  2b. Test the CHECKOUT with a payload-absence marker, never with `git`: **`<base>/../../installer/`
+     exists => checkout; absent => install.** (`git rev-parse --is-inside-work-tree` climbs to a PARENT
+     repo, so an install inside a git-managed home directory measures as a checkout - and a missing `git`
+     exits non-zero, which would read as "install" and route the write the wrong way.) **If the test
+     cannot be performed, treat it as a checkout.**
+  3. If it IS a checkout, **STOP - do not drain it.** Say so and ask which install to drain.
 
   **Print the resolved absolute path and its pending count before you drain anything**, and again after
   the reset. If the path is not the one the nudge reports on, you drained the wrong file.
+
+- **The STAGING file - drain it in the SAME run, or it becomes the orphan this rule exists to prevent.**
+  `agy-learn` appends to `<USERPROFILE or HOME>/.clavity/agy-observations.staged.md` whenever it cannot
+  resolve the live inbox. **Nothing else ever reads that file**, so a capstone round correctly called the
+  first version of it a silent black hole: a new orphan store created by the very change that existed to
+  stop orphaned captures. So, every drain:
+  1. If `.clavity/agy-observations.staged.md` exists and is non-empty, **fold its bullets into the
+     pending set you are about to triage** - they are ordinary captures that merely took a detour.
+  2. **Dedupe against the inbox** before triaging: the same observation can legitimately appear in both
+     if the operator later routed it by hand.
+  3. **Truncate the staged file only after `curate-commit` exits 0**, on exactly the same reasoning that
+     puts the `## Pending` reset last. An emptied stage plus a failed publish loses the entries.
 - The **runtime SEED floor**: the shared `%USERPROFILE%\.clavity\golden-header.seed.md` that the driver
   actually injects (honor a `CLAVITY_GOLDEN_HEADER` **directory** override; default `%USERPROFILE%\.clavity\`).
   Read it to dedupe - a rule already stated in SEED must NOT be repeated in GROWTH. Resolve it at the RUNTIME

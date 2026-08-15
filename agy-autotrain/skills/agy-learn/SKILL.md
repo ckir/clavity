@@ -66,11 +66,27 @@ Resolve in this order, and do not skip to the fallback:
    **Test for the checkout, do not pattern-match the install.** Install roots vary by platform and by
    product (`.../Programs/<product>/plugins/...`, `~/.claude/plugins/cache/...`,
    `~/.gemini/config/plugins/...` are all real), so any "is it under X" test excludes a legitimate
-   install somewhere and sends it to the STOP branch for no reason. The reliable discriminator is the
-   opposite one, and it is platform-independent: **run `git -C <base> rev-parse --is-inside-work-tree`.
-   A repo checkout or worktree answers `true`; an installed tree has no `.git` at or above it and
-   answers non-zero.** Use the base directory only when that check says it is NOT a work tree.
-3. **If it IS a work tree, do not append there.** But do not lose the observation either - see below.
+   install somewhere.
+
+   **Use a PAYLOAD-ABSENCE marker, not `git`.** The repository tree carries directories the installer
+   deliberately excludes from the shipped payload - `agy-autotrain/installer/` is the stable one
+   (`agy-autotrain/installer/agy-autotrain.iss` line ~54: `Excludes: "\installer,\dist,\publish,...")`.
+   So: **`<base>/../../installer/` exists => this is a CHECKOUT. It does not exist => this is an
+   install.** Verified 2026-08-15: the installed tree has no `installer/`; the repo tree has one.
+
+   **Do NOT use `git rev-parse --is-inside-work-tree` for this** - the first version of this rule did,
+   and a capstone round killed it with two reachable failures, one of them measured:
+   - **MEASURED false positive:** git discovery climbs to a PARENT repo. An install nested anywhere
+     inside a git repository - a git-managed home directory is the common case - answers `true`, so a
+     real install is classified as a checkout and **captures are permanently blocked**.
+   - **Fail-open on a missing tool:** `git` absent from PATH exits non-zero, which that rule read as
+     "installed tree" - so the tool being missing routed the write INTO a checkout, the exact defect the
+     rule exists to prevent.
+3. **If it IS a checkout, do not append there.** But do not lose the observation either - see below.
+
+**WHEN THE TEST IS UNCERTAIN, TREAT IT AS A CHECKOUT.** If the marker check cannot be performed at all,
+do not guess in the direction of writing. The staging step below makes that default cheap: an
+unnecessary stage costs one paste, while a wrong write costs an observation nobody ever finds.
 
 **NEVER DISCARD THE CAPTURE IN ORDER TO OBEY THIS RULE.** Capture is cheap and mid-task, which is exactly
 why an instruction to "stop and ask" loses observations: the rule interrupts a task the agent then
