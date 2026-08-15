@@ -2023,6 +2023,12 @@ created - which is what those rows assert.
 
 - [ ] **Step 4: Mirror, register, run**
 
+> **The pair gates for this mirror run in Step 6, not here.** `check-seed-artifacts-synced.sh`,
+> `plugin-hooks-payload.Tests.ps1` and `just check-injected-context` are all in that step, immediately
+> before the commit. Task 5 combines mirror-gate-commit into one step and this task splits them, which
+> has already caused one reviewer to read this step alone and report the byte-identical pair discipline
+> (global rule 3, `:55`) as unenforced here. It is enforced - just later.
+
 ```bash
 cp clavity-dotnet/plugin/hooks/agy-mark.sh clavity-classic/plugin/hooks/agy-mark.sh
 git hash-object clavity-dotnet/plugin/hooks/agy-mark.sh clavity-classic/plugin/hooks/agy-mark.sh
