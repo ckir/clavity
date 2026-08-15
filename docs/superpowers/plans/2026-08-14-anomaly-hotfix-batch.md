@@ -2715,23 +2715,37 @@ done
 check_para() {  # $1=file  $2=seat string  $3=closing anchor  $4=label
   s=$(grep -n "$2" "$1" | head -n 1 | cut -d: -f1)
   c=$(grep -n "$3" "$1" | head -n 1 | cut -d: -f1)
-  if [ -z "$s" ] || [ -z "$c" ] || [ "$s" -le 1 ]; then
-    echo "14h-para $4: seat=$s close=$c - anchor missing or at line 1, cannot judge separation" >&2
+  # `$c -le $s` is rejected rather than judged. A backwards `sed` range does NOT print nothing - it
+  # prints the FIRST line and stops - so an inverted layout could otherwise be scored on a line that
+  # has nothing to do with the block. `check_pos` owns ordering; this helper refuses to guess when the
+  # anchors are out of order.
+  if [ -z "$s" ] || [ -z "$c" ] || [ "$s" -le 1 ] || [ "$c" -le "$s" ]; then
+    echo "14h-para $4: seat=$s close=$c - anchor missing, at line 1, or out of order; cannot judge separation" >&2
     FAIL=1; return
   fi
-  before=$(sed -n "$((s - 1))p" "$1" | tr -d '\r')
-  # grep -c prints 0 and EXITS 1 on no match; the value is captured, and nothing here runs under
-  # `set -e`, so the non-zero status is inert. Do not wrap this in `if grep` - that is the
-  # three-outcome-in-a-two-outcome-construct trap this plan has already hit twice.
-  gap=$(sed -n "$((s + 1)),$((c - 1))p" "$1" | tr -d '\r' | grep -c '^$')
+  # A WHITESPACE-ONLY LINE IS A BLANK LINE. CommonMark: "a line containing no characters, or a line
+  # containing only spaces or tabs". A guard that demands a ZERO-LENGTH line is STRICTER than the rule
+  # it stands in for, and that is a false alarm, not extra safety - the same mistake this step already
+  # made once with `[^ -~]` against a gate that only rejects a byte > 127.
+  # MEASURED: with the separators turned into single-space lines - a correct edit by the real rule -
+  # the zero-length form reported "line 55 is not blank - the block is welded to the paragraph above"
+  # and reddened a good insertion. Strip the whitespace before testing, and match it in the count.
+  # NAME THE TWO LINES, do not count blanks across a RANGE. Counting `^[[:space:]]*$` anywhere in
+  # (s+1, c-1) accepts a blank line sitting INSIDE the block as proof that the block is separated from
+  # its successor, which it is not. MEASURED: a fixture with the blank-before intact, one blank line
+  # added inside the block, and the closing anchor welded directly onto the block's last line scored
+  # "blank before 56, 1 blank line(s) before 68 OK" - FAIL=0, certifying the weld it exists to catch.
+  # The two lines that carry the contract are `s - 1` and `c - 1`; assert those, and nothing else.
+  before=$(sed -n "$((s - 1))p" "$1" | tr -d '\r \t')
+  after=$(sed -n "$((c - 1))p" "$1" | tr -d '\r \t')
   if [ -n "$before" ]; then
     echo "14h-para $4: line $((s - 1)) is not blank - the block is welded to the paragraph above" >&2
     FAIL=1
-  elif [ "$gap" -eq 0 ]; then
-    echo "14h-para $4: no blank line between the block and line $c - the successor is welded on" >&2
+  elif [ -n "$after" ]; then
+    echo "14h-para $4: line $((c - 1)) is not blank - the successor at $c is welded onto the block" >&2
     FAIL=1
   else
-    echo "14h-para $4: blank before $s, $gap blank line(s) before $c OK"
+    echo "14h-para $4: blank at $((s - 1)) and at $((c - 1)) OK"
   fi
 }
 
@@ -4572,8 +4586,15 @@ foreground cap, so it absorbs this at no cost to the loop.
 **Backgrounded, blocking on its own `Tests completed` line, never on a process count.** A partition figure
 that is asserted rather than measured is exactly what `_partition.md` forbids.
 
+**The prose above said "backgrounded" while the command below ran in the FOREGROUND** - no `&`, no
+detach, nothing. This recipe exceeds the foreground cap by construction (that is why the global rule
+names it), so a literal executor gets the run killed mid-suite and a log that ends with no verdict
+line - and by the rule two lines down, **a log with no verdict line is an ABORTED run, not a pass**.
+Launch it DETACHED (your harness's background mode, or the trailing `&` below), then read the log in a
+SEPARATE, LATER call:
+
 ```bash
-pwsh -c "just test-scripts-slow" > /tmp/slow-run.log 2>&1
+pwsh -c "just test-scripts-slow" > /tmp/slow-run.log 2>&1 &
 ```
 
 Run this in the BACKGROUND. When it finishes, read the log:
@@ -5114,16 +5135,17 @@ Then, one at a time (**never two Pester suites concurrently**):
 pwsh -c "Invoke-Pester scripts/tests/plugin-hooks-payload.Tests.ps1 -Output Detailed -CI"
 ```
 
-Then the fast half, **backgrounded**, blocking on its `Tests Passed:` line:
+Then the fast half, **backgrounded** (the trailing `&` is not decoration - without it the run is
+foreground and the cap kills it), blocking on its `Tests Passed:` line:
 
 ```bash
-pwsh -c "just test-scripts-fast" > /tmp/fast-run.log 2>&1
+pwsh -c "just test-scripts-fast" > /tmp/fast-run.log 2>&1 &
 ```
 
 Then the slow half, **backgrounded**, blocking on its `Tests completed` line:
 
 ```bash
-pwsh -c "just test-scripts-slow" > /tmp/slow-run.log 2>&1
+pwsh -c "just test-scripts-slow" > /tmp/slow-run.log 2>&1 &
 ```
 
 **A log with no `Tests Passed:` line is an ABORTED run, not a pass.** Read the counts in both.
