@@ -2115,8 +2115,10 @@ git commit -m "feat(shield): 14c - agy-mark.sh, the sanctioned .clavity writer f
 > | Task 1 = RESOLVED | all 11 rows | yes | **yes** | yes | all four checks | yes, 14c+14h message |
 > | Task 1 = BLOCKED | rows 3, 9, 10 only | yes | **SKIP - see below** | yes | **14h, ASCII and positional only; the 14c count is skipped** | yes, 14h-only message |
 >
-> Step 5 runs FOUR checks, not two: the 14c exact-count loop, the 14h presence loop, the ASCII/NUL
-> loop, and the positional loop. Only the first is conditional.
+> Step 5 is TWO expectation tables driven by nine verbs, not a pile of loops. The always-table carries
+> the 14h and encoding expectations; the 14c table runs only on the RESOLVED path. Read either table
+> against the 11-row edit table above - that is what it is for, and a missing obligation shows up as a
+> missing ROW rather than as absent code.
 >
 > 🔴 **Step 3 does not skip itself.** It contains no conditional and an executor reading it in isolation
 > will run it. On the BLOCKED path there is nothing for it to do - no `prepare` invocation was added by
@@ -2153,8 +2155,11 @@ artifacts; the REWRITE set is three.
 > where the canonical gate reports a generic encoding violation. KEPT.
 >
 > **Step 5 checks both plugins even though Step 4 has just proven them byte-identical.** Considered and
-> KEPT - but the cost figure in the first draft of this note was wrong. **Step 5 contains 17 grep
-> invocations in total, roughly half of which run against `classic`**, not the "six" originally claimed.
+> KEPT - but the cost figure in the first draft of this note was wrong, and the redesign changed it
+> again, so it is re-measured rather than carried. **Step 5 now evaluates 36 assertions on the BLOCKED
+> path and 54 on RESOLVED - 18 and 27 table rows, each run against both plugins - and MEASURED
+> end-to-end at roughly 22 seconds on this machine**, dominated by process spawn rather than by any
+> one check.
 > It is kept anyway because it keeps Step 5 meaningful if ever run without Step 4 - which is how a
 > partially-executed task gets diagnosed - and because at that scale the cost is still trivial. **A
 > defence that rests on a number must state the real number.** Likewise Step 4's three loops are kept separate on
@@ -2165,10 +2170,11 @@ artifacts; the REWRITE set is three.
 `.md` contains the invocation string, which cannot fail against a model that ignores it. The executable
 is where the strength lives. **For item 14c, the per-file completion check in Task 16 is the only
 guarantee that the edit was made at all**, and that is a different question from whether the model obeys
-it. **Item 14h is separately covered:** `check_14h` asserts the seat text is present, that `rotate seats`
-is present, and that the removed instruction is GONE (`old_removed`), and `check_pos` asserts the
-inserted block sits between its two anchors. Those four run UNCONDITIONALLY, so for the 14h rows
-Task 16 is a second pair of eyes rather than the only one.
+it. **Item 14h is separately covered** by the always-table in Task 7 Step 5: `atleast` rows assert the
+seat text and `rotate seats` are present, an `absent` row asserts the removed instruction is GONE,
+`between` asserts the block sits inside its interval, `para` asserts it is its own paragraph, and two
+`once` rows assert the sentences that must survive the split are each present exactly once. That table
+runs UNCONDITIONALLY, so for the 14h rows Task 16 is a second pair of eyes rather than the only one.
 
 > 🔴 **Do NOT credit the exact `agy-mark.sh` counts or the placeholder-residue check here.** Both sit
 > INSIDE `if [ "$TASK1" = "RESOLVED" ]` and are 14c mechanisms: they do not run on the BLOCKED path at
@@ -2516,315 +2522,312 @@ other was not, which is exactly the failure a completion check exists to catch.
 set -u
 FAIL=0
 
+# ==============================================================================================
+# WHY THIS BLOCK IS SHAPED LIKE THIS - read before changing it.
+#
+# It used to be five bespoke helpers, one accreted per review round, each with its own anchor
+# convention and argument order. Three consecutive capstone rounds then found defects INSIDE the
+# previous round's fix. The defects were not random. They were four repeating classes, and each is
+# now closed in ONE place instead of five:
+#
+#   1. PRIMITIVE DRIFT. Every helper re-derived "count X", "find the line of X", "is line N blank"
+#      with a slightly different spelling, and each new spelling was a new fail-open. There are now
+#      FOUR primitives and every assertion goes through them.
+#   2. THE 0-vs-ERROR MERGE. grep exits 0 = matched, 1 = no match, >=2 = ERROR, and every construct
+#      that folds 2 into 1 reports an UNREADABLE file as a CLEAN one. That was fixed five separate
+#      times here, the fifth introduced by the fix for the fourth. `count` makes the distinction
+#      once, and nothing else is allowed to run a count.
+#   3. ARGUMENT-ORDER CONFUSION. Five signatures, and a reviewer has already misread one and filed a
+#      false finding about it. There is now one signature: a table row.
+#   4. INVISIBLE COVERAGE. Nothing said which obligation each check enforced, so a GAP was invisible
+#      - row 3's own pre-edit hint predicts a DUPLICATED sentence in prose, and for many rounds no
+#      check looked for one. The expectations are now a TABLE, readable line-for-line against the
+#      11-row edit table above.
+#
+# ADDING COVERAGE IS ADDING A DATA ROW, NOT WRITING CODE. That is the point: a new row cannot
+# introduce a new fail-open, because it does not introduce a new way of asking the question.
+#
+# THE TABLE IS FED BY A HERE-DOC REDIRECT, NEVER BY A PIPE. In POSIX sh a piped `while read` loop
+# runs in a SUBSHELL, so `FAIL=1` set inside it is DISCARDED when the loop ends - the step would
+# then pass with every single check failing. MEASURED: `printf ... | while read; do F=1; done`
+# leaves F=0; the here-doc form, and a function called with a here-doc, both leave F=1. This is this
+# block's own defect class one level up, so it is named here rather than left to be rediscovered.
+#
+# THE DELIMITER IS `|` AND NO PAYLOAD MAY CONTAIN ONE. `IFS='|' read -r` makes spaces, parentheses,
+# commas and apostrophes inert payload bytes. MEASURED: with the default IFS the sentence "The peer
+# is empowered (correctness, safety) - you keep the final call." arrives truncated at the first
+# space; with `IFS='|'` it arrives whole. Verified: none of the payloads below contains a pipe. If
+# you add a row whose text contains `|`, change the delimiter for the WHOLE table, not for one row.
+# ==============================================================================================
+
 # Resolve Task 1's recorded consequence ONCE, in code. A comment reading "skip this if BLOCKED" is
 # not a conditional: an executor runs a fenced block as one unit and bash discards comments, so the
-# loop would run on the BLOCKED path against unedited files, print zeros, and contradict the
-# "expected six non-zero counts" line below it.
+# 14c table would run on the BLOCKED path against unedited files and contradict its own expectation.
 M=docs/superpowers/plans/2026-08-14-anomaly-hotfix-batch-task1-measurement.md
 TASK1=$(grep -oE '^- \[[xX]\] \*\*(RESOLVED|BLOCKED)\*\*' "$M" | grep -oE 'RESOLVED|BLOCKED')
 if [ "$(printf '%s\n' "$TASK1" | grep -c .)" -ne 1 ]; then
   echo "ABORT: expected exactly one ticked consequence in $M, got: '$TASK1'." >&2; exit 1
 fi
 
-# 14c: the agy-mark.sh invocations. Runs ONLY on the RESOLVED path.
-if [ "$TASK1" = "RESOLVED" ]; then
-  # EXACT counts, not `-gt 0`. Each file needs SEVERAL 14c edits, and a `> 0` threshold is satisfied
-  # by applying ONE of them - the file then reports as complete with the rest silently missing.
-  # Derived from the 11-row table, counting one invocation per site:
-  #   agy-first      rows 1 (head) + 2 (log) + 4 (prepare)                       = 3
-  #   agy-capstone   rows 5 (head) + 6 (log x2) + 7 (prepare x3)                 = 6
-  #   agy-test-audit rows 8 (head) + 11 (prepare x2)                             = 3
-  # If you change the table, change these numbers in the same edit.
-  for p in clavity-dotnet clavity-classic; do
-    for s in agy-first agy-capstone agy-test-audit; do
-      want=0
-      case "$s" in
-        agy-first)
-          want=3 ;;
-        agy-capstone)
-          want=6 ;;
-        agy-test-audit)
-          want=3 ;;
+# ---- PRIMITIVES. Four. Every assertion below goes through these. -----------------------------
+
+# flat FILE -> the file as ONE line, CR-stripped.
+# Every COUNT runs on this, because grep matches within a single line and every phrase this step
+# hunts can WRAP. MEASURED: `Default persona: bold inventive` is wrapped across two lines in the
+# unedited file, so a line-based grep for it returned 0 on a file nobody had touched - the
+# discriminator that existed to prove the old text was deleted passed vacuously for fifteen rounds.
+# `tr -d '\r'` comes FIRST: on a CRLF checkout the CR survives the newline fold and sits inside any
+# phrase spanning the wrap, which re-opens that same fail-open through a line ending.
+flat() { tr -d '\r' < "$1" | tr '\n' ' '; }
+
+# count FILE TEXT -> prints the number of OCCURRENCES, or -1 if the file could not be read.
+# THE ONLY PLACE THAT COUNTS ANYTHING. An unreadable file must never read as "zero occurrences".
+# `grep -oF -e` then `grep -c .`: -F because the payloads carry punctuation, -e because a payload
+# beginning with `-` would otherwise parse as an option, and the SECOND grep because after the fold
+# the file is one line, so a plain `grep -c` can only ever return 0 or 1 and cannot see a duplicate.
+#
+# THE ERROR IS RETURNED IN THE VALUE, NOT IN A GLOBAL, AND THAT IS LOAD-BEARING. The first version of
+# this function set a flag for the caller to read. It cannot work: every caller invokes `count` inside
+# `$( )`, which is a SUBSHELL, so the flag is discarded exactly as `FAIL` is discarded by a piped
+# `while` loop - the same defect class, one layer down. MEASURED: under `set -u` the caller died with
+# `unbound variable`, the LOUD version of the bug; without `set -u` it would have read silently as
+# "no error". A count is never negative, so -1 is unambiguous.
+count() {
+  if [ ! -r "$1" ]; then echo -1; return; fi
+  flat "$1" | grep -oF -e "$2" | grep -c .
+}
+
+# lineof FILE TEXT -> the first matching line number, or empty. Line-based of necessity, since a
+# line number is the thing being asked for; its payloads are short enough not to wrap.
+lineof() { grep -n -F -e "$2" "$1" 2>/dev/null | head -n 1 | cut -d: -f1; }
+
+# blankness FILE N -> B (blank), T (has text), X (no such line).
+# X IS NOT B. Asking sed for a line past EOF prints nothing, which reads as "blank" - the
+# beyond-EOF fail-open this repository has hit more than once. It is a distinct answer here.
+# A line of spaces or tabs IS blank. CommonMark: "a line containing no characters, or a line
+# containing only spaces or tabs". A guard demanding a ZERO-LENGTH line is stricter than the rule it
+# stands in for, and MEASURED, that form reddened a correct edit whose separators held one space.
+blankness() {
+  awk -v n="$2" 'NR==n{gsub(/[\r \t]/,""); print ($0=="")?"B":"T"; f=1; exit} END{if(!f) print "X"}' "$1"
+}
+
+# ---- VERBS. Each is the ONLY implementation of its assertion. ---------------------------------
+
+say_fail() { echo "  FAIL: $*" >&2; FAIL=1; }
+
+# absent / once / exactly all land here: one cardinality assertion, three names at the table.
+v_count() {  # $1=file  $2=text  $3=want  $4=verb-name
+  n=$(count "$1" "$2")
+  if [ "$n" -lt 0 ]; then
+    say_fail "$1 is unreadable - that is NOT the same as a count of 0 ($4)"; return
+  fi
+  if [ "$n" -eq "$3" ]; then
+    echo "  ok $4: [$2] x$n - $1"
+  else
+    say_fail "$1: [$2] appears $n time(s), expected exactly $3 ($4). 0 means it was deleted or truncated; more than expected means an edit was bounded too short and duplicated it."
+  fi
+}
+
+v_atleast() {  # $1=file  $2=text  $3=minimum
+  n=$(count "$1" "$2")
+  if [ "$n" -lt 0 ]; then
+    say_fail "$1 is unreadable - that is NOT the same as a count of 0 (atleast)"; return
+  fi
+  if [ "$n" -ge "$3" ]; then
+    echo "  ok atleast: [$2] x$n - $1"
+  else
+    say_fail "$1: [$2] appears $n time(s), expected at least $3"
+  fi
+}
+
+# The byte class is built with printf and NOT written as grep -P '[\x80-\xFF]'. -P is PCRE, a GNU
+# grep extension absent from BSD grep and BusyBox; this plan would be the only thing in the repo
+# requiring it. MATCHES THE REPO GATE EXACTLY: Test-PureAscii (check-injected-context.ps1:547-550)
+# rejects a byte > 127 and nothing else, so tab and every other control character are LEGAL. A guard
+# written `[^ -~]` rejects tab and is STRICTER than the gate it stands in for - a local check that
+# red-lights a file the real gate accepts is a false alarm, not extra safety.
+HIBYTE=$(printf '[\200-\377]')
+v_ascii() {
+  rc=0
+  LC_ALL=C grep -n "$HIBYTE" "$1" || rc=$?
+  case "$rc" in
+    0) say_fail "NON-ASCII byte in $1 (listed above)" ;;
+    1) echo "  ok ascii: $1" ;;
+    *) say_fail "cannot read $1 (grep exit $rc) - NOT the same as clean" ;;
+  esac
+}
+
+# ADDITIVE, not stricter. A NUL byte means the file is not text at all - typically a UTF-16 save,
+# easy to do by accident on Windows. MEASURED: a UTF-16LE file encoding pure ASCII has ZERO bytes
+# above 127, so the high-byte test above calls it clean and so does the repo's own Test-PureAscii.
+# Both gates pass it. This rejects nothing the repo gate deliberately permits - it rejects a file
+# broken in a way neither gate was looking for.
+v_notnul() {
+  crc=0
+  LC_ALL=C tr -d '\000' < "$1" | cmp -s - "$1" || crc=$?
+  case "$crc" in
+    0) echo "  ok notnul: $1" ;;
+    1) say_fail "$1 contains NUL bytes - it is not ASCII text (UTF-16 save?)" ;;
+    *) say_fail "cannot compare $1 (cmp exit $crc) - NOT the same as clean" ;;
+  esac
+}
+
+# The 14c COUNT alone is gameable: the canonical block in Step 1 contains exactly three
+# `agy-mark.sh` strings, so pasting it verbatim into agy-first hits its target of 3 without a single
+# row being applied. The discriminator is that a pasted TEMPLATE still carries its placeholders while
+# a real edit has substituted them. FOUR tokens, not three - Step 3's guarded block introduces
+# `<SKILL>`, and a draft that omitted it passed an executor who left `echo "<SKILL>: ABORTING..."`
+# in place. `<BASE>` is deliberately NOT in this list: it is the one token that must SURVIVE, so its
+# ABSENCE is the defect - that is the opposite test, and the table asserts it separately.
+# `grep -E`, never BRE `\|`: `\|` is a GNU extension that matches a LITERAL pipe under BSD grep, so
+# the check would silently never match. And three branches, never `|| resid=0`, which maps grep's
+# exit 2 onto "no residue" - the same fail-open shape a third time.
+v_nosub() {
+  rrc=0
+  resid=$(grep -Ec '<DISCIPLINE>|<OUTCOME>|<PATH>|<SKILL>' "$1") || rrc=$?
+  if [ "$rrc" -ge 2 ]; then
+    say_fail "the placeholder check failed on $1 (grep exit $rrc) - NOTHING was checked"; return
+  fi
+  if [ "$resid" -ne 0 ]; then
+    say_fail "$1 still carries $resid unsubstituted placeholder(s) - the canonical block was pasted rather than applied. Substitute <DISCIPLINE>/<OUTCOME>/<PATH>/<SKILL>."
+  else
+    echo "  ok nosub: $1"
+  fi
+}
+
+# BOUND THE INSERTION ON BOTH SIDES. A one-sided "seat < anchor" test is satisfied by dumping the
+# text at line 1 - 1 is less than any anchor - so the guard would say OK for text sitting above the
+# document's own title. The insertion point is an INTERVAL; assert the interval.
+# ARGUMENT ORDER IS LOAD-BEARING AND HAS BEEN MISREAD ONCE: the SEAT column is the INSERTED text,
+# not an anchor. A reviewer read it as the opening anchor, concluded the check searched for text that
+# already existed, and reported it as vacuously passing. MEASURED: `Seat a panel, not a persona` and
+# `Seat the audit, do not send one voice` each occur ZERO times in the pre-edit files, so the check
+# correctly reports a failure BEFORE the edit. Do not "fix" that column to an anchor string - it is
+# the only thing proving the insertion happened.
+v_between() {  # $1=file  $2=inserted seat text  $3=opening anchor  $4=closing anchor
+  s=$(lineof "$1" "$2"); o=$(lineof "$1" "$3"); c=$(lineof "$1" "$4")
+  if [ -n "$s" ] && [ -n "$o" ] && [ -n "$c" ] && [ "$s" -gt "$o" ] && [ "$s" -lt "$c" ]; then
+    echo "  ok between: $1 seat=$s in ($o,$c)"
+  else
+    say_fail "$1 seat=$s open=$o close=$c - the inserted text is not inside its interval"
+  fi
+}
+
+# A PARAGRAPH IS THE CONTRACT, AND A COUNT CANNOT SEE ONE. `flat` folds every newline to a space and
+# `v_between` compares only line NUMBERS, so both pass on a block spliced into the MIDDLE of the
+# running paragraph - the one defect the instruction "a multi-line block cannot be spliced into the
+# middle of a running paragraph" exists to prevent. MEASURED on a fixture built from the real file:
+# the welded insertion passed every other check with FAIL=0 while the unedited control failed, which
+# is what made that pass informative rather than vacuous.
+# NAME THE TWO LINES; do not count blanks across a RANGE. A range from the seat to the successor
+# spans the block ITSELF, so a blank line sitting inside the block satisfied the count while the
+# block's end was welded to its successor - MEASURED, FAIL=0 on exactly that fixture. The two lines
+# carrying the contract are `seat - 1` and `close - 1`.
+# `close <= seat` is REFUSED rather than judged: a backwards range does not read as empty, and
+# ordering is `v_between`'s job, not this one's.
+v_para() {  # $1=file  $2=inserted seat text  $3=closing anchor
+  s=$(lineof "$1" "$2"); c=$(lineof "$1" "$3")
+  if [ -z "$s" ] || [ -z "$c" ] || [ "$s" -le 1 ] || [ "$c" -le "$s" ]; then
+    say_fail "$1 seat=$s close=$c - anchor missing, at line 1, or out of order; cannot judge separation"
+    return
+  fi
+  bb=$(blankness "$1" $((s - 1))); ba=$(blankness "$1" $((c - 1)))
+  if [ "$bb" != B ]; then
+    say_fail "$1 line $((s - 1)) is [$bb], not blank - the block is welded to the paragraph above"
+  elif [ "$ba" != B ]; then
+    say_fail "$1 line $((c - 1)) is [$ba], not blank - the successor at $c is welded onto the block"
+  else
+    echo "  ok para: $1 blank at $((s - 1)) and $((c - 1))"
+  fi
+}
+
+# ---- THE DRIVER. One loop, one signature, both plugins. --------------------------------------
+# An UNKNOWN VERB is a FAILURE, never a skip. A typo in the verb column would otherwise check
+# nothing at all while the table still looked complete - which is defect class 4 reappearing inside
+# the mechanism built to close it.
+# EVERY DRIVER VARIABLE IS PREFIXED `t_`, AND THAT IS NOT STYLE. A shell function shares the caller's
+# variables - there is no `local` in POSIX sh - so a verb that assigns `c` for its own use OVERWRITES
+# the row column of the same name. MEASURED, and it is not theoretical: with the columns named
+# `verb rel a b c`, `v_between` assigned `c=$(lineof ...)` on the FIRST plugin, and the SECOND plugin
+# then looked up a LINE NUMBER as if it were the closing anchor, found nothing, and reported a
+# correct file as MISPLACED. `v_para` escaped only because it happens to read its anchor from a
+# different column. That is defect class 1 reappearing INSIDE the mechanism built to close it.
+# The verbs own the short names (`s`, `o`, `c`, `n`); the driver owns `t_*`; they cannot collide.
+run_table() {
+  while IFS='|' read -r t_verb t_rel t_a t_b t_c; do
+    case "$t_verb" in ''|\#*) continue ;; esac
+    for t_p in clavity-dotnet clavity-classic; do
+      t_f="$t_p/$t_rel"
+      case "$t_verb" in
+        ascii)   v_ascii   "$t_f" ;;
+        notnul)  v_notnul  "$t_f" ;;
+        nosub)   v_nosub   "$t_f" ;;
+        absent)  v_count   "$t_f" "$t_a" 0      absent  ;;
+        once)    v_count   "$t_f" "$t_a" 1      once    ;;
+        exactly) v_count   "$t_f" "$t_a" "$t_b" exactly ;;
+        atleast) v_atleast "$t_f" "$t_a" "$t_b" ;;
+        between) v_between "$t_f" "$t_a" "$t_b" "$t_c" ;;
+        para)    v_para    "$t_f" "$t_a" "$t_b" ;;
+        *)       say_fail "unknown verb [$t_verb] in the expectation table - a typo here checks NOTHING" ;;
       esac
-      # The COUNT alone is gameable: the canonical block in Step 1 contains exactly three
-      # `agy-mark.sh` strings, so pasting that block verbatim into agy-first hits its target of 3
-      # without a single row being applied (and pasting it twice hits agy-capstone's 6). The
-      # discriminator is that a pasted TEMPLATE still carries its placeholders, while a real edit has
-      # substituted them. Any surviving placeholder means the template was copied, not applied.
-      #
-      # FOUR substituted tokens, not three. Step 3's guarded block introduces `<SKILL>`, and an earlier
-      # draft of this check omitted it - so an executor who left `echo "<SKILL>: ABORTING..."` in place
-      # passed vacuously. `<BASE>` is deliberately NOT in this list: it is the one token that must
-      # SURVIVE, so finding it here is correct and its ABSENCE is the defect. That is the opposite
-      # test, and it is done separately below.
-      # `grep -E`, NOT BRE `\|`, and three branches, NOT `|| resid=0`. Both of those defects were
-      # removed from this task in earlier rounds and BOTH were reintroduced here by the fix that added
-      # this check. `\|` is a GNU extension that matches a literal pipe under BSD grep - the check
-      # would silently never match and fail open on exactly the systems the ASCII guard avoids
-      # `grep -P` for. And `|| resid=0` maps grep's exit 2 (error) onto "no residue", which is the
-      # same fail-open shape a third time.
-      rrc=0
-      resid=$(grep -Ec '<DISCIPLINE>|<OUTCOME>|<PATH>|<SKILL>' $p/plugin/skills/$s/SKILL.md) || rrc=$?
-      if [ "$rrc" -ge 2 ]; then
-        echo "  FAIL: the placeholder check failed on $p/$s (grep exit $rrc) - nothing was checked." >&2
-        FAIL=1
-        resid=0
-      fi
-      if [ "$resid" -ne 0 ]; then
-        echo "  FAIL: $p/$s still contains $resid unsubstituted placeholder(s) - the canonical block" >&2
-        echo "        was pasted rather than applied. Substitute <DISCIPLINE>/<OUTCOME>/<PATH>/<SKILL>." >&2
-        FAIL=1
-      fi
-
-      # THE OPPOSITE TEST: `<BASE>` must be PRESENT. It is the harness token that makes one instruction
-      # resolve correctly in both plugins; if it is gone, someone substituted a literal path, which
-      # differs per plugin and breaks the byte-identity pin. Absence here is the defect.
-      nb=$(grep -c '<BASE>' $p/plugin/skills/$s/SKILL.md) || nb=0
-      if [ "$nb" -eq 0 ]; then
-        echo "  FAIL: $p/$s contains no <BASE> token - a literal path was written instead, which" >&2
-        echo "        differs per plugin and breaks the byte-identity pin." >&2
-        FAIL=1
-      fi
-
-      n=$(grep -c 'agy-mark.sh' $p/plugin/skills/$s/SKILL.md)
-      printf '14c %s/%s: %s (want %s, placeholders %s)\n' "$p" "$s" "$n" "$want" "$resid"
-      [ "$n" -eq "$want" ] || {
-        echo "  FAIL: $p/$s has $n agy-mark.sh invocations, expected $want - some rows were not" >&2
-        echo "        applied, or one was applied twice. Do not proceed on a partial edit." >&2
-        FAIL=1; }
     done
   done
+}
+
+# ---- EXPECTATIONS: 14h and the encoding invariant. ALWAYS run; not conditional on Task 1. -----
+# Read this table against the 11-row edit table above. Row 3 is a THREE-WAY split, so it owns four
+# lines here: the old sentence gone, the new block present and correctly placed, and BOTH sentences
+# that must survive it still present exactly once.
+# The two `once` rows on the tail and the closing sentence are a PAIR with the `atleast` rows, not a
+# duplicate of them: `atleast` proves the edit happened, `once` proves it did not take a bystander
+# with it and did not leave a duplicate behind. Neither alone covers row 3.
+run_table <<'TBL'
+ascii|plugin/skills/agy-first/SKILL.md|||
+ascii|plugin/skills/agy-capstone/SKILL.md|||
+ascii|plugin/skills/agy-test-audit/SKILL.md|||
+notnul|plugin/skills/agy-first/SKILL.md|||
+notnul|plugin/skills/agy-capstone/SKILL.md|||
+notnul|plugin/skills/agy-test-audit/SKILL.md|||
+absent|plugin/skills/agy-first/SKILL.md|Default persona: bold inventive||
+absent|plugin/skills/agy-test-audit/SKILL.md|Optional per-run mitigation||
+atleast|plugin/skills/agy-first/SKILL.md|Axiom Breaker|1|
+atleast|plugin/skills/agy-first/SKILL.md|rotate seats|1|
+atleast|plugin/skills/agy-test-audit/SKILL.md|Axiom Breaker|1|
+atleast|plugin/skills/agy-test-audit/SKILL.md|rotate seats|1|
+between|plugin/skills/agy-first/SKILL.md|Seat a panel, not a persona|Frame the fork as a GOAL|The peer is empowered to CHALLENGE
+between|plugin/skills/agy-test-audit/SKILL.md|Seat the audit, do not send one voice|## The audit round|Ask for a coverage verdict in a parseable form
+para|plugin/skills/agy-first/SKILL.md|Seat a panel, not a persona|The peer is empowered to CHALLENGE|
+para|plugin/skills/agy-test-audit/SKILL.md|Seat the audit, do not send one voice|Ask for a coverage verdict in a parseable form|
+once|plugin/skills/agy-first/SKILL.md|note its real tradeoffs||
+once|plugin/skills/agy-first/SKILL.md|The peer is empowered to CHALLENGE your own settled decision when it has a substantive reason (correctness, safety, a materially better design, a hidden contradiction) - you keep the final call.||
+TBL
+
+# ---- EXPECTATIONS: 14c. RESOLVED path only. --------------------------------------------------
+# EXACT counts, not `atleast`. Each file needs SEVERAL 14c edits, and a `> 0` threshold is satisfied
+# by applying ONE of them - the file then reports complete with the rest silently missing. Derived
+# from the 11-row table, one invocation per site:
+#   agy-first       rows 1 (head) + 2 (log)      + 4  (prepare)      = 3
+#   agy-capstone    rows 5 (head) + 6 (log x2)   + 7  (prepare x3)   = 6
+#   agy-test-audit  rows 8 (head)                + 11 (prepare x2)   = 3
+# If you change the table, change these rows in the same edit.
+# These count OCCURRENCES, where the previous form counted matching LINES. The numbers are stated as
+# invocations, so occurrences is the faithful reading; the two agree today because no site puts two
+# invocations on one line.
+if [ "$TASK1" = "RESOLVED" ]; then
+  run_table <<'TBL'
+nosub|plugin/skills/agy-first/SKILL.md|||
+nosub|plugin/skills/agy-capstone/SKILL.md|||
+nosub|plugin/skills/agy-test-audit/SKILL.md|||
+atleast|plugin/skills/agy-first/SKILL.md|<BASE>|1|
+atleast|plugin/skills/agy-capstone/SKILL.md|<BASE>|1|
+atleast|plugin/skills/agy-test-audit/SKILL.md|<BASE>|1|
+exactly|plugin/skills/agy-first/SKILL.md|agy-mark.sh|3|
+exactly|plugin/skills/agy-capstone/SKILL.md|agy-mark.sh|6|
+exactly|plugin/skills/agy-test-audit/SKILL.md|agy-mark.sh|3|
+TBL
 else
   echo "14c: SKIPPED - Task 1 recorded BLOCKED."
 fi
-
-# 14h: the seat instruction. ALWAYS runs - it is not conditional on Task 1.
-# The REMOVAL half is a DIFFERENT string per file, because the defective text differs per file.
-# A shared removal-grep is vacuous on the file that never contained it.
-check_14h() {  # $1=file  $2=removal string  $3=label
-  # 🔴 THE REMOVAL GREP MUST BE LINE-BREAK BLIND, AND FOR FIFTEEN ROUNDS IT WAS NOT.
-  # `grep` matches within a single line. The string this check hunts in agy-first is wrapped across
-  # `:54-55` - "...tradeoffs. Default persona:" / "bold inventive systems-designer; ..." - so
-  # `grep -c 'Default persona: bold inventive'` returned 0 on the COMPLETELY UNMODIFIED FILE.
-  # MEASURED: count 0 against the untouched file; count 1 once newlines are folded to spaces.
-  # The discriminator that existed to prove the old instruction was deleted passed vacuously on a
-  # file nobody had touched - exactly the failure it was written to prevent.
-  # Fold newlines to spaces before matching so a wrap can never hide the text again.
-  # All three fold newlines first, for the same reason - `rotate seats` sits mid-sentence in the
-  # inserted prose and would vanish from a line-based grep the moment anyone rewraps that paragraph.
-  # A presence check that a reflow can silently turn into a zero is the same defect as the removal
-  # check's, just waiting for a different edit. Counts become 0-or-1 after folding, which is all the
-  # `-ge 1` tests below need.
-  # `tr -d '\r'` first, for the same reason as the pre-flight: on a CRLF checkout the CR survives the
-  # newline fold and sits inside any phrase that spans a wrap, so `ol` reads 0 on an UNEDITED file and
-  # this guard fails open again - the very defect round 17 closed, re-opened by a line-ending.
-  se=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -c 'Axiom Breaker')
-  ro=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -c 'rotate seats')
-  ol=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -c "$2")
-  echo "14h $3: seats=$se rotate=$ro old_removed=$ol"
-  [ "$se" -ge 1 ] && [ "$ro" -ge 1 ] && [ "$ol" -eq 0 ] \
-    || { echo "  FAIL: $3 expected seats>=1 rotate>=1 old_removed=0" >&2; FAIL=1; }
-}
-for p in clavity-dotnet clavity-classic; do
-  check_14h "$p/plugin/skills/agy-first/SKILL.md" 'Default persona: bold inventive' "$p/agy-first"
-  check_14h "$p/plugin/skills/agy-test-audit/SKILL.md" 'Optional per-run mitigation' "$p/agy-test-audit"
-done
-
-# ASCII invariant on every file touched by either item.
-# MATCHES THE REPO GATE EXACTLY: Test-PureAscii (check-injected-context.ps1:547-550) rejects a BYTE
-# > 127 and nothing else, so tab and every other control character are LEGAL. A guard written as
-# '[^ -~]' would reject tab and be STRICTER than the gate it stands in for - a local check that
-# red-lights a file the real gate accepts is a false alarm, not extra safety.
-#
-# The byte class is built with printf and NOT written as grep -P '[\x80-\xFF]'. -P is PCRE, which is
-# a GNU grep extension absent from BSD grep and BusyBox; this plan is the only place in the repo that
-# would have required it, so it would have introduced a toolchain dependency nothing else here needs.
-HIBYTE=$(printf '[\200-\377]')
-for p in clavity-dotnet clavity-classic; do
-  for s in agy-first agy-capstone agy-test-audit; do
-    f=$p/plugin/skills/$s/SKILL.md
-    # `grep && echo` PRINTS and exits 0. A guard that only prints does not guard: the executor runs
-    # this block and the next one, and the contaminated file is committed with a warning scrolled
-    # past above it. Set the failure flag; Step 5 exits non-zero at the end and Step 6 never runs.
-    #
-    # THREE outcomes, not two. grep exits 0 = matched (contaminated), 1 = no match (clean),
-    # >=2 = ERROR (file missing, unreadable, permissions). A bare `if grep` folds 1 and 2 together
-    # into "false", so a MISSING FILE reads as a clean one and the guard passes having measured
-    # nothing. Branch on the code explicitly.
-    # `|| rc=$?` and NOT a bare command followed by `rc=$?`. A bare grep that exits 1 (the CLEAN
-    # case) aborts the whole script under `set -e` before `rc=$?` is ever reached - so the guard
-    # would make it structurally impossible for a clean file to pass under strict mode. Measured:
-    # `bash -e -c 'grep ... ; rc=$?; echo REACHED'` never prints REACHED on a clean file.
-    rc=0
-    LC_ALL=C grep -n "$HIBYTE" "$f" || rc=$?
-    case "$rc" in
-      0) echo "  FAIL: NON-ASCII in $f" >&2; FAIL=1 ;;
-      1) : ;;  # clean
-      *) echo "  FAIL: cannot read $f (grep exit $rc) - NOT the same as clean" >&2; FAIL=1 ;;
-    esac
-
-    # A NUL byte means the file is not text at all - typically a UTF-16 save, which is easy to do by
-    # accident on Windows. MEASURED: a UTF-16LE file encoding pure ASCII has ZERO bytes above 127, so
-    # the high-byte test above reports it CLEAN, and so does the repo's own Test-PureAscii
-    # (check-injected-context.ps1:547-550 tests only for a byte greater than 127). Both gates pass it.
-    # This check is ADDITIVE, not stricter: it rejects nothing the repo gate deliberately permits -
-    # it rejects a file that is broken in a way neither gate was looking for.
-    # Strip NULs and compare: if the file is unchanged by the strip, it had none.
-    # `cmp -s` has THREE exit codes too - 0 identical, 1 differ, >=2 I/O error - and a bare `if cmp`
-    # folds 2 into the else branch, which would report a permissions or vanished-file error as
-    # "contains NUL bytes". MEASURED: cmp -s against a missing file exits 2 and lands in the else.
-    # That is the FIFTH instance of this one pattern in this task, and it was introduced by the fix
-    # for the fourth.
-    crc=0
-    LC_ALL=C tr -d '\000' < "$f" | cmp -s - "$f" || crc=$?
-    case "$crc" in
-      0) : ;;  # no NULs
-      1) echo "  FAIL: $f contains NUL bytes - it is not ASCII text (UTF-16 save?)" >&2; FAIL=1 ;;
-      *) echo "  FAIL: cannot compare $f (cmp exit $crc) - NOT the same as clean" >&2; FAIL=1 ;;
-    esac
-  done
-done
-
-# POSITIONAL check for 14h: the seat text must land in the RIGHT PLACE, not merely exist in the file.
-# A presence-grep alone is satisfied by appending the required words anywhere - including inside a
-# trailing HTML comment - so it cannot distinguish "inserted into the instructions" from "pasted at
-# the bottom". Compare LINE NUMBERS against an anchor that must follow the insertion.
-# BOUND THE INSERTION ON BOTH SIDES. A one-sided "seat < anchor" test is satisfied by dumping the
-# text at line 1 - 1 is less than any anchor, so the guard says OK for text sitting above the
-# document's own title. The insertion point is an INTERVAL, so assert the interval: it must fall
-# AFTER the section it belongs to opens and BEFORE the line that must follow it.
-# 🔴 ARGUMENT ORDER IS LOAD-BEARING AND HAS BEEN MISREAD ONCE. `$2` is the INSERTED seat string, not
-# an anchor. A reviewer read `$2` as the opening anchor, concluded the check searched for text that
-# already exists between the anchors, and reported it as vacuously passing on an unedited file.
-# MEASURED: `Seat a panel, not a persona` and `Seat the audit, do not send one voice` each occur ZERO
-# times in the pre-edit files, so the check correctly reports MISPLACED before the edit. Do not
-# "fix" `$2` to an anchor string - that would remove the only thing proving the insertion happened.
-check_pos() {  # $1=file  $2=seat string (INSERTED text)  $3=opening anchor  $4=closing anchor  $5=label
-  s=$(grep -n "$2" "$1" | head -n 1 | cut -d: -f1)
-  o=$(grep -n "$3" "$1" | head -n 1 | cut -d: -f1)
-  c=$(grep -n "$4" "$1" | head -n 1 | cut -d: -f1)
-  if [ -n "$s" ] && [ -n "$o" ] && [ -n "$c" ] && [ "$s" -gt "$o" ] && [ "$s" -lt "$c" ]; then
-    echo "14h-pos $5: seat=$s in ($o,$c) OK"
-  else
-    echo "14h-pos $5: seat=$s open=$o close=$c MISPLACED" >&2; FAIL=1
-  fi
-}
-for p in clavity-dotnet clavity-classic; do
-  check_pos "$p/plugin/skills/agy-first/SKILL.md" \
-    'Seat a panel, not a persona' \
-    'Frame the fork as a GOAL' \
-    'The peer is empowered to CHALLENGE' \
-    "$p/agy-first"
-  check_pos "$p/plugin/skills/agy-test-audit/SKILL.md" \
-    'Seat the audit, do not send one voice' \
-    '## The audit round' \
-    'Ask for a coverage verdict in a parseable form' \
-    "$p/agy-test-audit"
-done
-
-# 🔴 A PARAGRAPH IS THE CONTRACT, AND NEITHER CHECK ABOVE CAN SEE ONE. `check_14h` folds every newline
-# to a space before matching, and `check_pos` compares only line NUMBERS - so both pass on a block
-# spliced into the MIDDLE of the running paragraph, which is the one defect the instruction at
-# "A multi-line block cannot be spliced into the middle of a running paragraph" exists to prevent
-# ("two sentence fragments welded to a block that renders as part of neither").
-# MEASURED with a fixture pair built from the real SKILL.md: the WELDED insertion scored
-# `seats=1 rotate=1 old_removed=0` and `seat=55 in (50,66) OK` - a clean FAIL=0 - while the UNEDITED
-# control correctly reported `old_removed=1` and `MISPLACED`. The control failing is what makes the
-# welded pass informative rather than vacuous. Assert the blank lines the contract actually names.
-#
-# Both insertions are specified "as its own paragraph" (row 3 paragraph 2, row 10), and in both files
-# the closing anchor `check_pos` already uses IS the block's immediate successor - `agy-test-audit`'s
-# heading is followed directly by numbered item 1, with no blank line, so the anchor pair is the same
-# shape in both. That is why one helper covers both files rather than two bespoke ones.
-check_para() {  # $1=file  $2=seat string  $3=closing anchor  $4=label
-  s=$(grep -n "$2" "$1" | head -n 1 | cut -d: -f1)
-  c=$(grep -n "$3" "$1" | head -n 1 | cut -d: -f1)
-  # `$c -le $s` is rejected rather than judged. A backwards `sed` range does NOT print nothing - it
-  # prints the FIRST line and stops - so an inverted layout could otherwise be scored on a line that
-  # has nothing to do with the block. `check_pos` owns ordering; this helper refuses to guess when the
-  # anchors are out of order.
-  if [ -z "$s" ] || [ -z "$c" ] || [ "$s" -le 1 ] || [ "$c" -le "$s" ]; then
-    echo "14h-para $4: seat=$s close=$c - anchor missing, at line 1, or out of order; cannot judge separation" >&2
-    FAIL=1; return
-  fi
-  # A WHITESPACE-ONLY LINE IS A BLANK LINE. CommonMark: "a line containing no characters, or a line
-  # containing only spaces or tabs". A guard that demands a ZERO-LENGTH line is STRICTER than the rule
-  # it stands in for, and that is a false alarm, not extra safety - the same mistake this step already
-  # made once with `[^ -~]` against a gate that only rejects a byte > 127.
-  # MEASURED: with the separators turned into single-space lines - a correct edit by the real rule -
-  # the zero-length form reported "line 55 is not blank - the block is welded to the paragraph above"
-  # and reddened a good insertion. Strip the whitespace before testing, and match it in the count.
-  # NAME THE TWO LINES, do not count blanks across a RANGE. Counting `^[[:space:]]*$` anywhere in
-  # (s+1, c-1) accepts a blank line sitting INSIDE the block as proof that the block is separated from
-  # its successor, which it is not. MEASURED: a fixture with the blank-before intact, one blank line
-  # added inside the block, and the closing anchor welded directly onto the block's last line scored
-  # "blank before 56, 1 blank line(s) before 68 OK" - FAIL=0, certifying the weld it exists to catch.
-  # The two lines that carry the contract are `s - 1` and `c - 1`; assert those, and nothing else.
-  before=$(sed -n "$((s - 1))p" "$1" | tr -d '\r \t')
-  after=$(sed -n "$((c - 1))p" "$1" | tr -d '\r \t')
-  if [ -n "$before" ]; then
-    echo "14h-para $4: line $((s - 1)) is not blank - the block is welded to the paragraph above" >&2
-    FAIL=1
-  elif [ -n "$after" ]; then
-    echo "14h-para $4: line $((c - 1)) is not blank - the successor at $c is welded onto the block" >&2
-    FAIL=1
-  else
-    echo "14h-para $4: blank at $((s - 1)) and at $((c - 1)) OK"
-  fi
-}
-
-# Row 3 is a THREE-WAY SPLIT, and the paragraph tail is one of the two sentences that MUST SURVIVE it.
-# A whole-line delete of `:54` takes the tail along with the persona sentence, and MEASURED, that
-# passes `check_14h`, `check_pos` AND `check_para` alike - the tail is an anchor for none of them.
-# This is deliberately NOT a discriminator of "the edit happened" (the phrase is present before the
-# edit too, so on its own it would be vacuous). `check_14h` already proves the edit happened; this
-# proves the edit did not take a bystander with it. The pair is what covers row 3, not either alone.
-# Row 9 and row 10 replace or insert WHOLE lines, so they have no mid-line survivor - do not add a
-# survivor check for `agy-test-audit`, there is nothing there for it to protect.
-survivor() {  # $1=file  $2=text that must survive  $3=label
-  n=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -c "$2")
-  if [ "$n" -ge 1 ]; then
-    echo "14h-survivor $3: present OK"
-  else
-    echo "14h-survivor $3: '$2' was deleted - it must survive the three-way split" >&2; FAIL=1
-  fi
-}
-
-# EXACTLY ONE, and the WHOLE sentence. This closes the failure row 3's own pre-edit hint names in
-# terms: "An edit confined to `:54-56` leaves `:57-58` in place and the inserted paragraph 3
-# DUPLICATES them." The plan ANTICIPATED that outcome in prose and nothing checked for it.
-# MEASURED: a fixture with the closing sentence present TWICE scored seats=1 rotate=1 old_removed=0,
-# `in (50,68) OK`, blank lines OK, survivor present - FAIL=0 on every guard.
-# Matching the WHOLE sentence rather than its opening clause also closes the other half: `check_pos`
-# and `check_para` anchor on "The peer is empowered to CHALLENGE" alone, so deleting the REST of that
-# sentence left every check green. One assertion, both directions - a count of 0 catches the
-# truncation, a count of 2 catches the duplication.
-# The `grep -oF -e` + `grep -c .` idiom is Step 0's `anchor()`, verbatim: -F because the text carries
-# punctuation, -e because a leading `-` would otherwise read as an option, and the second grep because
-# after the newline fold the whole file is ONE line, so a plain `grep -c` can only ever return 0 or 1
-# and cannot see a duplicate at all.
-once() {  # $1=file  $2=text that must appear EXACTLY once  $3=label
-  n=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -oF -e "$2" | grep -c .) || n=0
-  if [ "$n" -eq 1 ]; then
-    echo "14h-once $3: exactly one OK"
-  else
-    echo "14h-once $3: found $n, expected exactly 1 - 0 means the sentence was truncated or deleted, 2 means the edit was bounded too short and duplicated it" >&2
-    FAIL=1
-  fi
-}
-
-for p in clavity-dotnet clavity-classic; do
-  check_para "$p/plugin/skills/agy-first/SKILL.md" \
-    'Seat a panel, not a persona' 'The peer is empowered to CHALLENGE' "$p/agy-first"
-  check_para "$p/plugin/skills/agy-test-audit/SKILL.md" \
-    'Seat the audit, do not send one voice' 'Ask for a coverage verdict in a parseable form' \
-    "$p/agy-test-audit"
-  survivor "$p/plugin/skills/agy-first/SKILL.md" \
-    'note its real tradeoffs' "$p/agy-first tail"
-  once "$p/plugin/skills/agy-first/SKILL.md" \
-    'The peer is empowered to CHALLENGE your own settled decision when it has a substantive reason (correctness, safety, a materially better design, a hidden contradiction) - you keep the final call.' \
-    "$p/agy-first challenge"
-done
 
 # One exit for the whole step. Step 6 must be unreachable if any check above failed.
 [ "$FAIL" -eq 0 ] || { echo "STEP 5 FAILED - do not proceed to Step 6." >&2; exit 1; }
@@ -2868,34 +2871,47 @@ echo "Step 5: all checks passed; the verified files are STAGED (TASK1=$TASK1)."
 echo "        Anything you edit from now on is NOT in this commit unless you re-stage it."
 ```
 
-Expected, 14c: **six** non-zero counts. A zero means that file was not edited - which no cross-product
-gate can detect, because they compare the two products against each other and a file left unedited in
-BOTH passes byte-identity happily.
+**Expected output.** Every assertion prints one line: a pass reads `  ok <verb>: ...` on stdout, a
+failure reads `  FAIL: ...` on stderr and sets the flag. A correct run is **36 `ok` lines and nothing
+else** on the BLOCKED path, **54** on RESOLVED. A zero count means that file was not edited - which no
+cross-product gate can detect, because those compare the two products against each other and a file
+left unedited in BOTH passes byte-identity happily.
 
-Expected, 14h: **four** rows, each `seats=1 rotate=1 old_removed=0`.
+**MEASURED against a fixture tree built from the real files with both edits applied**: the correct tree
+produces 0 failures, and each of eight planted 14h defects produced exactly 2 failures - one per plugin
+- and no others. The 14c half was measured the same way: a correct RESOLVED tree passes clean, while a
+missing invocation, a surviving placeholder, and a `<BASE>` replaced by a literal path each produce
+exactly 2. The correct tree passing is what makes those failures informative rather than vacuous.
 
-**`old_removed` is the discriminating half, and it is a DIFFERENT string per file on purpose.** It counts
-the text being REMOVED, so it proves the old instruction is gone rather than merely that new text was
-appended beside it. A row reading `seats=1 ... old_removed=1` means the seat block was added and the
-defective sentence was left in place, so the file now carries two contradictory instructions.
+**A count of 0 is NOT the same as a file that could not be read, and the block says which.** `count`
+returns -1 for an unreadable file and every verb reports it as such. That distinction is the fail-open
+that was fixed five separate times in the previous shape of this step, once by the fix for the time
+before; it now exists in exactly one function.
+
+**`absent` is the discriminating half of 14h, and its payload is a DIFFERENT string per file on
+purpose.** It counts the text being REMOVED, so it proves the old instruction is gone rather than
+merely that new text was appended beside it. A file whose seat block was added while the defective
+sentence stayed in place carries two contradictory instructions, and only this row catches it.
 
 > 🔴 **Why not one shared removal-grep.** `Default persona: bold inventive` exists ONLY in `agy-first`.
 > Grepping for it in `agy-test-audit` returns 0 **before any edit is made**, so a shared grep would
-> report a perfect `old_removed=0` for a file nobody touched - a check that passes by doing nothing.
+> report a perfect `absent` pass for a file nobody touched - a check that passes by doing nothing.
 > `agy-test-audit`'s removal target is `Optional per-run mitigation` instead. **A discriminator that
-> cannot distinguish "done" from "never started" is not a discriminator.**
+> cannot distinguish "done" from "never started" is not a discriminator.** In the table this is not a
+> convention anyone has to remember - the payload sits in the row, so a shared string would be visibly
+> shared.
 
-`agy-capstone` is deliberately absent from the 14h loop: it already seats correctly at `:86-103` and
-item 14h does not touch it.
+`agy-capstone` carries only `ascii` and `notnul` rows: it already seats correctly at `:86-103` and item
+14h does not touch it. Its 14c rows appear in the RESOLVED table, where they belong.
 
-Expected, ASCII: no output at all from the third loop. **Verified control for that guard:** on a fixture
-containing an em-dash line and a tab-indented line it reports exactly **one** match - it catches the
-em-dash and ignores the tab, which is the behaviour the repo gate defines. The `printf`-built byte class
-was measured to give the identical result to the `grep -P` form it replaces.
+**Verified control for the `ascii` verb:** on a fixture containing an em-dash line and a tab-indented
+line it reports exactly **one** match - it catches the em-dash and ignores the tab, which is the
+behaviour the repo gate defines. The `printf`-built byte class was measured to give the identical
+result to the `grep -P` form it replaces.
 
-Expected, 14h-pos: **four** rows, every one ending `OK`. A `MISPLACED` means the seat text exists in the
-file but NOT before the anchor that must follow it - the presence-grep above would still have said
-`seats=1`.
+**`between` is what makes presence mean something.** A `FAIL` from it means the seat text exists in the
+file but NOT inside the interval it belongs to - the `atleast` rows above would still have reported it
+present. Presence proves a string was typed; position proves it was inserted into the instruction flow.
 
 > 🔴 **Why a positional check and not just a presence-grep.** `grep -c 'Axiom Breaker'` is satisfied by
 > the string existing ANYWHERE - including a trailing `<!-- Axiom Breaker rotate seats -->` that no
@@ -5103,9 +5119,10 @@ git commit -m "fix(gate): 13c - distinguish a missing input from an empty one at
 - [ ] **Step 1: The per-file completion checklist**
 
 **For everything OUTSIDE the six skill files, nothing else detects that an edit was simply NOT MADE.**
-(Those six ARE covered: Task 7 Step 5 checks exact `agy-mark.sh` counts per file, a per-file
-`old_removed` discriminator, placeholder residue, and the positional bounds of the inserted prose - so
-for them this row is a second pair of eyes rather than the only one.) `check-seed-artifacts-synced.sh` and
+(Those six ARE covered: Task 7 Step 5's expectation tables check exact `agy-mark.sh` counts per file, a
+per-file `absent` discriminator, placeholder residue, and the position, paragraph separation and
+cardinality of the inserted prose - so for them this row is a second pair of eyes rather than the only
+one.) `check-seed-artifacts-synced.sh` and
 `plugin-hooks-payload.Tests.ps1:47` compare the two PRODUCTS against each other, so a file left unedited
 in BOTH passes byte-identity happily. **This checklist names the TABLE, never a count** - a restated count
 stops covering whatever the table gains next.
@@ -5164,10 +5181,11 @@ git diff --stat main...HEAD -- clavity-dotnet/plugin clavity-classic/plugin agy-
 
 Every unticked row is a task that was skipped. **`open-issues/SKILL.md` has no behavioural test either, so
 this checklist is its only guarantee** - EXCEPT for the 14h rows, which Task 7 Step 5 checks
-mechanically via `check_14h` (seat text present, `rotate seats` present, `old_removed` = 0) and
-`check_pos` (the inserted block sits between its two anchors). 🔴 **NOT the exact `agy-mark.sh` counts
-and NOT the placeholder-residue check** - both live inside `if [ "$TASK1" = "RESOLVED" ]`, so they are
-14c mechanisms that never run on the BLOCKED path. An earlier version of this line credited all four,
+mechanically via its **always-table** - the seat text and `rotate seats` present, the replaced
+instruction absent, the block inside its interval and standing as its own paragraph, and each surviving
+sentence present exactly once. 🔴 **NOT the exact `agy-mark.sh` counts and NOT the placeholder-residue
+check** - those rows live in the second table, inside `if [ "$TASK1" = "RESOLVED" ]`, so they are 14c
+mechanisms that never run on the BLOCKED path. An earlier version of this line credited all of them,
 which would have implied 14h coverage on a path where half of it does not execute.
 
 - [ ] **Step 2: Run every oracle BY NAME**
