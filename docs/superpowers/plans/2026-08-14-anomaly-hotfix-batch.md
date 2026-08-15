@@ -1968,12 +1968,21 @@ Step 3 overwrites the working tree from the index. A developer running this mid-
 their own uncommitted changes**.
 
 ```bash
-git status --short -- agy-autotrain/knowledge/driver-cheatsheet.core.md \
+git status --short -- .gitattributes \
+                      agy-autotrain/knowledge/driver-cheatsheet.core.md \
                       clavity-classic/src/driver_cheatsheet.rs \
                       clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs
 ```
 
 Expected: **empty output**. If anything is listed, STOP - commit or stash first, then resume.
+
+> **`.gitattributes` is in that list for a reason panel R8 found, not for symmetry.** Step 6 commits it
+> alongside the three paths, so an unrelated uncommitted edit a developer already had there would be
+> silently swept into this task's `chore(eol)` commit. **This repository has already had `git add` carry
+> an unintended file twice**, once onto a public repo - the standing rule is explicit paths, and this
+> extends it to "check every path you are about to add, not only the ones you are about to change".
+> Step 3's destructive `rm -f` + `git checkout --` sequence only reads the three cheatsheet paths, so
+> `.gitattributes` is not at risk THERE; the exposure is purely at the commit.
 
 - [ ] **Step 1: Record the BEFORE bytes (the control for step 3)**
 
