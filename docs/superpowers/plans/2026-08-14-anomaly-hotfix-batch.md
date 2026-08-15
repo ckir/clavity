@@ -764,7 +764,23 @@ _m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
             $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
             $res = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "../../escape"'
             $res.Err | Should -Match 'git rm --cached' -Because 'a malformed session id must never disable a data-leak guard'
-            (Test-Path -LiteralPath (Join-Path ([IO.Path]::GetTempPath()) '../../escape')) | Should -BeFalse
+            # THE SECOND ASSERTION WAS DELETED BECAUSE IT COULD NOT FAIL, and it is recorded here so
+            # nobody restores it. It read:
+            #     (Test-Path (Join-Path ([IO.Path]::GetTempPath()) '../../escape')) | Should -BeFalse
+            # MEASURED, both sides resolved:
+            #     the shell would create  ${TMPDIR:-/tmp}/.clavity-shield-swept-../../escape  ->  /escape
+            #     the test looked at      <WindowsTemp>\..\..\escape                          ->  C:\Users\user\AppData\escape
+            # TMPDIR is unset under Git Bash, so `/tmp` is MSYS-root-relative and the `..` components
+            # walk to a different absolute location on each side. The assertion inspected a path this
+            # code cannot write to under this input: always absent, always green, whatever the guard did.
+            # It is NOT replaced by a corrected path check - that would hard-code an MSYS-root literal
+            # into a Pester suite - and NOT by re-deriving the target in the test, which would reimplement
+            # the code under test inside its own assertion.
+            # RESIDUAL, stated rather than papered over: this row proves the guard STILL FIRES on a
+            # malformed key (the assertion above, which is real and can fail). It does NOT prove the
+            # malformed key wrote nothing outside the fixture. Closing that needs the escape target
+            # resolved by the shell itself, which is work for the transient-Pester shape recorded as
+            # ROADMAP section 16, not for a row that would be hard-coding a path today.
         }
     }
 }
@@ -1427,6 +1443,15 @@ nothing and would pass while asserting nothing.
             $b = Invoke-Reaching -Dir $d -SessionId $sid
             $total = ([regex]::Matches(("$($a.Err)$($b.Err)"), 'git rm --cached')).Count
             $total | Should -Be 1 -Because 'with the real session_id forwarded, a persistent fault is reported ONCE across two runs'
+            # THE COMMENT ABOVE NAMES "empty or hard-coded" AND THE ORACLE ONLY COVERS EMPTY. Two calls
+            # under the same id emitting once proves they share A key - and a HARD-CODED non-empty key
+            # is also "the same key twice", so it passes identically while the forwarding is gone. The
+            # sibling row in the agy-mark suite had the same hole and was folded one round earlier; this
+            # one was not swept for at the time, which is exactly why a lesson has to be grepped for
+            # across SIBLING suites before it is called shipped.
+            $c = Invoke-Reaching -Dir $d -SessionId ('sess-' + [guid]::NewGuid().ToString('N'))
+            ([regex]::Matches("$($c.Err)", 'git rm --cached')).Count |
+                Should -Be 1 -Because 'a DIFFERENT session_id must NOT be debounced - that is what separates a forwarded key from a constant'
         }
     }
 ```
@@ -3691,8 +3716,26 @@ Describe 'generate-cheatsheet-literals.ps1' {
     }
 
     It 'preserves pure ASCII (core.md is inside the ASCII-gated domain)' {
-        ([IO.File]::ReadAllBytes($script:Rs) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
-        ([IO.File]::ReadAllBytes($script:Cs) | Where-Object { $_ -gt 127 }).Count | Should -Be 0
+        # THIS ROW NEVER RAN THE GENERATOR. It read the CHECKED-IN literals and asserted they carry no
+        # byte > 127 - a property of the repository, not of the code under test. Every mutation to the
+        # generator left it green, including one emitting non-ASCII, because the generator's output was
+        # never looked at. It was named for a behaviour and asserted a fact about two files on disk.
+        # Now it runs the generator into a temp target and asserts on THAT, exactly as the LF row above
+        # does - which is the row this one should always have been modelled on.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genascii-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
+            Copy-Item -LiteralPath $script:Rs -Destination $outRs
+            Copy-Item -LiteralPath $script:Cs -Destination $outCs
+            & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget $outRs -CsTarget $outCs
+            $LASTEXITCODE | Should -Be 0 -Because 'a generator that failed to run proves nothing about its output'
+            ([IO.File]::ReadAllBytes($outRs) | Where-Object { $_ -gt 127 }).Count |
+                Should -Be 0 -Because 'the GENERATED rust literal must be pure ASCII, not merely the committed one'
+            ([IO.File]::ReadAllBytes($outCs) | Where-Object { $_ -gt 127 }).Count |
+                Should -Be 0 -Because 'the GENERATED C# literal must be pure ASCII, not merely the committed one'
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
 ```
