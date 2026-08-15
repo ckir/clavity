@@ -63,7 +63,12 @@ this skill reads as a floor but never edits.
      renamed - matched by that run's own `<unique>`, never a glob over all of them - and only after
      `curate-commit` exits 0** (the full prefix again, for the same reason as above), on exactly the same
      reasoning that puts the `## Pending` reset last. Deleting it before a failed publish loses the
-     entries; leaving it after a successful one duplicates them on the next run.
+     entries. **And leaving it after a SUCCESSFUL publish ABANDONS them - it does not duplicate them.**
+     That distinction changed in round 4 and this sentence did not follow: when the processing name was
+     fixed, a leftover file was re-read and duplicated; now that each run reads only its own uniquely
+     named file and never globs, nothing ever looks at a leftover again. **So a crash between the rename
+     and the delete silently strands that whole batch** - a real hole, recorded here rather than papered
+     over, and one the architectural fix in the KNOWN GAP note removes rather than patches.
 - The **runtime SEED floor**: the shared `%USERPROFILE%\.clavity\golden-header.seed.md` that the driver
   actually injects (honor a `CLAVITY_GOLDEN_HEADER` **directory** override; default `%USERPROFILE%\.clavity\`).
   Read it to dedupe - a rule already stated in SEED must NOT be repeated in GROWTH. Resolve it at the RUNTIME
