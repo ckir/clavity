@@ -89,7 +89,7 @@ around, because the failure modes are real but shared:
 |---|---|---|
 | `grep` | A2 falls through to the append branch on **every** call, so the shield grows without bound while Stage B still reports it effective | pre-existing; a plugin without `grep` has larger problems. The idempotence row pins the normal case |
 | `find` | the two sweeps fail silently (stderr is redirected); temp files and markers leak | pre-existing and identical to the two sibling hooks. Leakage is bounded by the `-mtime +30` intent, not by correctness |
-| `mktemp` | the A2 prepend writes nothing; B3 then correctly reports the negation, so the outcome is a **loud** no-repair rather than a silent one | acceptable - it degrades to reporting, which is Stage B's job |
+| `mktemp` | the A2 prepend cannot use a temp file | **handled explicitly since panel R10, and the earlier disposition here was wrong.** It used to read "acceptable - it degrades to reporting", but writing nothing left NO bare `*` in the shield, so the whole DIRECTORY stayed exposed while the helper returned 0. A2 now falls back to a plain append - protecting every other file - and reports LOUDLY, undebounced, that a negation was overridden. Loud and degraded beats silent and leaking |
 
 **`tail` was deliberately removed from the append branch** in favour of an unconditional leading newline on
 a non-empty file - one less tool assumed, one less silent failure mode, and a blank line in `.gitignore` is
@@ -549,6 +549,48 @@ Describe 'agy-shield-lib.sh' {
             $res.Err | Should -Not -BeNullOrEmpty
         }
 
+        It 'refuses an EMPTY path argument' {
+            $r = New-FixtureRepo -Shield "*`n"
+            (Invoke-Shield -Root $r -Body 'agy_shield "$PWD" "" "k1"').Err | Should -Not -BeNullOrEmpty
+        }
+
+        It 'refuses an ABSOLUTE path argument' {
+            $r = New-FixtureRepo -Shield "*`n"
+            (Invoke-Shield -Root $r -Body 'agy_shield "$PWD" "/etc/passwd" "k1"').Err | Should -Not -BeNullOrEmpty
+        }
+
+        It 'A1 mkdir FAILURE: returns 0, writes nothing, reports ENVIRONMENT once per key' {
+            # Make .clavity a FILE, so mkdir -p cannot create the directory. This is the only branch that
+            # exercises A1's failure path, and the existing rows all presuppose the directory exists.
+            $r = New-FixtureRepo -NoClavityDir
+            [IO.File]::WriteAllText((Join-Path $r '.clavity'), "not a directory`n")
+            $k = 'mk-' + [guid]::NewGuid().ToString('N')
+            $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"`nagy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"`necho RC=`$?"
+            $res.Out | Should -Match 'RC=0' -Because 'A1 failure must never hard-block'
+            ([regex]::Matches($res.Err, 'could not create')).Count | Should -Be 1 -Because 'class ENVIRONMENT is debounced per key'
+        }
+
+        It 'the A2 temp SWEEP is gated - it does not run on every call' {
+            # Panel R10: the first version attempted the marker write with 2>/dev/null and swept
+            # unconditionally, so an unwritable TMPDIR meant `find` ran on EVERY call - the exact
+            # per-call subprocess cost the gate exists to remove. Assert the marker LATCHES.
+            $r = New-FixtureRepo -Shield "*`n"
+            $k = 'sw-' + [guid]::NewGuid().ToString('N')
+            Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"" -Env @{ TMPDIR = ([IO.Path]::GetTempPath()) } | Out-Null
+            (Test-Path -LiteralPath (Join-Path ([IO.Path]::GetTempPath()) ".clavity-shield-swept-$k")) |
+                Should -BeTrue -Because 'the sweep marker must latch, or the gate never closes'
+        }
+
+        It 'mktemp UNAVAILABLE: the directory is still protected, and it says so LOUDLY' {
+            # Panel R10. Writing nothing here left NO bare * in the shield, so the whole DIRECTORY stayed
+            # exposed while the helper returned 0 - a per-file concern suppressing a per-directory
+            # guarantee, which the spec forbids. Shadow mktemp with a failing stub to reach the branch.
+            $r = New-FixtureRepo -Shield "!local-anomalies.md`n"
+            $res = Invoke-Shield -Root $r -Body "mktemp() { return 1; }`nagy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"`""
+            (Get-Shield $r) | Should -Match '(?m)^\*$' -Because 'the directory must be protected even when the atomic prepend is impossible'
+            $res.Err | Should -Match 'APPENDED rather than prepended' -Because 'overriding a human negation must never be silent'
+        }
+
         It 'ALWAYS returns 0 - it must never hard-block a caller' {
             $r = New-FixtureRepo -Shield "*`n"
             foreach ($args in @('"" "x" "k"', '"$PWD" "docs/secret.md" "k"', '"$PWD" ".clavity/local-anomalies.md" "k"')) {
@@ -755,9 +797,14 @@ agy_shield() {
     # sweep here is that same anti-pattern one level over, and it lands in a hook registered with
     # "timeout": 10 (hooks.json:56). So it runs ONLY when this session has not swept yet, keyed off the
     # same marker directory the debounce uses - at most once per session, never on the hot path.
+    # THE GATE MUST LATCH BEFORE THE SWEEP RUNS, not merely be attempted. Panel R10: the first version
+    # wrote the marker with 2>/dev/null and then swept unconditionally - so on an unwritable TMPDIR the
+    # marker never appeared, the gate never latched, and `find` ran on EVERY call. That is precisely the
+    # per-call subprocess cost this gate was added to remove, restored by the gate itself. Chaining the
+    # creation into the condition makes the sweep fail CLOSED on cost: no marker, no sweep. That is the
+    # safe direction here because the sweep is housekeeping for stale temp files, never a guard.
     _as_sweep="${TMPDIR:-/tmp}/.clavity-shield-swept-${_as_key:-nosession}"
-    if [ ! -f "$_as_sweep" ]; then
-        : > "$_as_sweep" 2>/dev/null
+    if [ ! -f "$_as_sweep" ] && : > "$_as_sweep" 2>/dev/null; then
         find "$_as_dir" -maxdepth 1 -name '.gitignore.tmp.*' -mtime +30 -delete 2>/dev/null
     fi
 
@@ -789,12 +836,24 @@ agy_shield() {
         # beside the shield. Unique per invocation, never a fixed name: two sessions can be open on
         # the same repository, and a fixed name races exactly when the guard matters.
         _as_tmp=$(mktemp "$_as_dir/.gitignore.tmp.XXXXXX" 2>/dev/null)
+        _as_prepended=0
         if [ -n "$_as_tmp" ] && [ -f "$_as_tmp" ]; then
             if printf '%s\n' '*' > "$_as_tmp" 2>/dev/null && cat "$_as_shield" >> "$_as_tmp" 2>/dev/null; then
-                mv -f "$_as_tmp" "$_as_shield" 2>/dev/null || rm -f "$_as_tmp" 2>/dev/null
+                if mv -f "$_as_tmp" "$_as_shield" 2>/dev/null; then _as_prepended=1; else rm -f "$_as_tmp" 2>/dev/null; fi
             else
                 rm -f "$_as_tmp" 2>/dev/null
             fi
+        fi
+        # NO SILENT NO-OP HERE - panel R10. If mktemp is missing or the rename fails, the first version
+        # simply did nothing, leaving NO bare `*` in the shield: the whole DIRECTORY stays exposed to
+        # `git add -A` while the helper returns 0. Stage A's guarantee is per-DIRECTORY and unconditional,
+        # and the spec ranks that above preserving one human negation - "a per-file condition must never
+        # suppress a per-directory guarantee". So fall back to the plain append, which protects every
+        # other file, and report LOUDLY (undebounced, class validation) that the negation was overridden
+        # because no temp file could be created. Loud and degraded beats silent and leaking.
+        if [ "$_as_prepended" -eq 0 ]; then
+            printf '%s\n' '*' >> "$_as_shield" 2>/dev/null
+            _agy_shield_say validation '' "could not create a temp file in $_as_dir, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand."
         fi
     else
         # A FILE WHOSE LAST LINE HAS NO TRAILING NEWLINE WOULD OTHERWISE CONCATENATE. Measured, with a
@@ -1516,6 +1575,51 @@ Describe 'agy-mark.sh' {
         }
     }
 
+    Context 'mode and argument refusals (panel R10 - each of these branches had no row)' {
+        It 'refuses with NO mode given' {
+            $d = New-MarkFixture
+            (Invoke-Mark -Cwd $d -MarkArgs @()).ExitCode | Should -Be 1
+        }
+        It 'refuses an UNKNOWN mode' {
+            $d = New-MarkFixture
+            (Invoke-Mark -Cwd $d -MarkArgs @('frobnicate','x')).ExitCode | Should -Be 1
+        }
+        It 'head refuses with NO sha' {
+            $d = New-MarkFixture
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first')
+            $r.ExitCode | Should -Be 1
+            (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-first.head')) | Should -BeFalse
+        }
+        It 'log refuses with NO status - and STILL emits the line it could not write' {
+            # The payload obligation binds on EVERY refusal path, not only the ones inside the log branch.
+            $d = New-MarkFixture
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('log','agy-first')
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'LOG LINE NOT WRITTEN'
+        }
+        It 'log refused BEFORE the helper loads still emits the line (panel R10)' {
+            # THE ROW THAT CAUGHT THE IMPOSSIBLE TEST. The helper-load checks fire before `case $mode`,
+            # so the previous version of this obligation was unreachable: _log_lost lived inside the log
+            # branch and was never called. The line is now built before anything can refuse.
+            $d = New-MarkFixture
+            $isolated = Join-Path ([IO.Path]::GetTempPath()) ("iso3-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $isolated | Out-Null
+            Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
+            $errF = Join-Path ([IO.Path]::GetTempPath()) ("iso3-" + [guid]::NewGuid().ToString('N') + ".err")
+            Start-Process -FilePath 'bash' -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
+                -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait | Out-Null
+            $err = Get-Content -Raw -LiteralPath $errF
+            $err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive a refusal that happens BEFORE the log branch is reached'
+            $err | Should -Match 'SKIPPED-UNREACHABLE'
+            Remove-Item -LiteralPath $errF, "$errF.out" -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $isolated -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        It 'prepare refuses an EMPTY relpath' {
+            $d = New-MarkFixture
+            (Invoke-Mark -Cwd $d -MarkArgs @('prepare','')).ExitCode | Should -Be 1
+        }
+    }
+
     Context 'exit codes and failure direction' {
         It 'exits 1 and writes NOTHING when the helper cannot be loaded' {
             $d = New-MarkFixture
@@ -1615,9 +1719,35 @@ and the placement is what puts it inside `check-seed-artifacts-synced.sh:63-64`'
 
 set -u
 
-_die_refuse() { printf 'agy-mark: REFUSED - %s\n' "$1" >&2; exit 1; }
-
 mode=${1:-}
+
+# THE LOG LINE IS BUILT BEFORE ANYTHING CAN REFUSE, and panel R10 is why. The helper-load checks below
+# fire _die_refuse BEFORE `case "$mode"` is ever evaluated, so a `log` invocation that failed there lost
+# its payload entirely - and the test row asserting "a refused log emits BOTH the line and the reason"
+# was asserting behaviour the control flow made impossible. `skipped.log` has NO re-fire path, so a
+# refused write destroys a record with nothing to recreate it; the obligation therefore binds on EVERY
+# refusal path, not only the ones inside the log branch. Built once here, which is also what makes the
+# "the script owns the line format" contract true rather than aspirational.
+_pending_log=''
+if [ "$mode" = 'log' ]; then
+    _pl_disc=${2:-}; _pl_status=${3:-}; _pl_sha=${4:-}
+    _pl_text=''
+    [ $# -gt 4 ] && _pl_text=${*:5}
+    printf -v _pl_ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null || _pl_ts=$(TZ=UTC date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
+    if [ -n "$_pl_text" ]; then
+        _pending_log=$(printf '%s  %s  %s  HEAD=%s  %s' "$_pl_ts" "$_pl_disc" "$_pl_status" "$_pl_sha" "$_pl_text")
+    else
+        _pending_log=$(printf '%s  %s  %s  HEAD=%s' "$_pl_ts" "$_pl_disc" "$_pl_status" "$_pl_sha")
+    fi
+fi
+
+_die_refuse() {
+    printf 'agy-mark: REFUSED - %s\n' "$1" >&2
+    # A refused `log` must ALSO surface the line it could not write, on EVERY refusal path.
+    [ -n "$_pending_log" ] && printf 'agy-mark: LOG LINE NOT WRITTEN -\n  %s\n' "$_pending_log" >&2
+    exit 1
+}
+
 [ -n "$mode" ] || _die_refuse 'no mode given (expected head|log|prepare)'
 
 root=$PWD
@@ -1666,29 +1796,20 @@ case "$mode" in
         exit 0
         ;;
     log)
-        discipline=${2:-}; status=${3:-}; sha=${4:-}
-        shift 4 2>/dev/null || true
-        text=$*
+        discipline=$_pl_disc; status=$_pl_status
         rel=".clavity/agy-marks/skipped.log"
-        # THE SCRIPT OWNS THE LINE FORMAT. Callers must NOT pass a preformatted line - moving the shape
-        # here is the entire point of having a script, and leaving it in the callers keeps copies of a
-        # format that must agree.
-        printf -v _ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null || _ts=$(TZ=UTC date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
-        if [ -n "$text" ]; then
-            line=$(printf '%s  %s  %s  HEAD=%s  %s' "$_ts" "$discipline" "$status" "$sha" "$text")
-        else
-            line=$(printf '%s  %s  %s  HEAD=%s' "$_ts" "$discipline" "$status" "$sha")
-        fi
+        # THE SCRIPT OWNS THE LINE FORMAT, and it is built exactly ONCE - up at the top, before any
+        # refusal path can run. Callers must NOT pass a preformatted line: moving the shape here is the
+        # entire point of having a script, and leaving it in the callers keeps copies of a format that
+        # must agree. $_pending_log IS that line.
+        line=$_pending_log
         # log has NO re-fire path - skipped.log is a durable audit breadcrumb - so a refused or failed
         # write destroys a record with nothing to recreate it. Emit BOTH the line AND the reason on
         # stderr. This binds on exit 1 AND on exit 2: in both cases the record did not reach disk.
         _log_lost() { printf 'agy-mark: LOG LINE NOT WRITTEN - %s\n  %s\n' "$1" "$line" >&2; }
-        _check_discipline_log() {
-            case "$discipline" in
-                ''|*[!A-Za-z0-9._-]*) _log_lost "discipline must match [A-Za-z0-9._-]+, got: [$discipline]"; exit 1 ;;
-            esac
-        }
-        _check_discipline_log
+        case "$discipline" in
+            ''|*[!A-Za-z0-9._-]*) _log_lost "discipline must match [A-Za-z0-9._-]+, got: [$discipline]"; exit 1 ;;
+        esac
         [ -n "$status" ] || { _log_lost 'no status given'; exit 1; }
         agy_shield "$root" "$rel" "$_key"
         mkdir -p "$root/.clavity/agy-marks" 2>/dev/null || { _log_lost 'could not create .clavity/agy-marks'; exit 1; }
@@ -2654,7 +2775,11 @@ function Get-IndexBytes {
     # while pwsh 7 has both. The ArgumentList form throws a runtime error on 5.1 - which would destroy
     # the exact cross-engine safety this function exists to provide. Neither path here contains a space,
     # but they are quoted anyway so a future path with one cannot break the split.
-    $psi.Arguments = ('-C "{0}" show ":{1}"' -f $RepoRoot, $Path)
+    # TrimEnd the separators: a path ending in a backslash would produce `"C:\"`, and under Windows
+    # CommandLineToArgvW rules `\"` ESCAPES the closing quote, so git would receive a mangled argv.
+    # Unreachable for a normal repo root, which is exactly why it would only ever bite in the one
+    # environment nobody tests in.
+    $psi.Arguments = ('-C "{0}" show ":{1}"' -f $RepoRoot.TrimEnd('\', '/'), $Path)
     $psi.RedirectStandardOutput = $true
     $psi.UseShellExecute = $false
     $p = [Diagnostics.Process]::Start($psi)
