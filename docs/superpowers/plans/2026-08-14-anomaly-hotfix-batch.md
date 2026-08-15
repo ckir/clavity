@@ -2157,6 +2157,59 @@ safe, so both belong to one task applied in one pass.**
 > already partly applied, stop and search for the anchor text instead. This was a live defect in row 1
 > and it is the failure mode to watch for if you add a row.
 
+- [ ] **Step 0: PRE-FLIGHT - prove every anchor exists before editing anything**
+
+**Line numbers in the table below are HINTS. The anchors are the contract.** Every line number naming
+the end of a wrapped literal in this task has been wrong at least once - `:96` then `:97` then `:98` for
+one, `:253` then `:254` then `:255` for another - because a line number is a claim about where a
+sentence ENDS, and a wrapped sentence ends wherever the wrap put it. Run this first: it proves each
+anchor is present, unique, and in the expected order, BEFORE any edit moves anything.
+
+```bash
+set -u
+PF=0
+anchor() {  # $1=file  $2=anchor text  $3=label  $4=expected count
+  # `grep -oF -e` - FIXED STRING, and `-e` so an anchor beginning with `-` is not read as an option.
+  # The first version of this pre-flight used a plain regex and reported THREE FALSE FAILURES: the
+  # anchors contain backticks around `.clavity/agy-marks/` and the pattern mis-counted them. A check
+  # that needs its own escaping rules is one more thing to get wrong - match literally.
+  c=$(tr '\n' ' ' < "$1" | grep -oF -e "$2" | grep -c .) || c=0
+  if [ "$c" -ne "$4" ]; then
+    echo "  PRE-FLIGHT FAIL: $3 -> found $c, expected $4" >&2; PF=1
+  else
+    echo "  ok: $3 ($c)"
+  fi
+}
+FI=clavity-dotnet/plugin/skills/agy-first/SKILL.md
+CA=clavity-dotnet/plugin/skills/agy-capstone/SKILL.md
+TA=clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md
+
+# 14h anchors - the text to remove, and the two positional bounds per file.
+anchor "$FI" 'Default persona: bold inventive' 'agy-first 14h removal target' 1
+anchor "$FI" 'Frame the fork as a GOAL' 'agy-first 14h open anchor' 1
+anchor "$FI" 'The peer is empowered to CHALLENGE' 'agy-first 14h close anchor' 1
+anchor "$TA" 'Optional per-run mitigation' 'agy-test-audit 14h removal target' 1
+anchor "$TA" '## The audit round' 'agy-test-audit 14h open anchor' 1
+anchor "$TA" 'Ask for a coverage verdict in a parseable form' 'agy-test-audit 14h close anchor' 1
+
+# 14c anchors - the clause each row replaces, and the block each row must KEEP.
+anchor "$FI" 'Create `.clavity/agy-marks/` first if it does not exist' 'row 1 clause' 1
+anchor "$FI" 'never a git error string' 'row 2 literal end' 1
+anchor "$CA" 'Create `.clavity/agy-marks/` first if it does not exist' 'row 5 clause' 1
+anchor "$CA" 'the literal `none` if HEAD cannot resolve);' 'row 6 literal end' 1
+anchor "$TA" 'Create `.clavity/agy-marks/` first if absent' 'row 8 clause' 1
+
+[ "$PF" -eq 0 ] || {
+  echo "PRE-FLIGHT FAILED - an anchor is missing, duplicated, or reworded upstream." >&2
+  echo "  Do NOT proceed on the line numbers alone. Re-read the file and update the anchors." >&2
+  exit 1; }
+echo "Step 0: every anchor present and unique."
+```
+
+**A count of 0 means the text was reworded upstream since this plan was written; a count above 1 means
+the anchor is no longer unique and the edit could land in the wrong place.** Either way the line numbers
+in the table are now fiction, and continuing on them is how a row deletes the wrong span.
+
 - [ ] **Step 1: Apply the per-file edits, in the order given**
 
 Rows tagged 14c use the locator recorded in Task 1's measurement file. The invocation is **identical text
