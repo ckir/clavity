@@ -2334,13 +2334,28 @@ for p in clavity-dotnet clavity-classic; do
     # >=2 = ERROR (file missing, unreadable, permissions). A bare `if grep` folds 1 and 2 together
     # into "false", so a MISSING FILE reads as a clean one and the guard passes having measured
     # nothing. Branch on the code explicitly.
-    LC_ALL=C grep -n "$HIBYTE" "$f"
-    rc=$?
+    # `|| rc=$?` and NOT a bare command followed by `rc=$?`. A bare grep that exits 1 (the CLEAN
+    # case) aborts the whole script under `set -e` before `rc=$?` is ever reached - so the guard
+    # would make it structurally impossible for a clean file to pass under strict mode. Measured:
+    # `bash -e -c 'grep ... ; rc=$?; echo REACHED'` never prints REACHED on a clean file.
+    rc=0
+    LC_ALL=C grep -n "$HIBYTE" "$f" || rc=$?
     case "$rc" in
       0) echo "  FAIL: NON-ASCII in $f" >&2; FAIL=1 ;;
       1) : ;;  # clean
       *) echo "  FAIL: cannot read $f (grep exit $rc) - NOT the same as clean" >&2; FAIL=1 ;;
     esac
+
+    # A NUL byte means the file is not text at all - typically a UTF-16 save, which is easy to do by
+    # accident on Windows. MEASURED: a UTF-16LE file encoding pure ASCII has ZERO bytes above 127, so
+    # the high-byte test above reports it CLEAN, and so does the repo's own Test-PureAscii
+    # (check-injected-context.ps1:547-550 tests only for a byte greater than 127). Both gates pass it.
+    # This check is ADDITIVE, not stricter: it rejects nothing the repo gate deliberately permits -
+    # it rejects a file that is broken in a way neither gate was looking for.
+    # Strip NULs and compare: if the file is unchanged by the strip, it had none.
+    if LC_ALL=C tr -d '\000' < "$f" | cmp -s - "$f"; then : ; else
+      echo "  FAIL: $f contains NUL bytes - it is not ASCII text (UTF-16 save?)" >&2; FAIL=1
+    fi
   done
 done
 
@@ -2377,7 +2392,15 @@ done
 
 # One exit for the whole step. Step 6 must be unreachable if any check above failed.
 [ "$FAIL" -eq 0 ] || { echo "STEP 5 FAILED - do not proceed to Step 6." >&2; exit 1; }
-echo "Step 5: all checks passed."
+
+# Record WHICH Task 1 result these checks were performed under, so Step 6 can refuse to commit a
+# different one. Step 5 and Step 6 are separate blocks and each parses $M independently; if $M is
+# edited between them, Step 5 can verify the four-file BLOCKED set while Step 6 stages the six-file
+# RESOLVED set, committing a file that was never verified.
+mkdir -p .clavity/scratch/14h-fold
+[ -f .clavity/.gitignore ] || printf '%s\n' '*' >> .clavity/.gitignore
+printf '%s\n' "$TASK1" > .clavity/scratch/14h-fold/verified-under.txt
+echo "Step 5: all checks passed (verified under TASK1=$TASK1)."
 ```
 
 Expected, 14c: **six** non-zero counts. A zero means that file was not edited - which no cross-product
@@ -2435,6 +2458,18 @@ if [ "$(printf '%s\n' "$TASK1" | grep -c .)" -ne 1 ]; then
   exit 1
 fi
 
+# Step 5 recorded which result IT verified under. If they disagree, $M was edited between the two
+# blocks and Step 5's verification does not describe what this block is about to stage.
+V=.clavity/scratch/14h-fold/verified-under.txt
+if [ ! -f "$V" ]; then
+  echo "ABORT: $V is missing - Step 5 has not run (or not passed). Run Step 5 first." >&2; exit 1
+fi
+if [ "$(cat "$V")" != "$TASK1" ]; then
+  echo "ABORT: Step 5 verified under TASK1=$(cat "$V") but this block parsed TASK1=$TASK1." >&2
+  echo "       $M changed between the two blocks. Re-run Step 5; do not commit unverified files." >&2
+  exit 1
+fi
+
 if [ "$TASK1" = "BLOCKED" ]; then
   MSG="docs(shield): 14h - agy-first and agy-test-audit seat a panel"
 elif [ "$TASK1" = "RESOLVED" ]; then
@@ -2477,7 +2512,18 @@ fi
 
 # An EMPTY index here is not a gate failure - it means this task made no edit at all. Say so, and do
 # NOT tell the operator to "re-run": re-running reproduces it forever.
-if git diff --cached --quiet; then
+# THREE outcomes again: 0 = nothing staged, 1 = something staged, >=2 (git uses 128) = FATAL, e.g. a
+# corrupt index or a stale .git/index.lock. A bare `if git diff --cached --quiet` folds 1 and 128
+# together into "something staged" and walks straight into the commit, where the fatal error
+# resurfaces and gets reported as "a hook rejected it". Same shape as the grep guard above.
+staged=0
+git diff --cached --quiet || staged=$?
+if [ "$staged" -ge 2 ]; then
+  echo "ABORT: git diff --cached failed fatally (exit $staged) - corrupt index or a stale" >&2
+  echo "       .git/index.lock. This is NOT 'nothing staged' and NOT a hook rejection." >&2
+  exit 1
+fi
+if [ "$staged" -eq 0 ]; then
   # The message must name the files THIS PATH expects, not a fixed "six". On the BLOCKED path only
   # four are edited, and telling an executor that six were expected invites it to "fix" the count by
   # editing agy-capstone - destroying the path isolation the conditional exists to create.
