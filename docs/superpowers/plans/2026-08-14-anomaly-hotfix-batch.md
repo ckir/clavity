@@ -2493,14 +2493,18 @@ changing any of it.
 # two blocks could disagree.
 
 # THREE outcomes: 0 = nothing staged, 1 = something staged, >=2 (git uses 128) = FATAL, e.g. a corrupt
-# index or a stale .git/index.lock. A bare `if git diff --cached --quiet` folds 1 and 128 together
-# into "something staged" and walks into the commit, where the fatal error resurfaces and is reported
-# as "a hook rejected it".
+# index or an unreadable path. A bare `if git diff --cached --quiet` folds 1 and 128 together into
+# "something staged" and walks into the commit, where the fatal error resurfaces and is reported as
+# "a hook rejected it".
+#
+# NOT "a stale .git/index.lock": an earlier draft of this comment said that and it is FALSE.
+# MEASURED - with `.git/index.lock` present, `git diff --cached --quiet` still exits 0. It is a
+# read-only comparison and does not take the index lock. Do not restore that claim.
 staged=0
 git diff --cached --quiet || staged=$?
 if [ "$staged" -ge 2 ]; then
-  echo "ABORT: git diff --cached failed fatally (exit $staged) - corrupt index or a stale" >&2
-  echo "       .git/index.lock. This is NOT 'nothing staged' and NOT a hook rejection." >&2
+  echo "ABORT: git diff --cached failed fatally (exit $staged) - a corrupt index or an unreadable" >&2
+  echo "       path. This is NOT 'nothing staged' and NOT a hook rejection." >&2
   exit 1
 fi
 if [ "$staged" -eq 0 ]; then
@@ -2514,6 +2518,29 @@ fi
 STAGED=$(git diff --cached --name-only) || {
   echo "ABORT: could not list the staged files." >&2; exit 1; }
 n=$(printf '%s\n' "$STAGED" | grep -c .)
+
+# Every staged entry must be a MODIFICATION. This task edits six files that already exist; it never
+# adds, deletes, or renames one.
+#
+# The divergence check further down CANNOT see a deletion: `git rm` removes the file from the index
+# AND the working tree, so `git diff --quiet` finds them identical (both absent) and exits 0.
+# MEASURED - after `git rm f`, `git diff --quiet -- f` exits 0 while `--name-status` reports `D f`.
+# The status letter is the only thing that distinguishes them.
+# Three branches, not `|| true`. (`|| true` was written here first, one round after it was removed
+# from the ownership filter for masking grep's exit 2 - the habit is the defect, not the instance.)
+brc=0
+BADSTATUS=$(git diff --cached --name-status | grep -v '^M') || brc=$?
+if [ "$brc" -ge 2 ]; then
+  echo "ABORT: the status filter failed (grep exit $brc) - nothing was checked." >&2
+  exit 1
+fi
+if [ -n "$BADSTATUS" ]; then
+  echo "ABORT: the index contains staged changes that are not plain modifications:" >&2
+  printf '        %s\n' "$BADSTATUS" >&2
+  echo "       This task only ever MODIFIES its six files. A staged add, delete, rename or mode" >&2
+  echo "       change means something else touched the index. Unstage it and re-run Step 5." >&2
+  exit 1
+fi
 
 # Refuse to commit anything outside the six files this task owns. Step 5 stages by name, so a foreign
 # path here means something else staged it - and committing it under this message would misattribute
@@ -2556,12 +2583,17 @@ fi
 # straight after verifying them. A gate failure here must leave the index alone and say so.
 if ! bash scripts/check-seed-artifacts-synced.sh; then
   echo "GATE FAILED: check-seed-artifacts-synced. The $n staged files are LEFT STAGED; nothing" >&2
-  echo "      was committed. Fix the cause, then re-run this step." >&2
+  echo "      was committed. Fix the cause, then RE-RUN STEP 5 - not this step." >&2
+  echo "      Fixing the cause means editing a file, which makes the working tree differ from the" >&2
+  echo "      index; the divergence check below would then refuse anyway. Step 5 re-verifies and" >&2
+  echo "      re-stages in one go, which is what you actually need." >&2
   exit 1
 fi
 if ! just check-injected-context; then
   echo "GATE FAILED: check-injected-context. The $n staged files are LEFT STAGED; nothing was" >&2
-  echo "      committed. Fix the cause, then re-run this step." >&2
+  echo "      committed. Fix the cause, then RE-RUN STEP 5 - not this step. Fixing the cause means" >&2
+  echo "      editing a file, and the divergence check below refuses when the working tree and the" >&2
+  echo "      index differ. Step 5 re-verifies and re-stages together." >&2
   exit 1
 fi
 
@@ -2579,7 +2611,17 @@ fi
 # safe because the ownership filter above has already proven every staged path matches a strict
 # regex containing no spaces or glob characters. **Do not move this check above that filter**, and do
 # not relax the regex without quoting this.
-if ! git diff --quiet -- $STAGED; then
+# Three outcomes here too - 0 same, 1 differ, >=2 fatal (MEASURED: a path outside the repository
+# gives 128). `if ! git diff --quiet` folds 1 and 128 together and would report a git crash as a
+# content divergence, sending the operator to re-run Step 5 for a problem Step 5 cannot fix.
+drc=0
+git diff --quiet -- $STAGED || drc=$?
+if [ "$drc" -ge 2 ]; then
+  echo "ABORT: git diff failed fatally (exit $drc) comparing the index to the working tree." >&2
+  echo "       This is NOT a divergence - nothing was compared. Fix the git error itself." >&2
+  exit 1
+fi
+if [ "$drc" -eq 1 ]; then
   echo "ABORT: the working tree and the index have diverged for the staged files." >&2
   echo "       The gates above inspected the WORKING TREE, but a commit lands the INDEX - so their" >&2
   echo "       passing says nothing about what would be committed. This happens if a staged file was" >&2
@@ -2590,7 +2632,12 @@ fi
 
 if ! git commit -m "$MSG"; then
   echo "COMMIT FAILED (a hook rejected it, or identity is unset). The $n files are STILL STAGED -" >&2
-  echo "      the index is dirty. Fix the cause, then commit the existing index; do NOT re-stage." >&2
+  echo "      the index is dirty and nothing was committed." >&2
+  echo "      If the cause needs NO file change (git identity unset, a signing key, a transient" >&2
+  echo "        hook failure): fix it and commit the existing index - do not re-stage." >&2
+  echo "      If the cause needs a FILE CHANGE (a linter or formatter hook rejected the content):" >&2
+  echo "        edit the files and RE-RUN STEP 5. Committing the existing index would just be" >&2
+  echo "        rejected again, and 'do not re-stage' would loop you forever." >&2
   exit 1
 fi
 ```
