@@ -4906,17 +4906,51 @@ Expected: **Passed 12, Failed 0** from the first; all green from the second, inc
 Delete the `clavity-dotnet/install/...` entry from the `test-scripts-slow` recipe in `justfile` - the new pin's FIRST assertion must turn
 RED. Restore it, then temporarily rename the suite file - the SECOND assertion must turn RED. Restore.
 
-- [ ] **Step 8: Check the YAML by READING - it cannot be exercised before merge**
+- [ ] **Step 8: EXERCISE the YAML - it does not need CI, and "read it carefully" is not an oracle**
 
-Nothing is pushed, so CI cannot run. Verify by inspection:
+**This step used to say the YAML "cannot be exercised before merge" and asked the executor to confirm
+indentation by eye. That was the only authored code in this plan with NO mechanical check at all** -
+the shell blocks get `bash -n` and `sh -n`, the PowerShell gets `[Parser]::ParseFile`, and the YAML got
+a careful reader. Indentation is exactly what a careful reader misses, and a broken workflow file does
+not fail loudly: GitHub skips or errors the run long after the commit that caused it.
+
+**CI cannot run, but the FILE can be parsed.** Do this instead - it needs no remote, and it caught
+nothing only because the edits happened to be right:
 
 ```bash
-pwsh -c "if (Get-Command yq -EA SilentlyContinue) { yq '.jobs | keys' .github/workflows/ci-scripts.yml } else { 'yq not present - read the file' }"
-grep -n "clavity-install" .github/workflows/ci-scripts.yml
+# 1. The edited workflow must still be valid YAML.
+yq '.' .github/workflows/ci-scripts.yml > /dev/null && echo "yq parse: OK"
+
+# 2. Each new step must land in the RIGHT job - indentation decides this, and a misindented step
+#    silently attaches to the wrong job or to none. Expect installer-5-1 and dev-scripts, one each.
+yq '.jobs | to_entries | .[] | .key as $j | .value.steps[] | select(.name == "*clavity-install*") | $j + " -> " + .name' .github/workflows/ci-scripts.yml
+
+# 3. Step COUNTS per job, so a step that vanished into a sibling's `run:` block is visible.
+yq '.jobs | to_entries | .[] | .key + ": " + (.value.steps | length | tostring) + " steps"' .github/workflows/ci-scripts.yml
+
+# 4. The lefthook edit from Task 11, same treatment.
+yq '.pre-commit.commands | keys' lefthook.yml
 ```
 
-Expected: **two** `Pester - clavity-install` step names (one per job), and the two `paths:` entries from
-Step 1. Confirm indentation matches the sibling steps exactly.
+**Expected:** `yq parse: OK`; exactly **two** lines from (2) - `installer-5-1 -> Pester - clavity-install
+(Windows PowerShell 5.1)` and `dev-scripts -> Pester - clavity-install (pwsh 7)`; **6 steps in each job**
+from (3); and `ruff`, `curate-in-progress`, `cheatsheet-parity` from (4).
+
+**MEASURED before this step was written**, by splicing both snippets into the real 159-line workflow at
+the stated anchors and running the checks above: parse OK, both steps in the correct jobs, 6 steps each,
+and the lefthook splice yielding those three commands. **The anchors were verified too** - `:99` is the
+last line of `installer-5-1` (`:101` opens `dev-scripts`) and `:159` is the last line of the file, so
+"after the step ending at" resolves correctly for both.
+
+**MUTATION CONTROL, run - because a check nobody has seen fail is not a check.** Shift the 5.1 step two
+spaces deeper, the classic paste error this step exists to catch, and re-run query (1): it does not
+merely mis-report, **the file stops being valid YAML** - `yq` exits non-zero with
+`did not find expected key` and the offending line number. Restore the indentation and it parses again.
+That is the whole reason (1) comes first: the cheapest query catches the most likely mistake.
+
+> 🔴 **If `yq` is absent, do NOT fall back to reading.** That is the fallback this step just replaced.
+> `yq` is on the declared toolchain; install it, or run the same three queries with any YAML parser.
+> A step whose failure mode is "the executor read it and it looked fine" is the shape 14b exists to fix.
 
 - [ ] **Step 9: Commit**
 
