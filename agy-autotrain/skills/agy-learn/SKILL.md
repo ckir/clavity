@@ -44,7 +44,33 @@ knowledge rule - `agy-curate` decides tool-fixability. Capture the axes; do not 
 
 ## Step 3 - Append one bullet to the inbox
 
-Append to `../../knowledge/agy-observations.md` (create it with the header below if missing). One line:
+### Resolve the inbox FIRST - this skill ships in more than one copy
+
+**There is exactly ONE live inbox: the one the nudge hook counts.** That hook resolves
+`${CLAUDE_PLUGIN_ROOT}/knowledge/agy-observations.md`, which for a hook is the INSTALLED plugin tree.
+**A path relative to THIS file is not that path** whenever the skill is invoked from a repo checkout or a
+git worktree, because those carry their own `agy-autotrain/knowledge/agy-observations.md`.
+
+**MEASURED 2026-08-15, and this is why the rule exists:** the two inboxes had diverged to **30 pending in
+the repo copy and 18 in the installed one, with ZERO overlap** - four capstone sessions' worth of real
+captures written to a copy nothing drains and nothing counts. They were committed to git, so they looked
+saved; they were simply invisible to the loop.
+
+Resolve in this order, and do not skip to the fallback:
+
+1. **`$CLAUDE_PLUGIN_ROOT/knowledge/agy-observations.md`** if that variable is set. (It is set for HOOK
+   invocations. **Measured: it is UNSET in a skill-context shell call**, so expect to fall through.)
+2. **This skill's own base directory** - the harness states it when the skill is invoked - resolved as
+   `<base>/../../knowledge/agy-observations.md`, **but ONLY if that base directory is the INSTALLED
+   plugin tree** (on Windows, under `.../Programs/agy-autotrain/plugins/agy-autotrain/...`).
+3. **If the base directory is a repository checkout or a worktree, STOP.** Do not append there and do not
+   invent a path. Say so, and ask where the installed inbox is. **A capture written to the wrong copy is
+   worse than a capture not taken**: it reads as done, it survives review, and it never reaches curation.
+
+**Then verify what you actually wrote**, in the same turn: print the resolved absolute path and the new
+pending count. If that path is not the one the nudge reports on, the capture did not land.
+
+Append to the resolved inbox (create it with the header below if missing). One line:
 
 ```
 - [<class>] (<audience>/<nature>) <General Rule>  *  `[corpus]` * <YYYY-MM-DD> * agy <version-if-known>

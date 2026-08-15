@@ -14,7 +14,7 @@ On the dotnet bridge (`mcp__plugin_clavity_clavity-ls__agy_ask`), fire a review-
 peer composes across several assistant steps. Observed repeatedly on 2026-08-15 during a 17-round panel:
 
 1. `agy_ask` returns a JSON envelope with **`"Answer": null`** and `"AnswerTruncated": false`.
-2. The reply text is nonetheless present — as the `Summary` field of the FINAL `Kind: 15` (assistant)
+2. The reply text is nonetheless present - as the `Summary` field of the FINAL `Kind: 15` (assistant)
    entry inside `Activity[]`.
 3. That `Summary` is **cut off mid-sentence** (measured: `"...creating false-greens that would silently
    certify broken or dangerous implemen"`), so the caller receives a partial answer with no signal that
@@ -45,11 +45,11 @@ unbounded reply to a file and return its path, so a caller that hits any boundin
 ## Notes
 
 - **Determinism:** dotnet-only as observed. The classic variant returns replies over a different path
-  (`clavity ask` / relay file) and was not exercised here — do not assume it reproduces there.
+  (`clavity ask` / relay file) and was not exercised here - do not assume it reproduces there.
 - **The driver-side rule stays regardless of this fix** (retirement needs a green CI regression test plus
   end-user adoption, per agy-curate 5.C-B/5.C-D): byte-count every reply against that peer's OWN recent
   replies, never against zero. A 100-byte answer where the last three ran 3-6 KB is a failed consult, not
-  a terse one — and in this failure mode neither the exit status nor `AnswerTruncated` will tell you.
+  a terse one - and in this failure mode neither the exit status nor `AnswerTruncated` will tell you.
 - **Do not conflate with peer SELF-truncation**, which is already canonical in the golden header (the peer
   emitting a stub that claims the full answer was delivered, usually caused by a monotonically growing
   brief). That one is peer behaviour with a driving fix; this one is the bridge's envelope.

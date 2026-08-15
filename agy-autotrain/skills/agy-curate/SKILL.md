@@ -10,7 +10,13 @@ GROWTH region of the shared golden-header - the driver owns the SEED (the baseli
 this skill reads as a floor but never edits.
 
 **Inputs:**
-- `../../knowledge/agy-observations.md` - the capture inbox (what you drain).
+- **The capture inbox** - `agy-observations.md`. **Resolve it the way `agy-learn` Step 3 does, not by a
+  path relative to this file**: the live inbox is the one the nudge hook counts
+  (`${CLAUDE_PLUGIN_ROOT}/knowledge/agy-observations.md`, the INSTALLED tree), and this skill also exists
+  in any repo checkout or worktree, each with its own copy. **Draining the wrong one is worse than not
+  draining**: it publishes the wrong content to the live header AND resets a pending list nothing was
+  waiting on. Measured 2026-08-15: the repo and installed copies held 30 and 18 entries with ZERO overlap.
+  Print the resolved absolute path before you drain, and STOP if it is a checkout rather than the install.
 - The **runtime SEED floor**: the shared `%USERPROFILE%\.clavity\golden-header.seed.md` that the driver
   actually injects (honor a `CLAVITY_GOLDEN_HEADER` **directory** override; default `%USERPROFILE%\.clavity\`).
   Read it to dedupe - a rule already stated in SEED must NOT be repeated in GROWTH. Resolve it at the RUNTIME
