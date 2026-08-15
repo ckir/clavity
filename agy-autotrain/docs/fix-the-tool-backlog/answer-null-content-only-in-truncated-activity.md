@@ -33,8 +33,18 @@ the content only in a lossy secondary field.
 Two changes to the `agy_ask` return path, both in the bridge:
 
 1. **When `Answer` resolves null but the trajectory contains assistant steps, populate `Answer` from the
-   last assistant step's FULL text** rather than leaving it null and letting the caller scrape a summary.
-   The summary field is a display projection and must not be the only carrier of the payload.
+   FULL text of the assistant step that carries the reply**, rather than leaving it null and letting the
+   caller scrape a summary. The summary field is a display projection and must not be the only carrier of
+   the payload.
+
+   **Which step carries it, measured rather than assumed:** across every envelope observed on 2026-08-15,
+   the intermediate `Kind: 15` assistant entries had `"Summary": null` and only the FINAL one carried
+   text. So "the last assistant step" is the right target here. **A capstone reviewer proposed
+   concatenating ALL assistant steps instead, on the theory that a multi-step reply is spread across
+   them; the observed data refutes that** - the earlier steps are empty, so concatenation would add
+   nothing while risking tool-call and scratchpad noise. Implement against the trajectory you actually
+   observe: if a future envelope does spread text across steps, concatenation becomes correct and this
+   note is the record of why it was not.
 2. **`AnswerTruncated` must describe what the caller actually receives.** If the returned text is a
    summary rather than the full step, set it `true`. A `false` on a field that was never populated is the
    fail-open: it tells the caller "this is complete" about content that is not there.

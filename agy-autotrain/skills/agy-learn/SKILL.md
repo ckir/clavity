@@ -61,14 +61,49 @@ Resolve in this order, and do not skip to the fallback:
 1. **`$CLAUDE_PLUGIN_ROOT/knowledge/agy-observations.md`** if that variable is set. (It is set for HOOK
    invocations. **Measured: it is UNSET in a skill-context shell call**, so expect to fall through.)
 2. **This skill's own base directory** - the harness states it when the skill is invoked - resolved as
-   `<base>/../../knowledge/agy-observations.md`, **but ONLY if that base directory is the INSTALLED
-   plugin tree** (on Windows, under `.../Programs/agy-autotrain/plugins/agy-autotrain/...`).
-3. **If the base directory is a repository checkout or a worktree, STOP.** Do not append there and do not
-   invent a path. Say so, and ask where the installed inbox is. **A capture written to the wrong copy is
-   worse than a capture not taken**: it reads as done, it survives review, and it never reaches curation.
+   `<base>/../../knowledge/agy-observations.md`, **unless that tree is a CHECKOUT.**
+
+   **Test for the checkout, do not pattern-match the install.** Install roots vary by platform and by
+   product (`.../Programs/<product>/plugins/...`, `~/.claude/plugins/cache/...`,
+   `~/.gemini/config/plugins/...` are all real), so any "is it under X" test excludes a legitimate
+   install somewhere and sends it to the STOP branch for no reason. The reliable discriminator is the
+   opposite one, and it is platform-independent: **run `git -C <base> rev-parse --is-inside-work-tree`.
+   A repo checkout or worktree answers `true`; an installed tree has no `.git` at or above it and
+   answers non-zero.** Use the base directory only when that check says it is NOT a work tree.
+3. **If it IS a work tree, do not append there.** But do not lose the observation either - see below.
+
+**NEVER DISCARD THE CAPTURE IN ORDER TO OBEY THIS RULE.** Capture is cheap and mid-task, which is exactly
+why an instruction to "stop and ask" loses observations: the rule interrupts a task the agent then
+resumes, and the bullet exists only in a context window that moves on. So, in this order:
+
+   a. **Write the bullet to `<USERPROFILE or HOME>/.clavity/agy-observations.staged.md` FIRST** (append,
+      creating the file if absent). That directory is machine-local, outside every plugin tree and every
+      checkout, and already holds the runtime golden-header files - so both copies of this skill resolve
+      it identically and nothing can shadow it.
+   b. **Then** tell the operator the capture is staged there and ask where the installed inbox is.
+
+   **A capture written to the wrong copy is worse than a capture not taken** - it reads as done, survives
+   review, and never reaches curation. A capture staged in a known machine-local file is neither.
 
 **Then verify what you actually wrote**, in the same turn: print the resolved absolute path and the new
 pending count. If that path is not the one the nudge reports on, the capture did not land.
+
+> **KNOWN GAP, stated rather than papered over: this rule is unguarded by construction.** It is prose an
+> agent follows, and nothing tests compliance - the verify-then-print step above is the only feedback, and
+> it depends on the same agent. **A capstone reviewer proposed a CI check asserting the repo copy of
+> `agy-observations.md` is never modified; that fix is wrong and was rejected** - the repo copy is the
+> INSTALL SEED and is legitimately updated (it carries deliberately-committed entries today), so such a
+> gate would forbid a normal operation and would already be failing. A presence-grep asserting these
+> paragraphs exist would be the vacuous-oracle shape this project removes on sight. **The honest state is:
+> unguarded, with the cost recorded here.**
+>
+> **Related debt, deliberately not fixed in this change:** the canonical inbox lives inside the plugin
+> tree rather than the machine-local runtime directory that holds the golden-header files. Moving it there
+> would remove the two-copies problem at the root instead of instructing around it. **It is NOT the
+> emergency it looks like** - the installer excludes this file from the blanket copy and ships it
+> `onlyifdoesntexist uninsneveruninstall`, so an update does not overwrite it and an uninstall does not
+> remove it (a reviewer claimed the next update would destroy the backlog; the installer refutes that).
+> The move touches both skills, the nudge hook and its suite, and the installer, so it is tracked work.
 
 Append to the resolved inbox (create it with the header below if missing). One line:
 
