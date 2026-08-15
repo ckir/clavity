@@ -2521,6 +2521,9 @@ other was not, which is exactly the failure a completion check exists to catch.
 ```bash
 set -u
 FAIL=0
+# ASSERTION COUNTERS - see the truncated-paste guard at the bottom of this step.
+T_ROWS=0
+T_RUN=0
 
 # ==============================================================================================
 # WHY THIS BLOCK IS SHAPED LIKE THIS - read before changing it.
@@ -2796,19 +2799,28 @@ run_table() {
     fi
     # Split by parameter expansion rather than by `read`: with the count already proven, each
     # `%%|*` takes exactly one field and the final remainder carries no delimiter at all.
+    T_ROWS=$((T_ROWS + 1))
     t_verb=${t_line%%|*};  t_r1=${t_line#*|}
     t_rel=${t_r1%%|*};     t_r2=${t_r1#*|}
     t_a=${t_r2%%|*};       t_r3=${t_r2#*|}
     t_b=${t_r3%%|*};       t_c=${t_r3#*|}
     for t_p in clavity-dotnet clavity-classic; do
       t_f="$t_p/$t_rel"
+      T_RUN=$((T_RUN + 1))
       case "$t_verb" in
         ascii)   v_ascii   "$t_f" ;;
         notnul)  v_notnul  "$t_f" ;;
         nosub)   v_nosub   "$t_f" ;;
         absent)  v_count   "$t_f" "$t_a" 0      absent  ;;
         once)    v_count   "$t_f" "$t_a" 1      once    ;;
-        exactly) v_count   "$t_f" "$t_a" "$t_b" exactly ;;
+        exactly)
+          # `exactly ... 0` is `absent` under another name, and ONE SPELLING PER MEANING is the
+          # whole thesis of this table - two ways to ask the same question is how five bespoke
+          # helpers happened in the first place. Refuse it and name the verb to use.
+          case "$t_b" in
+            0) say_fail "row asks for exactly 0, which is the absent verb under another name - write absent instead, one spelling per meaning: [$t_line]" ;;
+            *) v_count "$t_f" "$t_a" "$t_b" exactly ;;
+          esac ;;
         atleast) v_atleast "$t_f" "$t_a" "$t_b" ;;
         between) v_between "$t_f" "$t_a" "$t_b" "$t_c" ;;
         para)    v_para    "$t_f" "$t_a" "$t_b" ;;
@@ -2887,8 +2899,34 @@ else
   echo "14c: SKIPPED - Task 1 recorded BLOCKED."
 fi
 
+# THIS STEP CAN RUN AND VERIFY NOTHING, AND THE TWO WAYS THAT HAPPENS NEED DIFFERENT ANSWERS.
+# Everything above is definitions; the only things that assert anything are the two `run_table`
+# invocations. Lose them and this exits 0 having checked nothing, stages the files, and hands Step 6
+# a green light - "a guard that fails open certifies what it stopped checking", in the step whose
+# entire job is to verify.
+#
+# (1) TABLES PRESENT BUT EMPTY - rows commented out, or a here-doc mangled in transit. The check
+#     below catches this. MEASURED with the rows stripped and the invocations left in place: exit 1,
+#     one FAIL naming the cause.
+#
+# (2) THE COPY WAS CUT SHORT of the invocations. The check below CANNOT catch this, and an earlier
+#     version of this comment wrongly claimed it did - a truncated paste loses this guard along with
+#     the tables. MEASURED: exit 0, zero assertions, zero failures, and NO summary line.
+#     THE ABSENCE OF THE FINAL LINE IS THE DISCRIMINATOR, and it is the same one this project
+#     already relies on for test runs - a log with no verdict line is an ABORTED run, not a pass.
+#     So the summary prints on SUCCESS, not only on failure: it exists to be MISSING.
+#     If you reach Step 6 without having seen "Step 5: evaluated N assertions", you did not run
+#     Step 5 - go back and paste it whole. A partial paste of the TABLE itself still satisfies
+#     T_RUN = T_ROWS x 2, so the printed COUNT is what makes that visible: expect 38, or 64 on the
+#     RESOLVED path.
+if [ "$T_ROWS" -eq 0 ]; then
+  say_fail "NO TABLE ROWS WERE EVALUATED - the expectation tables did not run. This is almost always a truncated paste: everything above the run_table calls is definitions only. Nothing has been verified; do NOT proceed."
+fi
+
 # One exit for the whole step. Step 6 must be unreachable if any check above failed.
 [ "$FAIL" -eq 0 ] || { echo "STEP 5 FAILED - do not proceed to Step 6." >&2; exit 1; }
+printf '%s
+' "Step 5: evaluated $T_RUN assertions over $T_ROWS table rows (TASK1=$TASK1)."
 
 # STAGE THE VERIFIED FILES HERE, and let git's INDEX be the lock.
 #
