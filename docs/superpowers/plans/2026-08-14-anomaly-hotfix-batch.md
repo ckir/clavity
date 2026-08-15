@@ -2485,6 +2485,27 @@ file but NOT before the anchor that must follow it - the presence-grep above wou
 file or re-derives a path list - the staged set is the authority. Read the notes under the block before
 changing any of it.
 
+> **TWO ACCEPTED RESIDUALS, recorded so they are not "fixed" back into the machinery round 6 deleted.**
+>
+> **1. Step 6 cannot prove Step 5 ran.** Someone who hand-stages the six files and runs Step 6 gets a
+> commit without Step 5's ASCII, positional and removal checks ever executing. The deleted token DID
+> close this. It is accepted, because it is the SAME reachability argument that justified deleting the
+> token: a single agent executes this task top to bottom, so "skipped Step 5 and hand-staged instead"
+> is no more reachable than the mid-run edit the token guarded. **Reintroducing a token to close it
+> would rebuild ~100 lines that produced a fresh defect in each of three consecutive review rounds,
+> including one where an absent hashing tool made the lock pass on two empty strings.** If this ever
+> needs closing, close it by MERGING the two steps, not by minting a token.
+>
+> **2. A staged mode-only change is not separately detected.** `--name-status` reports `M` for it. It
+> requires a deliberate `git update-index --chmod`; `git add`, which is all Step 5 runs, never produces
+> one. Below the reachability floor. (A reviewer asserted this is worse on Windows because such repos
+> run `core.filemode=false` - **measured here: `core.filemode=true`**, so that premise does not hold
+> for this repository anyway.)
+>
+> **REFUTED, do not re-raise:** that `core.autocrlf=true` makes the divergence check fire spuriously.
+> **MEASURED** in a fixture with `autocrlf=true`: a freshly checked-out CRLF working tree staged
+> against an LF index gives `git diff --quiet` exit **0**. Git normalises for the comparison.
+
 ```bash
 # Step 5 already STAGED the files it verified, and git's index holds those exact bytes regardless of
 # anything edited since. So this block does not parse the measurement file, does not rebuild a path
@@ -2492,32 +2513,25 @@ changing any of it.
 # it. The Task 1 result is READ OFF THE INDEX rather than re-derived, which removes the last way the
 # two blocks could disagree.
 
-# THREE outcomes: 0 = nothing staged, 1 = something staged, >=2 (git uses 128) = FATAL, e.g. a corrupt
-# index or an unreadable path. A bare `if git diff --cached --quiet` folds 1 and 128 together into
-# "something staged" and walks into the commit, where the fatal error resurfaces and is reported as
-# "a hook rejected it".
+# What is staged? This single call is the authority - it answers "is anything staged" AND "what",
+# so there is no separate `git diff --cached --quiet` probe. An earlier draft ran both; the second
+# asked the index the same question the first had already answered, and its only unique contribution
+# was a comment containing a false claim about `.git/index.lock`. One call, one answer.
 #
-# NOT "a stale .git/index.lock": an earlier draft of this comment said that and it is FALSE.
-# MEASURED - with `.git/index.lock` present, `git diff --cached --quiet` still exits 0. It is a
-# read-only comparison and does not take the index lock. Do not restore that claim.
-staged=0
-git diff --cached --quiet || staged=$?
-if [ "$staged" -ge 2 ]; then
-  echo "ABORT: git diff --cached failed fatally (exit $staged) - a corrupt index or an unreadable" >&2
-  echo "       path. This is NOT 'nothing staged' and NOT a hook rejection." >&2
-  exit 1
-fi
-if [ "$staged" -eq 0 ]; then
+# Its `||` catches the fatal case (git exits 128 on a corrupt index or an unreadable path), which is
+# the third outcome the deleted probe existed to separate.
+STAGED=$(git diff --cached --name-only) || {
+  echo "ABORT: git diff --cached failed - a corrupt index or an unreadable path. This is NOT" >&2
+  echo "       'nothing staged' and NOT a hook rejection; nothing was inspected." >&2
+  exit 1; }
+
+n=$(printf '%s\n' "$STAGED" | grep -c .)
+if [ "$n" -eq 0 ]; then
   echo "STOP: nothing is staged, so Step 5 did not run, did not pass, or made no edit." >&2
   echo "      Run Step 5. Do not stage anything by hand here - staging is Step 5's job precisely" >&2
   echo "      so that only VERIFIED bytes can reach a commit." >&2
   exit 1
 fi
-
-# What is actually staged? This is the authority now, not a re-parse of the measurement file.
-STAGED=$(git diff --cached --name-only) || {
-  echo "ABORT: could not list the staged files." >&2; exit 1; }
-n=$(printf '%s\n' "$STAGED" | grep -c .)
 
 # Every staged entry must be a MODIFICATION. This task edits six files that already exist; it never
 # adds, deletes, or renames one.
@@ -2583,17 +2597,20 @@ fi
 # straight after verifying them. A gate failure here must leave the index alone and say so.
 if ! bash scripts/check-seed-artifacts-synced.sh; then
   echo "GATE FAILED: check-seed-artifacts-synced. The $n staged files are LEFT STAGED; nothing" >&2
-  echo "      was committed. Fix the cause, then RE-RUN STEP 5 - not this step." >&2
-  echo "      Fixing the cause means editing a file, which makes the working tree differ from the" >&2
-  echo "      index; the divergence check below would then refuse anyway. Step 5 re-verifies and" >&2
-  echo "      re-stages in one go, which is what you actually need." >&2
+  echo "      was committed." >&2
+  echo "      If the fix EDITS A TRACKED FILE: re-run STEP 5, not this step - editing makes the" >&2
+  echo "        working tree differ from the index and the divergence check below would refuse." >&2
+  echo "      If the fix is ENVIRONMENTAL (a missing tool, an unset variable, a transient failure)" >&2
+  echo "        and touches no tracked file: re-running THIS step is correct and will work." >&2
   exit 1
 fi
 if ! just check-injected-context; then
   echo "GATE FAILED: check-injected-context. The $n staged files are LEFT STAGED; nothing was" >&2
-  echo "      committed. Fix the cause, then RE-RUN STEP 5 - not this step. Fixing the cause means" >&2
-  echo "      editing a file, and the divergence check below refuses when the working tree and the" >&2
-  echo "      index differ. Step 5 re-verifies and re-stages together." >&2
+  echo "      committed." >&2
+  echo "      If the fix EDITS A TRACKED FILE: re-run STEP 5, not this step - the divergence check" >&2
+  echo "        below refuses once the working tree and the index differ." >&2
+  echo "      If the fix is ENVIRONMENTAL and touches no tracked file: re-running THIS step is" >&2
+  echo "        correct and will work." >&2
   exit 1
 fi
 
