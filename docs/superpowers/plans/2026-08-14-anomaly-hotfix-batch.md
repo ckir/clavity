@@ -2339,6 +2339,25 @@ Expected: **read the COUNT, not just the exit code** - `dotnet test --filter` ex
 matches nothing. Expect at least the `BaselineFloor_matches_the_canonical_core_source` fact and the Rust
 `baseline_floor_matches_canonical_core_source` test to have RUN and passed.
 
+> **TWO RESIDUALS THIS TASK CREATES FOR OTHER PEOPLE, stated because the plan was silent on both
+> (panel R17).**
+>
+> **1. Anyone who PULLS this commit while holding uncommitted edits to the three paths meets the pin.**
+> Step 0 protects the person running this task; it does nothing for anyone else. A contributor with
+> uncommitted CRLF changes to `core.md` or a literal will hit line-ending conflicts, or have git
+> renormalise under them on the next index update. **The blast radius is small here in fact - nothing is
+> pushed and this repository has one human owner - but "small because of who happens to use it" is a
+> property of today, not of the change**, so it is recorded rather than assumed away. If this branch is
+> ever shared before merge, say so in the merge message.
+>
+> **2. The canonical path is hardcoded in FIVE disconnected places** - `.gitattributes`, `lefthook.yml`,
+> `scripts/check-cheatsheet-parity.ps1`, `scripts/generate-cheatsheet-literals.ps1`, and
+> `agy-autotrain/skills/agy-curate/SKILL.md`. **Renaming or moving `core.md` therefore reads to the hook
+> as a DELETION**, which blocks the commit until both literals are deleted too - and the author has to
+> discover all five sites to get out of it. That is the cost of the per-path deletion guard, which is
+> otherwise the thing standing between this repo and a silently certified diverged pin. **Accepted, not
+> solved**: a rename is rare and the failure is loud, whereas the guard it buys catches a silent one.
+
 - [ ] **Step 6: Commit**
 
 ```bash
