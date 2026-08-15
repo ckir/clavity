@@ -146,7 +146,7 @@ nothing was created.
 
 ---
 
-## Task 1: Measure the skill base-directory locator (GATES Task 6, and the 14c HALF of Task 7)
+## Task 1: Measure the skill base-directory locator (GATES Task 4's helper call, Task 6, and the 14c HALF of Task 7)
 
 **Why this is first.** M1 measured `$CLAUDE_PLUGIN_ROOT` as unset in a skill-context shell call, which
 fires the spec's blocking outcome at `:652`. The owner ruled that one further locator is measured before
@@ -208,7 +208,7 @@ Create `docs/superpowers/plans/2026-08-14-anomaly-hotfix-batch-task1-measurement
 - Verbatim line: <the line, or "none emitted">
 
 ## Consequence (tick exactly one)
-- [ ] **RESOLVED** - Probe B is YES. Task 6 and ALL of Task 7 proceed, using
+- [ ] **RESOLVED** - Probe B is YES. Task 4, Task 6 and ALL of Task 7 proceed, using
       `bash "<BASE>/../../hooks/agy-mark.sh"` as the invocation, where **`<BASE>` stays that literal
       token in the file** - it is the skill's own base directory as the harness supplies it at
       invocation time, NOT a path you write out. Task 7 Step 1 says the same; the two must agree,
@@ -217,6 +217,10 @@ Create `docs/superpowers/plans/2026-08-14-anomaly-hotfix-batch-task1-measurement
       **Task 7 is NOT skipped: its 14c rows are skipped and its 14h rows still ship** - item 14h
       has no dependency on this locator. Tasks 5 and 8 (the hook half and the ROADMAP rewrite)
       still ship.
+      **Task 4 is NOT skipped either: it ships its Step 1b append-corruption fix and DEFERS the
+      helper call**, with 14c's skill half. Task 4's own header states this; it was missing from
+      this list, and an executor following only this block would have shipped the helper call that
+      Panel R1 measured as a silent no-op on exactly this path.
       **Do NOT invent a glob, a search path, or a hardcoded install location** (spec `:652`).
 ```
 
@@ -229,16 +233,22 @@ git commit -m "docs(plan): task 1 - measure the skill base-directory locator"
 
 - [ ] **Step 5: Branch the remaining plan**
 
-If **BLOCKED**, mark Task 6 as SKIPPED in this plan file and **mark Task 7's 14c ROWS as skipped -
-NOT Task 7 itself**, then add one line to `clavity-dotnet/ROADMAP.md` section 14c during Task 8
-recording that the skill half is deferred and why.
+If **BLOCKED**, mark Task 6 as SKIPPED in this plan file, **mark Task 7's 14c ROWS as skipped - NOT
+Task 7 itself**, and **mark Task 4's helper call as deferred - NOT Task 4 itself, whose Step 1b still
+ships**. Then add one line to `clavity-dotnet/ROADMAP.md` section 14c during Task 8 recording that the
+skill half is deferred and why.
 If **RESOLVED**, proceed unchanged.
 
-> 🔴 **Task 7 is the one task that is only PARTLY gated by this measurement.** It carries item 14c
-> (gated) and item 14h (not gated at all - a seat instruction that has nothing to do with the base
-> directory). Marking the whole task SKIPPED on a BLOCKED result silently drops a shipped defect fix.
-> Task 7's own header states the same rule; if these two ever disagree, **Task 7's header wins** and
-> this line is the stale one.
+> 🔴 **TWO tasks are only PARTLY gated by this measurement, not one.** Task 7 carries item 14c (gated)
+> and item 14h (not gated at all - a seat instruction with nothing to do with the base directory).
+> **Task 4 carries the same split**: its Step 1b append-corruption fix is independent of the locator,
+> and only its helper call is gated. Marking either task wholly SKIPPED on a BLOCKED result silently
+> drops a shipped defect fix.
+> **This note said "the one task" until a cross-task review found Task 4 declaring itself "GATED ON
+> TASK 1, exactly as Tasks 6 and 7 are" while appearing in neither branch above.** The dependency was
+> stated at one end and absent at the other, in the block an executor reads to decide what to do.
+> Each task's own header states its rule; if a header and this block ever disagree, **the header wins**
+> and this block is the stale one.
 
 ---
 
@@ -5546,7 +5556,7 @@ Run against the spec with fresh eyes.
 
 **Ordering deviation, stated:** the spec's order is 14a, 14d, 14c, 14e, then (14b, 13a, 13c). This plan
 inserts Task 1 (the locator measurement) FIRST, per the owner's decision, because it determines whether
-Tasks 6 and 7 exist at all. Everything else follows the spec's order.
+Task 6 exists at all and which halves of Tasks 4 and 7 ship. Everything else follows the spec's order.
 
 ### 2. Placeholder scan
 
