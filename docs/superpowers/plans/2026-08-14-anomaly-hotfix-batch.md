@@ -2402,81 +2402,43 @@ done
 # One exit for the whole step. Step 6 must be unreachable if any check above failed.
 [ "$FAIL" -eq 0 ] || { echo "STEP 5 FAILED - do not proceed to Step 6." >&2; exit 1; }
 
-# Record WHICH Task 1 result these checks were performed under, so Step 6 can refuse to commit a
-# different one. Step 5 and Step 6 are separate blocks and each parses $M independently; if $M is
-# edited between them, Step 5 can verify the four-file BLOCKED set while Step 6 stages the six-file
-# RESOLVED set, committing a file that was never verified.
-# The token binds to CONTENT, not just to the Task 1 result. A token recording only "RESOLVED" is a
-# bearer token: it stays valid after you edit the files, and it survives a `git checkout` to another
-# branch because .clavity/ is gitignored - in both cases Step 6 would commit files Step 5 never saw.
-# Digesting the six files plus the branch plus TASK1 makes the token describe a specific tree state,
-# so any edit, any checkout, and any Task 1 change invalidates it automatically.
-mkdir -p .clavity/scratch/14h-fold || {
-  echo "ABORT: cannot create .clavity/scratch/14h-fold" >&2; exit 1; }
-[ -f .clavity/.gitignore ] || printf '%s\n' '*' >> .clavity/.gitignore
+# STAGE THE VERIFIED FILES HERE, and let git's INDEX be the lock.
+#
+# Earlier rounds guarded the gap between Step 5 and Step 6 with a ~100-line content digest, a second
+# copy of the digest function, and a hash of that function's own source to detect drift between the
+# copies. All of it existed to DETECT that the tree changed between verifying and committing.
+#
+# The index already solves this, and solves it better. MEASURED: stage "VERIFIED", then overwrite the
+# working tree with "MUTATED-AFTER-STAGING", then commit - `git show HEAD:f` returns **VERIFIED**.
+# `git commit` commits the INDEX, not the working tree. So staging the files at the moment they pass
+# verification does not merely detect a later mutation, it makes the mutation irrelevant: the bytes
+# that were checked are the bytes that get committed.
+#
+# That deleted the digest function (twice), the token file, the function-source hash, the
+# well-formedness tests, and five abort messages - and with them every defect those had accumulated
+# over three rounds. Do not reintroduce a token; if you think you need one, re-read this comment.
 
-digest_state() {  # prints one digest over TASK1 + branch + the content of all six files
-  # NOT a pipeline. A pipeline's exit status is its LAST command's, so a failure inside a brace group
-  # feeding `| sha256sum | cut` never reaches the caller: MEASURED, a missing file made the inner
-  # sha256sum fail while the function still exited 0 and returned a digest over PARTIAL input.
-  # Worse, MEASURED: with sha256sum absent the whole pipeline yields an EMPTY string on both sides,
-  # and `[ "" != "" ]` is false - the lock passes having hashed nothing. Both failures are silent and
-  # both produce a confident-looking success, so this builds the digest step by step and returns
-  # non-zero the moment anything is wrong.
-  #
-  # Uses `git hash-object`, not sha256sum: git is already a hard requirement of these steps (they run
-  # rev-parse, add and commit), so it adds no new dependency, whereas sha256sum is absent on macOS.
-  ds_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
-    echo "digest_state: git rev-parse failed" >&2; return 1; }
-  ds_acc="task1=$1;branch=$ds_branch"
-  for pp in clavity-dotnet clavity-classic; do
-    for ss in agy-first agy-capstone agy-test-audit; do
-      ds_f="$pp/plugin/skills/$ss/SKILL.md"
-      [ -r "$ds_f" ] || { echo "digest_state: cannot read $ds_f" >&2; return 1; }
-      ds_h=$(git hash-object -- "$ds_f") || {
-        echo "digest_state: hash-object failed for $ds_f" >&2; return 1; }
-      case "$ds_h" in
-        ????????????????????????????????????????) : ;;
-        *) echo "digest_state: malformed hash for $ds_f" >&2; return 1 ;;
-      esac
-      ds_acc="$ds_acc;$pp/$ss=$ds_h"
-    done
-  done
-  ds_out=$(printf '%s' "$ds_acc" | git hash-object --stdin) || {
-    echo "digest_state: final hash-object failed" >&2; return 1; }
-  # Reject an empty or malformed digest EXPLICITLY. An empty digest on both sides compares equal,
-  # which is the bypass this guard exists to prevent - a guard must never treat "I computed nothing"
-  # as "the values match".
-  case "$ds_out" in
-    ????????????????????????????????????????) printf '%s\n' "$ds_out" ;;
-    *) echo "digest_state: malformed digest '$ds_out'" >&2; return 1 ;;
-  esac
-}
+PATHS="clavity-dotnet/plugin/skills/agy-first/SKILL.md
+clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md
+clavity-classic/plugin/skills/agy-first/SKILL.md
+clavity-classic/plugin/skills/agy-test-audit/SKILL.md"
+if [ "$TASK1" = "RESOLVED" ]; then
+  PATHS="$PATHS
+clavity-dotnet/plugin/skills/agy-capstone/SKILL.md
+clavity-classic/plugin/skills/agy-capstone/SKILL.md"
+fi
 
-# A failed redirect must abort. Unchecked, Step 5 prints "all checks passed" while the token on disk
-# is a LEFTOVER from a previous run, and Step 6 then authorises a commit on state never recorded.
-# Compute FIRST, then write. `if ! digest_state > file` conflates a digest failure with a redirect
-# failure and reported both as "permissions? disk full?", which is wrong for the far likelier case of
-# a missing tool or an unreadable file.
-TOKEN=$(digest_state "$TASK1") || {
-  echo "ABORT: could not compute the state digest - see the digest_state error above." >&2
-  echo "       This is NOT a disk or permissions problem with the token file." >&2
-  exit 1; }
-
-# The function is defined in BOTH Step 5 and Step 6 and they must stay identical, or Step 5 mints
-# tokens with algorithm A while Step 6 evaluates them with algorithm B - the comparison then fails
-# forever and its error message blames the operator for mutating state they never touched. Record a
-# hash of the function's own source so that drift ABORTS with the true reason instead of masquerading
-# as a state mismatch.
-FNHASH=$(declare -f digest_state | git hash-object --stdin) || {
-  echo "ABORT: could not hash the digest_state definition." >&2; exit 1; }
-
-if ! printf '%s %s\n' "$FNHASH" "$TOKEN" > .clavity/scratch/14h-fold/verified-under.txt; then
-  echo "ABORT: could not WRITE the verification token (permissions? disk full?)." >&2
-  rm -f .clavity/scratch/14h-fold/verified-under.txt
+# `git add` can fail - an index.lock, a missing path, a permissions error. Unchecked, its failure
+# leaves the index empty and Step 6 reports "no edit was made", which is the wrong cause entirely.
+if ! printf '%s
+' "$PATHS" | xargs git add --; then
+  echo "STAGING FAILED: git add returned non-zero (index.lock? missing path? permissions?)." >&2
+  echo "      This is NOT 'no edit was made' - fix the staging error itself." >&2
   exit 1
 fi
-echo "Step 5: all checks passed (TASK1=$TASK1, state $TOKEN)."
+
+echo "Step 5: all checks passed; the verified files are STAGED (TASK1=$TASK1)."
+echo "        Anything you edit from now on is NOT in this commit unless you re-stage it."
 ```
 
 Expected, 14c: **six** non-zero counts. A zero means that file was not edited - which no cross-product
@@ -2519,155 +2481,21 @@ file but NOT before the anchor that must follow it - the presence-grep above wou
 
 - [ ] **Step 6: Gates and commit**
 
-**The gates and the commit are CHAINED with `&&`, and the commit message is chosen INSIDE the block.**
-Both of those are deliberate; read the two warnings under the block before changing either.
+**Step 5 stages; this step verifies the index and commits it.** Nothing here re-parses the measurement
+file or re-derives a path list - the staged set is the authority. Read the notes under the block before
+changing any of it.
 
 ```bash
-# Read the consequence Task 1 recorded. That file is markdown with two checkboxes under
-# "## Consequence (tick exactly one)"; exactly one is ticked as "- [x]". Parse the TICKED one.
-M=docs/superpowers/plans/2026-08-14-anomaly-hotfix-batch-task1-measurement.md
-TASK1=$(grep -oE '^- \[[xX]\] \*\*(RESOLVED|BLOCKED)\*\*' "$M" | grep -oE 'RESOLVED|BLOCKED')
-# Refuse to proceed unless EXACTLY ONE box is ticked. Zero ticked means Task 1 was never completed;
-# two ticked means it recorded a contradiction. Both must stop the commit, not pick a default.
-if [ "$(printf '%s\n' "$TASK1" | grep -c .)" -ne 1 ]; then
-  echo "ABORT: expected exactly one ticked consequence in $M, got: '$TASK1'. Do not commit." >&2
-  exit 1
-fi
+# Step 5 already STAGED the files it verified, and git's index holds those exact bytes regardless of
+# anything edited since. So this block does not parse the measurement file, does not rebuild a path
+# list, and does not stage anything - it verifies that the index contains what it should, and commits
+# it. The Task 1 result is READ OFF THE INDEX rather than re-derived, which removes the last way the
+# two blocks could disagree.
 
-# Step 5 recorded which result IT verified under. If they disagree, $M was edited between the two
-# blocks and Step 5's verification does not describe what this block is about to stage.
-V=.clavity/scratch/14h-fold/verified-under.txt
-if [ ! -f "$V" ]; then
-  echo "ABORT: $V is missing - Step 5 has not run (or not passed). Run Step 5 first." >&2; exit 1
-fi
-
-# Recompute the SAME digest Step 5 recorded. This function must be BYTE-IDENTICAL to Step 5's copy;
-# it is restated rather than referenced because this is a separate block that may be run on its own.
-# The FNHASH check below turns any drift between the two into an explicit abort naming the real cause.
-# (`declare -f` strips comments, so a comment-only difference is correctly NOT treated as drift.)
-digest_state() {  # prints one digest over TASK1 + branch + the content of all six files
-  # NOT a pipeline. A pipeline's exit status is its LAST command's, so a failure inside a brace group
-  # feeding `| sha256sum | cut` never reaches the caller: MEASURED, a missing file made the inner
-  # sha256sum fail while the function still exited 0 and returned a digest over PARTIAL input.
-  # Worse, MEASURED: with sha256sum absent the whole pipeline yields an EMPTY string on both sides,
-  # and `[ "" != "" ]` is false - the lock passes having hashed nothing. Both failures are silent and
-  # both produce a confident-looking success, so this builds the digest step by step and returns
-  # non-zero the moment anything is wrong.
-  #
-  # Uses `git hash-object`, not sha256sum: git is already a hard requirement of these steps (they run
-  # rev-parse, add and commit), so it adds no new dependency, whereas sha256sum is absent on macOS.
-  ds_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
-    echo "digest_state: git rev-parse failed" >&2; return 1; }
-  ds_acc="task1=$1;branch=$ds_branch"
-  for pp in clavity-dotnet clavity-classic; do
-    for ss in agy-first agy-capstone agy-test-audit; do
-      ds_f="$pp/plugin/skills/$ss/SKILL.md"
-      [ -r "$ds_f" ] || { echo "digest_state: cannot read $ds_f" >&2; return 1; }
-      ds_h=$(git hash-object -- "$ds_f") || {
-        echo "digest_state: hash-object failed for $ds_f" >&2; return 1; }
-      case "$ds_h" in
-        ????????????????????????????????????????) : ;;
-        *) echo "digest_state: malformed hash for $ds_f" >&2; return 1 ;;
-      esac
-      ds_acc="$ds_acc;$pp/$ss=$ds_h"
-    done
-  done
-  ds_out=$(printf '%s' "$ds_acc" | git hash-object --stdin) || {
-    echo "digest_state: final hash-object failed" >&2; return 1; }
-  # Reject an empty or malformed digest EXPLICITLY. An empty digest on both sides compares equal,
-  # which is the bypass this guard exists to prevent - a guard must never treat "I computed nothing"
-  # as "the values match".
-  case "$ds_out" in
-    ????????????????????????????????????????) printf '%s\n' "$ds_out" ;;
-    *) echo "digest_state: malformed digest '$ds_out'" >&2; return 1 ;;
-  esac
-}
-
-# The token is "<function-hash> <state-digest>". Read both, and distinguish the two failure modes:
-# a DRIFTED function is a bug in this plan, a changed state is an operator action. Reporting the
-# first as the second is what would send someone hunting an edit they never made.
-TOKFN=$(cut -d' ' -f1 < "$V")
-TOKST=$(cut -d' ' -f2 < "$V")
-case "$TOKFN$TOKST" in
-  ????????????????????????????????????????????????????????????????????????????????) : ;;
-  *) echo "ABORT: $V is malformed (expected '<40-hex> <40-hex>'). Re-run Step 5." >&2; exit 1 ;;
-esac
-
-CURFN=$(declare -f digest_state | git hash-object --stdin) || {
-  echo "ABORT: could not hash the digest_state definition." >&2; exit 1; }
-if [ "$TOKFN" != "$CURFN" ]; then
-  echo "ABORT: the digest_state function in THIS block differs from the one Step 5 used." >&2
-  echo "       This is a DEFECT IN THE PLAN, not something you did: the two copies of the" >&2
-  echo "       function have drifted. Do not 're-run Step 5' - it will not help. Make the two" >&2
-  echo "       definitions byte-identical first." >&2
-  exit 1
-fi
-
-CURST=$(digest_state "$TASK1") || {
-  echo "ABORT: could not compute the state digest - see the digest_state error above." >&2; exit 1; }
-
-if [ "$TOKST" != "$CURST" ]; then
-  echo "ABORT: the verification token does not match the current state." >&2
-  echo "       Step 5's checks do not describe what this block would commit. One of these happened:" >&2
-  echo "         - a skill file was edited after Step 5 ran;" >&2
-  echo "         - the branch changed (the token is gitignored and survives a checkout);" >&2
-  echo "         - $M changed, so TASK1 differs from the run that was verified;" >&2
-  echo "         - the token is left over from an earlier run." >&2
-  echo "       Re-run Step 5. Do not commit unverified files." >&2
-  exit 1
-fi
-
-if [ "$TASK1" = "BLOCKED" ]; then
-  MSG="docs(shield): 14h - agy-first and agy-test-audit seat a panel"
-elif [ "$TASK1" = "RESOLVED" ]; then
-  MSG="refactor(shield): 14c + 14h - disciplines write via agy-mark.sh and seat a panel"
-else
-  echo "ABORT: Task 1 result is '$TASK1', expected RESOLVED or BLOCKED. Do not commit." >&2
-  exit 1
-fi
-
-# Gates first, on their own. A gate failure must never be confusable with anything downstream.
-if ! bash scripts/check-seed-artifacts-synced.sh; then
-  echo "GATE FAILED: check-seed-artifacts-synced. Nothing staged, nothing committed." >&2; exit 1
-fi
-if ! just check-injected-context; then
-  echo "GATE FAILED: check-injected-context. Nothing staged, nothing committed." >&2; exit 1
-fi
-
-# Stage BY NAME, and stage only the files THIS PATH actually edits. Never `git add <directory>`: a
-# directory stage sweeps whatever else happens to be untracked or modified under it. And on the
-# BLOCKED path `agy-capstone` is never edited, so naming it there would sweep in any unrelated WIP
-# edit sitting in that file under a message asserting only 14h was done.
-PATHS="clavity-dotnet/plugin/skills/agy-first/SKILL.md
-clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md
-clavity-classic/plugin/skills/agy-first/SKILL.md
-clavity-classic/plugin/skills/agy-test-audit/SKILL.md"
-if [ "$TASK1" = "RESOLVED" ]; then
-  PATHS="$PATHS
-clavity-dotnet/plugin/skills/agy-capstone/SKILL.md
-clavity-classic/plugin/skills/agy-capstone/SKILL.md"
-fi
-
-# `git add` can fail - an index.lock, a missing path, a permissions error. Unchecked, its failure
-# leaves the index empty and the NEXT check reports "Step 1 made no edit", which sends the operator
-# to the wrong place entirely.
-# Count once, here, where PATHS is final. It is referenced by BOTH the empty-index message and the
-# commit-failure message, and those live in different branches - computing it inside one of them
-# leaves it undefined in the other.
-n=$(printf '%s\n' "$PATHS" | grep -c .)
-
-if ! printf '%s\n' "$PATHS" | xargs git add --; then
-  echo "STAGING FAILED: git add returned non-zero (index.lock? missing path? permissions?)." >&2
-  echo "      This is NOT 'no edit was made' - fix the staging error itself." >&2
-  exit 1
-fi
-
-# An EMPTY index here is not a gate failure - it means this task made no edit at all. Say so, and do
-# NOT tell the operator to "re-run": re-running reproduces it forever.
-# THREE outcomes again: 0 = nothing staged, 1 = something staged, >=2 (git uses 128) = FATAL, e.g. a
-# corrupt index or a stale .git/index.lock. A bare `if git diff --cached --quiet` folds 1 and 128
-# together into "something staged" and walks straight into the commit, where the fatal error
-# resurfaces and gets reported as "a hook rejected it". Same shape as the grep guard above.
+# THREE outcomes: 0 = nothing staged, 1 = something staged, >=2 (git uses 128) = FATAL, e.g. a corrupt
+# index or a stale .git/index.lock. A bare `if git diff --cached --quiet` folds 1 and 128 together
+# into "something staged" and walks into the commit, where the fatal error resurfaces and is reported
+# as "a hook rejected it".
 staged=0
 git diff --cached --quiet || staged=$?
 if [ "$staged" -ge 2 ]; then
@@ -2676,42 +2504,83 @@ if [ "$staged" -ge 2 ]; then
   exit 1
 fi
 if [ "$staged" -eq 0 ]; then
-  # The message names the files THIS PATH expects ($n, computed above), not a fixed "six". On the
-  # BLOCKED path only four are edited, and telling an executor that six were expected invites it to
-  # "fix" the count by editing agy-capstone - destroying the path isolation this conditional creates.
-  echo "STOP: nothing staged. The gates passed, so this is NOT a gate failure - Step 1 made no edit" >&2
-  echo "      to any of the $n files this path edits (Task 1 = $TASK1):" >&2
-  printf '        %s\n' $PATHS >&2
-  echo "      Go back to Step 1. Edit ONLY those files - do NOT widen the set to make a count match," >&2
-  echo "      and do not re-run this step." >&2
+  echo "STOP: nothing is staged, so Step 5 did not run, did not pass, or made no edit." >&2
+  echo "      Run Step 5. Do not stage anything by hand here - staging is Step 5's job precisely" >&2
+  echo "      so that only VERIFIED bytes can reach a commit." >&2
+  exit 1
+fi
+
+# What is actually staged? This is the authority now, not a re-parse of the measurement file.
+STAGED=$(git diff --cached --name-only) || {
+  echo "ABORT: could not list the staged files." >&2; exit 1; }
+n=$(printf '%s\n' "$STAGED" | grep -c .)
+
+# Refuse to commit anything outside the six files this task owns. Step 5 stages by name, so a foreign
+# path here means something else staged it - and committing it under this message would misattribute
+# an unrelated change.
+FOREIGN=$(printf '%s\n' "$STAGED" | grep -v '^clavity-\(dotnet\|classic\)/plugin/skills/agy-\(first\|capstone\|test-audit\)/SKILL\.md$' || true)
+if [ -n "$FOREIGN" ]; then
+  echo "ABORT: the index contains files this task does not own:" >&2
+  printf '        %s\n' $FOREIGN >&2
+  echo "       Unstage them (git restore --staged <path>) and re-run. Do not commit them here." >&2
+  exit 1
+fi
+
+# The message follows the STAGED SET, which is the ground truth. agy-capstone is edited only by item
+# 14c, so its presence is the direct signal that the RESOLVED path ran - no count arithmetic, no
+# second parse of the measurement file.
+if printf '%s\n' "$STAGED" | grep -q 'agy-capstone'; then
+  MSG="refactor(shield): 14c + 14h - disciplines write via agy-mark.sh and seat a panel"
+else
+  MSG="docs(shield): 14h - agy-first and agy-test-audit seat a panel"
+fi
+
+# Gates AFTER staging is fine and deliberate: they inspect the files on disk, and Step 5 staged them
+# straight after verifying them. A gate failure here must leave the index alone and say so.
+if ! bash scripts/check-seed-artifacts-synced.sh; then
+  echo "GATE FAILED: check-seed-artifacts-synced. The $n staged files are LEFT STAGED; nothing" >&2
+  echo "      was committed. Fix the cause, then re-run this step." >&2
+  exit 1
+fi
+if ! just check-injected-context; then
+  echo "GATE FAILED: check-injected-context. The $n staged files are LEFT STAGED; nothing was" >&2
+  echo "      committed. Fix the cause, then re-run this step." >&2
   exit 1
 fi
 
 if ! git commit -m "$MSG"; then
-  # "$n files", never a hardcoded "six" - the BLOCKED path stages four. The empty-index message was
-  # corrected for this in an earlier round and THIS sibling message was missed: the same fact stated
-  # in two places, fixed in one. Sweep the fact, not the line.
-  echo "COMMIT FAILED (a hook rejected it, or identity is unset). NOTE: the $n files listed above" >&2
-  echo "      are STILL STAGED - the index is dirty. Fix the cause, then commit the existing index;" >&2
-  echo "      do not re-run the git add." >&2
+  echo "COMMIT FAILED (a hook rejected it, or identity is unset). The $n files are STILL STAGED -" >&2
+  echo "      the index is dirty. Fix the cause, then commit the existing index; do NOT re-stage." >&2
   exit 1
 fi
 ```
+> 🔴 **Why every failure path exits, and none of them merely prints.** An earlier draft ran the gate,
+> echoed `RC=$?`, and then ran `git add` and `git commit` as separate statements. **That reproduced the
+> exact 2026-08-15 failure it was written to prevent**: `echo` consumes the status, the commit runs
+> regardless, and the executor reads `RC=1` only after the bad commit exists. An agent runs a fenced
+> block as ONE unit - it does not pause between lines to inspect them. **Every gate here must make the
+> commit unreachable; a printed exit code is a report, not a guard.**
 
-> 🔴 **Why `&&` and not `; echo "RC=$?"`.** An earlier draft of this step ran the gate, echoed its exit
-> code, and then ran `git add` and `git commit` as separate statements. **That reproduces the exact
-> 2026-08-15 failure it was written to prevent**: `echo` consumes the status, the commit runs regardless,
-> and the executor reads `RC=1` in the output only after the bad commit already exists. An agent runs a
-> bash block as one unit - it does not pause between lines to inspect them. **The chain has to make the
-> commit unreachable when a gate fails; a printed exit code is a report, not a guard.**
+> 🔴 **Why the message is derived from the staged set.** An earlier draft hardcoded the 14c+14h message
+> with "if BLOCKED use this other message" in prose BELOW the block, so an executor got the hardcoded
+> one and git history claimed 14c edits never made. A later draft re-parsed the measurement file here,
+> which let the two blocks disagree. **The staged set is the only thing that cannot disagree with what
+> is about to be committed**, so the message reads `agy-capstone`'s presence - the file only item 14c
+> touches.
 
-> 🔴 **Why the message is chosen inside the block.** The same draft hardcoded the 14c+14h message and put
-> "if BLOCKED, use this other message" in prose BELOW the block. An executor running the block gets the
-> hardcoded message, and git history then claims 14c edits that were never made. **A conditional that
-> lives outside the executable is a conditional that does not run.**
+> 🔴 **Why staging moved into Step 5, and why a token was deleted to get there.** Rounds 4 and 5 grew a
+> ~100-line content-digest token to detect a change between verification and commit: a digest function
+> duplicated across both blocks, a hash of that function's own source to catch drift between the
+> copies, well-formedness tests, five abort messages - and each round found a fresh defect inside the
+> previous round's version of it, including one where an absent `sha256sum` made both sides produce an
+> empty string so the lock passed having hashed nothing. **The index does the same job by construction.**
+> MEASURED: stage `VERIFIED`, overwrite the working tree with `MUTATED-AFTER-STAGING`, commit -
+> `git show HEAD:f` returns `VERIFIED`. Detecting a mutation is strictly weaker than committing bytes
+> the mutation cannot reach. **Do not reintroduce a token.**
 
 `just check-injected-context` prints a symmetry summary whose text can look healthy beside a non-zero
-exit, and **lefthook does not run this gate**, so nothing else catches a red one. The `&&` chain is the
+exit, and **lefthook does not run this gate**, so nothing else catches a red one. Its explicit `if !`
+here is the only thing standing between a red gate and a commit.
 only thing standing between a red gate and a commit here.
 
 ---
