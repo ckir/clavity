@@ -5508,6 +5508,17 @@ State it before it is needed:
 - **14c is FOUR things that revert together** - `agy-mark.sh`, the hook wiring, the three skill rewrites,
   and the ROADMAP rewrite. Reverting the script while the skills still invoke it leaves three shipped
   skills naming an executable that does not exist. **Revert all four or none.**
+  🔴 **BUT SCOPE THE SKILL HALF TO THE 14c ROWS, NOT TO THE FILES.** Two of those three files carry
+  **14c AND 14h** - the completion checklist marks `agy-first/SKILL.md` and `agy-test-audit/SKILL.md`
+  as `14c **+ 14h**`, and flags on the same rows that **14h NEVER skips**. Reverting those files
+  wholesale takes 14h with it: a seat instruction with no dependency on the base-directory locator, on
+  `agy-mark.sh`, or on anything else 14c ships. **That is the identical mistake Task 1's BLOCKED branch
+  was corrected for** - "marking the whole task SKIPPED silently drops a shipped defect fix" - pointed
+  at revert instead of skip. Revert rows 1, 2, 4, 5, 6, 7, 8 and 11; leave rows 3, 9 and 10 standing.
+- **14h is independently revertible, and is the only item that shares files with another.** Reverting it
+  means restoring the single-persona sentence in `agy-first` and the optional-mitigation sentence in
+  `agy-test-audit`, and removing the two seat paragraphs. Nothing else depends on it and it depends on
+  nothing - which is exactly why a file-scoped 14c revert must not sweep it up.
 - **14e's halves revert together** - reverting the generator while `agy-curate/SKILL.md` still says "run
   the generator" recreates the incomplete fold this batch exists to avoid, pointed the other way.
 - **14b is THREE files** - the `justfile`, `ci-scripts.yml` (job steps AND both `paths:` lists), and the
