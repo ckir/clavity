@@ -2182,7 +2182,7 @@ Expected: all rows PASS.
 | neuter the `agy_shield` call in each mode | `restores a broken shield before writing` (all three cases) |
 | change `root=$PWD` to `root=$(git rev-parse --show-toplevel)` | `ANCHORS TO CWD ... the subdirectory pin` |
 | delete the `mkdir -p "$root/.clavity/agy-marks"` from `head` | `CREATES .clavity/agy-marks/ on a fresh clone` |
-| replace `exit 2` on the failed append with `exit 1` | `a write that fails partway` (add if absent) |
+| replace `exit 2` on the failed append with `exit 1` | `a write that fails PARTWAY exits 2, not 1 - the two codes mean different things` |
 | drop the line from the refused-log stderr, keeping only the reason | `a REFUSED log emits BOTH` |
 | pass a hard-coded key instead of `${AGY_SESSION_ID:-}` | `FORWARDS $AGY_SESSION_ID to the helper` |
 | delete `_check_discipline` | the `refuses a <discipline>` rows |
@@ -4215,6 +4215,32 @@ Describe 'check-cheatsheet-parity.ps1' {
         $r = Invoke-Parity $d
         $r.ExitCode | Should -Not -Be 0
         $r.Text | Should -Match 'gen-cheatsheet-literals'
+    }
+
+    It 'row 6 - core.md PARTIALLY staged, literals generated from the WORKTREE: FAILS saying partial staging' {
+        # ROW 6 WAS SPECIFIED IN THE TABLE ABOVE AND NEVER IMPLEMENTED. Every other row 1-15 has an It;
+        # this one had none, and its absence was worse than a plain gap because row 7 directly below
+        # asserts the message must NOT say 'partial staging'. So the NEGATIVE was pinned and the
+        # POSITIVE was not: the diagnosis branch that produces this message could have been dead, and
+        # row 7 would still pass. A pair where only the "must not say X" half exists proves nothing
+        # about X ever being said.
+        #
+        # THE PARTIAL STAGE, built rather than asserted: stage core.md at v1, then edit it to v2 in the
+        # worktree WITHOUT staging - core.md is now both staged AND dirty, which is what "hunks split"
+        # means to `git diff`. Generate the literals from that WORKTREE (v2) and stage them. The hook
+        # regenerates from the INDEX (v1), so the staged literals cannot match, and the diagnosis runs.
+        # Case 3 fires because `git diff --quiet` is non-zero (dirty) AND `git diff --cached --quiet`
+        # is non-zero (staged) - which is exactly the state this row is named for.
+        $d = New-ParityRepo
+        Set-CoreText $d ((Get-Content -Raw -LiteralPath (Join-Path $d $script:Core)) + "`nv1 staged.`n")
+        & git -C $d add -- $script:Core
+        Set-CoreText $d ((Get-Content -Raw -LiteralPath (Join-Path $d $script:Core)) + "`nv2 unstaged.`n")
+        Invoke-Gen $d
+        & git -C $d add -- $script:Rs $script:Cs
+        $r = Invoke-Parity $d
+        $r.ExitCode | Should -Not -Be 0
+        $r.Text | Should -Match 'partial staging' -Because 'this is the row that proves the message is ever PRODUCED; row 7 only proves it is not produced in the other case'
+        $r.Text | Should -Match ([regex]::Escape('together with the regenerated literals')) -Because 'the remedy must be the one that works - staging core.md alone is rejected by the parity check that runs first'
     }
 
     It 'row 7 - literals staged but core.md NOT staged: FAILS with the RIGHT message, not the partial-staging one' {
