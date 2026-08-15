@@ -2173,7 +2173,12 @@ anchor() {  # $1=file  $2=anchor text  $3=label  $4=expected count
   # The first version of this pre-flight used a plain regex and reported THREE FALSE FAILURES: the
   # anchors contain backticks around `.clavity/agy-marks/` and the pattern mis-counted them. A check
   # that needs its own escaping rules is one more thing to get wrong - match literally.
-  c=$(tr '\n' ' ' < "$1" | grep -oF -e "$2" | grep -c .) || c=0
+  # `tr -d '\r'` FIRST. This repository runs `core.autocrlf=true`, so a checkout can hand you CRLF
+  # files; `tr '\n' ' '` then leaves the CR sitting where the wrap was, and a phrase spanning the wrap
+  # reads as "...persona:<CR> bold inventive", which never matches. MEASURED on a CRLF fixture: 0
+  # without the strip, 1 with it. The current working tree is LF, so this is LATENT rather than live -
+  # but it is the exact fail-open this check exists to close, waiting on a line-ending.
+  c=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -oF -e "$2" | grep -c .) || c=0
   if [ "$c" -ne "$4" ]; then
     echo "  PRE-FLIGHT FAIL: $3 -> found $c, expected $4" >&2; PF=1
   else
@@ -2218,8 +2223,8 @@ Rows tagged 14h need no locator.
 
 | # | item | file | line(s) | change |
 |---|---|---|---|---|
-| 1 | 14c | `agy-first/SKILL.md` | `:105-107` | replace "Create `.clavity/agy-marks/` first ... then write the current commit sha to the marker" with a single `head` invocation. **Then KEEP the Path/Content/Lifecycle bullet block that begins `- **Path:** \`.clavity/agy-marks/agy-first.head\`` - it documents what the script produces. That block is at `:109-121` BEFORE this row is applied and moves UP by however many lines this row removed. Locate it by that anchor string, NOT by line number.** |
-| 2 | 14c | `agy-first/SKILL.md` | `:93-98` *(pre-edit hint)* | replace the whole sentence beginning `in-chat that the consult was skipped` and ending `never a git error string`, with a single `log` invocation. **Delete the `mkdir` instruction and the format literal** - the script owns both. 🔴 **The literal closes MID-`:98`, not on `:96` or `:97`** - `:97` ends `- never a git` and `:98` begins `error string)`. Delete up to and including that closing `)`, and **keep the rest of `:98`** (`so it is not lost if the chat summary drops it. Do NOT write the consulted marker (below),`). Two earlier versions of this hint named `:96` and then `:97`; both were short. **Bound the edit by the closing parenthesis, not by a line number.** |
+| 1 | 14c | `agy-first/SKILL.md` | `:105-107` *(pre-edit hint)* | replace ONLY the clause `Create `.clavity/agy-marks/` first ... then write the current commit sha to the marker:` - which begins MID-`:105` and runs to `:107` - with a single `head` invocation. 🔴 **`:105` OPENS with `the auto-fire hook does not re-inject this discipline for the same cycle.`, the tail of the sentence starting on `:104`; that must survive. Do NOT replace the whole of `:105`.** This is the same clause-not-line scoping rows 5 and 8 needed. **Then KEEP the Path/Content/Lifecycle bullet block that begins `- **Path:** \`.clavity/agy-marks/agy-first.head\`` - it documents what the script produces. That block is at `:109-121` BEFORE this row is applied and moves UP by however many lines this row removed. Locate it by that anchor string, NOT by line number.** |
+| 2 | 14c | `agy-first/SKILL.md` | `:93-98` *(pre-edit hint)* | replace the instruction beginning `(b) create `.clavity/agy-marks/`` and ending `never a git error string`, with a single `log` invocation. 🔴 **The start anchor is `(b)`, NOT `in-chat that the consult was skipped`** - that phrase is inside clause **(a)** on `:92-93` (`tell your human in-chat that the consult was skipped and name the fork it skipped;`), which instructs the peer to notify the human and MUST SURVIVE. An earlier version of this row anchored on (a) and would have deleted the human notification. **Delete the `mkdir` instruction and the format literal** - the script owns both. 🔴 **The literal closes MID-`:98`, not on `:96` or `:97`** - `:97` ends `- never a git` and `:98` begins `error string)`. Delete up to and including that closing `)`, and **keep the rest of `:98`** (`so it is not lost if the chat summary drops it. Do NOT write the consulted marker (below),`). Two earlier versions of this hint named `:96` and then `:97`; both were short. **Bound the edit by the closing parenthesis, not by a line number.** |
 | 3 | **14h** | `agy-first/SKILL.md` | `:54-58` *(pre-edit hint)* | replace the single-persona sentence with the seat block in Step 2 below. 🔴 **The bound is `:54-58`, not `:54-56`.** Step 2's paragraph 3 reproduces the sentence `The peer is empowered to CHALLENGE ... you keep the final call.`, which runs from mid-`:56` to `:58`. An edit confined to `:54-56` leaves `:57-58` in place and the inserted paragraph 3 DUPLICATES them. |
 | 4 | 14c | `agy-first/SKILL.md` | `:37` | add: name the seam file to `prepare` before writing it. |
 | 5 | 14c | `agy-capstone/SKILL.md` | `:265` *(pre-edit hint)* | replace ONLY the clause `Create `.clavity/agy-marks/` first if it does not exist.` at the END of `:265`, with a single `head` invocation. 🔴 **`:265` OPENS with `the same `HEAD`.` - the tail of the sentence that starts on `:264`** (`Record the terminal state so the auto-fire hook ... does not re-inject the capstone for`). Replacing the whole line swallows that context. `:266` begins the `- **Path:**` bullet and must survive. **This row is the twin of row 8; scope both to the clause, not the line.** |
@@ -2286,7 +2291,11 @@ being written.
 
 **Everything below is pure ASCII and must stay pure ASCII.** These files are inside `$DomainRoots`, so
 `check-injected-context.ps1`'s `encoding` invariant rejects a single em-dash, curly quote, or arrow. Use
-`-` for a dash. Verify with `LC_ALL=C grep -n '[^ -~]' <file>` returning nothing before committing.
+`-` for a dash. Verify with `HIBYTE=$(printf '[\200-\377]'); LC_ALL=C grep -n "$HIBYTE" <file>` returning
+nothing before committing. 🔴 **NOT `[^ -~]`.** Step 5 explains at length why that construct is wrong -
+it rejects tab, which the repo gate permits, making it STRICTER than the gate it stands in for. This
+line carried the rejected construct for fifteen rounds after Step 5's guard was corrected: **the same
+fact stated in two places and fixed in one.**
 
 **Row 3 - `agy-first/SKILL.md:54-56`. THIS IS A THREE-WAY SPLIT, NOT AN IN-PLACE SUBSTITUTION.** The
 sentence to remove begins mid-line 54 at "Default persona:" and ends mid-line 56 at
@@ -2426,8 +2435,8 @@ done
 
 # Now the identity is asserted rather than observed - re-hash to confirm the copies actually landed.
 for s in agy-first agy-capstone agy-test-audit; do
-  hd=$(git hash-object "clavity-dotnet/plugin/skills/$s/SKILL.md")
-  hc=$(git hash-object "clavity-classic/plugin/skills/$s/SKILL.md")
+  hd=$(git hash-object "clavity-dotnet/plugin/skills/$s/SKILL.md") || { echo "ABORT: cannot hash dotnet $s - a missing file must not compare equal to another missing file" >&2; exit 1; }
+  hc=$(git hash-object "clavity-classic/plugin/skills/$s/SKILL.md") || { echo "ABORT: cannot hash classic $s - a missing file must not compare equal to another missing file" >&2; exit 1; }
   [ "$hd" = "$hc" ] || { echo "ABORT: $s still differs after the copy - $hd vs $hc" >&2; exit 1; }
 done
 echo "Step 4: all three pairs byte-identical."
@@ -2551,9 +2560,12 @@ check_14h() {  # $1=file  $2=removal string  $3=label
   # A presence check that a reflow can silently turn into a zero is the same defect as the removal
   # check's, just waiting for a different edit. Counts become 0-or-1 after folding, which is all the
   # `-ge 1` tests below need.
-  se=$(tr '\n' ' ' < "$1" | grep -c 'Axiom Breaker')
-  ro=$(tr '\n' ' ' < "$1" | grep -c 'rotate seats')
-  ol=$(tr '\n' ' ' < "$1" | grep -c "$2")
+  # `tr -d '\r'` first, for the same reason as the pre-flight: on a CRLF checkout the CR survives the
+  # newline fold and sits inside any phrase that spans a wrap, so `ol` reads 0 on an UNEDITED file and
+  # this guard fails open again - the very defect round 17 closed, re-opened by a line-ending.
+  se=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -c 'Axiom Breaker')
+  ro=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -c 'rotate seats')
+  ol=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -c "$2")
   echo "14h $3: seats=$se rotate=$ro old_removed=$ol"
   [ "$se" -ge 1 ] && [ "$ro" -ge 1 ] && [ "$ol" -eq 0 ] \
     || { echo "  FAIL: $3 expected seats>=1 rotate>=1 old_removed=0" >&2; FAIL=1; }
