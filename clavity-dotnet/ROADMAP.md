@@ -1225,6 +1225,45 @@ edits a shipped skill.
 *consults*. It does not cover implementation work (435 of 435 agent-written seams are consult payloads),
 does not retain decisions, and does not defend against a compromised agent.
 
+### §16 — Edit-verification pattern: a TRANSIENT Pester suite, not inline shell — **owner-ratified 2026-08-15**
+
+**This records a PATTERN for the next plan, not work to schedule.** It changes nothing already shipped.
+
+**The problem it answers.** A plan that applies edits needs a step that verifies the edits landed. Task 7
+Step 5 of the 2026-08-14 anomaly hot-fix plan is that step, and it took **five capstone rounds** to
+stabilise: three consecutive rounds each found defects *inside the previous round's fix*, and the
+recurring classes were all shell-shaped — primitive drift, `grep`'s 0-vs-error merge folded into a
+two-outcome construct, argument-order confusion across bespoke helpers, and invisible coverage.
+
+**The pattern: write the verification as a Pester suite that lives and dies with the plan.**
+- **Put it OUTSIDE `scripts/tests/`.** MEASURED — `scripts/tests/test-suite-registration.Tests.ps1:3`
+  states "THE SCOPE IS `scripts/tests/` ONLY. A suite anywhere else in the repository is invisible to
+  this guard." So a transient suite touches no registration gate, no `_partition.md` census, and no CI
+  `paths:` list. **This one fact is what makes the pattern cheap**, and it is the fact the original
+  design consult missed.
+- **Invoke it directly** from the plan step (`Invoke-Pester <path>`), and delete it with the plan.
+- **Express the expectations as a `-ForEach` array**, so every obligation becomes a NAMED test row that
+  can be read against the plan's own edit table. A missing obligation is then a missing row, visible.
+
+**Why not a permanent gate.** Exact-count and anchor-offset assertions are *change-detectors*: their job
+ends when the commit lands. Enshrined permanently they red on the next legitimate edit — a chore, and
+this repository has already paid for that lesson elsewhere. Transience is the point, not a compromise.
+
+**Why the current plan does NOT adopt it.** Owner ruling 2026-08-15: **ship the shell design there.**
+That plan's verification is bash throughout — Step 0's pre-flight anchors, Step 4's byte-identity hash
+loops, every task's oracles — so a single PowerShell step would fracture the document mid-task; and the
+shipped design carries a 12-case acceptance matrix that a rewrite would have to re-earn from zero. The
+shell version is measured and green; this pattern is for the plan *after* it.
+
+**Provenance, because it is the point.** The A/B/C fork was first put to the peer **unseated**, and it
+chose between the three options it was given. Re-run with named seats, a **Blindspot Auditor** produced
+the option nobody had listed and named why the first round could not: the framing had chained the
+*language* choice to a *lifecycle* policy, so "Pester" silently read as "permanent CI gate". The
+seat discipline is what found this; an unseated consult structurally could not.
+
+**Still open, NOT ratified by this entry:** whether the genuinely durable subset — "the seat instruction
+still exists in `agy-first` / `agy-test-audit`" — earns a permanent gate. That is a separate decision.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
