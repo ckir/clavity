@@ -1727,6 +1727,16 @@ Describe 'agy-mark.sh' {
             $d = New-MarkFixture
             $r = Invoke-Mark -Cwd $d -MarkArgs @('prepare',$P)
             $r.ExitCode | Should -Be 1
+            # THE EXIT CODE ALONE IS NOT THE CONTRACT, and the note under Step 3 already claims this
+            # row covers the rest: "_die_refuse runs BEFORE any mkdir or write, so nothing is created -
+            # which is what those rows assert." It did not assert it. A regression that validated AFTER
+            # `mkdir -p` would refuse with exit 1 having already created the directory, and this row
+            # stayed green. The fixture starts with exactly one entry under `.clavity` (its shield), so
+            # a recursive count of 1 is the whole "nothing was created" claim in one assertion.
+            @(Get-ChildItem -LiteralPath (Join-Path $d '.clavity') -Force -Recurse).Count |
+                Should -Be 1 -Because 'a refusal must create NOTHING; only the fixture shield may exist'
+            @(Get-ChildItem -LiteralPath $d -Force).Count |
+                Should -Be 3 -Because 'nothing may appear at the fixture root either (.git, .clavity, seed.txt)'
         }
 
         # A REFUSAL ROW ASSERTS THREE THINGS: the exit code, a message that NAMES the rejected
@@ -1880,6 +1890,15 @@ Describe 'agy-mark.sh' {
             $a = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','deadbeef') -SessionId $sid
             $b = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','deadbeef') -SessionId $sid
             ([regex]::Matches("$($a.Err)$($b.Err)", 'git rm --cached')).Count | Should -Be 1
+            # THE ROW ABOVE PROVES TWO CALLS SHARE A KEY - NOT THAT THE KEY IS THE FORWARDED ONE.
+            # Deleting the forwarding entirely and passing a hardcoded constant satisfies it perfectly,
+            # because a constant is also "the same key twice". The debounce must therefore be shown to
+            # BREAK when the session id changes: a DIFFERENT id has to emit the fault again. Without
+            # this line the row certifies the mechanism while proving nothing about its data flow.
+            $c = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','deadbeef') `
+                    -SessionId ('ws-' + [guid]::NewGuid().ToString('N'))
+            ([regex]::Matches("$($c.Err)", 'git rm --cached')).Count |
+                Should -Be 1 -Because 'a DIFFERENT session id must not be debounced - that is what proves the key is the forwarded value and not a constant'
         }
     }
 }
