@@ -351,7 +351,7 @@ Build `agy-shield-lib.sh`: a sourced POSIX function that replaces the content-bl
 - Create: `clavity-dotnet/plugin/hooks/agy-shield-lib.sh`
 - Create: `clavity-classic/plugin/hooks/agy-shield-lib.sh` (byte-identical mirror)
 - Create: `scripts/tests/agy-shield-lib.Tests.ps1`
-- Modify: `justfile:107-108` (register the new suite in the SLOW partition)
+- Modify: the `test-scripts-slow` recipe in `justfile` (register the new suite in the SLOW partition)
 - Modify: `scripts/tests/_partition.md` (the census table)
 
 ### The contract, restated as code obligations
@@ -3965,7 +3965,8 @@ exit 0
 
 - [ ] **Step 4: Add the `just` recipe**
 
-Insert after the `check-injected-context` recipe (`justfile:129-130`):
+Insert after the `check-injected-context` recipe in `justfile` (find it by NAME - four other tasks add
+entries to this file and any of them running first moves every line below their edit):
 
 ```
 # Regenerate the two compiled-in cheatsheet literals from agy-autotrain/knowledge/driver-cheatsheet.core.md.
@@ -4974,7 +4975,11 @@ git commit -m "fix(ci): 14b - register the orphan installer suite locally and in
 ## Task 14: Item 13a - replace the false promise
 
 **Files:**
-- Modify: `scripts/check-injected-context.ps1:932`
+- Modify: `scripts/check-injected-context.ps1:932` - **and this line survives Task 2, which edits the
+  same file.** MEASURED: Task 2 replaces the two-line `$script:PrunedSegments` array at `:91-92` with a
+  two-line array (it appends `.clavity` to the second line), so the edit is LINE-NEUTRAL and nothing
+  below `:92` shifts. That is the only other edit this plan makes to this file. **Re-derive it anyway
+  if Task 2's shape changes** - the rule about a line number this plan itself invalidates binds here.
 - Test: `scripts/tests/check-injected-context.Tests.ps1`
 
 **Verified current state.** `:932` prints:
