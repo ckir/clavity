@@ -139,7 +139,7 @@ nothing was created.
 
 ---
 
-## Task 1: Measure the skill base-directory locator (GATES Task 6 and Task 7)
+## Task 1: Measure the skill base-directory locator (GATES Task 6, and the 14c HALF of Task 7)
 
 **Why this is first.** M1 measured `$CLAUDE_PLUGIN_ROOT` as unset in a skill-context shell call, which
 fires the spec's blocking outcome at `:652`. The owner ruled that one further locator is measured before
@@ -201,10 +201,12 @@ Create `docs/superpowers/plans/2026-08-14-anomaly-hotfix-batch-task1-measurement
 - Verbatim line: <the line, or "none emitted">
 
 ## Consequence (tick exactly one)
-- [ ] **RESOLVED** - Probe B is YES. Tasks 6 and 7 proceed, using
+- [ ] **RESOLVED** - Probe B is YES. Task 6 and ALL of Task 7 proceed, using
       `bash "<skill base directory>/../../hooks/agy-mark.sh"` as the invocation.
-- [ ] **BLOCKED** - Probe B is NO. Tasks 6 and 7 are SKIPPED and recorded as a
-      tracked ROADMAP item. Tasks 5 and 8 (the hook half and the ROADMAP rewrite) still ship.
+- [ ] **BLOCKED** - Probe B is NO. Task 6 is SKIPPED and recorded as a tracked ROADMAP item.
+      **Task 7 is NOT skipped: its 14c rows are skipped and its 14h rows still ship** - item 14h
+      has no dependency on this locator. Tasks 5 and 8 (the hook half and the ROADMAP rewrite)
+      still ship.
       **Do NOT invent a glob, a search path, or a hardcoded install location** (spec `:652`).
 ```
 
@@ -217,9 +219,16 @@ git commit -m "docs(plan): task 1 - measure the skill base-directory locator"
 
 - [ ] **Step 5: Branch the remaining plan**
 
-If **BLOCKED**, mark Tasks 6 and 7 as SKIPPED in this plan file, and add one line to
-`clavity-dotnet/ROADMAP.md` section 14c during Task 8 recording that the skill half is deferred and why.
+If **BLOCKED**, mark Task 6 as SKIPPED in this plan file and **mark Task 7's 14c ROWS as skipped -
+NOT Task 7 itself**, then add one line to `clavity-dotnet/ROADMAP.md` section 14c during Task 8
+recording that the skill half is deferred and why.
 If **RESOLVED**, proceed unchanged.
+
+> 🔴 **Task 7 is the one task that is only PARTLY gated by this measurement.** It carries item 14c
+> (gated) and item 14h (not gated at all - a seat instruction that has nothing to do with the base
+> directory). Marking the whole task SKIPPED on a BLOCKED result silently drops a shipped defect fix.
+> Task 7's own header states the same rule; if these two ever disagree, **Task 7's header wins** and
+> this line is the stale one.
 
 ---
 
@@ -2039,9 +2048,24 @@ git commit -m "feat(shield): 14c - agy-mark.sh, the sanctioned .clavity writer f
 
 ---
 
-## Task 7: Item 14c - rewrite the three skills (CONDITIONAL on Task 1 = RESOLVED)
+## Task 7: Items 14c AND 14h - rewrite the three skills (14c is CONDITIONAL on Task 1; 14h is NOT)
 
-> **SKIP THIS TASK ENTIRELY if Task 1 recorded BLOCKED.**
+> **CONDITIONALITY IS PER-ROW, NOT PER-TASK. Do NOT skip this whole task.**
+> If Task 1 recorded **BLOCKED**, apply only the rows tagged **14h** and skip the rows tagged **14c**.
+> The 14h rows fix a defect in the skills' review instructions and have **no dependency whatsoever** on
+> the base-directory locator Task 1 measures.
+> If Task 1 recorded **RESOLVED**, apply every row.
+>
+> **Which STEPS run, per path** - Step 3 is 14c-only and has nothing to guard on the BLOCKED path,
+> because no `prepare` invocation was added:
+>
+> | path | Step 1 | Step 2 (14h text) | Step 3 (`prepare` guard) | Step 4 (mirror) | Step 5 (checks) | Step 6 (gate + commit) |
+> |---|---|---|---|---|---|---|
+> | Task 1 = RESOLVED | all 11 rows | yes | **yes** | yes | both loops | yes, 14c+14h message |
+> | Task 1 = BLOCKED | rows 3, 9, 10 only | yes | **SKIP** | yes | **14h loop + ASCII loop only** | yes, 14h-only message |
+>
+> On the BLOCKED path Step 4 still mirrors all three files: `agy-capstone` is simply unchanged, and
+> copying an unchanged file is a no-op that keeps the byte-identity assertion uniform across both paths.
 
 **Files (all byte-identical pairs - six files):**
 - `clavity-{dotnet,classic}/plugin/skills/agy-first/SKILL.md`
@@ -2056,23 +2080,58 @@ artifacts; the REWRITE set is three.
 is where the strength lives. **The per-file completion check in Task 16 is the only guarantee that the
 edit was made at all**, and that is a different question from whether the model obeys it.
 
-- [ ] **Step 1: Replace each write instruction with an `agy-mark.sh` invocation**
+### Why 14h is here and not in a task of its own
 
-Use the locator recorded in Task 1's measurement file. The invocation is **identical text in both
-plugins** and resolves differently at runtime, which is what satisfies `agy-first/SKILL.md:111-112`.
+**ROADMAP section 14h** (promoted at the second 2026-08-15 triage, commit `90b275e`): `agy-first:54-56`
+prescribes a SINGLE persona ("Default persona: bold inventive systems-designer") and `agy-test-audit:216`
+carries that file's only lens language as an **optional** single-lens rotation, so both disciplines run
+single-voice consults **by instruction**. `agy-capstone` is NOT defective - it seats correctly at
+`:86-103`, and that is the idiom the 14h rows below copy.
 
-Per-file edits, by verified line:
+It is folded into THIS task because it cannot safely be a separate one. **14h's targets and 14c's targets
+straddle each other in both files:**
 
-| file | line(s) | change |
+| file | 14c targets | 14h targets |
 |---|---|---|
-| `agy-first/SKILL.md` | `:93-96` | replace "create `.clavity/agy-marks/` ... then append one durable line to `.clavity/agy-marks/skipped.log` (`<iso-8601> agy-first SKIPPED-UNREACHABLE HEAD=<sha>`...)" with a single `log` invocation. **Delete the `mkdir` instruction and the format literal** - the script owns both. |
-| `agy-first/SKILL.md` | `:105-107` | replace "Create `.clavity/agy-marks/` first ... then write the current commit sha to the marker" with a single `head` invocation. Keep `:109-121` (the Path/Content/Lifecycle rows) as documentation of what the script produces. |
-| `agy-first/SKILL.md` | `:37` | add: name the seam file to `prepare` before writing it. |
-| `agy-capstone/SKILL.md` | `:179-180`, `:252-253` | replace both `skipped.log` write instructions with `log` invocations; delete both format literals. |
-| `agy-capstone/SKILL.md` | `:265` | replace the marker instruction with a `head` invocation. |
-| `agy-capstone/SKILL.md` | `:41`, `:43`, `:174` | add `prepare` for the seam file and for a concrete file inside the scratch directory - **never the directory itself**, see below. |
-| `agy-test-audit/SKILL.md` | `:221-222` | replace the marker instruction with a `head` invocation. |
-| `agy-test-audit/SKILL.md` | `:36`, `:38` | add `prepare` for the seam file and the scratch directory. |
+| `agy-first/SKILL.md` | `:37`, `:93-96`, `:105-107` | `:54-56` |
+| `agy-test-audit/SKILL.md` | `:36`, `:38`, `:221-222` | `:59`, `:216-217` |
+
+A separate 14h task placed **before** Task 7 shifts `:93-96`, `:105-107` and `:221-222` downward; placed
+**after**, Task 7's edits at `:37` and `:36`/`:38` shift `:54-56` and `:216-217`. **Neither order is
+safe, so both belong to one task applied in one pass.**
+
+> **THE MECHANISM: apply every edit in DESCENDING line order.** The table below is already sorted that
+> way, per file. An edit applied to a lower line never invalidates a citation above it, so every line
+> number in the table stays true for the whole pass. **Do not re-sort this table, and do not apply it
+> top-to-bottom by file if you have re-ordered it.** If you skip the 14c rows (Task 1 = BLOCKED), the
+> remaining 14h rows are still in descending order and still correct.
+>
+> 🔴 **DESCENDING ORDER PROTECTS ACROSS ROWS, NOT WITHIN ONE.** A row that both deletes lines AND then
+> cites a line BELOW its own edit corrupts its own citation - the cited text has already moved by the
+> time you look for it. **Every such citation in this table is therefore anchored by a QUOTED STRING and
+> its line number is marked as pre-edit.** If you are following a line number inside a row you have
+> already partly applied, stop and search for the anchor text instead. This was a live defect in row 1
+> and it is the failure mode to watch for if you add a row.
+
+- [ ] **Step 1: Apply the per-file edits, in the order given**
+
+Rows tagged 14c use the locator recorded in Task 1's measurement file. The invocation is **identical text
+in both plugins** and resolves differently at runtime, which is what satisfies `agy-first/SKILL.md:111-112`.
+Rows tagged 14h need no locator.
+
+| # | item | file | line(s) | change |
+|---|---|---|---|---|
+| 1 | 14c | `agy-first/SKILL.md` | `:105-107` | replace "Create `.clavity/agy-marks/` first ... then write the current commit sha to the marker" with a single `head` invocation. **Then KEEP the Path/Content/Lifecycle bullet block that begins `- **Path:** \`.clavity/agy-marks/agy-first.head\`` - it documents what the script produces. That block is at `:109-121` BEFORE this row is applied and moves UP by however many lines this row removed. Locate it by that anchor string, NOT by line number.** |
+| 2 | 14c | `agy-first/SKILL.md` | `:93-96` | replace "create `.clavity/agy-marks/` ... then append one durable line to `.clavity/agy-marks/skipped.log` (`<iso-8601> agy-first SKIPPED-UNREACHABLE HEAD=<sha>`...)" with a single `log` invocation. **Delete the `mkdir` instruction and the format literal** - the script owns both. |
+| 3 | **14h** | `agy-first/SKILL.md` | `:54-56` | replace the single-persona sentence with the seat block in Step 2 below. |
+| 4 | 14c | `agy-first/SKILL.md` | `:37` | add: name the seam file to `prepare` before writing it. |
+| 5 | 14c | `agy-capstone/SKILL.md` | `:265` | replace the marker instruction with a `head` invocation. |
+| 6 | 14c | `agy-capstone/SKILL.md` | `:252-253`, `:179-180` | replace both `skipped.log` write instructions with `log` invocations; delete both format literals. **Apply `:252-253` before `:179-180`.** |
+| 7 | 14c | `agy-capstone/SKILL.md` | `:174`, `:43`, `:41` | add `prepare` for the seam file and for a concrete file inside the scratch directory - **never the directory itself**, see below. **Apply in the order given (174, then 43, then 41).** |
+| 8 | 14c | `agy-test-audit/SKILL.md` | `:221-222` | replace the marker instruction with a `head` invocation. |
+| 9 | **14h** | `agy-test-audit/SKILL.md` | `:216-217` | replace the optional-mitigation sentence with the text in Step 2 below. |
+| 10 | **14h** | `agy-test-audit/SKILL.md` | `:59` | INSERT the seat paragraph from Step 2 immediately after the heading line, before numbered item 1. |
+| 11 | 14c | `agy-test-audit/SKILL.md` | `:38`, `:36` | add `prepare` for the seam file and the scratch directory. **Apply `:38` before `:36`.** |
 
 The canonical invocation block to paste (adjust mode and arguments per site):
 
@@ -2092,25 +2151,110 @@ that directory, e.g. `prepare "scratch/<topic>/notes.md"`, which creates and shi
 the file path is what Stage B needs in order to evaluate the tracked-file check for the thing actually
 being written.
 
-- [ ] **Step 2: Make the three skills ACT on a `prepare` refusal**
+- [ ] **Step 2: The 14h replacement text (rows 3, 9 and 10)**
+
+**Everything below is pure ASCII and must stay pure ASCII.** These files are inside `$DomainRoots`, so
+`check-injected-context.ps1`'s `encoding` invariant rejects a single em-dash, curly quote, or arrow. Use
+`-` for a dash. Verify with `LC_ALL=C grep -n '[^ -~]' <file>` returning nothing before committing.
+
+**Row 3 - `agy-first/SKILL.md:54-56`. THIS IS A THREE-WAY SPLIT, NOT AN IN-PLACE SUBSTITUTION.** The
+sentence to remove begins mid-line 54 at "Default persona:" and ends mid-line 56 at
+"API-contract-pedant)." Two other sentences share those lines and **both must survive**: the paragraph's
+own tail ends at "...note its real tradeoffs." on `:54`, and "The peer is empowered to CHALLENGE your own
+settled decision..." begins on `:56`.
+
+**A multi-line block cannot be spliced into the middle of a running paragraph** - doing so leaves two
+sentence fragments welded to a block that renders as part of neither. Produce THREE paragraphs separated
+by blank lines, in this order:
+
+1. the existing paragraph, now ENDING at "...note its real tradeoffs." (delete the single-persona
+   sentence from it, leave everything before untouched);
+2. **a blank line, then the seat block below as a paragraph of its own**;
+3. **a blank line, then** "The peer is empowered to CHALLENGE your own settled decision when it has a
+   substantive reason (correctness, safety, a materially better design, a hidden contradiction) - you
+   keep the final call." - the remainder of the original `:56-58`, unchanged.
+
+The seat block to insert as step 2 (this is markdown prose, NOT a fenced code block - the fence below is
+only how this plan displays it, and **the backticks are not part of the text you paste**):
+
+```markdown
+**Seat a panel, not a persona.** A single voice returns a single lens. Seat the
+adversarial-panel-review personas - Axiom Breaker (contradictions / unstated invariants), Cascade
+Analyst (unhandled failure paths), Literal Implementer (what an executor would have to guess), State
+Corruptor (out-of-order / stale state), Blindspot Auditor (irreversible footguns / missing
+observability), Mechanism Gamer (gameable gates / false-GREEN), and the rest - seating those whose
+trigger THIS fork meets, and NAMING the seats you consciously dropped and why, so an under-seated
+panel is visibly under-seated rather than quietly thin. Each seat answers under its own heading in
+its own voice; a seat with nothing new writes "no new findings" instead of padding. Override with a
+sharper bespoke lens when the fork calls for it. This reuses the persona vocabulary; it is not a code
+dependency on the panel skill. **On a multi-round consult, rotate seats** - each further round seats
+at least one lens no earlier round used.
+```
+
+**Row 9 - `agy-test-audit/SKILL.md:216-217`.** Replace the two lines reading "Optional per-run
+mitigation: rotate the audit's lens ("what modality/behaviour did I not look at?") across / runs." with:
+
+```markdown
+The seat rotation required by "The audit round" above is what mitigates this in practice: a lens that
+never rotates cannot discover the modality it was never pointed at. It is a mitigation, not a cure -
+a rotated panel still proves no completeness.
+```
+
+**Row 10 - `agy-test-audit/SKILL.md:59`.** INSERT immediately after the heading
+`## The audit round (what to ask, how to check)` and before numbered item 1, as its own paragraph:
+
+```markdown
+**Seat the audit, do not send one voice.** Frame the consult with named adversarial seats drawn from
+the adversarial-panel-review palette, seating those whose trigger the diff meets and naming the ones
+you dropped - Axiom Breaker (unstated invariants), Cascade Analyst (unhandled failure paths),
+Mechanism Gamer (a test that passes without asserting the behaviour), Protocol Pedant (contract and
+serialization coverage), State Corruptor (out-of-order and re-entrant paths), Boundary Smuggler
+(untrusted input), and the rest. Each seat asks "what would MY defect-class slip past this suite?"
+under its own heading; a seat with nothing new writes "no new findings" rather than padding. **On a
+re-audit, rotate seats** - each further round seats at least one lens no earlier round used, so the
+audit surfaces new gap-classes instead of re-deriving covered ones. This reuses the persona
+vocabulary; it is not a code dependency on the panel skill.
+```
+
+**Why the text differs between the two files.** `agy-first` consults on a FORK (options, tradeoffs,
+what to build), so its seats hunt reasoning defects. `agy-test-audit` consults on a SUITE, so its seats
+hunt coverage gaps and each is given the coverage question explicitly. Pasting one file's block into
+the other produces a seat list that cannot fire on what that discipline actually reviews.
+
+- [ ] **Step 3: Make the three skills ACT on a `prepare` refusal**
 
 `prepare` fails closed, and the re-fire argument does not cover it: if it refuses, the directory does not
 exist and the agent's very next write fails `No such file or directory` **in the middle of the
 discipline** rather than re-firing cleanly. Each skill that invokes `prepare` must check the exit status
 and **ABORT the discipline with a named reason**, exactly as it already does for an unreachable peer.
 
-Add immediately after each `prepare` invocation:
+**REPLACE each bare `prepare` invocation with the guarded form below. Do NOT append this block after
+an existing `prepare` call** - the block CONTAINS a `prepare` invocation, so appending it fires
+`prepare` twice, the second time on whatever path this template carries rather than the one that site
+needs.
+
+**Two tokens are per-site and MUST be substituted, not pasted literally:**
+- `<SKILL>` - the skill this edit lands in: `agy-first`, `agy-capstone`, or `agy-test-audit`. Pasting
+  `agy-first` into `agy-capstone` makes the abort blame the wrong discipline during an outage.
+- `<PATH>` - the path THAT site was already preparing, verbatim. It is `seams/<topic>.md` at a seam
+  site, and a concrete file inside the scratch directory at a scratch site (row 7 in `agy-capstone`
+  prepares `scratch/<topic>/notes.md`, NOT a seam). **Do not normalise every site to the seam path.**
 
 ```bash
-if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "seams/<topic>.md"; then
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "<PATH>"; then
   # ABORT the discipline and say why. A skill that ignores this exit code converts a clean refusal
   # into a mid-run crash on the next write.
-  echo "agy-first: ABORTING - could not prepare a shielded .clavity/seams/ directory." >&2
+  echo "<SKILL>: ABORTING - could not prepare a shielded .clavity/ directory for <PATH>." >&2
   exit 1
 fi
 ```
 
-- [ ] **Step 3: Mirror all three to classic and verify byte-identity**
+> **This was a live defect in the panel-GREEN draft**, not a new risk introduced by the 14h fold: the
+> instruction read "Add immediately after each `prepare` invocation" above a block that performs its own
+> `prepare`, with both the path and the skill name hardcoded to the `agy-first` seam case. It is
+> corrected here rather than left because a pre-existing defect inside the task being edited is in scope.
+
+- [ ] **Step 4: Mirror all three to classic and verify byte-identity**
 
 ```bash
 for s in agy-first agy-capstone agy-test-audit; do
@@ -2121,28 +2265,118 @@ done
 
 Expected: each pair of hashes identical.
 
-- [ ] **Step 4: Per-file completion check**
+- [ ] **Step 5: Per-file completion check - BOTH items, counted separately**
+
+The two items must be counted **separately**. A combined count passes when one item was applied and the
+other was not, which is exactly the failure a completion check exists to catch.
 
 ```bash
+# 14c: the agy-mark.sh invocations. SKIP this loop if Task 1 recorded BLOCKED.
 for p in clavity-dotnet clavity-classic; do
   for s in agy-first agy-capstone agy-test-audit; do
-    printf '%s/%s: %s\n' "$p" "$s" "$(grep -c 'agy-mark.sh' $p/plugin/skills/$s/SKILL.md)"
+    printf '14c %s/%s: %s\n' "$p" "$s" "$(grep -c 'agy-mark.sh' $p/plugin/skills/$s/SKILL.md)"
+  done
+done
+
+# 14h: the seat instruction. ALWAYS runs - it is not conditional on Task 1.
+# The REMOVAL half is a DIFFERENT string per file, because the defective text differs per file.
+# A shared removal-grep is vacuous on the file that never contained it.
+for p in clavity-dotnet clavity-classic; do
+  printf '14h %s/agy-first: seats=%s rotate=%s old_removed=%s\n' "$p" \
+    "$(grep -c 'Axiom Breaker' $p/plugin/skills/agy-first/SKILL.md)" \
+    "$(grep -c 'rotate seats' $p/plugin/skills/agy-first/SKILL.md)" \
+    "$(grep -c 'Default persona: bold inventive' $p/plugin/skills/agy-first/SKILL.md)"
+  printf '14h %s/agy-test-audit: seats=%s rotate=%s old_removed=%s\n' "$p" \
+    "$(grep -c 'Axiom Breaker' $p/plugin/skills/agy-test-audit/SKILL.md)" \
+    "$(grep -c 'rotate seats' $p/plugin/skills/agy-test-audit/SKILL.md)" \
+    "$(grep -c 'Optional per-run mitigation' $p/plugin/skills/agy-test-audit/SKILL.md)"
+done
+
+# ASCII invariant on every file touched by either item.
+# MATCHES THE REPO GATE EXACTLY: Test-PureAscii (check-injected-context.ps1:547-550) rejects a BYTE
+# > 127 and nothing else, so tab and every other control character are LEGAL. A guard written as
+# '[^ -~]' would reject tab and be STRICTER than the gate it stands in for - a local check that
+# red-lights a file the real gate accepts is a false alarm, not extra safety.
+for p in clavity-dotnet clavity-classic; do
+  for s in agy-first agy-capstone agy-test-audit; do
+    f=$p/plugin/skills/$s/SKILL.md
+    LC_ALL=C grep -nP '[\x80-\xFF]' "$f" && echo "NON-ASCII in $f - FIX BEFORE COMMIT"
   done
 done
 ```
 
-Expected: **six** non-zero counts. A zero means that file was not edited - which no cross-product gate can
-detect, because they compare the two products against each other and a file left unedited in BOTH passes
-byte-identity happily.
+Expected, 14c: **six** non-zero counts. A zero means that file was not edited - which no cross-product
+gate can detect, because they compare the two products against each other and a file left unedited in
+BOTH passes byte-identity happily.
 
-- [ ] **Step 5: Gates and commit**
+Expected, 14h: **four** rows, each `seats=1 rotate=1 old_removed=0`.
+
+**`old_removed` is the discriminating half, and it is a DIFFERENT string per file on purpose.** It counts
+the text being REMOVED, so it proves the old instruction is gone rather than merely that new text was
+appended beside it. A row reading `seats=1 ... old_removed=1` means the seat block was added and the
+defective sentence was left in place, so the file now carries two contradictory instructions.
+
+> 🔴 **Why not one shared removal-grep.** `Default persona: bold inventive` exists ONLY in `agy-first`.
+> Grepping for it in `agy-test-audit` returns 0 **before any edit is made**, so a shared grep would
+> report a perfect `old_removed=0` for a file nobody touched - a check that passes by doing nothing.
+> `agy-test-audit`'s removal target is `Optional per-run mitigation` instead. **A discriminator that
+> cannot distinguish "done" from "never started" is not a discriminator.**
+
+`agy-capstone` is deliberately absent from the 14h loop: it already seats correctly at `:86-103` and
+item 14h does not touch it.
+
+Expected, ASCII: no output at all from the third loop. **Verified control for that guard:** on a fixture
+containing an em-dash line and a tab-indented line it reports exactly **one** match - it catches the
+em-dash and ignores the tab, which is the behaviour the repo gate defines.
+
+- [ ] **Step 6: Gates and commit**
+
+**The gates and the commit are CHAINED with `&&`, and the commit message is chosen INSIDE the block.**
+Both of those are deliberate; read the two warnings under the block before changing either.
 
 ```bash
-bash scripts/check-seed-artifacts-synced.sh
-just check-injected-context
-git add clavity-dotnet/plugin/skills clavity-classic/plugin/skills
-git commit -m "refactor(shield): 14c - the three disciplines write via agy-mark.sh"
+# Read the consequence Task 1 recorded. That file is markdown with two checkboxes under
+# "## Consequence (tick exactly one)"; exactly one is ticked as "- [x]". Parse the TICKED one.
+M=docs/superpowers/plans/2026-08-14-anomaly-hotfix-batch-task1-measurement.md
+TASK1=$(grep -oE '^- \[[xX]\] \*\*(RESOLVED|BLOCKED)\*\*' "$M" | grep -oE 'RESOLVED|BLOCKED')
+# Refuse to proceed unless EXACTLY ONE box is ticked. Zero ticked means Task 1 was never completed;
+# two ticked means it recorded a contradiction. Both must stop the commit, not pick a default.
+if [ "$(printf '%s\n' "$TASK1" | grep -c .)" -ne 1 ]; then
+  echo "ABORT: expected exactly one ticked consequence in $M, got: '$TASK1'. Do not commit." >&2
+  exit 1
+fi
+
+if [ "$TASK1" = "BLOCKED" ]; then
+  MSG="docs(shield): 14h - agy-first and agy-test-audit seat a panel"
+elif [ "$TASK1" = "RESOLVED" ]; then
+  MSG="refactor(shield): 14c + 14h - disciplines write via agy-mark.sh and seat a panel"
+else
+  echo "ABORT: Task 1 result is '$TASK1', expected RESOLVED or BLOCKED. Do not commit." >&2
+  exit 1
+fi
+
+bash scripts/check-seed-artifacts-synced.sh \
+  && just check-injected-context \
+  && git add clavity-dotnet/plugin/skills clavity-classic/plugin/skills \
+  && git commit -m "$MSG" \
+  || { echo "GATE OR COMMIT FAILED - nothing was committed. Fix and re-run." >&2; exit 1; }
 ```
+
+> 🔴 **Why `&&` and not `; echo "RC=$?"`.** An earlier draft of this step ran the gate, echoed its exit
+> code, and then ran `git add` and `git commit` as separate statements. **That reproduces the exact
+> 2026-08-15 failure it was written to prevent**: `echo` consumes the status, the commit runs regardless,
+> and the executor reads `RC=1` in the output only after the bad commit already exists. An agent runs a
+> bash block as one unit - it does not pause between lines to inspect them. **The chain has to make the
+> commit unreachable when a gate fails; a printed exit code is a report, not a guard.**
+
+> 🔴 **Why the message is chosen inside the block.** The same draft hardcoded the 14c+14h message and put
+> "if BLOCKED, use this other message" in prose BELOW the block. An executor running the block gets the
+> hardcoded message, and git history then claims 14c edits that were never made. **A conditional that
+> lives outside the executable is a conditional that does not run.**
+
+`just check-injected-context` prints a symmetry summary whose text can look healthy beside a non-zero
+exit, and **lefthook does not run this gate**, so nothing else catches a red one. The `&&` chain is the
+only thing standing between a red gate and a commit here.
 
 ---
 
@@ -4085,9 +4319,9 @@ Walk **every row** of the governed-artifacts table and confirm each file was act
 | `plugin/hooks/agy-shield-lib.sh` | 14d | both plugins | ☐ dotnet ☐ classic |
 | `plugin/hooks/agy-mark.sh` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if Task 1 = BLOCKED)* |
 | `plugin/hooks/agy-discipline-reaching.sh` | 14c | both plugins | ☐ dotnet ☐ classic |
-| `plugin/skills/agy-first/SKILL.md` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if BLOCKED)* |
+| `plugin/skills/agy-first/SKILL.md` | 14c **+ 14h** | both plugins | ☐ dotnet ☐ classic *(14c skips if BLOCKED; **14h NEVER skips**)* |
 | `plugin/skills/agy-capstone/SKILL.md` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if BLOCKED)* |
-| `plugin/skills/agy-test-audit/SKILL.md` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if BLOCKED)* |
+| `plugin/skills/agy-test-audit/SKILL.md` | 14c **+ 14h** | both plugins | ☐ dotnet ☐ classic *(14c skips if BLOCKED; **14h NEVER skips**)* |
 | `plugin/skills/open-issues/SKILL.md` | **14d** | both plugins | ☐ dotnet ☐ classic — **check the RIGHT thing:** under Task 1 = RESOLVED grep for `agy_shield`; under **BLOCKED** only Step 1b ships, so grep for `! -s` instead. **A `agy_shield` grep returns 0 under BLOCKED and would read as a skipped task.** |
 | `agy-autotrain/skills/agy-curate/SKILL.md` | 14e | single copy | ☐ |
 
@@ -4218,6 +4452,7 @@ Run against the spec with fresh eyes.
 | 4.2 - 14c hook half | Task 5 | yes |
 | 4.2 - `agy-mark.sh` | Task 6 | yes, **conditional on Task 1**, with M2's anchor correction |
 | 4.2 - three skill rewrites | Task 7 | yes, conditional |
+| 14h - the two single-persona disciplines | Task 7, rows 3/9/10 | **no - unconditional** |
 | 4.2 - ROADMAP rewrite | Task 8 | yes, all three sites (M5) |
 | 4.2 - the locator measurement | Task 1 | yes - **owner extended the option space** |
 | 4.3 - `.gitattributes` pin (1a) | Task 9 | yes, with the clean-tree precondition |
