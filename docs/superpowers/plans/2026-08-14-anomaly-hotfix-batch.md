@@ -2175,7 +2175,7 @@ Rows tagged 14h need no locator.
 | 8 | 14c | `agy-test-audit/SKILL.md` | `:221-222` | replace the marker instruction with a `head` invocation. |
 | 9 | **14h** | `agy-test-audit/SKILL.md` | `:216-217` | replace the optional-mitigation sentence with the text in Step 2 below. |
 | 10 | **14h** | `agy-test-audit/SKILL.md` | `:59` | INSERT the seat paragraph from Step 2 immediately after the heading line, before numbered item 1. |
-| 11 | 14c | `agy-test-audit/SKILL.md` | `:38`, `:36` | add `prepare` for the seam file and the scratch directory. **Apply `:38` before `:36`.** |
+| 11 | 14c | `agy-test-audit/SKILL.md` | `:38`, `:36` | add `prepare` at both sites, using **that site's own path**: `:38` is the SCRATCH site - pass a **concrete file inside** the scratch directory (e.g. `scratch/<topic>/notes.md`), **never the directory itself**, see the trap note below; `:36` is the SEAM site - pass `seams/<topic>.md`. **Apply `:38` before `:36`.** |
 
 The canonical invocation block to paste (adjust mode and arguments per site):
 
@@ -2469,9 +2469,22 @@ fi
 # The REMOVAL half is a DIFFERENT string per file, because the defective text differs per file.
 # A shared removal-grep is vacuous on the file that never contained it.
 check_14h() {  # $1=file  $2=removal string  $3=label
-  se=$(grep -c 'Axiom Breaker' "$1")
-  ro=$(grep -c 'rotate seats' "$1")
-  ol=$(grep -c "$2" "$1")
+  # 🔴 THE REMOVAL GREP MUST BE LINE-BREAK BLIND, AND FOR FIFTEEN ROUNDS IT WAS NOT.
+  # `grep` matches within a single line. The string this check hunts in agy-first is wrapped across
+  # `:54-55` - "...tradeoffs. Default persona:" / "bold inventive systems-designer; ..." - so
+  # `grep -c 'Default persona: bold inventive'` returned 0 on the COMPLETELY UNMODIFIED FILE.
+  # MEASURED: count 0 against the untouched file; count 1 once newlines are folded to spaces.
+  # The discriminator that existed to prove the old instruction was deleted passed vacuously on a
+  # file nobody had touched - exactly the failure it was written to prevent.
+  # Fold newlines to spaces before matching so a wrap can never hide the text again.
+  # All three fold newlines first, for the same reason - `rotate seats` sits mid-sentence in the
+  # inserted prose and would vanish from a line-based grep the moment anyone rewraps that paragraph.
+  # A presence check that a reflow can silently turn into a zero is the same defect as the removal
+  # check's, just waiting for a different edit. Counts become 0-or-1 after folding, which is all the
+  # `-ge 1` tests below need.
+  se=$(tr '\n' ' ' < "$1" | grep -c 'Axiom Breaker')
+  ro=$(tr '\n' ' ' < "$1" | grep -c 'rotate seats')
+  ol=$(tr '\n' ' ' < "$1" | grep -c "$2")
   echo "14h $3: seats=$se rotate=$ro old_removed=$ol"
   [ "$se" -ge 1 ] && [ "$ro" -ge 1 ] && [ "$ol" -eq 0 ] \
     || { echo "  FAIL: $3 expected seats>=1 rotate>=1 old_removed=0" >&2; FAIL=1; }
