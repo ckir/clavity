@@ -2416,25 +2416,67 @@ mkdir -p .clavity/scratch/14h-fold || {
 [ -f .clavity/.gitignore ] || printf '%s\n' '*' >> .clavity/.gitignore
 
 digest_state() {  # prints one digest over TASK1 + branch + the content of all six files
-  {
-    printf 'task1=%s\n' "$1"
-    printf 'branch=%s\n' "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo UNKNOWN)"
-    for pp in clavity-dotnet clavity-classic; do
-      for ss in agy-first agy-capstone agy-test-audit; do
-        sha256sum "$pp/plugin/skills/$ss/SKILL.md"
-      done
+  # NOT a pipeline. A pipeline's exit status is its LAST command's, so a failure inside a brace group
+  # feeding `| sha256sum | cut` never reaches the caller: MEASURED, a missing file made the inner
+  # sha256sum fail while the function still exited 0 and returned a digest over PARTIAL input.
+  # Worse, MEASURED: with sha256sum absent the whole pipeline yields an EMPTY string on both sides,
+  # and `[ "" != "" ]` is false - the lock passes having hashed nothing. Both failures are silent and
+  # both produce a confident-looking success, so this builds the digest step by step and returns
+  # non-zero the moment anything is wrong.
+  #
+  # Uses `git hash-object`, not sha256sum: git is already a hard requirement of these steps (they run
+  # rev-parse, add and commit), so it adds no new dependency, whereas sha256sum is absent on macOS.
+  ds_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+    echo "digest_state: git rev-parse failed" >&2; return 1; }
+  ds_acc="task1=$1;branch=$ds_branch"
+  for pp in clavity-dotnet clavity-classic; do
+    for ss in agy-first agy-capstone agy-test-audit; do
+      ds_f="$pp/plugin/skills/$ss/SKILL.md"
+      [ -r "$ds_f" ] || { echo "digest_state: cannot read $ds_f" >&2; return 1; }
+      ds_h=$(git hash-object -- "$ds_f") || {
+        echo "digest_state: hash-object failed for $ds_f" >&2; return 1; }
+      case "$ds_h" in
+        ????????????????????????????????????????) : ;;
+        *) echo "digest_state: malformed hash for $ds_f" >&2; return 1 ;;
+      esac
+      ds_acc="$ds_acc;$pp/$ss=$ds_h"
     done
-  } | sha256sum | cut -d' ' -f1
+  done
+  ds_out=$(printf '%s' "$ds_acc" | git hash-object --stdin) || {
+    echo "digest_state: final hash-object failed" >&2; return 1; }
+  # Reject an empty or malformed digest EXPLICITLY. An empty digest on both sides compares equal,
+  # which is the bypass this guard exists to prevent - a guard must never treat "I computed nothing"
+  # as "the values match".
+  case "$ds_out" in
+    ????????????????????????????????????????) printf '%s\n' "$ds_out" ;;
+    *) echo "digest_state: malformed digest '$ds_out'" >&2; return 1 ;;
+  esac
 }
 
 # A failed redirect must abort. Unchecked, Step 5 prints "all checks passed" while the token on disk
 # is a LEFTOVER from a previous run, and Step 6 then authorises a commit on state never recorded.
-if ! digest_state "$TASK1" > .clavity/scratch/14h-fold/verified-under.txt; then
-  echo "ABORT: could not write the verification token (permissions? disk full?)." >&2
+# Compute FIRST, then write. `if ! digest_state > file` conflates a digest failure with a redirect
+# failure and reported both as "permissions? disk full?", which is wrong for the far likelier case of
+# a missing tool or an unreadable file.
+TOKEN=$(digest_state "$TASK1") || {
+  echo "ABORT: could not compute the state digest - see the digest_state error above." >&2
+  echo "       This is NOT a disk or permissions problem with the token file." >&2
+  exit 1; }
+
+# The function is defined in BOTH Step 5 and Step 6 and they must stay identical, or Step 5 mints
+# tokens with algorithm A while Step 6 evaluates them with algorithm B - the comparison then fails
+# forever and its error message blames the operator for mutating state they never touched. Record a
+# hash of the function's own source so that drift ABORTS with the true reason instead of masquerading
+# as a state mismatch.
+FNHASH=$(declare -f digest_state | git hash-object --stdin) || {
+  echo "ABORT: could not hash the digest_state definition." >&2; exit 1; }
+
+if ! printf '%s %s\n' "$FNHASH" "$TOKEN" > .clavity/scratch/14h-fold/verified-under.txt; then
+  echo "ABORT: could not WRITE the verification token (permissions? disk full?)." >&2
   rm -f .clavity/scratch/14h-fold/verified-under.txt
   exit 1
 fi
-echo "Step 5: all checks passed (verified under TASK1=$TASK1, state $(cat .clavity/scratch/14h-fold/verified-under.txt))."
+echo "Step 5: all checks passed (TASK1=$TASK1, state $TOKEN)."
 ```
 
 Expected, 14c: **six** non-zero counts. A zero means that file was not edited - which no cross-product
@@ -2499,21 +2541,72 @@ if [ ! -f "$V" ]; then
   echo "ABORT: $V is missing - Step 5 has not run (or not passed). Run Step 5 first." >&2; exit 1
 fi
 
-# Recompute the SAME digest Step 5 recorded. Identical function, deliberately restated because this
-# is a separate block that may be run on its own.
-digest_state() {
-  {
-    printf 'task1=%s\n' "$1"
-    printf 'branch=%s\n' "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo UNKNOWN)"
-    for pp in clavity-dotnet clavity-classic; do
-      for ss in agy-first agy-capstone agy-test-audit; do
-        sha256sum "$pp/plugin/skills/$ss/SKILL.md"
-      done
+# Recompute the SAME digest Step 5 recorded. This function must be BYTE-IDENTICAL to Step 5's copy;
+# it is restated rather than referenced because this is a separate block that may be run on its own.
+# The FNHASH check below turns any drift between the two into an explicit abort naming the real cause.
+# (`declare -f` strips comments, so a comment-only difference is correctly NOT treated as drift.)
+digest_state() {  # prints one digest over TASK1 + branch + the content of all six files
+  # NOT a pipeline. A pipeline's exit status is its LAST command's, so a failure inside a brace group
+  # feeding `| sha256sum | cut` never reaches the caller: MEASURED, a missing file made the inner
+  # sha256sum fail while the function still exited 0 and returned a digest over PARTIAL input.
+  # Worse, MEASURED: with sha256sum absent the whole pipeline yields an EMPTY string on both sides,
+  # and `[ "" != "" ]` is false - the lock passes having hashed nothing. Both failures are silent and
+  # both produce a confident-looking success, so this builds the digest step by step and returns
+  # non-zero the moment anything is wrong.
+  #
+  # Uses `git hash-object`, not sha256sum: git is already a hard requirement of these steps (they run
+  # rev-parse, add and commit), so it adds no new dependency, whereas sha256sum is absent on macOS.
+  ds_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+    echo "digest_state: git rev-parse failed" >&2; return 1; }
+  ds_acc="task1=$1;branch=$ds_branch"
+  for pp in clavity-dotnet clavity-classic; do
+    for ss in agy-first agy-capstone agy-test-audit; do
+      ds_f="$pp/plugin/skills/$ss/SKILL.md"
+      [ -r "$ds_f" ] || { echo "digest_state: cannot read $ds_f" >&2; return 1; }
+      ds_h=$(git hash-object -- "$ds_f") || {
+        echo "digest_state: hash-object failed for $ds_f" >&2; return 1; }
+      case "$ds_h" in
+        ????????????????????????????????????????) : ;;
+        *) echo "digest_state: malformed hash for $ds_f" >&2; return 1 ;;
+      esac
+      ds_acc="$ds_acc;$pp/$ss=$ds_h"
     done
-  } | sha256sum | cut -d' ' -f1
+  done
+  ds_out=$(printf '%s' "$ds_acc" | git hash-object --stdin) || {
+    echo "digest_state: final hash-object failed" >&2; return 1; }
+  # Reject an empty or malformed digest EXPLICITLY. An empty digest on both sides compares equal,
+  # which is the bypass this guard exists to prevent - a guard must never treat "I computed nothing"
+  # as "the values match".
+  case "$ds_out" in
+    ????????????????????????????????????????) printf '%s\n' "$ds_out" ;;
+    *) echo "digest_state: malformed digest '$ds_out'" >&2; return 1 ;;
+  esac
 }
 
-if [ "$(cat "$V")" != "$(digest_state "$TASK1")" ]; then
+# The token is "<function-hash> <state-digest>". Read both, and distinguish the two failure modes:
+# a DRIFTED function is a bug in this plan, a changed state is an operator action. Reporting the
+# first as the second is what would send someone hunting an edit they never made.
+TOKFN=$(cut -d' ' -f1 < "$V")
+TOKST=$(cut -d' ' -f2 < "$V")
+case "$TOKFN$TOKST" in
+  ????????????????????????????????????????????????????????????????????????????????) : ;;
+  *) echo "ABORT: $V is malformed (expected '<40-hex> <40-hex>'). Re-run Step 5." >&2; exit 1 ;;
+esac
+
+CURFN=$(declare -f digest_state | git hash-object --stdin) || {
+  echo "ABORT: could not hash the digest_state definition." >&2; exit 1; }
+if [ "$TOKFN" != "$CURFN" ]; then
+  echo "ABORT: the digest_state function in THIS block differs from the one Step 5 used." >&2
+  echo "       This is a DEFECT IN THE PLAN, not something you did: the two copies of the" >&2
+  echo "       function have drifted. Do not 're-run Step 5' - it will not help. Make the two" >&2
+  echo "       definitions byte-identical first." >&2
+  exit 1
+fi
+
+CURST=$(digest_state "$TASK1") || {
+  echo "ABORT: could not compute the state digest - see the digest_state error above." >&2; exit 1; }
+
+if [ "$TOKST" != "$CURST" ]; then
   echo "ABORT: the verification token does not match the current state." >&2
   echo "       Step 5's checks do not describe what this block would commit. One of these happened:" >&2
   echo "         - a skill file was edited after Step 5 ran;" >&2
