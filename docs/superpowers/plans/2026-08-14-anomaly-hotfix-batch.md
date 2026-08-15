@@ -615,7 +615,11 @@ Describe 'agy-shield-lib.sh' {
         It 'refuses an empty root, writes nothing, and WARNS' {
             $r = New-FixtureRepo -Shield "*`n"
             $res = Invoke-Shield -Root $r -Body 'agy_shield "" ".clavity/local-anomalies.md" "k1"'
-            $res.Err | Should -Not -BeNullOrEmpty -Because 'a bad argument means the CALLER is broken and is about to write private data'
+            # `-Not -BeNullOrEmpty` PASSES ON ANY STDERR - a crash, a shell warning, an unrelated
+            # diagnostic. It proves the helper made noise, never that it REFUSED. Every validation
+            # branch emits `REFUSING`, and a sibling row already matches on exactly that marker.
+            $res.Err | Should -Match 'REFUSING' -Because 'a bad argument means the CALLER is broken and is about to write private data - and noise is not a refusal'
+            $res.Err | Should -Match 'root argument' -Because 'a refusal names WHICH argument it rejected'
             (Test-Path -LiteralPath '/.clavity') | Should -BeFalse -Because 'mkdir -p "$1/.clavity" with an empty $1 would create a directory at the filesystem root'
         }
 
@@ -623,7 +627,8 @@ Describe 'agy-shield-lib.sh' {
             $r = New-FixtureRepo -Shield "*`n"
             $before = Get-Shield $r
             $res = Invoke-Shield -Root $r -Body 'agy_shield "/definitely/not/here" ".clavity/local-anomalies.md" "k1"'
-            $res.Err | Should -Not -BeNullOrEmpty
+            $res.Err | Should -Match 'REFUSING' -Because 'noise is not a refusal'
+            $res.Err | Should -Match ([regex]::Escape('/definitely/not/here')) -Because 'a refusal names the ARGUMENT it rejected'
             # ASSERT THE SIDE EFFECT TOO (panel R13): a message-only assertion stays GREEN against an
             # implementation that warns and then writes anyway - the exact failure a refusal row exists
             # to catch.
@@ -636,7 +641,8 @@ Describe 'agy-shield-lib.sh' {
             $r = New-FixtureRepo -Shield "*`n"
             $before = Get-Shield $r
             $res = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" "docs/secret.md" "k1"'
-            $res.Err | Should -Not -BeNullOrEmpty
+            $res.Err | Should -Match 'REFUSING' -Because 'noise is not a refusal'
+            $res.Err | Should -Match ([regex]::Escape('docs/secret.md')) -Because 'a refusal names the ARGUMENT it rejected'
             (Get-Shield $r) | Should -BeExactly $before
         }
 
@@ -644,21 +650,37 @@ Describe 'agy-shield-lib.sh' {
             $r = New-FixtureRepo -Shield "*`n"
             $before = Get-Shield $r
             $res = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/../../escape.md" "k1"'
-            $res.Err | Should -Not -BeNullOrEmpty
+            $res.Err | Should -Match 'REFUSING' -Because 'noise is not a refusal'
+            $res.Err | Should -Match ([regex]::Escape("contains '..'")) -Because 'a refusal names WHY it rejected'
             # Without this half the row stays GREEN against a helper that warns and then traverses
             # anyway - which is the whole point of rejecting the argument.
             (Get-Shield $r) | Should -BeExactly $before
             (Test-Path -LiteralPath (Join-Path (Split-Path -Parent (Split-Path -Parent $r)) 'escape.md')) | Should -BeFalse
         }
 
+        # `Should -Not -BeNullOrEmpty` IS NOT A MESSAGE ASSERTION. It passes on ANY stderr - a crash,
+        # a shell warning, a diagnostic from something else entirely - so it proves the helper made
+        # noise, never that it REFUSED, and never that it named what it rejected. Both rows below were
+        # that assertion alone, with no side-effect leg either. The suite already has the right
+        # discriminator: `REFUSING` is the marker every validation branch emits, and the sibling row
+        # `a VALIDATION fault is emitted BOTH times under the same key` matches on it.
+        # Pinning the DISTINGUISHING phrase, not the whole sentence, is this plan's stated bar.
         It 'refuses an EMPTY path argument' {
             $r = New-FixtureRepo -Shield "*`n"
-            (Invoke-Shield -Root $r -Body 'agy_shield "$PWD" "" "k1"').Err | Should -Not -BeNullOrEmpty
+            $before = Get-Shield $r
+            $res = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" "" "k1"'
+            $res.Err | Should -Match 'REFUSING' -Because 'noise is not a refusal; the row must see the refusal itself'
+            $res.Err | Should -Match 'path argument is empty' -Because 'a refusal names WHAT it rejected'
+            (Get-Shield $r) | Should -BeExactly $before -Because 'a refused call must not touch the shield'
         }
 
         It 'refuses an ABSOLUTE path argument' {
             $r = New-FixtureRepo -Shield "*`n"
-            (Invoke-Shield -Root $r -Body 'agy_shield "$PWD" "/etc/passwd" "k1"').Err | Should -Not -BeNullOrEmpty
+            $before = Get-Shield $r
+            $res = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" "/etc/passwd" "k1"'
+            $res.Err | Should -Match 'REFUSING' -Because 'noise is not a refusal; the row must see the refusal itself'
+            $res.Err | Should -Match ([regex]::Escape('/etc/passwd')) -Because 'a refusal names the ARGUMENT it rejected'
+            (Get-Shield $r) | Should -BeExactly $before -Because 'a refused call must not touch the shield'
         }
 
         It 'A1 mkdir FAILURE: returns 0, writes nothing, reports ENVIRONMENT once per key' {
@@ -1780,13 +1802,29 @@ Describe 'agy-mark.sh' {
     }
 
     Context 'mode and argument refusals (panel R10 - each of these branches had no row)' {
+        # BOTH ROWS BELOW ASSERTED ONLY THE EXIT CODE, and for a MODE error that is the weakest
+        # possible oracle: exit 1 is what this script returns for every refusal, and also what it
+        # would return if the helper failed to load, if git were missing, or if it crashed before
+        # reaching the mode branch at all. The row would stay green while the mode check was deleted.
+        # The message is what separates "rejected the mode" from "died on the way there", and the
+        # expected-modes list is the distinguishing phrase.
         It 'refuses with NO mode given' {
             $d = New-MarkFixture
-            (Invoke-Mark -Cwd $d -MarkArgs @()).ExitCode | Should -Be 1
+            $r = Invoke-Mark -Cwd $d -MarkArgs @()
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'no mode given' -Because 'exit 1 alone cannot tell a rejected mode from a crash on the way to the check'
+            $r.Err | Should -Match ([regex]::Escape('head|log|prepare')) -Because 'the refusal tells the caller what the legal modes ARE'
+            @(Get-ChildItem -LiteralPath (Join-Path $d '.clavity') -Force -Recurse).Count |
+                Should -Be 1 -Because 'a refused invocation creates nothing; only the fixture shield may exist'
         }
         It 'refuses an UNKNOWN mode' {
             $d = New-MarkFixture
-            (Invoke-Mark -Cwd $d -MarkArgs @('frobnicate','x')).ExitCode | Should -Be 1
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('frobnicate','x')
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'unknown mode' -Because 'exit 1 alone cannot tell a rejected mode from a crash on the way to the check'
+            $r.Err | Should -Match 'frobnicate' -Because 'a refusal names the ARGUMENT it rejected, so the caller can see its typo'
+            @(Get-ChildItem -LiteralPath (Join-Path $d '.clavity') -Force -Recurse).Count |
+                Should -Be 1 -Because 'a refused invocation creates nothing; only the fixture shield may exist'
         }
         It 'head refuses with NO sha' {
             $d = New-MarkFixture
