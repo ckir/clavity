@@ -539,6 +539,34 @@ Describe 'agy-shield-lib.sh' {
         }
     }
 
+    Context 'A2 FIRST case - a bare * ALREADY present, with a negation below it' {
+        # THE OTHER ORDERING, and it had a row in the test TABLE and no code in the SUITE until panel
+        # R14. This is the shape the spec's residual actually describes as reachable: a bare `*` IS
+        # present, so A2 appends nothing, and B3's untracked branch is what fires. The prepend Context
+        # above covers the OPPOSITE ordering (`!` alone, no `*`), and the two are not interchangeable -
+        # the residual was only ever reachable in one of them, which is why twelve rounds of the spec's
+        # own review did not surface it.
+        BeforeEach {
+            $script:R2 = New-FixtureRepo -Shield "*`n"
+            [IO.File]::WriteAllText((Join-Path $script:R2 '.clavity/.gitignore'), "*`n!local-anomalies.md`n")
+            $script:Res2 = Invoke-Shield -Root $script:R2 -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+        }
+
+        It 'appends NOTHING - the shield is left exactly as the human wrote it' {
+            (Get-Shield $script:R2) | Should -BeExactly "*`n!local-anomalies.md`n" -Because 'A2 case 1 matches, so nothing is written'
+        }
+
+        It 'reports the negation loudly (B3, untracked)' {
+            $script:Res2.Err | Should -Match 'local-anomalies\.md'
+        }
+
+        It 'does NOT rewrite the shield to silence the report' {
+            # The spec is explicit that B3 returns 0 and does NOT rewrite. Without this assertion the row
+            # above stays GREEN against a helper that "fixes" the leak by destroying the human's line.
+            (Get-Shield $script:R2) | Should -Match '(?m)^!local-anomalies\.md$'
+        }
+    }
+
     Context 'Stage B - effect verification' {
         It 'reports the git rm --cached remedy for a TRACKED path, shield intact afterwards' {
             $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
@@ -1044,7 +1072,7 @@ suite green, that branch is untested regardless of how many rows exist.
 | run the key regex over EVERY key including empty | `an EMPTY key is LEGAL` |
 | drop `2>/dev/null` from the A2 `grep` | `creates .clavity/ and the shield on a FRESH CLONE` (stderr assertion) |
 | replace `return 0` with `exit 0` in A0 | `does NOT kill its CALLER` |
-| use `check-ignore -v` for the DECISION instead of `-q` | `(a) the human INTENT survives` |
+| use `check-ignore -v` for the DECISION instead of `-q` | **`reports the negation loudly`** - and the pairing here was WRONG until panel R14. Measured behaviour: `-v` exits **0** on a file that is NOT ignored, so B2 short-circuits to "done" and the negation is never reported at all. `(a) the human INTENT survives` stays GREEN under that mutation, because nothing is written either way - so the old pairing named a row the mutation cannot redden |
 
 - [ ] **Step 8: Run the pair gates**
 
@@ -1734,12 +1762,17 @@ Describe 'agy-mark.sh' {
             # "(add if absent)" and nobody added it, so that mutation mapped to nothing (panel R13).
             # Make agy-marks a FILE so the directory cannot be created but the refusal is not an
             # argument fault: the append itself is what fails.
+            # THE FIXTURE MUST REACH THE *APPEND*, not the mkdir - panel R14 caught the first version
+            # making .clavity/agy-marks a FILE, which makes `mkdir -p` fail first and exit 1, never
+            # reaching the exit-2 branch at all. Worse, that version asserted `-BeIn @(1,2)`, which
+            # silently ACCEPTED the mkdir failure as a pass - a row that cannot distinguish the two codes
+            # is exactly what the contract says a caller must be able to do.
+            # Making skipped.log a DIRECTORY lets mkdir succeed and makes the append itself fail.
             $d = New-MarkFixture
-            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
-            [IO.File]::WriteAllText((Join-Path $d '.clavity/agy-marks'), "not a directory`n")
+            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity/agy-marks/skipped.log') | Out-Null
             $r = Invoke-Mark -Cwd $d -MarkArgs @('log','agy-first','SKIPPED-UNREACHABLE','deadbeef')
-            $r.ExitCode | Should -BeIn @(1, 2) -Because 'a caller must be able to tell refused-nothing-written from wrote-something-and-failed'
-            $r.Err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive either way'
+            $r.ExitCode | Should -Be 2 -Because 'wrote-something-and-failed is exit 2, distinct from refused-nothing-written (exit 1)'
+            $r.Err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive a partway failure too'
         }
     }
 
