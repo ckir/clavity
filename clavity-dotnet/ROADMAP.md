@@ -1136,6 +1136,43 @@ entries. **Not urgent:** the installer excludes the inbox from the blanket copy 
 `uninsneveruninstall`, so an update does not overwrite it and an uninstall does not remove it — a reviewer
 claimed the next update would destroy the backlog and the installer refutes that.
 
+**§14h — two AGY-* review disciplines prescribe a SINGLE persona, so their consults are single-voice
+by instruction.** ▶ **OPEN — promoted at the 2026-08-15 triage.**
+
+**Measured 2026-08-15** across both plugin variants (byte-identical, counts equal in each):
+
+| skill | mandates seats? | evidence |
+|---|---|---|
+| `agy-first/SKILL.md` (123 lines) | **NO** | `:54-56` — "Default persona: bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic, API-contract-pedant)". Singular, and the three alternatives are ad-hoc, not palette seats. |
+| `agy-test-audit/SKILL.md` (231 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. |
+| `agy-capstone/SKILL.md` (289 lines) | **YES — not defective** | `:89` "Seat the proven adversarial-panel-review personas — Axiom Breaker … Smuggler, and the rest", `:92` seat those whose trigger the diff meets, `:103` rotate seats across rounds. |
+| `adversarial-panel-review/SKILL.md` (297 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
+
+**Blast radius: 4 files** — `agy-first` and `agy-test-audit` in `clavity-dotnet/plugin/skills/` and
+`clavity-classic/plugin/skills/`. Byte-identical pair, so both variants change together and
+`plugin-hooks-payload.Tests.ps1` gates it.
+
+**Why this is a defect and not a preference.** The owner has corrected the same dropped-seats behaviour
+**twice**, and on the second occasion named it a defect requiring a fix. The driver was not ignoring
+`agy-first` — it was *complying* with it: `:54` says "Default persona", singular, so a single-voice
+consult is the instructed behaviour. A discipline whose text produces the failure its sibling discipline
+exists to prevent is a defect in the text. **Measured effect in the run that surfaced it:** a single-voice
+`agy-first` consult built three orderings on a collision that did not exist and stated two confident
+claims that measurement refuted; the seated round that followed produced six distinct findings and two
+substantive challenges to the driver's own measurements.
+
+> ⚠ **The first measurement of this entry was WRONG and the error is instructive.** A `grep -c palette`
+> returned 0 for `agy-capstone` and it was nearly promoted as a third defective skill. `agy-capstone`
+> mandates seats correctly at `:86-103` — it simply never uses the word *palette*. **A paraphrase evades
+> a phrase-shaped grep**; the fix-side sweep must search the FACT (does this file mandate multiple named
+> adversarial lenses?) in several wordings, not one token.
+
+**Fix shape (not yet planned):** give `agy-first` and `agy-test-audit` the same seat instruction
+`agy-capstone:89-103` already carries — cite the `adversarial-panel-review` palette, seat by trigger,
+rotate across rounds — rather than duplicating the palette into each file. **This is the same
+"one shared review-core" question already open as the AGY-* family-coherence fork**, so the two should
+be decided together, not separately.
+
 ### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
 
 **Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`,
