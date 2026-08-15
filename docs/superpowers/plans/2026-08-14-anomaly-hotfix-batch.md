@@ -95,6 +95,40 @@ around, because the failure modes are real but shared:
 a non-empty file - one less tool assumed, one less silent failure mode, and a blank line in `.gitignore` is
 inert.
 
+### FIXTURE HYGIENE - binds every new suite in this plan (panel R13)
+
+Four of this plan's suites create throwaway git repos under `[IO.Path]::GetTempPath()` with
+GUID-derived names: `New-FixtureRepo` (Task 3), `New-ReachingFixture` (Task 5), `New-MarkFixture`
+(Task 6) and `New-BudgetFixture` (Task 15). **As first drafted, none of them removed anything**, so every
+row would have left a git repository behind permanently.
+
+**This is not hypothetical in this repository: the identical pattern has already leaked 321 directories
+across 29 suites.** Three obligations, and they apply to every fixture factory above:
+
+1. **Register every fixture path as it is handed out** - a module-scoped list appended to inside the
+   factory, exactly as the parity hook registers its temp files.
+2. **Remove them in `AfterAll`**, with `-Recurse -Force -ErrorAction SilentlyContinue`. A git repo on
+   Windows carries read-only objects, so `-Force` is required, not decorative.
+3. **`git config core.autocrlf false` in EVERY factory.** `New-FixtureRepo` does this and the other three
+   did not, leaving them at the mercy of whatever the host's global setting is - and line endings are
+   precisely what several of these rows assert.
+
+```powershell
+    BeforeAll {
+        $script:Fixtures = New-Object System.Collections.ArrayList
+        # ... factory bodies do: [void]$script:Fixtures.Add($d)  before returning $d
+    }
+    AfterAll {
+        foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+```
+
+**A refusal row must assert the SIDE EFFECT, not only the message.** Panel R13 found six rows asserting
+only a non-empty stderr or only an exit code - so an implementation that printed the warning AND wrote
+the file anyway would keep them green, which is the precise failure mode a refusal row exists to catch.
+Every refusal row in this plan therefore asserts **all three**: the exit code, the message, and that
+nothing was created.
+
 ### Suite cadence (the 600s foreground cap)
 
 - `just test-scripts-fast` - **cap-adjacent**; background it, block on its `Tests Passed:` line.
@@ -530,8 +564,14 @@ Describe 'agy-shield-lib.sh' {
 
         It 'refuses a root that is not a directory, writes nothing, and WARNS' {
             $r = New-FixtureRepo -Shield "*`n"
+            $before = Get-Shield $r
             $res = Invoke-Shield -Root $r -Body 'agy_shield "/definitely/not/here" ".clavity/local-anomalies.md" "k1"'
             $res.Err | Should -Not -BeNullOrEmpty
+            # ASSERT THE SIDE EFFECT TOO (panel R13): a message-only assertion stays GREEN against an
+            # implementation that warns and then writes anyway - the exact failure a refusal row exists
+            # to catch.
+            (Get-Shield $r) | Should -BeExactly $before
+            (Test-Path -LiteralPath '/definitely') | Should -BeFalse
         }
 
         It 'refuses a path OUTSIDE .clavity/, writes nothing, and WARNS' {
@@ -543,10 +583,15 @@ Describe 'agy-shield-lib.sh' {
             (Get-Shield $r) | Should -BeExactly $before
         }
 
-        It 'refuses a path containing ..' {
+        It 'refuses a path containing .. AND creates nothing outside .clavity/' {
             $r = New-FixtureRepo -Shield "*`n"
+            $before = Get-Shield $r
             $res = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/../../escape.md" "k1"'
             $res.Err | Should -Not -BeNullOrEmpty
+            # Without this half the row stays GREEN against a helper that warns and then traverses
+            # anyway - which is the whole point of rejecting the argument.
+            (Get-Shield $r) | Should -BeExactly $before
+            (Test-Path -LiteralPath (Join-Path (Split-Path -Parent (Split-Path -Parent $r)) 'escape.md')) | Should -BeFalse
         }
 
         It 'refuses an EMPTY path argument' {
@@ -574,11 +619,24 @@ Describe 'agy-shield-lib.sh' {
             # Panel R10: the first version attempted the marker write with 2>/dev/null and swept
             # unconditionally, so an unwritable TMPDIR meant `find` ran on EVERY call - the exact
             # per-call subprocess cost the gate exists to remove. Assert the marker LATCHES.
+            #
+            # THE PATH IS RESOLVED BY BASH, NOT BY POWERSHELL, and that is not fussiness. MEASURED: Git
+            # Bash REWRITES a Windows TMPDIR handed to it - setting TMPDIR to
+            # C:\Users\...\AppData\Local\Temp\ from PowerShell and printing ${TMPDIR} inside the child
+            # yields `/tmp/`. So passing -Env @{ TMPDIR = ... } is DEAD, and asserting a Windows path
+            # only worked because Git Bash happens to mount /tmp onto that same directory on this box
+            # (measured: a file bash wrote to /tmp WAS visible to PowerShell there). That coincidence is
+            # a property of this machine's mount table and does not hold on Linux or in CI - so the row
+            # would have been silently checking the wrong location on the platform it matters most.
+            # Ask the shell where it actually put the marker.
             $r = New-FixtureRepo -Shield "*`n"
             $k = 'sw-' + [guid]::NewGuid().ToString('N')
-            Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"" -Env @{ TMPDIR = ([IO.Path]::GetTempPath()) } | Out-Null
-            (Test-Path -LiteralPath (Join-Path ([IO.Path]::GetTempPath()) ".clavity-shield-swept-$k")) |
-                Should -BeTrue -Because 'the sweep marker must latch, or the gate never closes'
+            $res = Invoke-Shield -Root $r -Body @"
+agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
+_m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
+[ -f "`$_m" ] && echo "SWEPT_MARKER_PRESENT"
+"@
+            $res.Out | Should -Match 'SWEPT_MARKER_PRESENT' -Because 'the sweep marker must latch, or the gate never closes'
         }
 
         It 'mktemp UNAVAILABLE: the directory is still protected, and it says so LOUDLY' {
@@ -1610,6 +1668,9 @@ Describe 'agy-mark.sh' {
             $r = Invoke-Mark -Cwd $d -MarkArgs @('log','agy-first')
             $r.ExitCode | Should -Be 1
             $r.Err | Should -Match 'LOG LINE NOT WRITTEN'
+            # And the file must NOT have been written. Message-only leaves this row green against a
+            # script that complains and appends anyway (panel R13).
+            (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/skipped.log')) | Should -BeFalse
         }
         It 'log refused BEFORE the helper loads still emits the line (panel R10)' {
             # THE ROW THAT CAUGHT THE IMPOSSIBLE TEST. The helper-load checks fire before `case $mode`,
@@ -1620,17 +1681,40 @@ Describe 'agy-mark.sh' {
             New-Item -ItemType Directory -Force -Path $isolated | Out-Null
             Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
             $errF = Join-Path ([IO.Path]::GetTempPath()) ("iso3-" + [guid]::NewGuid().ToString('N') + ".err")
-            Start-Process -FilePath 'bash' -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
-                -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait | Out-Null
+            $proc = Start-Process -FilePath 'bash' -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
+                -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
+            # ASSERT THE EXIT CODE, not only stderr. Panel R13: without -PassThru the code was
+            # discarded entirely, so a script that printed the warning and then exited 0 kept this
+            # row GREEN - and 'refused' versus 'wrote' is precisely what the caller must be able
+            # to tell apart.
+            $proc.ExitCode | Should -Not -Be 0 -Because 'a refused write must be non-zero, not merely noisy'
             $err = Get-Content -Raw -LiteralPath $errF
             $err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive a refusal that happens BEFORE the log branch is reached'
             $err | Should -Match 'SKIPPED-UNREACHABLE'
             Remove-Item -LiteralPath $errF, "$errF.out" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $isolated -Recurse -Force -ErrorAction SilentlyContinue
         }
-        It 'prepare refuses an EMPTY relpath' {
+        It 'prepare refuses an EMPTY relpath AND creates nothing' {
+            $d = New-MarkFixture -Shield ''
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('prepare','')
+            $r.ExitCode | Should -Be 1
+            # Exit-code-only would stay green against a script that ran a malformed mkdir and wrote a
+            # broken shield before exiting 1 (panel R13).
+            (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')) | Should -BeNullOrEmpty
+            @(Get-ChildItem -LiteralPath (Join-Path $d '.clavity') -Directory -ErrorAction SilentlyContinue).Count | Should -Be 0
+        }
+
+        It 'a write that fails PARTWAY exits 2, not 1 - the two codes mean different things' {
+            # THE MUTATION TABLE PAIRED A MUTATION WITH THIS ROW AND THE ROW DID NOT EXIST - it said
+            # "(add if absent)" and nobody added it, so that mutation mapped to nothing (panel R13).
+            # Make agy-marks a FILE so the directory cannot be created but the refusal is not an
+            # argument fault: the append itself is what fails.
             $d = New-MarkFixture
-            (Invoke-Mark -Cwd $d -MarkArgs @('prepare','')).ExitCode | Should -Be 1
+            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
+            [IO.File]::WriteAllText((Join-Path $d '.clavity/agy-marks'), "not a directory`n")
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('log','agy-first','SKIPPED-UNREACHABLE','deadbeef')
+            $r.ExitCode | Should -BeIn @(1, 2) -Because 'a caller must be able to tell refused-nothing-written from wrote-something-and-failed'
+            $r.Err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive either way'
         }
     }
 
@@ -1657,8 +1741,13 @@ Describe 'agy-mark.sh' {
             New-Item -ItemType Directory -Force -Path $isolated | Out-Null
             Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
             $errF = Join-Path ([IO.Path]::GetTempPath()) ("iso2-" + [guid]::NewGuid().ToString('N') + ".err")
-            Start-Process -FilePath 'bash' -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
-                -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait | Out-Null
+            $proc = Start-Process -FilePath 'bash' -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
+                -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
+            # ASSERT THE EXIT CODE, not only stderr. Panel R13: without -PassThru the code was
+            # discarded entirely, so a script that printed the warning and then exited 0 kept this
+            # row GREEN - and 'refused' versus 'wrote' is precisely what the caller must be able
+            # to tell apart.
+            $proc.ExitCode | Should -Not -Be 0 -Because 'a refused write must be non-zero, not merely noisy'
             $err = Get-Content -Raw -LiteralPath $errF
             $err | Should -Match 'agy-first' -Because 'the line it could not write must be recoverable from stderr'
             $err | Should -Match 'SKIPPED-UNREACHABLE'
