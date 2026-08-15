@@ -2698,6 +2698,70 @@ for p in clavity-dotnet clavity-classic; do
     "$p/agy-test-audit"
 done
 
+# 🔴 A PARAGRAPH IS THE CONTRACT, AND NEITHER CHECK ABOVE CAN SEE ONE. `check_14h` folds every newline
+# to a space before matching, and `check_pos` compares only line NUMBERS - so both pass on a block
+# spliced into the MIDDLE of the running paragraph, which is the one defect the instruction at
+# "A multi-line block cannot be spliced into the middle of a running paragraph" exists to prevent
+# ("two sentence fragments welded to a block that renders as part of neither").
+# MEASURED with a fixture pair built from the real SKILL.md: the WELDED insertion scored
+# `seats=1 rotate=1 old_removed=0` and `seat=55 in (50,66) OK` - a clean FAIL=0 - while the UNEDITED
+# control correctly reported `old_removed=1` and `MISPLACED`. The control failing is what makes the
+# welded pass informative rather than vacuous. Assert the blank lines the contract actually names.
+#
+# Both insertions are specified "as its own paragraph" (row 3 paragraph 2, row 10), and in both files
+# the closing anchor `check_pos` already uses IS the block's immediate successor - `agy-test-audit`'s
+# heading is followed directly by numbered item 1, with no blank line, so the anchor pair is the same
+# shape in both. That is why one helper covers both files rather than two bespoke ones.
+check_para() {  # $1=file  $2=seat string  $3=closing anchor  $4=label
+  s=$(grep -n "$2" "$1" | head -n 1 | cut -d: -f1)
+  c=$(grep -n "$3" "$1" | head -n 1 | cut -d: -f1)
+  if [ -z "$s" ] || [ -z "$c" ] || [ "$s" -le 1 ]; then
+    echo "14h-para $4: seat=$s close=$c - anchor missing or at line 1, cannot judge separation" >&2
+    FAIL=1; return
+  fi
+  before=$(sed -n "$((s - 1))p" "$1" | tr -d '\r')
+  # grep -c prints 0 and EXITS 1 on no match; the value is captured, and nothing here runs under
+  # `set -e`, so the non-zero status is inert. Do not wrap this in `if grep` - that is the
+  # three-outcome-in-a-two-outcome-construct trap this plan has already hit twice.
+  gap=$(sed -n "$((s + 1)),$((c - 1))p" "$1" | tr -d '\r' | grep -c '^$')
+  if [ -n "$before" ]; then
+    echo "14h-para $4: line $((s - 1)) is not blank - the block is welded to the paragraph above" >&2
+    FAIL=1
+  elif [ "$gap" -eq 0 ]; then
+    echo "14h-para $4: no blank line between the block and line $c - the successor is welded on" >&2
+    FAIL=1
+  else
+    echo "14h-para $4: blank before $s, $gap blank line(s) before $c OK"
+  fi
+}
+
+# Row 3 is a THREE-WAY SPLIT, and the paragraph tail is one of the two sentences that MUST SURVIVE it.
+# A whole-line delete of `:54` takes the tail along with the persona sentence, and MEASURED, that
+# passes `check_14h`, `check_pos` AND `check_para` alike - the tail is an anchor for none of them.
+# This is deliberately NOT a discriminator of "the edit happened" (the phrase is present before the
+# edit too, so on its own it would be vacuous). `check_14h` already proves the edit happened; this
+# proves the edit did not take a bystander with it. The pair is what covers row 3, not either alone.
+# Row 9 and row 10 replace or insert WHOLE lines, so they have no mid-line survivor - do not add a
+# survivor check for `agy-test-audit`, there is nothing there for it to protect.
+survivor() {  # $1=file  $2=text that must survive  $3=label
+  n=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -c "$2")
+  if [ "$n" -ge 1 ]; then
+    echo "14h-survivor $3: present OK"
+  else
+    echo "14h-survivor $3: '$2' was deleted - it must survive the three-way split" >&2; FAIL=1
+  fi
+}
+
+for p in clavity-dotnet clavity-classic; do
+  check_para "$p/plugin/skills/agy-first/SKILL.md" \
+    'Seat a panel, not a persona' 'The peer is empowered to CHALLENGE' "$p/agy-first"
+  check_para "$p/plugin/skills/agy-test-audit/SKILL.md" \
+    'Seat the audit, do not send one voice' 'Ask for a coverage verdict in a parseable form' \
+    "$p/agy-test-audit"
+  survivor "$p/plugin/skills/agy-first/SKILL.md" \
+    'note its real tradeoffs' "$p/agy-first tail"
+done
+
 # One exit for the whole step. Step 6 must be unreachable if any check above failed.
 [ "$FAIL" -eq 0 ] || { echo "STEP 5 FAILED - do not proceed to Step 6." >&2; exit 1; }
 
