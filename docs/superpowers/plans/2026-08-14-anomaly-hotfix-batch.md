@@ -367,6 +367,10 @@ git cannot re-include a file whose parent directory is excluded.
 
 Describe 'agy-shield-lib.sh' {
     BeforeAll {
+        # FIXTURE HYGIENE (see the standing rule near the top of this plan). Every throwaway repo is
+        # registered here as it is created and removed in AfterAll. Without this the suite leaks one git
+        # repository per row - the pattern that has already left 321 orphaned directories in this repo.
+        $script:Fixtures = New-Object System.Collections.ArrayList
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Lib = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-shield-lib.sh'
         Test-Path -LiteralPath $script:Lib | Should -BeTrue -Because 'the helper must exist for any row here to mean anything'
@@ -407,6 +411,7 @@ Describe 'agy-shield-lib.sh' {
             param([string]$Shield, [switch]$NoClavityDir, [string[]]$Track = @())
             $d = Join-Path ([IO.Path]::GetTempPath()) ("shieldfx-" + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Force -Path $d | Out-Null
+            [void]$script:Fixtures.Add($d)   # registered on creation - see FIXTURE HYGIENE
             & git -C $d init -q
             & git -C $d config user.email t@t.t
             & git -C $d config user.name t
@@ -432,6 +437,11 @@ Describe 'agy-shield-lib.sh' {
         }
 
         function Get-Shield { param([string]$Root) Get-Content -Raw -LiteralPath (Join-Path $Root '.clavity/.gitignore') -ErrorAction SilentlyContinue }
+    }
+
+    AfterAll {
+        # FIXTURE HYGIENE: -Force because a git repo carries read-only objects on Windows.
+        foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     Context 'Stage A - shield integrity' {
@@ -1285,15 +1295,18 @@ nothing and would pass while asserting nothing.
 ```powershell
     Context '14c - the hook asserts the .clavity shield' {
         BeforeAll {
+            $script:Fixtures = New-Object System.Collections.ArrayList   # FIXTURE HYGIENE
             # A throwaway repo with NO root .gitignore: in THIS repository the root .gitignore covers
             # .clavity/, which MASKS a broken shield and reports a false pass.
             function New-ReachingFixture {
                 param([string]$Shield)
                 $d = Join-Path ([IO.Path]::GetTempPath()) ("reachfx-" + [guid]::NewGuid().ToString('N'))
                 New-Item -ItemType Directory -Force -Path $d | Out-Null
+                [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
                 & git -C $d init -q
                 & git -C $d config user.email t@t.t
                 & git -C $d config user.name t
+                & git -C $d config core.autocrlf false   # FIXTURE HYGIENE: never inherit the host's setting
                 New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
                 [IO.File]::WriteAllText((Join-Path $d '.clavity/.gitignore'), $Shield)
                 [IO.File]::WriteAllText((Join-Path $d 'seed.txt'), "seed`n")
@@ -1310,6 +1323,10 @@ nothing and would pass while asserting nothing.
                     [pscustomobject]@{ Err = (Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue) }
                 } finally { Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue }
             }
+        }
+
+        AfterAll {
+            foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
         }
 
         It 'RESTORES an emptied shield - an observable effect' {
@@ -1524,6 +1541,7 @@ Create `scripts/tests/agy-mark.Tests.ps1`:
 
 Describe 'agy-mark.sh' {
     BeforeAll {
+        $script:Fixtures = New-Object System.Collections.ArrayList   # FIXTURE HYGIENE
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Mark = (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-mark.sh') -replace '\\','/'
         Test-Path -LiteralPath $script:Mark | Should -BeTrue
@@ -1532,7 +1550,9 @@ Describe 'agy-mark.sh' {
             param([string]$Shield = "*`n")
             $d = Join-Path ([IO.Path]::GetTempPath()) ("markfx-" + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Force -Path $d | Out-Null
+            [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
             & git -C $d init -q; & git -C $d config user.email t@t.t; & git -C $d config user.name t
+            & git -C $d config core.autocrlf false   # FIXTURE HYGIENE: never inherit the host's setting
             New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
             [IO.File]::WriteAllText((Join-Path $d '.clavity/.gitignore'), $Shield)
             [IO.File]::WriteAllText((Join-Path $d 'seed.txt'), "seed`n")
@@ -1556,6 +1576,11 @@ Describe 'agy-mark.sh' {
                 Remove-Item -LiteralPath $outF, $errF -Force -ErrorAction SilentlyContinue
             }
         }
+    }
+
+    AfterAll {
+        # FIXTURE HYGIENE: -Force because a git repo carries read-only objects on Windows.
+        foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     Context 'head mode' {
@@ -3544,9 +3569,11 @@ asserting "0 everywhere" would contradict the table above.**
 ```powershell
     Context '13c - a missing input is distinguishable from an empty one' {
         BeforeAll {
+            $script:Fixtures = New-Object System.Collections.ArrayList   # FIXTURE HYGIENE
             function New-BudgetFixture {
                 param([switch]$NoSeed, [switch]$EmptySeed, [switch]$NoGrowth, [switch]$EmptyGrowth, [int]$GrowthBytes = 100)
                 $d = Join-Path ([IO.Path]::GetTempPath()) ("gb-" + [guid]::NewGuid().ToString('N'))
+                [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'seed') | Out-Null
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null
                 if (-not $NoSeed)   { [IO.File]::WriteAllText((Join-Path $d 'seed/golden-header.md'), ($EmptySeed ? '' : ('s' * 200))) }
@@ -3558,6 +3585,10 @@ asserting "0 everywhere" would contradict the table above.**
                 $out = & pwsh -NoProfile -File (Join-Path $script:RepoRoot 'scripts/check-growth-budget.ps1') -RepoRoot $Root -MaxBytes $MaxBytes 2>&1 | Out-String
                 [pscustomobject]@{ Out = $out; Rc = $LASTEXITCODE }
             }
+        }
+
+        AfterAll {
+            foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
         }
 
         It 'GROWTH missing: names it ABSENT, not empty, and exits 0' {
