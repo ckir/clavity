@@ -2061,8 +2061,16 @@ git commit -m "feat(shield): 14c - agy-mark.sh, the sanctioned .clavity writer f
 >
 > | path | Step 1 | Step 2 (14h text) | Step 3 (`prepare` guard) | Step 4 (mirror) | Step 5 (checks) | Step 6 (gate + commit) |
 > |---|---|---|---|---|---|---|
-> | Task 1 = RESOLVED | all 11 rows | yes | **yes** | yes | both loops | yes, 14c+14h message |
-> | Task 1 = BLOCKED | rows 3, 9, 10 only | yes | **SKIP** | yes | **14h loop + ASCII loop only** | yes, 14h-only message |
+> | Task 1 = RESOLVED | all 11 rows | yes | **yes** | yes | all four checks | yes, 14c+14h message |
+> | Task 1 = BLOCKED | rows 3, 9, 10 only | yes | **SKIP - see below** | yes | **14h, ASCII and positional only; the 14c count is skipped** | yes, 14h-only message |
+>
+> Step 5 runs FOUR checks, not two: the 14c exact-count loop, the 14h presence loop, the ASCII/NUL
+> loop, and the positional loop. Only the first is conditional.
+>
+> 🔴 **Step 3 does not skip itself.** It contains no conditional and an executor reading it in isolation
+> will run it. On the BLOCKED path there is nothing for it to do - no `prepare` invocation was added by
+> the 14c rows - so skipping it is YOUR decision, made here, not something the step enforces. Its own
+> heading repeats this.
 >
 > On the BLOCKED path Step 4 still mirrors all three files: `agy-capstone` is simply unchanged, and
 > copying an unchanged file is a no-op that keeps the byte-identity assertion uniform across both paths.
@@ -2137,8 +2145,16 @@ The canonical invocation block to paste (adjust mode and arguments per site):
 
 **All THREE modes, because the table asks for all three.** An earlier draft showed only `head` while
 rows 2 and 6 asked for a `log` invocation and rows 4, 7 and 11 asked for `prepare` - so an executor had
-to invent two of the three call shapes. Substitute `<BASE>` (the skill's own base directory, supplied
-by the harness) and the per-site values; do not paste these literally.
+to invent two of the three call shapes.
+
+🔴 **`<BASE>` IS NOT SUBSTITUTED WITH A LITERAL PATH.** It stands for the skill's own base directory as
+the harness supplies it at invocation time, and **the text written into both SKILL.md files must be
+IDENTICAL** - that is exactly what `agy-first/SKILL.md:111-112` requires and what makes one instruction
+resolve correctly in each plugin. Writing `clavity-dotnet/...` into one file and `clavity-classic/...`
+into the other breaks byte-identity, and Step 4 would then overwrite classic with dotnet's literal
+path - leaving the classic plugin invoking a hook under the dotnet directory. **Substitute only
+`<DISCIPLINE>`, `<OUTCOME>` and `<PATH>`, which are per-site values; leave `<BASE>` as the harness
+token it already is.**
 
 ```bash
 # Write through the shipped marker writer, never by hand: it asserts the .clavity/ shield BEFORE the
@@ -2238,7 +2254,11 @@ what to build), so its seats hunt reasoning defects. `agy-test-audit` consults o
 hunt coverage gaps and each is given the coverage question explicitly. Pasting one file's block into
 the other produces a seat list that cannot fire on what that discipline actually reviews.
 
-- [ ] **Step 3: Make the three skills ACT on a `prepare` refusal**
+- [ ] **Step 3: Make the three skills ACT on a `prepare` refusal** *(14c only - SKIP on the BLOCKED path)*
+
+> **If Task 1 recorded BLOCKED, skip this entire step.** It guards `prepare` invocations, and the
+> BLOCKED path adds none - rows 4, 7 and 11 are all 14c rows. This is stated here as well as in the
+> header table because the header table is not what an executor is reading when it reaches this step.
 
 `prepare` fails closed, and the re-fire argument does not cover it: if it refuses, the directory does not
 exist and the agent's very next write fails `No such file or directory` **in the middle of the
@@ -2363,8 +2383,20 @@ if [ "$TASK1" = "RESOLVED" ]; then
         agy-test-audit)
           want=3 ;;
       esac
+      # The COUNT alone is gameable: the canonical block in Step 1 contains exactly three
+      # `agy-mark.sh` strings, so pasting that block verbatim into agy-first hits its target of 3
+      # without a single row being applied (and pasting it twice hits agy-capstone's 6). The
+      # discriminator is that a pasted TEMPLATE still carries its placeholders, while a real edit has
+      # substituted them. Any surviving placeholder means the template was copied, not applied.
+      resid=$(grep -c '<DISCIPLINE>\|<OUTCOME>\|<PATH>' $p/plugin/skills/$s/SKILL.md) || resid=0
+      if [ "$resid" -ne 0 ]; then
+        echo "  FAIL: $p/$s still contains $resid unsubstituted placeholder(s) - the canonical block" >&2
+        echo "        was pasted rather than applied. Substitute <DISCIPLINE>/<OUTCOME>/<PATH>." >&2
+        FAIL=1
+      fi
+
       n=$(grep -c 'agy-mark.sh' $p/plugin/skills/$s/SKILL.md)
-      printf '14c %s/%s: %s (want %s)\n' "$p" "$s" "$n" "$want"
+      printf '14c %s/%s: %s (want %s, placeholders %s)\n' "$p" "$s" "$n" "$want" "$resid"
       [ "$n" -eq "$want" ] || {
         echo "  FAIL: $p/$s has $n agy-mark.sh invocations, expected $want - some rows were not" >&2
         echo "        applied, or one was applied twice. Do not proceed on a partial edit." >&2
