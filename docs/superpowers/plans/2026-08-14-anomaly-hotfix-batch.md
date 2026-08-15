@@ -95,6 +95,33 @@ around, because the failure modes are real but shared:
 a non-empty file - one less tool assumed, one less silent failure mode, and a blank line in `.gitignore` is
 inert.
 
+#### The table above covers the SHIPPED helper. This one covers the PLAN'S OWN ORACLES (capstone R48)
+
+**The section above stops at the runtime code, and that scoping was the defect.** Every verification step
+in this plan is itself a program with dependencies, and nothing declared them. The instance that exposed
+it: Task 13 Step 8 (`:4969-4979`) exists BECAUSE an earlier round ruled that "read it carefully" is not an
+oracle - and the oracle it introduced calls `yq` four times, while **`yq` is absent from
+`.claude/recommended-tools.json`**, which declares 14 tools down to `awk`. The repo runs a SessionStart
+hook (`recommended-tooling-check.sh`) whose whole job is to surface a missing declared tool; an undeclared
+one is invisible to it. `yq` being on the author's PATH is a property of that machine.
+
+**A fix that arrives with an undeclared prerequisite is this plan's recurring defect.** Declaring them:
+
+| tool | which step depends on it | if absent |
+|---|---|---|
+| `yq` | Task 13 Step 8's four YAML queries | query (1) prints no `yq parse: OK` and (2)-(4) print nothing. Loud to a reader, but **`yq` MUST be added to `.claude/recommended-tools.json`** so the SessionStart check surfaces it before Task 13 rather than during it |
+| `tr` | Task 7 Step 5's `flat()`, and therefore `count()` | `flat` yields empty, `count` returns 0. The **2** `absent` rows then pass VACUOUSLY - a real fail-open. **It cannot silently certify, because the same absence drives all 505 `once`/`exactly` rows to 0 and reds them.** Recorded because the fail-open is real even though it is unreachable in isolation |
+| `wc`, `cut`, `head`, `xargs`, `cmp` | Step 5's `count`/`lineof`, the staging pipeline at `:3062`, the byte measurements in Task 9 | each yields empty or non-zero into a comparison. No step depends on one of these ALONE for a green verdict |
+| `pwsh`, `just`, `dotnet`, `cargo`, `bash`, `git` | the gates throughout | already declared, or baseline for this repo |
+
+**Host git config.** Task 9 and several measured byte counts reason about `core.autocrlf`, which is `true`
+here. Nothing verifies it and nothing needs to: Step 1 says **record the ACTUAL numbers** rather than
+matching the stated 3515/3508, and Step 4's assertion (worktree bytes == index bytes, `crlf == 0`) holds
+on any setting. On a host with `autocrlf=false` the re-checkout is a no-op and Step 4 passes without
+having done anything - the pin is still correct and still committed, so nothing false is certified about
+the artifact, but **the local measurement cannot distinguish "the pin worked" from "there was nothing to
+fix".** Stated rather than checked, because the check would gate on a setting the plan does not own.
+
 ### FIXTURE HYGIENE - binds every new suite in this plan (panel R13)
 
 Four of this plan's suites create throwaway git repos under `[IO.Path]::GetTempPath()` with
@@ -4903,14 +4930,21 @@ Launch it DETACHED (your harness's background mode, or the trailing `&` below), 
 SEPARATE, LATER call:
 
 ```bash
-pwsh -c "just test-scripts-slow" > /tmp/slow-run.log 2>&1 &
+pwsh -c "just test-scripts-slow" > "${TMPDIR:-/tmp}/slow-run.log" 2>&1 &
 ```
 
 Run this in the BACKGROUND. When it finishes, read the log:
 
 ```bash
-grep -E "Tests Passed:|Tests completed" /tmp/slow-run.log
+grep -E "Tests Passed:|Tests completed" "${TMPDIR:-/tmp}/slow-run.log"
 ```
+
+> **`${TMPDIR:-/tmp}`, not a bare `/tmp` - and this plan already knew why.** The comment at `:748`
+> records the MEASURED finding that a bare `/tmp` resolves only because "Git Bash happens to mount /tmp
+> onto that same directory on this box", and calls that a coincidence. The shipped helper honours it
+> (`:757`, `:924` and `:1012` all write `${TMPDIR:-/tmp}`). Three of this plan's OWN verification steps
+> hardcoded `/tmp` anyway. **The knowledge was already in the file, one section away from the code that
+> ignored it** - the recurring shape this review keeps finding.
 
 **A log with no `Tests Passed:` line is an ABORTED run, not a pass.** Record the wall-clock and the counts,
 and write the measured figure into `_partition.md`'s slow-half entry.
@@ -4952,6 +4986,31 @@ Expected: **Passed 12, Failed 0** from the first; all green from the second, inc
 
 Delete the `clavity-dotnet/install/...` entry from the `test-scripts-slow` recipe in `justfile` - the new pin's FIRST assertion must turn
 RED. Restore it, then temporarily rename the suite file - the SECOND assertion must turn RED. Restore.
+
+- [ ] **Step 7b: DECLARE the tool this step's oracle needs (capstone R48)**
+
+Step 8 below runs four `yq` queries. **`yq` is not in `.claude/recommended-tools.json`**, which declares
+14 tools down to `awk`, so the SessionStart check (`recommended-tooling-check.sh`) cannot warn an
+executor who lacks it - they discover the gap mid-Task-13 instead. Add an entry:
+
+```json
+{
+  "name": "yq",
+  "why": "YAML oracle - Task 13 Step 8 parses .github/workflows/ci-scripts.yml and lefthook.yml to prove a workflow edit is valid before it can reach CI.",
+  "install": "winget install MikeFarah.yq",
+  "in_path": "yq"
+}
+```
+
+Verify it parses and that the tool resolves:
+
+```bash
+yq '.' .claude/recommended-tools.json > /dev/null && echo "tools file still valid JSON/YAML: OK"
+command -v yq || echo "yq NOT on PATH - install it before Step 8"
+```
+
+**This is the step that closes the defect, not the note above it.** A plan that names a missing
+prerequisite without a step that supplies it has documented the gap, not fixed it.
 
 - [ ] **Step 8: EXERCISE the YAML - it does not need CI, and "read it carefully" is not an oracle**
 
@@ -5002,7 +5061,7 @@ That is the whole reason (1) comes first: the cheapest query catches the most li
 - [ ] **Step 9: Commit**
 
 ```bash
-git add justfile .github/workflows/ci-scripts.yml scripts/tests/test-suite-registration.Tests.ps1 scripts/tests/_partition.md
+git add justfile .github/workflows/ci-scripts.yml scripts/tests/test-suite-registration.Tests.ps1 scripts/tests/_partition.md .claude/recommended-tools.json
 git commit -m "fix(ci): 14b - register the orphan installer suite locally and in both CI jobs"
 ```
 
@@ -5449,7 +5508,7 @@ four tasks short of complete. Both now have rows:
 | `scripts/generate-cheatsheet-literals.ps1` | 10 | ☐ | ☐ `scripts/README.md` |
 | `scripts/check-cheatsheet-parity.ps1` | 11 | ☐ | ☐ `scripts/README.md`, ☐ `lefthook.yml` block |
 | `scripts/tests/agy-shield-lib.Tests.ps1` | 3 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` |
-| `scripts/tests/agy-mark.Tests.ps1` | 6 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` |
+| `scripts/tests/agy-mark.Tests.ps1` | 6 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` *(skip if Task 1 = BLOCKED - Task 6 creates this suite and is skipped ENTIRELY on that path, exactly as this table already marks its `plugin/hooks/agy-mark.sh` row)* |
 | `scripts/tests/generate-cheatsheet-literals.Tests.ps1` | 10 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` |
 | `scripts/tests/check-cheatsheet-parity.Tests.ps1` | 11 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` |
 | `clavity-dotnet/install/clavity-install.Tests.ps1` (register only) | 13 | n/a | ☐ `test-scripts-slow`, ☐ both CI `paths:`, ☐ both CI job steps |
@@ -5460,7 +5519,13 @@ four tasks short of complete. Both now have rows:
 | `scripts/tests/test-suite-registration.Tests.ps1` (MODIFIED) | 13 | n/a | ☐ carries the narrow pin |
 | `clavity-dotnet/ROADMAP.md` section 14c (REWRITTEN in place, not appended) | 8 | n/a | ☐ the three stale lines are gone, ☐ the BLOCKED deferral note is present IF Task 1 recorded BLOCKED |
 | `.gitattributes` (three `eol=lf` pins) | 9 | n/a | ☐ `core.md`, ☐ `driver_cheatsheet.rs`, ☐ `DriverCheatsheet.cs` |
+| `.claude/recommended-tools.json` (`yq` entry, Step 7b) | 13 | n/a | ☐ `yq` declared, ☐ `command -v yq` resolves |
 | the Task 1 measurement record | 1 | ☐ | - |
+
+> **The `yq` row is here because capstone R48 added Task 13 Step 7b, and this table has now been the
+> incompleteness defect THREE times** - panel R16 left four tasks out, a cross-task audit then found
+> Tasks 8 and 9 missing, and adding a deliverable without a row would have been the third. **Adding a
+> task or a step means adding its row in the same edit.**
 
 **Two existing gates cover part of this and neither covers all of it** - `test-suite-registration.Tests.ps1`
 catches a suite that exists but is unregistered, and `scripts-readme-inventory.Tests.ps1` catches a script
@@ -5505,16 +5570,17 @@ job backgrounded in one call is still running and its output still lands when a 
 Then the fast half, **backgrounded**, blocking on its `Tests Passed:` line:
 
 ```bash
-pwsh -c "just test-scripts-fast" > /tmp/fast-run.log 2>&1 &
+pwsh -c "just test-scripts-fast" > "${TMPDIR:-/tmp}/fast-run.log" 2>&1 &
 ```
 
 Then the slow half, **backgrounded**, blocking on its `Tests completed` line:
 
 ```bash
-pwsh -c "just test-scripts-slow" > /tmp/slow-run.log 2>&1 &
+pwsh -c "just test-scripts-slow" > "${TMPDIR:-/tmp}/slow-run.log" 2>&1 &
 ```
 
 **A log with no `Tests Passed:` line is an ABORTED run, not a pass.** Read the counts in both.
+**`${TMPDIR:-/tmp}` in both, for the reason recorded at Task 13 Step 4.**
 
 - [ ] **Step 3: Run the two product test suites**
 
