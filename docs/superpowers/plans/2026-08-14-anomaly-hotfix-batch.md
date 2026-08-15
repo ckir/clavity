@@ -1728,6 +1728,20 @@ Describe 'agy-mark.sh' {
             $r = Invoke-Mark -Cwd $d -MarkArgs @('prepare',$P)
             $r.ExitCode | Should -Be 1
         }
+
+        # A REFUSAL ROW ASSERTS THREE THINGS: the exit code, a message that NAMES the rejected
+        # argument, and that NOTHING was created. The first two alone would pass on a script that
+        # refused AFTER creating the wrong directory - which is the entire failure this refusal
+        # exists to prevent, so the third assertion is the one carrying the contract.
+        It 'refuses a relpath that names a DIRECTORY, names it, and creates nothing' {
+            $d = New-MarkFixture
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('prepare','scratch/topic/')
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'must name a FILE'
+            $r.Err | Should -Match 'scratch/topic/' -Because 'a validation failure names the argument it rejected'
+            (Test-Path (Join-Path $d '.clavity/scratch')) | Should -BeFalse `
+                -Because 'dirname would have created .clavity/scratch and NOT .clavity/scratch/topic - the documented trap'
+        }
     }
 
     Context 'mode and argument refusals (panel R10 - each of these branches had no row)' {
@@ -1958,6 +1972,15 @@ _check_relpath() {
         '')    _die_refuse 'relpath is empty' ;;
         /*)    _die_refuse "relpath must not start with '/': [$1]" ;;
         *..*)  _die_refuse "relpath must not contain '..': [$1]" ;;
+        # A TRAILING SLASH IS THE DOCUMENTED TRAP, AND IT WAS DOCUMENTED WITHOUT BEING ENFORCED.
+        # `prepare` resolves its target with `dirname`, so `scratch/<topic>/` creates `.clavity/scratch`
+        # and NOT `.clavity/scratch/<topic>` - the discipline's next write then fails mid-run, far from
+        # the mistake. Every call site substitutes `<PATH>` BY HAND, so the mistake is the caller's to
+        # make and a prose warning is the only thing standing in front of it.
+        # This is NOT a directory mode and NOT a dummy-file convention - both are forbidden a few lines
+        # below the warning. It rejects one malformed ARGUMENT, loudly, naming it, exactly as the
+        # class-`validation` contract requires - and it leaves a legal file path untouched.
+        */)    _die_refuse "relpath must name a FILE, not a directory - it ends in '/': [$1] (pass a concrete file that will live in that directory, e.g. scratch/<topic>/notes.md)" ;;
     esac
 }
 
@@ -2061,6 +2084,7 @@ Expected: all rows PASS.
 | drop the line from the refused-log stderr, keeping only the reason | `a REFUSED log emits BOTH` |
 | pass a hard-coded key instead of `${AGY_SESSION_ID:-}` | `FORWARDS $AGY_SESSION_ID to the helper` |
 | delete `_check_discipline` | the `refuses a <discipline>` rows |
+| delete the `*/)` arm from `_check_relpath` | `refuses a relpath that names a DIRECTORY` - and note WHICH assertion reddens: with the arm gone the run exits 0, so the exit-code line fails first. Restore the arm and instead make it refuse AFTER the `mkdir` to confirm the `creates nothing` assertion is not decorative. |
 
 - [ ] **Step 6: Gates and commit**
 
@@ -2766,6 +2790,29 @@ survivor() {  # $1=file  $2=text that must survive  $3=label
   fi
 }
 
+# EXACTLY ONE, and the WHOLE sentence. This closes the failure row 3's own pre-edit hint names in
+# terms: "An edit confined to `:54-56` leaves `:57-58` in place and the inserted paragraph 3
+# DUPLICATES them." The plan ANTICIPATED that outcome in prose and nothing checked for it.
+# MEASURED: a fixture with the closing sentence present TWICE scored seats=1 rotate=1 old_removed=0,
+# `in (50,68) OK`, blank lines OK, survivor present - FAIL=0 on every guard.
+# Matching the WHOLE sentence rather than its opening clause also closes the other half: `check_pos`
+# and `check_para` anchor on "The peer is empowered to CHALLENGE" alone, so deleting the REST of that
+# sentence left every check green. One assertion, both directions - a count of 0 catches the
+# truncation, a count of 2 catches the duplication.
+# The `grep -oF -e` + `grep -c .` idiom is Step 0's `anchor()`, verbatim: -F because the text carries
+# punctuation, -e because a leading `-` would otherwise read as an option, and the second grep because
+# after the newline fold the whole file is ONE line, so a plain `grep -c` can only ever return 0 or 1
+# and cannot see a duplicate at all.
+once() {  # $1=file  $2=text that must appear EXACTLY once  $3=label
+  n=$(tr -d '\r' < "$1" | tr '\n' ' ' | grep -oF -e "$2" | grep -c .) || n=0
+  if [ "$n" -eq 1 ]; then
+    echo "14h-once $3: exactly one OK"
+  else
+    echo "14h-once $3: found $n, expected exactly 1 - 0 means the sentence was truncated or deleted, 2 means the edit was bounded too short and duplicated it" >&2
+    FAIL=1
+  fi
+}
+
 for p in clavity-dotnet clavity-classic; do
   check_para "$p/plugin/skills/agy-first/SKILL.md" \
     'Seat a panel, not a persona' 'The peer is empowered to CHALLENGE' "$p/agy-first"
@@ -2774,6 +2821,9 @@ for p in clavity-dotnet clavity-classic; do
     "$p/agy-test-audit"
   survivor "$p/plugin/skills/agy-first/SKILL.md" \
     'note its real tradeoffs' "$p/agy-first tail"
+  once "$p/plugin/skills/agy-first/SKILL.md" \
+    'The peer is empowered to CHALLENGE your own settled decision when it has a substantive reason (correctness, safety, a materially better design, a hidden contradiction) - you keep the final call.' \
+    "$p/agy-first challenge"
 done
 
 # One exit for the whole step. Step 6 must be unreachable if any check above failed.
@@ -5135,8 +5185,14 @@ Then, one at a time (**never two Pester suites concurrently**):
 pwsh -c "Invoke-Pester scripts/tests/plugin-hooks-payload.Tests.ps1 -Output Detailed -CI"
 ```
 
-Then the fast half, **backgrounded** (the trailing `&` is not decoration - without it the run is
-foreground and the cap kills it), blocking on its `Tests Passed:` line:
+**BOTH runs below are launched in one call and READ IN A LATER ONE.** The trailing `&` is not
+decoration - without it the run is foreground and the cap kills it - but it also returns control
+IMMEDIATELY, so a log read in the same breath sees an empty file. By the rule at the end of this step
+an empty log is an ABORTED run, so reading too early manufactures exactly the false verdict the rule
+was written to catch. Launch, let it run, then read the log in a SEPARATE, LATER call. (MEASURED: a
+job backgrounded in one call is still running and its output still lands when a later call reads it.)
+
+Then the fast half, **backgrounded**, blocking on its `Tests Passed:` line:
 
 ```bash
 pwsh -c "just test-scripts-fast" > /tmp/fast-run.log 2>&1 &
