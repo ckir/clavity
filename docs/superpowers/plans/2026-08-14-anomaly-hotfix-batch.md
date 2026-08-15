@@ -4228,6 +4228,9 @@ Append a new command under `pre-commit` in `lefthook.yml`, after the `curate-in-
       #
       # SAME GLOB AS curate-in-progress, and for the same cost reason: pwsh cold start is ~6s, far too
       # much on every commit, so lefthook invokes this ONLY when one of the three paths is staged.
+      # The YAML ARRAY form is correct and shipped. A reviewer proposed rewriting it as a single
+      # brace-expansion string; MEASURED - lefthook.yml already uses the array form at :56-58 and
+      # :78-81, both live. This has now been raised twice and refuted twice. Do not "fix" it.
       glob:
         - "agy-autotrain/knowledge/driver-cheatsheet.core.md"
         - "clavity-classic/src/driver_cheatsheet.rs"
@@ -4612,6 +4615,16 @@ exit-code row PASS.
 ```powershell
     Write-Host "an exemption whose file stops failing its invariant is no longer needed. This gate does not"
     Write-Host "detect that - the test suite does, by FAILING 'every exemption is still NEEDED'."
+```
+
+> 🔴 **That second sentence is TRUE and must stay.** MEASURED: the test exists at
+> `scripts/tests/check-injected-context.Tests.ps1:666` -
+> `It 'every exemption is still NEEDED - the file must fail the invariant without it'`. A reviewer
+> proposed replacing it with "check it manually", which would swap a verified statement for a vaguer
+> one **inside the very task whose purpose is to delete a false promise** - reintroducing the defect
+> class item 13a exists to remove. Refuted; do not re-raise.
+
+```powershell
 ```
 
 Two properties are required of whatever wording lands: it states that **THIS gate does not detect** the
