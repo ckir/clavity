@@ -2083,6 +2083,22 @@ git commit -m "feat(shield): 14c - agy-mark.sh, the sanctioned .clavity writer f
 **`open-issues` is NOT in this set** - it is item 14d and was rewritten in Task 4. The WRITER set is five
 artifacts; the REWRITE set is three.
 
+> **TWO MORE ACCEPTED RESIDUALS (round 13), recorded so they are not escalated into new machinery.**
+>
+> **The completion check can still be gamed by a determined executor.** The placeholder-residue check
+> raises the cost - a pasted template is caught - but substituting the placeholders with dummy text
+> defeats it. That is not a new discovery: it is the paragraph immediately below, which has said from
+> the first draft that there is NO behavioural test here and that the check proves the edit was MADE,
+> not that the model obeyed it. **Each additional counter-check invites a cleverer game; that escalation
+> is exactly how a three-row change grew a hundred-line token in rounds 4-5.** The honest position is
+> the stated limitation, not a fifth guard.
+>
+> **Step 5 checks both plugins even though Step 4 has just proven them byte-identical.** Considered and
+> KEPT: it costs six greps, and it keeps Step 5 meaningful if it is ever run without Step 4 - which is
+> how a partially-executed task gets diagnosed. Likewise Step 4's three loops are kept separate on
+> purpose: reporting every divergence BEFORE any copy is the diagnostic, and merging the loops would
+> interleave the report with the overwrite that hides it.
+
 **There is deliberately NO behavioural test for these edits.** The strongest available oracle asserts the
 `.md` contains the invocation string, which cannot fail against a model that ignores it. The executable
 is where the strength lives. **The per-file completion check in Task 16 is the only guarantee that the
@@ -2172,8 +2188,17 @@ bash "<BASE>/../../hooks/agy-mark.sh" log "<DISCIPLINE>" "<OUTCOME>" "$(git rev-
 
 # prepare - create and shield a .clavity/ subdirectory before writing into it.
 #   <PATH> is a FILE path relative to .clavity/, never a directory - see the trap note below.
+#
+#   *** DO NOT WRITE THIS BARE FORM INTO A SKILL FILE. *** It is shown here only so the three modes
+#   are visible together. Every `prepare` site (rows 4, 7 and 11) must receive the GUARDED form from
+#   Step 3, which wraps this exact call in an `if !` that aborts the discipline on refusal. Writing
+#   the bare call here and replacing it in Step 3 means editing all six sites twice and leaving a
+#   window where the tree contains a call the plan itself calls defective.
 bash "<BASE>/../../hooks/agy-mark.sh" prepare "<PATH>"
 ```
+
+**So: rows 4, 7 and 11 are applied with Step 3's guarded block, not with the bare line above.** Read
+Step 3 before applying them. The other rows (`head` and `log` sites) take the plain form as shown.
 
 **`prepare` ALWAYS takes a FILE path, never a directory - and for a scratch DIRECTORY that is a trap.**
 `agy-mark.sh` resolves the target with `_parent=$(dirname "$root/$rel")`, so passing `scratch/<topic>/`
@@ -2265,8 +2290,9 @@ exist and the agent's very next write fails `No such file or directory` **in the
 discipline** rather than re-firing cleanly. Each skill that invokes `prepare` must check the exit status
 and **ABORT the discipline with a named reason**, exactly as it already does for an unreachable peer.
 
-**REPLACE each bare `prepare` invocation with the guarded form below. Do NOT append this block after
-an existing `prepare` call** - the block CONTAINS a `prepare` invocation, so appending it fires
+**Apply rows 4, 7 and 11 using the guarded form below - write it directly, do not write the bare call
+from Step 1 first and replace it here.** If you are editing a site that already has a bare `prepare`
+(from an earlier partial run), REPLACE it. **Do NOT append this block after an existing `prepare` call** - the block CONTAINS a `prepare` invocation, so appending it fires
 `prepare` twice, the second time on whatever path this template carries rather than the one that site
 needs.
 
@@ -2388,7 +2414,19 @@ if [ "$TASK1" = "RESOLVED" ]; then
       # without a single row being applied (and pasting it twice hits agy-capstone's 6). The
       # discriminator is that a pasted TEMPLATE still carries its placeholders, while a real edit has
       # substituted them. Any surviving placeholder means the template was copied, not applied.
-      resid=$(grep -c '<DISCIPLINE>\|<OUTCOME>\|<PATH>' $p/plugin/skills/$s/SKILL.md) || resid=0
+      # `grep -E`, NOT BRE `\|`, and three branches, NOT `|| resid=0`. Both of those defects were
+      # removed from this task in earlier rounds and BOTH were reintroduced here by the fix that added
+      # this check. `\|` is a GNU extension that matches a literal pipe under BSD grep - the check
+      # would silently never match and fail open on exactly the systems the ASCII guard avoids
+      # `grep -P` for. And `|| resid=0` maps grep's exit 2 (error) onto "no residue", which is the
+      # same fail-open shape a third time.
+      rrc=0
+      resid=$(grep -Ec '<DISCIPLINE>|<OUTCOME>|<PATH>' $p/plugin/skills/$s/SKILL.md) || rrc=$?
+      if [ "$rrc" -ge 2 ]; then
+        echo "  FAIL: the placeholder check failed on $p/$s (grep exit $rrc) - nothing was checked." >&2
+        FAIL=1
+        resid=0
+      fi
       if [ "$resid" -ne 0 ]; then
         echo "  FAIL: $p/$s still contains $resid unsubstituted placeholder(s) - the canonical block" >&2
         echo "        was pasted rather than applied. Substitute <DISCIPLINE>/<OUTCOME>/<PATH>." >&2
