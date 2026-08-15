@@ -80,8 +80,12 @@ Resolve in this order, and do not skip to the fallback:
    the plugin: **if `<base>/../../../.git` exists (as a file or a directory), treat it as a CHECKOUT too.**
    Test that path DIRECTLY - do not let `git` discover it, which is what climbs into an unrelated parent.
    **`CLAVITY_INBOX` overrides everything**: if that variable names a file, use it and skip these tests
-   entirely. That is the escape hatch for a plugin installed by cloning the repo into the plugins
-   directory, where `installer/` is legitimately present in a live install.
+   entirely. **Two real setups need it, and both are developer setups** - a plugin installed by cloning
+   the repo into the plugins directory, and one installed by SYMLINKING a checkout there. In both,
+   `installer/` is genuinely present in a live install, so the marker says CHECKOUT and captures get
+   staged instead of written. **That is the safe direction** (staged is parked, not lost) but it is a
+   permanent papercut for the people who work on this plugin most, so set `CLAVITY_INBOX` once on such a
+   machine rather than rediscovering it every session.
 
    **Do NOT use `git rev-parse --is-inside-work-tree` for this** - the first version of this rule did,
    and a capstone round killed it with two reachable failures, one of them measured:
@@ -97,9 +101,14 @@ Resolve in this order, and do not skip to the fallback:
 do not guess in the direction of writing. The staging step below makes that default cheap: an
 unnecessary stage costs one paste, while a wrong write costs an observation nobody ever finds.
 
-**NEVER DISCARD THE CAPTURE IN ORDER TO OBEY THIS RULE.** Capture is cheap and mid-task, which is exactly
-why an instruction to "stop and ask" loses observations: the rule interrupts a task the agent then
-resumes, and the bullet exists only in a context window that moves on. So, in this order:
+**IF - AND ONLY IF - STEP 3 FIRED: never discard the capture in order to obey it.** This whole block is
+subordinate to step 3 and does not run in the ordinary case. **If step 2 resolved an installed tree, you
+are done here: append to that inbox and skip to the verification step.** Staging when the inbox resolved
+fine would duplicate the bullet and interrupt the operator for nothing.
+
+When step 3 DID fire, the risk is the opposite one: capture is cheap and mid-task, so an instruction to
+"stop and ask" loses observations - it interrupts a task the agent then resumes, and the bullet exists
+only in a context window that moves on. So, in this order:
 
    a. **Write the bullet to `<USERPROFILE or HOME>/.clavity/agy-observations.staged.md` FIRST** (append,
       creating the file if absent). That directory is machine-local, outside every plugin tree and every

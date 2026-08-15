@@ -46,8 +46,11 @@ this skill reads as a floor but never edits.
   stop orphaned captures. So, every drain:
   1. **MOVE it before you read it - do not read-then-truncate.** Rename
      `<USERPROFILE or HOME>/.clavity/agy-observations.staged.md` to
-     `<USERPROFILE or HOME>/.clavity/agy-observations.processing.md` FIRST, then work from the renamed
-     file. **A read-now-truncate-later sequence destroys anything appended in between:** `agy-learn` runs
+     `<USERPROFILE or HOME>/.clavity/agy-observations.processing-<unique>.md` FIRST - **`<unique>` is a
+     per-run value (a pid or a guid), never a fixed name** - then work from the renamed file.
+     **A FIXED processing name races exactly when it matters:** two overlapping drains would each rename
+     onto the same target, and the second silently destroys the first run's in-flight batch before it can
+     be published. Same reason the shield helper's temp file is unique per invocation. **A read-now-truncate-later sequence destroys anything appended in between:** `agy-learn` runs
      mid-task in other sessions and appends to that exact file, so a bullet staged after your read and
      before your truncate would be wiped by a truncate that never saw it. The rename is atomic within one
      filesystem, so a concurrent `agy-learn` simply creates a fresh staged file and loses nothing.
@@ -56,8 +59,9 @@ this skill reads as a floor but never edits.
   2. **Fold the renamed file's bullets into the pending set you are about to triage** - they are ordinary
      captures that merely took a detour - and **dedupe against the inbox**, since the same observation can
      legitimately appear in both if the operator later routed it by hand.
-  3. **Delete `<USERPROFILE or HOME>/.clavity/agy-observations.processing.md` only after `curate-commit`
-     exits 0** - the full prefix again, for the same reason as above - on exactly the same
+  3. **Delete the `<USERPROFILE or HOME>/.clavity/agy-observations.processing-<unique>.md` file YOU
+     renamed - matched by that run's own `<unique>`, never a glob over all of them - and only after
+     `curate-commit` exits 0** (the full prefix again, for the same reason as above), on exactly the same
      reasoning that puts the `## Pending` reset last. Deleting it before a failed publish loses the
      entries; leaving it after a successful one duplicates them on the next run.
 - The **runtime SEED floor**: the shared `%USERPROFILE%\.clavity\golden-header.seed.md` that the driver
