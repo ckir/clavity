@@ -2557,7 +2557,8 @@ FAIL=0
 # commas and apostrophes inert payload bytes. MEASURED: with the default IFS the sentence "The peer
 # is empowered (correctness, safety) - you keep the final call." arrives truncated at the first
 # space; with `IFS='|'` it arrives whole. Verified: none of the payloads below contains a pipe. If
-# you add a row whose text contains `|`, change the delimiter for the WHOLE table, not for one row.
+# you add a row whose text contains `|`, change the delimiter for the WHOLE table, not for one row -
+# and the driver REFUSES such a row BY NAME rather than trusting you to have read this paragraph.
 # ==============================================================================================
 
 # Resolve Task 1's recorded consequence ONCE, in code. A comment reading "skip this if BLOCKED" is
@@ -2578,7 +2579,14 @@ fi
 # discriminator that existed to prove the old text was deleted passed vacuously for fifteen rounds.
 # `tr -d '\r'` comes FIRST: on a CRLF checkout the CR survives the newline fold and sits inside any
 # phrase spanning the wrap, which re-opens that same fail-open through a line ending.
-flat() { tr -d '\r' < "$1" | tr '\n' ' '; }
+# `tr -s ' '` LAST, and it is a hardening not a cosmetic. Folding a newline yields ONE space, so a
+# payload spanning a wrap matches only if the file has exactly one space there - a single TRAILING
+# space on the wrapped line would produce two and redden a CORRECT file. Measured: zero
+# trailing-whitespace lines in the post-edit files today, so this is LATENT rather than live, and it
+# is squeezed anyway because that failure would be a false RED on correct work. Squeezing can only
+# make a match more tolerant, never less, so it cannot manufacture a false pass - an `absent` payload
+# written with one space now also catches the same text written with two.
+flat() { tr -d '\r' < "$1" | tr '\n' ' ' | tr -s ' '; }
 
 # count FILE TEXT -> prints the number of OCCURRENCES, or -1 if the file could not be read.
 # THE ONLY PLACE THAT COUNTS ANYTHING. An unreadable file must never read as "zero occurrences".
@@ -2732,7 +2740,9 @@ v_para() {  # $1=file  $2=inserted seat text  $3=closing anchor
     return
   fi
   bb=$(blankness "$1" $((s - 1))); ba=$(blankness "$1" $((c - 1)))
-  if [ "$bb" != B ]; then
+  if [ "$bb" = X ] || [ "$ba" = X ]; then
+    say_fail "$1 - line $((s - 1)) or $((c - 1)) is past END OF FILE (bb=$bb ba=$ba). That is not a weld: the anchors are not where this check assumes, and reporting it as one would send the reader to the wrong place."
+  elif [ "$bb" != B ]; then
     say_fail "$1 line $((s - 1)) is [$bb], not blank - the block is welded to the paragraph above"
   elif [ "$ba" != B ]; then
     say_fail "$1 line $((c - 1)) is [$ba], not blank - the successor at $c is welded onto the block"
@@ -2754,8 +2764,26 @@ v_para() {  # $1=file  $2=inserted seat text  $3=closing anchor
 # different column. That is defect class 1 reappearing INSIDE the mechanism built to close it.
 # The verbs own the short names (`s`, `o`, `c`, `n`); the driver owns `t_*`; they cannot collide.
 run_table() {
-  while IFS='|' read -r t_verb t_rel t_a t_b t_c; do
-    case "$t_verb" in ''|\#*) continue ;; esac
+  while IFS= read -r t_line; do
+    case "$t_line" in ''|\#*) continue ;; esac
+    # EXACTLY FIVE FIELDS, ENFORCED - the invariant used to be stated and left armed, which is the
+    # same defect this plan already folded once for `prepare` ("ALWAYS takes a FILE path", with
+    # nothing rejecting a directory). MEASURED: with `IFS='|' read`, a payload CONTAINING a pipe is
+    # split across columns and the assertion silently checks a TRUNCATED string - `once` on
+    # "a sentence with a | pipe in it" checks "a sentence with a " and can still PASS. A sixth field
+    # lands in the last column WITH its delimiter, so an anchor quietly acquires a literal `|` and
+    # the failure then blames the FILE instead of the row. Neither is loud; both are now refused.
+    t_n=$(printf '%s' "$t_line" | tr -cd '|' | wc -c | tr -d ' ')
+    if [ "$t_n" -ne 4 ]; then
+      say_fail "malformed table row - $t_n delimiters, expected 4: [$t_line]"
+      continue
+    fi
+    # Split by parameter expansion rather than by `read`: with the count already proven, each
+    # `%%|*` takes exactly one field and the final remainder carries no delimiter at all.
+    t_verb=${t_line%%|*};  t_r1=${t_line#*|}
+    t_rel=${t_r1%%|*};     t_r2=${t_r1#*|}
+    t_a=${t_r2%%|*};       t_r3=${t_r2#*|}
+    t_b=${t_r3%%|*};       t_c=${t_r3#*|}
     for t_p in clavity-dotnet clavity-classic; do
       t_f="$t_p/$t_rel"
       case "$t_verb" in
@@ -2798,6 +2826,7 @@ between|plugin/skills/agy-first/SKILL.md|Seat a panel, not a persona|Frame the f
 between|plugin/skills/agy-test-audit/SKILL.md|Seat the audit, do not send one voice|## The audit round|Ask for a coverage verdict in a parseable form
 para|plugin/skills/agy-first/SKILL.md|Seat a panel, not a persona|The peer is empowered to CHALLENGE|
 para|plugin/skills/agy-test-audit/SKILL.md|Seat the audit, do not send one voice|Ask for a coverage verdict in a parseable form|
+once|plugin/skills/agy-test-audit/SKILL.md|The seat rotation required by||
 once|plugin/skills/agy-first/SKILL.md|note its real tradeoffs||
 once|plugin/skills/agy-first/SKILL.md|The peer is empowered to CHALLENGE your own settled decision when it has a substantive reason (correctness, safety, a materially better design, a hidden contradiction) - you keep the final call.||
 TBL
@@ -2824,6 +2853,10 @@ atleast|plugin/skills/agy-test-audit/SKILL.md|<BASE>|1|
 exactly|plugin/skills/agy-first/SKILL.md|agy-mark.sh|3|
 exactly|plugin/skills/agy-capstone/SKILL.md|agy-mark.sh|6|
 exactly|plugin/skills/agy-test-audit/SKILL.md|agy-mark.sh|3|
+once|plugin/skills/agy-first/SKILL.md|the auto-fire hook does not re-inject this discipline for the same cycle||
+once|plugin/skills/agy-first/SKILL.md|tell your human in-chat that the consult was skipped and name the fork it skipped||
+once|plugin/skills/agy-capstone/SKILL.md|does not re-inject the capstone for the same||
+once|plugin/skills/agy-test-audit/SKILL.md|- **Path:** `.clavity/agy-marks/agy-test-audit.head`||
 TBL
 else
   echo "14c: SKIPPED - Task 1 recorded BLOCKED."
