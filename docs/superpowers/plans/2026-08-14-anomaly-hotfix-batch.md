@@ -2127,7 +2127,7 @@ Rows tagged 14h need no locator.
 | 4 | 14c | `agy-first/SKILL.md` | `:37` | add: name the seam file to `prepare` before writing it. |
 | 5 | 14c | `agy-capstone/SKILL.md` | `:265` | replace the marker instruction with a `head` invocation. |
 | 6 | 14c | `agy-capstone/SKILL.md` | `:252-253`, `:179-180` | replace both `skipped.log` write instructions with `log` invocations; delete both format literals. **Apply `:252-253` before `:179-180`.** |
-| 7 | 14c | `agy-capstone/SKILL.md` | `:174`, `:43`, `:41` | add `prepare` for the seam file and for a concrete file inside the scratch directory - **never the directory itself**, see below. **Apply in the order given (174, then 43, then 41).** |
+| 7 | 14c | `agy-capstone/SKILL.md` | `:174`, `:43`, `:41` | add `prepare` at each of the three sites, using **that site's own path**: `:174` and `:43` are SCRATCH sites (pass a concrete file inside the scratch directory, e.g. `scratch/<topic>/notes.md` - **never the directory itself**, see the trap note below); `:41` is the SEAM site (pass `seams/<topic>.md`). **Apply in the order given (174, then 43, then 41).** |
 | 8 | 14c | `agy-test-audit/SKILL.md` | `:221-222` | replace the marker instruction with a `head` invocation. |
 | 9 | **14h** | `agy-test-audit/SKILL.md` | `:216-217` | replace the optional-mitigation sentence with the text in Step 2 below. |
 | 10 | **14h** | `agy-test-audit/SKILL.md` | `:59` | INSERT the seat paragraph from Step 2 immediately after the heading line, before numbered item 1. |
@@ -2135,11 +2135,28 @@ Rows tagged 14h need no locator.
 
 The canonical invocation block to paste (adjust mode and arguments per site):
 
+**All THREE modes, because the table asks for all three.** An earlier draft showed only `head` while
+rows 2 and 6 asked for a `log` invocation and rows 4, 7 and 11 asked for `prepare` - so an executor had
+to invent two of the three call shapes. Substitute `<BASE>` (the skill's own base directory, supplied
+by the harness) and the per-site values; do not paste these literally.
+
 ```bash
 # Write through the shipped marker writer, never by hand: it asserts the .clavity/ shield BEFORE the
-# write, owns the log line format, and creates the directory it writes into. <BASE> is this skill's own
-# base directory, which the harness supplies at invocation time.
-bash "<BASE>/../../hooks/agy-mark.sh" head agy-first "$(git rev-parse HEAD)"
+# write, owns the log line format, and creates the directory it writes into.
+
+# head - record the reviewed sha as this discipline's debounce marker.
+#   <DISCIPLINE> is agy-first | agy-capstone | agy-test-audit, matching the file you are editing.
+bash "<BASE>/../../hooks/agy-mark.sh" head "<DISCIPLINE>" "$(git rev-parse HEAD)"
+
+# log - append one durable audit line. The script owns the timestamp and the line format, so pass
+#   only the discipline, the outcome token, and the sha. Do NOT format the line yourself.
+#   <OUTCOME> is the token that site already writes, e.g. SKIPPED-UNREACHABLE, WAIVED,
+#   UNVERIFIED-ACCEPTED - take it from the text you are replacing, do not invent one.
+bash "<BASE>/../../hooks/agy-mark.sh" log "<DISCIPLINE>" "<OUTCOME>" "$(git rev-parse HEAD)"
+
+# prepare - create and shield a .clavity/ subdirectory before writing into it.
+#   <PATH> is a FILE path relative to .clavity/, never a directory - see the trap note below.
+bash "<BASE>/../../hooks/agy-mark.sh" prepare "<PATH>"
 ```
 
 **`prepare` ALWAYS takes a FILE path, never a directory - and for a scratch DIRECTORY that is a trap.**
@@ -2237,8 +2254,10 @@ needs.
 - `<SKILL>` - the skill this edit lands in: `agy-first`, `agy-capstone`, or `agy-test-audit`. Pasting
   `agy-first` into `agy-capstone` makes the abort blame the wrong discipline during an outage.
 - `<PATH>` - the path THAT site was already preparing, verbatim. It is `seams/<topic>.md` at a seam
-  site, and a concrete file inside the scratch directory at a scratch site (row 7 in `agy-capstone`
-  prepares `scratch/<topic>/notes.md`, NOT a seam). **Do not normalise every site to the seam path.**
+  site, and a concrete file inside the scratch directory at a scratch site. **Row 7 covers BOTH kinds**
+  - `agy-capstone:174` and `:43` are scratch sites and `:41` is a seam site - so read the row's own
+  per-site breakdown rather than assuming one path for the whole row. **Do not normalise every site to
+  the seam path.**
 
 ```bash
 if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "<PATH>"; then
@@ -2256,14 +2275,54 @@ fi
 
 - [ ] **Step 4: Mirror all three to classic and verify byte-identity**
 
+**COMPARE FIRST, THEN COPY.** An earlier draft copied dotnet over classic and *then* hashed both,
+which makes the comparison a tautology: the `cp` creates the identity the `echo` goes on to observe,
+so the check passes unconditionally and cannot fail. Worse, it destroys the evidence - if the executor
+edited `classic` differently, or skipped it, or made a typo there, the `cp` silently erases that and
+reports success. **A check that manufactures the condition it verifies is not a check.**
+
+The order below reports the state BEFORE the copy, which is the only moment the two trees can disagree:
+
 ```bash
+DIVERGED=0
 for s in agy-first agy-capstone agy-test-audit; do
-  cp "clavity-dotnet/plugin/skills/$s/SKILL.md" "clavity-classic/plugin/skills/$s/SKILL.md"
-  echo "$s: $(git hash-object clavity-dotnet/plugin/skills/$s/SKILL.md) $(git hash-object clavity-classic/plugin/skills/$s/SKILL.md)"
+  d="clavity-dotnet/plugin/skills/$s/SKILL.md"
+  c="clavity-classic/plugin/skills/$s/SKILL.md"
+  hd=$(git hash-object "$d") || { echo "ABORT: cannot hash $d" >&2; exit 1; }
+  hc=$(git hash-object "$c") || { echo "ABORT: cannot hash $c" >&2; exit 1; }
+  if [ "$hd" = "$hc" ]; then
+    echo "$s: ALREADY IDENTICAL ($hd) - both plugins were edited the same way."
+  else
+    echo "$s: DIVERGED before mirroring - dotnet $hd vs classic $hc" >&2
+    DIVERGED=1
+  fi
 done
+
+# Mirror regardless: dotnet is the source of truth and classic must match it. But the divergence
+# report above is the DIAGNOSTIC, and it is printed before the copy can hide it.
+for s in agy-first agy-capstone agy-test-audit; do
+  cp "clavity-dotnet/plugin/skills/$s/SKILL.md" "clavity-classic/plugin/skills/$s/SKILL.md" || {
+    echo "ABORT: mirror copy failed for $s" >&2; exit 1; }
+done
+
+# Now the identity is asserted rather than observed - re-hash to confirm the copies actually landed.
+for s in agy-first agy-capstone agy-test-audit; do
+  hd=$(git hash-object "clavity-dotnet/plugin/skills/$s/SKILL.md")
+  hc=$(git hash-object "clavity-classic/plugin/skills/$s/SKILL.md")
+  [ "$hd" = "$hc" ] || { echo "ABORT: $s still differs after the copy - $hd vs $hc" >&2; exit 1; }
+done
+echo "Step 4: all three pairs byte-identical."
+if [ "$DIVERGED" -ne 0 ]; then
+  echo "NOTE: at least one pair DIVERGED before mirroring - see above. The copy has fixed the tree," >&2
+  echo "      but it means Steps 1-3 were not applied to both plugins. Check that the classic edits" >&2
+  echo "      you intended are present: they have just been overwritten by dotnet's." >&2
+fi
 ```
 
-Expected: each pair of hashes identical.
+**Expected on a correct run: three `ALREADY IDENTICAL` lines, then `Step 4: all three pairs
+byte-identical.`, and NO `NOTE:`.** A `DIVERGED` line is not a failure of this step - the copy still
+repairs the tree - but it is evidence that Steps 1-3 were applied to only one plugin, which is worth
+knowing BEFORE the completion check in Step 5 counts invocations that dotnet supplied.
 
 - [ ] **Step 5: Per-file completion check - BOTH items, counted separately**
 
@@ -2286,11 +2345,30 @@ fi
 
 # 14c: the agy-mark.sh invocations. Runs ONLY on the RESOLVED path.
 if [ "$TASK1" = "RESOLVED" ]; then
+  # EXACT counts, not `-gt 0`. Each file needs SEVERAL 14c edits, and a `> 0` threshold is satisfied
+  # by applying ONE of them - the file then reports as complete with the rest silently missing.
+  # Derived from the 11-row table, counting one invocation per site:
+  #   agy-first      rows 1 (head) + 2 (log) + 4 (prepare)                       = 3
+  #   agy-capstone   rows 5 (head) + 6 (log x2) + 7 (prepare x3)                 = 6
+  #   agy-test-audit rows 8 (head) + 11 (prepare x2)                             = 3
+  # If you change the table, change these numbers in the same edit.
   for p in clavity-dotnet clavity-classic; do
     for s in agy-first agy-capstone agy-test-audit; do
+      want=0
+      case "$s" in
+        agy-first)
+          want=3 ;;
+        agy-capstone)
+          want=6 ;;
+        agy-test-audit)
+          want=3 ;;
+      esac
       n=$(grep -c 'agy-mark.sh' $p/plugin/skills/$s/SKILL.md)
-      printf '14c %s/%s: %s\n' "$p" "$s" "$n"
-      [ "$n" -gt 0 ] || { echo "  FAIL: $p/$s has no agy-mark.sh invocation" >&2; FAIL=1; }
+      printf '14c %s/%s: %s (want %s)\n' "$p" "$s" "$n" "$want"
+      [ "$n" -eq "$want" ] || {
+        echo "  FAIL: $p/$s has $n agy-mark.sh invocations, expected $want - some rows were not" >&2
+        echo "        applied, or one was applied twice. Do not proceed on a partial edit." >&2
+        FAIL=1; }
     done
   done
 else
