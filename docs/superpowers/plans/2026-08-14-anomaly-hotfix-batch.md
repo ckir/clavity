@@ -2353,9 +2353,18 @@ for p in clavity-dotnet clavity-classic; do
     # This check is ADDITIVE, not stricter: it rejects nothing the repo gate deliberately permits -
     # it rejects a file that is broken in a way neither gate was looking for.
     # Strip NULs and compare: if the file is unchanged by the strip, it had none.
-    if LC_ALL=C tr -d '\000' < "$f" | cmp -s - "$f"; then : ; else
-      echo "  FAIL: $f contains NUL bytes - it is not ASCII text (UTF-16 save?)" >&2; FAIL=1
-    fi
+    # `cmp -s` has THREE exit codes too - 0 identical, 1 differ, >=2 I/O error - and a bare `if cmp`
+    # folds 2 into the else branch, which would report a permissions or vanished-file error as
+    # "contains NUL bytes". MEASURED: cmp -s against a missing file exits 2 and lands in the else.
+    # That is the FIFTH instance of this one pattern in this task, and it was introduced by the fix
+    # for the fourth.
+    crc=0
+    LC_ALL=C tr -d '\000' < "$f" | cmp -s - "$f" || crc=$?
+    case "$crc" in
+      0) : ;;  # no NULs
+      1) echo "  FAIL: $f contains NUL bytes - it is not ASCII text (UTF-16 save?)" >&2; FAIL=1 ;;
+      *) echo "  FAIL: cannot compare $f (cmp exit $crc) - NOT the same as clean" >&2; FAIL=1 ;;
+    esac
   done
 done
 
@@ -2397,10 +2406,35 @@ done
 # different one. Step 5 and Step 6 are separate blocks and each parses $M independently; if $M is
 # edited between them, Step 5 can verify the four-file BLOCKED set while Step 6 stages the six-file
 # RESOLVED set, committing a file that was never verified.
-mkdir -p .clavity/scratch/14h-fold
+# The token binds to CONTENT, not just to the Task 1 result. A token recording only "RESOLVED" is a
+# bearer token: it stays valid after you edit the files, and it survives a `git checkout` to another
+# branch because .clavity/ is gitignored - in both cases Step 6 would commit files Step 5 never saw.
+# Digesting the six files plus the branch plus TASK1 makes the token describe a specific tree state,
+# so any edit, any checkout, and any Task 1 change invalidates it automatically.
+mkdir -p .clavity/scratch/14h-fold || {
+  echo "ABORT: cannot create .clavity/scratch/14h-fold" >&2; exit 1; }
 [ -f .clavity/.gitignore ] || printf '%s\n' '*' >> .clavity/.gitignore
-printf '%s\n' "$TASK1" > .clavity/scratch/14h-fold/verified-under.txt
-echo "Step 5: all checks passed (verified under TASK1=$TASK1)."
+
+digest_state() {  # prints one digest over TASK1 + branch + the content of all six files
+  {
+    printf 'task1=%s\n' "$1"
+    printf 'branch=%s\n' "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo UNKNOWN)"
+    for pp in clavity-dotnet clavity-classic; do
+      for ss in agy-first agy-capstone agy-test-audit; do
+        sha256sum "$pp/plugin/skills/$ss/SKILL.md"
+      done
+    done
+  } | sha256sum | cut -d' ' -f1
+}
+
+# A failed redirect must abort. Unchecked, Step 5 prints "all checks passed" while the token on disk
+# is a LEFTOVER from a previous run, and Step 6 then authorises a commit on state never recorded.
+if ! digest_state "$TASK1" > .clavity/scratch/14h-fold/verified-under.txt; then
+  echo "ABORT: could not write the verification token (permissions? disk full?)." >&2
+  rm -f .clavity/scratch/14h-fold/verified-under.txt
+  exit 1
+fi
+echo "Step 5: all checks passed (verified under TASK1=$TASK1, state $(cat .clavity/scratch/14h-fold/verified-under.txt))."
 ```
 
 Expected, 14c: **six** non-zero counts. A zero means that file was not edited - which no cross-product
@@ -2464,9 +2498,29 @@ V=.clavity/scratch/14h-fold/verified-under.txt
 if [ ! -f "$V" ]; then
   echo "ABORT: $V is missing - Step 5 has not run (or not passed). Run Step 5 first." >&2; exit 1
 fi
-if [ "$(cat "$V")" != "$TASK1" ]; then
-  echo "ABORT: Step 5 verified under TASK1=$(cat "$V") but this block parsed TASK1=$TASK1." >&2
-  echo "       $M changed between the two blocks. Re-run Step 5; do not commit unverified files." >&2
+
+# Recompute the SAME digest Step 5 recorded. Identical function, deliberately restated because this
+# is a separate block that may be run on its own.
+digest_state() {
+  {
+    printf 'task1=%s\n' "$1"
+    printf 'branch=%s\n' "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo UNKNOWN)"
+    for pp in clavity-dotnet clavity-classic; do
+      for ss in agy-first agy-capstone agy-test-audit; do
+        sha256sum "$pp/plugin/skills/$ss/SKILL.md"
+      done
+    done
+  } | sha256sum | cut -d' ' -f1
+}
+
+if [ "$(cat "$V")" != "$(digest_state "$TASK1")" ]; then
+  echo "ABORT: the verification token does not match the current state." >&2
+  echo "       Step 5's checks do not describe what this block would commit. One of these happened:" >&2
+  echo "         - a skill file was edited after Step 5 ran;" >&2
+  echo "         - the branch changed (the token is gitignored and survives a checkout);" >&2
+  echo "         - $M changed, so TASK1 differs from the run that was verified;" >&2
+  echo "         - the token is left over from an earlier run." >&2
+  echo "       Re-run Step 5. Do not commit unverified files." >&2
   exit 1
 fi
 
@@ -2504,6 +2558,11 @@ fi
 # `git add` can fail - an index.lock, a missing path, a permissions error. Unchecked, its failure
 # leaves the index empty and the NEXT check reports "Step 1 made no edit", which sends the operator
 # to the wrong place entirely.
+# Count once, here, where PATHS is final. It is referenced by BOTH the empty-index message and the
+# commit-failure message, and those live in different branches - computing it inside one of them
+# leaves it undefined in the other.
+n=$(printf '%s\n' "$PATHS" | grep -c .)
+
 if ! printf '%s\n' "$PATHS" | xargs git add --; then
   echo "STAGING FAILED: git add returned non-zero (index.lock? missing path? permissions?)." >&2
   echo "      This is NOT 'no edit was made' - fix the staging error itself." >&2
@@ -2524,10 +2583,9 @@ if [ "$staged" -ge 2 ]; then
   exit 1
 fi
 if [ "$staged" -eq 0 ]; then
-  # The message must name the files THIS PATH expects, not a fixed "six". On the BLOCKED path only
-  # four are edited, and telling an executor that six were expected invites it to "fix" the count by
-  # editing agy-capstone - destroying the path isolation the conditional exists to create.
-  n=$(printf '%s\n' "$PATHS" | grep -c .)
+  # The message names the files THIS PATH expects ($n, computed above), not a fixed "six". On the
+  # BLOCKED path only four are edited, and telling an executor that six were expected invites it to
+  # "fix" the count by editing agy-capstone - destroying the path isolation this conditional creates.
   echo "STOP: nothing staged. The gates passed, so this is NOT a gate failure - Step 1 made no edit" >&2
   echo "      to any of the $n files this path edits (Task 1 = $TASK1):" >&2
   printf '        %s\n' $PATHS >&2
@@ -2537,9 +2595,12 @@ if [ "$staged" -eq 0 ]; then
 fi
 
 if ! git commit -m "$MSG"; then
-  echo "COMMIT FAILED (a hook rejected it, or identity is unset). NOTE: the six files are STILL" >&2
-  echo "      STAGED - the index is dirty. Fix the cause, then commit the existing index; do not" >&2
-  echo "      re-run the git add." >&2
+  # "$n files", never a hardcoded "six" - the BLOCKED path stages four. The empty-index message was
+  # corrected for this in an earlier round and THIS sibling message was missed: the same fact stated
+  # in two places, fixed in one. Sweep the fact, not the line.
+  echo "COMMIT FAILED (a hook rejected it, or identity is unset). NOTE: the $n files listed above" >&2
+  echo "      are STILL STAGED - the index is dirty. Fix the cause, then commit the existing index;" >&2
+  echo "      do not re-run the git add." >&2
   exit 1
 fi
 ```
