@@ -31,7 +31,10 @@ this skill reads as a floor but never edits.
      repo, so an install inside a git-managed home directory measures as a checkout - and a missing `git`
      exits non-zero, which would read as "install" and route the write the wrong way.) **If the test
      cannot be performed, treat it as a checkout.**
-  3. If it IS a checkout, **STOP - do not drain it.** Say so and ask which install to drain.
+  3. If it IS a checkout, **STOP - do not drain it.** Say so and ask which install to drain. **This STOP
+     halts the DRAIN only; it does not skip the staging step below.** Do the staging move first (it is
+     machine-local and independent of which tree you were invoked from), THEN stop and ask - otherwise
+     the STOP silently swallows an instruction that appears later in this file and never runs.
 
   **Print the resolved absolute path and its pending count before you drain anything**, and again after
   the reset. If the path is not the one the nudge reports on, you drained the wrong file.
@@ -41,12 +44,21 @@ this skill reads as a floor but never edits.
   resolve the live inbox. **Nothing else ever reads that file**, so a capstone round correctly called the
   first version of it a silent black hole: a new orphan store created by the very change that existed to
   stop orphaned captures. So, every drain:
-  1. If `.clavity/agy-observations.staged.md` exists and is non-empty, **fold its bullets into the
-     pending set you are about to triage** - they are ordinary captures that merely took a detour.
-  2. **Dedupe against the inbox** before triaging: the same observation can legitimately appear in both
-     if the operator later routed it by hand.
-  3. **Truncate the staged file only after `curate-commit` exits 0**, on exactly the same reasoning that
-     puts the `## Pending` reset last. An emptied stage plus a failed publish loses the entries.
+  1. **MOVE it before you read it - do not read-then-truncate.** Rename
+     `<USERPROFILE or HOME>/.clavity/agy-observations.staged.md` to
+     `<USERPROFILE or HOME>/.clavity/agy-observations.processing.md` FIRST, then work from the renamed
+     file. **A read-now-truncate-later sequence destroys anything appended in between:** `agy-learn` runs
+     mid-task in other sessions and appends to that exact file, so a bullet staged after your read and
+     before your truncate would be wiped by a truncate that never saw it. The rename is atomic within one
+     filesystem, so a concurrent `agy-learn` simply creates a fresh staged file and loses nothing.
+     **Note the full `<USERPROFILE or HOME>` prefix** - a bare `.clavity/...` resolves against the current
+     working directory, which is not where `agy-learn` wrote it.
+  2. **Fold the renamed file's bullets into the pending set you are about to triage** - they are ordinary
+     captures that merely took a detour - and **dedupe against the inbox**, since the same observation can
+     legitimately appear in both if the operator later routed it by hand.
+  3. **Delete `agy-observations.processing.md` only after `curate-commit` exits 0**, on exactly the same
+     reasoning that puts the `## Pending` reset last. Deleting it before a failed publish loses the
+     entries; leaving it after a successful one duplicates them on the next run.
 - The **runtime SEED floor**: the shared `%USERPROFILE%\.clavity\golden-header.seed.md` that the driver
   actually injects (honor a `CLAVITY_GOLDEN_HEADER` **directory** override; default `%USERPROFILE%\.clavity\`).
   Read it to dedupe - a rule already stated in SEED must NOT be repeated in GROWTH. Resolve it at the RUNTIME

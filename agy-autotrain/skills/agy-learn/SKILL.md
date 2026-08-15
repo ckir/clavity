@@ -71,8 +71,17 @@ Resolve in this order, and do not skip to the fallback:
    **Use a PAYLOAD-ABSENCE marker, not `git`.** The repository tree carries directories the installer
    deliberately excludes from the shipped payload - `agy-autotrain/installer/` is the stable one
    (`agy-autotrain/installer/agy-autotrain.iss` line ~54: `Excludes: "\installer,\dist,\publish,...")`.
-   So: **`<base>/../../installer/` exists => this is a CHECKOUT. It does not exist => this is an
-   install.** Verified 2026-08-15: the installed tree has no `installer/`; the repo tree has one.
+   So: **`<base>/../../installer/` exists => this is a CHECKOUT.** Verified 2026-08-15: the installed
+   tree has no `installer/`; the repo tree has one.
+
+   **Absence of that marker is NOT sufficient to declare an install - require BOTH signals absent.** A
+   sparse checkout that excludes `installer/`, or a tree where it was deleted locally, would otherwise be
+   read as an install and captures would be written into it. So also check for a repository root above
+   the plugin: **if `<base>/../../../.git` exists (as a file or a directory), treat it as a CHECKOUT too.**
+   Test that path DIRECTLY - do not let `git` discover it, which is what climbs into an unrelated parent.
+   **`CLAVITY_INBOX` overrides everything**: if that variable names a file, use it and skip these tests
+   entirely. That is the escape hatch for a plugin installed by cloning the repo into the plugins
+   directory, where `installer/` is legitimately present in a live install.
 
    **Do NOT use `git rev-parse --is-inside-work-tree` for this** - the first version of this rule did,
    and a capstone round killed it with two reachable failures, one of them measured:
@@ -97,12 +106,23 @@ resumes, and the bullet exists only in a context window that moves on. So, in th
       checkout, and already holds the runtime golden-header files - so both copies of this skill resolve
       it identically and nothing can shadow it.
    b. **Then** tell the operator the capture is staged there and ask where the installed inbox is.
+   c. **If the operator answers with a path, finish the job in that same turn: append the bullet there,
+      then REMOVE it from the staged file.** Doing only the first leaves the identical bullet in the
+      stage, and the next `agy-curate` run folds the stage in and duplicates it. Doing neither leaves the
+      operator wondering why you asked. **If the operator does not answer, leave the stage exactly as it
+      is** - `agy-curate` drains it, so a staged bullet is parked, not lost.
 
    **A capture written to the wrong copy is worse than a capture not taken** - it reads as done, survives
    review, and never reaches curation. A capture staged in a known machine-local file is neither.
 
-**Then verify what you actually wrote**, in the same turn: print the resolved absolute path and the new
-pending count. If that path is not the one the nudge reports on, the capture did not land.
+**Then verify what you actually wrote, with a check you can actually perform.** In the same turn, print
+the **resolved absolute path** and the **new pending count** you observe after appending. That is fully
+within reach: you resolved the path and you can count the file.
+
+**Do not try to compare it against what the nudge hook reported.** That hook runs at SessionStart and
+writes to a previous session's output, which you cannot read mid-task - an earlier version of this line
+asked for exactly that comparison and it was unperformable. Printing the path and count is what lets the
+OPERATOR make that comparison; your job is to surface the two facts, not to reconcile them.
 
 > **KNOWN GAP, stated rather than papered over: this rule is unguarded by construction.** It is prose an
 > agent follows, and nothing tests compliance - the verify-then-print step above is the only feedback, and
