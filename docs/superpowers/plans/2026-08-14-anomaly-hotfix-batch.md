@@ -2238,6 +2238,48 @@ Describe 'generate-cheatsheet-literals.ps1' {
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'FAILS on an EMPTY canonical source rather than generating an empty literal (panel R9)' {
+        # The generator carries `if ($coreText.Length -eq 0) { Fail ... }` and nothing exercised it. An
+        # empty core.md would otherwise splice an empty literal into both binaries and the pinning tests
+        # would go red one layer away from the cause.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genempty-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $fx = Join-Path $tmp 'core.md'
+            [IO.File]::WriteAllText($fx, "   `n  `n")   # whitespace only: empty AFTER Trim()
+            $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
+            Copy-Item -LiteralPath $script:Rs -Destination $outRs
+            Copy-Item -LiteralPath $script:Cs -Destination $outCs
+            $before = [IO.File]::ReadAllBytes($outRs)
+            & pwsh -NoProfile -File $script:Gen -CoreSource $fx -RustTarget $outRs -CsTarget $outCs *> $null
+            $LASTEXITCODE | Should -Not -Be 0
+            [IO.File]::ReadAllBytes($outRs) | Should -Be $before -Because 'a refused run must leave the target untouched'
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'handles a SINGLE-LINE core.md - no dangling + and no trailing \n (panel R9)' {
+        # The generator has a dedicated `if ($coreLines.Count -eq 1)` branch for the C# target and the
+        # live core.md is multi-line, so nothing exercised it. A whole-string replace would emit either a
+        # dangling + or a trailing \n the file side does not have - the exact shape this branch exists for.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gen1line-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $fx = Join-Path $tmp 'core.md'
+            [IO.File]::WriteAllText($fx, "just one line`n")
+            $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
+            Copy-Item -LiteralPath $script:Rs -Destination $outRs
+            Copy-Item -LiteralPath $script:Cs -Destination $outCs
+            & pwsh -NoProfile -File $script:Gen -CoreSource $fx -RustTarget $outRs -CsTarget $outCs
+            $LASTEXITCODE | Should -Be 0
+            $cs = [IO.File]::ReadAllText($outCs)
+            $cs | Should -Match '"just one line";'
+            $cs | Should -Not -Match '\+ "just one line'  -Because 'a single segment is also the FIRST segment and carries no +'
+            $cs | Should -Not -Match 'just one line\\n"'  -Because 'the last segment has no trailing \n'
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'FAILS when BOTH targets are empty - a no-op run must not report success' {
         & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget '' -CsTarget '' *> $null
         $LASTEXITCODE | Should -Not -Be 0
@@ -2545,6 +2587,7 @@ repo carrying copies of the three real files plus the generator.
 | 9 | `core.md` deletion staged, a literal still present | hook **FAILS**, naming the literal left behind |
 | 10 | ONE literal's deletion staged (either) | hook **PASSES**, naming WHICH literal is being removed |
 | 11 | one literal's deletion staged AND the OTHER literal DIVERGED | hook **FAILS** on the surviving literal. **This is the row that catches a per-run skip** - a blanket "any deletion means skip parity" passes here while certifying a diverged pin |
+| **11a** | **BOTH literals' deletions staged while `core.md` is UNTOUCHED and present** | hook **PASSES**, naming that both literals are being removed. **Panel R9: the script carries a dedicated `if ($targets.Count -eq 0)` exit for this and no row reached it** - row 8 covers core.md-deleted-too and row 10 covers ONE literal, so this branch sat between them with no oracle. Retiring both pins while keeping their source is a legitimate decision |
 | 12 | a fixture `core.md` containing a byte a pwsh text pipeline would alter | the hook's generated output reproduces that byte EXACTLY. Constructed in a throwaway repo, so the ASCII rule governing the real `core.md` does not constrain it |
 | 13 | worktree `core.md` CRLF, index LF, literals correct | hook PASSES. **This row does NOT prove the hook reads the index** - it is a regression pin against CRLF breaking the run, nothing more |
 | 14 | any exit path, including the failure paths | **no temp file survives the run** |
