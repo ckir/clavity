@@ -5407,7 +5407,16 @@ if you need a number, and do not restate the total in prose.** The first draft o
 "four `scripts/` files and four test suites"; the scripts figure was wrong (there are two), which is
 precisely the running-total-in-prose defect the spec's own global rule 6 abandoned counts over, committed
 inside the fix for a completeness gap. The checklist's purpose is to detect a task that was simply NOT
-DONE, and it could not have detected a skipped Task 10, 11, 13 or 15:
+DONE, and it could not have detected a skipped Task 10, 11, 13 or 15.
+
+🔴 **AND THAT ENUMERATION WAS ITSELF INCOMPLETE - Tasks 8 and 9 had no row either, and were found by a
+cross-task audit that diffed every task's declared files against this table.** A skipped **Task 9**
+leaves `.gitattributes` unpinned, which is the FOUNDATION of 14e - the parity hook and the generator
+both reason about `core.autocrlf`, and without the pin their CRLF assumptions are unfounded. A skipped
+**Task 8** leaves `clavity-dotnet/ROADMAP.md` section 14c asserting three things that are no longer
+true. **A completeness checklist that omits a task is the same defect as the one it exists to catch,
+one level up** - and it had already been fixed once, in panel round 16, by an enumeration that stopped
+four tasks short of complete. Both now have rows:
 
 | deliverable | task | exists? | registered / indexed? |
 |---|---|---|---|
@@ -5423,6 +5432,8 @@ DONE, and it could not have detected a skipped Task 10, 11, 13 or 15:
 | `scripts/tests/check-growth-budget.Tests.ps1` + `drain-knowledge.Tests.ps1` (MODIFIED) | 15 | n/a | ☐ carry the 13c rows |
 | `scripts/tests/check-curate-in-progress.Tests.ps1` (MODIFIED) | 11 | n/a | ☐ carries the M4 stub |
 | `scripts/tests/test-suite-registration.Tests.ps1` (MODIFIED) | 13 | n/a | ☐ carries the narrow pin |
+| `clavity-dotnet/ROADMAP.md` section 14c (REWRITTEN in place, not appended) | 8 | n/a | ☐ the three stale lines are gone, ☐ the BLOCKED deferral note is present IF Task 1 recorded BLOCKED |
+| `.gitattributes` (three `eol=lf` pins) | 9 | n/a | ☐ `core.md`, ☐ `driver_cheatsheet.rs`, ☐ `DriverCheatsheet.cs` |
 | the Task 1 measurement record | 1 | ☐ | - |
 
 **Two existing gates cover part of this and neither covers all of it** - `test-suite-registration.Tests.ps1`
