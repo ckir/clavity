@@ -4167,6 +4167,17 @@ try {
     # Case 1 vs 2: is the generated output already sitting in the WORKTREE? This comparison is
     # temp-file-to-worktree, so no form of `git diff` can express it - normalise both sides and compare
     # the normalised TEXT, exactly as DriverCheatsheetTests.cs:92 already does.
+    #
+    # INTERACTION WITH THE INDEX-SOURCED SCAFFOLD, traced deliberately and ACCEPTED. `$genFor` is now
+    # built from the INDEX blob (see step 4 - it used to come from the worktree, which made the
+    # VALIDATION reject correct commits). That means when a developer has regenerated the literals AND
+    # also has an unrelated unstaged edit in the same file, `$genFor` and the worktree differ, so this
+    # lands on case 2 ("run just gen-cheatsheet-literals, then git add") rather than case 1 ("git add").
+    # That is a REDUNDANT instruction, not a wrong one: case 2's remedy is a superset of case 1's and
+    # still resolves the failure. The spec's bar is that a remedy must not be a TRAP (spec:953), and it
+    # is not. Sourcing the scaffold from the worktree to sharpen this message would re-break the
+    # validation obligations at :3699 (#2), :4207 (#5) and :4209 (#6). Do not trade a correct gate for
+    # a tidier diagnosis.
     $worktreeMatches = $true
     foreach ($m in $mismatched) {
         $gen  = [IO.File]::ReadAllText($genFor[$m]).Replace("`r`n", "`n")
