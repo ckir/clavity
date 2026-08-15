@@ -2518,10 +2518,27 @@ n=$(printf '%s\n' "$STAGED" | grep -c .)
 # Refuse to commit anything outside the six files this task owns. Step 5 stages by name, so a foreign
 # path here means something else staged it - and committing it under this message would misattribute
 # an unrelated change.
-FOREIGN=$(printf '%s\n' "$STAGED" | grep -v '^clavity-\(dotnet\|classic\)/plugin/skills/agy-\(first\|capstone\|test-audit\)/SKILL\.md$' || true)
+# `grep -E` with plain alternation, NOT BRE backslash-alternation. `\|` is a GNU extension; under
+# POSIX/BSD grep it matches a LITERAL pipe, so the pattern would match nothing, `grep -v` would keep
+# every valid path, and this step would abort claiming the files Step 5 just staged are "files this
+# task does not own".
+#
+# And NOT `|| true`: that swallows EVERY non-zero exit, grep's exit 2 included. MEASURED - after a
+# grep error FOREIGN is empty and `[ -n "$FOREIGN" ]` is false, so a crashed ownership filter FAILS
+# OPEN and lets unowned files through. Three outcomes, three branches, as everywhere else here.
+frc=0
+FOREIGN=$(printf '%s\n' "$STAGED" | grep -Ev '^clavity-(dotnet|classic)/plugin/skills/agy-(first|capstone|test-audit)/SKILL\.md$') || frc=$?
+if [ "$frc" -ge 2 ]; then
+  echo "ABORT: the ownership filter failed (grep exit $frc). This is NOT 'no foreign files' -" >&2
+  echo "       nothing was checked. Fix the cause and re-run." >&2
+  exit 1
+fi
 if [ -n "$FOREIGN" ]; then
   echo "ABORT: the index contains files this task does not own:" >&2
-  printf '        %s\n' $FOREIGN >&2
+  # QUOTED. Unquoted, a path containing a space splits into two broken paths and a path containing
+  # a glob character expands against the working directory - so the remediation command printed
+  # below would be wrong for exactly the case the operator needs it to be right for.
+  printf '        %s\n' "$FOREIGN" >&2
   echo "       Unstage them (git restore --staged <path>) and re-run. Do not commit them here." >&2
   exit 1
 fi
@@ -2545,6 +2562,29 @@ fi
 if ! just check-injected-context; then
   echo "GATE FAILED: check-injected-context. The $n staged files are LEFT STAGED; nothing was" >&2
   echo "      committed. Fix the cause, then re-run this step." >&2
+  exit 1
+fi
+
+# THE GATES INSPECT THE WORKING TREE; `git commit` COMMITS THE INDEX. If the two have diverged, a
+# passing gate says nothing about what is about to be committed.
+#
+# This is reachable by following THIS STEP'S OWN ADVICE: a gate fails and says "fix the cause, then
+# re-run this step"; the operator edits the file; the gate now passes against the FIXED working tree;
+# and the commit lands the ORIGINAL rejected bytes. MEASURED: stage "BROKEN", edit the tree to
+# "FIXED-IN-WORKING-TREE", commit -> `git show HEAD:f` returns "BROKEN".
+#
+# Staging early (round 6) made the index authoritative, which is right - but it also means the gates
+# must be checked against that same index, or refuse. Refusing is the honest option here.
+# `$STAGED` is deliberately UNQUOTED here, to word-split into one pathspec per file. That is only
+# safe because the ownership filter above has already proven every staged path matches a strict
+# regex containing no spaces or glob characters. **Do not move this check above that filter**, and do
+# not relax the regex without quoting this.
+if ! git diff --quiet -- $STAGED; then
+  echo "ABORT: the working tree and the index have diverged for the staged files." >&2
+  echo "       The gates above inspected the WORKING TREE, but a commit lands the INDEX - so their" >&2
+  echo "       passing says nothing about what would be committed. This happens if a staged file was" >&2
+  echo "       edited after Step 5 staged it, INCLUDING an edit made to fix a gate failure." >&2
+  echo "       Re-run Step 5, so that the verified bytes are the staged bytes." >&2
   exit 1
 fi
 
