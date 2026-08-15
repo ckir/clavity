@@ -2166,13 +2166,13 @@ Rows tagged 14h need no locator.
 | # | item | file | line(s) | change |
 |---|---|---|---|---|
 | 1 | 14c | `agy-first/SKILL.md` | `:105-107` | replace "Create `.clavity/agy-marks/` first ... then write the current commit sha to the marker" with a single `head` invocation. **Then KEEP the Path/Content/Lifecycle bullet block that begins `- **Path:** \`.clavity/agy-marks/agy-first.head\`` - it documents what the script produces. That block is at `:109-121` BEFORE this row is applied and moves UP by however many lines this row removed. Locate it by that anchor string, NOT by line number.** |
-| 2 | 14c | `agy-first/SKILL.md` | `:93-96` | replace "create `.clavity/agy-marks/` ... then append one durable line to `.clavity/agy-marks/skipped.log` (`<iso-8601> agy-first SKIPPED-UNREACHABLE HEAD=<sha>`...)" with a single `log` invocation. **Delete the `mkdir` instruction and the format literal** - the script owns both. |
-| 3 | **14h** | `agy-first/SKILL.md` | `:54-56` | replace the single-persona sentence with the seat block in Step 2 below. |
+| 2 | 14c | `agy-first/SKILL.md` | `:93-97` *(pre-edit hint)* | replace the whole sentence beginning `in-chat that the consult was skipped` and ending `never a git error string`, with a single `log` invocation. **Delete the `mkdir` instruction and the format literal** - the script owns both. 🔴 **The literal runs to `:97`, past the `:96` this row used to name** - it ends `"...or the literal `none` if HEAD cannot resolve - never a git error string"`. Stopping at `:96` orphans that tail. **Bound the edit by those quoted endpoints, not by the numbers.** |
+| 3 | **14h** | `agy-first/SKILL.md` | `:54-58` *(pre-edit hint)* | replace the single-persona sentence with the seat block in Step 2 below. 🔴 **The bound is `:54-58`, not `:54-56`.** Step 2's paragraph 3 reproduces the sentence `The peer is empowered to CHALLENGE ... you keep the final call.`, which runs from mid-`:56` to `:58`. An edit confined to `:54-56` leaves `:57-58` in place and the inserted paragraph 3 DUPLICATES them. |
 | 4 | 14c | `agy-first/SKILL.md` | `:37` | add: name the seam file to `prepare` before writing it. |
 | 5 | 14c | `agy-capstone/SKILL.md` | `:265` | replace the marker instruction with a `head` invocation. |
-| 6 | 14c | `agy-capstone/SKILL.md` | `:252-253`, `:179-180` | replace both `skipped.log` write instructions with `log` invocations; delete both format literals. **Apply `:252-253` before `:179-180`.** |
+| 6 | 14c | `agy-capstone/SKILL.md` | `:252-254`, `:179-181` *(pre-edit hints)* | replace both `skipped.log` write instructions with `log` invocations; delete both format literals. 🔴 **Each literal runs one line further than this row used to say** - the `:252` site's ends on `:254` with `"...where `<sha>` is `git rev-parse HEAD`..."`. **Bound each edit by the end of its parenthesised literal, not by the number.** **Apply the later site first.** |
 | 7 | 14c | `agy-capstone/SKILL.md` | `:174`, `:43`, `:41` | add `prepare` at each of the three sites, using **that site's own path**: `:174` and `:43` are SCRATCH sites (pass a concrete file inside the scratch directory, e.g. `scratch/<topic>/notes.md` - **never the directory itself**, see the trap note below); `:41` is the SEAM site (pass `seams/<topic>.md`). **Apply in the order given (174, then 43, then 41).** |
-| 8 | 14c | `agy-test-audit/SKILL.md` | `:221-222` | replace the marker instruction with a `head` invocation. |
+| 8 | 14c | `agy-test-audit/SKILL.md` | `:220-221` *(pre-edit hint)* | replace the marker instruction - the sentence `Record that the audit ran ... Create `.clavity/agy-marks/` first if absent.` - with a single `head` invocation. 🔴 **The bound is `:220-221`, NOT `:221-222`.** `:222` begins the `- **Path:**` bullet, which must SURVIVE as documentation of what the script produces, exactly as row 1 keeps `agy-first`'s equivalent block. Deleting into `:222` destroys half a bullet. |
 | 9 | **14h** | `agy-test-audit/SKILL.md` | `:216-217` | replace the optional-mitigation sentence with the text in Step 2 below. |
 | 10 | **14h** | `agy-test-audit/SKILL.md` | `:59` | INSERT the seat paragraph from Step 2 immediately after the heading line, before numbered item 1. |
 | 11 | 14c | `agy-test-audit/SKILL.md` | `:38`, `:36` | add `prepare` at both sites, using **that site's own path**: `:38` is the SCRATCH site - pass a **concrete file inside** the scratch directory (e.g. `scratch/<topic>/notes.md`), **never the directory itself**, see the trap note below; `:36` is the SEAM site - pass `seams/<topic>.md`. **Apply `:38` before `:36`.** |
@@ -2434,6 +2434,12 @@ if [ "$TASK1" = "RESOLVED" ]; then
       # without a single row being applied (and pasting it twice hits agy-capstone's 6). The
       # discriminator is that a pasted TEMPLATE still carries its placeholders, while a real edit has
       # substituted them. Any surviving placeholder means the template was copied, not applied.
+      #
+      # FOUR substituted tokens, not three. Step 3's guarded block introduces `<SKILL>`, and an earlier
+      # draft of this check omitted it - so an executor who left `echo "<SKILL>: ABORTING..."` in place
+      # passed vacuously. `<BASE>` is deliberately NOT in this list: it is the one token that must
+      # SURVIVE, so finding it here is correct and its ABSENCE is the defect. That is the opposite
+      # test, and it is done separately below.
       # `grep -E`, NOT BRE `\|`, and three branches, NOT `|| resid=0`. Both of those defects were
       # removed from this task in earlier rounds and BOTH were reintroduced here by the fix that added
       # this check. `\|` is a GNU extension that matches a literal pipe under BSD grep - the check
@@ -2441,7 +2447,7 @@ if [ "$TASK1" = "RESOLVED" ]; then
       # `grep -P` for. And `|| resid=0` maps grep's exit 2 (error) onto "no residue", which is the
       # same fail-open shape a third time.
       rrc=0
-      resid=$(grep -Ec '<DISCIPLINE>|<OUTCOME>|<PATH>' $p/plugin/skills/$s/SKILL.md) || rrc=$?
+      resid=$(grep -Ec '<DISCIPLINE>|<OUTCOME>|<PATH>|<SKILL>' $p/plugin/skills/$s/SKILL.md) || rrc=$?
       if [ "$rrc" -ge 2 ]; then
         echo "  FAIL: the placeholder check failed on $p/$s (grep exit $rrc) - nothing was checked." >&2
         FAIL=1
@@ -2450,6 +2456,16 @@ if [ "$TASK1" = "RESOLVED" ]; then
       if [ "$resid" -ne 0 ]; then
         echo "  FAIL: $p/$s still contains $resid unsubstituted placeholder(s) - the canonical block" >&2
         echo "        was pasted rather than applied. Substitute <DISCIPLINE>/<OUTCOME>/<PATH>." >&2
+        FAIL=1
+      fi
+
+      # THE OPPOSITE TEST: `<BASE>` must be PRESENT. It is the harness token that makes one instruction
+      # resolve correctly in both plugins; if it is gone, someone substituted a literal path, which
+      # differs per plugin and breaks the byte-identity pin. Absence here is the defect.
+      nb=$(grep -c '<BASE>' $p/plugin/skills/$s/SKILL.md) || nb=0
+      if [ "$nb" -eq 0 ]; then
+        echo "  FAIL: $p/$s contains no <BASE> token - a literal path was written instead, which" >&2
+        echo "        differs per plugin and breaks the byte-identity pin." >&2
         FAIL=1
       fi
 
