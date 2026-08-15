@@ -1430,6 +1430,13 @@ Expected: the three new rows FAIL (no shield call exists yet). Read the count.
 
 - [ ] **Step 3: Rewrite the header fact at `:1-15`**
 
+> 🔴 **`:1-15`, and NOT `:1-16`. This was challenged once; the answer is that `:16` must SURVIVE.**
+> The live `:15` ends the sentence (`# pipe-safe stdin.`) and `:16` is a bare `#` separating that
+> paragraph from `:17`'s new section (`# WHY RAW PASSTHROUGH IS SAFE ...`). The replacement block
+> below ENDS ON PROSE and supplies no trailing separator of its own, so deleting `:16` would butt its
+> last line straight against `:17`'s heading. **Judge this by the replacement block's last line, not
+> by where the old sentence ends.**
+
 Replace the two header lines that now misdescribe the file:
 
 ```sh
