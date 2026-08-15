@@ -938,7 +938,11 @@ agy_shield() {
     # property of THIS platform's grep, not a guarantee: on Linux `*\r` is a different line, and a shield
     # that never matches would be appended to on every single call and grow without bound. Costs one extra
     # grep, and only on the path where the first already failed.
-    if grep -qx '*' "$_as_shield" 2>/dev/null || grep -qx "*$_AS_CR" "$_as_shield" 2>/dev/null; then
+    # `-F`: the pattern IS a regex metacharacter. A leading `*` is literal in POSIX BRE (nothing to
+    # repeat), and MEASURED here it matches correctly - `grep -qx '*'` returns 0 on a file whose only
+    # line is `*` and 1 otherwise. `-F` is taken anyway because correctness-by-construction beats
+    # correctness-by-a-rule-the-reader-has-to-know. This is a clarity change, NOT a defect fix.
+    if grep -qFx '*' "$_as_shield" 2>/dev/null || grep -qFx "*$_AS_CR" "$_as_shield" 2>/dev/null; then
         :                                       # a bare * is present: append nothing.
     elif [ -f "$_as_shield" ] && grep -q '^!' "$_as_shield" 2>/dev/null; then
         # PREPEND. .gitignore is LAST-MATCH-WINS, so appending * to a file that begins with a
