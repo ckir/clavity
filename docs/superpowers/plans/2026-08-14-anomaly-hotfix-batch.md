@@ -2329,9 +2329,18 @@ for p in clavity-dotnet clavity-classic; do
     # `grep && echo` PRINTS and exits 0. A guard that only prints does not guard: the executor runs
     # this block and the next one, and the contaminated file is committed with a warning scrolled
     # past above it. Set the failure flag; Step 5 exits non-zero at the end and Step 6 never runs.
-    if LC_ALL=C grep -n "$HIBYTE" "$f"; then
-      echo "  FAIL: NON-ASCII in $f" >&2; FAIL=1
-    fi
+    #
+    # THREE outcomes, not two. grep exits 0 = matched (contaminated), 1 = no match (clean),
+    # >=2 = ERROR (file missing, unreadable, permissions). A bare `if grep` folds 1 and 2 together
+    # into "false", so a MISSING FILE reads as a clean one and the guard passes having measured
+    # nothing. Branch on the code explicitly.
+    LC_ALL=C grep -n "$HIBYTE" "$f"
+    rc=$?
+    case "$rc" in
+      0) echo "  FAIL: NON-ASCII in $f" >&2; FAIL=1 ;;
+      1) : ;;  # clean
+      *) echo "  FAIL: cannot read $f (grep exit $rc) - NOT the same as clean" >&2; FAIL=1 ;;
+    esac
   done
 done
 
@@ -2469,8 +2478,15 @@ fi
 # An EMPTY index here is not a gate failure - it means this task made no edit at all. Say so, and do
 # NOT tell the operator to "re-run": re-running reproduces it forever.
 if git diff --cached --quiet; then
+  # The message must name the files THIS PATH expects, not a fixed "six". On the BLOCKED path only
+  # four are edited, and telling an executor that six were expected invites it to "fix" the count by
+  # editing agy-capstone - destroying the path isolation the conditional exists to create.
+  n=$(printf '%s\n' "$PATHS" | grep -c .)
   echo "STOP: nothing staged. The gates passed, so this is NOT a gate failure - Step 1 made no edit" >&2
-  echo "      to any of the six files. Go back to Step 1; do not re-run this step." >&2
+  echo "      to any of the $n files this path edits (Task 1 = $TASK1):" >&2
+  printf '        %s\n' $PATHS >&2
+  echo "      Go back to Step 1. Edit ONLY those files - do NOT widen the set to make a count match," >&2
+  echo "      and do not re-run this step." >&2
   exit 1
 fi
 
