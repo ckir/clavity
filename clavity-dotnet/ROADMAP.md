@@ -1167,11 +1167,30 @@ substantive challenges to the driver's own measurements.
 > a phrase-shaped grep**; the fix-side sweep must search the FACT (does this file mandate multiple named
 > adversarial lenses?) in several wordings, not one token.
 
-**Fix shape (not yet planned):** give `agy-first` and `agy-test-audit` the same seat instruction
-`agy-capstone:89-103` already carries — cite the `adversarial-panel-review` palette, seat by trigger,
-rotate across rounds — rather than duplicating the palette into each file. **This is the same
-"one shared review-core" question already open as the AGY-* family-coherence fork**, so the two should
-be decided together, not separately.
+**Fix shape:** give `agy-first` and `agy-test-audit` a seat instruction of the KIND `agy-capstone:89-103`
+already carries — name concrete adversarial seats, seat those whose trigger the artifact meets, rotate
+across rounds, and reuse the `adversarial-panel-review` persona vocabulary without becoming a code
+dependency on that skill.
+
+> ⚠ **CORRECTED 2026-08-15, and the correction matters because the original sentence would have produced
+> the wrong fix.** It read "give them **the same** seat instruction … **rather than duplicating the
+> palette into each file**". Both halves are wrong, and the exemplar it cites disproves them:
+> **`agy-capstone:89-94` inlines the seat names itself** (`Axiom Breaker (contradictions / unstated
+> invariants), Cascade Analyst (unhandled failure paths), Mechanism Gamer …`). So "do not duplicate the
+> palette" describes neither the exemplar nor anything achievable in a markdown skill file, which has no
+> include mechanism.
+>
+> And **the same** instruction is wrong on the merits: `agy-first` consults on a FORK, so its seats hunt
+> reasoning defects; `agy-test-audit` consults on a SUITE, so its seats hunt coverage gaps and must be
+> handed the coverage question explicitly. Pasting one file's block into the other yields a seat list
+> that cannot fire on what that discipline reviews. **The shared thing is the PATTERN — named seats,
+> trigger-based selection, rotation — not the text.**
+>
+> Found by a capstone round that compared the plan against this entry and reported the PLAN as
+> non-compliant. The plan was right; this entry was wrong.
+
+**This remains the same "one shared review-core" question already open as the AGY-* family-coherence
+fork**, so the two should be decided together, not separately.
 
 ### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
 

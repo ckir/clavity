@@ -2096,16 +2096,33 @@ artifacts; the REWRITE set is three.
 > is exactly how a three-row change grew a hundred-line token in rounds 4-5.** The honest position is
 > the stated limitation, not a fifth guard.
 >
+> **The ASCII/NUL loop is NOT subsumed by `just check-injected-context` in Step 6.** A reviewer proposed
+> deleting it on the grounds that the canonical gate re-checks the same files one step later. **The
+> high-byte half is indeed duplicated - but the NUL half is not.** MEASURED: `Test-PureAscii`
+> (`check-injected-context.ps1:547-550`) tests only for a byte **greater than 127**, and a UTF-16LE file
+> encoding pure ASCII has **zero** such bytes while carrying NUL bytes throughout. Deleting the loop
+> would drop the only check that catches that file. It also fails earlier and names the specific file,
+> where the canonical gate reports a generic encoding violation. KEPT.
+>
 > **Step 5 checks both plugins even though Step 4 has just proven them byte-identical.** Considered and
-> KEPT: it costs six greps, and it keeps Step 5 meaningful if it is ever run without Step 4 - which is
-> how a partially-executed task gets diagnosed. Likewise Step 4's three loops are kept separate on
+> KEPT - but the cost figure in the first draft of this note was wrong. **Step 5 contains 17 grep
+> invocations in total, roughly half of which run against `classic`**, not the "six" originally claimed.
+> It is kept anyway because it keeps Step 5 meaningful if ever run without Step 4 - which is how a
+> partially-executed task gets diagnosed - and because at that scale the cost is still trivial. **A
+> defence that rests on a number must state the real number.** Likewise Step 4's three loops are kept separate on
 > purpose: reporting every divergence BEFORE any copy is the diagnostic, and merging the loops would
 > interleave the report with the overwrite that hides it.
 
 **There is deliberately NO behavioural test for these edits.** The strongest available oracle asserts the
 `.md` contains the invocation string, which cannot fail against a model that ignores it. The executable
-is where the strength lives. **The per-file completion check in Task 16 is the only guarantee that the
-edit was made at all**, and that is a different question from whether the model obeys it.
+is where the strength lives. **For item 14c, the per-file completion check in Task 16 is the only
+guarantee that the edit was made at all**, and that is a different question from whether the model obeys
+it. **Item 14h is better covered:** Step 5 checks exact per-file `agy-mark.sh` counts, a per-file
+`old_removed` discriminator, placeholder residue, and the positional bounds of the inserted prose - so
+for the 14h rows Task 16 is a second pair of eyes rather than the only one. (This sentence said "the
+only guarantee" without qualification for three rounds after Step 5 grew those checks - the same stale
+claim was corrected in Task 16's preamble one round earlier and missed here. Third instance of one fact
+stated in several places and fixed in one.)
 
 ### Why 14h is here and not in a task of its own
 
@@ -4828,7 +4845,8 @@ git diff --stat main...HEAD -- clavity-dotnet/plugin clavity-classic/plugin agy-
 ```
 
 Every unticked row is a task that was skipped. **`open-issues/SKILL.md` has no behavioural test either, so
-this checklist is its only guarantee.**
+this checklist is its only guarantee** - EXCEPT for the 14h rows, which Task 7 Step 5 checks
+mechanically (exact counts, `old_removed`, placeholder residue, positional bounds).
 
 - [ ] **Step 2: Run every oracle BY NAME**
 
