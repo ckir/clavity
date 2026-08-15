@@ -202,7 +202,10 @@ Create `docs/superpowers/plans/2026-08-14-anomaly-hotfix-batch-task1-measurement
 
 ## Consequence (tick exactly one)
 - [ ] **RESOLVED** - Probe B is YES. Task 6 and ALL of Task 7 proceed, using
-      `bash "<skill base directory>/../../hooks/agy-mark.sh"` as the invocation.
+      `bash "<BASE>/../../hooks/agy-mark.sh"` as the invocation, where **`<BASE>` stays that literal
+      token in the file** - it is the skill's own base directory as the harness supplies it at
+      invocation time, NOT a path you write out. Task 7 Step 1 says the same; the two must agree,
+      because writing a real path there differs per plugin and breaks the byte-identity pin.
 - [ ] **BLOCKED** - Probe B is NO. Task 6 is SKIPPED and recorded as a tracked ROADMAP item.
       **Task 7 is NOT skipped: its 14c rows are skipped and its 14h rows still ship** - item 14h
       has no dependency on this locator. Tasks 5 and 8 (the hook half and the ROADMAP rewrite)
@@ -2525,9 +2528,9 @@ done
 # document's own title. The insertion point is an INTERVAL, so assert the interval: it must fall
 # AFTER the section it belongs to opens and BEFORE the line that must follow it.
 check_pos() {  # $1=file  $2=seat string  $3=opening anchor  $4=closing anchor  $5=label
-  s=$(grep -n "$2" "$1" | head -1 | cut -d: -f1)
-  o=$(grep -n "$3" "$1" | head -1 | cut -d: -f1)
-  c=$(grep -n "$4" "$1" | head -1 | cut -d: -f1)
+  s=$(grep -n "$2" "$1" | head -n 1 | cut -d: -f1)
+  o=$(grep -n "$3" "$1" | head -n 1 | cut -d: -f1)
+  c=$(grep -n "$4" "$1" | head -n 1 | cut -d: -f1)
   if [ -n "$s" ] && [ -n "$o" ] && [ -n "$c" ] && [ "$s" -gt "$o" ] && [ "$s" -lt "$c" ]; then
     echo "14h-pos $5: seat=$s in ($o,$c) OK"
   else
@@ -4764,7 +4767,10 @@ git commit -m "fix(gate): 13c - distinguish a missing input from an empty one at
 
 - [ ] **Step 1: The per-file completion checklist**
 
-**Nothing else detects that an edit was simply NOT MADE.** `check-seed-artifacts-synced.sh` and
+**For everything OUTSIDE the six skill files, nothing else detects that an edit was simply NOT MADE.**
+(Those six ARE covered: Task 7 Step 5 checks exact `agy-mark.sh` counts per file, a per-file
+`old_removed` discriminator, placeholder residue, and the positional bounds of the inserted prose - so
+for them this row is a second pair of eyes rather than the only one.) `check-seed-artifacts-synced.sh` and
 `plugin-hooks-payload.Tests.ps1:47` compare the two PRODUCTS against each other, so a file left unedited
 in BOTH passes byte-identity happily. **This checklist names the TABLE, never a count** - a restated count
 stops covering whatever the table gains next.
@@ -4779,6 +4785,12 @@ Walk **every row** of the governed-artifacts table and confirm each file was act
 | `plugin/skills/agy-first/SKILL.md` | 14c **+ 14h** | both plugins | ☐ dotnet ☐ classic *(14c skips if BLOCKED; **14h NEVER skips**)* |
 | `plugin/skills/agy-capstone/SKILL.md` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if BLOCKED)* |
 | `plugin/skills/agy-test-audit/SKILL.md` | 14c **+ 14h** | both plugins | ☐ dotnet ☐ classic *(14c skips if BLOCKED; **14h NEVER skips**)* |
+
+> **On those three rows, the `classic` box is a RE-CHECK, not the first check.** Task 7 Step 4 mirrors
+> dotnet over classic and aborts unless the pair hashes identical, and Step 6 commits that index - so by
+> the time you reach here, classic's content is mechanically enforced rather than hand-verified. Tick it
+> against what Step 4 actually reported: **a `DIVERGED` line there means Steps 1-3 were applied to only
+> one plugin**, which is the thing this box is worth checking for now.
 | `plugin/skills/open-issues/SKILL.md` | **14d** | both plugins | ☐ dotnet ☐ classic — **check the RIGHT thing:** under Task 1 = RESOLVED grep for `agy_shield`; under **BLOCKED** only Step 1b ships, so grep for `! -s` instead. **A `agy_shield` grep returns 0 under BLOCKED and would read as a skipped task.** |
 | `agy-autotrain/skills/agy-curate/SKILL.md` | 14e | single copy | ☐ |
 
