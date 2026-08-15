@@ -3018,8 +3018,11 @@ and say so themselves (`agy-anomaly-capture-reminder.sh:49`, `assertion-strength
 
 `:988` — replace `**this entry is the existing seven.**` with `**this entry is the existing five.**`
 
-`:991` — replace `§14c's seven hooks inherit the weak idiom` with
-`§14c's five artifacts inherit the weak idiom`.
+`:991` — replace the substring `§14c's seven hooks inherit the weak idiom` with the substring
+`§14c's five artifacts inherit the weak idiom`. 🔴 **Neither string includes the trailing period.**
+The live line ends `...inherit the weak idiom.` and that period is NOT part of either string - it is
+sentence punctuation belonging to the file, and to this instruction's own prose. Replace the substring
+only and the period survives exactly once; take the period into the replacement and you get `idiom..`.
 
 - [ ] **Step 4: If Task 1 recorded BLOCKED, record the deferral here**
 
@@ -4281,7 +4284,12 @@ git commit -m "feat(cheatsheet): 14e - pre-commit parity gate comparing INDEX to
 
 Generation makes an existing instruction wrong. **Shipping one without the other is an incomplete fold.**
 
-**Files:** Modify `agy-autotrain/skills/agy-curate/SKILL.md` at `:122-126` and `:339`.
+**Files:** Modify `agy-autotrain/skills/agy-curate/SKILL.md` at `:123-127` and `:339`.
+
+> 🔴 **`:123-127`, NOT `:122-126`.** MEASURED in the live file: `:122` is BLANK, the numbered item
+> `2. **Route by the matrix ...**` starts at `:123`, and the table runs to `:127` (the `**driver**` row).
+> The old range began on a blank line and stopped one row short, which would have orphaned the final
+> table row as surviving context. **Bound it by the quoted first and last lines, not the numbers.**
 
 **This is a SINGLE copy - measured, not a byte-identical pair - so there is no mirror cost.**
 
@@ -4292,7 +4300,7 @@ Generation makes an existing instruction wrong. **Shipping one without the other
 - `:112` - `keep it in sync there` (**unchanged** - `core.md` remains the canonical text and is now the ONLY hand-edited one)
 - `:339` - documents `core.md` "and its two byte-identical pins may have been edited" as expected uncommitted state
 
-- [ ] **Step 1: Replace `:122-126`**
+- [ ] **Step 1: Replace `:123-127`** *(the numbered item `2. **Route by the matrix` through the `**driver**` table row)*
 
 **Write in the THIRD PERSON.** `SKILL.md` is the CURATOR's document, so "edit `core.md`, then run the
 generator" tells the curator it may edit that file - which is precisely what ROADMAP 14f leaves open. The
