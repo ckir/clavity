@@ -552,6 +552,11 @@ Describe 'agy-shield-lib.sh' {
             $script:Res.Err | Should -Match 'local-anomalies\.md'
         }
 
+        # SCOPE NOTE, because the NAME is broader than the assertion. This checks the ONE temp shape
+        # this code creates - `.gitignore.tmp.*` under `.clavity` - not "no temp file anywhere". That is
+        # deliberate: a wider glob would redden on unrelated files a developer left in the fixture. The
+        # name is kept because the mutation table references it; the limit is recorded here so nobody
+        # reads the name as a guarantee it does not make.
         It 'leaves NO temp file behind' {
             @(Get-ChildItem -LiteralPath (Join-Path $script:R '.clavity') -Filter '.gitignore.tmp.*' -Force -ErrorAction SilentlyContinue).Count |
                 Should -Be 0 -Because 'the prepend temp is consumed by mv on success and removed on every failure path'
@@ -1703,6 +1708,11 @@ Describe 'agy-mark.sh' {
         It 'CREATES .clavity/agy-marks/ on a fresh clone' {
             # Stage A1 of the helper creates .clavity/ and NOTHING BELOW IT, and this batch removes the
             # skills' own mkdir instructions - so without this, head would fail on a fresh clone.
+            # SCOPE NOTE: "fresh clone" here means .clavity/ EXISTS (Stage A1 made it) and agy-marks/
+            # does not - which is why the fixture keeps .clavity and removes only the subdirectory. It
+            # is NOT the state of a literally fresh clone, where .clavity is absent too; that case
+            # belongs to the shield's own suite, and asserting it here would test another component's
+            # contract through this one. The name is kept because the mutation table references it.
             $d = New-MarkFixture
             Remove-Item -LiteralPath (Join-Path $d '.clavity/agy-marks') -Recurse -Force -ErrorAction SilentlyContinue
             $sha = (& git -C $d rev-parse HEAD).Trim()
