@@ -2117,9 +2117,16 @@ artifacts; the REWRITE set is three.
 `.md` contains the invocation string, which cannot fail against a model that ignores it. The executable
 is where the strength lives. **For item 14c, the per-file completion check in Task 16 is the only
 guarantee that the edit was made at all**, and that is a different question from whether the model obeys
-it. **Item 14h is better covered:** Step 5 checks exact per-file `agy-mark.sh` counts, a per-file
-`old_removed` discriminator, placeholder residue, and the positional bounds of the inserted prose - so
-for the 14h rows Task 16 is a second pair of eyes rather than the only one. (This sentence said "the
+it. **Item 14h is separately covered:** `check_14h` asserts the seat text is present, that `rotate seats`
+is present, and that the removed instruction is GONE (`old_removed`), and `check_pos` asserts the
+inserted block sits between its two anchors. Those four run UNCONDITIONALLY, so for the 14h rows
+Task 16 is a second pair of eyes rather than the only one.
+
+> 🔴 **Do NOT credit the exact `agy-mark.sh` counts or the placeholder-residue check here.** Both sit
+> INSIDE `if [ "$TASK1" = "RESOLVED" ]` and are 14c mechanisms: they do not run on the BLOCKED path at
+> all, and they say nothing about the 14h edits. An earlier version of this paragraph listed all four
+> as 14h coverage, which would have let a reader believe the 14h rows were checked on a path where
+> two of the four never execute. (This sentence said "the
 only guarantee" without qualification for three rounds after Step 5 grew those checks - the same stale
 claim was corrected in Task 16's preamble one round earlier and missed here. Third instance of one fact
 stated in several places and fixed in one.)
@@ -2228,7 +2235,7 @@ Rows tagged 14h need no locator.
 | 3 | **14h** | `agy-first/SKILL.md` | `:54-58` *(pre-edit hint)* | replace the single-persona sentence with the seat block in Step 2 below. 🔴 **The bound is `:54-58`, not `:54-56`.** Step 2's paragraph 3 reproduces the sentence `The peer is empowered to CHALLENGE ... you keep the final call.`, which runs from mid-`:56` to `:58`. An edit confined to `:54-56` leaves `:57-58` in place and the inserted paragraph 3 DUPLICATES them. |
 | 4 | 14c | `agy-first/SKILL.md` | `:37` | add: name the seam file to `prepare` before writing it. |
 | 5 | 14c | `agy-capstone/SKILL.md` | `:265` *(pre-edit hint)* | replace ONLY the clause `Create `.clavity/agy-marks/` first if it does not exist.` at the END of `:265`, with a single `head` invocation. 🔴 **`:265` OPENS with `the same `HEAD`.` - the tail of the sentence that starts on `:264`** (`Record the terminal state so the auto-fire hook ... does not re-inject the capstone for`). Replacing the whole line swallows that context. `:266` begins the `- **Path:**` bullet and must survive. **This row is the twin of row 8; scope both to the clause, not the line.** |
-| 6 | 14c | `agy-capstone/SKILL.md` | `:252-255`, `:179-181` *(pre-edit hints)* | replace both `skipped.log` write instructions with `log` invocations; delete both format literals. 🔴 **The `:252` literal closes MID-`:255`** - `:254` ends `...is `git rev-parse HEAD` or` and `:255` begins `the literal `none` if HEAD cannot resolve);`. Delete up to and including that `)`, and **keep the rest of `:255`** (`(c) write NO consulted marker, so the next trigger retries.`). Earlier versions named `:253` and then `:254`; both were short. **Bound each edit by the closing parenthesis of its literal, not by a line number.** **Apply the later site first.** |
+| 6 | 14c | `agy-capstone/SKILL.md` | `:252-255`, `:179-180` *(pre-edit hints)* | replace both `skipped.log` write instructions with `log` invocations; delete both format literals. 🔴 **The `:252` literal closes MID-`:255`** - `:254` ends `...is `git rev-parse HEAD` or` and `:255` begins `the literal `none` if HEAD cannot resolve);`. Delete up to and including that `)`, and **keep the rest of `:255`** (`(c) write NO consulted marker, so the next trigger retries.`). Earlier versions named `:253` and then `:254`; both were short. **Bound each edit by the closing parenthesis of its literal, not by a line number.** 🔴 **The two sites end DIFFERENTLY - do not assume one rule covers both.** The `:252` literal closes mid-`:255`; the `:179` literal closes on `:180`, and **`:181` is surviving context** (`This line does NOT write the completion marker and does NOT abort the capstone...`). An earlier version widened BOTH sites to +1 line on the strength of what was true of only one. **Apply the later site first.** |
 | 7 | 14c | `agy-capstone/SKILL.md` | `:174`, `:43`, `:41` | add `prepare` at each of the three sites, using **that site's own path**: `:174` and `:43` are SCRATCH sites (pass a concrete file inside the scratch directory, e.g. `scratch/<topic>/notes.md` - **never the directory itself**, see the trap note below); `:41` is the SEAM site (pass `seams/<topic>.md`). **Apply in the order given (174, then 43, then 41).** |
 | 8 | 14c | `agy-test-audit/SKILL.md` | `:221` *(pre-edit hint)* | replace ONLY the clause `Create `.clavity/agy-marks/` first if absent.` at the end of `:221`, with a single `head` invocation. 🔴 **Two boundaries here are easy to get wrong, and earlier drafts of this row got each of them wrong in turn.** `:222` begins the `- **Path:**` bullet, which must SURVIVE as documentation of what the script produces (exactly as row 1 keeps `agy-first`'s equivalent) - so do NOT delete into `:222`. And `:220`, plus the first clause of `:221`, is the WHEN-to-write context (`Record that the audit ran so the marker-gated reminder hook ... does not re-nudge for the same HEAD.`) which must ALSO survive - so do NOT widen back to `:220`. **The identical site in `agy-capstone` is row 5. When this row was corrected, that claim read "row 5 is correctly scoped" - and it was FALSE: row 5 had the same defect and has now been scoped to its clause too. If you are checking one of these rows, check the other in the same pass.** |
 | 9 | **14h** | `agy-test-audit/SKILL.md` | `:216-217` | replace the optional-mitigation sentence with the text in Step 2 below. |
@@ -2638,7 +2645,13 @@ done
 # text at line 1 - 1 is less than any anchor, so the guard says OK for text sitting above the
 # document's own title. The insertion point is an INTERVAL, so assert the interval: it must fall
 # AFTER the section it belongs to opens and BEFORE the line that must follow it.
-check_pos() {  # $1=file  $2=seat string  $3=opening anchor  $4=closing anchor  $5=label
+# 🔴 ARGUMENT ORDER IS LOAD-BEARING AND HAS BEEN MISREAD ONCE. `$2` is the INSERTED seat string, not
+# an anchor. A reviewer read `$2` as the opening anchor, concluded the check searched for text that
+# already exists between the anchors, and reported it as vacuously passing on an unedited file.
+# MEASURED: `Seat a panel, not a persona` and `Seat the audit, do not send one voice` each occur ZERO
+# times in the pre-edit files, so the check correctly reports MISPLACED before the edit. Do not
+# "fix" `$2` to an anchor string - that would remove the only thing proving the insertion happened.
+check_pos() {  # $1=file  $2=seat string (INSERTED text)  $3=opening anchor  $4=closing anchor  $5=label
   s=$(grep -n "$2" "$1" | head -n 1 | cut -d: -f1)
   o=$(grep -n "$3" "$1" | head -n 1 | cut -d: -f1)
   c=$(grep -n "$4" "$1" | head -n 1 | cut -d: -f1)
@@ -4940,7 +4953,11 @@ git diff --stat main...HEAD -- clavity-dotnet/plugin clavity-classic/plugin agy-
 
 Every unticked row is a task that was skipped. **`open-issues/SKILL.md` has no behavioural test either, so
 this checklist is its only guarantee** - EXCEPT for the 14h rows, which Task 7 Step 5 checks
-mechanically (exact counts, `old_removed`, placeholder residue, positional bounds).
+mechanically via `check_14h` (seat text present, `rotate seats` present, `old_removed` = 0) and
+`check_pos` (the inserted block sits between its two anchors). 🔴 **NOT the exact `agy-mark.sh` counts
+and NOT the placeholder-residue check** - both live inside `if [ "$TASK1" = "RESOLVED" ]`, so they are
+14c mechanisms that never run on the BLOCKED path. An earlier version of this line credited all four,
+which would have implied 14h coverage on a path where half of it does not execute.
 
 - [ ] **Step 2: Run every oracle BY NAME**
 
