@@ -112,6 +112,13 @@ across 29 suites.** Three obligations, and they apply to every fixture factory a
 3. **`git config core.autocrlf false` in EVERY factory.** `New-FixtureRepo` does this and the other three
    did not, leaving them at the mercy of whatever the host's global setting is - and line endings are
    precisely what several of these rows assert.
+   **VERIFIED across the whole plan:** there are FOUR git factories - `New-FixtureRepo` (`:422`),
+   `New-ReachingFixture` (`:1345`), `New-MarkFixture` (`:1600`) and `New-ParityRepo` (`:3765`) - each
+   using `git -C $d init`, and **all four set it**. There is a fifth factory, `New-BudgetFixture`
+   (`:4746`), which this contract does NOT reach: it creates plain directories and writes files with
+   `[IO.File]::WriteAllText`, initialises no repository, and therefore has no checkout behaviour to
+   pin. It still honours the fixture-registration contract at `:108` (`:4749`). Recorded because a
+   reviewer counting factories will find five and the contract names four.
 
 ```powershell
     BeforeAll {
