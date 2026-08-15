@@ -56,7 +56,8 @@ this skill reads as a floor but never edits.
   2. **Fold the renamed file's bullets into the pending set you are about to triage** - they are ordinary
      captures that merely took a detour - and **dedupe against the inbox**, since the same observation can
      legitimately appear in both if the operator later routed it by hand.
-  3. **Delete `agy-observations.processing.md` only after `curate-commit` exits 0**, on exactly the same
+  3. **Delete `<USERPROFILE or HOME>/.clavity/agy-observations.processing.md` only after `curate-commit`
+     exits 0** - the full prefix again, for the same reason as above - on exactly the same
      reasoning that puts the `## Pending` reset last. Deleting it before a failed publish loses the
      entries; leaving it after a successful one duplicates them on the next run.
 - The **runtime SEED floor**: the shared `%USERPROFILE%\.clavity\golden-header.seed.md` that the driver
