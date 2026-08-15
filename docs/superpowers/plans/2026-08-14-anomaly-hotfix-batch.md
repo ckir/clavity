@@ -4114,9 +4114,24 @@ try {
     # worktree too, and an unconditional Copy-Item throws under $ErrorActionPreference='Stop'. That would
     # CRASH the hook on exactly the path test-table row 10 says must PASS. An empty target tells the
     # generator to skip that half (see Task 10).
+    #
+    # SCAFFOLD FROM THE INDEX BLOBS, NEVER FROM THE WORKTREE. This copied
+    # `(Join-Path $RepoRoot $Rs)` - the worktree file - while step 5 compares the generator's output
+    # against `$stagedTmp`, the INDEX blob. The generator only replaces the LITERAL lines and carries
+    # everything else through, so any unstaged edit elsewhere in the .rs/.cs (an unrelated comment,
+    # say) lands in the generated output and is absent from the index blob. SequenceEqual then fails
+    # and the hook BLOCKS A CORRECT COMMIT, routing the developer to advice that tells them to
+    # `git add` the file - which sweeps their unstaged work into the commit.
+    #
+    # That is a false REJECT, and it violates obligation #2 of this task ("Compare INDEX to INDEX,
+    # never HEAD, and never the worktree") as well as this hook's own comment a few lines below:
+    # "rejecting a correct commit because of unstaged work teaches --no-verify".
+    #
+    # `$stagedTmp[$Rs]` exists exactly when `$rsIn` is true, so the guard above still does its job -
+    # the crash-on-missing-file reasoning in the comment above is unaffected.
     $genRs = ''; $genCs = ''
-    if ($rsIn) { $genRs = New-TempPath '.gen.rs'; Copy-Item -LiteralPath (Join-Path $RepoRoot $Rs) -Destination $genRs }
-    if ($csIn) { $genCs = New-TempPath '.gen.cs'; Copy-Item -LiteralPath (Join-Path $RepoRoot $Cs) -Destination $genCs }
+    if ($rsIn) { $genRs = New-TempPath '.gen.rs'; Copy-Item -LiteralPath $stagedTmp[$Rs] -Destination $genRs }
+    if ($csIn) { $genCs = New-TempPath '.gen.cs'; Copy-Item -LiteralPath $stagedTmp[$Cs] -Destination $genCs }
     & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'generate-cheatsheet-literals.ps1') `
         -CoreSource $coreTmp -RustTarget $genRs -CsTarget $genCs *> $null
     if ($LASTEXITCODE -ne 0) { Fail "the generator exited $LASTEXITCODE - parity was NOT established (a generator that failed to run is not evidence of parity)."; exit 1 }
