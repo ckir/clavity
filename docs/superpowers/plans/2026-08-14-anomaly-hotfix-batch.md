@@ -3029,13 +3029,23 @@ Describe 'check-cheatsheet-parity.ps1' {
         $cs = Join-Path $d $script:Cs
         [IO.File]::WriteAllText($cs, ([IO.File]::ReadAllText($cs) -replace 'Driving the agy peer', 'DIVERGED'))
         & git -C $d add -- $script:Cs
-        (Invoke-Parity $d).ExitCode | Should -Not -Be 0 -Because 'a blanket "any deletion skips parity" passes here while certifying a diverged pin'
+        $r = Invoke-Parity $d
+        $r.ExitCode | Should -Not -Be 0 -Because 'a blanket "any deletion skips parity" passes here while certifying a diverged pin'
+        # ASSERT WHICH BRANCH FAILED (panel R16). Exit-code-only cannot tell "failed on the surviving
+        # literal" from "crashed for an unrelated reason" - and a crash would satisfy the row while
+        # proving nothing about the per-path skip this row exists to pin.
+        $r.Text | Should -Match ([regex]::Escape($script:Cs))
     }
 
-    It 'row 11a - BOTH literals deleted, core.md untouched: PASSES' {
+    It 'row 11a - BOTH literals deleted, core.md untouched: PASSES, naming both' {
         $d = New-ParityRepo
         & git -C $d rm -q -- $script:Rs $script:Cs
-        (Invoke-Parity $d).ExitCode | Should -Be 0
+        $r = Invoke-Parity $d
+        $r.ExitCode | Should -Be 0
+        # Same reason as row 11: without the text, a hook that passed VACUOUSLY - or exited 0 before
+        # reaching the `$targets.Count -eq 0` branch at all - keeps this row green (panel R16).
+        $r.Text | Should -Match ([regex]::Escape($script:Rs))
+        $r.Text | Should -Match ([regex]::Escape($script:Cs))
     }
 
     It 'row 12 - a core.md byte a text pipeline would alter survives EXACTLY' {
@@ -4061,6 +4071,35 @@ Walk **every row** of the governed-artifacts table and confirm each file was act
 | `plugin/skills/agy-test-audit/SKILL.md` | 14c | both plugins | ☐ dotnet ☐ classic *(skip if BLOCKED)* |
 | `plugin/skills/open-issues/SKILL.md` | **14d** | both plugins | ☐ dotnet ☐ classic — **check the RIGHT thing:** under Task 1 = RESOLVED grep for `agy_shield`; under **BLOCKED** only Step 1b ships, so grep for `! -s` instead. **A `agy_shield` grep returns 0 under BLOCKED and would read as a skipped task.** |
 | `agy-autotrain/skills/agy-curate/SKILL.md` | 14e | single copy | ☐ |
+
+**And the NON-governed deliverables, which this checklist omitted until panel round 16.** The table above
+covers only the byte-identical plugin tree; **this one is the rest, and it is the ENUMERATION - count it
+if you need a number, and do not restate the total in prose.** The first draft of this paragraph said
+"four `scripts/` files and four test suites"; the scripts figure was wrong (there are two), which is
+precisely the running-total-in-prose defect the spec's own global rule 6 abandoned counts over, committed
+inside the fix for a completeness gap. The checklist's purpose is to detect a task that was simply NOT
+DONE, and it could not have detected a skipped Task 10, 11, 13 or 15:
+
+| deliverable | task | exists? | registered / indexed? |
+|---|---|---|---|
+| `scripts/generate-cheatsheet-literals.ps1` | 10 | ☐ | ☐ `scripts/README.md` |
+| `scripts/check-cheatsheet-parity.ps1` | 11 | ☐ | ☐ `scripts/README.md`, ☐ `lefthook.yml` block |
+| `scripts/tests/agy-shield-lib.Tests.ps1` | 3 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` |
+| `scripts/tests/agy-mark.Tests.ps1` | 6 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` |
+| `scripts/tests/generate-cheatsheet-literals.Tests.ps1` | 10 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` |
+| `scripts/tests/check-cheatsheet-parity.Tests.ps1` | 11 | ☐ | ☐ `test-scripts-slow`, ☐ `_partition.md` |
+| `clavity-dotnet/install/clavity-install.Tests.ps1` (register only) | 13 | n/a | ☐ `test-scripts-slow`, ☐ both CI `paths:`, ☐ both CI job steps |
+| `scripts/tests/agy-discipline-reaching.Tests.ps1` (MODIFIED, not created) | 5 | n/a | ☐ carries the three 14c rows |
+| `scripts/tests/check-injected-context.Tests.ps1` (MODIFIED) | 2, 14 | n/a | ☐ carries the 14a and 13a rows |
+| `scripts/tests/check-growth-budget.Tests.ps1` + `drain-knowledge.Tests.ps1` (MODIFIED) | 15 | n/a | ☐ carry the 13c rows |
+| `scripts/tests/check-curate-in-progress.Tests.ps1` (MODIFIED) | 11 | n/a | ☐ carries the M4 stub |
+| `scripts/tests/test-suite-registration.Tests.ps1` (MODIFIED) | 13 | n/a | ☐ carries the narrow pin |
+| the Task 1 measurement record | 1 | ☐ | - |
+
+**Two existing gates cover part of this and neither covers all of it** - `test-suite-registration.Tests.ps1`
+catches a suite that exists but is unregistered, and `scripts-readme-inventory.Tests.ps1` catches a script
+missing from the index. **Neither fires for a file that was never created at all**, which is exactly the
+"task skipped" case this checklist exists for.
 
 ```bash
 git diff --stat main...HEAD -- clavity-dotnet/plugin clavity-classic/plugin agy-autotrain/skills
