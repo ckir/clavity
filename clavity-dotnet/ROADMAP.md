@@ -1144,8 +1144,8 @@ by instruction.** ▶ **OPEN — promoted at the 2026-08-15 triage.**
 | skill | mandates seats? | evidence |
 |---|---|---|
 | `agy-first/SKILL.md` (123 lines) | **NO** | `:54-56` — "Default persona: bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic, API-contract-pedant)". Singular, and the three alternatives are ad-hoc, not palette seats. |
-| `agy-test-audit/SKILL.md` (231 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. |
-| `agy-capstone/SKILL.md` (289 lines) | **YES — not defective** | `:89` "Seat the proven adversarial-panel-review personas — Axiom Breaker … Smuggler, and the rest", `:92` seat those whose trigger the diff meets, `:103` rotate seats across rounds. |
+| `agy-test-audit/SKILL.md` (231 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. **The fix is NOT confined to `:216`:** that line sits in the "Stated limitation - false negatives" section at the foot of the file, so replacing it alone would bury a framing instruction in a footer. The seat instruction belongs where the consult is framed - **insert at `:59`, immediately after the `## The audit round` heading and before its numbered item 1** - and `:216-217` is then reworded to point at it. |
+| `agy-capstone/SKILL.md` (289 lines) | **YES — not defective** | `:89` reads, literally and in ASCII: `- **Seats (defect-class lenses).** Seat the proven adversarial-panel-review personas - Axiom Breaker`. `:92` seats those whose trigger the diff meets; `:103` rotates seats across rounds. **Quoted verbatim so it can be grepped:** an earlier version of this row rendered that line with an em-dash and an ellipsis, neither of which the file contains - it is ASCII-gated - so the "quote" matched nothing. |
 | `adversarial-panel-review/SKILL.md` (297 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
 
 **Blast radius: 4 files** — `agy-first` and `agy-test-audit` in `clavity-dotnet/plugin/skills/` and
@@ -1156,7 +1156,11 @@ by instruction.** ▶ **OPEN — promoted at the 2026-08-15 triage.**
 **twice**, and on the second occasion named it a defect requiring a fix. The driver was not ignoring
 `agy-first` — it was *complying* with it: `:54` says "Default persona", singular, so a single-voice
 consult is the instructed behaviour. A discipline whose text produces the failure its sibling discipline
-exists to prevent is a defect in the text. **Measured effect in the run that surfaced it:** a single-voice
+exists to prevent is a defect in the text. **Provenance, so a future reader can check rather than take this on trust:** the entry was promoted at
+the second 2026-08-15 triage in commit `90b275e`; the plan work and the capstone that hardened it run
+`90b275e..6adf80b` on branch `feature/injected-context-governance`, and every claim below is restated
+in those commit messages with the measurement that produced it. **Measured effect in the run that
+surfaced it:** a single-voice
 `agy-first` consult built three orderings on a collision that did not exist and stated two confident
 claims that measurement refuted; the seated round that followed produced six distinct findings and two
 substantive challenges to the driver's own measurements.
