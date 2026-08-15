@@ -703,7 +703,18 @@ Create `clavity-dotnet/plugin/hooks/agy-shield-lib.sh`. **Pure ASCII. LF line en
 _AS_CR=$(printf '\r')   # a literal CR, for the optional-trailing-CR shield match in A2.
 
 # Emit one line on stderr, at most once per (key, class). An empty key disables debouncing.
-# Class VALIDATION is NEVER debounced - a broken caller must be visible on every call.
+#
+# CLASS `validation` MEANS "THE OPERATOR MUST SEE THIS EVERY TIME", which is broader than "the caller is
+# broken" - and panel R11 caught the old comment here claiming the narrower rule while the code had
+# already outgrown it. Two situations qualify, and neither may be debounced:
+#   (a) a BROKEN CALLER - it is about to write private data with a bad argument, and a marker that
+#       silences the warning would let it keep doing so;
+#   (b) an IRREVERSIBLE CHANGE TO USER CONTENT - A2's mktemp fallback overrides a human's deliberate
+#       negation line. Its CAUSE is environmental, so the spec's three-class taxonomy would file it under
+#       ENVIRONMENT and debounce it; that is the wrong outcome, because the thing being reported is a
+#       destructive act on the operator's own file rather than a condition of the machine. This is a
+#       DELIBERATE, NARROW deviation from the spec's "ENVIRONMENT is debounced per key" rule, recorded
+#       here rather than smuggled in as a mislabel.
 _agy_shield_say() {
     _ass_class=$1
     _ass_key=$2
@@ -1065,7 +1076,10 @@ else
   # THE SAFE APPEND, not the shipped idiom - see Step 1b. Do not paste `[ -f ] || printf '%s\n' '*' >>`
   # here: round 1 measured that it concatenates onto a shield with no trailing newline, and round 2
   # caught that exact idiom being re-pasted into a fallback branch one task over.
-  mkdir -p "$R/.clavity" 2>/dev/null
+  # NO mkdir here: :69 above runs UNCONDITIONALLY and has already created the directory on every path.
+  # Panel R11 caught a copy of it inside this branch while the prose below argued that :69's copy is the
+  # one doing the work - the two disagreed, and a duplicate is exactly what a later reader deletes the
+  # wrong half of.
   # `! -s` covers MISSING and EMPTY together. Measured (panel R3): the `[ ! -f ] ... elif [ -s ]` form ran
   # neither branch for a zero-byte shield, leaving the 14d defect itself unfixed in the fallback.
   if [ ! -s "$R/.clavity/.gitignore" ]; then
