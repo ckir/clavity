@@ -1104,6 +1104,38 @@ batch:** the two dispositions are opposite edits to different files.
 batch, not here:** once the literals are generated, `SKILL.md:122-124`'s instruction to hand-edit both pins
 becomes wrong, so the batch must update it. That is tracked in the spec, not in this item.
 
+**§14g — the agy-observations inbox lives INSIDE the plugin tree, so it exists in N copies and both
+skills must be INSTRUCTED which one is live.** ▶ **OPEN — tracked debt, promoted at the 2026-08-15
+triage.**
+
+**Measured 2026-08-15:** the repo checkout copy held **30** pending entries and the INSTALLED copy **18**,
+with **ZERO overlap** — four capstone sessions' worth of real captures written to a copy nothing drains
+and nothing counts. They were committed to git, so they looked saved. Cause: `agy-learn` and `agy-curate`
+resolved the inbox as `../../knowledge/agy-observations.md`, correct only when the invoking copy IS the
+install; every checkout and worktree carries its own.
+
+**The instructional fix shipped** (`33851cf`..`9f6b394`) and this entry is what it did NOT fix. Its
+capstone ran **five rounds and never went green**, and every round found a defect inside the previous
+round's fix — including two fail-opens of mine: a `git rev-parse --is-inside-work-tree` test that measures
+an install nested in a git-managed HOME as a checkout (blocking captures outright), and a missing `git`
+exiting non-zero, which read as "installed tree" and routed writes INTO a checkout. **`agy-learn` grew
+77 → 183 lines (+138%) instructing around a path problem**, and that growth is the finding: the round-5
+scope seat and the driver independently concluded the machinery now costs more than the fix it substitutes
+for.
+
+**KNOWN OPEN HOLE, recorded in `agy-curate/SKILL.md` and deliberately not patched:** a crash between the
+staging rename and its delete strands that batch, because each run reads only its own uniquely-named
+processing file and never globs. Patching it adds machinery the architectural fix deletes.
+
+**The fix is architectural:** move the canonical inbox to `<USERPROFILE or HOME>/.clavity/agy-observations.md`
+— exactly where the golden-header files already live, for exactly this reason — so every copy resolves one
+path and no instruction is needed. **Blast radius:** both skills, the `${CLAUDE_PLUGIN_ROOT}` line in
+`agy-autotrain/hooks/agy-curate-nudge.sh` and its 244-line suite, the installer's `onlyifdoesntexist`
+seeding (`agy-autotrain.iss:54,60`), plus migrating the installed copy and the repo copy's 30 undrained
+entries. **Not urgent:** the installer excludes the inbox from the blanket copy and marks it
+`uninsneveruninstall`, so an update does not overwrite it and an uninstall does not remove it — a reviewer
+claimed the next update would destroy the backlog and the installer refutes that.
+
 ### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
 
 **Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`,
