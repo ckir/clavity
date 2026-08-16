@@ -135,8 +135,15 @@ agy_shield() {
     # Collapsing these into a single `[ -f ] || : >` condition puts `find` - a SUBPROCESS - on EVERY
     # test-file write, which is the hottest path this plugin has. Do not re-merge them." An unconditional
     # sweep here is that same anti-pattern one level over, and it lands in a hook registered with
-    # "timeout": 10 (hooks.json:56). So it runs ONLY when this session has not swept yet, keyed off the
-    # same marker directory the debounce uses - at most once per session, never on the hot path.
+    # "timeout": 10 (hooks.json:56). So it runs ONLY when this session has not swept yet - at most once per
+    # session, never on the hot path.
+    # THIS GATE DOES **NOT** SHARE THE DEBOUNCE'S DIRECTORY RESOLUTION, and the comment here used to claim
+    # it did (capstone R2). `_agy_shield_say` above walks "${TMPDIR:-/tmp}" then "$HOME/.clavity-tmp" and
+    # takes the first WRITABLE one; this line takes "${TMPDIR:-/tmp}" and nothing else. On a host where
+    # TMPDIR is unwritable the two therefore diverge: the debounce still works from the HOME fallback while
+    # this marker cannot be created, so the sweep never runs. That outcome is CORRECT and deliberate - the
+    # paragraph below says no marker means no sweep, and the sweep is housekeeping, never a guard - but the
+    # claim that both key off one directory was simply false, and a reader would have believed it.
     # THE GATE MUST LATCH BEFORE THE SWEEP RUNS, not merely be attempted. Panel R10: the first version
     # wrote the marker with 2>/dev/null and then swept unconditionally - so on an unwritable TMPDIR the
     # marker never appeared, the gate never latched, and `find` ran on EVERY call. That is precisely the

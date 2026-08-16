@@ -377,6 +377,30 @@ _m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
             $res.Out | Should -Match 'SWEPT_MARKER_PRESENT' -Because 'the sweep marker must latch, or the gate never closes'
         }
 
+        It 'the A2 sweep actually DELETES a stale temp, and spares a fresh one (capstone R2)' {
+            # THE ROW ABOVE ASSERTS THE GATE LATCHES; NOTHING ASSERTED THE SWEEP DOES ANY WORK.
+            # MEASURED: replacing the whole `find ... -delete` with `:` left the suite 35/0 green, so the
+            # deletion had no oracle at all - the gate was tested and the thing it gates was not.
+            #
+            # THE FRESH TEMP IS THE CONTROL AND IT IS NOT DECORATION. `-mtime +30` is the whole point:
+            # a sweep that deleted everything matching `.gitignore.tmp.*` would satisfy a
+            # deletion-only assertion while destroying a temp file another session is using RIGHT NOW.
+            $r = New-FixtureRepo -Shield "*`n"
+            $stale = Join-Path $r '.clavity/.gitignore.tmp.STALE'
+            $fresh = Join-Path $r '.clavity/.gitignore.tmp.FRESH'
+            [IO.File]::WriteAllText($stale, "x`n")
+            [IO.File]::WriteAllText($fresh, "x`n")
+            # -mtime +30 is measured against the file's modification time, so age the stale one past it.
+            (Get-Item -LiteralPath $stale).LastWriteTime = (Get-Date).AddDays(-40)
+
+            # A FRESH key, so the sweep gate has not latched yet for this "session" and the sweep runs.
+            $k = 'sweepwork-' + [guid]::NewGuid().ToString('N')
+            Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"" | Out-Null
+
+            (Test-Path -LiteralPath $stale) | Should -BeFalse -Because 'a temp older than the -mtime +30 window is exactly what the sweep exists to remove'
+            (Test-Path -LiteralPath $fresh) | Should -BeTrue  -Because 'a RECENT temp may belong to a concurrent session and must survive'
+        }
+
         It 'mktemp UNAVAILABLE: the directory is still protected, and it says so LOUDLY' {
             # Panel R10. Writing nothing here left NO bare * in the shield, so the whole DIRECTORY stayed
             # exposed while the helper returned 0 - a per-file concern suppressing a per-directory
