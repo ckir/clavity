@@ -41,6 +41,26 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each round
    `.clavity/seams/<topic>.md` and send the peer the PATH; let it read the committed diff itself. Never
    consult it on a pasted summary of your own reading. Any measure-and-reproduce framing MUST name a
    scratch dir (`.clavity/scratch/<topic>/`) for the peer to work in, so it never writes to cwd.
+   Prepare BOTH through the shipped writer before writing into them. Each takes a concrete FILE path,
+   never a directory - passing `scratch/<topic>/` would create `.clavity/scratch` and not
+   `.clavity/scratch/<topic>`, and the next write would fail mid-run:
+
+```bash
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "seams/<topic>.md"; then
+  # ABORT the discipline and say why. A skill that ignores this exit code converts a clean refusal
+  # into a mid-run crash on the next write.
+  echo "agy-capstone: ABORTING - could not prepare a shielded .clavity/ directory for seams/<topic>.md." >&2
+  exit 1
+fi
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "scratch/<topic>/notes.md"; then
+  echo "agy-capstone: ABORTING - could not prepare a shielded .clavity/ directory for scratch/<topic>/notes.md." >&2
+  exit 1
+fi
+```
+
+`<BASE>` is this skill's own base directory, as the harness supplies it at invocation time. It is NOT
+`$0` and NOT `${BASH_SOURCE[0]}`: measured, in an agent-run shell snippet those give `/usr/bin` and the
+empty string, so a path built from them resolves nowhere.
 5. **Diff after** - re-check `git status` AND `git rev-parse HEAD` (plus the reflog tip) against the
    before-snapshot. If the working tree changed, OR HEAD/history moved (a peer `git reset` /
    `git commit --amend` leaves `git status` clean yet mutates the very range under review), the peer
@@ -171,13 +191,31 @@ The peer must **never run the test suite** - execution is driver-side, once.
   measurement is what makes a fold safe.
 
 **Unmeasurable findings.** If a finding can be neither run nor resolved by reading the cited line, FIRST
-attempt a targeted repro/probe in the scratch dir (`.clavity/scratch/<topic>/`) to make it measurable. If
+attempt a targeted repro/probe in the scratch dir (`.clavity/scratch/<topic>/`) to make it measurable.
+Prepare that directory through the shipped writer first, passing a concrete FILE inside it - never the
+directory itself, which would create `.clavity/scratch` and not `.clavity/scratch/<topic>`:
+
+```bash
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "scratch/<topic>/notes.md"; then
+  # ABORT the discipline and say why. A skill that ignores this exit code converts a clean refusal
+  # into a mid-run crash on the next write.
+  echo "agy-capstone: ABORTING - could not prepare a shielded .clavity/ directory for scratch/<topic>/notes.md." >&2
+  exit 1
+fi
+```
+
+If
 it is still genuinely unmeasurable, surface it to your human as **UNVERIFIED** - never silently fold it
 as verified, never silently drop it. A material UNVERIFIED finding blocks a clean `[VERDICT: ALIGNED]`
 until the human rules. The ruling is a **per-finding disposition, distinct from the global waiver below**:
-either (a) direct a fix (folded next round), or (b) explicitly ACCEPT the risk, appended as a durable
-audit line to `.clavity/agy-marks/skipped.log` (the same audit log the skip and waiver paths use; create
-`.clavity/agy-marks/` first if absent): `<iso-8601>  agy-capstone  UNVERIFIED-ACCEPTED  HEAD=<sha>  <finding>`.
+either (a) direct a fix (folded next round), or (b) explicitly ACCEPT the risk, recorded as a durable
+audit line through the shipped marker writer - the same audit log the skip and waiver paths use. The
+script owns the timestamp and the line format; pass the finding as trailing text:
+
+```bash
+bash "<BASE>/../../hooks/agy-mark.sh" log "agy-capstone" "UNVERIFIED-ACCEPTED" "$(git rev-parse HEAD)" "<finding>"
+```
+
 This line does NOT write the completion marker and does NOT abort the capstone - the loop continues and
 can still reach ALIGNED.
 
@@ -248,11 +286,15 @@ GREEN is reached only when the human confirms the clean terminal round.
 ## If the peer is unreachable
 No live peer / no auth / the idle-check never clears: emit `[VERDICT: SKIPPED-UNREACHABLE]` and
 **proceed** - never hang, never hard-block "done". Make the skip loud and durable: (a) tell your human
-in-chat that the completion **gate was skipped** and name the range it did not review; (b) create
-`.clavity/agy-marks/` if absent (gitignored runtime state - a bare `>>` append would fail on a fresh
-clone), then append one durable line to `.clavity/agy-marks/skipped.log`
-(`<iso-8601>  agy-capstone  SKIPPED-UNREACHABLE  HEAD=<sha>`, where `<sha>` is `git rev-parse HEAD` or
-the literal `none` if HEAD cannot resolve); (c) write NO consulted marker, so the next trigger retries.
+in-chat that the completion **gate was skipped** and name the range it did not review; (b) append one
+durable audit line through the shipped marker writer, which owns the timestamp and the line format and
+creates the directory it writes into:
+
+```bash
+bash "<BASE>/../../hooks/agy-mark.sh" log "agy-capstone" "SKIPPED-UNREACHABLE" "$(git rev-parse HEAD)"
+```
+
+(c) write NO consulted marker, so the next trigger retries.
 
 **A review FAILURE is not an unreachable peer.** `[VERDICT: SKIPPED-UNREACHABLE]` is reserved for a
 genuine connectivity failure. A review that fails because the diff is **too large to review** (context /
@@ -262,7 +304,13 @@ review, or the human decides); never auto-proceed.
 
 ## Debounce marker (hook contract - written here, read by the auto-fire hook)
 Record the terminal state so the auto-fire hook (shipped separately) does not re-inject the capstone for
-the same `HEAD`. Create `.clavity/agy-marks/` first if it does not exist.
+the same `HEAD`. Write the marker through the shipped writer, never by hand: it asserts the `.clavity/`
+shield BEFORE the write and creates the directory it writes into.
+
+```bash
+bash "<BASE>/../../hooks/agy-mark.sh" head "agy-capstone" "$(git rev-parse HEAD)"
+```
+
 - **Path:** `.clavity/agy-marks/agy-capstone.head` - a single discipline-keyed marker, no `<plugin-id>`
   prefix (Option S, as for agy-first: the byte-identical body cannot carry a per-plugin literal and the
   two drivers are mutually exclusive). See `docs/agy-disciplines-marker-contract.md`.
