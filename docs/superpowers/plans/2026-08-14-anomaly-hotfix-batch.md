@@ -5515,6 +5515,30 @@ PRODUCE a violation.
     }
 ```
 
+> 🔴 **EXECUTION AMENDMENT 2026-08-16 - THE FIXTURE ABOVE COULD NOT RUN.** It created only `$Fx/seed/`
+> and invoked the gate, which THREW before reaching any violation. The gate requires four things this
+> fixture omitted, every one of them present in the ~17 sibling Contexts in the same file:
+> `scripts/injected-context-ignore.txt` (`check-injected-context.ps1:200,204`),
+> `scripts/injected-context-exemptions.json` (`:773-774`), **every** entry of `$script:DomainRoots`
+> existing as a directory (`:254`), and a dot-source of the script so `$script:DomainRoots` is populated
+> at all - without which the Context passes only when some *earlier, unrelated* Context happened to
+> dot-source first, and fails the moment it is run filtered or in isolation.
+>
+> **The shipped Context now opens with `. $script:Script -RepoRoot $script:RepoRoot` and builds the full
+> scaffolding.** No assertion, seeded byte, or expected message was changed.
+>
+> ✅ **THE VACUITY GUARD IS REAL - VERIFIED, and the verification is the part worth copying.** Replacing
+> the seeded em-dash with pure ASCII makes `the setup actually produced a violation` go **RED**
+> (`Passed: 0, Failed: 1`). Measured directly on the gate: seeded -> exit 1 and the output contains
+> `violation(s)`; pure ASCII -> exit 0 and it does not.
+>
+> ⚠ **Two earlier attempts at that same mutation reported nothing and left the row GREEN - because the
+> mutation NEVER APPLIED.** Both used a PowerShell `.Replace()` that silently no-opped, and neither
+> asserted the file had changed. **A mutation control must verify the FILE, not trust the mutating
+> command's own report** - otherwise "the row stayed green" reads as a coverage gap when the truth is
+> that nothing was mutated. This plan already learned that rule at Task 3 and it was broken twice more
+> here.
+
 - [ ] **Step 2: Run it to verify it FAILS**
 
 ```bash
@@ -5522,7 +5546,8 @@ pwsh -c "Invoke-Pester scripts/tests/check-injected-context.Tests.ps1 -Output De
 ```
 
 Expected: `does NOT repeat the old false claim` and `names the TEST SUITE` FAIL; the vacuity guard and the
-exit-code row PASS.
+exit-code row PASS. **MEASURED 2026-08-16: 151 passed / 2 failed of 153 discovered before the fix; 153/0
+after.**
 
 - [ ] **Step 3: Replace the message at `:932`**
 
