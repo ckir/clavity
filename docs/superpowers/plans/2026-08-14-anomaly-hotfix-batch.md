@@ -77,6 +77,23 @@ So this plan names the **RECIPE**, never the line, for every `justfile` registra
 binds anything else this plan edits more than once. **Re-derive a line number at the moment you use it;
 a citation that was true when the plan was written is a claim about a file the plan is actively changing.**
 
+🔴 **AND THE RULE STOPPED ONE LEVEL SHORT - it never covered the plan's citations to ITSELF (capstone
+R50).** That omission mattered more than the case it did cover, because **this plan is the most heavily
+edited file in the batch**: twenty-six capstone rounds have inserted into it, and every insertion moves
+every line below it. Measured at R50: the FIXTURE HYGIENE obligation carried six `:NNN` self-citations
+and **not one resolved** - one pointed at a blank line - and two more, written one round earlier, were
+invalidated by an insertion made in **the same commit that wrote them**.
+
+**The rule, extended:** a `:NNN` pointing at a line of THIS PLAN is forbidden. Name the symbol
+(`function New-ParityRepo`, `Task 13 Step 8`, `the xargs git add -- pipeline`) - a name survives every
+edit, a number survives none. A bare `:NNN` naming a line of a file the plan EDITS remains legal, because
+those are labelled pre-edit hints and Task 7 Step 0 re-proves them by anchor before any edit runs; nothing
+re-proves a self-citation.
+
+**Why this class outranks its size.** The stale block was headed *"VERIFIED across the whole plan"*. **A
+verification claim whose every pointer is wrong reads as more trustworthy than one with no pointers at
+all** - the citations are what make a reader stop checking.
+
 ### Stated toolchain assumptions (panel R2, Dependency Cynic)
 
 The shipped helper calls `grep`, `find`, `mkdir`, `mv`, `mktemp` and `git`. **These are pre-existing
@@ -99,7 +116,7 @@ inert.
 
 **The section above stops at the runtime code, and that scoping was the defect.** Every verification step
 in this plan is itself a program with dependencies, and nothing declared them. The instance that exposed
-it: Task 13 Step 8 (`:4969-4979`) exists BECAUSE an earlier round ruled that "read it carefully" is not an
+it: Task 13 Step 8 exists BECAUSE an earlier round ruled that "read it carefully" is not an
 oracle - and the oracle it introduced calls `yq` four times, while **`yq` is absent from
 `.claude/recommended-tools.json`**, which declares 14 tools down to `awk`. The repo runs a SessionStart
 hook (`recommended-tooling-check.sh`) whose whole job is to surface a missing declared tool; an undeclared
@@ -111,7 +128,7 @@ one is invisible to it. `yq` being on the author's PATH is a property of that ma
 |---|---|---|
 | `yq` | Task 13 Step 8's four YAML queries | query (1) prints no `yq parse: OK` and (2)-(4) print nothing. Loud to a reader, but **`yq` MUST be added to `.claude/recommended-tools.json`** so the SessionStart check surfaces it before Task 13 rather than during it |
 | `tr` | Task 7 Step 5's `flat()`, and therefore `count()` | `flat` yields empty, `count` returns 0. The **2** `absent` rows then pass VACUOUSLY - a real fail-open. **It cannot silently certify, because the same absence drives all 505 `once`/`exactly` rows to 0 and reds them.** Recorded because the fail-open is real even though it is unreachable in isolation |
-| `wc`, `cut`, `head`, `xargs`, `cmp` | Step 5's `count`/`lineof`, the staging pipeline at `:3062`, the byte measurements in Task 9 | each yields empty or non-zero into a comparison. No step depends on one of these ALONE for a green verdict |
+| `wc`, `cut`, `head`, `xargs`, `cmp` | Step 5's `count`/`lineof`, its `xargs git add --` staging pipeline, the byte measurements in Task 9 | each yields empty or non-zero into a comparison. No step depends on one of these ALONE for a green verdict |
 | `pwsh`, `just`, `dotnet`, `cargo`, `bash`, `git` | the gates throughout | already declared, or baseline for this repo |
 
 **Host git config.** Task 9 and several measured byte counts reason about `core.autocrlf`, which is `true`
@@ -124,10 +141,17 @@ fix".** Stated rather than checked, because the check would gate on a setting th
 
 ### FIXTURE HYGIENE - binds every new suite in this plan (panel R13)
 
-Four of this plan's suites create throwaway git repos under `[IO.Path]::GetTempPath()` with
-GUID-derived names: `New-FixtureRepo` (Task 3), `New-ReachingFixture` (Task 5), `New-MarkFixture`
-(Task 6) and `New-BudgetFixture` (Task 15). **As first drafted, none of them removed anything**, so every
-row would have left a git repository behind permanently.
+Five of this plan's suites create throwaway fixtures under `[IO.Path]::GetTempPath()` with GUID-derived
+names. **Four are git repos** - `New-FixtureRepo` (Task 3), `New-ReachingFixture` (Task 5),
+`New-MarkFixture` (Task 6) and `New-ParityRepo` (Task 11) - and **the fifth, `New-BudgetFixture`
+(Task 15), is not**: it creates plain directories and initialises no repository. **As first drafted, none
+of them removed anything**, so every row would have left a fixture behind permanently.
+
+> **This paragraph used to list `New-BudgetFixture` as one of the four git factories and omit
+> `New-ParityRepo` entirely, while the paragraph six lines below correctly said `New-BudgetFixture`
+> "initialises no repository" (capstone R50). Two halves of one section, each internally coherent,
+> contradicting each other about which factories exist** - the failure mode this plan already names for
+> cross-task dependencies, occurring inside a single section.
 
 **This is not hypothetical in this repository: the identical pattern has already leaked 321 directories
 across 29 suites.** Three obligations, and they apply to every fixture factory above:
@@ -139,13 +163,21 @@ across 29 suites.** Three obligations, and they apply to every fixture factory a
 3. **`git config core.autocrlf false` in EVERY factory.** `New-FixtureRepo` does this and the other three
    did not, leaving them at the mercy of whatever the host's global setting is - and line endings are
    precisely what several of these rows assert.
-   **VERIFIED across the whole plan:** there are FOUR git factories - `New-FixtureRepo` (`:422`),
-   `New-ReachingFixture` (`:1345`), `New-MarkFixture` (`:1600`) and `New-ParityRepo` (`:3765`) - each
-   using `git -C $d init`, and **all four set it**. There is a fifth factory, `New-BudgetFixture`
-   (`:4746`), which this contract does NOT reach: it creates plain directories and writes files with
-   `[IO.File]::WriteAllText`, initialises no repository, and therefore has no checkout behaviour to
-   pin. It still honours the fixture-registration contract at `:108` (`:4749`). Recorded because a
-   reviewer counting factories will find five and the contract names four.
+   **VERIFIED across the whole plan** (locate each by `function <name>`, NEVER by line number - see
+   below): the four git factories `New-FixtureRepo`, `New-ReachingFixture`, `New-MarkFixture` and
+   `New-ParityRepo` each use `git -C $d init`, and **all four set it**. The fifth factory,
+   `New-BudgetFixture`, is NOT reached by this obligation: it creates plain directories and writes files
+   with `[IO.File]::WriteAllText`, initialises no repository, and therefore has no checkout behaviour to
+   pin. It still honours the fixture-registration obligation (1) above. Recorded because a reviewer
+   counting factories will find five where this obligation names four.
+
+   > 🔴 **This paragraph carried SIX line citations - `:422`, `:1345`, `:1600`, `:3765`, `:4746` and
+   > `:108` - and at capstone R50 NOT ONE of them resolved; `:1345` was a BLANK LINE.** They were already
+   > stale by up to 439 lines at `72ed73c`, before that round's edits, so this is drift accumulated over
+   > the plan's whole life and not a single bad write. **The words "VERIFIED across the whole plan" sat
+   > directly on top of them**, which is the worst form of the defect: a verification claim whose every
+   > pointer is wrong reads as MORE trustworthy than one with no pointers at all. They are replaced by
+   > symbol names, which do not drift.
 
 ```powershell
     BeforeAll {
@@ -1171,13 +1203,14 @@ suite green, that branch is untested regardless of how many rows exist.
 > **Why row 3 says (a) ONLY, and why no single mutation here can redden BOTH (capstone R49).** The
 > earlier wording claimed both, and it was theatre. Delete the `elif` and control does not stop or write
 > nothing - it **falls through to the append branch**, which is behaviourally identical to row 1 of this
-> same table. So `*` still lands in the shield: row (b) (`:573-577`, another file in the directory MUST
-> be ignored, `check-ignore` exit **0**) stays GREEN, while row (a) (`:567-570`, the named file must
-> still NOT be ignored, exit **1**) reddens because a trailing `*` inverts the negation.
+> same table. So `*` still lands in the shield: row **(b) the DIRECTORY is protected** (another file in
+> the directory MUST be ignored, `check-ignore` exit **0**) stays GREEN, while row **(a) the human INTENT
+> survives** (the named file must still NOT be ignored, exit **1**) reddens because a trailing `*`
+> inverts the negation.
 >
-> **The two rows encode opposite failure modes and the table's own first two entries prove it** - the
-> comment at `:568` blames "the blind-append version" for (a), and `:574` blames "the write-nothing
-> version" for (b). Append breaks (a) and satisfies (b); writing nothing breaks (b) and satisfies (a).
+> **The two rows encode opposite failure modes and the table's own first two entries prove it** - row
+> (a)'s in-test comment blames "the blind-append version", row (b)'s blames "the write-nothing
+> version". Append breaks (a) and satisfies (b); writing nothing breaks (b) and satisfies (a).
 > **Deleting the whole A2 block reddens (b) alone** (nothing is written, so the directory is exposed
 > while the negation survives). There is no mutation that reddens both, so a control claiming one
 > overstated what this suite pins. **A mutation entry that duplicates another entry's effect while
@@ -4954,10 +4987,11 @@ Run this in the BACKGROUND. When it finishes, read the log:
 grep -E "Tests Passed:|Tests completed" "${TMPDIR:-/tmp}/slow-run.log"
 ```
 
-> **`${TMPDIR:-/tmp}`, not a bare `/tmp` - and this plan already knew why.** The comment at `:748`
-> records the MEASURED finding that a bare `/tmp` resolves only because "Git Bash happens to mount /tmp
-> onto that same directory on this box", and calls that a coincidence. The shipped helper honours it
-> (`:757`, `:924` and `:1012` all write `${TMPDIR:-/tmp}`). Three of this plan's OWN verification steps
+> **`${TMPDIR:-/tmp}`, not a bare `/tmp` - and this plan already knew why.** The Task 3 suite's own
+> comment records the MEASURED finding that a bare `/tmp` resolves only because "Git Bash happens to
+> mount /tmp onto that same directory on this box", and calls that a coincidence. The shipped helper
+> honours it - `_m`, `_ass_cand` and `_as_sweep` all write `${TMPDIR:-/tmp}`. Three of this plan's OWN
+> verification steps
 > hardcoded `/tmp` anyway. **The knowledge was already in the file, one section away from the code that
 > ignored it** - the recurring shape this review keeps finding.
 
