@@ -3600,6 +3600,28 @@ Verified:
 **A grep shaped like `:991`'s wording ("seven hooks") misses `:988` ("the existing seven").** Global rule
 4: sweep the FACT in several wordings, not the line.
 
+> 🔴 **EXECUTION AMENDMENT 2026-08-16 - THERE WERE FOUR SITES, NOT THREE, AND M5 IS ITSELF THE PRODUCT
+> OF THE RULE IT BROKE.** Step 1's sweep found **`:983`**: *"7 hooks under `clavity-dotnet/plugin/hooks/`
+> reference `.clavity/` with a write construct; **0** contain `clavity/.gitignore`."* The corrected
+> heading says FIVE artifacts, ONE hook and FOUR skills - so leaving `:983` would have put a direct
+> contradiction two lines below the correction, in the same paragraph.
+>
+> **`:984` was a fifth casualty of the same edit** - *"The only place that asserts the shield is
+> `plugin/skills/open-issues/SKILL.md:79`"* - which the replacement block already states more precisely
+> (it lists that site and marks it weak, as §14d). Replacing only the heading sentence would have left
+> the paragraph asserting both.
+>
+> **So Step 2's replacement span is the heading sentence THROUGH `...both lines are needed).`**, keeping
+> `On an end-user repository whose .gitignore...` onward. Applied that way and verified: the only
+> surviving `seven` hits are `:761`/`:770` (*"seven axes"* of VCS state, unrelated) and the `7 shipped
+> hooks` inside the new correction narrative, which is the OLD claim being quoted.
+>
+> 🔴 **THE LESSON, and it is uncomfortable: M5 exists BECAUSE a phrase-shaped grep misses a paraphrase,
+> and M5 still undercounted by one.** Stating "the fact lives at N sites" is itself a running total in
+> prose - the defect class this plan names in its own global rule 6. **Do not carry a site COUNT; carry
+> the sweep COMMAND and run it.** Step 1 already did the right thing by telling the executor to STOP on
+> an unlisted hit; that instruction is what caught this.
+
 - [ ] **Step 1: Sweep for every wording BEFORE editing**
 
 ```bash
