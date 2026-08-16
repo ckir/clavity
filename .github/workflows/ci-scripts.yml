@@ -24,14 +24,27 @@ name: ci-scripts
 # outcome available - the assertion reds on a developer's machine and the same edit merges with a green
 # check, because no job ever ran.
 #
-# Two such files sit outside `scripts/**` today and are listed for that reason, not as decoration:
+# FOUR such files sit outside `scripts/**` today and are listed for that reason, not as decoration:
 #   - `lefthook.yml`, because the suite asserts the pre-commit wiring lives there (block present, glob
 #     set equal to the guard's own pin list, no conditional key).
 #   - `agy-autotrain/skills/agy-curate/SKILL.md`, because the suite asserts the marker path that skill
 #     ARMS is the one the guard READS, and that its Step Zero section still exists.
-# The second was MISSED when the first was added, in the very commit that added the row reading it.
-# Adding the whole `agy-autotrain/**` tree instead was rejected: it would fire this workflow on every
-# knowledge-inbox capture.
+#   - `justfile`, because registration is an EXPLICIT LIST there, not a glob: test-suite-registration
+#     reads the REAL repo justfile and reds on a suite in neither gate, a recipe naming a file that does
+#     not exist, or a suite in both halves; assertion-strength-reminder asserts its own fast-suite entry.
+#   - `clavity-dotnet/install/**`, because test-suite-registration pins `clavity-install.Tests.ps1` by
+#     PATH - it asserts both that a recipe names it AND that the file is still there (the row's two
+#     halves catch deletion and rename respectively).
+# `agy-autotrain/skills/agy-curate/SKILL.md` was MISSED when `lefthook.yml` was added, in the very commit
+# that added the row reading it. Adding the whole `agy-autotrain/**` tree instead was rejected: it would
+# fire this workflow on every knowledge-inbox capture.
+#
+# THE REMAINING NON-`scripts/**` ENTRIES ARE HERE FOR A DIFFERENT REASON and are NOT in the asserted set:
+# `installer/_shared/**` and this workflow file itself. compute-release's rows build their own throwaway
+# fixtures rather than reading the real shared installer tree, so that entry gates a product INPUT the
+# suite reasons about, not a file it asserts against; the workflow lists itself so an edit to the filter
+# re-runs the job the filter controls. Keep the two groups distinct - conflating them is what makes the
+# next person think a newly-asserted file is already covered.
 #
 # MOVING one of these files is covered regardless of this filter: the suite's own Test-Path reds the
 # moment the file is not where the guard expects it. Whether the filter ALSO fires is unestablished -
