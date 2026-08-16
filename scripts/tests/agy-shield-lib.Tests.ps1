@@ -18,6 +18,19 @@ Describe 'agy-shield-lib.sh' {
         $script:Lib = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-shield-lib.sh'
         Test-Path -LiteralPath $script:Lib | Should -BeTrue -Because 'the helper must exist for any row here to mean anything'
 
+        # PIN GIT BASH EXPLICITLY - bare `bash` is NOT safe here, and this suite shipped with it.
+        # BashHookHelpers.ps1 documents why: `Get-Command bash` is NON-DETERMINISTIC, and on this host it
+        # depends on WHICH PARENT PROCESS launched pwsh. MEASURED with the same probe both ways:
+        #   launched from one shell  -> Git\usr\bin\bash.exe first; bare `bash` runs a Windows path, exit 0
+        #   launched from another    -> C:\WINDOWS\system32\bash.exe first (the WSL stub); exit 127,
+        #                               "/bin/bash: C:/...: No such file or directory"
+        # The error PREFIX is the tell: `/usr/bin/bash:` is Git Bash, `/bin/bash:` is WSL. Under the WSL
+        # stub 28 of this suite's 34 rows failed - a FALSE RED that says nothing about the helper.
+        # Every other bash-driving suite in scripts/tests already routes through Get-GitBashOrThrow;
+        # this one did not, which made it the outlier rather than the precedent.
+        . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+        $script:Bash = Get-GitBashOrThrow
+
         # Run a snippet with the helper sourced, inside a fixture repo. Returns an object carrying
         # stdout, stderr and the exit code SEPARATELY - the contract is about stderr specifically,
         # so a merged stream cannot test it.
@@ -52,7 +65,7 @@ Describe 'agy-shield-lib.sh' {
             $prev = @{}
             foreach ($k in $Env.Keys) { $prev[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $Env[$k]) }
             try {
-                $p = Start-Process -FilePath 'bash' -ArgumentList @($sf) -WorkingDirectory $Root `
+                $p = Start-Process -FilePath $script:Bash -ArgumentList @($sf) -WorkingDirectory $Root `
                         -RedirectStandardOutput $outF -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
                 [pscustomobject]@{
                     ExitCode = $p.ExitCode

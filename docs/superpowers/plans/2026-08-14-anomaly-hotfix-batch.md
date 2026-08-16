@@ -1707,22 +1707,35 @@ nothing and would pass while asserting nothing.
 > same file** already route through it. The block above did not. As shipped, `Invoke-Reaching` now
 > resolves the shell through `Get-GitBashOrThrow` and the FALLBACK row does the same.
 >
-> ⚠ **THE EXECUTOR'S DIAGNOSIS DID NOT REPRODUCE, AND THE RECORD SAYS SO.** It reported that bare `bash`
-> resolves to the System32 WSL stub *ahead of* Git Bash here and fails silently. **MEASURED with passing
-> and failing controls: `Get-Command bash -All` returns `C:\Program Files\Git\usr\bin\bash.exe` FIRST;
-> bare `& bash` ran a forward-slash Windows path at exit 0 (`RAN_OK`), all three candidate binaries
-> worked, and a missing-file control correctly returned 127.** So the change is right for the reason the
-> HELPER gives - machine-to-machine non-determinism - and NOT for the reason that was reported. Recorded
-> so nobody later "fixes" a failure mode that does not exist on this host.
+> 🔴 **THE EXECUTOR WAS RIGHT AND MY FIRST REFUTATION OF IT WAS WRONG - CORRECTED 2026-08-16.** I ran a
+> controlled probe, saw bare `& bash` succeed, and recorded that its diagnosis "did not reproduce". **I
+> had measured in the wrong environment.** `bash` resolution on this host depends on **WHICH PARENT
+> PROCESS LAUNCHED `pwsh`**, and the two shells available here order `PATH` differently. The IDENTICAL
+> probe, both ways:
+>
+> | | one shell | the other |
+> |---|---|---|
+> | `Get-Command bash -All` first hit | `Git\usr\bin\bash.exe` | **`C:\WINDOWS\system32\bash.exe`** |
+> | bare `& bash` on a Windows path | exit 0, `RAN_OK` | **exit 127** |
+> | error prefix | `/usr/bin/bash:` (Git Bash) | `/bin/bash:` (WSL) |
+>
+> **`Git\bin\bash.exe` and `Git\usr\bin\bash.exe` succeeded in BOTH.** So bare `bash` is genuinely
+> unsafe, the executor's mechanism was correct, and `Get-GitBashOrThrow` is required rather than merely
+> tidy. **The error PREFIX is the cheap discriminator: `/usr/bin/bash:` is Git Bash, `/bin/bash:` is WSL.**
+>
+> 🔴 **THE METHOD LESSON, which outranks the fix: A CONTROL RUN IN THE WRONG ENVIRONMENT IS NOT A
+> CONTROL.** Both observations were true; they disagreed because the harness differed, not because either
+> was mistaken. **When refuting a report about tool resolution, reproduce it through the SAME invocation
+> path the reporter used** - otherwise a passing control certifies the environment you happened to pick.
 >
 > **The rows are proven non-vacuous independently:** all four Step 6 mutation controls reddened, which a
 > row whose hook never executed could not do.
 >
-> ⚠ **SIBLING GAP, CAPTURED NOT FIXED:** Task 3's `agy-shield-lib.Tests.ps1` still uses bare
-> `Start-Process -FilePath 'bash'`, so this batch now ships two new suites that resolve bash two
-> different ways. Latent, not live. Captured in `.clavity/local-anomalies.md` for triage rather than
-> re-opening a committed task mid-batch - **but Law 3 (sweep the FACT, not the instance) argues for
-> harmonising them, and that is an owner call.**
+> ✅ **THE SIBLING WAS SWEPT, NOT DEFERRED.** Task 3's `agy-shield-lib.Tests.ps1` shipped with bare
+> `Start-Process -FilePath 'bash'` and **28 of its 34 rows FAIL under the WSL-first path** - a false red
+> that says nothing about the helper. It now pins `Get-GitBashOrThrow` too. **Verified with a genuine
+> two-environment control: 34/34 under BOTH invocation paths** (363,87s and 340,25s). Law 3 applied
+> rather than logged.
 
 - [ ] **Step 2: Run it to verify it FAILS**
 
