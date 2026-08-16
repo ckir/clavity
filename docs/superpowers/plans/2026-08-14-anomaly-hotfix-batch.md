@@ -388,9 +388,13 @@ it.** The suite carries a set-comparison row - locate it by its title, `the prun
 list - a new segment cannot arrive untested` - added by capstone round 10 for the exact purpose of
 failing when *"ADDING a segment shipped an untested prune rule and the suite stayed green"*. It holds a
 **hardcoded `$covered` array mirroring the hardcoded `-ForEach` array** of the prune row above it (locate
-that by its title, `prunes a DIRECTORY named <Segment>`), and asserts every live `$script:PrunedSegments`
-entry appears in it. Neither array can be derived from the live list, because Pester evaluates `-ForEach`
-at DISCOVERY time, before `BeforeAll` dot-sources the script.
+that by its title, `PRUNES <Segment> - every segment in the list is actually load-bearing`), and asserts
+every live `$script:PrunedSegments` entry appears in it. Neither array can be derived from the live list,
+because Pester evaluates `-ForEach` at DISCOVERY time, before `BeforeAll` dot-sources the script.
+
+⚠ **Do NOT confuse that row with the similarly-named `prunes a DIRECTORY named <seg> but not a FILE named
+<seg>`, whose `-ForEach` carries only `dist`, `bin` and `target` and is NOT what `$covered` mirrors.** The
+first draft of this step named that row by mistake; the mirror is the 14-entry `Segment` array.
 
 **Measured both directions at `9a0f627`, before any edit:** with today's list `uncovered` is `[]` and the
 row passes; with `.clavity` appended `uncovered` is `[.clavity]` and the row FAILS. The guard is working
