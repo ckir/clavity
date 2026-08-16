@@ -177,11 +177,14 @@ runtime hard cap is separate and much higher - `clavity-classic/src/driver_cheat
 `MAX_BYTES = 16 * 1024`, and a runtime file over it degrades to the compiled-in baseline floor with a
 warning on stderr (`clavity-classic/src/driver_cheatsheet.rs:28-29`). That budget exists so drift is caught long before it reaches that cliff. **Do not restate the number here when it changes - the script's default is the single source of truth, and a copy in this prose is the unenforced duplicate F1 exists to remove.**
 
-**[!] THREE files are pinned byte-identical - editing `driver-cheatsheet.core.md` alone RED-GATES both binaries.** A pinning
-test in each driver asserts its compiled-in baseline equals `driver-cheatsheet.core.md` (normalized CRLF->LF, then trimmed).
-If you change `driver-cheatsheet.core.md` you MUST also update:
-- `clavity-classic/src/driver_cheatsheet.rs` -> `BASELINE_FLOOR` (single-line `\n` literal)
-- `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` -> `BaselineFloor` (multi-line `+ "...\n"` concatenation)
+**[!] The two compiled-in pins are GENERATED OUTPUT and must never be hand-edited.** A pinning test in
+each driver asserts its compiled-in baseline equals `driver-cheatsheet.core.md` (normalized CRLF->LF,
+then trimmed), and a pre-commit hook now compares what is STAGED against freshly generated output.
+Whoever edits `driver-cheatsheet.core.md` runs `just gen-cheatsheet-literals` and stages **all three
+files together** - the hook compares the staged content, so staging the source without its regenerated
+outputs is rejected, and so is hand-editing an output.
+- generated: `clavity-classic/src/driver_cheatsheet.rs` -> `BASELINE_FLOOR` (single-line `\n` literal)
+- generated: `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` -> `BaselineFloor` (multi-line `+ "...\n"` concatenation)
 
 Oracles - run BOTH before committing a drain; a drain that reds these is not done:
 - `cd clavity-classic && cargo test --all --features test-fakes`
@@ -394,7 +397,7 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 | already happened | reverted when the run reaches this block? | where it lives |
 |---|---|---|
 | the compiled cheatsheet was written to `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md` | **no** | user profile - **live, and read by both drivers** |
-| `knowledge/driver-cheatsheet.core.md` and its two byte-identical pins may have been edited | **no** | **IN THE REPOSITORY - these are uncommitted edits in the working tree** |
+| `knowledge/driver-cheatsheet.core.md` and its two GENERATED pins may have been regenerated | **no** | **IN THE REPOSITORY - these are uncommitted edits in the working tree** |
 | `golden-header.growth.md` (the GROWTH publish) | **never written** | - this is exactly what the gate withheld |
 | the inbox `## Pending` section | untouched, per the paragraph above | - |
 
