@@ -152,11 +152,29 @@ Describe 'shipped plugin hook registration' {
         $files = @(Get-ChildItem -LiteralPath $dir -Filter *.sh -File -ErrorAction Stop)
         $files.Count | Should -BeGreaterThan 0 -Because 'an empty hook dir would pass the loop below vacuously'
 
+        # A THIRD LEGITIMATE CALLER: a shipped SKILL. ROADMAP 14c added agy-mark.sh, the sanctioned
+        # .clavity writer. It is deliberately NOT in hooks.json - it is not a hook - and it is not
+        # sourced by another hook either; the discipline skills invoke it as
+        # `bash "<BASE>/../../hooks/agy-mark.sh"`, which is the delivery model the owner chose. Before
+        # this clause, that made it read as unreachable and reddened this row on both drivers.
+        # Same reasoning the dot-sourced-library carve-out above already encodes: the row's real claim is
+        # "nothing ships that NOTHING can invoke", not "everything is in hooks.json".
+        $skillsDir = Join-Path (Split-Path -Parent $dir) 'skills'
+        $skillFiles = @(if (Test-Path -LiteralPath $skillsDir) {
+            Get-ChildItem -LiteralPath $skillsDir -Recurse -File -Filter *.md -ErrorAction SilentlyContinue
+        })
+        # NON-VACUITY GUARD. All three drivers ship skills; if this ever resolves empty the widening
+        # silently stops widening, and a genuinely unreachable file would still be caught (it fails
+        # CLOSED) - but the clause above would be dead code nobody notices.
+        $skillFiles.Count | Should -BeGreaterThan 0 -Because "every driver ships skills; an empty $skillsDir means this clause stopped searching anything"
+        $skillText = ($skillFiles | ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
+
         $unreachable = foreach ($f in $files) {
             if ($cmds -like "*$($f.Name)*") { continue }
             $others = ($files | Where-Object { $_.Name -ne $f.Name } |
                        ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
             if ($others -match [regex]::Escape($f.Name)) { continue }
+            if ($skillText -match [regex]::Escape($f.Name)) { continue }
             $f.Name
         }
         ($unreachable -join '; ') | Should -BeNullOrEmpty
