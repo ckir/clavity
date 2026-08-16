@@ -143,7 +143,11 @@ function Invoke-Main {
     # check-seed-budget.ps1 — unchanged, and not run here because the drain never edits the SEED.)
     & pwsh -File (Join-Path $PSScriptRoot 'check-growth-budget.ps1') -RepoRoot $RepoRoot   # forward the drain's tree (panel R3-F1)
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "drain-knowledge: WARNING — SEED + GROWTH exceeds the 16 KiB combined cap; GROWTH would not be injected. Trim docs/agy-golden-header.growth.md and re-drain." -ForegroundColor Yellow
+        # DEFER TO THE GATE'S OWN MESSAGE rather than substituting a cause. The previous hardcoded line
+        # asserted an overflow for ANY non-zero, which is confidently wrong for a missing or empty SEED:
+        # the cap has not been exceeded, and trimming the proposal does nothing to restore the seed.
+        # The gate has already printed the specific reason immediately above this line.
+        Write-Host "drain-knowledge: WARNING - the combined GROWTH budget check did not pass; see the check-growth-budget line immediately above for the specific reason and remedy. The drain continues (this gate is warn-only)." -ForegroundColor Yellow
     }
 
     # 8. GROWTH proposal bytes + verify-needed count.
