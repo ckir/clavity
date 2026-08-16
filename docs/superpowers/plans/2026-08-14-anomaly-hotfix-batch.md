@@ -5124,10 +5124,27 @@ Generation makes an existing instruction wrong. **Shipping one without the other
 
 **Files:** Modify `agy-autotrain/skills/agy-curate/SKILL.md` at `:123-127` and `:339`.
 
-> 🔴 **`:123-127`, NOT `:122-126`.** MEASURED in the live file: `:122` is BLANK, the numbered item
-> `2. **Route by the matrix ...**` starts at `:123`, and the table runs to `:127` (the `**driver**` row).
-> The old range began on a blank line and stopped one row short, which would have orphaned the final
-> table row as surviving context. **Bound it by the quoted first and last lines, not the numbers.**
+> 🔴 **EVERY LINE NUMBER IN THIS TASK WAS WRONG BY EXACTLY 58, AND THE "CORRECTION" BELOW MADE IT WORSE.
+> Corrected 2026-08-16 at execution.** The real targets are **`:180-184`** (the pin block) and **`:397`**
+> (the residue table row); `:170` is the sync note. Measured: `:122`->`:180`, `:124`->`:182`,
+> `:339`->`:397`, `:112`->`:170` - **a uniform +58 shift**, because the file gained 58 lines above the
+> target after this task was written.
+>
+> 🔴 **THE PART WORTH LEARNING FROM: the superseded note below was itself a re-measurement, and it was
+> internally consistent with the WRONG BLOCK.** It read: *"MEASURED in the live file: `:122` is BLANK,
+> the numbered item `2. **Route by the matrix ...**` starts at `:123`, and the table runs to `:127`."*
+> **Every one of those statements is TRUE of the file today** - and describes the **curator's routing
+> matrix**, which has nothing to do with the cheatsheet pins. Someone re-derived the NUMBERS, found
+> different content sitting there, and wrote that content down as the target. **Following it would have
+> deleted the routing matrix and left the pin instruction untouched.**
+>
+> **A re-measurement that only re-reads the LINE NUMBER re-anchors the citation onto whatever drifted
+> into place.** Re-measuring must start from the QUOTED TEXT and find where it moved to - never from the
+> number and report what is there now. The quoted "verified current state" strings below
+> (`THREE files are pinned byte-identical`, `If you change ... you MUST also update:`) are what located
+> the real target; the numbers were worse than useless because they carried false confidence.
+>
+> **Bound this edit by the quoted first and last lines. The numbers in this task are advisory only.**
 
 **This is a SINGLE copy - measured, not a byte-identical pair - so there is no mirror cost.**
 
