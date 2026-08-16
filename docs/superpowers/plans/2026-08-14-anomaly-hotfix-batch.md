@@ -5081,6 +5081,29 @@ fix did not take. Never run them concurrently (file-lock false red).
 | drop the split on `git diff --cached --quiet` | row 7 (wrong message) |
 | feed the index through a text pipeline instead of `BaseStream` | row 12 |
 
+> 🔴 **MEASURED 2026-08-16: 7 OF THESE 9 REDDEN. THE OTHER TWO REDDEN NOTHING, AND BOTH ARE REAL
+> COVERAGE GAPS RATHER THAN BAD MUTATIONS.** Recorded here instead of quietly re-aimed, because a
+> mutation table that lists a pairing nothing can satisfy is a coverage claim the suite does not honour.
+>
+> **`use a byte comparison for case-3 detection instead of `git diff --quiet`` -> NOTHING REDDENS, and
+> the named rows CANNOT reach it.** The diagnosis block is guarded by an early `exit 0` when
+> `$mismatched.Count -eq 0`, so everything below it - including this site - runs ONLY on a mismatch.
+> Rows 2 and 3 are the *correct-commit-passes* rows and never get there; the table named them anyway.
+> **And the rows that DO reach it still cannot tell the two apart, because the suite's own fixture sets
+> `core.autocrlf false`** - which removes the worktree-CRLF/index-LF condition the guard exists for.
+> 🔴 **A FIXTURE-HYGIENE RULE, ADDED FOR DETERMINISM, DELETED THE ONE SCENARIO THAT PROVES THIS LINE
+> MATTERS.** The line's own comment says *"CRLF-agnostic. NEVER a byte compare"*, and nothing enforces it.
+> **Third instance in this batch of naming a SECTION where only a BRANCH is reachable.**
+>
+> **`feed the index through a text pipeline instead of `BaseStream`` -> NOTHING REDDENS on pwsh 7.**
+> MEASURED on 7.6.4: `ReadAllText` + `WriteAllText` both default to UTF-8 and round-trip the probe byte
+> losslessly (10 bytes -> 10, byte-identical). The corruption this code guards against is Windows
+> PowerShell **5.1**'s UTF-16LE default, which no local run exercises. **Defensive for 5.1 and untested
+> here** - the same platform-conditional shape as Task 3's optional-CR alternative. Do not delete the
+> `BaseStream` code and do not fake a control for it.
+>
+> Both are captured in `.clavity/local-anomalies.md` for triage.
+
 - [ ] **Step 8: Register, index, commit**
 
 Add the suite to the `test-scripts-slow` recipe in `justfile` (SLOW - it builds many git fixtures), add a `_partition.md` row, and add
