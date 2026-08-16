@@ -156,4 +156,17 @@ Describe 'test suite registration' {
         @($inTable | Where-Object { $_ -notin $script:OnDisk }) -join ', ' |
             Should -BeExactly '' -Because 'a row for a suite that no longer exists is a figure nobody can ever re-measure - remove it from the Measured runtimes table in scripts/tests/_partition.md'
     }
+
+    It 'registers the clavity-install suite by PATH, and that path exists' {
+        # NARROW BY DESIGN. The parses above are scoped to scripts/tests/ (see the header at :3-6), so
+        # this out-of-tree suite is invisible to them - neither certified nor rejected. Widening
+        # Get-RecipeSuites would be a decision about other products' suites, not a fold, so this row
+        # pins the one entry instead.
+        #
+        # BOTH HALVES ARE LOAD-BEARING: without the first, the row passes when the entry is deleted;
+        # without the second, it passes when the file is renamed.
+        $rel = 'clavity-dotnet/install/clavity-install.Tests.ps1'
+        $script:Justfile | Should -Match ([regex]::Escape($rel)) -Because 'the suite ran in no gate at all until it was named in a recipe (ROADMAP 14b)'
+        Test-Path -LiteralPath (Join-Path $script:RepoRoot $rel) | Should -BeTrue -Because 'a recipe naming a file that does not exist silently shrinks the gate'
+    }
 }

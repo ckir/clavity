@@ -86,5 +86,11 @@
     "why": "Read the per-driver status columns in agy-autotrain/verify/assertions.md. The SessionStart verify gate nags when awk is absent rather than failing silent, so a missing awk is visible but blocking.",
     "install": "Ships with Git for Windows (/usr/bin/awk); otherwise: winget install GnuWin32.Gawk",
     "in_path": "awk"
+  },
+  {
+    "name": "yq",
+    "why": "YAML oracle - Task 13 Step 8 parses .github/workflows/ci-scripts.yml and lefthook.yml to prove a workflow edit is valid before it can reach CI.",
+    "install": "winget install MikeFarah.yq",
+    "in_path": "yq"
   }
 ]
