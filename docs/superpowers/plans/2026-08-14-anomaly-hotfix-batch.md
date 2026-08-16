@@ -3870,6 +3870,37 @@ mechanical" is true per-target and misleading if read as one shared routine.
 > fixed here; the rule's own text says an EXISTING unguarded mutator is an anomaly to capture, not a
 > silent in-scope fix.
 
+> 🔴 **EXECUTION 2026-08-16 - THE GENERATOR AS DRAFTED COULD NOT RUN AT ALL, AND ONE TEST ROW WOULD HAVE
+> OVERWRITTEN REAL SOURCE. Three defects, all found by RUNNING it; none was reachable by reading.**
+>
+> **1. `-split "\`n", -1` RETURNS THE STRING UNSPLIT.** Used at three sites. MEASURED on pwsh 7.6.4 with
+> controls: `-1` -> **1 part**, `0` -> 3 parts, bare -> 3 parts, `2` -> 2 parts. So every anchor search
+> found 0 matches and the generator REFUSED to write on every invocation. **The plan's own mechanical
+> oracle reported `PARSE OK` on this file** - a runtime semantic is invisible to a parser, which is
+> exactly the limit of that oracle. Fixed to `, 0`.
+>
+> **2. `if (-not $RustTarget)` CANNOT DISTINGUISH "OMITTED" FROM "EXPLICITLY EMPTY", and the empty-target
+> skip contract depends on that distinction.** MEASURED: passing `-RustTarget ''` fell into the default
+> branch and was **replaced with the real repository path**. So the row *`SKIPS a target given as an
+> empty string`* would have driven the generator to overwrite the REAL
+> `clavity-classic/src/driver_cheatsheet.rs` during a test run instead of skipping it - a test that
+> silently mutates the tree it is testing. Fixed to `$PSBoundParameters.ContainsKey(...)`.
+>
+> **3. The `preserves pure ASCII` row could never pass.** It copies the REAL container files into a temp
+> dir and asserts whole-file ASCII, but MEASURED: `driver_cheatsheet.rs` and `DriverCheatsheet.cs` each
+> carry **20 non-ASCII bytes** (`§`, em-dash) in hand-written doc comments OUTSIDE the literal, and
+> neither file is inside `$DomainRoots` (`check-injected-context.ps1:44-53`), so they are correctly not
+> ASCII-gated. `core.md` itself is 0. Narrowed to the generated literal region, which preserves the
+> row's actual intent. **That non-ASCII is house style across 35 `.rs` files and was already triaged and
+> dismissed on 2026-08-12 - it is NOT a defect and must not be re-raised.**
+>
+> ⚠ **A fourth defect was in the `-WhatIf` row THIS PLAN ADDED minutes earlier**: its sentinel fixture
+> carried no anchor line, so the generator refused before reaching the gated write and the row could not
+> exercise the dry-run distinction at all. **Its own CONTROL is what exposed it** - the row asserts that a
+> run WITHOUT `-WhatIf` must change the bytes, and that leg failed. Fixed with anchor-bearing sentinels.
+> **Re-verified as load-bearing: strip both `ShouldProcess` gates and the row goes RED (Failed 1);
+> restore and it passes.**
+
 - [ ] **Step 1: Write the failing test - the GENERATOR-CONTROL pattern first**
 
 Create `scripts/tests/generate-cheatsheet-literals.Tests.ps1`:
