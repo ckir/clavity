@@ -77,18 +77,20 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **328 (STALE — see below)** and slow **363**, **measured, not added
-up**. It is a fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
+test raises it. The count today is fast **605** and slow **363**, **both measured, not added up**. It is a
+fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
 "fast 177 and slow 238" until 2026-08-06, having decayed through five intervening entries below that each
 recorded a new number without updating it. **It was updated in place on 2026-08-16 for exactly that
-reason** — the slow half was re-measured that day and this sentence is where the previous decay was
+reason** — both halves were re-measured that day and this sentence is where the previous decay was
 recorded, so leaving it would have repeated the failure it documents.
 
-⚠ **The fast figure of 328 was NOT re-measured on 2026-08-16 and is stale by a known amount:** Task 5 of
-the anomaly hot-fix batch added **four** rows to `agy-discipline-reaching.Tests.ps1`, which is in the fast
-half, and no suite moved into or out of fast. **The number is deliberately NOT incremented to 332** — this
-file's own rule is *measured, not added up*, and an arithmetic figure recorded as if measured is worse
-than one openly marked stale. Re-measure the fast half before quoting it.
+🔴 **AND THE FIRST 2026-08-16 EDIT GOT THE FAST NUMBER WRONG, WHICH IS THE LESSON.** It marked fast as
+"328 (STALE), stale by a known amount" — reasoning that the hot-fix batch added four rows and no suites,
+so the figure was "off by four" and would be 332. **Measured hours later: 605.** The 328 was not four
+stale, it was **277** stale, having decayed since 2026-08-06 through changes that had nothing to do with
+that batch. **Estimating the size of a drift you have not measured is the same error as quoting the
+decayed number** — it manufactures false precision about an unknown. If you have not measured it, say
+only that it is stale.
 
 **Since 2026-08-06 the structural invariant is ENFORCED, not just documented.**
 `scripts/tests/test-suite-registration.Tests.ps1` runs that `diff` as a test: every suite on disk is in
@@ -311,9 +313,19 @@ the binding constraint: the fast half is the agent inner-loop recipe and this fi
 **cap-adjacent, not cap-safe**. The slow half is backgrounded and already past the cap, so it absorbs new
 work at no cost to the loop.
 
-⚠ **The fast half was NOT re-measured in this pass.** It gained four tests (into
-`agy-discipline-reaching`) and no suites. Its 328 figure above is marked STALE rather than incremented,
-because this file's rule is *measured, not added up*.
+✅ **The fast half WAS re-measured, a few hours later in the same session: 29 suites, 605 tests, 461,95s,
+0 failed.** The recorded 328 had decayed by **277**, not by the four this batch added — see the correction
+in the count paragraph above.
+
+🔴 **RUN THE FAST HALF WITH `-NoProfile` OR READ A FALSE RED.** The recipe invokes plain `pwsh`, which
+loads the operator's PowerShell profile. MEASURED 2026-08-16 on this machine: a profile hook around
+`Push-Location` raised `The variable '$Script:CPPrevLocationAction' cannot be retrieved because it has
+not been set` (`claude-profile-init.ps1:323`), reddening **5 rows in `release-lib.Tests.ps1`** that pass
+23/0 in isolation. Two-way control: with the profile it fails, with `-NoProfile` the identical list is
+**605/0**. **This is an operator-environment artifact, not a repo defect, and it cannot occur in CI** -
+but it cost three wrong bisections here, because every probe used `-NoProfile` while the recipe did not.
+**When a suite fails only inside the recipe, check whether your probe and the recipe load the same
+profile before hunting cross-suite contamination.**
 
 ## Measured runtimes
 
