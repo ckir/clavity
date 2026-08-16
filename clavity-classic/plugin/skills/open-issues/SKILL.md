@@ -67,16 +67,42 @@ Run this, filling the four fields:
 R=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 F="$R/.clavity/local-anomalies.md"
 mkdir -p "$R/.clavity"
-# Self-ignoring directory. This makes .clavity/ invisible to git REGARDLESS of the host repository's own
-# .gitignore, which matters because this plugin ships to repositories whose .gitignore we do not control.
-# Without it, the "capture is private" property holds only in the repo where it was written.
+# Self-ignoring directory. This makes .clavity/ invisible to git REGARDLESS of the host repository's
+# own .gitignore, which matters because this plugin ships to repositories whose .gitignore we do not
+# control. Without it, the "capture is private" property holds only in the repo where it was written.
 #
-# CHECKED ON EVERY CAPTURE, deliberately NOT nested inside the file-exists branch below. If it only ran
-# when creating the file for the first time, then any later loss of the .gitignore -- someone deletes it,
-# `git clean -Xdf` removes it, the file was created by hand -- would leave the anomalies file visible to
-# git forever after, and the next `git add .` would publish a list of un-triaged defects. Re-asserting the
-# shield costs one stat per capture.
-[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> "$R/.clavity/.gitignore"
+# CHECKED ON EVERY CAPTURE, deliberately NOT nested inside the file-exists branch below - any later
+# loss of the shield would otherwise leave the anomalies file visible to git forever after.
+#
+# THE HELPER CHECKS THE EFFECT, NOT THE TEXT. The previous line here was
+# `[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> ...`, which restores a DELETED shield and
+# nothing else: measured in a throwaway repo it passes while the directory is leaking in three other
+# states - an EMPTIED shield, a shield carrying a `!` negation, and a file already TRACKED by git.
+# The helper always returns 0 and never blocks a capture.
+#
+# <BASE> IS THE LOCATOR RECORDED BY TASK 1 - this skill's own base directory, supplied by the harness at
+# invocation time. It is NOT $0 and NOT ${BASH_SOURCE[0]}: measured, in an agent-run shell snippet those
+# give /usr/bin and the empty string, so a path built from them resolves nowhere and this whole block
+# would silently degrade to the else branch on every single capture.
+. "<BASE>/../../hooks/agy-shield-lib.sh" 2>/dev/null || true
+if command -v agy_shield >/dev/null 2>&1; then
+  agy_shield "$R" ".clavity/local-anomalies.md" "${AGY_SESSION_ID:-}"
+else
+  # THE SAFE APPEND, not the shipped idiom - see Step 1b. Do not paste `[ -f ] || printf '%s\n' '*' >>`
+  # here: round 1 measured that it concatenates onto a shield with no trailing newline, and round 2
+  # caught that exact idiom being re-pasted into a fallback branch one task over.
+  # NO mkdir here: :69 above runs UNCONDITIONALLY and has already created the directory on every path.
+  # Panel R11 caught a copy of it inside this branch while the prose below argued that :69's copy is the
+  # one doing the work - the two disagreed, and a duplicate is exactly what a later reader deletes the
+  # wrong half of.
+  # `! -s` covers MISSING and EMPTY together. Measured (panel R3): the `[ ! -f ] ... elif [ -s ]` form ran
+  # neither branch for a zero-byte shield, leaving the 14d defect itself unfixed in the fallback.
+  if [ ! -s "$R/.clavity/.gitignore" ]; then
+    printf '%s\n' '*' >> "$R/.clavity/.gitignore"
+  elif ! grep -qx '*' "$R/.clavity/.gitignore" 2>/dev/null; then
+    printf '\n%s\n' '*' >> "$R/.clavity/.gitignore"
+  fi
+fi
 # The header uses >> and NEVER >. MEASURED: with >, two writers that both see no file destroy each other's
 # work -- the first writes the header and appends its anomaly, the second's > truncates the file before
 # appending its own, and the first anomaly is gone. Under the report-then-verify flow the concurrent
