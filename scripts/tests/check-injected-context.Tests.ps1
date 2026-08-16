@@ -1330,4 +1330,37 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             Test-IsPrunedPath -RelPath 'x.clavity/foo.md' | Should -BeFalse -Because 'only an exact path SEGMENT may prune'
         }
     }
+
+    Context '13a - the guidance names where stale-exemption detection actually lives' {
+        BeforeAll {
+            . $script:Script -RepoRoot $script:RepoRoot
+            # THE BLOCK IS UNREACHABLE WITHOUT A VIOLATION. A clean-tree run prints none of this text,
+            # so an assertion against a clean run passes against every implementation including the
+            # unfixed one.
+            $script:Fx = Join-Path ([IO.Path]::GetTempPath()) ("ctx13a-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path (Join-Path $script:Fx 'scripts') | Out-Null
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/injected-context-ignore.txt') (Join-Path $script:Fx 'scripts')
+            Set-Content -LiteralPath (Join-Path $script:Fx 'scripts/injected-context-exemptions.json') -Value '{ "exemptions": [] }' -Encoding ascii
+            foreach ($r in $script:DomainRoots) { New-Item -ItemType Directory -Force -Path (Join-Path $script:Fx $r) | Out-Null }
+            # A non-ASCII byte inside a governed root is the cheapest reliable violation.
+            [IO.File]::WriteAllBytes((Join-Path $script:Fx 'seed/bad.md'), [byte[]](0x41,0xE2,0x80,0x94,0x42,0x0A))
+            $script:Out = & pwsh -NoProfile -File (Join-Path $script:RepoRoot 'scripts/check-injected-context.ps1') -RepoRoot $script:Fx 2>&1 | Out-String
+            $script:Rc = $LASTEXITCODE
+        }
+        AfterAll { Remove-Item -LiteralPath $script:Fx -Recurse -Force -ErrorAction SilentlyContinue }
+
+        It 'the setup actually produced a violation (without this the rows below are vacuous)' {
+            $script:Out | Should -Match 'violation\(s\)'
+        }
+        It 'does NOT repeat the old false claim' {
+            $script:Out | Should -Not -Match 'reported as unused'
+        }
+        It 'names the TEST SUITE as the enforcement point, and says it FAILS' {
+            $script:Out | Should -Match 'every exemption is still NEEDED'
+            $script:Out | Should -Match '(?i)fail'
+        }
+        It 'still exits 1 - this item changes TEXT, not behaviour' {
+            $script:Rc | Should -Be 1
+        }
+    }
 }

@@ -929,7 +929,8 @@ function Invoke-InjectedContextCheck {
     Write-Host "as another element - not appended after it. ADD A COMMA after the previous element: the"
     Write-Host "line above is a bare object and pasting it without one is invalid JSON, which fails this"
     Write-Host "gate for everyone on the next run. Replace the placeholder reason with a real one;"
-    Write-Host "an exemption whose file stops failing its invariant is reported as unused and must be deleted."
+    Write-Host "an exemption whose file stops failing its invariant is no longer needed. This gate does not"
+    Write-Host "detect that - the test suite does, by FAILING 'every exemption is still NEEDED'."
     Write-Host "Fixing the file is almost always right. A waiver is for something deliberate and permanent."
     exit 1
 }
