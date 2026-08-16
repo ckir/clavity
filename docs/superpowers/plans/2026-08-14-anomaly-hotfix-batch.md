@@ -381,13 +381,42 @@ $script:PrunedSegments = @('.git','node_modules','target','bin','obj','.venv','_
 
 Change nothing else. `:99` escapes every entry by construction, so no escaping is needed here.
 
+- [ ] **Step 3b: Teach the pre-existing COVERAGE row - or Step 4 reds (EXECUTION AMENDMENT, 2026-08-16)**
+
+🔴 **This step did not exist when the plan was written, and Step 4's expectation below was FALSE without
+it.** The suite carries a set-comparison row - locate it by its title, `the prune rows COVER the live
+list - a new segment cannot arrive untested` - added by capstone round 10 for the exact purpose of
+failing when *"ADDING a segment shipped an untested prune rule and the suite stayed green"*. It holds a
+**hardcoded `$covered` array mirroring the hardcoded `-ForEach` array** of the prune row above it (locate
+that by its title, `prunes a DIRECTORY named <Segment>`), and asserts every live `$script:PrunedSegments`
+entry appears in it. Neither array can be derived from the live list, because Pester evaluates `-ForEach`
+at DISCOVERY time, before `BeforeAll` dot-sources the script.
+
+**Measured both directions at `9a0f627`, before any edit:** with today's list `uncovered` is `[]` and the
+row passes; with `.clavity` appended `uncovered` is `[.clavity]` and the row FAILS. The guard is working
+as designed - the plan simply never accounted for it.
+
+Add `.clavity` to **BOTH** arrays. Adding it to `$covered` alone would satisfy the assertion while giving
+`.clavity` no row in the block `$covered` exists to mirror - that is the coverage lie the row was written
+to stop, and it would also falsify that row's own comment, which states the two sets mirror each other.
+
+1. In the `-ForEach` array of the `prunes a DIRECTORY named <Segment>` row, add a `@{ Segment = '.clavity' }`
+   entry alongside the existing ones, matching the surrounding formatting.
+2. In the `$covered` array inside the `the prune rows COVER the live list` row, add `'.clavity'`.
+
+This gives `.clavity` the same three assertions every other segment gets (present in the live list, a
+DIRECTORY of that name is pruned, a FILE of that name is content), on top of Step 1's four 14a rows.
+
 - [ ] **Step 4: Run the test to verify it PASSES**
 
 ```bash
 pwsh -c "Invoke-Pester scripts/tests/check-injected-context.Tests.ps1 -Output Detailed -CI"
 ```
 
-Expected: all four new rows PASS and the pre-existing rows are unchanged. Record the total count.
+Expected: all four new rows PASS, the two rows edited in Step 3b PASS, and every other pre-existing row is
+unchanged. **Baseline measured at `9a0f627`: `Tests Passed: 144, Failed: 0`** over 144 discovered tests, so
+the post-change total must be **149** (144 + 4 new rows + 1 new `-ForEach` case). Record the total count -
+a run reporting 0 tests is a discovery failure, not a pass.
 
 - [ ] **Step 5: Mutation control - the new entry must be load-bearing**
 
