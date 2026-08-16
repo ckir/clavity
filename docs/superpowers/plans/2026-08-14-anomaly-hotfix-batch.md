@@ -1296,6 +1296,46 @@ suite green, that branch is untested regardless of how many rows exist.
 | replace `return 0` with `exit 0` in A0 | `does NOT kill its CALLER` |
 | use `check-ignore -v` for the DECISION instead of `-q` | **`reports the negation loudly`** - and the pairing here was WRONG until panel R14. Measured behaviour: `-v` exits **0** on a file that is NOT ignored, so B2 short-circuits to "done" and the negation is never reported at all. `(a) the human INTENT survives` stays GREEN under that mutation, because nothing is written either way - so the old pairing named a row the mutation cannot redden |
 
+### STEP 7 RESULTS AS MEASURED 2026-08-16 - 12 of 13 redden; the exceptions are the findings
+
+Every mutation was applied by literal text substitution, the named row run under `-FullNameFilter`, and
+the helper reverted and re-hashed to `3115906ed3c26bca757b1b7955c5fdb1ec372d4f` after each. **Filter
+controls established first, both directions:** a matching filter gives `Passed: 1, NotRun: 33`, a
+non-matching one gives `Passed: 0, NotRun: 34` - so a broken filter is distinguishable from a caught
+mutation. **RED as expected: M1, M2, M3, M4, M7, M8, M9, M10, M12, M14, and M11/M13 after the
+corrections below.** The sweep entry has no row by design and was verified by reading: `find` sits
+INSIDE `if [ ! -f "$_as_sweep" ] && : > "$_as_sweep" 2>/dev/null; then`, marker creation chained into
+the condition.
+
+🔴 **`an EMPTY key is LEGAL` WAS A VACUOUS ORACLE AGAINST ITS OWN NAMED MUTATION.** Restoring the
+key validation for empty keys emits `ignoring a malformed debounce key (debouncing disabled for this
+call): []` - which contains **no `REFUSING`**. The row asserted only `Should -Match 'git rm --cached'`
+and `Should -Not -Match 'REFUSING'`, so **both stayed green under the exact regression the row's own
+comment describes**, and the control scored the mutation as caught when nothing caught it. Fixed by
+adding `Should -Not -Match 'malformed'`; verified green-before / RED-after. **This is the third vacuous
+oracle this artifact has produced, and again the tell was an intent/implementation mismatch: the
+comment named the defect correctly and the assertions did not test for it.**
+
+⚠ **`drop the optional-CR alternative from the A2 match` CANNOT REDDEN ON WINDOWS, and that is a
+platform property, not a defect.** MEASURED with controls on this Git Bash: `grep -qFx '*'` **matches**
+a `*\r\n` shield, matches a `*\n` shield, and correctly does not match `x\n`. So the first grep already
+succeeds and the CR alternative is unreachable here - `treats a CRLF shield as already correct` stays
+green whether the alternative is present or absent. **The alternative is defensive for Linux, where
+`*\r` is a different line, and it is therefore UNTESTED on this platform.** Recorded rather than
+deleted: the code is still correct and still wanted, but nothing local pins it, so a future edit could
+drop it and no gate here would notice.
+
+⚠ **TWO ENTRIES IN THIS TABLE NEEDED THEIR MUTATION SHARPENED BEFORE THEY REACHED THEIR BRANCH** - both
+initially "stayed green" for reasons that were **the probe's fault, not the suite's**, and only a
+passing-and-failing control separated the two cases:
+- *run the key regex over EVERY key including empty* - the validation sits inside `if [ -n "$_as_key" ]`,
+  so an empty key never reaches the `case` at all. Dropping the `-n` guard ALONE also does nothing,
+  because an empty string does not match `*[!A-Za-z0-9._-]*`. Reaching the branch needs **both**: drop
+  the guard AND make the pattern reject empty.
+- *replace `return 0` with `exit 0` in A0* - **A0 has five `return 0` branches.** The row calls
+  `agy_shield "" "x" "k"`, an empty ROOT, so only the **root-validation** branch is exercised. Mutating
+  the empty-PATH branch changes nothing that row can see. **Name the BRANCH, not the section.**
+
 ### RESIDUAL, DEFERRED BY DECISION - the debounce is not scoped by repository (2026-08-16)
 
 **Stated here rather than discovered later as a regression.** `_agy_shield_say`'s marker carries the
