@@ -3847,6 +3847,29 @@ git commit -m "chore(eol): 14e - pin the three cheatsheet paths to eol=lf and re
 have. The Rust target has the opposite shape (one line, no splitting), which is why "escaping is
 mechanical" is true per-target and misleading if read as one shared routine.
 
+> 🔴 **EXECUTION AMENDMENT 2026-08-16 - THE GENERATOR VIOLATED A STANDING OWNER RULE.** It declared
+> `[CmdletBinding()]` with no `SupportsShouldProcess`, and it writes two files. The owner instruction of
+> 2026-08-01 is unambiguous: **every NEW `.ps1` this repo gains MUST implement `-WhatIf` if it changes
+> state**, gating *every* mutation in `ShouldProcess` while leaving reads ungated. Read-only checkers and
+> `*.Tests.ps1` are the only exemptions, and a generator that overwrites two tracked source files is
+> neither.
+>
+> Now `[CmdletBinding(SupportsShouldProcess)]`, with each of the two `WriteAllText` calls gated.
+> **`$doRust`/`$doCs` are NOT a substitute** - those are the empty-target skip and answer "is there a
+> target?", where `ShouldProcess` answers "may I write it?". `[IO.File]::WriteAllText` is a .NET call
+> with no `-WhatIf` passthrough, so the gate is explicit rather than delegated to a cmdlet.
+>
+> **A test row comes with it, asserting the SIDE EFFECT and not the exit code** - a row checking only
+> that `-WhatIf` exits 0 stays green against a script that ignores the switch and writes anyway, which
+> is precisely the failure. It seeds both targets with sentinels, asserts the bytes are unchanged under
+> `-WhatIf`, **and carries a CONTROL**: the same invocation without `-WhatIf` must change them, or the
+> row would pass for a generator that never writes at all.
+>
+> ⚠ **Only 5 of the 30 `scripts/*.ps1` currently carry `SupportsShouldProcess` and no gate enforces it**,
+> so this rule is honoured by discipline rather than by a check. That gap is pre-existing and is NOT
+> fixed here; the rule's own text says an EXISTING unguarded mutator is an anomaly to capture, not a
+> silent in-scope fix.
+
 - [ ] **Step 1: Write the failing test - the GENERATOR-CONTROL pattern first**
 
 Create `scripts/tests/generate-cheatsheet-literals.Tests.ps1`:
@@ -4066,6 +4089,41 @@ Describe 'generate-cheatsheet-literals.ps1' {
         }
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'supports -WhatIf and writes NOTHING under it (owner rule 2026-08-01)' {
+        # Every NEW .ps1 that changes state must implement -WhatIf. A row asserting only that the
+        # script EXITS 0 under -WhatIf would stay green against a script that ignored the switch and
+        # wrote anyway - which is the whole failure mode. So this asserts the SIDE EFFECT: the two
+        # targets must be byte-for-byte unchanged. The fixture seeds them with sentinel content that
+        # a real run would certainly overwrite, so "unchanged" cannot be true by coincidence.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gen-whatif-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
+            [IO.File]::WriteAllText($outRs, "SENTINEL-RS`n")
+            [IO.File]::WriteAllText($outCs, "SENTINEL-CS`n")
+            $beforeRs = [IO.File]::ReadAllBytes($outRs)
+            $beforeCs = [IO.File]::ReadAllBytes($outCs)
+
+            & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget $outRs -CsTarget $outCs -WhatIf
+            $LASTEXITCODE | Should -Be 0 -Because '-WhatIf is a dry run, not an error'
+
+            [Linq.Enumerable]::SequenceEqual([IO.File]::ReadAllBytes($outRs), $beforeRs) |
+                Should -BeTrue -Because '-WhatIf must not touch the rust target'
+            [Linq.Enumerable]::SequenceEqual([IO.File]::ReadAllBytes($outCs), $beforeCs) |
+                Should -BeTrue -Because '-WhatIf must not touch the C# target'
+
+            # CONTROL: the same invocation WITHOUT -WhatIf must overwrite both, or the row above
+            # passes for the wrong reason (a generator that never writes at all satisfies it).
+            & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget $outRs -CsTarget $outCs
+            $LASTEXITCODE | Should -Be 0
+            [Linq.Enumerable]::SequenceEqual([IO.File]::ReadAllBytes($outRs), $beforeRs) |
+                Should -BeFalse -Because 'the control proves a real run DOES write the rust target'
+            [Linq.Enumerable]::SequenceEqual([IO.File]::ReadAllBytes($outCs), $beforeCs) |
+                Should -BeFalse -Because 'the control proves a real run DOES write the C# target'
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
 ```
 
@@ -4107,7 +4165,7 @@ Create `scripts/generate-cheatsheet-literals.ps1`:
   WriteAllText all preserve LF for a SINGLE string, but the ARRAY form joins with the PLATFORM newline
   and emits CRLF - which would mismatch the LF index blob on every commit.
 #>
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess)]
 param(
     [string]$CoreSource,
     [string]$RustTarget,
@@ -4237,8 +4295,18 @@ if ($csEnd + 1 -lt $csLines.Count) { $csOut += $csLines[($csEnd + 1)..($csLines.
 }   # end if ($doCs)
 
 # ONE LF-JOINED STRING, WRITTEN ONCE. Never an array - the array form joins with the platform newline.
-if ($doRust) { [IO.File]::WriteAllText($RustTarget, ($rustLines -join "`n"), (New-Object Text.UTF8Encoding($false))) }
-if ($doCs)   { [IO.File]::WriteAllText($CsTarget,   ($csOut     -join "`n"), (New-Object Text.UTF8Encoding($false))) }
+# -WhatIf IS AN OWNER RULE, NOT A COURTESY (2026-08-01): every NEW .ps1 that changes state must
+# implement it, and every mutation must be gated. These are the only two mutations in this script;
+# reads and measurements above are deliberately NOT gated. `[IO.File]::WriteAllText` is a .NET call
+# and has no -WhatIf passthrough of its own, so the gate is explicit here rather than delegated.
+# The $doRust/$doCs guards are the SEPARATE empty-target skip and are not a substitute: they answer
+# "is there a target?", ShouldProcess answers "may I write it?".
+if ($doRust -and $PSCmdlet.ShouldProcess($RustTarget, 'regenerate BASELINE_FLOOR literal')) {
+    [IO.File]::WriteAllText($RustTarget, ($rustLines -join "`n"), (New-Object Text.UTF8Encoding($false)))
+}
+if ($doCs -and $PSCmdlet.ShouldProcess($CsTarget, 'regenerate BaselineFloor literal')) {
+    [IO.File]::WriteAllText($CsTarget,   ($csOut     -join "`n"), (New-Object Text.UTF8Encoding($false)))
+}
 
 Write-Host "generate-cheatsheet-literals: OK - regenerated both literals from $CoreSource" -ForegroundColor Green
 exit 0
