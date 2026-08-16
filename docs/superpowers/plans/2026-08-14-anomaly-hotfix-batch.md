@@ -1699,6 +1699,31 @@ nothing and would pass while asserting nothing.
     }
 ```
 
+> 🔴 **EXECUTION AMENDMENT 2026-08-16 - THE PASTED HELPER CALLED BARE `& bash`, AGAINST THIS REPO'S OWN
+> DOCUMENTED RULE.** `BashHookHelpers.ps1:5-8` states that `Get-Command bash` is **NON-DETERMINISTIC**:
+> *"locally it resolves to WSL's C:\WINDOWS\System32\bash.exe (own filesystem, cannot run a Windows-path
+> hook); CI (no WSL) resolves to Git Bash"* - which is precisely why `Get-GitBashOrThrow` exists, why it
+> prefers `Git\bin\bash.exe` explicitly, and why **ten-plus sibling suites and every other row in this
+> same file** already route through it. The block above did not. As shipped, `Invoke-Reaching` now
+> resolves the shell through `Get-GitBashOrThrow` and the FALLBACK row does the same.
+>
+> ⚠ **THE EXECUTOR'S DIAGNOSIS DID NOT REPRODUCE, AND THE RECORD SAYS SO.** It reported that bare `bash`
+> resolves to the System32 WSL stub *ahead of* Git Bash here and fails silently. **MEASURED with passing
+> and failing controls: `Get-Command bash -All` returns `C:\Program Files\Git\usr\bin\bash.exe` FIRST;
+> bare `& bash` ran a forward-slash Windows path at exit 0 (`RAN_OK`), all three candidate binaries
+> worked, and a missing-file control correctly returned 127.** So the change is right for the reason the
+> HELPER gives - machine-to-machine non-determinism - and NOT for the reason that was reported. Recorded
+> so nobody later "fixes" a failure mode that does not exist on this host.
+>
+> **The rows are proven non-vacuous independently:** all four Step 6 mutation controls reddened, which a
+> row whose hook never executed could not do.
+>
+> ⚠ **SIBLING GAP, CAPTURED NOT FIXED:** Task 3's `agy-shield-lib.Tests.ps1` still uses bare
+> `Start-Process -FilePath 'bash'`, so this batch now ships two new suites that resolve bash two
+> different ways. Latent, not live. Captured in `.clavity/local-anomalies.md` for triage rather than
+> re-opening a committed task mid-batch - **but Law 3 (sweep the FACT, not the instance) argues for
+> harmonising them, and that is an owner call.**
+
 - [ ] **Step 2: Run it to verify it FAILS**
 
 ```bash
@@ -1706,6 +1731,11 @@ pwsh -c "Invoke-Pester scripts/tests/agy-discipline-reaching.Tests.ps1 -Output D
 ```
 
 Expected: the three new rows FAIL (no shield call exists yet). Read the count.
+**MEASURED 2026-08-16: before wiring `Passed: 16, Failed: 4` at 60,42s; after wiring `Passed: 20,
+Failed: 0` at 77,64s (driver re-run 92,56s under contention).** This suite is in the **cap-adjacent FAST
+partition** and these four fixture-heavy rows cost it roughly +17s solo. No `_partition.md` edit is
+required - verified that the census row in `test-suite-registration.Tests.ps1` asserts suite NAME
+presence, not test counts - but the fast half has that much less headroom.
 
 - [ ] **Step 3: Rewrite the header fact at `:1-15`**
 
