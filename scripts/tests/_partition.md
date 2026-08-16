@@ -412,6 +412,11 @@ compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-
 docs-audit.Tests.ps1                            130,0s   80 tests   <- SLOW, re-measured 2026-08-06
 drain-knowledge.Tests.ps1                        40,5s    7 tests   <- SLOW, re-measured 2026-08-06
 drain-lib.Tests.ps1                               3,4s   20 tests   <- FAST, re-measured 2026-08-05
+generate-cheatsheet-literals.Tests.ps1           41,6s   12 tests   <- SLOW, NEW 2026-08-16 (14e): the
+                                                                      cheatsheet-literal generator's pinning
+                                                                      suite. Measured solo as the sole
+                                                                      command: "Tests completed in 41,57s",
+                                                                      12 passed / 0 failed.
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
 plugin-hooks-registration.Tests.ps1               0,6s   22 tests   <- FAST, re-measured 2026-08-05 (was
                                                                       0,5s / 18 tests; +4 for the recorder's

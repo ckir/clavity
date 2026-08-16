@@ -105,7 +105,7 @@ test-scripts-fast:
 # Slow script gate. EXCEEDS the 600s foreground tool cap - an agent MUST background this and read the
 # result from the task output file, never run it in the foreground.
 test-scripts-slow:
-    pwsh -c "Invoke-Pester @('scripts/tests/abort-drain.Tests.ps1', 'scripts/tests/accept-drain.Tests.ps1', 'scripts/tests/agy-anomaly-reminder.Tests.ps1', 'scripts/tests/agy-consult-guard.Tests.ps1', 'scripts/tests/agy-inbox-snapshot.Tests.ps1', 'scripts/tests/agy-liveness-check.Tests.ps1', 'scripts/tests/agy-mark.Tests.ps1', 'scripts/tests/agy-seam-inject.Tests.ps1', 'scripts/tests/agy-shield-lib.Tests.ps1', 'scripts/tests/agy-test-audit-reminder.Tests.ps1', 'scripts/tests/check-core-integrity.Tests.ps1', 'scripts/tests/check-plugin-namespace.Tests.ps1', 'scripts/tests/compute-release.Tests.ps1', 'scripts/tests/docs-audit.Tests.ps1', 'scripts/tests/drain-knowledge.Tests.ps1') -Output Detailed -CI"
+    pwsh -c "Invoke-Pester @('scripts/tests/abort-drain.Tests.ps1', 'scripts/tests/accept-drain.Tests.ps1', 'scripts/tests/agy-anomaly-reminder.Tests.ps1', 'scripts/tests/agy-consult-guard.Tests.ps1', 'scripts/tests/agy-inbox-snapshot.Tests.ps1', 'scripts/tests/agy-liveness-check.Tests.ps1', 'scripts/tests/agy-mark.Tests.ps1', 'scripts/tests/agy-seam-inject.Tests.ps1', 'scripts/tests/agy-shield-lib.Tests.ps1', 'scripts/tests/agy-test-audit-reminder.Tests.ps1', 'scripts/tests/check-core-integrity.Tests.ps1', 'scripts/tests/check-plugin-namespace.Tests.ps1', 'scripts/tests/compute-release.Tests.ps1', 'scripts/tests/docs-audit.Tests.ps1', 'scripts/tests/drain-knowledge.Tests.ps1', 'scripts/tests/generate-cheatsheet-literals.Tests.ps1') -Output Detailed -CI"
 
 # The whole suite, unchanged in meaning. Same cap warning as test-scripts-slow.
 test-scripts:
@@ -128,6 +128,12 @@ check-installer-ascii:
 # decision about the whole check-* family rather than something to smuggle in here.
 check-injected-context:
     pwsh -NoProfile -Command "./scripts/check-injected-context.ps1"
+
+# Regenerate the two compiled-in cheatsheet literals from agy-autotrain/knowledge/driver-cheatsheet.core.md.
+# core.md is the single source of truth; the two literals are GENERATED OUTPUT and must never be hand-edited.
+# The pre-commit parity hook compares what is STAGED, so stage all three together.
+gen-cheatsheet-literals:
+    pwsh -NoProfile -File scripts/generate-cheatsheet-literals.ps1
 
 # Prepare + gate + push a live umbrella release (auto semver + CHANGELOG from conventional commits).
 release:
