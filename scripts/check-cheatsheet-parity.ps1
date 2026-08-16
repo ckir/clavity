@@ -116,6 +116,12 @@ try {
     # (UTF-16LE under 5.1, measured) while the generated side is byte-exact, and parity is an EXACT
     # comparison.
     $coreTmp = New-TempPath '.md'
+    # THIS FAILURE BRANCH AND ITS TWIN BELOW ARE CURRENTLY UNREACHABLE, kept deliberately (capstone R4).
+    # Every path handed to Get-IndexBytes has already been confirmed present by Test-InIndex above, so the
+    # extraction cannot fail through this script's own front door. MEASURED: neutering BOTH guards so they
+    # can never fire, while still calling Get-IndexBytes, leaves the suite 16/0 green - no row can redden
+    # them. They stay because the pre-validation is what makes them unreachable: relax or reorder
+    # Test-InIndex later and an unreadable blob would otherwise flow into a byte comparison as empty.
     if ((Get-IndexBytes $Core $coreTmp) -ne 0) { Fail "could not read $Core out of the index"; exit 1 }
 
     $stagedTmp = @{}

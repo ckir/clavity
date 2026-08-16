@@ -92,9 +92,14 @@ $separator = if ($seedBytes -gt 0 -and $growthBytes -gt 0) { 2 } else { 0 }
 $combined = $seedBytes + $separator + $growthBytes
 
 if ($combined -gt $MaxBytes) {
-    Write-Host "check-growth-budget: FAIL: SEED (${seedBytes}B) + GROWTH (${growthBytes}B) = ${combined}B > ${MaxBytes}B — the binary would inject SEED-only and silently drop GROWTH. Trim the proposal." -ForegroundColor Red
+    # THE SEPARATOR IS IN THE SUM, SO IT MUST BE IN THE SENTENCE (capstone R4). Printing
+    # "SEED (10B) + GROWTH (10B) = 22B" is arithmetic the operator can see is wrong, and the natural
+    # reading is that the gate has miscounted - which sends them checking the tool instead of the
+    # proposal, exactly when a borderline overflow needs trimming.
+    Write-Host "check-growth-budget: FAIL: SEED (${seedBytes}B) + ${separator}B separator + GROWTH (${growthBytes}B) = ${combined}B > ${MaxBytes}B — the binary would inject SEED-only and silently drop GROWTH. Trim the proposal." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "check-growth-budget: OK — SEED (${seedBytes}B) + GROWTH (${growthBytes}B) = ${combined}B <= ${MaxBytes}B" -ForegroundColor Green
+# SAME OMISSION AS THE FAIL LINE ABOVE - the peer named only that one; this sibling had it too.
+Write-Host "check-growth-budget: OK — SEED (${seedBytes}B) + ${separator}B separator + GROWTH (${growthBytes}B) = ${combined}B <= ${MaxBytes}B" -ForegroundColor Green
 exit 0

@@ -166,7 +166,15 @@ Describe 'check-cheatsheet-parity.ps1' {
         $d = New-ParityRepo
         & git -C $d rm -q -- $script:Rs
         $cs = Join-Path $d $script:Cs
+        # ASSERT THE SETUP ACTUALLY DIVERGED THE FILE (capstone R4). `-replace` is a SILENT no-op when its
+        # pattern is absent, so if that anchor text ever moves out of the literal this row would write the
+        # file back UNCHANGED, parity would be genuinely intact, the hook would correctly exit 0 - and the
+        # assertion below would blame the hook for missing a divergence the fixture never created.
+        # Same class as the sweep row's missing precondition: a control must prove its own setup happened.
+        $csBefore = [IO.File]::ReadAllBytes($cs)
         [IO.File]::WriteAllText($cs, ([IO.File]::ReadAllText($cs) -replace 'Driving the agy peer', 'DIVERGED'))
+        [Linq.Enumerable]::SequenceEqual([IO.File]::ReadAllBytes($cs), $csBefore) |
+            Should -BeFalse -Because 'the fixture must actually diverge the C# literal, or this row proves nothing about the per-path skip'
         & git -C $d add -- $script:Cs
         $r = Invoke-Parity $d
         $r.ExitCode | Should -Not -Be 0 -Because 'a blanket "any deletion skips parity" passes here while certifying a diverged pin'
