@@ -395,7 +395,18 @@ _m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
 
             # A FRESH key, so the sweep gate has not latched yet for this "session" and the sweep runs.
             $k = 'sweepwork-' + [guid]::NewGuid().ToString('N')
-            Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"" | Out-Null
+            $res = Invoke-Shield -Root $r -Body @"
+agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
+[ -f "`${TMPDIR:-/tmp}/.clavity-shield-swept-$k" ] && echo "GATE_LATCHED"
+"@
+
+            # ASSERT THE PRECONDITION, do not assume it (capstone R3). The sweep is deliberately gated on
+            # a marker in the SHELL's ${TMPDIR:-/tmp}, which is a DIFFERENT directory from the Windows temp
+            # these fixtures live in - so a host where the shell's temp is unwritable skips the sweep by
+            # design. Without this line the row would then report "the stale temp survived", accusing the
+            # sweep of a defect when the gate simply, correctly, never latched. A control must assert its
+            # own precondition, or its failure message names the wrong culprit.
+            $res.Out | Should -Match 'GATE_LATCHED' -Because 'the sweep is gated on this marker; if it never latched the assertions below prove nothing about the sweep'
 
             (Test-Path -LiteralPath $stale) | Should -BeFalse -Because 'a temp older than the -mtime +30 window is exactly what the sweep exists to remove'
             (Test-Path -LiteralPath $fresh) | Should -BeTrue  -Because 'a RECENT temp may belong to a concurrent session and must survive'

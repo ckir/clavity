@@ -81,6 +81,13 @@ if ($growthBytes -eq 0) {
 # size adds a 2-byte separator when BOTH regions are present (panel agy-A1). Counting raw bytes + the separator,
 # WITHOUT subtracting the binary's trim + leading-comment strip, makes this a CONSERVATIVE upper bound: it errs
 # toward warning slightly early, never toward missing a real overflow — the safe direction for a warn gate.
+# THE `else { 0 }` IS CURRENTLY UNREACHABLE, and it is kept deliberately (capstone R3). 13c added two
+# guards ABOVE this line - a zero seed exits 1 and a zero growth exits 0 - so by the time execution
+# arrives here both values are strictly positive and the condition is always true. MEASURED: replacing
+# the else with a nonsense value leaves the suite fully green, so no row can redden it.
+# It is NOT simplified to `$separator = 2`: that would silently couple this arithmetic to those two
+# guards, so removing or relaxing either one later would produce a wrong separator with nothing to catch
+# it. A defensive branch with no oracle, documented as such rather than deleted or credited with cover.
 $separator = if ($seedBytes -gt 0 -and $growthBytes -gt 0) { 2 } else { 0 }
 $combined = $seedBytes + $separator + $growthBytes
 
