@@ -37,22 +37,41 @@ Describe "check-growth-budget.ps1 (SEED + GROWTH <= combined cap)" {
     }
 
     It "measures UTF-8 BYTES not characters (multibyte)" {
+        # THE SEED IS REQUIRED FOR THIS ROW TO TEST ANYTHING (13c). It used to leave the seed absent,
+        # which was harmless while a missing seed silently measured 0 - but 13c makes a missing seed
+        # exit 1 BEFORE any arithmetic, so this row would pass without ever counting a byte. VERIFIED:
+        # with Get-RawBytes stubbed to a constant, this row stayed GREEN until the seed was added.
+        Set-Content -NoNewline -Path $script:Seed -Value ('s' * 10)
         Set-Content -NoNewline -Path $script:Growth -Value ([string]([char]0x20AC) * 100) -Encoding utf8  # 300 bytes
+        # 10 + 2 separator + 300 = 312 > 200. A CHARACTER counter would see 100, giving 112 <= 200 and
+        # exit 0 - which is the discrimination this row exists for.
         & pwsh -File $script:Script -RepoRoot $script:Repo -MaxBytes 200
         $LASTEXITCODE | Should -Be 1
     }
 
     It "defaults MaxBytes to 16 KiB (the binary's combined injection cap)" {
-        Set-Content -NoNewline -Path $script:Growth -Value ('g' * ((16 * 1024) + 1))   # 1 over, seed absent
+        # SEED REQUIRED - see the note on the multibyte row above. The comment here used to read
+        # "1 over, seed absent"; under 13c "seed absent" is now an immediate exit 1, so the row proved
+        # nothing about the default cap.
+        Set-Content -NoNewline -Path $script:Seed -Value ('s' * 10)
+        # 10 + 2 separator + 16373 = 16385, exactly ONE byte over the 16384 default. A larger default
+        # would let this pass and redden the row, which is the property under test.
+        Set-Content -NoNewline -Path $script:Growth -Value ('g' * 16373)
         & pwsh -File $script:Script -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 1
     }
 
     It "counts RAW on-disk bytes including a UTF-8 BOM (a BOM-stripping counter would wrongly pass; panel agy-A6)" {
-        # 3-byte UTF-8 BOM + 200 ASCII bytes = 203 raw bytes > a 202 cap. GetByteCount(ReadAllText) would see 200.
+        # SEED REQUIRED - see the note on the multibyte row above. Without it 13c's missing-seed branch
+        # exits 1 first and the BOM is never counted at all.
+        Set-Content -NoNewline -Path $script:Seed -Value ('s' * 10)
+        # 3-byte UTF-8 BOM + 200 ASCII = 203 raw. With the seed: 10 + 2 separator + 203 = 215 raw,
+        # against 212 for a BOM-STRIPPING counter. The cap sits BETWEEN them at 214, so the raw count
+        # fails and a stripping count (GetByteCount(ReadAllText)) would pass - the discrimination this
+        # row exists for. Moving the cap outside [212, 215) silently destroys that.
         $bom = [byte[]]@(0xEF, 0xBB, 0xBF)
         [System.IO.File]::WriteAllBytes($script:Growth, ($bom + [System.Text.Encoding]::ASCII.GetBytes('g' * 200)))
-        & pwsh -File $script:Script -RepoRoot $script:Repo -MaxBytes 202
+        & pwsh -File $script:Script -RepoRoot $script:Repo -MaxBytes 214
         $LASTEXITCODE | Should -Be 1
     }
 
