@@ -1164,9 +1164,24 @@ suite green, that branch is untested regardless of how many rows exist.
 |---|---|
 | change the A2 prepend back to an append (`>> "$_as_shield"`) | `(a) the human INTENT survives` |
 | change the A2 prepend to writing nothing | `(b) the DIRECTORY is protected` |
-| delete the `elif ... grep -q '^!'` branch entirely | both (a) and (b) |
+| delete the `elif ... grep -q '^!'` branch entirely | `(a) the human INTENT survives` **only - NOT (b)** (capstone R49) |
 | drop the trailing-newline probe from the append branch | `does NOT concatenate onto a shield with NO trailing newline` |
 | drop the optional-CR alternative from the A2 match | `treats a CRLF shield as already correct` |
+
+> **Why row 3 says (a) ONLY, and why no single mutation here can redden BOTH (capstone R49).** The
+> earlier wording claimed both, and it was theatre. Delete the `elif` and control does not stop or write
+> nothing - it **falls through to the append branch**, which is behaviourally identical to row 1 of this
+> same table. So `*` still lands in the shield: row (b) (`:573-577`, another file in the directory MUST
+> be ignored, `check-ignore` exit **0**) stays GREEN, while row (a) (`:567-570`, the named file must
+> still NOT be ignored, exit **1**) reddens because a trailing `*` inverts the negation.
+>
+> **The two rows encode opposite failure modes and the table's own first two entries prove it** - the
+> comment at `:568` blames "the blind-append version" for (a), and `:574` blames "the write-nothing
+> version" for (b). Append breaks (a) and satisfies (b); writing nothing breaks (b) and satisfies (a).
+> **Deleting the whole A2 block reddens (b) alone** (nothing is written, so the directory is exposed
+> while the negation survives). There is no mutation that reddens both, so a control claiming one
+> overstated what this suite pins. **A mutation entry that duplicates another entry's effect while
+> claiming broader coverage is the shape to check for in any table you add.**
 | make the A1 temp sweep unconditional again | **NONE - this is a COST regression, not a correctness one, and no row can catch it.** Verify by reading that the sweep stays gated behind `$_as_sweep`. Recorded here rather than left implied, because a mutation table with a silent gap is how a guard gets credited with coverage it does not have |
 | delete the `ls-files --error-unmatch` split in B3 | `reports the git rm --cached remedy` |
 | make Stage A conditional on B3's outcome | `restores an EMPTIED shield even when the path is TRACKED` |
@@ -1620,7 +1635,7 @@ Expected: all rows PASS.
 | mutation | row that must turn RED |
 |---|---|
 | delete the `agy_shield` call **and** the new `else` fallback | `RESTORES an emptied shield` |
-| delete ONLY the `else` fallback, then make the helper unsourceable | a new row must assert the shield is STILL restored by the fallback - add it if absent |
+| delete ONLY the `else` fallback, then make the helper unsourceable | `the FALLBACK restores an EMPTIED shield when the helper cannot be sourced` **(capstone R49: this row ALREADY EXISTS in Step 1 - the entry used to read "a new row must assert ... add it if absent", which was stale after the row landed and would have had the executor author a DUPLICATE)** |
 | replace `"$sid"` with `""` in the call | `FORWARDS the payload session_id as the debounce key` |
 | replace `"$sid"` with a hard-coded literal | same row |
 
@@ -5427,8 +5442,19 @@ Expected: both green.
 
 - [ ] **Step 7: Mutation controls**
 
-- **On the gate's suite:** collapse the missing and empty branches back into one - at least one row above
-  must turn RED.
+- **On the gate's suite:** collapse the missing and empty branches back into one. **FOUR named rows must
+  turn RED, and this used to read "at least one row above" (capstone R49) - the only control in this plan
+  that named no row, against this repo's standing rule to assert WHICH, not HOW MANY.** "At least one" is
+  satisfied by a collapse that broke a single pair, leaving half the distinction unguarded while the
+  executor ticks the box. The four:
+  - `GROWTH missing: names it ABSENT, not empty, and exits 0`
+  - `GROWTH present but EMPTY: names it EMPTY, not absent, and exits 0`
+  - `SEED missing: names the MISSING SEED, never an overflow, and exits NON-ZERO`
+  - `SEED present but EMPTY: names it EMPTY and exits NON-ZERO`
+
+  Each asserts the message that DISTINGUISHES its branch from its twin, so collapsing the two branches
+  makes both members of a pair emit one message and both reds are required. **If fewer than four redden,
+  the collapse was partial - fix the mutation, not the expectation.**
 - **On the caller's suite:** restore the hardcoded "exceeds the cap" warning - the new drain row must turn
   RED.
 
