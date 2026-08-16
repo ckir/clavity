@@ -358,6 +358,16 @@ agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
+agy-shield-lib.Tests.ps1                        409,1s   34 tests   <- SLOW, NEW 2026-08-16. Fixture-
+                                                                      heavy: many git + bash subprocess spawns per
+                                                                      row across 17 Its. Measured solo, two
+                                                                      consecutive runs immediately back to back:
+                                                                      409,06s and 410,59s, 34/34 BOTH times - the
+                                                                      second run is the re-run control the drafted
+                                                                      suite could not have produced before the
+                                                                      per-invocation debounce-key isolation was
+                                                                      added to Invoke-Shield (see that function's
+                                                                      comment).
 agy-test-audit-reminder.Tests.ps1                50,8s   18 tests   <- SLOW, re-measured 2026-08-06 (+4)
 assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
