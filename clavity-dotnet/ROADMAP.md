@@ -979,16 +979,24 @@ Pester, and **never runs in any gate**. `test-suite-registration.Tests.ps1` cann
 scans only `scripts/tests` while claiming to cover "every Pester suite on disk" — so the guard's own
 scope is narrower than its stated contract. Decide: register it, move it, or delete it.
 
-**§14c — 7 shipped hooks write into `.clavity/` and none assert the `.gitignore` shield.** Measured:
-7 hooks under `clavity-dotnet/plugin/hooks/` reference `.clavity/` with a write construct; **0** contain
-`clavity/.gitignore`. The only place that asserts the shield is `plugin/skills/open-issues/SKILL.md:79`
-(preceded by `mkdir -p` at `:69` — both lines are needed). On an end-user repository whose `.gitignore`
+**§14c — FIVE shipped artifacts write into `.clavity/` and none asserts the `.gitignore` shield: ONE HOOK
+and FOUR SKILLS.** Measured 2026-08-14 under a stated predicate — *a shipped plugin artifact that CREATES
+or WRITES a path under `<repo-root>/.clavity/`, traced through variable assignments to the RESOLVED
+target*, not by proximity of a write construct to the token `.clavity`. The earlier "7 shipped hooks" came
+from that proximity predicate and was wrong in KIND as well as in count. The set:
+`plugin/hooks/agy-discipline-reaching.sh` · `plugin/skills/agy-first/SKILL.md` ·
+`plugin/skills/agy-capstone/SKILL.md` · `plugin/skills/agy-test-audit/SKILL.md` ·
+`plugin/skills/open-issues/SKILL.md` (weakly, at `:79` — that one is §14d).
+**Excluded, with the reason:** `adversarial-panel-review/SKILL.md:203` names the path but delegates the
+write; the other six hooks write to `${TMPDIR:-/tmp}` or `$HOME/.clavity-tmp` — a DIFFERENT directory —
+and say so themselves (`agy-anomaly-capture-reminder.sh:49`, `assertion-strength-reminder.sh:9`).
+On an end-user repository whose `.gitignore`
 we do not control, that runtime state is **git-visible**, and a `git add .` would publish it. The
 workflow-position spec (`docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md`,
-section 6) mandates the shield for the *new* reader; **this entry is the existing seven.**
+section 6) mandates the shield for the *new* reader; **this entry is the existing five.**
 
 > ⚠ **CORRECTED 2026-08-14 by §14d: `SKILL.md:79` is NOT a good reference to copy.** It tests file
-> EXISTENCE, not content. Fix §14d first, or §14c's seven hooks inherit the weak idiom.
+> EXISTENCE, not content. Fix §14d first, or §14c's five artifacts inherit the weak idiom.
 
 **§14d — the sole shield assertion is content-blind, and five artifacts propagate it.** ▶ **OPEN**
 `SKILL.md:79` reads `[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> ...`, so it restores a
