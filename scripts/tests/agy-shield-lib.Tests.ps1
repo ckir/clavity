@@ -387,6 +387,32 @@ _m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
             $res.Err | Should -Match 'APPENDED rather than prepended' -Because 'overriding a human negation must never be silent'
         }
 
+        It 'mktemp UNAVAILABLE on a shield with NO TRAILING NEWLINE still shields the DIRECTORY (capstone)' {
+            # THE ROW ABOVE PASSED WHILE THIS ONE FAILED, and the only difference is a trailing newline.
+            # The fallback appended with `printf '%s\n' '*'` where the sibling append branch uses the
+            # leading-newline form, so a shield ending `!local-anomalies.md` with no final newline became
+            # the SINGLE line `!local-anomalies.md*`: no bare `*` anywhere, the negation destroyed, and
+            # `check-ignore` reporting another file in the directory as NOT ignored - while the helper
+            # returned 0. That is the exact per-directory failure this item exists to prevent, on the
+            # branch that exists to be the safe floor.
+            #
+            # New-FixtureRepo writes $Shield verbatim, so omitting the `n is what makes this the
+            # no-trailing-newline case. Reaching the fallback needs a `!` line (the elif matched) AND a
+            # failing mktemp.
+            $r = New-FixtureRepo -Shield '!local-anomalies.md'
+            Invoke-Shield -Root $r -Body "mktemp() { return 1; }`nagy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"`"" | Out-Null
+
+            (Get-Shield $r) | Should -Match '(?m)^\*$' -Because 'the bare * must be its OWN line, not concatenated onto the negation'
+            (Get-Shield $r) | Should -Match '(?m)^!local-anomalies\.md$' -Because 'the human negation must survive as its own line too'
+
+            # THE SIDE EFFECT IS THE POINT, not the file text: assert the directory is actually shielded.
+            # A text-only assertion would have passed against a shield that reads correctly but does not
+            # ignore anything.
+            [IO.File]::WriteAllText((Join-Path $r '.clavity/other-marker.md'), "x`n")
+            & git -C $r check-ignore -q -- '.clavity/other-marker.md'
+            $LASTEXITCODE | Should -Be 0 -Because 'another file in the directory MUST be ignored; a corrupted single line leaves it exposed'
+        }
+
         It 'ALWAYS returns 0 - it must never hard-block a caller' {
             $r = New-FixtureRepo -Shield "*`n"
             foreach ($args in @('"" "x" "k"', '"$PWD" "docs/secret.md" "k"', '"$PWD" ".clavity/local-anomalies.md" "k"')) {

@@ -196,7 +196,18 @@ agy_shield() {
         # other file, and report LOUDLY (undebounced, class validation) that the negation was overridden
         # because no temp file could be created. Loud and degraded beats silent and leaking.
         if [ "$_as_prepended" -eq 0 ]; then
-            printf '%s\n' '*' >> "$_as_shield" 2>/dev/null
+            # LEADING NEWLINE, and this branch shipped WITHOUT it (capstone R1 of the implementation).
+            # Reaching here means the `elif` above matched, which required `grep -q '^!'` to succeed - so
+            # the shield is NON-EMPTY by construction and an unconditional leading newline is correct,
+            # exactly as the sibling append branch below argues.
+            # MEASURED with a control: a shield whose last line is a negation (a `!` followed by a file
+            # name) with NO trailing newline had the star concatenated straight onto it, yielding ONE
+            # corrupted line - no bare `*` anywhere, `check-ignore` reporting that
+            # another file in the directory is NOT ignored, and the helper still returned 0. The
+            # DIRECTORY was left exposed, which is the precise failure this whole item exists to stop,
+            # on the path that exists to be the safe floor. With a trailing newline (the control) the
+            # same input shielded correctly, which is why every existing row passed.
+            printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null
             _agy_shield_say validation '' "could not create a temp file in $_as_dir, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand."
         fi
     else
