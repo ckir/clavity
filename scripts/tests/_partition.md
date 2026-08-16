@@ -352,6 +352,13 @@ agy-inbox-snapshot.Tests.ps1                    122,5s   22 tests   <- SLOW, re-
                                                                       MISSING from this table entirely
                                                                       until 2026-08-03
 agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-mark.Tests.ps1                               93,0s   26 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
+                                                                      agy-mark.sh, the sanctioned .clavity writer for the
+                                                                      skills. Bash + git subprocess spawns across 26 Its; the
+                                                                      FORWARDS $AGY_SESSION_ID row alone costs ~33,5s (three
+                                                                      chained head calls proving the debounce breaks on a
+                                                                      different session id, one against a git-tracked marker
+                                                                      needing git rm --cached).
 agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-measured 2026-08-06 (+5:
                                                                       four root-walk cases plus the marker
                                                                       cwd-relative contract, which had
