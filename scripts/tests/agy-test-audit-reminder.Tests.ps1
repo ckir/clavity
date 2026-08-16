@@ -33,19 +33,27 @@ Describe 'agy-test-audit-reminder.sh' {
 
         # A repo whose HEAD commit touched a code file, with capstone.head==HEAD and no audit marker:
         # the canonical FIRE state. Returns the repo dir (Windows path).
+        # A BUILDER OWNS ITS DIRECTORY UNTIL IT RETURNS. Every caller is shaped
+        # `$r = New-FiredRepo; try { ... } finally { Remove-Item $r.Dir }` - the assignment is OUTSIDE the
+        # try, so a throw in here aborts before `$r` exists, the caller's finally never runs, and the temp
+        # repo leaks permanently. The postcondition guards make that path reachable for the first time, so
+        # the builders now clean up after themselves and rethrow. `catch`, not `finally`: the success path
+        # must hand the directory to the caller intact.
         function New-FiredRepo {
             param([string]$CodeFile = 'src/thing.cs', [switch]$DocsOnly)
             $dir = New-TempRepo
-            $rel = if ($DocsOnly) { 'docs/notes.md' } else { $CodeFile }
-            $full = Join-Path $dir $rel
-            New-Item -ItemType Directory -Path (Split-Path -Parent $full) -Force | Out-Null
-            Set-Content -LiteralPath $full -Value 'x' -Encoding ascii
-            & git -C $dir add -A
-            & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm work
-            Assert-HeadTouched -Dir $dir -Rel $rel
-            $head = (& git -C $dir rev-parse HEAD).Trim()
-            New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
-            return [pscustomobject]@{ Dir = $dir; Head = $head }
+            try {
+                $rel = if ($DocsOnly) { 'docs/notes.md' } else { $CodeFile }
+                $full = Join-Path $dir $rel
+                New-Item -ItemType Directory -Path (Split-Path -Parent $full) -Force | Out-Null
+                Set-Content -LiteralPath $full -Value 'x' -Encoding ascii
+                & git -C $dir add -A
+                & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm work
+                Assert-HeadTouched -Dir $dir -Rel $rel
+                $head = (& git -C $dir rev-parse HEAD).Trim()
+                New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
+                return [pscustomobject]@{ Dir = $dir; Head = $head }
+            } catch { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue; throw }
         }
         function Set-Marker { param($Dir, $Name, $Sha)
             Set-Content -LiteralPath (Join-Path $Dir ".clavity/agy-marks/$Name.head") -Value $Sha -NoNewline -Encoding ascii
@@ -54,6 +62,7 @@ Describe 'agy-test-audit-reminder.sh' {
         # commit while HEAD advances on a feature branch with a code file, so merge-base HEAD main != HEAD.
         function New-DiffPathRepo {
             $dir = New-TempRepo                                # one 'init' commit on the default branch
+            try {
             & git -C $dir branch -f main HEAD                  # ensure a 'main' ref pinned at init
             & git -C $dir checkout -qb feature
             $full = Join-Path $dir 'src/thing.cs'
@@ -73,6 +82,7 @@ Describe 'agy-test-audit-reminder.sh' {
             }
             New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
             return [pscustomobject]@{ Dir = $dir; Head = $head }
+            } catch { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue; throw }
         }
         function New-AuditPayload { param([string]$Cwd)
             @{ tool_name = 'Bash'; tool_input = @{ command = 'git commit' }; cwd = $Cwd } | ConvertTo-Json -Compress
