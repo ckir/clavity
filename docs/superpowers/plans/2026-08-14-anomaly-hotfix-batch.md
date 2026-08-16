@@ -915,6 +915,33 @@ _m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
 }
 ```
 
+> 🔴 **EXECUTION AMENDMENT 2026-08-16 - THE SUITE AS DRAFTED WAS NOT RE-RUNNABLE, AND THE MUTATION
+> CONTROLS WOULD HAVE BEEN UNINTERPRETABLE.** Seventeen rows passed the LITERAL debounce key `"k1"`.
+> The helper's marker is `${TMPDIR:-/tmp}/.clavity-shield-<class>-<key>` with **no repository
+> component**, so one literal key debounces across independent fixture repos AND across suite runs -
+> the marker outlives the run. **MEASURED, with a control that rules out a broken fixture:** repo A
+> key `k1` REPORTS; repo A key `k1` again is silent (correct); repo B key `k1`, a fresh repo never
+> touched, is **SILENT**; repo B key `kZ` REPORTS. First measured suite result: **34 tests, 31 passed,
+> 3 failed** - exactly the three rows asserting that a report FIRES.
+>
+> **The fix is one line in `function Invoke-Shield`**, not an edit to seventeen rows: substitute a
+> fresh GUID key per invocation. `-replace` computes its replacement ONCE, so a body calling the
+> helper twice still shares one key and the same-key semantics those rows rely on survive; rows that
+> deliberately pin debounce behaviour already build their own GUID keys and contain no `k1`.
+> **Verified by running the suite TWICE: 34/34 then 34/34.** The second run is the control - the
+> drafted suite could not have produced it.
+>
+> **NOT fixed by overriding `TMPDIR`:** measured, Git Bash silently rewrites a Windows `TMPDIR` handed
+> to it to `/tmp/`, so an `-Env` override is dead on this platform. This plan already records that
+> measurement for the sweep-gate row and it applies here too.
+>
+> **Why this outranks its size: it would have corrupted Step 7.** Every mutation control deliberately
+> changes control flow. A stale marker masks a mutation-induced report, so the row stays silent, and
+> the mutation is scored as CAUGHT when nothing caught it - a false green on the controls that exist
+> to prove the rows are not vacuous.
+>
+> **The production question this exposes is DEFERRED, not fixed** - see the residual note after Step 7.
+
 - [ ] **Step 2: Run the suite to verify it FAILS**
 
 ```bash
@@ -1220,6 +1247,17 @@ pwsh -c "Invoke-Pester scripts/tests/agy-shield-lib.Tests.ps1 -Output Detailed -
 
 Expected: every row PASSES. **Read the count** and record it for `_partition.md`.
 
+**MEASURED 2026-08-16, after the isolation amendment above: `Tests Passed: 34, Failed: 0`, twice in a
+row, at 409,06s and 410,59s.** That runtime confirms the SLOW placement chosen in Step 5 on its own -
+this single suite is already two thirds of the 600s foreground cap, so it must never be run alongside
+another Pester suite. Use those figures for the `_partition.md` row.
+
+🔴 **DO NOT run the full 410s suite fourteen times for Step 7.** Filter to the named row:
+`pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-shield-lib.Tests.ps1 -FullNameFilter '*<row name>*' -Output Detailed -CI"`.
+**Read the DISCOVERED count on every filtered run** - a filter that matches nothing runs 0 tests and
+reports success, which reads exactly like a mutation that was caught. A filtered run discovering 0
+tests is a BROKEN FILTER, not a passing control.
+
 - [ ] **Step 7: Mutation controls - one per branch**
 
 Run each of these, confirm the named row turns RED, then REVERT the mutation. If a mutation leaves the
@@ -1257,6 +1295,26 @@ suite green, that branch is untested regardless of how many rows exist.
 | drop `2>/dev/null` from the A2 `grep` | `creates .clavity/ and the shield on a FRESH CLONE` (stderr assertion) |
 | replace `return 0` with `exit 0` in A0 | `does NOT kill its CALLER` |
 | use `check-ignore -v` for the DECISION instead of `-q` | **`reports the negation loudly`** - and the pairing here was WRONG until panel R14. Measured behaviour: `-v` exits **0** on a file that is NOT ignored, so B2 short-circuits to "done" and the negation is never reported at all. `(a) the human INTENT survives` stays GREEN under that mutation, because nothing is written either way - so the old pairing named a row the mutation cannot redden |
+
+### RESIDUAL, DEFERRED BY DECISION - the debounce is not scoped by repository (2026-08-16)
+
+**Stated here rather than discovered later as a regression.** `_agy_shield_say`'s marker carries the
+class and the key and **nothing identifying the repository**. The key is the caller's session id, so
+**one agent session working across two repositories that both have a `.clavity` leak gets ONE report
+total** - the second repository's leak is silently unreported for the remainder of that session.
+
+**This was NOT fixed here, deliberately.** The fix is to fold a filename-safe digest of the root into
+the marker name, which redefines the debounce domain from `(key, class)` to `(key, class, repository)`
+- a change to the contract the spec states and this helper's own header documents. **A hot-fix batch
+restores promised behaviour; it does not redesign the contract.** Consulted the live peer under four
+seats; it and I converged independently on deferring, and its reachability read is recorded below.
+
+**Bounded, and the bound is what makes deferral safe:** the FIRST repository's leak IS reported, so the
+operator is alerted to the hygiene class; and the next session generates a new key and reports the
+second repository immediately. The cost is a one-session delay on a secondary leak, not a lost one.
+
+**Captured for triage in `.clavity/local-anomalies.md`. Do NOT fold this into the batch** - it needs an
+owner ruling, and a spec cannot specify "do one of these".
 
 - [ ] **Step 8: Run the pair gates**
 
