@@ -43,6 +43,7 @@ directly.
 | `check-core-integrity.ps1` | Assert every protected driver-owned file (the SEED, the four driver manuals, `driver-cheatsheet.core.md`) is byte-identical to its committed HEAD version after a drain | invoked by `drain-knowledge.ps1` |
 | `check-growth-budget.ps1` | Warn-only gate: assert SEED+GROWTH combined size fits the binary's 16 KiB injection cap | invoked by `drain-knowledge.ps1` (warn-only) |
 | `generate-cheatsheet-literals.ps1` | Regenerate the two compiled-in cheatsheet literals (`clavity-classic/src/driver_cheatsheet.rs`, `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs`) from the canonical `driver-cheatsheet.core.md`, so the three can never diverge | `just gen-cheatsheet-literals` |
+| `check-cheatsheet-parity.ps1` | Pre-commit gate: compare the STAGED literals against freshly generated output, INDEX to INDEX (`git show :<path>`), never the worktree, and never write in place | `lefthook.yml` `pre-commit`, globbed to the three pinned files so it costs nothing on any other commit; run directly to check by hand |
 
 ## Knowledge drain & docs-audit tooling
 

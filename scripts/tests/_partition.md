@@ -383,6 +383,13 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- FAST, mea
 BashHookHelpers.Tests.ps1                         1,7s    4 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   14 tests   <- FAST, re-measured 2026-08-05
 check-cheatsheet-budget.Tests.ps1                43,1s    6 tests   <- FAST, re-measured 2026-08-12
+check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW 2026-08-16 (14e): the
+                                                                      pre-commit parity gate's own suite.
+                                                                      Every row builds a throwaway git repo,
+                                                                      which is why it is expensive despite a
+                                                                      modest test count. Measured solo as the
+                                                                      sole command: "Tests completed in
+                                                                      135,92s", 16 passed / 0 failed.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the

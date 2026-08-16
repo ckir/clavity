@@ -356,6 +356,22 @@ Describe 'check-curate-in-progress.ps1' {
         $fixtureScripts = Join-Path $script:Tmp 'scripts'
         New-Item -ItemType Directory -Force -Path $fixtureScripts | Out-Null
         Copy-Item -LiteralPath $script:Script -Destination (Join-Path $fixtureScripts 'check-curate-in-progress.ps1')
+        # The fixture runs the REAL lefthook.yml, which now carries a second pre-commit command
+        # (cheatsheet-parity, ROADMAP 14e) globbing the same three paths this fixture stages. Without
+        # its script present, lefthook fails for a reason that has nothing to do with this suite and
+        # the control row below - which asserts exit 0 - goes red.
+        # A STUB, NOT THE REAL SCRIPT - and panel R4 caught why copying the real one does not work.
+        # This fixture stages clavity-classic/src/driver_cheatsheet.rs (:359) and contains NO core.md at
+        # all. The real parity hook would find a literal present in the index with no canonical source,
+        # which by Task 11's own rules is the "source gone, literal left behind" case and exits non-zero -
+        # so lefthook fails and the control row below (`Should -Be 0`) goes RED. Copying the real script
+        # trades one failure for another.
+        #
+        # A stub is the CORRECT isolation here, not a dodge: this row's claim is that lefthook invokes
+        # THE CURATE GUARD and propagates ITS refusal. Any other pre-commit command is noise for that
+        # claim, and the parity hook's real behaviour is covered by its own suite in Task 11 - which is
+        # where a wiring break in it must be caught, not here.
+        Set-Content -LiteralPath (Join-Path $fixtureScripts 'check-cheatsheet-parity.ps1') -Value 'exit 0'
         New-StagedFile -Root $script:Tmp -Paths 'clavity-classic/src/driver_cheatsheet.rs'
 
         Push-Location $script:Tmp
