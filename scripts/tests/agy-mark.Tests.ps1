@@ -254,8 +254,13 @@ Describe 'agy-mark.sh' {
             $d = New-MarkFixture
             New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity/agy-marks/skipped.log') | Out-Null
             $r = Invoke-Mark -Cwd $d -MarkArgs @('log','agy-first','SKIPPED-UNREACHABLE','deadbeef')
-            $r.ExitCode | Should -Be 2 -Because 'wrote-something-and-failed is exit 2, distinct from refused-nothing-written (exit 1)'
-            $r.Err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive a partway failure too'
+            # THE JUSTIFICATION HERE USED TO READ "wrote-something-and-failed", WHICH IS FALSE OF THIS VERY
+            # FIXTURE. A directory target cannot be OPENED, and with `>>` the shell opens before the command
+            # runs, so printf never executes and ZERO bytes land - measured. The row and the code were both
+            # right; only the sentence explaining them was wrong. 2 means the write was ATTEMPTED and the
+            # filesystem rejected it; 1 means refused before trying. The discriminator is WHO stopped it.
+            $r.ExitCode | Should -Be 2 -Because 'an attempted-and-rejected write is exit 2, distinct from refused-before-trying (exit 1); this fixture writes zero bytes and is still a 2, which is exactly the point'
+            $r.Err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive a rejected write too'
         }
     }
 

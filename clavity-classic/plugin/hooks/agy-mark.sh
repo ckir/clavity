@@ -16,8 +16,18 @@
 #   log     <discipline> <status> <sha> [text...] -> append one line to .clavity/agy-marks/skipped.log
 #   prepare <relpath>                             -> create + shield the parent of .clavity/<relpath>
 #
-# Exit codes: 0 wrote; 1 REFUSED, nothing written; 2 the write itself failed partway. A caller must be
-# able to tell "refused" from "wrote", and one non-zero cannot express that.
+# Exit codes: 0 wrote; 1 REFUSED before trying, nothing written; 2 the write was ATTEMPTED and the
+# filesystem rejected it. A caller must be able to tell "refused" from "wrote", and one non-zero cannot
+# express that: on 1 the caller fixes its arguments, on 2 it retries or escalates an environmental fault.
+#
+# 2 IS NOT "FAILED PARTWAY", AND THE DISCRIMINATOR IS NOT A BYTE COUNT. With `>` and `>>` the SHELL opens
+# the target BEFORE the command runs, so an unopenable target - a directory, a permission error - fails
+# with printf never executing at all and ZERO bytes written, and still exits 2. MEASURED: a directory
+# target reports "Is a directory" and writes nothing. Defining 2 by bytes-on-disk would ALSO leave it with
+# no reachable fixture, because :127-129 relies on a single short append being ATOMIC on POSIX - a genuine
+# partial write is exactly what this design excludes. The question 2 answers is WHO stopped the write, not
+# how much of it landed. (The wording said "failed partway" until a capstone round measured the directory
+# case; the code was always right, the sentence describing it was not.)
 
 set -u
 
@@ -103,7 +113,7 @@ case "$mode" in
         # a fresh clone fails "No such file or directory" on the first discipline that runs.
         mkdir -p "$root/.clavity/agy-marks" 2>/dev/null || _die_refuse 'could not create .clavity/agy-marks'
         # BARE sha and nothing else (docs/agy-disciplines-marker-contract.md:18).
-        printf '%s' "$sha" > "$root/$rel" 2>/dev/null || { printf 'agy-mark: write FAILED partway for %s\n' "$rel" >&2; exit 2; }
+        printf '%s' "$sha" > "$root/$rel" 2>/dev/null || { printf 'agy-mark: write FAILED for %s - the filesystem rejected it\n' "$rel" >&2; exit 2; }
         exit 0
         ;;
     log)
@@ -127,7 +137,7 @@ case "$mode" in
         # ONE printf >>, never read-modify-write: two sessions can be open on the same repository, and a
         # single short append is atomic on POSIX, so concurrent writers interleave lines rather than
         # corrupting them.
-        printf '%s\n' "$line" >> "$root/$rel" 2>/dev/null || { _log_lost 'the append itself failed'; exit 2; }
+        printf '%s\n' "$line" >> "$root/$rel" 2>/dev/null || { _log_lost 'the filesystem rejected the append'; exit 2; }
         exit 0
         ;;
     prepare)
