@@ -237,7 +237,7 @@ Describe 'check-injected-context.ps1' {
             @{ Segment = 'bin' }         ; @{ Segment = 'obj' }          ; @{ Segment = '.venv' }
             @{ Segment = '__pycache__' } ; @{ Segment = 'dist' }         ; @{ Segment = 'publish' }
             @{ Segment = '.vs' }         ; @{ Segment = '.ruff_cache' }  ; @{ Segment = '.pytest_cache' }
-            @{ Segment = '.mypy_cache' } ; @{ Segment = '.worktrees' }
+            @{ Segment = '.mypy_cache' } ; @{ Segment = '.worktrees' }   ; @{ Segment = '.clavity' }
         ) {
             # Capstone round 9, Coverage Liar: only dist, bin and target had rows, so deleting any OTHER
             # entry from $script:PrunedSegments left the whole suite green. Its quoted array was wrong -
@@ -263,7 +263,7 @@ Describe 'check-injected-context.ps1' {
             # at discovery time, before the script is dot-sourced, so the array cannot itself be derived -
             # this row closes that gap instead by comparing the two sets.
             $covered = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs',
-                         '.ruff_cache','.pytest_cache','.mypy_cache','.worktrees')
+                         '.ruff_cache','.pytest_cache','.mypy_cache','.worktrees','.clavity')
             $uncovered = @($script:PrunedSegments | Where-Object { $_ -notin $covered })
             $uncovered -join ', ' | Should -BeExactly '' -Because 'a pruned segment with no row is an untested rule that silently drops files'
         }
@@ -1308,6 +1308,26 @@ It 'a build-output violation can actually be WAIVED with the line the gate print
             }
             # Name them: a count sends a reader hunting, a name sends them to the file to fix.
             $misses -join ', ' | Should -BeExactly '' -Because 'Get-HookMessages binds msg[A-Za-z0-9_]* only, so a hook building its payload in a differently-named variable is invisible to the budget and tag-hygiene invariants'
+        }
+    }
+
+    Context '14a - .clavity is pruned from the reference walk' {
+        BeforeAll { . $script:Script -RepoRoot $script:RepoRoot }
+
+        It 'prunes a path inside .clavity/' {
+            Test-IsPrunedPath -RelPath '.clavity/seams/topic.md' | Should -BeTrue -Because '.clavity is runtime state and must never enter the reference index'
+        }
+        It 'prunes .clavity at the repository root as well as nested' {
+            Test-IsPrunedPath -RelPath '.clavity/local-anomalies.md' | Should -BeTrue
+            Test-IsPrunedPath -RelPath 'sub/.clavity/local-anomalies.md' | Should -BeTrue
+        }
+        It 'does NOT prune a PREFIX near-miss' {
+            # PruneRx is (?:^|/)<segment>/ so only an EXACT segment match may prune. A control like
+            # src/foo.md would pass before this change too and would prove nothing.
+            Test-IsPrunedPath -RelPath '.clavity-tmp/foo.md' | Should -BeFalse -Because 'only an exact path SEGMENT may prune'
+        }
+        It 'does NOT prune a SUFFIX near-miss' {
+            Test-IsPrunedPath -RelPath 'x.clavity/foo.md' | Should -BeFalse -Because 'only an exact path SEGMENT may prune'
         }
     }
 }

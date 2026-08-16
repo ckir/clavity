@@ -89,7 +89,7 @@ $script:DomainRoots = @(
 # .worktrees/** in the ignorelist does not reach this: that governs the corpus, and the reference index
 # is a whole-repository walk pruned by NAME.
 $script:PrunedSegments = @('.git','node_modules','target','bin','obj','.venv','__pycache__','dist','publish','.vs',
-                           '.ruff_cache','.pytest_cache','.mypy_cache','.worktrees')
+                           '.ruff_cache','.pytest_cache','.mypy_cache','.worktrees','.clavity')
 # Non-capturing throughout: this regex is only used with -match today, but a capturing group in a regex
 # later handed to -split silently shifts every index, which cost a round-3 fix its correctness.
 # THE TRAILING '/' IS REQUIRED, NOT OPTIONAL. These are FILE paths, so a pruned segment is always a
