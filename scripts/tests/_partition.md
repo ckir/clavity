@@ -40,8 +40,9 @@ load once and accumulates across files.
   during a run slows it down by construction** (see the contention entries below). **Do not quote any
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
-- `just test-scripts-slow` — everything else. **13 suites, 257 tests, measured 819,2s solo** (2026-08-06).
-  NOT on any git hook; it is **well past the 600s foreground tool cap** — 653,5s, 761,28s, now 819,2s —
+- `just test-scripts-slow` — everything else. **18 suites, 363 tests, measured 1300,19s solo** (2026-08-16,
+  after the anomaly hot-fix batch added five suites to this half and none to fast).
+  NOT on any git hook; it is **well past the 600s foreground tool cap** — 653,5s, 761,28s, 819,2s, now 1300,19s —
   and must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line, never by
   watching a process count. **A backgrounded run can also be STOPPED before it finishes** (one was, at 9
   of 13 suites, on 2026-08-06): a log with no `Tests Passed:` line is an ABORTED run, not a passing one,
@@ -76,10 +77,18 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **328** and slow **257**, **both measured, not added up**. It is a
-fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
+test raises it. The count today is fast **328 (STALE — see below)** and slow **363**, **measured, not added
+up**. It is a fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
 "fast 177 and slow 238" until 2026-08-06, having decayed through five intervening entries below that each
-recorded a new number without updating it.
+recorded a new number without updating it. **It was updated in place on 2026-08-16 for exactly that
+reason** — the slow half was re-measured that day and this sentence is where the previous decay was
+recorded, so leaving it would have repeated the failure it documents.
+
+⚠ **The fast figure of 328 was NOT re-measured on 2026-08-16 and is stale by a known amount:** Task 5 of
+the anomaly hot-fix batch added **four** rows to `agy-discipline-reaching.Tests.ps1`, which is in the fast
+half, and no suite moved into or out of fast. **The number is deliberately NOT incremented to 332** — this
+file's own rule is *measured, not added up*, and an arithmetic figure recorded as if measured is worse
+than one openly marked stale. Re-measure the fast half before quoting it.
 
 **Since 2026-08-06 the structural invariant is ENFORCED, not just documented.**
 `scripts/tests/test-suite-registration.Tests.ps1` runs that `diff` as a test: every suite on disk is in
@@ -287,6 +296,24 @@ own decay three times. **Two samples disagreeing is not a tie — it is an unrun
 lesson this file already draws from the 327/328 count dispute. Operationally: if you need this recipe's
 *time*, run it as the sole command and stay idle; if you only need its *count*, background it and keep
 working — the count is unaffected.
+
+**2026-08-16 — the anomaly hot-fix batch moved the slow half by 59%.** Slow went **13 suites / 257 tests /
+819,2s** to **18 suites / 363 tests / 1300,19s**, backgrounded and blocked on its own `Tests completed`
+line (it now exceeds the foreground cap by more than a factor of two). Five suites joined, all deliberately
+routed to SLOW and none to fast: `agy-shield-lib` (34 tests, ~409s on its own), `agy-mark` (26),
+`check-cheatsheet-parity` (16, ~136s), `generate-cheatsheet-literals` (12, ~42s) and the previously
+ungated `clavity-install` (12). **Four of those five are that batch's new suites; the fifth is an orphan
+that ran in no gate at all** — ROADMAP 14b.
+
+🔴 **The routing was a decision, argued once the wrong way and re-affirmed.** `generate-cheatsheet-literals`
+is a pure file transform and genuinely quick, and a first draft put it in FAST on that basis. Speed is not
+the binding constraint: the fast half is the agent inner-loop recipe and this file already calls it
+**cap-adjacent, not cap-safe**. The slow half is backgrounded and already past the cap, so it absorbs new
+work at no cost to the loop.
+
+⚠ **The fast half was NOT re-measured in this pass.** It gained four tests (into
+`agy-discipline-reaching`) and no suites. Its 328 figure above is marked STALE rather than incremented,
+because this file's rule is *measured, not added up*.
 
 ## Measured runtimes
 
