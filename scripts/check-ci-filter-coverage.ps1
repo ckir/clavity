@@ -96,10 +96,26 @@ $wfLines = [string[]](Get-Content -LiteralPath $WorkflowPath)
 # regexes below matches tabs perfectly happily, so this gate would read the filter, find everything it
 # wanted, and report OK on a workflow that CANNOT RUN. MEASURED: with the list items tab-indented, the
 # gate said "OK - 12 required entries present in all 2 paths: blocks" while `yq` rejected the file.
-# INDENTATION ONLY, NOT ANYWHERE. YAML forbids a tab in INDENTATION; a tab inside a string VALUE is
-# perfectly legal. The first version flagged any tab in the file, which would have failed this gate -
-# now a pre-push hook - on a legal edit, and a gate that reds on legal input is its own kind of defect.
-$tabLines = @(for ($i = 0; $i -lt $wfLines.Count; $i++) { if ($wfLines[$i] -match "^[ ]*`t") { $i + 1 } })
+# INDENTATION ONLY, AND NOT INSIDE A BLOCK SCALAR. YAML forbids a tab in INDENTATION; a tab inside a
+# string VALUE is legal, and so is one anywhere in a block scalar's BODY - `run: |` here holds shell
+# script, which is opaque text. The first version flagged any tab in the file; the second still flagged
+# tab-indented lines inside a `run: |` step. Both would fail this gate - now a pre-push hook - on a legal
+# edit, and a gate that reds on legal input is its own kind of defect. Not reachable today (measured:
+# zero such lines) but tab-indenting a line of shell is an ordinary thing to do.
+$tabLines = @()
+$scalarIndent = -1
+for ($i = 0; $i -lt $wfLines.Count; $i++) {
+    $line = $wfLines[$i]
+    if ($line -match '^\s*$') { continue }
+    $indent = $line.Length - $line.TrimStart(' ', "`t").Length
+    if ($scalarIndent -ge 0) {
+        if ($indent -gt $scalarIndent) { continue }   # still inside the scalar body
+        $scalarIndent = -1
+    }
+    if ($line -match "^[ ]*`t") { $tabLines += ($i + 1) }
+    # `key: |`, `key: >`, with optional chomping/indent indicators, opens a block scalar.
+    if ($line -match ':\s*[|>][-+0-9]*\s*$') { $scalarIndent = $indent }
+}
 if ($tabLines.Count -gt 0) {
     Fail "$WorkflowPath uses a TAB in the indentation of line(s) $($tabLines -join ', ') - YAML forbids that, so GitHub cannot parse this workflow and would never run it."
     exit 1
@@ -156,13 +172,20 @@ $roots = @($tracked | ForEach-Object { $p = $_ -split '/'; if ($p.Count -gt 1) {
     Sort-Object -Unique | Where-Object { $_ -ne 'scripts' })
 if ($roots.Count -eq 0) { Fail 'no top-level directories found - the enumeration is broken, not the repo.'; exit 1 }
 
-# -Recurse IS LOAD-BEARING, AND ITS ABSENCE WAS A ONE-COMMAND BYPASS. `ci-scripts.yml` runs
-# `Invoke-Pester scripts/tests`, which recurses; this enumeration did not. So `git mv` of any suite into
-# a subdirectory of scripts/tests left it running in CI while this gate became blind to it, silently
-# dropping every coverage requirement that suite's string literals imply - and still exiting 0. The two
-# corpora must be defined the same way or the gate is reasoning about a different set of files than the
-# thing it is guarding.
-$suites = @(Get-ChildItem -LiteralPath (Join-Path $RepoRoot 'scripts/tests') -Filter '*.Tests.ps1' -Recurse -ErrorAction SilentlyContinue)
+# THE CORPUS COMES FROM GIT, FOR THE SAME REASON THE ROOTS DO. An earlier version used Get-ChildItem,
+# which reads the FILESYSTEM: an untracked local file - a scratch `wip.Tests.ps1`, an editor backup, a
+# vendored copy - was scanned and its literals enforced, even though CI never checks it out and never
+# runs it. The roots were already derived from `git ls-files` precisely to avoid depending on the
+# developer's working tree; the corpus was not, and the two disagreed. (Recursion comes free here:
+# `ci-scripts.yml` runs `Invoke-Pester scripts/tests`, which recurses, and before that was matched a
+# `git mv` of any suite into a subdirectory left it running in CI while this gate went blind to it.)
+#
+# ALL `*.ps1`, NOT ONLY `*.Tests.ps1`. `BashHookHelpers.ps1` sits in this directory and is dot-sourced by
+# 17 suites, so a repository path written there would have been invisible to the scan below. It carries
+# none today - this closes the hole before something uses it, rather than after.
+$suites = @($tracked |
+    Where-Object { $_ -match '^scripts/tests/.*\.ps1$' } |
+    ForEach-Object { [pscustomobject]@{ Name = ($_ -split '/')[-1]; FullName = (Join-Path $RepoRoot $_) } })
 if ($suites.Count -eq 0) { Fail 'no *.Tests.ps1 found under scripts/tests - the gate would pass vacuously.'; exit 1 }
 
 $reached = @{}

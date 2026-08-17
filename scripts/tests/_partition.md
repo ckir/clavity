@@ -43,13 +43,16 @@ load once and accumulates across files.
   during a run slows it down by construction** (see the contention entries below). **Do not quote any
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
-- `just test-scripts-slow` — everything else. **19 suites, 379 tests, measured 1386,48s solo** (2026-08-17,
+- `just test-scripts-slow` — everything else. **19 suites, 386 tests, measured 1437,60s solo** (2026-08-17,
   after the capstone added `check-ci-filter-coverage` to this half and none to fast; the anomaly hot-fix
-  batch before it had added five, also all to this half). **MEASURED, NOT DERIVED, and the difference
-  mattered:** 364 + the new suite's 13 predicts 377, and the real figure is **379**. Deriving a total from
-  the previous one plus your own delta silently inherits every drift that happened in between.
+  batch before it had added five, also all to this half). **ALWAYS MEASURE, EVEN THOUGH DERIVING IS OFTEN
+  RIGHT** — and both outcomes are on record here. Deriving 364 + 13 predicted 377 when the truth was 379
+  (two tests had drifted in between, unnoticed); one round later, deriving 379 + 7 predicted 386 and the
+  measurement agreed exactly. The point is not that arithmetic fails, it is that a derived total inherits
+  every change since the last measurement WITHOUT SAYING SO, and you cannot tell the two cases apart
+  without running it.
   NOT on any git hook; it is **well past the 600s foreground tool cap** — 653,5s, 761,28s, 819,2s, 1300,19s,
-  1274,72s, now 1386,48s —
+  1274,72s, 1386,48s, now 1437,60s —
   and must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line, never by
   watching a process count. **A backgrounded run can also be STOPPED before it finishes** (one was, at 9
   of 13 suites, on 2026-08-06): a log with no `Tests Passed:` line is an ABORTED run, not a passing one,
@@ -84,7 +87,7 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **605** and slow **364**, **both measured, not added up**. It is a
+test raises it. The count today is fast **605** and slow **386**, **both measured, not added up**. It is a
 fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
 "fast 177 and slow 238" until 2026-08-06, having decayed through five intervening entries below that each
 recorded a new number without updating it. **It was updated in place on 2026-08-16 for exactly that
@@ -436,21 +439,22 @@ check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW
                                                                       modest test count. Measured solo as the
                                                                       sole command: "Tests completed in
                                                                       135,92s", 16 passed / 0 failed.
-check-ci-filter-coverage.Tests.ps1              103,1s   13 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
+check-ci-filter-coverage.Tests.ps1              120,4s   20 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
                                                                       paths-filter gate's own suite. Nearly
                                                                       every row spawns pwsh to run the gate
                                                                       against a separately mutated copy of the
                                                                       workflow, which is the whole cost - the
                                                                       test count is small and the process count
                                                                       is not. Measured SOLO AND IN BACKGROUND
-                                                                      with the driver idle: 103 065 ms at 13
-                                                                      rows. It measured 78 990 ms at 11 rows
-                                                                      an hour earlier, and 95s at 11 rows with
-                                                                      the driver WORKING - a 1,2x inflation -
-                                                                      so every figure here is the idle one, per
-                                                                      the warning this file already carries
-                                                                      above. Two rows cost ~24s because each
-                                                                      one is another pwsh cold start.
+                                                                      with the driver idle: 120 448 ms at 20
+                                                                      rows (103 065 ms at 13, 78 990 ms at 11).
+                                                                      At 11 rows it also measured 95s with the
+                                                                      driver WORKING - a 1,2x inflation - so
+                                                                      every figure here is the idle one, per the
+                                                                      warning this file already carries above.
+                                                                      Cost scales with ROW COUNT, not test
+                                                                      complexity: each row is another pwsh cold
+                                                                      start, ~4-6s apiece.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the

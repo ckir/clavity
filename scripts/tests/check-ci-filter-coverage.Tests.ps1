@@ -182,6 +182,31 @@ Describe 'check-ci-filter-coverage.ps1' {
             $r.ExitCode | Should -Be 0 -Because "a tab in a string value is legal YAML: $($r.Out)"
         }
 
+        # A BLOCK SCALAR'S BODY IS OPAQUE TEXT. `run: |` here holds shell script, and indenting a line of
+        # shell with a tab is an ordinary thing to do - it is NOT YAML indentation and does not stop the
+        # file parsing. Without this row the scalar-tracking has no oracle and would silently rot back
+        # into flagging legal edits, on a gate that now blocks pushes.
+        It 'ACCEPTS a tab inside a run: | block scalar body' {
+            $tab = [string][char]9
+            $p = New-WorkflowFixture {
+                param($l)
+                $o = New-Object System.Collections.ArrayList; $done = $false
+                foreach ($line in $l) {
+                    [void]$o.Add($line)
+                    if (-not $done -and $line -match '^(\s*)\S.*:\s*\|\s*$') {
+                        # Indented FURTHER than the opener, which is what makes it scalar content.
+                        [void]$o.Add((' ' * ($Matches[1].Length + 2)) + $tab + 'echo "tab-indented shell"')
+                        $done = $true
+                    }
+                }
+                $o
+            }
+            @(Get-Content -LiteralPath $p | Where-Object { $_ -match $tab }).Count |
+                Should -BeGreaterThan 0 -Because 'the fixture must really contain a tab, or it proves nothing'
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 0 -Because "a tab inside a block scalar body is legal: $($r.Out)"
+        }
+
         It 'reds when the paths: blocks are not under the top-level on: key' {
             # `yq` resolves .on.push.paths to length 0 for this shape - the filter has no trigger meaning
             # at all - yet every required entry is still textually present in the file.
@@ -243,6 +268,53 @@ Describe 'check-ci-filter-coverage.ps1' {
             $r = Invoke-Gate -WorkflowPath $script:Real -Root $root
             $r.ExitCode | Should -Be 1
             $r.Out | Should -Match "UNCOVERED root 'zzz-newtree' - named by: deep\.Tests\.ps1"
+        }
+
+        # THE CORPUS IS EVERY TRACKED .ps1 UNDER scripts/tests, NOT ONLY *.Tests.ps1. `BashHookHelpers.ps1`
+        # lives there and is dot-sourced by 17 suites, so a repository path written into a helper would
+        # otherwise be invisible to Check B. It carries none today, which is exactly why this row exists:
+        # without it the widening is a preventive change with NO oracle, and the guard-law question
+        # ("which test goes red if I delete this?") answers "none".
+        It 'scans helper .ps1 files under scripts/tests, not only *.Tests.ps1' {
+            $root = Join-Path ([IO.Path]::GetTempPath()) ("cifc-help-" + [guid]::NewGuid().ToString('N'))
+            [void]$script:Fixtures.Add($root)
+            New-Item -ItemType Directory -Path (Join-Path $root 'scripts/tests') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $root 'zzz-helperroot') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $root 'zzz-helperroot/x.md') -Value 'x' -Encoding ascii
+            # A HELPER, deliberately not matching *.Tests.ps1.
+            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/Helpers.ps1') `
+                -Value "`$p = 'zzz-helperroot/lib/x.sh'" -Encoding ascii
+            & git -C $root init -q
+            & git -C $root add -A
+            $r = Invoke-Gate -WorkflowPath $script:Real -Root $root
+            $r.Out | Should -Match "UNCOVERED root 'zzz-helperroot' - named by: Helpers\.ps1"
+        }
+
+        # THE CORPUS COMES FROM GIT, NOT THE FILESYSTEM. An untracked scratch file - `wip.Tests.ps1`, an
+        # editor backup, a vendored copy - must NOT impose coverage requirements, because CI never checks
+        # it out and never runs it. The roots were already derived from `git ls-files` for this reason;
+        # the corpus was not, and the two disagreed. This row is the inverse of the one above: same shape,
+        # but the file is left UNTRACKED and must therefore be ignored.
+        It 'ignores an UNTRACKED .ps1 under scripts/tests' {
+            $root = Join-Path ([IO.Path]::GetTempPath()) ("cifc-untr-" + [guid]::NewGuid().ToString('N'))
+            [void]$script:Fixtures.Add($root)
+            New-Item -ItemType Directory -Path (Join-Path $root 'scripts/tests') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $root 'zzz-trackedroot') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $root 'zzz-trackedroot/x.md') -Value 'x' -Encoding ascii
+            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/real.Tests.ps1') -Value "`$a = 1" -Encoding ascii
+            & git -C $root init -q
+            & git -C $root add -A                     # everything so far IS tracked
+            # ...and only now the untracked scratch file. IT MUST NAME A ROOT THAT IS ACTUALLY TRACKED,
+            # or the row proves nothing: roots come from `git ls-files`, so a literal naming a directory
+            # that does not exist can never be reported whether the corpus is filtered or not. Measured -
+            # the first version named a non-existent root and stayed green under the mutation that undoes
+            # this very fix. `zzz-trackedroot` IS tracked and IS uncovered, so the only thing standing
+            # between it and an UNCOVERED line is whether this untracked file was scanned.
+            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/wip.Tests.ps1') `
+                -Value "`$p = 'zzz-trackedroot/x.sh'" -Encoding ascii
+            $r = Invoke-Gate -WorkflowPath $script:Real -Root $root
+            $r.Out | Should -Not -Match 'wip\.Tests\.ps1' -Because 'an untracked file is not part of what CI runs'
+            $r.Out | Should -Not -Match "UNCOVERED root 'zzz-trackedroot'"
         }
 
         # A SUITE THAT DOES NOT PARSE MUST BE A HARD ERROR, NOT A SKIP. A gate that skips unparseable
