@@ -221,7 +221,7 @@ Describe 'agy-discipline-reaching.sh' {
     }
 
     It 'is SILENT under .no-agy (<Scope>) and writes nothing' -ForEach @(
-        @{ Scope = 'workspace' }, @{ Scope = 'global' }, @{ Scope = 'root-from-subdir' }
+        @{ Scope = 'workspace' }, @{ Scope = 'global' }, @{ Scope = 'root-from-subdir' }, @{ Scope = 'subdir-only' }
     ) {
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
@@ -235,6 +235,19 @@ Describe 'agy-discipline-reaching.sh' {
                     New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
                     $cwdArg = Join-Path $r 'src'
                     New-Item -ItemType Directory -Path $cwdArg -Force | Out-Null
+                }
+                'subdir-only' {
+                    # THE OTHER HALF OF THE SAME `if`, AND IT HAD NO ROW (AGY-TEST-AUDIT round A, GAP-6).
+                    # The hook tests `[ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]`. Every scope
+                    # above puts the opt-out at the repo ROOT - including 'root-from-subdir', whose
+                    # subdirectory is the *cwd*, not the location of the file - so all three are satisfied
+                    # by the FIRST operand alone. Deleting `|| [ -f "$cwd_path/.no-agy" ]` left the whole
+                    # suite green. Here the opt-out exists ONLY in the subdirectory, which is the one
+                    # arrangement that can tell the second operand apart from nothing at all: a developer
+                    # opting one subtree out of a repo they still want recorded.
+                    $cwdArg = Join-Path $r 'src'
+                    New-Item -ItemType Directory -Path $cwdArg -Force | Out-Null
+                    New-Item -ItemType File -Path (Join-Path $cwdArg '.no-agy') -Force | Out-Null
                 }
             }
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $cwdArg $tx) -Env @{ HOME = $h }
@@ -353,6 +366,27 @@ Describe 'agy-discipline-reaching.sh' {
             $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2>$null | Out-Null
             (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')) |
                 Should -Match '(?m)^\*$' -Because 'the fallback is the floor; an emptied shield must still be restored without the helper'
+            Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        It 'the FALLBACK also shields a NON-EMPTY shield that lacks the bare * (AGY-TEST-AUDIT GAP-5)' {
+            # THE ROW ABOVE USES -Shield '', WHICH TAKES THE `! -s` BRANCH. The `elif ! grep -qx '*'`
+            # branch beside it - a shield that HAS content but no bare star - had no row at all, so both
+            # deleting it and reverting its append to the unsafe form scored green.
+            # THE FIXTURE DELIBERATELY OMITS THE TRAILING NEWLINE. That is what makes this row able to
+            # fail: the branch appends with a LEADING newline precisely because a shield whose last line
+            # has none would otherwise concatenate into `!keepme.md*` - one corrupted line, no bare `*`
+            # anywhere, the directory still exposed. This is the defect a fix RE-INTRODUCED here twice
+            # (panel R1 pasted the unpatched idiom into this very branch), so it earns a pinned fixture.
+            $d = New-ReachingFixture -Shield '!keepme.md'
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib2-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-y'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+            $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2>$null | Out-Null
+            $shield = Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')
+            $shield | Should -Match '(?m)^\*$' -Because 'the per-DIRECTORY guarantee is unconditional; a shield with content but no star leaves every file in .clavity/ exposed to git add -A'
+            $shield | Should -Match '(?m)^!keepme\.md$' -Because 'the star must be its OWN line - concatenated onto the last line it shields nothing and corrupts the human entry'
             Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
         }
 

@@ -232,3 +232,29 @@ here, because it needs a new registered suite and this batch's scope is the seve
 > **The two failure directions are not equally bad, and that is what settles it.** A too-loose anchor VANISHES while the gap remains, silently and with nobody looking. A stated condition plus a re-check trigger can only LINGER - it stays until a human closes it, and a stale entry is something a reader notices and deletes. **An anchor that overstays is a chore; an anchor that disappears early is a lie.** Prefer the honest manual condition over an automatic one that is quietly wrong.
 
 > **Why not the `_template.md` comment block, which this entry originally named.** Entry D above states the rule directly - *"a comment can be reworded or deleted with the gate's behaviour completely unchanged, so anchoring there would void the entry while the blind spot it documents remained exactly as it was"* - and this entry then anchored on a comment block anyway. Moving that paragraph into a contributing guide, an ordinary tidy-up, would have voided the entry while the absent enforcement stayed exactly as absent. It also resolves the original concern that drove that choice: it does not collide with entry F's anchor (the `status:` enum line), because absence-of-a-test and presence-of-an-enum-line are different facts that no single edit changes together.
+
+### I. The UNC volume-root walk terminator (`agy-discipline-reaching.sh:75`)
+
+- **Behaviour:** the repo-root walk stops early at a UNC volume root -
+  `case "$_d" in //*/*/*) ;; //*) break ;; esac` - so it never stats `//server/.git`, a path that cannot
+  be a repository and costs another SMB round-trip to ask about.
+- **Why uncovered:** the walk is gated at `:69` by `[ -d "$cwd_path" ]`, so reaching line 75 at all
+  requires an **existing** directory under a `//` root. **Measured 2026-08-17:** `//localhost/c$` is
+  reachable on this developer box, but `New-SmbShare` returns *"Access is denied"* without elevation and
+  `//wsl.localhost` is absent - so a row would depend on the runner being an SMB server, or on admin
+  rights, and would not run on `windows-latest`. Same class as entry C: the fixture, not the assertion,
+  is what needs privileges this suite does not have.
+- **Why LOW, and this is the part that settles the disposition:** deleting line 75 costs **latency, not
+  correctness**. Measured 2026-08-06 and recorded in the source at `:65-68`: 20314ms walking an
+  unreachable `//server/share/a/b/c` versus 9282ms gated. Nothing is mis-recorded and nothing leaks; the
+  hook is registered with a `timeout`, so the worst outcome is a session start that is slow or killed -
+  loud, and attributable. Contrast the shield branches in this same file, where a regression is silent.
+- **Compensation:** the walk's *other* termination conditions are covered - `writes NOTHING and creates
+  no directory when cwd has no .git ancestor` exercises the loop running to exhaustion - so a regression
+  that broke termination generally, rather than the UNC case specifically, still reddens the suite.
+- **Condition rather than an anchor** (per the guidance above - an anchor that disappears early is a
+  lie): **this entry is void if the walk stops being gated on `[ -d "$cwd_path" ]`**, which is what makes
+  the branch unreachable from a synthetic path, **or if CI gains a runner where a UNC path is mountable
+  without elevation.** Either change makes an honest row writable, and it should then be written.
+- **Raised by:** AGY-TEST-AUDIT round A on `8a2c2dc..69b1c86` (peer severity High; downgraded to Low on
+  the latency-versus-correctness measurement above). Accepted as a boundary 2026-08-17.

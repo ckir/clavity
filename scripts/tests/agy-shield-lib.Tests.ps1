@@ -203,7 +203,16 @@ Describe 'agy-shield-lib.sh' {
         }
 
         It 'reports the negation loudly (B3, untracked)' {
-            $script:Res.Err | Should -Match 'local-anomalies\.md'
+            # THE OLD ASSERTION WAS THE FILENAME ALONE, AND THE FILENAME IS IN BOTH B3 MESSAGES.
+            # `$_as_rel` is interpolated into the TRACKED branch's text too, so this row - despite its
+            # name - passed for either branch: a regression that inverted the `ls-files --error-unmatch`
+            # test would emit "is TRACKED by git ... git rm --cached" and still be scored green here.
+            # AGY-TEST-AUDIT round A, GAP-2. Two assertions, because they fail to different mutations:
+            $script:Res.Err | Should -Match 'is NOT ignored' -Because 'this row names the UNTRACKED branch; the filename alone cannot tell the two B3 branches apart'
+            # The bracketed reason is the ONLY thing `check-ignore -v` contributes (agy-shield-lib.sh:266).
+            # Delete that line and the message degrades to the `[no matching rule reported]` default, which
+            # this pattern does not match - so the extraction has an oracle for the first time.
+            $script:Res.Err | Should -Match '\[\.clavity/\.gitignore:\d+:!local-anomalies\.md' -Because 'the operator needs the RULE that is overriding the shield, not just the filename they already knew'
         }
 
         # SCOPE NOTE, because the NAME is broader than the assertion. This checks the ONE temp shape
@@ -235,7 +244,13 @@ Describe 'agy-shield-lib.sh' {
         }
 
         It 'reports the negation loudly (B3, untracked)' {
-            $script:Res2.Err | Should -Match 'local-anomalies\.md'
+            # Same widening as the sibling row above (AGY-TEST-AUDIT round A, GAP-2). This Context is the
+            # OTHER ordering - a bare * already present with the negation below it - so A2 appends nothing
+            # and B3 is the only thing under test here. That makes the branch discriminator load-bearing:
+            # with the filename-only assertion, this row proved nothing except that the helper said
+            # SOMETHING about a file whose name it was handed.
+            $script:Res2.Err | Should -Match 'is NOT ignored' -Because 'this row names the UNTRACKED branch; the filename alone cannot tell the two B3 branches apart'
+            $script:Res2.Err | Should -Match '\[\.clavity/\.gitignore:\d+:!local-anomalies\.md' -Because 'the operator needs the RULE that is overriding the shield, not just the filename they already knew'
         }
 
         It 'does NOT rewrite the shield to silence the report' {
@@ -530,6 +545,72 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # malformed key wrote nothing outside the fixture. Closing that needs the escape target
             # resolved by the shell itself, which is work for the transient-Pester shape recorded as
             # ROADMAP section 16, not for a row that would be hard-coding a path today.
+        }
+
+        # ------------------------------------------------------------------ AGY-TEST-AUDIT round A.
+        # THE MARKER DIRECTORY IS RESOLVED BY A LOOP (agy-shield-lib.sh:58) AND ONLY ITS FIRST CANDIDATE
+        # WAS EVER EXERCISED. Both rows below drive the SECOND candidate, and they do it by assigning
+        # TMPDIR *inside the shell body* - NOT with `-Env`. The suite records at the top of Invoke-Shield
+        # that Git Bash silently rewrites a Windows TMPDIR handed to it to `/tmp/`, so an -Env override is
+        # dead on this platform; an in-body export is not, and is what these rows measured working.
+        It 'falls back to $HOME/.clavity-tmp when TMPDIR cannot be created, and STILL debounces there' {
+            # The fallback is not decoration: if it goes, `_ass_dir` is empty, the helper takes its
+            # "no writable marker location" branch and emits on EVERY call. So the discriminating
+            # assertion is the COUNT, not the presence, of the report.
+            $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
+            $k = 'fb-' + [guid]::NewGuid().ToString('N')
+            # TMPDIR points BELOW A REGULAR FILE, so `mkdir -p` cannot create it - a deterministic
+            # unwritable temp that needs no permissions games and no elevation.
+            $body = @"
+: > "`$PWD/blocker"
+export TMPDIR="`$PWD/blocker/sub"
+export HOME="`$PWD/fakehome"
+mkdir -p "`$HOME"
+agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
+agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
+"@
+            $res = Invoke-Shield -Root $r -Body $body
+            $fallbackDir = Join-Path $r 'fakehome/.clavity-tmp'
+            (Test-Path -LiteralPath $fallbackDir) | Should -BeTrue -Because 'an unwritable TMPDIR must resolve to the HOME candidate, not to no directory at all'
+            @(Get-ChildItem -LiteralPath $fallbackDir -Filter ".clavity-shield-persistent-$k" -Force).Count |
+                Should -Be 1 -Because 'the debounce marker must actually land in the fallback directory'
+            ([regex]::Matches($res.Err, 'git rm --cached')).Count |
+                Should -Be 1 -Because 'TWO reports would mean the fallback directory was found but never used as the debounce store - the guard degrading to warn-every-time'
+        }
+
+        It 'the marker sweep deletes ONLY its own aged markers - not fresh ones, not a sibling hook''s' {
+            # agy-shield-lib.sh:79 prunes `.clavity-shield-*` at -mtime +30, on the run that CREATES a
+            # marker. TWO controls, because the two plausible regressions fail in opposite directions:
+            # dropping the `find` leaves the stale marker, and BROADENING the glob (the source comment at
+            # :75-79 warns the siblings own `.clavity-anomaly-*` and `.clavity-assert-*`) eats files this
+            # hook does not own. A row asserting only "the stale one is gone" catches the first and scores
+            # the second as a pass.
+            $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
+            $home2 = Join-Path $r 'fakehome'
+            $dir = Join-Path $home2 '.clavity-tmp'
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            $stale   = Join-Path $dir '.clavity-shield-persistent-STALE'
+            $fresh   = Join-Path $dir '.clavity-shield-persistent-FRESH'
+            $foreign = Join-Path $dir '.clavity-anomaly-STALE'
+            foreach ($f in @($stale, $fresh, $foreign)) { [IO.File]::WriteAllText($f, "x`n") }
+            # -mtime +30 reads the modification time, so age the two that must LOOK stale.
+            foreach ($f in @($stale, $foreign)) { (Get-Item -LiteralPath $f -Force).LastWriteTime = (Get-Date).AddDays(-40) }
+            $k = 'sw-' + [guid]::NewGuid().ToString('N')
+            $body = @"
+: > "`$PWD/blocker"
+export TMPDIR="`$PWD/blocker/sub"
+export HOME="`$PWD/fakehome"
+agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
+"@
+            $res = Invoke-Shield -Root $r -Body $body
+            # PRECONDITION FIRST (the standing rule): the sweep runs ONLY on the call that creates a
+            # marker. If no marker was created the sweep never ran, and every assertion below would be
+            # reporting on a sweep that did not happen rather than on one that misbehaved.
+            @(Get-ChildItem -LiteralPath $dir -Filter ".clavity-shield-persistent-$k" -Force).Count |
+                Should -Be 1 -Because 'the sweep is gated on marker CREATION; without a new marker the assertions below prove nothing'
+            (Test-Path -LiteralPath $stale)   | Should -BeFalse -Because 'a marker past the -mtime +30 window is exactly what the sweep exists to remove'
+            (Test-Path -LiteralPath $fresh)   | Should -BeTrue  -Because 'CONTROL: a sweep that deleted every .clavity-shield-* would satisfy the assertion above while destroying live debounce state'
+            (Test-Path -LiteralPath $foreign) | Should -BeTrue  -Because 'CONTROL: the sibling hooks own .clavity-anomaly-*; a broadened glob would prune another hook''s markers on this hook''s schedule'
         }
     }
 }

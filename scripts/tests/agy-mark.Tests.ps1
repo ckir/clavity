@@ -12,6 +12,19 @@ Describe 'agy-mark.sh' {
         $script:Mark = (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-mark.sh') -replace '\\','/'
         Test-Path -LiteralPath $script:Mark | Should -BeTrue
 
+        # PIN GIT BASH - this suite was the last one in the family still launching bare `bash`, and it
+        # is a FALSE RED waiting to happen. BashHookHelpers.ps1 documents why `Get-Command bash` is
+        # NON-DETERMINISTIC: it depends on which parent process launched pwsh. MEASURED on this host
+        # 2026-08-17: bare `bash` resolved to C:\WINDOWS\system32\bash.exe (the WSL stub), which cannot
+        # run a Windows-path script - ALL 27 rows failed with exit 127 and `/bin/bash: ...: No such file
+        # or directory`, saying nothing whatever about agy-mark.sh. Git Bash reports `/usr/bin/bash:`;
+        # that prefix is the tell for telling the two apart in a failure message.
+        # The sibling suites (agy-shield-lib, agy-discipline-reaching, ...) already route through this
+        # helper for exactly this reason. Found by AGY-TEST-AUDIT round A - not by the peer, which read
+        # the file statically, but by RUNNING the suite.
+        . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+        $script:Bash = Get-GitBashOrThrow
+
         function New-MarkFixture {
             param([string]$Shield = "*`n")
             $d = Join-Path ([IO.Path]::GetTempPath()) ("markfx-" + [guid]::NewGuid().ToString('N'))
@@ -31,7 +44,7 @@ Describe 'agy-mark.sh' {
             $errF = "$outF.err"
             $prev = $env:AGY_SESSION_ID; $env:AGY_SESSION_ID = $SessionId
             try {
-                $p = Start-Process -FilePath 'bash' -ArgumentList (@($script:Mark) + $MarkArgs) -WorkingDirectory $Cwd `
+                $p = Start-Process -FilePath $script:Bash -ArgumentList (@($script:Mark) + $MarkArgs) -WorkingDirectory $Cwd `
                         -RedirectStandardOutput $outF -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
                 [pscustomobject]@{
                     ExitCode = $p.ExitCode
@@ -217,7 +230,7 @@ Describe 'agy-mark.sh' {
             New-Item -ItemType Directory -Force -Path $isolated | Out-Null
             Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
             $errF = Join-Path ([IO.Path]::GetTempPath()) ("iso3-" + [guid]::NewGuid().ToString('N') + ".err")
-            $proc = Start-Process -FilePath 'bash' -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
+            $proc = Start-Process -FilePath $script:Bash -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
                 -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
             # ASSERT THE EXIT CODE, not only stderr. Panel R13: without -PassThru the code was
             # discarded entirely, so a script that printed the warning and then exited 0 kept this
@@ -262,6 +275,28 @@ Describe 'agy-mark.sh' {
             $r.ExitCode | Should -Be 2 -Because 'an attempted-and-rejected write is exit 2, distinct from refused-before-trying (exit 1); this fixture writes zero bytes and is still a 2, which is exactly the point'
             $r.Err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive a rejected write too'
         }
+
+        It 'a rejected HEAD write exits 2 as well - not just a rejected log write' {
+            # THE EXIT-2 CONTRACT HAD EXACTLY ONE ROW AND IT TESTED `log` MODE ONLY (AGY-TEST-AUDIT
+            # round A, GAP-7). `head` carries the same `|| { ...; exit 2; }` at agy-mark.sh:116, and
+            # dropping it there lets a rejected marker write fall through to `exit 0` - a discipline
+            # reporting success while its marker was never written, which is the one failure this exit
+            # code exists to make visible. The two modes are separate code paths; one row cannot cover both.
+            # SAME FIXTURE TECHNIQUE AS ABOVE, aimed one level deeper: making `.clavity/agy-marks` a file
+            # would fail the `mkdir -p` at :114 and exit 1, never reaching the write. Making the TARGET
+            # a directory lets mkdir succeed and makes the redirect itself fail - `>` cannot open a
+            # directory, so printf never runs and zero bytes land, which is still a 2 by contract.
+            $d = New-MarkFixture
+            $target = Join-Path $d '.clavity/agy-marks/agy-first.head'
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','0123456789abcdef0123456789abcdef01234567')
+            $r.ExitCode | Should -Be 2 -Because 'the filesystem rejected an ATTEMPTED write; exit 1 would tell a caller it was refused before trying, which is a different remedy'
+            $r.Err | Should -Match 'write FAILED' -Because 'a marker that silently did not land is the failure mode this branch exists to surface'
+            # THIRD ASSERTION, because a refusal row that checks only code and message cannot tell
+            # "rejected cleanly" from "rejected after mangling the target".
+            (Test-Path -LiteralPath $target -PathType Container) | Should -BeTrue -Because 'the rejected write must leave the target exactly as it found it'
+            @(Get-ChildItem -LiteralPath $target -Force).Count | Should -Be 0 -Because 'nothing may be created underneath a target the write could not open'
+        }
     }
 
     Context 'exit codes and failure direction' {
@@ -271,7 +306,7 @@ Describe 'agy-mark.sh' {
             New-Item -ItemType Directory -Force -Path $isolated | Out-Null
             Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
             $outF = Join-Path ([IO.Path]::GetTempPath()) ("iso-" + [guid]::NewGuid().ToString('N') + ".out")
-            $p = Start-Process -FilePath 'bash' -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'head','agy-first','deadbeef') `
+            $p = Start-Process -FilePath $script:Bash -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'head','agy-first','deadbeef') `
                     -WorkingDirectory $d -RedirectStandardOutput $outF -RedirectStandardError "$outF.err" -NoNewWindow -Wait -PassThru
             $p.ExitCode | Should -Be 1 -Because 'head fails CLOSED: an absent marker makes the discipline re-fire, which is safe'
             (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-first.head')) | Should -BeFalse
@@ -287,7 +322,7 @@ Describe 'agy-mark.sh' {
             New-Item -ItemType Directory -Force -Path $isolated | Out-Null
             Copy-Item -LiteralPath ($script:Mark -replace '/','\') -Destination (Join-Path $isolated 'agy-mark.sh')
             $errF = Join-Path ([IO.Path]::GetTempPath()) ("iso2-" + [guid]::NewGuid().ToString('N') + ".err")
-            $proc = Start-Process -FilePath 'bash' -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
+            $proc = Start-Process -FilePath $script:Bash -ArgumentList @(((Join-Path $isolated 'agy-mark.sh') -replace '\\','/'), 'log','agy-first','SKIPPED-UNREACHABLE','deadbeef') `
                 -WorkingDirectory $d -RedirectStandardOutput "$errF.out" -RedirectStandardError $errF -NoNewWindow -Wait -PassThru
             # ASSERT THE EXIT CODE, not only stderr. Panel R13: without -PassThru the code was
             # discarded entirely, so a script that printed the warning and then exited 0 kept this
