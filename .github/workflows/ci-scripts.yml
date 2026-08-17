@@ -24,27 +24,25 @@ name: ci-scripts
 # outcome available - the assertion reds on a developer's machine and the same edit merges with a green
 # check, because no job ever ran.
 #
-# FOUR such files sit outside `scripts/**` today and are listed for that reason, not as decoration:
-#   - `lefthook.yml`, because the suite asserts the pre-commit wiring lives there (block present, glob
-#     set equal to the guard's own pin list, no conditional key).
-#   - `agy-autotrain/skills/agy-curate/SKILL.md`, because the suite asserts the marker path that skill
-#     ARMS is the one the guard READS, and that its Step Zero section still exists.
-#   - `justfile`, because registration is an EXPLICIT LIST there, not a glob: test-suite-registration
-#     reads the REAL repo justfile and reds on a suite in neither gate, a recipe naming a file that does
-#     not exist, or a suite in both halves; assertion-strength-reminder asserts its own fast-suite entry.
-#   - `clavity-dotnet/install/**`, because test-suite-registration pins `clavity-install.Tests.ps1` by
-#     PATH - it asserts both that a recipe names it AND that the file is still there (the row's two
-#     halves catch deletion and rename respectively).
-# `agy-autotrain/skills/agy-curate/SKILL.md` was MISSED when `lefthook.yml` was added, in the very commit
-# that added the row reading it. Adding the whole `agy-autotrain/**` tree instead was rejected: it would
-# fire this workflow on every knowledge-inbox capture.
+# THAT RULE IS NOW ENFORCED MECHANICALLY, AND THIS COMMENT DELIBERATELY KEEPS NO COUNT OR ROSTER.
+# `scripts/check-ci-filter-coverage.ps1` owns both: it carries the required-entry table with a REASON per
+# entry, asserts each appears in BOTH blocks below, and separately fails closed on any git-tracked
+# top-level tree a suite names but the filter does not reach. Read that file, not a prose list here.
 #
-# THE REMAINING NON-`scripts/**` ENTRIES ARE HERE FOR A DIFFERENT REASON and are NOT in the asserted set:
-# `installer/_shared/**` and this workflow file itself. compute-release's rows build their own throwaway
-# fixtures rather than reading the real shared installer tree, so that entry gates a product INPUT the
-# suite reasons about, not a file it asserts against; the workflow lists itself so an edit to the filter
-# re-runs the job the filter controls. Keep the two groups distinct - conflating them is what makes the
-# next person think a newly-asserted file is already covered.
+# WHY THE ROSTER MOVED OUT. It was maintained by hand and was wrong every time it was examined: it said
+# TWO when it was four, then FOUR when it was nine, inside one afternoon. The rule had no implementation,
+# so it drifted exactly as an unimplemented rule does - `agy-autotrain/skills/agy-curate/SKILL.md` was
+# MISSED when `lefthook.yml` was added, in the very commit that added the row reading it, and a later
+# audit found five more: both plugin trees, the driver cheatsheet, the marker contract, and
+# `build/members.json`. Every one of those merged green while the suite that asserts against it never ran.
+#
+# TWO JUDGEMENTS WORTH KEEPING, because the gate records the WHAT and not the WHY:
+#   - The plugin trees are listed WHOLE (`clavity-*/plugin/**`). Measured over 400 commits, that adds ~10
+#     workflow runs - 10 of the 23 plugin-touching commits do not already touch `scripts/**` - which is
+#     noise against one silently-merged breakage.
+#   - `agy-autotrain` is listed NARROWLY, by file. The whole tree was rejected because it would fire on
+#     every knowledge-inbox capture; a `!` negation was rejected too, because no `paths:` filter in this
+#     repo uses one and its behaviour cannot be verified without pushing.
 #
 # MOVING one of these files is covered regardless of this filter: the suite's own Test-Path reds the
 # moment the file is not where the guard expects it. Whether the filter ALSO fires is unestablished -
@@ -58,18 +56,28 @@ on:
       - 'scripts/**'
       - 'installer/_shared/**'
       - 'clavity-dotnet/install/**'
+      - 'clavity-dotnet/plugin/**'
+      - 'clavity-classic/plugin/**'
       - 'justfile'
       - 'lefthook.yml'
       - 'agy-autotrain/skills/agy-curate/SKILL.md'
+      - 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
+      - 'docs/agy-disciplines-marker-contract.md'
+      - 'build/members.json'
       - '.github/workflows/ci-scripts.yml'
   pull_request:
     paths:
       - 'scripts/**'
       - 'installer/_shared/**'
       - 'clavity-dotnet/install/**'
+      - 'clavity-dotnet/plugin/**'
+      - 'clavity-classic/plugin/**'
       - 'justfile'
       - 'lefthook.yml'
       - 'agy-autotrain/skills/agy-curate/SKILL.md'
+      - 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
+      - 'docs/agy-disciplines-marker-contract.md'
+      - 'build/members.json'
       - '.github/workflows/ci-scripts.yml'
 
 concurrency:

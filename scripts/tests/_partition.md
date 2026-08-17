@@ -433,6 +433,18 @@ check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW
                                                                       modest test count. Measured solo as the
                                                                       sole command: "Tests completed in
                                                                       135,92s", 16 passed / 0 failed.
+check-ci-filter-coverage.Tests.ps1               79,0s   11 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
+                                                                      paths-filter gate's own suite. Nearly
+                                                                      every row spawns pwsh to run the gate
+                                                                      against a separately mutated copy of the
+                                                                      workflow, which is the whole cost - the
+                                                                      test count is small and the process count
+                                                                      is not. Measured SOLO AND IN BACKGROUND
+                                                                      with the driver idle: 78 990 ms. The same
+                                                                      suite measured 95s with the driver
+                                                                      working - a 1,2x inflation - so this row
+                                                                      quotes the idle figure, per the warning
+                                                                      this file already carries above.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
