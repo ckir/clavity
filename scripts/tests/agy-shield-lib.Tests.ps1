@@ -14,6 +14,19 @@ Describe 'agy-shield-lib.sh' {
         # registered here as it is created and removed in AfterAll. Without this the suite leaks one git
         # repository per row - the pattern that has already left 321 orphaned directories in this repo.
         $script:Fixtures = New-Object System.Collections.ArrayList
+        # MARKER HYGIENE - the same class as FIXTURE HYGIENE above, for the debounce markers rather than
+        # the fixture repos. Every Invoke-Shield call writes `.clavity-shield-<class>-<key>` into the
+        # shell's temp directory and NOTHING removed it: the helper's own sweep prunes only at -mtime +30
+        # and only on a run that creates a marker, so the suite's own markers are always too young for it.
+        # MEASURED at anomaly triage 2026-08-17: 989 of them had accumulated in TMPDIR.
+        # SNAPSHOT-AND-DIFF, not a blanket delete of `.clavity-shield-*`. Two sessions can be open on this
+        # repository at once, and other hooks write markers with the SAME prefix - wiping them all would
+        # silence another session's live data-leak debounce, which is the one thing these markers exist for.
+        $script:MarkerDir = [IO.Path]::GetTempPath()
+        $script:MarkersBefore = @{}
+        foreach ($m in @(Get-ChildItem -LiteralPath $script:MarkerDir -Filter '.clavity-shield-*' -Force -ErrorAction SilentlyContinue)) {
+            $script:MarkersBefore[$m.Name] = $true
+        }
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Lib = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-shield-lib.sh'
         Test-Path -LiteralPath $script:Lib | Should -BeTrue -Because 'the helper must exist for any row here to mean anything'
@@ -115,6 +128,17 @@ Describe 'agy-shield-lib.sh' {
     AfterAll {
         # FIXTURE HYGIENE: -Force because a git repo carries read-only objects on Windows.
         foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
+        # MARKER HYGIENE: remove ONLY markers that (a) appeared during this run and (b) carry this suite's
+        # own key shape - a 32-hex GUID('N') with no dashes. Every key this suite generates is built that
+        # way; a real session id is a dashed GUID, so the pattern cannot match another agent's marker even
+        # if one appeared mid-run. Both conditions are required: (a) alone would delete a concurrent
+        # session's new markers, (b) alone would delete a previous run's, which a parallel suite may still
+        # be using for debounce.
+        foreach ($m in @(Get-ChildItem -LiteralPath $script:MarkerDir -Filter '.clavity-shield-*' -Force -ErrorAction SilentlyContinue)) {
+            if (-not $script:MarkersBefore.ContainsKey($m.Name) -and $m.Name -match '-[0-9a-f]{32}$') {
+                Remove-Item -LiteralPath $m.FullName -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     Context 'Stage A - shield integrity' {

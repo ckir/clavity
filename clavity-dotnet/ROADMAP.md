@@ -1272,6 +1272,50 @@ seat discipline is what found this; an unseated consult structurally could not.
 **Still open, NOT ratified by this entry:** whether the genuinely durable subset — "the seat instruction
 still exists in `agy-first` / `agy-test-audit`" — earns a permanent gate. That is a separate decision.
 
+### §17 — anomalies promoted at the 2026-08-17 triage — ▶ **OPEN**
+
+Two entries from the 7-entry triage of 2026-08-17. Every one verified by measurement at triage. The other
+five were dispositioned there: two fixed immediately (`assertion-strength-reminder.Tests.ps1` bash pinning,
+and the shield suite's marker hygiene), two routed to `docs/coverage-debt.md` as coverage debt, one deleted.
+
+#### §17a — the shield's debounce key has no repository component
+
+**The fact, measured with a control 2026-08-16 and re-confirmed at triage:** the marker is
+`"$_ass_dir/.clavity-shield-$_ass_class-$_ass_key"` (`agy-shield-lib.sh:70`) — the key is the caller's
+session id and there is **no repository component anywhere in the path**. Control: repo A key k1 REPORTS;
+repo A key k1 again is silent (correct); a **fresh repo B** under the same key is **SILENT**; repo B under
+a different key REPORTS. So one session working across two repositories gets **one fault report in total**,
+and the second repository's leak is never surfaced.
+
+**Why it is not already fixed.** It was **deferred by decision** during the 2026-08-14 hot-fix batch and
+recorded as a residual in that plan after Step 7. Adding a repo component is a **contract change** to a
+shipped, byte-identical hook pair: the marker name is the debounce identity, so changing it re-arms every
+existing debounce once, and the fix has to be mirrored to classic in the same commit.
+
+**Disposition needed:** whether to key on the repository root path, its hash, or to leave the cross-repo
+case documented as a known limit. Not mechanical — hence tracked rather than folded.
+
+#### §17b — every `pre-push` gate reads the WORKING TREE, not the commits being pushed
+
+**Measured at triage:** `lefthook.yml:19-55` defines **10** pre-push jobs — `seed-sync`, `agy-skills`,
+`doc-stubs`, `member-docs`, `user-facing-docs`, `register-hash`, `installer-ascii`, `check-versions`,
+`check-plugin-namespace`, `check-ci-filter-coverage` — and **zero** of them consult `git show <ref>:<path>`,
+`--cached`, or the push refs a pre-push hook receives on stdin. Every one resolves paths from the worktree
+via `$PSScriptRoot`/`$RepoRoot` and reads with `Get-Content`/`Get-ChildItem`.
+
+**Both failure directions are live:** uncommitted work can **false-RED** an otherwise valid push, and an
+uncommitted fix can **false-GREEN** a push of the broken commit. The verdict is about state git is not
+about to publish.
+
+**Why it is filed rather than fixed.** This is the repo-wide SHAPE of the hook, not one gate's defect —
+`check-ci-filter-coverage` is merely the newest instance. Making one gate read blobs from the pushed commit
+would leave it inconsistent with its nine siblings, and changing all ten is an **owner-level decision about
+what a pre-push gate is FOR**. Surfaced by an agy capstone seat, then confirmed against the hook block.
+
+**Note the interaction with §14e:** that entry already records that on a long-lived local branch *"CI is not
+a safety net, it is a report you get later"*. If pre-push is also not measuring the pushed state, then this
+branch — 319 commits ahead and never pushed — currently has **neither** gate reasoning about what would land.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.

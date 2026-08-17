@@ -4,6 +4,20 @@ BeforeAll {
     $script:Hook     = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/assertion-strength-reminder.sh'
     $script:Mirror   = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/assertion-strength-reminder.sh'
 
+    # PIN GIT BASH. `Get-Command bash` is NON-DETERMINISTIC on this host - BashHookHelpers.ps1:5-8
+    # documents that it depends on WHICH PARENT PROCESS launched pwsh. MEASURED 2026-08-17 at anomaly
+    # triage: bare `bash` resolved to C:\WINDOWS\system32\bash.exe (the WSL stub), which cannot run a
+    # Windows-path script - 17 of this suite's 37 rows FAILED with `/bin/bash: C:Usersuser...: No such
+    # file or directory` (note the stripped backslashes) and `wsl: Failed to start the systemd user
+    # session`. A false red that says nothing about the hook. Git Bash reports `/usr/bin/bash:`; that
+    # prefix is how to tell the two apart in a failure message.
+    # THIS SUITE WAS MISSED BY THE ORIGINAL SWEEP. The 2026-08-16 batch fixed agy-shield-lib and
+    # agy-discipline-reaching and recorded the hazard as resolved; agy-mark was found still unpinned on
+    # 2026-08-17, and this suite on the same day at triage. An anomaly marked resolved is still a claim -
+    # sweep the FACT across the whole tree, not the files the batch happened to touch.
+    . (Join-Path $PSScriptRoot 'BashHookHelpers.ps1')
+    $script:Bash = Get-GitBashOrThrow
+
     # A PostToolUse payload, matching the fixture shape used by agy-after-reminder.Tests.ps1.
     # OWNER RULING 2026-08-08: the live probe was declined and the per-day fallback accepted. The hook is
     # branch-agnostic (it falls back to the calendar day when session_id is absent), so the suite pins BOTH
@@ -20,7 +34,7 @@ BeforeAll {
 
     function Invoke-Hook {
         param([string]$Payload)
-        $Payload | & bash $script:Hook 2>&1
+        $Payload | & $script:Bash $script:Hook 2>&1
     }
 
     # Degraded path: a PATH that still carries coreutils (the hook's own grep/find) but NOT jq.
@@ -29,7 +43,7 @@ BeforeAll {
     # it, a PATH that still reached jq would make every degraded test pass through the jq path instead.
     function Invoke-HookNoJq {
         param([string]$Payload)
-        $Payload | & bash -c 'PATH=/usr/bin:/bin; export PATH; exec bash "$0"' $script:Hook 2>&1
+        $Payload | & $script:Bash -c 'PATH=/usr/bin:/bin; export PATH; exec bash "$0"' $script:Hook 2>&1
     }
 
     # Each test gets a private marker location so a debounce marker never leaks between tests.
@@ -211,7 +225,7 @@ Describe 'assertion-strength-reminder.sh' {
     # optional coverage: its own template carries four such tests.
     Context 'degraded path (jq absent)' {
         It 'jq is genuinely absent under the reduced PATH (CONTROL for every test below)' {
-            $probe = & bash -c 'PATH=/usr/bin:/bin; export PATH; command -v jq >/dev/null && echo REACHABLE || echo absent'
+            $probe = & $script:Bash -c 'PATH=/usr/bin:/bin; export PATH; command -v jq >/dev/null && echo REACHABLE || echo absent'
             ($probe -join '') | Should -Match 'absent' -Because 'if jq were still reachable, every degraded test would silently exercise the jq path instead'
         }
 

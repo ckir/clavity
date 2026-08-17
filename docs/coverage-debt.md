@@ -110,6 +110,50 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 
 ---
 
+### 5. `check-cheatsheet-parity.ps1`'s CRLF-agnostic guard cannot be told from a byte compare
+
+- **Where:** `scripts/check-cheatsheet-parity.ps1:179` -
+  `& git -C $RepoRoot diff --quiet -- $Core          # worktree vs index, CRLF-agnostic. NEVER a byte compare.`
+- **The gap:** no test can distinguish that call from a byte comparison, because the suite's own fixture
+  sets `core.autocrlf false` (`scripts/tests/check-cheatsheet-parity.Tests.ps1:23`), which **eliminates the
+  worktree-CRLF/index-LF condition the guard exists for**. MEASURED 2026-08-16 by replacing the call with a
+  byte comparison: the full suite stayed **16/16 green**.
+- **The regression that would slip through:** someone "simplifies" the guard to a byte compare. On any
+  developer machine with `core.autocrlf true` - the normal Windows setting, and what this repo actually uses -
+  the gate then reports drift on every checkout of an LF-committed file.
+- **Second-order:** the site is only reachable when `$mismatched.Count -gt 0` (early exit at `:169`), so the
+  hot-fix plan's mutation table named rows 2/3 which **cannot reach it at all**.
+- **The tension that makes this non-trivial:** the fixture sets `core.autocrlf false` deliberately, for
+  determinism - FIXTURE HYGIENE, so a suite never inherits the host's setting. Closing this needs a SECOND
+  fixture that deliberately sets `core.autocrlf true`, not a change to the existing one. A test that flips
+  the shared fixture would trade this gap for a flakiness source.
+- **Raised:** hot-fix batch Task 11 Step 7 mutation 7. **Promoted at the 2026-08-17 anomaly triage.**
+
+---
+
+### 6. The `BaseStream` index extraction is defensive for PowerShell 5.1 and has no oracle here
+
+- **Where:** `scripts/check-cheatsheet-parity.ps1:46-64`, `Get-IndexBytes` /
+  `$p.StandardOutput.BaseStream.CopyTo($fs)`.
+- **The gap:** the byte-exact extraction exists to avoid Windows PowerShell 5.1's UTF-16LE default mangling
+  the blob. **This script runs only under pwsh 7**, which MEASURED on 7.6.4 round-trips the probe byte
+  losslessly (10 bytes -> 10, byte-identical) - so replacing the whole thing with a `ReadToEnd()` /
+  `WriteAllText` text pipeline left row 12 **green**. The defensive choice is correct and **untested on the
+  platform it defends against**.
+- **The regression that would slip through:** the BaseStream handling is simplified away as "unnecessary
+  complexity". Nothing reddens, because nothing here runs 5.1.
+- **Why it is not a one-line fix:** an honest oracle needs the script exercised under Windows PowerShell 5.1.
+  CI has a `installer-5-1` job, but it is scoped to `installer/_shared` - `scripts/**` is deliberately
+  pwsh-7-only, and widening that scope re-introduces the mis-scoped contract that job was split to fix
+  (it failed 9 containers on PS7-only syntax while never exercising the end-user surface).
+- **Related, already documented in-source:** `:119-124` records a DIFFERENT unreachable pair - the two
+  `Get-IndexBytes` failure branches, kept deliberately after capstone R4 measured that neutering both leaves
+  the suite 16/0 green. That admission is about the failure branches; this entry is about the extraction
+  mechanism itself.
+- **Raised:** hot-fix batch Task 11 Step 7 mutation 9. **Promoted at the 2026-08-17 anomaly triage.**
+
+---
+
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 
 ### A. The two walk-level guards (`2fa88e0`, `76e1ba8`)
