@@ -126,6 +126,104 @@ Describe 'generate-cheatsheet-literals.ps1' {
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # ---------------------------------------------------------------- AGY-TEST-AUDIT round B, GAP-2/3.
+    # THE ROW ABOVE IS NAMED "not found EXACTLY once" BUT ONLY EVER SEEDS **ZERO** ANCHORS, and it mutates
+    # only the RUST target. So `-ne 1` could be weakened to `-eq 0` and ship green, and every C# guard -
+    # there are THREE - had no row at all, because the rust check at :103 fails first and the C# block is
+    # never reached. The duplicate case is the dangerous half: a splice on a non-unique anchor DELETES THE
+    # SPAN BETWEEN MATCHES, which is why the guard is `-ne 1` and not `-eq 0` in the first place.
+    It 'REFUSES a DUPLICATED rust anchor - the case that would delete the span between matches' {
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gendup-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
+            # A REAL artifact plus a SECOND anchor, so the file is valid in every other respect and the
+            # only thing under test is the count. Seeding two synthetic lines would also pass the guard
+            # but would not resemble the accident this protects against (a duplicated const after a merge).
+            $dup = [IO.File]::ReadAllText($script:Rs) + "pub const BASELINE_FLOOR: &str = `"dup`";`n"
+            [IO.File]::WriteAllText($outRs, $dup)
+            Copy-Item -LiteralPath $script:Cs -Destination $outCs
+            $out = & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget $outRs -CsTarget $outCs 2>&1 | Out-String
+            $LASTEXITCODE | Should -Not -Be 0
+            $out | Should -Match 'found 2' -Because 'the operator needs the COUNT to know it is a duplicate rather than a missing anchor - the two have opposite remedies'
+            [IO.File]::ReadAllText($outRs) | Should -BeExactly $dup -Because 'a refused run must leave the target byte-for-byte untouched, which is the whole reason the guard precedes the splice'
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'REFUSES a broken C# target (<Case>) and writes NEITHER file' -ForEach @(
+        @{ Case = 'no anchor';        Expect = "no 'public const string BaselineFloor =' anchor found" }
+        @{ Case = 'duplicate anchor'; Expect = "expected exactly ONE 'public const string BaselineFloor =' line" }
+        @{ Case = 'no literal end';   Expect = 'could not find the end of the BaselineFloor literal' }
+    ) {
+        # THE RUST TARGET IS DELIBERATELY VALID HERE. The generator validates rust first and Fails at
+        # :103, so a row that breaks both files proves nothing about the C# guards - it never reaches them.
+        # 'no literal end' is a THIRD guard (:148) that the audit did not name; it was found by reading the
+        # block rather than the report, and it was equally uncovered. Sweep for siblings.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("gencs-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
+            Copy-Item -LiteralPath $script:Rs -Destination $outRs
+            $csText = [IO.File]::ReadAllText($script:Cs).Replace("`r`n", "`n")
+            $anchor = 'public const string BaselineFloor ='
+            switch ($Case) {
+                'no anchor'        { $csText = $csText.Replace($anchor, 'public const string SomethingElse =') }
+                'duplicate anchor' { $csText = $csText -replace [regex]::Escape($anchor), "$anchor`n        public const string BaselineFloor =" }
+                # (?m) IS LOAD-BEARING. Without it this anchors to the end of the WHOLE STRING and strips
+                # one occurrence, leaving every other segment terminator intact - the generator then found
+                # its end line, exited 0, and this row failed at baseline. The guard at :148 scans
+                # LINE BY LINE (`$csLines[$i] -match '";\s*$'`), so the fixture must break every line.
+                'no literal end'   { $csText = $csText -replace '(?m)";\s*$', '"' }
+            }
+            [IO.File]::WriteAllText($outCs, $csText)
+            $rsBefore = [IO.File]::ReadAllBytes($outRs)
+            $out = & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget $outRs -CsTarget $outCs 2>&1 | Out-String
+            $LASTEXITCODE | Should -Not -Be 0
+            $out | Should -BeLike "*$Expect*" -Because 'each C# guard names a DIFFERENT repair; a shared "something is wrong" would not tell them apart'
+            [IO.File]::ReadAllText($outCs) | Should -BeExactly $csText -Because 'a refused run must leave the C# target untouched'
+            # THE LOAD-BEARING ONE: every write happens AFTER every validation (:162-167), so a C#-side
+            # refusal must leave the RUST file untouched too. Moving either write above the C# block would
+            # half-apply a regeneration - one literal new, one old, and the parity gate reporting drift
+            # nobody introduced. Nothing else in this suite pins that ordering.
+            [IO.File]::ReadAllBytes($outRs) | Should -Be $rsBefore -Because 'validate-everything-then-write: a C# failure must not leave a rewritten rust literal behind'
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'STRIPS a leading UTF-8 BOM from the canonical source (GAP-4)' {
+        # The generator decodes with ReadAllBytes + UTF8.GetString DELIBERATELY, which keeps a BOM as
+        # U+FEFF, then strips it at :73. No fixture had ever supplied one, so deleting that line shipped
+        # green while baking U+FEFF into the START of both literals.
+        # ASSERTED AS A BYTE-EQUALITY AGAINST A BOM-LESS TWIN, not as `Should -Not -Match [char]0xFEFF`.
+        # A negative assertion here would pass for the wrong reason if the fixture failed to carry a BOM
+        # at all - the exact vacuity shape this audit is hunting. The twin cannot pass unless the BOM was
+        # genuinely removed AND nothing else diverged.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genbom-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $body = "Driver text line one`nand line two`n"
+            $withBom = Join-Path $tmp 'core-bom.md'
+            $noBom   = Join-Path $tmp 'core-plain.md'
+            [IO.File]::WriteAllBytes($withBom, ([byte[]]@(0xEF, 0xBB, 0xBF) + [Text.Encoding]::UTF8.GetBytes($body)))
+            [IO.File]::WriteAllBytes($noBom, [Text.Encoding]::UTF8.GetBytes($body))
+            # PRECONDITION: prove the fixture really carries a BOM, or this row tests nothing.
+            ([IO.File]::ReadAllBytes($withBom))[0..2] | Should -Be ([byte[]]@(0xEF, 0xBB, 0xBF)) -Because 'if the fixture has no BOM the comparison below is vacuous'
+
+            $bomRs = Join-Path $tmp 'bom.rs'; $bomCs = Join-Path $tmp 'bom.cs'
+            $refRs = Join-Path $tmp 'ref.rs'; $refCs = Join-Path $tmp 'ref.cs'
+            Copy-Item -LiteralPath $script:Rs -Destination $bomRs; Copy-Item -LiteralPath $script:Cs -Destination $bomCs
+            Copy-Item -LiteralPath $script:Rs -Destination $refRs; Copy-Item -LiteralPath $script:Cs -Destination $refCs
+            & pwsh -NoProfile -File $script:Gen -CoreSource $withBom -RustTarget $bomRs -CsTarget $bomCs
+            $LASTEXITCODE | Should -Be 0
+            & pwsh -NoProfile -File $script:Gen -CoreSource $noBom -RustTarget $refRs -CsTarget $refCs
+            $LASTEXITCODE | Should -Be 0
+            [IO.File]::ReadAllBytes($bomRs) | Should -Be ([IO.File]::ReadAllBytes($refRs)) -Because 'a BOM in the canonical source must not reach the rust literal'
+            [IO.File]::ReadAllBytes($bomCs) | Should -Be ([IO.File]::ReadAllBytes($refCs)) -Because 'a BOM in the canonical source must not reach the C# literal'
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'SKIPS a target given as an empty string, and still writes the other (panel R6)' {
         # The 14e hook needs this: a literal whose deletion is staged is gone from the worktree, so there
         # is nothing to splice into. Without an empty-target skip the hook must Copy-Item a file that does

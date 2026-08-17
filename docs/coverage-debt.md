@@ -135,8 +135,14 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 - **Why uncovered:** bounding the interpolated result requires executing the hooks, which the gate does not
   and should not do.
 - **Compensation:** documented in-source as an intended limit, adjacent to the check itself.
-- **Anchor:** the comment block above the `payload-budget` emission in `check-injected-context.ps1`.
-  **If that comment goes, the limit is no longer documented and this entry is void.**
+- **Anchor:** the `WHAT THIS BUDGET ACTUALLY BOUNDS` comment block in `check-injected-context.ps1`,
+  whose load-bearing sentence is *"Static parsing measures the TEMPLATE, not the payload an agent
+  receives."* **If that comment goes, the limit is no longer documented and this entry is void.**
+  <br>*(Corrected 2026-08-17, AGY-TEST-AUDIT round B prep: the anchor previously read "the comment block
+  above the `payload-budget` emission". It is not - the emission is far below it, and the only
+  `payload-budget` text near that point is an unrelated mention in the extraction-convention comment. A
+  re-validator following the old pointer would have looked in the wrong place and could have voided a
+  live entry, or honoured a dead one. Naming the block by its heading text survives the line moving.)*
 
 ### C. The junction / symlink / reparse-point / cross-root-alias family
 

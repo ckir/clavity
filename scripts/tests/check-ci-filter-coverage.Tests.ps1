@@ -178,6 +178,41 @@ Describe 'check-ci-filter-coverage.ps1' {
             $r.Out | Should -Match 'lists no paths' -Because 'the message must name this cause among the ones it covers'
         }
 
+        # THE SECOND TRIGGER HAD NO ROW (AGY-TEST-AUDIT round B, GAP-1). Every parser-error row above
+        # mutates the FIRST `paths:` block - note the `-not $seen` guard, which is what makes them
+        # push-only - so the loop's error handler was proven for `push` and never for `pull_request`.
+        # Narrowing the guard to `if (-not $r.Ok -and $trigger -eq 'push')` therefore shipped green.
+        # The cost is DIAGNOSABILITY, not a silent pass: an unreadable pull_request trigger yields an
+        # empty filter list, every required entry is then reported missing, and the gate still exits 1 -
+        # but it blames twelve absent entries instead of naming the one unparseable trigger.
+        It 'reds naming the PULL_REQUEST trigger when it is the one that cannot be read' {
+            # THE FIXTURE MUST LEAVE THE DOCUMENT **VALID**, and the first draft did not - which is the
+            # whole difficulty of this row. Mirroring the rows above (`paths:` -> `paths: []`) orphans the
+            # `- entry` lines beneath it, so the WHOLE FILE stops parsing; yq then fails on `.on.push.paths`
+            # first and the gate reports PUSH. MEASURED: `yaml: line 68: did not find expected key`, and the
+            # row failed at baseline asserting a pull_request message that could never appear.
+            # A parse error can therefore NEVER single out the second trigger. The only way to make
+            # pull_request the failing one is a document that parses and simply has no `.on.pull_request.paths`
+            # key - so remove the key AND its entries, and leave a valid sibling behind.
+            $p = New-WorkflowFixture {
+                param($l)
+                $n = 0; $dropping = $false
+                $l | ForEach-Object {
+                    if ($_ -match '^(\s*)paths:\s*$') {
+                        $n++
+                        if ($n -eq 2) { $dropping = $true; "$($Matches[1])branches: [main]" } else { $dropping = $false; $_ }
+                    }
+                    elseif ($dropping -and $_ -match '^\s*-\s') { }          # swallow this block's entries
+                    else { $dropping = $false; $_ }
+                }
+            }
+            Test-YamlValid $p | Should -BeTrue -Because 'this fixture must PARSE - an invalid document fails on push first and never reaches the pull_request branch, which is exactly how the first draft of this row fooled itself'
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 1
+            $r.Out | Should -Match 'could not read `\.on\.pull_request\.paths`' -Because 'the message must name the trigger that actually failed, or the operator repairs the wrong block'
+            $r.Out | Should -Not -Match 'MISSING required entry' -Because 'a parser failure must abort BEFORE the coverage comparison; reporting twelve missing entries would send the operator hunting for filter rows that are all present'
+        }
+
         It 'reds when the workflow is absent' {
             $r = Invoke-Gate -WorkflowPath (Join-Path ([IO.Path]::GetTempPath()) 'no-such-workflow.yml')
             $r.ExitCode | Should -Be 1
