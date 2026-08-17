@@ -862,7 +862,7 @@ Promoted from `.clavity/local-anomalies.md`. Every one was **verified by measure
 accepted on reading; two other entries in that file were deleted with recorded reasons (see the triage
 note there). 13c arrived in a later triage the same day, captured by a different session.
 
-#### 13a. The gate tells operators it reports unused exemptions — no code path can · ▶ **OPEN**
+#### 13a. The gate tells operators it reports unused exemptions — no code path can · ✅ **SHIPPED 2026-08-16** (`39f9545`). VERIFIED 2026-08-17: the false sentence is GONE - `grep -c 'reports unused exemptions' scripts/check-injected-context.ps1` = **0**, and the replacement names the suite that actually catches a stale exemption.
 
 `scripts/check-injected-context.ps1:701` prints:
 
@@ -916,7 +916,7 @@ the **do-not-re-raise ledger grows monotonically** across an iterated review (�
 while the artifact barely changed) and was the only monotonic variable across the degradation — so
 compress it each round.
 
-#### 13c. `check-growth-budget.ps1` — the capture was a MISDIAGNOSIS; small residue only · ▶ **OPEN (downgraded)**
+#### 13c. `check-growth-budget.ps1` — the capture was a MISDIAGNOSIS; small residue only · ✅ **SHIPPED 2026-08-16** (`524eab5` both call sites distinguish a missing input from an empty one · `cae0c2e` restored three rows the fix had neutered · `2c2f2f7` capstone R3 fold).
 
 **Corrected 2026-08-10, hours after promotion. The original entry claimed a fail-open with 7 467
 unmeasured bytes. That is WRONG and is retained here only as the method lesson.**
@@ -998,7 +998,7 @@ section 6) mandates the shield for the *new* reader; **this entry is the existin
 > ⚠ **CORRECTED 2026-08-14 by §14d: `SKILL.md:79` is NOT a good reference to copy.** It tests file
 > EXISTENCE, not content. Fix §14d first, or §14c's five artifacts inherit the weak idiom.
 
-**§14d — the sole shield assertion is content-blind, and five artifacts propagate it.** ▶ **OPEN**
+**§14d — the sole shield assertion is content-blind, and five artifacts propagate it.** ✅ **SHIPPED 2026-08-16** (`e48d97a` the effect-checking helper, mirrored across both plugins · `0850473` + `028d016` capstone folds). VERIFIED 2026-08-17: the helper asserts CONTENT (`grep -qFx '*'`), and the three surviving hits for the old `[ -f ]` idiom are all COMMENTS explaining why it was replaced - no live code carries it.
 `SKILL.md:79` reads `[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> ...`, so it restores a
 **deleted** shield but never an **emptied or hand-edited** one. Its own comment at `:74-78` claims it
 covers "the file was created by hand", which is exactly the case it misses. Measured at triage in a
@@ -1036,7 +1036,7 @@ round-8 panel — which is where this anomaly was captured. **So this is an INCO
 fold defect**: the round fixed its own artifact's line and never swept the source it was copied from.
 Like §13a it lands on `feature/injected-context-governance`, so it belongs with that epic's remaining work.
 
-**§14e — the only local gate on the three byte-pinned files checks provenance, not parity.** ▶ **OPEN**
+**§14e — the only local gate on the three byte-pinned files checks provenance, not parity.** ✅ **SHIPPED 2026-08-16** (`d5a24d7` generate both literals from core.md · `4ebec4f` the pre-commit INDEX-to-INDEX parity gate · `e15c0f0` eol pinning · `fd380fe` docs). VERIFIED 2026-08-17: the gate is wired at `lefthook.yml:105` and ran green on today's commits. Later hardening: `578fe22`, `6b86445` (all-or-nothing across both writes).
 `lefthook.yml:78-82` globs **exactly** the three pinned paths — `driver-cheatsheet.core.md`,
 `clavity-classic/src/driver_cheatsheet.rs`, `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` — and its
 own comment at `:63` states they "are pinned byte-identical to each other". It then runs
