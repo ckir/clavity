@@ -146,6 +146,36 @@ Describe 'check-ci-filter-coverage.ps1' {
         }
     }
 
+    Context 'a workflow GitHub could not use' {
+        # BOTH ROWS WERE MEASURED FAIL-OPENS BEFORE THE FIX, with `yq` as the oracle: the gate reported
+        # "OK - 12 required entries present in all 2 paths: blocks" on each of these, i.e. it certified a
+        # filter that GitHub either cannot parse or ignores entirely. A hand-written parser has to be
+        # probed against a real parser for the same format, because the whole defect class is "mine
+        # accepts what the real one rejects".
+        It 'reds on TAB indentation, which YAML forbids and this gate would otherwise read happily' {
+            $tab = [string][char]9
+            $p = New-WorkflowFixture {
+                param($l)
+                $l | ForEach-Object { if ($_ -match "^\s+-\s*'") { ($tab + $tab + $tab) + $_.TrimStart() } else { $_ } }
+            }
+            # The fixture must actually contain tabs, or the row proves nothing about tab handling.
+            @(Get-Content -LiteralPath $p | Where-Object { $_ -match $tab }).Count |
+                Should -BeGreaterThan 0 -Because 'the fixture must really be tab-indented'
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 1
+            $r.Out | Should -Match 'contains TAB characters'
+        }
+
+        It 'reds when the paths: blocks are not under the top-level on: key' {
+            # `yq` resolves .on.push.paths to length 0 for this shape - the filter has no trigger meaning
+            # at all - yet every required entry is still textually present in the file.
+            $p = New-WorkflowFixture { param($l) $l | ForEach-Object { if ($_ -match '^on:\s*$') { 'jobs-not-on:' } else { $_ } } }
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 1
+            $r.Out | Should -Match 'expected at least 2 paths: blocks'
+        }
+    }
+
     Context 'the gate refuses to pass vacuously' {
         It 'reds when a paths: block parses as empty rather than reporting success' {
             $p = New-WorkflowFixture {

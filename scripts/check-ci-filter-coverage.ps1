@@ -89,19 +89,46 @@ $problems = @()
 
 # ---- Parse the workflow's paths: blocks. --------------------------------------------------------
 if (-not (Test-Path -LiteralPath $WorkflowPath)) { Fail "workflow not found at $WorkflowPath"; exit 1 }
+$wfLines = [string[]](Get-Content -LiteralPath $WorkflowPath)
+
+# TABS ARE A HARD FAIL, AND THAT IS NOT PEDANTRY. YAML forbids tab indentation outright, so a
+# tab-indented filter makes the WHOLE workflow unparseable and GitHub never runs it - while `\s` in the
+# regexes below matches tabs perfectly happily, so this gate would read the filter, find everything it
+# wanted, and report OK on a workflow that CANNOT RUN. MEASURED: with the list items tab-indented, the
+# gate said "OK - 12 required entries present in all 2 paths: blocks" while `yq` rejected the file.
+$tabLines = @(for ($i = 0; $i -lt $wfLines.Count; $i++) { if ($wfLines[$i] -match "`t") { $i + 1 } })
+if ($tabLines.Count -gt 0) {
+    Fail "$WorkflowPath contains TAB characters on line(s) $($tabLines -join ', ') - YAML forbids tab indentation, so GitHub cannot parse this workflow and would never run it."
+    exit 1
+}
+
+# ONLY `paths:` KEYS INSIDE THE TOP-LEVEL `on:` SECTION COUNT. The first version matched
+# `^\s*paths:\s*$` ANYWHERE in the file, so a filter sitting somewhere with no trigger meaning still
+# satisfied the gate. MEASURED: with the `on:` key renamed, the gate reported "OK - 12 required entries
+# present in all 2 paths: blocks" while `yq` resolved `.on.push.paths` to length 0 - a filter GitHub
+# ignores completely. Blank and comment lines are skipped rather than treated as terminators, because a
+# comment between list items is legal YAML and must not silently truncate a block.
 $blocks = @()
 $current = $null
-foreach ($line in (Get-Content -LiteralPath $WorkflowPath)) {
+$inOn = $false
+foreach ($line in $wfLines) {
+    if ($line -match '^\s*$' -or $line -match '^\s*#') { continue }
+    if ($line -match '^\S') { $inOn = ($line -match '^(on|"on"|''on''):\s*$'); $current = $null; continue }
+    if (-not $inOn) { continue }
     if ($line -match '^\s*paths:\s*$') { $current = New-Object System.Collections.ArrayList; $blocks += ,$current; continue }
     if ($null -ne $current) {
         if ($line -match "^\s*-\s*['""]([^'""]+)['""]\s*$") { [void]$current.Add($Matches[1]) } else { $current = $null }
     }
 }
-# NON-VACUITY. Both are real failures, not "nothing to do": a parse that yields no blocks, or a block
-# that yields no entries, would make every assertion below pass without testing anything.
-if ($blocks.Count -lt 2) { Fail "expected at least 2 paths: blocks (push and pull_request) in $WorkflowPath, parsed $($blocks.Count) - the parser or the workflow changed shape."; exit 1 }
+# NON-VACUITY, AND THE RATIONALE HERE WAS WRONG UNTIL A CAPSTONE ROUND CORRECTED IT. An empty block does
+# NOT make the checks below "pass without testing anything": `-cnotcontains` against an empty block flags
+# every required entry as missing, so the gate already fails closed. What these two guards actually buy
+# is a message naming the REAL cause - the parser or the workflow changed shape - instead of twelve
+# misleading "missing entry" lines sending the reader off to edit a filter that is fine. That is also
+# exactly what the matching test rows assert, and what goes red if either guard is deleted.
+if ($blocks.Count -lt 2) { Fail "expected at least 2 paths: blocks (push and pull_request) under the top-level ``on:`` key in $WorkflowPath, parsed $($blocks.Count) - the parser or the workflow changed shape."; exit 1 }
 for ($i = 0; $i -lt $blocks.Count; $i++) {
-    if ($blocks[$i].Count -eq 0) { Fail "paths: block #$($i+1) parsed as EMPTY - the gate would pass vacuously."; exit 1 }
+    if ($blocks[$i].Count -eq 0) { Fail "paths: block #$($i+1) parsed as EMPTY - reporting that instead of listing every required entry as missing, which is what the checks below would otherwise say."; exit 1 }
 }
 
 # ---- CHECK A: every required entry, in EVERY block. ---------------------------------------------
@@ -177,7 +204,16 @@ foreach ($r in ($reached.Keys | Sort-Object)) {
     $problems += "  UNCOVERED root '$r' - named by: $($reached[$r] -join ', ')"
 }
 foreach ($e in ($Exemptions.Keys | Sort-Object)) {
-    if (-not $reached.ContainsKey($e))    { $problems += "  STALE exemption '$e' - no suite names it any more; delete the entry." }
+    # EVERY EXEMPTION KEY MUST BE AN EXACT, CASE-SENSITIVE MATCH FOR A REAL GIT ROOT. $Exemptions is a
+    # PowerShell hashtable, whose keys are CASE-INSENSITIVE, while $coveredRoots above is ordinal. A key
+    # written 'Seed' would therefore still suppress the root 'seed' on the lookup at :203, but
+    # $coveredRoots.ContainsKey('Seed') would be FALSE forever - so a redundant exemption could never be
+    # reported and would rot in place, silently exempting a root the filter already covers. Demanding an
+    # exact ordinal match against git's own root list closes that, and catches an ordinary typo too.
+    if ($roots -cnotcontains $e) {
+        $problems += "  BOGUS exemption '$e' - not an exact (case-sensitive) top-level git root. Real roots: $($roots -join ', ')"
+    }
+    elseif (-not $reached.ContainsKey($e)) { $problems += "  STALE exemption '$e' - no suite names it any more; delete the entry." }
     elseif ($coveredRoots.ContainsKey($e)) { $problems += "  REDUNDANT exemption '$e' - the filter now covers that root; delete the entry." }
 }
 
