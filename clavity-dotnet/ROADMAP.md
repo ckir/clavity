@@ -1368,6 +1368,61 @@ conceded and adopted this split as the target architecture.
 **What is parked on this.** 64 inbox entries carry `parked=seed-growth-split-roadmap-18`. That is a real
 release condition, not a parking lot: when this ships, they become drainable at no source cost.
 
+### §19 — `agy-mark.sh` exit codes: collapse the tri-state to 0 / non-zero — ▶ **DECIDED, DEFERRED**
+
+**This is a settled decision waiting for a carrier commit, not an open question.** Do not re-litigate it;
+do not execute it on its own.
+
+**The decision.** Collapse `agy-mark.sh`'s three-value exit contract (`0` wrote / `1` refused before
+trying / `2` write attempted and rejected) to **`0` / non-zero**. **The two distinct stderr messages MUST
+SURVIVE** — `REFUSED - <reason>` and `write FAILED for <path> - the filesystem rejected it`. The operator's
+remedy stays exactly where an operator looks; only the dead integer goes.
+
+**WHEN.** Execute **only when `agy-mark.sh` is next opened for a FUNCTIONAL change** that already pays the
+cost below. A standalone commit for this is explicitly NOT worth it.
+
+**Why deferred rather than done — the cost that decides it.** `agy-mark.sh` is implementation source and
+one of a BYTE-IDENTICAL PAIR (dotnet + classic). Editing it therefore requires the mirror **and
+invalidates the AGY-CAPSTONE GREEN** (owner-confirmed at `1022f8f`, 2026-08-17), forcing a full re-run of
+that discipline. Paying a re-capstone for a purely hygienic simplification is a bad trade.
+
+**Why the tri-state goes — measured 2026-08-17, not reasoned:**
+- 🔴 **NO CALLER CONSUMES THE DISTINCTION.** All six call sites across `agy-first`, `agy-capstone` and
+  `agy-test-audit` use `if ! bash .../agy-mark.sh ...; then <echo> ; exit 1; fi`. `if !` is a TWO-outcome
+  construct; every non-zero collapses to "abort". **The six `then` blocks contain nothing but an `echo`
+  and `exit 1`** — no cleanup or teardown that could vary by failure kind.
+- **Both failures are terminally fatal with no programmatic recovery.** Refused = the skill's own source
+  is malformed; rejected = it cannot write the repo-anchored state the discipline requires, and it has no
+  legal fallback location. The callers are therefore CORRECT to collapse them — **the caller pattern is
+  evidence the API is over-designed, not that the callers are buggy.** (Notable, because `if !` around a
+  multi-outcome command is this project's single most-repeated defect shape — here it is not one.)
+- **No future consumer.** No planned fail-open / graceful-degradation on a read-only marker directory
+  anywhere in this ROADMAP.
+- **No spec breaks.** `docs/agy-disciplines-marker-contract.md` does not specify exit codes at all; the
+  tri-state exists only in the script header.
+
+**Two objections that were raised and DIED ON MEASUREMENT — recorded so they are not re-raised:**
+1. 🔴 **"exit 2 might be dangerous, not merely unused."** This project records that `exit 2` is
+   non-blocking on SessionStart but **BLOCKING on PreToolUse**, so a hook-registered script exiting 2
+   could block an agent — which would make this a SAFETY question, not a YAGNI one. **MEASURED: it is
+   registered in NEITHER `clavity-dotnet/plugin/hooks/hooks.json` NOR the classic mirror**, and its own
+   header states the reason at `:4-5` — *"this script is invoked by a skill, where a refusal blocks
+   nothing."* Refuted.
+2. **"exit 2 has no reachable oracle"** — the argument that BLOCKED this ruling when it was first
+   escalated. **No longer true:** both exit-2 sites now have test rows, `agy-mark.Tests.ps1:275` (log
+   mode) and `:293` (head mode, added 2026-08-17 by AGY-TEST-AUDIT round A, GAP-7). The objection that
+   deadlocked the fork has dissolved.
+
+**Provenance.** Negotiated with the agy peer over two rounds (2026-08-17), owner-directed. **Both parties
+moved:** I opened on "keep the tri-state as a human diagnostic" and withdrew it — *an exit code IS the
+machine-to-machine API; humans read stderr, not `$?`*, so that position was a euphemism for an unused
+distinction. The peer opened on "delete it now" and shifted to deferred once the re-capstone cost was
+priced. **Neither opening position survived.**
+
+⚠ **One consequence to expect when this executes:** it deletes `agy-mark.Tests.ps1:293`, a row added the
+same day to close a verified coverage gap. That is not a contradiction — the audit correctly tested the
+design as it then stood; this entry changes the design.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
