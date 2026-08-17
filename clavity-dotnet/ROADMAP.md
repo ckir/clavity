@@ -1316,6 +1316,58 @@ what a pre-push gate is FOR**. Surfaced by an agy capstone seat, then confirmed 
 a safety net, it is a report you get later"*. If pre-push is also not measuring the pushed state, then this
 branch — 319 commits ahead and never pushed — currently has **neither** gate reasoning about what would land.
 
+### §18 — SEED/GROWTH split for the driver cheatsheet — ▶ **OPEN, and 64 parked inbox entries wait on it**
+
+**The problem, measured at the 2026-08-17 drain.** `driver-cheatsheet.core.md` is 100% SEED-shaped: it is
+byte-pinned to two compiled literals (`clavity-classic/src/driver_cheatsheet.rs` `BASELINE_FLOOR`,
+`clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` `BaselineFloor`). So **every promotion of learned driver
+knowledge costs an implementation-source change** — regenerate both literals, run three oracles, and owe a
+re-capstone. That toll is why the loop stopped being run at cadence: **69 pending entries had accumulated,
+31 of them in a second inbox copy no flow read.**
+
+**The fix: apply the split this system ALREADY uses one layer up.** The injected golden-header is
+SEED (driver-owned, shipped, static) + GROWTH (drain-written at runtime, atomic write, `.sha256` sidecar,
+read as an extension of SEED). The cheatsheet has no such split. Give it one:
+
+- the compiled literal stays a **pinned FLOOR** — rarely edited, guarantees a baseline when no runtime file
+  exists or it fails its integrity check. The existing parity gate keeps doing the job it demonstrably does;
+- add a **cheatsheet-growth region** the drain writes through the same atomic-write + sidecar path;
+- drains stop touching compiled source, so the per-drain toll goes to zero.
+
+**Provenance — this was NEGOTIATED, and the negotiation moved.** Consulted as a design fork, the peer first
+recommended **UNPINNING** the cheatsheet outright, arguing a continuous learning loop cannot afford a
+compile-time constraint. Its own stated counter-argument was that unpinning risks silent runtime divergence.
+**One measurement killed that recommendation:** `check-cheatsheet-parity` exits 0 — the pinned trio is
+coherent — while the drift was entirely in `%USERPROFILE%\.clavity\driver-cheatsheet.md`, which **nothing
+pins and nothing gates** (3 days stale, 3515B vs 3508B). The divergence it named as the COST of unpinning was
+already realised, in the part that was never pinned. Unpinning would delete the half that works. The peer
+conceded and adopted this split as the target architecture.
+
+**Three attacks on the split, from that same consult. Two stand; record them in the design:**
+1. **Contradiction between regions.** Domain facts compose; operational rules **override**. If SEED says
+   "never do X" and a drain writes "always do X" into GROWTH, the driver gets opposed constraints in one
+   context window. The header does not face this because it carries facts, not instructions. **A resolution
+   order must be part of the design, not an afterthought.**
+2. **Compaction debt.** The split BATCHES the review toll rather than removing it — GROWTH eventually
+   overflows or tangles and must be compacted back into SEED, paying the source-churn and re-review cost on
+   a slower cadence. Budget for that; do not claim the toll is gone.
+3. **~~Poisoning~~ — CLOSED at the consult.** The concern was that a free-writing drain lets a bad capture
+   become steering law. The `agy-curate` skill already **mandates a human-review gate before any runtime
+   GROWTH write**. The requirement this adds is that the cheatsheet-growth region must inherit **that gate**,
+   not merely the atomic-write path.
+
+**The two measurements the peer named as gates on building it — do these first:**
+- **Toxicity rate.** How many pending entries are steering hazards? If even one is, an ungated drain is
+  structurally unsafe. **Partially measured 2026-08-17:** a pattern scan for guard-weakening phrasing over
+  all 69 returned **zero**. That is a pattern scan, NOT a semantic read of all 69 — treat it as encouraging,
+  not as the measurement.
+- **Override behaviour.** Append a deliberate contradiction to the current cheatsheet and measure whether the
+  driver reliably privileges the newer rule. If it does not, the split needs a conflict-resolution layer
+  before rendering, and attack 1 is fatal rather than manageable.
+
+**What is parked on this.** 64 inbox entries carry `parked=seed-growth-split-roadmap-18`. That is a real
+release condition, not a parking lot: when this ships, they become drainable at no source cost.
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
