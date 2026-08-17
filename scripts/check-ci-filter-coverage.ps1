@@ -102,12 +102,26 @@ $wfLines = [string[]](Get-Content -LiteralPath $WorkflowPath)
 # tab-indented lines inside a `run: |` step. Both would fail this gate - now a pre-push hook - on a legal
 # edit, and a gate that reds on legal input is its own kind of defect. Not reachable today (measured:
 # zero such lines) but tab-indenting a line of shell is an ordinary thing to do.
+# INDENT IS MEASURED IN COLUMNS, NOT CHARACTERS, and that distinction is the whole point. Counting
+# characters makes a TAB worth 1 while it indents much further, so a scalar body line indented
+# <TAB><sp><sp> computes 3 against a 4-space opener - the tracker concludes the scalar ENDED, then
+# matches the leading tab and reds on legal YAML. MEASURED: exactly that sequence. Expanding a tab to the
+# next multiple of 8 makes the comparison mean what it says.
+function Get-IndentColumns([string]$s) {
+    $c = 0
+    foreach ($ch in $s.ToCharArray()) {
+        if ($ch -eq ' ') { $c++ }
+        elseif ($ch -eq "`t") { $c = [math]::Floor($c / 8) * 8 + 8 }
+        else { break }
+    }
+    return $c
+}
 $tabLines = @()
 $scalarIndent = -1
 for ($i = 0; $i -lt $wfLines.Count; $i++) {
     $line = $wfLines[$i]
     if ($line -match '^\s*$') { continue }
-    $indent = $line.Length - $line.TrimStart(' ', "`t").Length
+    $indent = Get-IndentColumns $line
     if ($scalarIndent -ge 0) {
         if ($indent -gt $scalarIndent) { continue }   # still inside the scalar body
         $scalarIndent = -1
@@ -134,7 +148,13 @@ foreach ($line in $wfLines) {
     if ($line -match '^\s*$' -or $line -match '^\s*#') { continue }
     if ($line -match '^\S') { $inOn = ($line -match '^(on|"on"|''on''):\s*$'); $current = $null; continue }
     if (-not $inOn) { continue }
-    if ($line -match '^\s*paths:\s*$') { $current = New-Object System.Collections.ArrayList; $blocks += ,$current; continue }
+    # A YAML ANCHOR OR A TRAILING COMMENT ON THE KEY IS LEGAL, and this repo's OTHER gate already says so:
+    # check-injected-context.Tests.ps1's $PathsKeyRx is `^\s+paths:[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?\r?$`.
+    # A stricter matcher here meant the two gates disagreed about what a `paths:` block IS - so `paths: &shared`
+    # satisfied one and made the other red with "expected at least 2 paths: blocks". Two gates answering the
+    # same question differently is a defect even when each is individually defensible; this one now matches
+    # the established shape. `paths-ignore:` still cannot match, having no `paths:`-then-end.
+    if ($line -match '^\s*paths:[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?$') { $current = New-Object System.Collections.ArrayList; $blocks += ,$current; continue }
     if ($null -ne $current) {
         if ($line -match "^\s*-\s*['""]([^'""]+)['""]\s*$") { [void]$current.Add($Matches[1]) } else { $current = $null }
     }

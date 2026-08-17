@@ -207,6 +207,48 @@ Describe 'check-ci-filter-coverage.ps1' {
             $r.ExitCode | Should -Be 0 -Because "a tab inside a block scalar body is legal: $($r.Out)"
         }
 
+        # INDENT IS COLUMNS, NOT CHARACTERS. A scalar body line indented <TAB><sp><sp> is 10 columns deep
+        # but only 3 characters, so a character count put it SHALLOWER than an 8-column opener - the
+        # tracker concluded the scalar had ended and then reddened on the leading tab. Legal YAML, false
+        # red, on a gate that blocks pushes.
+        It 'ACCEPTS a MIXED tab-and-space indent inside a block scalar body' {
+            $tab = [string][char]9
+            $p = New-WorkflowFixture {
+                param($l)
+                $o = New-Object System.Collections.ArrayList; $done = $false
+                foreach ($line in $l) {
+                    [void]$o.Add($line)
+                    if (-not $done -and $line -match '^(\s*)\S.*:\s*\|\s*$') {
+                        [void]$o.Add($tab + '  echo "mixed tab+space indent"')
+                        $done = $true
+                    }
+                }
+                $o
+            }
+            @(Get-Content -LiteralPath $p | Where-Object { $_ -match "^$tab" }).Count |
+                Should -BeGreaterThan 0 -Because 'the fixture must really start a line with a tab'
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 0 -Because "a tab-indented line inside a block scalar body is legal: $($r.Out)"
+        }
+
+        # THE SIBLING GATE ALREADY ACCEPTS THIS SHAPE. check-injected-context.Tests.ps1's $PathsKeyRx
+        # tolerates a YAML anchor and a trailing comment on the key; this gate demanded a bare `paths:`,
+        # so the two disagreed about what a paths: block IS and an anchor made only one of them red.
+        It 'ACCEPTS a YAML anchor and a trailing comment on the paths: key' {
+            $p = New-WorkflowFixture {
+                param($l)
+                $seen = $false
+                $l | ForEach-Object {
+                    if (-not $seen -and $_ -match '^(\s*)paths:\s*$') { $seen = $true; "$($Matches[1])paths: &shared   # the push filter" }
+                    else { $_ }
+                }
+            }
+            (Get-Content -LiteralPath $p | Where-Object { $_ -match 'paths: &shared' }).Count |
+                Should -Be 1 -Because 'the fixture must really carry the anchor'
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 0 -Because "an anchored paths: key is legal YAML and the sibling gate accepts it: $($r.Out)"
+        }
+
         It 'reds when the paths: blocks are not under the top-level on: key' {
             # `yq` resolves .on.push.paths to length 0 for this shape - the filter has no trigger meaning
             # at all - yet every required entry is still textually present in the file.
