@@ -41,9 +41,9 @@ pre-push:
       # cold starts alone (~6s each, as the installer-ascii note above measures). Every one of those
       # seconds was idle time on the SSH connection git opens BEFORE this hook runs, which is exactly
       # the window the header warns about. Measured: 33.7s -> ~7s, hook total 62.5s -> ~36s.
-      run: pwsh -File scripts/check-versions-all.ps1
+      run: pwsh -NoProfile -File scripts/check-versions-all.ps1
     check-plugin-namespace:
-      run: pwsh -File scripts/check-plugin-namespace.ps1
+      run: pwsh -NoProfile -File scripts/check-plugin-namespace.ps1
     check-ci-filter-coverage:
       # HERE SPECIFICALLY BECAUSE CI CANNOT GUARD THIS ONE. The gate lives in ci-scripts.yml's own Pester
       # suite, and that workflow is path-filtered on itself - so deleting `.github/workflows/ci-scripts.yml`
@@ -51,7 +51,7 @@ pre-push:
       # workflow, and the gate that would have caught the deletion never runs. The change merges green
       # having disabled its own guard. A pre-push run is the last point where that is still catchable.
       # One pwsh process, in the seconds range this hook's header requires.
-      run: pwsh -File scripts/check-ci-filter-coverage.ps1
+      run: pwsh -NoProfile -File scripts/check-ci-filter-coverage.ps1
 pre-commit:
   commands:
     ruff:

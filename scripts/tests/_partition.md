@@ -327,7 +327,7 @@ work at no cost to the loop.
 0 failed.** The recorded 328 had decayed by **277**, not by the four this batch added — see the correction
 in the count paragraph above.
 
-🔴 **RUN THE FAST HALF WITH `-NoProfile` OR READ A FALSE RED.** The recipe invokes plain `pwsh`, which
+🔴 **THE RECIPES NOW PASS `-NoProfile` THEMSELVES - this is no longer something to remember.** The recipe USED to invoke plain `pwsh`, which
 loads the operator's PowerShell profile. MEASURED 2026-08-16 on this machine: a profile hook around
 `Push-Location` raised `The variable '$Script:CPPrevLocationAction' cannot be retrieved because it has
 not been set` (`claude-profile-init.ps1:323`), reddening **5 rows in `release-lib.Tests.ps1`** that pass
@@ -336,6 +336,20 @@ not been set` (`claude-profile-init.ps1:323`), reddening **5 rows in `release-li
 but it cost three wrong bisections here, because every probe used `-NoProfile` while the recipe did not.
 **When a suite fails only inside the recipe, check whether your probe and the recipe load the same
 profile before hunting cross-suite contamination.**
+
+✅ **CLOSED 2026-08-17 - and the gap between the diagnosis and the fix is the lesson.** The 2026-08-16
+discovery produced THIS NOTE and nothing else: it told the operator to type `-NoProfile`, and changed no invocation.
+**A rule with no implementation is worse than no rule** - it reads as handled. Twenty-four hours later the same
+fault blocked a push through `lefthook`'s `check-versions-all` job, and cost THREE more wrong hypotheses (a
+`$PSDefaultParameterValues` entry, an imported module, a profile-defined wrapper) before a `grep -rn CPPrevLocationAction`
+found this very paragraph in one command. The note predicted the exact trap it then failed to prevent.
+
+**22 invocations across `lefthook.yml` and `justfile` now carry `-NoProfile`** (3 pre-push gates, the three `test-scripts*`
+recipes, and every other `pwsh` call in both files). Prose mentions of `pwsh -File` were deliberately left alone.
+**The prior ruling - 'an operator-environment artifact, not a repo defect' - was right about the CAUSE and wrong about
+the REMEDY:** the artifact is external, but a runner that inherits an arbitrary operator profile is a repo defect, and
+hermetic invocation is the repo's job. ⚠ **`.worktrees/python-gate/` has its own `justfile` and `lefthook.yml` and was
+NOT touched** - it is a separate branch with parked work; it needs the same fix on its own terms.
 
 ## Measured runtimes
 
