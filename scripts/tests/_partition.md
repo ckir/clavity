@@ -43,10 +43,13 @@ load once and accumulates across files.
   during a run slows it down by construction** (see the contention entries below). **Do not quote any
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
-- `just test-scripts-slow` — everything else. **18 suites, 364 tests, measured 1274,72s solo** (2026-08-16,
-  after the anomaly hot-fix batch added five suites to this half and none to fast).
+- `just test-scripts-slow` — everything else. **19 suites, 379 tests, measured 1386,48s solo** (2026-08-17,
+  after the capstone added `check-ci-filter-coverage` to this half and none to fast; the anomaly hot-fix
+  batch before it had added five, also all to this half). **MEASURED, NOT DERIVED, and the difference
+  mattered:** 364 + the new suite's 13 predicts 377, and the real figure is **379**. Deriving a total from
+  the previous one plus your own delta silently inherits every drift that happened in between.
   NOT on any git hook; it is **well past the 600s foreground tool cap** — 653,5s, 761,28s, 819,2s, 1300,19s,
-  now 1274,72s —
+  1274,72s, now 1386,48s —
   and must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line, never by
   watching a process count. **A backgrounded run can also be STOPPED before it finishes** (one was, at 9
   of 13 suites, on 2026-08-06): a log with no `Tests Passed:` line is an ABORTED run, not a passing one,
@@ -433,18 +436,21 @@ check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW
                                                                       modest test count. Measured solo as the
                                                                       sole command: "Tests completed in
                                                                       135,92s", 16 passed / 0 failed.
-check-ci-filter-coverage.Tests.ps1               79,0s   11 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
+check-ci-filter-coverage.Tests.ps1              103,1s   13 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
                                                                       paths-filter gate's own suite. Nearly
                                                                       every row spawns pwsh to run the gate
                                                                       against a separately mutated copy of the
                                                                       workflow, which is the whole cost - the
                                                                       test count is small and the process count
                                                                       is not. Measured SOLO AND IN BACKGROUND
-                                                                      with the driver idle: 78 990 ms. The same
-                                                                      suite measured 95s with the driver
-                                                                      working - a 1,2x inflation - so this row
-                                                                      quotes the idle figure, per the warning
-                                                                      this file already carries above.
+                                                                      with the driver idle: 103 065 ms at 13
+                                                                      rows. It measured 78 990 ms at 11 rows
+                                                                      an hour earlier, and 95s at 11 rows with
+                                                                      the driver WORKING - a 1,2x inflation -
+                                                                      so every figure here is the idle one, per
+                                                                      the warning this file already carries
+                                                                      above. Two rows cost ~24s because each
+                                                                      one is another pwsh cold start.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the

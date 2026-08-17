@@ -74,9 +74,21 @@ Describe 'check-ci-filter-coverage.ps1' {
             }
             $r = Invoke-Gate -WorkflowPath $p
             $r.ExitCode | Should -Be 1
-            $r.Out | Should -Match "MISSING required entry 'build/members\.json'"
-            # Block 1 only - NOT '1, 2'. Asserting WHICH block, not merely that something failed.
-            $r.Out | Should -Match "block\(s\) 1 -"
+            # ONE PATTERN, NOT TWO. Asserting the entry and the block number as SEPARATE matches against
+            # the whole multi-line output is not an assertion about one line: any other entry missing from
+            # block 1, plus members.json missing from block 2, satisfies both halves while the gate has
+            # reported the WRONG block. They must be matched together or the row proves nothing.
+            $r.Out | Should -Match "MISSING required entry 'build/members\.json' from paths: block\(s\) 1 -"
+        }
+
+        # GitHub matches paths: CASE-SENSITIVELY; PowerShell's -notcontains does not. A capitalised entry
+        # would satisfy a case-insensitive gate while GitHub silently never fired the workflow - a green
+        # gate certifying a filter that does not trigger. This row dies if the operator loses its `-c`.
+        It 'reds on a case-variant entry, because GitHub would not match it' {
+            $p = New-WorkflowFixture { param($l) $l | ForEach-Object { $_ -replace "^(\s*-\s*)'scripts/\*\*'\s*$", "`$1'Scripts/**'" } }
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 1
+            $r.Out | Should -Match "MISSING required entry 'scripts/\*\*'"
         }
 
         It 'names the reason the entry is required, so the message is self-explaining' {
@@ -97,6 +109,30 @@ Describe 'check-ci-filter-coverage.ps1' {
             $r.Out | Should -Match 'plugin-hooks-payload\.Tests\.ps1'   # it names WHO reaches it
         }
 
+        # COVERED MUST MEAN COVERED IN EVERY BLOCK. Dropping the entry from the pull_request block alone
+        # leaves the root present in `push`, and a $coveredRoots built from $blocks[0] would call it
+        # covered - which is what the gate did until this was measured. Check A cannot backstop the
+        # general case, because it only knows entries someone already wrote into $Required; a brand-new
+        # tree added to one block is exactly what Check B is for. This row asserts the CHECK B message
+        # specifically: pre-fix only the Check A line appeared.
+        It 'reds in CHECK B when a root is covered in one block but not the other' {
+            $p = New-WorkflowFixture {
+                param($l)
+                # DROP THE *LAST* OCCURRENCE - the pull_request block - not the first. Removing the FIRST
+                # takes the entry out of `push`, so $blocks[0] lacks the root either way and the row passes
+                # whether or not the intersection exists. MEASURED: the first version of this row did
+                # exactly that, and the mutation that undoes the intersection left the suite GREEN. The
+                # row only discriminates when `push` KEEPS the entry and `pull_request` loses it.
+                $hits = @(0..($l.Count - 1) | Where-Object { $l[$_] -match "^\s*-\s*'docs/agy-disciplines-marker-contract\.md'\s*$" })
+                $hits.Count | Should -BeGreaterThan 1 -Because 'the fixture must find the entry in BOTH blocks, or it is not testing what it claims'
+                $last = $hits[-1]
+                @(0..($l.Count - 1) | Where-Object { $_ -ne $last } | ForEach-Object { $l[$_] })
+            }
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 1
+            $r.Out | Should -Match "UNCOVERED root 'docs'"
+        }
+
         It 'reds on a REDUNDANT exemption once the filter covers that root' {
             # 'seed' is exempt as fixture-only; adding a seed entry to the filter must force the table
             # to be corrected rather than leaving a lie in it.
@@ -114,13 +150,19 @@ Describe 'check-ci-filter-coverage.ps1' {
         It 'reds when a paths: block parses as empty rather than reporting success' {
             $p = New-WorkflowFixture {
                 param($l)
-                # Drop every list item, keeping the two `paths:` keys - the shape that would otherwise
-                # make every required-entry assertion pass against nothing.
+                # Drop every list item, keeping both `paths:` keys.
                 $l | Where-Object { $_ -notmatch "^\s*-\s*'[^']+'\s*$" }
             }
             $r = Invoke-Gate -WorkflowPath $p
             $r.ExitCode | Should -Be 1
             $r.Out | Should -Match 'parsed as EMPTY'
+            # THE EXIT CODE ALONE PROVES NOTHING HERE, and an earlier version of this comment claimed
+            # otherwise. Without the dedicated empty-block guard the run still fails: `-cnotcontains`
+            # against an empty block reports EVERY required entry as missing, so it already fails closed.
+            # What the guard actually buys is a message naming the real cause instead of twelve misleading
+            # MISSING lines - so THAT is what this row has to assert, and it is what goes red if the guard
+            # is deleted.
+            $r.Out | Should -Not -Match 'MISSING required entry'
         }
 
         It 'reds when fewer than two paths: blocks are found' {

@@ -105,9 +105,14 @@ for ($i = 0; $i -lt $blocks.Count; $i++) {
 }
 
 # ---- CHECK A: every required entry, in EVERY block. ---------------------------------------------
+# CASE-SENSITIVE ON PURPOSE (`-cnotcontains`, not `-notcontains`). GitHub Actions matches `paths:`
+# case-sensitively, but PowerShell's `-notcontains` does not: `@('scripts/**') -notcontains 'Scripts/**'`
+# is FALSE, so a capitalised entry would satisfy this gate while GitHub silently never fired the
+# workflow. Measured both operators before changing it. That is the worst shape available - a green gate
+# certifying a filter that does not trigger.
 foreach ($entry in $Required.Keys) {
     $missing = @()
-    for ($i = 0; $i -lt $blocks.Count; $i++) { if ($blocks[$i] -notcontains $entry) { $missing += ($i + 1) } }
+    for ($i = 0; $i -lt $blocks.Count; $i++) { if ($blocks[$i] -cnotcontains $entry) { $missing += ($i + 1) } }
     if ($missing.Count -gt 0) {
         $problems += "  MISSING required entry '$entry' from paths: block(s) $($missing -join ', ') - needed because: $($Required[$entry])"
     }
@@ -135,7 +140,9 @@ foreach ($s in $suites) {
         ForEach-Object { $_.Value }
     foreach ($r in $roots) {
         foreach ($l in $lits) {
-            if ($l -eq $r -or $l.StartsWith($r + '/')) {
+            # ORDINAL, not culture-sensitive, and case-SENSITIVE: these are repository paths, and the
+            # roots they are compared against came straight out of `git ls-files`.
+            if ($l -ceq $r -or $l.StartsWith($r + '/', [StringComparison]::Ordinal)) {
                 if (-not $reached.ContainsKey($r)) { $reached[$r] = New-Object System.Collections.ArrayList }
                 if (-not $reached[$r].Contains($s.Name)) { [void]$reached[$r].Add($s.Name) }
                 break
@@ -144,8 +151,25 @@ foreach ($s in $suites) {
     }
 }
 
-$coveredRoots = @{}
-foreach ($e in $blocks[0]) { $coveredRoots[($e -split '/')[0]] = $true }
+# COVERED MEANS COVERED IN *EVERY* BLOCK, NOT IN THE FIRST ONE. Building this from $blocks[0] alone was
+# a MEASURED fail-open: with `ghidrust/**` added to the `push` block only, the gate declared the root
+# covered and returned 0, while the `pull_request` trigger - the half that actually gates review - stayed
+# blind to it. Check A cannot backstop that, because Check A only knows the entries someone already wrote
+# into $Required; a brand-new tree added to one block is exactly the case Check B exists for.
+# A plain @{} would ALSO defeat the case-sensitivity fix above, since PowerShell hashtable keys are
+# case-insensitive - hence an ordinal dictionary.
+$coveredRoots = [System.Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
+$blockRoots = New-Object System.Collections.ArrayList
+foreach ($b in $blocks) {
+    $h = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($e in $b) { [void]$h.Add(($e -split '/')[0]) }
+    [void]$blockRoots.Add($h)
+}
+foreach ($k in $blockRoots[0]) {
+    $inAll = $true
+    foreach ($h in $blockRoots) { if (-not $h.Contains($k)) { $inAll = $false; break } }
+    if ($inAll) { $coveredRoots[$k] = $true }
+}
 
 foreach ($r in ($reached.Keys | Sort-Object)) {
     if ($coveredRoots.ContainsKey($r)) { continue }

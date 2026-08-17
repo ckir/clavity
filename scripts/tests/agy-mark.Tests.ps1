@@ -240,7 +240,7 @@ Describe 'agy-mark.sh' {
             @(Get-ChildItem -LiteralPath (Join-Path $d '.clavity') -Directory -ErrorAction SilentlyContinue).Count | Should -Be 0
         }
 
-        It 'a write that fails PARTWAY exits 2, not 1 - the two codes mean different things' {
+        It 'a write the filesystem REJECTS exits 2, not 1 - the two codes mean different things' {
             # THE MUTATION TABLE PAIRED A MUTATION WITH THIS ROW AND THE ROW DID NOT EXIST - it said
             # "(add if absent)" and nobody added it, so that mutation mapped to nothing (panel R13).
             # Make agy-marks a FILE so the directory cannot be created but the refusal is not an

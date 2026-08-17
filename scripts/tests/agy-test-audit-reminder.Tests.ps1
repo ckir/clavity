@@ -53,7 +53,12 @@ Describe 'agy-test-audit-reminder.sh' {
                 $head = (& git -C $dir rev-parse HEAD).Trim()
                 New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
                 return [pscustomobject]@{ Dir = $dir; Head = $head }
-            } catch { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue; throw }
+            # THE CLEANUP MUST NOT BE ABLE TO EAT THE DIAGNOSIS. `-ErrorAction SilentlyContinue` suppresses
+            # NON-terminating errors only; a terminating one (a locked handle, an invalid path) would abort
+            # this catch block and throw ITS exception instead, destroying the original - so the failure the
+            # builder actually hit would be replaced by a confusing cleanup error. Best-effort cleanup,
+            # guaranteed rethrow.
+            } catch { try { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue } catch { }; throw }
         }
         function Set-Marker { param($Dir, $Name, $Sha)
             Set-Content -LiteralPath (Join-Path $Dir ".clavity/agy-marks/$Name.head") -Value $Sha -NoNewline -Encoding ascii
@@ -82,7 +87,12 @@ Describe 'agy-test-audit-reminder.sh' {
             }
             New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
             return [pscustomobject]@{ Dir = $dir; Head = $head }
-            } catch { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue; throw }
+            # THE CLEANUP MUST NOT BE ABLE TO EAT THE DIAGNOSIS. `-ErrorAction SilentlyContinue` suppresses
+            # NON-terminating errors only; a terminating one (a locked handle, an invalid path) would abort
+            # this catch block and throw ITS exception instead, destroying the original - so the failure the
+            # builder actually hit would be replaced by a confusing cleanup error. Best-effort cleanup,
+            # guaranteed rethrow.
+            } catch { try { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue } catch { }; throw }
         }
         function New-AuditPayload { param([string]$Cwd)
             @{ tool_name = 'Bash'; tool_input = @{ command = 'git commit' }; cwd = $Cwd } | ConvertTo-Json -Compress
