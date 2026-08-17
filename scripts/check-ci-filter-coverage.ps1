@@ -102,33 +102,55 @@ $wfLines = [string[]](Get-Content -LiteralPath $WorkflowPath)
 # tab-indented lines inside a `run: |` step. Both would fail this gate - now a pre-push hook - on a legal
 # edit, and a gate that reds on legal input is its own kind of defect. Not reachable today (measured:
 # zero such lines) but tab-indenting a line of shell is an ordinary thing to do.
-# INDENT IS MEASURED IN COLUMNS, NOT CHARACTERS, and that distinction is the whole point. Counting
-# characters makes a TAB worth 1 while it indents much further, so a scalar body line indented
-# <TAB><sp><sp> computes 3 against a 4-space opener - the tracker concludes the scalar ENDED, then
-# matches the leading tab and reds on legal YAML. MEASURED: exactly that sequence. Expanding a tab to the
-# next multiple of 8 makes the comparison mean what it says.
-function Get-IndentColumns([string]$s) {
+# INDENTATION IS SPACES, AND A TAB ENDS IT. That is what YAML means, and both wrong answers came from
+# pretending otherwise. Counting CHARACTERS made a tab worth 1 while it indents further, so a legal
+# <TAB><sp><sp> body line measured shallower than its opener and reddened valid YAML. Expanding a tab to
+# the next multiple of 8 then overshot the other way: an ILLEGAL line - fewer spaces than the scalar
+# requires, followed by a tab - measured DEEPER than the opener, so it was taken for scalar body and the
+# tab check was skipped, certifying a workflow GitHub cannot parse. MEASURED, both directions, at the
+# geometry that breaks each. Counting leading SPACES ONLY gets both right and needs no tab-width
+# constant: the illegal line measures 3 against a 4-space opener (checked, correctly flagged), the legal
+# one measures 6 (skipped, correctly).
+function Get-IndentSpaces([string]$s) {
     $c = 0
-    foreach ($ch in $s.ToCharArray()) {
-        if ($ch -eq ' ') { $c++ }
-        elseif ($ch -eq "`t") { $c = [math]::Floor($c / 8) * 8 + 8 }
-        else { break }
-    }
+    foreach ($ch in $s.ToCharArray()) { if ($ch -eq ' ') { $c++ } else { break } }
     return $c
 }
-$tabLines = @()
+
+# ONE STRUCTURAL PASS, CONSUMED BY BOTH CHECKS BELOW. Deriving block-scalar state independently in two
+# loops is exactly how they diverged: the tab loop understood scalars, the `paths:` loop did not, so a
+# line reading `paths: # comma separated list` inside a `description: |` body registered as a real filter
+# block. MEASURED: `yq` parsed that document happily with all 12 real paths while this gate failed with
+# "paths: block #1 parsed as EMPTY" - a legal edit, a misleading message, and a blocked push.
+$inScalar = New-Object 'bool[]' $wfLines.Count
 $scalarIndent = -1
 for ($i = 0; $i -lt $wfLines.Count; $i++) {
     $line = $wfLines[$i]
-    if ($line -match '^\s*$') { continue }
-    $indent = Get-IndentColumns $line
+    if ($line -match '^\s*$') { $inScalar[$i] = ($scalarIndent -ge 0); continue }
+    $indent = Get-IndentSpaces $line
     if ($scalarIndent -ge 0) {
-        if ($indent -gt $scalarIndent) { continue }   # still inside the scalar body
+        if ($indent -gt $scalarIndent) { $inScalar[$i] = $true; continue }
         $scalarIndent = -1
     }
-    if ($line -match "^[ ]*`t") { $tabLines += ($i + 1) }
     # `key: |`, `key: >`, with optional chomping/indent indicators, opens a block scalar.
     if ($line -match ':\s*[|>][-+0-9]*\s*$') { $scalarIndent = $indent }
+}
+
+# THE TAB CHECK NEEDS NO SCALAR EXEMPTION, AND THREE ROUNDS OF THIS FILE WERE SPENT PRETENDING IT DID.
+# MEASURED against `yq`, every case sharing one skeleton with a spaces-only CONTROL that parses:
+#     tab starts a scalar body line ............ REJECTED
+#     spaces, then a tab, then content ......... REJECTED
+#     tab in the MIDDLE of content (echo<TAB>x)  VALID
+# So a tab is illegal anywhere in LEADING WHITESPACE - inside a block scalar exactly as much as outside -
+# and legal only after the first non-space character. `^[ ]*<tab>` says precisely that: it matches a tab
+# reached over spaces alone, and cannot match `echo<TAB>hi`. The original R8 check was already right; the
+# block-scalar exemption added later, the column-based indent added after that, and the shared-state
+# version after THAT were all fixing a problem that does not exist. An earlier probe appeared to show
+# mid-content tabs being rejected too - it had no structural control, and the fixtures were failing for
+# an unrelated reason. The control is why this is now stated as fact rather than believed.
+$tabLines = @()
+for ($i = 0; $i -lt $wfLines.Count; $i++) {
+    if ($wfLines[$i] -match "^[ ]*`t") { $tabLines += ($i + 1) }
 }
 if ($tabLines.Count -gt 0) {
     Fail "$WorkflowPath uses a TAB in the indentation of line(s) $($tabLines -join ', ') - YAML forbids that, so GitHub cannot parse this workflow and would never run it."
@@ -144,7 +166,12 @@ if ($tabLines.Count -gt 0) {
 $blocks = @()
 $current = $null
 $inOn = $false
-foreach ($line in $wfLines) {
+for ($i = 0; $i -lt $wfLines.Count; $i++) {
+    $line = $wfLines[$i]
+    # A BLOCK SCALAR'S BODY IS OPAQUE TEXT AND CANNOT CONTAIN KEYS. Shared with the tab check above, so
+    # the two can no longer disagree about where a scalar is - which is what let `paths: # ...` inside a
+    # `description: |` be counted as a filter block.
+    if ($inScalar[$i]) { continue }
     if ($line -match '^\s*$' -or $line -match '^\s*#') { continue }
     if ($line -match '^\S') { $inOn = ($line -match '^(on|"on"|''on''):\s*$'); $current = $null; continue }
     if (-not $inOn) { continue }

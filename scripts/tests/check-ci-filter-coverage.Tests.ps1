@@ -185,52 +185,9 @@ Describe 'check-ci-filter-coverage.ps1' {
         # A BLOCK SCALAR'S BODY IS OPAQUE TEXT. `run: |` here holds shell script, and indenting a line of
         # shell with a tab is an ordinary thing to do - it is NOT YAML indentation and does not stop the
         # file parsing. Without this row the scalar-tracking has no oracle and would silently rot back
-        # into flagging legal edits, on a gate that now blocks pushes.
-        It 'ACCEPTS a tab inside a run: | block scalar body' {
-            $tab = [string][char]9
-            $p = New-WorkflowFixture {
-                param($l)
-                $o = New-Object System.Collections.ArrayList; $done = $false
-                foreach ($line in $l) {
-                    [void]$o.Add($line)
-                    if (-not $done -and $line -match '^(\s*)\S.*:\s*\|\s*$') {
-                        # Indented FURTHER than the opener, which is what makes it scalar content.
-                        [void]$o.Add((' ' * ($Matches[1].Length + 2)) + $tab + 'echo "tab-indented shell"')
-                        $done = $true
-                    }
-                }
-                $o
-            }
-            @(Get-Content -LiteralPath $p | Where-Object { $_ -match $tab }).Count |
-                Should -BeGreaterThan 0 -Because 'the fixture must really contain a tab, or it proves nothing'
-            $r = Invoke-Gate -WorkflowPath $p
-            $r.ExitCode | Should -Be 0 -Because "a tab inside a block scalar body is legal: $($r.Out)"
-        }
-
         # INDENT IS COLUMNS, NOT CHARACTERS. A scalar body line indented <TAB><sp><sp> is 10 columns deep
         # but only 3 characters, so a character count put it SHALLOWER than an 8-column opener - the
         # tracker concluded the scalar had ended and then reddened on the leading tab. Legal YAML, false
-        # red, on a gate that blocks pushes.
-        It 'ACCEPTS a MIXED tab-and-space indent inside a block scalar body' {
-            $tab = [string][char]9
-            $p = New-WorkflowFixture {
-                param($l)
-                $o = New-Object System.Collections.ArrayList; $done = $false
-                foreach ($line in $l) {
-                    [void]$o.Add($line)
-                    if (-not $done -and $line -match '^(\s*)\S.*:\s*\|\s*$') {
-                        [void]$o.Add($tab + '  echo "mixed tab+space indent"')
-                        $done = $true
-                    }
-                }
-                $o
-            }
-            @(Get-Content -LiteralPath $p | Where-Object { $_ -match "^$tab" }).Count |
-                Should -BeGreaterThan 0 -Because 'the fixture must really start a line with a tab'
-            $r = Invoke-Gate -WorkflowPath $p
-            $r.ExitCode | Should -Be 0 -Because "a tab-indented line inside a block scalar body is legal: $($r.Out)"
-        }
-
         # THE SIBLING GATE ALREADY ACCEPTS THIS SHAPE. check-injected-context.Tests.ps1's $PathsKeyRx
         # tolerates a YAML anchor and a trailing comment on the key; this gate demanded a bare `paths:`,
         # so the two disagreed about what a paths: block IS and an anchor made only one of them red.
@@ -247,6 +204,102 @@ Describe 'check-ci-filter-coverage.ps1' {
                 Should -Be 1 -Because 'the fixture must really carry the anchor'
             $r = Invoke-Gate -WorkflowPath $p
             $r.ExitCode | Should -Be 0 -Because "an anchored paths: key is legal YAML and the sibling gate accepts it: $($r.Out)"
+        }
+
+        # A `paths:`-SHAPED LINE INSIDE A BLOCK SCALAR IS PROSE, NOT A FILTER. The two loops used to derive
+        # scalar state independently - the tab check knew about scalars, the block collector did not - so a
+        # `workflow_dispatch` input documented with `description: |` containing the word `paths:` registered
+        # as a third, empty block and the gate reddened "block #1 parsed as EMPTY". MEASURED: yq parsed that
+        # document fine with all 12 real paths. Legal edit, misleading message, blocked push.
+        It 'ACCEPTS a paths:-shaped line inside a block scalar body' {
+            $p = New-WorkflowFixture {
+                param($l)
+                $o = New-Object System.Collections.ArrayList
+                foreach ($line in $l) {
+                    [void]$o.Add($line)
+                    if ($line -match '^on:\s*$') {
+                        [void]$o.Add('  workflow_dispatch:')
+                        [void]$o.Add('    inputs:')
+                        [void]$o.Add('      test_dir:')
+                        [void]$o.Add('        description: |')
+                        [void]$o.Add('          paths: # comma separated list')
+                    }
+                }
+                $o
+            }
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 0 -Because "prose inside a block scalar is not a filter block: $($r.Out)"
+            $r.Out | Should -Match 'in all 2 paths: blocks' -Because 'it must still find exactly the two REAL blocks'
+        }
+
+        # THE OTHER DIRECTION, AND THE ONE A COLUMN-BASED INDENT GOT WRONG. A line with FEWER spaces than
+        # the scalar requires, followed by a tab, is not scalar content - it is illegal YAML. Expanding the
+        # tab to 8 columns made it measure DEEPER than a shallow opener, so it was taken for body text and
+        # the tab check was skipped: a fail-open certifying a workflow GitHub cannot parse. Counting spaces
+        # only - a tab ENDS indentation, which is what YAML means - measures it as shallower and flags it.
+        # The opener here is deliberately shallow (2), because that is the geometry that breaks columns.
+        It 'reds on an under-indented TAB after a shallow block-scalar opener' {
+            $tab = [string][char]9
+            $p = New-WorkflowFixture {
+                param($l)
+                $o = New-Object System.Collections.ArrayList
+                foreach ($line in $l) {
+                    [void]$o.Add($line)
+                    if ($line -match '^on:\s*$') {
+                        [void]$o.Add('  note: |')
+                        [void]$o.Add(' ' + $tab + 'not scalar content - illegal indentation')
+                    }
+                }
+                $o
+            }
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 1
+            $r.Out | Should -Match 'uses a TAB in the indentation'
+        }
+
+        # THESE TWO ROWS REPLACE A PAIR THAT ASSERTED THE OPPOSITE AND WERE BOTH WRONG. They claimed a
+        # tab-indented line inside a `run: |` body was legal and had to be ACCEPTED, and three rounds of
+        # this gate were built on that premise. MEASURED against `yq`, with a spaces-only structural
+        # control that parses: a tab starting a scalar body line is REJECTED, spaces-then-tab is REJECTED,
+        # and only a tab AFTER the first non-space character is VALID. So the rule has no scalar exemption
+        # at all - leading whitespace is leading whitespace wherever it appears.
+        It 'reds on a tab in the LEADING whitespace of a block scalar body line' {
+            $tab = [string][char]9
+            $p = New-WorkflowFixture {
+                param($l)
+                $o = New-Object System.Collections.ArrayList; $done = $false
+                foreach ($line in $l) {
+                    [void]$o.Add($line)
+                    if (-not $done -and $line -match '^(\s*)\S.*:\s*\|\s*$') {
+                        [void]$o.Add((' ' * ($Matches[1].Length + 2)) + $tab + 'echo "illegal - tab in indentation"')
+                        $done = $true
+                    }
+                }
+                $o
+            }
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 1 -Because 'yq rejects this document; the gate must not certify it'
+            $r.Out | Should -Match 'uses a TAB in the indentation'
+        }
+
+        It 'ACCEPTS a tab AFTER the first non-space character of a scalar body line' {
+            $tab = [string][char]9
+            $p = New-WorkflowFixture {
+                param($l)
+                $o = New-Object System.Collections.ArrayList; $done = $false
+                foreach ($line in $l) {
+                    [void]$o.Add($line)
+                    if (-not $done -and $line -match '^(\s*)\S.*:\s*\|\s*$') {
+                        [void]$o.Add((' ' * ($Matches[1].Length + 2)) + 'echo' + $tab + 'aligned')
+                        $done = $true
+                    }
+                }
+                $o
+            }
+            @(Get-Content -LiteralPath $p | Where-Object { $_ -match $tab }).Count |
+                Should -BeGreaterThan 0 -Because 'the fixture must really contain a tab'
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 0 -Because "yq accepts a mid-content tab, so the gate must too: $($r.Out)"
         }
 
         It 'reds when the paths: blocks are not under the top-level on: key' {
