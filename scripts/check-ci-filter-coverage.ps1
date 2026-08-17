@@ -1,8 +1,8 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Gate: ci-scripts.yml's `paths:` filter must actually cover what the scripts Pester suite asserts
-  against - checked two ways, one precise and one fail-closed.
+  Gate: every entry the scripts Pester suite depends on must be present in BOTH of ci-scripts.yml's
+  `paths:` blocks.
 .DESCRIPTION
   WHY THIS EXISTS. ci-scripts.yml is the ONLY workflow that runs `Invoke-Pester scripts/tests`, and its
   own comment states the rule: every file the suite reads and asserts against must appear in the filter,
@@ -13,35 +13,26 @@
   plugin trees, the driver cheatsheet, the marker contract, and build/members.json. A hand-maintained
   count in a comment was wrong three times, twice in one afternoon. Hence a gate, not a better comment.
 
-  TWO CHECKS, BECAUSE ONE CANNOT DO BOTH JOBS.
+  WHAT IT CHECKS. The $Required table below names every entry the filter must carry, each with the suite
+  that makes it necessary, and asserts each appears in BOTH `paths:` blocks. That last part matters on its
+  own: the workflow has one block for `push` and one for `pull_request`, they must agree, and nothing else
+  checks it - adding to one and forgetting the other yields a filter that is right on merge and wrong on
+  every PR, or the reverse.
 
-  CHECK A - REQUIRED ENTRIES (precise). The table below names every entry the filter must carry, each
-  with the suite that makes it necessary. It also asserts each appears in BOTH `paths:` blocks: the
-  workflow has one for `push` and one for `pull_request`, they must agree, and NOTHING previously checked
-  that - adding to one and forgetting the other yields a filter that is right on merge and wrong on PRs,
-  or the reverse. This check is what makes the gate useful today.
+  WHAT IT DELIBERATELY DOES NOT CHECK, and this is a decision the owner took rather than an omission.
+  There was a second half - a "root vocabulary" check that parsed every suite's AST for string literals,
+  derived the repository's top-level directories from `git ls-files`, and required each named directory to
+  be covered by the filter or carry a written exemption. Its purpose was to fire on a tree nobody had
+  thought about yet, which a hand-maintained table structurally cannot do. It was DELETED, on this
+  evidence: across five capstone rounds it produced four defects of its own - two fail-opens, one
+  fail-closed-on-legal-input, and a false premise about YAML that drove three rounds of work - against the
+  five real filter gaps it found ONCE, all five of which are now pinned by the table below. A gate whose
+  own defect rate exceeds its discovery rate is not paying for itself.
 
-  CHECK B - ROOT VOCABULARY (fail-closed on the unknown). Every git-tracked top-level directory that any
-  suite mentions as a string literal must be covered by some filter entry or carry a written exemption.
-  This is the anti-rot net: it fires on a tree nobody has thought about yet, which is the case Check A
-  structurally cannot cover because a required-entry table only knows what someone already wrote in it.
-
-  WHAT THIS DELIBERATELY DOES NOT CHECK, stated rather than papered over: Check B matches at ROOT
-  granularity, so a NEW SUBTREE under an already-covered root does not fire - `clavity-dotnet/install/**`
-  alone satisfies the root `clavity-dotnet`, which is precisely why the original `clavity-dotnet/plugin/**`
-  gap survived. Check A is what closes that case, and only for the entries actually listed in it. A gate
-  that claimed to catch every new subtree would be certifying what it had stopped checking.
-
-  WHY THE AST, NOT A REGEX (Check B). Suites build paths three ways - a bare literal, a
-  `Join-Path $script:RepoRoot 'a/b'`, and `[IO.Path]::Combine($PSScriptRoot,'..','..','a','b')`. A
-  path-shaped grep sees the first two and is BLIND to the third: the string `installer/_shared` appears
-  ZERO times in register-plugin.Tests.ps1, which is exactly how that tree escaped a hand audit. The AST
-  returns every string constant however it is later assembled, so the third form yields the bare literal
-  'installer' and is caught. Measured against all three forms before this gate was written.
-
-  WHY ROOTS COME FROM GIT, NOT THE FILESYSTEM. `git ls-files` is what CI checks out; a filesystem scan
-  also sees untracked local junk (tool caches, build output), making the verdict depend on the
-  developer's working tree.
+  SO THE KNOWN LIMIT IS: a NEW tree, asserted against by a NEW suite, will not be detected here. The
+  suite's own assertion still reds on a developer's machine; what is lost is the automatic reminder to add
+  it to the filter. That trade was made knowingly. If it bites, the fix is a row in $Required, not a
+  parser.
 .PARAMETER RepoRoot
   Repo root (default: this script's parent's parent).
 .PARAMETER WorkflowPath
@@ -73,15 +64,6 @@ $Required = [ordered]@{
     'docs/agy-disciplines-marker-contract.md'         = 'check-injected-context resolves that token against the real repo root, so a rename reds the row'
     'build/members.json'                              = 'check-roster reads the real members manifest (validate-members.yml fires on it but does NOT run Pester)'
     '.github/workflows/ci-scripts.yml'                = 'the filter must re-run the job it controls'
-}
-
-# CHECK B's exemptions: a root the suites NAME but do not read from the real repository. Each says why.
-# A stale or redundant exemption is a FAILURE below, so this table cannot quietly rot either.
-$Exemptions = @{
-    'seed'         = 'named only inside temp fixtures - check-injected-context builds its seed under GetTempPath() and passes it as -RepoRoot $base; no suite reads the repo copy'
-    'ghidrust'     = 'named only in fixture trees and ignore/exemption corpora; no suite reads the repo copy'
-    'commonmemory' = 'named only in fixture trees and member-manifest corpora; no suite reads the repo copy'
-    '.claude'      = 'named as a path SEGMENT the suites create inside their own temp fixtures; the real ~/.claude is out of bounds for tests'
 }
 
 function Fail([string]$msg) { Write-Host "check-ci-filter-coverage: FAIL: $msg" -ForegroundColor Red }
@@ -211,98 +193,13 @@ foreach ($entry in $Required.Keys) {
     }
 }
 
-# ---- CHECK B: root vocabulary. ------------------------------------------------------------------
-Push-Location $RepoRoot
-try { $tracked = & git ls-files } finally { Pop-Location }
-if ($LASTEXITCODE -ne 0 -or -not $tracked) { Fail "``git ls-files`` returned nothing in $RepoRoot - roots could not be enumerated, so nothing was checked."; exit 1 }
-$roots = @($tracked | ForEach-Object { $p = $_ -split '/'; if ($p.Count -gt 1) { $p[0] } } |
-    Sort-Object -Unique | Where-Object { $_ -ne 'scripts' })
-if ($roots.Count -eq 0) { Fail 'no top-level directories found - the enumeration is broken, not the repo.'; exit 1 }
-
-# THE CORPUS COMES FROM GIT, FOR THE SAME REASON THE ROOTS DO. An earlier version used Get-ChildItem,
-# which reads the FILESYSTEM: an untracked local file - a scratch `wip.Tests.ps1`, an editor backup, a
-# vendored copy - was scanned and its literals enforced, even though CI never checks it out and never
-# runs it. The roots were already derived from `git ls-files` precisely to avoid depending on the
-# developer's working tree; the corpus was not, and the two disagreed. (Recursion comes free here:
-# `ci-scripts.yml` runs `Invoke-Pester scripts/tests`, which recurses, and before that was matched a
-# `git mv` of any suite into a subdirectory left it running in CI while this gate went blind to it.)
-#
-# ALL `*.ps1`, NOT ONLY `*.Tests.ps1`. `BashHookHelpers.ps1` sits in this directory and is dot-sourced by
-# 17 suites, so a repository path written there would have been invisible to the scan below. It carries
-# none today - this closes the hole before something uses it, rather than after.
-$suites = @($tracked |
-    Where-Object { $_ -match '^scripts/tests/.*\.ps1$' } |
-    ForEach-Object { [pscustomobject]@{ Name = ($_ -split '/')[-1]; FullName = (Join-Path $RepoRoot $_) } })
-if ($suites.Count -eq 0) { Fail 'no *.Tests.ps1 found under scripts/tests - the gate would pass vacuously.'; exit 1 }
-
-$reached = @{}
-foreach ($s in $suites) {
-    $tokens = $null; $errors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($s.FullName, [ref]$tokens, [ref]$errors)
-    # A SUITE THAT DOES NOT PARSE IS A HARD ERROR, NOT A SKIP. Skipping would silently shrink the corpus
-    # this gate reasons over - the exact fail-open shape it exists to prevent.
-    if ($errors -and $errors.Count -gt 0) { Fail "$($s.Name) does not parse: $($errors[0].Message)"; exit 1 }
-    $lits = $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) |
-        ForEach-Object { $_.Value }
-    foreach ($r in $roots) {
-        foreach ($l in $lits) {
-            # ORDINAL, not culture-sensitive, and case-SENSITIVE: these are repository paths, and the
-            # roots they are compared against came straight out of `git ls-files`.
-            if ($l -ceq $r -or $l.StartsWith($r + '/', [StringComparison]::Ordinal)) {
-                if (-not $reached.ContainsKey($r)) { $reached[$r] = New-Object System.Collections.ArrayList }
-                if (-not $reached[$r].Contains($s.Name)) { [void]$reached[$r].Add($s.Name) }
-                break
-            }
-        }
-    }
-}
-
-# COVERED MEANS COVERED IN *EVERY* BLOCK, NOT IN THE FIRST ONE. Building this from $blocks[0] alone was
-# a MEASURED fail-open: with `ghidrust/**` added to the `push` block only, the gate declared the root
-# covered and returned 0, while the `pull_request` trigger - the half that actually gates review - stayed
-# blind to it. Check A cannot backstop that, because Check A only knows the entries someone already wrote
-# into $Required; a brand-new tree added to one block is exactly the case Check B exists for.
-# A plain @{} would ALSO defeat the case-sensitivity fix above, since PowerShell hashtable keys are
-# case-insensitive - hence an ordinal dictionary.
-$coveredRoots = [System.Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
-$blockRoots = New-Object System.Collections.ArrayList
-foreach ($b in $blocks) {
-    $h = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    foreach ($e in $b) { [void]$h.Add(($e -split '/')[0]) }
-    [void]$blockRoots.Add($h)
-}
-foreach ($k in $blockRoots[0]) {
-    $inAll = $true
-    foreach ($h in $blockRoots) { if (-not $h.Contains($k)) { $inAll = $false; break } }
-    if ($inAll) { $coveredRoots[$k] = $true }
-}
-
-foreach ($r in ($reached.Keys | Sort-Object)) {
-    if ($coveredRoots.ContainsKey($r)) { continue }
-    if ($Exemptions.ContainsKey($r)) { continue }
-    $problems += "  UNCOVERED root '$r' - named by: $($reached[$r] -join ', ')"
-}
-foreach ($e in ($Exemptions.Keys | Sort-Object)) {
-    # EVERY EXEMPTION KEY MUST BE AN EXACT, CASE-SENSITIVE MATCH FOR A REAL GIT ROOT. $Exemptions is a
-    # PowerShell hashtable, whose keys are CASE-INSENSITIVE, while $coveredRoots above is ordinal. A key
-    # written 'Seed' would therefore still suppress the root 'seed' on the lookup at :203, but
-    # $coveredRoots.ContainsKey('Seed') would be FALSE forever - so a redundant exemption could never be
-    # reported and would rot in place, silently exempting a root the filter already covers. Demanding an
-    # exact ordinal match against git's own root list closes that, and catches an ordinary typo too.
-    if ($roots -cnotcontains $e) {
-        $problems += "  BOGUS exemption '$e' - not an exact (case-sensitive) top-level git root. Real roots: $($roots -join ', ')"
-    }
-    elseif (-not $reached.ContainsKey($e)) { $problems += "  STALE exemption '$e' - no suite names it any more; delete the entry." }
-    elseif ($coveredRoots.ContainsKey($e)) { $problems += "  REDUNDANT exemption '$e' - the filter now covers that root; delete the entry." }
-}
-
 # ---- Verdict. -----------------------------------------------------------------------------------
 if ($problems.Count -gt 0) {
-    Fail "ci-scripts.yml's paths: filter does not cover what the scripts suite asserts against."
+    Fail "ci-scripts.yml's paths: filter is missing an entry the scripts suite depends on."
     $problems | ForEach-Object { Write-Host $_ -ForegroundColor Red }
-    Write-Host "  Fix: add the entry to BOTH paths: blocks in $WorkflowPath, or record a reason in $PSCommandPath." -ForegroundColor Red
+    Write-Host "  Fix: add the entry to BOTH paths: blocks in $WorkflowPath. Removing a row from $Required instead is a DECISION, not an oversight." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "check-ci-filter-coverage: OK - $($Required.Count) required entries present in all $($blocks.Count) paths: blocks; $($reached.Count) root(s) named by $($suites.Count) suites, all covered or exempt." -ForegroundColor Green
+Write-Host "check-ci-filter-coverage: OK - all $($Required.Count) required entries present in all $($blocks.Count) paths: blocks." -ForegroundColor Green
 exit 0

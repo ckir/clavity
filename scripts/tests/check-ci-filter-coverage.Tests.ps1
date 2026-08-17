@@ -37,12 +37,10 @@ Describe 'check-ci-filter-coverage.ps1' {
 
         # NON-VACUITY. Without this the suite above could pass because the gate checks nothing at all -
         # every other row here asserts a FAILURE, so only this one proves the pass is meaningful.
-        It 'reports a non-zero count of required entries and reached roots on the pass line' {
+        It 'reports a non-zero count of required entries on the pass line' {
             $r = Invoke-Gate -WorkflowPath $script:Real
-            $r.Out | Should -Match '(\d+) required entries present in all 2 paths: blocks'
-            [int]($r.Out | Select-String -Pattern '(\d+) required entries' ).Matches[0].Groups[1].Value |
-                Should -BeGreaterThan 0
-            [int]($r.Out | Select-String -Pattern '(\d+) root\(s\) named by').Matches[0].Groups[1].Value |
+            $r.Out | Should -Match 'all (\d+) required entries present in all 2 paths: blocks'
+            [int]($r.Out | Select-String -Pattern 'all (\d+) required entries').Matches[0].Groups[1].Value |
                 Should -BeGreaterThan 0
         }
     }
@@ -95,54 +93,6 @@ Describe 'check-ci-filter-coverage.ps1' {
             $p = New-WorkflowFixture { param($l) $l | Where-Object { $_ -notmatch "docs/agy-disciplines-marker-contract\.md" } }
             $r = Invoke-Gate -WorkflowPath $p
             $r.Out | Should -Match 'check-injected-context resolves that token against the real repo root'
-        }
-    }
-
-    Context 'CHECK B - root vocabulary' {
-        # Removing the tree entry leaves the ROOT uncovered too, which is the fail-closed net: even if
-        # someone deleted the required-entry row, Check B still reds on the root.
-        It 'reds on a root no filter entry reaches' {
-            $p = New-WorkflowFixture { param($l) $l | Where-Object { $_ -notmatch 'clavity-classic/plugin' } }
-            $r = Invoke-Gate -WorkflowPath $p
-            $r.ExitCode | Should -Be 1
-            $r.Out | Should -Match "UNCOVERED root 'clavity-classic'"
-            $r.Out | Should -Match 'plugin-hooks-payload\.Tests\.ps1'   # it names WHO reaches it
-        }
-
-        # COVERED MUST MEAN COVERED IN EVERY BLOCK. Dropping the entry from the pull_request block alone
-        # leaves the root present in `push`, and a $coveredRoots built from $blocks[0] would call it
-        # covered - which is what the gate did until this was measured. Check A cannot backstop the
-        # general case, because it only knows entries someone already wrote into $Required; a brand-new
-        # tree added to one block is exactly what Check B is for. This row asserts the CHECK B message
-        # specifically: pre-fix only the Check A line appeared.
-        It 'reds in CHECK B when a root is covered in one block but not the other' {
-            $p = New-WorkflowFixture {
-                param($l)
-                # DROP THE *LAST* OCCURRENCE - the pull_request block - not the first. Removing the FIRST
-                # takes the entry out of `push`, so $blocks[0] lacks the root either way and the row passes
-                # whether or not the intersection exists. MEASURED: the first version of this row did
-                # exactly that, and the mutation that undoes the intersection left the suite GREEN. The
-                # row only discriminates when `push` KEEPS the entry and `pull_request` loses it.
-                $hits = @(0..($l.Count - 1) | Where-Object { $l[$_] -match "^\s*-\s*'docs/agy-disciplines-marker-contract\.md'\s*$" })
-                $hits.Count | Should -BeGreaterThan 1 -Because 'the fixture must find the entry in BOTH blocks, or it is not testing what it claims'
-                $last = $hits[-1]
-                @(0..($l.Count - 1) | Where-Object { $_ -ne $last } | ForEach-Object { $l[$_] })
-            }
-            $r = Invoke-Gate -WorkflowPath $p
-            $r.ExitCode | Should -Be 1
-            $r.Out | Should -Match "UNCOVERED root 'docs'"
-        }
-
-        It 'reds on a REDUNDANT exemption once the filter covers that root' {
-            # 'seed' is exempt as fixture-only; adding a seed entry to the filter must force the table
-            # to be corrected rather than leaving a lie in it.
-            $p = New-WorkflowFixture {
-                param($l)
-                $l | ForEach-Object { $_; if ($_ -match "^\s*-\s*'scripts/\*\*'\s*$") { "      - 'seed/**'" } }
-            }
-            $r = Invoke-Gate -WorkflowPath $p
-            $r.ExitCode | Should -Be 1
-            $r.Out | Should -Match "REDUNDANT exemption 'seed'"
         }
     }
 
@@ -342,91 +292,6 @@ Describe 'check-ci-filter-coverage.ps1' {
             $r = Invoke-Gate -WorkflowPath (Join-Path ([IO.Path]::GetTempPath()) 'no-such-workflow.yml')
             $r.ExitCode | Should -Be 1
             $r.Out | Should -Match 'workflow not found'
-        }
-
-        # THE CORPUS MUST BE DEFINED THE SAME WAY THE THING IT GUARDS DEFINES IT. `ci-scripts.yml` runs
-        # `Invoke-Pester scripts/tests`, which RECURSES; this gate's enumeration did not. So `git mv` of
-        # any suite into a subdirectory left it running in CI while the gate went blind to it, dropping
-        # every coverage requirement its literals imply and still exiting 0 - a one-command bypass. The
-        # nested suite below names a root that is in NEITHER the required table nor the exemption table,
-        # so the gate can only produce this message if it actually read the nested file.
-        It 'enumerates suites in SUBDIRECTORIES, the way Invoke-Pester does' {
-            $root = Join-Path ([IO.Path]::GetTempPath()) ("cifc-rec-" + [guid]::NewGuid().ToString('N'))
-            [void]$script:Fixtures.Add($root)
-            New-Item -ItemType Directory -Path (Join-Path $root 'scripts/tests/nested') -Force | Out-Null
-            New-Item -ItemType Directory -Path (Join-Path $root 'zzz-newtree') -Force | Out-Null
-            Set-Content -LiteralPath (Join-Path $root 'zzz-newtree/x.md') -Value 'x' -Encoding ascii
-            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/nested/deep.Tests.ps1') `
-                -Value "`$p = 'zzz-newtree/hooks/x.sh'" -Encoding ascii
-            & git -C $root init -q
-            & git -C $root add -A
-            $r = Invoke-Gate -WorkflowPath $script:Real -Root $root
-            $r.ExitCode | Should -Be 1
-            $r.Out | Should -Match "UNCOVERED root 'zzz-newtree' - named by: deep\.Tests\.ps1"
-        }
-
-        # THE CORPUS IS EVERY TRACKED .ps1 UNDER scripts/tests, NOT ONLY *.Tests.ps1. `BashHookHelpers.ps1`
-        # lives there and is dot-sourced by 17 suites, so a repository path written into a helper would
-        # otherwise be invisible to Check B. It carries none today, which is exactly why this row exists:
-        # without it the widening is a preventive change with NO oracle, and the guard-law question
-        # ("which test goes red if I delete this?") answers "none".
-        It 'scans helper .ps1 files under scripts/tests, not only *.Tests.ps1' {
-            $root = Join-Path ([IO.Path]::GetTempPath()) ("cifc-help-" + [guid]::NewGuid().ToString('N'))
-            [void]$script:Fixtures.Add($root)
-            New-Item -ItemType Directory -Path (Join-Path $root 'scripts/tests') -Force | Out-Null
-            New-Item -ItemType Directory -Path (Join-Path $root 'zzz-helperroot') -Force | Out-Null
-            Set-Content -LiteralPath (Join-Path $root 'zzz-helperroot/x.md') -Value 'x' -Encoding ascii
-            # A HELPER, deliberately not matching *.Tests.ps1.
-            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/Helpers.ps1') `
-                -Value "`$p = 'zzz-helperroot/lib/x.sh'" -Encoding ascii
-            & git -C $root init -q
-            & git -C $root add -A
-            $r = Invoke-Gate -WorkflowPath $script:Real -Root $root
-            $r.Out | Should -Match "UNCOVERED root 'zzz-helperroot' - named by: Helpers\.ps1"
-        }
-
-        # THE CORPUS COMES FROM GIT, NOT THE FILESYSTEM. An untracked scratch file - `wip.Tests.ps1`, an
-        # editor backup, a vendored copy - must NOT impose coverage requirements, because CI never checks
-        # it out and never runs it. The roots were already derived from `git ls-files` for this reason;
-        # the corpus was not, and the two disagreed. This row is the inverse of the one above: same shape,
-        # but the file is left UNTRACKED and must therefore be ignored.
-        It 'ignores an UNTRACKED .ps1 under scripts/tests' {
-            $root = Join-Path ([IO.Path]::GetTempPath()) ("cifc-untr-" + [guid]::NewGuid().ToString('N'))
-            [void]$script:Fixtures.Add($root)
-            New-Item -ItemType Directory -Path (Join-Path $root 'scripts/tests') -Force | Out-Null
-            New-Item -ItemType Directory -Path (Join-Path $root 'zzz-trackedroot') -Force | Out-Null
-            Set-Content -LiteralPath (Join-Path $root 'zzz-trackedroot/x.md') -Value 'x' -Encoding ascii
-            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/real.Tests.ps1') -Value "`$a = 1" -Encoding ascii
-            & git -C $root init -q
-            & git -C $root add -A                     # everything so far IS tracked
-            # ...and only now the untracked scratch file. IT MUST NAME A ROOT THAT IS ACTUALLY TRACKED,
-            # or the row proves nothing: roots come from `git ls-files`, so a literal naming a directory
-            # that does not exist can never be reported whether the corpus is filtered or not. Measured -
-            # the first version named a non-existent root and stayed green under the mutation that undoes
-            # this very fix. `zzz-trackedroot` IS tracked and IS uncovered, so the only thing standing
-            # between it and an UNCOVERED line is whether this untracked file was scanned.
-            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/wip.Tests.ps1') `
-                -Value "`$p = 'zzz-trackedroot/x.sh'" -Encoding ascii
-            $r = Invoke-Gate -WorkflowPath $script:Real -Root $root
-            $r.Out | Should -Not -Match 'wip\.Tests\.ps1' -Because 'an untracked file is not part of what CI runs'
-            $r.Out | Should -Not -Match "UNCOVERED root 'zzz-trackedroot'"
-        }
-
-        # A SUITE THAT DOES NOT PARSE MUST BE A HARD ERROR, NOT A SKIP. A gate that skips unparseable
-        # input silently shrinks the corpus it reasons over and then reports OK - the fail-open shape
-        # this whole gate exists to prevent.
-        It 'reds on a suite that does not parse, instead of skipping it' {
-            $root = Join-Path ([IO.Path]::GetTempPath()) ("cifc-repo-" + [guid]::NewGuid().ToString('N'))
-            [void]$script:Fixtures.Add($root)
-            New-Item -ItemType Directory -Path (Join-Path $root 'scripts/tests') -Force | Out-Null
-            New-Item -ItemType Directory -Path (Join-Path $root 'docs') -Force | Out-Null
-            Set-Content -LiteralPath (Join-Path $root 'docs/x.md') -Value 'x' -Encoding ascii
-            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/broken.Tests.ps1') -Value 'Describe {' -Encoding ascii
-            & git -C $root init -q
-            & git -C $root add -A
-            $r = Invoke-Gate -WorkflowPath $script:Real -Root $root
-            $r.ExitCode | Should -Be 1
-            $r.Out | Should -Match 'broken\.Tests\.ps1 does not parse'
         }
     }
 }
