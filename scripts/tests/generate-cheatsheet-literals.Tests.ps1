@@ -246,6 +246,16 @@ Describe 'generate-cheatsheet-literals.ps1' {
 
             $exit | Should -Not -Be 0 -Because 'an unwritable target must fail loudly, not silently half-apply'
             [IO.File]::ReadAllText($outRs) | Should -BeExactly $rsBefore -Because 'a run that cannot complete BOTH writes must leave BOTH targets as it found them; a half-applied regeneration reds the parity gate and needs a manual reset'
+            # SCOPE NOTE - the NAME says "two targets" and this row asserts ONE, deliberately (capstone
+            # round 3). The reviewer proposed adding a C# byte-equality assertion here. MEASURED, it
+            # would be VACUOUS: with the C# target read-only the write fails at OPEN, so the file is
+            # never truncated or partially written - 9067 bytes before and after, byte-identical - and
+            # the assertion could not fail under any generator mutation this fixture can produce.
+            # Adding it would be the exact defect round 1 caught one row over: an assertion that reads
+            # as coverage and cannot go red. The rust side IS the reachable half here, because rust is
+            # written FIRST and is therefore the only target that can be left half-applied.
+            # Testing the C# half would need a failure that truncates before throwing (a mid-write disk
+            # error), which this suite cannot produce deterministically. Stated rather than faked.
         }
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
