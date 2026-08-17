@@ -155,7 +155,10 @@ for ($i = 0; $i -lt $wfLines.Count; $i++) {
     # `description: |` be counted as a filter block.
     if ($inScalar[$i]) { continue }
     if ($line -match '^\s*$' -or $line -match '^\s*#') { continue }
-    if ($line -match '^\S') { $inOn = ($line -match '^(on|"on"|''on''):\s*$'); $current = $null; continue }
+    # A TRAILING COMMENT ON `on:` IS LEGAL TOO, and leaving it out was an inconsistency of my own making:
+    # the `paths:` key below was made comment-tolerant while this one still demanded end-of-line. MEASURED:
+    # `on: # the triggers` is VALID to yq, and this gate reported "parsed 0" blocks and blocked the push.
+    if ($line -match '^\S') { $inOn = ($line -match '^(?:on|"on"|''on''):[ \t]*(?:#.*)?$'); $current = $null; continue }
     if (-not $inOn) { continue }
     # A YAML ANCHOR OR A TRAILING COMMENT ON THE KEY IS LEGAL, and this repo's OTHER gate already says so:
     # check-injected-context.Tests.ps1's $PathsKeyRx is `^\s+paths:[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?\r?$`.
@@ -165,7 +168,20 @@ for ($i = 0; $i -lt $wfLines.Count; $i++) {
     # the established shape. `paths-ignore:` still cannot match, having no `paths:`-then-end.
     if ($line -match '^\s*paths:[ \t]*(?:&[^\s#]+)?[ \t]*(?:#.*)?$') { $current = New-Object System.Collections.ArrayList; $blocks += ,$current; continue }
     if ($null -ne $current) {
-        if ($line -match "^\s*-\s*['""]([^'""]+)['""]\s*$") { [void]$current.Add($Matches[1]) } else { $current = $null }
+        # QUOTES ARE OPTIONAL IN YAML, and demanding them was a fail-closed defect. `- justfile` is exactly
+        # as valid as `- 'justfile'`; the strict form made a legal edit fail to match, fall into the `else`
+        # below, TRUNCATE the block at that line, and cascade into false "missing entry" failures for
+        # everything after it. MEASURED: yq VALID, gate exit 1. A trailing comment on an item is legal as
+        # well. Quotes are stripped when present so the comparison against $Required is unaffected, and a
+        # `#` with no space before it stays part of the value (`- 'a#b'` is a path, not a comment).
+        if ($line -match '^\s*-\s*(\S.*?)\s*$') {
+            $v = ($Matches[1] -replace '\s+#.*$', '').Trim()
+            if ($v.Length -ge 2 -and
+                (($v[0] -eq "'" -and $v[-1] -eq "'") -or ($v[0] -eq '"' -and $v[-1] -eq '"'))) {
+                $v = $v.Substring(1, $v.Length - 2)
+            }
+            if ($v) { [void]$current.Add($v) }
+        } else { $current = $null }
     }
 }
 # NON-VACUITY, AND THE RATIONALE HERE WAS WRONG UNTIL A CAPSTONE ROUND CORRECTED IT. An empty block does

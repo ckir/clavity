@@ -5,8 +5,8 @@ Describe 'check-ci-filter-coverage.ps1' {
         $script:Real     = Join-Path $script:RepoRoot '.github/workflows/ci-scripts.yml'
         $script:Fixtures = New-Object System.Collections.ArrayList   # FIXTURE HYGIENE
 
-        # Run the gate against a FIXTURE workflow while keeping the REAL repo root, so Check B still
-        # reasons over the real suites. Returns exit code plus merged output.
+        # Run the gate against a FIXTURE workflow while keeping the REAL repo root, which is only used to
+        # default -WorkflowPath. Returns exit code plus merged output.
         function Invoke-Gate {
             param([string]$WorkflowPath, [string]$Root = $script:RepoRoot)
             $out = & pwsh -NoProfile -File $script:Gate -RepoRoot $Root -WorkflowPath $WorkflowPath 2>&1
@@ -250,6 +250,30 @@ Describe 'check-ci-filter-coverage.ps1' {
                 Should -BeGreaterThan 0 -Because 'the fixture must really contain a tab'
             $r = Invoke-Gate -WorkflowPath $p
             $r.ExitCode | Should -Be 0 -Because "yq accepts a mid-content tab, so the gate must too: $($r.Out)"
+        }
+
+        # QUOTES ARE OPTIONAL IN YAML. `- justfile` is as valid as `- 'justfile'`, and demanding quotes made
+        # a legal edit fail to match, TRUNCATE the block at that line, and cascade into false "missing
+        # entry" failures for every entry after it. MEASURED: yq VALID, gate exit 1.
+        It 'ACCEPTS an UNQUOTED list item in a paths block' {
+            $p = New-WorkflowFixture {
+                param($l)
+                $l | ForEach-Object { if ($_ -match "^(\s*)- 'justfile'\s*$") { "$($Matches[1])- justfile" } else { $_ } }
+            }
+            (Get-Content -LiteralPath $p | Where-Object { $_ -match '^\s*- justfile\s*$' }).Count |
+                Should -BeGreaterThan 0 -Because 'the fixture must really carry an unquoted item'
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 0 -Because "an unquoted scalar is legal YAML and must not truncate the block: $($r.Out)"
+        }
+
+        # AND THE SAME TOLERANCE ON `on:` AS ON `paths:`. R11 made the paths key comment-tolerant and left
+        # this one demanding end-of-line, which is an inconsistency of my own making: `on: # the triggers`
+        # is VALID to yq, and the gate reported "parsed 0" blocks and blocked the push.
+        It 'ACCEPTS a trailing comment on the on: key' {
+            $p = New-WorkflowFixture { param($l) $l | ForEach-Object { if ($_ -match '^on:\s*$') { 'on: # the triggers' } else { $_ } } }
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 0 -Because "a trailing comment on on: is legal YAML: $($r.Out)"
+            $r.Out | Should -Match 'in all 2 paths: blocks' -Because 'it must still find both real blocks'
         }
 
         It 'reds when the paths: blocks are not under the top-level on: key' {
