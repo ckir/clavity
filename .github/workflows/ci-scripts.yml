@@ -182,6 +182,28 @@ jobs:
           lefthook version
           if ($LASTEXITCODE -ne 0) { throw "lefthook install failed: lefthook is not on PATH" }
 
+      - name: Install yq (pinned)
+        shell: pwsh
+        # scripts/check-ci-filter-coverage.ps1 parses THIS file with yq instead of hand-written regexes:
+        # six consecutive review rounds each found a defect in those regexes, two of them fail-CLOSED on
+        # legal YAML. The gate treats a missing yq as a hard failure and never as a skip, so it must be
+        # present here. It is NOT on the windows-latest image - the runner manifest lists jq and not yq -
+        # so it is installed explicitly. PINNED for the same reason the Pester step below pins its major
+        # line: an unpinned install silently changed the runner under us once already.
+        run: |
+          $ver = 'v4.50.1'
+          $dir = Join-Path $env:RUNNER_TEMP 'yq'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $exe = Join-Path $dir 'yq.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/mikefarah/yq/releases/download/$ver/yq_windows_amd64.exe" -OutFile $exe
+          # Prepend to GITHUB_PATH so the LATER Pester step sees it, exactly as the lefthook step above does.
+          $dir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "$dir;$env:PATH"
+          $got = (yq --version) -join ' '
+          if ($LASTEXITCODE -ne 0) { throw "yq install failed: yq is not on PATH" }
+          if ($got -notmatch [regex]::Escape($ver)) { throw "yq version mismatch: wanted $ver, got '$got'" }
+          "yq installed: $got"
+
       - name: Install Pester v5
         shell: pwsh
         run: Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
