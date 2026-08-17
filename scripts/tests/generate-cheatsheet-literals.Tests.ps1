@@ -209,6 +209,47 @@ Describe 'generate-cheatsheet-literals.ps1' {
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'is ALL-OR-NOTHING across the two targets - a failed C# write does not leave rust rewritten' {
+        # CAPSTONE ROUND 2, Cascade Analyst. The generator wrote its two targets sequentially with no
+        # rollback, so a throw BETWEEN them left the pair half-applied: rust regenerated, C# stale. That
+        # is not a clean red - it is a DRIFTED WORKING TREE that reds the parity gate on the next commit
+        # and needs a human to reset it. MEASURED before the fix: exit 1, rust rewritten, C# untouched.
+        #
+        # THE FIXTURE MUST FAIL AT THE *WRITE*, NOT EARLIER. A missing or directory-shaped C# target
+        # fails VALIDATION, which precedes both writes, and would prove nothing about ordering. A
+        # READ-ONLY file validates fine and throws only when WriteAllText runs - the exact window.
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("genatomic-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        try {
+            $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
+            Copy-Item -LiteralPath $script:Rs -Destination $outRs
+            Copy-Item -LiteralPath $script:Cs -Destination $outCs
+            # Sentinel again: a canonical copy would be rewritten with IDENTICAL bytes, so an early
+            # write would be invisible - the same vacuity that round 1 caught in the sibling rows.
+            $rsLines = [IO.File]::ReadAllText($outRs).Replace("`r`n", "`n") -split "`n"
+            for ($i = 0; $i -lt $rsLines.Count; $i++) {
+                if ($rsLines[$i] -like 'pub const BASELINE_FLOOR: &str = *') {
+                    $rsLines[$i] = 'pub const BASELINE_FLOOR: &str = "ATOMIC-SENTINEL";'
+                    break
+                }
+            }
+            [IO.File]::WriteAllText($outRs, ($rsLines -join "`n"), (New-Object Text.UTF8Encoding($false)))
+            $rsBefore = [IO.File]::ReadAllText($outRs)
+
+            Set-ItemProperty -LiteralPath $outCs -Name IsReadOnly -Value $true
+            try {
+                & pwsh -NoProfile -File $script:Gen -CoreSource $script:Core -RustTarget $outRs -CsTarget $outCs 2>&1 | Out-Null
+                $exit = $LASTEXITCODE
+            } finally {
+                Set-ItemProperty -LiteralPath $outCs -Name IsReadOnly -Value $false
+            }
+
+            $exit | Should -Not -Be 0 -Because 'an unwritable target must fail loudly, not silently half-apply'
+            [IO.File]::ReadAllText($outRs) | Should -BeExactly $rsBefore -Because 'a run that cannot complete BOTH writes must leave BOTH targets as it found them; a half-applied regeneration reds the parity gate and needs a manual reset'
+        }
+        finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'STRIPS a leading UTF-8 BOM from the canonical source (GAP-4)' {
         # The generator decodes with ReadAllBytes + UTF8.GetString DELIBERATELY, which keeps a BOM as
         # U+FEFF, then strips it at :73. No fixture had ever supplied one, so deleting that line shipped

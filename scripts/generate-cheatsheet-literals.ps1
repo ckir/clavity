@@ -159,11 +159,40 @@ if ($csEnd + 1 -lt $csLines.Count) { $csOut += $csLines[($csEnd + 1)..($csLines.
 # and has no -WhatIf passthrough of its own, so the gate is explicit here rather than delegated.
 # The $doRust/$doCs guards are the SEPARATE empty-target skip and are not a substitute: they answer
 # "is there a target?", ShouldProcess answers "may I write it?".
-if ($doRust -and $PSCmdlet.ShouldProcess($RustTarget, 'regenerate BASELINE_FLOOR literal')) {
-    [IO.File]::WriteAllText($RustTarget, ($rustLines -join "`n"), (New-Object Text.UTF8Encoding($false)))
+# ALL-OR-NOTHING ACROSS THE TWO TARGETS (capstone round 2, Cascade Analyst). These two writes used to
+# run bare and sequentially, so a throw BETWEEN them left the pair HALF-APPLIED: rust regenerated, C#
+# stale. MEASURED with the C# target read-only (which validates fine and throws only at the write, the
+# exact window): exit 1, rust rewritten, C# untouched.
+# WHY THAT IS WORSE THAN A CLEAN FAILURE: it is silent in the moment. The operator sees a failed
+# command, clears the lock, re-runs, and everything looks fine - while the FIRST run already left the
+# tree drifted. The damage surfaces later as a parity-gate red on an unrelated commit, reading as drift
+# nobody introduced. The three pinned files are only meaningful as a SET.
+# Restore-on-failure, not write-to-temp-then-rename: both payloads are already fully computed above, so
+# the only thing that can fail here is the write itself, and restoring the exact prior bytes returns the
+# tree to a state that was consistent by construction. HONEST LIMIT: this covers a THROWN failure, not a
+# process kill between the two writes - a signal cannot be caught, and closing that would need a
+# two-phase rename this script does not justify.
+$rustBackup = if ($doRust -and (Test-Path -LiteralPath $RustTarget)) { [IO.File]::ReadAllBytes($RustTarget) } else { $null }
+$csBackup   = if ($doCs   -and (Test-Path -LiteralPath $CsTarget))   { [IO.File]::ReadAllBytes($CsTarget)   } else { $null }
+try {
+    if ($doRust -and $PSCmdlet.ShouldProcess($RustTarget, 'regenerate BASELINE_FLOOR literal')) {
+        [IO.File]::WriteAllText($RustTarget, ($rustLines -join "`n"), (New-Object Text.UTF8Encoding($false)))
+    }
+    if ($doCs -and $PSCmdlet.ShouldProcess($CsTarget, 'regenerate BaselineFloor literal')) {
+        [IO.File]::WriteAllText($CsTarget,   ($csOut     -join "`n"), (New-Object Text.UTF8Encoding($false)))
+    }
 }
-if ($doCs -and $PSCmdlet.ShouldProcess($CsTarget, 'regenerate BaselineFloor literal')) {
-    [IO.File]::WriteAllText($CsTarget,   ($csOut     -join "`n"), (New-Object Text.UTF8Encoding($false)))
+catch {
+    # Each restore is guarded separately: the target that FAILED to write is usually still unwritable
+    # (a read-only file, a lock), and letting its restore throw would mask the original error and skip
+    # the sibling restore that CAN succeed - which is the one that actually matters.
+    $restored = @()
+    if ($null -ne $rustBackup) { try { [IO.File]::WriteAllBytes($RustTarget, $rustBackup); $restored += $RustTarget } catch { } }
+    if ($null -ne $csBackup)   { try { [IO.File]::WriteAllBytes($CsTarget,   $csBackup);   $restored += $CsTarget   } catch { } }
+    Fail ("write failed, and BOTH targets were rolled back to their prior bytes so the pinned set stays " +
+          "consistent: $($_.Exception.Message)")
+    if ($restored.Count -gt 0) { Write-Host ("  restored: " + ($restored -join ', ')) -ForegroundColor Yellow }
+    exit 1
 }
 
 Write-Host "generate-cheatsheet-literals: OK - regenerated both literals from $CoreSource" -ForegroundColor Green

@@ -531,6 +531,24 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             ([regex]::Matches($res.Err, 'git rm --cached')).Count | Should -Be 2
         }
 
+        It 'distinguishes keys that differ ONLY IN THEIR TAIL - the whole key is load-bearing' {
+            # CAPSTONE ROUND 2, Mechanism Gamer. The row above cannot catch a TRUNCATING implementation,
+            # because its two keys ('k1-...' / 'k2-...') already differ in their SECOND character. MEASURED
+            # with a mutant that truncates the key to five characters: all three debounce rows stayed
+            # GREEN. That mutation also discards the run tag this suite now embeds in every key, silently
+            # re-opening the cross-run marker collision the tag was added to close - so the suite would
+            # have certified its own isolation mechanism while that mechanism was destroyed.
+            # THE KEYS HERE SHARE A LONG PREFIX AND DIFFER ONLY AT THE END, which is the one shape that
+            # forces the implementation to read the key to its last byte.
+            $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
+            $shared = 'tail-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
+            $kA = $shared + '-AAAA'
+            $kB = $shared + '-BBBB'
+            $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$kA`"`nagy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$kB`""
+            ([regex]::Matches($res.Err, 'git rm --cached')).Count |
+                Should -Be 2 -Because 'two keys identical for their first 40+ characters are still DIFFERENT sessions; an implementation that compares only a prefix debounces the second away and reports once'
+        }
+
         It 'an EMPTY key is LEGAL - debouncing off, no validation fault' {
             # [A-Za-z0-9._-]+ requires >=1 char, so running the regex over EVERY key made the
             # sanctioned empty key a loud never-debounced fault on every single call.
