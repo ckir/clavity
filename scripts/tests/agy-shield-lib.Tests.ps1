@@ -22,6 +22,13 @@ Describe 'agy-shield-lib.sh' {
         # SNAPSHOT-AND-DIFF, not a blanket delete of `.clavity-shield-*`. Two sessions can be open on this
         # repository at once, and other hooks write markers with the SAME prefix - wiping them all would
         # silence another session's live data-leak debounce, which is the one thing these markers exist for.
+        # PER-RUN IDENTITY, and the 32-hex shape it replaces was a REACHABLE defect (capstone round 1,
+        # confirmed by injecting a marker mid-run: it was deleted). Two runs of THIS suite mint keys of
+        # the SAME shape, so a filter keyed on shape cannot tell mine from a concurrent run's - and the
+        # snapshot clause does not save it, because a marker another session creates AFTER my snapshot
+        # is legitimately 'new' to me. Deleting it destroys that run's live debounce state.
+        # A tag unique to this run is necessary AND sufficient: no other process can mint it.
+        $script:RunTag = 'rt' + [guid]::NewGuid().ToString('N').Substring(0, 10)
         $script:MarkerDir = [IO.Path]::GetTempPath()
         $script:MarkersBefore = @{}
         foreach ($m in @(Get-ChildItem -LiteralPath $script:MarkerDir -Filter '.clavity-shield-*' -Force -ErrorAction SilentlyContinue)) {
@@ -70,7 +77,7 @@ Describe 'agy-shield-lib.sh' {
             # debounce behaviour already build their own GUID keys and contain no `k1` to substitute.
             # NOT done by overriding TMPDIR: measured, Git Bash silently rewrites a Windows TMPDIR
             # handed to it to /tmp/, so an -Env override is dead on this platform.
-            $Body = $Body -replace '"k1"', ('"k-' + [guid]::NewGuid().ToString('N') + '"')
+            $Body = $Body -replace '"k1"', ('"k-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N') + '"')
             $script = ". '$libSh'`n$Body`n"
             $sf = Join-Path ([IO.Path]::GetTempPath()) ("shield-" + [guid]::NewGuid().ToString('N') + ".sh")
             [IO.File]::WriteAllText($sf, ($script -replace "`r`n", "`n"))
@@ -129,13 +136,13 @@ Describe 'agy-shield-lib.sh' {
         # FIXTURE HYGIENE: -Force because a git repo carries read-only objects on Windows.
         foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
         # MARKER HYGIENE: remove ONLY markers that (a) appeared during this run and (b) carry this suite's
-        # own key shape - a 32-hex GUID('N') with no dashes. Every key this suite generates is built that
-        # way; a real session id is a dashed GUID, so the pattern cannot match another agent's marker even
-        # if one appeared mid-run. Both conditions are required: (a) alone would delete a concurrent
+        # RUN TAG - a token minted once per run and embedded in every key this suite generates. Shape
+        # alone was NOT enough: a concurrent run of this same suite mints the same shape. The tag can be
+        # minted by nothing else. Both conditions are kept: (a) alone would delete a concurrent
         # session's new markers, (b) alone would delete a previous run's, which a parallel suite may still
         # be using for debounce.
         foreach ($m in @(Get-ChildItem -LiteralPath $script:MarkerDir -Filter '.clavity-shield-*' -Force -ErrorAction SilentlyContinue)) {
-            if (-not $script:MarkersBefore.ContainsKey($m.Name) -and $m.Name -match '-[0-9a-f]{32}$') {
+            if (-not $script:MarkersBefore.ContainsKey($m.Name) -and $m.Name -like "*$($script:RunTag)*") {
                 Remove-Item -LiteralPath $m.FullName -Force -ErrorAction SilentlyContinue
             }
         }
@@ -386,7 +393,7 @@ Describe 'agy-shield-lib.sh' {
             # exercises A1's failure path, and the existing rows all presuppose the directory exists.
             $r = New-FixtureRepo -NoClavityDir
             [IO.File]::WriteAllText((Join-Path $r '.clavity'), "not a directory`n")
-            $k = 'mk-' + [guid]::NewGuid().ToString('N')
+            $k = 'mk-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"`nagy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"`necho RC=`$?"
             $res.Out | Should -Match 'RC=0' -Because 'A1 failure must never hard-block'
             ([regex]::Matches($res.Err, 'could not create')).Count | Should -Be 1 -Because 'class ENVIRONMENT is debounced per key'
@@ -407,7 +414,7 @@ Describe 'agy-shield-lib.sh' {
             # would have been silently checking the wrong location on the platform it matters most.
             # Ask the shell where it actually put the marker.
             $r = New-FixtureRepo -Shield "*`n"
-            $k = 'sw-' + [guid]::NewGuid().ToString('N')
+            $k = 'sw-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body @"
 agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
 _m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
@@ -433,7 +440,7 @@ _m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
             (Get-Item -LiteralPath $stale).LastWriteTime = (Get-Date).AddDays(-40)
 
             # A FRESH key, so the sweep gate has not latched yet for this "session" and the sweep runs.
-            $k = 'sweepwork-' + [guid]::NewGuid().ToString('N')
+            $k = 'sweepwork-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body @"
 agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
 [ -f "`${TMPDIR:-/tmp}/.clavity-shield-swept-$k" ] && echo "GATE_LATCHED"
@@ -508,7 +515,7 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
     Context 'the debounce key' {
         It 'emits a PERSISTENT fault ONCE for the same key' {
             $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
-            $k = 'samekey-' + [guid]::NewGuid().ToString('N')
+            $k = 'samekey-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"`nagy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`""
             ([regex]::Matches($res.Err, 'git rm --cached')).Count | Should -Be 1
         }
@@ -518,8 +525,8 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # writes one hardcoded global marker satisfies the same-key row trivially, while destroying
             # the per-session isolation the key exists for.
             $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
-            $k1 = 'k1-' + [guid]::NewGuid().ToString('N')
-            $k2 = 'k2-' + [guid]::NewGuid().ToString('N')
+            $k1 = 'k1-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
+            $k2 = 'k2-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k1`"`nagy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k2`""
             ([regex]::Matches($res.Err, 'git rm --cached')).Count | Should -Be 2
         }
@@ -543,7 +550,7 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
         It 'a VALIDATION fault is emitted BOTH times under the same key' {
             # Only a repeat test can tell the two debounce policies apart.
             $r = New-FixtureRepo -Shield "*`n"
-            $k = 'vk-' + [guid]::NewGuid().ToString('N')
+            $k = 'vk-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `"docs/secret.md`" `"$k`"`nagy_shield `"`$PWD`" `"docs/secret.md`" `"$k`""
             ([regex]::Matches($res.Err, 'REFUSING')).Count | Should -Be 2 -Because 'a broken CALLER must not be silenced by a marker'
         }
@@ -582,7 +589,7 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # "no writable marker location" branch and emits on EVERY call. So the discriminating
             # assertion is the COUNT, not the presence, of the report.
             $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
-            $k = 'fb-' + [guid]::NewGuid().ToString('N')
+            $k = 'fb-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             # TMPDIR points BELOW A REGULAR FILE, so `mkdir -p` cannot create it - a deterministic
             # unwritable temp that needs no permissions games and no elevation.
             $body = @"
@@ -619,7 +626,7 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             foreach ($f in @($stale, $fresh, $foreign)) { [IO.File]::WriteAllText($f, "x`n") }
             # -mtime +30 reads the modification time, so age the two that must LOOK stale.
             foreach ($f in @($stale, $foreign)) { (Get-Item -LiteralPath $f -Force).LastWriteTime = (Get-Date).AddDays(-40) }
-            $k = 'sw-' + [guid]::NewGuid().ToString('N')
+            $k = 'sw-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $body = @"
 : > "`$PWD/blocker"
 export TMPDIR="`$PWD/blocker/sub"

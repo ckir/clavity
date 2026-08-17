@@ -165,6 +165,24 @@ Describe 'generate-cheatsheet-literals.ps1' {
         try {
             $outRs = Join-Path $tmp 'x.rs'; $outCs = Join-Path $tmp 'x.cs'
             Copy-Item -LiteralPath $script:Rs -Destination $outRs
+            # SENTINEL ANCHOR - without it the rust assertion below is VACUOUS, and it WAS (capstone
+            # round 1, confirmed end-to-end). The fixture used to copy the CANONICAL .rs, which already
+            # holds exactly the bytes a regeneration produces, so an errant early write rewrote identical
+            # content and the byte comparison saw nothing: with the generator patched to write rust
+            # BEFORE validating C#, all three rows still passed.
+            # The sentinel must keep the file VALID or the fix breaks the row a different way - a rust
+            # target the generator REJECTS fails at :103 and never reaches the C# block these rows exist
+            # to test. (That is why the reviewer's suggested remedy - overwrite the target with junk -
+            # was not taken.) So: keep exactly ONE line matching the anchor pattern, but give it a
+            # payload no regeneration would produce. A rewrite replaces that line; a refusal leaves it.
+            $rsLines = [IO.File]::ReadAllText($outRs).Replace("`r`n", "`n") -split "`n"
+            for ($i = 0; $i -lt $rsLines.Count; $i++) {
+                if ($rsLines[$i] -like 'pub const BASELINE_FLOOR: &str = *') {
+                    $rsLines[$i] = 'pub const BASELINE_FLOOR: &str = "CAPSTONE-SENTINEL-NOT-REGENERATED";'
+                    break
+                }
+            }
+            [IO.File]::WriteAllText($outRs, ($rsLines -join "`n"), (New-Object Text.UTF8Encoding($false)))
             $csText = [IO.File]::ReadAllText($script:Cs).Replace("`r`n", "`n")
             $anchor = 'public const string BaselineFloor ='
             switch ($Case) {
