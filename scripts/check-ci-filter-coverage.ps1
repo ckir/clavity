@@ -96,9 +96,12 @@ $wfLines = [string[]](Get-Content -LiteralPath $WorkflowPath)
 # regexes below matches tabs perfectly happily, so this gate would read the filter, find everything it
 # wanted, and report OK on a workflow that CANNOT RUN. MEASURED: with the list items tab-indented, the
 # gate said "OK - 12 required entries present in all 2 paths: blocks" while `yq` rejected the file.
-$tabLines = @(for ($i = 0; $i -lt $wfLines.Count; $i++) { if ($wfLines[$i] -match "`t") { $i + 1 } })
+# INDENTATION ONLY, NOT ANYWHERE. YAML forbids a tab in INDENTATION; a tab inside a string VALUE is
+# perfectly legal. The first version flagged any tab in the file, which would have failed this gate -
+# now a pre-push hook - on a legal edit, and a gate that reds on legal input is its own kind of defect.
+$tabLines = @(for ($i = 0; $i -lt $wfLines.Count; $i++) { if ($wfLines[$i] -match "^[ ]*`t") { $i + 1 } })
 if ($tabLines.Count -gt 0) {
-    Fail "$WorkflowPath contains TAB characters on line(s) $($tabLines -join ', ') - YAML forbids tab indentation, so GitHub cannot parse this workflow and would never run it."
+    Fail "$WorkflowPath uses a TAB in the indentation of line(s) $($tabLines -join ', ') - YAML forbids that, so GitHub cannot parse this workflow and would never run it."
     exit 1
 }
 
@@ -153,7 +156,13 @@ $roots = @($tracked | ForEach-Object { $p = $_ -split '/'; if ($p.Count -gt 1) {
     Sort-Object -Unique | Where-Object { $_ -ne 'scripts' })
 if ($roots.Count -eq 0) { Fail 'no top-level directories found - the enumeration is broken, not the repo.'; exit 1 }
 
-$suites = @(Get-ChildItem -LiteralPath (Join-Path $RepoRoot 'scripts/tests') -Filter '*.Tests.ps1' -ErrorAction SilentlyContinue)
+# -Recurse IS LOAD-BEARING, AND ITS ABSENCE WAS A ONE-COMMAND BYPASS. `ci-scripts.yml` runs
+# `Invoke-Pester scripts/tests`, which recurses; this enumeration did not. So `git mv` of any suite into
+# a subdirectory of scripts/tests left it running in CI while this gate became blind to it, silently
+# dropping every coverage requirement that suite's string literals imply - and still exiting 0. The two
+# corpora must be defined the same way or the gate is reasoning about a different set of files than the
+# thing it is guarding.
+$suites = @(Get-ChildItem -LiteralPath (Join-Path $RepoRoot 'scripts/tests') -Filter '*.Tests.ps1' -Recurse -ErrorAction SilentlyContinue)
 if ($suites.Count -eq 0) { Fail 'no *.Tests.ps1 found under scripts/tests - the gate would pass vacuously.'; exit 1 }
 
 $reached = @{}

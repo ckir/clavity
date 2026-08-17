@@ -163,7 +163,23 @@ Describe 'check-ci-filter-coverage.ps1' {
                 Should -BeGreaterThan 0 -Because 'the fixture must really be tab-indented'
             $r = Invoke-Gate -WorkflowPath $p
             $r.ExitCode | Should -Be 1
-            $r.Out | Should -Match 'contains TAB characters'
+            $r.Out | Should -Match 'uses a TAB in the indentation'
+        }
+
+        # THE OTHER HALF OF THE TAB RULE, and without this row the narrowing has no oracle. YAML forbids a
+        # tab in INDENTATION; a tab inside a string VALUE is legal. The first version flagged any tab in
+        # the file, which would have failed this gate - now a pre-push hook - on a legal edit. A gate that
+        # reds on legal input is its own kind of defect, so both directions are pinned.
+        It 'ACCEPTS a tab inside a string value, which YAML permits' {
+            $tab = [string][char]9
+            $p = New-WorkflowFixture {
+                param($l)
+                $l | ForEach-Object { if ($_ -match '^name:') { "name: ci${tab}scripts" } else { $_ } }
+            }
+            @(Get-Content -LiteralPath $p | Where-Object { $_ -match $tab }).Count |
+                Should -BeGreaterThan 0 -Because 'the fixture must really contain a tab, or it proves nothing'
+            $r = Invoke-Gate -WorkflowPath $p
+            $r.ExitCode | Should -Be 0 -Because "a tab in a string value is legal YAML: $($r.Out)"
         }
 
         It 'reds when the paths: blocks are not under the top-level on: key' {
@@ -206,6 +222,27 @@ Describe 'check-ci-filter-coverage.ps1' {
             $r = Invoke-Gate -WorkflowPath (Join-Path ([IO.Path]::GetTempPath()) 'no-such-workflow.yml')
             $r.ExitCode | Should -Be 1
             $r.Out | Should -Match 'workflow not found'
+        }
+
+        # THE CORPUS MUST BE DEFINED THE SAME WAY THE THING IT GUARDS DEFINES IT. `ci-scripts.yml` runs
+        # `Invoke-Pester scripts/tests`, which RECURSES; this gate's enumeration did not. So `git mv` of
+        # any suite into a subdirectory left it running in CI while the gate went blind to it, dropping
+        # every coverage requirement its literals imply and still exiting 0 - a one-command bypass. The
+        # nested suite below names a root that is in NEITHER the required table nor the exemption table,
+        # so the gate can only produce this message if it actually read the nested file.
+        It 'enumerates suites in SUBDIRECTORIES, the way Invoke-Pester does' {
+            $root = Join-Path ([IO.Path]::GetTempPath()) ("cifc-rec-" + [guid]::NewGuid().ToString('N'))
+            [void]$script:Fixtures.Add($root)
+            New-Item -ItemType Directory -Path (Join-Path $root 'scripts/tests/nested') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $root 'zzz-newtree') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $root 'zzz-newtree/x.md') -Value 'x' -Encoding ascii
+            Set-Content -LiteralPath (Join-Path $root 'scripts/tests/nested/deep.Tests.ps1') `
+                -Value "`$p = 'zzz-newtree/hooks/x.sh'" -Encoding ascii
+            & git -C $root init -q
+            & git -C $root add -A
+            $r = Invoke-Gate -WorkflowPath $script:Real -Root $root
+            $r.ExitCode | Should -Be 1
+            $r.Out | Should -Match "UNCOVERED root 'zzz-newtree' - named by: deep\.Tests\.ps1"
         }
 
         # A SUITE THAT DOES NOT PARSE MUST BE A HARD ERROR, NOT A SKIP. A gate that skips unparseable
