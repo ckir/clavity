@@ -961,7 +961,7 @@ All four were **verified by measurement at triage**, not accepted on reading. Ea
 so a later reader can re-check rather than re-derive. §14a–c came from the 2026-08-13 triage; §14d from
 2026-08-14, and it **corrects a sentence in §14c**.
 
-**§14a — `PrunedSegments` omits `.clavity`, so scratch files enter the reference index.**
+**§14a — `PrunedSegments` omits `.clavity`, so scratch files enter the reference index.** ✅ **SHIPPED 2026-08-16** (`2db18c2`). VERIFIED 2026-08-18 by measurement: `.clavity` is the last element of the array at `scripts/check-injected-context.ps1:92`, and the fix is PINNED twice in `scripts/tests/check-injected-context.Tests.ps1` — a per-segment row at `:240` and the whole-array comparison at `:266`, so deleting the element reds the suite.
 `scripts/check-injected-context.ps1:91-92` lists `.git, node_modules, target, bin, obj, .venv,
 __pycache__, dist, publish, .vs, .ruff_cache, .pytest_cache, .mypy_cache, .worktrees` — and **not
 `.clavity`**. The reference index is a whole-repository walk pruned by NAME, so anything under
@@ -971,7 +971,7 @@ RED. **This is the same half-fold shape as the `.worktrees` fix in `fddde70`**, 
 the directory the disciplines *mandate* for scratch output, so the collision is reachable by following
 our own rules. Fix is one array element plus a pinning row.
 
-**§14b — `clavity-dotnet/install/clavity-install.Tests.ps1` is an orphan suite.** Registration is an
+**§14b — `clavity-dotnet/install/clavity-install.Tests.ps1` is an orphan suite.** ✅ **SHIPPED — registered.** VERIFIED 2026-08-18 by re-running the entry's OWN discriminating control: `clavity-install.Tests.ps1` now appears **once** in the root `justfile`, the same count as the registered control suite `generate-scoped-manifest.Tests.ps1`. At triage it measured **zero**. Registration is an
 explicit list in the **root** `justfile` (lines 101 and 108). Measured with a discriminating control: a
 registered suite (`generate-scoped-manifest.Tests.ps1`) appears there once; `clavity-install.Tests.ps1`
 appears **zero** times in either the root or `clavity-dotnet/justfile`. It exists, passes under raw
@@ -979,7 +979,7 @@ Pester, and **never runs in any gate**. `test-suite-registration.Tests.ps1` cann
 scans only `scripts/tests` while claiming to cover "every Pester suite on disk" — so the guard's own
 scope is narrower than its stated contract. Decide: register it, move it, or delete it.
 
-**§14c — FIVE shipped artifacts write into `.clavity/` and none asserts the `.gitignore` shield: ONE HOOK
+**§14c — ✅ **SHIPPED 2026-08-16** — but **NOT in the shape this entry predicted, and the divergence is the point.** The entry framed the fix as five artifacts each asserting the shield. What shipped asserts it **once, at the write point**: the three skills (`agy-first`, `agy-capstone`, `agy-test-audit`) delegate every `.clavity/` write to `agy-mark.sh`, which sources `agy-shield-lib`. MEASURED 2026-08-18: `agy-shield-lib` is referenced by exactly three files (`agy-discipline-reaching.sh`, `agy-mark.sh`, `open-issues/SKILL.md`) while all three skills cite `agy-mark.sh` (3, 6 and 3 times). **A five-copy assertion would have been five things to keep in sync; one chokepoint is one.** Original entry text follows, kept because its MEASUREMENT is still the record of what was wrong: FIVE shipped artifacts write into `.clavity/` and none asserts the `.gitignore` shield: ONE HOOK
 and FOUR SKILLS.** Measured 2026-08-14 under a stated predicate — *a shipped plugin artifact that CREATES
 or WRITES a path under `<repo-root>/.clavity/`, traced through variable assignments to the RESOLVED
 target*, not by proximity of a write construct to the token `.clavity`. The earlier "7 shipped hooks" came
