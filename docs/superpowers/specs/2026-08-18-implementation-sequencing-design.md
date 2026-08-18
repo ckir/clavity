@@ -1,8 +1,10 @@
 # Implementation sequencing for the open work - design
 
-**Date:** 2026-08-18 · **Status:** owner-approved (sequence confirmed in-chat 2026-08-18); AGY-AFTER
-panel rounds 1-3 folded 2026-08-18 - see "Review record". **One folded finding CHALLENGES the approved
-step-0-first ordering and is flagged for the owner in step 2, not decided.**
+**Date:** 2026-08-18 · **Status:** owner-approved, AGY-AFTER panel CLOSED 2026-08-18 after three rounds.
+**Disposition: cap-reached, owner-shipped - NOT a GREEN.** Every round produced substance, so the panel
+never reached a round with no live challenge; at the hard round cap the owner elected to ship rather than
+run a fourth. That is a legitimate closure and it is recorded honestly here, because a shipped-at-cap
+review and a review that ran clean are different claims. All three rounds are folded - see "Review record".
 **Type:** SPEC, deliberately not a line-level plan. Several steps depend on code that does not exist yet
 and on four owner rulings that have not been made, so per PLAN vs SPEC DISCIPLINE the line-level plan for
 each step waits until its predecessor lands.
@@ -133,8 +135,9 @@ check that only ever sees whole replies cannot tell truncation from brevity, whi
 step exists to end. **This step needs a failing control more than any other, because it is the step that
 makes every later control trustworthy.**
 
-**OPEN OWNER QUESTION - this challenges the already-settled step-0-first ordering, so it is flagged, not
-decided.** Two independent readings reached the same conclusion, that 13b belongs BEFORE step 0:
+**RESOLVED 2026-08-18: step 0 STAYS FIRST (owner ruling, after the measurement below).** The reasoning is
+kept because it is the record of why the exposure was accepted rather than missed. Two independent readings
+had argued 13b belongs BEFORE step 0:
 - Step 0's own failure path is a red CI across 329 commits. Triaging and fixing that is code work, so it
   is capstone-gated - meaning step 0's remediation would itself be reviewed with the instrument step 2
   exists to repair.
@@ -170,9 +173,12 @@ that any specific prior GREEN was truncated.
 this document prevents step 6 - or any other step - from being reviewed before the instrument is repaired.
 **Every review conducted before step 2 lands carries the same discount**, and the numbering is not a
 precondition.
-**The owner decides.** Keeping step 0 first stays defensible - it is a one-way door that gets cheaper the
-sooner it opens, and nobody has measured that any specific prior GREEN was actually truncated - but it
-should be an informed choice rather than an unnoticed one.
+
+**THE RULING.** Step 0 stays first. The measurable half of the concern came back clean with roughly double
+the headroom needed, the unmeasurable half is a real but unquantified risk, and the merge is a one-way door
+that only grows more expensive. **The exposure is accepted knowingly, not overlooked** - which is the whole
+point of having raised it. If a later review does surface a truncated reply, this ruling is the thing to
+revisit first.
 
 ### 3. 14g - unify the inbox paths
 
@@ -497,14 +503,23 @@ misattribution across the whole review: a quote genuinely present in this spec a
 
 **What the three rounds cost and returned.** Round 1 found the artifact's defects. Round 2 found round 1's
 defects. Round 3 found round 2's, and a structural defect in how all three were being folded. **Each round
-found substance, and each round's richest seam was the previous round's fixes** - which is the standing
-lesson stated once more with three rounds of evidence behind it: a fix is unreviewed work. The quote-or-discarded rule continues to hold citation quality well above this project's
+found substance, and each round's richest seam was the previous round's fixes** - the standing lesson with
+three rounds of evidence behind it: a fix is unreviewed work.
+
+**DISPOSITION: cap-reached, owner-shipped 2026-08-18. This is NOT a GREEN and must not be cited as one.**
+A GREEN requires a full round landing with no live challenge; no round here did. At the hard cap the owner
+elected to ship. **What that leaves open, stated so nobody has to reconstruct it:** round 3's own fixes are
+unreviewed, exactly as rounds 1's and 2's were when they were found to carry defects. The trend is the
+mitigating argument - rounds 1 and 2 found defects in the artifact's CONTENT, round 3 found them in the
+FOLDING PROCESS, and that process fix is applied - but it is an argument, not a measurement.
+**If this spec is materially edited again, the panel re-arms.** The quote-or-discarded rule continues to hold citation quality well above this project's
 recorded norm.
 
 ## Open items this spec does NOT resolve
 
 1. The four step-1 rulings, by construction. **17b's ruling explicitly includes "or kill it"**, and the
    adverse branch for the other three is not written (see "Conditions that apply to every step").
+   **Not open:** the step-2-before-step-0 ordering, ruled 2026-08-18 after measurement - step 0 stays first.
 2. The policy gate's two paused owner items.
 3. Whether the MCP SDK emits an optional parameter as non-required (step 8, named above) - and, prior
    to that, WHICH of step 8's three dispositions the owner picks, since the SDK question only matters
