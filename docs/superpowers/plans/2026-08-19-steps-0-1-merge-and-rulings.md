@@ -52,6 +52,7 @@ Steps 0-1 create no source files. What changes:
 | `.clavity/seams/rulings-knowledge.md` | AGY-FIRST consult brief for §14f + §14g (one blast radius) | 6 |
 | `.clavity/seams/rulings-hooks.md` | AGY-FIRST consult brief for §17a + §17b (one blast radius) | 6 |
 | `clavity-dotnet/ROADMAP.md` | the four rulings, written into the entries they belong to | 7, 8 |
+| `scripts/check-rulings-recorded.ps1` | verifies each entry carries a ruling; three proven controls | 8 |
 | memory index + `project_*` topic file | durable resume point after each landed unit | every commit |
 
 **Why two consult briefs and not one or four.** §14f and §14g are both about the agy-autotrain knowledge
@@ -134,7 +135,19 @@ reflow — **no change to who owns what**; and both byte-pinned literals were up
 **If a substantive ownership-language change appears**, the merge would usurp §14f. **STOP** and put it to
 the owner before proceeding.
 
-- [ ] **Step 5: Commit nothing**
+- [ ] **Step 5: Two blockers checked and REFUTED — recorded so they are not re-raised**
+
+```bash
+gh api repos/ckir/clavity/branches/main/protection    # expect: 404 "Branch not protected"
+gh auth status | grep -i "token scopes"               # expect: scopes including 'repo' and 'workflow'
+```
+
+Measured 2026-08-19: `main` carries **no branch protection**, so `gh pr merge` in Task 10 needs no review
+approval and cannot be blocked by a required-checks rule. The active token holds `repo` and `workflow`, so
+PR creation in Task 4 is permitted. **Both were plausible blockers; neither is real.** Re-run these two if
+the merge or the PR create ever fails unexpectedly — they are the first things to suspect.
+
+- [ ] **Step 6: Commit nothing**
 
 This task is read-only. Proceed to Task 2 without a commit.
 
@@ -485,27 +498,53 @@ re-litigated safely later, because nobody can tell what evidence it rested on.
 **§17b's entry must record KILLED or its retained scope.** Silence is not a closure — that is the exact
 defect that left the Stage 2 merge gate open for eight days.
 
-- [ ] **Step 3: Verify all four landed, by property and not by substring**
+- [ ] **Step 3: Verify all four landed, using the checked-in verifier**
 
 ```bash
-grep -c "OWNER RULING (2026-08-19)" clavity-dotnet/ROADMAP.md
-for s in "§14f" "§14g" "§17a" "§17b"; do
-  printf '%s: ' "$s"
-  awk -v s="$s" '$0 ~ s"[^0-9]" && /^#### |^\*\*§/{f=1} f&&/OWNER RULING/{print "RULED"; exit} f&&/^#### /&&!($0~s){print "NO RULING"; exit}' clavity-dotnet/ROADMAP.md
-done
+pwsh -NoProfile -File scripts/check-rulings-recorded.ps1
+echo "exit=$?"
 ```
 
-Expected: count `4`, and each of the four prints `RULED`.
+Expected: `14f RULED`, `14g RULED`, `17a RULED`, `17b RULED`, then
+`OK: all 4 section(s) carry a 'OWNER RULING (' block.` and `exit=0`.
 
-- [ ] **Step 4: Prove the check can fail**
+**Do not replace this with an inline one-liner.** The plan's first draft used an inline `awk` verifier and
+it was wrong in two independent ways, both found by running its own controls before it ever shipped:
+
+1. **It failed SILENTLY on §17b.** It bounded each section by scanning for the next `#### ` heading, but
+   the entry following §17b is `### §18` — three hashes — so the bound never matched, the loop ran to EOF,
+   and it printed *nothing at all*. No output reads as "not ruled" to a human and as success to a
+   pipeline. The entry it silently skipped is the one whose ruling may legitimately be `KILLED`, i.e. the
+   one most likely to be written in an unexpected shape.
+2. **It reported §14f as RULED on a file with no rulings in it.** PowerShell's `-match` is
+   case-insensitive, and every unruled entry carries the literal *"needs an owner ruling, not a fix"* in
+   its own OPEN marker. **The marker matched the negation of itself** — the entry was certified as ruled
+   *because it said it needed a ruling.*
+
+`scripts/check-rulings-recorded.ps1` bounds sections at the next heading of **any** level, matches
+case-sensitively on `OWNER RULING (`, and treats a section it cannot locate as a hard `SECTION-NOT-FOUND`
+failure rather than a silent pass.
+
+- [ ] **Step 4: Prove the check can still fail — three controls, all of which must behave**
 
 ```bash
-sed 's/OWNER RULING (2026-08-19)/OWNER RULING (placeholder)/' clavity-dotnet/ROADMAP.md \
-  | grep -c "OWNER RULING (2026-08-19)"
+# 1. FAILING control: the pre-ruling ROADMAP from git. Must exit 1 and name all four.
+git show HEAD:clavity-dotnet/ROADMAP.md > .clavity/scratch/steps-0-1/roadmap-before.md
+pwsh -NoProfile -File scripts/check-rulings-recorded.ps1 -RoadmapPath .clavity/scratch/steps-0-1/roadmap-before.md
+echo "expect exit 1: $?"
+
+# 2. PASSING control: the ruled file. Must exit 0.
+pwsh -NoProfile -File scripts/check-rulings-recorded.ps1 >/dev/null
+echo "expect exit 0: $?"
+
+# 3. STALE-ANCHOR control: a section that does not exist must fail LOUDLY, not silently pass.
+pwsh -NoProfile -File scripts/check-rulings-recorded.ps1 -Section 99z >/dev/null 2>&1
+echo "expect exit 1: $?"
 ```
 
-Expected: `0`. **A check that has never returned its failing answer is not an oracle** — this repo has been
-bitten by a verification that counted a substring including its own prose.
+All three must behave as labelled. **Read each exit code directly — do not pipe the script into `head` or
+`tail` and then read `$?`, which returns the exit code of the pipe's last stage rather than the script's.**
+That mistake made the stale-anchor control report success while the script was in fact failing correctly.
 
 - [ ] **Step 5: Confirm no stale OPEN marker survives**
 
