@@ -67,7 +67,13 @@ if ($PSCmdlet.ShouldProcess($RoadmapPath, "Check for '$Marker' in sections $($Se
         # `#### §17a - ...` and `**§14f - ...` - so match the identifier, not the heading syntax.
         $start = -1
         for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match ("(?:^#{1,6}\s.*|^\*\*)§" + [regex]::Escape($s) + '(?![0-9a-z])')) {
+            # The id must lead the heading text: `#### §17a - ...` or `**§14f - ...`.
+            # A looser `^#{1,6}\s.*§NNx` would also match a CROSS-REFERENCE heading such as
+            # `### Dependencies on §14f`, bind the section there, and then report NO RULING for an
+            # entry that is ruled (or pass on an unrelated section that happens to carry the marker).
+            # Not reachable in the ROADMAP today - measured - but recording a ruling ADDS
+            # cross-references, so the loose form would become wrong exactly when it is first used.
+            if ($lines[$i] -match ("(?:^#{1,6}\s+|^\*\*)§" + [regex]::Escape($s) + '(?![0-9a-z])')) {
                 $start = $i; break
             }
         }

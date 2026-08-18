@@ -63,6 +63,18 @@ twice over for no coverage gain.
 
 ---
 
+## Where "the durable execution index" is — named once, used throughout
+
+Several tasks require writing to it. It is **not** a scratch file:
+
+- `C:\Users\user\.claude\projects\C--Users-user-Development-Rust-clavity\memory\MEMORY.md` — the
+  index loaded into context every session. One line per entry; the live resume point only.
+- `…\memory\project_steps-0-1-plan.md` — this plan's topic file, where the detail goes.
+
+**Do not invent a new location.** A successor's recovery depends on reading exactly these, and a PR number
+recorded anywhere else is lost. If the memory directory is unavailable, say so and stop — do not silently
+substitute a scratch file.
+
 ## Preconditions for this whole plan
 
 - [ ] The owner has authorised the push in Task 3 and the merge in Task 10 **individually**. The standing
@@ -106,15 +118,38 @@ tree makes the abort path in Task 2 unsafe.
 
 ```bash
 for f in .github/workflows/ci-*.yml; do
-  r=$(awk '/^  pull_request:/{p=1;next} p&&/^  [a-z]/{exit} p&&/branches/{print "HAS-BRANCHES"}' "$f")
-  printf '%-34s %s\n' "$(basename $f)" "${r:-fires-on-any-base}"
+  n=$(basename "$f")
+  if ! grep -q '^  pull_request:' "$f"; then
+    printf '%-34s %s\n' "$n" "NO-PR-TRIGGER  <-- BLOCKS THE ROUTE"
+  else
+    r=$(awk '/^  pull_request:/{p=1;next} p&&/^  [a-z]/{exit} p&&/branches/{print "HAS-BRANCHES"}' "$f")
+    printf '%-34s %s\n' "$n" "${r:-fires-on-any-base}"
+  fi
 done
 ```
 
-Expected: 10 files `fires-on-any-base`, `ci-installer-dotnet.yml` `HAS-BRANCHES`.
+Expected: 10 files `fires-on-any-base`, `ci-installer-dotnet.yml` `HAS-BRANCHES`, and **zero**
+`NO-PR-TRIGGER`.
 
-**This is the load-bearing fact of the whole route.** If it no longer holds — if workflows lost their
-`pull_request:` triggers — the PR would show a false green. **STOP and re-decide the route with the owner.**
+**The `grep -q` guard is not decoration, and this plan's first draft omitted it.** Without it, a file with
+no `pull_request:` block at all never sets `p`, so `r` is empty and `${r:-fires-on-any-base}` prints
+`fires-on-any-base` — **the check certifies a workflow that does not fire on PRs at all, in the step this
+plan calls the load-bearing fact of the whole route.** Measured against a synthetic push-only workflow: it
+printed `fires-on-any-base`.
+
+- [ ] **Step 3b: Prove that check can fail**
+
+```bash
+printf 'on:\n  push:\n    branches: [main]\njobs:\n  x:\n    runs-on: ubuntu-latest\n' \
+  > .clavity/scratch/steps-0-1/no-pr-trigger.yml
+grep -q '^  pull_request:' .clavity/scratch/steps-0-1/no-pr-trigger.yml \
+  && echo "BAD - control did not fire" || echo "OK - control fires on a push-only workflow"
+```
+
+Expected: `OK - control fires on a push-only workflow`.
+
+**This is the load-bearing fact of the whole route.** If any file reports `NO-PR-TRIGGER`, the PR would
+show a green that means nothing. **STOP and re-decide the route with the owner.**
 
 - [ ] **Step 4: Confirm the branch does not pre-decide any pending ruling**
 
@@ -138,9 +173,12 @@ the owner before proceeding.
 - [ ] **Step 5: Two blockers checked and REFUTED — recorded so they are not re-raised**
 
 ```bash
-gh api repos/ckir/clavity/branches/main/protection    # expect: 404 "Branch not protected"
-gh auth status | grep -i "token scopes"               # expect: scopes including 'repo' and 'workflow'
+gh api "repos/{owner}/{repo}/branches/main/protection"  # expect: 404 "Branch not protected"
+gh auth status | grep -i "token scopes"                 # expect: scopes including 'repo' and 'workflow'
 ```
+
+`{owner}/{repo}` are placeholders `gh` resolves from the checkout — do NOT hardcode `ckir/clavity`, which
+would silently query the upstream rather than the actual PR target if this is ever run from a fork.
 
 Measured 2026-08-19: `main` carries **no branch protection**, so `gh pr merge` in Task 10 needs no review
 approval and cannot be blocked by a required-checks rule. The active token holds `repo` and `workflow`, so
@@ -209,10 +247,21 @@ Expected: `behind=0`, and no output from `git status`.
 
 ```bash
 ls docs/examples/ 2>/dev/null || echo "MISSING - the merge did not bring the examples"
+git rev-parse --short HEAD
 ```
+
+**Record that SHA in the durable execution index NOW, before Task 3.** Between this step and the push, the
+merge commit exists only locally: a successor reading the remote sees the pre-merge branch and no merge,
+and may reasonably re-attempt the integration. **This window is the single hardest point in the plan to
+diagnose after a session death**, and one line in the index closes it.
 
 Expected: the `docs/examples/` contents listed. **A merge that reports success but leaves the payload
 absent is the exact failure a commit-count check would miss.**
+
+**If it reports MISSING, STOP. Do not proceed to Task 3.** Pushing here would publish the broken
+integration to the PR branch — the operator would have observed the corruption and then shipped it. Reset
+the merge with `git reset --hard ORIG_HEAD` (safe here and only here: the tree was verified clean in Task 1
+Step 2, so nothing of yours is at risk), then diagnose why the merge dropped the payload before retrying.
 
 ---
 
@@ -224,6 +273,12 @@ absent is the exact failure a commit-count check would miss.**
 **Owner gate.** The standing rule is that the owner owns every push. **Halt here and obtain explicit
 authorisation for this specific push** before running Step 2. Approving this plan is not that
 authorisation.
+
+**If the owner declines:** stop the plan cleanly rather than working around it. The Task 2 merge commit
+stays on the local branch — it is not harmful and re-doing it later is free — so leave it, record in the
+durable index that the branch is integrated-but-unpushed with its SHA, and note that Tasks 4-5 and 10 are
+blocked on a push authorisation. **Do not delete the merge, and do not look for another way to get CI to
+run.** A declined authorisation is a decision, not an obstacle.
 
 - [ ] **Step 1: State what is about to be pushed**
 
@@ -412,11 +467,23 @@ migration; and — for §17b — whether a *subset* of the ten gates (the ones w
 reachable) is a coherent middle option, or whether mixed semantics across ten sibling gates is worse than
 either extreme.
 
-- [ ] **Step 4: Run both consults, review-only**
+- [ ] **Step 4: Run both consults, review-only — via the driver's transport**
+
+**The mechanism, which the first draft omitted entirely:** this repository runs the **clavity-dotnet**
+driver, so a consult goes over the **`agy_ask` MCP tool**, after an `agy_status` idle-check confirms the
+peer is not mid-turn. Do not fire while it is working. (Under clavity-classic the equivalent is
+`clavity ask --review-only`; subagents use the CLI form, never the MCP bus.)
+
+Send the peer the **PATH** to the brief, never the brief's text — pointing at a file is what lets it read
+the artifact itself instead of your summary of it.
 
 Each payload carries: the 🛑 REVIEW-ONLY banner enumerating writing, redirection and scratch dumps as
 separate forbidden acts; a sanctioned scratch directory (`.clavity/scratch/steps-0-1/`); and — as the last
 line, verbatim — `IF ANYTHING HERE IS AMBIGUOUS OR UNDER-SPECIFIED, ASK ME A QUESTION RATHER THAN GUESSING.`
+
+**A consult may exceed the 120s synchronous window and be backgrounded.** That is normal, not a failure:
+the reply arrives later. Never re-fire the original ask on a timeout, and never read a timed-out consult
+as "no findings".
 
 - [ ] **Step 5: Diff-after — verify the review-only envelope held**
 
@@ -571,10 +638,34 @@ session can tell what evidence the decision rested on.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 7: Update the durable execution index**
+- [ ] **Step 7: PUSH the rulings commit — it is NOT optional, and omitting it silently discards the work**
 
-Record the commit SHA, which rulings landed, and which later steps each unblocks. **A commit not reflected
-in the index is a recovery hole.**
+```bash
+git push origin feature/injected-context-governance
+git fetch origin
+echo "unpushed: $(git rev-list --count origin/feature/injected-context-governance..HEAD)"
+```
+
+Expected: `unpushed: 0`.
+
+**Why this step exists.** `gh pr merge` in Task 10 merges the branch **as it exists on the remote**. A
+rulings commit that stays local is silently dropped from that merge and abandoned on the machine, while the
+operator believes the rulings shipped to `main`. **The plan's first draft committed the rulings and never
+pushed them** — a complete, silent loss of the entire step-1 deliverable, invisible at every subsequent
+check because the local branch looks correct.
+
+**This push consumes the SAME owner authorisation obtained in Task 3** — it is the same branch, the same
+operator, the same session. If Task 3's authorisation was scoped narrowly to that one push, obtain it again
+rather than assuming.
+
+**It re-triggers CI, and that is expected.** `clavity-dotnet/ROADMAP.md` matches `ci-dotnet.yml`'s
+`clavity-dotnet/**` path filter, so this push starts a new run. **Task 10 gates on the run covering the
+FINAL head, not the earlier one** — which is exactly why Task 10 Step 1 compares the PR head to local HEAD.
+
+- [ ] **Step 8: Update the durable execution index**
+
+Record the commit SHA, which rulings landed, that they are PUSHED, and which later steps each unblocks.
+**A commit not reflected in the index is a recovery hole.**
 
 ---
 
@@ -601,10 +692,16 @@ The standing circuit-breaker: do not iterate remotely by re-pushing to see wheth
 Reproduce with the local gate — `just test-scripts-fast` for the scripts suite,
 `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests` for the .NET gate.
 
-**Watch the suite cadence:** the whole `just test-scripts` exceeds the 600s cap. Use `test-scripts-fast`
-for the inner loop and background `test-scripts-slow`, blocking on `Tests completed` — never on a process
-count. **No `Tests Passed:` line means the run ABORTED, not that it passed.** Never run both halves or two
-Pester suites at once — the file-lock produces a false red.
+**Watch the suite cadence, and note these two instructions are SEQUENTIAL, not concurrent** — an earlier
+draft of this paragraph told the operator to run one while backgrounding the other, which is precisely what
+the last sentence forbids. The whole `just test-scripts` exceeds the 600s cap, so:
+
+1. Use `just test-scripts-fast` for the inner loop.
+2. **Only once it has finished**, run `just test-scripts-slow` backgrounded, blocking on `Tests completed`
+   — never on a process count.
+
+**Never run both halves, and never two Pester suites, at the same time** — the file-lock produces a false
+red. **No `Tests Passed:` line means the run ABORTED, not that it passed.**
 
 **`dotnet test --filter` exits 0 on no match.** Read the test count, not the exit code.
 
@@ -648,6 +745,18 @@ Expected: every check `pass`, and the PR head matching local HEAD.
 **Verify the green covers the CURRENT head.** If fixes landed after the last run, an older green is not
 this commit's green — the same trap as greening a capstone whose newest commits were never reviewed.
 
+**Task 8's rulings push re-triggers CI, so by construction there IS a newer run than the one Task 5 read.**
+Wait for it:
+
+```bash
+gh pr checks --watch
+gh pr view --json headRefOid -q .headRefOid   # must equal `git rev-parse HEAD`
+```
+
+**Do not merge on Task 5's green.** That run predates the rulings commit, and treating it as current is the
+same defect as the stale-green trap above — one this plan would otherwise have walked into, because its
+concurrent structure guarantees a second run exists.
+
 - [ ] **Step 2: Merge**
 
 ```bash
@@ -682,6 +791,45 @@ the durable execution index: `main`'s new SHA, the branch's disposition, and the
 (13b), since steps 0 and 1 are now closed.
 
 ---
+
+## Review record - AGY-AFTER panel, round 1
+
+**Solo panel first, before any peer round.** Three findings were checkable and all three were measured.
+Two were REFUTED - `main` has no branch protection, and the token can create a PR; both are now recorded in
+Task 1 Step 5 so they are not re-raised. One was REAL and wrong two independent ways: the Task 8 ruling
+verifier failed silently on the last of four sections, and certified an entry as RULED *because its OPEN
+marker contains the words "needs an owner ruling"*. Replaced by `scripts/check-rulings-recorded.ps1`.
+
+**agy escalation round, seats:** Axiom Breaker, Cascade Analyst, Literal Implementer, Mechanism Gamer,
+Blindspot Auditor, Dependency Cynic, and a bespoke SUCCESSOR SIMULATOR that executes the plan cold rather
+than inspecting it.
+
+**The finding that would have destroyed the deliverable.** Task 8 committed the four rulings locally and
+**never pushed them**. `gh pr merge` merges the branch as it exists on the REMOTE, so the rulings commit
+would have been silently dropped from the merge and abandoned on the machine - with the operator believing
+step 1 had shipped, and every subsequent check passing because the local branch looks correct. The plan now
+pushes in Task 8 Step 7 and Task 10 waits for the re-triggered run rather than merging on Task 5's green.
+
+**The finding that repeated a defect this plan had already fixed once.** Task 1 Step 3's workflow-trigger
+check - the step the plan itself calls *"the load-bearing fact of the whole route"* - certified a workflow
+with NO `pull_request:` trigger as `fires-on-any-base`, because an absent block never sets the awk flag and
+the shell default fills in the safe-looking answer. **That is the same false-positive shape as the ruling
+verifier, in the same document, found in the same session.** Both now carry a control proving they can fail.
+
+**Also folded:** the missing-payload check in Task 2 observed a corrupt merge and then let Task 3 push it
+(now STOPs); the merge commit was invisible to the remote until Task 3, the plan's hardest interruption
+point (now records the SHA immediately); "the durable execution index" was commanded throughout and never
+given a path (now named once, up front); Task 6's consult step specified the payload exhaustively and
+omitted the mechanism entirely (now names the transport and the idle-check); the CI-triage cadence told the
+operator to run two suites concurrently and forbade it in the next sentence (now sequential); the owner-gate
+had no adverse branch if authorisation is declined (now has one); and a hardcoded `ckir/clavity` API path
+became `{owner}/{repo}`.
+
+**Rejected:** none. Every peer finding in this round survived measurement - unusual, and worth recording as
+such rather than treating as the norm.
+
+**Citation accuracy:** 4 of 4 numbered quote-checks exact, including a no-such-line control (line 950 of an
+818-line file) correctly reported as non-existent.
 
 ## Self-review
 
