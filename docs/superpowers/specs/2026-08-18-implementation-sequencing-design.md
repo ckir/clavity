@@ -1,7 +1,7 @@
 # Implementation sequencing for the open work - design
 
 **Date:** 2026-08-18 · **Status:** owner-approved (sequence confirmed in-chat 2026-08-18); AGY-AFTER
-panel rounds 1-2 folded 2026-08-18 - see "Review record". **One folded finding CHALLENGES the approved
+panel rounds 1-3 folded 2026-08-18 - see "Review record". **One folded finding CHALLENGES the approved
 step-0-first ordering and is flagged for the owner in step 2, not decided.**
 **Type:** SPEC, deliberately not a line-level plan. Several steps depend on code that does not exist yet
 and on four owner rulings that have not been made, so per PLAN vs SPEC DISCIPLINE the line-level plan for
@@ -103,7 +103,7 @@ against it.
 
 **Must be true to start:** the owner is available.
 **Why here:** all four are docs-only, so by cost-model rule 3 they do not invalidate a capstone. **That is
-NOT the same as "zero review cost", and an earlier draft of this line conflated the two.** These are the
+NOT the same as "zero review cost".** These are the
 highest-leverage decisions in the document and three of them gate later implementation, so they warrant
 real scrutiny even though they cost no capstone - the cheap thing about them is the review tax, not the
 consequence of getting one wrong. Resolving them just-in-time risks a ruling invalidating code already
@@ -165,9 +165,8 @@ silently orphan all 71 entries: the repo copy holds 0, so the code would work pe
 be gone. **The INSTALLED copy is canonical.**
 **Done means:** one inbox path remains; the pre-migration and post-migration totals are both MEASURED and
 equal; and the abandoned copy is left in place rather than deleted until a later drain confirms no loss.
-**That deferral needs a consumer, and step 4 is it** - see step 4's "Done means". A condition whose
-trigger is written in one step and read by none is exactly the defect this document complains about
-elsewhere, and the first draft of this line reproduced it.
+**Step 4's "Done means" is that deferral's consumer** - a condition written in one step and read by none
+is not a condition.
 
 ### 4. Section 18 - the two gating measurements, THEN the SEED/GROWTH split
 
@@ -176,16 +175,16 @@ Section 18's own text names two measurements as prerequisites; run them as step 
 - **Toxicity rate** - how many pending entries are steering hazards. **Define the term before measuring:
   a steering hazard is an entry that, injected into every future ask, would bias the peer toward a WRONG
   answer - not merely a narrow or low-value one.** Classify every pending entry against that definition
-  and record the count. If even one qualifies, an ungated drain is the wrong design and the split must
-  carry a gate.
-  **This classification is a DESIGN input, not a security boundary, and the distinction matters.** The
-  entries are untrusted accumulated text, and an agent asked to read them and judge them can be
-  instructed by them - an LLM classifying its own untrusted input cannot defend against injection into
-  that input. The actual boundary is human approval, and it already exists: `agy-curate/SKILL.md:195-200`
-  halts before any runtime write and requires explicit operator approval of the compiled GROWTH, with the
-  anti-poisoning circuit-breaker at `:250`. **Step 4 must not be written as though the toxicity count
-  were what keeps a poisoned entry out.** The count answers "does the split need a gate?"; the human gate
-  answers "may this entry be published?".
+  and record the count.
+  **This count decides a DESIGN question, not a safety one.** If entries qualify, an automated drain needs
+  per-entry filtering at drain time rather than one approval of the compiled result - that is what "the
+  split must carry a gate" means here, and it is about GRANULARITY, not about whether protection exists.
+  **Protection already exists and it is human:** `agy-curate/SKILL.md:195-200` halts before any runtime
+  write and requires explicit operator approval of the compiled GROWTH, with the anti-poisoning
+  circuit-breaker at `:250`. **The count is emphatically NOT what keeps a poisoned entry out** - the
+  entries are untrusted text, and an agent asked to read and judge them can be instructed by them. An LLM
+  classifying its own untrusted input is not a security boundary. So a high count does not mean the header
+  is unprotected today; it means an automated drain would be leaning on a human at the wrong granularity.
 - **Override behaviour** - append a deliberate contradiction to the current cheatsheet and measure
   whether the driver privileges the newer rule. **"Reliably" needs a number: run the probe 5 times and
   require 5 of 5.** Anything less is a coin flip dressed as a gate, and this measurement decides whether
@@ -196,12 +195,10 @@ Section 18's own text names two measurements as prerequisites; run them as step 
   to write. **If the driver prefers the SEED fact over the GROWTH rule, the split is
   fatally flawed** - the learning loop cannot steer, and step 4b must not start.
 
-**If a measurement fails, name the fallback rather than halting.** An earlier draft of this paragraph said
-a bare halt leaves the entries "in a unified but undrainable file". **That was an overstatement and it is
-corrected here:** step 3 migrates INTO the canonical installed copy, so after a halt the entries sit
-exactly where they sit today - parked, awaiting the split, no less drainable than on day zero. The real
-cost of a bare halt is not corruption, it is that the parked entries stay parked indefinitely with no
-route named. So: on an override-behaviour failure the fallback is to keep the current single-region header
+**If a measurement fails, name the fallback rather than halting.** Step 3 migrates INTO the canonical
+installed copy, so after a halt the entries sit exactly where they sit today - parked, awaiting the split,
+no less drainable than on day zero. **The cost of a bare halt is not corruption; it is that the parked
+entries stay parked indefinitely with no route named.** On an override-behaviour failure the fallback is to keep the current single-region header
 and drain manually with owner review per entry; on a toxicity failure the fallback is the gated split
 named above. Neither is "stop" - name which applies before starting 4b.
 
@@ -270,20 +267,18 @@ decides using a path SCRAPED FROM PROSE, and a Green-Check seat recorded that "t
 silent bypasses in 2 rounds)"; round 17's own optimisation reinstated the exact bypass it was closing.
 **That is a design reporting an unbounded defect class, not review churn.**
 
-**CORRECTION, and it is the most serious defect this review found. An earlier draft of this step called
-the declared seam parameter "the structural fix" which "deletes the extraction surface entirely". THE
-OWNER HAD ALREADY KILLED THAT ARGUMENT IN WRITING, and this step re-imported it from memory rather than
-from the file.** `:1320-1333` records the correction: recommending the parameter because it removes the
+**OWNER RULING ON THE FRAMING - read this before proposing the obvious fix.** `:1320-1333` records it:
+recommending the parameter because it removes the
 surface is **"a plumbing argument dressed as a design argument"**. The gate's purpose is that **the ROLES
 END UP IN THE AGENT'S CONTEXT**, and a declared parameter **"contributes NOTHING to that"** - it only
 makes the hook's job of finding the file reliable. The section that serves the purpose is **N13: the skill
 must teach the `PANEL-SEATS:` line, because measured, ZERO skills teach it today.** **Any plan for this
 step that omits N13 optimises the plumbing and skips the feature.**
 
-**There are THREE priced dispositions, not one** (`:1384-1397`); this spec previously presented only the
-second, as though it were the answer:
-1. **Fold and continue** - cheapest per round, needs no decision from anyone, and five rounds have not
-   closed the class.
+**There are THREE priced dispositions** (`:1384-1397`), and the owner picks among them:
+1. **Fold and continue** - cheapest per round, and the only disposition needing no decision about the
+   extraction surface itself. Five rounds have not closed the class. **N13 still ships under it** (see
+   "Done means"), so this is not a no-work option.
 2. **Adopt the declared seam parameter** - ends item 2, costs a tool-contract change this spec does not
    own, creates a new compliance surface (callers must pass it), and **buys nothing for the gate's
    purpose**.
@@ -314,10 +309,9 @@ pricing it:
   signature.**
 
 **Done means:** the owner has chosen among the three dispositions and the choice is written into the
-policy-gate spec; **and N13 ships regardless of which one is chosen.** An earlier draft conditioned N13 on
-dispositions 2 or 3, which was wrong: N13 is what gets the seats into the agent's context, and that is
-independent of how the gate locates the seam file. Under disposition 1 it is the only part that improves
-the feature at all.
+policy-gate spec; **and N13 ships regardless of which one is chosen** - it is what gets the seats into the
+agent's context, independent of how the gate locates the seam file. Under disposition 1 it is the only
+part that improves the feature at all.
 
 ### 9. Section 15 - workflow-position resilience
 
@@ -364,21 +358,24 @@ recorded norm, and worth noting as evidence that the per-finding quote rule work
 **Every step must state what happens under an ADVERSE ruling.** Only 17b is currently granted an explicit
 KILL. If a step-1 ruling kills or reshapes 14f, 14g or 17a, then steps 3, 4 and 9 lose their preconditions
 and this document says nothing about what follows. Before starting step 1, write the adverse branch for
-each of the four rulings, even if it is one line.
+each of the four rulings **into the ROADMAP entry that carries that ruling** - the same place step 1's
+"Done means" puts the ruling itself - even if it is one line.
 
 **Steps 3 and 4 operate on MACHINE-LOCAL state.** The 60-parked / 71-pending figures come from an
 installed-program directory outside the repository, outside git, invisible to CI and absent on a fresh
 clone. No successor on another machine can reproduce them and nothing in the sequence makes that state
-durable. Re-measure on the machine that executes the step; never carry one of these numbers across
-machines.
+durable.
 
-**And "re-measure" is NOT a sufficient mitigation - as first written it CAUSED the failure it warns
-about.** A fresh operator resuming at step 4 on a different machine follows that instruction, measures
-zero, and drains an empty inbox, permanently stranding the canonical entries on the original machine
-while every check passes. **A measurement of 0 here is indistinguishable from a completed drain and from
-the wrong machine.** So steps 3 and 4 carry a HANDOFF BOUNDARY: before executing either, record which
-machine holds the canonical inbox and its entry count, and **treat a measured 0 as a STOP-AND-VERIFY, never
-as "nothing to do"** - the one number that must never be read at face value is the empty one.
+**So steps 3 and 4 carry a HANDOFF BOUNDARY.** Before executing either:
+1. **Record which machine holds the canonical inbox, and its exact entry count, in the durable execution
+   index** - `project_*_execution.md` and its `MEMORY.md` pointer, not a scratch note and not this file.
+   That index is the one artifact a cold successor is guaranteed to read.
+2. **Re-measure on the machine that record names**, and never on one it does not. Never carry a count
+   across machines.
+3. **Treat a measured 0 as STOP-AND-VERIFY, never as "nothing to do."** A 0 is indistinguishable from
+   *drain already completed*, *genuinely empty*, and *wrong machine* - resolve which by checking the
+   recorded machine identity and count. **A 0 verified against that record is a legitimate state: proceed
+   normally.** The rule bars reading 0 at face value, not proceeding from a verified one.
 
 **Nothing outside this document reads any of these conditions.** No gate, hook or test notices a step
 declared done that is not done. That is the same failure this branch just spent a session closing - the
@@ -387,13 +384,8 @@ that opened it. **This spec reproduced that shape immediately after the lesson w
 committed it declared ten preconditions and three completion conditions. The "Done means" lines added
 across this review are a mitigation, not a mechanism.
 
-**And the round-1 fold's own check that it had closed them was VACUOUS.** It counted occurrences of the
-substring "Done means" and reached ten - but one of those ten was this section's own prose REFERRING to
-the Done-means lines, so only NINE steps actually had one and step 2 had none. The check confirmed a
-number, not a property. **A verification that counts a string rather than the thing the string is meant
-to indicate will confirm whatever it is asked to confirm** - and it reads as more trustworthy than no
-check at all, because a number was produced. Round 2 caught it by counting line-anchored headings per
-step. Step 2's condition is now written. If this sequence is worth enforcing, the enforcement
+**Verify these by the PROPERTY, never by a substring that merely mentions it** - see the Review record for
+the measured case where that distinction mattered. If this sequence is worth enforcing, the enforcement
 has to live somewhere a machine looks.
 
 ## Review record - AGY-AFTER panel
@@ -432,8 +424,11 @@ the two core seats, targeting round 1's own fixes. **Three of those fixes were w
 - The fallback paragraph in step 4 claimed a halt would leave entries "unified but undrainable". False:
   they sit in the canonical copy, exactly where they sit today. Corrected in place.
 - "Re-measure on the machine that executes the step" **caused** the failure it warned about - a fresh
-  operator elsewhere measures 0 and drains an empty inbox. Replaced with a handoff boundary and a
-  stop-and-verify on a measured zero.
+  operator elsewhere measures 0 and drains an empty inbox. **Round 2 APPENDED a handoff boundary below
+  that instruction but left the instruction itself standing, then recorded it as "replaced"** - so the
+  document told the reader to do the thing and warned two lines later that doing it fails. Round 3's Fold
+  Auditor caught both the contradiction and this record's false claim about it. Actually rewritten in
+  round 3.
 - Step 3's "until a later drain confirms no loss" was a condition with no consumer - the exact defect
   this document complains about, reproduced inside its own fix in the same commit. Step 4 now reads it.
 Also folded: the toxicity classification is a design input, not a security boundary (the human-approval
@@ -451,11 +446,38 @@ premise overstates, since nobody has measured that any prior GREEN was truncated
 is the correct disposition. A second seat read disposition 2 as buying "absolutely nothing"; it buys the
 end of item 2, which the artifact already states.
 
-**Citation accuracy:** 12 of 12 numbered quote-checks across both rounds resolved exactly, including a
-deliberate no-such-line control (line 420 of a 388-line file), which the peer correctly reported as
-non-existent rather than inventing content for it. One misattribution: a quote genuinely present in this
-spec at `:342-343` was cited as `ROADMAP.md:342-343` - right text, wrong file. Every seat finding carried a
-matching quote. The quote-or-discarded rule continues to hold citation quality well above this project's
+**Round 3, 2026-08-18** - every palette seat had already sat, so this round ran two BESPOKE lenses:
+**Fold Auditor** (hunts defects introduced BY the corrections) and **Successor Simulator** (does not
+inspect the document - tries to EXECUTE it cold and reports the first point it must guess). Both earned
+their seats, and the round's headline finding is against this very record:
+
+- **The document said one thing and warned against it two lines later, and this record called that
+  "replaced".** Round 2 appended the handoff boundary beneath the "re-measure on the machine" instruction
+  instead of rewriting it, so both stood. **A fold that APPENDS a correction beside the error, rather than
+  removing the error, reads as fixed in the record and is not fixed in the text.**
+- **A verified 0 had no forward path.** "Never read 0 at face value" was written with no exit, so an
+  operator with a legitimately empty inbox was permanently halted. The rule now bars reading 0 at face
+  value, not proceeding from a verified one.
+- **Round 2's N13 fix left its sibling intact:** requiring N13 under all three dispositions contradicted
+  disposition 1's unedited description as needing "no decision from anyone".
+- **The Successor Simulator found two instructions with no destination:** where to write the four adverse
+  branches, and where the handoff record lives. Both were written as obligations with no location, which
+  inspection-based seats had passed over twice.
+- **The structural finding, and the most valuable of the whole panel:** the corrections were being folded
+  IN PLACE, so the executable steps had filled with revision history - "an earlier draft said X, which was
+  wrong". A reader trying to execute the document had to parse the narrative of its review to find the
+  instruction. **All of that narrative now lives in this section, and the steps carry instructions only.**
+  A spec that records its own corrections inside its instructions degrades as it improves.
+
+**Citation accuracy:** 17 of 17 numbered quote-checks across three rounds resolved exactly, including two
+deliberate no-such-line controls, both correctly reported as non-existent rather than fabricated. One
+misattribution across the whole review: a quote genuinely present in this spec at `:342-343` was cited as
+`ROADMAP.md:342-343` - right text, wrong file. Every seat finding carried a matching quote.
+
+**What the three rounds cost and returned.** Round 1 found the artifact's defects. Round 2 found round 1's
+defects. Round 3 found round 2's, and a structural defect in how all three were being folded. **Each round
+found substance, and each round's richest seam was the previous round's fixes** - which is the standing
+lesson stated once more with three rounds of evidence behind it: a fix is unreviewed work. The quote-or-discarded rule continues to hold citation quality well above this project's
 recorded norm.
 
 ## Open items this spec does NOT resolve
