@@ -1,6 +1,10 @@
 # Steps 0-1: PR-gated integration to `main`, and the four owner rulings — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> ⚠ **EXCEPTION — Tasks 6 and 7 must NOT be delegated to a subagent.** They consult the peer over the
+> `agy_ask` MCP tool, and subagents cannot reach MCP tools at all under this driver. Run those two on the
+> main thread. Every other task delegates normally.
 
 **Goal:** Land `feature/injected-context-governance` on `main` through a pull request that runs CI before
 anything touches `main`, and — while that CI runs — obtain and record the four owner rulings (§14f, §14g,
@@ -77,8 +81,11 @@ substitute a scratch file.
 
 ## Preconditions for this whole plan
 
-- [ ] The owner has authorised the push in Task 3 and the merge in Task 10 **individually**. The standing
-      rule is that the owner owns every push; neither is implied by approving this plan.
+- [ ] **THREE remote-mutating operations, each needing its OWN owner authorisation:** the branch push
+      (Task 3), the rulings push (Task 8 Step 7), and the merge (Task 10). The standing rule is that the
+      owner owns **every** push. **None is implied by approving this plan, and none is implied by any
+      other.** An earlier draft let the rulings push reuse Task 3's authorisation, which contradicted this
+      line two hundred lines above it.
 - [ ] No `--no-verify`, and no `git add -A` anywhere in this plan. Explicit paths only.
 - [ ] `docs/superpowers/*` is gitignored (`.gitignore:32`) — committing this plan or any spec needs
       `git add -f`. `.clavity/` is gitignored (`.gitignore:45`) and must **never** be force-added.
@@ -322,7 +329,19 @@ Expected: `unpushed now: 0`.
 **Files:**
 - Create: one GitHub pull request. No repository files change.
 
-- [ ] **Step 1: Open the PR**
+- [ ] **Step 1: Check whether the PR already exists, then open it**
+
+```bash
+gh pr view --json number,url -q '"EXISTS: PR #\(.number)  \(.url)"' 2>/dev/null \
+  || echo "NONE - proceed to create"
+```
+
+**If it already exists, SKIP the create and go to Step 2.** `gh pr create` exits non-zero when a PR is
+already open for the head branch, so a plan re-run after a session death would crash here with no recovery
+path. That is the most likely re-entry point in the whole plan, because the death is most likely to happen
+during the CI wait that immediately follows.
+
+- [ ] **Step 1b: Open the PR (only if Step 1 printed NONE)**
 
 ```bash
 gh pr create --base main --head feature/injected-context-governance \
@@ -471,8 +490,16 @@ either extreme.
 
 **The mechanism, which the first draft omitted entirely:** this repository runs the **clavity-dotnet**
 driver, so a consult goes over the **`agy_ask` MCP tool**, after an `agy_status` idle-check confirms the
-peer is not mid-turn. Do not fire while it is working. (Under clavity-classic the equivalent is
-`clavity ask --review-only`; subagents use the CLI form, never the MCP bus.)
+peer is not mid-turn. Do not fire while it is working.
+
+🔴 **THIS TASK MUST RUN ON THE MAIN THREAD. DO NOT DELEGATE TASKS 6 OR 7 TO A SUBAGENT.** Measured at
+`clavity-dotnet/plugin/knowledge/agy-capabilities.md:151-152`: *"the MCP signal-bus path is
+**main-thread-only** (subagents lack the MCP tools)"*. **A subagent literally cannot call `agy_ask`.**
+The plan's own header recommends subagent-driven execution, and following that recommendation here would
+strand the consult with no transport — the fix for a missing mechanism must not prescribe one the
+prescribed worker cannot reach. (Under clavity-classic a subagent *can* reach the peer, via the
+self-contained `clavity ask --review-only` CLI, never the MCP bus. That is a different driver from this
+one.)
 
 Send the peer the **PATH** to the brief, never the brief's text — pointing at a file is what lets it read
 the artifact itself instead of your summary of it.
@@ -537,6 +564,11 @@ which later step is now blocked. §14g gates step 3, §14f gates step 4, §17a g
 - Modify: `clavity-dotnet/ROADMAP.md` — the §14f entry at `:1080`, §14g at `:1115`, §17a at `:1281`,
   §17b at `:1298`. **Re-locate each by its heading text, not by these line numbers** — Task 2's merge and
   any concurrent edit will have moved them.
+
+**Re-entry note:** this task is NOT idempotent. Once a ruling is written, the entry's `▶ **OPEN...**`
+marker is gone, so a blind re-run finds no marker to replace. **Run Step 3's verifier FIRST on a re-entry**
+— it reports exactly which of the four are already ruled, and you resume from there rather than from the
+top.
 
 - [ ] **Step 1: Locate each entry by symbol, not line**
 
@@ -607,6 +639,19 @@ echo "expect exit 0: $?"
 # 3. STALE-ANCHOR control: a section that does not exist must fail LOUDLY, not silently pass.
 pwsh -NoProfile -File scripts/check-rulings-recorded.ps1 -Section 99z >/dev/null 2>&1
 echo "expect exit 1: $?"
+
+# 4. CROSS-REFERENCE DECOY control: a heading that merely MENTIONS a section id, carrying the marker,
+#    must NOT satisfy that section. Recording a ruling adds cross-references, so this becomes reachable
+#    exactly when the verifier is first used in anger.
+python -c "
+import io
+s = io.open('clavity-dotnet/ROADMAP.md', encoding='utf-8', newline='').read()
+s = '## Dependencies on \u00a714f and \u00a717a\n\n> **OWNER RULING (2026-08-19).** decoy.\n\n' + s
+io.open('.clavity/scratch/steps-0-1/roadmap-decoy.md','w',encoding='utf-8',newline='').write(s)
+"
+pwsh -NoProfile -File scripts/check-rulings-recorded.ps1 \
+  -RoadmapPath .clavity/scratch/steps-0-1/roadmap-decoy.md >/dev/null 2>&1
+echo "expect exit 1: $?"
 ```
 
 All three must behave as labelled. **Read each exit code directly — do not pipe the script into `head` or
@@ -654,13 +699,25 @@ operator believes the rulings shipped to `main`. **The plan's first draft commit
 pushed them** — a complete, silent loss of the entire step-1 deliverable, invisible at every subsequent
 check because the local branch looks correct.
 
-**This push consumes the SAME owner authorisation obtained in Task 3** — it is the same branch, the same
-operator, the same session. If Task 3's authorisation was scoped narrowly to that one push, obtain it again
-rather than assuming.
+**This push needs its OWN owner authorisation.** It carries commits that did not exist when Task 3 was
+authorised, and the standing rule admits no exception: the owner owns every push. **Halt and obtain it.**
+If declined, the rulings stay local and committed — record that in the durable index, and note that Task 10
+is blocked, because merging without this push would silently discard them.
 
-**It re-triggers CI, and that is expected.** `clavity-dotnet/ROADMAP.md` matches `ci-dotnet.yml`'s
-`clavity-dotnet/**` path filter, so this push starts a new run. **Task 10 gates on the run covering the
-FINAL head, not the earlier one** — which is exactly why Task 10 Step 1 compares the PR head to local HEAD.
+**It re-triggers CI, and expect the FULL suite, not a subset.** An earlier draft of this line said only
+`ci-dotnet.yml` would re-run, reasoning that the pushed commit touches only `clavity-dotnet/ROADMAP.md`.
+**That applies `push` semantics to a `pull_request` event and is wrong.** On a `pull_request`, GitHub
+evaluates `paths:` filters against the **whole PR diff against the base**, not against the newly pushed
+commit — and this PR's diff spans 337 commits touching most of the tree, so every workflow that ran in
+Task 5 matches again and runs again.
+
+**Budget for a second full CI cycle, not a quick re-check.** That cost is real and was hidden by the
+earlier reading. It is also directly observable: compare the check list here against Task 5's. **If only
+one or two checks re-run, this note is wrong and Task 5's list is the one to trust** — record which
+actually happened, because it settles the question for every later plan.
+
+**Task 10 gates on the run covering the FINAL head, not the earlier one** — which is why Task 10 Step 1
+compares the PR head to local HEAD.
 
 - [ ] **Step 8: Update the durable execution index**
 
@@ -669,7 +726,10 @@ Record the commit SHA, which rulings landed, that they are PUSHED, and which lat
 
 ---
 
-## Task 9: Triage CI failures — conditional, only if Task 5 went red
+## Task 9: Triage CI failures — conditional, entered from Task 5 OR Task 10
+
+Entered whenever **any** CI run in this plan goes red — Task 5's first run, or the second run Task 8's push
+triggers and Task 10 waits on. Return to whichever task sent you here.
 
 **Files:**
 - Create: `.clavity/scratch/steps-0-1/ci-triage.md` (ephemeral)
@@ -697,8 +757,12 @@ draft of this paragraph told the operator to run one while backgrounding the oth
 the last sentence forbids. The whole `just test-scripts` exceeds the 600s cap, so:
 
 1. Use `just test-scripts-fast` for the inner loop.
-2. **Only once it has finished**, run `just test-scripts-slow` backgrounded, blocking on `Tests completed`
-   — never on a process count.
+2. **Only once it has finished**, run `just test-scripts-slow` in the background and wait for the string
+   `Tests completed` to appear in its output — **never** poll a process count, which reports "still
+   running" for an aborted run. Concretely: redirect it to a log and watch that log for the marker, e.g.
+   `just test-scripts-slow > .clavity/scratch/steps-0-1/slow.log 2>&1 &` then poll the log until
+   `Tests completed` appears or the process exits. "Backgrounded, blocking on a marker" means blocking on
+   the MARKER, not on the shell job — an earlier draft's phrasing read as a contradiction in terms.
 
 **Never run both halves, and never two Pester suites, at the same time** — the file-lock produces a false
 red. **No `Tests Passed:` line means the run ABORTED, not that it passed.**
@@ -745,8 +809,8 @@ Expected: every check `pass`, and the PR head matching local HEAD.
 **Verify the green covers the CURRENT head.** If fixes landed after the last run, an older green is not
 this commit's green — the same trap as greening a capstone whose newest commits were never reviewed.
 
-**Task 8's rulings push re-triggers CI, so by construction there IS a newer run than the one Task 5 read.**
-Wait for it:
+**Task 8's rulings push re-triggers CI — the full suite, per Task 8 Step 7 — so by construction there IS a
+newer run than the one Task 5 read.** Wait for it:
 
 ```bash
 gh pr checks --watch
@@ -756,6 +820,11 @@ gh pr view --json headRefOid -q .headRefOid   # must equal `git rev-parse HEAD`
 **Do not merge on Task 5's green.** That run predates the rulings commit, and treating it as current is the
 same defect as the stale-green trap above — one this plan would otherwise have walked into, because its
 concurrent structure guarantees a second run exists.
+
+**If this second run REDS, go to Task 9.** Task 9's heading scopes it to Task 5, which left an operator
+stranded at the final gate with a red run and no authorised path forward. **Task 9 handles a red CI run at
+any point in this plan**, and after fixing you return here, not to Task 5. Each trip through Task 9 ends
+with a push, and each of those pushes needs its own owner authorisation.
 
 - [ ] **Step 2: Merge**
 
