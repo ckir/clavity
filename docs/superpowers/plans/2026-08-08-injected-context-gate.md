@@ -25,6 +25,24 @@
   `commonmemory/`. Its findings do not exist yet, so no line-level plan can be written for it. It runs on
   the same branch after stage 1, and **the branch does not merge until it is green.**
 
+  ✅ **STAGE 2 IS GREEN — OWNER-RULED 2026-08-18. THIS GATE IS CLOSED AND THE BRANCH MAY MERGE.**
+  Stage 2 ran as specified: a multi-round sweep of the three products produced 17 findings, which became
+  `docs/superpowers/plans/2026-08-11-stage2-fix-batch.md`. That plan was executed in five commits and
+  reviewed by **three separate capstones totalling 29 fold-rounds** (`cec62ff..49260dd`), plus an
+  AGY-TEST-AUDIT whose two owner-deferred gaps are logged in `docs/coverage-debt.md` (`ae18bdb`). Both
+  capstones now have ledger rows in `docs/agy-capstone-ledger.md`, written retroactively and labelled as
+  such.
+
+  🔴 **WHY THIS SAT UNCLOSED FOR EIGHT DAYS, because the shape recurs.** The work finished on
+  2026-08-12. The gate stayed open because **nothing points at a gate except the artifact that declares
+  it**, and this one is a gitignored plan file nobody re-opens once execution starts. The durable record
+  kept saying `STAGE 2 (NOT STARTED)` and `branch MUST NOT MERGE` long after Stage 2 had been swept,
+  planned, fixed, capstoned and audited — every one of those lines written BEFORE the fix batch existed
+  and never revisited. Two more owner-confirmed capstone GREENs landed on this branch afterwards
+  (`bc4813b`, `1022f8f`) without anyone noticing the branch was still formally unmergeable.
+  **A completion condition stated only in the plan that opens it has no mechanism to close it.**
+  This was found by sweeping the plans backwards, not by any gate, hook or test.
+
 **Everything happens on `feature/injected-context-governance`.** `main` must never carry a green gate over
 unread surface - that is the whole point of section 6.1's ruling.
 
