@@ -1,7 +1,7 @@
 # Implementation sequencing for the open work - design
 
 **Date:** 2026-08-18 · **Status:** owner-approved (sequence confirmed in-chat 2026-08-18); AGY-AFTER
-panel round 1 folded 2026-08-18 - see "Review record". **One folded finding CHALLENGES the approved
+panel rounds 1-2 folded 2026-08-18 - see "Review record". **One folded finding CHALLENGES the approved
 step-0-first ordering and is flagged for the owner in step 2, not decided.**
 **Type:** SPEC, deliberately not a line-level plan. Several steps depend on code that does not exist yet
 and on four owner rulings that have not been made, so per PLAN vs SPEC DISCIPLINE the line-level plan for
@@ -127,6 +127,11 @@ review-only peer. The remedy that measured well is driver-side capture plus byte
 against that peer's own recent replies.
 **Cost class:** touches the discipline skills = byte-identical pair = one re-review. Cheap here, at low
 context; expensive if deferred to the end.
+**Done means:** driver-side capture of each reply plus a byte-count against that peer's recent replies is
+in place, AND a test proves a TRUNCATED reply is DETECTED - not merely that an intact reply passes. A
+check that only ever sees whole replies cannot tell truncation from brevity, which is the failure this
+step exists to end. **This step needs a failing control more than any other, because it is the step that
+makes every later control trustworthy.**
 
 **OPEN OWNER QUESTION - this challenges the already-settled step-0-first ordering, so it is flagged, not
 decided.** Two independent readings reached the same conclusion, that 13b belongs BEFORE step 0:
@@ -140,8 +145,13 @@ decided.** Two independent readings reached the same conclusion, that 13b belong
 
 **What is NOT claimed:** that any specific prior GREEN was in fact truncated. Nobody has measured that.
 The claim is only that the sequence currently repairs the instrument after relying on it.
+**The exposure is not limited to step 0.** Steps 2 and 6 both declare "nothing; ready now", so nothing in
+this document prevents step 6 - or any other step - from being reviewed before the instrument is repaired.
+**Every review conducted before step 2 lands carries the same discount**, and the numbering is not a
+precondition.
 **The owner decides.** Keeping step 0 first stays defensible - it is a one-way door that gets cheaper the
-sooner it opens - but it should be an informed choice rather than an unnoticed one.
+sooner it opens, and nobody has measured that any specific prior GREEN was actually truncated - but it
+should be an informed choice rather than an unnoticed one.
 
 ### 3. 14g - unify the inbox paths
 
@@ -155,6 +165,9 @@ silently orphan all 71 entries: the repo copy holds 0, so the code would work pe
 be gone. **The INSTALLED copy is canonical.**
 **Done means:** one inbox path remains; the pre-migration and post-migration totals are both MEASURED and
 equal; and the abandoned copy is left in place rather than deleted until a later drain confirms no loss.
+**That deferral needs a consumer, and step 4 is it** - see step 4's "Done means". A condition whose
+trigger is written in one step and read by none is exactly the defect this document complains about
+elsewhere, and the first draft of this line reproduced it.
 
 ### 4. Section 18 - the two gating measurements, THEN the SEED/GROWTH split
 
@@ -165,22 +178,39 @@ Section 18's own text names two measurements as prerequisites; run them as step 
   answer - not merely a narrow or low-value one.** Classify every pending entry against that definition
   and record the count. If even one qualifies, an ungated drain is the wrong design and the split must
   carry a gate.
+  **This classification is a DESIGN input, not a security boundary, and the distinction matters.** The
+  entries are untrusted accumulated text, and an agent asked to read them and judge them can be
+  instructed by them - an LLM classifying its own untrusted input cannot defend against injection into
+  that input. The actual boundary is human approval, and it already exists: `agy-curate/SKILL.md:195-200`
+  halts before any runtime write and requires explicit operator approval of the compiled GROWTH, with the
+  anti-poisoning circuit-breaker at `:250`. **Step 4 must not be written as though the toxicity count
+  were what keeps a poisoned entry out.** The count answers "does the split need a gate?"; the human gate
+  answers "may this entry be published?".
 - **Override behaviour** - append a deliberate contradiction to the current cheatsheet and measure
   whether the driver privileges the newer rule. **"Reliably" needs a number: run the probe 5 times and
   require 5 of 5.** Anything less is a coin flip dressed as a gate, and this measurement decides whether
-  an architecture proceeds. **If the driver prefers the SEED fact over the GROWTH rule, the split is
+  an architecture proceeds. **The number hardens the count, NOT the probe - and a weak contradiction
+  passes 5 of 5 trivially.** So the probe needs a FAILING CONTROL: alongside the contradiction, run a
+  variant the driver should demonstrably get WRONG, and confirm it does. A probe that cannot return its
+  failing answer is not an oracle, and this gate is only as strong as the contradiction someone happened
+  to write. **If the driver prefers the SEED fact over the GROWTH rule, the split is
   fatally flawed** - the learning loop cannot steer, and step 4b must not start.
 
-**If a measurement fails, the sequence does NOT simply stop here.** Step 3 will already have unified the
-inbox on the premise that a drain follows, so a bare halt leaves the parked entries in a unified but
-undrainable file. On an override-behaviour failure the fallback is to keep the current single-region
-header and drain manually with owner review per entry; on a toxicity failure the fallback is the gated
-split named above. Neither is "stop" - name which applies before starting 4b.
+**If a measurement fails, name the fallback rather than halting.** An earlier draft of this paragraph said
+a bare halt leaves the entries "in a unified but undrainable file". **That was an overstatement and it is
+corrected here:** step 3 migrates INTO the canonical installed copy, so after a halt the entries sit
+exactly where they sit today - parked, awaiting the split, no less drainable than on day zero. The real
+cost of a bare halt is not corruption, it is that the parked entries stay parked indefinitely with no
+route named. So: on an override-behaviour failure the fallback is to keep the current single-region header
+and drain manually with owner review per entry; on a toxicity failure the fallback is the gated split
+named above. Neither is "stop" - name which applies before starting 4b.
 
 **Must be true to start 4b:** 14f and 14g complete; both measurements pass.
 **Payoff:** unblocks the parked entries and takes the per-drain source toll to zero.
 **Done means:** both measurements RECORDED with their numbers, not merely their verdicts; the split
-shipped or the named fallback adopted; and the parked count re-measured after the drain.
+shipped or the named fallback adopted; the parked count re-measured after the drain; **and step 3's
+abandoned inbox copy either deleted, now that this drain has confirmed no loss, or explicitly kept with a
+reason.** Step 3 deferred that decision to "a later drain" and this is the later drain.
 
 ### 5. 17a + 19 together
 
@@ -284,7 +314,10 @@ pricing it:
   signature.**
 
 **Done means:** the owner has chosen among the three dispositions and the choice is written into the
-policy-gate spec; and if 2 or 3 is chosen, N13 ships with it.
+policy-gate spec; **and N13 ships regardless of which one is chosen.** An earlier draft conditioned N13 on
+dispositions 2 or 3, which was wrong: N13 is what gets the seats into the agent's context, and that is
+independent of how the gate locates the seam file. Under disposition 1 it is the only part that improves
+the feature at all.
 
 ### 9. Section 15 - workflow-position resilience
 
@@ -339,12 +372,28 @@ clone. No successor on another machine can reproduce them and nothing in the seq
 durable. Re-measure on the machine that executes the step; never carry one of these numbers across
 machines.
 
+**And "re-measure" is NOT a sufficient mitigation - as first written it CAUSED the failure it warns
+about.** A fresh operator resuming at step 4 on a different machine follows that instruction, measures
+zero, and drains an empty inbox, permanently stranding the canonical entries on the original machine
+while every check passes. **A measurement of 0 here is indistinguishable from a completed drain and from
+the wrong machine.** So steps 3 and 4 carry a HANDOFF BOUNDARY: before executing either, record which
+machine holds the canonical inbox and its entry count, and **treat a measured 0 as a STOP-AND-VERIFY, never
+as "nothing to do"** - the one number that must never be read at face value is the empty one.
+
 **Nothing outside this document reads any of these conditions.** No gate, hook or test notices a step
 declared done that is not done. That is the same failure this branch just spent a session closing - the
 Stage 2 merge gate stood open for eight days because its completion condition existed only in the artifact
 that opened it. **This spec reproduced that shape immediately after the lesson was recorded:** as first
 committed it declared ten preconditions and three completion conditions. The "Done means" lines added
-across this review are a mitigation, not a mechanism. If this sequence is worth enforcing, the enforcement
+across this review are a mitigation, not a mechanism.
+
+**And the round-1 fold's own check that it had closed them was VACUOUS.** It counted occurrences of the
+substring "Done means" and reached ten - but one of those ten was this section's own prose REFERRING to
+the Done-means lines, so only NINE steps actually had one and step 2 had none. The check confirmed a
+number, not a property. **A verification that counts a string rather than the thing the string is meant
+to indicate will confirm whatever it is asked to confirm** - and it reads as more trustworthy than no
+check at all, because a number was produced. Round 2 caught it by counting line-anchored headings per
+step. Step 2's condition is now written. If this sequence is worth enforcing, the enforcement
 has to live somewhere a machine looks.
 
 ## Review record - AGY-AFTER panel
@@ -352,6 +401,12 @@ has to live somewhere a machine looks.
 **Round 1 (solo panel + agy escalation), 2026-08-18.** Persona: relentless-adversarial-auditor. Seats:
 Axiom Breaker, Cascade Analyst, Literal Implementer, Mechanism Gamer, Resource Vampire, Protocol Pedant,
 Blindspot Auditor, Dependency Cynic.
+
+**Folded in round 1:** the cost model stated rather than cited as a bare ratio; step 0's push
+precondition and the fix/revert asymmetry; step 1's "docs-only = zero review cost" conflation; the step-2
+ordering challenge (flagged to the owner, not decided); step 3's migrate-don't-re-point requirement;
+definitions, a threshold and a fallback for step 4's two gating measurements; a mechanical compliance
+check for step 6; step 8's rewrite; and the missing completion conditions.
 
 **Rejected by measurement - all three withdrawn by the peer when sent back to the source:**
 - The peer modelled review cost as `N x $47` and concluded batching wins once N exceeds ~5.3. Refuted at
@@ -372,7 +427,34 @@ it were the only one, and omitted N13 - the section the owner identified as the 
 the gate's purpose. **No seat found this. The missing citation did.** The general lesson: **a spec that
 cites a decision without quoting it has not read it, and the unnamed citation is where to look first.**
 
-**Citation accuracy:** 6 of 6 numbered quote-checks resolved exactly, and every seat finding carried a
+**Round 2, 2026-08-18** - rotation seats State Corruptor, Activation Auditor and Boundary Smuggler joined
+the two core seats, targeting round 1's own fixes. **Three of those fixes were wrong or incomplete:**
+- The fallback paragraph in step 4 claimed a halt would leave entries "unified but undrainable". False:
+  they sit in the canonical copy, exactly where they sit today. Corrected in place.
+- "Re-measure on the machine that executes the step" **caused** the failure it warned about - a fresh
+  operator elsewhere measures 0 and drains an empty inbox. Replaced with a handoff boundary and a
+  stop-and-verify on a measured zero.
+- Step 3's "until a later drain confirms no loss" was a condition with no consumer - the exact defect
+  this document complains about, reproduced inside its own fix in the same commit. Step 4 now reads it.
+Also folded: the toxicity classification is a design input, not a security boundary (the human-approval
+gate at `agy-curate/SKILL.md:195-200` is); N13 belongs under all three dispositions, not just 2 and 3; the
+5-of-5 threshold needed a failing control; and the pre-step-2 review discount applies to every step, not
+only step 0.
+
+**Round 2's last finding was against round 2 itself, and no seat produced it** - see the vacuous-count
+note in "Conditions that apply to every step". A post-fold measurement found it. That is the standing
+point restated: a fix is unreviewed work, and the check that blesses a fix is unreviewed too.
+
+**Rejected in round 2:** a seat argued that keeping step 0 first "cannot logically be defensible". That is
+an argument for one side of a decision the artifact already surfaces to the owner, not a defect - and its
+premise overstates, since nobody has measured that any prior GREEN was truncated. Surfaced, not resolved,
+is the correct disposition. A second seat read disposition 2 as buying "absolutely nothing"; it buys the
+end of item 2, which the artifact already states.
+
+**Citation accuracy:** 12 of 12 numbered quote-checks across both rounds resolved exactly, including a
+deliberate no-such-line control (line 420 of a 388-line file), which the peer correctly reported as
+non-existent rather than inventing content for it. One misattribution: a quote genuinely present in this
+spec at `:342-343` was cited as `ROADMAP.md:342-343` - right text, wrong file. Every seat finding carried a
 matching quote. The quote-or-discarded rule continues to hold citation quality well above this project's
 recorded norm.
 
