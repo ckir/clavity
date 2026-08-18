@@ -143,8 +143,29 @@ decided.** Two independent readings reached the same conclusion, that 13b belong
   round and a truncated round are indistinguishable from outside. The line above scopes the exposure to
   "steps 4-9"; that scoping is forward-only and unargued.
 
-**What is NOT claimed:** that any specific prior GREEN was in fact truncated. Nobody has measured that.
-The claim is only that the sequence currently repairs the instrument after relying on it.
+**MEASURED 2026-08-18, at the owner's direction, rather than argued.** The question was whether any
+banked capstone GREEN actually shows truncation. Oracle: every discipline mandates a terminal verdict
+token, so a stored reply whose token is missing or not at the end is a truncated reply. The probe was run
+with a control proving it can report a truncation.
+
+- **Transport truncation: no evidence, and roughly 2x headroom.** The per-step Answer cap is
+  `BoundedView.cs:27` `AskMaxStepChars = 16_000` (total ask budget `:25` = 32,000). Across the surviving
+  stored corpus, **exactly one artifact exceeds 16,000 chars and it is a driver-authored brief, not a
+  reply.** The unambiguous stored peer replies run 5,370 and 11,744 chars, each carrying its terminal
+  token within ~300 chars of the end - i.e. complete. This review's own three rounds ran ~7,000-7,500
+  chars each with `AnswerTruncated: false`, every seat section present and every numbered question
+  answered, including two deliberate no-such-line controls.
+- **Self-truncation: NOT measurable from this corpus, and that is the honest limit.** A peer that
+  truncates itself and still emits a verdict token is indistinguishable from a complete reply, which is
+  precisely why 13b exists. The probe cannot answer this half.
+- **Coverage caveat, stated plainly:** most past replies were never stored - they lived in a conversation
+  and are gone. **The corpus is not the population.** "No truncation found" here means "none in what
+  survives", not "none occurred".
+
+**What this changes:** the transport half of the concern measures clean with real headroom, so the
+exposure is materially smaller than the argument above implies. The self-truncation half remains
+unquantified and unquantifiable retroactively. **What is NOT claimed, before or after this measurement:**
+that any specific prior GREEN was truncated.
 **The exposure is not limited to step 0.** Steps 2 and 6 both declare "nothing; ready now", so nothing in
 this document prevents step 6 - or any other step - from being reviewed before the instrument is repaired.
 **Every review conducted before step 2 lands carries the same discount**, and the numbering is not a
