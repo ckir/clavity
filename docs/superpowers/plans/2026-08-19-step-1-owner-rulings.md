@@ -106,7 +106,18 @@ Point at files, never at a pasted summary. Include:
   where the golden-header files already live.
 - **A stale-number correction the brief MUST carry:** §14g says "30 repo / 18 installed". **Re-measure
   before sending** — it was 0 repo / 71 installed on 2026-08-17 and moves every session. The entry's
-  conclusion holds and is stronger; only the figures are stale.
+  conclusion holds and is stronger; only the figures are stale. **Every other measurement in these plans
+  ships with its command, and this one was ordered without one:**
+
+  ```bash
+  REPO=agy-autotrain/knowledge/agy-observations.md
+  INST="$LOCALAPPDATA/Programs/agy-autotrain/plugins/agy-autotrain/knowledge/agy-observations.md"
+  echo "repo pending      : $(grep -c '^- \[' "$REPO" 2>/dev/null || echo 0)"
+  echo "installed pending : $(grep -c '^- \[' "$INST" 2>/dev/null || echo 0)"
+  ```
+
+  **The INSTALLED copy is canonical** — that is what §14g is about. A `0` from either is a
+  STOP-AND-VERIFY, not "nothing pending".
 
 Extra questions worth adding: whether §14f's ruling constrains §14g's architectural move or is independent
 of it; and whether moving the inbox out of the plugin tree changes who owns `core.md`, since both concern
@@ -403,8 +414,11 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push origin main
 ```
 
-**That push needs its own owner authorisation**, like every other. And note the `git add -f`:
-`docs/superpowers/*` is gitignored. **Leaving this edit uncommitted would end the plan with a dirty tree
+**That push needs its own owner authorisation**, like every other — **and if it is declined, leave the edit
+committed-but-unpushed and record that in the durable index**, noting that the spec now disagrees with the
+ruling until it lands. Do not revert it, and do not fold it into an unrelated later push. (Task 4 Step 1's
+gate carries the same branch; this one was missing it, which is the decline-branch class surviving in a
+sibling.) And note the `git add -f`: `docs/superpowers/*` is gitignored. **Leaving this edit uncommitted would end the plan with a dirty tree
 and a spec that disagrees with the ruling** — which is the stale-artifact defect this whole sequence keeps
 finding.
 

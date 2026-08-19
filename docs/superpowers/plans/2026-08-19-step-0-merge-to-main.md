@@ -420,6 +420,12 @@ prediction never checked is not a prediction.
 Each fix is its own commit with its own message. **Each push needs its own owner authorisation.** `main` is
 untouched throughout — this is why the route was chosen.
 
+**If the owner declines a fix push:** stop cleanly. The fix stays committed on the local branch — harmless,
+and it will go up whenever a push is authorised. Record in the durable index that a CI fix is
+committed-but-unpushed, with its SHA and the failing check it addresses, and note that the PR still shows
+red until it lands. **Do not revert the fix, and do not push it as part of some later operation** — that is
+how a commit reaches the remote without ever being authorised.
+
 - [ ] **Step 5: Bound the loop**
 
 **After the THIRD full cycle through this task on the same PR, stop and put it to the owner** — three
@@ -438,6 +444,20 @@ dismissing it prevents the measurement, not just the fix.
 check green, and the fix you just pushed has CI still running, so an operator reading linearly would arrive
 at a gate that cannot yet pass and be stranded there. **The loop is Task 5 → Task 6 → Task 5**, and only a
 green Task 5 routes onward to Task 7.
+
+🔴 **First confirm the NEW run exists, or the loop eats itself.** GitHub takes a few seconds to spawn a run
+after a push. `gh pr checks --watch` fired immediately can evaluate the PREVIOUS run — the red one you just
+fixed — report it complete, and send you straight back here to re-triage a failure that is already fixed.
+**That is an unbounded loop over a stale head**, and it is the same race, in the opposite direction, as the
+one round 3 found between the rulings push and the CI watch.
+
+```bash
+gh pr view --json headRefOid -q .headRefOid   # must equal the SHA you just pushed
+gh run list --branch feature/injected-context-governance --limit 3   --json headSha,status,name -q '.[] | "\(.status)  \(.headSha[0:7])  \(.name)"'
+```
+
+**Proceed to Task 5 only when a run is listed against the SHA you just pushed.** If none is, wait and
+re-run the command — do not start the watch against the old head.
 
 ---
 
