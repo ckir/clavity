@@ -58,6 +58,18 @@ left to interleave, which is why all three defects are gone rather than patched.
 **Convention for "Expected:" lines.** Anything in `backticks` or a code block is **literal** and should
 match exactly; the surrounding sentence is connective prose naming which outputs to look at.
 
+**Three standing rules that govern both plans in this pair.** They were written into the companion plan and
+apply equally here, so they are stated in both rather than in whichever one happened to earn them:
+
+- **Every measurement ships with its command.** Ordering a measurement and leaving the operator to invent
+  the invocation is how a step becomes unexecutable — and the command must be able to return BOTH answers,
+  not just the failing one.
+- **Read exit codes without a pipe.** `$?` after `| head` or `| tail` is the pipe's exit code, not the
+  command's. That mistake once made a control report success while the script was correctly failing.
+- **When a control's pass condition is reachable by more than one route, it proves nothing.** Ask what the
+  output would be if the bug WERE present; if it is the same output, the control is vacuous however
+  carefully it was built.
+
 ---
 
 ## Task 1: Pre-flight — verify the state this plan was written against
@@ -414,6 +426,18 @@ diagnosis rather than pushing a third.
 `"yq install failed: yq is not on PATH"` and `"yq version mismatch: wanted $ver, got '$got'"`. It has never
 executed. **Recorded so the prediction can be scored, not so it is assumed.** If it passes, say so — a
 prediction never checked is not a prediction.
+
+**And here is the command to score it, which the plan previously omitted.** Step 1's
+`gh run view <run-id> --log-failed` shows *only failed steps* — by construction it can never show you a
+`yq` step that PASSED, so it cannot answer this question in the case the prediction is wrong:
+
+```bash
+gh run view <run-id> --json jobs   -q '.jobs[] | .steps[] | select(.name | test("yq")) | "\(.conclusion)  \(.name)"'
+```
+
+Expected: one line per matching step, e.g. `success  Install yq (pinned)`. **Record the conclusion either
+way.** Ordering a measurement without a command that can return BOTH of its answers is the same defect
+class as a control that cannot fail.
 
 - [ ] **Step 4: Fix on the branch, push, let CI re-run**
 
