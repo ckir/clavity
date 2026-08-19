@@ -112,9 +112,15 @@ Point at files, never at a pasted summary. Include:
   ```bash
   REPO=agy-autotrain/knowledge/agy-observations.md
   INST="$LOCALAPPDATA/Programs/agy-autotrain/plugins/agy-autotrain/knowledge/agy-observations.md"
-  echo "repo pending      : $(grep -c '^- \[' "$REPO" 2>/dev/null || echo 0)"
-  echo "installed pending : $(grep -c '^- \[' "$INST" 2>/dev/null || echo 0)"
+  r=$(grep -c '^- \[' "$REPO" 2>/dev/null || true); echo "repo pending      : ${r:-0}"
+  i=$(grep -c '^- \[' "$INST" 2>/dev/null || true); echo "installed pending : ${i:-0}"
   ```
+
+  **The `|| true` is not decoration.** `grep -c` prints `0` **and exits non-zero** when there are no
+  matches, so the obvious `$(grep -c ... || echo 0)` emits `0` **twice** — precisely in the zero case this
+  measurement exists to detect. Measured: the first draft of this block did exactly that. Capturing to a
+  variable and defaulting with `${r:-0}` gives one value in all three cases — zero matches, matches, and a
+  missing file.
 
   **The INSTALLED copy is canonical** — that is what §14g is about. A `0` from either is a
   STOP-AND-VERIFY, not "nothing pending".

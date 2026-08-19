@@ -388,8 +388,14 @@ specified; the fixes cannot.
 
 ```bash
 gh run list --branch feature/injected-context-governance --limit 5
-gh run view <run-id> --log-failed
+RUN_ID=00000000        # replace with the databaseId of the failing run listed above
+gh run view "$RUN_ID" --log-failed
 ```
+
+**Assign the id to a variable; do not paste it inline as `<run-id>`.** In bash an unquoted `<` is input
+redirection, so `gh run view <run-id> ...` fails with `bash: run-id: No such file or directory` **before
+`gh` runs at all** — measured. An agentic executor copy-pasting the block would crash on a shell error
+that looks nothing like the CI failure it is triaging.
 
 - [ ] **Step 2: Reproduce locally before fixing**
 
@@ -432,8 +438,11 @@ prediction never checked is not a prediction.
 `yq` step that PASSED, so it cannot answer this question in the case the prediction is wrong:
 
 ```bash
-gh run view <run-id> --json jobs   -q '.jobs[] | .steps[] | select(.name | test("yq")) | "\(.conclusion)  \(.name)"'
+gh run view "$RUN_ID" --json jobs   -q '.jobs[] | .steps[] | select(.name | test("yq")) | "\(.conclusion)  \(.name)"'
 ```
+
+(`$RUN_ID` is the variable set in Step 1 — same reason: an inline `<run-id>` is parsed as a redirection
+and never reaches `gh`.)
 
 Expected: one line per matching step, e.g. `success  Install yq (pinned)`. **Record the conclusion either
 way.** Ordering a measurement without a command that can return BOTH of its answers is the same defect
