@@ -330,8 +330,25 @@ pricing it:
   caller is the driving agent reading the tool schema, and the consult-guard hook matches on the tool NAME
   without invoking it. So "existing callers keep working" is a smaller consideration than it sounds, in
   both directions.
-- **NOT yet proven, and it must be checked before this is relied on:** that this MCP SDK version emits an
-  optional parameter as non-required in the generated schema. **The wiring - the gate consuming the
+- ✅ **RESOLVED BY MEASUREMENT 2026-08-19 - an optional parameter IS emitted as non-required.** Probed by
+  building the exact proposed signature (`AgyAsk(AgyView view, string message, string? seam = null,
+  CancellationToken ct = default)`) and registering it through the SAME path the real server uses
+  (`AddMcpServer().WithTools<T>()`, `Program.cs:46-48`), then reading the generated `InputSchema`:
+
+  ```json
+  "properties": { "message": {...}, "seam": { "type": ["string","null"], "default": null } },
+  "required": [ "message" ]
+  ```
+
+  `seam` is present and **absent from `required`**; the DI `AgyView` parameter and the `CancellationToken`
+  are both excluded. **The contract change is additive and backward-compatible.**
+
+  **Measured on BOTH `ModelContextProtocol` 1.4.0 (the pinned version) and 2.2.0 (current) - the emitted
+  schemas are BYTE-IDENTICAL.** This was checked because the repo pins 1.4.0 while 2.2.0 is current, and
+  2.0.0 shipped breaking changes to tool schema handling. **Those breaking changes do not touch this:** they
+  concern requiring `Tool.inputSchema` during DESERIALIZATION and emitting non-object STRUCTURED OUTPUT,
+  neither of which affects input-schema generation for an optional parameter. An earlier note here inferred
+  from the 2.0.0 release-notes headline that the answer might differ by version; measurement refuted that. **The wiring - the gate consuming the
   declared seam, the skills passing it, and N13's `PANEL-SEATS:` teaching - is the real work, not the
   signature.**
 
@@ -521,8 +538,8 @@ recorded norm.
    adverse branch for the other three is not written (see "Conditions that apply to every step").
    **Not open:** the step-2-before-step-0 ordering, ruled 2026-08-18 after measurement - step 0 stays first.
 2. The policy gate's two paused owner items.
-3. Whether the MCP SDK emits an optional parameter as non-required (step 8, named above) - and, prior
-   to that, WHICH of step 8's three dispositions the owner picks, since the SDK question only matters
-   under disposition 2.
+3. ~~Whether the MCP SDK emits an optional parameter as non-required~~ - ✅ **RESOLVED 2026-08-19 by
+   measurement: it does, identically on 1.4.0 and 2.2.0. See step 8.** What remains open is only WHICH of
+   step 8's three dispositions the owner picks; the SDK question no longer gates anything.
 4. Section 19 executes as part of step 5 rather than standalone; if step 5 is dropped, 19 returns to
    deferred with its original trigger intact.
