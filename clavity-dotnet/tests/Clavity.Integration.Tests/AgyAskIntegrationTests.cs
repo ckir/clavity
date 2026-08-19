@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Clavity.Ls;
 using Clavity.Ls.Proto;
@@ -1294,5 +1295,159 @@ public class AgyAskIntegrationTests
         {
             Directory.Delete(dir, true);
         }
+    }
+
+    [Fact]
+    public async Task AskAsync_flags_TerminalTokenMissing_when_the_discipline_named_a_token_and_the_reply_lacks_it()
+    {
+        // The end-to-end half of the spec's demand. The unit test proves the oracle; this proves the WIRING
+        // - that AskAsync actually consults it and surfaces the verdict on the reply.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a full review with no terminal token", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var reply = await view.AskAsync("review it", expectTerminal: "[VERDICT:");
+            Assert.True(reply.TerminalTokenMissing);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_does_NOT_flag_when_the_reply_ends_with_the_expected_token()
+    {
+        // The passing control. Without it the row above is satisfied by a check that flags EVERYTHING.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "findings here\n\n[VERDICT: ALIGNED]", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var reply = await view.AskAsync("review it", expectTerminal: "[VERDICT:");
+            Assert.False(reply.TerminalTokenMissing);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_ARCHIVES_the_reply_when_a_header_dir_is_configured()
+    {
+        // CLOSES THE PLAN'S OWN M5 GAP. The plan listed "delete the ReplyArchive.Write call in
+        // Evaluate13b" as a mutant it expected to SURVIVE - measured, it did: nothing asserted that
+        // AgyView archives anything, only that ReplyArchive is capable of it. The whole point of 13b is
+        // that a review dying on the wire is still on disk, so an unwired archive is the failure itself.
+        // The plan offered a debt entry as the alternative; a row is strictly better.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a review worth keeping", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderDir = dir });
+            var reply = await view.AskAsync("review it");
+
+            var archive = Path.Combine(dir, "replies");
+            var written = Directory.GetFiles(archive, "*.md");
+            Assert.Single(written);
+            Assert.Contains("a review worth keeping", File.ReadAllText(written[0]));
+            Assert.Equal(new[] { Encoding.UTF8.GetByteCount(reply.Answer!) },
+                         ReplyArchive.ReadRecentSizes(archive).ToArray());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_reply_is_never_part_of_its_OWN_size_baseline()
+    {
+        // MUTATION-AUDIT ROW. Moving the archive write ABOVE the measurement left every other row green,
+        // so "Archive AFTER measuring, so this reply is never part of its own baseline" was a comment
+        // with no oracle. It is not cosmetic: with only two prior samples there is deliberately NO
+        // baseline yet, and self-archiving first manufactures the third sample out of the very reply
+        // being judged - so a short reply warns on a history too thin to justify any warning. That is
+        // the cry-wolf failure ReplySizeHistory.MinimumSamples exists to prevent.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "[VERDICT: ALIGNED]", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            // Exactly two prior replies: one short of MinimumSamples.
+            var archive = Path.Combine(dir, "replies");
+            var t0 = new DateTime(2026, 8, 19, 9, 0, 0, DateTimeKind.Utc);
+            ReplyArchive.Write(archive, "c", new string('a', 15000), t0);
+            ReplyArchive.Write(archive, "c", new string('a', 15000), t0.AddSeconds(1));
+
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderDir = dir });
+            var reply = await view.AskAsync("review it");
+
+            Assert.False(reply.SizeAnomaly);
+            Assert.Equal(3, ReplyArchive.ReadRecentSizes(archive).Count);   // it WAS archived, just after
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_flags_EchoMissing_when_the_reply_never_quotes_the_artifact_s_last_line()
+    {
+        // The plan's draft of Evaluate13b COMPUTED echoMissing and then returned a record carrying only
+        // the other two flags - the echo would have shipped permanently false. Deleting the assignment
+        // again is invisible to every other row, so without this pair the fix has no oracle.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "Review complete.\n\n[VERDICT: ALIGNED]", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var reply = await view.AskAsync("review it", expectEcho: "the last line of the artifact");
+            Assert.True(reply.EchoMissing);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_does_NOT_flag_EchoMissing_when_the_reply_quotes_that_line()
+    {
+        // The passing control: without it the row above is satisfied by a check that flags everything.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "findings\n\nECHO: the last line of the artifact\n\n[VERDICT: ALIGNED]",
+                                 TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var reply = await view.AskAsync("review it", expectEcho: "the last line of the artifact");
+            Assert.False(reply.EchoMissing);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_with_NO_expectation_never_flags()
+    {
+        // Every non-discipline ask goes through this path. If it flagged, agy_ask would report truncation
+        // on ordinary questions forever.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "just an answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var reply = await view.AskAsync("hello");
+            Assert.False(reply.TerminalTokenMissing);
+            Assert.False(reply.EchoMissing);
+            Assert.False(reply.SizeAnomaly);
+        }
+        finally { Directory.Delete(dir, true); }
     }
 }

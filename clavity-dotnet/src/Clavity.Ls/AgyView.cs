@@ -1,3 +1,4 @@
+using System.Text;
 using Clavity.Ls.Proto;
 using Grpc.Core;
 
@@ -173,6 +174,8 @@ public sealed class AgyView
         string message,
         TimeSpan? timeout = null,
         IProgress<AgyWaitProgress>? progress = null,
+        string? expectTerminal = null,
+        string? expectEcho = null,
         CancellationToken cancellationToken = default)
     {
         var (client, conversationId) = await ConnectAndResolveAsync(cancellationToken);
@@ -206,13 +209,49 @@ public sealed class AgyView
 
                 var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
                 var delta = full.Steps.Skip(before).ToList();
-                return BoundedView.ProjectAskReply(full.CascadeId, delta);
+                var projected = BoundedView.ProjectAskReply(full.CascadeId, delta);
+                return Evaluate13b(projected, expectTerminal, expectEcho);
             }
             finally
             {
                 _inFlight.TryRemove(conversationId, out _);
             }
         }
+    }
+
+    /// <summary>13b: capture the reply, then judge it three ways - structurally (did it end with the token
+    /// its discipline mandates?), semantically (did it quote the artifact's last line near its verdict?)
+    /// and heuristically (is it anomalously small for THIS peer?).
+    ///
+    /// All are computed even when the archive is unavailable: the token and echo checks need no history,
+    /// and a missing archive simply yields no baseline, so the size warning stays false rather than firing
+    /// on an empty one.</summary>
+    private AskReply Evaluate13b(AskReply reply, string? expectTerminal, string? expectEcho)
+    {
+        var tokenMissing = !TerminalToken.IsSatisfied(reply.Answer, expectTerminal);
+        var echoMissing = !SemanticEcho.IsSatisfied(reply.Answer, expectEcho);
+
+        var sizeAnomaly = false;
+        if (_options.GoldenHeaderDir is { } dir)
+        {
+            var archive = Path.Combine(dir, "replies");
+            var recent = ReplyArchive.ReadRecentSizes(archive);
+            var bytes = reply.Answer is null ? 0 : Encoding.UTF8.GetByteCount(reply.Answer);
+            sizeAnomaly = ReplySizeHistory.IsAnomalouslySmall(recent, bytes);
+            // Archive AFTER measuring, so this reply is never part of its own baseline.
+            ReplyArchive.Write(archive, reply.CascadeId, reply.Answer, DateTime.UtcNow);
+        }
+
+        // EchoMissing IS assigned here. The plan's draft computed it and then returned a record that
+        // carried only the other two - the exact "detector with no consumer" shape Task 5b exists to
+        // stop, one layer earlier. A flag that is computed and dropped is worse than one never computed:
+        // it reads as covered.
+        return reply with
+        {
+            TerminalTokenMissing = tokenMissing,
+            EchoMissing = echoMissing,
+            SizeAnomaly = sizeAnomaly,
+        };
     }
 
     /// <summary>Wait for agy to go idle, but do NOT abandon a wait while agy is still making progress. Loops bounded

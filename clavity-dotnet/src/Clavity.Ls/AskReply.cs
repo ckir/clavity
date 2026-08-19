@@ -7,7 +7,16 @@ public sealed record AskReply(
     string? Answer,
     IReadOnlyList<ActivityItem> Activity,
     bool AnswerTruncated,
-    bool ActivityTruncated);
+    bool ActivityTruncated,
+    // 13b. All three default to false so every existing construction site and test is unaffected.
+    // TerminalTokenMissing is a DETERMINISTIC verdict: the discipline named a token and the reply does
+    // not end with it. SizeAnomaly is a HEURISTIC WARNING and must never be treated as proof.
+    bool TerminalTokenMissing = false,
+    // The peer did not quote the artifact's last line near its verdict: it never reached the end, or
+    // never read the artifact at all. Deterministic like TerminalTokenMissing, and strictly stronger -
+    // it is the only flag that catches a reply whose token is present but whose body was never written.
+    bool EchoMissing = false,
+    bool SizeAnomaly = false);
 
 /// <summary>One summarized step of the reply delta. Summary = bounded prose for assistant/user steps, else null.</summary>
 public sealed record ActivityItem(int Kind, string Label, string? Summary);

@@ -22,7 +22,9 @@ public class McpTools
 
     [McpServerTool(Name = "agy_ask"), Description("Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and posts a visible message in the user's agy.")]
     public static async Task<CallToolResult> AgyAsk(
-        AgyView view, string message, IProgress<ProgressNotificationValue> progress, CancellationToken cancellationToken = default)
+        AgyView view, string message, IProgress<ProgressNotificationValue> progress,
+        string? discipline = null, string? expectEcho = null,
+        CancellationToken cancellationToken = default)
     {
         // `progress` is SDK-INJECTED and does NOT appear in the tool's input schema — verified against the generated
         // InputSchema, which stays {"properties":{"message":...},"required":["message"]}. So this costs no contract
@@ -37,7 +39,10 @@ public class McpTools
             Progress = p.Window,
             Message = $"agy working — {p.NewSteps} new step(s), {p.TotalSteps} total, {p.Elapsed.TotalSeconds:F0}s elapsed",
         }));
-        var json = await RunAsync(() => view.AskAsync(message, progress: relay, cancellationToken: cancellationToken));
+        // THE INJECTION POINT. The caller names its discipline; the driver supplies the token. A caller
+        // cannot mistype "[VERDICT:" into a silent opt-out, because it never types it.
+        var expectTerminal = DisciplineContract.TerminalTokenFor(discipline);
+        var json = await RunAsync(() => view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, expectEcho: expectEcho, cancellationToken: cancellationToken));
         var blocks = new List<ContentBlock> { new TextContentBlock { Text = json } };
         var guidance = view.TryTakeGuidanceBlock();
         if (guidance is not null) blocks.Add(new TextContentBlock { Text = guidance });

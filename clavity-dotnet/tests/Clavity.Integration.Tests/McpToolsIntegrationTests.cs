@@ -232,10 +232,47 @@ public class McpToolsIntegrationTests
         using var schema = JsonDocument.Parse(tool.ProtocolTool.InputSchema.GetRawText());
         var root = schema.RootElement;
 
+        // ASSERT WHAT THE COMMENT ABOVE ACTUALLY CLAIMS: the three INJECTED parameters never surface as
+        // model-supplied inputs. The old form of this row froze the property list to exactly ["message"],
+        // which pins something stronger and less meaningful - it reds the moment any deliberate optional
+        // input is added (13b added two), while saying nothing extra about the injected three.
         var props = root.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToArray();
-        Assert.Equal(new[] { "message" }, props);
+        Assert.DoesNotContain("view", props);
+        Assert.DoesNotContain("progress", props);
+        Assert.DoesNotContain("cancellationToken", props);
 
+        // BACKWARD COMPATIBILITY IS THE `required` SET, NOT THE PROPERTY SET. An existing caller sending
+        // only {"message": ...} stays valid exactly as long as nothing else is required.
         var required = root.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToArray();
         Assert.Equal(new[] { "message" }, required);
+    }
+
+    [Fact]
+    public void AgyAsk_13b_parameters_are_present_and_OPTIONAL_in_the_generated_schema()
+    {
+        // 13b adds two parameters. If either landed in `required`, every existing agy_ask caller would
+        // break - and it would break silently at the protocol layer, not in any C# test. Pin optionality,
+        // not just presence.
+        //
+        // The parameter is `discipline`, NOT `expectTerminal`: the owner ruled that the driver owns the
+        // token literals and the caller names only its discipline (DisciplineContract). The plan's own
+        // draft of this row still named expectTerminal and would have pinned a parameter that no longer
+        // exists.
+        var services = new ServiceCollection();
+        services.AddSingleton(new AgyView(new AgyViewOptions { CliLogPath = Path.Combine(Path.GetTempPath(), "schema-pin-13b-unused.log") }));
+        services.AddMcpServer().WithTools<McpTools>();
+        using var sp = services.BuildServiceProvider();
+
+        var tool = sp.GetServices<McpServerTool>().Single(t => t.ProtocolTool.Name == "agy_ask");
+        using var schema = JsonDocument.Parse(tool.ProtocolTool.InputSchema.GetRawText());
+        var root = schema.RootElement;
+
+        var props = root.GetProperty("properties");
+        Assert.True(props.TryGetProperty("discipline", out _));
+        Assert.True(props.TryGetProperty("expectEcho", out _));
+
+        var required = root.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToArray();
+        Assert.DoesNotContain("discipline", required);
+        Assert.DoesNotContain("expectEcho", required);
     }
 }
