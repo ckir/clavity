@@ -40,13 +40,30 @@ function Invoke-BashHook {
     )
     $bash = Get-GitBashOrThrow
     $hookPosix = ($HookPath -replace '\\','/')
+    # ABSENCE AND EMPTINESS ARE DIFFERENT STATES, and restoring them is not the same operation.
+    # Conflating them leaked for real: `[Environment]::SetEnvironmentVariable($k, $null)` does NOT
+    # delete the key in PowerShell, it leaves it PRESENT WITH AN EMPTY VALUE. Measured, all four forms:
+    #     SetEnvironmentVariable(n, $null)               -> present=True  value=[]
+    #     SetEnvironmentVariable(n, '')                  -> present=True  value=[]
+    #     SetEnvironmentVariable(n, [NullString]::Value) -> present=False
+    #     Remove-Item Env:n                              -> present=False
+    # So restoring a previously-ABSENT variable with the saved $null re-created it as empty, and every
+    # later child process in the same Pester run inherited it. That is not cosmetic on this platform:
+    # MSYS/Git Bash converts an EMPTY TMPDIR into the bogus relative path `<cwd>/=` instead of passing
+    # it through empty, so `${TMPDIR:-/tmp}` never defaults. A suite at position 5 overriding TMPDIR
+    # therefore poisoned every bash child that ran after it - which is why agy-shield-lib.Tests.ps1
+    # passed 39/39 in ISOLATION and failed 5 rows in the full sweep and in CI.
     $saved = @{}
-    foreach ($k in $Env.Keys) {
-        $saved[$k] = [Environment]::GetEnvironmentVariable($k)
-        [Environment]::SetEnvironmentVariable($k, $Env[$k])
-    }
+    $wasAbsent = @{}
     $errFile = [IO.Path]::GetTempFileName()
     try {
+        # Inside the try on purpose: this used to run BEFORE it, so anything that threw between the
+        # mutation and the try left the override installed permanently, with no finally to undo it.
+        foreach ($k in $Env.Keys) {
+            $wasAbsent[$k] = -not [Environment]::GetEnvironmentVariables().Contains($k)
+            $saved[$k] = [Environment]::GetEnvironmentVariable($k)
+            [Environment]::SetEnvironmentVariable($k, $Env[$k])
+        }
         $out = ($Payload | & $bash $hookPosix @Arguments 2>$errFile | Out-String)
         $code = $LASTEXITCODE
         $err = (Get-Content -Raw -LiteralPath $errFile -ErrorAction SilentlyContinue)
@@ -54,6 +71,14 @@ function Invoke-BashHook {
         [pscustomobject]@{ StdOut = $out.Trim(); StdErr = $err.Trim(); ExitCode = $code }
     } finally {
         Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
-        foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
+        foreach ($k in $saved.Keys) {
+            if ($wasAbsent[$k]) {
+                # [NullString]::Value is the only form that DELETES - see the note above.
+                [Environment]::SetEnvironmentVariable($k, [NullString]::Value)
+            }
+            else {
+                [Environment]::SetEnvironmentVariable($k, $saved[$k])
+            }
+        }
     }
 }
