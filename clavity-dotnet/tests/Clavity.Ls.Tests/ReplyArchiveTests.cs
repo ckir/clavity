@@ -119,6 +119,48 @@ public class ReplyArchiveTests : IDisposable
     }
 
     [Fact]
+    public void A_concurrent_prune_does_not_make_this_write_fail()
+    {
+        // CAPSTONE R3 FINDING (State Corruptor) - a defect ROUND 1'S OWN FIX introduced. The atomic prune
+        // used a single hardcoded "index.tmp", so two asks pruning at once collide: the loser takes an
+        // IOException, swallows it, returns null, and the caller then reports "the size baseline will not
+        // advance" - a FALSE alarm, since that ask's row was already appended. A held-open temp file
+        // reproduces the collision deterministically, with no threads.
+        var t0 = new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc);
+        for (var i = 1; i <= ReplyArchive.MaxIndexRows; i++)
+            ReplyArchive.Write(_dir, "c", new string('a', i), t0.AddSeconds(i));
+
+        var contended = Path.Combine(_dir, ReplyArchive.SizeIndexFileName + ".tmp");
+        using (var _ = new FileStream(contended, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            // The next write must prune (the index is at the cap) while that name is locked.
+            var path = ReplyArchive.Write(_dir, "c", new string('a', 500), t0.AddSeconds(999));
+            Assert.NotNull(path);
+        }
+    }
+
+    [Fact]
+    public void The_pruner_does_not_delete_a_LOOKALIKE_extension()
+    {
+        // CAPSTONE R3 FINDING (Dependency Cynic), verified against the documented .NET behaviour: on
+        // Windows Directory.GetFiles matches 8.3 short names too, so the pattern "*.md" also matches
+        // ".mdx" - the docs give exactly this example ("*.xls" returning "book.xlsx"). A backup named
+        // 20260820-120000-notes.mdx would therefore be deleted on Windows and spared on Linux.
+        Directory.CreateDirectory(_dir);
+        // THE NAME MUST SORT OLDEST, or this row cannot fail for the reason it claims: only the OLDEST
+        // files past the cap are deleted. My first attempt used a 2026-08-20 stamp, which sorts NEWEST
+        // against the 2026-08-19 fixtures below and so survived no matter what the glob did.
+        var lookalike = Path.Combine(_dir, "20260101-000000-notes.mdx");
+        File.WriteAllText(lookalike, "a backup");
+
+        var t0 = new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc);
+        for (var i = 1; i <= ReplyArchive.MaxIndexRows + 5; i++)
+            ReplyArchive.Write(_dir, "c", new string('a', i), t0.AddSeconds(i));
+
+        Assert.True(File.Exists(lookalike), "the pruner deleted a file whose extension only LOOKS like .md");
+    }
+
+    [Fact]
     public void A_hostile_cascade_id_cannot_write_OUTSIDE_the_archive_directory()
     {
         // MUTATION-AUDIT ROW, not in the plan. Dropping Sanitise entirely left all five planned rows

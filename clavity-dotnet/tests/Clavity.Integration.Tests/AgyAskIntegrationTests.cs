@@ -1648,6 +1648,49 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task A_THROWING_diagnostics_sink_cannot_fail_the_ask()
+    {
+        // CAPSTONE R3 FINDING (Cascade Analyst) - a defect ROUND 2'S OWN FIX introduced. Round 2 added a
+        // diagnostics line when the archive write fails, and put it OUTSIDE any try/catch. On a full disk
+        // both fail together: the archive write returns null, the sink throws, and the exception escapes
+        // AskAsync - so an archive failure fails the ask, which is the one thing this whole class is
+        // forbidden to do. Adding an observation must never be able to break the thing observed.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a reply", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "replies"), "not a directory");   // forces the write to fail
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                GoldenHeaderDir = dir,
+                Diagnostics = new ThrowingWriter(),
+            });
+            var reply = await view.AskAsync("hello");
+            Assert.NotNull(reply);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>A sink that fails only on the 13b archive line.
+    ///
+    /// SCOPED DELIBERATELY. A sink that throws on EVERYTHING also trips AgyView's pre-existing model
+    /// -resolution diagnostic (AgyView.cs:611), which is unguarded too - a real, PRE-EXISTING exposure
+    /// that is recorded for triage rather than silently widened into this branch. This row proves the
+    /// line 13b ADDED cannot fail an ask; it does not claim the whole sink is safe.</summary>
+    private sealed class ThrowingWriter : TextWriter
+    {
+        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+        public override void WriteLine(string? value)
+        {
+            if (value is not null && value.Contains("13b", StringComparison.Ordinal))
+                throw new IOException("There is not enough space on the disk.");
+        }
+    }
+
+    [Fact]
     public async Task AgyAsk_appends_UNCHECKED_when_no_discipline_is_named()
     {
         // The loud-omission block gets its OWN oracle rather than being observed incidentally by an

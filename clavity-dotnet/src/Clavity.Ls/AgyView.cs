@@ -45,6 +45,10 @@ public sealed class AgyViewOptions
 public sealed class AgyView
 {
     private readonly AgyViewOptions _options;
+
+    /// <summary>Latches the 13b archive-failure diagnostic to once per view, so a persistent failure
+    /// (a full disk) cannot flood the operator's sink on every ask.</summary>
+    private bool _archiveFailureReported;
     private readonly IListeningPorts _listening;
     private readonly IModalGuard _modalGuard;
 
@@ -246,12 +250,28 @@ public sealed class AgyView
             // freezes the size baseline while SIZE WARNINGs keep firing against a stale norm, with
             // nothing anywhere saying why. The swallow stays; the silence does not.
             // (Capstone R2, Blindspot Auditor.)
-            if (ReplyArchive.Write(archive, reply.CascadeId, reply.Answer, DateTime.UtcNow) is null)
+            if (ReplyArchive.Write(archive, reply.CascadeId, reply.Answer, DateTime.UtcNow) is null
+                && !_archiveFailureReported)
             {
-                _options.Diagnostics.WriteLine(
-                    $"clavity: 13b reply archive write FAILED at {archive} - the size baseline will not "
-                    + "advance and any size warning is measured against a stale norm. The ask itself is "
-                    + "unaffected.");
+                // ONCE PER VIEW, AND IT MAY NOT THROW. Round 2 added this line unguarded and unbounded,
+                // which broke the one rule this whole path has: an archive failure must never fail an ask.
+                // On a full disk BOTH fail together - the write returns null and the sink throws - and the
+                // exception escaped AskAsync. Adding an observation must never be able to break the thing
+                // being observed. The once-per-view latch also stops a persistent failure from pumping
+                // this into the sink on every single ask. (Capstone R3, Cascade Analyst - a defect round
+                // 2's own diagnostics fix introduced.)
+                _archiveFailureReported = true;
+                try
+                {
+                    _options.Diagnostics.WriteLine(
+                        $"clavity: 13b reply archive write FAILED at {archive} - the size baseline will not "
+                        + "advance and any size warning is measured against a stale norm. The ask itself is "
+                        + "unaffected. This is reported once per session.");
+                }
+                catch
+                {
+                    // A sink that cannot be written to is not a reason to fail the ask.
+                }
             }
         }
 

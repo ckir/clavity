@@ -44,9 +44,24 @@ public static class ReplyArchive
             var rows = File.ReadAllLines(index);
             if (rows.Length > MaxIndexRows)
             {
-                var tmp = index + ".tmp";
-                File.WriteAllLines(tmp, rows[^MaxIndexRows..], new UTF8Encoding(false));
-                File.Move(tmp, index, overwrite: true);
+                // A UNIQUE temp name per write. A single hardcoded "index.tmp" turns two concurrent asks
+                // into a collision: the loser takes an IOException, the swallow converts it to null, and
+                // the caller then announces that the size baseline will not advance - a FALSE alarm, since
+                // that ask's row was already appended and the winner is pruning it. A deceptive
+                // diagnostic is worse than none. (Capstone R3, State Corruptor - a defect round 1's own
+                // atomic-prune fix introduced.)
+                var tmp = index + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    File.WriteAllLines(tmp, rows[^MaxIndexRows..], new UTF8Encoding(false));
+                    File.Move(tmp, index, overwrite: true);
+                }
+                finally
+                {
+                    // Never leave a temp behind if the move failed - the residue would accumulate exactly
+                    // like the .md files did.
+                    try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+                }
             }
 
             PruneReplyFiles(dir);
