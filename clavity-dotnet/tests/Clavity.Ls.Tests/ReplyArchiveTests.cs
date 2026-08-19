@@ -1,0 +1,99 @@
+using System;
+using System.IO;
+using System.Linq;
+using Clavity.Ls;
+using Xunit;
+
+namespace Clavity.Ls.Tests;
+
+public class ReplyArchiveTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ra-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
+    }
+
+    [Fact]
+    public void Write_persists_the_answer_and_returns_its_path()
+    {
+        var path = ReplyArchive.Write(_dir, "conv-1", "the full review text", new DateTime(2026, 8, 19, 10, 30, 0, DateTimeKind.Utc));
+        Assert.True(File.Exists(path));
+        Assert.Contains("the full review text", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Write_appends_one_size_row_per_reply_and_ReadRecentSizes_returns_them_in_order()
+    {
+        ReplyArchive.Write(_dir, "c", new string('a', 100), new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc));
+        ReplyArchive.Write(_dir, "c", new string('b', 200), new DateTime(2026, 8, 19, 10, 1, 0, DateTimeKind.Utc));
+        Assert.Equal(new[] { 100, 200 }, ReplyArchive.ReadRecentSizes(_dir).ToArray());
+    }
+
+    [Fact]
+    public void ReadRecentSizes_on_a_missing_directory_returns_EMPTY_not_a_throw()
+    {
+        // A fresh install has no archive. This must be a legitimate empty state, never a crash on the
+        // first consult - and never a phantom baseline either.
+        Assert.Empty(ReplyArchive.ReadRecentSizes(Path.Combine(_dir, "does-not-exist")));
+    }
+
+    [Fact]
+    public void A_corrupt_size_row_is_SKIPPED_not_fatal()
+    {
+        // The archive is observational. A hand-edited or torn row must never take down an ask.
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, ReplyArchive.SizeIndexFileName), "100\nnot-a-number\n250\n");
+        Assert.Equal(new[] { 100, 250 }, ReplyArchive.ReadRecentSizes(_dir).ToArray());
+    }
+
+    [Fact]
+    public void The_size_index_is_PRUNED_ON_WRITE_to_MaxIndexRows()
+    {
+        // MUTATION-AUDIT ROW, not in the plan. Deleting the prune block left all five planned rows GREEN,
+        // so the AGY-AFTER panel's own accepted fix - the one that stops every ask doing an O(N) read
+        // that grows forever with age - shipped with nothing guarding it. A fix nobody tests is a fix
+        // the next refactor deletes.
+        var t0 = new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc);
+        for (var i = 1; i <= ReplyArchive.MaxIndexRows + 5; i++)
+            ReplyArchive.Write(_dir, "c", new string('a', i), t0.AddSeconds(i));
+
+        var sizes = ReplyArchive.ReadRecentSizes(_dir);
+        Assert.Equal(ReplyArchive.MaxIndexRows, sizes.Count);
+        Assert.Equal(6, sizes[0]);                                  // the oldest five were dropped
+        Assert.Equal(ReplyArchive.MaxIndexRows + 5, sizes[^1]);      // the newest is still there
+    }
+
+    [Fact]
+    public void A_hostile_cascade_id_cannot_write_OUTSIDE_the_archive_directory()
+    {
+        // MUTATION-AUDIT ROW, not in the plan. Dropping Sanitise entirely left all five planned rows
+        // GREEN. The cascade id reaches the filename, so a traversal sequence in it would place the
+        // written file outside the archive - a Boundary Smuggler defect with no oracle.
+        //
+        // THE ID MATTERS. A leading "../.." does NOT escape here and would make this row a control that
+        // passes for the wrong reason: the id is always prefixed with the timestamp, so the first segment
+        // is "20260819-100000-.." - a literal name, and Windows trims its trailing dots, leaving it
+        // harmless. Measured. An id with its OWN separator first ("a/../../evil") produces a real ".."
+        // segment and genuinely escapes, which is what this row pins.
+        var path = ReplyArchive.Write(_dir, "a/../../evil", "text", new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc));
+        Assert.NotNull(path);
+        Assert.StartsWith(Path.GetFullPath(_dir), Path.GetFullPath(path!), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Write_NEVER_throws_when_the_directory_cannot_be_created()
+    {
+        // Capture is observational: a broken archive must not convert a working ask into a failure.
+        // A regular FILE where the directory must go makes creation fail deterministically (ENOTDIR).
+        var blocker = Path.Combine(Path.GetTempPath(), "ra-block-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(blocker, "x");
+        try
+        {
+            var path = ReplyArchive.Write(Path.Combine(blocker, "nested"), "c", "text", DateTime.UtcNow);
+            Assert.Null(path);
+        }
+        finally { File.Delete(blocker); }
+    }
+}
