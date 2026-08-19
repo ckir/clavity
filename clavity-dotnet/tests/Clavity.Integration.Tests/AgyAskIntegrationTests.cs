@@ -49,6 +49,11 @@ public class AgyAskIntegrationTests
         // whether a catalog was supplied — to drive the catalog-unreachable warn-and-proceed path for a conversation
         // that already has a resolvable trajectory model.
         private readonly bool _throwCatalogUnavailable;
+        // Delay applied to PROBE trajectory fetches (not the pre-send one). The limit label is decided AFTER
+        // the probe returns, so this widens the window in which the budget can expire while the server - not
+        // our own window timer - is what ended the wait. Without it that case cannot be constructed: the
+        // clamped window always wins the race, which is exactly what an earlier probe run measured.
+        private readonly TimeSpan _probeDelay;
         // Gap-1 (idle-wait caller-cancel): signalled the instant a "never idle this window" WaitForConversationFullyIdle
         // call is genuinely BLOCKED server-side, so a test can cancel the CALLER token only once it is certain the
         // client is truly parked inside that RPC — never racing a fixed delay against cold gRPC-channel setup time.
@@ -58,7 +63,8 @@ public class AgyAskIntegrationTests
         public FakeAskLs(
             string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial,
             FetchAvailableModelsResponse? catalog = null, IReadOnlyList<WaitStep>? waitPlan = null,
-            bool throwOnProbeTrajectory = false, bool throwCatalogUnavailable = false)
+            bool throwOnProbeTrajectory = false, bool throwCatalogUnavailable = false,
+            TimeSpan probeDelay = default)
         {
             _cascadeId = cascadeId;
             _replyText = replyText;
@@ -68,27 +74,30 @@ public class AgyAskIntegrationTests
             _waitPlan = waitPlan;
             _throwOnProbeTrajectory = throwOnProbeTrajectory;
             _throwCatalogUnavailable = throwCatalogUnavailable;
+            _probeDelay = probeDelay;
         }
 
         public string? LastSentText { get; private set; }
         public int? LastSentModel { get; private set; }
 
-        public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
+        public override async Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
             GetCascadeTrajectoryRequest request, ServerCallContext context)
         {
             // The 1st call is AskAsync's pre-send before-trajectory; later calls are per-window progress probes.
             var n = Interlocked.Increment(ref _trajectoryCalls);
             if (_throwOnProbeTrajectory && n > 1)
                 throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "probe dead"));
+            if (_probeDelay > TimeSpan.Zero && n > 1)
+                await Task.Delay(_probeDelay, context.CancellationToken);
             lock (_gate)
             {
                 var traj = new CascadeTrajectory { CascadeId = _cascadeId };
                 traj.Steps.AddRange(_steps);
-                return Task.FromResult(new GetCascadeTrajectoryResponse
+                return new GetCascadeTrajectoryResponse
                 {
                     Trajectory = traj,
                     NumTotalSteps = (uint)_steps.Count,
-                });
+                };
             }
         }
 
@@ -821,6 +830,52 @@ public class AgyAskIntegrationTests
             var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("server quits early"));
             Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
             Assert.NotNull(ex.Diagnostic);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_absolute_max_when_the_budget_is_GONE_even_though_the_server_ended_the_window()
+    {
+        // The case the clamp-and-elapsed rule gets wrong on its own. Window 2 IS budget-clamped, the SERVER
+        // ends it early (so windowElapsed is false), and by the time the label is decided the budget has
+        // nonetheless run out. Telling the operator "stall" here sends them to raise CLAVITY_AGY_IDLE_STALL_
+        // SECONDS when the budget is the thing that is exhausted and only CLAVITY_AGY_IDLE_MAX_SECONDS can
+        // help - the same mislabel, one case over.
+        //
+        // The 300ms probe delay is what makes this constructible at all. The label is decided AFTER the probe
+        // returns, so a slow probe is what lets the budget expire while the server, not our window timer,
+        // ended the wait. An earlier attempt without it measured limit=absolute_max for the wrong reason: the
+        // clamped window won the race and windowElapsed was true, so the branch under test never ran.
+        //
+        // Arithmetic, budget 1000ms / stall window 500ms / probe delay 300ms:
+        //   window 1  waits 500 (not clamped: remaining 1000 > 500), progresses, probe 300 -> elapsed ~800
+        //   window 2  remaining 200 <= 500 -> CLAMPED; server returns its own timeout at once (elapsed ~800),
+        //             probe 300 -> elapsed ~1100 >= 1000. Budget gone, windowElapsed false.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, ServerTimesOut: true),
+        };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan,
+                                 probeDelay: TimeSpan.FromMilliseconds(300));
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(500),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1000),
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("budget gone"));
+            // Assert the PRECONDITION too, so this test cannot pass for the wrong reason: if the budget were
+            // not actually exhausted at the decision, absolute_max would be the wrong answer and this would be
+            // pinning a bug rather than a fix.
+            Assert.True(ex.Report.Elapsed >= TimeSpan.FromMilliseconds(1000),
+                $"precondition: the budget must really be gone, was {ex.Report.Elapsed.TotalMilliseconds:F0}ms");
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
         }
         finally { Directory.Delete(dir, true); }
     }

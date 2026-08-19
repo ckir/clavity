@@ -335,11 +335,24 @@ public sealed class AgyView
 
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
-            // Both halves are required. `windowWasBudgetClamped` says the budget was the binding cap;
-            // `windowElapsed` says the window actually ran to its end rather than the server returning its own
-            // timeout early, which can happen with budget still left and is an ordinary stall. Neither re-reads
-            // the clock, so the label no longer depends on winning a race against timer jitter.
-            else if (windowWasBudgetClamped && windowElapsed)
+            // The wait was bounded by the BUDGET (not the stall window), and the budget is actually spent.
+            //
+            // `windowWasBudgetClamped` is recorded at the clamp site, so the outer condition never re-reads the
+            // clock. Inside it, EITHER of two things means the budget is spent:
+            //   - `windowElapsed`: our own timer ran the clamped window to its end, which by construction lands
+            //     on the budget boundary. This is the knife-edge case, and it is decided WITHOUT the clock -
+            //     which is the whole point, since the clock-based test was separated from the wrong answer by
+            //     only the probe RPC (measured: +5.1ms at worst, inside Windows' ~15ms timer resolution).
+            //   - the budget has demonstrably run out anyway. This covers a clamped window the SERVER ended
+            //     early - windowElapsed is false - where the budget nevertheless expired before the label was
+            //     decided. MEASURED with a 300ms probe delay: elapsed 1100ms against a 1000ms budget reported
+            //     `stall`, sending the operator to raise the stall window when only the budget could help.
+            //     Reading the clock here is safe precisely because the knife-edge case never reaches it.
+            //
+            // The clamp guard is what keeps this honest in the other direction: a NON-clamped window that
+            // overruns the budget (a long pause) still reports `stall`, because the stall window really was
+            // what bounded that wait.
+            else if (windowWasBudgetClamped && (windowElapsed || (DateTime.UtcNow - start) >= absoluteMax))
                 // Honest label (agy panel R3): a budget-clamped window that elapsed with no progress ended because the
                 // TOTAL budget ran out — NOT a stall. Reporting Stall would send the operator to the wrong knob
                 // (CLAVITY_AGY_IDLE_STALL_SECONDS) when CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.

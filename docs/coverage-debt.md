@@ -308,3 +308,26 @@ here, because it needs a new registered suite and this batch's scope is the seve
   without elevation.** Either change makes an honest row writable, and it should then be written.
 - **Raised by:** AGY-TEST-AUDIT round A on `8a2c2dc..69b1c86` (peer severity High; downgraded to Low on
   the latency-versus-correctness measurement above). Accepted as a boundary 2026-08-17.
+
+### J. `windowElapsed`'s knife-edge protection cannot be pinned by a test (AGY-TEST-AUDIT 2026-08-19)
+
+- **Behaviour:** the idle-wait limit label branches on
+  `windowWasBudgetClamped && (windowElapsed || (DateTime.UtcNow - start) >= absoluteMax)`
+  in `clavity-dotnet/src/Clavity.Ls/AgyView.cs`. The `windowElapsed` disjunct exists so the knife-edge case
+  - a budget-clamped window that our own timer ran to its end - is decided WITHOUT reading the clock.
+- **Why uncovered:** every case a test can construct deterministically ALSO satisfies the clock check, so
+  removing `windowElapsed` changes no test outcome. **Measured: mutant M9 (drop `windowElapsed`, leave only
+  the clock) SURVIVES the full suite**, while the other nine mutants in that sweep are each caught by their
+  specific intended test. The only scenario where the two disagree is an early timer wakeup, which cannot be
+  produced on demand.
+- **Compensation:** the reason the disjunct exists is a MEASUREMENT rather than an argument. Instrumenting
+  the decision point over 10 runs / 50 decisions gave a worst-case margin of **+5.1 ms** between the clamped
+  window ending and the clock agreeing the budget was spent, against Windows' ~15 ms timer resolution. That
+  margin is the defect; `windowElapsed` removes the dependence on winning that race. The adjacent cases ARE
+  pinned - M6 (clamp alone decides) and M8 (drop the budget-spent disjunct) are both caught - so only this
+  one sub-condition rests on the measurement.
+- **Anchor (its disappearance voids this entry):** the `windowElapsed ||` term in that condition. If the
+  condition is ever reduced to the clock alone, the original mislabel is back and this entry is void, not
+  satisfied. **Re-check trigger:** any change to the wait loop's limit-label branch, or the arrival of a
+  mockable clock (`TimeProvider`) in `AgyView`, which would make the case constructible and retire this
+  entry outright.
