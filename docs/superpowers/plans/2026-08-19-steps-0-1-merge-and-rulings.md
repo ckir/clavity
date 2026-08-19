@@ -1,5 +1,23 @@
 # Steps 0-1: PR-gated integration to `main`, and the four owner rulings — Implementation Plan
 
+> 🔴 **SUPERSEDED 2026-08-19 — DO NOT EXECUTE THIS PLAN.** It has been split into two:
+> **`2026-08-19-step-0-merge-to-main.md`** and **`2026-08-19-step-1-owner-rulings.md`**, in that order.
+>
+> **Why.** Four AGY-AFTER panel rounds produced three severe defects that all traced to ONE decision -
+> interleaving the rulings with this plan's CI wait: a push racing the run being watched, a routing path
+> that skipped the rulings push entirely, and a CI-fix push that would have smuggled the rulings past their
+> own authorisation gate. Each patch made the structure worse; the peer called it cascading complexity
+> collapse and it was right.
+>
+> **The split's shape was then forced by a measurement, not chosen.** All four ROADMAP entries the rulings
+> edit exist ONLY on the feature branch (`main=0, HEAD=1` for each heading), so a rulings branch cut from
+> `main` cannot edit them at all. The rulings can only be written where the entries exist - on `main`,
+> after the merge puts them there. The two plans are therefore sequential by necessity, and there is
+> nothing left to interleave.
+>
+> **This file is retained for its Review record**, which documents four rounds of findings that the two
+> successor plans inherit. Everything above that section is history.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > ⚠ **EXCEPTION — Tasks 6 and 7 must NOT be delegated to a subagent.** They consult the peer over the
