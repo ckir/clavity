@@ -393,6 +393,11 @@ the marker appears or the process exits. **Never poll a process count**, which r
 an aborted run. **Never run both halves, or two Pester suites, at once** — the file-lock produces a false
 red. **No `Tests Passed:` line means the run ABORTED, not that it passed.**
 
+🔴 **And kill the backgrounded suite before looping.** If the slow half fails and you edit and re-run the
+fast half, an orphaned `test-scripts-slow` still holding the file lock **guarantees a false red on the next
+attempt** — you would then be debugging a lock, not the defect. Confirm nothing is left running before each
+new cycle, and terminate it if it is.
+
 **`dotnet test --filter` exits 0 on no match.** Read the test count, not the exit code.
 
 🔴 **CARVE-OUT: a CI-ENVIRONMENT failure cannot be reproduced locally.** Step 3 anticipates exactly this —
@@ -427,6 +432,13 @@ front of it. Each cycle costs a full CI suite and an owner authorisation.
 "The old code did it too" is not a disposition. A pre-existing defect surfaced by this run is in scope;
 dismissing it prevents the measurement, not just the fix.
 
+- [ ] **Step 7: Return to Task 5, NOT to Task 7**
+
+**Go back to Task 5 and watch the new run.** Do not fall through to Task 7 — its first step expects every
+check green, and the fix you just pushed has CI still running, so an operator reading linearly would arrive
+at a gate that cannot yet pass and be stranded there. **The loop is Task 5 → Task 6 → Task 5**, and only a
+green Task 5 routes onward to Task 7.
+
 ---
 
 ## Task 7: Merge to `main`
@@ -434,6 +446,12 @@ dismissing it prevents the measurement, not just the fix.
 **Files:** `main` (remote and local).
 
 **Owner gate.** A second, separate authorisation. Task 3's push authorisation does not cover this.
+
+**If the owner declines:** stop cleanly. The branch stays pushed and the PR stays open — both are harmless,
+and the CI result remains valid for whenever the merge is authorised. Record in the durable index that the
+PR is green-and-unmerged with its number, and note that the step-1 plan is blocked, because the four
+ROADMAP entries it edits reach `main` only through this merge. **Do not close the PR, and do not merge by
+another route.**
 
 - [ ] **Step 1: Confirm CI is green on the head that will merge**
 
@@ -482,7 +500,24 @@ gh run list --branch main --limit 5 --json databaseId,name,conclusion \
 **Done means:** merged; CI has RUN on `main`; its result has been READ; and the run conclusion plus check
 count are recorded in the durable index. Not merely that the merge succeeded.
 
-- [ ] **Step 5: Update the spec and the index, and unblock step 1**
+- [ ] **Step 5: Move the local checkout to `main` — the seam the next plan stands on**
+
+```bash
+git checkout main
+git pull origin main
+git rev-parse --abbrev-ref HEAD
+git log --oneline -1
+```
+
+Expected: `main`, and the merge commit as HEAD.
+
+🔴 **Without this step the seam between the two plans is physically broken.** `gh pr merge` mutates the
+REMOTE; it leaves this checkout sitting on the feature branch. The step-1 plan opens with a hard
+precondition asserting `git rev-parse --abbrev-ref HEAD` is `main`, so it would fail on entry — plan 1
+promising a state it never establishes. **This is the defect class a split introduces**: the combined plan
+never needed the bridge because it never crossed a boundary.
+
+- [ ] **Step 6: Update the spec and the index, and unblock step 1**
 
 Mark step 0 complete in `docs/superpowers/specs/2026-08-18-implementation-sequencing-design.md`, recording
 the route taken and the CI outcome. Update the durable index: `main`'s new SHA, the branch's disposition,

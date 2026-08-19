@@ -155,10 +155,16 @@ line, verbatim — `IF ANYTHING HERE IS AMBIGUOUS OR UNDER-SPECIFIED, ASK ME A Q
 A consult may exceed the 120s synchronous window and be backgrounded. That is normal: the reply arrives
 later. **Never re-fire the original ask on a timeout, and never read a timed-out consult as "no findings".**
 
-Call `agy_status` and compare `TotalSteps` against the value recorded in Step 4. **If it has advanced, the
-peer is working — wait.** If it is unchanged after a couple of minutes, recover the reply with `agy_look`
-(no quota) rather than re-firing; if there is no assistant step to recover, treat the peer as unreachable,
-tell the owner, and fold nothing from that consult.
+Call `agy_status` and compare `TotalSteps` against the value recorded in Step 4. **If it has advanced AND
+`State` is still `working`, the peer is working — wait.** If it is unchanged after a couple of minutes,
+**or `State` is anything other than `working`**, the consult is not progressing: recover the reply with
+`agy_look` (no quota) rather than re-firing; if there is no assistant step to recover, treat the peer as
+unreachable, tell the owner, and fold nothing from that consult.
+
+**Both halves of that condition are load-bearing, and the split dropped one of them.** `TotalSteps` advances
+and then STOPS advancing when the peer finishes — so a completed consult has a higher count than the
+baseline and is idle. Testing the count alone would read a finished peer as a working one and wait forever
+on a reply that already arrived.
 
 - [ ] **Step 5: Diff-after — verify the review-only envelope held**
 
@@ -382,6 +388,25 @@ record its retained scope there.
 
 Either way this is an explicit step, not an assumption. An earlier combined plan pointed at a step that
 contained no such instruction.
+
+**If you edited the spec, COMMIT AND PUSH it — this step runs AFTER Task 4 Step 1's push, so the edit is
+not carried by it.**
+
+```bash
+git status --short                                    # expect: the spec file, and nothing else
+git add -f docs/superpowers/specs/2026-08-18-implementation-sequencing-design.md
+git commit -m "docs(spec): <retire step 7 as KILLED | record 17b's retained scope>
+
+Follows the owner ruling on §17b recorded in clavity-dotnet/ROADMAP.md.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+git push origin main
+```
+
+**That push needs its own owner authorisation**, like every other. And note the `git add -f`:
+`docs/superpowers/*` is gitignored. **Leaving this edit uncommitted would end the plan with a dirty tree
+and a spec that disagrees with the ruling** — which is the stale-artifact defect this whole sequence keeps
+finding.
 
 - [ ] **Step 4: Update the durable index**
 
