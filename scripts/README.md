@@ -60,6 +60,15 @@ directly.
 | `docs-audit-lib.ps1` | Shared, parameter-less docs-audit primitives (doc-list parsing, in-scope resolution) | dot-sourced by `docs-audit.ps1`; no recipe |
 | `discipline-reaching-report.ps1` | Read-only reader for `.clavity/discipline-reaching.jsonl`: reports whether the AGY-ANOMALIES dispatch relay is reaching a driver. Never folds a `null` count into a zero, never prints a ratio, reports sessions RECORDED (distinct sessions, not runs), and quarantines still-running sessions in a `PROVISIONAL` bucket — each refusal blocks a measured false conclusion | `just discipline-report [--Last N]` |
 
+## Plan / one-off verifiers
+
+Not wired into any gate. Each exists because a specific plan step needed a checkable oracle, and is kept
+because the check is worth re-running by hand when that area changes.
+
+| Script | Purpose | Run via |
+|---|---|---|
+| `check-rulings-recorded.ps1` | Assert each named `ROADMAP.md` entry carries an `OWNER RULING (` block. Written for the steps-0-1 plan after its first verifier - an inline `awk` one-liner - FAILED SILENTLY on the last of four entries: it bounded each section by scanning to the next `#### ` heading, but the entry after `§17b` is `### §18`, so the bound never matched, the loop ran to EOF, and it printed nothing. **No output read as "not ruled" to a human and as success to a pipeline.** Matching is case-SENSITIVE (`-cnotmatch`) on purpose: PowerShell's `-match` is case-insensitive, which had certified `§14f` as ruled because its prose says "needs an owner ruling, not a fix" | `pwsh -File scripts/check-rulings-recorded.ps1` |
+
 ## Subdirectories
 
 - `lib/` — shared PowerShell helpers (`release-lib.ps1`), dot-sourced by the release/versioning
