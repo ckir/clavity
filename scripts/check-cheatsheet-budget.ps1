@@ -15,12 +15,25 @@
 .PARAMETER Path
   Path to the canonical cheatsheet. Defaults to agy-autotrain/knowledge/driver-cheatsheet.core.md.
 .PARAMETER MaxBytes
-  The budget. Default 4096. THE single source of truth; a deliberate raise is a committed edit here.
+  The budget. Default 6144. THE single source of truth; a deliberate raise is a committed edit here.
+
+  RAISED 4096 -> 6144 on 2026-08-19, deliberately, and this is the record of why. The canonical
+  cheatsheet reached 4750B at af2a256 (2026-08-17) and sat over the old budget for two days undetected,
+  because this gate runs only in build-*.yml, which is `branches: [main]` on push - so it had never
+  executed on the branch the growth happened on. PR #1 is the first run that caught it, which is the
+  gate working, just later than it should have.
+
+  Why raise rather than consolidate: the growth is earned - it is drained peer-behaviour rules, each of
+  which cost a real defect to learn - and the canonical is byte-pinned into both drivers, so trimming it
+  means editing two compiled literals and re-running both pinning oracles. 6144 keeps ~29% headroom over
+  today's 4750B and stays 2.6x below the 16 KiB runtime cliff in driver_cheatsheet.rs, so drift is still
+  caught long before degradation. It is NOT an invitation to grow into: the next raise should have to
+  argue for itself the same way.
 #>
 [CmdletBinding()]
 param(
     [string]$Path,
-    [int]$MaxBytes = 4096
+    [int]$MaxBytes = 6144
 )
 
 Set-StrictMode -Version Latest

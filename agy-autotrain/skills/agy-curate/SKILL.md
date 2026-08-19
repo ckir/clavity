@@ -166,11 +166,15 @@ CI regression tests are built yet, so gate 1 above cannot hold for any entry).
 ### Compile the core driver-cheatsheet (spec section 5.C-C)
 
 The `driver/probabilistic` entries that survived the gate are the durable driver knowledge. Distil the
-variant-agnostic core (peer psychology - identical for both drivers) into a lean cheatsheet - today about
-5 bullets and 2.5 KB. The canonical text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync
-there.
+variant-agnostic core (peer psychology - identical for both drivers) into a lean cheatsheet - today
+about 4.7 KB. The canonical text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync there.
 
-**The budget is whatever `scripts/check-cheatsheet-budget.ps1` declares as its `-MaxBytes` default (4096 bytes at the time of writing), and it is ENFORCED** by that script (run in CI and
+**Do not treat that figure as the target.** It is a description of what the file currently is, and it has
+been wrong before: it read "5 bullets and 2.5 KB" while the file was 4750B, so a reader checking their
+work against this sentence would have concluded the artifact was fine when it was over budget. The
+ENFORCED number is the one in the script named below, and that is the only one to size against.
+
+**The budget is whatever `scripts/check-cheatsheet-budget.ps1` declares as its `-MaxBytes` default (6144 bytes at the time of writing), and it is ENFORCED** by that script (run in CI and
 by `scripts/tests/check-cheatsheet-budget.Tests.ps1` under `just test-scripts-fast`). Above that the
 checker fails and you must either consolidate or raise the default deliberately, in a committed edit. The
 runtime hard cap is separate and much higher - `clavity-classic/src/driver_cheatsheet.rs:12` sets

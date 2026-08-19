@@ -13,8 +13,7 @@ use std::process::Command;
 
 /// The committed plugin copy - the artifact `--emit` is supposed to regenerate.
 fn plugin_copy() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../plugin/skills/ghidra-re-driver/SKILL.md")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugin/skills/ghidra-re-driver/SKILL.md")
 }
 
 #[test]

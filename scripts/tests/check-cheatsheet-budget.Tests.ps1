@@ -37,7 +37,7 @@ Describe "check-cheatsheet-budget.ps1" {
         $LASTEXITCODE | Should -Be 1
     }
 
-    It "pins the committed default budget at 4096 bytes" {
+    It "pins the committed default budget at 6144 bytes" {
         # WITHOUT THIS ROW the enforcing row below is defeated by a one-line edit. It invokes the script
         # with NO arguments, so it measures against whatever the default happens to be at call time -
         # meaning a future commit that raises the default AND grows the cheatsheet passes both. Pinning
@@ -53,15 +53,15 @@ Describe "check-cheatsheet-budget.ps1" {
         # Invoking the script at the boundary sidesteps the whole class: it reads the default that is
         # actually in force, and is indifferent to comment style, to the parameter's type annotation,
         # and to whether the default is a literal or an expression.
-        $under = Join-Path $script:Tmp 'boundary-4096.md'
-        $over  = Join-Path $script:Tmp 'boundary-4097.md'
-        [System.IO.File]::WriteAllBytes($under, [byte[]]::new(4096))
-        [System.IO.File]::WriteAllBytes($over,  [byte[]]::new(4097))
+        $under = Join-Path $script:Tmp 'boundary-6144.md'
+        $over  = Join-Path $script:Tmp 'boundary-6145.md'
+        [System.IO.File]::WriteAllBytes($under, [byte[]]::new(6144))
+        [System.IO.File]::WriteAllBytes($over,  [byte[]]::new(6145))
 
         & pwsh -NoProfile -File $script:Script -Path $under | Out-Null
-        $LASTEXITCODE | Should -Be 0 -Because 'exactly 4096 bytes is within the committed default budget'
+        $LASTEXITCODE | Should -Be 0 -Because 'exactly 6144 bytes is within the committed default budget'
         & pwsh -NoProfile -File $script:Script -Path $over  | Out-Null
-        $LASTEXITCODE | Should -Be 1 -Because 'one byte over the committed default must fail; if this passes, the default is no longer 4096'
+        $LASTEXITCODE | Should -Be 1 -Because 'one byte over the committed default must fail; if this passes, the default is no longer 6144'
     }
 
     It "the REAL canonical cheatsheet is within the committed default budget" {

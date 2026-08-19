@@ -41,7 +41,7 @@ jobs:
           "CLAVITY_VER=$iss" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install uv (for uv.lock gate)
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.1
 
       - uses: dtolnay/rust-toolchain@stable   # rust-toolchain.toml pins the actual channel; this provides the harness.
 
