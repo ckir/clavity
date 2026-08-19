@@ -273,9 +273,18 @@ get CI to run.** A declined authorisation is a decision, not an obstacle.
 - [ ] **Step 1: State what is about to be pushed**
 
 ```bash
+git rev-parse --short origin/feature/injected-context-governance   # the ref must exist; see below
 echo "unpushed: $(git rev-list --count origin/feature/injected-context-governance..HEAD)"
 git log --oneline origin/feature/injected-context-governance..HEAD | head -20
 ```
+
+⚠ **A review round argued these two lines crash because the remote branch "does not exist yet", reasoning
+from the plan's own statement that CI has never run on it. REFUTED by measurement:
+`origin/feature/injected-context-governance` resolves to `8433e4c` — the branch has been pushed.** The
+non-sequitur is worth naming because it is easy to repeat: **CI has never run because every workflow is
+`branches: [main]` on push, not because the branch is unpushed.** The `rev-parse` line above makes the
+premise checkable rather than assumed — if it ever fails, the two lines below it genuinely would crash, and
+you should push first with `git push -u origin feature/injected-context-governance`.
 
 - [ ] **Step 2: Push, and let the pre-push gates run**
 
@@ -442,7 +451,27 @@ red. **No `Tests Passed:` line means the run ABORTED, not that it passed.**
 🔴 **And kill the backgrounded suite before looping.** If the slow half fails and you edit and re-run the
 fast half, an orphaned `test-scripts-slow` still holding the file lock **guarantees a false red on the next
 attempt** — you would then be debugging a lock, not the defect. Confirm nothing is left running before each
-new cycle, and terminate it if it is.
+new cycle, and terminate it if it is:
+
+```bash
+jobs                                    # the background suite appears here if this shell spawned it
+kill %1 2>/dev/null || true             # adjust the job number to match; harmless if already gone
+wait 2>/dev/null || true                # let it actually exit before starting the next run
+```
+
+**If you started it from a different shell**, `jobs` will be empty and you need the process itself:
+
+```bash
+pgrep -f "test-scripts-slow" || echo "none running"
+# then, only if the pattern matched exactly what you expect:
+pkill -f "test-scripts-slow"
+```
+
+**Check `pgrep` before `pkill`** — a bare pattern kill can take unrelated processes with it, and this rule
+exists to prevent a false red, not to create a new failure. **This block is here because "terminate it if
+it is" was written with no command**, which the plans' own standing rule forbids: an agent cannot act on
+that instruction without inventing a process-reaping pipeline, and a human under pressure should not have
+to.
 
 **`dotnet test --filter` exits 0 on no match.** Read the test count, not the exit code.
 
@@ -629,17 +658,26 @@ authorisation would be silently satisfied by an unrelated approved one.
 
 ```bash
 git status --short                          # MUST be empty before the reset below
-git branch declined/step-0-spec-note
-git reset --keep HEAD~1                    # --keep, NOT --hard: it ABORTS rather than destroying
+BR=declined/step-0-spec-note-$(git rev-parse --short HEAD)         # unique per commit: re-entry cannot collide
+git branch "$BR" && git reset --keep HEAD~1 # && : the reset runs ONLY if the branch was created
 git log --oneline -1                       # confirm main no longer carries it
+echo "parked on: $BR"                      # record this in the durable index
 ```
 
-🔴 **`--keep`, not `--hard`, and the distinction is the whole safety of this step.** `git reset --hard`
-would also destroy any uncommitted work in the tree, and an earlier draft of this block used it with a
-comment calling it "safe" — true of the commit, which the branch above preserves, and false of everything
-else. **`git reset --keep` refuses outright if local changes would be lost**, which is the behaviour you
-want from a command you are running because something already went wrong. The `git status` line above is
-belt-and-braces: if it is not empty, stop and deal with that first.
+🔴 **Three details here are each load-bearing, and each was wrong in an earlier draft.**
+
+- **`--keep`, not `--hard`.** `--hard` also destroys uncommitted work, and a draft used it with a comment
+  calling it "safe" — true of the commit, false of everything else. **`--keep` refuses outright if local
+  changes would be lost**, which is what you want from a command you are running because something already
+  went wrong.
+- **`&&`, not two separate lines.** `git branch <name>` **exits 128 if that branch already exists**
+  (measured), and on a second pass through this step it will. With the commands on separate lines the reset
+  would then run anyway and **delete the commit having parked it nowhere** — irrecoverable. Chaining with
+  `&&` makes the reset conditional on the parking having actually happened.
+- **A unique branch name.** Appending the short SHA means a re-entry parks a *different* commit on a
+  *different* branch instead of colliding with the first.
+
+The `git status` line is belt-and-braces: if it is not empty, stop and deal with that first.
 
 Record the holding branch in the durable index. **The general rule: a declined change must never be left
 sitting on a shared branch that something else is going to push.**

@@ -374,17 +374,26 @@ index and note that the later steps it gates remain blocked.
 
 ```bash
 git status --short                          # MUST be empty before the reset below
-git branch declined/step-1-rulings
-git reset --keep HEAD~1                    # --keep, NOT --hard: it ABORTS rather than destroying
+BR=declined/step-1-rulings-$(git rev-parse --short HEAD)         # unique per commit: re-entry cannot collide
+git branch "$BR" && git reset --keep HEAD~1 # && : the reset runs ONLY if the branch was created
 git log --oneline -1                       # confirm main no longer carries it
+echo "parked on: $BR"                      # record this in the durable index
 ```
 
-🔴 **`--keep`, not `--hard`, and the distinction is the whole safety of this step.** `git reset --hard`
-would also destroy any uncommitted work in the tree, and an earlier draft of this block used it with a
-comment calling it "safe" — true of the commit, which the branch above preserves, and false of everything
-else. **`git reset --keep` refuses outright if local changes would be lost**, which is the behaviour you
-want from a command you are running because something already went wrong. The `git status` line above is
-belt-and-braces: if it is not empty, stop and deal with that first.
+🔴 **Three details here are each load-bearing, and each was wrong in an earlier draft.**
+
+- **`--keep`, not `--hard`.** `--hard` also destroys uncommitted work, and a draft used it with a comment
+  calling it "safe" — true of the commit, false of everything else. **`--keep` refuses outright if local
+  changes would be lost**, which is what you want from a command you are running because something already
+  went wrong.
+- **`&&`, not two separate lines.** `git branch <name>` **exits 128 if that branch already exists**
+  (measured), and on a second pass through this step it will. With the commands on separate lines the reset
+  would then run anyway and **delete the commit having parked it nowhere** — irrecoverable. Chaining with
+  `&&` makes the reset conditional on the parking having actually happened.
+- **A unique branch name.** Appending the short SHA means a re-entry parks a *different* commit on a
+  *different* branch instead of colliding with the first.
+
+The `git status` line is belt-and-braces: if it is not empty, stop and deal with that first.
 
 🔴 **Do not simply leave it committed on `main`.** Any later authorised push of `main` — including Task 4
 Step 3's — would carry the declined commit with it, satisfying a refused authorisation by way of an
@@ -439,11 +448,22 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push origin main
 ```
 
-**That push needs its own owner authorisation**, like every other — **and if it is declined, leave the edit
-committed-but-unpushed and record that in the durable index**, noting that the spec now disagrees with the
-ruling until it lands. Do not revert it, and do not fold it into an unrelated later push. (Task 4 Step 1's
-gate carries the same branch; this one was missing it, which is the decline-branch class surviving in a
-sibling.) And note the `git add -f`: `docs/superpowers/*` is gitignored. **Leaving this edit uncommitted would end the plan with a dirty tree
+**That push needs its own owner authorisation**, like every other. **If it is declined, park the commit on
+a holding branch exactly as Step 1 does — do NOT leave it on `main`:**
+
+```bash
+git status --short
+BR=declined/step-1-spec-note-$(git rev-parse --short HEAD)
+git branch "$BR" && git reset --keep HEAD~1
+echo "parked on: $BR"
+```
+
+Record the branch in the durable index and note that the spec disagrees with the ruling until it lands.
+
+🔴 **This site was MISSED by the fix that closed the identical hazard two steps above.** Round 10 corrected
+the rulings push in Step 1 and the companion plan's spec push, and left this one saying "leave it
+committed-but-unpushed" — on `main`, where any later authorised push carries it. **Fourth time in this
+review that a fix has been applied to its cited instance while a sibling survived.** And note the `git add -f`: `docs/superpowers/*` is gitignored. **Leaving this edit uncommitted would end the plan with a dirty tree
 and a spec that disagrees with the ruling** — which is the stale-artifact defect this whole sequence keeps
 finding.
 
