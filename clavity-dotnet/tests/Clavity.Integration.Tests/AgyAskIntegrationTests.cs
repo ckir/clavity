@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
 namespace Clavity.Integration.Tests;
@@ -31,7 +32,11 @@ public class AgyAskIntegrationTests
         // A per-WaitFor-invocation script: window N (0-based, clamped to the last entry) appends AppendSteps
         // trajectory steps, then either goes idle (returns TimedOut=false with the reply) or blocks until the
         // client's per-window CancelAfter cancels it. Null => the legacy single-idleDelay behavior (back-compat).
-        public sealed record WaitStep(int AppendSteps, bool GoesIdle);
+        /// <param name="ServerTimesOut">Return the server's OWN inactivity timeout immediately instead of
+        /// blocking until the client's window cancels. This is a real LS behaviour - the server has its own
+        /// IdleInactivityTimeoutSeconds - and it is the case that separates "the budget ran out" from "the
+        /// server gave up early with budget to spare".</param>
+        public sealed record WaitStep(int AppendSteps, bool GoesIdle, bool ServerTimesOut = false);
         private readonly IReadOnlyList<WaitStep>? _waitPlan;
         private int _waitCalls;
         public int WaitCalls => _waitCalls;
@@ -44,6 +49,11 @@ public class AgyAskIntegrationTests
         // whether a catalog was supplied — to drive the catalog-unreachable warn-and-proceed path for a conversation
         // that already has a resolvable trajectory model.
         private readonly bool _throwCatalogUnavailable;
+        // Delay applied to PROBE trajectory fetches (not the pre-send one). The limit label is decided AFTER
+        // the probe returns, so this widens the window in which the budget can expire while the server - not
+        // our own window timer - is what ended the wait. Without it that case cannot be constructed: the
+        // clamped window always wins the race, which is exactly what an earlier probe run measured.
+        private readonly TimeSpan _probeDelay;
         // Gap-1 (idle-wait caller-cancel): signalled the instant a "never idle this window" WaitForConversationFullyIdle
         // call is genuinely BLOCKED server-side, so a test can cancel the CALLER token only once it is certain the
         // client is truly parked inside that RPC — never racing a fixed delay against cold gRPC-channel setup time.
@@ -53,7 +63,8 @@ public class AgyAskIntegrationTests
         public FakeAskLs(
             string cascadeId, string replyText, TimeSpan idleDelay, IEnumerable<CascadeStep> initial,
             FetchAvailableModelsResponse? catalog = null, IReadOnlyList<WaitStep>? waitPlan = null,
-            bool throwOnProbeTrajectory = false, bool throwCatalogUnavailable = false)
+            bool throwOnProbeTrajectory = false, bool throwCatalogUnavailable = false,
+            TimeSpan probeDelay = default)
         {
             _cascadeId = cascadeId;
             _replyText = replyText;
@@ -63,27 +74,30 @@ public class AgyAskIntegrationTests
             _waitPlan = waitPlan;
             _throwOnProbeTrajectory = throwOnProbeTrajectory;
             _throwCatalogUnavailable = throwCatalogUnavailable;
+            _probeDelay = probeDelay;
         }
 
         public string? LastSentText { get; private set; }
         public int? LastSentModel { get; private set; }
 
-        public override Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
+        public override async Task<GetCascadeTrajectoryResponse> GetCascadeTrajectory(
             GetCascadeTrajectoryRequest request, ServerCallContext context)
         {
             // The 1st call is AskAsync's pre-send before-trajectory; later calls are per-window progress probes.
             var n = Interlocked.Increment(ref _trajectoryCalls);
             if (_throwOnProbeTrajectory && n > 1)
                 throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "probe dead"));
+            if (_probeDelay > TimeSpan.Zero && n > 1)
+                await Task.Delay(_probeDelay, context.CancellationToken);
             lock (_gate)
             {
                 var traj = new CascadeTrajectory { CascadeId = _cascadeId };
                 traj.Steps.AddRange(_steps);
-                return Task.FromResult(new GetCascadeTrajectoryResponse
+                return new GetCascadeTrajectoryResponse
                 {
                     Trajectory = traj,
                     NumTotalSteps = (uint)_steps.Count,
-                });
+                };
             }
         }
 
@@ -123,6 +137,9 @@ public class AgyAskIntegrationTests
                     return new WaitForConversationFullyIdleResponse { TimedOut = false };
                 }
             }
+            if (step.ServerTimesOut)
+                return new WaitForConversationFullyIdleResponse { TimedOut = true };
+
             // Never idle this window: block until the client's per-window CancelAfter cancels the call.
             _waitBlockedTcs.TrySetResult();
             await Task.Delay(Timeout.Infinite, context.CancellationToken);
@@ -429,6 +446,234 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task AskAsync_reports_liveness_once_per_elapsed_window_with_a_monotonic_value()
+    {
+        // The wait can outlast an MCP client's tool-call timeout, and before this it ran SILENT — the client saw
+        // nothing between send and reply. This pins the observable contract of the liveness reports:
+        //   1. one report per ELAPSED window (a window that goes idle produces none — nothing to report),
+        //   2. Window strictly increasing, because the MCP progress contract requires the relayed value to increase
+        //      and neither step count can carry that (a window with no agy activity leaves both unchanged),
+        //   3. NewSteps discounting our own injected user step, so "0 new steps" means agy really did nothing.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false), // window 1 elapses: +1 step
+            new FakeAskLs.WaitStep(AppendSteps: 2, GoesIdle: false), // window 2 elapses: +2 more
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),  // goes idle: NO report for this one
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var progress = new CollectingProgress<AgyWaitProgress>();
+            var reply = await view.AskAsync("do a long thing", progress: progress);
+
+            Assert.Equal("final answer", reply.Answer);
+
+            var reports = progress.Reports;
+            Assert.Equal(2, reports.Count);                       // two ELAPSED windows, not three waits
+
+            Assert.Equal(1, reports[0].Window);                   // monotonic, 1-based
+            Assert.Equal(2, reports[1].Window);
+            Assert.Equal(1, reports[0].NewSteps);                 // +1, our own user step discounted
+            Assert.Equal(3, reports[1].NewSteps);                 // +1 then +2, cumulative
+
+            // TotalSteps pinned to its EXACT value, not merely to being larger than the previous one. The empty
+            // initial trajectory plus our injected Kind-14 user step makes total 1, then +1 and +2 give 2 and 4.
+            // A `>` comparison is satisfied by ANY increasing quantity: swapping `total` for `window` at
+            // AgyView.cs:292 yields 1 and 2, still strictly increasing, so the old assertion stayed green while
+            // the field reported the wrong number entirely (AGY-TEST-AUDIT gap 3).
+            Assert.Equal(2, reports[0].TotalSteps);
+            Assert.Equal(4, reports[1].TotalSteps);
+
+            // Elapsed is asserted only for being POPULATED, which is the assertion that can actually fail. An
+            // earlier `Elapsed >= Elapsed` comparison between two reports was removed and its removal was right -
+            // Elapsed is DateTime.UtcNow - start sampled later each iteration, so that ordering held BY
+            // CONSTRUCTION and no mutation could break it. This is a DIFFERENT claim: that the field carries a
+            // real duration at all. Hardcoding TimeSpan.Zero at AgyView.cs:292 passed every assertion in this
+            // suite before this line existed (AGY-TEST-AUDIT gap 2).
+            Assert.True(reports[0].Elapsed > TimeSpan.Zero, "Elapsed must carry a real duration, not a placeholder");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_the_final_window_of_a_wait_that_is_about_to_stall()
+    {
+        // A stalling wait must report the window it died on — that last report is what says WHERE it stopped. If the
+        // report were emitted only on the keep-waiting branch, a stall would produce zero reports and the operator
+        // would learn nothing from the one case they most need to diagnose.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(120),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var progress = new CollectingProgress<AgyWaitProgress>();
+            await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("stall me", progress: progress));
+
+            var reports = progress.Reports;
+            Assert.Single(reports);
+            Assert.Equal(1, reports[0].Window);
+            Assert.Equal(0, reports[0].NewSteps);   // agy did nothing: the +1 discount is what makes this 0, not 1
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_survives_a_progress_sink_that_throws()
+    {
+        // Reporting is observational. A caller whose sink throws must not thereby convert a working ask into a
+        // failure — the reply is the product, the report is a courtesy.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var sink = new ThrowingProgress();
+            var reply = await view.AskAsync("do a long thing", progress: sink);
+            Assert.Equal("final answer", reply.Answer);
+            // Without this the test is VACUOUS: delete the report call and the sink never throws, nothing is
+            // swallowed, and the assertion above still passes. Capstone R3 found exactly that.
+            Assert.True(sink.Invocations > 0, "the sink must actually have been invoked for the swallow to mean anything");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>Throws on every report AND counts them. The count is load-bearing: a test that only asserts the
+    /// ask succeeded would pass on a build that stopped reporting entirely, because a sink that is never called
+    /// never throws and nothing is swallowed. Asserting Invocations &gt; 0 is what makes it able to fail.</summary>
+    private sealed class ThrowingProgress : IProgress<AgyWaitProgress>
+    {
+        public int Invocations;
+        public void Report(AgyWaitProgress value)
+        {
+            Interlocked.Increment(ref Invocations);
+            throw new InvalidOperationException("sink is broken");
+        }
+    }
+
+    /// <summary>Throws a cancellation the sink generated for its OWN reasons - an internal transport timeout -
+    /// while the caller's token stays live. TaskCanceledException DERIVES from OperationCanceledException, which is
+    /// exactly why a type-based filter got this wrong.</summary>
+    private sealed class SinkTimesOutProgress : IProgress<AgyWaitProgress>
+    {
+        public int Invocations;
+        public void Report(AgyWaitProgress value)
+        {
+            Interlocked.Increment(ref Invocations);
+            throw new TaskCanceledException("the sink's own transport timed out");
+        }
+    }
+
+    /// <summary>Cancels the caller's token and then throws a genuine cancel WRAPPED in an AggregateException, the
+    /// shape a sink produces when it bridges async with .Result/.Wait(). A type-based filter swallowed this.</summary>
+    private sealed class CancelsCallerThenThrowsWrapped(CancellationTokenSource cts) : IProgress<AgyWaitProgress>
+    {
+        public void Report(AgyWaitProgress value)
+        {
+            cts.Cancel();
+            throw new AggregateException(new OperationCanceledException("wrapped by a .Result bridge"));
+        }
+    }
+
+    [Fact]
+    public async Task AskAsync_swallows_a_sinks_OWN_cancellation_when_the_caller_did_not_cancel()
+    {
+        // Capstone R2: a sink whose internal transport times out throws TaskCanceledException, which DERIVES from
+        // OperationCanceledException. The earlier type-based filter let that escape and failed a perfectly live ask
+        // on a cancellation that never happened. Keying on the caller's token is what makes this swallowable.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var sink = new SinkTimesOutProgress();
+            var reply = await view.AskAsync("do a long thing", progress: sink);
+            Assert.Equal("final answer", reply.Answer);
+            Assert.True(sink.Invocations > 0, "the sink must actually have been invoked for the swallow to mean anything");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_surfaces_a_CLEAN_cancellation_when_the_sink_throws_after_the_caller_cancelled()
+    {
+        // Capstone R2, the other direction: when the caller HAS cancelled, nothing the sink throws may hide it -
+        // including a cancel WRAPPED in an AggregateException, which is what a sink bridging async with .Result
+        // produces and which the earlier type-based filter swallowed outright.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            using var cts = new CancellationTokenSource();
+            // A caller who cancels must get a CANCELLATION - never the sink's crash. The sink here cancels the
+            // caller's token and then throws an AggregateException; that throw must be swallowed like any other, and
+            // the cancellation must reach the caller through the loop's own linked windowCts. An earlier version of
+            // this test asserted the AggregateException ESCAPED, which enforced exactly the F3 violation capstone R3
+            // identified: a cancelled ask faulting with an unrelated exception instead of cancelling.
+            var ex = await Record.ExceptionAsync(() => view.AskAsync(
+                "do a long thing", progress: new CancelsCallerThenThrowsWrapped(cts), cancellationToken: cts.Token));
+
+            // The shape a caller-cancel takes here is the file's ESTABLISHED one, asserted the same way the existing
+            // "propagates a caller cancel" tests assert it: gRPC surfaces a cancelled call as RpcException{Cancelled}
+            // wrapping an OperationCanceledException, so both forms are legitimate. Naming only one would make this
+            // test brittle against which layer happens to observe the cancel first.
+            Assert.NotNull(ex);
+            Assert.IsNotType<AggregateException>(ex);   // the sink's throw must NOT be what reaches the caller
+            Assert.True(ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled },
+                $"a cancelled ask must surface a cancellation, not the sink's crash; got: {ex}");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task AskAsync_stalls_after_exactly_one_window_when_agy_makes_no_progress()
     {
         // F5 regression guard: a dead agy (no steps after our send) stalls at 1x the window, NOT 2x. If lastProgress
@@ -473,11 +718,37 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(100),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(250), // exhausts after ~2-3 windows
+                // Scaled up 5x from 100ms/250ms. The RATIO is what this test needs (a budget worth ~3 windows);
+                // the MAGNITUDE is what keeps it honest on a loaded machine. `lastProbe` starts null at
+                // AgyView.cs:234 and the budget check at :240-244 runs on the FIRST iteration, before any probe -
+                // so if the process stalls for longer than the whole budget between AgyView.cs:232 and :242 (a GC
+                // pause or thread-pool starvation on busy CI), the ask throws with a NULL diagnostic and the
+                // Assert.NotNull below fails for a reason that has nothing to do with the behaviour under test.
+                // At 250ms that needed only a quarter-second hiccup. This is a flake this test's OLD assertions
+                // could not have: they checked only Limit, which is AbsoluteMax on that early path too.
+                IdleStallWindow = TimeSpan.FromMilliseconds(500),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // exhausts after ~3 windows
             });
             var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("runaway"));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            // The diagnostic is the WHOLE operator payload on a runaway: it is the only thing that says where agy
+            // was when the budget killed it. The stall test above asserts all of this; this one asserted only the
+            // Limit, so dropping the probe left the suite green while handing the operator a blind hang exception -
+            // the one failure they most need to debug (AGY-TEST-AUDIT gap 4).
+            //
+            // ROUTE MATTERS: there are TWO absolute-max throws and this test reaches only ONE. agy progresses in
+            // every window here, so the no-progress branch at AgyView.cs:323 is unreachable; this exits at the
+            // loop-top budget check, AgyView.cs:244, which passes `lastProbe`. Measured, not assumed: mutating
+            // :323 to BuildModalHang(null, ...) leaves this test GREEN, and mutating :244 turns it red. The peer
+            // that found this gap cited :323 - the finding was real, the line was the wrong one of the two, and
+            // the sibling route is pinned by the budget-clamped test below.
+            Assert.NotNull(ex.Diagnostic);
+            // The semantic INVERSE of the stall case, which pins NewAgySteps == 0 and LastStepClass "user": here
+            // agy really was advancing, and the last thing it did was a Kind-5 tool step, never our own user step.
+            // An exact NewAgySteps count would be timing-bound (how many 100ms windows fit a 250ms budget);
+            // "agy advanced at all" is both stable and the claim that distinguishes this path from a stall.
+            Assert.True(ex.Diagnostic!.NewAgySteps > 0, "a runaway advanced; 0 new steps would be the STALL case");
+            Assert.Equal("tool", ex.Diagnostic.LastStepClass);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -502,10 +773,108 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(150),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(250), // window 1 (150ms) < 250ms; window 2 clamps to the ~100ms remainder
+                // Scaled up from 150ms/250ms, keeping the ratio that MAKES this test what it is: window 1 must
+                // fit inside the budget and window 2 must be clamped to the remainder. Widening only the budget -
+                // the obvious-looking fix, and the one the capstone peer proposed - destroys the test: at a 2s
+                // budget window 2 is no longer clamped, the no-progress branch reports Stall instead of
+                // AbsoluteMax, and the assertion below fails. MEASURED, not reasoned: that exact edit turned this
+                // test red while the other 61 stayed green. Scaling BOTH preserves the clamp and still buys the
+                // jitter margin (see the sibling test above for why the margin matters).
+                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // window 1 (1000ms) < 1500ms; window 2 clamps to the ~500ms remainder
             });
             var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("progress then quit"));
+            Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            // The SECOND absolute-max route (AgyView.cs:323, the no-progress branch, which passes `probe`). Its
+            // sibling above covers :244 only, and a fix applied to one route while the other kept shipping a
+            // blind diagnostic is precisely the half-fix this suite keeps re-learning.
+            //
+            // The exact count holds because the plan is exactly two windows, so agy contributes exactly one step.
+            // That is a claim about the PLAN, not an unconditional one: a stall longer than the whole budget
+            // would exit at :244 before this route is reached, and then neither the count nor the route would be
+            // what this test names. The widened budget above is what makes that a theoretical case rather than a
+            // CI flake - the earlier version of this comment called it "deterministic" flatly, which was wrong.
+            Assert.NotNull(ex.Diagnostic);
+            Assert.Equal(1, ex.Diagnostic!.NewAgySteps);
+            Assert.Equal("tool", ex.Diagnostic.LastStepClass);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_STALL_when_a_clamped_window_is_cut_short_by_the_servers_own_timeout()
+    {
+        // The other half of the limit rule, and the case that makes the rule non-trivial. Window 2 IS budget-
+        // clamped, but the server returns its own inactivity timeout immediately instead of the window running
+        // to its end - so the budget did NOT run out and there is still time left. The honest label is Stall.
+        //
+        // This is what forces the label to depend on BOTH "the budget was the binding cap" AND "the window
+        // actually elapsed". A fix that keyed on the clamp alone would report absolute_max here, sending the
+        // operator to raise a budget that was never the thing that stopped the wait.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),                        // window 1: progresses
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, ServerTimesOut: true),  // window 2: server quits early
+        };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // window 2 clamps to the ~500ms remainder
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("server quits early"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            Assert.NotNull(ex.Diagnostic);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_absolute_max_when_the_budget_is_GONE_even_though_the_server_ended_the_window()
+    {
+        // The case the clamp-and-elapsed rule gets wrong on its own. Window 2 IS budget-clamped, the SERVER
+        // ends it early (so windowElapsed is false), and by the time the label is decided the budget has
+        // nonetheless run out. Telling the operator "stall" here sends them to raise CLAVITY_AGY_IDLE_STALL_
+        // SECONDS when the budget is the thing that is exhausted and only CLAVITY_AGY_IDLE_MAX_SECONDS can
+        // help - the same mislabel, one case over.
+        //
+        // The 300ms probe delay is what makes this constructible at all. The label is decided AFTER the probe
+        // returns, so a slow probe is what lets the budget expire while the server, not our window timer,
+        // ended the wait. An earlier attempt without it measured limit=absolute_max for the wrong reason: the
+        // clamped window won the race and windowElapsed was true, so the branch under test never ran.
+        //
+        // Arithmetic, budget 1000ms / stall window 500ms / probe delay 300ms:
+        //   window 1  waits 500 (not clamped: remaining 1000 > 500), progresses, probe 300 -> elapsed ~800
+        //   window 2  remaining 200 <= 500 -> CLAMPED; server returns its own timeout at once (elapsed ~800),
+        //             probe 300 -> elapsed ~1100 >= 1000. Budget gone, windowElapsed false.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, ServerTimesOut: true),
+        };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan,
+                                 probeDelay: TimeSpan.FromMilliseconds(300));
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(500),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1000),
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("budget gone"));
+            // Assert the PRECONDITION too, so this test cannot pass for the wrong reason: if the budget were
+            // not actually exhausted at the decision, absolute_max would be the wrong answer and this would be
+            // pinning a bug rather than a fix.
+            Assert.True(ex.Report.Elapsed >= TimeSpan.FromMilliseconds(1000),
+                $"precondition: the budget must really be gone, was {ex.Report.Elapsed.TotalMilliseconds:F0}ms");
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
         }
         finally { Directory.Delete(dir, true); }
@@ -672,12 +1041,63 @@ public class AgyAskIntegrationTests
                 IdleStallWindow = TimeSpan.FromMilliseconds(120),
                 IdleAbsoluteMax = TimeSpan.Zero,
             });
-            var result = await McpTools.AgyAsk(view, "stall me");
+            var result = await McpTools.AgyAsk(view, "stall me", new CollectingProgress<ProgressNotificationValue>());
             var text = ((TextContentBlock)result.Content[0]).Text;
             using var doc = JsonDocument.Parse(text);
             Assert.Equal("possible_modal", doc.RootElement.GetProperty("status").GetString());
             Assert.Equal("stall", doc.RootElement.GetProperty("limit").GetString());
             Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("hint").GetString()));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_relays_each_wait_report_to_the_MCP_sink_carrying_the_WINDOW_as_the_progress_value()
+    {
+        // The ADAPTER, which nothing pinned. McpTools.AgyAsk converts each AgyWaitProgress into the
+        // ProgressNotificationValue an MCP client actually receives, and that conversion had no test at all: all
+        // seven McpTools.AgyAsk call sites in this suite pass `new CollectingProgress<...>()` INLINE as a
+        // throwaway and never read it back, so nothing could observe what was relayed (AGY-TEST-AUDIT gap 1).
+        // Placed here rather than in McpToolsIntegrationTests.cs for the same reason the possible_modal test above
+        // is: that file's FakeLs cannot be made to wait, and no wait means no progress to relay.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false), // window 1 elapses: +1 step
+            new FakeAskLs.WaitStep(AppendSteps: 2, GoesIdle: false), // window 2 elapses: +2 more
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),  // goes idle: NO report for this one
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var relayed = new CollectingProgress<ProgressNotificationValue>();
+            var result = await McpTools.AgyAsk(view, "do a long thing", relayed);
+
+            Assert.Contains("final answer", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+
+            var reports = relayed.Reports;
+            Assert.Equal(2, reports.Count);   // one per ELAPSED window; the idle one relays nothing
+
+            // Progress carries WINDOW. This must be asserted on BOTH reports to mean anything: on the first the
+            // window (1) and the new-step count (1) coincide, so one report cannot tell the two apart. The second
+            // separates all three candidates - window 2, new steps 3, total steps 4 - so mapping Progress to
+            // either step count at McpTools.cs:37 turns this line red. Monotonicity alone would not: all three of
+            // those sequences increase, which is why the MCP "must increase" rule is not by itself evidence that
+            // the right field was chosen.
+            Assert.Equal(1f, reports[0].Progress);
+            Assert.Equal(2f, reports[1].Progress);
+
+            // The step counts ride in the human-readable Message, where they are informative without having to be
+            // monotonic - that split is the reason Window exists as a separate field at all.
+            Assert.Contains("1 new step(s)", reports[0].Message);
+            Assert.Contains("3 new step(s)", reports[1].Message);
         }
         finally { Directory.Delete(dir, true); }
     }

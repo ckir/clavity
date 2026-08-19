@@ -17,19 +17,67 @@ name: ci-scripts
 # NOTE: every `run:` block below is deliberately pure ASCII. Actions writes a run block to a BOM-less
 # temp .ps1, so non-ASCII in a `shell: powershell` block would hit the very bug the ASCII gate exists
 # to prevent.
+#
+# THE RULE FOR THE `paths:` FILTER, stated once so the next addition does not have to rediscover it:
+# EVERY FILE THE SCRIPTS SUITE READS AND ASSERTS AGAINST MUST APPEAR BELOW. A suite can only gate what
+# CI actually runs it on, so a file the suite asserts against but the filter omits produces the worst
+# outcome available - the assertion reds on a developer's machine and the same edit merges with a green
+# check, because no job ever ran.
+#
+# THAT RULE IS NOW ENFORCED MECHANICALLY, AND THIS COMMENT DELIBERATELY KEEPS NO COUNT OR ROSTER.
+# `scripts/check-ci-filter-coverage.ps1` owns both: it carries the required-entry table with a REASON per
+# entry, asserts each appears in BOTH blocks below, and separately fails closed on any git-tracked
+# top-level tree a suite names but the filter does not reach. Read that file, not a prose list here.
+#
+# WHY THE ROSTER MOVED OUT. It was maintained by hand and was wrong every time it was examined: it said
+# TWO when it was four, then FOUR when it was nine, inside one afternoon. The rule had no implementation,
+# so it drifted exactly as an unimplemented rule does - `agy-autotrain/skills/agy-curate/SKILL.md` was
+# MISSED when `lefthook.yml` was added, in the very commit that added the row reading it, and a later
+# audit found five more: both plugin trees, the driver cheatsheet, the marker contract, and
+# `build/members.json`. Every one of those merged green while the suite that asserts against it never ran.
+#
+# TWO JUDGEMENTS WORTH KEEPING, because the gate records the WHAT and not the WHY:
+#   - The plugin trees are listed WHOLE (`clavity-*/plugin/**`). Measured over 400 commits, that adds ~10
+#     workflow runs - 10 of the 23 plugin-touching commits do not already touch `scripts/**` - which is
+#     noise against one silently-merged breakage.
+#   - `agy-autotrain` is listed NARROWLY, by file. The whole tree was rejected because it would fire on
+#     every knowledge-inbox capture; a `!` negation was rejected too, because no `paths:` filter in this
+#     repo uses one and its behaviour cannot be verified without pushing.
+#
+# MOVING one of these files is covered regardless of this filter: the suite's own Test-Path reds the
+# moment the file is not where the guard expects it. Whether the filter ALSO fires is unestablished -
+# it turns on whether the platform reports a rename as a change to the old path or collapses it to the
+# destination, as git's own rename detection does - and settling that needs a push, so it is asserted
+# in neither direction here.
 on:
   push:
     branches: [main]
     paths:
       - 'scripts/**'
       - 'installer/_shared/**'
+      - 'clavity-dotnet/install/**'
+      - 'clavity-dotnet/plugin/**'
+      - 'clavity-classic/plugin/**'
       - 'justfile'
+      - 'lefthook.yml'
+      - 'agy-autotrain/skills/agy-curate/SKILL.md'
+      - 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
+      - 'docs/agy-disciplines-marker-contract.md'
+      - 'build/members.json'
       - '.github/workflows/ci-scripts.yml'
   pull_request:
     paths:
       - 'scripts/**'
       - 'installer/_shared/**'
+      - 'clavity-dotnet/install/**'
+      - 'clavity-dotnet/plugin/**'
+      - 'clavity-classic/plugin/**'
       - 'justfile'
+      - 'lefthook.yml'
+      - 'agy-autotrain/skills/agy-curate/SKILL.md'
+      - 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
+      - 'docs/agy-disciplines-marker-contract.md'
+      - 'build/members.json'
       - '.github/workflows/ci-scripts.yml'
 
 concurrency:
@@ -41,7 +89,7 @@ jobs:
     name: installer contract (Windows PowerShell 5.1)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 5.1 domain must be pure ASCII
         shell: pwsh
@@ -73,11 +121,26 @@ jobs:
           if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
           if ($r.TotalCount -lt 15) { throw "only $($r.TotalCount) tests discovered - expected the register-plugin suite (>=15)" }
 
+      - name: Pester - clavity-install (Windows PowerShell 5.1)
+        shell: powershell
+        # The installer runs on an END-USER Windows box where only 5.1 is guaranteed, so its suite must
+        # hold under that engine - the same reasoning as register-plugin above (:15). Measured
+        # 2026-08-14: Passed 12, Failed 0 under 5.1 (6.49s) and under pwsh 7 (4.77s).
+        # A SEPARATE STEP, not folded into the register-plugin invocation above, whose TotalCount floor
+        # is calibrated to that suite alone.
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force
+          $r = Invoke-Pester clavity-dotnet/install/clavity-install.Tests.ps1 -Output Detailed -PassThru
+          if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
+          $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
+          if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
+          if ($r.TotalCount -lt 12) { throw "only $($r.TotalCount) tests discovered - expected the clavity-install suite (>=12)" }
+
   dev-scripts:
     name: dev scripts (pwsh 7)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ripgrep
         shell: pwsh
@@ -93,6 +156,54 @@ jobs:
           rg --version
           if ($LASTEXITCODE -ne 0) { throw "ripgrep install failed: rg is not on PATH" }
 
+      - name: Install lefthook
+        shell: pwsh
+        # check-curate-in-progress.Tests.ps1 proves the pre-commit WIRING behaviourally - it runs the real
+        # lefthook binary against the real lefthook.yml, because a config parse cannot show the hook
+        # actually fires. That row THROWS rather than skipping when lefthook is absent: a wiring proof
+        # that skips itself certifies exactly what it stopped checking. So CI must supply the binary.
+        # The npm package is the route this repo already uses on the dev box - note the SCOPE, there is
+        # no bare `lefthook` package. Same assert-by-name discipline as the ripgrep step above: a silent
+        # install failure must fail HERE, not resurface as an unrelated-looking assertion failure.
+        #
+        # PIN THE MAJOR LINE, for the same reason the Pester step above pins v5: an unpinned install
+        # silently rolls forward, and a major bump can change `lefthook run`'s exit semantics or its
+        # config schema - which is precisely what the behavioural row and the config-parse rows read.
+        # The floor is the version the dev box runs, so CI and a developer cannot diverge across a
+        # major. Bump this deliberately, after running the suite against the new line.
+        run: |
+          npm install -g '@evilmartians/lefthook@^2.1.10'
+          # Prepend npm's global prefix to GITHUB_PATH so the LATER Pester step sees the binary, exactly
+          # as the ripgrep step does for choco. On Windows npm places global shims directly in the
+          # prefix directory, not in a bin/ subdirectory.
+          $prefix = (npm prefix -g).Trim()
+          $prefix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "$prefix;$env:PATH"
+          lefthook version
+          if ($LASTEXITCODE -ne 0) { throw "lefthook install failed: lefthook is not on PATH" }
+
+      - name: Install yq (pinned)
+        shell: pwsh
+        # scripts/check-ci-filter-coverage.ps1 parses THIS file with yq instead of hand-written regexes:
+        # six consecutive review rounds each found a defect in those regexes, two of them fail-CLOSED on
+        # legal YAML. The gate treats a missing yq as a hard failure and never as a skip, so it must be
+        # present here. It is NOT on the windows-latest image - the runner manifest lists jq and not yq -
+        # so it is installed explicitly. PINNED for the same reason the Pester step below pins its major
+        # line: an unpinned install silently changed the runner under us once already.
+        run: |
+          $ver = 'v4.50.1'
+          $dir = Join-Path $env:RUNNER_TEMP 'yq'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $exe = Join-Path $dir 'yq.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/mikefarah/yq/releases/download/$ver/yq_windows_amd64.exe" -OutFile $exe
+          # Prepend to GITHUB_PATH so the LATER Pester step sees it, exactly as the lefthook step above does.
+          $dir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "$dir;$env:PATH"
+          $got = (yq --version) -join ' '
+          if ($LASTEXITCODE -ne 0) { throw "yq install failed: yq is not on PATH" }
+          if ($got -notmatch [regex]::Escape($ver)) { throw "yq version mismatch: wanted $ver, got '$got'" }
+          "yq installed: $got"
+
       - name: Install Pester v5
         shell: pwsh
         run: Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
@@ -106,3 +217,16 @@ jobs:
           $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
           if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
           if ($r.TotalCount -lt 100) { throw "only $($r.TotalCount) tests discovered - expected the full suite (>=100); a misnamed/misplaced *.Tests.ps1?" }
+
+      - name: Pester - clavity-install (pwsh 7)
+        shell: pwsh
+        # NOT covered by the directory sweep above: that runs `Invoke-Pester scripts/tests` and this
+        # suite lives in clavity-dotnet/install/. Assuming the sweep reaches it produces a green job
+        # that ran nothing.
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force
+          $r = Invoke-Pester clavity-dotnet/install/clavity-install.Tests.ps1 -Output Detailed -PassThru
+          if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
+          $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
+          if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
+          if ($r.TotalCount -lt 12) { throw "only $($r.TotalCount) tests discovered - expected the clavity-install suite (>=12)" }

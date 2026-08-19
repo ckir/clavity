@@ -25,7 +25,7 @@ jobs:
       sha: ${{ steps.sha.outputs.sha }}
       artifact-name: ghidrust-installer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Record the built commit
         id: sha
@@ -299,7 +299,7 @@ jobs:
           }
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ghidrust-installer
           path: |

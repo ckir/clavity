@@ -77,7 +77,7 @@ There is **no `ghidrust/src/`** — this is a 3-crate workspace.
   file, then regenerate:
 
   ```bash
-  ghidrust skill --emit | awk '/^---/{p=1} p' > plugin/skills/ghidra-re-driver/SKILL.md
+  ghidrust skill --emit > plugin/skills/ghidra-re-driver/SKILL.md
   ```
 
   The `awk` strips the binary's leading license/provenance comment so the YAML frontmatter is line 1 —

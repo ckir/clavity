@@ -11,8 +11,9 @@ Describe 'shipped plugin hook registration' {
     BeforeAll {
         $script:RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Manifests = @{
-            dotnet  = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/hooks.json'
-            classic = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+            dotnet    = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/hooks.json'
+            classic   = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks/hooks.json'
+            autotrain = Join-Path $script:RepoRoot 'agy-autotrain/hooks/hooks.json'
         }
 
         # Return the matcher values of every object under $Event whose hooks array mentions $Script.
@@ -113,7 +114,7 @@ Describe 'shipped plugin hook registration' {
     }
 
     It 'names only hook files that EXIST in that plugin - <Driver>' -ForEach @(
-        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }, @{ Driver = 'autotrain' }
     ) {
         # A typo in a command path registers a hook that can never fire, and a hook that never fires
         # cannot report its own absence.
@@ -131,7 +132,7 @@ Describe 'shipped plugin hook registration' {
     }
 
     It 'ships no hook file that is reachable from nowhere - <Driver>' -ForEach @(
-        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }
+        @{ Driver = 'dotnet' }, @{ Driver = 'classic' }, @{ Driver = 'autotrain' }
     ) {
         # THE OTHER DIRECTION, and nothing tested it before. The test above checks every registered
         # command has a file; this checks every file is registered. A hook that ships but appears in no
@@ -151,11 +152,29 @@ Describe 'shipped plugin hook registration' {
         $files = @(Get-ChildItem -LiteralPath $dir -Filter *.sh -File -ErrorAction Stop)
         $files.Count | Should -BeGreaterThan 0 -Because 'an empty hook dir would pass the loop below vacuously'
 
+        # A THIRD LEGITIMATE CALLER: a shipped SKILL. ROADMAP 14c added agy-mark.sh, the sanctioned
+        # .clavity writer. It is deliberately NOT in hooks.json - it is not a hook - and it is not
+        # sourced by another hook either; the discipline skills invoke it as
+        # `bash "<BASE>/../../hooks/agy-mark.sh"`, which is the delivery model the owner chose. Before
+        # this clause, that made it read as unreachable and reddened this row on both drivers.
+        # Same reasoning the dot-sourced-library carve-out above already encodes: the row's real claim is
+        # "nothing ships that NOTHING can invoke", not "everything is in hooks.json".
+        $skillsDir = Join-Path (Split-Path -Parent $dir) 'skills'
+        $skillFiles = @(if (Test-Path -LiteralPath $skillsDir) {
+            Get-ChildItem -LiteralPath $skillsDir -Recurse -File -Filter *.md -ErrorAction SilentlyContinue
+        })
+        # NON-VACUITY GUARD. All three drivers ship skills; if this ever resolves empty the widening
+        # silently stops widening, and a genuinely unreachable file would still be caught (it fails
+        # CLOSED) - but the clause above would be dead code nobody notices.
+        $skillFiles.Count | Should -BeGreaterThan 0 -Because "every driver ships skills; an empty $skillsDir means this clause stopped searching anything"
+        $skillText = ($skillFiles | ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
+
         $unreachable = foreach ($f in $files) {
             if ($cmds -like "*$($f.Name)*") { continue }
             $others = ($files | Where-Object { $_.Name -ne $f.Name } |
                        ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
             if ($others -match [regex]::Escape($f.Name)) { continue }
+            if ($skillText -match [regex]::Escape($f.Name)) { continue }
             $f.Name
         }
         ($unreachable -join '; ') | Should -BeNullOrEmpty
@@ -229,5 +248,53 @@ Describe 'shipped plugin hook registration' {
         $matchers = @(Get-OwningMatchers -Manifest $script:Manifests[$Driver] -Event 'PreCompact' -Script 'agy-anomaly-capture-reminder.sh')
         $matchers.Count | Should -Be 1
         $matchers[0]    | Should -BeExactly 'manual|auto'
+    }
+
+    It 'registers <Script> on SessionStart startup|resume|clear|compact - agy-autotrain' -ForEach @(
+        @{ Script = 'agy-learn-reminder.sh' }
+        @{ Script = 'agy-curate-nudge.sh' }
+    ) {
+        # agy-autotrain/hooks/hooks.json was covered by NOTHING until now: the suite was parameterised
+        # over dotnet/classic only, and its two SessionStart matchers had drifted to complementary,
+        # non-overlapping SUBSETS of the convention - 'startup|clear|compact' and 'startup|resume'. The
+        # visible consequence was that the agy-LEARN reminder never fired on a RESUMED session.
+        $matchers = @(Get-OwningMatchers -Manifest $script:Manifests['autotrain'] -Event 'SessionStart' -Script $Script)
+        $matchers.Count | Should -Be 1 -Because 'exactly one SessionStart object may own this hook'
+        # -BeExactly, matching the sibling assertions: a future PARTIAL subset must fail, not pass quietly.
+        $matchers[0] | Should -BeExactly 'startup|resume|clear|compact' -Because 'this repo pins all four sources; a subset silently drops a channel'
+    }
+
+    It 'pins the SessionStart matcher of EVERY agy-autotrain hook, not a named list - agy-autotrain' {
+        # THE ROW ABOVE NAMES ITS TWO HOOKS IN A -ForEach LITERAL, so a THIRD SessionStart hook added
+        # tomorrow inherits NO matcher assertion at all - and a partial matcher is exactly the drift that
+        # pair exists to catch. It has already happened once here: the two matchers diverged to
+        # complementary subsets ('startup|clear|compact' and 'startup|resume') and the visible consequence
+        # was the agy-LEARN reminder never firing on a RESUMED session. An enumerated list cannot see the
+        # hook it was never told about.
+        #
+        # Both SIBLING rows in this file already sweep instead of enumerating - 'names only hook files that
+        # EXIST' walks Get-AllCommands, and 'ships no hook file that is reachable from nowhere' walks the
+        # directory. This row closes the asymmetry rather than adding a new mechanism.
+        #
+        # Deliberately NOT parameterised over dotnet/classic: those two register agy-liveness-check.sh on
+        # 'startup' ALONE on purpose (see 'keeps agy-liveness-check.sh on startup ALONE' above), so a blanket
+        # convention assertion is TRUE for agy-autotrain and FALSE for them. If agy-autotrain ever gains a
+        # deliberate startup-only hook, this row must fail and be amended by hand - that is the intended
+        # cost, not an oversight: a convention worth pinning is worth a deliberate edit to depart from.
+        $json   = Get-Content -Raw -LiteralPath $script:Manifests['autotrain'] | ConvertFrom-Json
+        $groups = @($json.hooks.SessionStart)
+
+        # Non-vacuity guard. Without it, a manifest whose SessionStart array went missing or empty would
+        # make the assertion below compare nothing to nothing and pass - the false-clean shape this repo
+        # keeps paying for.
+        $groups.Count | Should -BeGreaterThan 0 -Because 'an empty SessionStart array would make the assertion below vacuous'
+
+        # Name the offenders, not a count: a count sends a reader hunting, a name sends them to the file.
+        $bad = @(foreach ($g in $groups) {
+            if ($g.matcher -ne 'startup|resume|clear|compact') {
+                foreach ($h in @($g.hooks)) { "$($h.command) [matcher=$($g.matcher)]" }
+            }
+        })
+        $bad -join ', ' | Should -BeExactly '' -Because 'every agy-autotrain SessionStart hook must pin all four sources; a subset silently drops a channel'
     }
 }

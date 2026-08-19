@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-# AGY-ANOMALIES discipline-reaching recorder (plugin-shipped). SessionStart. CAPTURE ONLY, NO SUBPROCESSES.
+# AGY-ANOMALIES discipline-reaching recorder (plugin-shipped). SessionStart. CAPTURE ONLY.
 # ROADMAP section 0 step 1a. Design + measurements: docs/superpowers/specs/2026-08-05-sessionstart-capture-design.md
 #
 # IT CAPTURES; IT DOES NOT ANALYSE. One small row naming the session and its transcript, then stop. All
 # scanning happens later in scripts/discipline-reaching-report.ps1, which runs on demand with no time limit.
 #
-# WHY IT IS WRITTEN WITHOUT jq, date, OR git.
+# WHY THE EXTRACTION IS WRITTEN WITHOUT jq, date, OR git.
 # NOT because of teardown pressure - that was a wrong diagnosis that cost three rounds. The real cause of
 # the v17 failure was that ${CLAUDE_PLUGIN_ROOT} DOES NOT RESOLVE at SessionEnd (cancelled 3/3 with the
 # variable at 20,9s / 1,5s / 0,6s; an absolute path from the same manifest worked 2/2 - one axis varied,
 # the other never). Duration was a confound: a SLOWER hook registered elsewhere survived.
-# The subprocess-free form is kept anyway on its own merits: a hook that runs at EVERY session start should
-# be cheap, and the rewrite carries three fixes worth keeping - byte-exact Windows paths, CR stripping, and
-# pipe-safe stdin.
+# The subprocess-free form is kept for the PARSE and the ROOT WALK on its own merits: a hook that runs at
+# EVERY session start should be cheap, and the rewrite carries three fixes worth keeping - byte-exact
+# Windows paths, CR stripping, and pipe-safe stdin.
+#
+# ONE EXCEPTION, ADDED DELIBERATELY (ROADMAP 14c): the .clavity shield assertion below sources
+# agy-shield-lib.sh, which does spawn processes. It is placed AFTER every early exit, so it runs only
+# once the walk has already proved this is a real repository - the header's 20314ms unreachable-share
+# measurement is about the WALK, which is complete by then. This hook is registered with "timeout": 10
+# in hooks.json; keep any future addition on the far side of those exits for the same reason.
 #
 # WHY RAW PASSTHROUGH IS SAFE - the trick that removes jq from the WRITE side too. The payload already
 # holds each value JSON-ESCAPED. Copying that escaped text straight into the output re-emits it
@@ -94,6 +100,39 @@ if [ -n "$tx" ]; then status='deferred'; else status='transcript_not_found'; fi
 printf -v ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1
 
 out="$root/.clavity"
+
+# ROADMAP 14c: assert the shield BEFORE creating or writing anything under .clavity/. Sourced, not
+# executed - the helper returns and never exits, so it cannot terminate this hook. It always returns 0;
+# its value carries no information and must not be branched on. $sid is the payload's session_id (:42),
+# forwarded as the debounce key so a persistent fault is reported once per session rather than on every
+# start; an empty $sid legally disables debouncing.
+. "$(dirname "$0")/agy-shield-lib.sh" 2>/dev/null || true
+if command -v agy_shield >/dev/null 2>&1; then
+  agy_shield "$root" ".clavity/discipline-reaching.jsonl" "$sid"
+else
+  # FALLBACK, and its absence was a real asymmetry. If the helper is missing, unreadable, or contains a
+  # syntax error, `|| true` swallows the failure and `command -v` correctly reports it gone - and without
+  # this branch the hook would proceed to write into an UNSHIELDED .clavity/ and exit 0 with nothing said.
+  # The old content-blind idiom is a weak shield; no shield at all is the leak this item exists to stop.
+  #
+  # PANEL R2 - THIS FALLBACK USES THE SAFE APPEND, NOT THE SHIPPED IDIOM. Round 1 proved
+  # `[ -f ] || printf '%s\n' '*' >>` corrupts a shield whose last line has no trailing newline (measured:
+  # `foo.txt` + `*` -> the single line `foo.txt*`). Round 1's own fix then pasted that unpatched idiom
+  # into this brand-new else branch, recreating the defect it had just closed one task over. A fix is
+  # unreviewed code; this is what that costs when it is not re-reviewed.
+  mkdir -p "$root/.clavity" 2>/dev/null
+  # `! -s` COVERS MISSING **AND** EMPTY IN ONE TEST, and that is the whole point. PANEL R3 measured that
+  # the round-2 form - `if [ ! -f ] ... elif [ -s ] ...` - ran NEITHER branch for a shield that exists at
+  # zero bytes, leaving an EMPTIED shield unrestored. That is the literal 14d defect, reintroduced in the
+  # fallback by the fix for the previous round's defect. Third consecutive round in which a fix created
+  # one; do not "simplify" this test back apart.
+  if [ ! -s "$root/.clavity/.gitignore" ]; then
+    printf '%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
+  elif ! grep -qx '*' "$root/.clavity/.gitignore" 2>/dev/null; then
+    printf '\n%s\n' '*' >> "$root/.clavity/.gitignore" 2>/dev/null
+  fi
+fi
+
 [ -d "$out" ] || mkdir -p "$out" 2>/dev/null || exit 0
 
 # v:3 is the SessionStart capture shape. v:1 (analyse-at-SessionEnd) SHIPPED in v17 and v:2 (SessionEnd

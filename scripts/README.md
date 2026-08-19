@@ -30,6 +30,7 @@ directly.
 | `sync-register-hash.ps1` | Regenerate `register-plugin-hash.iss` with the current SHA-256 of `register-plugin.ps1` | `just sync-register-hash` |
 | `check-agy-discipline-skills.ps1` | Lints shipped agy-driving discipline skills (frontmatter, ASCII-only [VERDICT] grammar, transports, marker constant) | `just check-agy-skills` (pre-push) |
 | `check-plugin-namespace.ps1` | SP-0 namespace-rename completeness gate: fails if the mass rename left any stray old plugin-namespace, skill-dir, or plugin-identity reference | lefthook pre-push (`check-plugin-namespace`); run directly, no `just` recipe |
+| `check-injected-context.ps1` | Audit every file this repo injects into an agent's context (encoding, plan-residue, tag-hygiene, namespace, payload-budget, reference resolution). Discovery is SUBTRACTIVE: walk `$script:DomainRoots`, subtract `injected-context-ignore.txt`; per-file waivers live in `injected-context-exemptions.json` | `just check-injected-context` |
 
 ## Seed / golden-header integrity
 
@@ -37,8 +38,13 @@ directly.
 |---|---|---|
 | `check-seed-artifacts-synced.sh` | Fail if the seed agent artifacts (adversarial-panel-review skill, the AGY-AFTER, auto-fire seam-inject, and SessionStart liveness hooks, the two driver knowledge manuals, `hooks.json`'s shared PostToolUse + PreToolUse blocks + the shared SessionStart liveness entry) drift between the two driver plugins | `just seed-sync-check` |
 | `check-seed-budget.ps1` | Assert the injected golden-header SEED alone is within its committed byte budget (default 7992 B) | CI (`build-dotnet.yml`, `build-classic.yml`); run directly, no `just` recipe |
+| `check-cheatsheet-budget.ps1` | Assert the canonical driver cheatsheet (`driver-cheatsheet.core.md`) is within its committed byte budget (default 4096 B) | CI (`build-dotnet.yml`, `build-classic.yml`); run directly, no `just` recipe |
+| `check-curate-in-progress.ps1` | Refuse to commit a driver-cheatsheet pinned file while `.clavity/curate-in-progress` exists, i.e. while an agy-curate run is in flight or ended abnormally leaving unreviewed distilled content in the tree | `lefthook.yml` `pre-commit`, globbed to the three pinned files so it costs nothing on any other commit; run directly to check by hand |
 | `check-core-integrity.ps1` | Assert every protected driver-owned file (the SEED, the four driver manuals, `driver-cheatsheet.core.md`) is byte-identical to its committed HEAD version after a drain | invoked by `drain-knowledge.ps1` |
 | `check-growth-budget.ps1` | Warn-only gate: assert SEED+GROWTH combined size fits the binary's 16 KiB injection cap | invoked by `drain-knowledge.ps1` (warn-only) |
+| `check-ci-filter-coverage.ps1` | Gate: pins a required-entry table for `ci-scripts.yml`'s `paths:` filter — each row carrying WHY it is needed — and asserts every entry appears under BOTH `on.push` and `on.pull_request` (nothing else checks the two agree). **Parses the workflow with `yq`, and a missing `yq` is a hard failure, never a skip** — hand-written regexes were removed by owner decision 2026-08-17 after six consecutive review rounds each found a defect in them, two fail-closed on legal YAML; CI installs a pinned `yq` in the `dev-scripts` job because it is absent from `windows-latest`. An earlier AST half that discovered new trees was deleted for producing four defects of its own against five gaps found once. Known limit, accepted: a NEW tree asserted against by a NEW suite is not detected here | `pwsh -File scripts/check-ci-filter-coverage.ps1` |
+| `generate-cheatsheet-literals.ps1` | Regenerate the two compiled-in cheatsheet literals (`clavity-classic/src/driver_cheatsheet.rs`, `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs`) from the canonical `driver-cheatsheet.core.md`, so the three can never diverge | `just gen-cheatsheet-literals` |
+| `check-cheatsheet-parity.ps1` | Pre-commit gate: compare the STAGED literals against freshly generated output, INDEX to INDEX (`git show :<path>`), never the worktree, and never write in place | `lefthook.yml` `pre-commit`, globbed to the three pinned files so it costs nothing on any other commit; run directly to check by hand |
 
 ## Knowledge drain & docs-audit tooling
 
@@ -53,6 +59,15 @@ directly.
 | `docs-audit-prompt.md` | The prompt fed to the per-doc `claude -p` auditor call inside `docs-audit.ps1` | input to `docs-audit.ps1`, not executable |
 | `docs-audit-lib.ps1` | Shared, parameter-less docs-audit primitives (doc-list parsing, in-scope resolution) | dot-sourced by `docs-audit.ps1`; no recipe |
 | `discipline-reaching-report.ps1` | Read-only reader for `.clavity/discipline-reaching.jsonl`: reports whether the AGY-ANOMALIES dispatch relay is reaching a driver. Never folds a `null` count into a zero, never prints a ratio, reports sessions RECORDED (distinct sessions, not runs), and quarantines still-running sessions in a `PROVISIONAL` bucket — each refusal blocks a measured false conclusion | `just discipline-report [--Last N]` |
+
+## Plan / one-off verifiers
+
+Not wired into any gate. Each exists because a specific plan step needed a checkable oracle, and is kept
+because the check is worth re-running by hand when that area changes.
+
+| Script | Purpose | Run via |
+|---|---|---|
+| `check-rulings-recorded.ps1` | Assert each named `ROADMAP.md` entry carries an `OWNER RULING (` block. Written for the steps-0-1 plan after its first verifier - an inline `awk` one-liner - FAILED SILENTLY on the last of four entries: it bounded each section by scanning to the next `#### ` heading, but the entry after `§17b` is `### §18`, so the bound never matched, the loop ran to EOF, and it printed nothing. **No output read as "not ruled" to a human and as success to a pipeline.** Matching is case-SENSITIVE (`-cnotmatch`) on purpose: PowerShell's `-match` is case-insensitive, which had certified `§14f` as ruled because its prose says "needs an owner ruling, not a fix" | `pwsh -File scripts/check-rulings-recorded.ps1` |
 
 ## Subdirectories
 

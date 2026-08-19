@@ -596,3 +596,31 @@ evidence and its first test cases. The implementation plan must close them as pa
   before phase 1 lands, or it ships green over unread surface - the precise thing the ruling forbids.
 - **Non-vacuity.** Every new check must be shown to fail against a deliberate logic mutant of the thing it
   guards, with per-check attribution - not merely that the suite went non-zero.
+
+---
+
+## Superseded by execution (recorded 2026-08-10, after 15 capstone rounds)
+
+This spec was owner-approved and is left intact above, because a design document that is quietly edited
+to match whatever shipped stops being a record of a decision. Two of its statements are no longer true of
+the shipped gate, both changed by later owner rulings or by measurement:
+
+**1. Domain roots - section 6.1 says "All six. No product is excluded and none is exempted pending
+audit." The gate ships NINE.** The owner ruled the widening on 2026-08-09 after a measurement showed 3 of
+the repository's 21 `SKILL.md` files sat outside every root - two of them `include_str!`'d into shipping
+binaries, one a headless sub-agent's system prompt. Added: `clavity-classic/agy_skills`,
+`clavity-classic/agy-mcp-bridge`, `ghidrust/skill`. The spec's *principle* held; its enumeration did not.
+
+**2. Traversal pruning - line 258 says "Prune them at the directory level anyway - it costs one line".
+The corpus walk no longer prunes at all.** That one line turned out to be the gate's single worst defect:
+matching a directory NAME at any depth meant a skill, hook, knowledge manual or rules file placed in a
+folder called `dist` or `target` was removed from the corpus before any invariant ran, while still being
+shipped and injected. Measured end to end - corpus 0, violations 0, five smuggled files. Discovery now
+subtracts only by ANCHORED path, descent is skipped only where an anchored glob already subtracts the
+whole directory, and build output found inside a domain root is REPORTED rather than skipped. The index
+walk still prunes by name, deliberately: its results are resolved against, never audited.
+
+**What this record is for.** Both changes came from running the code, not from re-reading this document.
+The spec's own reasoning for pruning - "it costs one line and the claim stops being true the day a
+build directory appears" - was sound about cost and wrong about risk, and no amount of review of the spec
+would have surfaced that. The full round-by-round record lives in the commit range `c17bcbe..HEAD`.

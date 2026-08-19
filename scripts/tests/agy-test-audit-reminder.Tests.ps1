@@ -7,20 +7,58 @@ Describe 'agy-test-audit-reminder.sh' {
         $bashDir = Split-Path -Parent (Get-GitBashOrThrow)                       # ...\Git\bin
         $script:NoJqPath = (Join-Path (Split-Path -Parent $bashDir) 'usr\bin')   # ...\Git\usr\bin
 
+        # ASSERT THE FIXTURE'S POSTCONDITION, NOT `$LASTEXITCODE`. Both builders below stage with
+        # `git add -A` then commit, and NEITHER command's status was checked. That is not merely untidy:
+        # New-TempRepo leaves an `--allow-empty` init commit, so if the staging silently no-ops, the commit
+        # fails with nothing to commit, `git rev-parse HEAD` still SUCCEEDS and returns the INIT sha, and the
+        # builder hands back a well-formed object describing the exact INVERSE of the state its comment
+        # promises. MEASURED with the `add` removed: rev-parse returned a plausible sha whose commit touched
+        # no files at all, and every consumer saw a valid-looking fixture.
+        #
+        # Checking the POSTCONDITION catches every way the fixture can miss that state, not just a nonzero
+        # add - and it is the state, not the exit code, that the rows depend on.
+        #
+        # THE PATHSPEC IS LOAD-BEARING: `--name-only` QUOTES a non-ASCII path (`core.quotepath` defaults on),
+        # so it emits "src/Modulo_\303\251.cs" for the accented row below and a name comparison in PowerShell
+        # would fail for an ENCODING reason while the fixture was perfectly fine. Passing the path as a
+        # pathspec makes git do the matching, so nothing round-trips through PowerShell's text decoding:
+        # non-empty output means HEAD's commit touched exactly that path. Both directions measured.
+        function Assert-HeadTouched { param([string]$Dir, [string]$Rel)
+            $touched = & git -C $Dir diff-tree --no-commit-id --name-only -r HEAD -- $Rel
+            if (-not $touched) {
+                throw ("fixture is NOT in its promised state: HEAD's commit did not touch '$Rel' " +
+                       "(staging or commit silently failed; rev-parse would still have returned the init sha)")
+            }
+        }
+
         # A repo whose HEAD commit touched a code file, with capstone.head==HEAD and no audit marker:
         # the canonical FIRE state. Returns the repo dir (Windows path).
+        # A BUILDER OWNS ITS DIRECTORY UNTIL IT RETURNS. Every caller is shaped
+        # `$r = New-FiredRepo; try { ... } finally { Remove-Item $r.Dir }` - the assignment is OUTSIDE the
+        # try, so a throw in here aborts before `$r` exists, the caller's finally never runs, and the temp
+        # repo leaks permanently. The postcondition guards make that path reachable for the first time, so
+        # the builders now clean up after themselves and rethrow. `catch`, not `finally`: the success path
+        # must hand the directory to the caller intact.
         function New-FiredRepo {
             param([string]$CodeFile = 'src/thing.cs', [switch]$DocsOnly)
             $dir = New-TempRepo
-            $rel = if ($DocsOnly) { 'docs/notes.md' } else { $CodeFile }
-            $full = Join-Path $dir $rel
-            New-Item -ItemType Directory -Path (Split-Path -Parent $full) -Force | Out-Null
-            Set-Content -LiteralPath $full -Value 'x' -Encoding ascii
-            & git -C $dir add -A
-            & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm work
-            $head = (& git -C $dir rev-parse HEAD).Trim()
-            New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
-            return [pscustomobject]@{ Dir = $dir; Head = $head }
+            try {
+                $rel = if ($DocsOnly) { 'docs/notes.md' } else { $CodeFile }
+                $full = Join-Path $dir $rel
+                New-Item -ItemType Directory -Path (Split-Path -Parent $full) -Force | Out-Null
+                Set-Content -LiteralPath $full -Value 'x' -Encoding ascii
+                & git -C $dir add -A
+                & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm work
+                Assert-HeadTouched -Dir $dir -Rel $rel
+                $head = (& git -C $dir rev-parse HEAD).Trim()
+                New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
+                return [pscustomobject]@{ Dir = $dir; Head = $head }
+            # THE CLEANUP MUST NOT BE ABLE TO EAT THE DIAGNOSIS. `-ErrorAction SilentlyContinue` suppresses
+            # NON-terminating errors only; a terminating one (a locked handle, an invalid path) would abort
+            # this catch block and throw ITS exception instead, destroying the original - so the failure the
+            # builder actually hit would be replaced by a confusing cleanup error. Best-effort cleanup,
+            # guaranteed rethrow.
+            } catch { try { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue } catch { }; throw }
         }
         function Set-Marker { param($Dir, $Name, $Sha)
             Set-Content -LiteralPath (Join-Path $Dir ".clavity/agy-marks/$Name.head") -Value $Sha -NoNewline -Encoding ascii
@@ -29,6 +67,7 @@ Describe 'agy-test-audit-reminder.sh' {
         # commit while HEAD advances on a feature branch with a code file, so merge-base HEAD main != HEAD.
         function New-DiffPathRepo {
             $dir = New-TempRepo                                # one 'init' commit on the default branch
+            try {
             & git -C $dir branch -f main HEAD                  # ensure a 'main' ref pinned at init
             & git -C $dir checkout -qb feature
             $full = Join-Path $dir 'src/thing.cs'
@@ -36,9 +75,24 @@ Describe 'agy-test-audit-reminder.sh' {
             Set-Content -LiteralPath $full -Value 'x' -Encoding ascii
             & git -C $dir add -A
             & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm work
+            Assert-HeadTouched -Dir $dir -Rel 'src/thing.cs'
             $head = (& git -C $dir rev-parse HEAD).Trim()
+            # THE PRIMARY-PATH PROMISE IS ITS OWN CLAIM, and it fails independently of the commit: if `main`
+            # did not stay pinned at init, merge-base HEAD main == HEAD, gate() takes the FALLBACK branch, and
+            # every row reached through this builder silently exercises the wrong code path while still
+            # passing. The comment above is the contract; this is the only thing that holds it to it.
+            if ((& git -C $dir merge-base HEAD main).Trim() -eq $head) {
+                throw ("fixture is NOT in its promised state: merge-base HEAD main == HEAD, so gate() takes " +
+                       "the FALLBACK path, not the PRIMARY `git diff `$base..HEAD` path this builder exists to exercise")
+            }
             New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
             return [pscustomobject]@{ Dir = $dir; Head = $head }
+            # THE CLEANUP MUST NOT BE ABLE TO EAT THE DIAGNOSIS. `-ErrorAction SilentlyContinue` suppresses
+            # NON-terminating errors only; a terminating one (a locked handle, an invalid path) would abort
+            # this catch block and throw ITS exception instead, destroying the original - so the failure the
+            # builder actually hit would be replaced by a confusing cleanup error. Best-effort cleanup,
+            # guaranteed rethrow.
+            } catch { try { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue } catch { }; throw }
         }
         function New-AuditPayload { param([string]$Cwd)
             @{ tool_name = 'Bash'; tool_input = @{ command = 'git commit' }; cwd = $Cwd } | ConvertTo-Json -Compress

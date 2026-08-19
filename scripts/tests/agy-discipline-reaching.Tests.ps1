@@ -221,7 +221,7 @@ Describe 'agy-discipline-reaching.sh' {
     }
 
     It 'is SILENT under .no-agy (<Scope>) and writes nothing' -ForEach @(
-        @{ Scope = 'workspace' }, @{ Scope = 'global' }, @{ Scope = 'root-from-subdir' }
+        @{ Scope = 'workspace' }, @{ Scope = 'global' }, @{ Scope = 'root-from-subdir' }, @{ Scope = 'subdir-only' }
     ) {
         $r = New-TempRepo; $h = New-CleanHome; $tx = New-Transcript
         try {
@@ -235,6 +235,19 @@ Describe 'agy-discipline-reaching.sh' {
                     New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
                     $cwdArg = Join-Path $r 'src'
                     New-Item -ItemType Directory -Path $cwdArg -Force | Out-Null
+                }
+                'subdir-only' {
+                    # THE OTHER HALF OF THE SAME `if`, AND IT HAD NO ROW (AGY-TEST-AUDIT round A, GAP-6).
+                    # The hook tests `[ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]`. Every scope
+                    # above puts the opt-out at the repo ROOT - including 'root-from-subdir', whose
+                    # subdirectory is the *cwd*, not the location of the file - so all three are satisfied
+                    # by the FIRST operand alone. Deleting `|| [ -f "$cwd_path/.no-agy" ]` left the whole
+                    # suite green. Here the opt-out exists ONLY in the subdirectory, which is the one
+                    # arrangement that can tell the second operand apart from nothing at all: a developer
+                    # opting one subtree out of a repo they still want recorded.
+                    $cwdArg = Join-Path $r 'src'
+                    New-Item -ItemType Directory -Path $cwdArg -Force | Out-Null
+                    New-Item -ItemType File -Path (Join-Path $cwdArg '.no-agy') -Force | Out-Null
                 }
             }
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $cwdArg $tx) -Env @{ HOME = $h }
@@ -281,5 +294,128 @@ Describe 'agy-discipline-reaching.sh' {
         $ha = (Get-FileHash -LiteralPath $a -Algorithm SHA256).Hash
         $ha | Should -Not -BeNullOrEmpty
         (Get-FileHash -LiteralPath $b -Algorithm SHA256).Hash | Should -BeExactly $ha
+    }
+
+    Context '14c - the hook asserts the .clavity shield' {
+        BeforeAll {
+            $script:Fixtures = New-Object System.Collections.ArrayList   # FIXTURE HYGIENE
+            # A throwaway repo with NO root .gitignore: in THIS repository the root .gitignore covers
+            # .clavity/, which MASKS a broken shield and reports a false pass.
+            function New-ReachingFixture {
+                param([string]$Shield)
+                $d = Join-Path ([IO.Path]::GetTempPath()) ("reachfx-" + [guid]::NewGuid().ToString('N'))
+                New-Item -ItemType Directory -Force -Path $d | Out-Null
+                [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
+                & git -C $d init -q
+                & git -C $d config user.email t@t.t
+                & git -C $d config user.name t
+                & git -C $d config core.autocrlf false   # FIXTURE HYGIENE: never inherit the host's setting
+                New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
+                [IO.File]::WriteAllText((Join-Path $d '.clavity/.gitignore'), $Shield)
+                [IO.File]::WriteAllText((Join-Path $d 'seed.txt'), "seed`n")
+                & git -C $d add seed.txt; & git -C $d commit -q -m seed
+                $d
+            }
+            function Invoke-Reaching {
+                param([string]$Dir, [string]$SessionId = 'sess-abc')
+                # `Get-GitBashOrThrow`, NOT bare `bash`: `Get-Command bash` is documented NON-DETERMINISTIC
+                # right above in this same helpers file - locally it resolves to WSL's System32 bash.exe,
+                # which cannot run a Windows-path hook and fails silently ("No such file or directory" on
+                # stderr, nothing else observable). Every other row in this suite already goes through
+                # Invoke-BashHook, which pins Git Bash the same way; this Context needs its own raw-stderr
+                # capture (for the debounce row below) so it calls the resolved bash directly instead.
+                $bash = Get-GitBashOrThrow
+                $hook = (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -replace '\\','/'
+                $payload = (@{ cwd = ($Dir -replace '\\','/'); session_id = $SessionId; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+                $errF = Join-Path ([IO.Path]::GetTempPath()) ("reach-" + [guid]::NewGuid().ToString('N') + ".err")
+                try {
+                    $payload | & $bash $hook 2> $errF | Out-Null
+                    [pscustomobject]@{ Err = (Get-Content -Raw -LiteralPath $errF -ErrorAction SilentlyContinue) }
+                } finally { Remove-Item -LiteralPath $errF -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        AfterAll {
+            foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+
+        It 'RESTORES an emptied shield - an observable effect' {
+            $d = New-ReachingFixture -Shield ''
+            Invoke-Reaching -Dir $d | Out-Null
+            (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')) |
+                Should -Match '(?m)^\*$' -Because 'the hook must assert the shield before it writes into .clavity/'
+        }
+
+        It 'still writes its row (the shield call must not break capture)' {
+            $d = New-ReachingFixture -Shield ''
+            Invoke-Reaching -Dir $d | Out-Null
+            (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/discipline-reaching.jsonl')) | Should -Match '"v":3'
+        }
+
+        It 'the FALLBACK restores an EMPTIED shield when the helper cannot be sourced (panel R3)' {
+            # THE FALLBACK PATH NEEDS ITS OWN ORACLE. Every other row here exercises the helper, so a
+            # broken else-branch is invisible to all of them - and it WAS broken: measured, the
+            # `[ ! -f ] ... elif [ -s ]` form ran neither branch against a zero-byte shield, leaving the
+            # 14d defect itself unfixed on exactly the path that exists to be a floor.
+            $d = New-ReachingFixture -Shield ''
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            # Copy the hook WITHOUT agy-shield-lib.sh beside it, so the source fails and the else runs.
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-x'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+            $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2>$null | Out-Null
+            (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')) |
+                Should -Match '(?m)^\*$' -Because 'the fallback is the floor; an emptied shield must still be restored without the helper'
+            Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        It 'the FALLBACK also shields a NON-EMPTY shield that lacks the bare * (AGY-TEST-AUDIT GAP-5)' {
+            # THE ROW ABOVE USES -Shield '', WHICH TAKES THE `! -s` BRANCH. The `elif ! grep -qx '*'`
+            # branch beside it - a shield that HAS content but no bare star - had no row at all, so both
+            # deleting it and reverting its append to the unsafe form scored green.
+            # THE FIXTURE DELIBERATELY OMITS THE TRAILING NEWLINE. That is what makes this row able to
+            # fail: the branch appends with a LEADING newline precisely because a shield whose last line
+            # has none would otherwise concatenate into `!keepme.md*` - one corrupted line, no bare `*`
+            # anywhere, the directory still exposed. This is the defect a fix RE-INTRODUCED here twice
+            # (panel R1 pasted the unpatched idiom into this very branch), so it earns a pinned fixture.
+            $d = New-ReachingFixture -Shield '!keepme.md'
+            $hookDir = Join-Path ([IO.Path]::GetTempPath()) ("nolib2-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks/agy-discipline-reaching.sh') -Destination (Join-Path $hookDir 'agy-discipline-reaching.sh')
+            $payload = (@{ cwd = ($d -replace '\\','/'); session_id = 'sess-y'; source = 'startup'; model = 'm'; transcript_path = 't' } | ConvertTo-Json -Compress)
+            $payload | & (Get-GitBashOrThrow) ((Join-Path $hookDir 'agy-discipline-reaching.sh') -replace '\\','/') 2>$null | Out-Null
+            $shield = Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')
+            $shield | Should -Match '(?m)^\*$' -Because 'the per-DIRECTORY guarantee is unconditional; a shield with content but no star leaves every file in .clavity/ exposed to git add -A'
+            $shield | Should -Match '(?m)^!keepme\.md$' -Because 'the star must be its OWN line - concatenated onto the last line it shields nothing and corrupts the human entry'
+            Remove-Item -LiteralPath $hookDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        It 'FORWARDS the payload session_id as the debounce key' {
+            # THE ORACLE IS A LINE COUNT AGAINST A PERSISTENT FAULT, and it has to be: Stage A runs
+            # unconditionally and ignores the key entirely, so a hook passing an empty or hard-coded key
+            # still restores the shield and passes every row above. Shield restoration cannot detect a
+            # broken forward. The TRACKED-file fault reports on every call until a human intervenes, so
+            # two runs with the same real session_id emit ONCE and with an empty key emit TWICE.
+            $d = New-ReachingFixture -Shield "*`n"
+            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
+            [IO.File]::WriteAllText((Join-Path $d '.clavity/discipline-reaching.jsonl'), '')
+            & git -C $d add -f '.clavity/discipline-reaching.jsonl'
+            & git -C $d commit -q -m 'track the jsonl to create a PERSISTENT fault'
+
+            $sid = 'sess-' + [guid]::NewGuid().ToString('N')
+            $a = Invoke-Reaching -Dir $d -SessionId $sid
+            $b = Invoke-Reaching -Dir $d -SessionId $sid
+            $total = ([regex]::Matches(("$($a.Err)$($b.Err)"), 'git rm --cached')).Count
+            $total | Should -Be 1 -Because 'with the real session_id forwarded, a persistent fault is reported ONCE across two runs'
+            # THE COMMENT ABOVE NAMES "empty or hard-coded" AND THE ORACLE ONLY COVERS EMPTY. Two calls
+            # under the same id emitting once proves they share A key - and a HARD-CODED non-empty key
+            # is also "the same key twice", so it passes identically while the forwarding is gone. The
+            # sibling row in the agy-mark suite had the same hole and was folded one round earlier; this
+            # one was not swept for at the time, which is exactly why a lesson has to be grepped for
+            # across SIBLING suites before it is called shipped.
+            $c = Invoke-Reaching -Dir $d -SessionId ('sess-' + [guid]::NewGuid().ToString('N'))
+            ([regex]::Matches("$($c.Err)", 'git rm --cached')).Count |
+                Should -Be 1 -Because 'a DIFFERENT session_id must NOT be debounced - that is what separates a forwarded key from a constant'
+        }
     }
 }

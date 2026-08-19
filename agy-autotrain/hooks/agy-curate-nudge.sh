@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agy-curate staleness nudge (spec §5.C-A). Fires on SessionStart; warns when the observations inbox has
+# agy-curate staleness nudge (spec section 5.C-A). Fires on SessionStart; warns when the observations inbox has
 # grown past a threshold. Escalating wording; snooze via ~/.clavity/.agy-curate-snooze (7-day). Fail-open.
 set +e
 
@@ -23,7 +23,8 @@ fi
 
 [ -f "$OBS" ] || exit 0
 # Count entries under "## Pending" (lines beginning with "- ["), and find the OLDEST entry date
-# (bullets carry a `· YYYY-MM-DD ·` stamp; lexicographic min == chronologically oldest).
+# (bullets are delimited by U+00B7 MIDDLE DOT, NOT an ASCII asterisk - the live inbox format, pinned
+# by agy-curate-nudge.Tests.ps1; lexicographic min == chronologically oldest).
 # BOTH scans MUST be anchored to /^- \[/ - keep them symmetric. The `p=0` terminator is not enough on its
 # own: nothing after "## Pending" starts with "## " (the section is followed by append-only drain-log HTML
 # comments), so `p` stays 1 to EOF. An unanchored date scan therefore reads dates out of those comments and
@@ -33,7 +34,7 @@ count="$(awk '/^## Pending/{p=1;next} /^## /{p=0} p && /^- \[/{c++} END{print c+
 oldest="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^## Pending/{p=1;next} /^## /{ flush(); p=0 } p && /^- \[/ { flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print m }' "$OBS" 2>/dev/null)"
 [ -z "$count" ] && exit 0
 
-# Age gate (spec §5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?
+# Age gate (spec section 5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?
 age_stale=0
 if [ -n "$oldest" ]; then
   now="$(date +%s 2>/dev/null)"; ots="$(date -d "$oldest" +%s 2>/dev/null)"

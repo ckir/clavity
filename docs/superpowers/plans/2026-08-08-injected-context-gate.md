@@ -25,6 +25,24 @@
   `commonmemory/`. Its findings do not exist yet, so no line-level plan can be written for it. It runs on
   the same branch after stage 1, and **the branch does not merge until it is green.**
 
+  ✅ **STAGE 2 IS GREEN — OWNER-RULED 2026-08-18. THIS GATE IS CLOSED AND THE BRANCH MAY MERGE.**
+  Stage 2 ran as specified: a multi-round sweep of the three products produced 17 findings, which became
+  `docs/superpowers/plans/2026-08-11-stage2-fix-batch.md`. That plan was executed in five commits and
+  reviewed by **three separate capstones totalling 29 fold-rounds** (`cec62ff..49260dd`), plus an
+  AGY-TEST-AUDIT whose two owner-deferred gaps are logged in `docs/coverage-debt.md` (`ae18bdb`). Both
+  capstones now have ledger rows in `docs/agy-capstone-ledger.md`, written retroactively and labelled as
+  such.
+
+  🔴 **WHY THIS SAT UNCLOSED FOR EIGHT DAYS, because the shape recurs.** The work finished on
+  2026-08-12. The gate stayed open because **nothing points at a gate except the artifact that declares
+  it**, and this one is a gitignored plan file nobody re-opens once execution starts. The durable record
+  kept saying `STAGE 2 (NOT STARTED)` and `branch MUST NOT MERGE` long after Stage 2 had been swept,
+  planned, fixed, capstoned and audited — every one of those lines written BEFORE the fix batch existed
+  and never revisited. Two more owner-confirmed capstone GREENs landed on this branch afterwards
+  (`bc4813b`, `1022f8f`) without anyone noticing the branch was still formally unmergeable.
+  **A completion condition stated only in the plan that opens it has no mechanism to close it.**
+  This was found by sweeping the plans backwards, not by any gate, hook or test.
+
 **Everything happens on `feature/injected-context-governance`.** `main` must never carry a green gate over
 unread surface - that is the whole point of section 6.1's ruling.
 
@@ -1729,3 +1747,23 @@ git commit -m "feat(gate): arm the injected-context checker in just and CI"
       A third entry appearing during execution means something was parked rather than fixed.
 - [ ] `$script:AnomalyBlocklist` is empty.
 - [ ] **The branch is NOT merged.** Stage 2 - the anomaly sweep of the three products - runs first.
+
+---
+
+## What execution changed (recorded 2026-08-10)
+
+All twelve tasks shipped. Two task descriptions no longer match the code, and both are recorded here
+rather than edited above, so the plan stays a record of what was intended.
+
+- **Task 2, Step 4** instructs the builder to prune traversal with
+  `Where-Object { $_.FullName -notmatch '[\/](\.git|node_modules|target|bin|obj|\.venv|__pycache__)[\/]' }`.
+  That line is gone. It matched a directory NAME at any depth, which let a skill, hook, knowledge manual
+  or rules file be smuggled past every invariant by placing it in a folder named `dist` or `target` -
+  measured, corpus 0 and violations 0 while the file still shipped. It also matched the ABSOLUTE path, so
+  cloning the repository under any directory called `target` emptied the corpus entirely. Discovery now
+  subtracts only by anchored path.
+- **The domain roots** are nine, not the six this plan was written against - owner ruling 2026-08-09.
+
+Fifteen capstone rounds followed execution and folded forty-seven defects. Not one round came back green,
+and the three most serious findings arrived at rounds nine, ten and eleven - well past the point where
+stopping would have felt reasonable. The plan's own exit criteria were all met; they were not sufficient.

@@ -81,13 +81,13 @@ jobs:
           esac
 
       - name: Download the rebuilt installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ steps.which.outputs.artifact }}
           path: dist-member
 
       - name: Republish onto the existing release (adds/overwrites only this member's 2 assets)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
           name: ${{ inputs.tag }}

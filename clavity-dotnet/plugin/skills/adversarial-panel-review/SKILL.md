@@ -154,8 +154,8 @@ minimized, so keep going as long as the panel is still finding substance — nev
 spend. Standing a finding down on that floor is the `DISCARDED-BELOW-FLOOR` disposition and carries its
 evidentiary bar - see "Disposition of findings (AGY-SCOPE)" below.
 
-Independent of the severity floor, apply a hard round cap: by default, at round 3, halt and ask the
-operator directly — "still finding substance at round 3, continue or ship?" — rather than looping
+Independent of the severity floor, apply a hard round cap: by default, at round 6, halt and ask the
+operator directly — "still finding substance at round 6, continue or ship?" — rather than looping
 unboundedly or silently stopping on your own. This keeps the cap a human decision rather than a spend-saving
 auto-stop. (This is the same halt-and-ask mechanism as the agy-escalation gate in Step 2 — stop and ask a
 human — but a distinct terminal outcome.) If there is no operator to ask (a non-interactive run), reaching

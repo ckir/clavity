@@ -15,3 +15,12 @@ tests/Clavity.Ls.Tests/TestData/** binary
 # pin (register-plugin-hash.iss) matches the packed bytes the uninstaller verifies (GetSHA256OfFile). See
 # docs/superpowers/plans/2026-07-19-installer-registration-convergence.md Task 5.
 installer/_shared/register-plugin.ps1 text eol=crlf
+
+# The driver-cheatsheet source and its two GENERATED literals must be LF everywhere. The pre-commit
+# parity hook compares the generator's output against the INDEX blob, which git stores as LF, so a
+# CRLF checkout of any of these three would mismatch on every commit. Measured 2026-08-14:
+# core.autocrlf is true and `git check-attr text eol` reported `unspecified` for all three, so a fresh
+# clone checked them out as CRLF. Same mechanism, same reason, as the *.sh pin above.
+agy-autotrain/knowledge/driver-cheatsheet.core.md text eol=lf
+clavity-classic/src/driver_cheatsheet.rs text eol=lf
+clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs text eol=lf

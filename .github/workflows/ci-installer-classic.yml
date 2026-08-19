@@ -12,6 +12,12 @@ on:
       - '.github/workflows/ci-installer-classic.yml'
       - 'scripts/generate-scoped-manifest.ps1'
       - 'scripts/check-versions.ps1'
+      # build-classic.yml runs check-seed-budget.ps1 and check-cheatsheet-budget.ps1, whose inputs are
+      # these two files. build-classic.yml is workflow_call-only, so it fires ONLY via a caller like this
+      # one - and no other workflow runs those budget checks. Without these entries, bloating the seed or
+      # the cheatsheet past its cap merges green with the gate never having run.
+      - 'seed/golden-header.md'
+      - 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
   pull_request:
     paths:
       - 'clavity-classic/**'
@@ -20,6 +26,12 @@ on:
       - '.github/workflows/ci-installer-classic.yml'
       - 'scripts/generate-scoped-manifest.ps1'
       - 'scripts/check-versions.ps1'
+      # build-classic.yml runs check-seed-budget.ps1 and check-cheatsheet-budget.ps1, whose inputs are
+      # these two files. build-classic.yml is workflow_call-only, so it fires ONLY via a caller like this
+      # one - and no other workflow runs those budget checks. Without these entries, bloating the seed or
+      # the cheatsheet past its cap merges green with the gate never having run.
+      - 'seed/golden-header.md'
+      - 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
 
 concurrency:
   group: ci-installer-classic-${{ github.ref }}

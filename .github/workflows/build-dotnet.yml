@@ -29,10 +29,10 @@ jobs:
       sha: ${{ github.sha }}
       artifact-name: dotnet-installer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -77,6 +77,9 @@ jobs:
 
       - name: SEED byte-budget gate
         run: pwsh -File ../scripts/check-seed-budget.ps1
+
+      - name: Driver-cheatsheet byte-budget gate
+        run: pwsh -File ../scripts/check-cheatsheet-budget.ps1
 
       - name: Build installer (ISCC)
         shell: pwsh
@@ -293,7 +296,7 @@ jobs:
           # No uninstall: terminal step on an ephemeral runner (see the header comment).
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dotnet-installer   # umbrella-release depends on this exact name — do NOT change
           path: |

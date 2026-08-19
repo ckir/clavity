@@ -83,6 +83,18 @@ Describe "drain-knowledge orchestrator guards" {
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
 
+    It "13c: names a MISSING SEED, not an overflow, when the combined-budget gate can't measure the seed" {
+        # No seed/golden-header.md exists at all in this synthetic repo, so check-growth-budget's SEED-missing
+        # branch fires. The caller must defer to the gate's own printed reason rather than substituting its old
+        # hardcoded overflow wording — the cap has not been exceeded, and trimming the proposal would do nothing
+        # to restore the seed.
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') -Force | Out-Null
+        $out = & pwsh -File $script:Drain -InboxPath $script:Inbox -RepoRoot $script:Repo -SkipCurator 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0   # warn-only: the drain still completes
+        $out | Should -Match '(?i)SEED.*ABSENT'
+        $out | Should -Not -Match '(?i)exceeds the 16 KiB combined cap'
+    }
+
     It "TARGETED-REVERTS a curator's protected-file edit to HEAD and exits 3 (F2 revert path — previously live-only, now pinned via -CuratorStub)" {
         # A stub curator that DIRTIES a protected file WITHOUT committing (HEAD does not move, so the F4B HEAD-pin
         # passes and control reaches step 6). The step-6 gate must fail, targeted-revert the file to HEAD, and exit 3

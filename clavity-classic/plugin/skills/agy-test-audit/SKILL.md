@@ -36,6 +36,26 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each consu
    `.clavity/seams/<topic>.md` and send the peer the PATH; let it read the committed test+source files
    itself. Never consult it on a pasted summary of your own reading. Any measure-and-reproduce framing
    MUST name a scratch dir (`.clavity/scratch/<topic>/`) so the peer never writes to cwd.
+   Prepare BOTH through the shipped writer before writing into them. Each takes a concrete FILE path,
+   never a directory - passing `scratch/<topic>/` would create `.clavity/scratch` and not
+   `.clavity/scratch/<topic>`, and the next write would fail mid-run:
+
+```bash
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "seams/<topic>.md"; then
+  # ABORT the discipline and say why. A skill that ignores this exit code converts a clean refusal
+  # into a mid-run crash on the next write.
+  echo "agy-test-audit: ABORTING - could not prepare a shielded .clavity/ directory for seams/<topic>.md." >&2
+  exit 1
+fi
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "scratch/<topic>/notes.md"; then
+  echo "agy-test-audit: ABORTING - could not prepare a shielded .clavity/ directory for scratch/<topic>/notes.md." >&2
+  exit 1
+fi
+```
+
+`<BASE>` is this skill's own base directory, as the harness supplies it at invocation time. It is NOT
+`$0` and NOT `${BASH_SOURCE[0]}`: measured, in an agent-run shell snippet those give `/usr/bin` and the
+empty string, so a path built from them resolves nowhere.
 5. **Diff after** - re-check `git status` against the before-snapshot; if the tree changed, the peer
    breached review-only: surface it loudly and best-effort revert peer-touched paths that were clean
    before (never a blind `git checkout -- .`), then halt-and-ask your human.
@@ -57,6 +77,18 @@ the completed reply; **NEVER** read a timed-out or errored consult as "no gaps f
 false pass - treat it as peer-unreachable, below).
 
 ## The audit round (what to ask, how to check)
+
+**Seat the audit, do not send one voice.** Frame the consult with named adversarial seats drawn from
+the adversarial-panel-review palette, seating those whose trigger the diff meets and naming the ones
+you dropped - Axiom Breaker (unstated invariants), Cascade Analyst (unhandled failure paths),
+Mechanism Gamer (a test that passes without asserting the behaviour), Protocol Pedant (contract and
+serialization coverage), State Corruptor (out-of-order and re-entrant paths), Boundary Smuggler
+(untrusted input), and the rest. Each seat asks "what would MY defect-class slip past this suite?"
+under its own heading; a seat with nothing new writes "no new findings" rather than padding. **On a
+re-audit, rotate seats** - each further round seats at least one lens no earlier round used, so the
+audit surfaces new gap-classes instead of re-deriving covered ones. This reuses the persona
+vocabulary; it is not a code dependency on the panel skill.
+
 1. **Ask for a coverage verdict in a parseable form** the driver checks before accepting: a terminal token
    `[VERDICT: EXHAUSTIVE]` or `[VERDICT: GAPS FOUND]`, plus a machine-checkable `[VERIFIED: <file>, ...]`
    block naming every file the peer actually read. Each gap is enumerated as: the untested behaviour, its
@@ -213,12 +245,19 @@ driver) emit these:
 Every guard above defends against false *positives* (the peer claiming a gap that isn't one). NONE defends
 against a false *negative* - the peer silently missing a real gap. A single-peer audit is a **floor, not
 proof of completeness**, and does not replace good test design or the author's own coverage judgement.
-Optional per-run mitigation: rotate the audit's lens ("what modality/behaviour did I not look at?") across
-runs.
+The seat rotation required by "The audit round" above is what mitigates this in practice: a lens that
+never rotates cannot discover the modality it was never pointed at. It is a mitigation, not a cure -
+a rotated panel still proves no completeness.
 
 ## Debounce marker (hook contract - written here, read by the auto-fire hook)
 Record that the audit ran so the marker-gated reminder hook (shipped separately) does not re-nudge for the
-same `HEAD`. Create `.clavity/agy-marks/` first if absent.
+same `HEAD`. Write the marker through the shipped writer, never by hand: it asserts the `.clavity/`
+shield BEFORE the write and creates the directory it writes into.
+
+```bash
+bash "<BASE>/../../hooks/agy-mark.sh" head "agy-test-audit" "$(git rev-parse HEAD)"
+```
+
 - **Path:** `.clavity/agy-marks/agy-test-audit.head` - a single discipline-keyed marker, no `<plugin-id>`
   prefix (Option S, as for agy-first/agy-capstone). See `docs/agy-disciplines-marker-contract.md`.
 - **Content:** the audited sha - `git rev-parse HEAD` for the range that was actually audited, nothing else.

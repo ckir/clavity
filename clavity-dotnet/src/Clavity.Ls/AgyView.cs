@@ -162,10 +162,17 @@ public sealed class AgyView
     /// trajectory steps (agy's reply) as a size-bounded view. A client-side <paramref name="timeout"/>, when
     /// supplied, overrides the configured stall window for this call (the absolute-max backstop still comes from
     /// options). ⚠ This is a WRITE: live it consumes quota and posts a visible message; live use is gated to T10.
+    ///
+    /// <para><paramref name="progress"/> is an OPTIONAL liveness sink, reported once per elapsed stall window while
+    /// the wait continues. It is purely observational: nothing in the wait, the timeout accounting, or the returned
+    /// reply depends on whether a sink is supplied, and passing null leaves behaviour byte-for-byte as before. A
+    /// caller that wants the wait to be visible rather than silent supplies one; every existing caller does not, and
+    /// is unaffected.</para>
     /// </summary>
     public async Task<AskReply> AskAsync(
         string message,
         TimeSpan? timeout = null,
+        IProgress<AgyWaitProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var (client, conversationId) = await ConnectAndResolveAsync(cancellationToken);
@@ -195,7 +202,7 @@ public sealed class AgyView
                     throw;                 // a caller-cancel (Cancelled) is not a stale-catalog signal -> don't drop the cache; let it propagate (capstone F3).
                 }
 
-                await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, cancellationToken);
+                await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken);
 
                 var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
                 var delta = full.Steps.Skip(before).ToList();
@@ -217,28 +224,48 @@ public sealed class AgyView
     /// a NULL diagnostic — never spins, never a second network hit (F2 + agy panel R4). The stall/absolute_max
     /// diagnostic is built from the trajectory we ALREADY fetched this window (no redundant re-fetch — agy panel R5 F10).</summary>
     private async Task WaitForIdleWithProgressAsync(
-        LsClient client, string conversationId, int before, TimeSpan? stallOverride, CancellationToken cancellationToken)
+        LsClient client, string conversationId, int before, TimeSpan? stallOverride,
+        IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken)
     {
         var stallWindow = stallOverride ?? _options.IdleStallWindow;
         var absoluteMax = _options.IdleAbsoluteMax;   // TimeSpan.Zero => unbounded
         var start = DateTime.UtcNow;
         var lastProgress = before + 1;                // F5: +1 discounts our own injected Kind-14 user step.
         CascadeTrajectory? lastProbe = null;          // R5 F10: last successfully-fetched trajectory, reused for the diagnostic.
+        var window = 0;                               // report counter: the ONLY monotonic value we can offer a progress sink.
 
         while (true)
         {
             var windowSecs = stallWindow;
+            var windowWasBudgetClamped = false;
             if (absoluteMax > TimeSpan.Zero)
             {
                 var remaining = absoluteMax - (DateTime.UtcNow - start);
                 if (remaining <= TimeSpan.Zero)
                     throw BuildModalHang(lastProbe, before, start, IdleLimit.AbsoluteMax);
-                windowSecs = remaining < stallWindow ? remaining : stallWindow;
+                // Remember HERE, where the clamp is actually decided, that the BUDGET rather than the stall
+                // window is what bounds this wait. The label below used to re-derive this by re-reading the
+                // clock, and that was wrong in a way only measurement shows: a clamped window ends exactly ON
+                // the budget boundary, so the only thing separating `elapsed >= absoluteMax` from the opposite
+                // answer is however long the probe RPC happened to take. MEASURED over 10 runs, 50 decisions:
+                // that margin was +5.1ms at worst against Windows' ~15ms timer resolution. A slightly-early
+                // wakeup therefore reported Stall for a budget that had genuinely run out, sending the operator
+                // to CLAVITY_AGY_IDLE_STALL_SECONDS when CLAVITY_AGY_IDLE_MAX_SECONDS was the binding cap -
+                // precisely the confusion the honest label exists to prevent.
+                //
+                // `<=` not `<`: at exact equality the budget IS the binding cap, which is what the old
+                // clock-based `>=` reported. windowSecs is unchanged either way, since remaining == stallWindow.
+                windowWasBudgetClamped = remaining <= stallWindow;
+                windowSecs = windowWasBudgetClamped ? remaining : stallWindow;
             }
 
             using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             windowCts.CancelAfter(windowSecs);
             bool serverTimedOut;
+            // Did OUR window timer end this wait, or did the server report its own inactivity timeout first?
+            // The distinction is load-bearing for the limit label below: a clamped window that the server cut
+            // short did NOT exhaust the budget, so it is a stall, not an absolute-max.
+            var windowElapsed = false;
             try
             {
                 serverTimedOut = await client.WaitForConversationFullyIdleAsync(
@@ -248,6 +275,7 @@ public sealed class AgyView
                 && ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
             {
                 serverTimedOut = true; // window elapsed while agy was still active -> treat as a wait-timeout.
+                windowElapsed = true;  // and it was OUR timer that ended it, not the server's.
             }
 
             if (!serverTimedOut)
@@ -272,9 +300,59 @@ public sealed class AgyView
             lastProbe = probe;
             var total = probe.Steps.Count;
 
+            // Liveness report, emitted BEFORE the branch below so the operator also sees the final window of a wait
+            // that is about to throw — that last report is what says WHERE it stopped. Reporting is best-effort and
+            // must never change the outcome of the wait: a sink that throws would otherwise convert a live ask into
+            // an exception, so it is swallowed. There is no logger in this layer to route it to.
+            if (progress is not null)
+            {
+                try
+                {
+                    progress.Report(new AgyWaitProgress(++window, total, Math.Max(0, total - (before + 1)), DateTime.UtcNow - start));
+                }
+                catch
+                {
+                    // UNCONDITIONAL, and that is the point: the sink is OBSERVATIONAL, so nothing it throws may
+                    // affect the ask - not even a cancellation-shaped exception.
+                    //
+                    // The caller's cancellation is NOT carried by this block and never was. It is surfaced by the
+                    // loop's own linked windowCts on the next iteration, which is what the pre-existing cancel tests
+                    // (AgyAskIntegrationTests "cancel me") pin, independently of any sink. So swallowing everything
+                    // here loses nothing.
+                    //
+                    // Two narrower filters were tried here and BOTH were worse, which is why this comment is long:
+                    //   - `ex is not OperationCanceledException` discriminated on TYPE, and type is the wrong
+                    //     question. It swallowed a genuine cancel wrapped in an AggregateException (the shape a sink
+                    //     bridging async with .Result produces) and let a sink's OWN TaskCanceledException - its
+                    //     internal transport timing out, caller perfectly live - escape and fail a healthy ask.
+                    //   - `when (!cancellationToken.IsCancellationRequested)` fixed those but broke F3 the other
+                    //     way: once the caller HAS cancelled, ANY unrelated sink throw (an InvalidOperationException
+                    //     from the sink's own state, say) escapes and faults the ask with that exception instead of
+                    //     cancelling cleanly. A caller who cancels must get a cancellation, not a sink's crash.
+                    // Both attempts existed to preserve a cancellation that this block never carried.
+                }
+            }
+
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
-            else if (absoluteMax > TimeSpan.Zero && (DateTime.UtcNow - start) >= absoluteMax)
+            // The wait was bounded by the BUDGET (not the stall window), and the budget is actually spent.
+            //
+            // `windowWasBudgetClamped` is recorded at the clamp site, so the outer condition never re-reads the
+            // clock. Inside it, EITHER of two things means the budget is spent:
+            //   - `windowElapsed`: our own timer ran the clamped window to its end, which by construction lands
+            //     on the budget boundary. This is the knife-edge case, and it is decided WITHOUT the clock -
+            //     which is the whole point, since the clock-based test was separated from the wrong answer by
+            //     only the probe RPC (measured: +5.1ms at worst, inside Windows' ~15ms timer resolution).
+            //   - the budget has demonstrably run out anyway. This covers a clamped window the SERVER ended
+            //     early - windowElapsed is false - where the budget nevertheless expired before the label was
+            //     decided. MEASURED with a 300ms probe delay: elapsed 1100ms against a 1000ms budget reported
+            //     `stall`, sending the operator to raise the stall window when only the budget could help.
+            //     Reading the clock here is safe precisely because the knife-edge case never reaches it.
+            //
+            // The clamp guard is what keeps this honest in the other direction: a NON-clamped window that
+            // overruns the budget (a long pause) still reports `stall`, because the stall window really was
+            // what bounded that wait.
+            else if (windowWasBudgetClamped && (windowElapsed || (DateTime.UtcNow - start) >= absoluteMax))
                 // Honest label (agy panel R3): a budget-clamped window that elapsed with no progress ended because the
                 // TOTAL budget ran out — NOT a stall. Reporting Stall would send the operator to the wrong knob
                 // (CLAVITY_AGY_IDLE_STALL_SECONDS) when CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.

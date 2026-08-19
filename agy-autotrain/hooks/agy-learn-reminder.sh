@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# agy-LEARN reminder — shipped WITH the agy-autotrain plugin (portable: no machine-specific paths).
+# agy-LEARN reminder - shipped WITH the agy-autotrain plugin (portable: no machine-specific paths).
 #
-# The third agy discipline — CAPTURE general agy knowledge (agy-learn) — has no tool-event signal:
+# The third agy discipline - CAPTURE general agy knowledge (agy-learn) - has no tool-event signal:
 # "the agent learned an agy fact" cannot be matched like a file write or a skill invocation, so the
 # capture step silently depends on memory and gets dropped. This hook nudges at SESSION BOUNDARIES
 # instead: SessionStart (including right after a compaction) primes live capture; PreCompact catches
@@ -21,11 +21,11 @@ fi
 
 case "$event" in
   PreCompact)
-    msg="agy-LEARN check BEFORE COMPACTION: did you learn anything GENERAL about the agy peer this session (a capability, a latency/failure mode, or a way the DRIVER broke it) that is NOT yet captured? Uncaptured agy knowledge is LOST at compaction. If yes, capture it NOW via the agy-learn skill — a project-agnostic [General Rule] (ZERO project nouns), classified assumption|heuristic|anti-pattern, with no version stamp for general behavior. Knowledge accumulation is the agy-autotrain plugin's job — do not journal agy knowledge into ad-hoc notes."
+    msg="agy-LEARN check BEFORE COMPACTION: did you learn anything GENERAL about the agy peer this session (a capability, a latency/failure mode, or a way the DRIVER broke it) that is NOT yet captured? Uncaptured agy knowledge is LOST at compaction. If yes, capture it NOW via the agy-learn skill - a project-agnostic [General Rule] (ZERO project nouns), classified assumption|heuristic|anti-pattern, with no version stamp for general behavior. Knowledge accumulation is the agy-autotrain plugin's job - do not journal agy knowledge into ad-hoc notes."
     ;;
   *)
     event="SessionStart"
-    msg="agy-autotrain is active: the MOMENT you learn something GENERAL about the agy peer (a capability, a latency/failure mode, or a prompting/driving anti-pattern), capture it IMMEDIATELY via the agy-learn skill — a project-agnostic [General Rule] (no project nouns), classified assumption|heuristic|anti-pattern. Capture is cheap and live; do not batch, and do not wait to be reminded. (agy-LEARN — the capture sibling of agy-FIRST and agy-AFTER.)"
+    msg="agy-autotrain is active: the MOMENT you learn something GENERAL about the agy peer (a capability, a latency/failure mode, or a prompting/driving anti-pattern), capture it IMMEDIATELY via the agy-learn skill - a project-agnostic [General Rule] (no project nouns), classified assumption|heuristic|anti-pattern. Capture is cheap and live; do not batch, and do not wait to be reminded. (agy-LEARN - the capture sibling of agy-FIRST and agy-AFTER.)"
     ;;
 esac
 

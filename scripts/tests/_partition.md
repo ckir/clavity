@@ -18,13 +18,41 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 328 tests, measured 429,46s solo**
-  (2026-08-06; the 429,46s was taken at 327 tests — see the count-correction entry below).
-  A second sample read 665,4s but was taken WHILE the slow half ran and is not comparable;
-  see the contention entry below, which is the operationally important one — **the fast half is now
-  cap-adjacent, not cap-safe.**
-- `just test-scripts-slow` — everything else. **13 suites, 257 tests, measured 819,2s solo** (2026-08-06).
-  NOT on any git hook; it is **well past the 600s foreground tool cap** — 653,5s, 761,28s, now 819,2s —
+- `just test-scripts-fast` — the agent inner-loop gate. **29 suites, 605 tests, 461,95s** (2026-08-16,
+  measured by running the recipe's own suite list and reading its `Tests Passed:` line; **`-NoProfile`,
+  for the reason in the operator-environment note below**). The previous line read
+  **29 suites, 581 tests, 680,47s** (2026-08-12) — same suite count, 24 more tests.
+  **That 680,47s duration was CONTENDED and must not be quoted as a clean figure:** the driver was editing
+  files and running greps throughout, and this box has measured 2,23x contention. The count is firm; the
+  time is an upper bound.
+  `check-curate-in-progress.Tests.ps1` reached **20 rows** here — it joined at 11, took 5 more across the
+  capstone folds, and gained 4 in the test-audit closure (a behavioural lefthook-wiring row, a glob
+  set-equality row, a conditional-key row, and a marker-coupling row). **The behavioural row runs the real
+  `lefthook` binary and cost 13,5s of that**, nearly all of it lefthook plus pwsh cold start — expensive
+  for one row, though this file has no per-row census to call it the most expensive and does not claim
+  one. It THROWS rather than skipping when lefthook is absent, so this half now has a hard dependency on
+  `lefthook` being on PATH (CI installs it — see `.github/workflows/ci-scripts.yml`).
+  Earlier lines read `29 suites, 572 tests` (no duration — that run was backgrounded without a timer) and
+  before it `28 suites, 554 tests`, with
+  two samples on 2026-08-11 reading 410,05s and 913,08s. The previous line here read
+  `25 suites, 328 tests, 429,46s solo` (2026-08-06;
+  that 429,46s was taken at 327 tests — see the count-correction entry below). **The counts are firm; the
+  time is not.** Samples across this recipe now span **255 / 410 / 429 / 738 / 913s**, and no sample in
+  this file was taken with machine load actually measured — "solo" here has only ever meant "the driver
+  believed nothing else was running", and **the driver shares a CPU with the suite, so a driver that works
+  during a run slows it down by construction** (see the contention entries below). **Do not quote any
+  single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
+  one sample, and background it rather than assuming it fits the 600s foreground cap.
+- `just test-scripts-slow` — everything else. **19 suites, 382 tests, measured 1346,49s solo** (2026-08-17,
+  after the capstone added `check-ci-filter-coverage` to this half and none to fast; the anomaly hot-fix
+  batch before it had added five, also all to this half). **ALWAYS MEASURE, EVEN THOUGH DERIVING IS OFTEN
+  RIGHT** — and both outcomes are on record here. Deriving 364 + 13 predicted 377 when the truth was 379
+  (two tests had drifted in between, unnoticed); one round later, deriving 379 + 7 predicted 386 and the
+  measurement agreed exactly. The point is not that arithmetic fails, it is that a derived total inherits
+  every change since the last measurement WITHOUT SAYING SO, and you cannot tell the two cases apart
+  without running it.
+  NOT on any git hook; it is **well past the 600s foreground tool cap** — 653,5s, 761,28s, 819,2s, 1300,19s,
+  1274,72s, 1386,48s, 1437,60s, 1439,52s, 1476,67s, 1402,44s, 1352,36s, now 1346,49s —
   and must be BACKGROUNDED by an agent, blocked on by reading its own `Tests completed` line, never by
   watching a process count. **A backgrounded run can also be STOPPED before it finishes** (one was, at 9
   of 13 suites, on 2026-08-06): a log with no `Tests Passed:` line is an ABORTED run, not a passing one,
@@ -59,10 +87,20 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **328** and slow **257**, **both measured, not added up**. It is a
+test raises it. The count today is fast **605** and slow **382**, **both measured, not added up**. It is a
 fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
 "fast 177 and slow 238" until 2026-08-06, having decayed through five intervening entries below that each
-recorded a new number without updating it.
+recorded a new number without updating it. **It was updated in place on 2026-08-16 for exactly that
+reason** — both halves were re-measured that day and this sentence is where the previous decay was
+recorded, so leaving it would have repeated the failure it documents.
+
+🔴 **AND THE FIRST 2026-08-16 EDIT GOT THE FAST NUMBER WRONG, WHICH IS THE LESSON.** It marked fast as
+"328 (STALE), stale by a known amount" — reasoning that the hot-fix batch added four rows and no suites,
+so the figure was "off by four" and would be 332. **Measured hours later: 605.** The 328 was not four
+stale, it was **277** stale, having decayed since 2026-08-06 through changes that had nothing to do with
+that batch. **Estimating the size of a drift you have not measured is the same error as quoting the
+decayed number** — it manufactures false precision about an unknown. If you have not measured it, say
+only that it is stale.
 
 **Since 2026-08-06 the structural invariant is ENFORCED, not just documented.**
 `scripts/tests/test-suite-registration.Tests.ps1` runs that `diff` as a test: every suite on disk is in
@@ -234,6 +272,85 @@ The `## Measured runtimes` table below is also NOT self-maintaining: `agy-inbox-
 was in `test-scripts-slow` and absent from the table entirely. To find that class of omission,
 diff the recipe membership against the table rather than reading down it.
 
+**2026-08-11 — the Stage 2 fix batch.** ONE new fast suite: `check-cheatsheet-budget` (6 tests), the
+enforcement half of the driver-cheatsheet budget. Fast went 27 suites / 548 tests to **28 suites /
+554 tests**, measured **410,05s**.
+
+**2026-08-12 — that suite DOUBLED, 21,7s -> 43,1s, on a capstone fix.** No test was added; the row count
+is still 6. A capstone round defeated the default-pinning assertion twice (once through a `#` comment,
+then through a `<#  #>` block comment), so it was rewritten to stop matching source text and instead
+INVOKE the script at the byte boundary. That replaced an in-memory string match with two more `pwsh`
+spawns - the suite went from 5 to 7 - and process cold-start is what the extra ~21s buys.
+
+🔴 **The correctness of that guard is not in question; the accounting is the point.** The peer flagged the
+cost and called it "massive"; the driver dismissed it and estimated "+2-4s" from an assumed 1-2s per cold
+start. **Measured solo, it is +21,4s - the peer was closer.** A guard that runs the real thing costs real
+process time, and a suite half this file already describes as sitting near a 600s cap has that much less
+headroom. Recorded here rather than absorbed silently, because absorbing it silently is exactly the decay
+this file exists to catch.
+
+🔴 **THE DRIVING AGENT AND THIS SUITE SHARE ONE CPU. Driver activity during a run is contention BY
+CONSTRUCTION, not bad luck.** The agent's harness process, every tool subprocess it spawns (`pwsh`,
+`python3`, `rg`, `git`), and the lefthook/rtk hooks that fire on each command all compete with the suite
+for the same cores. This is the mechanism behind every "contended" figure in this file, and it is
+structural — there is no configuration in which an agent works during a run and does not slow it down.
+
+**Measured 2026-08-11, same commit, same 554 tests, minutes apart: 913,08s with the driver working
+(`python3` edits, `rg`/`awk` greps, `wc`, file writes) against 410,05s with the driver idle — 2,23x**, and
+the working sample sat 313s past the 600s foreground cap. Caveat on all five samples: **machine load has
+never actually been instrumented for any figure in this file.** "Solo" has only ever meant "the driver
+believed nothing else was running," so treat the ratio as the expected size of the effect, not as a
+controlled measurement.
+
+Recorded for the near-miss it produced: the 913,08s figure was about to be written into the summary line
+above as if it were solo, which would have made it the fourth decayed number in a file that documents its
+own decay three times. **Two samples disagreeing is not a tie — it is an unrun measurement**, the same
+lesson this file already draws from the 327/328 count dispute. Operationally: if you need this recipe's
+*time*, run it as the sole command and stay idle; if you only need its *count*, background it and keep
+working — the count is unaffected.
+
+**2026-08-16 — the anomaly hot-fix batch moved the slow half by 59%.** Slow went **13 suites / 257 tests /
+819,2s** to **18 suites / 364 tests / 1274,72s**, backgrounded and blocked on its own `Tests completed`
+line (it now exceeds the foreground cap by more than a factor of two). Five suites joined, all deliberately
+routed to SLOW and none to fast: `agy-shield-lib` (34 tests, ~409s on its own), `agy-mark` (26),
+`check-cheatsheet-parity` (16, ~136s), `generate-cheatsheet-literals` (12, ~42s) and the previously
+ungated `clavity-install` (12). **Four of those five are that batch's new suites; the fifth is an orphan
+that ran in no gate at all** — ROADMAP 14b.
+
+🔴 **The routing was a decision, argued once the wrong way and re-affirmed.** `generate-cheatsheet-literals`
+is a pure file transform and genuinely quick, and a first draft put it in FAST on that basis. Speed is not
+the binding constraint: the fast half is the agent inner-loop recipe and this file already calls it
+**cap-adjacent, not cap-safe**. The slow half is backgrounded and already past the cap, so it absorbs new
+work at no cost to the loop.
+
+✅ **The fast half WAS re-measured, a few hours later in the same session: 29 suites, 605 tests, 461,95s,
+0 failed.** The recorded 328 had decayed by **277**, not by the four this batch added — see the correction
+in the count paragraph above.
+
+🔴 **THE RECIPES NOW PASS `-NoProfile` THEMSELVES - this is no longer something to remember.** The recipe USED to invoke plain `pwsh`, which
+loads the operator's PowerShell profile. MEASURED 2026-08-16 on this machine: a profile hook around
+`Push-Location` raised `The variable '$Script:CPPrevLocationAction' cannot be retrieved because it has
+not been set` (`claude-profile-init.ps1:323`), reddening **5 rows in `release-lib.Tests.ps1`** that pass
+23/0 in isolation. Two-way control: with the profile it fails, with `-NoProfile` the identical list is
+**605/0**. **This is an operator-environment artifact, not a repo defect, and it cannot occur in CI** -
+but it cost three wrong bisections here, because every probe used `-NoProfile` while the recipe did not.
+**When a suite fails only inside the recipe, check whether your probe and the recipe load the same
+profile before hunting cross-suite contamination.**
+
+✅ **CLOSED 2026-08-17 - and the gap between the diagnosis and the fix is the lesson.** The 2026-08-16
+discovery produced THIS NOTE and nothing else: it told the operator to type `-NoProfile`, and changed no invocation.
+**A rule with no implementation is worse than no rule** - it reads as handled. Twenty-four hours later the same
+fault blocked a push through `lefthook`'s `check-versions-all` job, and cost THREE more wrong hypotheses (a
+`$PSDefaultParameterValues` entry, an imported module, a profile-defined wrapper) before a `grep -rn CPPrevLocationAction`
+found this very paragraph in one command. The note predicted the exact trap it then failed to prevent.
+
+**22 invocations across `lefthook.yml` and `justfile` now carry `-NoProfile`** (3 pre-push gates, the three `test-scripts*`
+recipes, and every other `pwsh` call in both files). Prose mentions of `pwsh -File` were deliberately left alone.
+**The prior ruling - 'an operator-environment artifact, not a repo defect' - was right about the CAUSE and wrong about
+the REMEDY:** the artifact is external, but a runner that inherits an arbitrary operator profile is a repo defect, and
+hermetic invocation is the repo's job. ⚠ **`.worktrees/python-gate/` has its own `justfile` and `lefthook.yml` and was
+NOT touched** - it is a separate branch with parked work; it needs the same fix on its own terms.
+
 ## Measured runtimes
 
 These are per-file numbers taken in one sweep and are INDICATIVE ONLY — the section above explains why a
@@ -298,17 +415,85 @@ agy-inbox-snapshot.Tests.ps1                    122,5s   22 tests   <- SLOW, re-
                                                                       MISSING from this table entirely
                                                                       until 2026-08-03
 agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-mark.Tests.ps1                               93,0s   26 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
+                                                                      agy-mark.sh, the sanctioned .clavity writer for the
+                                                                      skills. Bash + git subprocess spawns across 26 Its; the
+                                                                      FORWARDS $AGY_SESSION_ID row alone costs ~33,5s (three
+                                                                      chained head calls proving the debounce breaks on a
+                                                                      different session id, one against a git-tracked marker
+                                                                      needing git rm --cached).
 agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-measured 2026-08-06 (+5:
                                                                       four root-walk cases plus the marker
                                                                       cwd-relative contract, which had
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
+agy-shield-lib.Tests.ps1                        409,1s   34 tests   <- SLOW, NEW 2026-08-16. Fixture-
+                                                                      heavy: many git + bash subprocess spawns per
+                                                                      row across 17 Its. Measured solo, two
+                                                                      consecutive runs immediately back to back:
+                                                                      409,06s and 410,59s, 34/34 BOTH times - the
+                                                                      second run is the re-run control the drafted
+                                                                      suite could not have produced before the
+                                                                      per-invocation debounce-key isolation was
+                                                                      added to Invoke-Shield (see that function's
+                                                                      comment).
 agy-test-audit-reminder.Tests.ps1                50,8s   18 tests   <- SLOW, re-measured 2026-08-06 (+4)
+assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- FAST, measured 2026-08-12 with the driver
+                                                                      resident - the same CPU runs the
+                                                                      tests and the agent, as this file
+                                                                      already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    4 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   14 tests   <- FAST, re-measured 2026-08-05
+check-cheatsheet-budget.Tests.ps1                43,1s    6 tests   <- FAST, re-measured 2026-08-12
+check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW 2026-08-16 (14e): the
+                                                                      pre-commit parity gate's own suite.
+                                                                      Every row builds a throwaway git repo,
+                                                                      which is why it is expensive despite a
+                                                                      modest test count. Measured solo as the
+                                                                      sole command: "Tests completed in
+                                                                      135,92s", 16 passed / 0 failed.
+check-ci-filter-coverage.Tests.ps1               54,4s   16 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
+                                                                      paths-filter gate's own suite. Nearly
+                                                                      every row spawns pwsh to run the gate
+                                                                      against a separately mutated copy of the
+                                                                      workflow, which is the whole cost - the
+                                                                      test count is small and the process count
+                                                                      is not. Measured SOLO AND IN BACKGROUND
+                                                                      with the driver idle: 54 360 ms at 16 rows
+                                                                      (54 450 at 19, 53 857 at 17),
+                                                                      after the owner deleted the gate's second
+                                                                      half (2026-08-17) and seven rows went with
+                                                                      it - the seven that each built a throwaway
+                                                                      git repo, which is where the time was.
+                                                                      🔴 THE FULL SERIES REFUTES ANY PER-ROW
+                                                                      COST: 78 990 ms at 11 rows, 103 065 at 13,
+                                                                      120 448 at 20, 163 863 at 22, 147 313 at
+                                                                      24 (LOWER at more rows), 53 857 at 17.
+                                                                      Cost tracks what a row DOES, not how many
+                                                                      there are. Re-measure; never predict. At 11 rows it also measured
+                                                                      95s with the driver WORKING - a 1,2x
+                                                                      inflation - so every figure here is the
+                                                                      idle one, per the warning above.
+                                                                      🔴 DO NOT DERIVE A PER-ROW COST FROM THESE.
+                                                                      An earlier version of this row claimed
+                                                                      "~4-6s apiece" from the 11->20 average;
+                                                                      the very next two rows cost ~21s each.
+                                                                      Marginal cost depends on what a row DOES
+                                                                      (these two build fixtures and spawn the
+                                                                      gate) and on the same machine variance
+                                                                      this file documents elsewhere. Re-measure
+                                                                      after adding rows; do not predict.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
+check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, measured 2026-08-12 with the driver
+                                                                      resident - the same CPU runs the
+                                                                      tests and the agent, as this file
+                                                                      already warns above.
 check-growth-budget.Tests.ps1                    15,3s    7 tests   <- FAST, re-measured 2026-08-05
+check-injected-context.Tests.ps1                 91,5s  144 tests   <- FAST, measured 2026-08-12 with the driver
+                                                                      resident - the same CPU runs the
+                                                                      tests and the agent, as this file
+                                                                      already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
@@ -328,6 +513,11 @@ compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-
 docs-audit.Tests.ps1                            130,0s   80 tests   <- SLOW, re-measured 2026-08-06
 drain-knowledge.Tests.ps1                        40,5s    7 tests   <- SLOW, re-measured 2026-08-06
 drain-lib.Tests.ps1                               3,4s   20 tests   <- FAST, re-measured 2026-08-05
+generate-cheatsheet-literals.Tests.ps1           41,6s   12 tests   <- SLOW, NEW 2026-08-16 (14e): the
+                                                                      cheatsheet-literal generator's pinning
+                                                                      suite. Measured solo as the sole
+                                                                      command: "Tests completed in 41,57s",
+                                                                      12 passed / 0 failed.
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
 plugin-hooks-registration.Tests.ps1               0,6s   22 tests   <- FAST, re-measured 2026-08-05 (was
                                                                       0,5s / 18 tests; +4 for the recorder's

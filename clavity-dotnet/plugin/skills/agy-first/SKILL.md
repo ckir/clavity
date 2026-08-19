@@ -36,7 +36,17 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each consu
 3. **Permission to pass** - the peer may decline or say it needs more; it must not act.
 4. **Point at files, not summaries** - write the fork/options to `.clavity/seams/<topic>.md` and send
    the peer the PATH; let it read the artifact itself. Never consult it on a pasted summary of your own
-   measurements.
+   measurements. Prepare that directory through the shipped writer FIRST - it asserts the `.clavity/`
+   shield before anything is written there, and it fails closed:
+
+```bash
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "seams/<topic>.md"; then
+  # ABORT the discipline and say why. A skill that ignores this exit code converts a clean refusal
+  # into a mid-run crash on the next write.
+  echo "agy-first: ABORTING - could not prepare a shielded .clavity/ directory for seams/<topic>.md." >&2
+  exit 1
+fi
+```
 5. **Diff after** - re-check `git status` against the before-snapshot. If the tree changed, the peer
    breached review-only. A breach is a **security event, not a routine skip** - do NOT proceed silently
    and do NOT fold anything: (a) surface the breach loudly to your human and get confirmation before
@@ -51,9 +61,21 @@ Frame the fork as a GOAL + a checkable SUCCESS CRITERION with full method latitu
 creative" dial (the peer converts that into superficial novelty). Shape divergence with vectors as
 needed: invert the core constraint (solve it WITHOUT the main assumed component); the extreme-resource
 version (1 hour / $0, or the opposite); the dumbest brute-force baseline that still works; a cross-domain
-analogy. Each alternative must stay USEFUL against the goal and note its real tradeoffs. Default persona:
-bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic,
-API-contract-pedant). The peer is empowered to CHALLENGE your own settled decision when it has a
+analogy. Each alternative must stay USEFUL against the goal and note its real tradeoffs.
+
+**Seat a panel, not a persona.** A single voice returns a single lens. Seat the
+adversarial-panel-review personas - Axiom Breaker (contradictions / unstated invariants), Cascade
+Analyst (unhandled failure paths), Literal Implementer (what an executor would have to guess), State
+Corruptor (out-of-order / stale state), Blindspot Auditor (irreversible footguns / missing
+observability), Mechanism Gamer (gameable gates / false-GREEN), and the rest - seating those whose
+trigger THIS fork meets, and NAMING the seats you consciously dropped and why, so an under-seated
+panel is visibly under-seated rather than quietly thin. Each seat answers under its own heading in
+its own voice; a seat with nothing new writes "no new findings" instead of padding. Override with a
+sharper bespoke lens when the fork calls for it. This reuses the persona vocabulary; it is not a code
+dependency on the panel skill. **On a multi-round consult, rotate seats** - each further round seats
+at least one lens no earlier round used.
+
+The peer is empowered to CHALLENGE your own settled decision when it has a
 substantive reason (correctness, safety, a materially better design, a hidden contradiction) - you keep
 the final call.
 
@@ -90,28 +112,39 @@ one, as the last line:
 ## If the peer is unreachable
 No live peer / no auth / the idle-check never clears: emit `[VERDICT: SKIPPED-UNREACHABLE]` and
 **proceed** - never hang, never hard-block. Surface the skip on BOTH channels: (a) tell your human
-in-chat that the consult was skipped and name the fork it skipped; (b) create `.clavity/agy-marks/` if
-it does not exist (gitignored runtime state - absent on a fresh clone; a bare `>>` append would fail
-`No such file or directory`), then append one durable line to
-`.clavity/agy-marks/skipped.log` (`<iso-8601>  agy-first  SKIPPED-UNREACHABLE  HEAD=<sha>`, where
-`<sha>` is the `git rev-parse HEAD` output, or the literal `none` if HEAD cannot resolve - never a git
-error string) so it is not lost if the chat summary drops it. Do NOT write the consulted marker (below), so the next trigger
+in-chat that the consult was skipped and name the fork it skipped; (b) append one durable audit line
+through the shipped marker writer, which owns the timestamp and the line format and creates the
+directory it writes into:
+
+```bash
+bash "<BASE>/../../hooks/agy-mark.sh" log "agy-first" "SKIPPED-UNREACHABLE" "$(git rev-parse HEAD)"
+```
+
+so it is not lost if the chat summary drops it. Do NOT write the consulted marker (below), so the next trigger
 retries. (The log is a gitignored breadcrumb - it survives normal operation; only a deliberate
 `git clean -fd` wipes it, which is an accepted level for a skip breadcrumb, so the in-chat notice is the
 immediate signal and the log the durable backstop.)
 
 ## Debounce marker (hook contract - written here, read by the auto-fire hook)
 Only AFTER a consult actually completes (any of ALIGNED / REJECTED / NEGOTIATE-resolved), record it so
-the auto-fire hook does not re-inject this discipline for the same cycle. Create `.clavity/agy-marks/`
-first if it does not exist (gitignored runtime state, absent on a fresh clone), then write the current
-commit sha to the marker:
+the auto-fire hook does not re-inject this discipline for the same cycle. Write it through the shipped
+marker writer, never by hand: it asserts the `.clavity/` shield BEFORE the write and creates the
+directory it writes into.
+
+```bash
+bash "<BASE>/../../hooks/agy-mark.sh" head "agy-first" "$(git rev-parse HEAD)"
+```
+
+`<BASE>` is this skill's own base directory, as the harness supplies it at invocation time. It is NOT
+`$0` and NOT `${BASH_SOURCE[0]}`: measured, in an agent-run shell snippet those give `/usr/bin` and the
+empty string, so a path built from them resolves nowhere.
 
 - **Path:** `.clavity/agy-marks/agy-first.head` - a single discipline-keyed marker, no `<plugin-id>`
   prefix (**DECIDED: Option S**; AGY-AFTER solo panel + agy escalation ALIGNED, owner ratifies). The
   byte-identical skill body cannot carry a per-plugin literal, and the two drivers are mutually exclusive
   (only one `clavity` plugin installed; both-installed is a transient migration state where a shared
   marker correctly debounces the shared phase and *prevents* a duplicate paid consult). See the marker
-  contract doc (Task 5).
+  contract doc, docs/agy-disciplines-marker-contract.md.
 - **Content:** the output of `git rev-parse HEAD` at consult time, nothing else. **If `git rev-parse
   HEAD` cannot resolve** (not a git repo / a repo with no commits), skip writing the marker entirely -
   the discipline simply re-fires next trigger, which is safe.

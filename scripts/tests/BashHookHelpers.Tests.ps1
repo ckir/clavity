@@ -47,6 +47,60 @@ Describe 'BashHookHelpers (harness validation)' {
         } finally { Remove-Item -LiteralPath $home2 -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'RESTORES an -Env override by REMOVING a variable that was absent, not by emptying it' {
+        # THE LEAK THIS PINS, measured 2026-08-19 while debugging why agy-shield-lib.Tests.ps1 passed
+        # 39/39 in isolation and failed 5 rows in the full sweep and in CI.
+        #
+        # The helper saves the prior value, sets the override, and restores in `finally`. When the
+        # variable was ABSENT the saved value is $null - and in PowerShell
+        # `[Environment]::SetEnvironmentVariable($k, $null)` does NOT delete the key, it leaves it
+        # PRESENT WITH AN EMPTY VALUE. Measured, all four forms:
+        #     SetEnvironmentVariable(n, $null)              -> present=True  value=[]
+        #     SetEnvironmentVariable(n, '')                 -> present=True  value=[]
+        #     SetEnvironmentVariable(n, [NullString]::Value)-> present=False
+        #     Remove-Item Env:n                             -> present=False
+        #
+        # An empty TMPDIR is NOT harmless on this platform: MSYS/Git Bash converts it to the bogus
+        # relative path `<cwd>/=` rather than passing it through empty, so `${TMPDIR:-/tmp}` never
+        # defaults. agy-anomaly-capture-reminder.Tests.ps1 runs at position 5 and overrides TMPDIR, so
+        # from there on EVERY bash child in the sweep inherited a poisoned TMPDIR.
+        #
+        # ASSERT ABSENCE, NOT EMPTINESS. `$env:X -eq ''` is true for both the broken and the fixed
+        # state, so a value-based assertion here would pass under the bug and prove nothing.
+        $name = 'SPD_LEAK_PROBE'
+        Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+        [Environment]::GetEnvironmentVariables().Contains($name) |
+            Should -BeFalse -Because 'the precondition is that this variable is ABSENT before the call'
+
+        $null = Invoke-BashHook -HookPath $script:probe -Payload '{}' -Env @{ $name = 'temporary-value' }
+
+        [Environment]::GetEnvironmentVariables().Contains($name) |
+            Should -BeFalse -Because 'a variable that was ABSENT before the call must be ABSENT after it - an empty-valued key is a leak that poisons every later child process'
+    }
+
+    It 'does NOT delete a present variable when the caller spells it in a different case' {
+        # THE REGRESSION THIS PINS. The first version of the absence check used
+        # `[Environment]::GetEnvironmentVariables().Contains($k)`, a case-SENSITIVE Hashtable lookup,
+        # while the setter is case-INSENSITIVE. A caller writing `Path` against a block whose real key
+        # is `PATH` was therefore classified ABSENT and DELETED on restore. It shipped: locally the
+        # casings aligned and the full 989-test sweep passed; CI deleted PATH and every hook lost jq.
+        #
+        # The probe uses a deliberately mixed-case spelling of a variable seeded in UPPER case.
+        $name = 'SPD_CASE_PROBE'
+        [Environment]::SetEnvironmentVariable($name, 'original-value')
+        try {
+            $null = Invoke-BashHook -HookPath $script:probe -Payload '{}' -Env @{ 'spd_case_probe' = 'override' }
+
+            # Assert the VALUE survived, not merely that some key exists - a deleted-then-recreated
+            # empty key would satisfy a presence-only check.
+            [Environment]::GetEnvironmentVariable($name) |
+                Should -BeExactly 'original-value' -Because 'a PRESENT variable must be restored to its value whatever case the caller used to name it'
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable($name, [NullString]::Value)
+        }
+    }
+
     It 'forwards positional arguments to the hook' {
         $probe = Join-Path $TestDrive 'echo-args.sh'
         Set-Content -LiteralPath $probe -Value "#!/usr/bin/env bash`ncat >/dev/null`nprintf '%s' `"`$1`"" -NoNewline

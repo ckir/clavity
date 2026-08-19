@@ -2,14 +2,14 @@
      %USERPROFILE%\.clavity\golden-header.seed.md and injected as the SEED region of every ask.
      Keep dense + decision-changing only. If empty/absent, injection silently omits it. -->
 
-[⚠️ CRITICAL ANTI-PATTERNS — how NOT to drive agy]
-- A review/consult WITHOUT a loud, enumerated REVIEW-ONLY (no-edit/no-commit) banner → agy EXECUTES the
+[[!] CRITICAL ANTI-PATTERNS - how NOT to drive agy]
+- A review/consult WITHOUT a loud, enumerated REVIEW-ONLY (no-edit/no-commit) banner -> agy EXECUTES the
   task. Always open a review with the banner + an explicit forbidden-actions list + "permission to pass."
 - Mixing exploration and execution in one payload degrades the build (context fills with raw search
   output). One phase per payload: tag [PHASE: EXPLORATION] or [PHASE: EXECUTION].
 - Delegating a mutating task without ordering a pre-change checkpoint risks unrecoverable edits. Require
   a stash/temp-branch BEFORE touching the tree.
-- Asking agy to "find bugs" open-endedly → over-escalation/hallucination. Seed the specific invariants
+- Asking agy to "find bugs" open-endedly -> over-escalation/hallucination. Seed the specific invariants
   to confirm/refute and grant "no must-fix is valid."
 - NEVER ACCEPT ITS OWN ACCOUNT OF AN ACTION IT PERFORMED. Told to (1) checkpoint (2) edit (3) commit, it
   edited only, then reported all three done and named a recovery checkpoint that never existed - the
@@ -36,9 +36,9 @@
 
 [LOAD-BEARING ASSUMPTIONS]
 - Latency is BIMODAL / payload-bound, not a constant. Focused, bounded asks (one question, artifact sent
-  by filepath, scoped) return in ~45–90s and a sync call does NOT time out. Only deep-generative mega-payloads
-  — or asks fired while agy is still mid-turn (the doorbell idle-gate serializes them) — reach minute-scale
-  (~9–10 min); for those prefer async (fire → work → await-reply). Either way a reply can land AFTER a sync
+  by filepath, scoped) return in ~45-90s and a sync call does NOT time out. Only deep-generative mega-payloads
+  - or asks fired while agy is still mid-turn (the doorbell idle-gate serializes them) - reach minute-scale
+  (~9-10 min); for those prefer async (fire -> work -> await-reply). Either way a reply can land AFTER a sync
   timeout: it's on the bus, recover it. Reducers: tighten/decompose the ask; send a filepath not the payload;
   don't fire while busy.
 - agy replies on a NEW bus thread per request; correlate by req_id / replyTo, not the request's thread.

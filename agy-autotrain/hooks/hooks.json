@@ -5,9 +5,9 @@
         "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-inbox-snapshot.sh\"" } ] }
     ],
     "SessionStart": [
-      { "matcher": "startup|clear|compact",
+      { "matcher": "startup|resume|clear|compact",
         "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-learn-reminder.sh\" SessionStart" } ] },
-      { "matcher": "startup|resume",
+      { "matcher": "startup|resume|clear|compact",
         "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/agy-curate-nudge.sh\"" } ] }
     ],
     "PreCompact": [

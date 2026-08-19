@@ -41,9 +41,17 @@ pre-push:
       # cold starts alone (~6s each, as the installer-ascii note above measures). Every one of those
       # seconds was idle time on the SSH connection git opens BEFORE this hook runs, which is exactly
       # the window the header warns about. Measured: 33.7s -> ~7s, hook total 62.5s -> ~36s.
-      run: pwsh -File scripts/check-versions-all.ps1
+      run: pwsh -NoProfile -File scripts/check-versions-all.ps1
     check-plugin-namespace:
-      run: pwsh -File scripts/check-plugin-namespace.ps1
+      run: pwsh -NoProfile -File scripts/check-plugin-namespace.ps1
+    check-ci-filter-coverage:
+      # HERE SPECIFICALLY BECAUSE CI CANNOT GUARD THIS ONE. The gate lives in ci-scripts.yml's own Pester
+      # suite, and that workflow is path-filtered on itself - so deleting `.github/workflows/ci-scripts.yml`
+      # from its own `paths:` block means GitHub evaluates the PUSHED commit's filter, does not fire the
+      # workflow, and the gate that would have caught the deletion never runs. The change merges green
+      # having disabled its own guard. A pre-push run is the last point where that is still catchable.
+      # One pwsh process, in the seconds range this hook's header requires.
+      run: pwsh -NoProfile -File scripts/check-ci-filter-coverage.ps1
 pre-commit:
   commands:
     ruff:
@@ -58,3 +66,40 @@ pre-commit:
         - "clavity-classic/agy-mcp-bridge/**/*.py"
       run: uv run --project clavity-classic/agy-mcp-bridge ruff check --fix {staged_files} && uv run --project clavity-classic/agy-mcp-bridge ruff format {staged_files}
       stage_fixed: true
+    curate-in-progress:
+      # Refuse to commit driver-cheatsheet content that an agy-curate run left behind without
+      # finishing. Those three files are pinned byte-identical to each other and are written to the
+      # tree BEFORE the human approval gate on purpose, so that a `git diff` can be inspected while
+      # deciding - which means an aborted run leaves unreviewed, machine-distilled content staged and
+      # ready to commit, protected by nothing but a STDERR line the human may never see.
+      #
+      # THE GLOB IS THE COST CONTROL, and it is why this belongs in pre-commit at all. The header
+      # above measures pwsh cold start at ~6s, which is far too much to spend on every commit. Listing
+      # the three paths means lefthook invokes this ONLY when one of them is actually staged - a rare
+      # commit - and every other commit pays nothing. It also happens to express half the guard's own
+      # predicate, so the script never has to ask "is this commit even relevant".
+      #
+      # No {staged_files} argument on purpose: the script asks git itself. Passing them through
+      # `pwsh -File` silently mis-binds a multi-value argument, and this guard FAILS CLOSED, so the
+      # symptom would have been a blocked commit rather than an obvious crash. See the .NOTES block
+      # in the script.
+      glob:
+        - "agy-autotrain/knowledge/driver-cheatsheet.core.md"
+        - "clavity-classic/src/driver_cheatsheet.rs"
+        - "clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs"
+      run: pwsh -NoProfile -File scripts/check-curate-in-progress.ps1
+    cheatsheet-parity:
+      # ROADMAP 14e: the three pinned paths must agree, and agreement is now STRUCTURAL - the two
+      # literals are GENERATED from core.md. This compares what is STAGED against freshly generated
+      # output, never the worktree, and never writes in place.
+      #
+      # SAME GLOB AS curate-in-progress, and for the same cost reason: pwsh cold start is ~6s, far too
+      # much on every commit, so lefthook invokes this ONLY when one of the three paths is staged.
+      # The YAML ARRAY form is correct and shipped. A reviewer proposed rewriting it as a single
+      # brace-expansion string; MEASURED - lefthook.yml already uses the array form at :56-58 and
+      # :78-81, both live. This has now been raised twice and refuted twice. Do not "fix" it.
+      glob:
+        - "agy-autotrain/knowledge/driver-cheatsheet.core.md"
+        - "clavity-classic/src/driver_cheatsheet.rs"
+        - "clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs"
+      run: pwsh -NoProfile -File scripts/check-cheatsheet-parity.ps1

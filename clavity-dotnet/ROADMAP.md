@@ -739,7 +739,7 @@ test stays green. Measured, not reasoned: `5071872` records the mutation. Cardin
    **Generalises: before treating a ROADMAP "open decision" as open, grep for a sibling that already
    decided it** — this one cost a design question that had been answered weeks earlier.
 
-**Cost:** ~80 tokens per firing, ~2 firings per session; verification is one targeted test run per
+**Cost:** ~190-220 tokens per firing, ~2 firings per session; verification is one targeted test run per
 directional or fallback assertion. Both variants' plugins must change together (byte-identical pair).
 
 ### 12. Post-plan-2 leftovers — two guards that overstate what they verify · ✅ **SHIPPED 2026-08-07**
@@ -855,6 +855,616 @@ on this platform — Windows `jq` terminates with `\r\n`, `printf` with `\n` (61
   the RAW payload, where a tab is the two characters `\t` and a backslash is not `[[:space:]]`). The four
   `case` patterns are a deliberate complete set. **Below the reachability floor** — recorded in the backlog
   entry's *Known limit* section, not tracked here.
+
+### 13. Anomaly promotions — three entries from the 2026-08-10 triages (13c later corrected) · ▶ **OPEN**
+
+Promoted from `.clavity/local-anomalies.md`. Every one was **verified by measurement at triage**, not
+accepted on reading; two other entries in that file were deleted with recorded reasons (see the triage
+note there). 13c arrived in a later triage the same day, captured by a different session.
+
+#### 13a. The gate tells operators it reports unused exemptions — no code path can · ✅ **SHIPPED 2026-08-16** (`39f9545`). VERIFIED 2026-08-17: the false sentence is GONE - `grep -c 'reports unused exemptions' scripts/check-injected-context.ps1` = **0**, and the replacement names the suite that actually catches a stale exemption.
+
+`scripts/check-injected-context.ps1:701` prints:
+
+> `an exemption whose file stops failing its invariant is reported as unused and must be deleted.`
+
+**MEASURED 2026-08-10:** the gate has **no unused-exemption reporting at all**.
+`Get-InjectedContextViolations` reads `$exempt` only via `.ContainsKey()` and never iterates it after the
+walk, so nothing can emit that report — the string `unused` appears exactly **once** in the whole script,
+in that message. The guarantee exists **only** in `scripts/tests/check-injected-context.Tests.ps1:663`,
+which an operator running the gate does not run.
+
+**Why it matters:** an operator who waives a file, later fixes it, and waits for the gate to tell them the
+waiver is now stale will wait forever. The stale exemption then reddens CI through a *different* surface
+with a *different* message.
+
+**Two candidate dispositions — the owner scopes which:**
+
+1. **Correct the sentence** (one line): say that CI's test suite reports unused exemptions, not the gate.
+   Cheapest, honest, no behaviour change.
+2. **Implement the reporting** in the gate: track which `$exempt` keys were queried during the walk and
+   report the unqueried ones. Real work, and it makes the gate's own claim true.
+
+⚠ **This lands on `feature/injected-context-governance`, which has an OPEN AGY-CAPSTONE.** Any fix extends
+that review range — schedule it with that epic's remaining work (Stage 2, AGY-TEST-AUDIT), not as a
+drive-by.
+
+#### 13b. No discipline requires a peer's ANSWER to survive truncation · ▶ **OPEN**
+
+All four peer-review disciplines (`agy-capstone`, `agy-test-audit`, `adversarial-panel-review`,
+`agy-first`) send the peer an **input** path and a scratch dir, but **nothing specifies where the peer's
+reply must land**. A completed review is therefore lost whenever the channel caps.
+
+**Measured three times now, across two different peers and two transports:**
+
+- a compressed restate silently dropped **2 of 4** findings (2026-08-09);
+- a reply died on the wire with the review stranded in the peer's console (2026-08-09);
+- 🔴 **2026-08-10 — a new and worse mode:** the peer returned a lone verdict line whose prose claimed *"the
+  full review has been printed to stdout"* when nothing else was emitted, then on retry returned the
+  literal string `... [output truncated]`. Both on exit code 0, through a pipeline that had carried 15 KB
+  and 16.5 KB replies minutes earlier.
+
+**That third case refines the original framing and must be folded into any fix:** the loss was **not**
+transport truncation — it was the model truncating **itself** and, once, asserting otherwise. So
+"have the peer write to a file" is *not* a sufficient remedy, and it is often impossible: a review-only
+peer has no write permission by construction.
+
+**What actually works, measured:** (a) the driver captures the reply itself; (b) the driver
+**byte-counts** it against that peer's *own recent replies* — 300 bytes where the last three were 15 KB is
+a failed consult, not a terse one; (c) the brief carries an explicit reply-length budget. Also measured:
+the **do-not-re-raise ledger grows monotonically** across an iterated review (≈40 entries by round 10
+while the artifact barely changed) and was the only monotonic variable across the degradation — so
+compress it each round.
+
+#### 13c. `check-growth-budget.ps1` — the capture was a MISDIAGNOSIS; small residue only · ✅ **SHIPPED 2026-08-16** (`524eab5` both call sites distinguish a missing input from an empty one · `cae0c2e` restored three rows the fix had neutered · `2c2f2f7` capstone R3 fold).
+
+**Corrected 2026-08-10, hours after promotion. The original entry claimed a fail-open with 7 467
+unmeasured bytes. That is WRONG and is retained here only as the method lesson.**
+
+**What the gate actually is.** `docs/agy-golden-header.growth.md` is a **transient in-repo PROPOSAL**,
+compiled by `just drain-knowledge` and deleted after `just accept-drain` publishes it to the runtime
+header. The budget gate runs as **step 7 INSIDE that drain**, while the proposal exists.
+`docs/drain-knowledge-runbook.md:229-231` states explicitly that the file's absence is a **legitimate
+state** — "a docs-only drain … nothing to publish". So `GROWTH (0B)` when run standalone is CORRECT
+behaviour, not a fail-open: there is no proposal in flight. The gate's subject is the PROPOSAL, never the
+runtime region, so comparing its output against `~/.clavity/golden-header.growth.md` (7 984 B) compares
+two different things. The test creating its fixture at that path is likewise correct — it simulates the
+drain's own output, not a wiring error.
+
+🔴 **THE METHOD LESSON, which is the only durable part of this entry.** The capture reproduced perfectly
+— file absent, `Get-RawBytes:26` returns 0 silently, gate prints `OK … GROWTH (0B)` and exits 0 — and
+every one of those observations is TRUE. It was still a misdiagnosis, because **nobody checked what the
+gate was FOR before calling its behaviour a defect.** One grep of the runbook settles it.
+**Reproducing a symptom is not verifying a finding.** This is the same discipline applied to a peer's
+claims every capstone round; it was not applied to a claim arriving from another session, and the
+unverified diagnosis was promoted to this ROADMAP with confident numbers attached.
+
+**The residue that IS real, and it is small:** a missing input silently measuring 0 cannot distinguish
+"docs-only drain, nothing proposed" (legitimate, and the common case) from "the path moved or was
+typo'd" (a wiring error that would pass green). Making the gate say which it thinks it is — one line —
+costs nothing and removes the ambiguity that made this misdiagnosis so easy to reach.
+
+⚠ **One genuinely OPEN question, explicitly UNMEASURED — do not repeat it as fact.** The runtime region
+has **two** writers (`accept-drain`'s `curate-commit`, and the `agy-curate` skill via the same call). If a
+write APPENDS rather than REPLACES, the runtime region could grow past what any single pre-publish
+proposal check ever saw, and the combined cap would go unenforced between drains. `drain-knowledge-runbook.md:100`
+says the runtime header "is touched at exactly one point in the whole flow", which suggests replacement —
+but **this was not measured**, and it is the only path by which the original fail-open claim could turn
+out to have been accidentally right for a reason nobody stated. Measure before acting on it.
+
+**Disposition:** low priority, off the critical path. Not a fail-open. Belongs with the knowledge-storage
+design work rather than as a standalone fix, since where GROWTH lives is exactly what that work decides.
+
+### §14 — anomalies promoted at the 2026-08-13 and 2026-08-14 triages
+
+All four were **verified by measurement at triage**, not accepted on reading. Each names the measurement
+so a later reader can re-check rather than re-derive. §14a–c came from the 2026-08-13 triage; §14d from
+2026-08-14, and it **corrects a sentence in §14c**.
+
+**§14a — `PrunedSegments` omits `.clavity`, so scratch files enter the reference index.** ✅ **SHIPPED 2026-08-16** (`2db18c2`). VERIFIED 2026-08-18 by measurement: `.clavity` is the last element of the array at `scripts/check-injected-context.ps1:92`, and the fix is PINNED twice in `scripts/tests/check-injected-context.Tests.ps1` — a per-segment row at `:240` and the whole-array comparison at `:266`, so deleting the element reds the suite.
+`scripts/check-injected-context.ps1:91-92` lists `.git, node_modules, target, bin, obj, .venv,
+__pycache__, dist, publish, .vs, .ruff_cache, .pytest_cache, .mypy_cache, .worktrees` — and **not
+`.clavity`**. The reference index is a whole-repository walk pruned by NAME, so anything under
+`.clavity/scratch/` is indexed and can flip a unique filename to ambiguous. Measured by the reporting
+session: five scratch fixtures named `driver-cheatsheet.core.md` turned `check-injected-context.Tests.ps1:398`
+RED. **This is the same half-fold shape as the `.worktrees` fix in `fddde70`**, and `.clavity/scratch` is
+the directory the disciplines *mandate* for scratch output, so the collision is reachable by following
+our own rules. Fix is one array element plus a pinning row.
+
+**§14b — `clavity-dotnet/install/clavity-install.Tests.ps1` is an orphan suite.** ✅ **SHIPPED — registered.** VERIFIED 2026-08-18 by re-running the entry's OWN discriminating control: `clavity-install.Tests.ps1` now appears **once** in the root `justfile`, the same count as the registered control suite `generate-scoped-manifest.Tests.ps1`. At triage it measured **zero**. Registration is an
+explicit list in the **root** `justfile` (lines 101 and 108). Measured with a discriminating control: a
+registered suite (`generate-scoped-manifest.Tests.ps1`) appears there once; `clavity-install.Tests.ps1`
+appears **zero** times in either the root or `clavity-dotnet/justfile`. It exists, passes under raw
+Pester, and **never runs in any gate**. `test-suite-registration.Tests.ps1` cannot see it because it
+scans only `scripts/tests` while claiming to cover "every Pester suite on disk" — so the guard's own
+scope is narrower than its stated contract. Decide: register it, move it, or delete it.
+
+**§14c — ✅ **SHIPPED 2026-08-16** — but **NOT in the shape this entry predicted, and the divergence is the point.** The entry framed the fix as five artifacts each asserting the shield. What shipped asserts it **once, at the write point**: the three skills (`agy-first`, `agy-capstone`, `agy-test-audit`) delegate every `.clavity/` write to `agy-mark.sh`, which sources `agy-shield-lib`. MEASURED 2026-08-18: `agy-shield-lib` is referenced by exactly three files (`agy-discipline-reaching.sh`, `agy-mark.sh`, `open-issues/SKILL.md`) while all three skills cite `agy-mark.sh` (3, 6 and 3 times). **A five-copy assertion would have been five things to keep in sync; one chokepoint is one.** Original entry text follows, kept because its MEASUREMENT is still the record of what was wrong: FIVE shipped artifacts write into `.clavity/` and none asserts the `.gitignore` shield: ONE HOOK
+and FOUR SKILLS.** Measured 2026-08-14 under a stated predicate — *a shipped plugin artifact that CREATES
+or WRITES a path under `<repo-root>/.clavity/`, traced through variable assignments to the RESOLVED
+target*, not by proximity of a write construct to the token `.clavity`. The earlier "7 shipped hooks" came
+from that proximity predicate and was wrong in KIND as well as in count. The set:
+`plugin/hooks/agy-discipline-reaching.sh` · `plugin/skills/agy-first/SKILL.md` ·
+`plugin/skills/agy-capstone/SKILL.md` · `plugin/skills/agy-test-audit/SKILL.md` ·
+`plugin/skills/open-issues/SKILL.md` (weakly, at `:79` — that one is §14d).
+**Excluded, with the reason:** `adversarial-panel-review/SKILL.md:203` names the path but delegates the
+write; the other six hooks write to `${TMPDIR:-/tmp}` or `$HOME/.clavity-tmp` — a DIFFERENT directory —
+and say so themselves (`agy-anomaly-capture-reminder.sh:49`, `assertion-strength-reminder.sh:9`).
+On an end-user repository whose `.gitignore`
+we do not control, that runtime state is **git-visible**, and a `git add .` would publish it. The
+workflow-position spec (`docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md`,
+section 6) mandates the shield for the *new* reader; **this entry is the existing five.**
+
+> ⚠ **CORRECTED 2026-08-14 by §14d: `SKILL.md:79` is NOT a good reference to copy.** It tests file
+> EXISTENCE, not content. Fix §14d first, or §14c's five artifacts inherit the weak idiom.
+
+**§14d — the sole shield assertion is content-blind, and five artifacts propagate it.** ✅ **SHIPPED 2026-08-16** (`e48d97a` the effect-checking helper, mirrored across both plugins · `0850473` + `028d016` capstone folds). VERIFIED 2026-08-17: the helper asserts CONTENT (`grep -qFx '*'`), and the three surviving hits for the old `[ -f ]` idiom are all COMMENTS explaining why it was replaced - no live code carries it.
+`SKILL.md:79` reads `[ -f "$R/.clavity/.gitignore" ] || printf '%s\n' '*' >> ...`, so it restores a
+**deleted** shield but never an **emptied or hand-edited** one. Its own comment at `:74-78` claims it
+covers "the file was created by hand", which is exactly the case it misses. Measured at triage in a
+throwaway repo, every claim with a passing control:
+
+| measurement | result |
+|---|---|
+| `[ -f ]` on a 0-byte `.clavity/.gitignore` | **TRUE** — idiom does not restore |
+| `grep -qx '\*'` on the same file | FALSE — correctly restores |
+| control: `grep -qx '\*'` on a properly shielded file | TRUE — correctly leaves it alone |
+| **consequence**, shield emptied: `git add -A` | stages `.clavity/local-anomalies.md` — **the private file is published** |
+| control, shield present: `git add -A` | stages nothing |
+
+**The fix was verified too, not just the finding.** `grep -qx '\*' ... || printf '%s\n' '*' >> ...` is
+idempotent (1 line after 3 consecutive runs) and subsumes the missing-file case the current idiom already
+handled. **Residual limit, measured rather than papered over:** a shield reading `*` followed by
+`!local-anomalies.md` passes `grep -qx` and still leaks — the fix is a strict improvement, not a proof.
+
+**The blast radius is why this is tracked rather than a drive-by.** The weak idiom is live in five places
+outside the shipped pair, found by sweeping the FACT rather than patching the reported line:
+
+- `clavity-dotnet/plugin/skills/open-issues/SKILL.md:79` and `clavity-classic/plugin/skills/open-issues/SKILL.md:79`
+  — **shipped, byte-identical pair**, so any fix must mirror and pass `plugin-hooks-payload.Tests.ps1`
+  + `check-seed-artifacts-synced.sh`.
+- `docs/superpowers/specs/2026-08-13-agy-role-enforcement-design.md:207` and `:211` — a **FROZEN ADR**
+  that quotes the weak line and *requires* hooks to assert it that way. Amending a frozen artifact is an
+  owner call.
+- `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md:760` — prescribes it for a
+  not-yet-built reader, citing `# SKILL.md:79` in the comment. That spec is **§15, parked**.
+- `docs/superpowers/plans/2026-08-01-anomaly-capture.md:562` and `:815` — the shipping plan; historical.
+
+**The correct idiom already exists in the tree** at
+`docs/superpowers/specs/2026-08-13-agy-policy-gate-implementation-spec.md:688`, folded during that spec's
+round-8 panel — which is where this anomaly was captured. **So this is an INCOMPLETE FOLD, the dominant
+fold defect**: the round fixed its own artifact's line and never swept the source it was copied from.
+Like §13a it lands on `feature/injected-context-governance`, so it belongs with that epic's remaining work.
+
+**§14e — the only local gate on the three byte-pinned files checks provenance, not parity.** ✅ **SHIPPED 2026-08-16** (`d5a24d7` generate both literals from core.md · `4ebec4f` the pre-commit INDEX-to-INDEX parity gate · `e15c0f0` eol pinning · `fd380fe` docs). VERIFIED 2026-08-17: the gate is wired at `lefthook.yml:105` and ran green on today's commits. Later hardening: `578fe22`, `6b86445` (all-or-nothing across both writes).
+`lefthook.yml:78-82` globs **exactly** the three pinned paths — `driver-cheatsheet.core.md`,
+`clavity-classic/src/driver_cheatsheet.rs`, `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` — and its
+own comment at `:63` states they "are pinned byte-identical to each other". It then runs
+`check-curate-in-progress.ps1`, which asserts something else entirely: *was an agy-curate run left
+mid-flight* (`:4-5`). **Provenance, not parity.** So an edit to one pinned file that does not regenerate
+the other two fires the hook, passes it, and commits.
+
+That is not hypothetical — it is how this anomaly was created. Measured:
+
+| measurement | result |
+|---|---|
+| `b2a6cc0` (2026-08-09) ASCII-sanitised `core.md` | 10 em dashes → 0, pins not regenerated |
+| the pre-commit hook on that commit | **fired** (core.md was staged) and **passed** — wrong invariant |
+| `dotnet test tests/Clavity.Ls.Tests` at `fc968fb~2` | **Failed 1, Passed 8** — fails at pos 21, expected `—`, actual `-` |
+| `cargo test --features test-fakes driver_cheatsheet` at the same point | **9 passed, 1 failed** — measured, not presumed from the dotnet result |
+| RED window | 2026-08-09 → 2026-08-14, **5 days**, closed by `d664002` |
+
+**Why CI did not close it, which is the part worth tracking.** The oracles *are* wired —
+`.github/workflows/ci-dotnet.yml:26` runs `dotnet test tests/Clavity.Ls.Tests` and `ci-classic.yml:46`
+runs `cargo test --all --features test-fakes`. Neither can fire on an **unpushed** branch, and this one is
+**152 commits ahead of `origin/main`**. On a long-lived local branch, CI is not a safety net; it is a
+report you get later. **A capstone-GREEN declaration was made while both suites were red** — the marker
+was never evidence the gate ran.
+
+**The marginal cost of the fix is near zero, which is what makes it worth doing.** The expensive part —
+a ~6s pwsh cold start, paid only when one of the three paths is staged (`lefthook.yml:68-72`) — is
+**already being paid** on exactly the right trigger. The parity assertion would ride along on it.
+
+**Candidate dispositions, both with their known trap named:**
+- **Extend the existing job** to also assert parity. Needs the Rust/C# literals un-escaped (`\n`, `\"`)
+  in PowerShell — the logic exists in-language in both test suites and would be duplicated a third time,
+  so the new check becomes a fourth thing that can drift from the other three.
+- **Shell out to the two existing suites** instead of reimplementing. Avoids the duplication but is far
+  slower than 6s, and `dotnet test --filter` **exits 0 on no match** — a filtered invocation that stops
+  matching would fail open silently, which is the failure mode this whole entry is about. Any such fix
+  must read the test COUNT, not the exit code.
+
+Like §13a and §14d this lands on `feature/injected-context-governance`, so it belongs with that epic's
+remaining work rather than as a drive-by.
+
+**§14f — two shipped artifacts disagree about who owns `driver-cheatsheet.core.md`, and the gate that
+would catch it never runs on the flow that edits it.** ▶ **OPEN — needs an owner ruling, not a fix**
+
+Both sides are internally coherent and describe different flows, which is why neither reads as a bug from
+inside itself:
+
+| artifact | says |
+|---|---|
+| `scripts/drain-lib.ps1:214`, listing the file at `:223` | "Driver-owned files the curator must **NEVER** touch (asserted byte-unchanged by `check-core-integrity.ps1`)" |
+| `scripts/drain-knowledge-prompt.md:4` | "never the seed, never `driver-cheatsheet.core.md`" |
+| `scripts/drain-knowledge-prompt.md:56` | "any `driver-cheatsheet.core.md` edit you WANT but **may not auto-apply**" |
+| `agy-autotrain/skills/agy-curate/SKILL.md:112` | "The canonical text lives at `driver-cheatsheet.core.md`; **keep it in sync there**" |
+| `agy-autotrain/skills/agy-curate/SKILL.md:124` | "If you change `driver-cheatsheet.core.md` you **MUST also update**" both pins |
+| `agy-autotrain/skills/agy-curate/SKILL.md:339` | documents core.md "and its two byte-identical pins **may have been edited**" as uncommitted working-tree state |
+
+**The gate cannot catch the disagreement.** `check-core-integrity.ps1` is invoked from exactly one place -
+`scripts/drain-knowledge.ps1:126`, the in-repo `just drain-knowledge` flow. The standalone skill path,
+which is the one that actually edits these files, never invokes it. **Measured: drain commit `fc968fb`
+modified `core.md` and no gate fired.** A protected-file gate that does not run on the flow that edits
+protected files is the same class as §14e - the gate exists and does not fire on the real path.
+
+**Why this is a RULING and not a fix, which is why it is tracked rather than folded into the hot-fix
+batch:** the two dispositions are opposite edits to different files.
+
+1. **`core.md` is driver-owned** => the `agy-curate` skill is the defect: its cheatsheet-compilation
+   section must PROPOSE an edit rather than apply one, matching `drain-knowledge-prompt.md:56`, and the
+   drain flow grows the step that applies it.
+2. **`core.md` is curator-owned in the standalone flow** => the protected list and the prompt are
+   over-broad: they must be scoped to the in-repo flow, and the standalone path must invoke the gate.
+
+**Scope note:** the 2026-08-14 hot-fix batch spec deliberately EXCLUDES this, and that exclusion is safe -
+§14e's generator only READS `core.md`. **But §14e does have one mechanical consequence that belongs to the
+batch, not here:** once the literals are generated, `SKILL.md:122-124`'s instruction to hand-edit both pins
+becomes wrong, so the batch must update it. That is tracked in the spec, not in this item.
+
+**§14g — the agy-observations inbox lives INSIDE the plugin tree, so it exists in N copies and both
+skills must be INSTRUCTED which one is live.** ▶ **OPEN — tracked debt, promoted at the 2026-08-15
+triage.**
+
+**Measured 2026-08-15:** the repo checkout copy held **30** pending entries and the INSTALLED copy **18**,
+with **ZERO overlap** — four capstone sessions' worth of real captures written to a copy nothing drains
+and nothing counts. They were committed to git, so they looked saved. Cause: `agy-learn` and `agy-curate`
+resolved the inbox as `../../knowledge/agy-observations.md`, correct only when the invoking copy IS the
+install; every checkout and worktree carries its own.
+
+**The instructional fix shipped** (`33851cf`..`9f6b394`) and this entry is what it did NOT fix. Its
+capstone ran **five rounds and never went green**, and every round found a defect inside the previous
+round's fix — including two fail-opens of mine: a `git rev-parse --is-inside-work-tree` test that measures
+an install nested in a git-managed HOME as a checkout (blocking captures outright), and a missing `git`
+exiting non-zero, which read as "installed tree" and routed writes INTO a checkout. **`agy-learn` grew
+77 → 183 lines (+138%) instructing around a path problem**, and that growth is the finding: the round-5
+scope seat and the driver independently concluded the machinery now costs more than the fix it substitutes
+for.
+
+**KNOWN OPEN HOLE, recorded in `agy-curate/SKILL.md` and deliberately not patched:** a crash between the
+staging rename and its delete strands that batch, because each run reads only its own uniquely-named
+processing file and never globs. Patching it adds machinery the architectural fix deletes.
+
+**The fix is architectural:** move the canonical inbox to `<USERPROFILE or HOME>/.clavity/agy-observations.md`
+— exactly where the golden-header files already live, for exactly this reason — so every copy resolves one
+path and no instruction is needed. **Blast radius:** both skills, the `${CLAUDE_PLUGIN_ROOT}` line in
+`agy-autotrain/hooks/agy-curate-nudge.sh` and its 244-line suite, the installer's `onlyifdoesntexist`
+seeding (`agy-autotrain.iss:54,60`), plus migrating the installed copy and the repo copy's 30 undrained
+entries. **Not urgent:** the installer excludes the inbox from the blanket copy and marks it
+`uninsneveruninstall`, so an update does not overwrite it and an uninstall does not remove it — a reviewer
+claimed the next update would destroy the backlog and the installer refutes that.
+
+**§14h — two AGY-* review disciplines prescribe a SINGLE persona, so their consults are single-voice
+by instruction.** ▶ **OPEN — promoted at the 2026-08-15 triage.**
+
+**Measured 2026-08-15** across both plugin variants (byte-identical, counts equal in each):
+
+| skill | mandates seats? | evidence |
+|---|---|---|
+| `agy-first/SKILL.md` (123 lines) | **NO** | `:54-56` — "Default persona: bold inventive systems-designer; override when a sharper lens fits (security-auditor, perf-skeptic, API-contract-pedant)". Singular, and the three alternatives are ad-hoc, not palette seats. |
+| `agy-test-audit/SKILL.md` (231 lines) | **NO** | `:216` is the ONLY lens language in the file: "Optional per-run mitigation: rotate the audit's lens". Optional, and singular. **The fix is NOT confined to `:216`:** that line sits in the "Stated limitation - false negatives" section at the foot of the file, so replacing it alone would bury a framing instruction in a footer. The seat instruction belongs where the consult is framed - **insert at `:59`, immediately after the `## The audit round` heading and before its numbered item 1** - and `:216-217` is then reworded to point at it. |
+| `agy-capstone/SKILL.md` (289 lines) | **YES — not defective** | `:89` reads, literally and in ASCII: `- **Seats (defect-class lenses).** Seat the proven adversarial-panel-review personas - Axiom Breaker`. `:92` seats those whose trigger the diff meets; `:103` rotates seats across rounds. **Quoted verbatim so it can be grepped:** an earlier version of this row rendered that line with an em-dash and an ellipsis, neither of which the file contains - it is ASCII-gated - so the "quote" matched nothing. |
+| `adversarial-panel-review/SKILL.md` (297 lines) | **YES** | the palette, selection rule, and anti-gaming guard live here. |
+
+**Blast radius: 4 files** — `agy-first` and `agy-test-audit` in `clavity-dotnet/plugin/skills/` and
+`clavity-classic/plugin/skills/`. Byte-identical pair, so both variants change together and
+`plugin-hooks-payload.Tests.ps1` gates it.
+
+**Why this is a defect and not a preference.** The owner has corrected the same dropped-seats behaviour
+**twice**, and on the second occasion named it a defect requiring a fix. The driver was not ignoring
+`agy-first` — it was *complying* with it: `:54` says "Default persona", singular, so a single-voice
+consult is the instructed behaviour. A discipline whose text produces the failure its sibling discipline
+exists to prevent is a defect in the text. **Provenance, so a future reader can check rather than take this on trust:** the entry was promoted at
+the second 2026-08-15 triage in commit `90b275e`; the plan work and the capstone that hardened it run
+`90b275e..6adf80b` on branch `feature/injected-context-governance`, and every claim below is restated
+in those commit messages with the measurement that produced it. **Measured effect in the run that
+surfaced it:** a single-voice
+`agy-first` consult built three orderings on a collision that did not exist and stated two confident
+claims that measurement refuted; the seated round that followed produced six distinct findings and two
+substantive challenges to the driver's own measurements.
+
+> ⚠ **The first measurement of this entry was WRONG and the error is instructive.** A `grep -c palette`
+> returned 0 for `agy-capstone` and it was nearly promoted as a third defective skill. `agy-capstone`
+> mandates seats correctly at `:86-103` — it simply never uses the word *palette*. **A paraphrase evades
+> a phrase-shaped grep**; the fix-side sweep must search the FACT (does this file mandate multiple named
+> adversarial lenses?) in several wordings, not one token.
+
+**Fix shape:** give `agy-first` and `agy-test-audit` a seat instruction of the KIND `agy-capstone:89-103`
+already carries — name concrete adversarial seats, seat those whose trigger the artifact meets, rotate
+across rounds, and reuse the `adversarial-panel-review` persona vocabulary without becoming a code
+dependency on that skill.
+
+> ⚠ **CORRECTED 2026-08-15, and the correction matters because the original sentence would have produced
+> the wrong fix.** It read "give them **the same** seat instruction … **rather than duplicating the
+> palette into each file**". Both halves are wrong, and the exemplar it cites disproves them:
+> **`agy-capstone:89-94` inlines the seat names itself** (`Axiom Breaker (contradictions / unstated
+> invariants), Cascade Analyst (unhandled failure paths), Mechanism Gamer …`). So "do not duplicate the
+> palette" describes neither the exemplar nor anything achievable in a markdown skill file, which has no
+> include mechanism.
+>
+> And **the same** instruction is wrong on the merits: `agy-first` consults on a FORK, so its seats hunt
+> reasoning defects; `agy-test-audit` consults on a SUITE, so its seats hunt coverage gaps and must be
+> handed the coverage question explicitly. Pasting one file's block into the other yields a seat list
+> that cannot fire on what that discipline reviews. **The shared thing is the PATTERN — named seats,
+> trigger-based selection, rotation — not the text.**
+>
+> Found by a capstone round that compared the plan against this entry and reported the PLAN as
+> non-compliant. The plan was right; this entry was wrong.
+
+**This remains the same "one shared review-core" question already open as the AGY-* family-coherence
+fork**, so the two should be decided together, not separately.
+
+### §15 — Workflow-position resilience — **SECOND PRIORITY FOR A FUTURE RELEASE** (owner, 2026-08-13)
+
+**Spec:** `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` (committed `4adab8b`,
+tracked — note `docs/superpowers/*` is gitignored, so it needed `git add -f`).
+
+**Status: deferred, not cancelled.** The spec is complete and has been through **six adversarial panel
+rounds, all folded**. It is not blocked on quality; it is deprioritised behind the policy gate, which is
+the approved deliverable. Do not restart the design — read the spec.
+
+**What it would build:** a single SessionStart reader (registered `startup|resume|clear|compact`) that
+surfaces unconcluded consult seams so a session that dies leaves its successor able to resume, plus a
+seam naming convention. Explicitly no resume file, no WAL, no decisions index.
+
+**Two things it inherits unresolved, and the first is a gate on the name:**
+- **The discipline's NAME is deferred pending a measurement** — does bare `sync` actually flush on this
+  platform, and at what cost under concurrent load. **Not "does it exit 0"** — that was measured and
+  proved nothing. Probe passes → a power-failure name is defensible *with a scope note*. Probe fails →
+  the name must change. **Two of the three overclaims (implementation coverage, decision retention) are
+  settled against the mechanism either way**, so even the best outcome yields a narrower name.
+- A Windows-path casing case in the filename match.
+
+**One scope item needs owner confirmation before it is built:** the spec adds a debounce-marker contract
+to `adversarial-panel-review/SKILL.md` (writing `agy-panel.head`). Everything else is additive; that one
+edits a shipped skill.
+
+**Honest scope, recorded so a later reader does not over-read the name:** it recovers interrupted
+*consults*. It does not cover implementation work (435 of 435 agent-written seams are consult payloads),
+does not retain decisions, and does not defend against a compromised agent.
+
+### §16 — Edit-verification pattern: a TRANSIENT Pester suite, not inline shell — **owner-ratified 2026-08-15**
+
+**This records a PATTERN for the next plan, not work to schedule.** It changes nothing already shipped.
+
+**The problem it answers.** A plan that applies edits needs a step that verifies the edits landed. Task 7
+Step 5 of the 2026-08-14 anomaly hot-fix plan is that step, and it took **five capstone rounds** to
+stabilise: three consecutive rounds each found defects *inside the previous round's fix*, and the
+recurring classes were all shell-shaped — primitive drift, `grep`'s 0-vs-error merge folded into a
+two-outcome construct, argument-order confusion across bespoke helpers, and invisible coverage.
+
+**The pattern: write the verification as a Pester suite that lives and dies with the plan.**
+- **Put it OUTSIDE `scripts/tests/`.** MEASURED — `scripts/tests/test-suite-registration.Tests.ps1:3`
+  states "THE SCOPE IS `scripts/tests/` ONLY. A suite anywhere else in the repository is invisible to
+  this guard." So a transient suite touches no registration gate, no `_partition.md` census, and no CI
+  `paths:` list. **This one fact is what makes the pattern cheap**, and it is the fact the original
+  design consult missed.
+- **Invoke it directly** from the plan step (`Invoke-Pester <path>`), and delete it with the plan.
+- **Express the expectations as a `-ForEach` array**, so every obligation becomes a NAMED test row that
+  can be read against the plan's own edit table. A missing obligation is then a missing row, visible.
+
+**Why not a permanent gate.** Exact-count and anchor-offset assertions are *change-detectors*: their job
+ends when the commit lands. Enshrined permanently they red on the next legitimate edit — a chore, and
+this repository has already paid for that lesson elsewhere. Transience is the point, not a compromise.
+
+**Why the current plan does NOT adopt it.** Owner ruling 2026-08-15: **ship the shell design there.**
+That plan's verification is bash throughout — Step 0's pre-flight anchors, Step 4's byte-identity hash
+loops, every task's oracles — so a single PowerShell step would fracture the document mid-task; and the
+shipped design carries a 12-case acceptance matrix that a rewrite would have to re-earn from zero. The
+shell version is measured and green; this pattern is for the plan *after* it.
+
+**Provenance, because it is the point.** The A/B/C fork was first put to the peer **unseated**, and it
+chose between the three options it was given. Re-run with named seats, a **Blindspot Auditor** produced
+the option nobody had listed and named why the first round could not: the framing had chained the
+*language* choice to a *lifecycle* policy, so "Pester" silently read as "permanent CI gate". The
+seat discipline is what found this; an unseated consult structurally could not.
+
+**Still open, NOT ratified by this entry:** whether the genuinely durable subset — "the seat instruction
+still exists in `agy-first` / `agy-test-audit`" — earns a permanent gate. That is a separate decision.
+
+### §17 — anomalies promoted at the 2026-08-17 triage — ▶ **OPEN**
+
+Two entries from the 7-entry triage of 2026-08-17. Every one verified by measurement at triage. The other
+five were dispositioned there: two fixed immediately (`assertion-strength-reminder.Tests.ps1` bash pinning,
+and the shield suite's marker hygiene), two routed to `docs/coverage-debt.md` as coverage debt, one deleted.
+
+#### §17a — the shield's debounce key has no repository component
+
+**The fact, measured with a control 2026-08-16 and re-confirmed at triage:** the marker is
+`"$_ass_dir/.clavity-shield-$_ass_class-$_ass_key"` (`agy-shield-lib.sh:70`) — the key is the caller's
+session id and there is **no repository component anywhere in the path**. Control: repo A key k1 REPORTS;
+repo A key k1 again is silent (correct); a **fresh repo B** under the same key is **SILENT**; repo B under
+a different key REPORTS. So one session working across two repositories gets **one fault report in total**,
+and the second repository's leak is never surfaced.
+
+**Why it is not already fixed.** It was **deferred by decision** during the 2026-08-14 hot-fix batch and
+recorded as a residual in that plan after Step 7. Adding a repo component is a **contract change** to a
+shipped, byte-identical hook pair: the marker name is the debounce identity, so changing it re-arms every
+existing debounce once, and the fix has to be mirrored to classic in the same commit.
+
+**Disposition needed:** whether to key on the repository root path, its hash, or to leave the cross-repo
+case documented as a known limit. Not mechanical — hence tracked rather than folded.
+
+#### §17b — every `pre-push` gate reads the WORKING TREE, not the commits being pushed
+
+**Measured at triage:** `lefthook.yml:19-55` defines **10** pre-push jobs — `seed-sync`, `agy-skills`,
+`doc-stubs`, `member-docs`, `user-facing-docs`, `register-hash`, `installer-ascii`, `check-versions`,
+`check-plugin-namespace`, `check-ci-filter-coverage` — and **zero** of them consult `git show <ref>:<path>`,
+`--cached`, or the push refs a pre-push hook receives on stdin. Every one resolves paths from the worktree
+via `$PSScriptRoot`/`$RepoRoot` and reads with `Get-Content`/`Get-ChildItem`.
+
+**Both failure directions are live:** uncommitted work can **false-RED** an otherwise valid push, and an
+uncommitted fix can **false-GREEN** a push of the broken commit. The verdict is about state git is not
+about to publish.
+
+**Why it is filed rather than fixed.** This is the repo-wide SHAPE of the hook, not one gate's defect —
+`check-ci-filter-coverage` is merely the newest instance. Making one gate read blobs from the pushed commit
+would leave it inconsistent with its nine siblings, and changing all ten is an **owner-level decision about
+what a pre-push gate is FOR**. Surfaced by an agy capstone seat, then confirmed against the hook block.
+
+**Note the interaction with §14e:** that entry already records that on a long-lived local branch *"CI is not
+a safety net, it is a report you get later"*. If pre-push is also not measuring the pushed state, then this
+branch — 319 commits ahead and never pushed — currently has **neither** gate reasoning about what would land.
+
+### §18 — SEED/GROWTH split for the driver cheatsheet — ▶ **OPEN, and 64 parked inbox entries wait on it**
+
+**The problem, measured at the 2026-08-17 drain.** `driver-cheatsheet.core.md` is 100% SEED-shaped: it is
+byte-pinned to two compiled literals (`clavity-classic/src/driver_cheatsheet.rs` `BASELINE_FLOOR`,
+`clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs` `BaselineFloor`). So **every promotion of learned driver
+knowledge costs an implementation-source change** — regenerate both literals, run three oracles, and owe a
+re-capstone. That toll is why the loop stopped being run at cadence: **69 pending entries had accumulated,
+31 of them in a second inbox copy no flow read.**
+
+**The fix: apply the split this system ALREADY uses one layer up.** The injected golden-header is
+SEED (driver-owned, shipped, static) + GROWTH (drain-written at runtime, atomic write, `.sha256` sidecar,
+read as an extension of SEED). The cheatsheet has no such split. Give it one:
+
+- the compiled literal stays a **pinned FLOOR** — rarely edited, guarantees a baseline when no runtime file
+  exists or it fails its integrity check. The existing parity gate keeps doing the job it demonstrably does;
+- add a **cheatsheet-growth region** the drain writes through the same atomic-write + sidecar path;
+- drains stop touching compiled source, so the per-drain toll goes to zero.
+
+**Provenance — this was NEGOTIATED, and the negotiation moved.** Consulted as a design fork, the peer first
+recommended **UNPINNING** the cheatsheet outright, arguing a continuous learning loop cannot afford a
+compile-time constraint. Its own stated counter-argument was that unpinning risks silent runtime divergence.
+**One measurement killed that recommendation:** `check-cheatsheet-parity` exits 0 — the pinned trio is
+coherent — while the drift was entirely in `%USERPROFILE%\.clavity\driver-cheatsheet.md`, which **nothing
+pins and nothing gates** (3 days stale, 3515B vs 3508B). The divergence it named as the COST of unpinning was
+already realised, in the part that was never pinned. Unpinning would delete the half that works. The peer
+conceded and adopted this split as the target architecture.
+
+**Three attacks on the split, from that same consult. Two stand; record them in the design:**
+1. **Contradiction between regions.** Domain facts compose; operational rules **override**. If SEED says
+   "never do X" and a drain writes "always do X" into GROWTH, the driver gets opposed constraints in one
+   context window. The header does not face this because it carries facts, not instructions. **A resolution
+   order must be part of the design, not an afterthought.**
+2. **Compaction debt.** The split BATCHES the review toll rather than removing it — GROWTH eventually
+   overflows or tangles and must be compacted back into SEED, paying the source-churn and re-review cost on
+   a slower cadence. Budget for that; do not claim the toll is gone.
+3. **~~Poisoning~~ — CLOSED at the consult.** The concern was that a free-writing drain lets a bad capture
+   become steering law. The `agy-curate` skill already **mandates a human-review gate before any runtime
+   GROWTH write**. The requirement this adds is that the cheatsheet-growth region must inherit **that gate**,
+   not merely the atomic-write path.
+
+**The two measurements the peer named as gates on building it — do these first:**
+- **Toxicity rate.** How many pending entries are steering hazards? If even one is, an ungated drain is
+  structurally unsafe. **Partially measured 2026-08-17:** a pattern scan for guard-weakening phrasing over
+  all 69 returned **zero**. That is a pattern scan, NOT a semantic read of all 69 — treat it as encouraging,
+  not as the measurement.
+- **Override behaviour.** Append a deliberate contradiction to the current cheatsheet and measure whether the
+  driver reliably privileges the newer rule. If it does not, the split needs a conflict-resolution layer
+  before rendering, and attack 1 is fatal rather than manageable.
+
+**What is parked on this.** 64 inbox entries carry `parked=seed-growth-split-roadmap-18`. That is a real
+release condition, not a parking lot: when this ships, they become drainable at no source cost.
+
+### §19 — `agy-mark.sh` exit codes: collapse the tri-state to 0 / non-zero — ▶ **DECIDED, DEFERRED**
+
+**This is a settled decision waiting for a carrier commit, not an open question.** Do not re-litigate it;
+do not execute it on its own.
+
+**The decision.** Collapse `agy-mark.sh`'s three-value exit contract (`0` wrote / `1` refused before
+trying / `2` write attempted and rejected) to **`0` / non-zero**. **The two distinct stderr messages MUST
+SURVIVE** — `REFUSED - <reason>` and `write FAILED for <path> - the filesystem rejected it`. The operator's
+remedy stays exactly where an operator looks; only the dead integer goes.
+
+**WHEN.** Execute **only when `agy-mark.sh` is next opened for a FUNCTIONAL change** that already pays the
+cost below. A standalone commit for this is explicitly NOT worth it.
+
+**Why deferred rather than done — the cost that decides it.** `agy-mark.sh` is implementation source and
+one of a BYTE-IDENTICAL PAIR (dotnet + classic). Editing it therefore requires the mirror **and
+invalidates the AGY-CAPSTONE GREEN** (owner-confirmed at `1022f8f`, 2026-08-17), forcing a full re-run of
+that discipline. Paying a re-capstone for a purely hygienic simplification is a bad trade.
+
+**Why the tri-state goes — measured 2026-08-17, not reasoned:**
+- 🔴 **NO CALLER CONSUMES THE DISTINCTION.** All six call sites across `agy-first`, `agy-capstone` and
+  `agy-test-audit` use `if ! bash .../agy-mark.sh ...; then <echo> ; exit 1; fi`. `if !` is a TWO-outcome
+  construct; every non-zero collapses to "abort". **The six `then` blocks contain nothing but an `echo`
+  and `exit 1`** — no cleanup or teardown that could vary by failure kind.
+- **Both failures are terminally fatal with no programmatic recovery.** Refused = the skill's own source
+  is malformed; rejected = it cannot write the repo-anchored state the discipline requires, and it has no
+  legal fallback location. The callers are therefore CORRECT to collapse them — **the caller pattern is
+  evidence the API is over-designed, not that the callers are buggy.** (Notable, because `if !` around a
+  multi-outcome command is this project's single most-repeated defect shape — here it is not one.)
+- **No future consumer.** No planned fail-open / graceful-degradation on a read-only marker directory
+  anywhere in this ROADMAP.
+- **No spec breaks.** `docs/agy-disciplines-marker-contract.md` does not specify exit codes at all; the
+  tri-state exists only in the script header.
+
+**Two objections that were raised and DIED ON MEASUREMENT — recorded so they are not re-raised:**
+1. 🔴 **"exit 2 might be dangerous, not merely unused."** This project records that `exit 2` is
+   non-blocking on SessionStart but **BLOCKING on PreToolUse**, so a hook-registered script exiting 2
+   could block an agent — which would make this a SAFETY question, not a YAGNI one. **MEASURED: it is
+   registered in NEITHER `clavity-dotnet/plugin/hooks/hooks.json` NOR the classic mirror**, and its own
+   header states the reason at `:4-5` — *"this script is invoked by a skill, where a refusal blocks
+   nothing."* Refuted.
+2. **"exit 2 has no reachable oracle"** — the argument that BLOCKED this ruling when it was first
+   escalated. **No longer true:** both exit-2 sites now have test rows, `agy-mark.Tests.ps1:275` (log
+   mode) and `:293` (head mode, added 2026-08-17 by AGY-TEST-AUDIT round A, GAP-7). The objection that
+   deadlocked the fork has dissolved.
+
+**Provenance.** Negotiated with the agy peer over two rounds (2026-08-17), owner-directed. **Both parties
+moved:** I opened on "keep the tri-state as a human diagnostic" and withdrew it — *an exit code IS the
+machine-to-machine API; humans read stderr, not `$?`*, so that position was a euphemism for an unused
+distinction. The peer opened on "delete it now" and shifted to deferred once the re-capstone cost was
+priced. **Neither opening position survived.**
+
+⚠ **One consequence to expect when this executes:** it deletes `agy-mark.Tests.ps1:293`, a row added the
+same day to close a verified coverage gap. That is not a contradiction — the audit correctly tested the
+design as it then stood; this entry changes the design.
+
+### §20 — A mockable clock (`TimeProvider`) in `AgyView` — ▶ **OPEN, not scheduled**
+
+**Referred by the owner 2026-08-19**, out of the AGY-TEST-AUDIT capstone on the idle-wait limit label.
+This is a real refactor, not a hygiene tidy-up, and it is written down because two separate debts already
+name it as their exit.
+
+**The problem.** `AgyView` samples `DateTime.UtcNow` directly inside the idle-wait loop
+(`AgyView.cs:232` for `start`, `:243` for the budget remainder). Wall-clock is therefore an ambient
+dependency: a test can set `IdleStallWindow` and `IdleAbsoluteMax` from outside, but it cannot make time
+do anything in particular. Every timing-sensitive property of that loop is consequently pinned by
+*arranging real milliseconds to elapse* and hoping the machine cooperates.
+
+**What it would buy — two tracked items close together:**
+- **Accepted boundary J** (`docs/coverage-debt.md`) exists solely because one sub-condition cannot be
+  pinned by any test. The label branches on
+  `windowWasBudgetClamped && (windowElapsed || (DateTime.UtcNow - start) >= absoluteMax)`, and the
+  `windowElapsed` disjunct only earns its keep when an OS timer fires slightly EARLY — which cannot be
+  produced on demand. **Measured 2026-08-19: mutant M9 (drop `windowElapsed`, keep the clock) SURVIVES the
+  full suite** while the other nine mutants in that sweep are each caught. A controllable clock makes that
+  case constructible and **retires boundary J outright** rather than carrying it.
+- **Tracked debt 7** (same file) is the ~2s permanent suite tax from widening two `absolute_max` tests 6x
+  to out-run CI jitter. With a controllable clock the margins are not needed at all — the tests stop
+  waiting on wall-clock and the tax goes away, without the retry-loop whose trap is that it must never
+  cover a wrong `Limit`.
+
+**Why the current code is defensible without it.** The label decision itself no longer races the clock:
+`windowWasBudgetClamped` and `windowElapsed` are recorded where they are known, and `||` short-circuits so
+the knife-edge case never reaches a clock read at all (`1748754`). §20 is about **testability**, not a
+live defect. Nothing here is broken as it ships.
+
+**The cost that makes this a decision rather than a chore.**
+- 🔴 `AgyView` is implementation source, so this **invalidates the AGY-CAPSTONE GREEN** — owner-confirmed
+  at `1748754`, 2026-08-19 — and forces a full re-run of that discipline. The same trade §19 records.
+- It widens `AgyViewOptions` (or the constructor) with a dependency every existing call site must ignore
+  gracefully, and `Clavity.Ls` is consumed by both the MCP surface and the tests.
+- The measured margin the whole thing is about is **+5.1ms worst case over 10 runs / 50 decisions** against
+  Windows' ~15ms timer resolution. Small, real, and already mitigated — which is exactly why this is worth
+  scheduling deliberately rather than doing opportunistically.
+
+**WHEN.** Execute when `AgyView`'s wait loop is next opened for a FUNCTIONAL change that already pays the
+re-capstone, or when a third timing-bound test wants writing — that would be the point at which the
+pattern, not the instance, is the problem. **Do not do it as a standalone commit.**
 
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack

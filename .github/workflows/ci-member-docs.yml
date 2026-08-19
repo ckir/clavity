@@ -34,7 +34,7 @@ jobs:
   member-docs:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Member docs floor gate
         # pwsh 7: check-member-docs.ps1 is a maintainer-only dev script and only ever runs under
         # pwsh 7 (justfile, lefthook). It used to run under Windows PowerShell 5.1 "to catch PS7-only
