@@ -277,7 +277,7 @@ proves detection is STRUCTURAL, not size-based."
 - Create: `clavity-dotnet/src/Clavity.Ls/SemanticEcho.cs`
 - Test: `clavity-dotnet/tests/Clavity.Ls.Tests/SemanticEchoTests.cs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using System.Linq;
@@ -338,12 +338,12 @@ public class SemanticEchoTests
 }
 ```
 
-- [ ] **Step 2: Run and verify they fail**
+- [x] **Step 2: Run and verify they fail**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~SemanticEchoTests`
 Expected: FAIL — `error CS0103: The name 'SemanticEcho' does not exist`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 using System;
@@ -395,12 +395,12 @@ public static class SemanticEcho
 }
 ```
 
-- [ ] **Step 4: Run and verify they pass**
+- [x] **Step 4: Run and verify they pass**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~SemanticEchoTests`
-Expected: `Passed!  - Failed: 0, Passed: 6`.
+Expected: `Passed!  - Failed:     0, Passed:     8`. **8, not the 6 drafted here** - a mutation audit found the six left `Normalise` unguarded on BOTH sides, so two rows were added.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add clavity-dotnet/src/Clavity.Ls/SemanticEcho.cs clavity-dotnet/tests/Clavity.Ls.Tests/SemanticEchoTests.cs
@@ -441,7 +441,7 @@ would let the driver infer the discipline with no caller cooperation at all. Mea
 AGY-AFTER - the same outlier that breaks a single `[VERDICT:` regex. **A guard that covers three of four
 disciplines and says nothing about the fourth is worse than one that admits its scope.**
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using Clavity.Ls;
@@ -494,12 +494,12 @@ public class DisciplineContractTests
 }
 ```
 
-- [ ] **Step 2: Run and verify they fail**
+- [x] **Step 2: Run and verify they fail**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~DisciplineContractTests`
 Expected: FAIL — `error CS0103: The name 'DisciplineContract' does not exist`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 using System;
@@ -540,12 +540,12 @@ public static class DisciplineContract
 
 Add `using System.Linq;` to the test file for `OrderBy`.
 
-- [ ] **Step 4: Run and verify they pass**
+- [x] **Step 4: Run and verify they pass**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~DisciplineContractTests`
 Expected: `Passed!  - Failed: 0, Passed: 7`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs
@@ -568,7 +568,7 @@ a payload heuristic would silently skip a quarter of the surface."
 - Create: `clavity-dotnet/src/Clavity.Ls/ReplySizeHistory.cs`
 - Test: `clavity-dotnet/tests/Clavity.Ls.Tests/ReplySizeHistoryTests.cs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using System.Collections.Generic;
@@ -619,12 +619,12 @@ public class ReplySizeHistoryTests
 }
 ```
 
-- [ ] **Step 2: Run and verify they fail**
+- [x] **Step 2: Run and verify they fail**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~ReplySizeHistoryTests`
 Expected: FAIL — `error CS0103: The name 'ReplySizeHistory' does not exist`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 using System;
@@ -670,12 +670,12 @@ public static class ReplySizeHistory
 }
 ```
 
-- [ ] **Step 4: Run and verify they pass**
+- [x] **Step 4: Run and verify they pass**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~ReplySizeHistoryTests`
-Expected: `Passed!  - Failed: 0, Passed: 5`.
+Expected: `Passed!  - Failed:     0, Passed:     6`. **6, not 5** - a median-vs-mean mutant survived the planned five, so a sixth row pins the median.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add clavity-dotnet/src/Clavity.Ls/ReplySizeHistory.cs clavity-dotnet/tests/Clavity.Ls.Tests/ReplySizeHistoryTests.cs
@@ -695,7 +695,7 @@ wolf and be tuned out. Median over the last 5, minimum 3 samples, flag below
 - Create: `clavity-dotnet/src/Clavity.Ls/ReplyArchive.cs`
 - Test: `clavity-dotnet/tests/Clavity.Ls.Tests/ReplyArchiveTests.cs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using System;
@@ -765,12 +765,12 @@ public class ReplyArchiveTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run and verify they fail**
+- [x] **Step 2: Run and verify they fail**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~ReplyArchiveTests`
 Expected: FAIL — `error CS0103: The name 'ReplyArchive' does not exist`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 using System;
@@ -863,12 +863,12 @@ public static class ReplyArchive
 }
 ```
 
-- [ ] **Step 4: Run and verify they pass**
+- [x] **Step 4: Run and verify they pass**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~ReplyArchiveTests`
-Expected: `Passed!  - Failed: 0, Passed: 5`.
+Expected: `Passed!  - Failed:     0, Passed:     7`. **7, not 5** - deleting the prune block AND deleting `Sanitise` both left the planned five green, so each got a row.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add clavity-dotnet/src/Clavity.Ls/ReplyArchive.cs clavity-dotnet/tests/Clavity.Ls.Tests/ReplyArchiveTests.cs
@@ -892,7 +892,7 @@ already follows."
 - Modify: `clavity-dotnet/src/Clavity.Mcp/McpTools.cs` — `AgyAsk`
 - Test: `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`
 
-- [ ] **Step 1: Add the two additive flags to `AskReply`**
+- [x] **Step 1: Add the two additive flags to `AskReply`**
 
 Replace the record at `AskReply.cs:5-10` with:
 
@@ -914,13 +914,13 @@ public sealed record AskReply(
     bool SizeAnomaly = false);
 ```
 
-- [ ] **Step 2: Run the existing suites to prove the additive change breaks nothing**
+- [x] **Step 2: Run the existing suites to prove the additive change breaks nothing**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests`
 Expected: `Passed!` with the same count as before the change (164 at the time of writing), because both
 new members have defaults.
 
-- [ ] **Step 3: Extend `AgyView.AskAsync` and wire the seam**
+- [x] **Step 3: Extend `AgyView.AskAsync` and wire the seam**
 
 Change the signature at `AgyView.cs:172` to add one optional parameter, keeping every existing caller valid:
 
@@ -972,7 +972,7 @@ Add this private method to `AgyView`, directly beneath `AskAsync`:
 
 Add `using System.Text;` and `using System.IO;` to the top of `AgyView.cs` if not already present.
 
-- [ ] **Step 4: Expose the expectation on the MCP tool**
+- [x] **Step 4: Expose the expectation on the MCP tool**
 
 In `clavity-dotnet/src/Clavity.Mcp/McpTools.cs`, change the `AgyAsk` signature to add one optional
 parameter and pass it through:
@@ -998,12 +998,12 @@ The `seam` experiment on 2026-08-19 built the exact proposed signature, register
 `AddMcpServer().WithTools<T>()` path, and found the optional parameter present in `properties` and ABSENT
 from `required`, byte-identical on SDK 1.4.0 (pinned) and 2.2.0. Task 5 re-pins that for this parameter.
 
-- [ ] **Step 5: Run the full suites**
+- [x] **Step 5: Run the full suites**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests && dotnet test tests/Clavity.Integration.Tests`
 Expected: both `Passed!` with zero failures.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add clavity-dotnet/src/Clavity.Ls/AskReply.cs clavity-dotnet/src/Clavity.Ls/AgyView.cs clavity-dotnet/src/Clavity.Mcp/McpTools.cs
@@ -1027,7 +1027,7 @@ registration path on SDK 1.4.0 and 2.2.0."
 - Modify: `clavity-dotnet/tests/Clavity.Integration.Tests/McpToolsIntegrationTests.cs`
 - Modify: `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`
 
-- [ ] **Step 1: Extend the existing schema pin**
+- [x] **Step 1: Extend the existing schema pin**
 
 `McpToolsIntegrationTests.cs` already has `AgyAsk_input_schema_exposes_only_message_and_stays_backward_compatible`
 (at `:219`). Add a sibling that pins the NEW parameter's optionality:
@@ -1046,7 +1046,7 @@ registration path on SDK 1.4.0 and 2.2.0."
     }
 ```
 
-- [ ] **Step 2: Add the end-to-end control — a reply WITHOUT the token is flagged**
+- [x] **Step 2: Add the end-to-end control — a reply WITHOUT the token is flagged**
 
 Add to `AgyAskIntegrationTests.cs`:
 
@@ -1107,12 +1107,12 @@ Add to `AgyAskIntegrationTests.cs`:
     }
 ```
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Integration.Tests`
 Expected: `Passed!  - Failed: 0` with 4 more tests than before.
 
-- [ ] **Step 4: Prove the new checks are NON-VACUOUS with logic mutants**
+- [x] **Step 4: Prove the new checks are NON-VACUOUS with logic mutants**
 
 Run each mutant, confirm the NAMED test goes red, then restore. A mutant that reds nothing means the test
 is decorative.
@@ -1129,7 +1129,7 @@ is decorative.
 `ReplyArchive` can. Either add an integration row asserting a file appears under the resolved dir, or
 record it as an accepted boundary in `docs/coverage-debt.md`. **Do not leave it undocumented.**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add clavity-dotnet/tests/Clavity.Integration.Tests/McpToolsIntegrationTests.cs clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs
@@ -1154,7 +1154,7 @@ and read by NOTHING. Capture existed, the byte-count existed, a test proved dete
 review would still have been folded, because no caller ever saw the verdict. **A detector with no consumer
 is not a detector.**
 
-- [ ] **Step 1: Append a warning block to the tool result when either flag is set**
+- [x] **Step 1: Append a warning block to the tool result when either flag is set**
 
 In `McpTools.AgyAsk`, after `var guidance = view.TryTakeGuidanceBlock();`, add:
 
@@ -1210,7 +1210,7 @@ In `McpTools.AgyAsk`, after `var guidance = view.TryTakeGuidanceBlock();`, add:
 and emitting both would make the deterministic verdict compete with the heuristic for the reader's
 attention. The deterministic one wins.
 
-- [ ] **Step 2: Add `LastReply` to `AgyView`**
+- [x] **Step 2: Add `LastReply` to `AgyView`**
 
 In `AgyView`, add beside the other state:
 
@@ -1233,7 +1233,7 @@ and in `Evaluate13b`, replace `return reply with { ... };` with:
         return evaluated;
 ```
 
-- [ ] **Step 3: Test that the warning actually reaches the caller**
+- [x] **Step 3: Test that the warning actually reaches the caller**
 
 ```csharp
     [Fact]
@@ -1277,7 +1277,7 @@ and in `Evaluate13b`, replace `return reply with { ... };` with:
     }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add clavity-dotnet/src/Clavity.Mcp/McpTools.cs clavity-dotnet/src/Clavity.Ls/AgyView.cs clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs
@@ -1312,7 +1312,7 @@ disciplines with asking open questions. **That was wrong** - the grep behind it 
 Every open question in that day's consults was the driver's own practice, unshipped, and would vanish with
 the operator. The gap is four-wide, not one-wide.
 
-- [ ] **Step 1: Add the coverage-claim rule to all four**
+- [x] **Step 1: Add the coverage-claim rule to all four**
 
 Insert this paragraph into each of the four skills, immediately before its stop-condition / verdict section:
 
@@ -1323,7 +1323,7 @@ finds nothing has told you about its own coverage, not about the artifact. Measu
 clean rounds in one session, both later proved to have missed a real defect that hand-enumeration found.
 ```
 
-- [ ] **Step 2: Add the open-question requirement to ALL FOUR disciplines**
+- [x] **Step 2: Add the open-question requirement to ALL FOUR disciplines**
 
 **Three to four questions per payload, not one.** The evidence is directional and one-sided: on 2026-08-19
 every payload carrying FOUR open questions produced a genuine surprise (a design split neither party had
@@ -1355,7 +1355,7 @@ each of which produced a real finding on 2026-08-19:
 answer, you are seeking agreement, not review.
 ```
 
-- [ ] **Step 2b: Make the briefs ASK for the echo — WITHOUT THIS THE CHECK FAILS EVERY CONSULT**
+- [x] **Step 2b: Make the briefs ASK for the echo — WITHOUT THIS THE CHECK FAILS EVERY CONSULT**
 
 🔴 **This step is not optional garnish; omitting it breaks every review.** The driver computes the
 expected echo and compares. If the brief never told the peer to produce one, NO reply can satisfy it and
@@ -1383,7 +1383,7 @@ and pass no `expectEcho`. The check degrades to satisfied rather than to failed,
 that reds on consults it was never meant to cover gets disabled, and then it covers nothing.
 ```
 
-- [ ] **Step 2c: Enrol ALL FOUR in the skill linter and assert each mandates naming itself**
+- [x] **Step 2c: Enrol ALL FOUR in the skill linter and assert each mandates naming itself**
 
 🔴 **`adversarial-panel-review` is currently NOT ENROLLED in the linter at all.** Measured:
 `scripts/check-agy-discipline-skills.ps1:13` reads `$skills = @('agy-first', 'agy-capstone',
@@ -1416,7 +1416,7 @@ foreach ($skill in $skills) {
 **Run it and prove it can fail** — delete the mandate line from one skill, confirm the linter reds and
 names that skill, then restore. A linter that has never been seen to fail is not known to work.
 
-- [ ] **Step 3: Mirror to `clavity-classic` and prove byte-identity**
+- [x] **Step 3: Mirror to `clavity-classic` and prove byte-identity**
 
 ```bash
 for f in agy-capstone agy-test-audit adversarial-panel-review agy-first; do
@@ -1431,7 +1431,7 @@ done
 
 Expected: four `IDENTICAL` lines.
 
-- [ ] **Step 4: Run the pair gates**
+- [x] **Step 4: Run the pair gates**
 
 ```bash
 bash scripts/check-seed-artifacts-synced.sh
@@ -1441,7 +1441,7 @@ pwsh -NoProfile -File scripts/check-agy-discipline-skills.ps1
 Expected: `seed agent artifacts in sync (dotnet == classic)`, and the discipline-skill linter passing.
 **Read each exit code without a pipe** — `$?` after `| tail` is the pipe's status, not the script's.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add clavity-dotnet/plugin/skills clavity-classic/plugin/skills
