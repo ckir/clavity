@@ -1078,7 +1078,21 @@ Like §13a and §14d this lands on `feature/injected-context-governance`, so it 
 remaining work rather than as a drive-by.
 
 **§14f — two shipped artifacts disagree about who owns `driver-cheatsheet.core.md`, and the gate that
-would catch it never runs on the flow that edits it.** ▶ **OPEN — needs an owner ruling, not a fix**
+would catch it never runs on the flow that edits it.** · ✅ **RULED 2026-08-19**
+
+> **OWNER RULING (2026-08-19).** Neither stated disposition is chosen. **§14f is ANSWERED BY §18 and is
+> sequenced behind it**, not adjudicated on its own terms.
+> **Why:** the AGY-FIRST consult offered "split the file and its ownership - SEED driver-owned and pinned,
+> GROWTH curator-owned in `~/.clavity/`" as a disposition neither entry names. **Verified before folding:
+> that IS §18**, already tracked, with 64 parked inbox entries waiting on it - and §18 further records that
+> the same peer previously recommended UNPINNING, was refuted by measurement, and "conceded and adopted
+> this split as the target architecture". So the peer re-derived its own prior conclusion and offered it as
+> new. The conclusion is right; the novelty was not. Once §18 ships, `core.md` becomes the pinned FLOOR
+> (driver-owned) and the growth region is curator-owned, so **the ownership contradiction dissolves rather
+> than needing a ruling** - and ruling it now would fix a file §18 is about to re-shape.
+> **What this means for the plan:** the sequencing spec's **step 4 does NOT execute a §14f fix**. §14f is
+> closed as "answered by §18". The 32 inbox entries parked on
+> `cheatsheet-core-is-byte-pinned-to-two-compiled-literals` stay parked on **§18**, not on a separate ruling.
 
 Both sides are internally coherent and describe different flows, which is why neither reads as a bug from
 inside itself:
@@ -1113,8 +1127,23 @@ batch, not here:** once the literals are generated, `SKILL.md:122-124`'s instruc
 becomes wrong, so the batch must update it. That is tracked in the spec, not in this item.
 
 **§14g — the agy-observations inbox lives INSIDE the plugin tree, so it exists in N copies and both
-skills must be INSTRUCTED which one is live.** ▶ **OPEN — tracked debt, promoted at the 2026-08-15
-triage.**
+skills must be INSTRUCTED which one is live.** · ✅ **RULED 2026-08-19**
+
+> **OWNER RULING (2026-08-19).** **Do the architectural move.** The canonical inbox becomes
+> `<USERPROFILE or HOME>/.clavity/agy-observations.md`, beside the golden-header files.
+> **Why:** the instructional patch did not contain the problem, it institutionalised it - `agy-learn` grew
+> 77 -> 183 lines (+138%) instructing around a path problem, its capstone ran five rounds and never went
+> green with every round finding a defect inside the previous round's fix, and a known data-loss hole (a
+> crash between the staging rename and its delete) is deliberately unpatched because patching it adds
+> machinery the architectural fix deletes. User-generated mutable state does not belong inside an
+> immutable plugin install tree.
+> ⚠ **The entry's own figures are STALE AND INVERTED - do not reason from them.** It says 30 repo / 18
+> installed. **Re-measured 2026-08-19: 0 repo / 97 installed.** The argument holds and is stronger; only
+> the numbers were wrong.
+> **What this means for the plan:** the sequencing spec's **step 3 executes the move**. Blast radius as the
+> entry states - both skills, the `${CLAUDE_PLUGIN_ROOT}` line in `agy-curate-nudge.sh` and its 244-line
+> suite, the installer's `onlyifdoesntexist` seeding (`agy-autotrain.iss:54,60`) - plus migrating the
+> **97** pending entries in the installed copy.
 
 **Measured 2026-08-15:** the repo checkout copy held **30** pending entries and the INSTALLED copy **18**,
 with **ZERO overlap** — four capstone sessions' worth of real captures written to a copy nothing drains
@@ -1278,7 +1307,21 @@ Two entries from the 7-entry triage of 2026-08-17. Every one verified by measure
 five were dispositioned there: two fixed immediately (`assertion-strength-reminder.Tests.ps1` bash pinning,
 and the shield suite's marker hygiene), two routed to `docs/coverage-debt.md` as coverage debt, one deleted.
 
-#### §17a — the shield's debounce key has no repository component
+#### §17a — the shield's debounce key has no repository component · ✅ **RULED 2026-08-19**
+
+> **OWNER RULING (2026-08-19).** **Key the marker on the repository ROOT PATH.**
+> **Why:** it is the only named disposition that is both collision-free and subprocess-free. The consult
+> recommended the BASENAME (`${_as_root##*/}`, pure bash, no path-length risk) and its citation was checked
+> - `_as_root` is real, `agy-shield-lib.sh:100` - but it did not name the weakness: **two checkouts sharing
+> a basename (`~/work/clavity` and `~/backup/clavity`) still collide**, leaving exactly the defect this
+> entry describes. A hash is collision-free but shells out to a hashing binary on a hot path that runs on
+> every capture.
+> **Re-arming every existing debounce ONCE is accepted, and no migration step is to be written** - these
+> are anti-spam markers, not durable state, and a `find`/`mv` migration would add brittle subprocess logic
+> to a hot path for no lasting value.
+> **What this means for the plan:** the sequencing spec's **steps 5 and 9 execute this**. It is a contract
+> change to a shipped byte-identical hook pair, so it **must be mirrored to `clavity-classic` in the same
+> commit**, and the marker name must be sanitised for path separators before use as a filename.
 
 **The fact, measured with a control 2026-08-16 and re-confirmed at triage:** the marker is
 `"$_ass_dir/.clavity-shield-$_ass_class-$_ass_key"` (`agy-shield-lib.sh:70`) — the key is the caller's
@@ -1295,7 +1338,20 @@ existing debounce once, and the fix has to be mirrored to classic in the same co
 **Disposition needed:** whether to key on the repository root path, its hash, or to leave the cross-repo
 case documented as a known limit. Not mechanical — hence tracked rather than folded.
 
-#### §17b — every `pre-push` gate reads the WORKING TREE, not the commits being pushed
+#### §17b — every `pre-push` gate reads the WORKING TREE, not the commits being pushed · ✅ **RULED 2026-08-19 — KILLED**
+
+> **OWNER RULING (2026-08-19). KILLED.** The ten pre-push gates stay exactly as they are, reading the
+> working tree. No step executes a §17b fix.
+> **Why:** this entry's urgency rested on its closing claim that this branch, "319 commits ahead and never
+> pushed", had **neither** pre-push nor CI reasoning about what would land. **That is no longer true: the
+> branch merged 2026-08-19 (`c12b540`) and `main` now runs 12 workflows on every push.** With CI as the
+> real gate, a pre-push hook is a fast LOCAL SMOKE TEST - and for that job reading the worktree is
+> **correct**, because a developer whose pre-push fails wants to fix files and push again, not stash and
+> amend merely to test the fix. A SUBSET was rejected as the worst available outcome: mixed semantics
+> across ten siblings destroys any model of what a passing pre-push guarantees.
+> ⚠ **Recorded because it cuts both ways:** that first-ever CI run found **seven** real defects which all
+> ten pre-push gates had passed, including an unresolvable action ref and a RUSTSEC advisory in a lockfile.
+> That is evidence FOR relying on CI as the gate - not evidence for hardening pre-push into a second one.
 
 **Measured at triage:** `lefthook.yml:19-55` defines **10** pre-push jobs — `seed-sync`, `agy-skills`,
 `doc-stubs`, `member-docs`, `user-facing-docs`, `register-hash`, `installer-ascii`, `check-versions`,
