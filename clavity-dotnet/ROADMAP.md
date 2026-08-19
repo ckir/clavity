@@ -1423,6 +1423,49 @@ priced. **Neither opening position survived.**
 same day to close a verified coverage gap. That is not a contradiction — the audit correctly tested the
 design as it then stood; this entry changes the design.
 
+### §20 — A mockable clock (`TimeProvider`) in `AgyView` — ▶ **OPEN, not scheduled**
+
+**Referred by the owner 2026-08-19**, out of the AGY-TEST-AUDIT capstone on the idle-wait limit label.
+This is a real refactor, not a hygiene tidy-up, and it is written down because two separate debts already
+name it as their exit.
+
+**The problem.** `AgyView` samples `DateTime.UtcNow` directly inside the idle-wait loop
+(`AgyView.cs:232` for `start`, `:243` for the budget remainder). Wall-clock is therefore an ambient
+dependency: a test can set `IdleStallWindow` and `IdleAbsoluteMax` from outside, but it cannot make time
+do anything in particular. Every timing-sensitive property of that loop is consequently pinned by
+*arranging real milliseconds to elapse* and hoping the machine cooperates.
+
+**What it would buy — two tracked items close together:**
+- **Accepted boundary J** (`docs/coverage-debt.md`) exists solely because one sub-condition cannot be
+  pinned by any test. The label branches on
+  `windowWasBudgetClamped && (windowElapsed || (DateTime.UtcNow - start) >= absoluteMax)`, and the
+  `windowElapsed` disjunct only earns its keep when an OS timer fires slightly EARLY — which cannot be
+  produced on demand. **Measured 2026-08-19: mutant M9 (drop `windowElapsed`, keep the clock) SURVIVES the
+  full suite** while the other nine mutants in that sweep are each caught. A controllable clock makes that
+  case constructible and **retires boundary J outright** rather than carrying it.
+- **Tracked debt 7** (same file) is the ~2s permanent suite tax from widening two `absolute_max` tests 6x
+  to out-run CI jitter. With a controllable clock the margins are not needed at all — the tests stop
+  waiting on wall-clock and the tax goes away, without the retry-loop whose trap is that it must never
+  cover a wrong `Limit`.
+
+**Why the current code is defensible without it.** The label decision itself no longer races the clock:
+`windowWasBudgetClamped` and `windowElapsed` are recorded where they are known, and `||` short-circuits so
+the knife-edge case never reaches a clock read at all (`1748754`). §20 is about **testability**, not a
+live defect. Nothing here is broken as it ships.
+
+**The cost that makes this a decision rather than a chore.**
+- 🔴 `AgyView` is implementation source, so this **invalidates the AGY-CAPSTONE GREEN** — owner-confirmed
+  at `1748754`, 2026-08-19 — and forces a full re-run of that discipline. The same trade §19 records.
+- It widens `AgyViewOptions` (or the constructor) with a dependency every existing call site must ignore
+  gracefully, and `Clavity.Ls` is consumed by both the MCP surface and the tests.
+- The measured margin the whole thing is about is **+5.1ms worst case over 10 runs / 50 decisions** against
+  Windows' ~15ms timer resolution. Small, real, and already mitigated — which is exactly why this is worth
+  scheduling deliberately rather than doing opportunistically.
+
+**WHEN.** Execute when `AgyView`'s wait loop is next opened for a FUNCTIONAL change that already pays the
+re-capstone, or when a third timing-bound test wants writing — that would be the point at which the
+pattern, not the instance, is the problem. **Do not do it as a standalone commit.**
+
 ### Stretch (not planned)
 - **NativeAOT** — ruled infeasible with the current gRPC/protobuf/MCP-reflection stack; revisit only if that stack
   changes.
