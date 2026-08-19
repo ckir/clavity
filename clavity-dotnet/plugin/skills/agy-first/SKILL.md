@@ -61,6 +61,13 @@ chose. Measured, not theoretical: found on the first live consult that used the 
 **If NO line in the artifact reaches 8 letters or digits, omit `expectEcho`.** The driver then reports
 `[13b] NO ECHO` - the check did not run, and says so, rather than pretending it did.
 
+**ON clavity-classic THERE IS NO `discipline` OR `expectEcho` PARAMETER - `clavity ask --review-only` does
+not carry them.** This file is byte-identical across both plugins, so read this paragraph as the classic
+half of the contract: still DEMAND the echo in the payload, because the demand is what makes a truncated
+or unread review visible - but VERIFY IT YOURSELF by eye against the artifact, and know that no automatic
+`[13b]` verdict will arrive. An instruction you cannot execute is worse than no instruction, so it is
+spelled out rather than left for you to discover.
+
 **Why this and not a nonce.** A nonce you invent proves only that the peer read your BRIEF. The
 artifact's last line proves it reached the END of the thing under review - which is exactly what a
 truncated or unread review cannot do.
