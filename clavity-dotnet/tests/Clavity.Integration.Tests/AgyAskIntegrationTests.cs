@@ -467,11 +467,22 @@ public class AgyAskIntegrationTests
             Assert.Equal(2, reports[1].Window);
             Assert.Equal(1, reports[0].NewSteps);                 // +1, our own user step discounted
             Assert.Equal(3, reports[1].NewSteps);                 // +1 then +2, cumulative
-            Assert.True(reports[1].TotalSteps > reports[0].TotalSteps);
-            // NOTE: an `Elapsed >= Elapsed` assertion was removed here. Elapsed is DateTime.UtcNow - start sampled
-            // later each iteration, so it is monotonic BY CONSTRUCTION and the assertion could not fail. An
-            // assertion that cannot fail adds no coverage and misleads the next reader about what is guarded.
-            // The redundant Window > Window check went with it: the two Assert.Equal above already pin 1 and 2.
+
+            // TotalSteps pinned to its EXACT value, not merely to being larger than the previous one. The empty
+            // initial trajectory plus our injected Kind-14 user step makes total 1, then +1 and +2 give 2 and 4.
+            // A `>` comparison is satisfied by ANY increasing quantity: swapping `total` for `window` at
+            // AgyView.cs:292 yields 1 and 2, still strictly increasing, so the old assertion stayed green while
+            // the field reported the wrong number entirely (AGY-TEST-AUDIT gap 3).
+            Assert.Equal(2, reports[0].TotalSteps);
+            Assert.Equal(4, reports[1].TotalSteps);
+
+            // Elapsed is asserted only for being POPULATED, which is the assertion that can actually fail. An
+            // earlier `Elapsed >= Elapsed` comparison between two reports was removed and its removal was right -
+            // Elapsed is DateTime.UtcNow - start sampled later each iteration, so that ordering held BY
+            // CONSTRUCTION and no mutation could break it. This is a DIFFERENT claim: that the field carries a
+            // real duration at all. Hardcoding TimeSpan.Zero at AgyView.cs:292 passed every assertion in this
+            // suite before this line existed (AGY-TEST-AUDIT gap 2).
+            Assert.True(reports[0].Elapsed > TimeSpan.Zero, "Elapsed must carry a real duration, not a placeholder");
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -696,6 +707,24 @@ public class AgyAskIntegrationTests
             });
             var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("runaway"));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            // The diagnostic is the WHOLE operator payload on a runaway: it is the only thing that says where agy
+            // was when the budget killed it. The stall test above asserts all of this; this one asserted only the
+            // Limit, so dropping the probe left the suite green while handing the operator a blind hang exception -
+            // the one failure they most need to debug (AGY-TEST-AUDIT gap 4).
+            //
+            // ROUTE MATTERS: there are TWO absolute-max throws and this test reaches only ONE. agy progresses in
+            // every window here, so the no-progress branch at AgyView.cs:323 is unreachable; this exits at the
+            // loop-top budget check, AgyView.cs:244, which passes `lastProbe`. Measured, not assumed: mutating
+            // :323 to BuildModalHang(null, ...) leaves this test GREEN, and mutating :244 turns it red. The peer
+            // that found this gap cited :323 - the finding was real, the line was the wrong one of the two, and
+            // the sibling route is pinned by the budget-clamped test below.
+            Assert.NotNull(ex.Diagnostic);
+            // The semantic INVERSE of the stall case, which pins NewAgySteps == 0 and LastStepClass "user": here
+            // agy really was advancing, and the last thing it did was a Kind-5 tool step, never our own user step.
+            // An exact NewAgySteps count would be timing-bound (how many 100ms windows fit a 250ms budget);
+            // "agy advanced at all" is both stable and the claim that distinguishes this path from a stall.
+            Assert.True(ex.Diagnostic!.NewAgySteps > 0, "a runaway advanced; 0 new steps would be the STALL case");
+            Assert.Equal("tool", ex.Diagnostic.LastStepClass);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -725,6 +754,13 @@ public class AgyAskIntegrationTests
             });
             var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("progress then quit"));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
+            // The SECOND absolute-max route (AgyView.cs:323, the no-progress branch, which passes `probe`). Its
+            // sibling above covers :244 only, and a fix applied to one route while the other kept shipping a
+            // blind diagnostic is precisely the half-fix this suite keeps re-learning. Deterministic here, unlike
+            // the sibling: the plan is exactly two windows, so agy contributes exactly one step.
+            Assert.NotNull(ex.Diagnostic);
+            Assert.Equal(1, ex.Diagnostic!.NewAgySteps);
+            Assert.Equal("tool", ex.Diagnostic.LastStepClass);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -896,6 +932,57 @@ public class AgyAskIntegrationTests
             Assert.Equal("possible_modal", doc.RootElement.GetProperty("status").GetString());
             Assert.Equal("stall", doc.RootElement.GetProperty("limit").GetString());
             Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("hint").GetString()));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_relays_each_wait_report_to_the_MCP_sink_carrying_the_WINDOW_as_the_progress_value()
+    {
+        // The ADAPTER, which nothing pinned. McpTools.AgyAsk converts each AgyWaitProgress into the
+        // ProgressNotificationValue an MCP client actually receives, and that conversion had no test at all: all
+        // seven McpTools.AgyAsk call sites in this suite pass `new CollectingProgress<...>()` INLINE as a
+        // throwaway and never read it back, so nothing could observe what was relayed (AGY-TEST-AUDIT gap 1).
+        // Placed here rather than in McpToolsIntegrationTests.cs for the same reason the possible_modal test above
+        // is: that file's FakeLs cannot be made to wait, and no wait means no progress to relay.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false), // window 1 elapses: +1 step
+            new FakeAskLs.WaitStep(AppendSteps: 2, GoesIdle: false), // window 2 elapses: +2 more
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),  // goes idle: NO report for this one
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var relayed = new CollectingProgress<ProgressNotificationValue>();
+            var result = await McpTools.AgyAsk(view, "do a long thing", relayed);
+
+            Assert.Contains("final answer", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+
+            var reports = relayed.Reports;
+            Assert.Equal(2, reports.Count);   // one per ELAPSED window; the idle one relays nothing
+
+            // Progress carries WINDOW. This must be asserted on BOTH reports to mean anything: on the first the
+            // window (1) and the new-step count (1) coincide, so one report cannot tell the two apart. The second
+            // separates all three candidates - window 2, new steps 3, total steps 4 - so mapping Progress to
+            // either step count at McpTools.cs:37 turns this line red. Monotonicity alone would not: all three of
+            // those sequences increase, which is why the MCP "must increase" rule is not by itself evidence that
+            // the right field was chosen.
+            Assert.Equal(1f, reports[0].Progress);
+            Assert.Equal(2f, reports[1].Progress);
+
+            // The step counts ride in the human-readable Message, where they are informative without having to be
+            // monotonic - that split is the reason Window exists as a separate field at all.
+            Assert.Contains("1 new step(s)", reports[0].Message);
+            Assert.Contains("3 new step(s)", reports[1].Message);
         }
         finally { Directory.Delete(dir, true); }
     }
