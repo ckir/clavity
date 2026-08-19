@@ -154,6 +154,29 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 
 ---
 
+### 7. The 6x timing widening on the two absolute-max tests is an open owner decision
+
+- **Where:** `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs`, the two
+  `absolute_max` tests - `500ms/1500ms` and `1000ms/1500ms`, scaled up from `100ms/250ms` and `150ms/250ms`
+  in `bcd4125`.
+- **What it buys:** it is the mitigation for a REAL flake - `lastProbe` is null at `AgyView.cs:234` while
+  the budget check at `:240-244` runs on the first iteration before any probe, so a pause longer than the
+  whole budget throws a null diagnostic and fails `Assert.NotNull`. At a 250ms budget that needed only a
+  quarter-second hiccup. Validated 12/12 on an idle machine after widening.
+- **What it costs:** roughly 2s of wall-clock on EVERY green suite run (measured 14s -> 16s), permanently,
+  for two tests. The capstone peer's RESOURCE VAMPIRE seat argued this scales badly if the pattern is
+  copied to the next timing-bound test, and that argument is sound.
+- **The alternative, and its trap:** restore the fast budgets and retry the ask when it exits before any
+  probe. A retry is honest ONLY for that precondition failure. It must never cover a wrong `Limit`, which
+  would be retrying until the assertion passes - a test that cannot fail. Any implementation must keep
+  those two cases visibly separate.
+- **Status:** owner deferred the decision on 2026-08-19, after the limit-label fixes, on the grounds that a
+  deterministic boundary changes what the margins must absorb. **It does not: this flake is the
+  pre-first-probe starvation case, which neither `0fb47f6` nor `1748754` touches.** Recorded here so the
+  decision is tracked rather than carried in conversation.
+
+---
+
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 
 ### A. The two walk-level guards (`2fa88e0`, `76e1ba8`)
@@ -230,6 +253,21 @@ rejected: CI cannot see a user-machine artifact, so it would be green-by-absence
 rather than by guess. Escalation path if this recurs: an **install-time** diagnostic inside the installer,
 which reaches the user rather than CI.
 **Anchor:** the `status:` enum line in `agy-autotrain/docs/fix-the-tool-backlog/_template.md`.
+
+> ⚠ **RE-VALIDATED 2026-08-19 AND THE COMPENSATION IS PRESENT BUT INOPERATIVE.** The anchor holds in the
+> REPOSITORY - `_template.md:6` reads `open | fixed-in-repo | released | wont-fix`. The INSTALLED tree still
+> carries the superseded three-state `open | fixed | wont-fix`. So the four-state enum, which exists
+> specifically because a 2026-08-11 incident had an installed tree missing a hook whose item read
+> `status: fixed` (that rationale is written into the template itself), **has not itself reached the
+> install** - the fix for repo-vs-install drift is subject to repo-vs-install drift. Measured the same day:
+> the installed `agy-curate/SKILL.md` is 276 lines against the repository's 518, under an identical
+> `"version": "0.4.0"` on both sides, so nothing on either side can detect the gap.
+>
+> This entry is therefore **honoured on its anchor but weakened in substance**, and it is recorded here
+> rather than silently re-raised: the compensation is real, it is simply not where it needs to be. The
+> underlying drift is captured as an untriaged anomaly (`.clavity/local-anomalies.md`, 2026-08-19,
+> `[tool]`). **Promote this to a live gap if a triage decides the install-time diagnostic named in the
+> escalation path above is the answer.**
 
 ### G. commonmemory's agy-native recall rule is never verified to load (Stage 2, R5-O2)
 
