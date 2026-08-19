@@ -702,8 +702,16 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(100),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(250), // exhausts after ~2-3 windows
+                // Scaled up 5x from 100ms/250ms. The RATIO is what this test needs (a budget worth ~3 windows);
+                // the MAGNITUDE is what keeps it honest on a loaded machine. `lastProbe` starts null at
+                // AgyView.cs:234 and the budget check at :240-244 runs on the FIRST iteration, before any probe -
+                // so if the process stalls for longer than the whole budget between AgyView.cs:232 and :242 (a GC
+                // pause or thread-pool starvation on busy CI), the ask throws with a NULL diagnostic and the
+                // Assert.NotNull below fails for a reason that has nothing to do with the behaviour under test.
+                // At 250ms that needed only a quarter-second hiccup. This is a flake this test's OLD assertions
+                // could not have: they checked only Limit, which is AbsoluteMax on that early path too.
+                IdleStallWindow = TimeSpan.FromMilliseconds(500),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // exhausts after ~3 windows
             });
             var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("runaway"));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
@@ -749,15 +757,27 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions
             {
                 CliLogPath = cliLog,
-                IdleStallWindow = TimeSpan.FromMilliseconds(150),
-                IdleAbsoluteMax = TimeSpan.FromMilliseconds(250), // window 1 (150ms) < 250ms; window 2 clamps to the ~100ms remainder
+                // Scaled up from 150ms/250ms, keeping the ratio that MAKES this test what it is: window 1 must
+                // fit inside the budget and window 2 must be clamped to the remainder. Widening only the budget -
+                // the obvious-looking fix, and the one the capstone peer proposed - destroys the test: at a 2s
+                // budget window 2 is no longer clamped, the no-progress branch reports Stall instead of
+                // AbsoluteMax, and the assertion below fails. MEASURED, not reasoned: that exact edit turned this
+                // test red while the other 61 stayed green. Scaling BOTH preserves the clamp and still buys the
+                // jitter margin (see the sibling test above for why the margin matters).
+                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // window 1 (1000ms) < 1500ms; window 2 clamps to the ~500ms remainder
             });
             var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("progress then quit"));
             Assert.Equal(IdleLimit.AbsoluteMax, ex.Report.Limit);
             // The SECOND absolute-max route (AgyView.cs:323, the no-progress branch, which passes `probe`). Its
             // sibling above covers :244 only, and a fix applied to one route while the other kept shipping a
-            // blind diagnostic is precisely the half-fix this suite keeps re-learning. Deterministic here, unlike
-            // the sibling: the plan is exactly two windows, so agy contributes exactly one step.
+            // blind diagnostic is precisely the half-fix this suite keeps re-learning.
+            //
+            // The exact count holds because the plan is exactly two windows, so agy contributes exactly one step.
+            // That is a claim about the PLAN, not an unconditional one: a stall longer than the whole budget
+            // would exit at :244 before this route is reached, and then neither the count nor the route would be
+            // what this test names. The widened budget above is what makes that a theoretical case rather than a
+            // CI flake - the earlier version of this comment called it "deterministic" flatly, which was wrong.
             Assert.NotNull(ex.Diagnostic);
             Assert.Equal(1, ex.Diagnostic!.NewAgySteps);
             Assert.Equal("tool", ex.Diagnostic.LastStepClass);
