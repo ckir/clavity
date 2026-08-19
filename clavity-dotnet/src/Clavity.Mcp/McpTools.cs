@@ -46,6 +46,56 @@ public class McpTools
         var blocks = new List<ContentBlock> { new TextContentBlock { Text = json } };
         var guidance = view.TryTakeGuidanceBlock();
         if (guidance is not null) blocks.Add(new TextContentBlock { Text = guidance });
+
+        // 13b: the verdicts must REACH the caller. A flag nothing reads cannot stop a truncated review
+        // being folded, which is the entire failure this step exists to end.
+        //
+        // These are if/else-if, not independent blocks. A truncated reply is usually also a small one,
+        // and emitting several would make the deterministic verdicts compete with the heuristic for the
+        // reader's attention. The deterministic ones win, strongest first.
+        var reply13b = view.LastReply;
+        if (reply13b is { TerminalTokenMissing: true })
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[13b] TRUNCATED REPLY: the terminal token this discipline requires is missing or "
+                     + "not at the end. Treat this consult as INCOMPLETE - do not fold findings from it. "
+                     + "Recover with agy_look or re-ask; never read it as 'no findings'."
+            });
+        }
+        else if (reply13b is { EchoMissing: true })
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[13b] ECHO MISSING: the peer did not quote the artifact's last line near its "
+                     + "verdict, so it did not reach the end of what it was asked to read - or did not "
+                     + "read it. Treat this consult as INCOMPLETE and do not fold findings from it."
+            });
+        }
+        else if (reply13b is { SizeAnomaly: true })
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[13b] SIZE WARNING: this reply is far smaller than this peer's recent replies. "
+                     + "That is a HEURISTIC, not proof - a genuine 'no findings' is legitimately short. "
+                     + "Confirm the reply is complete before folding or accepting a clean verdict."
+            });
+        }
+
+        // OMISSION MUST BE LOUD. Without this block a caller that names no discipline gets a completely
+        // normal-looking result with no checks run - which is the compliance-theater failure in a
+        // different costume: not a check that can be turned off, but one that was never turned on and
+        // said nothing about it. This does NOT block the consult; it makes the gap visible.
+        if (DisciplineContract.TerminalTokenFor(discipline) is null)
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[13b] UNCHECKED: no known discipline was named on this ask, so the completeness "
+                     + "checks did NOT run. If this is a discipline consult, re-issue it with "
+                     + "discipline set to one of: " + string.Join(", ", DisciplineContract.KnownDisciplines)
+                     + ". If it is an ordinary question, this notice is expected."
+            });
+        }
         return new CallToolResult { Content = blocks };
     }
 

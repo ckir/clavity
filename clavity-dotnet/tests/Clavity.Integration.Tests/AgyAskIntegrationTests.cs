@@ -1432,6 +1432,122 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task AgyAsk_appends_a_TRUNCATED_block_when_the_terminal_token_is_missing()
+    {
+        // Without this the detector is inert: the flag is set and no caller ever sees it.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a review with no token", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var result = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.Contains(texts, t => t.Contains("[13b] TRUNCATED REPLY"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_appends_NO_13b_block_when_the_reply_is_complete()
+    {
+        // The passing control. Without it, a check that appends the warning ALWAYS satisfies the row above.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "findings\n\n[VERDICT: ALIGNED]", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var result = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.DoesNotContain(texts, t => t.Contains("[13b]"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task Only_ONE_13b_block_is_emitted_when_several_verdicts_fire_at_once()
+    {
+        // MUTATION-AUDIT ROW. The blocks are if/else-if on purpose - a truncated reply is usually also
+        // an un-echoed and a small one, and emitting all of them makes the verdicts compete for the
+        // reader's attention until the operator skims past all of them. Turning the else-if into
+        // independent ifs left every other row green, so the design decision had no oracle.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a review with no token", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            // BOTH deterministic verdicts fire: no terminal token AND no echo of the artifact's last line.
+            var result = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(),
+                discipline: "agy-capstone", expectEcho: "the last line of the artifact");
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+
+            var only = Assert.Single(texts, t => t.Contains("[13b]"));
+            Assert.Contains("[13b] TRUNCATED REPLY", only);   // the STRONGEST verdict is the one shown
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_appends_UNCHECKED_when_no_discipline_is_named()
+    {
+        // The loud-omission block gets its OWN oracle rather than being observed incidentally by an
+        // unrelated guidance row. A caller that names no discipline must be TOLD the checks did not run -
+        // a check that was never turned on, and said nothing about it, is the same failure as one that
+        // can be turned off.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "an ordinary answer", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var result = await McpTools.AgyAsk(view, "hello",
+                new CollectingProgress<ProgressNotificationValue>());
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            var notice = Assert.Single(texts, t => t.Contains("[13b] UNCHECKED"));
+            // It must NAME the disciplines, or the operator cannot act on it.
+            Assert.Contains("adversarial-panel-review", notice);
+            Assert.Contains("agy-capstone", notice);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task An_UNKNOWN_discipline_is_reported_UNCHECKED_rather_than_silently_accepted()
+    {
+        // A mistyped discipline is the realistic failure - "agy_capstone", "capstone", a stale name. It
+        // must not look identical to a clean consult, which is exactly what returning a guessed token
+        // would produce.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a review with no token", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var result = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy_capstone");
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.Contains(texts, t => t.Contains("[13b] UNCHECKED"));
+            Assert.DoesNotContain(texts, t => t.Contains("[13b] TRUNCATED REPLY"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task AskAsync_with_NO_expectation_never_flags()
     {
         // Every non-discipline ask goes through this path. If it flagged, agy_ask would report truncation

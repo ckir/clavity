@@ -195,19 +195,21 @@ public class McpToolsIntegrationTests
                 GoldenHeaderDir = cheatDir
             });
 
-            // First ask: two content blocks — the reply JSON, then the labelled guidance.
+            // ASSERT WHICH BLOCK, NOT HOW MANY. This row is about ONE property - the driver guidance is
+            // appended exactly once per session - and it used to pin the total block count to enforce it.
+            // 13b appends its own notices, so a count assertion here now reds on a change that has
+            // nothing to do with guidance. Identify the guidance block by its label instead.
             var first = await McpTools.AgyAsk(view, "hello", new CollectingProgress<ProgressNotificationValue>());
-            Assert.Equal(2, first.Content.Count);
-            var firstText = Assert.IsType<TextContentBlock>(first.Content[0]).Text;
-            var guidance = Assert.IsType<TextContentBlock>(first.Content[1]).Text;
-            Assert.Contains("\"Answer\"", firstText);                // block 0 is the AskReply JSON
-            Assert.StartsWith(DriverCheatsheet.Label, guidance);      // block 1 is the labelled guidance
-            Assert.Contains("Verify what it volunteers", guidance);   // baseline-floor content
+            var firstTexts = first.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.Contains("\"Answer\"", firstTexts[0]);                          // block 0 is the AskReply JSON
+            var guidance = Assert.Single(firstTexts, t => t.StartsWith(DriverCheatsheet.Label));
+            Assert.Contains("Verify what it volunteers", guidance);               // baseline-floor content
 
-            // Second ask: single block, no guidance (once per session).
+            // Second ask: no guidance (once per session).
             var second = await McpTools.AgyAsk(view, "again", new CollectingProgress<ProgressNotificationValue>());
-            Assert.Single(second.Content);
-            Assert.DoesNotContain(DriverCheatsheet.Label, Assert.IsType<TextContentBlock>(second.Content[0]).Text);
+            var secondTexts = second.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.Contains("\"Answer\"", secondTexts[0]);
+            Assert.DoesNotContain(secondTexts, t => t.StartsWith(DriverCheatsheet.Label));
         }
         finally
         {
