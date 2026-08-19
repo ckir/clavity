@@ -628,10 +628,18 @@ Task 4 — pushes the whole local `main` history, **carrying the declined commit
 authorisation would be silently satisfied by an unrelated approved one.
 
 ```bash
-git branch declined/step-0-spec-note       # park the commit where nothing routinely pushes
-git reset --hard HEAD~1                    # safe: the branch above now holds it
+git status --short                          # MUST be empty before the reset below
+git branch declined/step-0-spec-note
+git reset --keep HEAD~1                    # --keep, NOT --hard: it ABORTS rather than destroying
 git log --oneline -1                       # confirm main no longer carries it
 ```
+
+🔴 **`--keep`, not `--hard`, and the distinction is the whole safety of this step.** `git reset --hard`
+would also destroy any uncommitted work in the tree, and an earlier draft of this block used it with a
+comment calling it "safe" — true of the commit, which the branch above preserves, and false of everything
+else. **`git reset --keep` refuses outright if local changes would be lost**, which is the behaviour you
+want from a command you are running because something already went wrong. The `git status` line above is
+belt-and-braces: if it is not empty, stop and deal with that first.
 
 Record the holding branch in the durable index. **The general rule: a declined change must never be left
 sitting on a shared branch that something else is going to push.**

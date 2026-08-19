@@ -373,10 +373,18 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 index and note that the later steps it gates remain blocked.
 
 ```bash
+git status --short                          # MUST be empty before the reset below
 git branch declined/step-1-rulings
-git reset --hard HEAD~1
-git log --oneline -1
+git reset --keep HEAD~1                    # --keep, NOT --hard: it ABORTS rather than destroying
+git log --oneline -1                       # confirm main no longer carries it
 ```
+
+🔴 **`--keep`, not `--hard`, and the distinction is the whole safety of this step.** `git reset --hard`
+would also destroy any uncommitted work in the tree, and an earlier draft of this block used it with a
+comment calling it "safe" — true of the commit, which the branch above preserves, and false of everything
+else. **`git reset --keep` refuses outright if local changes would be lost**, which is the behaviour you
+want from a command you are running because something already went wrong. The `git status` line above is
+belt-and-braces: if it is not empty, stop and deal with that first.
 
 🔴 **Do not simply leave it committed on `main`.** Any later authorised push of `main` — including Task 4
 Step 3's — would carry the declined commit with it, satisfying a refused authorisation by way of an
