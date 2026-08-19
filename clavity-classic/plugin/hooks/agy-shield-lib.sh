@@ -44,6 +44,26 @@ _AS_CR=$(printf '\r')   # a literal CR, for the optional-trailing-CR shield matc
 #       destructive act on the operator's own file rather than a condition of the machine. This is a
 #       DELIBERATE, NARROW deviation from the spec's "ENVIRONMENT is debounced per key" rule, recorded
 #       here rather than smuggled in as a mislabel.
+# Resolve a marker directory that actually EXISTS and is WRITABLE, creating it if needed.
+# Echoes the directory, or nothing at all when no candidate works.
+#
+# THIS EXISTS BECAUSE THE TWO CALLERS HAD DIVERGED, and the divergence was the defect. The notice
+# path below did `mkdir -p` + `-w` and walked a fallback; the A2 sweep gate 90 lines down did none of
+# it and simply assumed "${TMPDIR:-/tmp}" was there. So on any host where that directory does not yet
+# exist - which costs nothing to arrange and is not exotic - the notice path worked and the sweep path
+# failed. MEASURED: a full-suite run produced
+#   agy-shield-lib.sh: line 154: <dir>/.clavity-shield-swept-<key>: No such file or directory
+# on three rows whose whole contract is that they are SILENT. One resolver, two callers, no drift.
+_agy_shield_markerdir() {
+    _asm_dir=''
+    for _asm_cand in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
+        [ -n "$_asm_cand" ] || continue
+        mkdir -p "$_asm_cand" 2>/dev/null || continue
+        if [ -w "$_asm_cand" ]; then _asm_dir=$_asm_cand; break; fi
+    done
+    printf '%s' "$_asm_dir"
+}
+
 _agy_shield_say() {
     _ass_class=$1
     _ass_key=$2
@@ -54,12 +74,7 @@ _agy_shield_say() {
         return 0
     fi
 
-    _ass_dir=''
-    for _ass_cand in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
-        [ -n "$_ass_cand" ] || continue
-        mkdir -p "$_ass_cand" 2>/dev/null || continue
-        if [ -w "$_ass_cand" ]; then _ass_dir=$_ass_cand; break; fi
-    done
+    _ass_dir=$(_agy_shield_markerdir)
     if [ -z "$_ass_dir" ]; then
         # No writable marker location: emit rather than swallow. A data-leak notice must never be
         # lost because the debounce store is unavailable.
@@ -150,9 +165,29 @@ agy_shield() {
     # per-call subprocess cost this gate was added to remove, restored by the gate itself. Chaining the
     # creation into the condition makes the sweep fail CLOSED on cost: no marker, no sweep. That is the
     # safe direction here because the sweep is housekeeping for stale temp files, never a guard.
-    _as_sweep="${TMPDIR:-/tmp}/.clavity-shield-swept-${_as_key:-nosession}"
-    if [ ! -f "$_as_sweep" ] && : > "$_as_sweep" 2>/dev/null; then
-        find "$_as_dir" -maxdepth 1 -name '.gitignore.tmp.*' -mtime +30 -delete 2>/dev/null
+    #
+    # THE REDIRECT ORDER IS LOAD-BEARING. `: > "$f" 2>/dev/null` does NOT suppress a failure to OPEN
+    # "$f": a shell applies redirections left to right, so `> "$f"` is attempted while stderr is still
+    # the terminal, and only then is `2>/dev/null` installed. MEASURED:
+    #   bash -c ': > /nonexistent/m 2>/dev/null'   -> "No such file or directory" on stderr
+    #   bash -c ': 2>/dev/null > /nonexistent/m'   -> silent
+    # The suppression that was written here never worked; the leaked diagnostic was the ONLY signal
+    # this gate had, which is why the failure below is now reported deliberately instead.
+    _as_swdir=$(_agy_shield_markerdir)
+    if [ -z "$_as_swdir" ]; then
+        printf 'agy-shield: sweep gate disabled - no writable marker directory (tried "%s" and "%s"). Stale .gitignore.tmp.* files will accumulate.\n' "${TMPDIR:-/tmp}" "${HOME:-}/.clavity-tmp" >&2
+    else
+        _as_sweep="$_as_swdir/.clavity-shield-swept-${_as_key:-nosession}"
+        if [ -f "$_as_sweep" ]; then
+            :   # already swept for this key - the gate doing its job, and NOT a failure to report.
+        elif : 2>/dev/null > "$_as_sweep"; then
+            find "$_as_dir" -maxdepth 1 -name '.gitignore.tmp.*' -mtime +30 -delete 2>/dev/null
+        else
+            # Fail CLOSED on cost (no marker, no sweep) but never fail SILENT. Without this the gate
+            # simply stops sweeping and nothing says so, and stale temps accumulate unbounded - the
+            # 2026-08-17 triage measured 989 of them.
+            printf 'agy-shield: sweep gate could not latch at "%s" - stale .gitignore.tmp.* files will accumulate.\n' "$_as_sweep" >&2
+        fi
     fi
 
     # ---------------------------------------------------------------- A2: ensure the shield text.
