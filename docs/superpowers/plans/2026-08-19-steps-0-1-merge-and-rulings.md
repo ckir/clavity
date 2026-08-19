@@ -109,9 +109,13 @@ git rev-parse --short HEAD main
 Expected, as **four separate lines** — this is a description of the output, not a string to match:
 `feature/injected-context-governance`, then `ahead=337  behind=1`, then `6a585f4`, then `b1317a2`.
 
-**Throughout this plan, an "Expected:" line written as prose describes the output; one shown in a code
-block is literal.** The distinction matters for an agentic executor doing string comparison, which would
-otherwise fail every prose expectation in the document.
+**Convention, and read it carefully because a loose version of it did damage.** Inside an "Expected:"
+line, **anything in `backticks` or a code block is LITERAL and should match exactly**; the surrounding
+sentence is connective prose. An "Expected:" line that names several separate outputs in a sentence — like
+this one — is describing them, not predicting one string. **The rule is about what is quoted, not about
+whether a code fence is present**: an earlier draft said only code blocks were literal, which would have
+told an executor to ignore every backticked literal in the document, including `unpushed now: 0` and
+`TREE UNCHANGED`.
 
 **If `behind` is 0**, someone has already integrated `main` — skip Task 2 and record why.
 **If `ahead` differs from 337**, new commits landed after this plan was written. That is fine; re-measure
@@ -450,11 +454,18 @@ the decision to the peer.**
 - [ ] **Step 1: Snapshot the tree before any consult**
 
 ```bash
-git status --short > .clavity/scratch/steps-0-1/before-consult.txt
-wc -l < .clavity/scratch/steps-0-1/before-consult.txt
+mkdir -p .clavity/consult-baseline
+git status --short > .clavity/consult-baseline/before-consult.txt
+wc -l < .clavity/consult-baseline/before-consult.txt
 ```
 
 Expected: `0`.
+
+🔴 **The baseline must NOT live in `.clavity/scratch/steps-0-1/`, and an earlier draft put it there.** That
+directory is handed to the peer in Step 4 as its sanctioned writable scratch. **An integrity baseline
+stored inside the area the audited party may write to is not a baseline** — a peer that mutated the tree
+could rewrite `before-consult.txt` to match the new state, and Step 5's diff would report `TREE UNCHANGED`
+and pass the mutation through. Keep the baseline outside the peer's sanctioned area.
 
 - [ ] **Step 2: Write the knowledge-flow brief (§14f + §14g)**
 
@@ -507,6 +518,9 @@ either extreme.
 driver, so a consult goes over the **`agy_ask` MCP tool**, after an `agy_status` idle-check confirms the
 peer is not mid-turn. Do not fire while it is working.
 
+**Record `TotalSteps` from that idle-check before firing.** The recovery path below compares against it,
+and an earlier draft told the operator to compare against a number it had never told them to capture.
+
 🔴 **THIS TASK MUST RUN ON THE MAIN THREAD. DO NOT DELEGATE TASKS 6 OR 7 TO A SUBAGENT.** Measured at
 `clavity-dotnet/plugin/knowledge/agy-capabilities.md:151-152`: *"the MCP signal-bus path is
 **main-thread-only** (subagents lack the MCP tools)"*. **A subagent literally cannot call `agy_ask`.**
@@ -538,9 +552,9 @@ operator indefinitely.
 - [ ] **Step 5: Diff-after — verify the review-only envelope held**
 
 ```bash
-git status --short > .clavity/scratch/steps-0-1/after-consult.txt
-diff .clavity/scratch/steps-0-1/before-consult.txt \
-     .clavity/scratch/steps-0-1/after-consult.txt && echo "TREE UNCHANGED" || echo "BREACH - tree differs"
+git status --short > .clavity/consult-baseline/after-consult.txt
+diff .clavity/consult-baseline/before-consult.txt \
+     .clavity/consult-baseline/after-consult.txt && echo "TREE UNCHANGED" || echo "BREACH - tree differs"
 git rev-parse --short HEAD
 ```
 
@@ -691,16 +705,27 @@ s = '## Dependencies on \u00a714f and \u00a717a\n\n> **OWNER RULING (2026-08-19)
 io.open('.clavity/scratch/steps-0-1/roadmap-decoy.md','w',encoding='utf-8',newline='').write(s)
 "
 pwsh -NoProfile -File scripts/check-rulings-recorded.ps1 \
-  -RoadmapPath .clavity/scratch/steps-0-1/roadmap-decoy.md >/dev/null 2>&1
-echo "expect exit 1: $?"
+  -RoadmapPath .clavity/scratch/steps-0-1/roadmap-decoy.md 2>&1 | grep -E '^(14f|17a) '
 ```
 
-**Why control 4 is built on the pre-ruling file, spelled out because the first version got this wrong.**
-It was authored and proven against the UNRULED ROADMAP, where it correctly returned 1. The plan then runs
-it at a point where the ROADMAP is fully RULED, where the same command returns 0 — for a legitimate reason
-having nothing to do with the decoy. **A control that is valid in the state you tested it and invalid in
-the state the plan runs it is worse than no control**: it fires a false alarm mid-execution and teaches the
-operator to ignore it. Measured both ways.
+Expected — **both decoyed sections must report `NO RULING`**:
+
+```
+14f    NO RULING
+17a    NO RULING
+```
+
+**Assert the PER-SECTION output, never the exit code, and this is the second time this control has been
+wrong.** Its first version compared exit codes against the pre-ruling file — and **the exit code is 1 in
+both universes**: a sound verifier reports all four unruled (exit 1), and a hijacked one reports 14f and
+17a as RULED off the decoy while 14g and 17b stay unruled (exit 1 again, because some section is still
+unruled). **Measured both ways against a deliberately hijackable copy of the script.** The exit code cannot
+discriminate the bug this control exists to detect; only the per-section lines can, and they differ
+exactly where the hijack would land.
+
+**The general lesson, which cost two attempts:** when a control's pass condition can be reached by more
+than one route, it proves nothing. Ask what the output would be if the bug WERE present, and if that is the
+same output, the control is vacuous however carefully it was constructed.
 
 All three must behave as labelled. **Read each exit code directly — do not pipe the script into `head` or
 `tail` and then read `$?`, which returns the exit code of the pipe's last stage rather than the script's.**
@@ -891,9 +916,10 @@ gh pr view --json headRefOid -q .headRefOid   # must equal `git rev-parse HEAD`
 same defect as the stale-green trap above — one this plan would otherwise have walked into, because its
 concurrent structure guarantees a second run exists.
 
-**If this second run REDS, go to Task 9.** Task 9's heading scopes it to Task 5, which left an operator
-stranded at the final gate with a red run and no authorised path forward. **Task 9 handles a red CI run at
-any point in this plan**, and after fixing you return here, not to Task 5. Each trip through Task 9 ends
+**If this second run REDS, go to Task 9.** **Task 9 handles a red CI run at any point in this plan** —
+its heading says so — and after fixing you return here, not to Task 5. (An earlier draft of this sentence
+described Task 9 as scoped only to Task 5, in the present tense, after that scoping had already been
+corrected.) Each trip through Task 9 ends
 with a push, and each of those pushes needs its own owner authorisation.
 
 - [ ] **Step 2: Merge**
@@ -919,6 +945,15 @@ triggers.
 
 The PR run and the `main` run are not identical: `ci-installer-dotnet.yml` filters its PR trigger by
 branch, so it may run here for the first time.
+
+```bash
+gh run list --branch main --limit 5 --json databaseId,name,conclusion \
+  -q '.[] | "\(.conclusion // "running")  \(.name)  \(.databaseId)"'
+```
+
+**Write that output, and the check count, into the durable index** — the same file named at the top of this
+plan. An earlier draft asserted this in "Done means" and supplied no command that produced it, which is the
+unfalsifiable shape this plan complains about elsewhere.
 
 **Done means:** merged; CI has RUN on `main`; its result has been READ; and the run conclusion plus check
 count are recorded in the durable index. Not merely that the merge succeeded.
@@ -993,4 +1028,7 @@ paths are used identically throughout, and each was verified against the reposit
 3. **What the rulings mean for steps 3-9** — recorded per-ruling in Task 8, then folded into the
    sequencing spec. Not this plan's scope.
 4. **§17b's adverse branch** — if ruled KILLED, the sequencing spec's step 7 must be removed rather than
-   left as an orphan. Flagged in Task 8 Step 2; execute in Task 10 Step 5.
+   left as an orphan. Task 8 Step 2 records the ruling; **removing the orphaned spec step is NOT yet a step
+   in this plan.** An earlier draft pointed at "Task 10 Step 5" for it and that step contains no such
+   instruction. Do it as explicit follow-up work after the merge, or add it to Task 10 before executing —
+   but do not assume it is already covered, because it is not.
