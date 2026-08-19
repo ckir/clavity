@@ -24,7 +24,14 @@ public static class ReplyArchive
         {
             Directory.CreateDirectory(dir);
             var safeCascade = Sanitise(cascadeId);
-            var name = $"{utcNow:yyyyMMdd-HHmmss}-{safeCascade}.md";
+            // INVARIANT CULTURE, ALWAYS. This timestamp is a machine-readable KEY: the pruner recognises
+            // its own files by it and sorts them by it. String interpolation formats with CurrentCulture,
+            // so on a non-Gregorian calendar the year is not 2026 - measured: 2569 (th-TH), 1448 (ar-SA),
+            // 1405 (fa-IR). None match the pruner's glob, so it silently stops recognising its own files
+            // and the archive grows forever, while the line-counted index prune keeps working and hides
+            // it. (Capstone R4, Time Traveler.)
+            var stamp = utcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+            var name = $"{stamp}-{safeCascade}.md";
             var path = Path.Combine(dir, name);
             File.WriteAllText(path, answer ?? string.Empty, new UTF8Encoding(false));
 

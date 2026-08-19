@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Clavity.Ls;
@@ -158,6 +159,32 @@ public class ReplyArchiveTests : IDisposable
             ReplyArchive.Write(_dir, "c", new string('a', i), t0.AddSeconds(i));
 
         Assert.True(File.Exists(lookalike), "the pruner deleted a file whose extension only LOOKS like .md");
+    }
+
+    [Theory]
+    [InlineData("th-TH")]   // Buddhist calendar  -> year 2569
+    [InlineData("ar-SA")]   // Umm al-Qura        -> year 1448
+    [InlineData("fa-IR")]   // Persian calendar   -> year 1405
+    public void The_archive_stays_bounded_under_a_NON_GREGORIAN_calendar_culture(string culture)
+    {
+        // CAPSTONE R4 FINDING (Time Traveler), confirmed by measurement and WORSE than reported - three
+        // cultures break it, not one. String interpolation formats with CurrentCulture, so
+        // $"{utcNow:yyyyMMdd-HHmmss}" yields 25690820 under th-TH, 14480307 under ar-SA and 14050529
+        // under fa-IR. None of those match the pruner's "20??????-??????-*.md", so the pruner silently
+        // stops recognising its OWN files and the archive grows forever. The size index still prunes (it
+        // counts lines), so nothing else betrays it. The timestamp is a MACHINE-READABLE KEY, and a key
+        // must never be formatted in a user's culture.
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            var t0 = new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc);
+            for (var i = 1; i <= ReplyArchive.MaxIndexRows + 5; i++)
+                ReplyArchive.Write(_dir, "c", new string('a', i), t0.AddSeconds(i));
+
+            Assert.Equal(ReplyArchive.MaxIndexRows, Directory.GetFiles(_dir, "*.md").Length);
+        }
+        finally { CultureInfo.CurrentCulture = previous; }
     }
 
     [Fact]
