@@ -369,8 +369,19 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 **Owner gate.** Halt and obtain authorisation for **this specific push**. Approving this plan is not it.
 
-**If declined:** the rulings stay local and committed. Record that in the durable index and note that the
-later steps they gate remain blocked. Do not work around it.
+**If declined:** move the commit off `main` before doing anything else, then record that in the durable
+index and note that the later steps it gates remain blocked.
+
+```bash
+git branch declined/step-1-rulings
+git reset --hard HEAD~1
+git log --oneline -1
+```
+
+🔴 **Do not simply leave it committed on `main`.** Any later authorised push of `main` — including Task 4
+Step 3's — would carry the declined commit with it, satisfying a refused authorisation by way of an
+approved one. **A declined change must never be left on a shared branch that something else is going to
+push.** (The companion plan's Task 7 Step 6 carries the same rule for the same reason.)
 
 - [ ] **Step 1: Push**
 

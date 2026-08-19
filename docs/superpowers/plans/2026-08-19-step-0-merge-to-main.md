@@ -187,6 +187,24 @@ git log --oneline HEAD..main
 
 Expected: exactly one commit — `b1317a2 docs(examples): before/after snapshots of one plan and spec through the AGY ceremony`.
 
+⚠ **Merge LOCAL `main`, not `origin/main` — and do not "fix" this.** A review round argued that
+`git fetch origin` updates `origin/main` while leaving local `main` untouched, so merging local `main`
+integrates nothing, and proposed merging `origin/main` instead. **Measured 2026-08-19 and REFUTED: local
+`main` is `b1317a2`, `origin/main` is `c17bcbe`, and local is 1 commit AHEAD and 0 behind.** The payload
+commit exists **only locally** — it was committed directly to `main` and never pushed. **Merging
+`origin/main` would miss it entirely, which is the exact failure the objection claimed to prevent.**
+
+The `git fetch` above is still worth keeping: it refreshes `origin/main` so the guard below can tell you if
+the situation has changed since this plan was written.
+
+```bash
+echo "local main ahead of origin: $(git rev-list --count origin/main..main)"
+echo "local main behind origin  : $(git rev-list --count main..origin/main)"
+```
+
+Expected: ahead `1`, behind `0`. **If `behind` is not 0, STOP** — local `main` is missing commits that are
+on the remote, this plan's premise no longer holds, and you need to reconcile `main` first.
+
 - [ ] **Step 2: Trial the merge without committing**
 
 ```bash
@@ -291,9 +309,19 @@ Expected: `unpushed now: 0`.
 - [ ] **Step 1: Check whether the PR already exists**
 
 ```bash
-gh pr view --json number,url -q '"EXISTS: PR #\(.number)  \(.url)"' 2>/dev/null \
-  || echo "NONE - proceed to create"
+gh pr view --json number,url,state \
+  -q 'if .state == "OPEN" then "EXISTS-OPEN: PR #\(.number)  \(.url)" else "STALE-\(.state): PR #\(.number)" end' \
+  2>/dev/null || echo "NONE - proceed to create"
 ```
+
+**Check the STATE, not merely that a PR was found.** `gh pr view` returns the branch's most recent PR
+**including a CLOSED or MERGED one**. Without the state check, an old closed PR reads as `EXISTS`, Step 1b
+is skipped, and every later step — `gh pr checks`, `gh pr merge` — runs against a dead target while the
+current head is never verified by CI at all.
+
+**Route on the answer:** `EXISTS-OPEN` → skip Step 1b, go to Step 2. `NONE` → run Step 1b.
+**`STALE-CLOSED` or `STALE-MERGED` → also run Step 1b**, which will open a fresh PR; a closed PR for this
+branch is not a reason to skip creation.
 
 **If it already exists, SKIP Step 1b and go to Step 2.** `gh pr create` exits non-zero when a PR is already
 open for the head branch, so a re-run after a session death would crash here with no recovery path — and
@@ -591,8 +619,22 @@ git push origin main
 ```
 
 Note the `git add -f`: `docs/superpowers/*` is gitignored. **That push needs its own owner
-authorisation**, like every other. **If declined, leave the edit committed-but-unpushed and record that** —
-do not revert it.
+authorisation**, like every other.
+
+🔴 **IF DECLINED, DO NOT LEAVE THE COMMIT ON `main`. Move it to a holding branch.** An earlier draft said
+to leave it committed-but-unpushed, which is safe on a feature branch and **actively unsafe here**: you are
+on `main`, and the very next authorised `git push origin main` — which the companion plan performs at its
+Task 4 — pushes the whole local `main` history, **carrying the declined commit with it.** A refused
+authorisation would be silently satisfied by an unrelated approved one.
+
+```bash
+git branch declined/step-0-spec-note       # park the commit where nothing routinely pushes
+git reset --hard HEAD~1                    # safe: the branch above now holds it
+git log --oneline -1                       # confirm main no longer carries it
+```
+
+Record the holding branch in the durable index. **The general rule: a declined change must never be left
+sitting on a shared branch that something else is going to push.**
 
 **This is the sibling of a defect round 5 found in the companion plan and fixed only where it was cited.**
 The same "edit a tracked file after the last push, never commit it" shape existed here and survived,
