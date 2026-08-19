@@ -78,6 +78,29 @@ Describe 'BashHookHelpers (harness validation)' {
             Should -BeFalse -Because 'a variable that was ABSENT before the call must be ABSENT after it - an empty-valued key is a leak that poisons every later child process'
     }
 
+    It 'does NOT delete a present variable when the caller spells it in a different case' {
+        # THE REGRESSION THIS PINS. The first version of the absence check used
+        # `[Environment]::GetEnvironmentVariables().Contains($k)`, a case-SENSITIVE Hashtable lookup,
+        # while the setter is case-INSENSITIVE. A caller writing `Path` against a block whose real key
+        # is `PATH` was therefore classified ABSENT and DELETED on restore. It shipped: locally the
+        # casings aligned and the full 989-test sweep passed; CI deleted PATH and every hook lost jq.
+        #
+        # The probe uses a deliberately mixed-case spelling of a variable seeded in UPPER case.
+        $name = 'SPD_CASE_PROBE'
+        [Environment]::SetEnvironmentVariable($name, 'original-value')
+        try {
+            $null = Invoke-BashHook -HookPath $script:probe -Payload '{}' -Env @{ 'spd_case_probe' = 'override' }
+
+            # Assert the VALUE survived, not merely that some key exists - a deleted-then-recreated
+            # empty key would satisfy a presence-only check.
+            [Environment]::GetEnvironmentVariable($name) |
+                Should -BeExactly 'original-value' -Because 'a PRESENT variable must be restored to its value whatever case the caller used to name it'
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable($name, [NullString]::Value)
+        }
+    }
+
     It 'forwards positional arguments to the hook' {
         $probe = Join-Path $TestDrive 'echo-args.sh'
         Set-Content -LiteralPath $probe -Value "#!/usr/bin/env bash`ncat >/dev/null`nprintf '%s' `"`$1`"" -NoNewline

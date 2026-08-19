@@ -60,7 +60,17 @@ function Invoke-BashHook {
         # Inside the try on purpose: this used to run BEFORE it, so anything that threw between the
         # mutation and the try left the override installed permanently, with no finally to undo it.
         foreach ($k in $Env.Keys) {
-            $wasAbsent[$k] = -not [Environment]::GetEnvironmentVariables().Contains($k)
+            # CASE-INSENSITIVE, because the setter is. `GetEnvironmentVariables().Contains($k)` is a
+            # plain Hashtable lookup and is case-SENSITIVE, so it reports a PRESENT variable as absent
+            # whenever the caller's casing differs from the block's actual key - and this restore would
+            # then DELETE it. MEASURED on a block whose real key is `PATH`:
+            #     Contains('PATH') = True      GetEnvironmentVariable('PATH') = <value>
+            #     Contains('Path') = False     GetEnvironmentVariable('Path') = <value>   <-- disagree
+            # Shipped that way once: locally the casings happened to align so a 989/0 sweep passed, and
+            # CI - where they did not - deleted PATH and every hook lost `jq`.
+            # GetEnvironmentVariable returns $null ONLY for a genuinely absent variable; a present-but-
+            # empty one returns '', which is exactly the distinction this restore turns on.
+            $wasAbsent[$k] = ($null -eq [Environment]::GetEnvironmentVariable($k))
             $saved[$k] = [Environment]::GetEnvironmentVariable($k)
             [Environment]::SetEnvironmentVariable($k, $Env[$k])
         }
