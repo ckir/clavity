@@ -24,7 +24,7 @@ jobs:
       sha: ${{ steps.sha.outputs.sha }}
       artifact-name: agy-autotrain-installer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Record the built commit
         id: sha

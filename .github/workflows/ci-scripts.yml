@@ -89,7 +89,7 @@ jobs:
     name: installer contract (Windows PowerShell 5.1)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 5.1 domain must be pure ASCII
         shell: pwsh
@@ -140,7 +140,7 @@ jobs:
     name: dev scripts (pwsh 7)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ripgrep
         shell: pwsh

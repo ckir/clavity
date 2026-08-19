@@ -25,7 +25,7 @@ jobs:
       sha: ${{ steps.head.outputs.sha }}
       artifact-name: classic-installer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Record built commit
         id: head

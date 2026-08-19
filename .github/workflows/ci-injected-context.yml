@@ -60,7 +60,7 @@ jobs:
   injected-context:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Injected-context gate
         # pwsh 7: this is a maintainer-only dev script and only ever runs under pwsh 7 (justfile,
         # and this workflow). Gating a dev script on Windows PowerShell 5.1 buys nothing and reports

@@ -32,7 +32,7 @@ jobs:
     # publish. fetch-depth: 0 is REQUIRED — the default shallow checkout has no origin/main to compare.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Verify tag is on main
@@ -140,7 +140,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout (for release-notes extraction)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
