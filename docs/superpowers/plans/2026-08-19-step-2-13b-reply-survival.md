@@ -117,7 +117,7 @@ detected. Purity is what lets that test be deterministic instead of filesystem-d
 - Create: `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs`
 - Test: `clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using Clavity.Ls;
@@ -197,12 +197,12 @@ public class TerminalTokenTests
 }
 ```
 
-- [ ] **Step 2: Run and verify they fail**
+- [x] **Step 2: Run and verify they fail**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~TerminalTokenTests`
 Expected: FAIL — `error CS0103: The name 'TerminalToken' does not exist`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 namespace Clavity.Ls;
@@ -247,12 +247,14 @@ public static class TerminalToken
 }
 ```
 
-- [ ] **Step 4: Run and verify they pass**
+- [x] **Step 4: Run and verify they pass**
 
 Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~TerminalTokenTests`
-Expected: `Passed!  - Failed: 0, Passed: 6`.
+Expected: `Passed!  - Failed:     0, Passed:     8`. **8, not 6** - the AGY-AFTER panel's fold added
+the NEGATES row and the markdown-emphasis row after this line was first drafted. Read the COUNT:
+`dotnet test --filter` exits 0 on NO MATCH. (Task 1b's 6 below is correct - it really has 6 rows.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add clavity-dotnet/src/Clavity.Ls/TerminalToken.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs
