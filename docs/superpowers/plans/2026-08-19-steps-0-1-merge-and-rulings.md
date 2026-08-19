@@ -106,7 +106,12 @@ echo "ahead=$(git rev-list --count main..HEAD)  behind=$(git rev-list --count HE
 git rev-parse --short HEAD main
 ```
 
-Expected: branch `feature/injected-context-governance`; `ahead=337 behind=1`; HEAD `6a585f4`, main `b1317a2`.
+Expected, as **four separate lines** — this is a description of the output, not a string to match:
+`feature/injected-context-governance`, then `ahead=337  behind=1`, then `6a585f4`, then `b1317a2`.
+
+**Throughout this plan, an "Expected:" line written as prose describes the output; one shown in a code
+block is literal.** The distinction matters for an agentic executor doing string comparison, which would
+otherwise fail every prose expectation in the document.
 
 **If `behind` is 0**, someone has already integrated `main` — skip Task 2 and record why.
 **If `ahead` differs from 337**, new commits landed after this plan was written. That is fine; re-measure
@@ -420,6 +425,16 @@ ran**. "CI was read" is unfalsifiable on its own; the check count and conclusion
 **Do not idle while this runs.** Task 6 is docs-only, touches nothing CI tests, and the owner has directed
 that it proceed concurrently.
 
+🔴 **BUT THE CONCURRENCY STOPS AT TASK 8 STEP 7.** Tasks 6, 7 and 8's *commit* run alongside this wait.
+**The rulings PUSH must not.** Pushing while this watch is running supersedes the very run being watched:
+`gh pr checks --watch` would then be reporting on a head that no longer exists, and Task 5 Step 2 would
+record an obsolete result as though it were the answer. **Finish this task's watch and record its outcome
+BEFORE running Task 8 Step 7.** One CI wait at a time — the plan needs two, sequentially, not two
+overlapping.
+
+**Practically:** `gh pr checks --watch` blocks the shell. Run it in one terminal and do Tasks 6-8 Step 6 in
+another, then come back here, let this finish, and only then push.
+
 ---
 
 ## Task 6: Prepare the four rulings — AGY-FIRST consults, batched by blast radius
@@ -512,14 +527,28 @@ line, verbatim — `IF ANYTHING HERE IS AMBIGUOUS OR UNDER-SPECIFIED, ASK ME A Q
 the reply arrives later. Never re-fire the original ask on a timeout, and never read a timed-out consult
 as "no findings".
 
+**But the wait is not open-ended, and here is how to tell a slow consult from a dead one.** Call
+`agy_status` and compare `TotalSteps` against what it was before you fired. **If it has advanced, the peer
+is working — wait.** If it is unchanged after a couple of minutes, or `State` is not `working`, the consult
+is not progressing: recover the reply with `agy_look` (no quota) rather than re-firing, and if there is no
+assistant step to recover, treat the peer as unreachable, tell the owner, and do NOT fold anything from
+that consult. Forbidding both retry and assumption without giving a third option is what strands an
+operator indefinitely.
+
 - [ ] **Step 5: Diff-after — verify the review-only envelope held**
 
 ```bash
-git status --short
+git status --short > .clavity/scratch/steps-0-1/after-consult.txt
+diff .clavity/scratch/steps-0-1/before-consult.txt \
+     .clavity/scratch/steps-0-1/after-consult.txt && echo "TREE UNCHANGED" || echo "BREACH - tree differs"
 git rev-parse --short HEAD
 ```
 
-Expected: no output; HEAD unchanged from Step 1.
+Expected: `TREE UNCHANGED`, and HEAD unchanged from Step 1.
+
+**Actually diff the snapshot rather than eyeballing `git status`.** Step 1 mandates writing that file; an
+earlier draft then never compared it, which made the snapshot a dead artifact and left the check resting on
+the operator remembering what the tree looked like several minutes and one peer consult ago.
 
 **If the tree changed, that is a breach, not a skip.** Surface it to the owner, revert only the paths the
 peer touched, and fold nothing from that consult.
@@ -604,8 +633,19 @@ pwsh -NoProfile -File scripts/check-rulings-recorded.ps1
 echo "exit=$?"
 ```
 
-Expected: `14f RULED`, `14g RULED`, `17a RULED`, `17b RULED`, then
-`OK: all 4 section(s) carry a 'OWNER RULING (' block.` and `exit=0`.
+Expected — the identifier is left-padded into a 6-character field, so the gap is **four spaces**, not one:
+
+```
+14f    RULED
+14g    RULED
+17a    RULED
+17b    RULED
+
+OK: all 4 section(s) carry a 'OWNER RULING (' block.
+```
+
+and `exit=0`. (Verified against the script's actual stdout; an earlier draft wrote a single space and
+folded the exit code into the same sentence, neither of which the script emits.)
 
 **Do not replace this with an inline one-liner.** The plan's first draft used an inline `awk` verifier and
 it was wrong in two independent ways, both found by running its own controls before it ever shipped:
@@ -641,11 +681,12 @@ pwsh -NoProfile -File scripts/check-rulings-recorded.ps1 -Section 99z >/dev/null
 echo "expect exit 1: $?"
 
 # 4. CROSS-REFERENCE DECOY control: a heading that merely MENTIONS a section id, carrying the marker,
-#    must NOT satisfy that section. Recording a ruling adds cross-references, so this becomes reachable
-#    exactly when the verifier is first used in anger.
+#    must NOT satisfy that section. Build it on the PRE-RULING file from control 1 - NOT on the live
+#    ROADMAP, which by this point is fully ruled and would exit 0 for the legitimate reason that every
+#    real section is ruled, telling you nothing about the decoy and firing a false alarm.
 python -c "
 import io
-s = io.open('clavity-dotnet/ROADMAP.md', encoding='utf-8', newline='').read()
+s = io.open('.clavity/scratch/steps-0-1/roadmap-before.md', encoding='utf-8', newline='').read()
 s = '## Dependencies on \u00a714f and \u00a717a\n\n> **OWNER RULING (2026-08-19).** decoy.\n\n' + s
 io.open('.clavity/scratch/steps-0-1/roadmap-decoy.md','w',encoding='utf-8',newline='').write(s)
 "
@@ -653,6 +694,13 @@ pwsh -NoProfile -File scripts/check-rulings-recorded.ps1 \
   -RoadmapPath .clavity/scratch/steps-0-1/roadmap-decoy.md >/dev/null 2>&1
 echo "expect exit 1: $?"
 ```
+
+**Why control 4 is built on the pre-ruling file, spelled out because the first version got this wrong.**
+It was authored and proven against the UNRULED ROADMAP, where it correctly returned 1. The plan then runs
+it at a point where the ROADMAP is fully RULED, where the same command returns 0 — for a legitimate reason
+having nothing to do with the decoy. **A control that is valid in the state you tested it and invalid in
+the state the plan runs it is worse than no control**: it fires a false alarm mid-execution and teaches the
+operator to ignore it. Measured both ways.
 
 All three must behave as labelled. **Read each exit code directly — do not pipe the script into `head` or
 `tail` and then read `$?`, which returns the exit code of the pipe's last stage rather than the script's.**
@@ -684,6 +732,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
 - [ ] **Step 7: PUSH the rulings commit — it is NOT optional, and omitting it silently discards the work**
+
+**Precondition: Task 5's watch has RETURNED and its outcome is recorded.** Pushing before that supersedes
+the run being watched and makes Task 5's recorded result obsolete. See Task 5's note.
 
 ```bash
 git push origin feature/injected-context-governance
@@ -752,6 +803,15 @@ The standing circuit-breaker: do not iterate remotely by re-pushing to see wheth
 Reproduce with the local gate — `just test-scripts-fast` for the scripts suite,
 `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests` for the .NET gate.
 
+🔴 **CARVE-OUT: a CI-ENVIRONMENT failure cannot be reproduced locally, and the circuit-breaker must not
+trap you into pretending otherwise.** Step 3 anticipates exactly this — the pinned `yq` install failing on
+the runner — and a healthy local machine will pass `test-scripts-fast` every time. **When the failure is in
+the workflow file or the runner environment rather than in the code under test, a remote iteration IS the
+correct instrument**, because the thing that is broken exists only there. What the breaker actually forbids
+is *guessing* remotely: so before each such push, state in one line what you expect to change and why, and
+if two consecutive remote iterations fail to move the error, STOP and reconsider the diagnosis instead of
+pushing a third.
+
 **Watch the suite cadence, and note these two instructions are SEQUENTIAL, not concurrent** — an earlier
 draft of this paragraph told the operator to run one while backgrounding the other, which is precisely what
 the last sentence forbids. The whole `just test-scripts` exceeds the 600s cap, so:
@@ -782,7 +842,17 @@ prediction.
 Each fix is its own commit with its own message. `main` is untouched throughout — this is why the route was
 chosen.
 
-- [ ] **Step 5: Do not dismiss a failure as pre-existing**
+- [ ] **Step 5: Bound the loop**
+
+This task can be re-entered indefinitely: fix, push, wait, red, return here. **After the THIRD full cycle
+through Task 9 on the same PR, stop and put it to the owner** — three cycles without green means the
+diagnosis is wrong, not that the fix needs another attempt. Record each cycle's failing check in
+`.clavity/scratch/steps-0-1/ci-triage.md` so the third decision has the first two in front of it.
+
+**Each cycle costs a full CI suite and an owner push authorisation.** Neither is free, and the plan's
+concurrent structure already guarantees at least two runs before any failure.
+
+- [ ] **Step 6: Do not dismiss a failure as pre-existing**
 
 "The old code did it too" is not a disposition. A pre-existing defect surfaced by this run is in scope;
 dismissing it prevents the measurement, not just the fix.
