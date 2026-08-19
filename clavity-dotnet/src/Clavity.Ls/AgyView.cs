@@ -237,17 +237,35 @@ public sealed class AgyView
         while (true)
         {
             var windowSecs = stallWindow;
+            var windowWasBudgetClamped = false;
             if (absoluteMax > TimeSpan.Zero)
             {
                 var remaining = absoluteMax - (DateTime.UtcNow - start);
                 if (remaining <= TimeSpan.Zero)
                     throw BuildModalHang(lastProbe, before, start, IdleLimit.AbsoluteMax);
-                windowSecs = remaining < stallWindow ? remaining : stallWindow;
+                // Remember HERE, where the clamp is actually decided, that the BUDGET rather than the stall
+                // window is what bounds this wait. The label below used to re-derive this by re-reading the
+                // clock, and that was wrong in a way only measurement shows: a clamped window ends exactly ON
+                // the budget boundary, so the only thing separating `elapsed >= absoluteMax` from the opposite
+                // answer is however long the probe RPC happened to take. MEASURED over 10 runs, 50 decisions:
+                // that margin was +5.1ms at worst against Windows' ~15ms timer resolution. A slightly-early
+                // wakeup therefore reported Stall for a budget that had genuinely run out, sending the operator
+                // to CLAVITY_AGY_IDLE_STALL_SECONDS when CLAVITY_AGY_IDLE_MAX_SECONDS was the binding cap -
+                // precisely the confusion the honest label exists to prevent.
+                //
+                // `<=` not `<`: at exact equality the budget IS the binding cap, which is what the old
+                // clock-based `>=` reported. windowSecs is unchanged either way, since remaining == stallWindow.
+                windowWasBudgetClamped = remaining <= stallWindow;
+                windowSecs = windowWasBudgetClamped ? remaining : stallWindow;
             }
 
             using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             windowCts.CancelAfter(windowSecs);
             bool serverTimedOut;
+            // Did OUR window timer end this wait, or did the server report its own inactivity timeout first?
+            // The distinction is load-bearing for the limit label below: a clamped window that the server cut
+            // short did NOT exhaust the budget, so it is a stall, not an absolute-max.
+            var windowElapsed = false;
             try
             {
                 serverTimedOut = await client.WaitForConversationFullyIdleAsync(
@@ -257,6 +275,7 @@ public sealed class AgyView
                 && ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
             {
                 serverTimedOut = true; // window elapsed while agy was still active -> treat as a wait-timeout.
+                windowElapsed = true;  // and it was OUR timer that ended it, not the server's.
             }
 
             if (!serverTimedOut)
@@ -316,7 +335,11 @@ public sealed class AgyView
 
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.
-            else if (absoluteMax > TimeSpan.Zero && (DateTime.UtcNow - start) >= absoluteMax)
+            // Both halves are required. `windowWasBudgetClamped` says the budget was the binding cap;
+            // `windowElapsed` says the window actually ran to its end rather than the server returning its own
+            // timeout early, which can happen with budget still left and is an ordinary stall. Neither re-reads
+            // the clock, so the label no longer depends on winning a race against timer jitter.
+            else if (windowWasBudgetClamped && windowElapsed)
                 // Honest label (agy panel R3): a budget-clamped window that elapsed with no progress ended because the
                 // TOTAL budget ran out — NOT a stall. Reporting Stall would send the operator to the wrong knob
                 // (CLAVITY_AGY_IDLE_STALL_SECONDS) when CLAVITY_AGY_IDLE_MAX_SECONDS is the binding cap.

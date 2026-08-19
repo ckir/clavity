@@ -32,7 +32,11 @@ public class AgyAskIntegrationTests
         // A per-WaitFor-invocation script: window N (0-based, clamped to the last entry) appends AppendSteps
         // trajectory steps, then either goes idle (returns TimedOut=false with the reply) or blocks until the
         // client's per-window CancelAfter cancels it. Null => the legacy single-idleDelay behavior (back-compat).
-        public sealed record WaitStep(int AppendSteps, bool GoesIdle);
+        /// <param name="ServerTimesOut">Return the server's OWN inactivity timeout immediately instead of
+        /// blocking until the client's window cancels. This is a real LS behaviour - the server has its own
+        /// IdleInactivityTimeoutSeconds - and it is the case that separates "the budget ran out" from "the
+        /// server gave up early with budget to spare".</param>
+        public sealed record WaitStep(int AppendSteps, bool GoesIdle, bool ServerTimesOut = false);
         private readonly IReadOnlyList<WaitStep>? _waitPlan;
         private int _waitCalls;
         public int WaitCalls => _waitCalls;
@@ -124,6 +128,9 @@ public class AgyAskIntegrationTests
                     return new WaitForConversationFullyIdleResponse { TimedOut = false };
                 }
             }
+            if (step.ServerTimesOut)
+                return new WaitForConversationFullyIdleResponse { TimedOut = true };
+
             // Never idle this window: block until the client's per-window CancelAfter cancels the call.
             _waitBlockedTcs.TrySetResult();
             await Task.Delay(Timeout.Infinite, context.CancellationToken);
@@ -781,6 +788,39 @@ public class AgyAskIntegrationTests
             Assert.NotNull(ex.Diagnostic);
             Assert.Equal(1, ex.Diagnostic!.NewAgySteps);
             Assert.Equal("tool", ex.Diagnostic.LastStepClass);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_STALL_when_a_clamped_window_is_cut_short_by_the_servers_own_timeout()
+    {
+        // The other half of the limit rule, and the case that makes the rule non-trivial. Window 2 IS budget-
+        // clamped, but the server returns its own inactivity timeout immediately instead of the window running
+        // to its end - so the budget did NOT run out and there is still time left. The honest label is Stall.
+        //
+        // This is what forces the label to depend on BOTH "the budget was the binding cap" AND "the window
+        // actually elapsed". A fix that keyed on the clamp alone would report absolute_max here, sending the
+        // operator to raise a budget that was never the thing that stopped the wait.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),                        // window 1: progresses
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false, ServerTimesOut: true),  // window 2: server quits early
+        };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(1000),
+                IdleAbsoluteMax = TimeSpan.FromMilliseconds(1500), // window 2 clamps to the ~500ms remainder
+            });
+            var ex = await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("server quits early"));
+            Assert.Equal(IdleLimit.Stall, ex.Report.Limit);
+            Assert.NotNull(ex.Diagnostic);
         }
         finally { Directory.Delete(dir, true); }
     }
