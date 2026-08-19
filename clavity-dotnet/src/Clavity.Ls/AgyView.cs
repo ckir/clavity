@@ -162,10 +162,17 @@ public sealed class AgyView
     /// trajectory steps (agy's reply) as a size-bounded view. A client-side <paramref name="timeout"/>, when
     /// supplied, overrides the configured stall window for this call (the absolute-max backstop still comes from
     /// options). ⚠ This is a WRITE: live it consumes quota and posts a visible message; live use is gated to T10.
+    ///
+    /// <para><paramref name="progress"/> is an OPTIONAL liveness sink, reported once per elapsed stall window while
+    /// the wait continues. It is purely observational: nothing in the wait, the timeout accounting, or the returned
+    /// reply depends on whether a sink is supplied, and passing null leaves behaviour byte-for-byte as before. A
+    /// caller that wants the wait to be visible rather than silent supplies one; every existing caller does not, and
+    /// is unaffected.</para>
     /// </summary>
     public async Task<AskReply> AskAsync(
         string message,
         TimeSpan? timeout = null,
+        IProgress<AgyWaitProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var (client, conversationId) = await ConnectAndResolveAsync(cancellationToken);
@@ -195,7 +202,7 @@ public sealed class AgyView
                     throw;                 // a caller-cancel (Cancelled) is not a stale-catalog signal -> don't drop the cache; let it propagate (capstone F3).
                 }
 
-                await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, cancellationToken);
+                await WaitForIdleWithProgressAsync(client, conversationId, before, timeout, progress, cancellationToken);
 
                 var full = await client.GetCascadeTrajectoryAsync(conversationId, cancellationToken);
                 var delta = full.Steps.Skip(before).ToList();
@@ -217,13 +224,15 @@ public sealed class AgyView
     /// a NULL diagnostic — never spins, never a second network hit (F2 + agy panel R4). The stall/absolute_max
     /// diagnostic is built from the trajectory we ALREADY fetched this window (no redundant re-fetch — agy panel R5 F10).</summary>
     private async Task WaitForIdleWithProgressAsync(
-        LsClient client, string conversationId, int before, TimeSpan? stallOverride, CancellationToken cancellationToken)
+        LsClient client, string conversationId, int before, TimeSpan? stallOverride,
+        IProgress<AgyWaitProgress>? progress, CancellationToken cancellationToken)
     {
         var stallWindow = stallOverride ?? _options.IdleStallWindow;
         var absoluteMax = _options.IdleAbsoluteMax;   // TimeSpan.Zero => unbounded
         var start = DateTime.UtcNow;
         var lastProgress = before + 1;                // F5: +1 discounts our own injected Kind-14 user step.
         CascadeTrajectory? lastProbe = null;          // R5 F10: last successfully-fetched trajectory, reused for the diagnostic.
+        var window = 0;                               // report counter: the ONLY monotonic value we can offer a progress sink.
 
         while (true)
         {
@@ -271,6 +280,22 @@ public sealed class AgyView
             }
             lastProbe = probe;
             var total = probe.Steps.Count;
+
+            // Liveness report, emitted BEFORE the branch below so the operator also sees the final window of a wait
+            // that is about to throw — that last report is what says WHERE it stopped. Reporting is best-effort and
+            // must never change the outcome of the wait: a sink that throws would otherwise convert a live ask into
+            // an exception, so it is swallowed. There is no logger in this layer to route it to.
+            if (progress is not null)
+            {
+                try
+                {
+                    progress.Report(new AgyWaitProgress(++window, total, Math.Max(0, total - (before + 1)), DateTime.UtcNow - start));
+                }
+                catch
+                {
+                    // A broken progress sink is the caller's problem, not a reason to fail the ask.
+                }
+            }
 
             if (total > lastProgress)
                 lastProgress = total; // agy advanced -> reset the stall window and keep waiting.

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Clavity.Ls;
 using Clavity.Ls.Proto;
 using Clavity.Mcp;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using Grpc.Core;
 using Microsoft.AspNetCore.Builder;
@@ -157,7 +158,7 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            var result = await McpTools.AgyAsk(ViewFor(cliLog), "hi");
+            var result = await McpTools.AgyAsk(ViewFor(cliLog), "hi", new CollectingProgress<ProgressNotificationValue>());
             var text = ((TextContentBlock)result.Content[0]).Text;
             using var doc = JsonDocument.Parse(text);
             Assert.Equal("channel_down", doc.RootElement.GetProperty("status").GetString());
@@ -191,7 +192,7 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            var result = await McpTools.AgyAsk(ViewFor(cliLog), "hi");
+            var result = await McpTools.AgyAsk(ViewFor(cliLog), "hi", new CollectingProgress<ProgressNotificationValue>());
             var text = ((TextContentBlock)result.Content[0]).Text;
             using var doc = JsonDocument.Parse(text);
             Assert.Equal("channel_down", doc.RootElement.GetProperty("status").GetString());
@@ -232,7 +233,7 @@ public class AgyChannelDownTests
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
-            var result = await McpTools.AgyAsk(ViewFor(cliLog), "hi");
+            var result = await McpTools.AgyAsk(ViewFor(cliLog), "hi", new CollectingProgress<ProgressNotificationValue>());
             var text = ((TextContentBlock)result.Content[0]).Text;
             using var doc = JsonDocument.Parse(text);
             Assert.Equal("channel_down", doc.RootElement.GetProperty("status").GetString());
@@ -330,7 +331,7 @@ public class AgyChannelDownTests
                 BootRaceTimeout = TimeSpan.FromSeconds(2),
                 BootRacePollInterval = TimeSpan.FromMilliseconds(50),
             });
-            var result = await McpTools.AgyAsk(view, "hi");
+            var result = await McpTools.AgyAsk(view, "hi", new CollectingProgress<ProgressNotificationValue>());
             var text = ((TextContentBlock)result.Content[0]).Text;
             using var doc = JsonDocument.Parse(text);
             Assert.Equal("channel_down", doc.RootElement.GetProperty("status").GetString());

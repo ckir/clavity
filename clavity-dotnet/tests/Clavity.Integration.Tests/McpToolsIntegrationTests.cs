@@ -2,7 +2,9 @@ using System.Text.Json;
 using Clavity.Ls;
 using Clavity.Ls.Proto;
 using Clavity.Mcp;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Grpc.Core;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -194,7 +196,7 @@ public class McpToolsIntegrationTests
             });
 
             // First ask: two content blocks — the reply JSON, then the labelled guidance.
-            var first = await McpTools.AgyAsk(view, "hello");
+            var first = await McpTools.AgyAsk(view, "hello", new CollectingProgress<ProgressNotificationValue>());
             Assert.Equal(2, first.Content.Count);
             var firstText = Assert.IsType<TextContentBlock>(first.Content[0]).Text;
             var guidance = Assert.IsType<TextContentBlock>(first.Content[1]).Text;
@@ -203,7 +205,7 @@ public class McpToolsIntegrationTests
             Assert.Contains("Verify what it volunteers", guidance);   // baseline-floor content
 
             // Second ask: single block, no guidance (once per session).
-            var second = await McpTools.AgyAsk(view, "again");
+            var second = await McpTools.AgyAsk(view, "again", new CollectingProgress<ProgressNotificationValue>());
             Assert.Single(second.Content);
             Assert.DoesNotContain(DriverCheatsheet.Label, Assert.IsType<TextContentBlock>(second.Content[0]).Text);
         }
@@ -212,5 +214,28 @@ public class McpToolsIntegrationTests
             Directory.Delete(dir, true);
             Directory.Delete(cheatDir, true);
         }
+    }
+    [Fact]
+    public void AgyAsk_input_schema_exposes_only_message_and_stays_backward_compatible()
+    {
+        // The progress reporter was added to AgyAsk as an SDK-INJECTED parameter, on the claim that it costs no
+        // contract change. This pins that claim to the GENERATED schema rather than to the claim itself: if
+        // IProgress<> ever started surfacing as a tool input, every existing caller's payload would become invalid
+        // and nothing else in this suite would notice. The DI'd AgyView and the CancellationToken are pinned for the
+        // same reason - all three are parameters the model must never be asked to supply.
+        var services = new ServiceCollection();
+        services.AddSingleton(new AgyView(new AgyViewOptions { CliLogPath = Path.Combine(Path.GetTempPath(), "schema-pin-unused.log") }));
+        services.AddMcpServer().WithTools<McpTools>();
+        using var sp = services.BuildServiceProvider();
+
+        var tool = sp.GetServices<McpServerTool>().Single(t => t.ProtocolTool.Name == "agy_ask");
+        using var schema = JsonDocument.Parse(tool.ProtocolTool.InputSchema.GetRawText());
+        var root = schema.RootElement;
+
+        var props = root.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToArray();
+        Assert.Equal(new[] { "message" }, props);
+
+        var required = root.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToArray();
+        Assert.Equal(new[] { "message" }, required);
     }
 }

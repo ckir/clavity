@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
 namespace Clavity.Integration.Tests;
@@ -429,6 +430,113 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task AskAsync_reports_liveness_once_per_elapsed_window_with_a_monotonic_value()
+    {
+        // The wait can outlast an MCP client's tool-call timeout, and before this it ran SILENT — the client saw
+        // nothing between send and reply. This pins the observable contract of the liveness reports:
+        //   1. one report per ELAPSED window (a window that goes idle produces none — nothing to report),
+        //   2. Window strictly increasing, because the MCP progress contract requires the relayed value to increase
+        //      and neither step count can carry that (a window with no agy activity leaves both unchanged),
+        //   3. NewSteps discounting our own injected user step, so "0 new steps" means agy really did nothing.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false), // window 1 elapses: +1 step
+            new FakeAskLs.WaitStep(AppendSteps: 2, GoesIdle: false), // window 2 elapses: +2 more
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),  // goes idle: NO report for this one
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var progress = new CollectingProgress<AgyWaitProgress>();
+            var reply = await view.AskAsync("do a long thing", progress: progress);
+
+            Assert.Equal("final answer", reply.Answer);
+
+            var reports = progress.Reports;
+            Assert.Equal(2, reports.Count);                       // two ELAPSED windows, not three waits
+
+            Assert.Equal(1, reports[0].Window);                   // monotonic, 1-based
+            Assert.Equal(2, reports[1].Window);
+            Assert.True(reports[1].Window > reports[0].Window, "Window must strictly increase for the MCP relay");
+
+            Assert.Equal(1, reports[0].NewSteps);                 // +1, our own user step discounted
+            Assert.Equal(3, reports[1].NewSteps);                 // +1 then +2, cumulative
+            Assert.True(reports[1].TotalSteps > reports[0].TotalSteps);
+            Assert.True(reports[1].Elapsed >= reports[0].Elapsed);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_reports_the_final_window_of_a_wait_that_is_about_to_stall()
+    {
+        // A stalling wait must report the window it died on — that last report is what says WHERE it stopped. If the
+        // report were emitted only on the keep-waiting branch, a stall would produce zero reports and the operator
+        // would learn nothing from the one case they most need to diagnose.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false) };
+        var fake = new FakeAskLs("conv-1", "unused", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(120),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var progress = new CollectingProgress<AgyWaitProgress>();
+            await Assert.ThrowsAsync<AgyModalHangException>(() => view.AskAsync("stall me", progress: progress));
+
+            var reports = progress.Reports;
+            Assert.Single(reports);
+            Assert.Equal(1, reports[0].Window);
+            Assert.Equal(0, reports[0].NewSteps);   // agy did nothing: the +1 discount is what makes this 0, not 1
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_survives_a_progress_sink_that_throws()
+    {
+        // Reporting is observational. A caller whose sink throws must not thereby convert a working ask into a
+        // failure — the reply is the product, the report is a courtesy.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            var reply = await view.AskAsync("do a long thing", progress: new ThrowingProgress());
+            Assert.Equal("final answer", reply.Answer);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    private sealed class ThrowingProgress : IProgress<AgyWaitProgress>
+    {
+        public void Report(AgyWaitProgress value) => throw new InvalidOperationException("sink is broken");
+    }
+
+    [Fact]
     public async Task AskAsync_stalls_after_exactly_one_window_when_agy_makes_no_progress()
     {
         // F5 regression guard: a dead agy (no steps after our send) stalls at 1x the window, NOT 2x. If lastProgress
@@ -672,7 +780,7 @@ public class AgyAskIntegrationTests
                 IdleStallWindow = TimeSpan.FromMilliseconds(120),
                 IdleAbsoluteMax = TimeSpan.Zero,
             });
-            var result = await McpTools.AgyAsk(view, "stall me");
+            var result = await McpTools.AgyAsk(view, "stall me", new CollectingProgress<ProgressNotificationValue>());
             var text = ((TextContentBlock)result.Content[0]).Text;
             using var doc = JsonDocument.Parse(text);
             Assert.Equal("possible_modal", doc.RootElement.GetProperty("status").GetString());
