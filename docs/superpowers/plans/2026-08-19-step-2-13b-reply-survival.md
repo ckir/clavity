@@ -415,6 +415,151 @@ by truncation is exactly what this rejects."
 
 ---
 
+## Task 1c: `DisciplineContract` — the driver owns the tokens, not the caller
+
+**Files:**
+- Create: `clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs`
+- Test: `clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs`
+
+🔴 **OWNER RULING 2026-08-19: the harness injects the expectations; the caller does not supply token
+literals.** The AGY-AFTER panel's objection was blunt and correct: *"a security check that defaults to open
+when the guarded entity forgets to turn it on is compliance theater."* An earlier draft of this plan had
+every caller passing `expectTerminal: "[VERDICT:"` by hand - so a caller who mistyped it, or omitted it,
+silently opted out of the entire check.
+
+⚠ **There is no "harness" component in this architecture, so this task BUILDS the missing piece rather
+than pointing at one.** The agent reads a SKILL.md and calls `agy_ask` directly; nothing sits between them.
+The closest thing to injection available is: the driver owns the token table, the caller names only its
+discipline, and a linter enforces that every skill mandates naming it.
+
+⚠ **AUTO-DETECTION WAS CONSIDERED AND REJECTED BY MEASUREMENT.** Sniffing the payload for a shared marker
+would let the driver infer the discipline with no caller cooperation at all. Measured: `agy-capstone`,
+`agy-test-audit` and `agy-first` each carry a `REVIEW-ONLY` banner and a `.clavity/seams` path;
+**`adversarial-panel-review` carries NEITHER** (0 occurrences of each). A heuristic would silently skip
+AGY-AFTER - the same outlier that breaks a single `[VERDICT:` regex. **A guard that covers three of four
+disciplines and says nothing about the fourth is worse than one that admits its scope.**
+
+- [ ] **Step 1: Write the failing tests**
+
+```csharp
+using Clavity.Ls;
+using Xunit;
+
+namespace Clavity.Ls.Tests;
+
+public class DisciplineContractTests
+{
+    [Theory]
+    [InlineData("agy-capstone", "[VERDICT:")]
+    [InlineData("agy-test-audit", "[VERDICT:")]
+    [InlineData("agy-first", "[VERDICT:")]
+    [InlineData("adversarial-panel-review", "GREEN")]
+    public void Every_discipline_maps_to_its_own_terminal_token(string discipline, string expected)
+    {
+        // The token literals live HERE and nowhere else. Measured 2026-08-19: the first three use
+        // [VERDICT: (17, 12 and 10 occurrences); adversarial-panel-review uses GREEN and has ZERO
+        // [VERDICT occurrences - SKILL.md:208, "For this skill that means GREEN".
+        Assert.Equal(expected, DisciplineContract.TerminalTokenFor(discipline));
+    }
+
+    [Fact]
+    public void An_unknown_discipline_yields_NO_token_rather_than_a_wrong_one()
+    {
+        // Guessing a token for an unknown caller would invent a contract. Returning null makes the
+        // omission visible at the surface instead (see the [13b] UNCHECKED block in Task 5b).
+        Assert.Null(DisciplineContract.TerminalTokenFor("not-a-discipline"));
+        Assert.Null(DisciplineContract.TerminalTokenFor(null));
+        Assert.Null(DisciplineContract.TerminalTokenFor("  "));
+    }
+
+    [Fact]
+    public void Lookup_is_case_insensitive()
+    {
+        // A caller writing AGY-Capstone is naming the right discipline. Failing on case would produce
+        // an UNCHECKED consult for a caller that did everything else right.
+        Assert.Equal("[VERDICT:", DisciplineContract.TerminalTokenFor("AGY-Capstone"));
+    }
+
+    [Fact]
+    public void KnownDisciplines_lists_exactly_the_four_and_is_the_linter_s_source_of_truth()
+    {
+        // The skill linter asserts every enrolled skill mandates naming itself. If this list and the
+        // linter's list drift, one of them silently stops covering a discipline.
+        Assert.Equal(
+            new[] { "adversarial-panel-review", "agy-capstone", "agy-first", "agy-test-audit" },
+            DisciplineContract.KnownDisciplines.OrderBy(d => d, System.StringComparer.Ordinal).ToArray());
+    }
+}
+```
+
+- [ ] **Step 2: Run and verify they fail**
+
+Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~DisciplineContractTests`
+Expected: FAIL — `error CS0103: The name 'DisciplineContract' does not exist`.
+
+- [ ] **Step 3: Implement**
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Clavity.Ls;
+
+/// <summary>Maps a discipline to the terminal token its replies must end with. THE ONLY PLACE these
+/// literals live.
+///
+/// It exists because the alternative - every caller passing "[VERDICT:" by hand - makes the completeness
+/// check voluntary: mistype it or omit it and the guard silently does nothing. An AGY-AFTER panel called
+/// that compliance theater, and it was right. The caller now names only WHICH discipline it is; the driver
+/// supplies the contract.
+///
+/// The four do not share a grammar, which is exactly why this table exists rather than one regex:
+/// adversarial-panel-review ends on GREEN (its SKILL.md:208), the other three on [VERDICT:.</summary>
+public static class DisciplineContract
+{
+    private static readonly Dictionary<string, string> Tokens =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["agy-capstone"] = "[VERDICT:",
+            ["agy-test-audit"] = "[VERDICT:",
+            ["agy-first"] = "[VERDICT:",
+            ["adversarial-panel-review"] = "GREEN",
+        };
+
+    /// <summary>The disciplines this driver knows. The skill linter enrols exactly these.</summary>
+    public static IReadOnlyCollection<string> KnownDisciplines => Tokens.Keys.ToArray();
+
+    /// <summary>The token, or null for an unknown/absent discipline - never a guess.</summary>
+    public static string? TerminalTokenFor(string? discipline) =>
+        !string.IsNullOrWhiteSpace(discipline) && Tokens.TryGetValue(discipline, out var t) ? t : null;
+}
+```
+
+Add `using System.Linq;` to the test file for `OrderBy`.
+
+- [ ] **Step 4: Run and verify they pass**
+
+Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~DisciplineContractTests`
+Expected: `Passed!  - Failed: 0, Passed: 7`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs
+git commit -m "feat(ls): DisciplineContract - the driver owns the terminal tokens
+
+Owner-ruled after the AGY-AFTER panel: the harness injects the expectations, the
+caller does not pass token literals. A check the guarded party can silently skip
+by mistyping a string is not a check.
+
+Auto-detection was rejected by measurement, not taste: three disciplines carry a
+REVIEW-ONLY banner and a seams path, adversarial-panel-review carries neither, so
+a payload heuristic would silently skip a quarter of the surface."
+```
+
+---
+
 ## Task 2: `ReplySizeHistory` — the heuristic warning
 
 **Files:**
@@ -833,13 +978,16 @@ parameter and pass it through:
 ```csharp
     public static async Task<CallToolResult> AgyAsk(
         AgyView view, string message, IProgress<ProgressNotificationValue> progress,
-        string? expectTerminal = null, string? expectEcho = null,
+        string? discipline = null, string? expectEcho = null,
         CancellationToken cancellationToken = default)
 ```
 
 and change the `view.AskAsync(...)` call inside it to:
 
 ```csharp
+        // THE INJECTION POINT. The caller names its discipline; the driver supplies the token. A caller
+        // cannot mistype "[VERDICT:" into a silent opt-out, because it never types it.
+        var expectTerminal = DisciplineContract.TerminalTokenFor(discipline);
         var json = await RunAsync(() => view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, expectEcho: expectEcho, cancellationToken: cancellationToken));
 ```
 
@@ -1039,6 +1187,21 @@ In `McpTools.AgyAsk`, after `var guidance = view.TryTakeGuidanceBlock();`, add:
                      + "Confirm the reply is complete before folding or accepting a clean verdict."
             });
         }
+
+        // OMISSION MUST BE LOUD. Without this block a caller that names no discipline gets a completely
+        // normal-looking result with no checks run - which is the compliance-theater failure in a
+        // different costume: not a check that can be turned off, but one that was never turned on and
+        // said nothing about it. This does NOT block the consult; it makes the gap visible.
+        if (DisciplineContract.TerminalTokenFor(discipline) is null)
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[13b] UNCHECKED: no known discipline was named on this ask, so the completeness "
+                     + "checks did NOT run. If this is a discipline consult, re-issue it with "
+                     + "discipline set to one of: " + string.Join(", ", DisciplineContract.KnownDisciplines)
+                     + ". If it is an ordinary question, this notice is expected."
+            });
+        }
 ```
 
 **The two are `if`/`else if`, not two independent blocks.** A truncated reply is usually also a small one,
@@ -1217,6 +1380,39 @@ truncated or unread review cannot do.
 and pass no `expectEcho`. The check degrades to satisfied rather than to failed, deliberately: a guard
 that reds on consults it was never meant to cover gets disabled, and then it covers nothing.
 ```
+
+- [ ] **Step 2c: Enrol ALL FOUR in the skill linter and assert each mandates naming itself**
+
+🔴 **`adversarial-panel-review` is currently NOT ENROLLED in the linter at all.** Measured:
+`scripts/check-agy-discipline-skills.ps1:13` reads `$skills = @('agy-first', 'agy-capstone',
+'agy-test-audit')`, and its own comment at `:20` records that adversarial-panel-review "DOES carry the
+taxonomy but is not enrolled in `$skills` at all". So AGY-AFTER is the outlier on THREE counts now - no
+`[VERDICT:` token, no `REVIEW-ONLY` banner, and no linter coverage. **Fix the enrolment as part of this
+step; a mandate no linter checks for one discipline is the honour system this task exists to replace.**
+
+Change `:13` to:
+
+```powershell
+$skills = @('agy-first', 'agy-capstone', 'agy-test-audit', 'adversarial-panel-review')
+```
+
+Then add a check asserting each enrolled skill instructs the caller to name itself on the ask:
+
+```powershell
+# 13b: the completeness checks only run when the ask names its discipline. If a skill does not TELL the
+# caller to name it, every consult from that discipline silently runs unchecked - and the driver's
+# [13b] UNCHECKED notice is the only thing that would ever say so.
+foreach ($skill in $skills) {
+    $path = Join-Path $repoRoot "clavity-dotnet/plugin/skills/$skill/SKILL.md"
+    $text = Get-Content -Raw -LiteralPath $path
+    if ($text -notmatch [regex]::Escape("discipline: `"$skill`"")) {
+        Fail "$skill does not instruct the caller to pass discipline: `"$skill`" - its consults will run UNCHECKED"
+    }
+}
+```
+
+**Run it and prove it can fail** — delete the mandate line from one skill, confirm the linter reds and
+names that skill, then restore. A linter that has never been seen to fail is not known to work.
 
 - [ ] **Step 3: Mirror to `clavity-classic` and prove byte-identity**
 
