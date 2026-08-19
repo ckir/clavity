@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using Clavity.Ls;
@@ -1455,16 +1456,21 @@ public class AgyAskIntegrationTests
     public async Task AgyAsk_appends_NO_13b_block_when_the_reply_is_complete()
     {
         // The passing control. Without it, a check that appends the warning ALWAYS satisfies the row above.
+        //
+        // A FULLY compliant consult now means BOTH signals were available and both were satisfied: a
+        // terminal token AND an echo of the artifact's last substantive line. The consult that supplies no
+        // echo target is legitimately told so (see the NO ECHO row), so this control supplies one.
         var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
-        var fake = new FakeAskLs("conv-1", "findings\n\n[VERDICT: ALIGNED]", TimeSpan.Zero,
-                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        var fake = new FakeAskLs("conv-1", "findings\n\nthe last line of the artifact\n\n[VERDICT: ALIGNED]",
+                                 TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
         await using var app = await StartFakeAsync(fake);
         var dir = SetUpAgyDir(PortOf(app), out var cliLog);
         try
         {
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             var result = await McpTools.AgyAsk(view, "review it",
-                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
+                new CollectingProgress<ProgressNotificationValue>(),
+                discipline: "agy-capstone", expectEcho: "the last line of the artifact");
             var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             Assert.DoesNotContain(texts, t => t.Contains("[13b]"));
         }
@@ -1533,7 +1539,13 @@ public class AgyAskIntegrationTests
             var second = await McpTools.AgyAsk(view, "review it again",
                 new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
             var secondTexts = second.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
-            Assert.DoesNotContain(secondTexts, t => t.Contains("[13b]"));
+            // ASSERT NO VERDICT, not "no 13b block at all". A verdict is a claim ABOUT A REPLY, and the
+            // second ask produced none, so none of the three may appear. NO ECHO is a fact about the ASK
+            // and is legitimately present either way - blanket-asserting its absence would pin an
+            // unrelated design into this row and break it the next time a notice is added.
+            Assert.DoesNotContain(secondTexts, t => t.Contains("TRUNCATED REPLY"));
+            Assert.DoesNotContain(secondTexts, t => t.Contains("ECHO MISSING"));
+            Assert.DoesNotContain(secondTexts, t => t.Contains("SIZE WARNING"));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -1578,6 +1590,59 @@ public class AgyAskIntegrationTests
                 discipline: "agy-capstone", expectEcho: "the last line of the artifact");
             var okTexts = ok.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             Assert.DoesNotContain(okTexts, t => t.Contains("[13b] ECHO WEAK"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_discipline_consult_that_OMITS_the_echo_target_is_told_so()
+    {
+        // CAPSTONE R2 FINDING (Mechanism Gamer), verified: the ECHO WEAK guard only fired when expectEcho
+        // was NON-NULL, so an agent that simply omitted the parameter bypassed the strongest signal in
+        // total silence. That is the same fail-open shape the UNCHECKED notice was created to close for
+        // `discipline` - a guard you can skip by not talking to it. Omission stays LEGAL (a design
+        // question has no artifact to echo); it just stops being invisible.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "findings\n\n[VERDICT: ALIGNED]", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var result = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.Contains(texts, t => t.Contains("[13b] NO ECHO"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_FAILED_archive_write_is_reported_on_the_diagnostics_sink()
+    {
+        // CAPSTONE R2 FINDING (Blindspot Auditor), verified. Every archive failure is swallowed by
+        // design, so an unwritable directory freezes the size baseline forever while SIZE WARNINGs keep
+        // firing against a stale norm - with nothing anywhere saying why. The swallow stays (it must
+        // never fail an ask); the SILENCE does not. AgyView already owns a diagnostics sink.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a reply", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            // A regular FILE where the archive directory must go makes creation fail deterministically.
+            File.WriteAllText(Path.Combine(dir, "replies"), "not a directory");
+
+            var log = new StringWriter();
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                GoldenHeaderDir = dir,
+                Diagnostics = log,
+            });
+            await view.AskAsync("hello");
+            Assert.Contains("archive", log.ToString(), StringComparison.OrdinalIgnoreCase);
         }
         finally { Directory.Delete(dir, true); }
     }

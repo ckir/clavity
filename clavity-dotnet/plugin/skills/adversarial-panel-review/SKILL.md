@@ -93,20 +93,28 @@ cannot mistype it into a silent opt-out. An ask that names no known discipline c
 **Every payload that names a PRIMARY ARTIFACT must demand a SEMANTIC ECHO.** Add, as the second-to-last
 instruction:
 
-> Immediately before your terminal verdict, quote verbatim the LAST NON-BLANK LINE of
-> `<the primary artifact path>` that carries actual content. Quote it exactly; do not paraphrase or
-> summarise it.
+> Immediately before your terminal verdict, quote verbatim the LAST line of
+> `<the primary artifact path>` that contains AT LEAST 8 LETTERS OR DIGITS. Quote it exactly; do not
+> paraphrase or summarise it.
 
-Then pass that same line to the ask as `expectEcho`, having read it yourself from the same file. The
-driver compares them and reports `[13b] ECHO MISSING` when they disagree.
+Then pass that same line to the ask as `expectEcho`, having applied the SAME rule yourself to the same
+file. The driver compares them and reports `[13b] ECHO MISSING` when they disagree.
 
-**PICK A LINE WITH SUBSTANCE - a bare `}` proves NOTHING.** The literal last non-blank line of a SOURCE
-file is almost always a closing brace, a fence, or a rule, and any peer can emit one without reading a
-word. The driver rejects such a target: an expectation carrying fewer than 8 letters or digits is
-reported as `[13b] ECHO WEAK` and the echo check is SKIPPED rather than failed - failing it would punish
-the peer for a target YOU chose. So for a code artifact, walk back to the last line that says something,
-or omit the echo and rely on the other checks. This is measured, not theoretical: it was found on the
-first live consult that used the echo, where the artifact was a `.cs` file.
+**THE RULE IS MECHANICAL - "at least 8 letters or digits" - AND THAT IS THE POINT.** An earlier wording
+said to pick the last line "with substance", and substance is a judgment call: you and the peer can read
+the same file, each pick a defensible line, disagree, and RED an honest review. Two agents applying a
+counting rule cannot disagree. Count letters and digits only - punctuation, braces and whitespace do not
+count toward the 8.
+
+**Why a threshold at all: a bare `}` proves NOTHING.** The literal last non-blank line of a SOURCE file is
+almost always a closing brace, a fence, or a rule, and any peer can emit one without reading a word. The
+driver applies exactly the same rule and reports `[13b] ECHO WEAK` for a target below the threshold,
+SKIPPING the echo check rather than failing it - failing it would punish the peer for a target the driver
+chose. Measured, not theoretical: found on the first live consult that used the echo, whose artifact was a
+`.cs` file.
+
+**If NO line in the artifact reaches 8 letters or digits, omit `expectEcho`.** The driver then reports
+`[13b] NO ECHO` - the check did not run, and says so, rather than pretending it did.
 
 **Why this and not a nonce.** A nonce you invent proves only that the peer read your BRIEF. The
 artifact's last line proves it reached the END of the thing under review - which is exactly what a

@@ -97,14 +97,34 @@ public class McpTools
         // AN ECHO TARGET THAT CANNOT DISCRIMINATE IS NOT A CHECK. Independent of the verdicts above,
         // because it is a fact about the ASK, not about the reply - the same category as UNCHECKED.
         // (Capstone R1: the last non-blank line of any C# file is "}", which any peer can emit.)
-        if (expectEcho is not null && !SemanticEcho.IsUsableExpectation(expectEcho))
+        if (expectEcho is null)
+        {
+            // FAIL-OPEN, CLOSED. The weak-target check only fired when a target was SUPPLIED, so an ask
+            // that simply omitted the parameter bypassed the strongest signal in total silence - the same
+            // shape UNCHECKED exists to close for `discipline`. Omission stays LEGAL, because a consult
+            // with no primary artifact has nothing to echo; it just stops being invisible. Only a
+            // recognised discipline is told, so ordinary questions are not nagged.
+            // (Capstone R2, Mechanism Gamer.)
+            if (DisciplineContract.TerminalTokenFor(discipline) is not null)
+            {
+                blocks.Add(new TextContentBlock
+                {
+                    Text = "[13b] NO ECHO: this consult named a discipline but supplied no echo target, "
+                         + "so the strongest completeness check did NOT run - only the terminal token was "
+                         + "verified. If the brief named a primary artifact, re-issue with expectEcho set "
+                         + "to that file's last substantive line. If it genuinely had no artifact (a "
+                         + "design question, a pasted fork), this notice is expected."
+                });
+            }
+        }
+        else if (!SemanticEcho.IsUsableExpectation(expectEcho))
         {
             blocks.Add(new TextContentBlock
             {
-                Text = "[13b] ECHO WEAK: the echo target you supplied cannot prove anything - it carries "
+                Text = "[13b] ECHO WEAK: the supplied echo target cannot prove anything - it carries "
                      + "fewer than " + SemanticEcho.MinSubstantiveChars + " letters or digits, so a peer "
                      + "could emit it without reading the artifact (a bare '}' ends every C# file). The "
-                     + "echo check was SKIPPED rather than failed. Pick the last non-blank line that "
+                     + "echo check was SKIPPED rather than failed. Use the last non-blank line that "
                      + "carries actual content, or omit expectEcho and rely on the other checks."
             });
         }

@@ -100,6 +100,25 @@ public class ReplyArchiveTests : IDisposable
     }
 
     [Fact]
+    public void The_pruner_deletes_only_files_IT_wrote_never_a_foreign_one()
+    {
+        // CAPSTONE R2 FINDING (Mechanism Gamer), verified. The pruner sorted ORDINALLY and deleted the
+        // first N. Digits sort before letters, so a file an operator drops in here named "00-scratch.md"
+        // sorts above every 2026-timestamped name and is deleted first - silently, since every failure in
+        // this class is swallowed. A pruner that deletes someone else's data is a footgun, not a bound.
+        Directory.CreateDirectory(_dir);
+        var foreign = Path.Combine(_dir, "00-scratch.md");
+        File.WriteAllText(foreign, "an operator's notes");
+
+        var t0 = new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc);
+        for (var i = 1; i <= ReplyArchive.MaxIndexRows + 5; i++)
+            ReplyArchive.Write(_dir, "c", new string('a', i), t0.AddSeconds(i));
+
+        Assert.True(File.Exists(foreign), "the pruner deleted a file it did not write");
+        Assert.Equal("an operator's notes", File.ReadAllText(foreign));
+    }
+
+    [Fact]
     public void A_hostile_cascade_id_cannot_write_OUTSIDE_the_archive_directory()
     {
         // MUTATION-AUDIT ROW, not in the plan. Dropping Sanitise entirely left all five planned rows

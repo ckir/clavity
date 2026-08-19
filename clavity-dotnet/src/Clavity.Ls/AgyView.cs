@@ -240,7 +240,19 @@ public sealed class AgyView
             var bytes = reply.Answer is null ? 0 : Encoding.UTF8.GetByteCount(reply.Answer);
             sizeAnomaly = ReplySizeHistory.IsAnomalouslySmall(recent, bytes);
             // Archive AFTER measuring, so this reply is never part of its own baseline.
-            ReplyArchive.Write(archive, reply.CascadeId, reply.Answer, DateTime.UtcNow);
+            //
+            // The archive swallows every failure by design - it must never turn a working ask into a
+            // failed one - but SILENCE is a separate choice, and a wrong one: an unwritable archive
+            // freezes the size baseline while SIZE WARNINGs keep firing against a stale norm, with
+            // nothing anywhere saying why. The swallow stays; the silence does not.
+            // (Capstone R2, Blindspot Auditor.)
+            if (ReplyArchive.Write(archive, reply.CascadeId, reply.Answer, DateTime.UtcNow) is null)
+            {
+                _options.Diagnostics.WriteLine(
+                    $"clavity: 13b reply archive write FAILED at {archive} - the size baseline will not "
+                    + "advance and any size warning is measured against a stale norm. The ask itself is "
+                    + "unaffected.");
+            }
         }
 
         // EchoMissing IS assigned here. The plan's draft computed it and then returned a record that

@@ -101,7 +101,11 @@ public static class ReplyArchive
     {
         try
         {
-            var files = Directory.GetFiles(dir, "*.md");
+            // MATCH ONLY WHAT THIS CLASS WRITES. An ordinal sort over every *.md puts a foreign
+            // "00-scratch.md" above every 2026-timestamped name, and the pruner would delete it first -
+            // silently, since everything here is swallowed. The glob is the fix: a name this class did
+            // not produce is not a candidate for deletion. (Capstone R2, Mechanism Gamer.)
+            var files = Directory.GetFiles(dir, "20??????-??????-*.md");
             if (files.Length <= MaxIndexRows) return;
             Array.Sort(files, StringComparer.Ordinal);
             for (var i = 0; i < files.Length - MaxIndexRows; i++)
