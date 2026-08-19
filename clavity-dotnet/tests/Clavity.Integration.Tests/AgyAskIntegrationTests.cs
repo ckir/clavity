@@ -465,12 +465,13 @@ public class AgyAskIntegrationTests
 
             Assert.Equal(1, reports[0].Window);                   // monotonic, 1-based
             Assert.Equal(2, reports[1].Window);
-            Assert.True(reports[1].Window > reports[0].Window, "Window must strictly increase for the MCP relay");
-
             Assert.Equal(1, reports[0].NewSteps);                 // +1, our own user step discounted
             Assert.Equal(3, reports[1].NewSteps);                 // +1 then +2, cumulative
             Assert.True(reports[1].TotalSteps > reports[0].TotalSteps);
-            Assert.True(reports[1].Elapsed >= reports[0].Elapsed);
+            // NOTE: an `Elapsed >= Elapsed` assertion was removed here. Elapsed is DateTime.UtcNow - start sampled
+            // later each iteration, so it is monotonic BY CONSTRUCTION and the assertion could not fail. An
+            // assertion that cannot fail adds no coverage and misleads the next reader about what is guarded.
+            // The redundant Window > Window check went with it: the two Assert.Equal above already pin 1 and 2.
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -525,15 +526,27 @@ public class AgyAskIntegrationTests
                 IdleStallWindow = TimeSpan.FromMilliseconds(150),
                 IdleAbsoluteMax = TimeSpan.Zero,
             });
-            var reply = await view.AskAsync("do a long thing", progress: new ThrowingProgress());
+            var sink = new ThrowingProgress();
+            var reply = await view.AskAsync("do a long thing", progress: sink);
             Assert.Equal("final answer", reply.Answer);
+            // Without this the test is VACUOUS: delete the report call and the sink never throws, nothing is
+            // swallowed, and the assertion above still passes. Capstone R3 found exactly that.
+            Assert.True(sink.Invocations > 0, "the sink must actually have been invoked for the swallow to mean anything");
         }
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>Throws on every report AND counts them. The count is load-bearing: a test that only asserts the
+    /// ask succeeded would pass on a build that stopped reporting entirely, because a sink that is never called
+    /// never throws and nothing is swallowed. Asserting Invocations &gt; 0 is what makes it able to fail.</summary>
     private sealed class ThrowingProgress : IProgress<AgyWaitProgress>
     {
-        public void Report(AgyWaitProgress value) => throw new InvalidOperationException("sink is broken");
+        public int Invocations;
+        public void Report(AgyWaitProgress value)
+        {
+            Interlocked.Increment(ref Invocations);
+            throw new InvalidOperationException("sink is broken");
+        }
     }
 
     /// <summary>Throws a cancellation the sink generated for its OWN reasons - an internal transport timeout -
@@ -541,7 +554,12 @@ public class AgyAskIntegrationTests
     /// exactly why a type-based filter got this wrong.</summary>
     private sealed class SinkTimesOutProgress : IProgress<AgyWaitProgress>
     {
-        public void Report(AgyWaitProgress value) => throw new TaskCanceledException("the sink's own transport timed out");
+        public int Invocations;
+        public void Report(AgyWaitProgress value)
+        {
+            Interlocked.Increment(ref Invocations);
+            throw new TaskCanceledException("the sink's own transport timed out");
+        }
     }
 
     /// <summary>Cancels the caller's token and then throws a genuine cancel WRAPPED in an AggregateException, the
@@ -577,14 +595,16 @@ public class AgyAskIntegrationTests
                 IdleStallWindow = TimeSpan.FromMilliseconds(150),
                 IdleAbsoluteMax = TimeSpan.Zero,
             });
-            var reply = await view.AskAsync("do a long thing", progress: new SinkTimesOutProgress());
+            var sink = new SinkTimesOutProgress();
+            var reply = await view.AskAsync("do a long thing", progress: sink);
             Assert.Equal("final answer", reply.Answer);
+            Assert.True(sink.Invocations > 0, "the sink must actually have been invoked for the swallow to mean anything");
         }
         finally { Directory.Delete(dir, true); }
     }
 
     [Fact]
-    public async Task AskAsync_does_NOT_swallow_a_sink_throw_once_the_CALLER_has_cancelled()
+    public async Task AskAsync_surfaces_a_CLEAN_cancellation_when_the_sink_throws_after_the_caller_cancelled()
     {
         // Capstone R2, the other direction: when the caller HAS cancelled, nothing the sink throws may hide it -
         // including a cancel WRAPPED in an AggregateException, which is what a sink bridging async with .Result
@@ -606,13 +626,22 @@ public class AgyAskIntegrationTests
                 IdleAbsoluteMax = TimeSpan.Zero,
             });
             using var cts = new CancellationTokenSource();
-            // Assert the SPECIFIC exception that must escape, never merely "something threw". A bare catch swallows
-            // the sink's AggregateException and the caller's now-cancelled token makes the NEXT window throw
-            // OperationCanceledException instead - so ThrowsAnyAsync<Exception> passes under BOTH the correct filter
-            // and the broken one, and proves nothing. A mutation run caught exactly that: the looser assertion
-            // survived a bare-catch mutant. Naming AggregateException is what makes this test able to fail.
-            await Assert.ThrowsAsync<AggregateException>(() => view.AskAsync(
+            // A caller who cancels must get a CANCELLATION - never the sink's crash. The sink here cancels the
+            // caller's token and then throws an AggregateException; that throw must be swallowed like any other, and
+            // the cancellation must reach the caller through the loop's own linked windowCts. An earlier version of
+            // this test asserted the AggregateException ESCAPED, which enforced exactly the F3 violation capstone R3
+            // identified: a cancelled ask faulting with an unrelated exception instead of cancelling.
+            var ex = await Record.ExceptionAsync(() => view.AskAsync(
                 "do a long thing", progress: new CancelsCallerThenThrowsWrapped(cts), cancellationToken: cts.Token));
+
+            // The shape a caller-cancel takes here is the file's ESTABLISHED one, asserted the same way the existing
+            // "propagates a caller cancel" tests assert it: gRPC surfaces a cancelled call as RpcException{Cancelled}
+            // wrapping an OperationCanceledException, so both forms are legitimate. Naming only one would make this
+            // test brittle against which layer happens to observe the cancel first.
+            Assert.NotNull(ex);
+            Assert.IsNotType<AggregateException>(ex);   // the sink's throw must NOT be what reaches the caller
+            Assert.True(ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled },
+                $"a cancelled ask must surface a cancellation, not the sink's crash; got: {ex}");
         }
         finally { Directory.Delete(dir, true); }
     }

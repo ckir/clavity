@@ -291,23 +291,26 @@ public sealed class AgyView
                 {
                     progress.Report(new AgyWaitProgress(++window, total, Math.Max(0, total - (before + 1)), DateTime.UtcNow - start));
                 }
-                catch when (!cancellationToken.IsCancellationRequested)
+                catch
                 {
-                    // A broken progress sink is the caller's problem, not a reason to fail the ask.
+                    // UNCONDITIONAL, and that is the point: the sink is OBSERVATIONAL, so nothing it throws may
+                    // affect the ask - not even a cancellation-shaped exception.
                     //
-                    // The guard is on WHETHER THE CALLER CANCELLED, not on the exception's TYPE, and this is the
-                    // idiom the rest of this loop already uses (see the window-wait catch and the probe catch above,
-                    // both `when (!cancellationToken.IsCancellationRequested)`). An earlier version of this block
-                    // filtered `ex is not OperationCanceledException` instead, and that type test was wrong in BOTH
-                    // directions:
-                    //   - a sink that bridges async with .Result/.Wait() surfaces a genuine cancel wrapped in an
-                    //     AggregateException, which is NOT an OperationCanceledException, so the type filter
-                    //     swallowed the very cancel it was added to preserve;
-                    //   - a sink whose OWN internal transport times out throws TaskCanceledException (which DERIVES
-                    //     from OperationCanceledException) while the caller's token is perfectly live, so the type
-                    //     filter let it escape and failed the ask on a cancellation that never happened.
-                    // Keying on the token settles both: if the caller did not cancel, nothing the sink throws can
-                    // fail the ask; if the caller did, nothing the sink throws can hide it.
+                    // The caller's cancellation is NOT carried by this block and never was. It is surfaced by the
+                    // loop's own linked windowCts on the next iteration, which is what the pre-existing cancel tests
+                    // (AgyAskIntegrationTests "cancel me") pin, independently of any sink. So swallowing everything
+                    // here loses nothing.
+                    //
+                    // Two narrower filters were tried here and BOTH were worse, which is why this comment is long:
+                    //   - `ex is not OperationCanceledException` discriminated on TYPE, and type is the wrong
+                    //     question. It swallowed a genuine cancel wrapped in an AggregateException (the shape a sink
+                    //     bridging async with .Result produces) and let a sink's OWN TaskCanceledException - its
+                    //     internal transport timing out, caller perfectly live - escape and fail a healthy ask.
+                    //   - `when (!cancellationToken.IsCancellationRequested)` fixed those but broke F3 the other
+                    //     way: once the caller HAS cancelled, ANY unrelated sink throw (an InvalidOperationException
+                    //     from the sink's own state, say) escapes and faults the ask with that exception instead of
+                    //     cancelling cleanly. A caller who cancels must get a cancellation, not a sink's crash.
+                    // Both attempts existed to preserve a cancellation that this block never carried.
                 }
             }
 
