@@ -291,9 +291,15 @@ public sealed class AgyView
                 {
                     progress.Report(new AgyWaitProgress(++window, total, Math.Max(0, total - (before + 1)), DateTime.UtcNow - start));
                 }
-                catch
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     // A broken progress sink is the caller's problem, not a reason to fail the ask.
+                    //
+                    // OperationCanceledException is deliberately NOT swallowed. A bare catch here would absorb the
+                    // one exception that means "the caller wants to stop", and although the next iteration's
+                    // windowCts would surface the cancel anyway, absorbing it makes this block the only place in the
+                    // wait loop that treats a cancel as noise -- the loop's stated guarantee is that a caller cancel
+                    // propagates as cancellation on every path (F3), and a swallow here is a silent exception to it.
                 }
             }
 

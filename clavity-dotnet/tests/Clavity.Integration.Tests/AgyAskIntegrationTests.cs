@@ -536,6 +536,41 @@ public class AgyAskIntegrationTests
         public void Report(AgyWaitProgress value) => throw new InvalidOperationException("sink is broken");
     }
 
+    private sealed class CancellingProgress : IProgress<AgyWaitProgress>
+    {
+        public void Report(AgyWaitProgress value) => throw new OperationCanceledException("caller wants to stop");
+    }
+
+    [Fact]
+    public async Task AskAsync_does_NOT_swallow_a_cancellation_thrown_by_the_progress_sink()
+    {
+        // The other half of the narrowed catch, and the reason it is narrowed. A BARE catch would absorb the one
+        // exception that means "the caller wants to stop" — making this block the single place in the wait loop that
+        // treats a cancel as noise, contradicting the loop's F3 guarantee that a caller cancel propagates as
+        // cancellation on every path. Paired with AskAsync_survives_a_progress_sink_that_throws: together they pin
+        // that the catch swallows sink FAILURES and only sink failures.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => view.AskAsync("do a long thing", progress: new CancellingProgress()));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [Fact]
     public async Task AskAsync_stalls_after_exactly_one_window_when_agy_makes_no_progress()
     {
