@@ -1247,7 +1247,7 @@ and in `Evaluate13b`, replace `return reply with { ... };` with:
         {
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             var result = await McpTools.AgyAsk(view, "review it",
-                new CollectingProgress<ProgressNotificationValue>(), expectTerminal: "[VERDICT:");
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
             var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             Assert.Contains(texts, t => t.Contains("[13b] TRUNCATED REPLY"));
         }
@@ -1267,7 +1267,7 @@ and in `Evaluate13b`, replace `return reply with { ... };` with:
         {
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             var result = await McpTools.AgyAsk(view, "review it",
-                new CollectingProgress<ProgressNotificationValue>(), expectTerminal: "[VERDICT:");
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
             var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             Assert.DoesNotContain(texts, t => t.Contains("[13b]"));
         }
@@ -1484,7 +1484,9 @@ end-to-end flag row, both with passing controls beside them. The owner's added s
 carries complete code. The one deliberate omission is the `<step-2-base>` sha in Task 7, which cannot exist
 before Task 1 is committed; the step says how to resolve it.
 
-**3. Type consistency.** `TerminalToken.IsSatisfied(string?, string?)`, `ReplySizeHistory
+**3. Type consistency.** 🔴 **One defect was found here AFTER the plan was first committed and is recorded rather than quietly fixed:** Task 5b's two MCP-layer tests still called `McpTools.AgyAsk(..., expectTerminal: "[VERDICT:")` after the owner ruling changed that surface to take `discipline`. They would not have compiled. The two `view.AskAsync(..., expectTerminal:)` call sites are CORRECT and deliberately unchanged - `AskAsync` keeps the literal internally; only the MCP surface names a discipline. **A signature change is not done when the signature changes; it is done when every caller moves.**
+
+ `TerminalToken.IsSatisfied(string?, string?)`, `ReplySizeHistory
 .IsAnomalouslySmall(IReadOnlyCollection<int>, int)`, `ReplyArchive.Write(string, string, string?,
 DateTime)` and `ReplyArchive.ReadRecentSizes(string)` are used with those exact signatures in Tasks 4 and 5.
 `AskReply`'s new members are named `TerminalTokenMissing` and `SizeAnomaly` throughout.
