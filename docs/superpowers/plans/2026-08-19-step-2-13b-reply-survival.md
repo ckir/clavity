@@ -25,6 +25,28 @@ Settled by AGY-NEGOTIATE and owner-ruled 2026-08-19:
 | the reply died on the wire, or the model stopped mid-thought | terminal token, **per-discipline** | deterministic PROOF |
 | the reply arrived intact but the work was never done — the **lone verdict line** | byte-count vs that peer's recent replies | **HEURISTIC WARNING only** |
 
+**SEMANTIC ECHO covers BOTH, and it is the strongest of the three.** Added after the AGY-AFTER panel
+proposed it as a disposition neither the ROADMAP nor the sequencing spec names (verified: no mention of
+echo/checkpoint in either). The brief requires the peer to quote, verbatim and immediately before its
+verdict, **the last non-blank line of the primary artifact it was told to read**. The driver computes that
+line independently from the same file and compares.
+
+**Why it beats both other signals.** A peer that stopped mid-thought never reached the end of the artifact
+and cannot produce the line. A peer that emitted a lone verdict line without doing the work never read the
+artifact and cannot produce it either. So one check catches transport truncation AND the lone-verdict-line
+laziness, **without size statistics that cry wolf on a terse but honest review.**
+
+⚠ **It is NOT free and this plan does not pretend otherwise.** It only works when the consult names a
+primary artifact - a review of a pasted question has nothing to echo - so `expectEcho` is optional in
+exactly the way `expectTerminal` is. And it is defeatable by a peer that reads only the file's tail. It
+raises the floor; it does not prove the work was done.
+
+⚠ **Interaction with the byte-count, stated rather than left implicit.** If the echo check earns its
+keep, the heuristic becomes largely redundant - its whole purpose was catching the case the echo catches
+deterministically. The byte-count is retained here because it is named in the agreed "Done means", NOT
+because it is still load-bearing. **Revisiting that is an owner decision after this ships, not a silent
+drop now.**
+
 **The byte-count must never be a gate.** A genuine "no findings" reply is short and correct. It warns; a
 human decides. Conversely the token check IS deterministic and may fail the consult.
 
@@ -243,6 +265,152 @@ GREEN, the other three on [VERDICT:.
 
 The 20 KB-without-a-token control is the one the sequencing spec demands: it
 proves detection is STRUCTURAL, not size-based."
+```
+
+---
+
+## Task 1b: `SemanticEcho` — proof the peer reached the END of the artifact
+
+**Files:**
+- Create: `clavity-dotnet/src/Clavity.Ls/SemanticEcho.cs`
+- Test: `clavity-dotnet/tests/Clavity.Ls.Tests/SemanticEchoTests.cs`
+
+- [ ] **Step 1: Write the failing tests**
+
+```csharp
+using System.Linq;
+using Clavity.Ls;
+using Xunit;
+
+namespace Clavity.Ls.Tests;
+
+public class SemanticEchoTests
+{
+    [Fact]
+    public void No_expectation_is_always_satisfied()
+    {
+        // A consult with no primary artifact has nothing to echo. It must not be reported as incomplete.
+        Assert.True(SemanticEcho.IsSatisfied("anything", null));
+    }
+
+    [Fact]
+    public void Echo_within_the_last_three_non_blank_lines_is_satisfied()
+    {
+        var reply = "findings\n\nECHO: the final line of the file\n\n[VERDICT: ALIGNED]\n";
+        Assert.True(SemanticEcho.IsSatisfied(reply, "the final line of the file"));
+    }
+
+    [Fact]
+    public void Echo_present_but_FAR_from_the_end_is_NOT_satisfied()
+    {
+        // THE POINT OF THE CHECK. A peer that quotes the line early and then truncates has still lost its
+        // tail. Requiring it NEAR THE VERDICT is what makes this evidence of reaching the end.
+        var filler = string.Join("\n", Enumerable.Repeat("more analysis", 10));
+        var reply = "the final line of the file\n" + filler + "\n[VERDICT: ALIGNED]\n";
+        Assert.False(SemanticEcho.IsSatisfied(reply, "the final line of the file"));
+    }
+
+    [Fact]
+    public void A_reply_that_never_echoes_is_NOT_satisfied()
+    {
+        // The lone-verdict-line shape: a peer that never read the artifact cannot produce its last line.
+        Assert.False(SemanticEcho.IsSatisfied("Review complete.\n\n[VERDICT: ALIGNED]\n", "the final line of the file"));
+    }
+
+    [Fact]
+    public void Markdown_quoting_around_the_echo_still_counts()
+    {
+        // A peer wrapping the echo in backticks or a blockquote is complying. Failing it teaches operators
+        // to ignore the check, which is how a guard dies.
+        Assert.True(SemanticEcho.IsSatisfied("> `the final line of the file`\n\n[VERDICT: ALIGNED]\n",
+                                             "the final line of the file"));
+    }
+
+    [Fact]
+    public void A_blank_or_whitespace_expectation_is_treated_as_NO_expectation()
+    {
+        // A primary artifact ending in blank lines yields an empty "last line". Demanding an empty echo
+        // would fail every reply. Degrade to no-expectation rather than to always-fail.
+        Assert.True(SemanticEcho.IsSatisfied("anything\n\n[VERDICT: ALIGNED]\n", "   "));
+    }
+}
+```
+
+- [ ] **Step 2: Run and verify they fail**
+
+Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~SemanticEchoTests`
+Expected: FAIL — `error CS0103: The name 'SemanticEcho' does not exist`.
+
+- [ ] **Step 3: Implement**
+
+```csharp
+using System;
+using System.Linq;
+
+namespace Clavity.Ls;
+
+/// <summary>Did the peer reach the END of the artifact it was told to read? The brief requires it to quote,
+/// verbatim and near its verdict, the last non-blank line of that artifact; the driver computes the same
+/// line from the same file and compares.
+///
+/// This is the strongest of 13b's three signals because it catches BOTH failure modes with one check. A
+/// peer that stopped mid-thought never reached the end and cannot produce the line. A peer that emitted a
+/// lone verdict line without doing the work never read the artifact and cannot produce it either - the
+/// case a terminal-token oracle passes and only size statistics otherwise hint at.
+///
+/// LIMITS, stated because a guard whose limits are unstated gets trusted past them: it needs a primary
+/// artifact, so a consult on a pasted question has nothing to echo; and a peer that reads only the file's
+/// tail defeats it. It raises the floor. It does not prove the work was done.</summary>
+public static class SemanticEcho
+{
+    /// <summary>How close to the end the echo must appear. Three tolerates a verdict line, a blank, and
+    /// the echo itself without letting an early quote count.</summary>
+    public const int TailLines = 3;
+
+    public static bool IsSatisfied(string? answer, string? expectedEcho)
+    {
+        // No artifact, or an artifact whose last line is blank: nothing to demand. Degrading to
+        // "satisfied" is deliberate - degrading to "failed" would red every such consult forever.
+        if (string.IsNullOrWhiteSpace(expectedEcho)) return true;
+        if (string.IsNullOrWhiteSpace(answer)) return false;
+
+        var needle = Normalise(expectedEcho);
+        if (needle.Length == 0) return true;
+
+        var tail = answer.Split('\n')
+                         .Select(Normalise)
+                         .Where(l => l.Length > 0)
+                         .Reverse()
+                         .Take(TailLines);
+
+        return tail.Any(line => line.Contains(needle, StringComparison.Ordinal));
+    }
+
+    /// <summary>Strip the decoration a complying peer legitimately adds - backticks, blockquote markers,
+    /// emphasis - so formatting never fails an honest echo.</summary>
+    private static string Normalise(string line) =>
+        line.Trim().Trim('>', '`', '*', '_', ' ', '\t').Trim();
+}
+```
+
+- [ ] **Step 4: Run and verify they pass**
+
+Run: `cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter FullyQualifiedName~SemanticEchoTests`
+Expected: `Passed!  - Failed: 0, Passed: 6`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add clavity-dotnet/src/Clavity.Ls/SemanticEcho.cs clavity-dotnet/tests/Clavity.Ls.Tests/SemanticEchoTests.cs
+git commit -m "feat(ls): SemanticEcho - proof the peer reached the artifact's end
+
+Proposed by the AGY-AFTER panel as a disposition neither the roadmap nor the
+spec names (verified). It catches BOTH of 13b's problems with one check: a peer
+that stopped mid-thought never reached the end, and a peer that emitted a lone
+verdict line never read the artifact - so neither can quote its last line.
+
+The echo must appear within the last 3 non-blank lines. An early quote followed
+by truncation is exactly what this rejects."
 ```
 
 ---
@@ -592,6 +760,10 @@ public sealed record AskReply(
     // TerminalTokenMissing is a DETERMINISTIC verdict: the discipline named a token and the reply does
     // not end with it. SizeAnomaly is a HEURISTIC WARNING and must never be treated as proof.
     bool TerminalTokenMissing = false,
+    // The peer did not quote the artifact's last line near its verdict: it never reached the end, or
+    // never read the artifact at all. Deterministic like TerminalTokenMissing, and strictly stronger -
+    // it is the only flag that catches a reply whose token is present but whose body was never written.
+    bool EchoMissing = false,
     bool SizeAnomaly = false);
 ```
 
@@ -611,6 +783,7 @@ Change the signature at `AgyView.cs:172` to add one optional parameter, keeping 
         TimeSpan? timeout = null,
         IProgress<AgyWaitProgress>? progress = null,
         string? expectTerminal = null,
+        string? expectEcho = null,
         CancellationToken cancellationToken = default)
 ```
 
@@ -618,7 +791,7 @@ Replace the `return BoundedView.ProjectAskReply(full.CascadeId, delta);` at `Agy
 
 ```csharp
                 var projected = BoundedView.ProjectAskReply(full.CascadeId, delta);
-                return Evaluate13b(projected, expectTerminal);
+                return Evaluate13b(projected, expectTerminal, expectEcho);
 ```
 
 Add this private method to `AgyView`, directly beneath `AskAsync`:
@@ -630,9 +803,10 @@ Add this private method to `AgyView`, directly beneath `AskAsync`:
     /// Both are computed even when the archive is unavailable: the token check needs no history, and a
     /// missing archive simply yields no baseline, so the size warning stays false rather than firing on
     /// an empty one.</summary>
-    private AskReply Evaluate13b(AskReply reply, string? expectTerminal)
+    private AskReply Evaluate13b(AskReply reply, string? expectTerminal, string? expectEcho)
     {
         var tokenMissing = !TerminalToken.IsSatisfied(reply.Answer, expectTerminal);
+        var echoMissing = !SemanticEcho.IsSatisfied(reply.Answer, expectEcho);
 
         var sizeAnomaly = false;
         if (_options.GoldenHeaderDir is { } dir)
@@ -659,13 +833,14 @@ parameter and pass it through:
 ```csharp
     public static async Task<CallToolResult> AgyAsk(
         AgyView view, string message, IProgress<ProgressNotificationValue> progress,
-        string? expectTerminal = null, CancellationToken cancellationToken = default)
+        string? expectTerminal = null, string? expectEcho = null,
+        CancellationToken cancellationToken = default)
 ```
 
 and change the `view.AskAsync(...)` call inside it to:
 
 ```csharp
-        var json = await RunAsync(() => view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, cancellationToken: cancellationToken));
+        var json = await RunAsync(() => view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, expectEcho: expectEcho, cancellationToken: cancellationToken));
 ```
 
 **An OPTIONAL parameter is additive to the generated MCP input schema — this is measured, not assumed.**
@@ -846,6 +1021,15 @@ In `McpTools.AgyAsk`, after `var guidance = view.TryTakeGuidanceBlock();`, add:
                      + "Recover with agy_look or re-ask; never read it as 'no findings'."
             });
         }
+        else if (reply13b is { EchoMissing: true })
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[13b] ECHO MISSING: the peer did not quote the artifact's last line near its "
+                     + "verdict, so it did not reach the end of what it was asked to read - or did not "
+                     + "read it. Treat this consult as INCOMPLETE and do not fold findings from it."
+            });
+        }
         else if (reply13b is { SizeAnomaly: true })
         {
             blocks.Add(new TextContentBlock
@@ -874,7 +1058,12 @@ In `AgyView`, add beside the other state:
 and in `Evaluate13b`, replace `return reply with { ... };` with:
 
 ```csharp
-        var evaluated = reply with { TerminalTokenMissing = tokenMissing, SizeAnomaly = sizeAnomaly };
+        var evaluated = reply with
+        {
+            TerminalTokenMissing = tokenMissing,
+            EchoMissing = echoMissing,
+            SizeAnomaly = sizeAnomaly,
+        };
         LastReply = evaluated;
         return evaluated;
 ```
@@ -999,6 +1188,34 @@ each of which produced a real finding on 2026-08-19:
 
 **A payload whose questions all have knowable answers is not asking anything.** If you can predict every
 answer, you are seeking agreement, not review.
+```
+
+- [ ] **Step 2b: Make the briefs ASK for the echo — WITHOUT THIS THE CHECK FAILS EVERY CONSULT**
+
+🔴 **This step is not optional garnish; omitting it breaks every review.** The driver computes the
+expected echo and compares. If the brief never told the peer to produce one, NO reply can satisfy it and
+every consult reds - a fail-CLOSED guard on the hot path of every discipline. **The demand and the check
+must ship in the same commit.**
+
+Insert into the payload-construction section of EACH of the four skills:
+
+```markdown
+**Every payload that names a PRIMARY ARTIFACT must demand a SEMANTIC ECHO.** Add, as the second-to-last
+instruction:
+
+> Immediately before your terminal verdict, quote verbatim the LAST NON-BLANK LINE of
+> `<the primary artifact path>`. Quote it exactly; do not paraphrase or summarise it.
+
+Then pass that same line to the ask as `expectEcho`, having read it yourself from the same file. The
+driver compares them and reports `[13b] ECHO MISSING` when they disagree.
+
+**Why this and not a nonce.** A nonce you invent proves only that the peer read your BRIEF. The
+artifact's last line proves it reached the END of the thing under review - which is exactly what a
+truncated or unread review cannot do.
+
+**When there is no primary artifact** - a design question, a pasted fork with no file - omit the demand
+and pass no `expectEcho`. The check degrades to satisfied rather than to failed, deliberately: a guard
+that reds on consults it was never meant to cover gets disabled, and then it covers nothing.
 ```
 
 - [ ] **Step 3: Mirror to `clavity-classic` and prove byte-identity**
