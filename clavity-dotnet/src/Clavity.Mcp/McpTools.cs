@@ -42,7 +42,20 @@ public class McpTools
         // THE INJECTION POINT. The caller names its discipline; the driver supplies the token. A caller
         // cannot mistype "[VERDICT:" into a silent opt-out, because it never types it.
         var expectTerminal = DisciplineContract.TerminalTokenFor(discipline);
-        var json = await RunAsync(() => view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, expectEcho: expectEcho, cancellationToken: cancellationToken));
+
+        // CAPTURED PER CALL, never on the view. An earlier draft parked the evaluated reply on
+        // AgyView.LastReply - but Program.cs:44 registers AgyView as a SINGLETON, so concurrent asks
+        // would read each other's verdicts. Worse, it was wrong SINGLE-THREADED too: RunAsync converts a
+        // failed ask into an error payload, leaving the previous ask's flags in place to be reported
+        // against a reply that does not exist. A local stays null on that path, which is the correct
+        // answer - no reply, no verdict. (Capstone R1, State Corruptor.)
+        AskReply? reply13b = null;
+        var json = await RunAsync(async () =>
+        {
+            var r = await view.AskAsync(message, progress: relay, expectTerminal: expectTerminal, expectEcho: expectEcho, cancellationToken: cancellationToken);
+            reply13b = r;
+            return r;
+        });
         var blocks = new List<ContentBlock> { new TextContentBlock { Text = json } };
         var guidance = view.TryTakeGuidanceBlock();
         if (guidance is not null) blocks.Add(new TextContentBlock { Text = guidance });
@@ -53,7 +66,6 @@ public class McpTools
         // These are if/else-if, not independent blocks. A truncated reply is usually also a small one,
         // and emitting several would make the deterministic verdicts compete with the heuristic for the
         // reader's attention. The deterministic ones win, strongest first.
-        var reply13b = view.LastReply;
         if (reply13b is { TerminalTokenMissing: true })
         {
             blocks.Add(new TextContentBlock
@@ -79,6 +91,21 @@ public class McpTools
                 Text = "[13b] SIZE WARNING: this reply is far smaller than this peer's recent replies. "
                      + "That is a HEURISTIC, not proof - a genuine 'no findings' is legitimately short. "
                      + "Confirm the reply is complete before folding or accepting a clean verdict."
+            });
+        }
+
+        // AN ECHO TARGET THAT CANNOT DISCRIMINATE IS NOT A CHECK. Independent of the verdicts above,
+        // because it is a fact about the ASK, not about the reply - the same category as UNCHECKED.
+        // (Capstone R1: the last non-blank line of any C# file is "}", which any peer can emit.)
+        if (expectEcho is not null && !SemanticEcho.IsUsableExpectation(expectEcho))
+        {
+            blocks.Add(new TextContentBlock
+            {
+                Text = "[13b] ECHO WEAK: the echo target you supplied cannot prove anything - it carries "
+                     + "fewer than " + SemanticEcho.MinSubstantiveChars + " letters or digits, so a peer "
+                     + "could emit it without reading the artifact (a bare '}' ends every C# file). The "
+                     + "echo check was SKIPPED rather than failed. Pick the last non-blank line that "
+                     + "carries actual content, or omit expectEcho and rely on the other checks."
             });
         }
 

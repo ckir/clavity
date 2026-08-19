@@ -66,6 +66,40 @@ public class ReplyArchiveTests : IDisposable
     }
 
     [Fact]
+    public void The_REPLY_FILES_are_bounded_too_not_just_the_size_index()
+    {
+        // CAPSTONE R1 FINDING (Resource Vampire), verified. The index is pruned on write; the .md files
+        // it indexes were not, so every ask left one behind forever. The panel's earlier prune fix
+        // bounded the READ and left the actual disk growth untouched - a partial fix that reads as a
+        // complete one.
+        var t0 = new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc);
+        for (var i = 1; i <= ReplyArchive.MaxIndexRows + 5; i++)
+            ReplyArchive.Write(_dir, "c", new string('a', i), t0.AddSeconds(i));
+
+        var files = Directory.GetFiles(_dir, "*.md");
+        Assert.Equal(ReplyArchive.MaxIndexRows, files.Length);
+        // The survivors must be the NEWEST, not an arbitrary subset.
+        Assert.Contains(files, f => Path.GetFileName(f).StartsWith("20260819-100145", StringComparison.Ordinal));
+        Assert.DoesNotContain(files, f => Path.GetFileName(f).StartsWith("20260819-100001", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_torn_index_rewrite_cannot_be_observed_because_the_write_is_ATOMIC()
+    {
+        // CAPSTONE R1 FINDING (Cascade Analyst), folded with a STATED LIMIT. File.WriteAllLines truncates
+        // in place, so a crash mid-prune destroys the whole size history silently. No in-process test can
+        // kill the process mid-write, so this row pins what IS observable: the prune leaves no temp
+        // residue and loses no rows. The atomicity itself rests on File.Replace, the same mechanism the
+        // golden header already uses in this repo.
+        var t0 = new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc);
+        for (var i = 1; i <= ReplyArchive.MaxIndexRows + 3; i++)
+            ReplyArchive.Write(_dir, "c", new string('a', i), t0.AddSeconds(i));
+
+        Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
+        Assert.Equal(ReplyArchive.MaxIndexRows, ReplyArchive.ReadRecentSizes(_dir).Count);
+    }
+
+    [Fact]
     public void A_hostile_cascade_id_cannot_write_OUTSIDE_the_archive_directory()
     {
         // MUTATION-AUDIT ROW, not in the plan. Dropping Sanitise entirely left all five planned rows

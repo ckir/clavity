@@ -1499,6 +1499,90 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task A_FAILED_ask_does_not_surface_the_PREVIOUS_ask_s_13b_verdict()
+    {
+        // CAPSTONE R1 FINDING (State Corruptor), verified and STRONGER than reported. The peer flagged
+        // AgyView.LastReply as a concurrency race on a singleton - Program.cs:44 does register AgyView as
+        // a singleton, so that is real. But the defect is reachable SINGLE-THREADED and needs no race at
+        // all: RunAsync catches the exception and returns an error payload, while LastReply still holds
+        // the PREVIOUS ask's verdicts - so a failed ask reports a truncation verdict about a reply that
+        // does not exist. A deterministic control beats a timing-dependent one.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),    // ask 1 succeeds, and is FLAGGED
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),   // ask 2 stalls -> modal hang
+        };
+        var fake = new FakeAskLs("conv-1", "a review with no token", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+
+            var first = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
+            var firstTexts = first.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.Contains(firstTexts, t => t.Contains("[13b] TRUNCATED REPLY"));   // precondition
+
+            var second = await McpTools.AgyAsk(view, "review it again",
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
+            var secondTexts = second.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.DoesNotContain(secondTexts, t => t.Contains("[13b]"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_warns_ECHO_WEAK_when_the_echo_target_cannot_discriminate()
+    {
+        // CAPSTONE R1 fold. A driver reviewing a .cs file computes "}" as the last non-blank line, which
+        // every C# file ends with. Silently skipping the check would leave the operator believing it ran.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a review", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var weak = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(),
+                discipline: "agy-capstone", expectEcho: "}");
+            var weakTexts = weak.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.Contains(weakTexts, t => t.Contains("[13b] ECHO WEAK"));
+            // And it must NOT also be reported as a missing echo - the target is the problem, not the peer.
+            Assert.DoesNotContain(weakTexts, t => t.Contains("[13b] ECHO MISSING"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_does_NOT_warn_ECHO_WEAK_for_a_substantive_target()
+    {
+        // The passing control: without it a predicate that calls every target weak satisfies the row above
+        // and disables the echo check everywhere while looking diligent.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "a review", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var ok = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(),
+                discipline: "agy-capstone", expectEcho: "the last line of the artifact");
+            var okTexts = ok.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.DoesNotContain(okTexts, t => t.Contains("[13b] ECHO WEAK"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task AgyAsk_appends_UNCHECKED_when_no_discipline_is_named()
     {
         // The loud-omission block gets its OWN oracle rather than being observed incidentally by an

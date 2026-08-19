@@ -36,9 +36,20 @@ public static class ReplyArchive
             // PRUNE ON WRITE so the read stays bounded. Only the most recent rows can ever matter -
             // ReplySizeHistory looks at the last Window - and an unpruned index turns every ask into an
             // O(N) read that grows forever. Rewrite only when the file has actually outgrown the cap.
+            //
+            // ATOMICALLY. A plain WriteAllLines truncates in place, so a crash mid-prune destroys the
+            // whole size history and - because every failure here is swallowed - destroys it SILENTLY.
+            // Write a sibling temp and move it over, the same mechanism the golden header uses.
+            // (Capstone R1, Cascade Analyst.)
             var rows = File.ReadAllLines(index);
             if (rows.Length > MaxIndexRows)
-                File.WriteAllLines(index, rows[^MaxIndexRows..], new UTF8Encoding(false));
+            {
+                var tmp = index + ".tmp";
+                File.WriteAllLines(tmp, rows[^MaxIndexRows..], new UTF8Encoding(false));
+                File.Move(tmp, index, overwrite: true);
+            }
+
+            PruneReplyFiles(dir);
             return path;
         }
         catch
@@ -76,6 +87,33 @@ public static class ReplyArchive
             // Same rule: an unreadable archive yields no baseline rather than an exception.
         }
         return sizes;
+    }
+
+    /// <summary>Bound the archive DIRECTORY, not just its index.
+    ///
+    /// The index was pruned from the start; the .md files it indexes were not, so every ask left one
+    /// behind forever. Bounding the read while the actual disk growth continued is a partial fix that
+    /// reads as a complete one - the worst kind. (Capstone R1, Resource Vampire.)
+    ///
+    /// The listing is O(files), but files is bounded by this very method, so it never grows past the cap.
+    /// Names are timestamp-prefixed, so an ordinal sort is chronological.</summary>
+    private static void PruneReplyFiles(string dir)
+    {
+        try
+        {
+            var files = Directory.GetFiles(dir, "*.md");
+            if (files.Length <= MaxIndexRows) return;
+            Array.Sort(files, StringComparer.Ordinal);
+            for (var i = 0; i < files.Length - MaxIndexRows; i++)
+            {
+                try { File.Delete(files[i]); }
+                catch { /* one undeletable file must not stop the rest, nor fail the ask. */ }
+            }
+        }
+        catch
+        {
+            // Same rule as everything else here: observational, never fatal.
+        }
     }
 
     private static string Sanitise(string value)

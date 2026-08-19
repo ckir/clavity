@@ -48,9 +48,6 @@ public sealed class AgyView
     private readonly IListeningPorts _listening;
     private readonly IModalGuard _modalGuard;
 
-    /// <summary>The most recent reply this view produced, so the MCP layer can surface its 13b verdicts.
-    /// Not thread-safe by design: one AgyView drives one conversation, serially.</summary>
-    public AskReply? LastReply { get; private set; }
 
     // CascadeId-keyed in-flight tracker: an ask in flight for conversation A must NOT make a status check on idle
     // conversation B report "working" (multi-session contamination). Keyed by conversation id, not view-global.
@@ -250,14 +247,12 @@ public sealed class AgyView
         // carried only the other two - the exact "detector with no consumer" shape Task 5b exists to
         // stop, one layer earlier. A flag that is computed and dropped is worse than one never computed:
         // it reads as covered.
-        var evaluated = reply with
+        return reply with
         {
             TerminalTokenMissing = tokenMissing,
             EchoMissing = echoMissing,
             SizeAnomaly = sizeAnomaly,
         };
-        LastReply = evaluated;
-        return evaluated;
     }
 
     /// <summary>Wait for agy to go idle, but do NOT abandon a wait while agy is still making progress. Loops bounded

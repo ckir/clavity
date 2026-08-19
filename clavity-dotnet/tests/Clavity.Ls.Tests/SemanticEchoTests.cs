@@ -69,6 +69,35 @@ public class SemanticEchoTests
         Assert.True(SemanticEcho.IsSatisfied(reply, "**the final line**"));
     }
 
+    [Theory]
+    [InlineData("}")]
+    [InlineData("```")]
+    [InlineData("---")]
+    [InlineData("*/")]
+    [InlineData("  }  ")]
+    public void An_expectation_with_no_SUBSTANCE_cannot_discriminate_and_is_declared_UNUSABLE(string weak)
+    {
+        // CAPSTONE R1 FINDING (Mechanism Gamer + Boundary Smuggler), and I had just hit it myself while
+        // computing the echo for that very consult: the last non-blank line of ANY C# file is "}", so a
+        // peer that emits a closing brace satisfies the echo without reading anything. The same holds for
+        // a fence, a rule, a block-comment terminator.
+        //
+        // Degrading silently to "satisfied" would be UNTESTABLE - the bool is true either way - and would
+        // leave the operator believing a check ran. So the weakness is reported instead.
+        Assert.False(SemanticEcho.IsUsableExpectation(weak));
+        Assert.True(SemanticEcho.IsSatisfied("anything\n\n[VERDICT: ALIGNED]\n", weak));  // never a RED
+    }
+
+    [Fact]
+    public void A_substantive_expectation_IS_usable()
+    {
+        // The passing control: without it, a predicate that calls EVERYTHING unusable satisfies the rows
+        // above and silently disables the echo everywhere.
+        Assert.True(SemanticEcho.IsUsableExpectation("the final line of the file"));
+        Assert.True(SemanticEcho.IsUsableExpectation("## Done means"));
+        Assert.False(SemanticEcho.IsUsableExpectation(null));   // nothing asked for = nothing to warn about
+    }
+
     [Fact]
     public void A_blank_or_whitespace_expectation_is_treated_as_NO_expectation()
     {
