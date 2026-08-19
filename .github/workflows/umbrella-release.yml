@@ -145,31 +145,31 @@ jobs:
           fetch-depth: 0
 
       - name: Download dotnet installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.dotnet.outputs.artifact-name }}
           path: dist-dotnet
 
       - name: Download classic installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.classic.outputs.artifact-name }}
           path: dist-classic
 
       - name: Download ghidrust installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.ghidrust.outputs.artifact-name }}
           path: dist-ghidrust
 
       - name: Download agy-autotrain installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.agy-autotrain.outputs.artifact-name }}
           path: dist-agy-autotrain
 
       - name: Download commonmemory installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.commonmemory.outputs.artifact-name }}
           path: dist-commonmemory
@@ -220,7 +220,7 @@ jobs:
           echo "final body.md assembled"
 
       - name: Publish ONE clavity release (all installers)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.tag }}   # explicit: correct on BOTH tag-push and dispatch (no ref tag)
           name: ${{ steps.notes.outputs.tag }}        # e.g. "clavity-v1" — the umbrella IS the clavity release (avoid doubling "clavity")

@@ -26,7 +26,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Setup JDK 21 (Ghidra 12.1.2 runtime)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -38,7 +38,7 @@ jobs:
 
       - name: Cache Ghidra 12.1.2
         id: ghidra-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ghidra_dist
           key: ghidra-12.1.2-PUBLIC-20260605

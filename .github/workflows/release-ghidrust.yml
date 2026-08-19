@@ -39,7 +39,7 @@ jobs:
       contents: write
     steps:
       - name: Download installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build.outputs.artifact-name }}
           path: dist
@@ -68,7 +68,7 @@ jobs:
           EOF
 
       - name: Publish the ghidrust release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.tag }}
           name: ${{ steps.notes.outputs.tag }}
