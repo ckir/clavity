@@ -523,8 +523,30 @@ Mark step 0 complete in `docs/superpowers/specs/2026-08-18-implementation-sequen
 the route taken and the CI outcome. Update the durable index: `main`'s new SHA, the branch's disposition,
 and the resume point.
 
-**Then start `2026-08-19-step-1-owner-rulings.md`** — its four ROADMAP entries exist only on this branch,
-so this merge is what puts them on `main` where that plan can edit them.
+**COMMIT AND PUSH the spec edit — nothing else in this plan carries it.** You are on `main` after Step 5,
+and the merge is already done, so this edit is stranded otherwise:
+
+```bash
+git status --short                     # expect: only the spec file
+git add -f docs/superpowers/specs/2026-08-18-implementation-sequencing-design.md
+git commit -m "docs(spec): mark step 0 complete - branch merged to main
+
+Records the route actually taken (PR-gated) and the CI outcome.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+git push origin main
+```
+
+Note the `git add -f`: `docs/superpowers/*` is gitignored. **That push needs its own owner
+authorisation**, like every other. **If declined, leave the edit committed-but-unpushed and record that** —
+do not revert it.
+
+**This is the sibling of a defect round 5 found in the companion plan and fixed only where it was cited.**
+The same "edit a tracked file after the last push, never commit it" shape existed here and survived,
+because the fix was applied to the instance rather than to the class.
+
+**Then start `2026-08-19-step-1-owner-rulings.md`** — its four ROADMAP entries reached `main` through the
+merge you just performed, which is what makes that plan's precondition satisfiable.
 
 ---
 
