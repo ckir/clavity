@@ -74,6 +74,29 @@ foreach ($skill in $skills) {
     if (-not $raw.Contains($markerConstant)) { Fail "$rel : missing marker-contract constant '$markerConstant'" }
 }
 
+# 13b: the driver's completeness checks only run when the ask NAMES its discipline. If a skill does not
+# TELL the caller to name it, every consult from that discipline silently runs unchecked, and the driver's
+# [13b] UNCHECKED notice is the only thing that would ever say so.
+#
+# THIS LIST IS FOUR, NOT THREE - and it is deliberately SEPARATE from $skills rather than an addition to
+# it. $skills carries invariants adversarial-panel-review cannot satisfy: it is non-ASCII by design (69
+# chars) and references no marker constant, being the one discipline with no debounce marker. Enrolling it
+# there to reach this single check would red the linter on three unrelated invariants and invent
+# requirements that discipline was never meant to meet. A separate list gets the coverage without the
+# false failures. AGY-AFTER was previously covered by NO lint at all here.
+$disciplineNames = $skills + @('adversarial-panel-review')
+foreach ($skill in $disciplineNames) {
+    $rel = "clavity-dotnet/plugin/skills/$skill/SKILL.md"
+    $path = Join-Path $Root $rel
+    if (-not (Test-Path $path)) { Fail "MISSING: $rel"; continue }
+    $raw = Get-Content -Raw $path
+    if ([string]::IsNullOrEmpty($raw)) { Fail "EMPTY: $rel"; continue }
+    $mandate = 'discipline: "' + $skill + '"'
+    if (-not $raw.Contains($mandate)) {
+        Fail "$rel : does not instruct the caller to pass $mandate - its consults will run UNCHECKED"
+    }
+}
+
 if ($fail) { Write-Error 'agy-discipline skill lint FAILED' -ErrorAction Continue; exit 1 }
 Write-Output 'agy-discipline skills OK'
 exit 0

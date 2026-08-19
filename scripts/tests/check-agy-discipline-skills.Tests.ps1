@@ -9,7 +9,10 @@ BeforeAll {
     # silently losing its discriminating power).
     function New-ScratchRoot {
         $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("agyskilltest-" + [guid]::NewGuid())
-        foreach ($s in @('agy-first', 'agy-capstone', 'agy-test-audit')) {
+        # FOUR, not three. The 13b discipline-mandate check runs over adversarial-panel-review too, so a
+        # scratch root without it makes EVERY rejection test below fail on a MISSING sibling rather than
+        # on its own defect - the precise discriminating-power loss the comment above records.
+        foreach ($s in @('agy-first', 'agy-capstone', 'agy-test-audit', 'adversarial-panel-review')) {
             $dst = Join-Path $scratch "clavity-dotnet/plugin/skills/$s"
             New-Item -ItemType Directory -Path $dst -Force | Out-Null
             Copy-Item (Join-Path $script:RepoRoot "clavity-dotnet/plugin/skills/$s/SKILL.md") `
@@ -149,6 +152,31 @@ Describe 'check-agy-discipline-skills' {
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
             ($out -join "`n") | Should -Match $diagnostic
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'fails when <skill> does not instruct the caller to name its discipline (13b)' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # The driver's completeness checks only run when the ask NAMES its discipline, so a skill that
+            # stops telling the caller to name it silently downgrades every one of its consults to
+            # UNCHECKED. This row exists for all FOUR - adversarial-panel-review included, which carried no
+            # lint at all before 13b.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $needle  = 'discipline: "' + $skill + '"'
+            $real = Get-Content -Raw $target
+            $real.Contains($needle) | Should -BeTrue -Because "the fixture needs '$needle' present to strip"
+            $body = $real.Replace($needle, 'discipline: "something-else"')
+            $body | Should -Not -Be $real -Because 'the strip must take effect'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'will run UNCHECKED'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
             Remove-Item -Recurse -Force $scratch
         }
     }

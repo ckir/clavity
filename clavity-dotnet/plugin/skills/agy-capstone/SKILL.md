@@ -30,6 +30,33 @@ Send every round's consult over your driver's review-ask transport, review-only:
   peer is busy).
 - **clavity-classic:** `clavity ask --review-only` (subagents use the CLI form, not the MCP bus).
 
+## Completeness checks the DRIVER runs on your reply (13b)
+
+**NAME YOUR DISCIPLINE ON EVERY ASK.** On clavity-dotnet pass `discipline: "agy-capstone"` to `agy_ask`; the driver
+owns the terminal-token table and applies this discipline's checks itself. You never type the token, so you
+cannot mistype it into a silent opt-out. An ask that names no known discipline comes back with a
+`[13b] UNCHECKED` notice saying the checks did not run.
+
+**Every payload that names a PRIMARY ARTIFACT must demand a SEMANTIC ECHO.** Add, as the second-to-last
+instruction:
+
+> Immediately before your terminal verdict, quote verbatim the LAST NON-BLANK LINE of
+> `<the primary artifact path>`. Quote it exactly; do not paraphrase or summarise it.
+
+Then pass that same line to the ask as `expectEcho`, having read it yourself from the same file. The
+driver compares them and reports `[13b] ECHO MISSING` when they disagree.
+
+**Why this and not a nonce.** A nonce you invent proves only that the peer read your BRIEF. The
+artifact's last line proves it reached the END of the thing under review - which is exactly what a
+truncated or unread review cannot do.
+
+**When there is no primary artifact** - a design question, a pasted fork with no file - omit the demand
+and pass no `expectEcho`. The check degrades to satisfied rather than to failed, deliberately: a guard
+that reds on consults it was never meant to cover gets disabled, and then it covers nothing.
+
+**A reply the driver flags is INCOMPLETE, not empty.** Never read a `[13b] TRUNCATED REPLY` or
+`[13b] ECHO MISSING` as "no findings" - recover the reply or re-ask.
+
 ## Safety envelope (every consult, no exceptions)
 A bare "review-only" once let the peer write to the tree anyway. Wrap each round's consult:
 1. **Snapshot before** - capture `git status --short` (and reflog, since the capstone reviews committed
@@ -130,6 +157,25 @@ reachable defects citing file:line. **Commit before the next round:** the peer r
 
 Intermediate fold-and-loop rounds report progress and loop; they emit **no** token. You emit a
 `[VERDICT]` token only at a terminal disposition or completion proposal (below).
+
+**Every payload MUST carry THREE to FOUR OPEN QUESTIONS the peer answers in its own words** - never a
+checkbox, never a yes/no, and never a question whose expected answer is stated in the payload. One
+question is not enough: it lets the peer answer the easiest and stop. Draw them from these four shapes,
+each of which produced a real finding on 2026-08-19:
+
+1. **Disagree with my guess.** State where YOU think the weakness is, then ask the peer where IT thinks
+   it is and to say plainly if you are wrong. (Produced an 8-row case matrix, and a correction that a
+   proposed fix would have destroyed the property it was fixing.)
+2. **A disposition I have not named.** "Is there an option neither this artifact nor I have named?" A fork
+   stated as N options is often really N+1. (Produced a third disposition that dissolved a ruling.)
+3. **Reject the frame.** "Is the signal / metric / approach I have chosen even the right one?" (Produced
+   the largest single design change of that session - the chosen signal was wrong and the peer said so.)
+4. **Permit ignorance explicitly.** "If you cannot explain this, say so plainly rather than constructing a
+   story." (Produced an honest known-unknown instead of a confident fabrication - the peer had already
+   fabricated once that day.)
+
+**A payload whose questions all have knowable answers is not asking anything.** If you can predict every
+answer, you are seeking agreement, not review.
 
 ## Disposition of findings (AGY-SCOPE)
 
@@ -259,6 +305,11 @@ for the human to ask, and do NOT kick the raw disagreement to the human as a for
   its measured support), and hand the human the tie-break. Do not fabricate agreement.
 - The human is brought in only on IMPASSE, or is shown the already-CONVERGED result. "negotiate with agy"
   stays a manual backstop.
+
+**A CLEAN ROUND IS A COVERAGE CLAIM, NOT A RESULT.** Before accepting one, ask what was NOT examined -
+which files went unread, which behaviours were never exercised, which lens was not applied. A round that
+finds nothing has told you about its own coverage, not about the artifact. Measured 2026-08-19: of two
+clean rounds in one session, both later proved to have missed a real defect that hand-enumeration found.
 
 ## The [VERDICT] tokens (ASCII only, emitted by disposition)
 ASCII only - no em-dash or other non-ASCII (mojibake risk; this project has hit corruption). You (the
