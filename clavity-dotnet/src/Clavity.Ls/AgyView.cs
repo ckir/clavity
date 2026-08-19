@@ -291,15 +291,23 @@ public sealed class AgyView
                 {
                     progress.Report(new AgyWaitProgress(++window, total, Math.Max(0, total - (before + 1)), DateTime.UtcNow - start));
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch when (!cancellationToken.IsCancellationRequested)
                 {
                     // A broken progress sink is the caller's problem, not a reason to fail the ask.
                     //
-                    // OperationCanceledException is deliberately NOT swallowed. A bare catch here would absorb the
-                    // one exception that means "the caller wants to stop", and although the next iteration's
-                    // windowCts would surface the cancel anyway, absorbing it makes this block the only place in the
-                    // wait loop that treats a cancel as noise -- the loop's stated guarantee is that a caller cancel
-                    // propagates as cancellation on every path (F3), and a swallow here is a silent exception to it.
+                    // The guard is on WHETHER THE CALLER CANCELLED, not on the exception's TYPE, and this is the
+                    // idiom the rest of this loop already uses (see the window-wait catch and the probe catch above,
+                    // both `when (!cancellationToken.IsCancellationRequested)`). An earlier version of this block
+                    // filtered `ex is not OperationCanceledException` instead, and that type test was wrong in BOTH
+                    // directions:
+                    //   - a sink that bridges async with .Result/.Wait() surfaces a genuine cancel wrapped in an
+                    //     AggregateException, which is NOT an OperationCanceledException, so the type filter
+                    //     swallowed the very cancel it was added to preserve;
+                    //   - a sink whose OWN internal transport times out throws TaskCanceledException (which DERIVES
+                    //     from OperationCanceledException) while the caller's token is perfectly live, so the type
+                    //     filter let it escape and failed the ask on a cancellation that never happened.
+                    // Keying on the token settles both: if the caller did not cancel, nothing the sink throws can
+                    // fail the ask; if the caller did, nothing the sink throws can hide it.
                 }
             }
 

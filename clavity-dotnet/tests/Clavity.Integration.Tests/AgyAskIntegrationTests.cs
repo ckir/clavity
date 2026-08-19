@@ -536,19 +536,31 @@ public class AgyAskIntegrationTests
         public void Report(AgyWaitProgress value) => throw new InvalidOperationException("sink is broken");
     }
 
-    private sealed class CancellingProgress : IProgress<AgyWaitProgress>
+    /// <summary>Throws a cancellation the sink generated for its OWN reasons - an internal transport timeout -
+    /// while the caller's token stays live. TaskCanceledException DERIVES from OperationCanceledException, which is
+    /// exactly why a type-based filter got this wrong.</summary>
+    private sealed class SinkTimesOutProgress : IProgress<AgyWaitProgress>
     {
-        public void Report(AgyWaitProgress value) => throw new OperationCanceledException("caller wants to stop");
+        public void Report(AgyWaitProgress value) => throw new TaskCanceledException("the sink's own transport timed out");
+    }
+
+    /// <summary>Cancels the caller's token and then throws a genuine cancel WRAPPED in an AggregateException, the
+    /// shape a sink produces when it bridges async with .Result/.Wait(). A type-based filter swallowed this.</summary>
+    private sealed class CancelsCallerThenThrowsWrapped(CancellationTokenSource cts) : IProgress<AgyWaitProgress>
+    {
+        public void Report(AgyWaitProgress value)
+        {
+            cts.Cancel();
+            throw new AggregateException(new OperationCanceledException("wrapped by a .Result bridge"));
+        }
     }
 
     [Fact]
-    public async Task AskAsync_does_NOT_swallow_a_cancellation_thrown_by_the_progress_sink()
+    public async Task AskAsync_swallows_a_sinks_OWN_cancellation_when_the_caller_did_not_cancel()
     {
-        // The other half of the narrowed catch, and the reason it is narrowed. A BARE catch would absorb the one
-        // exception that means "the caller wants to stop" — making this block the single place in the wait loop that
-        // treats a cancel as noise, contradicting the loop's F3 guarantee that a caller cancel propagates as
-        // cancellation on every path. Paired with AskAsync_survives_a_progress_sink_that_throws: together they pin
-        // that the catch swallows sink FAILURES and only sink failures.
+        // Capstone R2: a sink whose internal transport times out throws TaskCanceledException, which DERIVES from
+        // OperationCanceledException. The earlier type-based filter let that escape and failed a perfectly live ask
+        // on a cancellation that never happened. Keying on the caller's token is what makes this swallowable.
         var plan = new[]
         {
             new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
@@ -565,8 +577,42 @@ public class AgyAskIntegrationTests
                 IdleStallWindow = TimeSpan.FromMilliseconds(150),
                 IdleAbsoluteMax = TimeSpan.Zero,
             });
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => view.AskAsync("do a long thing", progress: new CancellingProgress()));
+            var reply = await view.AskAsync("do a long thing", progress: new SinkTimesOutProgress());
+            Assert.Equal("final answer", reply.Answer);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AskAsync_does_NOT_swallow_a_sink_throw_once_the_CALLER_has_cancelled()
+    {
+        // Capstone R2, the other direction: when the caller HAS cancelled, nothing the sink throws may hide it -
+        // including a cancel WRAPPED in an AggregateException, which is what a sink bridging async with .Result
+        // produces and which the earlier type-based filter swallowed outright.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 1, GoesIdle: false),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "final answer", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = cliLog,
+                IdleStallWindow = TimeSpan.FromMilliseconds(150),
+                IdleAbsoluteMax = TimeSpan.Zero,
+            });
+            using var cts = new CancellationTokenSource();
+            // Assert the SPECIFIC exception that must escape, never merely "something threw". A bare catch swallows
+            // the sink's AggregateException and the caller's now-cancelled token makes the NEXT window throw
+            // OperationCanceledException instead - so ThrowsAnyAsync<Exception> passes under BOTH the correct filter
+            // and the broken one, and proves nothing. A mutation run caught exactly that: the looser assertion
+            // survived a bare-catch mutant. Naming AggregateException is what makes this test able to fail.
+            await Assert.ThrowsAsync<AggregateException>(() => view.AskAsync(
+                "do a long thing", progress: new CancelsCallerThenThrowsWrapped(cts), cancellationToken: cts.Token));
         }
         finally { Directory.Delete(dir, true); }
     }
