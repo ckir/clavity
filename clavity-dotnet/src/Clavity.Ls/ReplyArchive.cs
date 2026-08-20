@@ -76,6 +76,7 @@ public static class ReplyArchive
             }
 
             PruneReplyFiles(dir);
+            SweepStaleTemps(dir);
             return path;
         }
         catch
@@ -143,6 +144,39 @@ public static class ReplyArchive
         catch
         {
             // Same rule as everything else here: observational, never fatal.
+        }
+    }
+
+    /// <summary>How long a prune temp must sit untouched before it counts as orphaned. Generous on
+    /// purpose: the only cost of waiting is a stray file, while sweeping too eagerly would delete the
+    /// temp a CONCURRENT prune is mid-write on - re-creating the very collision unique names prevent.</summary>
+    public static readonly TimeSpan StaleTempAge = TimeSpan.FromHours(1);
+
+    /// <summary>Delete prune temps orphaned by a killed process.
+    ///
+    /// The prune's finally-block removes its temp on every normal path, but a process KILL bypasses
+    /// finally. Each prune uses a UNIQUE temp name (so two concurrent asks cannot collide), which means
+    /// orphans ACCUMULATE rather than being overwritten - one per killed prune, forever, in a directory
+    /// nothing else sweeps. That is the same unbounded growth the .md pruner exists to stop, one file
+    /// pattern over. (Capstone R6, Integration Auditor - and it is round 3's own fix that made it
+    /// unbounded.)</summary>
+    private static void SweepStaleTemps(string dir)
+    {
+        try
+        {
+            var cutoff = DateTime.UtcNow - StaleTempAge;
+            foreach (var t in Directory.GetFiles(dir, SizeIndexFileName + ".*.tmp"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(t) < cutoff) File.Delete(t);
+                }
+                catch { /* one undeletable orphan must not stop the rest, nor fail the ask. */ }
+            }
+        }
+        catch
+        {
+            // Observational, never fatal - the same rule as everything else here.
         }
     }
 

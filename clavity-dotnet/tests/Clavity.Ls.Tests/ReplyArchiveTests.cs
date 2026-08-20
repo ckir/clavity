@@ -188,6 +188,39 @@ public class ReplyArchiveTests : IDisposable
     }
 
     [Fact]
+    public void A_STALE_temp_file_left_by_a_killed_process_is_swept()
+    {
+        // CAPSTONE R6 FINDING (Integration Auditor), verified - and it is ROUND 3'S OWN FIX that made it
+        // unbounded. R3 gave each prune a UNIQUE temp name to stop two concurrent asks colliding. The
+        // finally-block deletes it on any normal path, but a process KILL bypasses finally entirely - and
+        // where a single fixed name would simply be overwritten next time, unique names ACCUMULATE, one
+        // per killed prune, forever. Nothing else in the tree sweeps this directory.
+        Directory.CreateDirectory(_dir);
+        var stale = Path.Combine(_dir, ReplyArchive.SizeIndexFileName + ".deadbeef.tmp");
+        File.WriteAllText(stale, "orphaned by a kill");
+        File.SetLastWriteTimeUtc(stale, DateTime.UtcNow - TimeSpan.FromDays(1));
+
+        ReplyArchive.Write(_dir, "c", "a reply", new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc));
+
+        Assert.False(File.Exists(stale), "a stale prune temp was left behind forever");
+    }
+
+    [Fact]
+    public void A_FRESH_temp_file_is_NOT_swept_because_another_ask_may_be_using_it()
+    {
+        // The passing control, and it is not decorative: sweeping by pattern alone would delete the temp
+        // a CONCURRENT prune is in the middle of writing - re-creating, in the sweep, exactly the
+        // collision R3's unique names were introduced to prevent.
+        Directory.CreateDirectory(_dir);
+        var fresh = Path.Combine(_dir, ReplyArchive.SizeIndexFileName + ".livebeef.tmp");
+        File.WriteAllText(fresh, "another ask is writing this right now");
+
+        ReplyArchive.Write(_dir, "c", "a reply", new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc));
+
+        Assert.True(File.Exists(fresh), "the sweep deleted a temp another ask could still be writing");
+    }
+
+    [Fact]
     public void A_hostile_cascade_id_cannot_write_OUTSIDE_the_archive_directory()
     {
         // MUTATION-AUDIT ROW, not in the plan. Dropping Sanitise entirely left all five planned rows

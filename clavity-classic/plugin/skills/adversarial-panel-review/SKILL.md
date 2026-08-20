@@ -134,6 +134,13 @@ that reds on consults it was never meant to cover gets disabled, and then it cov
 **A reply the driver flags is INCOMPLETE, not empty.** Never read a `[13b] TRUNCATED REPLY` or
 `[13b] ECHO MISSING` as "no findings" - recover the reply or re-ask.
 
+**WHAT THE DRIVER NOW KEEPS ON DISK - know this before you consult.** On clavity-dotnet every reply is
+written to `%USERPROFILE%\.clavity\replies\` (or `<CLAVITY_GOLDEN_HEADER>\replies\`): the most recent
+100 are retained, older ones are deleted, and a one-number-per-reply size index sits beside them. That
+persistence is the point - it is what makes a review that died on the wire recoverable at all - but peer
+replies quote source, paths and findings, so that directory holds whatever your reviews held. It is
+stated here rather than left for you to discover.
+
 **Every payload MUST carry THREE to FOUR OPEN QUESTIONS the peer answers in its own words** - never a
 checkbox, never a yes/no, and never a question whose expected answer is stated in the payload. One
 question is not enough: it lets the peer answer the easiest and stop. Draw them from these four shapes,

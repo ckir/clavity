@@ -77,6 +77,13 @@ that reds on consults it was never meant to cover gets disabled, and then it cov
 **A reply the driver flags is INCOMPLETE, not empty.** Never read a `[13b] TRUNCATED REPLY` or
 `[13b] ECHO MISSING` as "no findings" - recover the reply or re-ask.
 
+**WHAT THE DRIVER NOW KEEPS ON DISK - know this before you consult.** On clavity-dotnet every reply is
+written to `%USERPROFILE%\.clavity\replies\` (or `<CLAVITY_GOLDEN_HEADER>\replies\`): the most recent
+100 are retained, older ones are deleted, and a one-number-per-reply size index sits beside them. That
+persistence is the point - it is what makes a review that died on the wire recoverable at all - but peer
+replies quote source, paths and findings, so that directory holds whatever your reviews held. It is
+stated here rather than left for you to discover.
+
 ## Safety envelope (every consult, no exceptions)
 A bare "review-only" once let the peer write to the tree anyway. Wrap each consult:
 1. **Snapshot before** - capture `git status --short`.
