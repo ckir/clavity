@@ -211,6 +211,32 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   re-validator following the old pointer would have looked in the wrong place and could have voided a
   live entry, or honoured a dead one. Naming the block by its heading text survives the line moving.)*
 
+### D. `SemanticEcho.ExpectedFrom`'s two file-read guards are not SEPARATELY testable
+
+**What is uncovered.** `ExpectedFrom` opens a caller-supplied path and carries three guards: `File.Exists`
+(regular files only), a handle check (`CanSeek` + `Length` on the OPEN stream), and a read budget. No
+in-process test can distinguish them, and one intended assertion was measured VACUOUS.
+
+**Measured, 2026-08-20, capstone R10:**
+- Dropping the handle check alone: suite stays GREEN (the budget catches the same file).
+- Dropping the budget alone: suite stays GREEN (the handle check catches it first).
+- Dropping BOTH: `ExpectedFrom_refuses_an_artifact_larger_than_the_cap` goes RED.
+  So the pair is a **multi-guard regression target** - defense-in-depth, not vacuity.
+- Dropping `File.Exists` and asserting on a DIRECTORY: **stays GREEN**. Opening a directory throws
+  `UnauthorizedAccessException`, the catch swallows it, and the method returns `null` - the same answer
+  the guard produces. That assertion could never fail, so it was DELETED rather than left as decoration.
+
+**Why it is not covered.** The remaining discriminators are a hang and a race, and neither belongs in a
+unit suite: `File.Exists` exists to stop a pipe or console device BLOCKING the ask forever, and a test
+that proves it would have to hang to fail. The budget covers a file that grows under another writer,
+which needs a concurrent appender to reproduce.
+
+**Compensation.** The over-cap row pins the pair jointly; the three guards are each documented in
+`SemanticEcho.cs` with the measurement that justifies them; and every failure route in that method
+returns `null`, so the check degrades to skipped rather than to a wrong answer.
+
+**Anchor:** `clavity-dotnet/src/Clavity.Ls/SemanticEcho.cs` - `ExpectedFrom`.
+
 ### C. The junction / symlink / reparse-point / cross-root-alias family
 
 - **Why uncovered:** unreachable on real inputs. Measured 2026-08-10: this tree contains zero reparse

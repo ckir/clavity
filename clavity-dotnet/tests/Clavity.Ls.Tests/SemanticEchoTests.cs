@@ -156,20 +156,19 @@ public class SemanticEchoTests : IDisposable
     }
 
     [Fact]
-    public void ExpectedFrom_refuses_a_DIRECTORY_and_anything_that_is_not_a_regular_file()
-    {
-        // Same finding. The language server now opens a path the CALLER supplies, which it never did
-        // before. File.Exists is false for a directory and - measured on this platform - for CON, NUL and
-        // a pipe path too, so one guard closes the whole "block the ask forever on a device" vector.
-        Assert.Null(SemanticEcho.ExpectedFrom(_dir));
-        Assert.Null(SemanticEcho.ExpectedFrom("CON"));
-    }
-
-    [Fact]
     public void ExpectedFrom_refuses_an_artifact_larger_than_the_cap()
     {
         // An unbounded read on the ask path: "the artifact" could be a multi-gigabyte log. Streaming
         // bounds the MEMORY but not the time, so the size is capped too.
+        //
+        // THIS IS A MULTI-GUARD REGRESSION TARGET, and that is measured, not assumed. TWO guards can
+        // satisfy it - the handle check (CanSeek + Length) and the read budget - so removing EITHER one
+        // alone leaves this row green, and removing BOTH reds it. That is defense-in-depth rather than a
+        // vacuous test, but it means this row cannot tell you WHICH guard is missing. The two exist for
+        // different reasons: the handle check refuses a non-file atomically (a path can change between a
+        // File.Exists check and the open, and a pipe HANGS rather than throwing), while the budget bounds
+        // a file that keeps GROWING under FileShare.ReadWrite, where a length taken at open time is only
+        // a snapshot. Neither is separately testable in-process; see docs/coverage-debt.md.
         var path = Path.Combine(_dir, "huge.md");
         File.WriteAllText(path, new string('a', SemanticEcho.MaxArtifactBytes + 1));
         Assert.Null(SemanticEcho.ExpectedFrom(path));

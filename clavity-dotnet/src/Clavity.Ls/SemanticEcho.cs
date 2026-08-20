@@ -61,7 +61,6 @@ public static class SemanticEcho
             //    to ECHO WEAK at random depending on whether someone had the file open. Measured both
             //    ways - default throws, FileShare.ReadWrite reads it fine.
             if (!File.Exists(artifactPath)) return null;
-            if (new FileInfo(artifactPath).Length > MaxArtifactBytes) return null;
 
             // SINGLE PASS, CONSTANT MEMORY. The obvious spelling - ReadLines(...).Reverse() - materialises
             // the ENTIRE file to walk it backwards, and this path is now supplied by the caller, so
@@ -69,9 +68,26 @@ public static class SemanticEcho
             // line answers the same question without ever holding more than one line.
             string? last = null;
             using var stream = new FileStream(artifactPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            // CHECK THE HANDLE, NOT THE PATH. Checking File.Exists and then FileInfo.Length and THEN
+            // opening leaves two gaps in which the path can become something else, and the failure there
+            // is not an exception but a HANG - a pipe or console device blocks the read, and a hang never
+            // reaches the catch below, so it would deadlock the ask rather than degrade to skipped.
+            // CanSeek is the property that distinguishes a real file from a pipe or device, and asking
+            // the OPEN HANDLE makes the answer atomic with the thing actually being read.
+            // (Capstone R10, Boundary Smuggler - correcting my own claim that this degraded safely.)
+            if (!stream.CanSeek || stream.Length > MaxArtifactBytes) return null;
+
             using var reader = new StreamReader(stream);
+            // BUDGET THE READ, not just the file. FileShare.ReadWrite lets another process keep appending,
+            // so a length check taken at open time is a snapshot: a writer that never stops means EOF
+            // never arrives and the loop never ends. Counting what we actually consume bounds the read
+            // whatever the file does underneath us. (Capstone R10, the disposition it named.)
+            var budget = MaxArtifactBytes;
             while (reader.ReadLine() is { } line)
             {
+                budget -= line.Length + 1;
+                if (budget < 0) return null;
                 var candidate = Normalise(line);
                 if (IsUsableExpectation(candidate)) last = candidate;
             }
