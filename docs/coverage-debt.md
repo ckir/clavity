@@ -235,6 +235,18 @@ which needs a concurrent appender to reproduce.
 `SemanticEcho.cs` with the measurement that justifies them; and every failure route in that method
 returns `null`, so the check degrades to skipped rather than to a wrong answer.
 
+**A SECOND masking pair in the same method, measured 2026-08-20 (capstone R11).** The reader splits lines
+itself with a capped line buffer, and separately refuses a line that HIT the cap as an echo candidate.
+Removing the buffer cap alone leaves the suite GREEN - the whole line gets buffered, and the truncation
+check rejects it anyway, producing the same answer. Removing the truncation check alone goes RED.
+So the observable behaviour is pinned, but the CAP's real purpose - bounding MEMORY when a writer appends
+without ever emitting a newline - cannot be asserted without actually exhausting memory in a unit test.
+
+**Compensation.** The observable answer is pinned by
+`A_single_ENORMOUS_line_is_bounded_and_never_becomes_the_echo_target` plus its passing control
+`A_normal_line_after_an_enormous_one_is_still_found`; the memory bound is a structural property of a
+fixed-size buffer that is visible by reading twenty lines of code.
+
 **Anchor:** `clavity-dotnet/src/Clavity.Ls/SemanticEcho.cs` - `ExpectedFrom`.
 
 ### C. The junction / symlink / reparse-point / cross-root-alias family

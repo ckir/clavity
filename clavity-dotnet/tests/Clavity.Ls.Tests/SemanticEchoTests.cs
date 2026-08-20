@@ -175,6 +175,34 @@ public class SemanticEchoTests : IDisposable
     }
 
     [Fact]
+    public void A_single_ENORMOUS_line_is_bounded_and_never_becomes_the_echo_target()
+    {
+        // CAPSTONE R11 FINDING. The previous guard budgeted BETWEEN lines, which cannot protect against a
+        // read that never returns: StreamReader.ReadLine has no upper bound, so a writer appending
+        // without a newline makes it buffer until it hangs or throws OutOfMemory. The reader now splits
+        // lines itself with a capped line buffer.
+        //
+        // The line here is well under the 4 MB file cap, so the handle check passes and this row
+        // exercises the LINE cap specifically - the guard the file-size check cannot reach.
+        var path = Path.Combine(_dir, "one-huge-line.md");
+        File.WriteAllText(path, new string('a', SemanticEcho.MaxLineChars * 4));   // no newline at all
+
+        // Returns null rather than a 4096-character fragment: an echo target the peer could never
+        // reproduce verbatim would red every honest reply, which is worse than having no target.
+        Assert.Null(SemanticEcho.ExpectedFrom(path));
+    }
+
+    [Fact]
+    public void A_normal_line_after_an_enormous_one_is_still_found()
+    {
+        // The passing control. Without it, a reader that simply gave up on any file containing a long
+        // line would satisfy the row above while silently disabling the echo for real artifacts.
+        var path = Path.Combine(_dir, "huge-then-normal.md");
+        File.WriteAllText(path, new string('a', SemanticEcho.MaxLineChars * 2) + "\nthe last real sentence\n");
+        Assert.Equal("the last real sentence", SemanticEcho.ExpectedFrom(path));
+    }
+
+    [Fact]
     public void A_blank_or_whitespace_expectation_is_treated_as_NO_expectation()
     {
         // A primary artifact ending in blank lines yields an empty "last line". Demanding an empty echo

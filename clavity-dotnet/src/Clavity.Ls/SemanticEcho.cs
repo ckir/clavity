@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace Clavity.Ls;
 
@@ -79,18 +80,50 @@ public static class SemanticEcho
             if (!stream.CanSeek || stream.Length > MaxArtifactBytes) return null;
 
             using var reader = new StreamReader(stream);
-            // BUDGET THE READ, not just the file. FileShare.ReadWrite lets another process keep appending,
-            // so a length check taken at open time is a snapshot: a writer that never stops means EOF
-            // never arrives and the loop never ends. Counting what we actually consume bounds the read
-            // whatever the file does underneath us. (Capstone R10, the disposition it named.)
-            var budget = MaxArtifactBytes;
-            while (reader.ReadLine() is { } line)
+
+            // SPLIT THE LINES MYSELF, because StreamReader.ReadLine has no upper bound. A budget checked
+            // BETWEEN lines cannot protect against a read that never returns: FileShare.ReadWrite lets
+            // another process append, and a writer that emits no newline makes ReadLine buffer until it
+            // hangs or throws OutOfMemory. Reading fixed chunks bounds the TOTAL, and capping the line
+            // buffer bounds a SINGLE line - the two together are what make this read finite regardless of
+            // what the file does underneath. (Capstone R11, the disposition it named after R10's budget
+            // turned out to be checked in the wrong place.)
+            var buffer = new char[8192];
+            var line = new StringBuilder();
+            var remaining = MaxArtifactBytes;
+
+            void Consider(string text)
             {
-                budget -= line.Length + 1;
-                if (budget < 0) return null;
-                var candidate = Normalise(line);
+                // A line that HIT the cap was truncated, so what we hold is not what the file says - and
+                // an echo target the peer could never reproduce verbatim is worse than none, because it
+                // would red every honest reply. Truncated lines are not candidates.
+                if (text.Length >= MaxLineChars) return;
+                var candidate = Normalise(text);
                 if (IsUsableExpectation(candidate)) last = candidate;
             }
+
+            int read;
+            while (remaining > 0 &&
+                   (read = reader.Read(buffer, 0, Math.Min(buffer.Length, remaining))) > 0)
+            {
+                remaining -= read;
+                for (var i = 0; i < read; i++)
+                {
+                    var c = buffer[i];
+                    if (c == '\n')
+                    {
+                        Consider(line.ToString());
+                        line.Clear();
+                    }
+                    else if (line.Length < MaxLineChars)
+                    {
+                        // Past the cap the rest of the line is dropped rather than buffered. A line that
+                        // long is not a plausible echo target, and buffering it is the whole hazard.
+                        line.Append(c);
+                    }
+                }
+            }
+            Consider(line.ToString());   // a final line with no trailing newline still counts
             return last;
         }
         catch
@@ -103,6 +136,11 @@ public static class SemanticEcho
     /// <summary>Largest artifact the driver will open to derive an echo target. Beyond this the check is
     /// skipped rather than made to wait: no review artifact is this big, and the ask must not stall.</summary>
     public const int MaxArtifactBytes = 4 * 1024 * 1024;
+
+    /// <summary>Longest single line the reader will buffer. Beyond this the remainder of that line is
+    /// discarded: no plausible echo target is this long, and buffering an unbounded line is exactly the
+    /// hazard a per-line cap exists to remove.</summary>
+    public const int MaxLineChars = 4096;
 
     /// <summary>How many letters or digits an expectation needs before it can discriminate at all.</summary>
     public const int MinSubstantiveChars = 8;
