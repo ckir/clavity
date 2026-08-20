@@ -1691,6 +1691,41 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task A_TINY_reply_after_large_ones_DOES_set_SizeAnomaly_and_reach_the_caller()
+    {
+        // CAPSTONE R5 FINDING (Test Auditor), verified by grep: BEFORE this row, every SizeAnomaly
+        // assertion in the suite was Assert.False and every SIZE WARNING assertion was DoesNotContain.
+        // The whole heuristic could have been dead - never wired, never reaching the caller - and the
+        // suite would have stayed green. A negative-only control catches nothing; the pair is the oracle.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "the last line of the artifact\n[VERDICT: ALIGNED]",
+                                 TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            // A baseline of three ~15 KB replies, so a 45-byte answer is far below a quarter of the median.
+            var archive = Path.Combine(dir, "replies");
+            var t0 = new DateTime(2026, 8, 19, 9, 0, 0, DateTimeKind.Utc);
+            for (var i = 0; i < 3; i++)
+                ReplyArchive.Write(archive, "c", new string('a', 15000), t0.AddSeconds(i));
+
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderDir = dir });
+            var result = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(),
+                discipline: "agy-capstone", expectEcho: "the last line of the artifact");
+
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            // The token and echo are BOTH satisfied, so nothing outranks the heuristic in the if/else-if
+            // chain - which is exactly what makes this the row that proves the size path is reachable.
+            Assert.Contains(texts, t => t.Contains("[13b] SIZE WARNING"));
+            Assert.DoesNotContain(texts, t => t.Contains("TRUNCATED REPLY"));
+            Assert.DoesNotContain(texts, t => t.Contains("ECHO MISSING"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task AgyAsk_appends_UNCHECKED_when_no_discipline_is_named()
     {
         // The loud-omission block gets its OWN oracle rather than being observed incidentally by an

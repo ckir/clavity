@@ -45,9 +45,13 @@ public static class ReplyArchive
             // O(N) read that grows forever. Rewrite only when the file has actually outgrown the cap.
             //
             // ATOMICALLY. A plain WriteAllLines truncates in place, so a crash mid-prune destroys the
-            // whole size history and - because every failure here is swallowed - destroys it SILENTLY.
-            // Write a sibling temp and move it over, the same mechanism the golden header uses.
-            // (Capstone R1, Cascade Analyst.)
+            // whole size history. Write a sibling temp and move it over, the same mechanism the golden
+            // header uses. (Capstone R1, Cascade Analyst.)
+            //
+            // This comment used to add "and destroys it SILENTLY" - no longer true, and left standing it
+            // would understate the guard the next reader is looking at: since the round-2 fold, a failure
+            // here makes Write return null and AgyView reports it on the diagnostics sink. The swallow is
+            // still total; the silence is not. (Capstone R5, The Second Reader.)
             var rows = File.ReadAllLines(index);
             if (rows.Length > MaxIndexRows)
             {

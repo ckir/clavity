@@ -4,8 +4,15 @@ using System.Linq;
 namespace Clavity.Ls;
 
 /// <summary>Did the peer reach the END of the artifact it was told to read? The brief requires it to quote,
-/// verbatim and near its verdict, the last non-blank line of that artifact; the driver computes the same
-/// line from the same file and compares.
+/// verbatim and near its verdict, the last substantive line of that artifact.
+///
+/// WHO READS THE FILE: NOT THIS CLASS, AND NOT THE LANGUAGE SERVER. An earlier version of this comment
+/// said "the driver computes the same line from the same file and compares", which is false and would
+/// mislead the next reader into looking for file IO that does not exist here. The CALLING AGENT applies
+/// the rule to the artifact and passes the resulting line in as <paramref name="expectedEcho"/>; this
+/// class only compares two strings. That is a deliberate boundary - the language server never learns
+/// which file a consult is about - but it also means the expectation is only as honest as the caller.
+/// (Capstone R5, The Second Reader.)
 ///
 /// This is the strongest of 13b's three signals because it catches BOTH failure modes with one check. A
 /// peer that stopped mid-thought never reached the end and cannot produce the line. A peer that emitted a
@@ -29,8 +36,9 @@ public static class SemanticEcho
     /// thing. The same goes for a fence, a horizontal rule, a block-comment terminator.
     ///
     /// Found twice on the same day - by the capstone's Mechanism Gamer and Boundary Smuggler seats, and
-    /// independently by the driver while computing the echo for that very consult, where the primary
-    /// artifact was a .cs file.
+    /// independently while computing the echo target for that very consult, whose primary artifact was a
+    /// .cs file. The weak target is chosen by the CALLING AGENT, not by this layer; the point of
+    /// reporting it rather than failing is that the peer should not be penalised for the caller's pick.
     ///
     /// Reporting the weakness beats silently ignoring it. <see cref="IsSatisfied"/> still returns true for
     /// a weak expectation - failing consults over a bad ECHO TARGET would be punishing the wrong thing -

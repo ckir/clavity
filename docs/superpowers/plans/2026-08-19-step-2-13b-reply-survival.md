@@ -31,6 +31,13 @@ echo/checkpoint in either). The brief requires the peer to quote, verbatim and i
 verdict, **the last non-blank line of the primary artifact it was told to read**. The driver computes that
 line independently from the same file and compares.
 
+> 🔴 **WHAT SHIPPED IS NOT THIS.** Recorded rather than quietly edited: the language server never reads
+> the artifact. The CALLING AGENT applies the rule and passes the line in as `expectEcho`; `SemanticEcho`
+> only compares two strings. The independence this paragraph claims does not exist - the same party that
+> should be checked supplies the expectation - which is a real weakening of the signal and the reason the
+> `[13b] NO ECHO` and `[13b] ECHO WEAK` notices had to exist at all. Found by capstone R5's Second Reader,
+> in the code comment that had copied this sentence.
+
 **Why it beats both other signals.** A peer that stopped mid-thought never reached the end of the artifact
 and cannot produce the line. A peer that emitted a lone verdict line without doing the work never read the
 artifact and cannot produce it either. So one check catches transport truncation AND the lone-verdict-line
