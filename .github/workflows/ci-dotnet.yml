@@ -24,3 +24,9 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet build
       - run: dotnet test tests/Clavity.Ls.Tests
+      # The integration suite was never CI-run: measured 2026-08-20, this file held the ONLY `dotnet test`
+      # line across all 21 workflows. That left every 13b surfacing guard - TRUNCATED, ECHO MISSING, ECHO
+      # WEAK, NO ECHO, UNCHECKED, the stale-verdict control and the schema pin - with no oracle at all,
+      # i.e. the layer whose whole job is making the feature non-inert was the layer nothing enforced.
+      # It runs against fake in-process gRPC servers on loopback, no external dependency, ~20s.
+      - run: dotnet test tests/Clavity.Integration.Tests

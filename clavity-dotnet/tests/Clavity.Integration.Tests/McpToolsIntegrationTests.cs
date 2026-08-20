@@ -256,10 +256,12 @@ public class McpToolsIntegrationTests
         // break - and it would break silently at the protocol layer, not in any C# test. Pin optionality,
         // not just presence.
         //
-        // The parameter is `discipline`, NOT `expectTerminal`: the owner ruled that the driver owns the
-        // token literals and the caller names only its discipline (DisciplineContract). The plan's own
-        // draft of this row still named expectTerminal and would have pinned a parameter that no longer
-        // exists.
+        // The parameters are `discipline` and `artifactPath`. Neither is a value the caller computes:
+        // the driver owns the token table AND now reads the artifact to derive the echo target itself.
+        // This row has been re-pointed twice as that surface settled - first off `expectTerminal` when
+        // the owner ruled the driver owns the tokens, then off `expectEcho` when the R8 trim moved the
+        // echo derivation into the driver. Each time the old name would have pinned a parameter that no
+        // longer exists, which is why the row asserts by NAME and not by count.
         var services = new ServiceCollection();
         services.AddSingleton(new AgyView(new AgyViewOptions { CliLogPath = Path.Combine(Path.GetTempPath(), "schema-pin-13b-unused.log") }));
         services.AddMcpServer().WithTools<McpTools>();
@@ -271,10 +273,10 @@ public class McpToolsIntegrationTests
 
         var props = root.GetProperty("properties");
         Assert.True(props.TryGetProperty("discipline", out _));
-        Assert.True(props.TryGetProperty("expectEcho", out _));
+        Assert.True(props.TryGetProperty("artifactPath", out _));
 
         var required = root.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToArray();
         Assert.DoesNotContain("discipline", required);
-        Assert.DoesNotContain("expectEcho", required);
+        Assert.DoesNotContain("artifactPath", required);
     }
 }

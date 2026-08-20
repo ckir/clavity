@@ -1,11 +1,22 @@
+using System;
+using System.IO;
 using System.Linq;
 using Clavity.Ls;
 using Xunit;
 
 namespace Clavity.Ls.Tests;
 
-public class SemanticEchoTests
+public class SemanticEchoTests : IDisposable
 {
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "se-" + Guid.NewGuid().ToString("N"));
+
+    public SemanticEchoTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
+    }
+
     [Fact]
     public void No_expectation_is_always_satisfied()
     {
@@ -96,6 +107,38 @@ public class SemanticEchoTests
         Assert.True(SemanticEcho.IsUsableExpectation("the final line of the file"));
         Assert.True(SemanticEcho.IsUsableExpectation("## Done means"));
         Assert.False(SemanticEcho.IsUsableExpectation(null));   // nothing asked for = nothing to warn about
+    }
+
+    [Fact]
+    public void ExpectedFrom_reads_the_artifact_and_returns_its_last_SUBSTANTIVE_line()
+    {
+        // THE POINT OF THE REDESIGN. The rule is now applied by exactly ONE party - the driver - reading
+        // the file itself. Previously the CALLING AGENT computed the line and passed it in, so an honest
+        // review could red merely because the two of them resolved "the last substantive line" to
+        // different lines, or because an LLM miscounted characters. One reader cannot disagree with
+        // itself.
+        var path = Path.Combine(_dir, "artifact.md");
+        File.WriteAllText(path, "# Title\n\nthe last real sentence in the file\n\n```\n}\n");
+        Assert.Equal("the last real sentence in the file", SemanticEcho.ExpectedFrom(path));
+    }
+
+    [Fact]
+    public void ExpectedFrom_returns_NULL_when_no_line_can_prove_anything()
+    {
+        // A file whose tail is all punctuation - the case that started this: every .cs file ends in "}".
+        var path = Path.Combine(_dir, "punctuation.md");
+        File.WriteAllText(path, "```\n}\n---\n");
+        Assert.Null(SemanticEcho.ExpectedFrom(path));
+    }
+
+    [Fact]
+    public void ExpectedFrom_returns_NULL_rather_than_throwing_for_a_missing_or_absent_path()
+    {
+        // Reading a caller-named file must never fail an ask. Absent, unreadable, or not named at all
+        // are the same answer: there is no expectation, so nothing is claimed.
+        Assert.Null(SemanticEcho.ExpectedFrom(Path.Combine(_dir, "does-not-exist.md")));
+        Assert.Null(SemanticEcho.ExpectedFrom(null));
+        Assert.Null(SemanticEcho.ExpectedFrom("   "));
     }
 
     [Fact]

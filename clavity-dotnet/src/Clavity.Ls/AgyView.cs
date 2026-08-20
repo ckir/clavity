@@ -1,4 +1,3 @@
-using System.Text;
 using Clavity.Ls.Proto;
 using Grpc.Core;
 
@@ -45,10 +44,8 @@ public sealed class AgyViewOptions
 public sealed class AgyView
 {
     private readonly AgyViewOptions _options;
+    private int _uncheckedNoticeDelivered;
 
-    /// <summary>Latches the 13b archive-failure diagnostic to once per view, so a persistent failure
-    /// (a full disk) cannot flood the operator's sink on every ask.</summary>
-    private bool _archiveFailureReported;
     private readonly IListeningPorts _listening;
     private readonly IModalGuard _modalGuard;
 
@@ -67,6 +64,19 @@ public sealed class AgyView
     /// escalation index — none of which reach the peer any more (see AskAsync). If the cheatsheet degraded to the
     /// baseline floor anomalously (over-cap/unreadable/empty), the block leads with a warning so the degrade is
     /// OBSERVABLE, not silent.</summary>
+    /// <summary>True the FIRST time an unchecked consult is seen on this view, false ever after.
+    ///
+    /// The UNCHECKED notice tells a caller its completeness checks did not run - vital for a discipline
+    /// consult that forgot to name itself, and pure noise on the ordinary questions that share this tool.
+    /// Emitting it on every ask put a permanent block on a hot path, and a notice that is always there is
+    /// a notice nobody reads: that is precisely how a guard dies. Latched once per session, on the same
+    /// once-per-process shape the driver guidance already uses.
+    ///
+    /// The cost is real and accepted: a consult that forgets the parameter LATER in a session is not told
+    /// a second time. Weighed against training every operator to skip [13b] blocks, that is the cheaper
+    /// loss. (Capstone R6, Release Engineer.)</summary>
+    public bool TryTakeUncheckedNotice() => Interlocked.Exchange(ref _uncheckedNoticeDelivered, 1) == 0;
+
     public string? TryTakeGuidanceBlock()
     {
         // F1 (independent toggles): the block has SOMETHING to deliver when a golden-header dir is configured
@@ -224,56 +234,20 @@ public sealed class AgyView
         }
     }
 
-    /// <summary>13b: capture the reply, then judge it three ways - structurally (did it end with the token
-    /// its discipline mandates?), semantically (did it quote the artifact's last line near its verdict?)
-    /// and heuristically (is it anomalously small for THIS peer?).
+    /// <summary>13b: judge the reply two ways - structurally (does it end with the token its discipline
+    /// mandates?) and semantically (did it quote the artifact's last substantive line near its verdict?).
     ///
-    /// All are computed even when the archive is unavailable: the token and echo checks need no history,
-    /// and a missing archive simply yields no baseline, so the size warning stays false rather than firing
-    /// on an empty one.</summary>
+    /// Both are pure string comparisons over a reply this method already has. There is deliberately no
+    /// third, statistical signal and nothing is written to disk: the byte-count heuristic and the reply
+    /// archive that fed it were REMOVED after the capstone measured what they cost. They produced ten of
+    /// the review's nineteen folds - prune ordering, temp naming, calendar culture, orphan sweeping, a
+    /// diagnostics latch - to deliver a warning no caller was obliged to act on, for a failure mode
+    /// (a complete-but-lazy reply) the capstone confirmed was only ever weakly caught. The deterministic
+    /// half carried the value; the statistical half carried the defects.</summary>
     private AskReply Evaluate13b(AskReply reply, string? expectTerminal, string? expectEcho)
     {
         var tokenMissing = !TerminalToken.IsSatisfied(reply.Answer, expectTerminal);
         var echoMissing = !SemanticEcho.IsSatisfied(reply.Answer, expectEcho);
-
-        var sizeAnomaly = false;
-        if (_options.GoldenHeaderDir is { } dir)
-        {
-            var archive = Path.Combine(dir, "replies");
-            var recent = ReplyArchive.ReadRecentSizes(archive);
-            var bytes = reply.Answer is null ? 0 : Encoding.UTF8.GetByteCount(reply.Answer);
-            sizeAnomaly = ReplySizeHistory.IsAnomalouslySmall(recent, bytes);
-            // Archive AFTER measuring, so this reply is never part of its own baseline.
-            //
-            // The archive swallows every failure by design - it must never turn a working ask into a
-            // failed one - but SILENCE is a separate choice, and a wrong one: an unwritable archive
-            // freezes the size baseline while SIZE WARNINGs keep firing against a stale norm, with
-            // nothing anywhere saying why. The swallow stays; the silence does not.
-            // (Capstone R2, Blindspot Auditor.)
-            if (ReplyArchive.Write(archive, reply.CascadeId, reply.Answer, DateTime.UtcNow) is null
-                && !_archiveFailureReported)
-            {
-                // ONCE PER VIEW, AND IT MAY NOT THROW. Round 2 added this line unguarded and unbounded,
-                // which broke the one rule this whole path has: an archive failure must never fail an ask.
-                // On a full disk BOTH fail together - the write returns null and the sink throws - and the
-                // exception escaped AskAsync. Adding an observation must never be able to break the thing
-                // being observed. The once-per-view latch also stops a persistent failure from pumping
-                // this into the sink on every single ask. (Capstone R3, Cascade Analyst - a defect round
-                // 2's own diagnostics fix introduced.)
-                _archiveFailureReported = true;
-                try
-                {
-                    _options.Diagnostics.WriteLine(
-                        $"clavity: 13b reply archive write FAILED at {archive} - the size baseline will not "
-                        + "advance and any size warning is measured against a stale norm. The ask itself is "
-                        + "unaffected. This is reported once per session.");
-                }
-                catch
-                {
-                    // A sink that cannot be written to is not a reason to fail the ask.
-                }
-            }
-        }
 
         // EchoMissing IS assigned here. The plan's draft computed it and then returned a record that
         // carried only the other two - the exact "detector with no consumer" shape Task 5b exists to
@@ -283,7 +257,6 @@ public sealed class AgyView
         {
             TerminalTokenMissing = tokenMissing,
             EchoMissing = echoMissing,
-            SizeAnomaly = sizeAnomaly,
         };
     }
 

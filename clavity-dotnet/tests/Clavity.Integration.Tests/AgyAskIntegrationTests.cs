@@ -222,6 +222,15 @@ public class AgyAskIntegrationTests
         return app;
     }
 
+    /// <summary>Write a throwaway artifact for the driver to derive an echo target from. The driver now
+    /// reads the file itself, so a test that wants an echo must provide a FILE, not a string.</summary>
+    private static string WriteArtifact(string dir, string content)
+    {
+        var path = Path.Combine(dir, "artifact-" + Guid.NewGuid().ToString("N") + ".md");
+        File.WriteAllText(path, content);
+        return path;
+    }
+
     private static int PortOf(WebApplication app) => new Uri(app.Urls.Single()).Port;
 
     private static string SetUpAgyDir(int port, out string cliLog)
@@ -1336,65 +1345,6 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
-    public async Task AskAsync_ARCHIVES_the_reply_when_a_header_dir_is_configured()
-    {
-        // CLOSES THE PLAN'S OWN M5 GAP. The plan listed "delete the ReplyArchive.Write call in
-        // Evaluate13b" as a mutant it expected to SURVIVE - measured, it did: nothing asserted that
-        // AgyView archives anything, only that ReplyArchive is capable of it. The whole point of 13b is
-        // that a review dying on the wire is still on disk, so an unwired archive is the failure itself.
-        // The plan offered a debt entry as the alternative; a row is strictly better.
-        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
-        var fake = new FakeAskLs("conv-1", "a review worth keeping", TimeSpan.Zero,
-                                 Array.Empty<CascadeStep>(), waitPlan: plan);
-        await using var app = await StartFakeAsync(fake);
-        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
-        try
-        {
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderDir = dir });
-            var reply = await view.AskAsync("review it");
-
-            var archive = Path.Combine(dir, "replies");
-            var written = Directory.GetFiles(archive, "*.md");
-            Assert.Single(written);
-            Assert.Contains("a review worth keeping", File.ReadAllText(written[0]));
-            Assert.Equal(new[] { Encoding.UTF8.GetByteCount(reply.Answer!) },
-                         ReplyArchive.ReadRecentSizes(archive).ToArray());
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public async Task A_reply_is_never_part_of_its_OWN_size_baseline()
-    {
-        // MUTATION-AUDIT ROW. Moving the archive write ABOVE the measurement left every other row green,
-        // so "Archive AFTER measuring, so this reply is never part of its own baseline" was a comment
-        // with no oracle. It is not cosmetic: with only two prior samples there is deliberately NO
-        // baseline yet, and self-archiving first manufactures the third sample out of the very reply
-        // being judged - so a short reply warns on a history too thin to justify any warning. That is
-        // the cry-wolf failure ReplySizeHistory.MinimumSamples exists to prevent.
-        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
-        var fake = new FakeAskLs("conv-1", "[VERDICT: ALIGNED]", TimeSpan.Zero,
-                                 Array.Empty<CascadeStep>(), waitPlan: plan);
-        await using var app = await StartFakeAsync(fake);
-        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
-        try
-        {
-            // Exactly two prior replies: one short of MinimumSamples.
-            var archive = Path.Combine(dir, "replies");
-            var t0 = new DateTime(2026, 8, 19, 9, 0, 0, DateTimeKind.Utc);
-            ReplyArchive.Write(archive, "c", new string('a', 15000), t0);
-            ReplyArchive.Write(archive, "c", new string('a', 15000), t0.AddSeconds(1));
-
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderDir = dir });
-            var reply = await view.AskAsync("review it");
-
-            Assert.False(reply.SizeAnomaly);
-            Assert.Equal(3, ReplyArchive.ReadRecentSizes(archive).Count);   // it WAS archived, just after
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
     public async Task AskAsync_flags_EchoMissing_when_the_reply_never_quotes_the_artifact_s_last_line()
     {
         // The plan's draft of Evaluate13b COMPUTED echoMissing and then returned a record carrying only
@@ -1470,7 +1420,8 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             var result = await McpTools.AgyAsk(view, "review it",
                 new CollectingProgress<ProgressNotificationValue>(),
-                discipline: "agy-capstone", expectEcho: "the last line of the artifact");
+                discipline: "agy-capstone",
+                artifactPath: WriteArtifact(dir, "notes\nthe last line of the artifact\n"));
             var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             Assert.DoesNotContain(texts, t => t.Contains("[13b]"));
         }
@@ -1495,7 +1446,8 @@ public class AgyAskIntegrationTests
             // BOTH deterministic verdicts fire: no terminal token AND no echo of the artifact's last line.
             var result = await McpTools.AgyAsk(view, "review it",
                 new CollectingProgress<ProgressNotificationValue>(),
-                discipline: "agy-capstone", expectEcho: "the last line of the artifact");
+                discipline: "agy-capstone",
+                artifactPath: WriteArtifact(dir, "notes\nthe last line of the artifact\n"));
             var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
 
             var only = Assert.Single(texts, t => t.Contains("[13b]"));
@@ -1545,7 +1497,6 @@ public class AgyAskIntegrationTests
             // unrelated design into this row and break it the next time a notice is added.
             Assert.DoesNotContain(secondTexts, t => t.Contains("TRUNCATED REPLY"));
             Assert.DoesNotContain(secondTexts, t => t.Contains("ECHO MISSING"));
-            Assert.DoesNotContain(secondTexts, t => t.Contains("SIZE WARNING"));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -1553,8 +1504,10 @@ public class AgyAskIntegrationTests
     [Fact]
     public async Task AgyAsk_warns_ECHO_WEAK_when_the_echo_target_cannot_discriminate()
     {
-        // CAPSTONE R1 fold. A driver reviewing a .cs file computes "}" as the last non-blank line, which
-        // every C# file ends with. Silently skipping the check would leave the operator believing it ran.
+        // CAPSTONE R1 fold, re-pointed by the R8 trim. The driver now READS the artifact, so the weak
+        // case is a weak FILE rather than a weak string a caller typed: a source file whose tail is all
+        // punctuation yields no line that could prove anything. Silently skipping would leave the
+        // operator believing the check ran.
         var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
         var fake = new FakeAskLs("conv-1", "a review", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
         await using var app = await StartFakeAsync(fake);
@@ -1564,7 +1517,7 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             var weak = await McpTools.AgyAsk(view, "review it",
                 new CollectingProgress<ProgressNotificationValue>(),
-                discipline: "agy-capstone", expectEcho: "}");
+                discipline: "agy-capstone", artifactPath: WriteArtifact(dir, "}\n```\n---\n"));
             var weakTexts = weak.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             Assert.Contains(weakTexts, t => t.Contains("[13b] ECHO WEAK"));
             // And it must NOT also be reported as a missing echo - the target is the problem, not the peer.
@@ -1587,7 +1540,8 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             var ok = await McpTools.AgyAsk(view, "review it",
                 new CollectingProgress<ProgressNotificationValue>(),
-                discipline: "agy-capstone", expectEcho: "the last line of the artifact");
+                discipline: "agy-capstone",
+                artifactPath: WriteArtifact(dir, "notes\nthe last line of the artifact\n"));
             var okTexts = ok.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             Assert.DoesNotContain(okTexts, t => t.Contains("[13b] ECHO WEAK"));
         }
@@ -1619,113 +1573,6 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
-    public async Task A_FAILED_archive_write_is_reported_on_the_diagnostics_sink()
-    {
-        // CAPSTONE R2 FINDING (Blindspot Auditor), verified. Every archive failure is swallowed by
-        // design, so an unwritable directory freezes the size baseline forever while SIZE WARNINGs keep
-        // firing against a stale norm - with nothing anywhere saying why. The swallow stays (it must
-        // never fail an ask); the SILENCE does not. AgyView already owns a diagnostics sink.
-        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
-        var fake = new FakeAskLs("conv-1", "a reply", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
-        await using var app = await StartFakeAsync(fake);
-        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
-        try
-        {
-            // A regular FILE where the archive directory must go makes creation fail deterministically.
-            File.WriteAllText(Path.Combine(dir, "replies"), "not a directory");
-
-            var log = new StringWriter();
-            var view = new AgyView(new AgyViewOptions
-            {
-                CliLogPath = cliLog,
-                GoldenHeaderDir = dir,
-                Diagnostics = log,
-            });
-            await view.AskAsync("hello");
-            Assert.Contains("archive", log.ToString(), StringComparison.OrdinalIgnoreCase);
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public async Task A_THROWING_diagnostics_sink_cannot_fail_the_ask()
-    {
-        // CAPSTONE R3 FINDING (Cascade Analyst) - a defect ROUND 2'S OWN FIX introduced. Round 2 added a
-        // diagnostics line when the archive write fails, and put it OUTSIDE any try/catch. On a full disk
-        // both fail together: the archive write returns null, the sink throws, and the exception escapes
-        // AskAsync - so an archive failure fails the ask, which is the one thing this whole class is
-        // forbidden to do. Adding an observation must never be able to break the thing observed.
-        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
-        var fake = new FakeAskLs("conv-1", "a reply", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
-        await using var app = await StartFakeAsync(fake);
-        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
-        try
-        {
-            File.WriteAllText(Path.Combine(dir, "replies"), "not a directory");   // forces the write to fail
-            var view = new AgyView(new AgyViewOptions
-            {
-                CliLogPath = cliLog,
-                GoldenHeaderDir = dir,
-                Diagnostics = new ThrowingWriter(),
-            });
-            var reply = await view.AskAsync("hello");
-            Assert.NotNull(reply);
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    /// <summary>A sink that fails only on the 13b archive line.
-    ///
-    /// SCOPED DELIBERATELY. A sink that throws on EVERYTHING also trips AgyView's pre-existing model
-    /// -resolution diagnostic (AgyView.cs:611), which is unguarded too - a real, PRE-EXISTING exposure
-    /// that is recorded for triage rather than silently widened into this branch. This row proves the
-    /// line 13b ADDED cannot fail an ask; it does not claim the whole sink is safe.</summary>
-    private sealed class ThrowingWriter : TextWriter
-    {
-        public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
-        public override void WriteLine(string? value)
-        {
-            if (value is not null && value.Contains("13b", StringComparison.Ordinal))
-                throw new IOException("There is not enough space on the disk.");
-        }
-    }
-
-    [Fact]
-    public async Task A_TINY_reply_after_large_ones_DOES_set_SizeAnomaly_and_reach_the_caller()
-    {
-        // CAPSTONE R5 FINDING (Test Auditor), verified by grep: BEFORE this row, every SizeAnomaly
-        // assertion in the suite was Assert.False and every SIZE WARNING assertion was DoesNotContain.
-        // The whole heuristic could have been dead - never wired, never reaching the caller - and the
-        // suite would have stayed green. A negative-only control catches nothing; the pair is the oracle.
-        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
-        var fake = new FakeAskLs("conv-1", "the last line of the artifact\n[VERDICT: ALIGNED]",
-                                 TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
-        await using var app = await StartFakeAsync(fake);
-        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
-        try
-        {
-            // A baseline of three ~15 KB replies, so a 45-byte answer is far below a quarter of the median.
-            var archive = Path.Combine(dir, "replies");
-            var t0 = new DateTime(2026, 8, 19, 9, 0, 0, DateTimeKind.Utc);
-            for (var i = 0; i < 3; i++)
-                ReplyArchive.Write(archive, "c", new string('a', 15000), t0.AddSeconds(i));
-
-            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog, GoldenHeaderDir = dir });
-            var result = await McpTools.AgyAsk(view, "review it",
-                new CollectingProgress<ProgressNotificationValue>(),
-                discipline: "agy-capstone", expectEcho: "the last line of the artifact");
-
-            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
-            // The token and echo are BOTH satisfied, so nothing outranks the heuristic in the if/else-if
-            // chain - which is exactly what makes this the row that proves the size path is reachable.
-            Assert.Contains(texts, t => t.Contains("[13b] SIZE WARNING"));
-            Assert.DoesNotContain(texts, t => t.Contains("TRUNCATED REPLY"));
-            Assert.DoesNotContain(texts, t => t.Contains("ECHO MISSING"));
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
     public async Task AgyAsk_appends_UNCHECKED_when_no_discipline_is_named()
     {
         // The loud-omission block gets its OWN oracle rather than being observed incidentally by an
@@ -1747,6 +1594,39 @@ public class AgyAskIntegrationTests
             // It must NAME the disciplines, or the operator cannot act on it.
             Assert.Contains("adversarial-panel-review", notice);
             Assert.Contains("agy-capstone", notice);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task The_UNCHECKED_notice_is_shown_ONCE_per_session_not_on_every_ask()
+    {
+        // R8 TRIM. Every other UNCHECKED row builds a FRESH AgyView, so none of them can see a latch at
+        // all - the change would have shipped untested, which is the exact vacuity this review kept
+        // finding. agy_ask serves ordinary questions too, and a block on every one of those is how an
+        // operator learns to skip [13b] entirely.
+        var plan = new[]
+        {
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+            new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true),
+        };
+        var fake = new FakeAskLs("conv-1", "an ordinary answer", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+
+            var first = await McpTools.AgyAsk(view, "hello",
+                new CollectingProgress<ProgressNotificationValue>());
+            Assert.Contains(first.Content.OfType<TextContentBlock>().Select(b => b.Text),
+                            t => t.Contains("[13b] UNCHECKED"));
+
+            var second = await McpTools.AgyAsk(view, "hello again",
+                new CollectingProgress<ProgressNotificationValue>());
+            Assert.DoesNotContain(second.Content.OfType<TextContentBlock>().Select(b => b.Text),
+                                  t => t.Contains("[13b] UNCHECKED"));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -1789,7 +1669,6 @@ public class AgyAskIntegrationTests
             var reply = await view.AskAsync("hello");
             Assert.False(reply.TerminalTokenMissing);
             Assert.False(reply.EchoMissing);
-            Assert.False(reply.SizeAnomaly);
         }
         finally { Directory.Delete(dir, true); }
     }

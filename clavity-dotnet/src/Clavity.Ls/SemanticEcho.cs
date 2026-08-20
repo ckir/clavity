@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 
 namespace Clavity.Ls;
@@ -27,6 +28,37 @@ public static class SemanticEcho
     /// <summary>How close to the end the echo must appear. Three tolerates a verdict line, a blank, and
     /// the echo itself without letting an early quote count.</summary>
     public const int TailLines = 3;
+
+    /// <summary>Apply the echo rule to an ARTIFACT and return the line the peer must quote - the last
+    /// line carrying at least <see cref="MinSubstantiveChars"/> letters or digits. Null when the path is
+    /// absent, unreadable, or contains no line that could prove anything.
+    ///
+    /// THIS IS WHY THE DRIVER, NOT THE CALLER, NOW OWNS THE EXPECTATION. The first design had the calling
+    /// agent apply the rule and pass the resulting line in. Two parties applying the same rule to the same
+    /// file can still disagree - a different line each, both defensible - and the disagreement REDS an
+    /// honest review on a fail-closed path. Worse, the rule is a character count, which language models
+    /// are measurably bad at. One reader cannot disagree with itself, so the ambiguity class disappears
+    /// rather than being mitigated.
+    ///
+    /// Reading a caller-named file must never fail an ask, so every failure returns null and the check
+    /// degrades to "nothing claimed" - the same direction every other degradation here takes.</summary>
+    public static string? ExpectedFrom(string? artifactPath)
+    {
+        if (string.IsNullOrWhiteSpace(artifactPath)) return null;
+        try
+        {
+            foreach (var line in File.ReadLines(artifactPath).Reverse())
+            {
+                var candidate = Normalise(line);
+                if (IsUsableExpectation(candidate)) return candidate;
+            }
+        }
+        catch
+        {
+            // Missing, locked, a directory, a permission failure - all the same answer.
+        }
+        return null;
+    }
 
     /// <summary>How many letters or digits an expectation needs before it can discriminate at all.</summary>
     public const int MinSubstantiveChars = 8;

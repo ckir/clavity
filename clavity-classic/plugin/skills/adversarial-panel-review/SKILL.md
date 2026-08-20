@@ -85,91 +85,31 @@ ask only makes sense when a human is actually on the other end of it.
 
 ## Completeness checks the DRIVER runs on your reply (13b)
 
-**NAME YOUR DISCIPLINE ON EVERY ASK.** On clavity-dotnet pass `discipline: "adversarial-panel-review"` to `agy_ask`; the driver
-owns the terminal-token table and applies this discipline's checks itself. You never type the token, so you
-cannot mistype it into a silent opt-out. An ask that names no known discipline comes back with a
-`[13b] UNCHECKED` notice saying the checks did not run.
+**NAME YOUR DISCIPLINE, AND NAME THE ARTIFACT.** On clavity-dotnet pass `discipline: "adversarial-panel-review"` and
+`artifactPath: "<the file under review>"` to `agy_ask`. You supply NAMES only: the driver owns the
+terminal-token table and reads the artifact itself to derive the line the peer must echo. So there is
+nothing you can mistype into a silent opt-out, and no counting rule for you and the peer to resolve
+differently.
 
-**Every payload that names a PRIMARY ARTIFACT must demand a SEMANTIC ECHO.** Add, as the second-to-last
-instruction:
+**Demand the echo in your payload**, as the second-to-last instruction:
 
-> Immediately before your terminal verdict, quote verbatim the LAST line of
-> `<the primary artifact path>` that contains AT LEAST 8 LETTERS OR DIGITS. Quote it exactly; do not
-> paraphrase or summarise it.
+> Immediately before your terminal verdict, quote verbatim the last line of `<the artifact>` that carries
+> at least 8 letters or digits. Quote it exactly.
 
-Then pass that same line to the ask as `expectEcho`, having applied the SAME rule yourself to the same
-file. The driver compares them and reports `[13b] ECHO MISSING` when they disagree.
+A nonce would prove only that the peer read your brief; the artifact's own tail proves it reached the end
+of the thing it was reviewing.
 
-**THE RULE IS MECHANICAL - "at least 8 letters or digits" - AND THAT IS THE POINT.** An earlier wording
-said to pick the last line "with substance", and substance is a judgment call: you and the peer can read
-the same file, each pick a defensible line, disagree, and RED an honest review. Two agents applying a
-counting rule cannot disagree. Count letters and digits only - punctuation, braces and whitespace do not
-count toward the 8.
+**What the driver reports back.** `[13b] TRUNCATED REPLY` - the mandated terminal token is missing or not
+at the end. `[13b] ECHO MISSING` - the peer did not quote that line. `[13b] ECHO WEAK` - no line in the
+artifact could prove anything, so the check was SKIPPED, not failed. `[13b] NO ECHO` - you named no
+artifact. `[13b] UNCHECKED` - you named no known discipline; shown once per session.
 
-**Why a threshold at all: a bare `}` proves NOTHING.** The literal last non-blank line of a SOURCE file is
-almost always a closing brace, a fence, or a rule, and any peer can emit one without reading a word. The
-driver applies exactly the same rule and reports `[13b] ECHO WEAK` for a target below the threshold,
-SKIPPING the echo check rather than failing it - failing it would punish the peer for a target the driver
-chose. Measured, not theoretical: found on the first live consult that used the echo, whose artifact was a
-`.cs` file.
+**A flagged reply is INCOMPLETE, not empty.** Never read one as "no findings". Recover it with `agy_look`
+against the peer's own trajectory - not from any local file - or re-ask AT MOST ONCE, then halt and ask
+your human. An unbounded "re-ask until it passes" reproduces the same mismatch and burns a budget.
 
-**If NO line in the artifact reaches 8 letters or digits, omit `expectEcho`.** The driver then reports
-`[13b] NO ECHO` - the check did not run, and says so, rather than pretending it did.
-
-**ON clavity-classic THERE IS NO `discipline` OR `expectEcho` PARAMETER - `clavity ask --review-only` does
-not carry them.** This file is byte-identical across both plugins, so read this paragraph as the classic
-half of the contract: still DEMAND the echo in the payload, because the demand is what makes a truncated
-or unread review visible - but VERIFY IT YOURSELF by eye against the artifact, and know that no automatic
-`[13b]` verdict will arrive. An instruction you cannot execute is worse than no instruction, so it is
-spelled out rather than left for you to discover.
-
-**Why this and not a nonce.** A nonce you invent proves only that the peer read your BRIEF. The
-artifact's last line proves it reached the END of the thing under review - which is exactly what a
-truncated or unread review cannot do.
-
-**When there is no primary artifact** - a design question, a pasted fork with no file - omit the demand
-and pass no `expectEcho`. The check degrades to satisfied rather than to failed, deliberately: a guard
-that reds on consults it was never meant to cover gets disabled, and then it covers nothing.
-
-**A reply the driver flags is INCOMPLETE, not empty.** Never read a `[13b] TRUNCATED REPLY` or
-`[13b] ECHO MISSING` as "no findings" - recover the reply with `agy_look`, or re-ask.
-**RE-ASK AT MOST ONCE, then halt and ask your human.** An unbounded "re-ask until it passes" is how two
-agents burn a budget: if the echo mismatches because you and the peer resolved the rule to different
-lines, re-asking reproduces the same mismatch, and nothing in the loop notices.
-
-**WHAT THE DRIVER NOW KEEPS ON DISK - know this before you consult.** On clavity-dotnet every reply is
-written to `%USERPROFILE%\.clavity\replies\` (or `<CLAVITY_GOLDEN_HEADER>\replies\`): the most recent
-100 are retained, older ones are deleted, and a one-number-per-reply size index sits beside them. That
-persistence is the point - it is what makes a review that died on the wire recoverable at all - but peer
-replies quote source, paths and findings, so that directory holds whatever your reviews held. It is
-stated here rather than left for you to discover.
-
-**THE ARCHIVE DOES NOT RECOVER LOST BYTES - do not go looking there for them.** It stores the reply
-as the DRIVER RECEIVED it, so a reply truncated on the wire is truncated in the archive too. What it
-actually buys you: the reply survives your own context being compacted or lost, it can be read after the
-fact, and it supplies the size baseline. To recover text that never arrived, use `agy_look` against the
-peer's own trajectory - which is what the `[13b] TRUNCATED REPLY` notice tells you to do. An earlier
-version of this paragraph claimed the archive was "what makes a review that died on the wire recoverable
-at all"; that was false and contradicted the notice one section below it.
-
-**Every payload MUST carry THREE to FOUR OPEN QUESTIONS the peer answers in its own words** - never a
-checkbox, never a yes/no, and never a question whose expected answer is stated in the payload. One
-question is not enough: it lets the peer answer the easiest and stop. Draw them from these four shapes,
-each of which produced a real finding on 2026-08-19:
-
-1. **Disagree with my guess.** State where YOU think the weakness is, then ask the peer where IT thinks
-   it is and to say plainly if you are wrong. (Produced an 8-row case matrix, and a correction that a
-   proposed fix would have destroyed the property it was fixing.)
-2. **A disposition I have not named.** "Is there an option neither this artifact nor I have named?" A fork
-   stated as N options is often really N+1. (Produced a third disposition that dissolved a ruling.)
-3. **Reject the frame.** "Is the signal / metric / approach I have chosen even the right one?" (Produced
-   the largest single design change of that session - the chosen signal was wrong and the peer said so.)
-4. **Permit ignorance explicitly.** "If you cannot explain this, say so plainly rather than constructing a
-   story." (Produced an honest known-unknown instead of a confident fabrication - the peer had already
-   fabricated once that day.)
-
-**A payload whose questions all have knowable answers is not asking anything.** If you can predict every
-answer, you are seeking agreement, not review.
+**On clavity-classic neither parameter exists** - `clavity ask --review-only` does not carry them. Still
+demand the echo, but verify it by eye: no automatic verdict will arrive.
 
 ### Step 3 — Fold with verification
 Never rubber-stamp a finding. For every finding raised by any seat, verify any bare factual claim by
@@ -372,8 +312,7 @@ panel) and Step 4 (each additional round's rotation) draw from.
 
 **A CLEAN ROUND IS A COVERAGE CLAIM, NOT A RESULT.** Before accepting one, ask what was NOT examined -
 which files went unread, which behaviours were never exercised, which lens was not applied. A round that
-finds nothing has told you about its own coverage, not about the artifact. Measured 2026-08-19: of two
-clean rounds in one session, both later proved to have missed a real defect that hand-enumeration found.
+finds nothing has told you about its own coverage, not about the artifact.
 
 ## Outputs
 - A per-round report: each seated persona's findings under its own heading, closing with a one-line PANEL

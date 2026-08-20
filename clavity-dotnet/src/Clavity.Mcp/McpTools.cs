@@ -23,7 +23,7 @@ public class McpTools
     [McpServerTool(Name = "agy_ask"), Description("Send a message to the active agy conversation and return agy's reply (size-bounded JSON) once the conversation goes idle. WRITE: consumes quota and posts a visible message in the user's agy.")]
     public static async Task<CallToolResult> AgyAsk(
         AgyView view, string message, IProgress<ProgressNotificationValue> progress,
-        string? discipline = null, string? expectEcho = null,
+        string? discipline = null, string? artifactPath = null,
         CancellationToken cancellationToken = default)
     {
         // `progress` is SDK-INJECTED and does NOT appear in the tool's input schema — verified against the generated
@@ -42,6 +42,12 @@ public class McpTools
         // THE INJECTION POINT. The caller names its discipline; the driver supplies the token. A caller
         // cannot mistype "[VERDICT:" into a silent opt-out, because it never types it.
         var expectTerminal = DisciplineContract.TerminalTokenFor(discipline);
+
+        // THE DRIVER READS THE ARTIFACT AND DERIVES THE EXPECTATION ITSELF. The caller names WHICH file
+        // was under review; it does not compute, and cannot mistype, the line to be echoed. Two parties
+        // applying a counting rule to the same file could pick different lines and red an honest review;
+        // one party cannot disagree with itself.
+        var expectEcho = SemanticEcho.ExpectedFrom(artifactPath);
 
         // CAPTURED PER CALL, never on the view. An earlier draft parked the evaluated reply on
         // AgyView.LastReply - but Program.cs:44 registers AgyView as a SINGLETON, so concurrent asks
@@ -84,48 +90,35 @@ public class McpTools
                      + "read it. Treat this consult as INCOMPLETE and do not fold findings from it."
             });
         }
-        else if (reply13b is { SizeAnomaly: true })
-        {
-            blocks.Add(new TextContentBlock
-            {
-                Text = "[13b] SIZE WARNING: this reply is far smaller than this peer's recent replies. "
-                     + "That is a HEURISTIC, not proof - a genuine 'no findings' is legitimately short. "
-                     + "Confirm the reply is complete before folding or accepting a clean verdict."
-            });
-        }
-
         // AN ECHO TARGET THAT CANNOT DISCRIMINATE IS NOT A CHECK. Independent of the verdicts above,
         // because it is a fact about the ASK, not about the reply - the same category as UNCHECKED.
         // (Capstone R1: the last non-blank line of any C# file is "}", which any peer can emit.)
-        if (expectEcho is null)
+        if (artifactPath is null)
         {
-            // FAIL-OPEN, CLOSED. The weak-target check only fired when a target was SUPPLIED, so an ask
-            // that simply omitted the parameter bypassed the strongest signal in total silence - the same
-            // shape UNCHECKED exists to close for `discipline`. Omission stays LEGAL, because a consult
-            // with no primary artifact has nothing to echo; it just stops being invisible. Only a
-            // recognised discipline is told, so ordinary questions are not nagged.
-            // (Capstone R2, Mechanism Gamer.)
-            if (DisciplineContract.TerminalTokenFor(discipline) is not null)
+            // FAIL-OPEN, CLOSED. Omitting the artifact stays LEGAL - a consult with no primary artifact
+            // has nothing to echo - it just stops being invisible. Only a recognised discipline is told,
+            // so ordinary questions are not nagged. (Capstone R2, Mechanism Gamer.)
+            if (expectTerminal is not null)
             {
                 blocks.Add(new TextContentBlock
                 {
-                    Text = "[13b] NO ECHO: this consult named a discipline but supplied no echo target, "
-                         + "so the strongest completeness check did NOT run - only the terminal token was "
-                         + "verified. If the brief named a primary artifact, re-issue with expectEcho set "
-                         + "to that file's last substantive line. If it genuinely had no artifact (a "
-                         + "design question, a pasted fork), this notice is expected."
+                    Text = "[13b] NO ECHO: this consult named a discipline but no artifact, so the "
+                         + "strongest completeness check did NOT run - only the terminal token was "
+                         + "verified. If the brief pointed the peer at a file, re-issue with artifactPath "
+                         + "set to that file. If it genuinely had no artifact (a design question, a "
+                         + "pasted fork), this notice is expected."
                 });
             }
         }
-        else if (!SemanticEcho.IsUsableExpectation(expectEcho))
+        else if (expectEcho is null)
         {
             blocks.Add(new TextContentBlock
             {
-                Text = "[13b] ECHO WEAK: the supplied echo target cannot prove anything - it carries "
-                     + "fewer than " + SemanticEcho.MinSubstantiveChars + " letters or digits, so a peer "
-                     + "could emit it without reading the artifact (a bare '}' ends every C# file). The "
-                     + "echo check was SKIPPED rather than failed. Use the last non-blank line that "
-                     + "carries actual content, or omit expectEcho and rely on the other checks."
+                Text = "[13b] ECHO WEAK: no line in the named artifact can prove anything - none carries "
+                     + SemanticEcho.MinSubstantiveChars + " letters or digits, or the file could not be "
+                     + "read. A peer could satisfy a punctuation-only target without reading a word (a "
+                     + "bare '}' ends every C# file). The echo check was SKIPPED rather than failed - the "
+                     + "artifact is the problem, not the peer. Check the path, or rely on the token."
             });
         }
 
@@ -133,14 +126,14 @@ public class McpTools
         // normal-looking result with no checks run - which is the compliance-theater failure in a
         // different costume: not a check that can be turned off, but one that was never turned on and
         // said nothing about it. This does NOT block the consult; it makes the gap visible.
-        if (DisciplineContract.TerminalTokenFor(discipline) is null)
+        if (expectTerminal is null && view.TryTakeUncheckedNotice())
         {
             blocks.Add(new TextContentBlock
             {
                 Text = "[13b] UNCHECKED: no known discipline was named on this ask, so the completeness "
                      + "checks did NOT run. If this is a discipline consult, re-issue it with "
                      + "discipline set to one of: " + string.Join(", ", DisciplineContract.KnownDisciplines)
-                     + ". If it is an ordinary question, this notice is expected."
+                     + ". If it is an ordinary question, this notice is expected. Shown ONCE per session, so it does not become noise you learn to skip."
             });
         }
         return new CallToolResult { Content = blocks };
