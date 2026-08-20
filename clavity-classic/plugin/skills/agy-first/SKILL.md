@@ -77,7 +77,10 @@ and pass no `expectEcho`. The check degrades to satisfied rather than to failed,
 that reds on consults it was never meant to cover gets disabled, and then it covers nothing.
 
 **A reply the driver flags is INCOMPLETE, not empty.** Never read a `[13b] TRUNCATED REPLY` or
-`[13b] ECHO MISSING` as "no findings" - recover the reply or re-ask.
+`[13b] ECHO MISSING` as "no findings" - recover the reply with `agy_look`, or re-ask.
+**RE-ASK AT MOST ONCE, then halt and ask your human.** An unbounded "re-ask until it passes" is how two
+agents burn a budget: if the echo mismatches because you and the peer resolved the rule to different
+lines, re-asking reproduces the same mismatch, and nothing in the loop notices.
 
 **WHAT THE DRIVER NOW KEEPS ON DISK - know this before you consult.** On clavity-dotnet every reply is
 written to `%USERPROFILE%\.clavity\replies\` (or `<CLAVITY_GOLDEN_HEADER>\replies\`): the most recent
@@ -85,6 +88,14 @@ written to `%USERPROFILE%\.clavity\replies\` (or `<CLAVITY_GOLDEN_HEADER>\replie
 persistence is the point - it is what makes a review that died on the wire recoverable at all - but peer
 replies quote source, paths and findings, so that directory holds whatever your reviews held. It is
 stated here rather than left for you to discover.
+
+**THE ARCHIVE DOES NOT RECOVER LOST BYTES - do not go looking there for them.** It stores the reply
+as the DRIVER RECEIVED it, so a reply truncated on the wire is truncated in the archive too. What it
+actually buys you: the reply survives your own context being compacted or lost, it can be read after the
+fact, and it supplies the size baseline. To recover text that never arrived, use `agy_look` against the
+peer's own trajectory - which is what the `[13b] TRUNCATED REPLY` notice tells you to do. An earlier
+version of this paragraph claimed the archive was "what makes a review that died on the wire recoverable
+at all"; that was false and contradicted the notice one section below it.
 
 ## Safety envelope (every consult, no exceptions)
 A bare "review-only" once let the peer write to the tree anyway. Wrap each consult:
