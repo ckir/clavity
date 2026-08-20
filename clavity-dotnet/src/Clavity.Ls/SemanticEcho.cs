@@ -47,11 +47,17 @@ public static class SemanticEcho
         if (string.IsNullOrWhiteSpace(artifactPath)) return null;
         try
         {
-            foreach (var line in File.ReadLines(artifactPath).Reverse())
+            // SINGLE PASS, CONSTANT MEMORY. The obvious spelling - ReadLines(...).Reverse() - materialises
+            // the ENTIRE file to walk it backwards, and this path is now supplied by the caller, so
+            // "the artifact" could be a multi-gigabyte log. Streaming forward and keeping the last usable
+            // line answers the same question without ever holding more than one line.
+            string? last = null;
+            foreach (var line in File.ReadLines(artifactPath))
             {
                 var candidate = Normalise(line);
-                if (IsUsableExpectation(candidate)) return candidate;
+                if (IsUsableExpectation(candidate)) last = candidate;
             }
+            return last;
         }
         catch
         {
