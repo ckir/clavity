@@ -4,9 +4,11 @@ namespace Clavity.Ls;
 /// mandates? This is the deterministic half of 13b: a reply whose token is missing, or present but not at
 /// the end, lost its tail on the wire or stopped mid-thought.
 ///
-/// It deliberately does NOT judge whether the WORK was done. A lone verdict line with no body satisfies
-/// this check and is caught (heuristically) by <see cref="ReplySizeHistory"/> instead. Conflating the two
-/// is what made the first design brittle.
+/// It deliberately does NOT judge whether the WORK was done, and NOTHING here does any more: a lone
+/// verdict line with no body satisfies this check. A size heuristic used to flag that case; it was deleted
+/// with the reply archive that fed it, because the archive produced ten of the review's nineteen defects
+/// to deliver a warning nobody was obliged to act on. That trade is stated plainly rather than left for a
+/// reader to infer from an absence.
 ///
 /// The expectation is supplied PER CALL because the four disciplines do not share a grammar: agy-capstone,
 /// agy-test-audit and agy-first end on "[VERDICT:", while adversarial-panel-review ends on "GREEN"

@@ -47,12 +47,30 @@ public static class SemanticEcho
         if (string.IsNullOrWhiteSpace(artifactPath)) return null;
         try
         {
+            // THIS METHOD OPENS A PATH THE CALLER SUPPLIED - a capability the language server did not
+            // have before. Three guards, each measured rather than assumed (capstone R9, Boundary
+            // Smuggler):
+            //
+            // 1. REGULAR FILES ONLY. File.Exists is false for a directory and, on this platform, for
+            //    CON, NUL and a pipe path - so this one check closes the "block the ask forever on a
+            //    device" vector without needing to enumerate device names.
+            // 2. A SIZE CAP. Streaming bounds the memory but not the time; "the artifact" could be a
+            //    multi-gigabyte log, and this runs on the ask path.
+            // 3. SHARE THE FILE. The default File.ReadLines share mode CONFLICTS with an editor holding
+            //    the artifact open for write: it throws, the catch swallows it, and the consult degrades
+            //    to ECHO WEAK at random depending on whether someone had the file open. Measured both
+            //    ways - default throws, FileShare.ReadWrite reads it fine.
+            if (!File.Exists(artifactPath)) return null;
+            if (new FileInfo(artifactPath).Length > MaxArtifactBytes) return null;
+
             // SINGLE PASS, CONSTANT MEMORY. The obvious spelling - ReadLines(...).Reverse() - materialises
             // the ENTIRE file to walk it backwards, and this path is now supplied by the caller, so
             // "the artifact" could be a multi-gigabyte log. Streaming forward and keeping the last usable
             // line answers the same question without ever holding more than one line.
             string? last = null;
-            foreach (var line in File.ReadLines(artifactPath))
+            using var stream = new FileStream(artifactPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
             {
                 var candidate = Normalise(line);
                 if (IsUsableExpectation(candidate)) last = candidate;
@@ -65,6 +83,10 @@ public static class SemanticEcho
         }
         return null;
     }
+
+    /// <summary>Largest artifact the driver will open to derive an echo target. Beyond this the check is
+    /// skipped rather than made to wait: no review artifact is this big, and the ask must not stall.</summary>
+    public const int MaxArtifactBytes = 4 * 1024 * 1024;
 
     /// <summary>How many letters or digits an expectation needs before it can discriminate at all.</summary>
     public const int MinSubstantiveChars = 8;

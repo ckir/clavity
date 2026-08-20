@@ -106,7 +106,9 @@ public class McpTools
                          + "strongest completeness check did NOT run - only the terminal token was "
                          + "verified. If the brief pointed the peer at a file, re-issue with artifactPath "
                          + "set to that file. If it genuinely had no artifact (a design question, a "
-                         + "pasted fork), this notice is expected."
+                         + "pasted fork), this notice is expected. NOTE: if your instructions still say to "
+                         + "pass expectEcho, they predate this driver - the parameter is now artifactPath "
+                         + "and you name the FILE, not the line. Re-asking unchanged will not help."
                 });
             }
         }

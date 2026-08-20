@@ -10,7 +10,7 @@ public sealed record AskReply(
     bool ActivityTruncated,
     // 13b. Both default to false so every existing construction site and test is unaffected. Both are
     // DETERMINISTIC verdicts about the reply's structure - there is no statistical flag here any more.
-    // A third, heuristic flag (SizeAnomaly) existed and was removed: see Evaluate13b for why.
+    // There was briefly a third, heuristic flag here; it and the archive behind it were removed.
     bool TerminalTokenMissing = false,
     // The peer did not quote the artifact's last substantive line near its verdict: it never reached the
     // end, or never read the artifact at all.

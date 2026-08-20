@@ -142,6 +142,40 @@ public class SemanticEchoTests : IDisposable
     }
 
     [Fact]
+    public void ExpectedFrom_reads_a_file_an_EDITOR_is_holding_OPEN_FOR_WRITE()
+    {
+        // CAPSTONE R9 FINDING (Boundary Smuggler), measured. The default File.ReadLines opens with a
+        // share mode that CONFLICTS with an editor holding the file open for write - it throws, the catch
+        // swallows it, and the consult silently degrades to [13b] ECHO WEAK. So the check would fail at
+        // random depending on whether someone had the artifact open. Measured both ways: default share
+        // throws, explicit FileShare.ReadWrite reads it fine.
+        var path = Path.Combine(_dir, "held-open.md");
+        File.WriteAllText(path, "notes\nthe last real sentence in the file\n");
+        using var editor = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read);
+        Assert.Equal("the last real sentence in the file", SemanticEcho.ExpectedFrom(path));
+    }
+
+    [Fact]
+    public void ExpectedFrom_refuses_a_DIRECTORY_and_anything_that_is_not_a_regular_file()
+    {
+        // Same finding. The language server now opens a path the CALLER supplies, which it never did
+        // before. File.Exists is false for a directory and - measured on this platform - for CON, NUL and
+        // a pipe path too, so one guard closes the whole "block the ask forever on a device" vector.
+        Assert.Null(SemanticEcho.ExpectedFrom(_dir));
+        Assert.Null(SemanticEcho.ExpectedFrom("CON"));
+    }
+
+    [Fact]
+    public void ExpectedFrom_refuses_an_artifact_larger_than_the_cap()
+    {
+        // An unbounded read on the ask path: "the artifact" could be a multi-gigabyte log. Streaming
+        // bounds the MEMORY but not the time, so the size is capped too.
+        var path = Path.Combine(_dir, "huge.md");
+        File.WriteAllText(path, new string('a', SemanticEcho.MaxArtifactBytes + 1));
+        Assert.Null(SemanticEcho.ExpectedFrom(path));
+    }
+
+    [Fact]
     public void A_blank_or_whitespace_expectation_is_treated_as_NO_expectation()
     {
         // A primary artifact ending in blank lines yields an empty "last line". Demanding an empty echo
