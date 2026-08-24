@@ -289,4 +289,41 @@ Describe 'agy-curate-nudge.sh' {
             $r.StdOut | Should -BeNullOrEmpty
         } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'is SILENT under a .no-agy sitting under USERPROFILE when HOME points somewhere else' {
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) a stale capture  ``[corpus]`` - 2020-01-01 - agy 1.0.10
+"@
+        # CONTROL for the kill-switch resolution split. The inbox and snooze resolve via
+        # ${USERPROFILE:-$HOME} (agy-curate-nudge.sh:8) but the marker was read from BARE ${HOME} (:22).
+        # MEASURED: `env -u HOME bash --noprofile --norc -c` leaves HOME empty and does NOT backfill it
+        # from USERPROFILE, so a parent exporting only USERPROFILE silently DISARMS the switch.
+        $h = Join-Path ([IO.Path]::GetTempPath()) ("nudgehome-" + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $h -Force | Out-Null
+        $e1 = New-NudgeEnv -Inbox $inbox
+        $e2 = New-NudgeEnv -Inbox $inbox
+        try {
+            $payload = @{ cwd = 'C:/nowhere' } | ConvertTo-Json -Compress
+            # PRECONDITION. HOME pointed away, no marker anywhere: this inbox is stale so it DOES nudge.
+            # Without this, the silence below could be the setup rather than the kill switch.
+            $e1.Env['HOME'] = ($h -replace '\\','/')
+            $r1 = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $e1.Env
+            $r1.StdOut | Should -Not -BeNullOrEmpty -Because 'precondition: a stale inbox nudges when no marker exists'
+
+            New-Item -ItemType Directory -Path (Join-Path $e2.Root 'home/.claude') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $e2.Root 'home/.claude/.no-agy') -Value '' -NoNewline
+            $e2.Env['HOME'] = ($h -replace '\\','/')
+            $r2 = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $e2.Env
+            $r2.ExitCode | Should -Be 0
+            $r2.StdOut | Should -BeNullOrEmpty -Because 'a .no-agy under USERPROFILE must silence the nudge even when HOME resolves elsewhere'
+        } finally {
+            Remove-Item -LiteralPath $e1.Root -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $e2.Root -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $h -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 }

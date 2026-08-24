@@ -269,6 +269,36 @@ Describe 'agy-inbox-snapshot' {
         }
     }
 
+    It 'honours .no-agy under USERPROFILE when HOME points somewhere else' {
+        # CONTROL for the kill-switch resolution split. The inbox resolves via ${USERPROFILE:-$HOME}
+        # (agy-inbox-snapshot.sh:19-20) but the opt-out marker was read from BARE $HOME (:25). A parent
+        # that exports USERPROFILE without HOME therefore silently DISARMS the kill switch. MEASURED:
+        # `env -u HOME bash --noprofile --norc -c` leaves HOME empty and does NOT backfill it from
+        # USERPROFILE, so this is reachable and not theoretical.
+        $h = Join-Path ([IO.Path]::GetTempPath()) ("ibxhome-" + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $h -Force | Out-Null
+        $r1 = New-PluginRoot $script:Good
+        $r2 = New-PluginRoot $script:Good
+        try {
+            # PRECONDITION. With HOME pointed away and NO marker anywhere, this setup DOES snapshot.
+            # Without asserting it, the 0 below could mean "the setup never snapshots" rather than
+            # "the kill switch fired" - a vacuous pass.
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                -Env (HookEnv $r1 @{ HOME = ($h -replace '\\','/') }) | Out-Null
+            BakCount $r1 | Should -Be 1 -Because 'precondition: this setup snapshots when no marker exists'
+
+            New-Item -ItemType Directory -Path (Join-Path $r2 'home/.claude') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $r2 'home/.claude/.no-agy') -Value '' -Encoding ascii
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
+                -Env (HookEnv $r2 @{ HOME = ($h -replace '\\','/') }) | Out-Null
+            BakCount $r2 | Should -Be 0 -Because 'a .no-agy under USERPROFILE must disarm the hook even when HOME resolves elsewhere'
+        } finally {
+            Remove-Item $r1 -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $r2 -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $h  -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'snapshots when agy-curate is invoked as a SLASH COMMAND' {
         # The reported defect, verbatim: measured 2026-08-03, no new .bak appeared on this path.
         $r = New-PluginRoot $script:Good

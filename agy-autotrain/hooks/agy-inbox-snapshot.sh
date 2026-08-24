@@ -22,7 +22,15 @@ OBS="${HOME_DIR}/.clavity/agy-observations.md"
 input=$(cat 2>/dev/null)
 
 # Opt-out marker, mirroring agy-curate-nudge.sh.
-[ -f "$HOME/.claude/.no-agy" ] && exit 0
+# BOTH roots are checked on purpose, and the pair is load-bearing. The inbox path above resolves via
+# ${USERPROFILE:-$HOME}, so a parent process that exports USERPROFILE WITHOUT HOME reads the inbox
+# correctly yet looks for the opt-out marker at a path that cannot exist - silently DISARMING the kill
+# switch. That is reachable, not theoretical: measured, `env -u HOME bash --noprofile --norc` leaves
+# HOME empty and does NOT backfill it from USERPROFILE. A kill switch may only ever fail SAFE - toward
+# silence - so widening the lookup can only honour an opt-out the operator actually asked for; it can
+# never re-arm a hook they had silenced. Pinned by the USERPROFILE-vs-HOME control in the suite.
+[ -f "${HOME_DIR}/.claude/.no-agy" ] && exit 0
+[ -f "${HOME}/.claude/.no-agy" ] && exit 0
 
 # WHICH invocation is this? Two payload shapes reach this hook and they carry different fields:
 #   PreToolUse       -> .tool_input.skill  (the Skill tool was called)

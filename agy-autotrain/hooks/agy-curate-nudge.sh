@@ -19,6 +19,14 @@ SNOOZE="${HOME_DIR}/.clavity/.agy-curate-snooze"
 input="$(cat 2>/dev/null)"
 cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)"
 [ -f "${cwd}/.no-agy" ] && exit 0
+# BOTH roots are checked on purpose, and the pair is load-bearing. The inbox path above resolves via
+# ${USERPROFILE:-$HOME}, so a parent process that exports USERPROFILE WITHOUT HOME reads the inbox
+# correctly yet looks for the opt-out marker at a path that cannot exist - silently DISARMING the kill
+# switch. That is reachable, not theoretical: measured, `env -u HOME bash --noprofile --norc` leaves
+# HOME empty and does NOT backfill it from USERPROFILE. A kill switch may only ever fail SAFE - toward
+# silence - so widening the lookup can only honour an opt-out the operator actually asked for; it can
+# never re-arm a hook they had silenced. Pinned by the USERPROFILE-vs-HOME control in the suite.
+[ -f "${HOME_DIR}/.claude/.no-agy" ] && exit 0
 [ -f "${HOME}/.claude/.no-agy" ] && exit 0
 
 # Snooze: if the marker exists and is younger than 7 days, stay silent.
