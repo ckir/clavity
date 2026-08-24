@@ -357,6 +357,22 @@ These are per-file numbers taken in one sweep and are INDICATIVE ONLY — the se
 per-file time is not a stable quantity and is not used as the partition rule. `agy-consult-guard` was
 measured separately (2026-08-02) in isolation, as the sole command on a quiet machine.
 
+**2026-08-24 - two suites MOVED from fast to slow, on a measurement.** The AGY-TEST-AUDIT gap closure
+added tests to four fast suites, and the fast half was then measured BACKGROUNDED on an idle CPU as ONE
+batch at **576,0s against the 600s foreground tool cap** - about 4% headroom, on the recipe that had
+already blown that cap once at 665,4s under contention. The closure itself accounts for only ~38s of
+that (`agy-curate-nudge` +31s, `plugin-hooks-payload` +4,5s, `drain-lib` +0,8s, the new
+`agy-autotrain-installer` +1,3s); the half was already near 538s before it.
+
+Moved: **`agy-curate-nudge`** (48,1s - the suite this work grew) and **`check-injected-context`**
+(91,5s - the single largest in the half). That returns fast to roughly 435s, restoring headroom close to
+the 429,46s the half measured historically.
+
+Two things about this move are worth keeping. First, the decision was made on the MEASURED batch figure,
+not on the sum of the per-file rows - those sum to 531,1s, and the section above explains why a derived
+total is not the recipe's runtime. Second, the growth was mostly NOT the new tests: attributing it to
+them and moving only those would have left the half at 528s and solved nothing.
+
 ```
 abort-drain.Tests.ps1                            72,9s   13 tests   <- SLOW, re-measured 2026-08-06. The
                                                                       row said 261,3s: a 3,6x over-claim on
@@ -410,7 +426,9 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       figure was taken at 22 tests - the 9
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
-agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- FAST, re-measured 2026-08-24 WARM on an
+agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- SLOW as of 2026-08-24; was FAST.
+  MOVED with check-injected-context because the FAST half measured 576,0s against the 600s foreground
+  cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an
   idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale
   since before that: it said 11 when the file held 14.
 agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-measured 2026-08-24 WARM
@@ -500,7 +518,8 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, mea
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s    7 tests   <- FAST, re-measured 2026-08-05
-check-injected-context.Tests.ps1                 91,5s  144 tests   <- FAST, measured 2026-08-12 with the driver
+check-injected-context.Tests.ps1                 91,5s  144 tests   <- SLOW as of 2026-08-24; was FAST -
+  the single largest suite in that half, moved to buy back cap headroom. Figure measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
