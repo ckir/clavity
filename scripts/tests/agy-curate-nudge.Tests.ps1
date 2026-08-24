@@ -455,17 +455,33 @@ Describe 'agy-curate-nudge.sh' {
             $rows = (1..$n | ForEach-Object { "- [heuristic] (driver/probabilistic) e$_  ``[corpus]`` - $script:Today - agy 1.1.19" }) -join "`n"
             "# agy observations inbox`n`n## Pending`n`n$rows`n"
         }
-        $atThreshold = New-NudgeEnv -Inbox (& $mkInbox 2)
-        $atTwice     = New-NudgeEnv -Inbox (& $mkInbox 4)
+        # THRESHOLD=3, NOT 2. At T=2 the fixture is DEGENERATE: T*2, T+2 and T-squared are all 4, so
+        # every one of those relations satisfies the same two cells and the multiplicative rule the test
+        # names is unpinned. MEASURED: with T=2 the mutant `-ge $((THRESHOLD + 2))` produced byte-identical
+        # output at n=2 and n=4. At T=3 the boundary separates - T*2 is 6 while T+2 is 5 - so the n=5 cell
+        # below is the one that actually discriminates, and the mutant reds there.
+        # Real-world stake: at the shipped default THRESHOLD=8, a `+2` regression escalates every nudge to
+        # OVERDUE at 10 entries instead of 16, destroying the escalation signal.
+        $atThreshold = New-NudgeEnv -Inbox (& $mkInbox 3)
+        $between     = New-NudgeEnv -Inbox (& $mkInbox 5)
+        $atTwice     = New-NudgeEnv -Inbox (& $mkInbox 6)
         try {
-            $r1 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($atThreshold.Env + @{ AGY_CURATE_NUDGE_THRESHOLD = '2' })
+            $env3 = @{ AGY_CURATE_NUDGE_THRESHOLD = '3' }
+            $r1 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($atThreshold.Env + $env3)
             $r1.StdOut | Should -Match 'Consider running' -Because 'precondition: it must be nudging at all, or the absence of OVERDUE below proves nothing'
             $r1.StdOut | Should -Not -Match 'OVERDUE' -Because 'at exactly the threshold the wording must stay the gentle one'
 
-            $r2 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($atTwice.Env + @{ AGY_CURATE_NUDGE_THRESHOLD = '2' })
-            $r2.StdOut | Should -Match 'OVERDUE' -Because 'at twice the threshold the wording must escalate'
+            # THE DISCRIMINATING CELL. 5 is above T+2 but below T*2, so only a genuine doubling rule
+            # keeps this gentle.
+            $r2 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($between.Env + $env3)
+            $r2.StdOut | Should -Match 'Consider running' -Because 'precondition: 5 entries still nudge'
+            $r2.StdOut | Should -Not -Match 'OVERDUE' -Because 'five entries is above threshold+2 but below threshold*2, so only a true doubling rule stays gentle here'
+
+            $r3 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($atTwice.Env + $env3)
+            $r3.StdOut | Should -Match 'OVERDUE' -Because 'at twice the threshold the wording must escalate'
         } finally {
             Remove-Item -LiteralPath $atThreshold.Root -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $between.Root -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $atTwice.Root -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
@@ -492,6 +508,15 @@ Describe 'agy-curate-nudge.sh' {
             Set-Content -LiteralPath $snooze -Value '' -NoNewline
             $fresh = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
             $fresh.StdOut | Should -BeNullOrEmpty -Because 'a snooze younger than 7 days must silence the nudge'
+
+            # SIX DAYS - the cell that actually pins the window. A fresh/8-day pair leaves the whole
+            # (0,8) interval unconstrained: MEASURED, shrinking the window from 7 days to ONE HOUR is
+            # byte-identical on both of those cells, and the emitted message literally offers a "Snooze
+            # for 7 days". The 6-day cell is where a shrunk window diverges - orig stays silent, the
+            # one-hour mutant nudges.
+            (Get-Item -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-6)
+            $stillFresh = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $stillFresh.StdOut | Should -BeNullOrEmpty -Because 'six days is inside the documented 7-day window, so the opt-out must still hold'
 
             (Get-Item -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-8)
             $stale = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env

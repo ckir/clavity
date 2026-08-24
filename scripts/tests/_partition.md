@@ -380,7 +380,7 @@ abort-drain.Tests.ps1                            72,9s   13 tests   <- SLOW, re-
                                                                       the old figure simply decayed. This is
                                                                       the same failure as agy-discipline-
                                                                       reaching's below, in the other half.
-agy-consult-guard.Tests.ps1                     134,4s   10 tests   <- SLOW, moved 2026-08-02; re-measured
+agy-consult-guard.Tests.ps1                     134,4s   11 tests   <- SLOW, moved 2026-08-02; re-measured
                                                                       2026-08-06 (+2 tests: the cross-driver
                                                                       byte-identity check now covers lib.sh
                                                                       too, and the deliberate .no-agy
@@ -391,7 +391,7 @@ agy-after-reminder.Tests.ps1                      9,7s   14 tests   <- COUNT 202
                                                                       silence + control, jq and no-jq).
                                                                       TIME is the 2026-08-05 solo figure.
 agy-anomaly-reminder.Tests.ps1                   26,8s   20 tests   <- SLOW, re-measured 2026-08-06 (+4)
-agy-anomaly-capture-reminder.Tests.ps1            8,4s   14 tests   <- COUNT 2026-08-06 (+4)
+agy-anomaly-capture-reminder.Tests.ps1            8,4s   26 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-model-notice.Tests.ps1               16,7s   11 tests   <- COUNT 2026-08-06 (+2)
 agy-drive-session-reset.Tests.ps1                   ?    6 tests   <- FAST, NEW 2026-08-06. NO SOLO TIME
@@ -402,12 +402,12 @@ agy-drive-session-reset.Tests.ps1                   ?    6 tests   <- FAST, NEW 
                                                                       is a different mode again. Re-measure
                                                                       in the next solo fast sweep rather
                                                                       than copying either figure.
-test-suite-registration.Tests.ps1                   ?    4 tests   <- FAST, NEW 2026-08-06. Same caveat;
+test-suite-registration.Tests.ps1                   ?    8 tests   <- FAST, NEW 2026-08-06. Same caveat;
                                                                       0,7s in the contended sweep, and it
                                                                       does no I/O beyond reading justfile,
                                                                       so it is genuinely near-free.
 agy-anomaly-contract-stamp.Tests.ps1              5,5s   14 tests   <- FAST, re-measured 2026-08-05
-agy-discipline-reaching.Tests.ps1                15,2s   16 tests   <- FAST. The row said 69,1s and it had
+agy-discipline-reaching.Tests.ps1                15,2s   22 tests   <- FAST. The row said 69,1s and it had
                                                                       been WRONG since 6b87f1f split capture
                                                                       from analysis: that figure was measured
                                                                       while the hook still scanned the
@@ -436,14 +436,14 @@ agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Previously; was
                                                                       MISSING from this table entirely
                                                                       until 2026-08-03
-agy-autotrain-installer.Tests.ps1                 1,3s    6 tests   <- FAST, new 2026-08-24. WARM on an idle
+agy-autotrain-installer.Tests.ps1                 1,3s    7 tests   <- FAST, new 2026-08-24. WARM on an idle
   CPU (cold 9,8s - almost all of that is Pester module load, which this suite does not pay again once
   warm). Pure file parsing, no bash and no process launches, which is why it is the cheapest row here.
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
 agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
-agy-mark.Tests.ps1                               93,0s   26 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
+agy-mark.Tests.ps1                               93,0s   27 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
                                                                       agy-mark.sh, the sanctioned .clavity writer for the
                                                                       skills. Bash + git subprocess spawns across 26 Its; the
                                                                       FORWARDS $AGY_SESSION_ID row alone costs ~33,5s (three
@@ -456,7 +456,7 @@ agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   34 tests   <- SLOW, NEW 2026-08-16. Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   39 tests   <- SLOW, NEW 2026-08-16. Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:
@@ -471,8 +471,8 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- FAST, mea
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
-BashHookHelpers.Tests.ps1                         1,7s    4 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1             6,6s   14 tests   <- FAST, re-measured 2026-08-05
+BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
+check-agy-discipline-skills.Tests.ps1             6,6s   39 tests   <- FAST, re-measured 2026-08-05
 check-cheatsheet-budget.Tests.ps1                43,1s    6 tests   <- FAST, re-measured 2026-08-12
 check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       pre-commit parity gate's own suite.
@@ -481,7 +481,7 @@ check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW
                                                                       modest test count. Measured solo as the
                                                                       sole command: "Tests completed in
                                                                       135,92s", 16 passed / 0 failed.
-check-ci-filter-coverage.Tests.ps1               54,4s   16 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
+check-ci-filter-coverage.Tests.ps1               54,4s   17 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
                                                                       paths-filter gate's own suite. Nearly
                                                                       every row spawns pwsh to run the gate
                                                                       against a separately mutated copy of the
@@ -517,8 +517,8 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, mea
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
-check-growth-budget.Tests.ps1                    15,3s    7 tests   <- FAST, re-measured 2026-08-05
-check-injected-context.Tests.ps1                 91,5s  144 tests   <- SLOW as of 2026-08-24; was FAST -
+check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
+check-injected-context.Tests.ps1                 91,5s  153 tests   <- SLOW as of 2026-08-24; was FAST -
   the single largest suite in that half, moved to buy back cap headroom. Figure measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
@@ -540,16 +540,16 @@ check-seed-budget.Tests.ps1                       8,4s    4 tests   <- FAST, re-
 check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-measured 2026-08-05
 compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-measured 2026-08-06
 docs-audit.Tests.ps1                            130,0s   80 tests   <- SLOW, re-measured 2026-08-06
-drain-knowledge.Tests.ps1                        40,5s    7 tests   <- SLOW, re-measured 2026-08-06
+drain-knowledge.Tests.ps1                        40,5s    8 tests   <- SLOW, re-measured 2026-08-06
 drain-lib.Tests.ps1                               4,2s   25 tests   <- FAST, re-measured 2026-08-24 WARM
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
-generate-cheatsheet-literals.Tests.ps1           41,6s   12 tests   <- SLOW, NEW 2026-08-16 (14e): the
+generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning
                                                                       suite. Measured solo as the sole
                                                                       command: "Tests completed in 41,57s",
                                                                       12 passed / 0 failed.
 generate-scoped-manifest.Tests.ps1                2,1s    2 tests   <- FAST, re-measured 2026-08-05
-plugin-hooks-registration.Tests.ps1               0,6s   22 tests   <- FAST, re-measured 2026-08-05 (was
+plugin-hooks-registration.Tests.ps1               0,6s   33 tests   <- FAST, re-measured 2026-08-05 (was
                                                                       0,5s / 18 tests; +4 for the recorder's
                                                                       SessionStart registration, which this
                                                                       suite had never covered)

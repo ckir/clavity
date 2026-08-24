@@ -157,6 +157,83 @@ Describe 'test suite registration' {
             Should -BeExactly '' -Because 'a row for a suite that no longer exists is a figure nobody can ever re-measure - remove it from the Measured runtimes table in scripts/tests/_partition.md'
     }
 
+    It 'every _partition.md row states the CURRENT test count for its suite' {
+        # THE ROW ABOVE ASSERTS PRESENCE, NOT ACCURACY, and says so: "a time cannot be verified by
+        # reading it". That reasoning is right for the TIME and wrong for the COUNT, which is exactly
+        # what Pester can be asked. MEASURED 2026-08-24 before this row existed: 14 of 47 counted rows
+        # disagreed with reality, several by a lot - check-agy-discipline-skills said 14 against 39,
+        # plugin-hooks-registration 22 against 33, BashHookHelpers 4 against 8. A row is what a
+        # maintainer reads to judge what a gate costs and whether a suite still earns its half of the
+        # partition; one understating by half is worse than no row.
+        #
+        # COST, measured rather than extrapolated: discovery over all 49 suites is ~13,5s, of which
+        # almost all is fixed Pester startup - the marginal cost is ~0,15s per suite. An earlier attempt
+        # to price this scaled the 3-suite figure linearly and got "about two minutes", which is wrong
+        # by roughly 5x and is precisely the derived-total error the ## Measured runtimes section warns
+        # about. Do not re-derive it; re-measure it.
+        #
+        # DISCOVERY RUNS IN A CHILD PROCESS on purpose. Invoking Pester inside a Pester test shares
+        # module-level run state with the outer run; a separate process cannot disturb it, and the
+        # process launch is a small fraction of the discovery cost being paid anyway.
+        $childScript = @'
+$ErrorActionPreference = "Stop"
+$files = @(Get-ChildItem $args[0] -Filter *.Tests.ps1 -File | ForEach-Object { $_.FullName })
+$c = New-PesterConfiguration
+$c.Run.Path = $files
+$c.Run.SkipRun = $true
+$c.Run.PassThru = $true
+$c.Output.Verbosity = "None"
+$r = Invoke-Pester -Configuration $c
+$counts = @{}
+foreach ($t in $r.Tests) {
+    $leaf = Split-Path $t.ScriptBlock.File -Leaf
+    if (-not $counts.ContainsKey($leaf)) { $counts[$leaf] = 0 }
+    $counts[$leaf]++
+}
+foreach ($k in $counts.Keys) { "COUNT`t$k`t$($counts[$k])" }
+'@
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("pester-discover-" + [Guid]::NewGuid().ToString('N') + ".ps1")
+        Set-Content -LiteralPath $tmp -Value $childScript -Encoding utf8
+        try {
+            $raw = & pwsh -NoProfile -File $tmp $PSScriptRoot 2>&1
+        } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+
+        $discovered = @{}
+        foreach ($line in $raw) {
+            $parts = "$line" -split "`t"
+            if ($parts.Count -eq 3 -and $parts[0] -eq 'COUNT') { $discovered[$parts[1]] = [int]$parts[2] }
+        }
+        # NON-VACUITY. A child that failed to launch, or emitted nothing parseable, would otherwise
+        # leave $discovered empty and every comparison below would silently find nothing to check.
+        $discovered.Count | Should -BeGreaterThan 20 -Because "Pester discovery returned only $($discovered.Count) suites - the child process failed rather than the suites being absent"
+
+        $partition = Join-Path $PSScriptRoot '_partition.md'
+        $lines = @(Get-Content -LiteralPath $partition)
+        $stated = @{}
+        foreach ($l in $lines) {
+            # The time field is \S+, NOT a number: two rows record their time as `?` (never measured),
+            # and a numeric-only pattern silently EXEMPTED both from this check - a guard failing open
+            # on exactly the rows least likely to be maintained. MEASURED when this was tightened:
+            # of the two exempt rows, test-suite-registration said 4 against an actual 8, and
+            # agy-drive-session-reset was correct at 6 - so the exemption was hiding real drift in one
+            # of the only two rows it covered.
+            $m = [regex]::Match($l, '^([A-Za-z0-9._-]+\.Tests\.ps1)\s+\S+\s+([0-9]+)\s+tests')
+            if ($m.Success -and -not $stated.ContainsKey($m.Groups[1].Value)) {
+                $stated[$m.Groups[1].Value] = [int]$m.Groups[2].Value
+            }
+        }
+        # A row that states no count is out of scope here - the census row above already requires the
+        # ROW to exist. This assertion only binds rows that make a claim.
+        $stated.Count | Should -BeGreaterThan 20 -Because "only $($stated.Count) rows stated a count - the row parse broke, rather than the table being empty"
+
+        $drift = foreach ($k in ($stated.Keys | Sort-Object)) {
+            if (-not $discovered.ContainsKey($k)) { continue }   # census row above owns absence
+            if ($discovered[$k] -ne $stated[$k]) { "$k says $($stated[$k]) but discovers $($discovered[$k])" }
+        }
+        # Named, not counted: a count sends a reader hunting, a name sends them to the row to edit.
+        ($drift -join '; ') | Should -BeNullOrEmpty -Because 'a stale count misstates what the gate costs - re-measure and correct the row in the Measured runtimes table in scripts/tests/_partition.md'
+    }
+
     It 'registers the clavity-install suite by PATH, and that path exists' {
         # NARROW BY DESIGN. The parses above are scoped to scripts/tests/ (see the header at :3-6), so
         # this out-of-tree suite is invisible to them - neither certified nor rejected. Widening

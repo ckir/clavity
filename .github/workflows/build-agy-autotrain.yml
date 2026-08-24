@@ -76,6 +76,26 @@ jobs:
           $setup = "dist/agy-autotrain-setup-$env:TOOL_VER.exe"
           $app = "$env:LOCALAPPDATA\Programs\agy-autotrain"
 
+          # THIS STEP IS DESTRUCTIVE TO A REAL PROFILE and must never run outside a throwaway runner.
+          # It uninstalls agy-autotrain, overwrites golden-header.growth.md, and deletes the capture
+          # inbox - the very file ROADMAP 14g exists to protect. CONTRIBUTING.md:113 documents a manual
+          # canary in which a human runs a member installer silently on their own box, so "nobody would
+          # paste this locally" is not a safe assumption. Measured on one developer machine: the two
+          # paths reset below held 125 KB (136 pending entries) and 120 KB of real captures.
+          if (-not $env:GITHUB_ACTIONS) {
+            throw "REFUSING: this smoke step deletes the user-local agy capture inbox and uninstalls agy-autotrain. It is safe only on a throwaway CI runner."
+          }
+
+          $knowledge = "$app\plugins\agy-autotrain\knowledge"
+          $oldInbox  = "$knowledge\agy-observations.md"
+          $sidecar   = "$oldInbox.migrated-14g"
+          $userInbox = "$env:USERPROFILE\.clavity\agy-observations.md"
+
+          # RESET BEFORE THE FIRST INSTALL, never after it. Install 1 runs the migration, so a reset
+          # placed after it deletes that migration's own rescue products - the merged $userInbox AND
+          # the retired $sidecar - leaving no copy of a pre-existing inbox anywhere.
+          Remove-Item $userInbox, $sidecar -Force -ErrorAction SilentlyContinue
+
           $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
           # ROADMAP 14g MIGRATION. MigrateInboxToUserState was the largest executable change in the
@@ -83,11 +103,7 @@ jobs:
           # above, which proves the file compiles and nothing about what it does. The lifecycle here
           # already installs twice, so the migration costs one planted file and three assertions.
           # Planted BETWEEN the installs: the source must be a PRE-EXISTING inbox in the install tree.
-          $knowledge = "$app\plugins\agy-autotrain\knowledge"
-          $oldInbox  = "$knowledge\agy-observations.md"
-          $sidecar   = "$oldInbox.migrated-14g"
-          $userInbox = "$env:USERPROFILE\.clavity\agy-observations.md"
-          Remove-Item $userInbox, $sidecar -Force -ErrorAction SilentlyContinue
+          # The paths and the reset are established above, before install 1.
           New-Item -ItemType Directory -Force -Path $knowledge | Out-Null
           Set-Content $oldInbox "SENTINEL-ALPHA"
 
@@ -166,10 +182,21 @@ jobs:
           # C6: pre-seed a fake growth.md and confirm a plain (keep-data) uninstall does NOT delete it.
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.clavity" | Out-Null
           Set-Content "$env:USERPROFILE\.clavity\golden-header.growth.md" "fake learned wisdom"
+          # The migration above created $sidecar at RUNTIME via RenameFile, so it is not in Inno's
+          # uninstall log and nothing removes it. Left in place it blocks RemoveDir all the way up, so
+          # `Test-Path $app` would stay true forever - turning the poll below into a fixed 30s sleep and
+          # both ownership assertions into races that cannot fail red.
+          Remove-Item $sidecar -Force -ErrorAction SilentlyContinue
+
           $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
-          Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait | Out-Null
+          $u = Start-Process $uninst.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "uninstall exit $($u.ExitCode)" }
+          # Poll a SPECIFIC artefact, as the three sibling members do, and THROW when it never clears.
+          # Polling $app and then falling through silently let a refused uninstall - the guard fires
+          # when Claude Code is running - satisfy every "this file survived" assertion below.
           $deadline = (Get-Date).AddSeconds(30)
-          while ((Test-Path $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          while ((Test-Path "$app\plugins") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path "$app\plugins") { throw "uninstall did not remove staged plugin files within 30s - a refused or incomplete uninstall makes every ownership assertion below vacuous" }
           if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md was deleted by a keep-data uninstall" }
           # C6b - the CAPTURE INBOX has the same protection as growth.md, and needs asserting
           # separately. Before 14g it lived inside the install dir; since 14g it lives beside
@@ -178,7 +205,12 @@ jobs:
           # calls outside that gate would destroy every undrained observation on an ordinary
           # uninstall, and the growth.md assertion above would stay green either way.
           if (-not (Test-Path $userInbox)) { throw "C6b VIOLATION: the capture inbox was deleted by a keep-data uninstall - every undrained observation is gone" }
-          "install/uninstall + namespace + C6 growth/inbox ownership + 14g migration smoke PASSED"
+          # Deliberately NOT called "ownership": that word promises both directions, and the PURGE
+          # direction is unreachable from CI. RemoveGrowth is decided by a SuppressibleMsgBox whose
+          # suppressed default is IDNO (agy-autotrain.iss:255-259), so a silent uninstall always takes
+          # keep-data and the purge branch never executes here. Deleting the inbox DeleteFile on that
+          # branch would leave this step green. That gap is recorded in docs/coverage-debt.md.
+          "install/uninstall + namespace + C6 growth/inbox KEEP-data survival + 14g migration smoke PASSED"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v7

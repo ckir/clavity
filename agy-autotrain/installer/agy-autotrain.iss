@@ -271,10 +271,14 @@ begin
     begin
       if FileExists(GrowthFile) then DeleteFile(GrowthFile);
       if FileExists(GrowthFile + '.sha256') then DeleteFile(GrowthFile + '.sha256');
-      { The capture inbox is marked uninsneveruninstall so a KEEP-data uninstall cannot destroy it.
-        That flag is unconditional, so on an explicit PURGE it must be removed here or the user's
-        consent is ignored in the other direction — the same promise-not-kept failure the classic
-        member's purge branch was just fixed for. It lives inside the install dir, unlike growth.md. }
+      { REMOVED 2026-08-24, and the removal matters more than the text did. This comment claimed the
+        inbox was "marked uninsneveruninstall so a KEEP-data uninstall cannot destroy it" and that it
+        "lives inside the install dir". BOTH halves were false at 14g: `uninsneveruninstall` appeared
+        nowhere in this file except that sentence - no [Files] entry ever carried it - and the inbox
+        moved to %USERPROFILE%\.clavity. Sitting directly above the only code that deletes a user's
+        observations, it invited exactly the misreading that would license moving these DeleteFile calls
+        out of the `if RemoveGrowth` gate: "the flag protects it anyway". Nothing protects it but the
+        gate. The comment below states the actual contract. }
       { ROADMAP 14g: the inbox now lives BESIDE growth.md in the user-local state directory, not in
         the install dir. On an explicit PURGE it must still be removed, or the user's consent is
         ignored in the other direction. Also retire the one-time migration sidecar - same user data. }

@@ -21,7 +21,13 @@ OBS="${HOME_DIR}/.clavity/agy-observations.md"
 
 input=$(cat 2>/dev/null)
 
-# Opt-out marker, mirroring agy-curate-nudge.sh.
+# Opt-out marker. NOT a full mirror of agy-curate-nudge.sh, and the difference is deliberate: that
+# hook also honours a `.no-agy` in the payload's cwd, this one does not read `.cwd` at all. It fires
+# on PreToolUse/UserPromptSubmit, where cwd does not carry the same meaning it has on SessionStart.
+# The asymmetry is PINNED by 'is NOT disarmed by a .no-agy in the payload cwd' in
+# scripts/tests/agy-inbox-snapshot.Tests.ps1 - so if it is ever made to match, that test reds and the
+# change has to be deliberate. The previous wording claimed a mirror that did not exist, which would
+# have sent a maintainer doing a consistency pass in exactly the wrong direction.
 # BOTH roots are checked on purpose, and the pair is load-bearing. The inbox path above resolves via
 # ${USERPROFILE:-$HOME}, so a parent process that exports USERPROFILE WITHOUT HOME reads the inbox
 # correctly yet looks for the opt-out marker at a path that cannot exist - silently DISARMING the kill

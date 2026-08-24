@@ -37,10 +37,38 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         $script:Start = $start
         $script:Body = if ($start -ge 0) { $all[$start..($end - 1)] } else { @() }
 
-        # Index of the FIRST body line matching a literal substring; -1 when absent.
+        # CODE lines only - comments are stripped first. Without this, moving a searched literal into
+        # a comment satisfies every assertion here: MEASURED at ee07de0, deleting the rollback and
+        # leaving `{ rollback removed for now: RenameFile(Aside, OldPath) used to be here }` kept all
+        # six guards green while the rollback was gone.
+        # The rule is deliberately narrow, and its narrowness is the point: a line is a comment when its
+        # TRIMMED form starts with `{` or `//`, and a `{`-opened line keeps the state until a line
+        # containing `}`. It is NOT a general Inno parser - a brace counter over an .iss is vacuous here
+        # (the `{{` escape and brace-delimited comments defeat it, and one such parser reported this
+        # 292-line file as 4 executable lines). This rule cannot mis-handle `ExpandConstant('{app}\...')`
+        # either, because that brace is mid-line inside a string, never at the start of a trimmed line.
+        $script:CodeOnly = @()
+        $inComment = $false
+        foreach ($line in $script:Body) {
+            $trim = $line.Trim()
+            if ($inComment) {
+                if ($trim -match '\}') { $inComment = $false }
+                $script:CodeOnly += ''
+                continue
+            }
+            if ($trim.StartsWith('//')) { $script:CodeOnly += ''; continue }
+            if ($trim.StartsWith('{')) {
+                if ($trim -notmatch '\}') { $inComment = $true }
+                $script:CodeOnly += ''
+                continue
+            }
+            $script:CodeOnly += $line
+        }
+
+        # Index of the FIRST body CODE line matching a literal substring; -1 when absent.
         function Find-BodyLine { param([string]$Needle)
-            for ($i = 0; $i -lt $script:Body.Count; $i++) {
-                if ($script:Body[$i] -like "*$Needle*") { return $i }
+            for ($i = 0; $i -lt $script:CodeOnly.Count; $i++) {
+                if ($script:CodeOnly[$i] -like "*$Needle*") { return $i }
             }
             return -1
         }
@@ -89,16 +117,71 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # sidecar guard above will never look again - the operator loses every undrained observation
         # with no message that says where it went.
         $notWrote = Find-BodyLine 'if not Wrote then'
-        $rollback = Find-BodyLine 'RenameFile(Aside, OldPath)'
         $notWrote | Should -BeGreaterThan -1 -Because 'the write-failure branch must be present'
-        $rollback | Should -BeGreaterThan -1 -Because 'the rollback rename must be present'
-        $rollback | Should -BeGreaterThan $notWrote -Because 'the rollback must live INSIDE the write-failure branch, not run unconditionally'
+
+        # BOUNDED BY THE BRANCH, not by a line-index comparison. `$rollback -gt $notWrote` is satisfied
+        # by a rollback placed AFTER the branch closes, which is a live defect rather than a nitpick:
+        # running the rollback unconditionally renames the sidecar back on a SUCCESSFUL migration, so
+        # the next upgrade sees a source with no sidecar, claims it, finds a non-empty destination, and
+        # appends the whole inbox again - the unbounded duplication this fold exists to kill, re-armed.
+        # MEASURED at ee07de0: that mutant compiled (ISCC 0) and passed all six guards.
+        $branch = @()
+        for ($j = $notWrote + 1; $j -lt $script:CodeOnly.Count; $j++) {
+            if ($script:CodeOnly[$j] -match '^\s*end;') { break }
+            $branch += $script:CodeOnly[$j]
+        }
+        $branch.Count | Should -BeGreaterThan 0 -Because 'the write-failure branch must have a body, or this scan is inspecting nothing'
+        ($branch -join "`n") | Should -Match 'RenameFile\(Aside, OldPath\)' -Because 'the rollback must live INSIDE the write-failure branch - placed after it, it fires on a SUCCESSFUL migration and re-arms the duplication defect'
+        ($branch -join "`n") | Should -Match 'MigrationProblem' -Because 'the write-failure branch is the one failure path with no exit, so nothing else in this file forces it to tell the operator anything'
     }
 
     It 'APPENDS to a non-empty destination rather than clobbering it' {
         # SaveStringsToFile's third argument is the append flag. Flipping it to False destroys a newer
         # inbox at the destination - silently, and only for the user who already had one.
         ($script:Body -join "`n") | Should -Match 'SaveStringsToFile\(NewPath, OldLines, True\)' -Because 'the append flag is what stops the migration clobbering a destination that already holds captures'
+    }
+
+    It 'TERMINATES every pre-write failure branch - each reports AND exits' {
+        # THE SCAN BELOW IS NOT ENOUGH, and this test exists because a capstone round proved it.
+        # `reports EVERY failure branch` iterates over `exit;` lines and `continue`s past everything
+        # else, so its postcondition is "every exit has a report near it" - NOT "every failure branch
+        # terminates". Delete the `exit;` and the branch simply drops out of that scan.
+        # MEASURED at ee07de0, two mutants of the claim-failure branch (agy-autotrain.iss:189-194):
+        #   A. report AND exit both removed -> 6 passed / 0 failed
+        #   B. report kept, only exit removed -> 6 passed / 0 failed
+        # (control: deleting the ambiguous-sidecar guard reds 5/1, so the harness was live.)
+        # Both are the LIVE defect. A failed claim then falls through to DestSize/FileCopy/
+        # SaveStringsToFile with the source NOT claimed: the write lands, OldPath is still there, and
+        # the next upgrade sees a non-empty destination, takes the append branch, and appends every
+        # entry again - the unbounded duplication this whole fold exists to kill, on the exact Windows
+        # trigger the .iss header names (an AV hold, or another process holding the file open).
+        #
+        # So this asserts the CONDITION, not the exit: each guard that runs BEFORE any write must
+        # contain both a report and an exit before its own `end;`. Enumerated in full - a partial list
+        # would leave exactly the hole being closed.
+        $guards = @(
+            'if not ForceDirectories(NewDir) then'
+            'if not LoadStringsFromFile(OldPath, OldLines) then'
+            'if FileExists(Aside) then'
+            'if not RenameFile(OldPath, Aside) then'
+        )
+        $leaky = @()
+        foreach ($g in $guards) {
+            $i = Find-BodyLine $g
+            # Present-FIRST. A renamed or deleted guard must red here, not vanish from the loop.
+            $i | Should -BeGreaterThan -1 -Because "the pre-write guard '$g' must exist, or this scan is inspecting nothing"
+
+            $reported = $false; $exited = $false
+            for ($j = $i + 1; $j -lt $script:Body.Count; $j++) {
+                if ($script:Body[$j] -match 'MigrationProblem') { $reported = $true }
+                if ($script:Body[$j] -match '^\s*exit\s*;')     { $exited = $true }
+                if ($script:Body[$j] -match '^\s*end;')          { break }
+            }
+            if (-not ($reported -and $exited)) {
+                $leaky += ("{0} (reports={1} exits={2})" -f $g, $reported, $exited)
+            }
+        }
+        ($leaky -join '; ') | Should -BeNullOrEmpty -Because 'a pre-write guard that does not BOTH report and exit falls through to the write with the source unclaimed, which is the unbounded-duplication defect the fold exists to prevent'
     }
 
     It 'reports EVERY failure branch instead of exiting silently' {

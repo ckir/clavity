@@ -177,33 +177,6 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 
 ---
 
-### 8. `_partition.md` test COUNTS drift silently, and the cheapest correct guard is too expensive
-
-- **Gap:** `test-suite-registration.Tests.ps1:119` asserts the runtimes table is a COMPLETE CENSUS - a row
-  exists per suite - and deliberately does not verify the figures ("a time cannot be verified by reading
-  it"). That reasoning is sound for the TIME. It does not hold for the test COUNT, which is checkable, and
-  the counts have drifted broadly.
-- **Measured 2026-08-24:** of 46 rows, **21 disagree** with the suite's actual test count. Most of those
-  suites use `-ForEach`, where the row legitimately records Pester's EXPANDED count rather than the static
-  `It` count. But **six disagree with no `-ForEach` anywhere in the file**, so they are simply stale:
-  `agy-consult-guard` (row 10 / 11), `agy-anomaly-capture-reminder` (14 / 26), `agy-shield-lib` (34 / 39),
-  `BashHookHelpers` (4 / 8), `check-growth-budget` (7 / 15), `drain-knowledge` (7 / 8).
-- **The regression that slips:** a row is what a maintainer reads to decide what a gate costs and whether a
-  suite still earns its half of the partition. A row claiming 7 tests for a suite holding 15 understates
-  the gate by half, and nothing anywhere reds.
-- **Why deferred rather than fixed:** the only correct oracle is Pester's own discovered count, because a
-  static `It` count is wrong for every `-ForEach` suite. **MEASURED: discovery-only
-  (`Run.SkipRun = $true`) over THREE suites takes 8s**, so all 46 would cost roughly two minutes - added to
-  a recipe that already measures 576,0s against a 600s foreground cap. Buying count-accuracy by pushing the
-  inner-loop recipe over its cap is a bad trade, and the alternative (a static count with a per-suite
-  `-ForEach` exemption list) is a second thing to keep in sync.
-- **The test that should exist, if the cost is ever acceptable:** `every _partition.md row states the
-  current test count for its suite` - parse each row's `<N> tests`, compare against
-  `(Invoke-Pester -Configuration <SkipRun>).TotalCount` per container, and name the drifted rows.
-- **Cheaper partial available now:** assert the count only for suites containing no `-ForEach`, which is a
-  pure static count and costs nothing. It would catch all six known-stale rows today.
-
-
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 
 ### A. The two walk-level guards (`2fa88e0`, `76e1ba8`)
