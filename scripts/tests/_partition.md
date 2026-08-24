@@ -18,7 +18,7 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 399 tests** (counts measured 2026-08-25 by Pester
+- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 400 tests** (counts measured 2026-08-25 by Pester
   discovery, after two suites moved to slow). The runtime figure below PREDATES both that move and the
   count guard added the same day - see the 2026-08-24 note under ## Measured runtimes. Previously
   **29 suites, 605 tests, 461,95s** (2026-08-16,
@@ -92,8 +92,14 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **399** and slow **626**, **both measured, not added up**
-(re-measured 2026-08-25 by Pester discovery: 1025 tests over 49 containers; 399 + 626 = 1025).
+test raises it. The count today is fast **400** and slow **626**, **both measured, not added up**
+(re-measured 2026-08-25 by Pester discovery: 1026 tests over 49 containers; 400 + 626 = 1026).
+🔴 **And it decayed a THIRD time, within hours, exactly as the paragraph below predicts.** The
+figures were 399/1025 for two commits because they were computed by ARITHMETIC before `ba4fa4f` added
+one test to `agy-autotrain-installer` - a FAST suite. The count guard caught the per-row drift (its row
+still said 7) and redded; the aggregate prose here is outside what that guard checks, so it went stale
+in the same commit that fixed the row. **Add a test, and THREE numbers here move: the half, the total,
+and the sum. Only the per-row one is enforced.**
 🔴 **This sentence decayed AGAIN.** It was corrected on 2026-08-16 for exactly this reason and went
 stale once more when two suites changed halves on 2026-08-24. The count guard in
 `test-suite-registration.Tests.ps1` pins the PER-ROW numbers but not this prose, so it will keep
@@ -396,9 +402,17 @@ error the projection made.
 
 **2026-08-25 - a SECOND move, on the owner's ruling, because one move was not enough.** Three more
 suites left the fast half: `check-curate-in-progress` (69,5s), `assertion-strength-reminder` (54,9s) and
-`check-cheatsheet-budget` (43,1s) - 167,5s by the recorded rows. Against the SLOWEST of the three idle
-samples that predicts roughly 420s, but predicts is the operative word: see the retraction above, and
-re-measure before quoting a figure.
+`check-cheatsheet-budget` (43,1s) - 167,5s by the recorded rows. MEASURED afterwards, backgrounded, 25 suites as one
+batch, two consecutive runs: **468,0s then 418,5s** - 400 tests, 0 failed both times.
+
+🔴 **Take 418,5s, and discard 468,0s: run 1 was CONTAMINATED BY THE AGENT.** The orchestrator wrote a
+file in the first minutes of that run instead of going idle immediately, and the 49,5s gap between the
+two runs is that work. The rule this cost: **a measurement run needs a settle margin at the START, and
+the agent must be idle before the clock matters** - launching backgrounded is not the same as being
+idle, because preparing the next piece of work is still work. (owner, 2026-08-25)
+
+So the half sits near **420s against the 600s cap** - roughly 30% headroom, against 1,9% at the worst of
+the pre-move samples. That is the first figure in this saga that was measured rather than predicted.
 
 🔴 **`check-seed-artifacts-synced` (71,9s) STAYED, and it is the largest suite in the half.** It was
 the obvious thing to move on runtime alone. It is a required gate for any byte-identical-pair change -
