@@ -35,7 +35,7 @@ comparison.
 
 ## The capture -> curate loop
 
-`skills/agy-learn/` captures one observation at a time into `knowledge/agy-observations.md`;
+`skills/agy-learn/` captures one observation at a time into `~/.clavity/agy-observations.md` (user-local since ROADMAP 14g, NOT the plugin tree);
 `skills/agy-curate/` drains that inbox into the GROWTH region of the shared golden header. The SEED
 manuals are driver-owned and are never edited by the loop. Read both `SKILL.md` files before changing
 either - they are a matched pair.

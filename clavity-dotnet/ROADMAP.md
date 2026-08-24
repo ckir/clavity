@@ -1127,7 +1127,28 @@ batch, not here:** once the literals are generated, `SKILL.md:122-124`'s instruc
 becomes wrong, so the batch must update it. That is tracked in the spec, not in this item.
 
 **§14g — the agy-observations inbox lives INSIDE the plugin tree, so it exists in N copies and both
-skills must be INSTRUCTED which one is live.** · ✅ **RULED 2026-08-19**
+skills must be INSTRUCTED which one is live.** · ✅ **RULED 2026-08-19** · ✅ **DONE 2026-08-24**
+
+> **SHIPPED.** The canonical inbox is now `<USERPROFILE or HOME>/.clavity/agy-observations.md`.
+> Both skills collapsed to that one path (`agy-learn` 183 — 130 lines, reversing the +138% growth this
+> entry complained about; `agy-curate` —19). The resolution order, the checkout test and the staging
+> file are DELETED. `agy-curate-nudge.sh` and `agy-inbox-snapshot.sh` both read the new path, each pinned
+> by a DECOY inbox left in the plugin tree — mutation-verified: reverting the nudge hook reds 12 of its
+> 13 tests. The installer stopped shipping the inbox and gained `MigrateInboxToUserState` (copy when the
+> destination is absent/empty, APPEND otherwise, rename the source aside — never delete); ISCC exit 0,
+> control-verified. 133 live entries migrated, count asserted.
+>
+> 🔴 **THE BLAST RADIUS IN THIS ENTRY WAS INCOMPLETE.** It named both skills, `agy-curate-nudge.sh` +
+> its suite, and the installer. It MISSED `agy-autotrain/hooks/agy-inbox-snapshot.sh:15` and
+> `scripts/drain-lib.ps1:9`, which both hard-coded the plugin-tree path and were found only by a
+> whole-repo grep. Both are fixed and now test-pinned (`drain-lib` had NO test for `Resolve-InboxPath`
+> at all; one was added and mutation-verified).
+>
+> ⚠ **ONE SCOPE ADDITION, owner-ruled 2026-08-24.** The staging/rename apparatus was not only a path
+> workaround — the rename is also a CONCURRENCY claim (`agy-learn` appends mid-task from other sessions
+> while a drain is in flight). The main inbox never had that protection, so deleting the machinery
+> wholesale would have widened a real race rather than closing it. `agy-curate` now claims the ONE
+> canonical inbox by rename before reading, and appends the residue back rather than rewriting.
 
 > **OWNER RULING (2026-08-19).** **Do the architectural move.** The canonical inbox becomes
 > `<USERPROFILE or HOME>/.clavity/agy-observations.md`, beside the golden-header files.

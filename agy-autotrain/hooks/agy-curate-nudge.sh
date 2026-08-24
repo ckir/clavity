@@ -5,8 +5,14 @@ set +e
 
 THRESHOLD="${AGY_CURATE_NUDGE_THRESHOLD:-8}"        # entries in ## Pending before nudging (tunable)
 MAX_AGE_DAYS="${AGY_CURATE_NUDGE_MAX_AGE_DAYS:-30}"  # oldest pending entry age (days) before nudging (tunable)
-OBS="${CLAUDE_PLUGIN_ROOT}/knowledge/agy-observations.md"
 HOME_DIR="${USERPROFILE:-$HOME}"
+# ROADMAP 14g: the canonical inbox is USER-LOCAL state, beside the golden-header files - NOT inside the
+# plugin install tree. That tree exists in N copies (install, checkout, every worktree) with no reliable
+# way to tell which one is live, which is why both skills had grown a resolution order and a "is this a
+# checkout?" test. CLAUDE_PLUGIN_ROOT is deliberately NOT consulted here: a stale inbox left in a plugin
+# tree must be IGNORED, not merged, not preferred. Pinned by a decoy in agy-curate-nudge.Tests.ps1 -
+# that decoy is the control, and it fails loudly if this line ever reverts to the plugin root.
+OBS="${HOME_DIR}/.clavity/agy-observations.md"
 SNOOZE="${HOME_DIR}/.clavity/.agy-curate-snooze"
 
 # Opt-out: a .no-agy marker in cwd or ~/.claude silences everything (mirror agy-learn-reminder.sh).

@@ -12,7 +12,12 @@ KEEP="${AGY_INBOX_SNAPSHOT_KEEP:-5}"          # how many slots to retain (tunabl
 # destroy it, fail-open and exit 0, exactly the outcome the invariants below exist to prevent.
 case "$KEEP" in ''|*[!0-9]*) KEEP=5 ;; esac
 [ "$KEEP" -lt 1 ] && KEEP=5
-OBS="${CLAUDE_PLUGIN_ROOT}/knowledge/agy-observations.md"
+# ROADMAP 14g: the canonical inbox is USER-LOCAL, beside the golden-header files - NOT in the plugin
+# tree, which exists in N copies with no way to tell which is live. CLAUDE_PLUGIN_ROOT is deliberately
+# NOT consulted; snapshotting the wrong copy is worse than not snapshotting, because it reads as a
+# backup of a file that was never drained. Pinned by a decoy in agy-inbox-snapshot.Tests.ps1.
+HOME_DIR="${USERPROFILE:-$HOME}"
+OBS="${HOME_DIR}/.clavity/agy-observations.md"
 
 input=$(cat 2>/dev/null)
 

@@ -80,7 +80,7 @@ This file is also the authority over the **user-facing subset** that the `docs-r
   review, never by a docs pass. Match on the filename alone: an earlier version enumerated directory
   shapes (`*/skills/**`, `*/skill/`, `*/agy_skills/**`) and silently missed 8 of 13 — every
   `*/plugin/skills/**` file plus `clavity-classic/agy-mcp-bridge/SKILL.md`.
-- `agy-autotrain/knowledge/agy-observations.md` — the `agy-learn` capture inbox, drained by `agy-curate`.
+- `agy-autotrain/knowledge/agy-observations.md` — the capture-inbox FORMAT TEMPLATE. Since ROADMAP 14g the live inbox is user-local at `~/.clavity/agy-observations.md` and this copy no longer ships.
 - `agy-autotrain/verify/assertions.md` — measured probe outcomes (data), never rewritten by a docs pass.
   The prose harness docs (`README.md`, `probe-design.md`, `run-verification.md`) ARE audited — voiced above.
 - `agy-autotrain/docs/fix-the-tool-backlog/**` — generated from `_template.md`, append-only.

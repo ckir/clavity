@@ -10,65 +10,46 @@ GROWTH region of the shared golden-header - the driver owns the SEED (the baseli
 this skill reads as a floor but never edits.
 
 **Inputs:**
-- **The capture inbox** - `agy-observations.md`. **Do NOT resolve it by a path relative to this file.**
-  This skill exists in the installed tree AND in every repo checkout and worktree, each with its own
-  copy; the LIVE inbox is the one the nudge hook counts. **Draining the wrong one is worse than not
-  draining**: it publishes the wrong content to the live header AND resets a pending list nothing was
-  waiting on. Measured 2026-08-15: the repo and installed copies held 30 and 18 entries with ZERO overlap.
+- **The capture inbox** - exactly one path, no resolution order:
 
-  **The resolution order is restated here in full, deliberately** - `agy-learn` Step 3 carries the same
-  three steps, and a cross-file reference is not safe when skills are invoked independently and this one
-  arrives in context alone:
-  1. `$CLAUDE_PLUGIN_ROOT/knowledge/agy-observations.md` if that variable is set (it is, for hooks;
-     **measured UNSET in a skill-context shell call**, so expect to fall through).
-  2. Else `<this skill's harness-supplied base directory>/../../knowledge/agy-observations.md`, **unless
-     that tree is a checkout.** Test the checkout, not the install:
-     `git -C <base> rev-parse --is-inside-work-tree` answers `true` for a checkout or worktree and
-     non-zero for an installed tree. Install roots vary by platform and product, so pattern-matching the
-     install path wrongly excludes real installs.
-  2b. Test the CHECKOUT with a payload-absence marker, never with `git`: **`<base>/../../installer/`
-     exists => checkout; absent => install.** (`git rev-parse --is-inside-work-tree` climbs to a PARENT
-     repo, so an install inside a git-managed home directory measures as a checkout - and a missing `git`
-     exits non-zero, which would read as "install" and route the write the wrong way.) **If the test
-     cannot be performed, treat it as a checkout.**
-  3. If it IS a checkout, **STOP - do not drain it.** Say so and ask which install to drain. **This STOP
-     halts the DRAIN only; it does not skip the staging step below.** Do the staging move first (it is
-     machine-local and independent of which tree you were invoked from), THEN stop and ask - otherwise
-     the STOP silently swallows an instruction that appears later in this file and never runs.
+  ```
+  <USERPROFILE or HOME>/.clavity/agy-observations.md
+  ```
+
+  It is user-local state, beside the golden-header files. **Do NOT resolve it relative to this file and
+  do NOT consult `CLAUDE_PLUGIN_ROOT`** - this skill exists in the installed tree AND in every checkout
+  and worktree, and a relative path resolves to whichever copy is running. Measured 2026-08-15, before
+  the move: the repo and installed copies held 30 and 18 entries with **ZERO overlap**.
+
+  **An inbox left behind in a plugin tree is DEAD.** Do not drain it, do not merge it. Migrating any such
+  file is the installer's one-time job.
+
+  **CLAIM THE INBOX BEFORE YOU READ IT - this is a race, not a formality.** `agy-learn` runs mid-task in
+  OTHER sessions and appends to this same file, and a drain is long: read-now, rewrite-`## Pending`-later
+  destroys every bullet appended in between, and that window is minutes, not milliseconds. So:
+
+  1. **RENAME first, then read.** Move
+     `<USERPROFILE or HOME>/.clavity/agy-observations.md` to
+     `<USERPROFILE or HOME>/.clavity/agy-observations.processing-<unique>.md` - **`<unique>` is a per-run
+     value (a pid or a guid), never a fixed name.** A fixed name races exactly when it matters: two
+     overlapping drains would rename onto the same target and the second destroys the first run's
+     in-flight batch. The rename is atomic within one filesystem, so a concurrent `agy-learn` simply
+     finds no canonical file, creates a fresh one, and loses nothing.
+  2. **Triage from the renamed file.**
+  3. **Write the still-pending residue back by APPENDING to the canonical path** (creating it with the
+     standard header if a concurrent capture has not already), **and only after `curate-commit` exits 0.**
+     Appending, not overwriting: a capture that arrived during your drain is already in that file and a
+     wholesale write would erase it.
+  4. **Delete the processing file YOU renamed** - matched by that run's own `<unique>`, never a glob over
+     all of them - **last**. Deleting it before a failed publish loses the entries.
+
+  **The known hole, recorded rather than papered over:** a crash between the rename and the final delete
+  strands that batch in the processing file, because each run reads only its own uniquely-named file and
+  never globs. A glob would fix the strand and reintroduce the two-drain race; this is the trade, chosen
+  deliberately. Recovery is manual and easy - the file is right there beside the inbox.
 
   **Print the resolved absolute path and its pending count before you drain anything**, and again after
-  the reset. If the path is not the one the nudge reports on, you drained the wrong file.
-
-- **The STAGING file - drain it in the SAME run, or it becomes the orphan this rule exists to prevent.**
-  `agy-learn` appends to `<USERPROFILE or HOME>/.clavity/agy-observations.staged.md` whenever it cannot
-  resolve the live inbox. **Nothing else ever reads that file**, so a capstone round correctly called the
-  first version of it a silent black hole: a new orphan store created by the very change that existed to
-  stop orphaned captures. So, every drain:
-  1. **MOVE it before you read it - do not read-then-truncate.** Rename
-     `<USERPROFILE or HOME>/.clavity/agy-observations.staged.md` to
-     `<USERPROFILE or HOME>/.clavity/agy-observations.processing-<unique>.md` FIRST - **`<unique>` is a
-     per-run value (a pid or a guid), never a fixed name** - then work from the renamed file.
-     **A FIXED processing name races exactly when it matters:** two overlapping drains would each rename
-     onto the same target, and the second silently destroys the first run's in-flight batch before it can
-     be published. Same reason the shield helper's temp file is unique per invocation. **A read-now-truncate-later sequence destroys anything appended in between:** `agy-learn` runs
-     mid-task in other sessions and appends to that exact file, so a bullet staged after your read and
-     before your truncate would be wiped by a truncate that never saw it. The rename is atomic within one
-     filesystem, so a concurrent `agy-learn` simply creates a fresh staged file and loses nothing.
-     **Note the full `<USERPROFILE or HOME>` prefix** - a bare `.clavity/...` resolves against the current
-     working directory, which is not where `agy-learn` wrote it.
-  2. **Fold the renamed file's bullets into the pending set you are about to triage** - they are ordinary
-     captures that merely took a detour - and **dedupe against the inbox**, since the same observation can
-     legitimately appear in both if the operator later routed it by hand.
-  3. **Delete the `<USERPROFILE or HOME>/.clavity/agy-observations.processing-<unique>.md` file YOU
-     renamed - matched by that run's own `<unique>`, never a glob over all of them - and only after
-     `curate-commit` exits 0** (the full prefix again, for the same reason as above), on exactly the same
-     reasoning that puts the `## Pending` reset last. Deleting it before a failed publish loses the
-     entries. **And leaving it after a SUCCESSFUL publish ABANDONS them - it does not duplicate them.**
-     That distinction changed in round 4 and this sentence did not follow: when the processing name was
-     fixed, a leftover file was re-read and duplicated; now that each run reads only its own uniquely
-     named file and never globs, nothing ever looks at a leftover again. **So a crash between the rename
-     and the delete silently strands that whole batch** - a real hole, recorded here rather than papered
-     over, and one the architectural fix in the KNOWN GAP note removes rather than patches.
+  the residue is written back.
 - The **runtime SEED floor**: the shared `%USERPROFILE%\.clavity\golden-header.seed.md` that the driver
   actually injects (honor a `CLAVITY_GOLDEN_HEADER` **directory** override; default `%USERPROFILE%\.clavity\`).
   Read it to dedupe - a rule already stated in SEED must NOT be repeated in GROWTH. Resolve it at the RUNTIME

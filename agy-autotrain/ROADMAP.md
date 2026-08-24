@@ -42,7 +42,7 @@ The inbox exists in **two different places that are easy to conflate**, and only
 
 | | path | protection |
 |---|---|---|
-| **Shipped seed** | `knowledge/agy-observations.md` in THIS repo | tracked in git; full history; recoverable |
+| **Shipped seed** | ~~`knowledge/agy-observations.md` in THIS repo~~ **RETIRED at 14g** | the inbox is user-local at `~/.clavity/agy-observations.md`; nothing seeds it |
 | **Accumulated inbox** | `%LOCALAPPDATA%\Programs\agy-autotrain\plugins\agy-autotrain\knowledge\agy-observations.md` | **in no git repo at all** |
 
 The accumulated copy is the one with the value: **51.0 KB, 48 pending entries** at time of writing, against a

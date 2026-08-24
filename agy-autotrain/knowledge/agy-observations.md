@@ -8,20 +8,18 @@ observation. Project nouns are forbidden here (Structured Abstraction Schema). P
 
 ## Pending
 
-> **THIS COPY IS NOT THE INBOX. DO NOT CAPTURE HERE.**
+> **THIS IS A FORMAT TEMPLATE, NOT THE INBOX. DO NOT CAPTURE HERE.**
 >
-> **The canonical inbox is** `%LOCALAPPDATA%/Programs/agy-autotrain/plugins/agy-autotrain/knowledge/agy-observations.md`.
-> Both consumers resolve to it and to nothing else: the `agy-learn` / `agy-curate` skills reach it as
-> `../../knowledge/agy-observations.md` from their INSTALLED location, and the maintainer drain
-> hard-codes it at `scripts/drain-lib.ps1:9`.
+> **The canonical inbox is** `<USERPROFILE or HOME>/.clavity/agy-observations.md` - user-local state,
+> beside the golden-header files. Every consumer resolves that one path and nothing else: both skills,
+> the nudge hook, the snapshot hook, and `scripts/drain-lib.ps1`.
 >
-> **This file was read by neither.** On 2026-08-17 it held **31 unique entries with ZERO overlap**
-> against the canonical inbox - captures accumulated since 2026-08-08 that no drain could ever have
-> reached. They were merged into the canonical inbox and drained from there; this section is empty by
-> INTENT, not because a drain emptied it.
+> ROADMAP section 14g moved it there and this file STOPPED SHIPPING at the same time - the installer no
+> longer copies it anywhere, and `MigrateInboxToUserState` relocates any pre-14g inbox on upgrade. It is
+> kept in the repo only because it documents the header format and is named by
+> `scripts/injected-context-exemptions.json`.
 >
-> A capture written here is silently lost. If you are an agent following the `agy-learn` skill, resolve
-> the path from that skill's own base directory - do not use this repo path because it looks canonical.
->
-> Tracked as ROADMAP section 14g (the inbox lives inside the plugin tree in N copies). This pointer is
-> the stop-gap; the architectural fix is the tracked item.
+> Why the move: this tree exists in N copies - the install, every checkout, every worktree - and nothing
+> could tell which was live. Measured 2026-08-17, this very file held **31 unique entries with ZERO
+> overlap** against the then-canonical inbox: captures no drain could ever reach. That failure mode is
+> now structurally impossible rather than instructed against.

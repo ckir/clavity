@@ -17,7 +17,7 @@ prepend to every ask.
 ## How it works
 
 ```
-drive agy (core driving skill) ──learn──▶ knowledge/agy-observations.md   (inbox: sanitised general rules)
+drive agy (core driving skill) ──learn──▶ ~/.clavity/agy-observations.md   (inbox: sanitised general rules)
         ▲                                          │
         │ golden-header (injected by the binary)   │ periodic
         │                                          ▼
@@ -61,7 +61,8 @@ agy-autotrain/
   .claude-plugin/plugin.json · plugin.json   # dual manifests
   skills/agy-learn/          # capture (sanitise → inbox)
   skills/agy-curate/         # curate (promote/verify/recompile → curate-commit)
-  knowledge/agy-observations.md         # capture inbox (raw, project-agnostic)
+  knowledge/agy-observations.md         # capture-inbox FORMAT TEMPLATE (14g: the live inbox is
+                                        #   ~/.clavity/agy-observations.md; this copy does not ship)
   knowledge/driver-cheatsheet.core.md   # pinned baseline (see CONTRIBUTING.md)
   verify/assertions.md · run-verification.md   # the live test harness
 ```

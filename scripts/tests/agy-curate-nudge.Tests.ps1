@@ -4,14 +4,26 @@ Describe 'agy-curate-nudge.sh' {
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $repoRoot 'agy-autotrain/hooks/agy-curate-nudge.sh'
 
-        # Build a throwaway CLAUDE_PLUGIN_ROOT holding knowledge/agy-observations.md, plus an isolated
-        # HOME/USERPROFILE so a REAL ~/.clavity/.agy-curate-snooze on the dev box cannot silence the hook
-        # and hand us a false green. Absolute paths only - MSYS mangles relative HOME.
-        function New-NudgeEnv { param([string]$Inbox)
+        # ROADMAP 14g: the canonical inbox is USER-LOCAL (~/.clavity/agy-observations.md), NOT the plugin
+        # tree. Build an isolated HOME/USERPROFILE holding it, so a REAL ~/.clavity/.agy-curate-snooze on
+        # the dev box cannot silence the hook and hand us a false green. Absolute paths only - MSYS mangles
+        # relative HOME.
+        #
+        # CLAUDE_PLUGIN_ROOT is still set, and knowledge/agy-observations.md under it is a DECOY carrying
+        # the OPPOSITE verdict from the canonical file. That decoy is a mutation control, not scenery: if
+        # the hook ever reverts to reading the plugin tree, every test that asserts on the canonical
+        # content flips, because the decoy always says the other thing. -Decoy defaults to a large, very
+        # stale inbox (which WOULD nudge), so a silent-expecting test reds the moment the old path returns.
+        function New-NudgeEnv { param([string]$Inbox, [string]$Decoy)
             $root = Join-Path ([IO.Path]::GetTempPath()) ("curate-nudge-" + [Guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Path (Join-Path $root 'knowledge') -Force | Out-Null
-            New-Item -ItemType Directory -Path (Join-Path $root 'home') -Force | Out-Null
-            Set-Content -LiteralPath (Join-Path $root 'knowledge/agy-observations.md') -Value $Inbox -NoNewline
+            New-Item -ItemType Directory -Path (Join-Path $root 'home/.clavity') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $root 'home/.clavity/agy-observations.md') -Value $Inbox -NoNewline
+            if (-not $PSBoundParameters.ContainsKey('Decoy')) {
+                $bullets = (1..50 | ForEach-Object { "- [heuristic] (peer/probabilistic) decoy $_  ·  ``[corpus]`` · 2000-01-01 · agy 1.0.0" }) -join "`n"
+                $Decoy = "# decoy inbox in the PLUGIN TREE - the hook must never read this`n`n## Pending`n`n$bullets`n"
+            }
+            Set-Content -LiteralPath (Join-Path $root 'knowledge/agy-observations.md') -Value $Decoy -NoNewline
             [pscustomobject]@{
                 Root = $root
                 Env  = @{
@@ -23,6 +35,42 @@ Describe 'agy-curate-nudge.sh' {
         }
 
         $script:Today = (Get-Date).ToString('yyyy-MM-dd')
+    }
+
+    It 'reads the USER-LOCAL inbox and IGNORES one left in the plugin tree (ROADMAP 14g)' {
+        # The architectural move's own oracle. The canonical inbox is quiet; the plugin tree holds a big,
+        # very stale decoy. Reading the wrong one is LOUD, so this cannot pass by accident.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) a recent capture  ``[corpus]`` - $script:Today - agy 1.1.19
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -BeNullOrEmpty -Because 'the canonical inbox has one recent entry; the 50 stale decoy bullets in the plugin tree must not be seen'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'nudges from the USER-LOCAL inbox even when the plugin tree holds a CLEAN decoy' {
+        # The other half of the control. Above proves the plugin tree cannot make the hook speak; this
+        # proves it cannot make the hook stay silent. Either test alone is satisfiable by a broken hook.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) a stale capture  ``[corpus]`` - 2020-01-01 - agy 1.0.10
+"@
+        $e = New-NudgeEnv -Inbox $inbox -Decoy "# clean decoy`n`n## Pending`n"
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -Match 'oldest pending entry \(2020-01-01\)'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'is SILENT when the only old date lives in a drain-log COMMENT, not on a pending bullet' {

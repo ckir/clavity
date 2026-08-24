@@ -44,113 +44,59 @@ knowledge rule - `agy-curate` decides tool-fixability. Capture the axes; do not 
 
 ## Step 3 - Append one bullet to the inbox
 
-### Resolve the inbox FIRST - this skill ships in more than one copy
+### The inbox has exactly ONE path
 
-**There is exactly ONE live inbox: the one the nudge hook counts.** That hook resolves
-`${CLAUDE_PLUGIN_ROOT}/knowledge/agy-observations.md`, which for a hook is the INSTALLED plugin tree.
-**A path relative to THIS file is not that path** whenever the skill is invoked from a repo checkout or a
-git worktree, because those carry their own `agy-autotrain/knowledge/agy-observations.md`.
+```
+<USERPROFILE or HOME>/.clavity/agy-observations.md
+```
 
-**MEASURED 2026-08-15, and this is why the rule exists:** the two inboxes had diverged to **30 pending in
-the repo copy and 18 in the installed one, with ZERO overlap** - four capstone sessions' worth of real
-captures written to a copy nothing drains and nothing counts. They were committed to git, so they looked
-saved; they were simply invisible to the loop.
+That is the whole rule. It is user-local state, beside the golden-header files, for exactly the reason
+they live there: **every copy of this skill resolves it identically and nothing can shadow it.**
 
-Resolve in this order, and do not skip to the fallback:
+**Do NOT resolve it relative to this file, and do NOT consult `CLAUDE_PLUGIN_ROOT`.** This skill ships in
+more than one copy - an install, a repo checkout, every git worktree - and a relative path resolves to
+whichever copy happens to be running. **MEASURED 2026-08-15, which is why the inbox was moved out of the
+plugin tree entirely:** the two inboxes had diverged to **30 pending in the repo copy and 18 in the
+installed one, with ZERO overlap** - four capstone sessions' worth of real captures written to a copy
+nothing drained and nothing counted. They were committed to git, so they looked saved.
 
-1. **`$CLAUDE_PLUGIN_ROOT/knowledge/agy-observations.md`** if that variable is set. (It is set for HOOK
-   invocations. **Measured: it is UNSET in a skill-context shell call**, so expect to fall through.)
-2. **This skill's own base directory** - the harness states it when the skill is invoked - resolved as
-   `<base>/../../knowledge/agy-observations.md`, **unless that tree is a CHECKOUT.**
+**Create the DIRECTORY if it is absent, not just the file.** `~/.clavity/` is created by a clavity
+driver's installer, and this plugin can legitimately be installed with **no driver present** - its own
+installer has no `[Dirs]` section and its post-install text says so. So a first capture on such a machine
+must `mkdir -p` the directory before appending, or it fails on the one path that has no fallback left.
 
-   **Test for the checkout, do not pattern-match the install.** Install roots vary by platform and by
-   product (`.../Programs/<product>/plugins/...`, `~/.claude/plugins/cache/...`,
-   `~/.gemini/config/plugins/...` are all real), so any "is it under X" test excludes a legitimate
-   install somewhere.
+**An inbox left behind in a plugin tree is DEAD - ignore it.** Do not read it, do not merge it, do not
+prefer it. The one-time migration of any such file is the installer's job and it runs once; anything
+still sitting there afterwards is a stale artifact of an older layout.
 
-   **Use a PAYLOAD-ABSENCE marker, not `git`.** The repository tree carries directories the installer
-   deliberately excludes from the shipped payload - `agy-autotrain/installer/` is the stable one
-   (`agy-autotrain/installer/agy-autotrain.iss` line ~54: `Excludes: "\installer,\dist,\publish,...")`.
-   So: **`<base>/../../installer/` exists => this is a CHECKOUT.** Verified 2026-08-15: the installed
-   tree has no `installer/`; the repo tree has one.
+**If the append fails, say so in the same turn rather than dropping the observation.** There is no
+staging file any more and no fallback path to park it in - the single canonical location is what removed
+the need for both - so a failure you swallow is an observation nobody ever finds.
 
-   **Absence of that marker is NOT sufficient to declare an install - require BOTH signals absent.** A
-   sparse checkout that excludes `installer/`, or a tree where it was deleted locally, would otherwise be
-   read as an install and captures would be written into it. So also check for a repository root above
-   the plugin: **if `<base>/../../../.git` exists (as a file or a directory), treat it as a CHECKOUT too.**
-   Test that path DIRECTLY - do not let `git` discover it, which is what climbs into an unrelated parent.
-   **`CLAVITY_INBOX` overrides everything**: if that variable names a file, use it and skip these tests
-   entirely. **Two real setups need it, and both are developer setups** - a plugin installed by cloning
-   the repo into the plugins directory, and one installed by SYMLINKING a checkout there. In both,
-   `installer/` is genuinely present in a live install, so the marker says CHECKOUT and captures get
-   staged instead of written. **That is the safe direction** (staged is parked, not lost) but it is a
-   permanent papercut for the people who work on this plugin most, so set `CLAVITY_INBOX` once on such a
-   machine rather than rediscovering it every session.
+### Appending is safe during a drain; this is why
 
-   **Do NOT use `git rev-parse --is-inside-work-tree` for this** - the first version of this rule did,
-   and a capstone round killed it with two reachable failures, one of them measured:
-   - **MEASURED false positive:** git discovery climbs to a PARENT repo. An install nested anywhere
-     inside a git repository - a git-managed home directory is the common case - answers `true`, so a
-     real install is classified as a checkout and **captures are permanently blocked**.
-   - **Fail-open on a missing tool:** `git` absent from PATH exits non-zero, which that rule read as
-     "installed tree" - so the tool being missing routed the write INTO a checkout, the exact defect the
-     rule exists to prevent.
-3. **If it IS a checkout, do not append there.** But do not lose the observation either - see below.
+`agy-curate` **claims** the inbox by renaming it before it reads anything. So if a drain is in flight,
+your append either lands in the file before the rename (and is drained with the rest) or creates a fresh
+canonical file after it (and is drained next time). **Neither case loses a bullet, and that property
+depends on you only ever APPENDING** - never read-then-rewrite the file, which would clobber whatever the
+drain is about to write back.
 
-**WHEN THE TEST IS UNCERTAIN, TREAT IT AS A CHECKOUT.** If the marker check cannot be performed at all,
-do not guess in the direction of writing. The staging step below makes that default cheap: an
-unnecessary stage costs one paste, while a wrong write costs an observation nobody ever finds.
+**Then verify what you wrote, with a check you can actually perform.** In the same turn, print the
+**resolved absolute path** and the **new pending count** you observe after appending. Both are within
+reach: you know the path and you can count the file.
 
-**IF - AND ONLY IF - STEP 3 FIRED: never discard the capture in order to obey it.** This whole block is
-subordinate to step 3 and does not run in the ordinary case. **If step 2 resolved an installed tree, you
-are done here: append to that inbox and skip to the verification step.** Staging when the inbox resolved
-fine would duplicate the bullet and interrupt the operator for nothing.
-
-When step 3 DID fire, the risk is the opposite one: capture is cheap and mid-task, so an instruction to
-"stop and ask" loses observations - it interrupts a task the agent then resumes, and the bullet exists
-only in a context window that moves on. So, in this order:
-
-   a. **Write the bullet to `<USERPROFILE or HOME>/.clavity/agy-observations.staged.md` FIRST** (append,
-      creating the file if absent). That directory is machine-local, outside every plugin tree and every
-      checkout, and already holds the runtime golden-header files - so both copies of this skill resolve
-      it identically and nothing can shadow it.
-   b. **Then** tell the operator the capture is staged there and ask where the installed inbox is.
-   c. **If the operator answers with a path, finish the job in that same turn: append the bullet there,
-      then REMOVE it from the staged file.** Doing only the first leaves the identical bullet in the
-      stage, and the next `agy-curate` run folds the stage in and duplicates it. Doing neither leaves the
-      operator wondering why you asked. **If the operator does not answer, leave the stage exactly as it
-      is** - `agy-curate` drains it, so a staged bullet is parked, not lost.
-
-   **A capture written to the wrong copy is worse than a capture not taken** - it reads as done, survives
-   review, and never reaches curation. A capture staged in a known machine-local file is neither.
-
-**Then verify what you actually wrote, with a check you can actually perform.** In the same turn, print
-the **resolved absolute path** and the **new pending count** you observe after appending. That is fully
-within reach: you resolved the path and you can count the file.
-
-**Do not try to compare it against what the nudge hook reported.** That hook runs at SessionStart and
-writes to a previous session's output, which you cannot read mid-task - an earlier version of this line
-asked for exactly that comparison and it was unperformable. Printing the path and count is what lets the
-OPERATOR make that comparison; your job is to surface the two facts, not to reconcile them.
+Do not try to compare it against what the nudge hook reported. That hook runs at SessionStart and writes
+to a previous session's output, which you cannot read mid-task. Printing the path and count is what lets
+the OPERATOR make that comparison; your job is to surface the two facts, not to reconcile them.
 
 > **KNOWN GAP, stated rather than papered over: this rule is unguarded by construction.** It is prose an
 > agent follows, and nothing tests compliance - the verify-then-print step above is the only feedback, and
-> it depends on the same agent. **A capstone reviewer proposed a CI check asserting the repo copy of
-> `agy-observations.md` is never modified; that fix is wrong and was rejected** - the repo copy is the
-> INSTALL SEED and is legitimately updated (it carries deliberately-committed entries today), so such a
-> gate would forbid a normal operation and would already be failing. A presence-grep asserting these
-> paragraphs exist would be the vacuous-oracle shape this project removes on sight. **The honest state is:
-> unguarded, with the cost recorded here.**
->
-> **Related debt, deliberately not fixed in this change:** the canonical inbox lives inside the plugin
-> tree rather than the machine-local runtime directory that holds the golden-header files. Moving it there
-> would remove the two-copies problem at the root instead of instructing around it. **It is NOT the
-> emergency it looks like** - the installer excludes this file from the blanket copy and ships it
-> `onlyifdoesntexist uninsneveruninstall`, so an update does not overwrite it and an uninstall does not
-> remove it (a reviewer claimed the next update would destroy the backlog; the installer refutes that).
-> The move touches both skills, the nudge hook and its suite, and the installer, so it is tracked work.
+> it depends on the same agent. What the move DID buy is that the rule is now one line instead of a
+> resolution order, so there is far less of it to get wrong. **A capstone reviewer once proposed a CI
+> check asserting the repo copy of `agy-observations.md` is never modified; that fix was wrong and was
+> rejected**, and after the move the repo no longer carries a live inbox at all, so the question is moot.
 
-Append to the resolved inbox (create it with the header below if missing). One line:
+Append to that path (creating the directory, then the file with the header below, if absent). One line:
 
 ```
 - [<class>] (<audience>/<nature>) <General Rule>  *  `[corpus]` * <YYYY-MM-DD> * agy <version-if-known>

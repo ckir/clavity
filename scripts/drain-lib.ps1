@@ -6,7 +6,13 @@ Set-StrictMode -Version Latest
 function Resolve-InboxPath([string]$explicit) {
     if ($explicit) { return $explicit }
     if ($env:CLAVITY_AGY_INBOX) { return $env:CLAVITY_AGY_INBOX }
-    return Join-Path $env:LOCALAPPDATA 'Programs/agy-autotrain/plugins/agy-autotrain/knowledge/agy-observations.md'
+    # ROADMAP 14g: the canonical inbox is USER-LOCAL, beside the golden-header files - NOT inside the
+    # plugin install tree, which exists in N copies (install, checkout, every worktree) with no reliable
+    # way to tell which one is live. This default used to point at the INSTALLED plugin copy, which was
+    # correct only while that was the canonical location; after the move it silently drained a stale file.
+    # Pinned by drain-lib.Tests.ps1.
+    $home_dir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
+    return Join-Path $home_dir '.clavity/agy-observations.md'
 }
 
 function Get-PendingBulletCount([string]$InboxPath) {

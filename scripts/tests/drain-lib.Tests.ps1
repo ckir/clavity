@@ -12,6 +12,35 @@ Describe "drain-lib primitives" {
     }
     AfterEach { Remove-Item -Recurse -Force $script:Work -ErrorAction SilentlyContinue }
 
+    Context "Resolve-InboxPath (ROADMAP 14g: the inbox is USER-LOCAL, not in the plugin tree)" {
+        # Deliberately does NOT mutate $env:USERPROFILE. An earlier version did, and the save/restore
+        # dance was itself the flake - drain-lib.ps1 turns on Set-StrictMode -Version Latest for this
+        # whole file, and a restored-to-empty env var then reads as unset. The PROPERTY is what matters
+        # and it is assertable against the real environment.
+        It "defaults under the user home, and NOT into the plugin install tree" {
+            $p = (Resolve-InboxPath '') -replace '\\', '/'
+            $p | Should -BeLike '*/.clavity/agy-observations.md'
+            # The controls. Before the move this returned
+            # <LOCALAPPDATA>/Programs/agy-autotrain/plugins/agy-autotrain/knowledge/agy-observations.md,
+            # so each of these reds the moment the old default comes back.
+            $p | Should -Not -Match 'plugins/agy-autotrain'
+            $p | Should -Not -Match '/knowledge/'
+            $p | Should -Not -Match 'Programs/agy-autotrain'
+        }
+
+        It "still honours an explicit path and the CLAVITY_AGY_INBOX override, in that precedence" {
+            # Without this, "hardcode the new default and ignore the arguments" passes the test above.
+            Resolve-InboxPath 'C:/explicit/inbox.md' | Should -BeExactly 'C:/explicit/inbox.md'
+            $saved = "$env:CLAVITY_AGY_INBOX"
+            try {
+                $env:CLAVITY_AGY_INBOX = 'C:/from-env/inbox.md'
+                Resolve-InboxPath '' | Should -BeExactly 'C:/from-env/inbox.md'
+                Resolve-InboxPath 'C:/explicit/inbox.md' | Should -BeExactly 'C:/explicit/inbox.md'
+            } finally { $env:CLAVITY_AGY_INBOX = $saved }
+        }
+    }
+
+
     It "counts only ^- [ pending bullets, immune to a ## in observation text (F17)" {
         Set-Content -Path $script:Inbox -Value @(
             '# inbox', '', '## Pending',

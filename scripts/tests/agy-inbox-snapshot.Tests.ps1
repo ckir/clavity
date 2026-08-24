@@ -4,21 +4,36 @@ Describe 'agy-inbox-snapshot' {
         $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $script:Hook = Join-Path $repoRoot 'agy-autotrain/hooks/agy-inbox-snapshot.sh'
 
-        # A fake plugin root: the hook resolves the inbox as $CLAUDE_PLUGIN_ROOT/knowledge/agy-observations.md
+        # ROADMAP 14g: the hook resolves the inbox as <USERPROFILE|HOME>/.clavity/agy-observations.md.
+        # $r stays the sandbox root; the inbox now lives at $r/home/.clavity/ and CLAUDE_PLUGIN_ROOT still
+        # points at $r so that knowledge/agy-observations.md under it acts as a DECOY. That decoy is a
+        # mutation control, not scenery: it is always present, so if the hook ever reverts to the plugin
+        # tree the snapshots land in the wrong directory and every BakCount assertion reds.
         function New-PluginRoot {
             param([string]$Body)
             $r = Join-Path ([IO.Path]::GetTempPath()) ("ibx-" + [Guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Path (Join-Path $r 'knowledge') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $r 'home/.clavity') -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $r 'knowledge/agy-observations.md') -Value '# DECOY in the plugin tree - never read this' -Encoding ascii
             if ($null -ne $Body) {
-                Set-Content -LiteralPath (Join-Path $r 'knowledge/agy-observations.md') -Value $Body -Encoding ascii
+                Set-Content -LiteralPath (Join-Path $r 'home/.clavity/agy-observations.md') -Value $Body -Encoding ascii
             }
             return $r
+        }
+        # Every hook call needs HOME/USERPROFILE pointed into the sandbox, or the hook reads the DEV BOX's
+        # real ~/.clavity inbox - a false green that also mutates real state.
+        function HookEnv { param([string]$Root, [hashtable]$Extra)
+            $e = @{ CLAUDE_PLUGIN_ROOT = $Root
+                    USERPROFILE = ((Join-Path $Root 'home') -replace '\\','/')
+                    HOME        = ((Join-Path $Root 'home') -replace '\\','/') }
+            if ($Extra) { foreach ($k in $Extra.Keys) { $e[$k] = $Extra[$k] } }
+            return $e
         }
         function Payload { param([string]$Skill)
             @{ tool_name = 'Skill'; tool_input = @{ skill = $Skill }; cwd = 'C:/nowhere'; session_id = 'ibxtest' } | ConvertTo-Json -Compress
         }
         function BakCount { param([string]$Root)
-            @(Get-ChildItem -LiteralPath (Join-Path $Root 'knowledge') -Filter 'agy-observations.md.*.bak' -ErrorAction SilentlyContinue).Count
+            @(Get-ChildItem -LiteralPath (Join-Path $Root 'home/.clavity') -Filter 'agy-observations.md.*.bak' -ErrorAction SilentlyContinue).Count
         }
         # The UserPromptSubmit payload shape: a .prompt string, no .tool_input.
         function PromptPayload { param([string]$Text) '{"prompt":"' + ($Text -replace '"','\"') + '"}' }
@@ -28,7 +43,7 @@ Describe 'agy-inbox-snapshot' {
     It 'snapshots the inbox when agy-curate is invoked' {
         $r = New-PluginRoot $script:Good
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 1
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -36,7 +51,7 @@ Describe 'agy-inbox-snapshot' {
     It 'does NOT snapshot for an unrelated skill' {
         $r = New-PluginRoot $script:Good
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'superpowers:brainstorming') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'superpowers:brainstorming') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -48,7 +63,7 @@ Describe 'agy-inbox-snapshot' {
         $body = "# agy observations inbox (raw, project-agnostic)`n`n## Pending`n`n- [anti-pattern] (driver/probabilistic) a rule`n"
         $r = New-PluginRoot $body
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 1
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -56,7 +71,7 @@ Describe 'agy-inbox-snapshot' {
     It 'refuses to rotate when the inbox is empty' {
         $r = New-PluginRoot ''
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -64,7 +79,7 @@ Describe 'agy-inbox-snapshot' {
     It 'refuses to rotate when ## Pending is missing' {
         $r = New-PluginRoot "# agy observations inbox (raw, project-agnostic)`n`n- [assumption] (peer/probabilistic) x`n"
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -72,7 +87,7 @@ Describe 'agy-inbox-snapshot' {
     It 'refuses to rotate when there are no bullets' {
         $r = New-PluginRoot "# agy observations inbox (raw, project-agnostic)`n`n## Pending`n"
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -80,9 +95,9 @@ Describe 'agy-inbox-snapshot' {
     It 'does NOT consume a slot when content is unchanged' {
         $r = New-PluginRoot $script:Good
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             Start-Sleep -Seconds 1   # distinct timestamp if it DID rotate
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 1
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -91,9 +106,9 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $script:Good
         try {
             foreach ($i in 1..7) {
-                Set-Content -LiteralPath (Join-Path $r 'knowledge/agy-observations.md') `
+                Set-Content -LiteralPath (Join-Path $r 'home/.clavity/agy-observations.md') `
                     -Value ($script:Good + "- [heuristic] (driver/probabilistic) entry $i`n") -Encoding ascii
-                Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+                Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
                 Start-Sleep -Seconds 1
             }
             BakCount $r | Should -Be 5
@@ -111,13 +126,13 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $script:Good
         try {
             foreach ($i in 1..7) {
-                Set-Content -LiteralPath (Join-Path $r 'knowledge/agy-observations.md') `
+                Set-Content -LiteralPath (Join-Path $r 'home/.clavity/agy-observations.md') `
                     -Value ($script:Good + "- [heuristic] (driver/probabilistic) entry $i`n") -Encoding ascii
-                Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+                Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
                 Start-Sleep -Seconds 1
             }
             $bodies = @(
-                Get-ChildItem -LiteralPath (Join-Path $r 'knowledge') -Filter 'agy-observations.md.*.bak' |
+                Get-ChildItem -LiteralPath (Join-Path $r 'home/.clavity') -Filter 'agy-observations.md.*.bak' |
                     ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }
             )
             $bodies.Count | Should -Be 5
@@ -131,7 +146,7 @@ Describe 'agy-inbox-snapshot' {
     It 'exits 0 when the inbox does not exist at all' {
         $r = New-PluginRoot $null
         try {
-            (Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r }).ExitCode | Should -Be 0
+            (Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r)).ExitCode | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -149,7 +164,7 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $script:Good
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
-                -Env @{ CLAUDE_PLUGIN_ROOT = $r; PATH = '/usr/bin' } | Out-Null
+                -Env (HookEnv $r @{ PATH = '/usr/bin' }) | Out-Null
             BakCount $r | Should -Be 1
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -158,7 +173,7 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $script:Good
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'superpowers:brainstorming') `
-                -Env @{ CLAUDE_PLUGIN_ROOT = $r; PATH = '/usr/bin' } | Out-Null
+                -Env (HookEnv $r @{ PATH = '/usr/bin' }) | Out-Null
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -179,7 +194,7 @@ Describe 'agy-inbox-snapshot' {
         } | ConvertTo-Json -Compress
         $r = New-PluginRoot $script:Good
         try {
-            $envs = @{ CLAUDE_PLUGIN_ROOT = $r }
+            $envs = (HookEnv $r)
             if ($PathEnv) { $envs['PATH'] = $PathEnv }
             Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $envs | Out-Null
             BakCount $r | Should -Be 0 -Because "the $Branch branch must key on the skill FIELD, not a substring"
@@ -192,10 +207,10 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $script:Good
         try {
             foreach ($i in 1..4) {
-                Set-Content -LiteralPath (Join-Path $r 'knowledge/agy-observations.md') `
+                Set-Content -LiteralPath (Join-Path $r 'home/.clavity/agy-observations.md') `
                     -Value ($script:Good + "- [heuristic] (driver/probabilistic) entry $i`n") -Encoding ascii
                 Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
-                    -Env @{ CLAUDE_PLUGIN_ROOT = $r; AGY_INBOX_SNAPSHOT_KEEP = '2' } | Out-Null
+                    -Env (HookEnv $r @{ AGY_INBOX_SNAPSHOT_KEEP = '2' }) | Out-Null
                 Start-Sleep -Seconds 1
             }
             BakCount $r | Should -Be 2
@@ -212,7 +227,7 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $body
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
-                -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+                -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -228,11 +243,11 @@ Describe 'agy-inbox-snapshot' {
         $r = New-PluginRoot $script:Good
         try {
             foreach ($i in 1..3) {
-                Set-Content -LiteralPath (Join-Path $r "knowledge/agy-observations.md.2026010$i-000000.bak") `
+                Set-Content -LiteralPath (Join-Path $r "home/.clavity/agy-observations.md.2026010$i-000000.bak") `
                     -Value "old $i" -Encoding ascii
             }
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
-                -Env @{ CLAUDE_PLUGIN_ROOT = $r; AGY_INBOX_SNAPSHOT_KEEP = $Keep } | Out-Null
+                -Env (HookEnv $r @{ AGY_INBOX_SNAPSHOT_KEEP = $Keep }) | Out-Null
             # 3 seeded + 1 newly written, all retained under the fallback of 5.
             BakCount $r | Should -Be 4 -Because "KEEP='$Keep' is malformed and must fall back to 5, not wipe the ring"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
@@ -246,7 +261,7 @@ Describe 'agy-inbox-snapshot' {
         try {
             # HOME must be ABSOLUTE - MSYS mangles a relative value.
             Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') `
-                -Env @{ CLAUDE_PLUGIN_ROOT = $r; HOME = ($h -replace '\\','/') } | Out-Null
+                -Env (HookEnv $r @{ HOME = ($h -replace '\\','/') }) | Out-Null
             BakCount $r | Should -Be 0
         } finally {
             Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
@@ -258,7 +273,7 @@ Describe 'agy-inbox-snapshot' {
         # The reported defect, verbatim: measured 2026-08-03, no new .bak appeared on this path.
         $r = New-PluginRoot $script:Good
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 1
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -268,7 +283,7 @@ Describe 'agy-inbox-snapshot' {
         # that is wrong: another skill could merely MENTION agy-curate in its args.
         $r = New-PluginRoot $script:Good
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload 'why did agy-curate skip the snapshot last time?') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload 'why did agy-curate skip the snapshot last time?') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -277,7 +292,7 @@ Describe 'agy-inbox-snapshot' {
         # /agy-autotrain:agy-curate --dry-run is a real invocation and must not be treated as prose.
         $r = New-PluginRoot $script:Good
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate --dry-run') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate --dry-run') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 1
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -286,7 +301,7 @@ Describe 'agy-inbox-snapshot' {
         # Regression guard: the path that already worked must keep working.
         $r = New-PluginRoot $script:Good
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 1
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -296,8 +311,8 @@ Describe 'agy-inbox-snapshot' {
         # later triggers the Skill tool). The dedup invariant is what prevents that burning two slots.
         $r = New-PluginRoot $script:Good
         try {
-            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
-            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env @{ CLAUDE_PLUGIN_ROOT = $r } | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
             BakCount $r | Should -Be 1 -Because 'the dedup invariant exists for exactly this'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }

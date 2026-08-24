@@ -28,14 +28,15 @@ SetupMutex=ClavitySetupMutex
 [Files]
 Source: "marketplace.install.json"; DestDir: "{app}\.claude-plugin"; DestName: "marketplace.json"; Flags: ignoreversion
 Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: ignoreversion
-; agy-observations.md is EXCLUDED from the blanket copy below and seeded separately, `onlyifdoesntexist`.
-; It is the agy-learn capture inbox: USER DATA that happens to live inside the plugin tree and accumulates
-; between drains. The blanket copy is `ignoreversion` (= always overwrite), so without this split an UPGRADE
-; silently replaces a user's accumulated observations with the shipped template — destroying the exact
-; knowledge this plugin exists to collect, with no warning and no backup. A fresh install still gets the
-; template; an upgrade leaves the live inbox alone. Verified 2026-07-20 against a real box holding 23
-; uncurated entries.
-;
+; agy-observations.md is EXCLUDED from the blanket copy below and, since ROADMAP 14g, is NOT SHIPPED AT
+; ALL. It is the agy-learn capture inbox: USER DATA that used to live inside the plugin tree and
+; accumulate between drains. Two things made that wrong. The blanket copy is `ignoreversion` (= always
+; overwrite), so without the exclude an UPGRADE would replace a user's accumulated observations with the
+; shipped template. And the plugin tree exists in N copies - the install, every checkout, every worktree -
+; so nothing could tell which inbox was live: measured 2026-08-15 at 30 pending in one and 18 in another
+; with ZERO overlap. The inbox is now user-local at %USERPROFILE%\.clavity\agy-observations.md, beside
+; golden-header.growth.md, and MigrateInboxToUserState moves any pre-14g file there once, on upgrade.
+; The exclude below STAYS regardless: it is what stops the blanket copy resurrecting a plugin-tree inbox.
 ; Note the two DELIBERATELY DIFFERENT exclude forms below, because the difference is load-bearing:
 ;   * A pattern with NO path separator matches at ANY DEPTH — and against DIRECTORY names as well as file
 ;     names. `agy-observations.md` uses that form ON PURPOSE, so the inbox is protected from the blanket
@@ -47,17 +48,21 @@ Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: 
 ;     That exact mistake shipped a bug in the sibling commonmemory installer: an unanchored
 ;     `.claude-plugin` entry matched the DIRECTORY and dropped its plugin.json, so upgrades could not
 ;     overwrite a stale manifest. Anchored, these three only ever mean the top-level folders they name.
-; No [InstallDelete] tombstone is needed here: no file has ever been REMOVED from this payload.
-; agy-observations.md moved between Source lines (blanket copy -> onlyifdoesntexist) but still ships, and
-; deleting it is precisely the data loss the split below exists to prevent.
+; No [InstallDelete] tombstone is wanted here, and 14g makes that sharper rather than softer. Removing
+; agy-observations.md from the payload is NOT a deletion of user data - the migration renames the old
+; file aside rather than deleting it - but a tombstone WOULD delete a pre-14g inbox on upgrade, and it
+; would run before ssPostInstall, i.e. before the migration that rescues it. Leaving a file behind is the
+; recoverable failure; deleting one is not.
 Source: "..\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs; \
   Excludes: "\installer,\dist,\publish,agy-observations.md"
-; uninsneveruninstall as well as onlyifdoesntexist: without it the uninstaller deletes this file like any
-; other installed file, so a KEEP-DATA uninstall would preserve growth.md (which lives outside the app dir)
-; while silently destroying the pending inbox — the same asymmetry the growth.md handling below exists to
-; avoid. Note the remaining gap: a PURGE-data uninstall does not remove it either, so the purge prompt below
-; covers growth.md only. Leaving a file behind is the recoverable failure; deleting one is not.
-Source: "..\knowledge\agy-observations.md"; DestDir: "{app}\plugins\agy-autotrain\knowledge"; Flags: onlyifdoesntexist uninsneveruninstall
+; ROADMAP 14g: the inbox is NO LONGER SHIPPED into the plugin tree. It is user-local state and lives at
+; %USERPROFILE%\.clavity\agy-observations.md, beside golden-header.growth.md, because the plugin tree
+; exists in N copies (install, every checkout, every worktree) and nothing could tell which was live -
+; measured 30-vs-18 pending entries with ZERO overlap. The Excludes above still keeps it out of the
+; blanket copy; the separate onlyifdoesntexist Source line that used to seed it here is deliberately GONE.
+; Nothing seeds the new location either: an absent inbox is already the designed cold-start state, and the
+; capture skill creates the directory and file on first append. MigrateInboxToUserState (below) moves any
+; pre-14g inbox out of the old location on upgrade, once.
 
 [Code]
 #include "..\..\installer\_shared\claude-running.iss"
@@ -88,6 +93,56 @@ begin
       + 'overwrites the plugin registration and leaves it unregistered.';
 end;
 
+{ ROADMAP 14g one-time migration. Pre-14g the capture inbox lived in the plugin tree; it is now user-local.
+  The installer does this rather than the skills because it DEFINITELY runs, exactly once, at upgrade -
+  a lazy skill-side migration only fires when someone next captures or drains, which may be never, and
+  until then the entries sit where no code looks. Guarded three ways so a partial or repeated run cannot
+  lose anything: copy only when the destination is absent or empty, APPEND otherwise (the inbox is an
+  append log, so concatenation is semantically correct), and rename the source aside rather than delete
+  it. Fail-open throughout - a failed migration must never fail the install; the old file is still there.
+  NOTE: no Inno constant braces appear inside these comments - a brace-wrapped constant in a Pascal
+  comment ENDS the comment and breaks the compile. }
+procedure MigrateInboxToUserState();
+var
+  OldPath, NewDir, NewPath, Aside: String;
+  OldLines: TArrayOfString;
+  DestSize: Integer;
+begin
+  OldPath := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md');
+  if not FileExists(OldPath) then
+    exit;
+
+  NewDir := ExpandConstant('{%USERPROFILE}') + '\.clavity';
+  if not ForceDirectories(NewDir) then
+    exit;
+  NewPath := NewDir + '\agy-observations.md';
+
+  if not LoadStringsFromFile(OldPath, OldLines) then
+    exit;
+
+  DestSize := 0;
+  if FileExists(NewPath) then
+    FileSize(NewPath, DestSize);
+
+  if (not FileExists(NewPath)) or (DestSize = 0) then
+  begin
+    if not FileCopy(OldPath, NewPath, False) then
+      exit;
+  end
+  else
+  begin
+    { Destination already has content - a newer inbox, or a second run. Append rather than clobber. }
+    if not SaveStringsToFile(NewPath, OldLines, True) then
+      exit;
+  end;
+
+  { Only now retire the source, and by RENAME, never by delete: if anything above went wrong we have
+    already returned, and if it went right the operator still has the original beside the new one. }
+  Aside := OldPath + '.migrated-14g';
+  if not FileExists(Aside) then
+    RenameFile(OldPath, Aside);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   RegisteredClaude, RegisteredAgy, AnyDetected, AnySucceeded: Boolean;
@@ -95,6 +150,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
+    MigrateInboxToUserState();
     { agy-autotrain is a CLAUDE-driver discipline (AGY-LEARN capture/curate) with no agy-side content,
       so it registers with Claude Code ONLY — never agy (which has no use for it). }
     RegisterMemberPluginFor(ExpandConstant('{app}'), 'agy-autotrain', 'clavity-agy-autotrain', 'claude',
@@ -124,7 +180,7 @@ begin
     explicit answer. }
   RemoveGrowth := SuppressibleMsgBox('Also remove agy-autotrain''s learned data?' + #13#10#13#10 +
     '  - the learned golden-header growth (~\.clavity\golden-header.growth.md and its .sha256)' + #13#10 +
-    '  - any observations captured but not yet drained (knowledge\agy-observations.md)' + #13#10#13#10 +
+    '  - any observations captured but not yet drained (~\.clavity\agy-observations.md)' + #13#10#13#10 +
     'Choose No to keep both for a future reinstall.',
     mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
 end;
@@ -145,7 +201,12 @@ begin
         That flag is unconditional, so on an explicit PURGE it must be removed here or the user's
         consent is ignored in the other direction — the same promise-not-kept failure the classic
         member's purge branch was just fixed for. It lives inside the install dir, unlike growth.md. }
-      InboxFile := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md');
+      { ROADMAP 14g: the inbox now lives BESIDE growth.md in the user-local state directory, not in
+        the install dir. On an explicit PURGE it must still be removed, or the user's consent is
+        ignored in the other direction. Also retire the one-time migration sidecar - same user data. }
+      InboxFile := ExpandConstant('{%USERPROFILE}') + '\.clavity\agy-observations.md';
+      if FileExists(InboxFile) then DeleteFile(InboxFile);
+      InboxFile := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md.migrated-14g');
       if FileExists(InboxFile) then DeleteFile(InboxFile);
     end;
     { KEEP (RemoveGrowth=False): leave growth.md exactly where it is. It lives outside the install dir,
