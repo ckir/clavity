@@ -162,24 +162,47 @@ Describe "drain-lib primitives" {
         ($body.IndexOf('OLDER')) | Should -BeLessThan ($body.IndexOf('MIDRUN'))
     }
 
-    It "Get-DrainOutputPaths is the EXTEND set: the growth proposal + docs, and NO seed/manuals" {
-        $paths = @(Get-DrainOutputPaths)
-        $paths | Should -Contain 'docs/agy-golden-header.growth.md'
-        $paths | Should -Contain 'docs/agy-drain-log.md'
-        $paths | Should -Contain 'docs/agy-verify-needed.md'
-        $paths | Should -Contain 'docs/agy-drain-proposal.md'
-        $paths | Should -Contain 'docs/fix-the-tool-backlog'
-        # Protected driver-owned files are NEVER drain outputs under EXTEND.
-        $paths | Should -Not -Contain 'seed/golden-header.md'
-        $paths | Should -Not -Contain 'clavity-dotnet/plugin/knowledge/agy-assumptions.md'
-        $paths | Should -Not -Contain 'clavity-classic/plugin/knowledge/agy-capabilities.md'
+    It "Get-DrainOutputPaths is EXACTLY the EXTEND set: the growth proposal + docs, and NO seed/manuals" {
+        # PINNED AS AN EXACT SET, not by membership. This list is a DESTRUCTIVE trust boundary -
+        # abort-drain treats every entry as safe to `git clean -fd`. The previous version asserted five
+        # Should -Contain and three Should -Not -Contain with no count at all, so APPENDING a path was
+        # completely invisible: MEASURED at f29cd42, adding 'docs/agy-scratch.md' passed all eight
+        # assertions. A new path silently entering a recursive-delete set is the failure this pins.
+        $expected = @(
+            'docs/agy-golden-header.growth.md'
+            'docs/agy-drain-log.md'
+            'docs/agy-verify-needed.md'
+            'docs/agy-drain-proposal.md'
+            'docs/fix-the-tool-backlog'
+        )
+        (@(Get-DrainOutputPaths) -join "`n") | Should -BeExactly ($expected -join "`n") -Because 'the destructive-clean set must be pinned by identity and order, not by membership - an appended path is otherwise invisible'
     }
 
-    It "Get-DrainProtectedPaths names the 6 driver-owned files and is DISJOINT from the output set" {
+    It "Get-DrainProtectedPaths is EXACTLY the 6 driver-owned files, all real, and DISJOINT from the output set" {
+        # PINNED AS AN EXACT SET. The previous version asserted .Count -eq 6 and named only TWO of the
+        # six, so a typo in any of the other four survived every assertion: MEASURED at f29cd42,
+        # renaming 'agy-assumptions.md' to 'agy-assumption.md' kept the count at 6, kept both named
+        # entries present, and kept disjointness intact. That manual then silently loses protection -
+        # check-core-integrity SKIPS paths absent from HEAD, so it passes VACUOUSLY on the typo, and
+        # drain-knowledge's targeted revert never restores it after a rogue curator edit.
+        $expected = @(
+            'seed/golden-header.md'
+            'clavity-dotnet/plugin/knowledge/agy-assumptions.md'
+            'clavity-dotnet/plugin/knowledge/agy-capabilities.md'
+            'clavity-classic/plugin/knowledge/agy-assumptions.md'
+            'clavity-classic/plugin/knowledge/agy-capabilities.md'
+            'agy-autotrain/knowledge/driver-cheatsheet.core.md'
+        )
         $protected = @(Get-DrainProtectedPaths)
-        $protected.Count | Should -Be 6
-        $protected | Should -Contain 'seed/golden-header.md'
-        $protected | Should -Contain 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
+        ($protected -join "`n") | Should -BeExactly ($expected -join "`n") -Because 'the protected list must be pinned by identity and order - a typo in an unnamed entry is otherwise silent'
+
+        # A path that does not EXIST cannot be protected, and check-core-integrity would skip it in
+        # silence. This is what turns a typo from a passing test into a red one.
+        $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        foreach ($p in $protected) {
+            (Test-Path -LiteralPath (Join-Path $repoRoot $p)) | Should -BeTrue -Because "protected path '$p' must exist in the repo, or the integrity gate skips it vacuously"
+        }
+
         $outputs = @(Get-DrainOutputPaths)
         foreach ($p in $protected) { $outputs | Should -Not -Contain $p }   # protected files are never drain outputs
     }
@@ -244,7 +267,78 @@ exit 0
         # is never launched (a bogus exe path proves Start was not reached).
         $big = Join-Path $script:Work 'big.md'
         [System.IO.File]::WriteAllBytes($big, [byte[]]::new(1150000))
-        $code = Invoke-CurateCommit -Exe (Join-Path $script:Work 'nope.exe') -GrowthPath $big
-        $code | Should -Be 2
+
+        # THE READ IS WHAT THIS PINS, and `Should -Be 2` alone cannot see it. MEASURED at f29cd42:
+        # moving ReadAllBytes ABOVE the size guard still returns 2, because the bogus exe path only
+        # distinguishes whether Process.Start was reached - so the name's "WITHOUT loading into RAM"
+        # claim was strictly stronger than the assertion under it.
+        # Holding the file open with an EXCLUSIVE share makes the two orders observable: MEASURED,
+        # Get-Item .Length still succeeds on a locked file (so the size guard is unaffected) while
+        # ReadAllBytes throws. If the read ever moves before the guard, this throws instead of
+        # returning 2, and the test reds for exactly the right reason.
+        $lock = [System.IO.File]::Open($big, 'Open', 'Read', 'None')
+        try {
+            { [System.IO.File]::ReadAllBytes($big) } | Should -Throw -Because 'precondition: the lock must actually block a read, or this test cannot tell the two orders apart'
+            $code = Invoke-CurateCommit -Exe (Join-Path $script:Work 'nope.exe') -GrowthPath $big
+            $code | Should -Be 2
+        } finally { $lock.Dispose() }
+    }
+
+    It "Resolve-CurateCommitExe DISCOVERS a binary on PATH and prefers the dotnet CLI over classic" {
+        # The function's PRIMARY job had no oracle. The two existing tests cover only the null case and
+        # the override, and both bypass the discovery loop entirely: MEASURED at f29cd42, deleting the
+        # whole `foreach ($name in @('clavity-ls','clavity'))` block left both green. accept-drain then
+        # gets $null, warns "no driver installed" and PROCEEDS - so a reviewed GROWTH proposal silently
+        # never reaches the runtime header, on every box, with the suite green.
+        # .cmd stubs are enough: Get-Command -CommandType Application resolves them via PATHEXT.
+        $binDir = Join-Path $script:Work 'bin'
+        New-Item -ItemType Directory -Path $binDir | Out-Null
+        Set-Content -LiteralPath (Join-Path $binDir 'clavity-ls.cmd') -Value '@echo dotnet' -Encoding ascii
+        Set-Content -LiteralPath (Join-Path $binDir 'clavity.cmd')    -Value '@echo classic' -Encoding ascii
+
+        # Unquoted saves on purpose: "$env:X" coerces an ABSENT variable to '', and restoring that
+        # re-creates it as present-but-empty. See BashHookHelpers.ps1 for the CI failure that caused.
+        $savedPath = $env:PATH
+        $savedOverride = $env:CLAVITY_CURATE_COMMIT_EXE
+        try {
+            $env:CLAVITY_CURATE_COMMIT_EXE = $null
+            $env:PATH = $binDir
+            (Resolve-CurateCommitExe) | Should -BeLike '*clavity-ls.cmd' -Because 'with BOTH on PATH the dotnet CLI must win - the documented preference order'
+
+            # Now only classic is reachable, so discovery must fall through to it rather than return null.
+            Remove-Item -LiteralPath (Join-Path $binDir 'clavity-ls.cmd') -Force
+            (Resolve-CurateCommitExe) | Should -BeLike '*clavity.cmd' -Because 'with only classic present the loop must still discover it'
+        } finally { $env:PATH = $savedPath; $env:CLAVITY_CURATE_COMMIT_EXE = $savedOverride }
+    }
+
+    It "stages and restores a MIGRATED inbox (two ## Pending headings) without losing the appended section" {
+        # The 14g installer migration APPENDS the whole old document - its own header line and its own
+        # `## Pending` heading included - onto the canonical inbox, so a real inbox can carry two
+        # headings. The existing two-heading test calls Set-PendingBody directly; nothing drives that
+        # shape through the stage/restore round-trip the curator actually uses.
+        # MEASURED at f29cd42: changing Get-PendingBody's terminator from '^##\s' to '^#' - a natural
+        # "stop swallowing the stray header the migration appended" edit - took the staged body from 3
+        # bullets to 1, silently dropping the ENTIRE migrated backlog, with the suite 23/0 green.
+        Set-Content -Path $script:Inbox -Value @(
+            '# inbox', '', '## Pending', '- [a] one',
+            '# inbox', '', '## Pending', '- [b] two', '- [c] three'
+        )
+        # PRECONDITION: the reader merges both sections. If this is not 3 the fixture is not exercising
+        # the migrated shape at all and everything below would pass for the wrong reason.
+        (Get-PendingBulletCount -InboxPath $script:Inbox) | Should -Be 3 -Because 'the fixture must present all three bullets, across both headings'
+
+        $staging = Join-Path $script:Work 'agy-observations.staging.RUNID.md'
+        Move-PendingToStaging -InboxPath $script:Inbox -StagingPath $staging
+        $staged = Get-Content $staging
+        foreach ($b in @('- [a] one', '- [b] two', '- [c] three')) {
+            (@($staged | Where-Object { $_ -eq $b })).Count | Should -Be 1 -Because "staging must carry '$b' exactly once - the appended section is real backlog, not scenery"
+        }
+
+        Restore-StagingToPending -InboxPath $script:Inbox -StagingPath $staging
+        (Get-PendingBulletCount -InboxPath $script:Inbox) | Should -Be 3 -Because 'a stage/restore round-trip must be lossless on a migrated inbox'
+        $after = Get-Content $script:Inbox
+        foreach ($b in @('- [a] one', '- [b] two', '- [c] three')) {
+            (@($after | Where-Object { $_ -eq $b })).Count | Should -Be 1 -Because "'$b' must survive the round-trip exactly once - neither dropped nor duplicated"
+        }
     }
 }
