@@ -15,7 +15,9 @@
 #
 # LINE INDEX, NEVER A BRACE PARSER. A brace-counting parser over an .iss is vacuous here: Inno's `{{`
 # escape and its brace-delimited COMMENTS unbalance any naive counter, and one such parser reported a
-# 292-line file as having 4 executable lines while still printing a confident verdict. The procedure
+# file - 292 lines then, 296 now - as having 4 executable lines while still printing a confident
+# verdict. (The count moved in the same commit that rewrote this block, which is why it is stated
+# as history rather than as a fact about the file today.) The procedure
 # body is therefore delimited by line index between its own header and the next top-level declaration.
 
 Describe 'agy-autotrain installer: the 14g inbox migration' {
@@ -37,33 +39,54 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         $script:Start = $start
         $script:Body = if ($start -ge 0) { $all[$start..($end - 1)] } else { @() }
 
-        # CODE lines only - comments are stripped first. Without this, moving a searched literal into
-        # a comment satisfies every assertion here: MEASURED at ee07de0, deleting the rollback and
-        # leaving `{ rollback removed for now: RenameFile(Aside, OldPath) used to be here }` kept all
-        # six guards green while the rollback was gone.
-        # The rule is deliberately narrow, and its narrowness is the point: a line is a comment when its
-        # TRIMMED form starts with `{` or `//`, and a `{`-opened line keeps the state until a line
-        # containing `}`. It is NOT a general Inno parser - a brace counter over an .iss is vacuous here
-        # (the `{{` escape and brace-delimited comments defeat it, and one such parser reported this
-        # 292-line file as 4 executable lines). This rule cannot mis-handle `ExpandConstant('{app}\...')`
-        # either, because that brace is mid-line inside a string, never at the start of a trimmed line.
-        $script:CodeOnly = @()
-        $inComment = $false
-        foreach ($line in $script:Body) {
-            $trim = $line.Trim()
-            if ($inComment) {
-                if ($trim -match '\}') { $inComment = $false }
-                $script:CodeOnly += ''
-                continue
+        # CODE ONLY - comments stripped, INCLUDING TRAILING ONES. Without this, moving a searched
+        # literal into a comment satisfies every assertion here.
+        #
+        # The first version of this rule only blanked lines whose TRIMMED form STARTED with `{` or
+        # `//`, and that was not enough. MEASURED: replacing the claim-failure branch with the single
+        # line `exit;   { MigrationProblem('...') removed for now }` kept all seven guards GREEN - one
+        # trailing comment satisfied BOTH halves of the reports-and-exits check at once. This repo had
+        # already learned that lesson and written it down: see the header of
+        # test-suite-registration.Tests.ps1, "handling only whole-line comments left the trailing case
+        # wide open". This file made exactly that mistake and had to be told twice.
+        #
+        # STRING-AWARE, and that is load-bearing rather than fussy: this body contains
+        # `ExpandConstant('{app}\...')` and `ExpandConstant('{%USERPROFILE}')`, whose braces sit INSIDE
+        # single-quoted strings and are not comments. A rule that stripped from any `{` would delete
+        # real code. It is still NOT a general Inno parser and must not become one - a brace COUNTER
+        # over an .iss is vacuous (the `{{` escape and brace-delimited comments defeat it; one such
+        # parser reported this file, then 292 lines, as 4 executable lines). Inno comments do not nest,
+        # so a single-level state machine is exactly right.
+        function Remove-InnoComments {
+            param([string[]]$Lines)
+            $result = @()
+            $inComment = $false
+            foreach ($line in $Lines) {
+                $kept = ''
+                $inString = $false
+                $i = 0
+                while ($i -lt $line.Length) {
+                    $ch = $line[$i]
+                    if ($inComment) {
+                        if ($ch -eq '}') { $inComment = $false }
+                        $i++; continue
+                    }
+                    if ($inString) {
+                        $kept += $ch
+                        if ($ch -eq "'") { $inString = $false }
+                        $i++; continue
+                    }
+                    if ($ch -eq "'") { $inString = $true; $kept += $ch; $i++; continue }
+                    if ($ch -eq '{') { $inComment = $true; $i++; continue }
+                    if ($ch -eq '/' -and ($i + 1) -lt $line.Length -and $line[$i + 1] -eq '/') { break }
+                    $kept += $ch
+                    $i++
+                }
+                $result += $kept
             }
-            if ($trim.StartsWith('//')) { $script:CodeOnly += ''; continue }
-            if ($trim.StartsWith('{')) {
-                if ($trim -notmatch '\}') { $inComment = $true }
-                $script:CodeOnly += ''
-                continue
-            }
-            $script:CodeOnly += $line
+            return $result
         }
+        $script:CodeOnly = @(Remove-InnoComments -Lines $script:Body)
 
         # Index of the FIRST body CODE line matching a literal substring; -1 when absent.
         function Find-BodyLine { param([string]$Needle)
@@ -79,7 +102,19 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # would pass vacuously on -1 indices comparing equal.
         $script:Start | Should -BeGreaterThan -1 -Because 'MigrateInboxToUserState must exist; if it was renamed, these guards are inspecting nothing'
         $script:Body.Count | Should -BeGreaterThan 40 -Because 'the extracted body must be substantial, or the delimiter logic has silently truncated it'
-        ($script:Body -join "`n") | Should -Match 'RenameFile' -Because 'the body must contain the rename this file exists to constrain'
+        ($script:CodeOnly -join "`n") | Should -Match 'RenameFile' -Because 'the body must contain the rename this file exists to constrain'
+    }
+
+    It 'strips comments WITHOUT eating braces that live inside string literals' {
+        # THE STRIPPER'S OWN CONTROL. It is string-aware precisely so that ExpandConstant's braces
+        # survive; if that ever regresses, every path in the procedure silently loses its constant and
+        # the ordering assertions below start comparing mangled lines.
+        $code = $script:CodeOnly -join "`n"
+        $code | Should -Match 'ExpandConstant' -Because 'the stripper must not remove real code'
+        $code | Should -Match "\{app\}" -Because 'a brace inside a single-quoted string is NOT a comment and must survive stripping'
+        $code | Should -Match "\{%USERPROFILE\}" -Because 'the same, for the user-state path constant'
+        # And the inverse: a real comment must NOT survive. Every line of the file header block is one.
+        $code | Should -Not -Match 'Roll the claim back so the source returns' -Because 'comment prose must be stripped, or a literal hidden in a comment satisfies these guards'
     }
 
     It 'CLAIMS the source by rename BEFORE it writes anything' {
@@ -138,7 +173,11 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
     It 'APPENDS to a non-empty destination rather than clobbering it' {
         # SaveStringsToFile's third argument is the append flag. Flipping it to False destroys a newer
         # inbox at the destination - silently, and only for the user who already had one.
-        ($script:Body -join "`n") | Should -Match 'SaveStringsToFile\(NewPath, OldLines, True\)' -Because 'the append flag is what stops the migration clobbering a destination that already holds captures'
+        # CodeOnly: this is a BEHAVIOURAL assertion, and against raw Body it was satisfiable by a
+        # comment. MEASURED: flipping the real call to False and leaving
+        # `{ was: SaveStringsToFile(NewPath, OldLines, True) }` beside it passed 7/7 while the migration
+        # clobbered a populated destination.
+        ($script:CodeOnly -join "`n") | Should -Match 'SaveStringsToFile\(NewPath, OldLines, True\)' -Because 'the append flag is what stops the migration clobbering a destination that already holds captures'
     }
 
     It 'TERMINATES every pre-write failure branch - each reports AND exits' {

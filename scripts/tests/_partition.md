@@ -481,7 +481,7 @@ agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
-agy-autotrain-installer.Tests.ps1                 1,3s    7 tests   <- FAST, new 2026-08-24. WARM on an idle
+agy-autotrain-installer.Tests.ps1                 1,3s    8 tests   <- FAST, new 2026-08-24. WARM on an idle
   CPU (cold 9,8s - almost all of that is Pester module load, which this suite does not pay again once
   warm). Pure file parsing, no bash and no process launches, which is why it is the cheapest row here.
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an

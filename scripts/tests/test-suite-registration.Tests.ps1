@@ -9,7 +9,9 @@
 # glob scripts/tests and so reports an unregistered suite green - but neither gate anyone actually runs
 # (`test-scripts-fast` in the inner loop, `test-scripts-slow` before a release) would execute it. A new
 # suite that nobody adds to a list therefore EXISTS, PASSES, AND NEVER RUNS, and the only thing that ever
-# caught this was a hand-run `diff` documented in _partition.md:53-54 that no test invoked. That oracle is
+# caught this was a hand-run `diff` documented in _partition.md under the heading that describes it -
+# line 53 when this comment was written, 89 by the time anyone checked, which is why the anchor is now
+# the HEADING rather than a number: five commits in one range moved it. That oracle is
 # now enforced here.
 #
 # This suite cannot protect ITSELF - if it were the unregistered one it would not run to complain. That
@@ -160,7 +162,7 @@ Describe 'test suite registration' {
     It 'every _partition.md row states the CURRENT test count for its suite' {
         # THE ROW ABOVE ASSERTS PRESENCE, NOT ACCURACY, and says so: "a time cannot be verified by
         # reading it". That reasoning is right for the TIME and wrong for the COUNT, which is exactly
-        # what Pester can be asked. MEASURED 2026-08-24 before this row existed: 14 of 47 counted rows
+        # what Pester can be asked. MEASURED 2026-08-24 before this row existed: 14 of 49 counted rows
         # disagreed with reality, several by a lot - check-agy-discipline-skills said 14 against 39,
         # plugin-hooks-registration 22 against 33, BashHookHelpers 4 against 8. A row is what a
         # maintainer reads to judge what a gate costs and whether a suite still earns its half of the
@@ -269,9 +271,14 @@ foreach ($cont in $r.Containers) {
             $stated[$m.Groups[1].Value] = [int]$m.Groups[2].Value
         }
         ($dupeRows -join '; ') | Should -BeNullOrEmpty -Because 'a suite with two counted rows leaves one of them permanently unchecked - delete the stale copy'
-        # A row that states no count is out of scope here - the census row above already requires the
-        # ROW to exist. This assertion only binds rows that make a claim.
-        $stated.Count | Should -BeGreaterThan 20 -Because "only $($stated.Count) rows stated a count - the row parse broke, rather than the table being empty"
+        # EVERY suite must state a count, tied to what is on disk rather than to a slack constant.
+        # Framing this as "only rows that make a claim are bound" was an EXEMPTION, and exemptions are
+        # where this guard keeps failing open: MEASURED, mangling one row's count text to `~1 tests`
+        # dropped it from $stated entirely, so it escaped BOTH $drift and $unreported while the census
+        # row still saw the row present and passed. `8 Tests`, `eight tests` and `8 assertions` evade
+        # identically. The fix was already written ~40 lines above for $discovered, in a comment that
+        # condemns this exact `-BeGreaterThan 20` pattern - and was then not applied here.
+        $stated.Count | Should -Be $onDiskCount -Because "only $($stated.Count) of $onDiskCount suites state a parseable count - a row whose count text does not match is exempt from every check below, so the table must be complete"
 
         # NO SILENT SKIP. This used to `continue` past any row whose suite was absent from the child's
         # output, on the reasoning that the census row owns absence. That is wrong: the census row
