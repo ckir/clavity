@@ -326,4 +326,176 @@ Describe 'agy-curate-nudge.sh' {
             Remove-Item -LiteralPath $h -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
+
+    It 'is SILENT under a .no-agy in the HOME root when USERPROFILE points somewhere else' {
+        # THE MISSING HALF of the kill-switch control. The test above plants the marker under USERPROFILE
+        # and so only ever exercises the HOME_DIR clause; New-NudgeEnv sets HOME == USERPROFILE, so the
+        # bare-${HOME} clause was DEAD to this whole suite. MEASURED at f29cd42: deleting that clause left
+        # all 14 tests green while a marker under a divergent HOME stopped silencing the hook - a kill
+        # switch failing OPEN, certified green. Both sibling suites already cover this cell
+        # (agy-learn-reminder.Tests.ps1, agy-inbox-snapshot.Tests.ps1); the asymmetry was here.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) a stale capture  ``[corpus]`` - 2020-01-01 - agy 1.0.10
+"@
+        $h = Join-Path ([IO.Path]::GetTempPath()) ("nudgehome-" + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path (Join-Path $h '.claude') -Force | Out-Null
+        $e1 = New-NudgeEnv -Inbox $inbox
+        $e2 = New-NudgeEnv -Inbox $inbox
+        try {
+            $payload = @{ cwd = 'C:/nowhere' } | ConvertTo-Json -Compress
+            # PRECONDITION. Same divergent-HOME setup, no marker anywhere: this stale inbox DOES nudge.
+            # Without it the silence below could be the setup rather than the kill switch.
+            $e1.Env['HOME'] = ($h -replace '\\','/')
+            $r1 = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $e1.Env
+            $r1.StdOut | Should -Not -BeNullOrEmpty -Because 'precondition: a stale inbox nudges when no marker exists'
+
+            # The marker goes under HOME only. The USERPROFILE root must NOT carry one, or the HOME_DIR
+            # clause would silence the hook first and this test could not tell the two clauses apart.
+            Set-Content -LiteralPath (Join-Path $h '.claude/.no-agy') -Value '' -NoNewline
+            $e2.Env['HOME'] = ($h -replace '\\','/')
+            (Test-Path (Join-Path $e2.Root 'home/.claude/.no-agy')) | Should -BeFalse -Because 'the USERPROFILE root must NOT carry a marker, or this cannot distinguish which clause fired'
+            $r2 = Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env $e2.Env
+            $r2.ExitCode | Should -Be 0
+            $r2.StdOut | Should -BeNullOrEmpty -Because 'a .no-agy under bare $HOME must silence the nudge - a kill switch may only ever fail SAFE'
+        } finally {
+            Remove-Item -LiteralPath $e1.Root -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $e2.Root -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $h -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'resolves the inbox from HOME when USERPROFILE is ABSENT, and when it is EMPTY' {
+        # HOME_DIR="${USERPROFILE:-$HOME}" (agy-curate-nudge.sh:8). Every harness in this suite sets BOTH
+        # variables to real absolute paths, so the fallback half was never taken on any machine, and CI is
+        # windows-latest. MEASURED at f29cd42: rewriting it to "${USERPROFILE}" left all 14 tests green,
+        # while on a POSIX install the inbox resolved to /.clavity/agy-observations.md and the hook went
+        # PERMANENTLY SILENT - no nudge, and no snapshot ever taken before a drain.
+        # The two cells are different bugs: ABSENT catches dropping the fallback entirely; EMPTY catches
+        # the one-character ${USERPROFILE-$HOME} (no colon), which treats present-but-empty as set.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) a stale capture  ``[corpus]`` - 2020-01-01 - agy 1.0.10
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            # PRECONDITION: with both set the usual way this fixture nudges. It is the baseline the two
+            # assertions below are measured against.
+            $base = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $base.StdOut | Should -Match 'agy-curate nudge' -Because 'precondition: this inbox is stale enough to nudge'
+
+            $absent = $e.Env.Clone()
+            $absent['USERPROFILE'] = [NullString]::Value   # the only form that DELETES - see BashHookHelpers.ps1
+            $r1 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $absent
+            $r1.StdOut | Should -Match 'agy-curate nudge' -Because 'with USERPROFILE absent the inbox must resolve from HOME, not vanish'
+
+            $empty = $e.Env.Clone()
+            $empty['USERPROFILE'] = ''
+            $r2 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $empty
+            $r2.StdOut | Should -Match 'agy-curate nudge' -Because 'an EMPTY USERPROFILE must fall back too - the colon in ${VAR:-alt} is load-bearing'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'uses the LAST date in an un-stamped record, not the first one in its body' {
+        # The no-version-suffix fallback branch. The existing test for it uses a record carrying exactly
+        # ONE date, so first and last coincide and the branch's actual rule is unpinned. MEASURED at
+        # f29cd42: taking the FIRST date instead of the last is invisible on that fixture, and on this one
+        # it reports 2019-01-01 for an entry captured today - a permanent false stale nag that draining
+        # cannot clear, the exact defect class the surrounding tests exist to close.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) regression first seen on 2019-01-01 during a probe  ``[corpus]`` - $script:Today
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.ExitCode | Should -Be 0
+            $r.StdOut | Should -BeNullOrEmpty -Because "the record's stamp is today; 2019-01-01 is body prose, so nothing is stale"
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reports the OLDEST pending entry when several bullets carry DIFFERENT dates' {
+        # Asserts WHICH date is selected, from a set where selection is observable. Every other dated
+        # fixture in this suite holds exactly one dated bullet, so "oldest" was never distinguished from
+        # "newest", "first" or "last". MEASURED at f29cd42: flipping the comparison to report the NEWEST
+        # left all 14 tests green and made this inbox fall SILENT - an ancient backlog that never nudges,
+        # which this suite itself names as the worse of the two failures.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) recent one  ``[corpus]`` - $script:Today - agy 1.1.19
+- [heuristic] (driver/probabilistic) the ancient one  ``[corpus]`` - 2020-01-01 - agy 1.0.10
+- [heuristic] (driver/probabilistic) recent two  ``[corpus]`` - $script:Today - agy 1.1.19
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $r.StdOut | Should -Match 'oldest pending entry \(2020-01-01\)' -Because 'the OLDEST of the three must be reported, not the newest and not the first encountered'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'escalates to OVERDUE only at TWICE the threshold, not at the threshold' {
+        # The escalating wording is the point of the count branch, and nothing asserted it. The one count
+        # test asserts the substring 'has N pending entries', which BOTH messages contain. MEASURED at
+        # f29cd42: lowering the escalation trigger from 2x to 1x made every nudge read OVERDUE - the
+        # signal destroyed - with all 14 tests green.
+        $mkInbox = {
+            param([int]$n)
+            $rows = (1..$n | ForEach-Object { "- [heuristic] (driver/probabilistic) e$_  ``[corpus]`` - $script:Today - agy 1.1.19" }) -join "`n"
+            "# agy observations inbox`n`n## Pending`n`n$rows`n"
+        }
+        $atThreshold = New-NudgeEnv -Inbox (& $mkInbox 2)
+        $atTwice     = New-NudgeEnv -Inbox (& $mkInbox 4)
+        try {
+            $r1 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($atThreshold.Env + @{ AGY_CURATE_NUDGE_THRESHOLD = '2' })
+            $r1.StdOut | Should -Match 'Consider running' -Because 'precondition: it must be nudging at all, or the absence of OVERDUE below proves nothing'
+            $r1.StdOut | Should -Not -Match 'OVERDUE' -Because 'at exactly the threshold the wording must stay the gentle one'
+
+            $r2 = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env ($atTwice.Env + @{ AGY_CURATE_NUDGE_THRESHOLD = '2' })
+            $r2.StdOut | Should -Match 'OVERDUE' -Because 'at twice the threshold the wording must escalate'
+        } finally {
+            Remove-Item -LiteralPath $atThreshold.Root -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $atTwice.Root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'honours a FRESH .agy-curate-snooze and ignores a STALE one' {
+        # The snooze branch (agy-curate-nudge.sh:33-35) had no test at all - 'snooze' appeared in this
+        # suite twice, both times inside a comment. Inverting the 7-day comparison, or repointing SNOOZE
+        # at the plugin tree, either silences the nudge forever or makes the documented opt-out inert,
+        # and nothing went red either way.
+        $inbox = @"
+# agy observations inbox
+
+## Pending
+
+- [heuristic] (driver/probabilistic) a stale capture  ``[corpus]`` - 2020-01-01 - agy 1.0.10
+"@
+        $e = New-NudgeEnv -Inbox $inbox
+        try {
+            # PRECONDITION: with no snooze marker this inbox nudges.
+            $base = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $base.StdOut | Should -Match 'agy-curate nudge' -Because 'precondition: without a snooze this fixture nudges'
+
+            $snooze = Join-Path $e.Root 'home/.clavity/.agy-curate-snooze'
+            Set-Content -LiteralPath $snooze -Value '' -NoNewline
+            $fresh = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $fresh.StdOut | Should -BeNullOrEmpty -Because 'a snooze younger than 7 days must silence the nudge'
+
+            (Get-Item -LiteralPath $snooze).LastWriteTime = (Get-Date).AddDays(-8)
+            $stale = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env
+            $stale.StdOut | Should -Match 'agy-curate nudge' -Because 'a snooze older than 7 days has expired and must NOT keep silencing the nudge'
+        } finally { Remove-Item -LiteralPath $e.Root -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
