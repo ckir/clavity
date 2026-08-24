@@ -41,7 +41,18 @@ peer judgements, so both transports can observe them.
 Adjacent but distinct from `idle-wait-false-modal` (a cap expiring while the peer is still producing
 steps) and `working-vs-stuck-step-delta` (telling a stall from progress). Those cover DETECTION during a
 run; this one covers the terminal classification after it. Related: `stalled-reply-recoverable-not-lost`
-covers RECOVERY once a reply is known to be stranded.
+covers RECOVERY once a reply is known to be stranded. See also
+`tool-schema-drift-surfaces-as-peer-unreachable`, where the channel is healthy and ONE tool is rejecting.
+
+REINFORCED 2026-08-23 (inbox, `[corpus]`), and it sharpens the mitigation: the empty-answer-plus-idle
+signature is ALSO what an exhausted usage allowance looks like, with no error raised on either channel.
+So `no-answer` + `idle` is not merely ambiguous between a stall, a modal and a dead bridge - allowance
+exhaustion is a fourth cause, and it is the one that does not resolve by waiting. The cheap
+discriminator observed: **two consecutive empty answers make exhaustion the leading hypothesis** -
+confirm out-of-band rather than re-asking, since each re-ask spends more of an allowance that is already
+gone. This does not change the code-level mitigation above (classify empty as a distinct terminal
+outcome); it argues the classifier should also carry a RETRY-IS-FUTILE hint once it has emitted
+`no-answer` twice in a row for the same conversation, rather than leaving the caller to loop.
 
 Carried driver rule stays until the retirement gates are met: never treat idle as a completion signal;
 gate completion on the deliverable existing.
