@@ -169,7 +169,7 @@ jobs:
         # no bare `lefthook` package. Same assert-by-name discipline as the ripgrep step above: a silent
         # install failure must fail HERE, not resurface as an unrelated-looking assertion failure.
         #
-        # PIN THE MAJOR LINE, for the same reason the Pester step above pins v5: an unpinned install
+        # PIN THE MAJOR LINE, for the same reason the Pester step pins the v6 line: an unpinned install
         # silently rolls forward, and a major bump can change `lefthook run`'s exit semantics or its
         # config schema - which is precisely what the behavioural row and the config-parse rows read.
         # The floor is the version the dev box runs, so CI and a developer cannot diverge across a

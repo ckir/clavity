@@ -55,6 +55,29 @@ Describe "drain-lib primitives" {
         (Get-PendingBulletCount -InboxPath $script:Inbox) | Should -Be 0
     }
 
+    It "does NOT duplicate the residue when the inbox carries TWO ## Pending headings" {
+        # The 14g installer migration appends the WHOLE old document - its own header line and its own
+        # `## Pending` heading included - onto the canonical inbox, so that file can legitimately arrive
+        # carrying two headings. Set-PendingBody matched `^##\s+Pending\s*$` unconditionally and emitted
+        # $body once PER heading, so every drain wrote the residue twice and the duplication COMPOUNDED
+        # cycle over cycle. Measured before the fix: one residue bullet in, two out.
+        Set-Content -Path $script:Inbox -Value @(
+            '# inbox', '', '## Pending', '- [a] one',
+            '# inbox', '', '## Pending', '- [b] two', '- [c] three'
+        )
+        # PRECONDITION - without this the assertions below could pass on a fixture that never
+        # exercised the defect at all. The reader MERGES both sections, so the residue is the whole set.
+        (Get-PendingBulletCount -InboxPath $script:Inbox) | Should -Be 3 -Because 'the reader merges both sections; if this is not 3 the fixture is not exercising the defect'
+
+        Set-PendingBody -InboxPath $script:Inbox -body @('- [x] the one surviving residue bullet')
+
+        $lines = Get-Content $script:Inbox
+        @($lines | Where-Object { $_ -match 'surviving residue' }).Count |
+            Should -Be 1 -Because 'the residue must be written exactly once, however many Pending headings the file carried'
+        @($lines | Where-Object { $_ -match '^## Pending' }).Count |
+            Should -Be 1 -Because 'the duplicate heading must be normalised away, not left to re-trigger this on the next drain'
+    }
+
     It "moves the Pending body to a staging file and empties the live Pending section" {
         Set-Content -Path $script:Inbox -Value @('# inbox', '', '## Pending', '- [heuristic] r1  ·  x', '- [heuristic] r2  ·  x')
         $staging = Join-Path $script:Work 'agy-observations.staging.RUNID.md'

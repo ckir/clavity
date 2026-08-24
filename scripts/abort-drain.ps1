@@ -4,7 +4,7 @@
   Reject a pending drain atomically (F31): git-restore every tracked drain output, remove new untracked outputs,
   AND restore the app-data staging snapshot into ## Pending, then delete staging. Refuses if committed (F33).
 .PARAMETER InboxPath
-  The app-data inbox (default: CLAVITY_AGY_INBOX or the agy-autotrain install path).
+  The capture inbox (default: CLAVITY_AGY_INBOX, else <USERPROFILE|HOME>/.clavity/agy-observations.md).
 .PARAMETER RepoRoot
   Repo root (default: this script's parent's parent). Overridable for tests.
 #>

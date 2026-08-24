@@ -6,7 +6,7 @@
   `just accept-drain`), then run the deterministic [Core]/budget gates. Makes NO commit — the maintainer reviews git diff and
   runs `just accept-drain` or `just abort-drain`. Dev-only; never ships.
 .PARAMETER InboxPath
-  The app-data inbox. Default from CLAVITY_AGY_INBOX, else the agy-autotrain install path.
+  The capture inbox. Default from CLAVITY_AGY_INBOX, else <USERPROFILE|HOME>/.clavity/agy-observations.md.
 .PARAMETER SkipCurator
   Test hook: skip the live claude -p call (the curator is mocked in unit tests).
 .PARAMETER CuratorStub

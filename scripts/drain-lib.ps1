@@ -48,7 +48,19 @@ function Set-PendingBody([string]$InboxPath, [string[]]$body) {
 
     $out = @(); $inPending = $false; $emitted = $false
     foreach ($l in (Get-Content $InboxPath)) {
-        if ($l -match '^##\s+Pending\s*$') { $out += $l; $inPending = $true; $out += $body; $emitted = $true; continue }
+        # Emit the body at the FIRST `## Pending` ONLY, and drop any later heading as a duplicate.
+        # The 14g installer migration appends the WHOLE old document - its own header and its own
+        # `## Pending` included - so this file can legitimately arrive carrying two headings. Matching
+        # unconditionally emitted $body once PER heading, which duplicated the residue on every drain and
+        # COMPOUNDED cycle over cycle. Get-PendingBody already MERGES both sections into a single body,
+        # so the correct round-trip is one heading with one body: a second heading is redundant, and
+        # dropping it here is what makes a malformed inbox self-heal on the next drain instead of
+        # re-triggering this forever. Pinned by the two-heading test in drain-lib.Tests.ps1.
+        if ($l -match '^##\s+Pending\s*$') {
+            if (-not $emitted) { $out += $l; $out += $body; $emitted = $true }
+            $inPending = $true
+            continue
+        }
         if ($inPending -and $l -match '^##\s') { $inPending = $false; $out += $l; continue }
         if ($inPending) { continue }   # drop old body lines
         $out += $l

@@ -4,7 +4,7 @@
   Accept a pending drain: prove the run-ID is in the COMMITTED drain-log (F30) AND every tracked drain-output path
   is clean in the working tree (F34), then delete the app-data staging snapshot. Does not touch the inbox.
 .PARAMETER InboxPath
-  The app-data inbox (default: CLAVITY_AGY_INBOX or the agy-autotrain install path).
+  The capture inbox (default: CLAVITY_AGY_INBOX, else <USERPROFILE|HOME>/.clavity/agy-observations.md).
 .PARAMETER RepoRoot
   Repo root (default: this script's parent's parent). Overridable for tests.
 #>
