@@ -96,17 +96,44 @@ end;
 { ROADMAP 14g one-time migration. Pre-14g the capture inbox lived in the plugin tree; it is now user-local.
   The installer does this rather than the skills because it DEFINITELY runs, exactly once, at upgrade -
   a lazy skill-side migration only fires when someone next captures or drains, which may be never, and
-  until then the entries sit where no code looks. Guarded three ways so a partial or repeated run cannot
-  lose anything: copy only when the destination is absent or empty, APPEND otherwise (the inbox is an
-  append log, so concatenation is semantically correct), and rename the source aside rather than delete
-  it. Fail-open throughout - a failed migration must never fail the install; the old file is still there.
+  until then the entries sit where no code looks. Guarded so a partial or repeated run can neither
+  lose anything NOR duplicate anything: copy only when the destination is absent or empty, APPEND
+  otherwise (the inbox is an append log, so concatenation is semantically correct), and retire the
+  source by RENAME, never by delete. Fail-open throughout - a failed migration must never fail the
+  install.
+
+  THE RENAME IS THE COMMIT POINT AND HAPPENS BEFORE THE WRITE. An earlier revision wrote first and
+  renamed last, discarding the rename's return value. A capstone found the reachable consequence: when
+  the write succeeded and the rename then failed - on Windows an AV hold or another process holding the
+  file open for read is enough, since a readable file can still be un-renameable - the source stayed
+  put. The next upgrade re-entered, found a now-NON-EMPTY destination, took the append branch, and
+  appended every entry a second time. Repeated upgrades multiplied the inbox without bound, and a later
+  drain then triaged N copies of each observation. Claiming the source FIRST inverts that: if the rename
+  fails, nothing has been written, so the run is a clean no-op and the next upgrade retries from scratch.
+
+  ON A FAILED WRITE THE RENAME IS ROLLED BACK, which is what stops claim-first from merely trading
+  duplication for stranding. Without the rollback a failed write would leave the data only under the
+  aside name with the source gone, so the next run would exit at the FileExists guard above and never
+  look again - silently. The content is already in memory from the load above, so the write needs no
+  re-read, which is what makes the rollback cheap.
   NOTE: no Inno constant braces appear inside these comments - a brace-wrapped constant in a Pascal
   comment ENDS the comment and breaks the compile. }
+procedure MigrationProblem(const Detail: String);
+begin
+  { Finding 5 of the round-1 capstone: every failure branch used to be a bare exit, so a migration that
+    stranded the operator's whole backlog looked exactly like one that succeeded. Fail-open is still the
+    rule - this never blocks or fails the install - but fail-open must not mean fail-SILENT. }
+  SuppressibleMsgBox('agy-autotrain could not finish moving your captured observations to the new '
+    + 'user-local inbox.' + #13#10#13#10 + Detail + #13#10#13#10
+    + 'Nothing has been deleted and the install itself is unaffected.', mbInformation, MB_OK, IDOK);
+end;
+
 procedure MigrateInboxToUserState();
 var
   OldPath, NewDir, NewPath, Aside: String;
   OldLines: TArrayOfString;
   DestSize: Integer;
+  Wrote: Boolean;
 begin
   OldPath := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md');
   if not FileExists(OldPath) then
@@ -114,33 +141,62 @@ begin
 
   NewDir := ExpandConstant('{%USERPROFILE}') + '\.clavity';
   if not ForceDirectories(NewDir) then
+  begin
+    MigrationProblem('The folder ' + NewDir + ' could not be created.');
     exit;
+  end;
   NewPath := NewDir + '\agy-observations.md';
 
   if not LoadStringsFromFile(OldPath, OldLines) then
+  begin
+    MigrationProblem('The old inbox at ' + OldPath + ' could not be read.');
     exit;
+  end;
+
+  Aside := OldPath + '.migrated-14g';
+  if FileExists(Aside) then
+  begin
+    { A sidecar from an earlier successful migration is already here, yet a source file exists again.
+      That state is ambiguous - the source may be content already migrated, or genuinely new captures -
+      and appending blind would duplicate. Touch nothing; this is the one case the procedure cannot
+      resolve on its own, so it is handed to the operator instead of guessed at. }
+    MigrationProblem('A sidecar from an earlier migration already sits beside ' + OldPath
+      + ', so that file was left untouched rather than risk duplicating entries.' + #13#10#13#10
+      + 'Merge it by hand into ' + NewPath);
+    exit;
+  end;
+
+  { CLAIM THE SOURCE FIRST - see the header comment. A failed rename means nothing was written, so this
+    run is a clean no-op and the next upgrade retries from scratch. }
+  if not RenameFile(OldPath, Aside) then
+  begin
+    MigrationProblem('The old inbox at ' + OldPath + ' could not be claimed - it may be open in another '
+      + 'program. The next upgrade will retry.');
+    exit;
+  end;
 
   DestSize := 0;
   if FileExists(NewPath) then
     FileSize(NewPath, DestSize);
 
   if (not FileExists(NewPath)) or (DestSize = 0) then
-  begin
-    if not FileCopy(OldPath, NewPath, False) then
-      exit;
-  end
+    Wrote := FileCopy(Aside, NewPath, False)
   else
-  begin
-    { Destination already has content - a newer inbox, or a second run. Append rather than clobber. }
-    if not SaveStringsToFile(NewPath, OldLines, True) then
-      exit;
-  end;
+    { Destination already has content - a newer inbox, or a second run. Append rather than clobber.
+      OldLines was loaded before the rename, so this needs no re-read of the claimed file. }
+    Wrote := SaveStringsToFile(NewPath, OldLines, True);
 
-  { Only now retire the source, and by RENAME, never by delete: if anything above went wrong we have
-    already returned, and if it went right the operator still has the original beside the new one. }
-  Aside := OldPath + '.migrated-14g';
-  if not FileExists(Aside) then
-    RenameFile(OldPath, Aside);
+  if not Wrote then
+  begin
+    { Roll the claim back so the source returns to the path the next upgrade looks at. Only if THAT also
+      fails is the data somewhere no operator would think to look. }
+    if RenameFile(Aside, OldPath) then
+      MigrationProblem('Writing to ' + NewPath + ' failed, so the old inbox was put back unchanged. '
+        + 'The next upgrade will retry.')
+    else
+      MigrationProblem('Writing to ' + NewPath + ' failed. Your observations are safe, but under a '
+        + 'renamed file:' + #13#10 + Aside + #13#10#13#10 + 'Rename it back or merge it by hand.');
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
