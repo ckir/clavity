@@ -15,7 +15,16 @@ input=$(cat 2>/dev/null)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
 [ -z "$cwd" ] && cwd="."
 
-if [ -f "$cwd/.no-agy" ] || [ -f "$HOME/.claude/.no-agy" ]; then
+# BOTH home roots are checked, matching agy-curate-nudge.sh and agy-inbox-snapshot.sh - the two sibling
+# hooks this plugin registers on the SAME SessionStart event. A parent that exports USERPROFILE without
+# HOME leaves $HOME empty (measured: `env -u HOME bash --noprofile --norc` does NOT backfill it from
+# USERPROFILE), so a bare $HOME lookup silenced the siblings and left THIS hook talking - the operator
+# asks for silence and still gets nudged, which is the worst shape a kill switch can fail in because the
+# reduced noise reads as success. A kill switch may only ever fail SAFE, toward silence, so widening the
+# lookup can only honour an opt-out that was actually asked for; it can never re-arm a silenced hook.
+# Pinned by the USERPROFILE-vs-HOME control in scripts/tests/agy-learn-reminder.Tests.ps1.
+HOME_DIR="${USERPROFILE:-$HOME}"
+if [ -f "$cwd/.no-agy" ] || [ -f "${HOME_DIR}/.claude/.no-agy" ] || [ -f "${HOME}/.claude/.no-agy" ]; then
   exit 0
 fi
 

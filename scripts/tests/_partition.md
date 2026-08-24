@@ -414,6 +414,7 @@ agy-curate-nudge.Tests.ps1                       17,1s   11 tests   <- FAST, re-
 agy-inbox-snapshot.Tests.ps1                    122,5s   22 tests   <- SLOW, re-measured 2026-08-06; was
                                                                       MISSING from this table entirely
                                                                       until 2026-08-03
+agy-learn-reminder.Tests.ps1                     11,2s    5 tests   <- SLOW, measured 2026-08-24 (new)
 agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
 agy-mark.Tests.ps1                               93,0s   26 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
                                                                       agy-mark.sh, the sanctioned .clavity writer for the
