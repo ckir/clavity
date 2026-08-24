@@ -78,9 +78,55 @@ jobs:
 
           $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "install exit $($p.ExitCode)" }
+          # ROADMAP 14g MIGRATION. MigrateInboxToUserState was the largest executable change in the
+          # 14g range and had no behavioural coverage of any kind - its only gate was the ISCC compile
+          # above, which proves the file compiles and nothing about what it does. The lifecycle here
+          # already installs twice, so the migration costs one planted file and three assertions.
+          # Planted BETWEEN the installs: the source must be a PRE-EXISTING inbox in the install tree.
+          $knowledge = "$app\plugins\agy-autotrain\knowledge"
+          $oldInbox  = "$knowledge\agy-observations.md"
+          $sidecar   = "$oldInbox.migrated-14g"
+          $userInbox = "$env:USERPROFILE\.clavity\agy-observations.md"
+          Remove-Item $userInbox, $sidecar -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $knowledge | Out-Null
+          Set-Content $oldInbox "SENTINEL-ALPHA"
+
           # Finding-5: re-run the SAME installer — idempotent upgrade (remove-then-add) must exit 0.
           $p2 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
           if ($p2.ExitCode -ne 0) { throw "re-run install exit $($p2.ExitCode) — idempotent upgrade must not abort" }
+
+          # M1 - the inbox MOVED, exactly once, and the source was retired by rename.
+          # "exactly once" is the assertion that matters: the defect this migration was folded to fix
+          # duplicated every entry once per upgrade, and a plain Test-Path cannot see that.
+          if (-not (Test-Path $userInbox)) { throw "M1 MIGRATION: $userInbox was not created - a pre-14g inbox did not move" }
+          $alpha = @(Get-Content $userInbox | Where-Object { $_ -match 'SENTINEL-ALPHA' }).Count
+          if ($alpha -ne 1) { throw "M1 MIGRATION: expected SENTINEL-ALPHA exactly once in the migrated inbox, found $alpha" }
+          if (-not (Test-Path $sidecar))  { throw "M1 MIGRATION: the source was not retired to $sidecar" }
+          if (Test-Path $oldInbox)        { throw "M1 MIGRATION: the old inbox is still at $oldInbox - the source was not claimed" }
+          Write-Host "[M1] migration moved the inbox once and retired the source"
+
+          # M2 - a SECOND pre-14g inbox APPENDS to the now-non-empty destination, never clobbers it.
+          # The sidecar must be cleared first, or this correctly hits the ambiguous-source branch (M3).
+          Remove-Item $sidecar -Force
+          Set-Content $oldInbox "SENTINEL-BETA"
+          $p3 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p3.ExitCode -ne 0) { throw "third install exit $($p3.ExitCode)" }
+          $alpha2 = @(Get-Content $userInbox | Where-Object { $_ -match 'SENTINEL-ALPHA' }).Count
+          $beta   = @(Get-Content $userInbox | Where-Object { $_ -match 'SENTINEL-BETA'  }).Count
+          if ($alpha2 -ne 1) { throw "M2 APPEND: the pre-existing SENTINEL-ALPHA must survive exactly once, found $alpha2 (0 = clobbered, >1 = duplicated)" }
+          if ($beta   -ne 1) { throw "M2 APPEND: SENTINEL-BETA must be appended exactly once, found $beta" }
+          Write-Host "[M2] migration appended to a non-empty destination without clobbering"
+
+          # M3 - an ambiguous source (a sidecar ALREADY beside a fresh source file) is left untouched
+          # rather than guessed at. This is the input that used to cause the duplication.
+          Set-Content $oldInbox "SENTINEL-GAMMA"
+          $p4 = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p4.ExitCode -ne 0) { throw "fourth install exit $($p4.ExitCode) - an ambiguous source must not fail the install" }
+          if (-not (Test-Path $oldInbox)) { throw "M3 AMBIGUOUS: the source was consumed despite an existing sidecar" }
+          $gamma = @(Get-Content $userInbox | Where-Object { $_ -match 'SENTINEL-GAMMA' }).Count
+          if ($gamma -ne 0) { throw "M3 AMBIGUOUS: an ambiguous source must not be merged, but SENTINEL-GAMMA appeared $gamma time(s)" }
+          Write-Host "[M3] an ambiguous source was left untouched"
+          Remove-Item $oldInbox -Force -ErrorAction SilentlyContinue
           if (-not (Test-Path "$app\.claude-plugin\marketplace.json")) { throw "marketplace.json not installed" }
           $manifest = Get-Content "$app\.claude-plugin\marketplace.json" -Raw | ConvertFrom-Json
           if ($manifest.name -ne 'clavity-agy-autotrain') { throw "expected marketplace name clavity-agy-autotrain, got $($manifest.name)" }
@@ -125,7 +171,14 @@ jobs:
           $deadline = (Get-Date).AddSeconds(30)
           while ((Test-Path $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
           if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md was deleted by a keep-data uninstall" }
-          "install/uninstall + namespace + C6 growth-ownership smoke PASSED"
+          # C6b - the CAPTURE INBOX has the same protection as growth.md, and needs asserting
+          # separately. Before 14g it lived inside the install dir; since 14g it lives beside
+          # growth.md in user-local state and carries no uninsneveruninstall flag, so its survival now
+          # rests entirely on the purge branch being gated on RemoveGrowth. Moving those DeleteFile
+          # calls outside that gate would destroy every undrained observation on an ordinary
+          # uninstall, and the growth.md assertion above would stay green either way.
+          if (-not (Test-Path $userInbox)) { throw "C6b VIOLATION: the capture inbox was deleted by a keep-data uninstall - every undrained observation is gone" }
+          "install/uninstall + namespace + C6 growth/inbox ownership + 14g migration smoke PASSED"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v7

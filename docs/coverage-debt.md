@@ -177,6 +177,33 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 
 ---
 
+### 8. `_partition.md` test COUNTS drift silently, and the cheapest correct guard is too expensive
+
+- **Gap:** `test-suite-registration.Tests.ps1:119` asserts the runtimes table is a COMPLETE CENSUS - a row
+  exists per suite - and deliberately does not verify the figures ("a time cannot be verified by reading
+  it"). That reasoning is sound for the TIME. It does not hold for the test COUNT, which is checkable, and
+  the counts have drifted broadly.
+- **Measured 2026-08-24:** of 46 rows, **21 disagree** with the suite's actual test count. Most of those
+  suites use `-ForEach`, where the row legitimately records Pester's EXPANDED count rather than the static
+  `It` count. But **six disagree with no `-ForEach` anywhere in the file**, so they are simply stale:
+  `agy-consult-guard` (row 10 / 11), `agy-anomaly-capture-reminder` (14 / 26), `agy-shield-lib` (34 / 39),
+  `BashHookHelpers` (4 / 8), `check-growth-budget` (7 / 15), `drain-knowledge` (7 / 8).
+- **The regression that slips:** a row is what a maintainer reads to decide what a gate costs and whether a
+  suite still earns its half of the partition. A row claiming 7 tests for a suite holding 15 understates
+  the gate by half, and nothing anywhere reds.
+- **Why deferred rather than fixed:** the only correct oracle is Pester's own discovered count, because a
+  static `It` count is wrong for every `-ForEach` suite. **MEASURED: discovery-only
+  (`Run.SkipRun = $true`) over THREE suites takes 8s**, so all 46 would cost roughly two minutes - added to
+  a recipe that already measures 576,0s against a 600s foreground cap. Buying count-accuracy by pushing the
+  inner-loop recipe over its cap is a bad trade, and the alternative (a static count with a per-suite
+  `-ForEach` exemption list) is a second thing to keep in sync.
+- **The test that should exist, if the cost is ever acceptable:** `every _partition.md row states the
+  current test count for its suite` - parse each row's `<N> tests`, compare against
+  `(Invoke-Pester -Configuration <SkipRun>).TotalCount` per container, and name the drifted rows.
+- **Cheaper partial available now:** assert the count only for suites containing no `-ForEach`, which is a
+  pure static count and costs nothing. It would catch all six known-stale rows today.
+
+
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 
 ### A. The two walk-level guards (`2fa88e0`, `76e1ba8`)
@@ -193,6 +220,27 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   no branching logic of its own.
 - **Anchor:** the `$rootItem = Get-Item -LiteralPath $full -ErrorAction SilentlyContinue` lines in both
   functions. **If either loses its `-ErrorAction SilentlyContinue`, this entry is void and the gap is live.**
+
+### A2. `agy-learn-reminder.sh`'s `${USERPROFILE:-$HOME}` fallback has no separately-reachable regression
+
+- **Behaviour:** all three agy-autotrain hooks resolve `HOME_DIR="${USERPROFILE:-$HOME}"`. The
+  AGY-TEST-AUDIT of `bd3aa94..f29cd42` raised the missing absent/empty-`USERPROFILE` coverage against all
+  three. It is a real gap in `agy-curate-nudge.sh` and `agy-inbox-snapshot.sh`, where `HOME_DIR` locates
+  the INBOX - dropping the fallback there sends both hooks permanently silent, and both are now covered.
+- **Why this one is different:** in `agy-learn-reminder.sh`, `HOME_DIR` is used at exactly ONE site
+  (`:27`), inside an OR'd kill-switch condition that already tests bare `${HOME}` on the same line. It
+  locates no file of its own. Losing the fallback can therefore only make the switch LESS likely to fire,
+  and the bare-`${HOME}` clause beside it catches the marker anyway.
+- **MEASURED 2026-08-24:** with `USERPROFILE` absent and a marker under `HOME`, the unmutated hook is
+  silent and the mutant (`HOME_DIR="${USERPROFILE}"`) is EQUALLY silent. Control: with no marker at all
+  both speak, so the fixture is live and the agreement is real rather than a broken probe.
+- **Compensation:** the bare-`${HOME}` clause on the same condition, plus the three existing tests that
+  already cover every reachable marker cell for this hook (`HOME` root, `USERPROFILE` root, payload cwd).
+- **Anchor:** the third clause of the condition at `agy-learn-reminder.sh:27`,
+  `[ -f "${HOME}/.claude/.no-agy" ]`. **If that clause is removed, `HOME_DIR` becomes the only resolver
+  for the marker, this entry is VOID, and the gap is live** - write the absent/empty test then.
+- **Not to be confused with:** the kill-switch WIDENING sweep still outstanding for the other plugins'
+  hooks. That is a different defect (a bare `$HOME` with no `HOME_DIR` companion at all) and is unaffected.
 
 ### B. `payload-budget` measures the template, not the interpolated result
 

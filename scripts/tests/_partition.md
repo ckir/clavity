@@ -410,10 +410,17 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       figure was taken at 22 tests - the 9
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
-agy-curate-nudge.Tests.ps1                       17,1s   11 tests   <- FAST, re-measured 2026-08-05
-agy-inbox-snapshot.Tests.ps1                    122,5s   22 tests   <- SLOW, re-measured 2026-08-06; was
+agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- FAST, re-measured 2026-08-24 WARM on an
+  idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale
+  since before that: it said 11 when the file held 14.
+agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-measured 2026-08-24 WARM
+  (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
+  blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Previously; was
                                                                       MISSING from this table entirely
                                                                       until 2026-08-03
+agy-autotrain-installer.Tests.ps1                 1,3s    6 tests   <- FAST, new 2026-08-24. WARM on an idle
+  CPU (cold 9,8s - almost all of that is Pester module load, which this suite does not pay again once
+  warm). Pure file parsing, no bash and no process launches, which is why it is the cheapest row here.
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
@@ -515,7 +522,8 @@ check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-
 compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-measured 2026-08-06
 docs-audit.Tests.ps1                            130,0s   80 tests   <- SLOW, re-measured 2026-08-06
 drain-knowledge.Tests.ps1                        40,5s    7 tests   <- SLOW, re-measured 2026-08-06
-drain-lib.Tests.ps1                               3,4s   20 tests   <- FAST, re-measured 2026-08-05
+drain-lib.Tests.ps1                               4,2s   25 tests   <- FAST, re-measured 2026-08-24 WARM
+  (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
 generate-cheatsheet-literals.Tests.ps1           41,6s   12 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning
                                                                       suite. Measured solo as the sole
