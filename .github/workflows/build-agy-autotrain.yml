@@ -185,7 +185,7 @@ jobs:
           # The migration above created $sidecar at RUNTIME via RenameFile, so it is not in Inno's
           # uninstall log and nothing removes it. Left in place it blocks RemoveDir all the way up, so
           # `Test-Path $app` would stay true forever - turning the poll below into a fixed 30s sleep and
-          # both ownership assertions into races that cannot fail red.
+          # both keep-data survival assertions into races that cannot fail red.
           Remove-Item $sidecar -Force -ErrorAction SilentlyContinue
 
           $uninst = Get-ChildItem $app -Filter "unins*.exe" | Select-Object -First 1
@@ -196,7 +196,7 @@ jobs:
           # when Claude Code is running - satisfy every "this file survived" assertion below.
           $deadline = (Get-Date).AddSeconds(30)
           while ((Test-Path "$app\plugins") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-          if (Test-Path "$app\plugins") { throw "uninstall did not remove staged plugin files within 30s - a refused or incomplete uninstall makes every ownership assertion below vacuous" }
+          if (Test-Path "$app\plugins") { throw "uninstall did not remove staged plugin files within 30s - a refused or incomplete uninstall makes every keep-data survival assertion below vacuous" }
           if (-not (Test-Path "$env:USERPROFILE\.clavity\golden-header.growth.md")) { throw "C6 VIOLATION: growth.md was deleted by a keep-data uninstall" }
           # C6b - the CAPTURE INBOX has the same protection as growth.md, and needs asserting
           # separately. Before 14g it lived inside the install dir; since 14g it lives beside
@@ -209,7 +209,9 @@ jobs:
           # direction is unreachable from CI. RemoveGrowth is decided by a SuppressibleMsgBox whose
           # suppressed default is IDNO (agy-autotrain.iss:255-259), so a silent uninstall always takes
           # keep-data and the purge branch never executes here. Deleting the inbox DeleteFile on that
-          # branch would leave this step green. That gap is recorded in docs/coverage-debt.md.
+          # branch would leave this step green. That gap is NOT currently recorded anywhere else - do
+          # not go looking for a tracked entry, because there is none. Stated here because this is the
+          # assertion it bounds.
           "install/uninstall + namespace + C6 growth/inbox KEEP-data survival + 14g migration smoke PASSED"
 
       - name: Upload installer artifact

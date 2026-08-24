@@ -166,31 +166,49 @@ Describe 'test suite registration' {
         # maintainer reads to judge what a gate costs and whether a suite still earns its half of the
         # partition; one understating by half is worse than no row.
         #
-        # COST, measured rather than extrapolated: discovery over all 49 suites is ~13,5s, of which
-        # almost all is fixed Pester startup - the marginal cost is ~0,15s per suite. An earlier attempt
-        # to price this scaled the 3-suite figure linearly and got "about two minutes", which is wrong
-        # by roughly 5x and is precisely the derived-total error the ## Measured runtimes section warns
-        # about. Do not re-derive it; re-measure it.
+        # COST, measured on an IDLE machine - and measured twice, because the first figure recorded
+        # here was wrong in a way worth keeping visible.
+        #   Pester DISCOVERY over all 49 suites alone: ~13,5s (marginal ~0,15s per suite; the rest is
+        #     fixed Pester startup, which is why a linear extrapolation from 3 suites gave "about two
+        #     minutes" and was wrong by ~5x - the derived-total error ## Measured runtimes warns about).
+        #   THIS It end to end: **20,9s warm, 23,2s cold**. The gap is the child pwsh launch, the temp
+        #     script write, and parsing 49 rows - none of which the discovery figure includes.
+        # The 13,5s number was quoted here as if it were this It's cost. It is not, and the difference
+        # matters: this It is ~95% of its own suite's runtime. Do not re-derive either figure; measure,
+        # backgrounded and idle, and take the SECOND of two consecutive runs as the warm one.
         #
         # DISCOVERY RUNS IN A CHILD PROCESS on purpose. Invoking Pester inside a Pester test shares
         # module-level run state with the outer run; a separate process cannot disturb it, and the
         # process launch is a small fraction of the discovery cost being paid anyway.
         $childScript = @'
 $ErrorActionPreference = "Stop"
-$files = @(Get-ChildItem $args[0] -Filter *.Tests.ps1 -File | ForEach-Object { $_.FullName })
+# -LiteralPath: positional binds -Path, which interprets wildcards, so a clone under a directory
+# containing [ or ] returned an EMPTY set - which this guard would have reported as "the child process
+# failed", sending the reader to the child instead of to the bracket in their path.
+$files = @(Get-ChildItem -LiteralPath $args[0] -Filter *.Tests.ps1 -File | ForEach-Object { $_.FullName })
 $c = New-PesterConfiguration
 $c.Run.Path = $files
 $c.Run.SkipRun = $true
 $c.Run.PassThru = $true
 $c.Output.Verbosity = "None"
 $r = Invoke-Pester -Configuration $c
+# SEED EVERY CONTAINER AT ZERO FIRST. Counting only from $r.Tests means a suite that discovers NO
+# tests never appears in the output at all, and the parent then skips it as "absent" - so a suite
+# whose discovery broke, or which lost its last It, was silently exempted from the whole check while
+# the child still exited 0.
 $counts = @{}
+foreach ($cont in $r.Containers) { $counts[(Split-Path $cont.Item -Leaf)] = 0 }
 foreach ($t in $r.Tests) {
     $leaf = Split-Path $t.ScriptBlock.File -Leaf
     if (-not $counts.ContainsKey($leaf)) { $counts[$leaf] = 0 }
     $counts[$leaf]++
 }
-foreach ($k in $counts.Keys) { "COUNT`t$k`t$($counts[$k])" }
+# Emit the container RESULT too: the child exits 0 even when a container failed to discover, so the
+# result is the only channel by which that reaches the parent.
+foreach ($cont in $r.Containers) {
+    $leaf = Split-Path $cont.Item -Leaf
+    "COUNT`t$leaf`t$($counts[$leaf])`t$($cont.Result)"
+}
 '@
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ("pester-discover-" + [Guid]::NewGuid().ToString('N') + ".ps1")
         Set-Content -LiteralPath $tmp -Value $childScript -Encoding utf8
@@ -199,18 +217,44 @@ foreach ($k in $counts.Keys) { "COUNT`t$k`t$($counts[$k])" }
         } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
 
         $discovered = @{}
+        $badContainers = @()
         foreach ($line in $raw) {
             $parts = "$line" -split "`t"
-            if ($parts.Count -eq 3 -and $parts[0] -eq 'COUNT') { $discovered[$parts[1]] = [int]$parts[2] }
+            if ($parts.Count -eq 4 -and $parts[0] -eq 'COUNT') {
+                $discovered[$parts[1]] = [int]$parts[2]
+                # NotRun is the CORRECT state under Run.SkipRun - no It body executed. Only Failed
+                 # means the container could not be discovered. Asserting -ne 'Passed' reds all 49.
+                if ($parts[3] -eq 'Failed') { $badContainers += "$($parts[1]) [$($parts[3])]" }
+            }
         }
-        # NON-VACUITY. A child that failed to launch, or emitted nothing parseable, would otherwise
-        # leave $discovered empty and every comparison below would silently find nothing to check.
-        $discovered.Count | Should -BeGreaterThan 20 -Because "Pester discovery returned only $($discovered.Count) suites - the child process failed rather than the suites being absent"
+        # A container that failed to DISCOVER is not a count problem, it is a broken suite - and the
+        # child exits 0 regardless, so without this it reaches nothing.
+        ($badContainers -join '; ') | Should -BeNullOrEmpty -Because 'a suite whose discovery failed cannot have its count checked, and a broken suite must not pass quietly'
+
+        # NON-VACUITY, tied to what is actually on disk rather than to a slack constant. The previous
+        # floor was `-BeGreaterThan 20` against 49 suites: 28 could vanish and it still passed.
+        $onDiskCount = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter *.Tests.ps1 -File).Count
+        $onDiskCount | Should -BeGreaterThan 20 -Because 'the suite directory itself must be non-empty, or every count below is compared against nothing'
+        $discovered.Count | Should -Be $onDiskCount -Because "discovery reported $($discovered.Count) containers for $onDiskCount files on disk - a partial or truncated child result must not read as success"
 
         $partition = Join-Path $PSScriptRoot '_partition.md'
         $lines = @(Get-Content -LiteralPath $partition)
+
+        # SCOPE TO THE FENCED TABLE, exactly as the census row above does and for exactly the reason it
+        # states: this file names suites in prose all over. An unscoped, first-match-wins parse lets a
+        # sentence ANYWHERE in the document shadow the real row - MEASURED, a prose line inserted 77
+        # lines above the fence supplied the count and the real row was never compared at all.
+        $h = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^##\s+Measured runtimes') { $h = $i; break }
+        }
+        $h | Should -BeGreaterThan -1 -Because 'the Measured runtimes heading must be findable, or this row silently checks nothing'
+        $tableFences = @(for ($i = $h + 1; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^```') { $i } })
+        $tableFences.Count | Should -BeGreaterThan 1 -Because 'the table must be a fenced block with an opening and a closing fence'
+
         $stated = @{}
-        foreach ($l in $lines) {
+        $dupeRows = @()
+        foreach ($l in $lines[($tableFences[0] + 1)..($tableFences[1] - 1)]) {
             # The time field is \S+, NOT a number: two rows record their time as `?` (never measured),
             # and a numeric-only pattern silently EXEMPTED both from this check - a guard failing open
             # on exactly the rows least likely to be maintained. MEASURED when this was tightened:
@@ -218,16 +262,28 @@ foreach ($k in $counts.Keys) { "COUNT`t$k`t$($counts[$k])" }
             # agy-drive-session-reset was correct at 6 - so the exemption was hiding real drift in one
             # of the only two rows it covered.
             $m = [regex]::Match($l, '^([A-Za-z0-9._-]+\.Tests\.ps1)\s+\S+\s+([0-9]+)\s+tests')
-            if ($m.Success -and -not $stated.ContainsKey($m.Groups[1].Value)) {
-                $stated[$m.Groups[1].Value] = [int]$m.Groups[2].Value
-            }
+            if (-not $m.Success) { continue }
+            # A SECOND row for one suite is silent under first-match-wins: whichever copy loses is never
+            # compared, so a stale duplicate can sit in the table indefinitely.
+            if ($stated.ContainsKey($m.Groups[1].Value)) { $dupeRows += $m.Groups[1].Value; continue }
+            $stated[$m.Groups[1].Value] = [int]$m.Groups[2].Value
         }
+        ($dupeRows -join '; ') | Should -BeNullOrEmpty -Because 'a suite with two counted rows leaves one of them permanently unchecked - delete the stale copy'
         # A row that states no count is out of scope here - the census row above already requires the
         # ROW to exist. This assertion only binds rows that make a claim.
         $stated.Count | Should -BeGreaterThan 20 -Because "only $($stated.Count) rows stated a count - the row parse broke, rather than the table being empty"
 
+        # NO SILENT SKIP. This used to `continue` past any row whose suite was absent from the child's
+        # output, on the reasoning that the census row owns absence. That is wrong: the census row
+        # asserts a ROW EXISTS FOR EVERY FILE, never that the file produced tests - so a suite that
+        # discovered nothing fell through both assertions and was checked by neither.
+        $unreported = foreach ($k in ($stated.Keys | Sort-Object)) {
+            if (-not $discovered.ContainsKey($k)) { $k }
+        }
+        ($unreported -join '; ') | Should -BeNullOrEmpty -Because 'a counted row whose suite discovery never reported it is unchecked by this row AND by the census row above - neither owns it'
+
         $drift = foreach ($k in ($stated.Keys | Sort-Object)) {
-            if (-not $discovered.ContainsKey($k)) { continue }   # census row above owns absence
+            if (-not $discovered.ContainsKey($k)) { continue }   # already reported as unreported above
             if ($discovered[$k] -ne $stated[$k]) { "$k says $($stated[$k]) but discovers $($discovered[$k])" }
         }
         # Named, not counted: a count sends a reader hunting, a name sends them to the row to edit.

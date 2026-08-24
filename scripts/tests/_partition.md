@@ -14,11 +14,14 @@ suite executes first absorbs pwsh + Pester cold-start for the whole run: `agy-af
 stable within 15%; four were not. A ">= 20s means SLOW" rule classifies those four differently depending
 only on sort order, so it is not reproducible and is not used.
 
-**Batching is not a saving.** The fast half as it stood on 2026-08-02 — 13 suites then, 15 now — run as
+**Batching is not a saving.** The fast half as it stood on 2026-08-02 — 13 suites then, **28 now** — run as
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **29 suites, 605 tests, 461,95s** (2026-08-16,
+- `just test-scripts-fast` — the agent inner-loop gate. **28 suites, 462 tests** (counts measured 2026-08-24 by Pester
+  discovery, after two suites moved to slow). The runtime figure below PREDATES both that move and the
+  count guard added the same day - see the 2026-08-24 note under ## Measured runtimes. Previously
+  **29 suites, 605 tests, 461,95s** (2026-08-16,
   measured by running the recipe's own suite list and reading its `Tests Passed:` line; **`-NoProfile`,
   for the reason in the operator-environment note below**). The previous line read
   **29 suites, 581 tests, 680,47s** (2026-08-12) — same suite count, 24 more tests.
@@ -43,7 +46,9 @@ load once and accumulates across files.
   during a run slows it down by construction** (see the contention entries below). **Do not quote any
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
-- `just test-scripts-slow` — everything else. **19 suites, 382 tests, measured 1346,49s solo** (2026-08-17,
+- `just test-scripts-slow` — everything else. **21 suites, 563 tests** (counts measured 2026-08-24; this half
+  GAINED `agy-curate-nudge` and `check-injected-context` that day). The runtime below predates that
+  move. Previously **19 suites, 382 tests, measured 1346,49s solo** (2026-08-17,
   after the capstone added `check-ci-filter-coverage` to this half and none to fast; the anomaly hot-fix
   batch before it had added five, also all to this half). **ALWAYS MEASURE, EVEN THOUGH DERIVING IS OFTEN
   RIGHT** — and both outcomes are on record here. Deriving 364 + 13 predicted 377 when the truth was 379
@@ -87,7 +92,12 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **605** and slow **382**, **both measured, not added up**. It is a
+test raises it. The count today is fast **462** and slow **563**, **both measured, not added up**
+(re-measured 2026-08-24 by Pester discovery: 1025 tests over 49 containers; 462 + 563 = 1025).
+🔴 **This sentence decayed AGAIN.** It was corrected on 2026-08-16 for exactly this reason and went
+stale once more when two suites changed halves on 2026-08-24. The count guard in
+`test-suite-registration.Tests.ps1` pins the PER-ROW numbers but not this prose, so it will keep
+decaying unless whoever moves a suite edits here too. It is a
 fact, not a contract, and it was 358 / 363 / 368 / 372 earlier — and this very sentence said
 "fast 177 and slow 238" until 2026-08-06, having decayed through five intervening entries below that each
 recorded a new number without updating it. **It was updated in place on 2026-08-16 for exactly that
@@ -365,8 +375,15 @@ that (`agy-curate-nudge` +31s, `plugin-hooks-payload` +4,5s, `drain-lib` +0,8s, 
 `agy-autotrain-installer` +1,3s); the half was already near 538s before it.
 
 Moved: **`agy-curate-nudge`** (48,1s - the suite this work grew) and **`check-injected-context`**
-(91,5s - the single largest in the half). That returns fast to roughly 435s, restoring headroom close to
-the 429,46s the half measured historically.
+(91,5s - the single largest in the half).
+
+🔴 **THAT PROJECTION WAS WRONG, AND THE MEASUREMENT IS THE POINT OF THIS NOTE.** It predicted
+"roughly 435s". MEASURED afterwards, backgrounded on an idle CPU, 28 suites as one batch:
+**588,6s - 462 tests, 0 failed. That is 98% of the 600s foreground cap, with 11,4s of headroom.**
+Subtracting 139,6s of moved suites from 576,0s and adding ~21s for the count guard predicts ~457s;
+the half measures 131s more than that. The arithmetic is not the recipe. This file already says so at
+length under "Batching is not a saving" and in the derived-total warning above - and the projection was
+written as if those did not apply. **A projected partition figure is not a measurement: run the half.**
 
 Two things about this move are worth keeping. First, the decision was made on the MEASURED batch figure,
 not on the sum of the per-file rows - those sum to 531,1s, and the section above explains why a derived
@@ -402,10 +419,12 @@ agy-drive-session-reset.Tests.ps1                   ?    6 tests   <- FAST, NEW 
                                                                       is a different mode again. Re-measure
                                                                       in the next solo fast sweep rather
                                                                       than copying either figure.
-test-suite-registration.Tests.ps1                   ?    8 tests   <- FAST, NEW 2026-08-06. Same caveat;
-                                                                      0,7s in the contended sweep, and it
-                                                                      does no I/O beyond reading justfile,
-                                                                      so it is genuinely near-free.
+test-suite-registration.Tests.ps1                21,9s    8 tests   <- FAST. MEASURED 2026-08-24 WARM on an
+  idle CPU (cold 34,5s); the time field was `?` until then. The single count-guard It is 20,9s of that
+  21,9s - about 95% - because it spawns a child pwsh and runs Pester DISCOVERY over all 49 suites.
+  🔴 The previous note here read "0,7s in the contended sweep... does no I/O beyond reading justfile,
+  so it is genuinely near-free". All three clauses were false once the count guard landed, and the guard
+  this fold added checks the NUMBER in a row, never its prose - so nothing caught it.
 agy-anomaly-contract-stamp.Tests.ps1              5,5s   14 tests   <- FAST, re-measured 2026-08-05
 agy-discipline-reaching.Tests.ps1                15,2s   22 tests   <- FAST. The row said 69,1s and it had
                                                                       been WRONG since 6b87f1f split capture
@@ -433,9 +452,8 @@ agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- SLOW as o
   since before that: it said 11 when the file held 14.
 agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-measured 2026-08-24 WARM
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
-  blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Previously; was
-                                                                      MISSING from this table entirely
-                                                                      until 2026-08-03
+  blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
+  suite was MISSING from this table entirely.
 agy-autotrain-installer.Tests.ps1                 1,3s    7 tests   <- FAST, new 2026-08-24. WARM on an idle
   CPU (cold 9,8s - almost all of that is Pester module load, which this suite does not pay again once
   warm). Pure file parsing, no bash and no process launches, which is why it is the cheapest row here.

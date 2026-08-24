@@ -1190,9 +1190,14 @@ processing file and never globs. Patching it adds machinery the architectural fi
 path and no instruction is needed. **Blast radius:** both skills, the `${CLAUDE_PLUGIN_ROOT}` line in
 `agy-autotrain/hooks/agy-curate-nudge.sh` and its 244-line suite, the installer's `onlyifdoesntexist`
 seeding (`agy-autotrain.iss:54,60`), plus migrating the installed copy and the repo copy's 30 undrained
-entries. **Not urgent:** the installer excludes the inbox from the blanket copy and marks it
-`uninsneveruninstall`, so an update does not overwrite it and an uninstall does not remove it — a reviewer
-claimed the next update would destroy the backlog and the installer refutes that.
+entries. **Not urgent:** the installer excludes the inbox from the blanket copy, so an update does not
+overwrite it. 🔴 **CORRECTED 2026-08-24: this entry also claimed the inbox is marked
+`uninsneveruninstall`, and used that to REFUTE a reviewer who warned an update could destroy the
+backlog. That flag was never there.** Measured: `uninsneveruninstall` appears on no `[Files]` entry in
+any `.iss` in this repo. Since 14g the inbox lives at `%USERPROFILE%\.clavity\`, outside the install
+dir, and its survival rests entirely on the uninstaller purge branch being gated on `RemoveGrowth`.
+The reviewer was dismissed on a protection that did not exist; the behaviour is now pinned by the C6b
+assertion in `.github/workflows/build-agy-autotrain.yml`.
 
 **§14h — two AGY-* review disciplines prescribe a SINGLE persona, so their consults are single-voice
 by instruction.** ▶ **OPEN — promoted at the 2026-08-15 triage.**

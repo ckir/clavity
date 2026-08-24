@@ -171,11 +171,16 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
             # Present-FIRST. A renamed or deleted guard must red here, not vanish from the loop.
             $i | Should -BeGreaterThan -1 -Because "the pre-write guard '$g' must exist, or this scan is inspecting nothing"
 
+            # CodeOnly, NOT Body. Repointing Find-BodyLine alone was an INCOMPLETE fix: this scan and
+            # the one below still read raw lines, so the guard located the branch on a code line and
+            # then accepted a COMMENT as its evidence. MEASURED: moving the report and the exit into an
+            # Inno `{ }` comment inside the claim-failure branch passed 7/7 - the same mutant class the
+            # comment-stripping was introduced to kill, surviving in the very test that introduced it.
             $reported = $false; $exited = $false
-            for ($j = $i + 1; $j -lt $script:Body.Count; $j++) {
-                if ($script:Body[$j] -match 'MigrationProblem') { $reported = $true }
-                if ($script:Body[$j] -match '^\s*exit\s*;')     { $exited = $true }
-                if ($script:Body[$j] -match '^\s*end;')          { break }
+            for ($j = $i + 1; $j -lt $script:CodeOnly.Count; $j++) {
+                if ($script:CodeOnly[$j] -match 'MigrationProblem') { $reported = $true }
+                if ($script:CodeOnly[$j] -match '^\s*exit\s*;')     { $exited = $true }
+                if ($script:CodeOnly[$j] -match '^\s*end;')          { break }
             }
             if (-not ($reported -and $exited)) {
                 $leaky += ("{0} (reports={1} exits={2})" -f $g, $reported, $exited)
@@ -193,19 +198,21 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # MigrationProblem call from the unreadable-source branch left all six tests green, because an
         # 8-line window reached back far enough to find the PRECEDING branch's call and count it. A
         # guard that reads a neighbour's evidence certifies whatever sits next to it.
+        # CodeOnly throughout, for the same reason as the scan above: a MigrationProblem mentioned in
+        # a comment must not count as the branch reporting.
         $silent = @()
         $seenFirstExit = $false
-        for ($i = 0; $i -lt $script:Body.Count; $i++) {
-            if ($script:Body[$i] -notmatch '^\s*exit\s*;') { continue }
+        for ($i = 0; $i -lt $script:CodeOnly.Count; $i++) {
+            if ($script:CodeOnly[$i] -notmatch '^\s*exit\s*;') { continue }
             if (-not $seenFirstExit) { $seenFirstExit = $true; continue }   # the nothing-to-do return
 
             $lo = -1
             for ($j = $i - 1; $j -ge 0; $j--) {
-                if ($script:Body[$j] -match '^\s*begin\s*$') { $lo = $j; break }
-                if ($script:Body[$j] -match '^\s*(end\s*;|exit\s*;)') { break }   # left the branch
+                if ($script:CodeOnly[$j] -match '^\s*begin\s*$') { $lo = $j; break }
+                if ($script:CodeOnly[$j] -match '^\s*(end\s*;|exit\s*;)') { break }   # left the branch
             }
-            $window = if ($lo -ge 0) { $script:Body[$lo..$i] -join "`n" } else { $script:Body[$i] }
-            if ($window -notmatch 'MigrationProblem') { $silent += "body line $i : $($script:Body[$i].Trim())" }
+            $window = if ($lo -ge 0) { $script:CodeOnly[$lo..$i] -join "`n" } else { $script:CodeOnly[$i] }
+            if ($window -notmatch 'MigrationProblem') { $silent += "body line $i : $($script:CodeOnly[$i].Trim())" }
         }
         $seenFirstExit | Should -BeTrue -Because 'the body must contain at least the nothing-to-do exit, or this scan matched nothing and proves nothing'
         ($silent -join '; ') | Should -BeNullOrEmpty -Because 'every failure exit must be preceded by a MigrationProblem call - a silent failed migration reads exactly like a successful one'
