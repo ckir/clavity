@@ -414,7 +414,9 @@ agy-curate-nudge.Tests.ps1                       17,1s   11 tests   <- FAST, re-
 agy-inbox-snapshot.Tests.ps1                    122,5s   22 tests   <- SLOW, re-measured 2026-08-06; was
                                                                       MISSING from this table entirely
                                                                       until 2026-08-03
-agy-learn-reminder.Tests.ps1                     11,2s    5 tests   <- SLOW, measured 2026-08-24 (new)
+agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
+                                                                       idle CPU; 11,1s cold. It will not be the
+                                                                       cold-start absorber in this half
 agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
 agy-mark.Tests.ps1                               93,0s   26 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
                                                                       agy-mark.sh, the sanctioned .clavity writer for the
