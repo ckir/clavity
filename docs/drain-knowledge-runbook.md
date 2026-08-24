@@ -317,8 +317,14 @@ The drain scripts' tests (`scripts/tests/*.Tests.ps1`) run under [Pester](https:
 PowerShell testing framework. It is not bundled with PowerShell — install it once per dev box:
 
 ```powershell
-Install-Module Pester -Scope CurrentUser -Force
+Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Scope CurrentUser -Force -SkipPublisherCheck
 ```
+
+**Pin the major line.** These suites are validated on **Pester 6**, and CI pins `6.x` to match. An
+unpinned `Install-Module` resolves to the newest version at or above the floor, so it silently follows
+the next major - which is exactly how the pin came to exist. Pester 6 needs Windows PowerShell 5.1 or
+PowerShell 7.4+; note that the Pester **3.4.0** shipped inside Windows PowerShell 5.1 will shadow it
+unless you `Import-Module Pester -MinimumVersion 6.0.0` explicitly, as CI does.
 
 Then run the suite with:
 

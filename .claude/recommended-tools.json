@@ -71,8 +71,8 @@
   },
   {
     "name": "Pester",
-    "why": "runs scripts/tests/*.Tests.ps1 for the drain gates",
-    "install": "Install-Module Pester -Scope CurrentUser -Force",
+    "why": "runs scripts/tests/*.Tests.ps1 for the drain gates. v6 line - PIN THE MAJOR: an unpinned install follows the newest major, and CI pins 6.x to match. Needs PowerShell 5.1 or 7.4+.",
+    "install": "Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Scope CurrentUser -Force -SkipPublisherCheck",
     "in_path": false
   },
   {

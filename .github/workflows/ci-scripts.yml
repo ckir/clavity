@@ -101,18 +101,21 @@ jobs:
         shell: pwsh
         run: pwsh -File scripts/check-register-hash-synced.ps1
 
-      - name: Install Pester v5
+      - name: Install Pester v6
         shell: powershell
-        # Pin the v5 LINE. -MinimumVersion alone resolves to the newest version >= the floor, which
-        # silently installed Pester 6.0.1 - a different runner than these v5-style suites target.
-        # -ErrorAction Stop so a PSGallery blip fails here instead of falling through to Pester 3.4.0.
-        run: Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+        # Pin the v6 LINE. -MinimumVersion alone resolves to the newest version >= the floor, so an
+        # unpinned install silently follows the newest major - which is how this pin came to exist in the
+        # first place (it read v6.0.1 while the suites were validated on v5). Pin the major deliberately;
+        # do not track latest. -ErrorAction Stop so a PSGallery blip fails HERE rather than falling
+        # through to the Pester 3.4.0 that ships inside Windows PowerShell 5.1 - which is not a
+        # hypothetical: a local probe for Assert-MockCalled resolved to that 3.4.0 copy, not to v6.
+        run: Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
 
       - name: Pester - register-plugin (Windows PowerShell 5.1)
         shell: powershell
-        # Import explicitly so the Pester 3.4.0 built into Windows 5.1 cannot shadow v5.
+        # Import explicitly so the Pester 3.4.0 built into Windows 5.1 cannot shadow v6.
         run: |
-          Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force
+          Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
           $r = Invoke-Pester scripts/tests/register-plugin.Tests.ps1 -Output Detailed -PassThru
           if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
           # A container that fails DISCOVERY contributes 0 to FailedCount - that is how 9 broken files
@@ -129,7 +132,7 @@ jobs:
         # A SEPARATE STEP, not folded into the register-plugin invocation above, whose TotalCount floor
         # is calibrated to that suite alone.
         run: |
-          Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force
+          Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
           $r = Invoke-Pester clavity-dotnet/install/clavity-install.Tests.ps1 -Output Detailed -PassThru
           if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
           $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
@@ -204,14 +207,14 @@ jobs:
           if ($got -notmatch [regex]::Escape($ver)) { throw "yq version mismatch: wanted $ver, got '$got'" }
           "yq installed: $got"
 
-      - name: Install Pester v5
+      - name: Install Pester v6
         shell: pwsh
-        run: Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
+        run: Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
 
       - name: Pester - full scripts suite (pwsh 7)
         shell: pwsh
         run: |
-          Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force
+          Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
           $r = Invoke-Pester scripts/tests -Output Detailed -PassThru
           if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
           $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
@@ -224,7 +227,7 @@ jobs:
         # suite lives in clavity-dotnet/install/. Assuming the sweep reaches it produces a green job
         # that ran nothing.
         run: |
-          Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force
+          Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force
           $r = Invoke-Pester clavity-dotnet/install/clavity-install.Tests.ps1 -Output Detailed -PassThru
           if ($r.FailedCount -gt 0) { throw "$($r.FailedCount) Pester test(s) failed" }
           $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
