@@ -18,7 +18,7 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **28 suites, 462 tests** (counts measured 2026-08-24 by Pester
+- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 399 tests** (counts measured 2026-08-25 by Pester
   discovery, after two suites moved to slow). The runtime figure below PREDATES both that move and the
   count guard added the same day - see the 2026-08-24 note under ## Measured runtimes. Previously
   **29 suites, 605 tests, 461,95s** (2026-08-16,
@@ -46,7 +46,7 @@ load once and accumulates across files.
   during a run slows it down by construction** (see the contention entries below). **Do not quote any
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
-- `just test-scripts-slow` — everything else. **21 suites, 563 tests** (counts measured 2026-08-24; this half
+- `just test-scripts-slow` — everything else. **24 suites, 626 tests** (counts measured 2026-08-25; this half
   GAINED `agy-curate-nudge` and `check-injected-context` that day). The runtime below predates that
   move. Previously **19 suites, 382 tests, measured 1346,49s solo** (2026-08-17,
   after the capstone added `check-ci-filter-coverage` to this half and none to fast; the anomaly hot-fix
@@ -92,8 +92,8 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **462** and slow **563**, **both measured, not added up**
-(re-measured 2026-08-24 by Pester discovery: 1025 tests over 49 containers; 462 + 563 = 1025).
+test raises it. The count today is fast **399** and slow **626**, **both measured, not added up**
+(re-measured 2026-08-25 by Pester discovery: 1025 tests over 49 containers; 399 + 626 = 1025).
 🔴 **This sentence decayed AGAIN.** It was corrected on 2026-08-16 for exactly this reason and went
 stale once more when two suites changed halves on 2026-08-24. The count guard in
 `test-suite-registration.Tests.ps1` pins the PER-ROW numbers but not this prose, so it will keep
@@ -378,12 +378,39 @@ Moved: **`agy-curate-nudge`** (48,1s - the suite this work grew) and **`check-in
 (91,5s - the single largest in the half).
 
 🔴 **THAT PROJECTION WAS WRONG, AND THE MEASUREMENT IS THE POINT OF THIS NOTE.** It predicted
-"roughly 435s". MEASURED afterwards, backgrounded on an idle CPU, 28 suites as one batch:
-**588,6s - 462 tests, 0 failed. That is 98% of the 600s foreground cap, with 11,4s of headroom.**
-Subtracting 139,6s of moved suites from 576,0s and adding ~21s for the count guard predicts ~457s;
-the half measures 131s more than that. The arithmetic is not the recipe. This file already says so at
-length under "Batching is not a saving" and in the derived-total warning above - and the projection was
-written as if those did not apply. **A projected partition figure is not a measurement: run the half.**
+"roughly 435s" and was never run. MEASURED afterwards, backgrounded on an idle CPU, 28 suites as one
+batch, THREE consecutive runs: **588,6s / 554,1s / 496,5s** - 462 tests, 0 failed every time.
+Mean **546s**, spread **92s (17%)**, trending down across the three, which is the usual warming.
+
+Read it against the 600s foreground cap by the WORST case, not the mean or the warm figure: the cap
+bites on a slow run, and the slowest idle sample leaves **11,4s of headroom (1,9%)**. The half is
+cap-ADJACENT on this evidence, as it was before the move.
+
+🔴 **A retraction, recorded because the mistake is instructive.** On the strength of the FIRST
+sample alone (588,6s) this note briefly claimed the rebalance had made the half WORSE than the 576,0s
+measured before it. That claim was not supportable: 576,0s is itself a SINGLE sample, and it sits
+comfortably inside the 496-589s range these three runs describe. **One sample cannot be compared to one
+sample across a 17% spread.** Whether the move helped, hurt, or did nothing is not resolved by this
+data, and saying otherwise repeated - in the act of correcting it - the same derive-rather-than-measure
+error the projection made.
+
+**2026-08-25 - a SECOND move, on the owner's ruling, because one move was not enough.** Three more
+suites left the fast half: `check-curate-in-progress` (69,5s), `assertion-strength-reminder` (54,9s) and
+`check-cheatsheet-budget` (43,1s) - 167,5s by the recorded rows. Against the SLOWEST of the three idle
+samples that predicts roughly 420s, but predicts is the operative word: see the retraction above, and
+re-measure before quoting a figure.
+
+🔴 **`check-seed-artifacts-synced` (71,9s) STAYED, and it is the largest suite in the half.** It was
+the obvious thing to move on runtime alone. It is a required gate for any byte-identical-pair change -
+the standing project rule names it explicitly alongside `plugin-hooks-payload` - so it earns its place
+in the inner loop on COVERAGE, not on cost. Partition by what a change needs caught early, then by
+seconds; ordering those the other way is how a fast half stops being worth running.
+
+Subtracting 139,6s of moved suites from 576,0s and adding ~21s for the count guard predicts ~457s. Even
+the fastest run is 40s above that, and the slowest 131s above. The arithmetic is not the recipe: this
+file says so under "Batching is not a saving" and in the derived-total warning above, and the projection
+was written as if neither applied. **A projected partition figure is not a measurement: run the half,
+more than once, and quote the range.**
 
 Two things about this move are worth keeping. First, the decision was made on the MEASURED batch figure,
 not on the sum of the per-file rows - those sum to 531,1s, and the section above explains why a derived
@@ -485,13 +512,13 @@ agy-shield-lib.Tests.ps1                        409,1s   39 tests   <- SLOW, NEW
                                                                       added to Invoke-Shield (see that function's
                                                                       comment).
 agy-test-audit-reminder.Tests.ps1                50,8s   18 tests   <- SLOW, re-measured 2026-08-06 (+4)
-assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- FAST, measured 2026-08-12 with the driver
+assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   39 tests   <- FAST, re-measured 2026-08-05
-check-cheatsheet-budget.Tests.ps1                43,1s    6 tests   <- FAST, re-measured 2026-08-12
+check-cheatsheet-budget.Tests.ps1                43,1s    6 tests   <- SLOW as of 2026-08-25; was FAST, re-measured 2026-08-12
 check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       pre-commit parity gate's own suite.
                                                                       Every row builds a throwaway git repo,
@@ -531,7 +558,7 @@ check-ci-filter-coverage.Tests.ps1               54,4s   17 tests   <- SLOW, NEW
                                                                       this file documents elsewhere. Re-measure
                                                                       after adding rows; do not predict.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
-check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- FAST, measured 2026-08-12 with the driver
+check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
                                                                       already warns above.
