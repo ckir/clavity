@@ -122,7 +122,19 @@ procedure MigrationProblem(const Detail: String);
 begin
   { Finding 5 of the round-1 capstone: every failure branch used to be a bare exit, so a migration that
     stranded the operator's whole backlog looked exactly like one that succeeded. Fail-open is still the
-    rule - this never blocks or fails the install - but fail-open must not mean fail-SILENT. }
+    rule - this never blocks or fails the install - but fail-open must not mean fail-SILENT.
+
+    ACCEPTED BOUNDARY, measured - do not re-raise. A capstone round argued this reporting is theater
+    because a silent install auto-answers the box. It overstated the trigger: per the Inno documentation
+    for Setup Command-Line Parameters, /SILENT and /VERYSILENT do NOT suppress message boxes on their
+    own - "error messages during installation are displayed" unless the operator ALSO passes
+    /SUPPRESSMSGBOXES, which "only has an effect when combined with /SILENT or /VERYSILENT". So the box
+    is hidden only when the operator has explicitly asked for no boxes. That is an opt-out, not a defect,
+    and SuppressibleMsgBox is the file-wide convention here - every operator-facing message in this
+    installer, including the running-Claude critical error and the uninstall data-purge prompt, uses it.
+    Nothing is deleted on any failure path, so a suppressed report costs visibility, never data.
+    If unattended deployment ever becomes a supported scenario, revisit this: a durable log line beside
+    the install would be mode-independent where a dialog is not. }
   SuppressibleMsgBox('agy-autotrain could not finish moving your captured observations to the new '
     + 'user-local inbox.' + #13#10#13#10 + Detail + #13#10#13#10
     + 'Nothing has been deleted and the install itself is unaffected.', mbInformation, MB_OK, IDOK);
@@ -159,7 +171,13 @@ begin
     { A sidecar from an earlier successful migration is already here, yet a source file exists again.
       That state is ambiguous - the source may be content already migrated, or genuinely new captures -
       and appending blind would duplicate. Touch nothing; this is the one case the procedure cannot
-      resolve on its own, so it is handed to the operator instead of guessed at. }
+      resolve on its own, so it is handed to the operator instead of guessed at.
+
+      BEHAVIOUR CHANGE from the pre-fold code, recorded here because the fold commit did not state it.
+      Before, this same condition merely SKIPPED the rename - and it was reached only AFTER the write had
+      already happened - so the procedure ended normally and the source silently stayed put forever. Now
+      nothing is written, the procedure aborts, and the operator is told. The new shape is deliberate: an
+      ambiguous source is exactly the input that used to cause the duplication this fold exists to kill. }
     MigrationProblem('A sidecar from an earlier migration already sits beside ' + OldPath
       + ', so that file was left untouched rather than risk duplicating entries.' + #13#10#13#10
       + 'Merge it by hand into ' + NewPath);
