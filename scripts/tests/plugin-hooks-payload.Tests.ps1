@@ -20,6 +20,13 @@ BeforeAll {
     $script:RepoRoot     = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $script:DotnetHooks  = Join-Path $script:RepoRoot 'clavity-dotnet/plugin/hooks'
     $script:ClassicHooks = Join-Path $script:RepoRoot 'clavity-classic/plugin/hooks'
+    # The agy-autotrain plugin ships hooks too, and this sweep did not reach them: MEASURED at f29cd42,
+    # two of its three (agy-curate-nudge.sh, agy-learn-reminder.sh) had NO ASCII assertion anywhere,
+    # which is exactly the per-instance hole this file's header says it exists to close.
+    # ONLY the ASCII assertion takes this directory. The byte-identical-pair test is about the two
+    # DRIVERS specifically - agy-autotrain hooks have no mirror and must not be required to have one -
+    # and the UNC-walk assertion is about the repo-root walk those driver hooks share.
+    $script:AutotrainHooks = Join-Path $script:RepoRoot 'agy-autotrain/hooks'
 
     function Get-HookSet { param([string]$Dir)
         # -ErrorAction Stop: a missing directory must blow up, not yield an empty set that reads as "clean".
@@ -30,15 +37,21 @@ BeforeAll {
 Describe 'shipped plugin hook payload' {
 
     It 'ships every hook as pure ASCII (project mojibake discipline)' {
-        $dotnet  = Get-HookSet $script:DotnetHooks
-        $classic = Get-HookSet $script:ClassicHooks
-        # Per-directory controls: an aggregate count would hide a half-broken glob (see header).
-        $dotnet.Count  | Should -BeGreaterThan 0
-        $classic.Count | Should -BeGreaterThan 0
+        $dotnet    = Get-HookSet $script:DotnetHooks
+        $classic   = Get-HookSet $script:ClassicHooks
+        $autotrain = Get-HookSet $script:AutotrainHooks
+        # Per-directory controls: an aggregate count would hide a half-broken glob (see header). The
+        # third one is not decoration - without it a typo in the agy-autotrain path would yield an
+        # empty set that reads as "clean", the precise failure the header describes.
+        $dotnet.Count    | Should -BeGreaterThan 0
+        $classic.Count   | Should -BeGreaterThan 0
+        $autotrain.Count | Should -BeGreaterThan 0
 
-        $offenders = foreach ($h in ($dotnet + $classic)) {
+        $offenders = foreach ($h in ($dotnet + $classic + $autotrain)) {
             $n = ([IO.File]::ReadAllBytes($h.FullName) | Where-Object { $_ -gt 127 }).Count
-            if ($n -gt 0) { "$($h.Directory.Parent.Parent.Name)/$($h.Name) has $n" }
+            # Repo-relative path: the three directories sit at different depths, so the old
+            # Parent.Parent label named the repo root itself for the agy-autotrain set.
+            if ($n -gt 0) { "$($h.FullName.Substring($script:RepoRoot.Length + 1) -replace '\\','/') has $n" }
         }
         # Joined so a failure names WHICH file and HOW MANY bytes, not merely that something failed.
         ($offenders -join '; ') | Should -BeNullOrEmpty

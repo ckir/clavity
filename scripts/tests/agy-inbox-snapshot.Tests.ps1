@@ -346,4 +346,94 @@ Describe 'agy-inbox-snapshot' {
             BakCount $r | Should -Be 1 -Because 'the dedup invariant exists for exactly this'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'honours every SLASH-COMMAND contract on the jq-ABSENT fallback branch too' {
+        # The three prompt-shape tests above all run with jq on PATH, so they exercise ONLY the jq arm.
+        # The field-bounded-grep fallback (agy-inbox-snapshot.sh:63-64) is, by this suite's own note
+        # above, "the path that actually runs" on a stock end-user box - and it had no prompt coverage
+        # at all. MEASURED at f29cd42: deleting that elif arm left all 24 tests green while
+        # `/agy-autotrain:agy-curate` stopped snapshotting on any box without jq.
+        # PATH=/usr/bin removes jq while keeping grep/cp/date/ls/cmp/head/tail/rm, all of which live there.
+        $fallback = @{ PATH = '/usr/bin' }
+
+        $r1 = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate') -Env (HookEnv $r1 $fallback) | Out-Null
+            BakCount $r1 | Should -Be 1 -Because 'the reported 2026-08-03 defect must stay fixed on the branch most installs actually take'
+        } finally { Remove-Item $r1 -Recurse -Force -ErrorAction SilentlyContinue }
+
+        $r2 = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate --dry-run') -Env (HookEnv $r2 $fallback) | Out-Null
+            BakCount $r2 | Should -Be 1 -Because 'a slash command with trailing arguments is a real invocation on the fallback branch too'
+        } finally { Remove-Item $r2 -Recurse -Force -ErrorAction SilentlyContinue }
+
+        # THE CONTROL. Without this the two assertions above would also pass under a bare substring
+        # match, which is precisely what the field-bounded grep exists to prevent.
+        $r3 = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload 'why did agy-curate skip the snapshot last time?') -Env (HookEnv $r3 $fallback) | Out-Null
+            BakCount $r3 | Should -Be 0 -Because 'prose that merely mentions agy-curate must not burn a snapshot slot on the fallback branch either'
+        } finally { Remove-Item $r3 -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'resolves the inbox from HOME when USERPROFILE is ABSENT, and when it is EMPTY' {
+        # HOME_DIR="${USERPROFILE:-$HOME}" (agy-inbox-snapshot.sh:19). Every call in this suite goes
+        # through HookEnv, which sets BOTH variables to real absolute paths, so the fallback half was
+        # never taken on any machine and CI is windows-latest. MEASURED at f29cd42: rewriting it to
+        # "${USERPROFILE}" left all 24 tests green while on a POSIX install the hook resolved
+        # /.clavity/agy-observations.md, found nothing, and took NO SNAPSHOT before a drain - the one
+        # thing this hook exists to guarantee.
+        # ABSENT and EMPTY are different bugs: absent catches dropping the fallback, empty catches the
+        # one-character ${USERPROFILE-$HOME}, which treats present-but-empty as set.
+        $r1 = New-PluginRoot $script:Good
+        try {
+            # PRECONDITION: the ordinary shape snapshots. The baseline the two below are measured against.
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r1) | Out-Null
+            BakCount $r1 | Should -Be 1 -Because 'precondition: this payload snapshots when both variables are set'
+        } finally { Remove-Item $r1 -Recurse -Force -ErrorAction SilentlyContinue }
+
+        $r2 = New-PluginRoot $script:Good
+        try {
+            # [NullString]::Value is the only form that DELETES the variable - see BashHookHelpers.ps1.
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r2 @{ USERPROFILE = [NullString]::Value }) | Out-Null
+            BakCount $r2 | Should -Be 1 -Because 'with USERPROFILE absent the inbox must resolve from HOME, or no snapshot is ever taken'
+        } finally { Remove-Item $r2 -Recurse -Force -ErrorAction SilentlyContinue }
+
+        $r3 = New-PluginRoot $script:Good
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r3 @{ USERPROFILE = '' }) | Out-Null
+            BakCount $r3 | Should -Be 1 -Because 'an EMPTY USERPROFILE must fall back too - the colon in ${VAR:-alt} is load-bearing'
+        } finally { Remove-Item $r3 -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is NOT disarmed by a .no-agy in the payload cwd - a deliberate asymmetry with its two siblings' {
+        # PINS A KNOWN ASYMMETRY RATHER THAN ASSUMING IT. MEASURED at f29cd42: agy-curate-nudge.sh and
+        # agy-learn-reminder.sh each parse `.cwd` from the payload and honour a project-local marker;
+        # this hook parses `.cwd` ZERO times, so an operator dropping .no-agy in a project root silences
+        # two of the three hooks and not this one. Nothing asserted that in EITHER direction, so a
+        # "consistency" edit could add or remove the check with no test movement.
+        # The asymmetry is arguably defensible - this hook fires on PreToolUse/UserPromptSubmit, where
+        # cwd semantics differ from SessionStart - and is under review in the kill-switch sweep. Until
+        # that is ruled, this test pins TODAY's behaviour so the change is deliberate and visible: if
+        # the sweep decides the cwd marker SHOULD disarm this hook, this test reds and gets updated in
+        # the same commit, which is exactly the conversation the pin exists to force.
+        $r = New-PluginRoot $script:Good
+        $cwd = Join-Path ([IO.Path]::GetTempPath()) ("ibxcwd-" + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $cwd -Force | Out-Null
+        try {
+            Set-Content -LiteralPath (Join-Path $cwd '.no-agy') -Value '' -Encoding ascii
+            # PRECONDITION: neither home root carries a marker, so any silence would have to come from
+            # the cwd marker rather than from the setup.
+            (Test-Path (Join-Path $r 'home/.claude/.no-agy')) | Should -BeFalse -Because 'no home-root marker may exist, or this test cannot attribute the outcome to cwd'
+
+            $payload = @{ tool_name = 'Skill'; tool_input = @{ skill = 'agy-autotrain:agy-curate' }
+                          cwd = ($cwd -replace '\\','/'); session_id = 'ibxtest' } | ConvertTo-Json -Compress
+            Invoke-BashHook -HookPath $script:Hook -Payload $payload -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 1 -Because 'this hook does not read .cwd today; the snapshot must still be taken'
+        } finally {
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $cwd -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
