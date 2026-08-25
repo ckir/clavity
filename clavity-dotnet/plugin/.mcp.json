@@ -1,5 +1,11 @@
 {
   "mcpServers": {
-    "clavity-ls": { "command": "clavity-ls", "args": ["--mcp"] }
+    "clavity-ls": {
+      "command": "clavity-ls",
+      "args": ["--mcp"],
+      "env": {
+        "CLAVITY_AGY_IDLE_MAX_SECONDS": "1800"
+      }
+    }
   }
 }
