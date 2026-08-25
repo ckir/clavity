@@ -81,8 +81,20 @@ function Set-PendingBody([string]$InboxPath, [string[]]$body) {
             $inPending = $true
             continue
         }
-        if ($inPending -and $l -match '^##\s') { $inPending = $false; $out += $l; continue }
-        if ($inPending) { continue }   # drop old body lines
+        # SAME CLOSING RULE AS Get-PendingRegionLines - `^#{1,6}\s`, not `^##\s`. These two functions are
+        # the two halves of one round trip, and they MUST agree on where the region ends. When they did
+        # not, a no-op read-then-write DELETED user content: the reader closed its region at a heading
+        # the writer did not recognise, so those lines were neither carried in the body nor preserved
+        # here, and the `continue` below dropped them. MEASURED on a `### Operator notes` subsection -
+        # three lines of the user's own prose vanished from a round trip that changed nothing, and a
+        # control run against the previous reader rule lost NONE, which is what proved the regression
+        # was introduced by tightening only one half.
+        #
+        # PRESERVE the closing line rather than dropping it. Anything outside the Pending body belongs
+        # to the user's document, and this function's contract is to replace ONE section - never to
+        # silently delete what follows it.
+        if ($inPending -and $l -match '^#{1,6}\s') { $inPending = $false; $out += $l; continue }
+        if ($inPending) { continue }   # drop old body lines - they are re-emitted as $body above
         $out += $l
     }
     if (-not $emitted) {

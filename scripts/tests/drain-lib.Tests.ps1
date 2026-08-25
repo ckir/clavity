@@ -55,6 +55,43 @@ Describe "drain-lib primitives" {
         (Get-PendingBulletCount -InboxPath $script:Inbox) | Should -Be 0
     }
 
+    It "a no-op read-then-write round trip preserves every line OUTSIDE the Pending body" {
+        # Get-PendingRegionLines (the reader) and Set-PendingBody (the writer) are the two halves of one
+        # round trip, and they MUST agree on where the Pending region ends. They did not: the reader was
+        # tightened to close on any heading `^#{1,6}\s` while the writer still closed only on `^##\s`.
+        # A heading the writer could not match therefore closed the reader's region - so those lines were
+        # NOT carried in the body - and then fell through the writer's `if ($inPending) { continue }`,
+        # which drops them. A drain or abort that changed nothing DELETED the user's own prose.
+        #
+        # MEASURED before the fix: three lines lost here, and ZERO lost by the same fixture under the
+        # reader's previous rule - which is what proved the loss came from tightening one half alone.
+        $fixture = @(
+            '# Untriaged agy observations',
+            '',
+            '## Pending',
+            '',
+            '- [heuristic] an observation  ·  `[corpus]` · 2026-08-25',
+            '',
+            '### Operator notes',
+            '',
+            'IMPORTANT: this section is the operator''s, not the drain''s.',
+            'A second line of it.'
+        )
+        Set-Content -LiteralPath $script:Inbox -Value $fixture -Encoding UTF8
+
+        # PRECONDITION: without a heading the OLD writer rule could not match, this pins nothing.
+        @($fixture | Where-Object { $_ -match '^#{1,6}\s' -and $_ -notmatch '^##\s' }).Count |
+            Should -BeGreaterThan 0 -Because 'the fixture must carry a heading that `^##\s` cannot match, or the asymmetry this pins cannot bite'
+
+        # The round trip that changes nothing: read the body, write the same body straight back.
+        $body = @(Get-PendingBody -InboxPath $script:Inbox)
+        Set-PendingBody -InboxPath $script:Inbox -body $body
+
+        $after = @(Get-Content -LiteralPath $script:Inbox)
+        $lost  = @($fixture | Where-Object { $_.Trim() -ne '' -and $after -notcontains $_ })
+        ($lost -join ' | ') | Should -BeExactly '' -Because 'a round trip that changes nothing must not DELETE anything - every line outside the Pending body belongs to the user''s document'
+    }
+
     It "merges two Pending sections WITHOUT carrying the second document's own header into the body" {
         # The 14g migration APPENDS the whole old document, so the file arrives holding that document's
         # own `# title` line and its prose preamble. Those are not observations. Get-PendingBody closed
