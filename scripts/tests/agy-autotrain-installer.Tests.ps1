@@ -132,8 +132,25 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
                     $out += $Lines[$j]
                 }
             } else {
-                # No block: the branch is the single statement on the next line, and NOTHING beyond it
-                # belongs to this guard.
+                # No block: the branch is the single statement that STARTS on the next line.
+                #
+                # This arm assumes that statement occupies exactly ONE line, and that assumption is
+                # FALSE in general - Pascal lets a single statement span several lines through string
+                # concatenation, and `agy-autotrain.iss` does exactly that at :211-213 and :214-216,
+                # where each `MigrationProblem(...)` call wraps onto a continuation line. An earlier
+                # version of this comment claimed "NOTHING beyond it belongs to this guard", which is
+                # simply wrong for that shape.
+                #
+                # It is NOT a live defect today, and that was measured rather than assumed: every one of
+                # the five call sites reaches this function at a head line whose NEXT line is `begin`,
+                # so the block arm above is taken every time and this arm is currently unreached. The
+                # four `$guards` entries and the `$notWrote` head were each checked individually.
+                #
+                # So this is a latent hazard, left deliberately rather than fixed: making it correct
+                # means deciding where a wrapped statement ends, which needs a real expression parser -
+                # and this file already records that brace-counting an .iss is vacuous. If a future
+                # guard head is ever followed by a wrapped single statement, THIS is the line that
+                # silently truncates its body, and the fix belongs here.
                 $out += $Lines[$HeadIndex + 1]
             }
             return $out

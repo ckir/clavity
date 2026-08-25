@@ -15,26 +15,46 @@ function Resolve-InboxPath([string]$explicit) {
     return Join-Path $home_dir '.clavity/agy-observations.md'
 }
 
-function Get-PendingBulletCount([string]$InboxPath) {
-    if (-not (Test-Path $InboxPath)) { return 0 }
-    $inPending = $false; $count = 0
+function Get-PendingRegionLines([string]$InboxPath) {
+    # ONE scanner, used by BOTH readers below. The rule it implements is written down here because it
+    # was NEVER written down before, and that omission is exactly what cost the defect described next:
+    #
+    #   a `## Pending` heading OPENS the region; ANY other heading line CLOSES it; scanning CONTINUES
+    #   so that a second document's `## Pending` MERGES with the first.
+    #
+    # The closing test is `^#{1,6}\s`, NOT `^##\s`. A migrated inbox is two whole documents concatenated
+    # by the installer's append (`agy-autotrain.iss`, `SaveStringsToFile(NewPath, OldLines, True)`), so
+    # the second document brings its OWN `# title` line and prose preamble. A single-hash title does not
+    # match `^##\s`, so the old rule KEPT it as body: MEASURED against the real template, 24 lines of
+    # boilerplate prose were carried into the staging file handed to the curator, and written back into
+    # the user's canonical inbox by Restore-StagingToPending on any abort. The bullet COUNT stayed
+    # correct at 2 throughout, which is why every count-based test stayed green over it.
+    #
+    # CLOSES-AND-CONTINUES, never `break`. Breaking on the second document's title would discard that
+    # document's pending bullets entirely - the opposite of the merge this reader exists to perform.
+    #
+    # KNOWN LIMIT, stated rather than discovered later: a fenced code block INSIDE the Pending region
+    # whose content starts at column 0 with `# ` would be read as a heading and close the region early.
+    # The inbox schema is one bullet per observation with prose forbidden, so that shape is not legal
+    # input; it is not defended against, and this comment is the record of that choice.
+    if (-not (Test-Path $InboxPath)) { return @() }
+    $inPending = $false; $region = @()
     foreach ($l in (Get-Content $InboxPath)) {
         if ($l -match '^##\s+Pending\s*$') { $inPending = $true; continue }
-        if ($inPending -and $l -match '^##\s') { break }   # next heading ends the section
-        if ($inPending -and $l -match '^- \[') { $count++ } # F17: one-bullet-per-observation schema
+        if ($l -match '^#{1,6}\s')          { $inPending = $false; continue }
+        if ($inPending)                     { $region += $l }
     }
-    return $count
+    return $region
+}
+
+function Get-PendingBulletCount([string]$InboxPath) {
+    # F17: one-bullet-per-observation schema.
+    return @(Get-PendingRegionLines $InboxPath | Where-Object { $_ -match '^- \[' }).Count
 }
 
 function Get-PendingBody([string]$InboxPath) {
-    # The lines strictly BETWEEN the `## Pending` heading and the next `## ` heading (or EOF).
-    $inPending = $false; $body = @()
-    foreach ($l in (Get-Content $InboxPath)) {
-        if ($l -match '^##\s+Pending\s*$') { $inPending = $true; continue }
-        if ($inPending -and $l -match '^##\s') { break }
-        if ($inPending) { $body += $l }
-    }
-    return $body
+    # The lines of every `## Pending` region, merged, with each document's own header excluded.
+    return @(Get-PendingRegionLines $InboxPath)
 }
 
 function Set-PendingBody([string]$InboxPath, [string[]]$body) {

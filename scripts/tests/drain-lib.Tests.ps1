@@ -55,6 +55,49 @@ Describe "drain-lib primitives" {
         (Get-PendingBulletCount -InboxPath $script:Inbox) | Should -Be 0
     }
 
+    It "merges two Pending sections WITHOUT carrying the second document's own header into the body" {
+        # The 14g migration APPENDS the whole old document, so the file arrives holding that document's
+        # own `# title` line and its prose preamble. Those are not observations. Get-PendingBody closed
+        # its region on `^##\s` only, so a SINGLE-hash title never closed it and every preamble line was
+        # emitted as body - into the staging file handed to the curator, and back into the user's
+        # canonical inbox by Restore-StagingToPending on any abort.
+        #
+        # The bullet COUNT stayed correct throughout. That is why the two sibling tests beside this one
+        # stayed green over it: both assert only that each bullet appears exactly ONCE, and neither
+        # asserts that the body holds nothing ELSE. This one does.
+        $old = @(
+            '# agy observations inbox (raw, project-agnostic)',
+            '',
+            'Captured live by `agy-learn`; drained by `agy-curate` into the GROWTH region of the shared',
+            'golden-header. One bullet per observation. Project nouns are forbidden here.',
+            '',
+            '## Pending',
+            '',
+            '- [assumption] a capture migrated from the old inbox  ·  `[corpus]` · 2026-08-21'
+        )
+        $canonical = @(
+            '# Untriaged agy observations',
+            '',
+            '## Pending',
+            '',
+            '- [heuristic] a capture the user already had  ·  `[corpus]` · 2026-08-20'
+        )
+        Set-Content -LiteralPath $script:Inbox -Value ($canonical + $old) -Encoding UTF8
+
+        # PRECONDITIONS - without both of these the assertion below can pass while pinning nothing.
+        $raw = @(Get-Content -LiteralPath $script:Inbox)
+        @($raw | Where-Object { $_ -match '^#\s+agy observations inbox' }).Count |
+            Should -Be 1 -Because 'the fixture must carry the appended document''s OWN title line, or the leak this pins cannot occur'
+        @($raw | Where-Object { $_ -match '^##\s+Pending\s*$' }).Count |
+            Should -Be 2 -Because 'the fixture must carry TWO Pending headings, or this is not the migrated shape at all'
+
+        $body = @(Get-PendingBody -InboxPath $script:Inbox)
+        @($body | Where-Object { $_ -match '^- \[' }).Count |
+            Should -Be 2 -Because 'both documents'' observations must survive the merge - closing the region must not discard the second document''s bullets'
+        $junk = @($body | Where-Object { $_.Trim() -ne '' -and $_ -notmatch '^- \[' })
+        ($junk -join ' | ') | Should -BeExactly '' -Because 'the merged body must hold observations and blank lines ONLY - any header line carried into it is written into the user''s canonical inbox on restore'
+    }
+
     It "does NOT duplicate the residue when the inbox carries TWO ## Pending headings" {
         # The 14g installer migration appends the WHOLE old document - its own header line and its own
         # `## Pending` heading included - onto the canonical inbox, so that file can legitimately arrive

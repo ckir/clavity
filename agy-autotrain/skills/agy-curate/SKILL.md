@@ -109,7 +109,8 @@ For EACH pending entry, in order:
 
 3. **The determinism refusal gate is MECHANICAL, not honor-system.** To route a `driver/deterministic`
    entry to `fix-the-tool`, you MUST be able to fill BOTH blocks of the backlog schema
-   (`../../docs/fix-the-tool-backlog/_template.md`, i.e. under `agy-autotrain/`, NOT the umbrella root):
+   (`docs/fix-the-tool-backlog/_template.md` **relative to an `agy-autotrain` REPO CHECKOUT**, not to
+   this file - see the routing note below before writing anything):
    - **Steps to Reproduce** - the exact reproduction on the owning variant's bridge.
    - **Code-level Mitigation** - the specific change to the bridge/tool *execution path* that removes it.
 
@@ -119,8 +120,21 @@ For EACH pending entry, in order:
    may be `fix-the-tool` on one variant (its transport exposes the needed signal) and a carried
    `driver` cheatsheet rule on another (its transport cannot) - record which.
 
+> 🔴 **ROUTING REQUIRES A REPO CHECKOUT - do not resolve backlog paths relative to THIS FILE.**
+> This skill runs from the installed plugin tree AND from every checkout and worktree, and the header at
+> the top of this file already states the consequence: *a relative path resolves to whichever copy is
+> running*. A `../../`-style anchor was tried on 2026-08-25 and is withdrawn, because in an installed
+> tree it resolves to a real, WRITABLE directory that sits OUTSIDE any repository - and this step's own
+> rule is that **committing the file IS the routing**. A backlog item written there is never committed,
+> never seen by a maintainer, and lost on the next upgrade: the routing fails silently, which is worse
+> than failing loudly.
+> **So: if you are running from a checkout, write the file there and commit it. If you cannot identify a
+> checkout, do NOT write the file anywhere - report the entry to the operator and leave it in the inbox
+> as HELD with the reason.** An unrouted entry the operator can see beats a routed one nobody receives.
+
 4. **Emit the backlog item** for each tool-fixable `driver/deterministic` entry: one file per entry at
-   `../../docs/fix-the-tool-backlog/<slug>.md` from `_template.md` (append-only; never a single shared file -
+   `docs/fix-the-tool-backlog/<slug>.md` in an `agy-autotrain` REPO CHECKOUT, from `_template.md`
+   (append-only; never a single shared file -
    offline curate runs on different branches would merge-conflict). Committing the file IS the routing;
    automated ingest into a tracker is a phase-2 hardening, not required here.
 
@@ -404,10 +418,12 @@ in them is built by the next `cargo build` / `dotnet build` and shipped by the n
 (`:224`). The cheatsheet is compiled from the `driver/probabilistic` entries (`:79`), and a carried
 `driver` rule is appended to it rather than to GROWTH (`:121`); neither route reaches that gate. Moving
 the write below it would not subject it to review. Gap recorded at
-`docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md` - note this one IS umbrella-rooted,
-unlike the `../../docs/fix-the-tool-backlog/` paths above, which sit under `agy-autotrain/`. Two roots,
-one file: resolving either against the wrong one reports a real directory as missing. MEASURED - a real
-drain concluded backlog routing was impossible by construction because of exactly this.
+`docs/backlog/cheatsheet-reaches-live-path-before-the-human-gate.md`, which is UMBRELLA-rooted - unlike
+the `docs/fix-the-tool-backlog/` paths above, which sit under `agy-autotrain/`. Two roots, one file:
+resolving either against the wrong one reports a real directory as missing. MEASURED - a real drain
+concluded backlog routing was impossible by construction because of exactly this. The umbrella root is
+never shipped (the installer copies only the `agy-autotrain` subtree), so in an installed plugin tree
+this reference does not resolve at all; it is a pointer for a maintainer reading the repo.
 
 > This is the SKILL's exit contract and is unrelated to the `exit 2` convention used by the repository's
 > **hooks** (see `clavity-classic/plugin/hooks/agy-liveness-check.sh`), where 2 means "advisory on stderr"
