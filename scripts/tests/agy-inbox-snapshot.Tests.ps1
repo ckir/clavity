@@ -356,6 +356,20 @@ Describe 'agy-inbox-snapshot' {
         # PATH=/usr/bin removes jq while keeping grep/cp/date/ls/cmp/head/tail/rm, all of which live there.
         $fallback = @{ PATH = '/usr/bin' }
 
+        # ASSERT THE ARM, do not assume it. Every bit of this test's discriminating power rests on jq
+        # being unreachable under that PATH - an assumption about the MACHINE, not about the code. If jq
+        # ever resolves there (a different runner image, a repackaged Git-for-Windows), all three cells
+        # below silently become duplicates of the three jq-arm tests above, and the elif at
+        # agy-inbox-snapshot.sh:63-64 - which this suite calls "the path that actually runs" on a stock
+        # box - goes uncovered with nothing red. The probe runs through the SAME harness and env as the
+        # cases it guards, so it cannot pass for a different reason than they do.
+        $probe = Join-Path ([IO.Path]::GetTempPath()) ("jqprobe-" + [Guid]::NewGuid().ToString('N') + ".sh")
+        Set-Content -LiteralPath $probe -Value "command -v jq 2>/dev/null || true" -Encoding ascii -NoNewline
+        try {
+            $jq = Invoke-BashHook -HookPath $probe -Payload '{}' -Env $fallback
+            $jq.StdOut | Should -BeNullOrEmpty -Because 'PATH=/usr/bin must make jq UNREACHABLE, or these three cells silently retest the jq arm and the fallback branch is uncovered again'
+        } finally { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue }
+
         $r1 = New-PluginRoot $script:Good
         try {
             Invoke-BashHook -HookPath $script:Hook -Payload (PromptPayload '/agy-autotrain:agy-curate') -Env (HookEnv $r1 $fallback) | Out-Null

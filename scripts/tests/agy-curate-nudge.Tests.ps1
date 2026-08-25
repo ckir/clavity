@@ -415,6 +415,17 @@ Describe 'agy-curate-nudge.sh' {
 
 - [heuristic] (driver/probabilistic) regression first seen on 2019-01-01 during a probe  ``[corpus]`` - $script:Today
 "@
+        # PRECONDITION, matching the three sibling Its added alongside this one. The only assertion
+        # here is SILENCE, and silence is the default failure of a broken fixture: a `## Pending` typo,
+        # or a change to the `^- \[` bullet anchor, produces silence for the wrong reason and this test
+        # passes. So the same record is first shown to nudge when its trailing stamp IS old.
+        $stale = $inbox -replace [regex]::Escape($script:Today), '2019-06-01'
+        $ePre = New-NudgeEnv -Inbox $stale
+        try {
+            $pre = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $ePre.Env
+            $pre.StdOut | Should -Match 'agy-curate nudge' -Because 'precondition: this fixture DOES nudge when its trailing stamp is old, so the silence below is the date rule and not a broken fixture'
+        } finally { Remove-Item -LiteralPath $ePre.Root -Recurse -Force -ErrorAction SilentlyContinue }
+
         $e = New-NudgeEnv -Inbox $inbox
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload '{}' -Env $e.Env

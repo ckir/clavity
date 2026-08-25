@@ -263,7 +263,10 @@ foreach ($cont in $r.Containers) {
             # of the two exempt rows, test-suite-registration said 4 against an actual 8, and
             # agy-drive-session-reset was correct at 6 - so the exemption was hiding real drift in one
             # of the only two rows it covered.
-            $m = [regex]::Match($l, '^([A-Za-z0-9._-]+\.Tests\.ps1)\s+\S+\s+([0-9]+)\s+tests')
+            # `tests?` accepts the SINGULAR. A one-It suite is naturally written `1 test`, and
+            # under the tightened contract below that spelling is not a silent exemption but a
+            # hard RED claiming the table is incomplete when the row is present and correct.
+            $m = [regex]::Match($l, '^([A-Za-z0-9._-]+\.Tests\.ps1)\s+\S+\s+([0-9]+)\s+tests?')
             if (-not $m.Success) { continue }
             # A SECOND row for one suite is silent under first-match-wins: whichever copy loses is never
             # compared, so a stale duplicate can sit in the table indefinitely.
@@ -278,7 +281,13 @@ foreach ($cont in $r.Containers) {
         # row still saw the row present and passed. `8 Tests`, `eight tests` and `8 assertions` evade
         # identically. The fix was already written ~40 lines above for $discovered, in a comment that
         # condemns this exact `-BeGreaterThan 20` pattern - and was then not applied here.
-        $stated.Count | Should -Be $onDiskCount -Because "only $($stated.Count) of $onDiskCount suites state a parseable count - a row whose count text does not match is exempt from every check below, so the table must be complete"
+        # NAMED, not counted - the rule this file states twice ("Name them, AND name the file to
+        # edit. A count sends a reader hunting; a name sends them to the file.") and did not apply to
+        # its own newest guard. Naming subsumes the cardinality check: an on-disk suite with no counted
+        # row is the only way the counts differ downward, and a phantom row reds the census row above.
+        # foreach, NOT Where-Object - a pipeline scriptblock does not see this It's local $stated.
+        $noCountRow = foreach ($f in $script:OnDisk) { if (-not $stated.ContainsKey($f)) { $f } }
+        ($noCountRow -join '; ') | Should -BeNullOrEmpty -Because 'every suite must have a row stating a parseable count in the Measured runtimes table in scripts/tests/_partition.md'
 
         # NO SILENT SKIP. This used to `continue` past any row whose suite was absent from the child's
         # output, on the reasoning that the census row owns absence. That is wrong: the census row

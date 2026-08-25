@@ -314,12 +314,30 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
             # then accepted a COMMENT as its evidence. MEASURED: moving the report and the exit into an
             # Inno `{ }` comment inside the claim-failure branch passed 7/7 - the same mutant class the
             # comment-stripping was introduced to kill, surviving in the very test that introduced it.
-            $reported = $false; $exited = $false
-            for ($j = $i + 1; $j -lt $script:CodeOnly.Count; $j++) {
-                if ($script:CodeOnly[$j] -match 'MigrationProblem') { $reported = $true }
-                if ($script:CodeOnly[$j] -match '^\s*exit\s*;')     { $exited = $true }
-                if ($script:CodeOnly[$j] -match '^\s*end;')          { break }
+            # BOUNDED BY THE GUARD'S OWN BRANCH. Scanning forward to "the next `end;` anywhere" was the
+            # same borrowed-evidence defect this file already records fixing 12 lines below - a guard
+            # that reads a NEIGHBOUR'S evidence certifies whatever sits next to it - re-opened through a
+            # different channel. Pascal allows `if X then <single statement>;` with no `end;` of its
+            # own (agy-autotrain.iss:151-152 is exactly that shape), so a gutted guard's scan ran on
+            # into the NEXT branch and collected its report and its exit.
+            # MEASURED: gutting any of the first THREE guards - replacing the whole begin...end with one
+            # no-op - left BOTH scans clean. Only the fourth reddened, and even then it had borrowed the
+            # rollback branch's MigrationProblem; only the missing exit saved it.
+            # CodeNoStrings, not CodeOnly: a call named inside an operator message must not count as the
+            # branch reporting. Both projections emit one entry per source line, so indices still align.
+            $branchBody = @()
+            if ($script:CodeNoStrings[$i + 1] -match '^\s*begin\s*$') {
+                for ($j = $i + 2; $j -lt $script:CodeNoStrings.Count; $j++) {
+                    if ($script:CodeNoStrings[$j] -match '^\s*end;') { break }
+                    $branchBody += $script:CodeNoStrings[$j]
+                }
+            } else {
+                # No block: the branch is the single statement on the next line, and NOTHING beyond it
+                # may be counted as this guard's evidence.
+                $branchBody += $script:CodeNoStrings[$i + 1]
             }
+            $reported = @($branchBody | Where-Object { $_ -match 'MigrationProblem' }).Count -gt 0
+            $exited   = @($branchBody | Where-Object { $_ -match '^\s*exit\s*;' }).Count -gt 0
             if (-not ($reported -and $exited)) {
                 $leaky += ("{0} (reports={1} exits={2})" -f $g, $reported, $exited)
             }
