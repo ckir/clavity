@@ -445,6 +445,21 @@ The 57,5s spread between them is cold module load, so **492,9s is the warm figur
 range**. This is the first sample in this file taken under a protocol that actually enforces idleness: a
 240s lead-in before the clock starts, and the orchestrator made no tool call from launch to completion.
 
+🔴 **THE BACKGROUND LOAD WAS NOT CONTROLLED, AND ON THIS BOX IT CANNOT BE - "idle" in this file
+has never meant an idle MACHINE.** MEASURED 2026-08-25 over a 30s window with no subagent arms and no
+orchestrator work in flight: an unidentifiable elevated process at **99% of one core** (running since
+2026-08-20, its path and command line unreadable at normal integrity), the agent host at **111%**, the
+peer tool at **36%**, a profiler at **11%** - roughly **2,6 of 4 cores gone before any suite starts**,
+with `\Processor(_Total)\% Processor Time` reading 80,4 / 94 / 100.
+⚠ **2,6 cores is a FLOOR, not the total: that control silently omitted the antivirus.**
+`Get-Process`/`Win32_Process` report `MsMpEng` at **0,00 CPU-seconds** - byte-identical to a process that
+is not running - while `Get-Counter '\Process(MsMpEng)\% Processor Time'` reads it at **3,88-5,43% of a
+core** with real-time protection ON. The control that proves the method rather than the machine: the same
+counter reads the agent host at 96-98%, matching its `Get-Process` figure.
+**So every runtime in this file, this entry included, is a figure against that floor.** Do not compare one
+to a number from a different machine, and never certify "the machine was quiet" from a census that has no
+control showing it can SEE a known-busy process.
+
 🔴 **AT 550,4s COLD THE FAST HALF IS BACK TO 92% OF THE 600s CAP.** The second move above
 was measured at 418,5s / 400 tests and read as "roughly 30% headroom". Seven tests later the same half
 measures 74s slower. Two readings are available and this file does not have the evidence to choose

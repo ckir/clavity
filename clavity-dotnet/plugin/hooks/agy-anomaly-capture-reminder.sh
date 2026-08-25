@@ -73,8 +73,10 @@ if [ "$event" = "UserPromptSubmit" ]; then
   #     (capture-gap spec :65/:67). Trading a silent failure for a noisy one is not a fix.
   #
   # So: try a SECOND location before giving up, and if both fail, warn the OPERATOR on stderr and stay
-  # silent to the MODEL. Precedent for exactly this shape is agy-inbox-snapshot.sh:60-63, which warns on
-  # stderr when it cannot write its .bak rather than failing silently or looping.
+  # silent to the MODEL. Precedent for exactly this shape is the `could not write ... .bak` warning in
+  # agy-inbox-snapshot.sh, which warns on stderr when it cannot write its .bak rather than failing
+  # silently or looping. NAMED, not numbered: this cited :60-63 until 2026-08-25, by which time those
+  # lines held the jq dispatch `case` and the real warn had moved to :101.
   #
   # STDERR AT EXIT 0, never exit 2. Exit 2 is BLOCKING on some events, and blocking the user's prompt to
   # report a marker problem is catastrophically out of proportion.

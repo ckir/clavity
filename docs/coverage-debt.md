@@ -201,6 +201,13 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 
+🔴 **Letters are assigned in CAPTURE order and are NOT alphabetically sorted - do not "tidy" them.**
+They are cited by letter from outside this file (`docs/agy-capstone-ledger.md` cites boundary D and
+boundary J; the entry below cites boundary H), so renaming one silently redirects a citation. Until
+2026-08-25 TWO entries were lettered **D**, which made `agy-capstone-ledger.md:61`'s "accepted boundary D"
+ambiguous; the second was renamed to **K** because the citation means the SemanticEcho entry. Append the
+next free letter; never re-letter an existing entry.
+
 ### A. The two walk-level guards (`2fa88e0`, `76e1ba8`)
 
 - **Behaviour:** `Get-InjectedContextFiles` and `Get-UnexpectedBuildDirs` each seed their visited set with
@@ -302,7 +309,7 @@ fixed-size buffer that is visible by reading twenty lines of code.
 - **Note:** the per-route subtraction asymmetry was ruled out of scope and documented as intended in
   `06a39af`. Re-raising this family is a wrong answer unless the reachability facts above change.
 
-### D. `.iss` references are unresolvable by design (Stage 2, D1)
+### K. `.iss` references are unresolvable by design (Stage 2, D1)
 
 `$ShippedExtensions` in `scripts/check-injected-context.ps1` omits `iss`, so every `.iss` token is dropped
 before reference resolution. A genuinely broken `.iss` reference will not be reported.
