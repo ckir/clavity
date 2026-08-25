@@ -18,7 +18,7 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 400 tests** (counts measured 2026-08-25 by Pester
+- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 407 tests** (counts measured 2026-08-25 by Pester
   discovery, after two suites moved to slow). The runtime figure below PREDATES both that move and the
   count guard added the same day - see the 2026-08-24 note under ## Measured runtimes. Previously
   **29 suites, 605 tests, 461,95s** (2026-08-16,
@@ -92,8 +92,8 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **400** and slow **626**, **both measured, not added up**
-(re-measured 2026-08-25 by Pester discovery: 1026 tests over 49 containers; 400 + 626 = 1026).
+test raises it. The count today is fast **407** and slow **626**, **both measured, not added up**
+(re-measured 2026-08-25 by Pester discovery: 1033 tests over 49 containers; 407 + 626 = 1033).
 🔴 **And it decayed a THIRD time, within hours, exactly as the paragraph below predicts.** The
 figures were 399/1025 for two commits because they were computed by ARITHMETIC before `ba4fa4f` added
 one test to `agy-autotrain-installer` - a FAST suite. The count guard caught the per-row drift (its row
@@ -495,7 +495,7 @@ agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
-agy-autotrain-installer.Tests.ps1                 1,3s    8 tests   <- FAST, new 2026-08-24. WARM on an idle
+agy-autotrain-installer.Tests.ps1                 1,3s   15 tests   <- FAST, new 2026-08-24. WARM on an idle
   CPU (cold 9,8s - almost all of that is Pester module load, which this suite does not pay again once
   warm). Pure file parsing, no bash and no process launches, which is why it is the cheapest row here.
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an

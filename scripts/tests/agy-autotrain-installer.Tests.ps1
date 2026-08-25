@@ -57,27 +57,52 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # over an .iss is vacuous (the `{{` escape and brace-delimited comments defeat it; one such
         # parser reported this file, then 292 lines, as 4 executable lines). Inno comments do not nest,
         # so a single-level state machine is exactly right.
+        # Three comment forms, because Inno accepts three. `(* *)` was missing and was a TOTAL
+        # evasion: MEASURED, wrapping the claim-failure branch in `(* ... *)` passed 8/8 while the
+        # branch reported nothing - and ISCC ACCEPTS IT, verified by compiling the variant (exit 0,
+        # against a deliberately-broken control that exits 2). So it would have shipped.
+        #
+        # -BlankStrings is the second projection, and it exists because stripping comments alone was
+        # only half the job. Every behavioural grep here looks for a literal in the body; a literal
+        # inside a STRING satisfied that grep exactly as a literal in a comment used to. MEASURED:
+        # flipping SaveStringsToFile's flag to False while leaving the True form inside an operator
+        # message string passed 8/8 - the defect a previous round had just closed, resurrected through
+        # a different channel. The two projections are in tension by design: the `{app}` control needs
+        # string BODIES kept, the behavioural greps need them gone, so the file computes both.
         function Remove-InnoComments {
-            param([string[]]$Lines)
+            param([string[]]$Lines, [switch]$BlankStrings)
             $result = @()
-            $inComment = $false
+            $inBrace = $false
+            $inParen = $false
             foreach ($line in $Lines) {
                 $kept = ''
+                # Per line: a Pascal string cannot span lines, a comment can. That asymmetry is why
+                # $inString is re-initialised here and $inBrace/$inParen are not.
                 $inString = $false
                 $i = 0
                 while ($i -lt $line.Length) {
                     $ch = $line[$i]
-                    if ($inComment) {
-                        if ($ch -eq '}') { $inComment = $false }
+                    if ($inBrace) {
+                        if ($ch -eq '}') { $inBrace = $false }
+                        $i++; continue
+                    }
+                    if ($inParen) {
+                        if ($ch -eq '*' -and ($i + 1) -lt $line.Length -and $line[$i + 1] -eq ')') { $inParen = $false; $i += 2; continue }
                         $i++; continue
                     }
                     if ($inString) {
-                        $kept += $ch
-                        if ($ch -eq "'") { $inString = $false }
+                        # A doubled '' is Pascal's escaped apostrophe. Handled by PARITY rather than by
+                        # a special case: the machine leaves the string at the first quote and re-enters
+                        # at the second with no character between, so its state after the pair matches
+                        # Pascal's. There are two such sites in this file (`Result := ''` and
+                        # `agy-autotrain''s`), so this is exercised, not hypothetical.
+                        if ($ch -eq "'") { $inString = $false; $kept += $ch }
+                        elseif (-not $BlankStrings) { $kept += $ch }
                         $i++; continue
                     }
                     if ($ch -eq "'") { $inString = $true; $kept += $ch; $i++; continue }
-                    if ($ch -eq '{') { $inComment = $true; $i++; continue }
+                    if ($ch -eq '{') { $inBrace = $true; $i++; continue }
+                    if ($ch -eq '(' -and ($i + 1) -lt $line.Length -and $line[$i + 1] -eq '*') { $inParen = $true; $i += 2; continue }
                     if ($ch -eq '/' -and ($i + 1) -lt $line.Length -and $line[$i + 1] -eq '/') { break }
                     $kept += $ch
                     $i++
@@ -86,7 +111,8 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
             }
             return $result
         }
-        $script:CodeOnly = @(Remove-InnoComments -Lines $script:Body)
+        $script:CodeOnly      = @(Remove-InnoComments -Lines $script:Body)
+        $script:CodeNoStrings = @(Remove-InnoComments -Lines $script:Body -BlankStrings)
 
         # Index of the FIRST body CODE line matching a literal substring; -1 when absent.
         function Find-BodyLine { param([string]$Needle)
@@ -103,6 +129,72 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         $script:Start | Should -BeGreaterThan -1 -Because 'MigrateInboxToUserState must exist; if it was renamed, these guards are inspecting nothing'
         $script:Body.Count | Should -BeGreaterThan 40 -Because 'the extracted body must be substantial, or the delimiter logic has silently truncated it'
         ($script:CodeOnly -join "`n") | Should -Match 'RenameFile' -Because 'the body must contain the rename this file exists to constrain'
+    }
+
+    Context 'Remove-InnoComments - the stripper driven by FIXTURES, not by this one .iss' {
+        # WHY THIS CONTEXT EXISTS, and it is the whole lesson of round 4.
+        # The original control asserted things about the stripper's OUTPUT ON THE REAL .iss: that
+        # {app} survived and that one comment's prose did not. MEASURED: reverting the stripper to the
+        # earlier whole-line-only rule left that control GREEN and the whole suite 8/8 - while a
+        # trailing comment re-armed the silent-failure defect. The control could not tell the fixed
+        # stripper from the broken one, because the real .iss happens to contain no trailing comment.
+        #
+        # A guard whose fixture cannot produce the failure is not a guard. These drive the function
+        # DIRECTLY with inputs chosen to make each arm observable, so every arm has an oracle even
+        # though the real file exercises only two of them.
+
+        It 'removes a TRAILING { } comment, not only a whole-line one' {
+            $out = (Remove-InnoComments -Lines @("    exit;   { MigrationProblem('gone'); }")) -join "`n"
+            $out | Should -Match 'exit;'            -Because 'the code before the comment must survive'
+            $out | Should -Not -Match 'MigrationProblem' -Because 'a TRAILING comment is still a comment - this exact shape passed 8/8 before it was handled'
+        }
+
+        It 'removes a // comment to end of line' {
+            # The real .iss contains no `//` at all (measured: zero occurrences), so this arm has no
+            # natural fixture and was previously deletable with the suite still green.
+            $out = (Remove-InnoComments -Lines @("    exit;   // MigrationProblem('gone');")) -join "`n"
+            $out | Should -Match 'exit;'
+            $out | Should -Not -Match 'MigrationProblem'
+        }
+
+        It 'removes a (* *) comment, including one spanning lines' {
+            # ISCC ACCEPTS this form - verified by compiling a variant (exit 0), against a broken
+            # control that exits 2. Unhandled, it was a total evasion: 8/8 green with the branch empty.
+            $out = (Remove-InnoComments -Lines @('  begin', '  (*', "  MigrationProblem('gone');", '  exit;', '  *)', '  end;')) -join "`n"
+            $out | Should -Match 'begin'
+            $out | Should -Match 'end;'
+            $out | Should -Not -Match 'MigrationProblem' -Because 'a (* *) block is a comment in Pascal and ISCC compiles it'
+            $out | Should -Not -Match 'exit;'
+        }
+
+        It 'keeps a brace that lives INSIDE a string literal' {
+            $out = (Remove-InnoComments -Lines @("  OldPath := ExpandConstant('{app}\plugins');")) -join "`n"
+            $out | Should -Match '\{app\}' -Because 'a brace inside a single-quoted string is not a comment - stripping it would delete real code'
+        }
+
+        It 'treats a doubled quote as an escaped apostrophe, by parity' {
+            # Two such sites exist in the real file (`Result := ''` and `agy-autotrain''s`).
+            $out = (Remove-InnoComments -Lines @("  Msg := 'agy-autotrain''s data'; Keep := 1;")) -join "`n"
+            $out | Should -Match 'Keep := 1;' -Because 'the machine must still be OUT of the string after the pair, or the rest of the line is swallowed'
+        }
+
+        It 'resumes code on the same line a multi-line comment closes' {
+            $out = (Remove-InnoComments -Lines @('  { opened here', '    still comment }  if Wrote then')) -join "`n"
+            $out | Should -Match 'if Wrote then'
+            $out | Should -Not -Match 'still comment'
+        }
+
+        It 'with -BlankStrings, drops string BODIES and keeps the code around them' {
+            # The second projection. Without it, a call named inside an operator message satisfies the
+            # behavioural greps: MEASURED, flipping the append flag to False while leaving the True
+            # form inside a recovery string passed 8/8.
+            $line = @("  MigrationProblem('use SaveStringsToFile(NewPath, OldLines, True) by hand');")
+            $kept = (Remove-InnoComments -Lines $line) -join "`n"
+            $blank = (Remove-InnoComments -Lines $line -BlankStrings) -join "`n"
+            $kept  | Should -Match 'SaveStringsToFile' -Because 'the default projection keeps string bodies, which the {app} control depends on'
+            $blank | Should -Not -Match 'SaveStringsToFile' -Because 'the behavioural projection must not let a literal inside a string satisfy a code assertion'
+            $blank | Should -Match 'MigrationProblem' -Because 'the CODE around the string must survive - blanking must not eat the call itself'
+        }
     }
 
     It 'strips comments WITHOUT eating braces that live inside string literals' {
@@ -166,8 +258,15 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
             $branch += $script:CodeOnly[$j]
         }
         $branch.Count | Should -BeGreaterThan 0 -Because 'the write-failure branch must have a body, or this scan is inspecting nothing'
-        ($branch -join "`n") | Should -Match 'RenameFile\(Aside, OldPath\)' -Because 'the rollback must live INSIDE the write-failure branch - placed after it, it fires on a SUCCESSFUL migration and re-arms the duplication defect'
-        ($branch -join "`n") | Should -Match 'MigrationProblem' -Because 'the write-failure branch is the one failure path with no exit, so nothing else in this file forces it to tell the operator anything'
+        # NoStrings: a call named inside an operator-recovery message would otherwise satisfy these.
+        # That is not a contrived channel - this branch's whole purpose is recovery prose.
+        $branchNS = @()
+        for ($j = $notWrote + 1; $j -lt $script:CodeNoStrings.Count; $j++) {
+            if ($script:CodeNoStrings[$j] -match '^\s*end;') { break }
+            $branchNS += $script:CodeNoStrings[$j]
+        }
+        ($branchNS -join "`n") | Should -Match 'RenameFile\(Aside, OldPath\)' -Because 'the rollback must live INSIDE the write-failure branch - placed after it, it fires on a SUCCESSFUL migration and re-arms the duplication defect'
+        ($branchNS -join "`n") | Should -Match 'MigrationProblem' -Because 'the write-failure branch is the one failure path with no exit, so nothing else in this file forces it to tell the operator anything'
     }
 
     It 'APPENDS to a non-empty destination rather than clobbering it' {
@@ -177,7 +276,7 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # comment. MEASURED: flipping the real call to False and leaving
         # `{ was: SaveStringsToFile(NewPath, OldLines, True) }` beside it passed 7/7 while the migration
         # clobbered a populated destination.
-        ($script:CodeOnly -join "`n") | Should -Match 'SaveStringsToFile\(NewPath, OldLines, True\)' -Because 'the append flag is what stops the migration clobbering a destination that already holds captures'
+        ($script:CodeNoStrings -join "`n") | Should -Match 'SaveStringsToFile\(NewPath, OldLines, True\)' -Because 'the append flag is what stops the migration clobbering a destination that already holds captures'
     }
 
     It 'TERMINATES every pre-write failure branch - each reports AND exits' {
