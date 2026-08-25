@@ -414,8 +414,13 @@ two runs is that work. The rule this cost: **a measurement run needs a settle ma
 the agent must be idle before the clock matters** - launching backgrounded is not the same as being
 idle, because preparing the next piece of work is still work. (owner, 2026-08-25)
 
-So the half sits near **420s against the 600s cap** - roughly 30% headroom, against 1,9% at the worst of
-the pre-move samples. That is the first figure in this saga that was measured rather than predicted.
+So the half sat near **420s against the 600s cap** on that pair - roughly 30% headroom, against 1,9% at
+the worst of the pre-move samples. That was the first figure in this saga measured rather than predicted.
+🔴 **THAT HEADROOM IS GONE - read this paragraph as HISTORY, not as the current state.** The
+same half re-measured at **493-550s** seven tests later; see the 2026-08-25 (later) entry below. This
+sentence stood in the PRESENT TENSE for one commit after the number that falsified it landed 26 lines
+away, which is the whole shape of an incomplete fold: both halves locally correct, the contradiction
+visible only from outside the paragraph.
 
 🔴 **`check-seed-artifacts-synced` (71,9s) STAYED, and it is the largest suite in the half.** It was
 the obvious thing to move on runtime alone. It is a required gate for any byte-identical-pair change -

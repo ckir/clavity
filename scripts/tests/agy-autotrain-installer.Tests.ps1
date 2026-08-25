@@ -281,6 +281,16 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # MEASURED at ee07de0: that mutant compiled (ISCC 0) and passed all six guards.
         # NoStrings: a call named inside an operator-recovery message would otherwise satisfy these.
         # That is not a contrived channel - this branch's whole purpose is recovery prose.
+        # A SIBLING SCAN OVER $script:CodeOnly WAS REMOVED HERE in 654b298, and that commit's own message
+        # is misleading about it: it records "$branch was not dead" (a reviewer's refutation of an earlier
+        # claim) in the same commit that deletes $branch. Both are true and the pairing reads as a
+        # contradiction, so the record is corrected here rather than in the immutable message. It was
+        # removed as REDUNDANT, not as dead: Remove-InnoComments appends exactly once per input line
+        # (one `$result += $kept` per foreach iteration), and -BlankStrings only blanks characters INSIDE
+        # string literals - it never touches the begin/end; tokens this scan bounds on. So CodeOnly and
+        # CodeNoStrings always have identical line counts and identical branch boundaries, which made
+        # $branch.Count and $branchNS.Count provably equal. Deleting a duplicate assertion costs no
+        # coverage; deleting it silently cost a round of review, which is why this note exists.
         $branchNS = @(Get-BranchBody -Lines $script:CodeNoStrings -HeadIndex $notWrote)
         $branchNS.Count | Should -BeGreaterThan 0 -Because 'the write-failure branch must have a body, or this scan is inspecting nothing'
         ($branchNS -join "`n") | Should -Match 'RenameFile\(Aside, OldPath\)' -Because 'the rollback must live INSIDE the write-failure branch - placed after it, it fires on a SUCCESSFUL migration and re-arms the duplication defect'

@@ -177,6 +177,28 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 
 ---
 
+### 8. The AGGREGATE figures in `_partition.md` are unguarded, and have decayed three times
+
+- **Where:** `scripts/tests/_partition.md`, the `just test-scripts-fast` / `just test-scripts-slow`
+  bullets near the top that state "N suites, M tests, <runtime>".
+- **The gap:** `scripts/tests/test-suite-registration.Tests.ps1` guards the per-suite rows of the fenced
+  table and nothing else. MEASURED 2026-08-25 in a sandbox with BOTH controls: unmutated the suite is
+  8 passed / 0 failed; falsifying one TABLE ROW reds exactly `every _partition.md row states the CURRENT
+  test count for its suite`; but `407 tests -> 999 tests`, `25 suites -> 3 suites` and
+  `492,9s warm -> 5,0s warm` each pass 8/0 with nothing red.
+- 🔴 **This is a GAP, not a defect in the guard.** `test-suite-registration.Tests.ps1:246-249`
+  scopes to the fenced table DELIBERATELY and records why: an unscoped first-match-wins parse let a prose
+  line 77 lines above the fence supply the count, and the real row was then never compared at all.
+  Widening the row regex back into prose would re-open that measured defect.
+- **The regression that would slip through:** the aggregate drifts from the recipe it describes and no
+  test notices. This is not hypothetical - this file's own history records the aggregates decaying three
+  separate times, and the aggregate is the line a reader actually reads.
+- **The test that should exist:** a SEPARATE assertion (not a wider row regex) that parses the two
+  aggregate bullets and compares the suite count against the justfile recipe parse and the test count
+  against the discovery total the census row already computes.
+- **Deferred by the owner:** 2026-08-25, AGY-CAPSTONE round 7 on `f29cd42..a1ad1d1`. Verified by
+  sandboxed mutation with a passing and a failing control.
+
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 
 ### A. The two walk-level guards (`2fa88e0`, `76e1ba8`)
