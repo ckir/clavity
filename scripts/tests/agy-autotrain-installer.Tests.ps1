@@ -261,7 +261,12 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # no-op that the next run retries from scratch.
         $claim = Find-BodyLine 'RenameFile(OldPath, Aside)'
         $copy  = Find-BodyLine 'FileCopy(Aside, NewPath'
-        $save  = Find-BodyLine 'SaveStringsToFile(NewPath, OldLines'
+        # SaveStringToFile (singular), not SaveStringsToFile: the append branch moves RAW BYTES now.
+        # The plural, line-based pair decoded and RE-ENCODED - measured, a UTF-8 em-dash came back as
+        # the Windows-1252 byte 97 and LF became CRLF, destroying non-ASCII observations while the
+        # bullet count still matched. What this index protects is UNCHANGED: the claim must precede
+        # the write.
+        $save  = Find-BodyLine 'SaveStringToFile(NewPath, OldBytes'
 
         # Each index asserted present FIRST. Comparing two -1s would satisfy any ordering assertion.
         $claim | Should -BeGreaterThan -1 -Because 'the claiming rename must be present'
@@ -319,9 +324,15 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # inbox at the destination - silently, and only for the user who already had one.
         # CodeOnly: this is a BEHAVIOURAL assertion, and against raw Body it was satisfiable by a
         # comment. MEASURED: flipping the real call to False and leaving
-        # `{ was: SaveStringsToFile(NewPath, OldLines, True) }` beside it passed 7/7 while the migration
+        # `{ was: SaveStringToFile(NewPath, OldBytes, True) }` beside it passed 7/7 while the migration
         # clobbered a populated destination.
-        ($script:CodeNoStrings -join "`n") | Should -Match 'SaveStringsToFile\(NewPath, OldLines, True\)' -Because 'the append flag is what stops the migration clobbering a destination that already holds captures'
+        #
+        # The CALL changed on 2026-08-26 and the PROPERTY did not. It was
+        # SaveStringsToFile(NewPath, OldLines, True) - the line-based pair, which decodes and re-encodes:
+        # MEASURED with a no-install probe installer, an em-dash went in as UTF-8 e2 80 94 and came out
+        # as the Windows-1252 byte 97, and LF came out CRLF. The third argument is still the thing under
+        # assertion: True means APPEND, and False would clobber a destination holding real captures.
+        ($script:CodeNoStrings -join "`n") | Should -Match 'SaveStringToFile\(NewPath, OldBytes, True\)' -Because 'the append flag is what stops the migration clobbering a destination that already holds captures'
     }
 
     It 'TERMINATES every pre-write failure branch - each reports AND exits' {
@@ -344,7 +355,7 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # would leave exactly the hole being closed.
         $guards = @(
             'if not ForceDirectories(NewDir) then'
-            'if not LoadStringsFromFile(OldPath, OldLines) then'
+            'if not LoadStringFromFile(OldPath, OldBytes) then'
             'if FileExists(Aside) then'
             'if not RenameFile(OldPath, Aside) then'
         )

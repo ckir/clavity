@@ -143,7 +143,7 @@ end;
 procedure MigrateInboxToUserState();
 var
   OldPath, NewDir, NewPath, Aside: String;
-  OldLines: TArrayOfString;
+  OldBytes, DestBytes: AnsiString;
   DestSize: Integer;
   Wrote: Boolean;
 begin
@@ -159,7 +159,16 @@ begin
   end;
   NewPath := NewDir + '\agy-observations.md';
 
-  if not LoadStringsFromFile(OldPath, OldLines) then
+  { RAW BYTES, not lines. LoadStringsFromFile/SaveStringsToFile decode and RE-ENCODE: MEASURED with a
+    no-install probe installer, an em-dash went in as UTF-8 e2 80 94 and came out as the Windows-1252
+    byte 97, and LF line endings came out CRLF. PowerShell then reads that file as UTF-8 and renders
+    every such character as U+FFFD - the observation text is destroyed, while the bullet count and the
+    `^- \[` anchor still match, so nothing detects it. The live inbox carries 138 non-ASCII lines.
+    LoadStringFromFile/SaveStringToFile move bytes without interpreting them, which is all a MOVE needs.
+    SaveStringsToUTF8File was measured too and is NOT the fix: it preserves the character but writes a
+    UTF-8 BOM, and the BOM breaks agy-inbox-snapshot.sh's `grep '^# agy observations inbox'`, so the
+    snapshot silently stops and the drain runs unprotected. UTF-8 WITHOUT a BOM is the requirement. }
+  if not LoadStringFromFile(OldPath, OldBytes) then
   begin
     MigrationProblem('The old inbox at ' + OldPath + ' could not be read.');
     exit;
@@ -200,9 +209,19 @@ begin
   if (not FileExists(NewPath)) or (DestSize = 0) then
     Wrote := FileCopy(Aside, NewPath, False)
   else
+  begin
     { Destination already has content - a newer inbox, or a second run. Append rather than clobber.
-      OldLines was loaded before the rename, so this needs no re-read of the claimed file. }
-    Wrote := SaveStringsToFile(NewPath, OldLines, True);
+      OldBytes was loaded before the rename, so this needs no re-read of the claimed file.
+      The FileCopy branch above was MEASURED byte-identical and needs no change; this append was the
+      only branch that re-encoded.
+      Guard the join: Set-PendingBody always ends the file with LF (drain-lib.ps1:105), but a
+      hand-edited inbox need not, and appending to a file with no trailing newline would splice the
+      first migrated line onto the last existing one. }
+    if LoadStringFromFile(NewPath, DestBytes) then
+      if (Length(DestBytes) > 0) and (DestBytes[Length(DestBytes)] <> #10) then
+        OldBytes := #10 + OldBytes;
+    Wrote := SaveStringToFile(NewPath, OldBytes, True);
+  end;
 
   if not Wrote then
   begin
