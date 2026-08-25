@@ -164,7 +164,16 @@ function Get-DrainOutputPaths {
         'docs/agy-drain-log.md'
         'docs/agy-verify-needed.md'
         'docs/agy-drain-proposal.md'         # rationale sidecar (Promoted/Dropped/Parked/Proposed-*)
-        'docs/fix-the-tool-backlog'
+        # agy-autotrain/-rooted, NOT umbrella-rooted like the entries above it. The backlog lives at
+        # agy-autotrain/docs/fix-the-tool-backlog/ (17 tracked files); the umbrella-rooted spelling
+        # matched ZERO. MEASURED, and it broke the abort machinery two ways: a real backlog file
+        # prefix-matched no owned entry, so abort-drain saw it as an UNOWNED STRAY and refused rather
+        # than aborting; and `git clean -nd -- docs/fix-the-tool-backlog` scoped to nothing, so a new
+        # backlog file was never cleaned and blocked the next drain's pristine-tree check.
+        # This is the SAME two-roots hazard the curate skill documents - one file, two roots - and it
+        # survived here because the skill's copy was corrected on 2026-08-25 without grepping the repo
+        # for the same fact in CODE. `check-user-facing-docs.ps1:31` had the correct path all along.
+        'agy-autotrain/docs/fix-the-tool-backlog'
     )
 }
 

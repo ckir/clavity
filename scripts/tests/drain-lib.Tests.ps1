@@ -248,14 +248,45 @@ Describe "drain-lib primitives" {
         # Should -Contain and three Should -Not -Contain with no count at all, so APPENDING a path was
         # completely invisible: MEASURED at f29cd42, adding 'docs/agy-scratch.md' passed all eight
         # assertions. A new path silently entering a recursive-delete set is the failure this pins.
+        #
+        # 🔴 AND AN IDENTITY PIN FREEZES WHATEVER IS THERE, INCLUDING A DEFECT. This list held
+        # 'docs/fix-the-tool-backlog' - umbrella-rooted, matching ZERO tracked files, while the backlog
+        # lives under agy-autotrain/ - and this test asserted that wrong value happily for as long as it
+        # stood. A pin makes a CHANGE visible; it does not make the CONTENTS correct. The census test
+        # above is its complement and asserts every directory entry actually RESOLVES. Corrected
+        # 2026-08-25; that correction reddened this test, which is exactly its job.
         $expected = @(
             'docs/agy-golden-header.growth.md'
             'docs/agy-drain-log.md'
             'docs/agy-verify-needed.md'
             'docs/agy-drain-proposal.md'
-            'docs/fix-the-tool-backlog'
+            'agy-autotrain/docs/fix-the-tool-backlog'
         )
         (@(Get-DrainOutputPaths) -join "`n") | Should -BeExactly ($expected -join "`n") -Because 'the destructive-clean set must be pinned by identity and order, not by membership - an appended path is otherwise invisible'
+    }
+
+    It "every DIRECTORY entry in Get-DrainOutputPaths names a real directory in this repo" {
+        # The protected-paths test beside this one asserts its six files are all REAL. The OUTPUT list had
+        # no such assertion, and one of its entries pointed at nothing: `docs/fix-the-tool-backlog` is
+        # umbrella-rooted, while the backlog actually lives at `agy-autotrain/docs/fix-the-tool-backlog/`
+        # (17 tracked files). The umbrella spelling matched ZERO.
+        #
+        # That list is the single source of truth for the abort machinery, so a path that resolves to
+        # nothing broke it two ways, both MEASURED: a real backlog file prefix-matched no owned entry, so
+        # abort-drain treated it as an UNOWNED STRAY and refused to abort; and the scoped
+        # `git clean -nd -- <entry>` cleaned nothing, leaving a file that blocks the next drain's
+        # pristine-tree check. `check-user-facing-docs.ps1:31` had the correct root the whole time - the
+        # repo disagreed with itself, which is exactly what a census test exists to catch.
+        #
+        # Only entries with NO file extension are checked: the others are transient drain outputs that
+        # legitimately do not exist between runs (the proposal and growth files are written during a drain).
+        $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $dirEntries = @(Get-DrainOutputPaths | Where-Object { -not [IO.Path]::GetExtension($_) })
+
+        $dirEntries.Count | Should -BeGreaterThan 0 -Because 'if no entry is directory-shaped this test is asserting nothing at all'
+
+        $missing = @($dirEntries | Where-Object { -not (Test-Path -LiteralPath (Join-Path $repoRoot $_) -PathType Container) })
+        ($missing -join ', ') | Should -BeExactly '' -Because 'a directory entry that resolves to nothing silently disables both halves of the abort machinery for everything under it - name the path that is wrong, not a count'
     }
 
     It "Get-DrainProtectedPaths is EXACTLY the 6 driver-owned files, all real, and DISJOINT from the output set" {

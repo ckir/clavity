@@ -49,7 +49,7 @@ function Get-ModifiedTrackedPaths([string]$RepoRoot) {
 
 function Test-PathOwnedByDrain([string]$NormalizedPath, [string[]]$OwnedPaths) {
     # $OwnedPaths (Get-DrainOutputPaths — the single source of truth) may name either a file or a directory
-    # (e.g. 'docs/fix-the-tool-backlog'); a modified path counts as owned if it IS that entry or lives under it.
+    # (e.g. 'agy-autotrain/docs/fix-the-tool-backlog'); a modified path counts as owned if it IS that entry or lives under it.
     foreach ($owned in $OwnedPaths) {
         $ownedNorm = ConvertTo-DrainNormalizedPath $owned
         if ($NormalizedPath -ieq $ownedNorm) { return $true }
@@ -69,8 +69,8 @@ function Get-CleanCandidatePaths([string]$RepoRoot) {
     # Ask git itself which untracked files the pending `git clean -fd -- (Get-DrainOutputPaths)` (below) would
     # actually remove, via git's OWN dry-run (-n) — never re-implement clean's untracked-file matching by hand, so
     # the guard's view of "would be deleted" can never drift from the real deletion. Each real removal line reads
-    # `Would remove <path>`. A WHOLLY-untracked directory (e.g. a brand-new docs/fix-the-tool-backlog/ with nothing
-    # committed under it yet) is reported as ONE collapsed line ("Would remove docs/fix-the-tool-backlog/") even
+    # `Would remove <path>`. A WHOLLY-untracked directory (e.g. a brand-new agy-autotrain/docs/fix-the-tool-backlog/ with nothing
+    # committed under it yet) is reported as ONE collapsed line ("Would remove agy-autotrain/docs/fix-the-tool-backlog/") even
     # though `clean -fd` would delete every file inside it — so any directory-shaped line (trailing '/') is expanded,
     # again via git (`ls-files --others`, not hand-rolled matching), into its individual untracked files. The result
     # is a flat, per-file candidate list the legitimacy check and the refusal message can both name precisely.
@@ -94,11 +94,11 @@ function Get-CleanCandidatePaths([string]$RepoRoot) {
 
 function Test-PathIsKnownDrainOutputFile([string]$NormalizedPath, [string[]]$OwnedPaths, [string[]]$ManifestPaths) {
     # Deliberately NARROWER than Test-PathOwnedByDrain (used for TRACKED files, where a directory-PREFIX match is
-    # correct — a tracked file nested under docs/fix-the-tool-backlog can only exist because an EARLIER drain's
+    # correct — a tracked file nested under agy-autotrain/docs/fix-the-tool-backlog can only exist because an EARLIER drain's
     # backlog file was already reviewed, committed, and accepted). For an UNTRACKED candidate, only an EXACT match
     # against one of Get-DrainOutputPaths' individually-named FILE entries is trusted: those are fixed, unique
     # artifact names that only a drain run writes. A path merely nested under the one DIRECTORY entry
-    # (docs/fix-the-tool-backlog) does NOT count — the curator names backlog files dynamically (<slug>.md), so a
+    # (agy-autotrain/docs/fix-the-tool-backlog) does NOT count — the curator names backlog files dynamically (<slug>.md), so a
     # maintainer's own untracked note dropped in that same directory during the review pause is indistinguishable,
     # by path alone, from a curator-produced one. Silently trusting "nested under the directory" for untracked
     # files is exactly the data-loss bug this guard closes: `git clean -fd` scoped to Get-DrainOutputPaths still
@@ -153,7 +153,7 @@ function Invoke-Main {
     # normal for unrelated uncommitted work (a quick fix, a note, a test tweak) to land during that pause. TWO
     # separate operations below are destructive, and BOTH are gated here: `git reset --hard HEAD` is UNSCOPED — it
     # reverts every TRACKED file in the whole repo, not just the drain's outputs. `git clean -fd` IS scoped to
-    # Get-DrainOutputPaths, but still deletes real work, because one of those paths (docs/fix-the-tool-backlog) is a
+    # Get-DrainOutputPaths, but still deletes real work, because one of those paths (agy-autotrain/docs/fix-the-tool-backlog) is a
     # DIRECTORY: an unrelated UNTRACKED file a maintainer drops inside it during the pause is invisible to a
     # `--untracked-files=no` status query (only tracked files are checked that way) and would otherwise be silently
     # destroyed by that scoped clean. Refuse instead of guessing intent: proceed ONLY if (a) every modified/staged
@@ -181,7 +181,7 @@ function Invoke-Main {
                 # Legacy run only. With a manifest present, anything reaching here is provably NOT this run's
                 # output (the manifest lists every untracked file the curator created), so the plain message
                 # above is exact and this caveat would be actively misleading.
-                Write-Host "abort-drain: NOTE — this drain predates output-manifest recording, so there is no record of which backlog files its curator wrote. A file under docs/fix-the-tool-backlog/ may therefore be THIS drain's own output: if so, delete it yourself and re-run; if it is yours, move it aside first." -ForegroundColor Yellow
+                Write-Host "abort-drain: NOTE — this drain predates output-manifest recording, so there is no record of which backlog files its curator wrote. A file under agy-autotrain/docs/fix-the-tool-backlog/ may therefore be THIS drain's own output: if so, delete it yourself and re-run; if it is yours, move it aside first." -ForegroundColor Yellow
             }
         }
         Write-Host "abort-drain: move, commit, or delete the file(s) above as appropriate, then re-run 'just abort-drain'. Staging ($staging) was NOT touched." -ForegroundColor Red

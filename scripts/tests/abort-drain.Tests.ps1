@@ -77,11 +77,18 @@ Describe "abort-drain transaction (scratch repo)" {
     }
 
     It "REFUSES when an unrelated UNTRACKED file exists under a drain output directory (git-clean data-loss guard) and touches nothing" {
-        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
-        Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md') 'unrelated untracked note'
+        # agy-autotrain/-rooted, not umbrella-rooted. These fixtures pinned the UMBRELLA path, which is
+        # where the backlog does NOT live - it has 17 tracked files under agy-autotrain/. The fixtures
+        # agreed with a defect in Get-DrainOutputPaths rather than with the repo, so all four of these
+        # tests passed while the abort machinery was scoped to a path matching zero files. When the
+        # source of truth was corrected on 2026-08-25 these four went RED, which is how a fixture that
+        # encodes the bug announces itself. 🔴 Fixtures are an ORACLE: when one disagrees with
+        # the repo, check which is wrong before making them agree.
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog') | Out-Null
+        Set-Content (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/maintainer-note.md') 'unrelated untracked note'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 1
-        (Test-Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md')) | Should -Be $true
+        (Test-Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/maintainer-note.md')) | Should -Be $true
         (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'DRAINED GROWTH (unwanted)'
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
@@ -108,40 +115,40 @@ Describe "abort-drain transaction (scratch repo)" {
     }
 
     It "PROCEEDS when the output manifest lists a backlog file that is present untracked (the ordinary abort path this feature unblocks)" {
-        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
-        Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/some-slug.md') 'curator-produced backlog entry'
-        Set-Content (Join-Path $script:InboxDir 'agy-observations.staging.RID1.outputs.txt') 'docs/fix-the-tool-backlog/some-slug.md'
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog') | Out-Null
+        Set-Content (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/some-slug.md') 'curator-produced backlog entry'
+        Set-Content (Join-Path $script:InboxDir 'agy-observations.staging.RID1.outputs.txt') 'agy-autotrain/docs/fix-the-tool-backlog/some-slug.md'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 0
-        (Test-Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog/some-slug.md')) | Should -Be $false
+        (Test-Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/some-slug.md')) | Should -Be $false
         (Get-Content (Join-Path $script:Repo 'docs/agy-golden-header.growth.md') -Raw).Trim() | Should -Be 'ORIGINAL GROWTH'
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 0
     }
 
     It "REFUSES when a manifest exists but does NOT list an untracked file present under the backlog directory" {
-        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
-        Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md') 'unrelated untracked note'
-        Set-Content (Join-Path $script:InboxDir 'agy-observations.staging.RID1.outputs.txt') 'docs/fix-the-tool-backlog/some-other-slug.md'
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog') | Out-Null
+        Set-Content (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/maintainer-note.md') 'unrelated untracked note'
+        Set-Content (Join-Path $script:InboxDir 'agy-observations.staging.RID1.outputs.txt') 'agy-autotrain/docs/fix-the-tool-backlog/some-other-slug.md'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 1
-        (Test-Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog/maintainer-note.md')) | Should -Be $true
+        (Test-Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/maintainer-note.md')) | Should -Be $true
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
 
     It "REFUSES with NO manifest present (legacy run) — the conservative fallback is unchanged" {
-        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
-        Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/some-slug.md') 'untracked file, no manifest to vouch for it'
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog') | Out-Null
+        Set-Content (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/some-slug.md') 'untracked file, no manifest to vouch for it'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 1
-        (Test-Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog/some-slug.md')) | Should -Be $true
+        (Test-Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/some-slug.md')) | Should -Be $true
         (Get-ChildItem $script:InboxDir -Filter 'agy-observations.staging.*.md').Count | Should -Be 1
     }
 
     It "deletes the manifest after a successful abort" {
-        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs/fix-the-tool-backlog') | Out-Null
-        Set-Content (Join-Path $script:Repo 'docs/fix-the-tool-backlog/some-slug.md') 'curator-produced backlog entry'
+        New-Item -ItemType Directory -Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog') | Out-Null
+        Set-Content (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog/some-slug.md') 'curator-produced backlog entry'
         $manifestPath = Join-Path $script:InboxDir 'agy-observations.staging.RID1.outputs.txt'
-        Set-Content $manifestPath 'docs/fix-the-tool-backlog/some-slug.md'
+        Set-Content $manifestPath 'agy-autotrain/docs/fix-the-tool-backlog/some-slug.md'
         & pwsh -File $script:Abort -InboxPath $script:Inbox -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 0
         (Test-Path $manifestPath) | Should -Be $false

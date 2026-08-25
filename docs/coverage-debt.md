@@ -376,7 +376,11 @@ against a live agy, which is out of scope for a doc-and-test batch.
 D2 replaces `open | fixed | wont-fix` with `open | fixed-in-repo | released | wont-fix`, and requires
 `released-in:` alongside `released`. **Nothing enforces either.** Measured 2026-08-11: several scripts read
 `agy-autotrain/docs/fix-the-tool-backlog/` (`drain-lib.ps1`, `abort-drain.ps1`, `check-user-facing-docs.ps1`,
-the injected-context gate) but **no test asserts a `status:` value is in the enum**, and none checks that a
+the injected-context gate)
+🔴 **- and that sentence was FALSE when written, corrected 2026-08-25.** Only
+`check-user-facing-docs.ps1` used the agy-autotrain-rooted path; `Get-DrainOutputPaths` in `drain-lib.ps1`
+named the UMBRELLA-rooted `docs/fix-the-tool-backlog`, which matches zero tracked files, and `abort-drain.ps1`
+inherited it through that single source of truth. Both are fixed; the sentence is true now but **no test asserts a `status:` value is in the enum**, and none checks that a
 `released` item carries `released-in:`. A future item typed `fixed-in-repos`, or marked `released` with no
 version, passes every gate.
 
