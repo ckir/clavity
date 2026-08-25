@@ -26,8 +26,13 @@ A deterministic gate REJECTS the drain if any protected file above is modified.
 For each observation in the staging snapshot, apply agy-curate rules:
 1. TRIAGE + DEDUPE against the SEED dedupe floor and general noise. Apply the anti-poisoning circuit-breaker:
    REJECT (drop) unverified / over-general / one-off candidates.
-2. ROUTE a driver/deterministic TOOL-FIXABLE entry to docs/fix-the-tool-backlog/<slug>.md (create the dir/file
-   from docs/fix-the-tool-backlog/_template.md). Tool-fixable requires BOTH a concrete Steps-to-Reproduce and a
+2. ROUTE a driver/deterministic TOOL-FIXABLE entry to agy-autotrain/docs/fix-the-tool-backlog/<slug>.md
+   (create the file from agy-autotrain/docs/fix-the-tool-backlog/_template.md). The agy-autotrain/ prefix is
+   REQUIRED and is not decoration: this prompt is read with the UMBRELLA repo root as cwd, the backlog's 17
+   tracked files live under agy-autotrain/, and Get-DrainOutputPaths owns only the agy-autotrain-rooted path.
+   A file written to the umbrella-rooted spelling lands in a directory that does not exist, is outside the
+   drain's own output set, and is therefore neither cleaned nor recognised by abort-drain - it strands as an
+   untracked stray that blocks the next drain. Tool-fixable requires BOTH a concrete Steps-to-Reproduce and a
    concrete Code-level Mitigation; if the only mitigation is a driving move, it is NOT tool-fixable — carry it as
    a driver rule instead (record it under `## Proposed cheatsheet changes` in the sidecar; see below).
 3. PARK every Empirical Assumption that needs a live-agy verify-probe: first READ docs/agy-verify-needed.md, then

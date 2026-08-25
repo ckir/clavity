@@ -212,8 +212,18 @@ begin
       MigrationProblem('Writing to ' + NewPath + ' failed, so the old inbox was put back unchanged. '
         + 'The next upgrade will retry.')
     else
+      { The sibling branch above tells the operator WHY renaming back is the right move - "the next
+        upgrade will retry". This one said only "rename it back", which is the same instruction with the
+        reason removed: an operator who renames it back and then simply USES the tool finds an empty
+        inbox, because nothing but this migration ever reads OldPath (drain-lib.ps1 Resolve-InboxPath
+        goes explicit -> CLAVITY_AGY_INBOX -> %USERPROFILE%\.clavity, and never the install tree). The
+        data is not lost - it is where no running code looks until a migration runs again - and saying so
+        is the difference between a recoverable state and one the operator abandons. }
       MigrationProblem('Writing to ' + NewPath + ' failed. Your observations are safe, but under a '
-        + 'renamed file:' + #13#10 + Aside + #13#10#13#10 + 'Rename it back or merge it by hand.');
+        + 'renamed file:' + #13#10 + Aside + #13#10#13#10
+        + 'Rename it back to' + #13#10 + OldPath + #13#10#13#10
+        + 'and the next upgrade will retry the move. Until it does, the tool reads only ' + NewPath
+        + ', so a renamed-back file is safe but not yet in use. Or merge it into ' + NewPath + ' by hand.');
   end;
 end;
 

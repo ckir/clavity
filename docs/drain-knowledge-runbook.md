@@ -151,7 +151,7 @@ is the single source of truth):
 - `docs/agy-verify-needed.md` — the accumulating parked-probe backlog
 - `docs/agy-drain-proposal.md` — the rationale sidecar (`Promoted` / `Proposed cheatsheet changes` /
   `Proposed demotions` / `Parked` / `Dropped`)
-- `docs/fix-the-tool-backlog/` — one file per tool-fixable finding, dynamically named by the curator
+- `agy-autotrain/docs/fix-the-tool-backlog/` — one file per tool-fixable finding, dynamically named by the curator
 
 It must **never** touch `seed/golden-header.md`, the four driver manuals, or
 `agy-autotrain/knowledge/driver-cheatsheet.core.md` — those are protected (see below).
@@ -161,7 +161,7 @@ Beside the staging file the drain writes an **output manifest**,
 untracked file the curator created this run under the output paths above. It is derived, not
 declared — the drain snapshots `git ls-files --others` over those paths before and after the curator
 runs and takes the difference, so it does not depend on the curator's prompt or on the curator
-reporting honestly. In practice this only ever names files under `docs/fix-the-tool-backlog/` (the
+reporting honestly. In practice this only ever names files under `agy-autotrain/docs/fix-the-tool-backlog/` (the
 other four output paths are typically already tracked after the first drain), whose slugs the curator
 picks per run.
 
@@ -171,7 +171,7 @@ else that creates a file under those paths in that window — an editor autosave
 concurrent script — is indistinguishable from curator output and lands in the manifest, after which
 `abort-drain` will delete it without complaint. The pristine-tree precondition only covers drain *start*.
 The window is narrow and needs concurrent activity on the same paths, but it is real: while a drain is
-running, do not create files under `docs/fix-the-tool-backlog/`.
+running, do not create files under `agy-autotrain/docs/fix-the-tool-backlog/`.
 
 `abort-drain` needs it because its `git clean -fd` step deletes untracked files under those paths: the
 manifest is how it tells the curator's own new backlog file (safe to remove) from a note you dropped in
@@ -206,8 +206,8 @@ called by the drain at all, since the drain never edits the SEED.
 | `0` | No pending staging file (nothing to abort) — or a successful reject: tracked files reverted to `HEAD`, untracked drain outputs cleaned, staged observations re-queued into `## Pending`, staging file removed. |
 | `1` | The run-ID is **already in the committed** `docs/agy-drain-log.md` — aborting would re-queue already-shipped observations, so it refuses; use `just accept-drain` instead. |
 | `1` | **REFUSES** — a modified/staged **tracked** file is not one of the drain's own outputs, so `git reset --hard HEAD` would silently destroy it. Nothing is touched; staging retained. Move, commit, or delete the file, then re-run. |
-| `1` | **REFUSES** — an **untracked** file under one of the drain's output paths (in practice, `docs/fix-the-tool-backlog/`) is neither one of the four individually-named output files nor recorded in this run's output manifest, so the scoped `git clean -fd` would delete it. Nothing is touched; staging retained. Move, commit, or delete the file, then re-run. A backlog file the curator wrote *this run* does NOT trigger this: `drain-knowledge` records it in the manifest, so it is recognised as the drain's own output and cleaned normally. |
-| `1` | **REFUSES (runs predating the manifest only)** — with no `…outputs.txt` manifest beside the staging snapshot, the drain has no record of which backlog files its curator wrote, so *any* untracked file under `docs/fix-the-tool-backlog/` is refused. Delete it yourself if it is the drain's output, or move your own file aside, then re-run. |
+| `1` | **REFUSES** — an **untracked** file under one of the drain's output paths (in practice, `agy-autotrain/docs/fix-the-tool-backlog/`) is neither one of the four individually-named output files nor recorded in this run's output manifest, so the scoped `git clean -fd` would delete it. Nothing is touched; staging retained. Move, commit, or delete the file, then re-run. A backlog file the curator wrote *this run* does NOT trigger this: `drain-knowledge` records it in the manifest, so it is recognised as the drain's own output and cleaned normally. |
+| `1` | **REFUSES (runs predating the manifest only)** — with no `…outputs.txt` manifest beside the staging snapshot, the drain has no record of which backlog files its curator wrote, so *any* untracked file under `agy-autotrain/docs/fix-the-tool-backlog/` is refused. Delete it yourself if it is the drain's output, or move your own file aside, then re-run. |
 | `1` | `git reset --hard HEAD` (the revert) failed — tree not reverted; staging retained so you can fix the repo and re-run. |
 | `1` | `git clean -fd` (removing the drain's untracked outputs) failed — staging retained; fix the repo and re-run. |
 
@@ -290,7 +290,7 @@ Before accepting a drain:
 
 - Run `git status` first, then read the full `git diff` — the drain's outputs are new *untracked*
   files (`docs/agy-golden-header.growth.md` on a first drain, the docs side-artifacts, and any new
-  `docs/fix-the-tool-backlog/<slug>.md`), which a bare `git diff` will not show at all.
+  `agy-autotrain/docs/fix-the-tool-backlog/<slug>.md`), which a bare `git diff` will not show at all.
 - Read `docs/agy-golden-header.growth.md` itself — it is the compiled proposal that
   `just accept-drain` will publish verbatim to the runtime header.
 - Read `docs/agy-drain-proposal.md` (the curator's sidecar for that run) under its `## Promoted`,
