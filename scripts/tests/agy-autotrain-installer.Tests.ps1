@@ -94,8 +94,12 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
                         # A doubled '' is Pascal's escaped apostrophe. Handled by PARITY rather than by
                         # a special case: the machine leaves the string at the first quote and re-enters
                         # at the second with no character between, so its state after the pair matches
-                        # Pascal's. There are two such sites in this file (`Result := ''` and
-                        # `agy-autotrain''s`), so this is exercised, not hypothetical.
+                        # Pascal's.
+                        # NOT exercised by the real input, and saying otherwise was false: the two
+                        # doubled-quote sites in this .iss are at :90 and :255, both OUTSIDE the
+                        # extracted procedure body, so the stripper never sees either. Its only oracle
+                        # is the dedicated fixture below - which is the correct design, and is what the
+                        # `//` arm's comment already says honestly about itself.
                         if ($ch -eq "'") { $inString = $false; $kept += $ch }
                         elseif (-not $BlankStrings) { $kept += $ch }
                         $i++; continue
@@ -110,6 +114,29 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
                 $result += $kept
             }
             return $result
+        }
+        # ONE extractor, used by EVERY scan that needs a guard's branch. The previous round fixed the
+        # unbounded "scan to the next `end;` ANYWHERE" rule in one scan and left its sibling 60 lines
+        # above untouched - in the same commit, in the same file, against a comment that argued at
+        # length for the bound. MEASURED afterwards: an UNCONDITIONAL rollback placed after the
+        # write-failure branch - legal Pascal, `if X then <single statement>;` with no begin/end - still
+        # passed 15/15, which is exactly the defect that comment says it exists to catch.
+        # Two call sites diverging is what caused it, so there is now only one implementation.
+        function Get-BranchBody {
+            param([string[]]$Lines, [int]$HeadIndex)
+            $out = @()
+            if ($HeadIndex + 1 -ge $Lines.Count) { return $out }
+            if ($Lines[$HeadIndex + 1] -match '^\s*begin\s*$') {
+                for ($j = $HeadIndex + 2; $j -lt $Lines.Count; $j++) {
+                    if ($Lines[$j] -match '^\s*end;') { break }
+                    $out += $Lines[$j]
+                }
+            } else {
+                # No block: the branch is the single statement on the next line, and NOTHING beyond it
+                # belongs to this guard.
+                $out += $Lines[$HeadIndex + 1]
+            }
+            return $out
         }
         $script:CodeOnly      = @(Remove-InnoComments -Lines $script:Body)
         $script:CodeNoStrings = @(Remove-InnoComments -Lines $script:Body -BlankStrings)
@@ -252,19 +279,10 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         # the next upgrade sees a source with no sidecar, claims it, finds a non-empty destination, and
         # appends the whole inbox again - the unbounded duplication this fold exists to kill, re-armed.
         # MEASURED at ee07de0: that mutant compiled (ISCC 0) and passed all six guards.
-        $branch = @()
-        for ($j = $notWrote + 1; $j -lt $script:CodeOnly.Count; $j++) {
-            if ($script:CodeOnly[$j] -match '^\s*end;') { break }
-            $branch += $script:CodeOnly[$j]
-        }
-        $branch.Count | Should -BeGreaterThan 0 -Because 'the write-failure branch must have a body, or this scan is inspecting nothing'
         # NoStrings: a call named inside an operator-recovery message would otherwise satisfy these.
         # That is not a contrived channel - this branch's whole purpose is recovery prose.
-        $branchNS = @()
-        for ($j = $notWrote + 1; $j -lt $script:CodeNoStrings.Count; $j++) {
-            if ($script:CodeNoStrings[$j] -match '^\s*end;') { break }
-            $branchNS += $script:CodeNoStrings[$j]
-        }
+        $branchNS = @(Get-BranchBody -Lines $script:CodeNoStrings -HeadIndex $notWrote)
+        $branchNS.Count | Should -BeGreaterThan 0 -Because 'the write-failure branch must have a body, or this scan is inspecting nothing'
         ($branchNS -join "`n") | Should -Match 'RenameFile\(Aside, OldPath\)' -Because 'the rollback must live INSIDE the write-failure branch - placed after it, it fires on a SUCCESSFUL migration and re-arms the duplication defect'
         ($branchNS -join "`n") | Should -Match 'MigrationProblem' -Because 'the write-failure branch is the one failure path with no exit, so nothing else in this file forces it to tell the operator anything'
     }
@@ -325,17 +343,7 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
             # rollback branch's MigrationProblem; only the missing exit saved it.
             # CodeNoStrings, not CodeOnly: a call named inside an operator message must not count as the
             # branch reporting. Both projections emit one entry per source line, so indices still align.
-            $branchBody = @()
-            if ($script:CodeNoStrings[$i + 1] -match '^\s*begin\s*$') {
-                for ($j = $i + 2; $j -lt $script:CodeNoStrings.Count; $j++) {
-                    if ($script:CodeNoStrings[$j] -match '^\s*end;') { break }
-                    $branchBody += $script:CodeNoStrings[$j]
-                }
-            } else {
-                # No block: the branch is the single statement on the next line, and NOTHING beyond it
-                # may be counted as this guard's evidence.
-                $branchBody += $script:CodeNoStrings[$i + 1]
-            }
+            $branchBody = @(Get-BranchBody -Lines $script:CodeNoStrings -HeadIndex $i)
             $reported = @($branchBody | Where-Object { $_ -match 'MigrationProblem' }).Count -gt 0
             $exited   = @($branchBody | Where-Object { $_ -match '^\s*exit\s*;' }).Count -gt 0
             if (-not ($reported -and $exited)) {

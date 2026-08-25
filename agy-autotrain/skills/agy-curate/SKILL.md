@@ -156,7 +156,8 @@ work against this sentence would have concluded the artifact was fine when it wa
 ENFORCED number is the one in the script named below, and that is the only one to size against.
 
 **The budget is whatever `scripts/check-cheatsheet-budget.ps1` declares as its `-MaxBytes` default (6144 bytes at the time of writing), and it is ENFORCED** by that script (run in CI and
-by `scripts/tests/check-cheatsheet-budget.Tests.ps1` under `just test-scripts-fast`). Above that the
+by `scripts/tests/check-cheatsheet-budget.Tests.ps1` under `just test-scripts-slow` - that suite moved
+out of the fast half on 2026-08-25). Above that the
 checker fails and you must either consolidate or raise the default deliberately, in a committed edit. The
 runtime hard cap is separate and much higher - `clavity-classic/src/driver_cheatsheet.rs:12` sets
 `MAX_BYTES = 16 * 1024`, and a runtime file over it degrades to the compiled-in baseline floor with a

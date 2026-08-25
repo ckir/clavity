@@ -349,7 +349,8 @@ Describe 'agy-inbox-snapshot' {
 
     It 'honours every SLASH-COMMAND contract on the jq-ABSENT fallback branch too' {
         # The three prompt-shape tests above all run with jq on PATH, so they exercise ONLY the jq arm.
-        # The field-bounded-grep fallback (agy-inbox-snapshot.sh:63-64) is, by this suite's own note
+        # The field-bounded-grep fallback (the `elif` on the jq-absent arm of agy-inbox-snapshot.sh)
+        # is, by this suite's own note
         # above, "the path that actually runs" on a stock end-user box - and it had no prompt coverage
         # at all. MEASURED at f29cd42: deleting that elif arm left all 24 tests green while
         # `/agy-autotrain:agy-curate` stopped snapshotting on any box without jq.
@@ -361,7 +362,10 @@ Describe 'agy-inbox-snapshot' {
         # ever resolves there (a different runner image, a repackaged Git-for-Windows), all three cells
         # below silently become duplicates of the three jq-arm tests above, and the elif at
         # agy-inbox-snapshot.sh:63-64 - which this suite calls "the path that actually runs" on a stock
-        # box - goes uncovered with nothing red. The probe runs through the SAME harness and env as the
+        # box - goes uncovered with nothing red. (Both citations here named :63-64 until 2026-08-25;
+        # a comment higher in that hook grew by six lines and moved the elif to :69-70, so they pointed
+        # at the CLOSING of the jq arm - the opposite branch. Named, not numbered, for that reason.)
+        # The probe runs through the SAME harness and env as the
         # cases it guards, so it cannot pass for a different reason than they do.
         $probe = Join-Path ([IO.Path]::GetTempPath()) ("jqprobe-" + [Guid]::NewGuid().ToString('N') + ".sh")
         Set-Content -LiteralPath $probe -Value "command -v jq 2>/dev/null || true" -Encoding ascii -NoNewline

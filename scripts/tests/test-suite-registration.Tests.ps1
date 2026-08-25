@@ -9,9 +9,10 @@
 # glob scripts/tests and so reports an unregistered suite green - but neither gate anyone actually runs
 # (`test-scripts-fast` in the inner loop, `test-scripts-slow` before a release) would execute it. A new
 # suite that nobody adds to a list therefore EXISTS, PASSES, AND NEVER RUNS, and the only thing that ever
-# caught this was a hand-run `diff` documented in _partition.md under the heading that describes it -
-# line 53 when this comment was written, 89 by the time anyone checked, which is why the anchor is now
-# the HEADING rather than a number: five commits in one range moved it. That oracle is
+# caught this was a hand-run `diff` documented in _partition.md - search that file for the literal
+# `diff <(ls scripts/tests` rather than trusting a line number, which has moved twice (53 when the
+# comment was written, 89 now). An earlier fix anchored this to "the heading that describes it"; that
+# was worse, because _partition.md has exactly ONE `##` heading and it is not this one. That oracle is
 # now enforced here.
 #
 # This suite cannot protect ITSELF - if it were the unregistered one it would not run to complain. That
@@ -285,7 +286,11 @@ foreach ($cont in $r.Containers) {
         # edit. A count sends a reader hunting; a name sends them to the file.") and did not apply to
         # its own newest guard. Naming subsumes the cardinality check: an on-disk suite with no counted
         # row is the only way the counts differ downward, and a phantom row reds the census row above.
-        # foreach, NOT Where-Object - a pipeline scriptblock does not see this It's local $stated.
+        # foreach here is a style choice, matching the two sibling scans below. An earlier comment
+        # claimed a Where-Object scriptblock cannot see this It's local $stated; that was FALSE and is
+        # retracted - measured, both forms resolve it, and :156 in this same file relies on exactly
+        # that with an It-local $inTable. The real cause of the all-49 misfire it was written to
+        # explain was a stray control character in the row regex, not scoping.
         $noCountRow = foreach ($f in $script:OnDisk) { if (-not $stated.ContainsKey($f)) { $f } }
         ($noCountRow -join '; ') | Should -BeNullOrEmpty -Because 'every suite must have a row stating a parseable count in the Measured runtimes table in scripts/tests/_partition.md'
 
