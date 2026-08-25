@@ -18,9 +18,12 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 407 tests** (counts measured 2026-08-25 by Pester
-  discovery, after two suites moved to slow). The runtime figure below PREDATES both that move and the
-  count guard added the same day - see the 2026-08-24 note under ## Measured runtimes. Previously
+- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 407 tests, 492,9s warm / 550,4s cold**
+  (counts AND runtime measured 2026-08-25, backgrounded, two consecutive runs with a 240s idle lead-in and
+  the orchestrator issuing no tool call for the duration; 407 passed / 0 failed both times).
+  🔴 **Quote the RANGE 493-550s, not one number** - and note the cold run is 92% of the 600s
+  foreground cap, so this half is cap-ADJACENT again. See the 2026-08-25 (measured) entry under
+  ## Measured runtimes. Previously
   **29 suites, 605 tests, 461,95s** (2026-08-16,
   measured by running the recipe's own suite list and reading its `Tests Passed:` line; **`-NoProfile`,
   for the reason in the operator-environment note below**). The previous line read
@@ -430,6 +433,30 @@ Two things about this move are worth keeping. First, the decision was made on th
 not on the sum of the per-file rows - those sum to 531,1s, and the section above explains why a derived
 total is not the recipe's runtime. Second, the growth was mostly NOT the new tests: attributing it to
 them and moving only those would have left the half at 528s and solved nothing.
+
+**2026-08-25 (later) - the half RE-MEASURED clean, and the headroom the move bought is already gone.**
+Two consecutive backgrounded runs, 25 suites, 407 tests, 0 failed both times: **550,4s then 492,9s**.
+The 57,5s spread between them is cold module load, so **492,9s is the warm figure and 493-550s is the
+range**. This is the first sample in this file taken under a protocol that actually enforces idleness: a
+240s lead-in before the clock starts, and the orchestrator made no tool call from launch to completion.
+
+🔴 **AT 550,4s COLD THE FAST HALF IS BACK TO 92% OF THE 600s CAP.** The second move above
+was measured at 418,5s / 400 tests and read as "roughly 30% headroom". Seven tests later the same half
+measures 74s slower. Two readings are available and this file does not have the evidence to choose
+between them: the seven new tests are unusually expensive (the gap closure added a whole new suite,
+`agy-autotrain-installer`, plus rows to `drain-lib` and `test-suite-registration`), or the 418,5s sample
+was itself optimistic. 🔴 **What is NOT available is the reading that the half is comfortable
+- both samples agree it is not.** A third move needs a per-suite census first, since the last two were
+decided on batch figures and the half grew back both times.
+
+🔴 **THE MEASUREMENT PROTOCOL IS NOW THE FINDING, NOT A FOOTNOTE.** Three attempts were
+DISCARDED before this one: one where the orchestrator kept working through the run, one that ran
+concurrently with a stale measurement left over from the previous session, and one whose lead-in was
+eaten by the orchestrator's own diagnostic tool calls while it hunted for that stale process. Each looked
+like a valid run while it was happening. The protocol that finally worked: **kill every other Pester-shaped
+process first and VERIFY none remain, launch backgrounded, then issue no tool call at all until the
+completion notification.** A settle margin in the script does not help if the agent spends it working.
+(owner caught all three, 2026-08-25)
 
 ```
 abort-drain.Tests.ps1                            72,9s   13 tests   <- SLOW, re-measured 2026-08-06. The
