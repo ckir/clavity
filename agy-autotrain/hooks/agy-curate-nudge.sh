@@ -44,13 +44,21 @@ fi
 # comments), so `p` stays 1 to EOF. An unanchored date scan therefore reads dates out of those comments and
 # reports an "oldest pending entry" no bullet carries - which latched the age nudge ON permanently, because
 # draining cannot remove a drain log. Pinned by scripts/tests/agy-curate-nudge.Tests.ps1.
-# THE CLOSE RULE MUST MATCH THE CANONICAL READER. drain-lib.ps1's Get-PendingRegionLines ends the region
-# at ANY heading (`^#{1,6}\s`); these two awk scans ended it only at `## `. So a `### ` or `# ` heading
-# after `## Pending` closed the section for PowerShell and not for bash, and the two readers of the same
-# file disagreed about which entries are pending. `#+[ \t]` rather than `#{1,6}[ \t]`: interval
-# expressions are not portable across every awk this hook may meet, and one-or-more is the same rule here.
-count="$(awk '/^## Pending/{p=1;next} /^#+[ \t]/{p=0} p && /^- \[/{c++} END{print c+0}' "$OBS" 2>/dev/null)"
-oldest="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^## Pending/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print m }' "$OBS" 2>/dev/null)"
+# BOTH RULES MUST MATCH THE CANONICAL READER, and the first attempt at this only fixed one of them.
+# drain-lib.ps1's Get-PendingRegionLines OPENS on `^##\s+Pending\s*$` - an exact line - and CLOSES on any
+# heading `^#{1,6}\s`. On 2026-08-26 these scans were changed to close on `^#+[ \t]`, and a comment here
+# claimed the two readers now agreed. They did not: the OPEN rule was still a bare prefix match, so a
+# heading like `## Pending entries (do not edit)` opened the region for bash and not for PowerShell, and
+# the two readers of one file disagreed about which entries are pending in the direction nobody checked.
+# Both rules are aligned now.
+#
+# ONE RESIDUAL DIVERGENCE, STATED RATHER THAN CLAIMED AWAY, because the earlier comment's mistake was
+# claiming equivalence it had not established: `#+` accepts SEVEN OR MORE hashes where `#{1,6}` does not,
+# and `[ \t]` is narrower than `\s`. Interval expressions are not portable across every awk this hook may
+# meet, so the wider form stays - and seven hashes is not a markdown heading anyway, which is the reason
+# the divergence is acceptable and not the reason it does not exist.
+count="$(awk '/^## Pending[ \t]*$/{p=1;next} /^#+[ \t]/{p=0} p && /^- \[/{c++} END{print c+0}' "$OBS" 2>/dev/null)"
+oldest="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^## Pending[ \t]*$/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print m }' "$OBS" 2>/dev/null)"
 [ -z "$count" ] && exit 0
 
 # Age gate (spec section 5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?

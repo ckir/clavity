@@ -73,9 +73,16 @@ duplicate paid consult). SP-C's reader consumes this same constant.
   trigger); the skip appends to `skipped.log` as above.
 - **Cross-marker sequencing (AGY-TEST-AUDIT).** Unlike the SP-C `agy-seam-inject.sh` reader (which reads
   only its own discipline's marker), the `agy-test-audit-reminder.sh` hook READS `agy-capstone.head` to
-  enforce ordering: it nudges the audit only when `agy-capstone.head == current HEAD` (capstone is GREEN at
-  this HEAD) AND `agy-test-audit.head != HEAD` (audit not yet done) AND the reviewed range touched
-  executable code/tests. This is sound precisely because `agy-capstone.head` is written ONLY at a
+  enforce ordering: it nudges the audit only when `agy-capstone.head` STILL DESCRIBES HEAD - it either
+  EQUALS HEAD, or is an ANCESTOR of HEAD with nothing executable landed since - AND `agy-test-audit.head`
+  does NOT still describe HEAD by that same rule, AND the reviewed range touched executable code/tests.
+
+  > Both markers were `== HEAD` until 2026-08-26. Strict equality was silenced by AGY-CAPSTONE's own
+  > mandatory final step: the skill writes the reviewed tip to its marker and then REQUIRES a ledger row,
+  > and committing that row advances HEAD. MEASURED in this repository - marker `f29cd42`, next commit the
+  > ledger row, silent for the 34 commits that followed. The relaxation is applied to BOTH markers by one
+  > shared helper, because they age for the same reason: relaxing only the capstone one nudged the driver
+  > who ran the audit at the reviewed tip and then filed the paperwork. This is sound precisely because `agy-capstone.head` is written ONLY at a
   gate-satisfied terminal state (GREEN or a `round-cap` waiver) - so its presence at HEAD is a reliable
   "capstone is satisfied here" signal for a *different* hook to read. The audit hook, like every reader,
   never writes a `.head` marker.

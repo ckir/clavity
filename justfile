@@ -107,7 +107,11 @@ test-scripts-fast:
 test-scripts-slow:
     pwsh -NoProfile -c "Invoke-Pester @('scripts/tests/abort-drain.Tests.ps1', 'scripts/tests/accept-drain.Tests.ps1', 'scripts/tests/agy-anomaly-reminder.Tests.ps1', 'scripts/tests/agy-consult-guard.Tests.ps1', 'scripts/tests/agy-curate-nudge.Tests.ps1', 'scripts/tests/assertion-strength-reminder.Tests.ps1', 'scripts/tests/check-cheatsheet-budget.Tests.ps1', 'scripts/tests/check-curate-in-progress.Tests.ps1', 'scripts/tests/check-injected-context.Tests.ps1', 'scripts/tests/agy-inbox-snapshot.Tests.ps1', 'scripts/tests/agy-learn-reminder.Tests.ps1', 'scripts/tests/agy-liveness-check.Tests.ps1', 'scripts/tests/agy-mark.Tests.ps1', 'scripts/tests/agy-seam-inject.Tests.ps1', 'scripts/tests/agy-shield-lib.Tests.ps1', 'scripts/tests/agy-test-audit-reminder.Tests.ps1', 'scripts/tests/check-cheatsheet-parity.Tests.ps1', 'scripts/tests/check-ci-filter-coverage.Tests.ps1', 'scripts/tests/check-core-integrity.Tests.ps1', 'scripts/tests/check-plugin-namespace.Tests.ps1', 'scripts/tests/compute-release.Tests.ps1', 'scripts/tests/docs-audit.Tests.ps1', 'scripts/tests/drain-knowledge.Tests.ps1', 'scripts/tests/generate-cheatsheet-literals.Tests.ps1', 'clavity-dotnet/install/clavity-install.Tests.ps1') -Output Detailed -CI"
 
-# The whole suite, unchanged in meaning. Same cap warning as test-scripts-slow.
+# Every suite UNDER scripts/tests, which is not quite "everything": it globs a directory, so it cannot
+# reach clavity-dotnet/install/clavity-install.Tests.ps1, which test-scripts-slow names explicitly and
+# ci-scripts.yml gates separately. Called "the whole suite" until 2026-08-26, which is the kind of claim
+# someone reaches for when they want one command that proves the tree is green. Same cap warning as
+# test-scripts-slow.
 test-scripts:
     pwsh -NoProfile -c "Invoke-Pester scripts/tests -Output Detailed -CI"
 

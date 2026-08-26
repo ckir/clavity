@@ -78,7 +78,7 @@ fi
 
 # 1. STRUCTURAL: header and section must both be present.
 grep -q '^# agy observations inbox' "$OBS" || exit 0
-grep -q '^## Pending' "$OBS" || exit 0
+grep -Eq '^## Pending[ \t]*$' "$OBS" || exit 0
 
 # 2. CONTENT: at least one parseable bullet. The class set is assumption|heuristic|anti-pattern, so the
 # character class MUST include the hyphen - [a-z]+ does not match anti-pattern, which was 42 of the 79
@@ -88,7 +88,11 @@ grep -q '^## Pending' "$OBS" || exit 0
 # future template change, a hand-edit - satisfies an invariant that is supposed to mean "Pending has
 # something worth saving". No such line exists in the current corpus, so this is hardening, not a live
 # defect; the dedup invariant below would in any case bound the damage to one slot.
-sed -n '/^## Pending/,$p' "$OBS" | grep -Eq '^- \[[a-z-]+\]' || exit 0
+# THE THIRD READER OF THIS SECTION, and until 2026-08-26 the only one with NO close rule at all: this
+# scanned from the heading to END OF FILE, so a `- [x]` bullet in any later section - the append-only
+# drain log lives down there - read as a pending entry and armed the snapshot for an inbox that had none.
+# Same open and close rules as drain-lib.ps1's canonical reader and as agy-curate-nudge.sh.
+awk '/^## Pending[ \t]*$/{p=1;next} /^#+[ \t]/{p=0} p' "$OBS" | grep -Eq '^- \[[a-z-]+\]' || exit 0
 
 # 3. DEDUP: never rotate when content is identical to the newest snapshot. Without this an aborted or
 # re-run agy-curate burns a slot each time, so a few retries silently evict the whole history. It also

@@ -14,7 +14,7 @@ suite executes first absorbs pwsh + Pester cold-start for the whole run: `agy-af
 stable within 15%; four were not. A ">= 20s means SLOW" rule classifies those four differently depending
 only on sort order, so it is not reproducible and is not used.
 
-**Batching is not a saving.** The fast half as it stood on 2026-08-02 — 13 suites then, **28 now** — run as
+**Batching is not a saving.** The fast half as it stood on 2026-08-02 — 13 suites then, **25 now** — run as
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 

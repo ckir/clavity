@@ -12,8 +12,14 @@
 # caught this was a hand-run `diff` documented in _partition.md - search that file for the literal
 # `diff <(ls scripts/tests` rather than trusting a line number, which has moved twice (53 when the
 # comment was written, 89 now). An earlier fix anchored this to "the heading that describes it"; that
-# was worse, because _partition.md has exactly ONE `##` heading and it is not this one. That oracle is
-# now enforced here.
+# was worse, because _partition.md has exactly ONE `##` heading and it is not this one.
+#
+# WHAT IS ACTUALLY ENFORCED HERE, said precisely because the previous wording ("that oracle is now
+# enforced here") claimed the whole of it: this suite pins that every file on disk appears in a recipe and
+# every recipe entry exists. The hand-oracle in _partition.md is still stronger in ways this is not - it
+# compares the two halves as SETS, so it also catches a suite listed in BOTH halves or listed twice within
+# one, which the per-recipe dedupe here cannot see. Run the hand-oracle before a release; this row is the
+# floor, not the ceiling.
 #
 # This suite cannot protect ITSELF - if it were the unregistered one it would not run to complain. That
 # one-time cost is paid by registering it in the same commit that adds it.

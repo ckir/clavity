@@ -78,7 +78,9 @@ Describe "abort-drain transaction (scratch repo)" {
 
     It "REFUSES when an unrelated UNTRACKED file exists under a drain output directory (git-clean data-loss guard) and touches nothing" {
         # agy-autotrain/-rooted, not umbrella-rooted. These fixtures pinned the UMBRELLA path, which is
-        # where the backlog does NOT live - it has 17 tracked files under agy-autotrain/. The fixtures
+        # where the backlog does NOT live - agy-autotrain/docs/fix-the-tool-backlog/ has 17 tracked files
+        # (`git ls-files agy-autotrain/docs/fix-the-tool-backlog/ | wc -l`, measured 2026-08-26; the count
+        # grows as the backlog does, so treat it as an order-of-magnitude fact, not a pin). The fixtures
         # agreed with a defect in Get-DrainOutputPaths rather than with the repo, so all four of these
         # tests passed while the abort machinery was scoped to a path matching zero files. When the
         # source of truth was corrected on 2026-08-25 these four went RED, which is how a fixture that
