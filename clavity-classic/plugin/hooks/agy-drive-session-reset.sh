@@ -12,7 +12,15 @@ source="$(printf '%s' "$input" | jq -r '.source // empty' 2>/dev/null)"
 cwd_path=${cwd//\\\\//}
 [ -z "$cwd_path" ] && cwd_path="."
 
+# WIDENED, NOT SWAPPED - both homes are checked. This hook tested `${HOME}` here while resolving the
+# directory it DELETES FROM as `${USERPROFILE:-$HOME}` further down: the only hook in the tree that used
+# two different answers to "which home", and the only one whose missed opt-out destroys state rather than
+# printing a line. On a box where the two differ, the switch could be honoured in a place the deletion
+# never looked. Checking BOTH can only make the switch fire more often, which is the safe direction for a
+# kill switch; swapping one for the other would have moved the blind spot rather than closed it.
+HOME_DIR="${USERPROFILE:-$HOME}"
 [ -f "${HOME}/.claude/.no-agy" ] && exit 0
+[ -f "${HOME_DIR}/.claude/.no-agy" ] && exit 0
 
 # Repo root by walking up for .git, in-shell. Normalization above is load-bearing: ${_d%/*} strips on
 # "/" only, so without it this loop breaks on its first iteration and root never leaves cwd.
@@ -45,8 +53,7 @@ fi
 # Only reset on a genuine fresh start.
 [ "$source" = "startup" ] || exit 0
 
-HOME_DIR="${USERPROFILE:-$HOME}"
-DIR="${CLAVITY_GOLDEN_HEADER:-${HOME_DIR}/.clavity}"
+DIR="${CLAVITY_GOLDEN_HEADER:-${HOME_DIR}/.clavity}"   # HOME_DIR resolved once, at the kill switch above
 KEY="${CLAVITY_SESSION:-${AGY_SESSION:-default}}"
 SAFE="$(printf '%s' "$KEY" | tr -c 'A-Za-z0-9_-' '_')"
 

@@ -88,6 +88,16 @@ if [ "$event" = "UserPromptSubmit" ]; then
   sid=${sid//[^A-Za-z0-9_-]/}
   [ -z "$sid" ] && exit 0
 
+  # THE GLOBAL KILL SWITCH IS HONOURED BEFORE ANY OF THIS, and it was not until 2026-08-26. The header of
+  # this file says the hook is "Suppressed by .no-agy (workspace or global) like every other reminder",
+  # and the comment further down states the principle outright - "Honor the kill-switch FIRST" - citing
+  # the defect that ordering prevents in a sibling hook. Both were true of the EMISSION and false of
+  # everything above it: a user who had opted out still got directories created, marker files written and
+  # a `find -delete` swept through them. A switch that stops the output but not the side effects is not a
+  # switch. The WORKSPACE check necessarily stays below, where cwd is known; this is the global one,
+  # which needs nothing.
+  [ -f "$HOME/.claude/.no-agy" ] && exit 0
+
   # Try each location in order. The FIRST prompt of a session creates the marker and stays quiet; every
   # later prompt finds it and proceeds. An unusable location is skipped, so a broken TMPDIR costs the
   # fallback, not the discipline.

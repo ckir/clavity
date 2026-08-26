@@ -56,6 +56,19 @@ BeforeAll {
     # DIFFERENT test file", "names all three structural smells", "keeps the two keys SEPARATE", the
     # degraded once-per-session test, and 3 degraded-agreement rows - all of which pass once TMPDIR is
     # isolated too. Do not drop the TMPDIR line.
+    # TMPDIR IS RESTORED IN AfterAll, and that is not optional here. `BashHookHelpers.ps1` carries a
+    # measured account of what an unrestored TMPDIR does in this suite runner: it leaks to every bash child
+    # that runs afterwards, and `agy-shield-lib.Tests.ps1` passed 39/39 in isolation while failing 5 rows in
+    # the full sweep and in CI because of it. That hardening lives in the HELPER, so setting TMPDIR
+    # directly here walks straight around it - and this suite is position 6 of `test-scripts-slow` while
+    # agy-shield-lib is position 15, in the same Invoke-Pester process.
+    #
+    # ABSENCE AND EMPTINESS ARE DIFFERENT STATES on restore: assigning $null leaves the key PRESENT and
+    # EMPTY, and Git Bash turns an empty TMPDIR into the bogus relative path `<cwd>/=`. So a previously
+    # ABSENT variable is removed, not blanked.
+    $script:TmpDirWasPresent = Test-Path Env:TMPDIR
+    $script:TmpDirOriginal   = if ($script:TmpDirWasPresent) { $env:TMPDIR } else { $null }
+
     function New-IsolatedHome {
         $h = Join-Path ([IO.Path]::GetTempPath()) ("asrt-" + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force -Path $h | Out-Null
@@ -65,6 +78,11 @@ BeforeAll {
 }
 
 Describe 'assertion-strength-reminder.sh' {
+    AfterAll {
+        if ($script:TmpDirWasPresent) { $env:TMPDIR = $script:TmpDirOriginal }
+        else { Remove-Item Env:TMPDIR -ErrorAction SilentlyContinue }
+    }
+
     # GUARD, added after the suite was measured passing with NO HOOK ON DISK. Every assertion below runs
     # the hook through `bash ... 2>&1`, so when the file is missing bash's own "No such file or directory"
     # error - which CONTAINS the hook's filename - lands in the captured output. A bare

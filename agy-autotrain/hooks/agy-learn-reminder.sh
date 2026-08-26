@@ -40,9 +40,12 @@ esac
 
 # The two events take DIFFERENT output shapes, and emitting the wrong one is not a soft failure --
 # Claude Code rejects the payload outright, so the reminder never reaches the model and the operator
-# sees a schema-validation dump instead. hookSpecificOutput is only valid for PreToolUse,
+# sees a schema-validation dump instead. hookSpecificOutput is valid for SessionStart, PreToolUse,
 # UserPromptSubmit, PostToolUse, PostToolBatch and Stop/SubagentStop; PreCompact is NOT among them and
-# must use the top-level systemMessage field.
+# must use the top-level systemMessage field. (SessionStart was missing from this list until 2026-08-26 -
+# and the default branch four lines below emits hookSpecificOutput with hookEventName:"SessionStart", so
+# if the list had been right this hook's own primary path would be rejected outright. The list was
+# incomplete, not the code; the code is the proof.)
 case "$event" in
   PreCompact) jq -nc --arg m "$msg" '{systemMessage:$m}' ;;
   *)          jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' ;;
