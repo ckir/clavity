@@ -283,8 +283,14 @@ begin
     explicit answer. }
   RemoveGrowth := SuppressibleMsgBox('Also remove agy-autotrain''s learned data?' + #13#10#13#10 +
     '  - the learned golden-header growth (~\.clavity\golden-header.growth.md and its .sha256)' + #13#10 +
-    '  - any observations captured but not yet drained (in ~\.clavity, and any copy a failed'#13#10 +
-    '    migration left in the plugin folder)' + #13#10#13#10 +
+    { Both plugin-folder items are named, and they arrive by OPPOSITE routes: the .migrated-14g
+      sidecar is left by a migration that SUCCEEDED - it is the audit trail of the normal case -
+      while the plain inbox is there only if a migration FAILED and rolled back. Calling both of
+      them failure wreckage, as this dialog did for one commit, mislabels the common case to the
+      one person who most needs it stated plainly. }
+    '  - any observations captured but not yet drained: the inbox in ~\.clavity, plus'#13#10 +
+    '    anything an earlier migration left in the plugin folder - its .migrated-14g'#13#10 +
+    '    backup, or the inbox itself if that migration had to roll back' + #13#10#13#10 +
     'Choose No to keep both for a future reinstall.',
     mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
 end;
