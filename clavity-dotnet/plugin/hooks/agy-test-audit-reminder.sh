@@ -3,7 +3,8 @@
 # test-exhaustiveness audit exactly once for this HEAD. Marker-gated (docs/agy-disciplines-marker-contract.md):
 #   fire IFF  .clavity/agy-marks/agy-capstone.head   still describes HEAD - either it EQUALS HEAD, or it
 #             is an ANCESTOR of HEAD and nothing executable landed since it (see gate() for why)
-#        AND  .clavity/agy-marks/agy-test-audit.head  != HEAD   (audit not yet run at this HEAD)
+#        AND  .clavity/agy-marks/agy-test-audit.head  does NOT still describe HEAD, by the same rule
+#             (an audit that covered the reviewed tip still covers a docs-only commit made after it)
 #        AND  the reviewed range touched executable code / test paths (spec 4: docs-only must not nudge)
 # This SEQUENCES capstone->audit structurally (the capstone marker is written ONLY on human-GREEN or a
 # round-cap waiver), without touching the strict 1:1 agy-seam-inject.sh case statement. The directive POINTS
@@ -27,8 +28,14 @@ DIR_CONST=".clavity/agy-marks"
 # for `aud == cap` - fixes that case and breaks its mirror, an audit run AFTER the ledger row, which then
 # nudges forever. Both orderings are legitimate. One rule, both markers.
 #
-# A failing git command answers "no" rather than "yes": a nudge that cannot establish its own precondition
-# is a false alarm, and silence is the safe direction for a reminder.
+# A failing git command answers "no" rather than "yes" - and READ THAT CAREFULLY, because the two callers
+# want opposite things from it and the code is right in both places. At the capstone call site a "no" means
+# "there is no GREEN covering HEAD", and the `||` sends it silent: nudging for an audit with no capstone
+# behind it would be a false alarm. At the audit call site a "no" means "nothing shows this HEAD was
+# audited", and the `&&` lets it FIRE: staying quiet there would silently drop an audit that is genuinely
+# owed. Same answer, opposite safe directions, which is exactly why this is one function with two callers
+# rather than one rule. An earlier version of this comment claimed silence was the safe direction full
+# stop; that was true of the first caller and false of the second.
 still_describes_head() {
   local cwd="$1" sha="$2" head="$3" re="$4" post
   [ -n "$sha" ] || return 1

@@ -220,7 +220,11 @@ jobs:
           if (-not (Test-Path $userInbox)) { throw "C6b VIOLATION: the capture inbox was deleted by a keep-data uninstall - every undrained observation is gone" }
           # Deliberately NOT called "ownership": that word promises both directions, and the PURGE
           # direction is unreachable from CI. RemoveGrowth is decided by a SuppressibleMsgBox whose
-          # suppressed default is IDNO (agy-autotrain.iss:255-259), so a silent uninstall always takes
+          # suppressed default is IDNO (the RemoveGrowth SuppressibleMsgBox in InitializeUninstall -
+          # NAMED, not numbered: this said agy-autotrain.iss:255-259 until 2026-08-26, which was exact when
+          # written and now lands on MigrateInboxToUserState, because the same range that added the
+          # "NAMED, not numbered" lesson elsewhere moved this procedure out from under its own citation),
+          # so a silent uninstall always takes
           # keep-data and the purge branch never executes here. Deleting the inbox DeleteFile on that
           # branch would leave this step green. That gap IS tracked: `docs/coverage-debt.md` item 10,
           # recorded by the same round that raised it. Until 2026-08-26 this comment said the opposite -

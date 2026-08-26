@@ -148,8 +148,33 @@ var
   Wrote: Boolean;
 begin
   OldPath := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md');
+  Aside := OldPath + '.migrated-14g';
   if not FileExists(OldPath) then
+  begin
+    { THE INTERRUPTED MIGRATION, WHICH USED TO BE ABANDONED IN SILENCE. This procedure CLAIMS the source
+      by renaming it to Aside before writing anything, so that a crash between the two is a clean no-op
+      the next upgrade retries. But the retry never happened: with OldPath gone, every later run exited
+      right here, nothing ever looked at Aside, and the operator was told nothing - their whole undrained
+      backlog sat under a name no running code reads. The two "the next upgrade will retry" messages
+      below are about the OTHER two failure paths, where the source is genuinely still in place.
+
+      THE DISCRIMINATOR IS THE DESTINATION, NOT THE SIDECAR. A SUCCESSFUL migration also leaves Aside
+      behind and OldPath absent - the sidecar is the audit trail of the normal case - so keying off the
+      sidecar alone would nag every user forever after a perfectly good migration. What separates the two
+      is that a successful migration WROTE: the destination is non-empty. Probed without
+      ForceDirectories, so this diagnosis never creates the folder it is reporting on. }
+    NewPath := ExpandConstant('{%USERPROFILE}') + '\.clavity\agy-observations.md';
+    DestSize := 0;
+    if FileExists(NewPath) then
+      FileSize(NewPath, DestSize);
+    if FileExists(Aside) and (DestSize = 0) then
+      MigrationProblem('An earlier migration was interrupted after claiming your captured observations '
+        + 'and before writing them. Nothing was lost - they are in:' + #13#10 + Aside + #13#10#13#10
+        + 'Rename that file back to:' + #13#10 + OldPath + #13#10#13#10
+        + 'and the next upgrade will complete the move. Until then the tool reads only ' + NewPath
+        + ', which is empty.');
     exit;
+  end;
 
   NewDir := ExpandConstant('{%USERPROFILE}') + '\.clavity';
   if not ForceDirectories(NewDir) then
@@ -174,7 +199,7 @@ begin
     exit;
   end;
 
-  Aside := OldPath + '.migrated-14g';
+  { Aside was computed at the top, where the interrupted-state check needs it. }
   if FileExists(Aside) then
   begin
     { A sidecar from an earlier successful migration is already here, yet a source file exists again.
@@ -204,7 +229,23 @@ begin
 
   DestSize := 0;
   if FileExists(NewPath) then
-    FileSize(NewPath, DestSize);
+    if not FileSize(NewPath, DestSize) then
+    begin
+      { A FAILED SIZE READ MUST NOT LOOK LIKE AN EMPTY FILE. FileSize returns a Boolean nobody read: on
+        failure DestSize stays 0, the branch below reads that as "the destination is empty" and takes
+        FileCopy(..., False), which OVERWRITES it - and the file it would overwrite is the user's inbox,
+        possibly newer than what we are holding. The source is already claimed at this point, so stopping
+        here is recoverable: the rollback puts it back and the next upgrade retries. Guessing is not. }
+      if RenameFile(Aside, OldPath) then
+        MigrationProblem('The size of ' + NewPath + ' could not be read, so the migration stopped rather '
+          + 'than risk overwriting it. Your observations were put back unchanged and the next upgrade '
+          + 'will retry.')
+      else
+        MigrationProblem('The size of ' + NewPath + ' could not be read, so the migration stopped rather '
+          + 'than risk overwriting it. Your observations are safe under:' + #13#10 + Aside + #13#10#13#10
+          + 'Rename it back to' + #13#10 + OldPath + #13#10#13#10 + 'and the next upgrade will retry.');
+      exit;
+    end;
 
   if (not FileExists(NewPath)) or (DestSize = 0) then
     Wrote := FileCopy(Aside, NewPath, False)
@@ -282,13 +323,18 @@ begin
     own seed.md. Silent uninstall defaults to KEEP (IDNO) — never delete user data without an
     explicit answer. }
   RemoveGrowth := SuppressibleMsgBox('Also remove agy-autotrain''s learned data?' + #13#10#13#10 +
-    '  - the learned golden-header growth (~\.clavity\golden-header.growth.md and its .sha256)' + #13#10 +
+    '  - the learned golden-header growth (%USERPROFILE%\.clavity\golden-header.growth.md and its .sha256)' + #13#10 +
     { Both plugin-folder items are named, and they arrive by OPPOSITE routes: the .migrated-14g
       sidecar is left by a migration that SUCCEEDED - it is the audit trail of the normal case -
       while the plain inbox is there only if a migration FAILED and rolled back. Calling both of
       them failure wreckage, as this dialog did for one commit, mislabels the common case to the
       one person who most needs it stated plainly. }
-    '  - any observations captured but not yet drained: the inbox in ~\.clavity, plus'#13#10 +
+    { `~` IS NOT A WINDOWS PATH. This dialog is the last thing an operator sees before consenting to the
+      destruction of their capture inbox, and it is the one moment they might want to go and look at it
+      first. `~\.clavity` resolves in a POSIX shell and in PowerShell, and in none of the places a Windows
+      operator would actually paste it: Explorer's address bar, cmd.exe, or Win+R. `%USERPROFILE%` resolves
+      in all three. Changed 2026-08-26; both this line and the growth line above carried it. }
+    '  - any observations captured but not yet drained: the inbox in %USERPROFILE%\.clavity, plus'#13#10 +
     '    anything an earlier migration left in the plugin folder - its .migrated-14g'#13#10 +
     '    backup, or the inbox itself if that migration had to roll back' + #13#10#13#10 +
     'Choose No to keep both for a future reinstall.',

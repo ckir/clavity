@@ -58,18 +58,39 @@ Describe 'shipped plugin hook payload' {
     }
 
     It 'ships every dual-driver hook byte-identically across drivers' {
-        # Iterates the DOTNET set deliberately: a classic-only hook (agy-drive-session-reset.sh) is a
-        # legitimate asymmetry, not drift, so it must not be required to have a dotnet mirror.
-        $dotnet = Get-HookSet $script:DotnetHooks
-        (Get-HookSet $script:ClassicHooks).Count | Should -BeGreaterThan 0
-        $dotnet.Count | Should -BeGreaterThan 0
+        # A NAMED EXCEPTION, NOT A LOOP DIRECTION. This checked one way only - every dotnet hook must exist
+        # in classic and match - and justified that with the one real asymmetry, a classic-only
+        # agy-drive-session-reset.sh. But encoding an exception as "which way the loop runs" forgives every
+        # FUTURE accident of the same shape: a new dual-driver hook committed to classic alone was invisible
+        # here and the suite reported green. The exception is now spelled out, which makes it reviewable and
+        # makes anything else red.
+        $classicOnly = @('agy-drive-session-reset.sh')
 
-        $drift = foreach ($h in $dotnet) {
-            $mirror = Join-Path $script:ClassicHooks $h.Name
-            if (-not (Test-Path -LiteralPath $mirror)) { "$($h.Name) missing in classic" }
-            elseif ((Get-FileHash $h.FullName).Hash -ne (Get-FileHash $mirror).Hash) { "$($h.Name) differs" }
+        $dotnet  = Get-HookSet $script:DotnetHooks
+        $classic = Get-HookSet $script:ClassicHooks
+        $classic.Count | Should -BeGreaterThan 0
+        $dotnet.Count  | Should -BeGreaterThan 0
+
+        # AND THE EXCEPTION LIST MUST NOT GO STALE. A named file that no longer exists is drift of its own:
+        # it silently stops excusing anything while still reading as a deliberate decision.
+        foreach ($name in $classicOnly) {
+            Test-Path -LiteralPath (Join-Path $script:ClassicHooks $name) | Should -BeTrue -Because "the classic-only exception list names '$name', so it must still be there - an exception for a file that is gone is a decision nobody has revisited"
+            Test-Path -LiteralPath (Join-Path $script:DotnetHooks  $name) | Should -BeFalse -Because "'$name' is listed as classic-ONLY, so a dotnet copy appearing means the asymmetry ended and this list is now wrong"
         }
-        ($drift -join '; ') | Should -BeNullOrEmpty
+
+        $drift = @(
+            foreach ($h in $dotnet) {
+                $mirror = Join-Path $script:ClassicHooks $h.Name
+                if (-not (Test-Path -LiteralPath $mirror)) { "$($h.Name) missing in classic" }
+                elseif ((Get-FileHash $h.FullName).Hash -ne (Get-FileHash $mirror).Hash) { "$($h.Name) differs" }
+            }
+            # The direction that was missing entirely.
+            foreach ($h in $classic) {
+                if ($h.Name -in $classicOnly) { continue }
+                if (-not (Test-Path -LiteralPath (Join-Path $script:DotnetHooks $h.Name))) { "$($h.Name) missing in dotnet" }
+            }
+        )
+        ($drift -join '; ') | Should -BeNullOrEmpty -Because 'a hook shipped by one driver and not the other is drift in EITHER direction - the only permitted asymmetry is the one named above'
     }
 
     It 'gates every repo-root walk on one stat, and stops at the UNC volume root' {
