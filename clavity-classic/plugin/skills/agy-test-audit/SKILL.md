@@ -309,11 +309,21 @@ bash "<BASE>/../../hooks/agy-mark.sh" head "agy-test-audit" "$(git rev-parse HEA
 
 - **Path:** `.clavity/agy-marks/agy-test-audit.head` - a single discipline-keyed marker, no `<plugin-id>`
   prefix (Option S, as for agy-first/agy-capstone). See `docs/agy-disciplines-marker-contract.md`.
-- **Content:** the audited sha - `git rev-parse HEAD` for the range that was actually audited, nothing else.
-  If HEAD cannot resolve, skip writing (the discipline re-fires next trigger - safe).
+- **Content:** ambient `HEAD`, exactly as the command above writes it. If HEAD cannot resolve, skip
+  writing (the discipline re-fires next trigger - safe).
+
+  > This line said "the audited sha ... not ambient HEAD" until 2026-08-26, which CONTRADICTED the command
+  > four lines above it - and the command is the half an agent actually runs. Each half read as correct on
+  > its own, which is how it survived nineteen review rounds. Ambient `HEAD` is the right content: the
+  > reminder hook goes quiet on `audit-marker == HEAD`, so writing anything else leaves it nudging forever
+  > after a completed audit. The case the old wording worried about - closing gaps advanced HEAD - is
+  > already handled elsewhere and more strictly: executable changes after the capstone's reviewed tip make
+  > the capstone GREEN stale, the hook falls silent on its own, and this skill's own capstone-invalidation
+  > rule requires a re-capstone before the branch is done.
 - **Written ONLY on a completed audit** - an `[VERDICT: EXHAUSTIVE]`, or a `[VERDICT: GAPS FOUND]` whose
   gaps ALL carry an AGY-SCOPE disposition token. An `agy-required-but-unreachable`
-  abort writes NO marker (the discipline re-fires next trigger). If closing gaps advanced HEAD, write the
-  audited sha, not ambient HEAD.
+  abort writes NO marker (the discipline re-fires next trigger). If closing gaps advanced HEAD by touching
+  executable code, the capstone GREEN no longer describes HEAD - do not paper over that by choosing a
+  different sha to record; re-run AGY-CAPSTONE, per the capstone-invalidation rule above.
 
 `.clavity/` is runtime state and is gitignored - never commit a marker.

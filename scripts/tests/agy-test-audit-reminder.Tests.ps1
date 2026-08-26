@@ -60,6 +60,53 @@ Describe 'agy-test-audit-reminder.sh' {
             # guaranteed rethrow.
             } catch { try { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue } catch { }; throw }
         }
+        # THE LEDGER-ROW SHAPE - the state agy-capstone actually leaves behind, and the one this hook was
+        # blind to until 2026-08-26. A code commit (the REVIEWED tip, where the capstone marker is written),
+        # then a second commit on top. MEASURED in the live repo that day: the capstone marker was f29cd42
+        # and the very next commit was `f209632 docs(ledger): record ... GREEN` - the ledger row the
+        # agy-capstone skill REQUIRES before a plan may be declared complete. From that commit onward
+        # `cap == head` was false and this hook stayed silent for 34 commits, so the discipline's own
+        # mandatory final step destroyed its successor's trigger.
+        #
+        # Built on the DiffPath shape (main pinned at init) so gate() takes the PRIMARY `diff base..HEAD`
+        # path. That is load-bearing: on the FALLBACK path the reviewed range is HEAD's own commit, which
+        # for a ledger row is docs-only and correctly silent for an entirely different reason - a fixture
+        # that took the fallback would pass for the wrong reason and prove nothing about this gate.
+        function New-PostMarkerRepo {
+            param([ValidateSet('docs','code')][string]$Kind = 'docs')
+            $dir = New-TempRepo
+            try {
+                & git -C $dir branch -f main HEAD
+                & git -C $dir checkout -qb feature
+                $commit = {
+                    param($Rel)
+                    $full = Join-Path $dir $Rel
+                    New-Item -ItemType Directory -Path (Split-Path -Parent $full) -Force | Out-Null
+                    Set-Content -LiteralPath $full -Value 'x' -Encoding ascii
+                    & git -C $dir add -A
+                    & git -C $dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm work
+                    Assert-HeadTouched -Dir $dir -Rel $Rel
+                    (& git -C $dir rev-parse HEAD).Trim()
+                }
+                $cap  = & $commit 'src/thing.cs'
+                $head = & $commit $(if ($Kind -eq 'docs') { 'docs/agy-capstone-ledger.md' } else { 'src/later.cs' })
+
+                # POSTCONDITIONS - each is a separate way this fixture could silently describe another state.
+                if ($cap -eq $head) { throw 'fixture is NOT in its promised state: the marker sha equals HEAD, so the relaxed branch is never entered' }
+                & git -C $dir merge-base --is-ancestor $cap $head
+                if ($LASTEXITCODE -ne 0) { throw 'fixture is NOT in its promised state: the marker sha is not an ancestor of HEAD' }
+                if ((& git -C $dir merge-base HEAD main).Trim() -eq $head) {
+                    throw 'fixture is NOT in its promised state: merge-base HEAD main == HEAD, so gate() takes the FALLBACK path and this row would pass for the wrong reason'
+                }
+                $since = (& git -C $dir diff --name-only "$cap..HEAD") -join "`n"
+                $hasCode = $since -match $script:CodeExtRe
+                if ($Kind -eq 'docs' -and $hasCode) { throw "fixture is NOT in its promised state: a code path changed after the marker ($since)" }
+                if ($Kind -eq 'code' -and -not $hasCode) { throw "fixture is NOT in its promised state: no code path changed after the marker ($since)" }
+
+                New-Item -ItemType Directory -Path (Join-Path $dir '.clavity/agy-marks') -Force | Out-Null
+                return [pscustomobject]@{ Dir = $dir; Cap = $cap; Head = $head }
+            } catch { try { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue } catch { }; throw }
+        }
         function Set-Marker { param($Dir, $Name, $Sha)
             Set-Content -LiteralPath (Join-Path $Dir ".clavity/agy-marks/$Name.head") -Value $Sha -NoNewline -Encoding ascii
         }
@@ -120,6 +167,9 @@ Describe 'agy-test-audit-reminder.sh' {
         # its operative sentence ("tell the user it runs about 5x leaner...") from all four hooks left the
         # entire 45-test suite GREEN, because the assertions pinned only the opening token and the closing
         # words - leaving ~380 of its 399 characters, and everything actionable in it, unguarded.
+        # The hook's executable-path list, held once so the fixture's postcondition and the hook cannot
+        # drift apart silently. Mirrors agy-test-audit-reminder.sh's CODE_RE.
+        $script:CodeExtRe = '(?i)\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1)$'
         $script:CostClause = 'COST: this discipline re-reads the whole session context every round, so running it in a long session burns several times the tokens - and subscription quota - of running it fresh. If this session carries substantial history, do not run it inline: tell the user it runs about 5x leaner after /compact or in a fresh session, and follow their answer. This changes WHERE the review runs, never WHETHER.'
     }
 
@@ -157,7 +207,24 @@ Describe 'agy-test-audit-reminder.sh' {
             $out.StdOut | Should -BeNullOrEmpty
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    It 'is SILENT when the capstone marker is STALE (!= HEAD)' {
+    It 'FIRES when the capstone marker is BEHIND HEAD but only DOCS landed since (the ledger-row case)' {
+        $r = New-PostMarkerRepo -Kind docs
+        try {
+            Set-Marker $r.Dir 'agy-capstone' $r.Cap
+            $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
+            $out.StdOut  | Should -Match 'AGY-TEST-AUDIT' -Because 'the capstone GREEN still stands when nothing executable landed after it, and committing the ledger row is the one thing the capstone skill REQUIRES - so a gate that goes silent on it is silenced by the very act of completing the review it gates'
+            $out.ExitCode | Should -Be 0
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'is SILENT when the capstone marker is behind HEAD and CODE landed since (the GREEN is stale)' {
+        $r = New-PostMarkerRepo -Kind code
+        try {
+            Set-Marker $r.Dir 'agy-capstone' $r.Cap
+            $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
+            $out.StdOut | Should -BeNullOrEmpty -Because 'executable code landed after the reviewed tip, so the capstone GREEN no longer describes HEAD and a re-capstone is owed before an audit means anything - this is the boundary that stops the relaxation above from becoming "any stale marker will do"'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'is SILENT when the capstone marker names a sha this repository does not contain' {
         $r = New-FiredRepo
         try {
             Set-Marker $r.Dir 'agy-capstone' 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
