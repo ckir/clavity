@@ -15,6 +15,17 @@ AppPublisher=clavity
 LicenseFile=..\LICENSE
 DefaultDirName={localappdata}\Programs\agy-autotrain
 DisableProgramGroupPage=yes
+; DISABLEDIRPAGE IS A DATA GUARD, NOT A UX CHOICE. Every member installs a marketplace manifest at
+; {app}\.claude-plugin\marketplace.json with `ignoreversion` - always overwrite - and an INSTALL
+; DIRECTORY IS A REGISTERED MARKETPLACE ROOT. MEASURED 2026-08-27 in
+; %USERPROFILE%\.claude\plugins\known_marketplaces.json: `...\Programs\commonmemory` is registered
+; there right now. All five members default into the SAME parent folder with near-identical names, so
+; typing or browsing to a sibling's directory made one member overwrite another's registered manifest.
+; That is a plausible slip, not an exotic one. The default is already correct and nothing about a plugin
+; benefits from a user-chosen location, so the page is removed rather than guarded: a directive cannot be
+; got wrong the way five copies of a [Code] check can. `/DIR=` on the command line still works, so silent
+; installs and CI are unaffected.
+DisableDirPage=yes
 PrivilegesRequired=lowest
 OutputBaseFilename=agy-autotrain-setup-{#AppVersion}
 OutputDir=..\dist
@@ -54,7 +65,7 @@ Source: "..\..\installer\_shared\register-plugin.ps1"; DestDir: "{app}"; Flags: 
 ; would run before ssPostInstall, i.e. before the migration that rescues it. Leaving a file behind is the
 ; recoverable failure; deleting one is not.
 Source: "..\*"; DestDir: "{app}\plugins\agy-autotrain"; Flags: ignoreversion recursesubdirs createallsubdirs; \
-  Excludes: "\installer,\dist,\publish,agy-observations.md"
+  Excludes: "\installer,\dist,agy-observations.md"
 ; ROADMAP 14g: the inbox is NO LONGER SHIPPED into the plugin tree. It is user-local state and lives at
 ; %USERPROFILE%\.clavity\agy-observations.md, beside golden-header.growth.md, because the plugin tree
 ; exists in N copies (install, every checkout, every worktree) and nothing could tell which was live -

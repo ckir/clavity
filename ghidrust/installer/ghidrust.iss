@@ -19,6 +19,17 @@ AppPublisher=clavity
 LicenseFile=..\LICENSE
 DefaultDirName={localappdata}\Programs\ghidrust
 DisableProgramGroupPage=yes
+; DISABLEDIRPAGE IS A DATA GUARD, NOT A UX CHOICE. Every member installs a marketplace manifest at
+; {app}\.claude-plugin\marketplace.json with `ignoreversion` - always overwrite - and an INSTALL
+; DIRECTORY IS A REGISTERED MARKETPLACE ROOT. MEASURED 2026-08-27 in
+; %USERPROFILE%\.claude\plugins\known_marketplaces.json: `...\Programs\commonmemory` is registered
+; there right now. All five members default into the SAME parent folder with near-identical names, so
+; typing or browsing to a sibling's directory made one member overwrite another's registered manifest.
+; That is a plausible slip, not an exotic one. The default is already correct and nothing about a plugin
+; benefits from a user-chosen location, so the page is removed rather than guarded: a directive cannot be
+; got wrong the way five copies of a [Code] check can. `/DIR=` on the command line still works, so silent
+; installs and CI are unaffected.
+DisableDirPage=yes
 PrivilegesRequired=lowest
 OutputBaseFilename=ghidrust-setup-{#AppVersion}
 OutputDir=..\dist
