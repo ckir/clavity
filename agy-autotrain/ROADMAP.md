@@ -63,7 +63,9 @@ The installer is not naive here, and any proposal must start from what it alread
 - `agy-observations.md` is **excluded from the blanket copy** and seeded separately with
   `onlyifdoesntexist`, precisely so an upgrade cannot replace accumulated observations with the shipped
   template (`:31-41`, `:54`, `:60`). The comments there state the failure mode in as many words.
-- An uninstall path warns about *"observations captured but not yet drained"* (`:127`) and there is
+- An uninstall path warns about *"observations captured but not yet drained"* (the `RemoveGrowth`
+  confirmation dialog - NAMED, not numbered: it was cited as `:127` until 2026-08-26 and had moved to
+  `:291`, because five folds in one range grew that procedure) and there is
   inbox-file handling around `:148-153`, including a deliberate note that renaming the inbox to `.backup`
   would drop it from the injected set.
 - A `agy-observations.md.preinstall-backup` exists on this machine.

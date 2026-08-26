@@ -1193,8 +1193,14 @@ seeding (`agy-autotrain.iss:54,60`), plus migrating the installed copy and the r
 entries. **Not urgent:** the installer excludes the inbox from the blanket copy, so an update does not
 overwrite it. 🔴 **CORRECTED 2026-08-24: this entry also claimed the inbox is marked
 `uninsneveruninstall`, and used that to REFUTE a reviewer who warned an update could destroy the
-backlog. That flag was never there.** Measured: `uninsneveruninstall` appears on no `[Files]` entry in
-any `.iss` in this repo. Since 14g the inbox lives at `%USERPROFILE%\.clavity\`, outside the install
+backlog.** 🔴 **AND THAT CORRECTION WAS ITSELF WRONG - re-corrected 2026-08-26.** It said the flag
+"was never there", measured against the CURRENT tree only. Measured across history instead: `74ffd27`
+shipped the inbox with `onlyifdoesntexist` and no protection, while `dc85d2d`, `25b83cf` and `bd83435`
+shipped it `onlyifdoesntexist uninsneveruninstall`. The flag was there for part of that history and is
+absent now only because 14g stopped shipping the file at all. So the reviewer who warned an update could
+destroy the backlog was right, was refuted with a false claim, and the refutation was then "corrected"
+with a second false claim in the opposite direction. The accurate statement is narrow: `uninsneveruninstall`
+appears on no `[Files]` entry in any `.iss` in this repo TODAY. Since 14g the inbox lives at `%USERPROFILE%\.clavity\`, outside the install
 dir, and its survival rests entirely on the uninstaller purge branch being gated on `RemoveGrowth`.
 The reviewer was dismissed on a protection that did not exist; the behaviour is now pinned by the C6b
 assertion in `.github/workflows/build-agy-autotrain.yml`.
