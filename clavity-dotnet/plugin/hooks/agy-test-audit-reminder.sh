@@ -16,37 +16,47 @@ input=$(cat)
 
 DIR_CONST=".clavity/agy-marks"
 
-# Shared gate: given a cwd, echo "fire" iff capstone-green-at-HEAD AND audit-not-done AND code/test changed.
+# Does a marker sha still describe HEAD? True when it IS HEAD, or is an ANCESTOR of HEAD with nothing
+# executable landed since. BOTH markers age for the same reason and are forgiven by the same rule - which
+# is the whole point of it being a function.
+#
+# WHY IT IS SHARED. 2026-08-26, fced293 relaxed only the CAPSTONE marker, to stop the ledger row the
+# capstone skill REQUIRES from silencing this nudge. That left the AUDIT marker strict, and so punished
+# exactly the driver who did the right thing: run the audit at the reviewed tip, then commit the ledger
+# row, and the nudge fired again demanding a second run. The obvious one-line repair - swap `aud == head`
+# for `aud == cap` - fixes that case and breaks its mirror, an audit run AFTER the ledger row, which then
+# nudges forever. Both orderings are legitimate. One rule, both markers.
+#
+# A failing git command answers "no" rather than "yes": a nudge that cannot establish its own precondition
+# is a false alarm, and silence is the safe direction for a reminder.
+still_describes_head() {
+  local cwd="$1" sha="$2" head="$3" re="$4" post
+  [ -n "$sha" ] || return 1
+  [ "$sha" = "$head" ] && return 0
+  git -C "$cwd" merge-base --is-ancestor "$sha" "$head" 2>/dev/null || return 1
+  post=$(git -C "$cwd" -c core.quotePath=false diff --name-only "$sha".."$head" 2>/dev/null) || return 1
+  printf '%s\n' "$post" | grep -Eqi "$re" && return 1
+  return 0
+}
+
+# Shared gate: given a cwd, echo "fire" iff the capstone GREEN still describes HEAD AND the audit does not
+# AND the reviewed range touched executable code/test paths.
 gate() {
-  local cwd="$1" head cap aud base changed post
-  # The executable-path list, held ONCE and used twice below. Two copies would be two definitions of
-  # "executable code" free to drift apart, and the second one only runs on a path nothing exercised until
-  # 2026-08-26.
+  local cwd="$1" head cap aud base changed
+  # The executable-path list, held ONCE and used by both callers below. Two copies would be two definitions
+  # of "executable code" free to drift apart.
   local CODE_RE='\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1)$'
   head=$(git -C "$cwd" rev-parse HEAD 2>/dev/null) || return 1
   [ -n "$head" ] || return 1
+  # THE LEDGER-ROW CASE, in one line each. agy-capstone writes the reviewed tip to its marker and then
+  # REQUIRES a row in docs/agy-capstone-ledger.md before a plan may be declared complete; committing that
+  # row advances HEAD. MEASURED 2026-08-26 in this repository: marker f29cd42, next commit f209632
+  # "docs(ledger): record ... GREEN", silent for the 34 commits that followed - which is why two
+  # test-audits were owed with nothing nudging for either.
   cap=$(cat "$cwd/$DIR_CONST/agy-capstone.head" 2>/dev/null)
-  [ -n "$cap" ] || return 1                              # capstone never reached GREEN in this tree
-  if [ "$cap" != "$head" ]; then
-    # THE LEDGER-ROW CASE. A strict "cap == head" was silenced by the capstone's OWN mandatory final step:
-    # agy-capstone writes the reviewed tip to the marker and then requires a row in
-    # docs/agy-capstone-ledger.md before a plan may be declared complete, and committing that row advances
-    # HEAD. MEASURED 2026-08-26 in this repository: marker f29cd42, next commit f209632 "docs(ledger):
-    # record ... GREEN", and this hook was silent for the 34 commits that followed - which is why two
-    # test-audits were owed with nothing nudging for either. The discipline's completion step destroyed its
-    # successor's trigger.
-    #
-    # So the GREEN is treated as still describing HEAD when the marker is an ANCESTOR of HEAD and nothing
-    # executable landed since it. Both halves are load-bearing: without the ancestor test, a marker from an
-    # abandoned branch (or a sha this tree does not contain) would satisfy the gate; without the code test,
-    # any amount of new code would inherit a GREEN that never reviewed it. A failing git command returns
-    # SILENT rather than firing - a nudge that cannot establish its own precondition is a false alarm.
-    git -C "$cwd" merge-base --is-ancestor "$cap" "$head" 2>/dev/null || return 1
-    post=$(git -C "$cwd" -c core.quotePath=false diff --name-only "$cap"..HEAD 2>/dev/null) || return 1
-    printf '%s\n' "$post" | grep -Eqi "$CODE_RE" && return 1   # code landed after the reviewed tip
-  fi
+  still_describes_head "$cwd" "$cap" "$head" "$CODE_RE" || return 1   # no GREEN that covers HEAD
   aud=$(cat "$cwd/$DIR_CONST/agy-test-audit.head" 2>/dev/null)
-  [ "$aud" = "$head" ] && return 1                       # audit already ran at this HEAD
+  still_describes_head "$cwd" "$aud" "$head" "$CODE_RE" && return 1   # an audit already covers HEAD
   # Reviewed range: merge-base with an integration ref, else this commit's own files (on-branch / no ref).
   base=$(git -C "$cwd" merge-base HEAD "${CLAVITY_AUDIT_BASE_REF:-origin/main}" 2>/dev/null)
   [ -z "$base" ] && base=$(git -C "$cwd" merge-base HEAD main 2>/dev/null)

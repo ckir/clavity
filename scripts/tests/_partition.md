@@ -51,7 +51,7 @@ load once and accumulates across files.
   during a run slows it down by construction** (see the contention entries below). **Do not quote any
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
-- `just test-scripts-slow` — everything else. **24 suites, 640 tests** (638 measured 2026-08-26 by running
+- `just test-scripts-slow` — everything else. **24 suites, 642 tests** (638 measured 2026-08-26 by running
   the recipe backgrounded, plus the two rows the ledger-row gate fix added that day; the 626 here was the
   2026-08-25 count and was stale before either addition. Runtime NOT re-measured; this half
   GAINED `agy-curate-nudge` and `check-injected-context` that day). The runtime below predates that
@@ -576,7 +576,7 @@ agy-shield-lib.Tests.ps1                        409,1s   39 tests   <- SLOW, NEW
                                                                       per-invocation debounce-key isolation was
                                                                       added to Invoke-Shield (see that function's
                                                                       comment).
-agy-test-audit-reminder.Tests.ps1                50,8s   20 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-test-audit-reminder.Tests.ps1                50,8s   22 tests   <- SLOW, re-measured 2026-08-06 (+4)
 assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file

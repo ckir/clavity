@@ -67,6 +67,12 @@ jobs:
         shell: pwsh
         run: |
           pwsh -NoProfile -File scripts/build-classic-release.ps1
+          # CHECKED EXPLICITLY, because this is NOT the last statement in the step. GitHub appends an
+          # `exit $LASTEXITCODE` to a pwsh step, so a native command's failure propagates only when it is
+          # the final statement; here the Test-Path lines below run afterwards and their success becomes the
+          # step's exit code. A build script that failed AFTER staging - or a stale publish/clavity.exe from
+          # an earlier run - then produces a GREEN job over a broken build.
+          if ($LASTEXITCODE -ne 0) { throw "build-classic-release.ps1 failed with exit code $LASTEXITCODE" }
           if (-not (Test-Path publish/clavity.exe)) { throw "publish/clavity.exe not produced" }
           if (Test-Path publish/agy-mcp-bridge/.env) { throw "SECURITY: .env staged" }
 
@@ -157,6 +163,14 @@ jobs:
           Write-Host "[T5] installed manifest parity OK ($instHash)"
 
           # C6: pre-seed a fake growth.md and confirm a keep-data uninstall does NOT touch it.
+          # GUARDED, because the line below OVERWRITES the caller's real learned wisdom. build-agy-autotrain.yml
+          # has carried this guard since the day someone measured 125 KB of real captures on a developer box;
+          # this workflow performs the same destruction and had no guard at all until 2026-08-26.
+          # CONTRIBUTING.md documents a manual canary in which a human runs a member installer on their own
+          # machine, so "nobody would run this locally" is not a safe assumption.
+          if (-not $env:GITHUB_ACTIONS) {
+            throw "REFUSING: this smoke step OVERWRITES $env:USERPROFILE\.clavity\golden-header.growth.md and then uninstalls the driver. It is safe only on a throwaway CI runner."
+          }
           Set-Content "$env:USERPROFILE\.clavity\golden-header.growth.md" "fake learned wisdom"
           $arpKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{B59E963B-BE49-47B2-8CAB-5A3417D775C3}_is1"
           if (-not (Test-Path $arpKey)) { throw "ARP key missing (exact AppId _is1)" }

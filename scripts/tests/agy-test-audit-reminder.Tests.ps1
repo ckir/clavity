@@ -216,6 +216,34 @@ Describe 'agy-test-audit-reminder.sh' {
             $out.ExitCode | Should -Be 0
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    It 'is SILENT when the audit was completed at the reviewed tip and only the ledger row followed' {
+        # THE EDGE THE LEDGER-ROW FIX ITSELF CREATED, and it punishes the driver who did the right thing.
+        # fced293 relaxed the CAPSTONE marker so a docs-only ledger commit no longer invalidates the GREEN -
+        # but left the AUDIT marker on a strict `aud == head`. So a driver who runs the audit at the reviewed
+        # tip (the correct moment) and THEN commits the ledger row gets nudged to run it again: cap is
+        # forgiven for being behind HEAD, aud is not. The two markers age for exactly the same reason and
+        # must be forgiven by exactly the same rule.
+        $r = New-PostMarkerRepo -Kind docs
+        try {
+            Set-Marker $r.Dir 'agy-capstone'   $r.Cap
+            Set-Marker $r.Dir 'agy-test-audit' $r.Cap
+            $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
+            $out.StdOut | Should -BeNullOrEmpty -Because 'the audit already covered the reviewed tip and nothing executable has landed since, so demanding a second run is a false alarm - and it is aimed squarely at the driver who audited at the right moment instead of after the paperwork'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'is SILENT when the audit ran AFTER the ledger row (audit marker at HEAD, capstone marker behind)' {
+        # THE OTHER HALF OF THE MATRIX, and the reason the obvious one-line fix is wrong. Swapping
+        # `aud == head` for `aud == cap` fixes the row above and breaks this one: an audit run after the
+        # ledger commit has aud == head != cap, and would be nudged forever. Both orderings are legitimate,
+        # so both must be silent - which is why the relaxation is shared rather than re-specified.
+        $r = New-PostMarkerRepo -Kind docs
+        try {
+            Set-Marker $r.Dir 'agy-capstone'   $r.Cap
+            Set-Marker $r.Dir 'agy-test-audit' $r.Head
+            $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
+            $out.StdOut | Should -BeNullOrEmpty -Because 'the audit ran at HEAD itself, which is the plainest possible "already done" - a fix for the row above that reddens this one has moved the bug rather than removed it'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     It 'is SILENT when the capstone marker is behind HEAD and CODE landed since (the GREEN is stale)' {
         $r = New-PostMarkerRepo -Kind code
         try {
