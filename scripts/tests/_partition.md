@@ -542,7 +542,7 @@ agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
-agy-autotrain-installer.Tests.ps1                 1,3s   15 tests   <- FAST, new 2026-08-24. WARM on an idle
+agy-autotrain-installer.Tests.ps1                 1,3s   16 tests   <- FAST, new 2026-08-24. WARM on an idle
   CPU (cold 9,8s - almost all of that is Pester module load, which this suite does not pay again once
   warm). Pure file parsing, no bash and no process launches, which is why it is the cheapest row here.
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
@@ -647,7 +647,7 @@ check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-
 compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-measured 2026-08-06
 docs-audit.Tests.ps1                            130,0s   80 tests   <- SLOW, re-measured 2026-08-06
 drain-knowledge.Tests.ps1                        40,5s    8 tests   <- SLOW, re-measured 2026-08-06
-drain-lib.Tests.ps1                               4,2s   25 tests   <- FAST, re-measured 2026-08-24 WARM
+drain-lib.Tests.ps1                               4,2s   28 tests   <- FAST, re-measured 2026-08-24 WARM
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
 generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning
