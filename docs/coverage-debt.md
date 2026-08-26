@@ -50,11 +50,12 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 
 ### 3. The `agy-curate` skill's exit-code, dirty-path and routing contracts have no test at all
 
-- **Where:** `agy-autotrain/skills/agy-curate/SKILL.md` - the exit table at `:278`, the cross-cutting
-  dirty-path rule ("READ THIS BEFORE THE BRANCHES BELOW"), and the routing rule at `:121`.
-- **The gap:** nothing asserts any of it. `scripts/tests/check-agy-discipline-skills.Tests.ps1` resolves
-  its targets under `clavity-dotnet/plugin/skills/<skill>/SKILL.md` (`:15`, `:20`, `:209`, `:223`) and
-  never reaches `agy-autotrain/skills/`. This is the single largest change in the batch - 152 lines
+- **Where:** `agy-autotrain/skills/agy-curate/SKILL.md` - the exit-code table (the row block headed
+  `| exit | state | inbox \`## Pending\` |`), the cross-cutting dirty-path rule ("READ THIS BEFORE THE
+  BRANCHES BELOW"), and the routing rule (the note stating **committing the file IS the routing**).
+- **The gap:** nothing asserts any of it. `scripts/tests/check-agy-discipline-skills.Tests.ps1` roots
+  every target path it builds under `clavity-dotnet/plugin/skills/<skill>/SKILL.md` and never reaches
+  `agy-autotrain/skills/`. This is the single largest change in the batch - 152 lines
   matured over fifteen adversarial rounds - and it is entirely unguarded.
 - **NOT the regression:** the audit peer first stated this as "silently breaking the downstream hook
   scripts that parse these values". **Measured, twice: nothing parses them.** `agy-curate-nudge.sh` and
@@ -92,9 +93,9 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   The gate it tests does the opposite deliberately - **measured** with a control that asserts its own
   precondition (`CONTROL A -> RAN=yes FILES=1 THREW=no`, `CONTROL B -> THREW=YES`): discovery raises
   `domain root missing: <path> - if a product moved or was renamed, update $script:DomainRoots`. That
-  closed-failure design is documented in prose at `:756-764` of this same file.
-- **The regression that would slip through:** the non-vacuity guard at `:1286` asserts the population is
-  `-BeGreaterThan 20`. **Measured population is 31, unevenly spread:** `clavity-dotnet/plugin` 13,
+  closed-failure design is documented in prose in that same file, beside the `domain root missing:` message.
+- **The regression that would slip through:** the non-vacuity guard - the one asserting the population is
+  `-BeGreaterThan 20` - **Measured population is 31, unevenly spread:** `clavity-dotnet/plugin` 13,
   `clavity-classic/plugin` 14, `agy-autotrain` 4, and the remaining six roots contribute ZERO. So losing
   either large root reds the guard (18, 17), but **losing `agy-autotrain` (4 -> 27) does not** - and that
   is the root most actively edited here.
@@ -121,7 +122,8 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 - **The regression that would slip through:** someone "simplifies" the guard to a byte compare. On any
   developer machine with `core.autocrlf true` - the normal Windows setting, and what this repo actually uses -
   the gate then reports drift on every checkout of an LF-committed file.
-- **Second-order:** the site is only reachable when `$mismatched.Count -gt 0` (early exit at `:169`), so the
+- **Second-order:** the site is only reachable when `$mismatched.Count -gt 0`, which the early return above
+  it enforces, so the
   hot-fix plan's mutation table named rows 2/3 which **cannot reach it at all**.
 - **The tension that makes this non-trivial:** the fixture sets `core.autocrlf false` deliberately, for
   determinism - FIXTURE HYGIENE, so a suite never inherits the host's setting. Closing this needs a SECOND
@@ -146,7 +148,7 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   CI has a `installer-5-1` job, but it is scoped to `installer/_shared` - `scripts/**` is deliberately
   pwsh-7-only, and widening that scope re-introduces the mis-scoped contract that job was split to fix
   (it failed 9 containers on PS7-only syntax while never exercising the end-user surface).
-- **Related, already documented in-source:** `:119-124` records a DIFFERENT unreachable pair - the two
+- **Related, already documented in-source:** an in-source note records a DIFFERENT unreachable pair - the two
   `Get-IndexBytes` failure branches, kept deliberately after capstone R4 measured that neutering both leaves
   the suite 16/0 green. That admission is about the failure branches; this entry is about the extraction
   mechanism itself.
@@ -160,7 +162,7 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   `absolute_max` tests - `500ms/1500ms` and `1000ms/1500ms`, scaled up from `100ms/250ms` and `150ms/250ms`
   in `bcd4125`.
 - **What it buys:** it is the mitigation for a REAL flake - `lastProbe` is null at `AgyView.cs:234` while
-  the budget check at `:240-244` runs on the first iteration before any probe, so a pause longer than the
+  the budget check runs on the first iteration before any probe, so a pause longer than the
   whole budget throws a null diagnostic and fails `Assert.NotNull`. At a 250ms budget that needed only a
   quarter-second hiccup. Validated 12/12 on an idle machine after widening.
 - **What it costs:** roughly 2s of wall-clock on EVERY green suite run (measured 14s -> 16s), permanently,
@@ -265,8 +267,8 @@ next free letter; never re-letter an existing entry.
   AGY-TEST-AUDIT of `bd3aa94..f29cd42` raised the missing absent/empty-`USERPROFILE` coverage against all
   three. It is a real gap in `agy-curate-nudge.sh` and `agy-inbox-snapshot.sh`, where `HOME_DIR` locates
   the INBOX - dropping the fallback there sends both hooks permanently silent, and both are now covered.
-- **Why this one is different:** in `agy-learn-reminder.sh`, `HOME_DIR` is used at exactly ONE site
-  (`:27`), inside an OR'd kill-switch condition that already tests bare `${HOME}` on the same line. It
+- **Why this one is different:** in `agy-learn-reminder.sh`, `HOME_DIR` is used at exactly ONE site,
+  inside an OR'd kill-switch condition that already tests bare `${HOME}` on the same line. It
   locates no file of its own. Losing the fallback can therefore only make the switch LESS likely to fire,
   and the bare-`${HOME}` clause beside it catches the marker anyway.
 - **MEASURED 2026-08-24:** with `USERPROFILE` absent and a marker under `HOME`, the unmutated hook is
@@ -351,7 +353,7 @@ fixed-size buffer that is visible by reading twenty lines of code.
 before reference resolution. A genuinely broken `.iss` reference will not be reported.
 
 **Compensation:** installer content is packaging input, never injected context, so it is outside what this
-gate is for. The two dead references that existed were rewritten (`commonmemory/ROADMAP.md:20-21`, `:31`)
+gate is for. The two dead references that existed were rewritten (both in `commonmemory/ROADMAP.md`)
 so no deleted file is cited as a live backticked path.
 **Anchor (its disappearance voids this entry):** the ABSENCE of `'iss'` from `$script:ShippedExtensions` in `scripts/check-injected-context.ps1`. Adding that extension is what would close this gap, so the entry must void when it appears. **Deliberately NOT the explanatory comment above `$AssertPrefixes`** - a comment can be reworded or deleted with the gate's behaviour completely unchanged, so anchoring there would void the entry while the `.iss` blind spot it documents remained exactly as it was.
 
@@ -384,7 +386,8 @@ which reaches the user rather than CI.
 > specifically because a 2026-08-11 incident had an installed tree missing a hook whose item read
 > `status: fixed` (that rationale is written into the template itself), **has not itself reached the
 > install** - the fix for repo-vs-install drift is subject to repo-vs-install drift. Measured the same day:
-> the installed `agy-curate/SKILL.md` is 276 lines against the repository's 518, under an identical
+> the installed `agy-curate/SKILL.md` is 276 lines against the repository's 543 (re-measured 2026-08-26;
+> the repo side drifts - `wc -l` both sides rather than trusting this number), under an identical
 > `"version": "0.4.0"` on both sides, so nothing on either side can detect the gap.
 >
 > This entry is therefore **honoured on its anchor but weakened in substance**, and it is recorded here
@@ -395,8 +398,8 @@ which reaches the user rather than CI.
 
 ### G. commonmemory's agy-native recall rule is never verified to load (Stage 2, R5-O2)
 
-`commonmemory/rules/commonmemory.md` is audited as injected context, but `commonmemory/README.md:22`
-and `:77` annotate it "agy-native proactive-recall rule (Claude ignores it)", and `:57-58` leaves the
+`commonmemory/rules/commonmemory.md` is audited as injected context, but `commonmemory/README.md`
+annotates it "agy-native proactive-recall rule (Claude ignores it)" in two places, and leaves the
 loading mechanism unconfirmed - "if your agy auto-applies plugin `rules/` ... verify once". Neither
 manifest declares a `rules/` surface, and that "verify once" appears never to have happened. Whether
 commonmemory's core recall mechanism fires for agy at all is unknown.
@@ -449,19 +452,19 @@ here, because it needs a new registered suite and this batch's scope is the seve
 
 > **Why not the `_template.md` comment block, which this entry originally named.** Entry D above states the rule directly - *"a comment can be reworded or deleted with the gate's behaviour completely unchanged, so anchoring there would void the entry while the blind spot it documents remained exactly as it was"* - and this entry then anchored on a comment block anyway. Moving that paragraph into a contributing guide, an ordinary tidy-up, would have voided the entry while the absent enforcement stayed exactly as absent. It also resolves the original concern that drove that choice: it does not collide with entry F's anchor (the `status:` enum line), because absence-of-a-test and presence-of-an-enum-line are different facts that no single edit changes together.
 
-### I. The UNC volume-root walk terminator (`agy-discipline-reaching.sh:75`)
+### I. The UNC volume-root walk terminator (the `//*) break` arm in `agy-discipline-reaching.sh`)
 
 - **Behaviour:** the repo-root walk stops early at a UNC volume root -
   `case "$_d" in //*/*/*) ;; //*) break ;; esac` - so it never stats `//server/.git`, a path that cannot
   be a repository and costs another SMB round-trip to ask about.
-- **Why uncovered:** the walk is gated at `:69` by `[ -d "$cwd_path" ]`, so reaching line 75 at all
+- **Why uncovered:** the walk is gated by `[ -d "$cwd_path" ]`, so reaching that arm at all
   requires an **existing** directory under a `//` root. **Measured 2026-08-17:** `//localhost/c$` is
   reachable on this developer box, but `New-SmbShare` returns *"Access is denied"* without elevation and
   `//wsl.localhost` is absent - so a row would depend on the runner being an SMB server, or on admin
   rights, and would not run on `windows-latest`. Same class as entry C: the fixture, not the assertion,
   is what needs privileges this suite does not have.
-- **Why LOW, and this is the part that settles the disposition:** deleting line 75 costs **latency, not
-  correctness**. Measured 2026-08-06 and recorded in the source at `:65-68`: 20314ms walking an
+- **Why LOW, and this is the part that settles the disposition:** deleting that arm costs **latency, not
+  correctness**. Measured 2026-08-06 and recorded in the source comment above the walk: 20314ms walking an
   unreachable `//server/share/a/b/c` versus 9282ms gated. Nothing is mis-recorded and nothing leaks; the
   hook is registered with a `timeout`, so the worst outcome is a session start that is slow or killed -
   loud, and attributable. Contrast the shield branches in this same file, where a regression is silent.

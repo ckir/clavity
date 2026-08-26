@@ -11,7 +11,7 @@ detect it.** MEASURED:
 
 | artifact | installed | repo source |
 |---|---|---|
-| `skills/agy-curate/SKILL.md` | 276 lines | 518 lines (47% absent) |
+| `skills/agy-curate/SKILL.md` | 276 lines | 543 lines (49% absent) |
 | `docs/fix-the-tool-backlog/_template.md` | 1.5K | 2.3K |
 | fix-the-tool backlog entries | 11 files | 17 tracked |
 | `plugin/knowledge` core.md | 3515 B | 4750 B |
@@ -19,6 +19,12 @@ detect it.** MEASURED:
 
 Repo source last moved at `fd380fe` (2026-08-16). `clavity-ls.exe` is dated 2026-08-09, so the live
 `agy_ask` predates the `discipline`/`artifactPath` arguments.
+
+> ⚠ **Both sides of that table drift, and the RATIO is the claim.** The repo figure was recorded as 518
+> and was 543 by 2026-08-26 - stale within days, and stale in two places at once (the other copy lived in
+> `docs/coverage-debt.md`). Re-measure rather than trust these: `wc -l` on each side, paths as listed.
+> What this entry asserts is that roughly HALF the skill is missing from the installed copy under an
+> identical version string. That proportion has not moved, and it is what makes the entry live.
 
 ## Why it matters
 

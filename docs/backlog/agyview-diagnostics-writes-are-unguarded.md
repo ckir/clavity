@@ -11,11 +11,14 @@ sites with no guard, so a sink that throws — full disk, closed stream — prop
 is describing.
 
 - `Surface` — `private void Surface(int model, ModelSource source) => _options.Diagnostics.WriteLine(`
-  at **`AgyView.cs:615`**
-- the `Warn` helper at `:76`
+  in **`AgyView.cs`**
+- the `Warn` helper, in the same file
 
-⚠ **The line number drifted:** this was captured as `:611` on 2026-08-20 and is `:615` today; `:611` is
-now a `const` declaration. Verify by SYMBOL (`Surface`, `Warn`), never by the number.
+⚠ **The line numbers are gone, and that is the fix.** This entry carried `AgyView.cs:615` for `Surface`
+and `:76` for `Warn`, three lines above its own instruction to "verify by SYMBOL, never by the number".
+Both had already drifted - `Surface` was captured as `:611` on 2026-08-20, moved to `:615`, and `:76` was
+`:90` by 2026-08-26. **Verify by SYMBOL (`Surface`, `Warn`).** A number here rots silently; a symbol
+either resolves or announces that it was renamed.
 
 ## How it was measured
 
