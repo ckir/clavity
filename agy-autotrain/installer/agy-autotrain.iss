@@ -322,9 +322,17 @@ begin
         comment early - measured, it broke this compile once), so after a
         rollback the user's ENTIRE undrained backlog sits at that name. The installer has not shipped
         that file since 14g, so it can only exist because a pre-14g install left it or a rollback put it
-        back - user data either way. Inno's uninstaller removes only files it LOGGED, and this is not
-        one, so nothing else would ever take it: a user who explicitly chose PURGE kept their whole
-        backlog. That is the "consent ignored in the other direction" the comment above forbids, and it
+        back - user data either way. A reviewer corrected this comment on 2026-08-26 and the correction
+        matters: it used to claim Inno's uninstaller "removes only files it LOGGED, and this is not one,
+        so nothing else would ever take it". The second half is FALSE. A pre-14g installer DID ship this
+        path through a [Files] entry, so it IS logged in an existing unins000.dat, and the flag that
+        protects it was added part-way through that history - measured across the four commits that
+        shipped it: 74ffd27 carried only `onlyifdoesntexist`, while dc85d2d, 25b83cf and bd83435 added
+        `uninsneveruninstall`. So on a machine installed BEFORE that flag arrived, Inno's own uninstall
+        engine deletes this file on a KEEP uninstall - the opposite consent failure, and one this
+        procedure cannot prevent because the log was written by an installer that has already run.
+        What IS true, and is why the line below exists: nothing DELIBERATE removed it on a PURGE, so a
+        user who explicitly asked for their data to go kept their whole backlog. That is the "consent ignored in the other direction" the comment above forbids, and it
         is why this line sits INSIDE the gate - deleted on an explicit purge, never on KEEP. }
       InboxFile := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md');
       if FileExists(InboxFile) then DeleteFile(InboxFile);
