@@ -124,7 +124,9 @@ For EACH pending entry, in order:
 > This skill runs from the installed plugin tree AND from every checkout and worktree, and the header at
 > the top of this file already states the consequence: *a relative path resolves to whichever copy is
 > running*. A `../../`-style anchor was tried on 2026-08-25 and is withdrawn, because in an installed
-> tree it resolves to a real, WRITABLE directory that sits OUTSIDE any repository - and this step's own
+> tree it resolves to a real, WRITABLE directory that sits OUTSIDE any repository - writability MEASURED
+> on 2026-08-26 rather than assumed, which matters because the argument turns on the write SUCCEEDING and
+> the file then being unreachable, not on it failing - and this step's own
 > rule is that **committing the file IS the routing**. A backlog item written there is never committed,
 > never seen by a maintainer, and lost on the next upgrade: the routing fails silently, which is worse
 > than failing loudly.

@@ -69,7 +69,11 @@ function Get-CleanCandidatePaths([string]$RepoRoot) {
     # Ask git itself which untracked files the pending `git clean -fd -- (Get-DrainOutputPaths)` (below) would
     # actually remove, via git's OWN dry-run (-n) — never re-implement clean's untracked-file matching by hand, so
     # the guard's view of "would be deleted" can never drift from the real deletion. Each real removal line reads
-    # `Would remove <path>`. A WHOLLY-untracked directory (e.g. a brand-new agy-autotrain/docs/fix-the-tool-backlog/ with nothing
+    # `Would remove <path>`. MEASURED 2026-08-26 in a throwaway repo, because a reviewer rightly asked how
+    # anyone would know this: a wholly-untracked directory holding TWO files reported exactly ONE line,
+    # `Would remove newdir/`, alongside a separate `Would remove loose.txt` for the individual file. The
+    # collapse is real and this parser depends on it.
+    # A WHOLLY-untracked directory (e.g. a brand-new agy-autotrain/docs/fix-the-tool-backlog/ with nothing
     # committed under it yet) is reported as ONE collapsed line ("Would remove agy-autotrain/docs/fix-the-tool-backlog/") even
     # though `clean -fd` would delete every file inside it — so any directory-shaped line (trailing '/') is expanded,
     # again via git (`ls-files --others`, not hand-rolled matching), into its individual untracked files. The result
@@ -178,10 +182,17 @@ function Invoke-Main {
             foreach ($f in $unrelatedUntracked) { Write-Host "  $f" -ForegroundColor Red }
             Write-Host "abort-drain: 'git clean -fd' would silently DELETE the file(s) above." -ForegroundColor Red
             if (-not (Test-Path $manifestPath)) {
-                # Legacy run only. With a manifest present, anything reaching here is provably NOT this run's
-                # output (the manifest lists every untracked file the curator created), so the plain message
-                # above is exact and this caveat would be actively misleading.
-                Write-Host "abort-drain: NOTE — this drain predates output-manifest recording, so there is no record of which backlog files its curator wrote. A file under agy-autotrain/docs/fix-the-tool-backlog/ may therefore be THIS drain's own output: if so, delete it yourself and re-run; if it is yours, move it aside first." -ForegroundColor Yellow
+                # NO MANIFEST HAS TWO ROUTES, and until 2026-08-26 this said "Legacy run only" and named
+                # just one. The other is a MODERN run interrupted before it wrote its manifest - killed,
+                # power-lost, or failed between creating a backlog file and recording it. Both arrive here
+                # looking identical, and the operator cannot tell them apart either, so the message must
+                # not assert which one they are: telling someone whose run died five minutes ago that
+                # their install "predates output-manifest recording" sends them hunting a version problem
+                # that does not exist.
+                # With a manifest PRESENT, anything reaching here is provably not this run's output (the
+                # manifest lists every untracked file the curator created), so the plain message above is
+                # exact and this caveat would be actively misleading.
+                Write-Host "abort-drain: NOTE — there is no output manifest beside this staging file, so there is no record of which backlog files its curator wrote. Either the drain predates manifest recording, or it was interrupted before writing one. A file under agy-autotrain/docs/fix-the-tool-backlog/ may therefore be THIS drain's own output: if so, delete it yourself and re-run; if it is yours, move it aside first." -ForegroundColor Yellow
             }
         }
         Write-Host "abort-drain: move, commit, or delete the file(s) above as appropriate, then re-run 'just abort-drain'. Staging ($staging) was NOT touched." -ForegroundColor Red
