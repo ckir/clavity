@@ -29,7 +29,16 @@ jobs:
       - name: Record the built commit
         id: sha
         shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        # ASSIGN FIRST, THEN ECHO. `echo "sha=$(git rev-parse HEAD)"` discards the substitution's exit
+        # code - echo returns 0 whatever happened inside it - so even under the default
+        # `bash --noprofile --norc -eo pipefail`, `set -e` never sees the failure and the step stays
+        # GREEN. MEASURED 2026-08-26 with an unresolvable ref: the echo form exits 0 and writes
+        # `sha=HEAD-does-not-exist`, because git echoes an unresolved argument to stdout - so it can
+        # publish a NON-SHA, not merely an empty one, to every caller consuming this output. The
+        # standalone assignment below exits 128 and fails the step.
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Extract version from .iss
         id: ver
@@ -209,9 +218,10 @@ jobs:
           # direction is unreachable from CI. RemoveGrowth is decided by a SuppressibleMsgBox whose
           # suppressed default is IDNO (agy-autotrain.iss:255-259), so a silent uninstall always takes
           # keep-data and the purge branch never executes here. Deleting the inbox DeleteFile on that
-          # branch would leave this step green. That gap is NOT currently recorded anywhere else - do
-          # not go looking for a tracked entry, because there is none. Stated here because this is the
-          # assertion it bounds.
+          # branch would leave this step green. That gap IS tracked: `docs/coverage-debt.md` item 10,
+          # recorded by the same round that raised it. Until 2026-08-26 this comment said the opposite -
+          # "there is none, do not go looking" - which was true when written and false the moment item 10
+          # landed in this same range. Restated here because this is the assertion it bounds.
           "install/uninstall + namespace + C6 growth/inbox KEEP-data survival + 14g migration smoke PASSED"
 
       - name: Upload installer artifact

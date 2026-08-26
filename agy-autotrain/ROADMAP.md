@@ -65,9 +65,12 @@ The installer is not naive here, and any proposal must start from what it alread
   template (`:31-41`, `:54`, `:60`). The comments there state the failure mode in as many words.
 - An uninstall path warns about *"observations captured but not yet drained"* (the `RemoveGrowth`
   confirmation dialog - NAMED, not numbered: it was cited as `:127` until 2026-08-26 and had moved to
-  `:291`, because five folds in one range grew that procedure) and there is
-  inbox-file handling around `:148-153`, including a deliberate note that renaming the inbox to `.backup`
-  would drop it from the injected set.
+  `:291`, because five folds in one range grew that procedure). The same procedure's PURGE branch
+  handles the inbox files, and its KEEP branch carries a deliberate note that renaming **growth.md** to
+  `.backup` would drop it from the driver's read path. That sentence cited `:148-153` until 2026-08-26
+  and was wrong twice over: the range had moved, AND it described the note as being about the inbox when
+  it is about growth.md. The fold that fixed `:127` two lines above left this one standing - which is
+  why neither is a number any more.
 - A `agy-observations.md.preinstall-backup` exists on this machine.
 
 **So the install/upgrade vector is covered.** The uncovered vectors are everything else.

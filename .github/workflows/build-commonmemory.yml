@@ -27,7 +27,11 @@ jobs:
       - name: Record the built commit
         id: sha
         shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        # Assign first, then echo: the `echo "sha=$(...)"` form discards git's exit code and can publish
+        # a non-sha while the step stays green. Measured; full note in build-agy-autotrain.yml.
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Extract version from .iss
         id: ver

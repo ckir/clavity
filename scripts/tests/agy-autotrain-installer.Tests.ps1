@@ -290,9 +290,18 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
 
         # 1. THE SET, pinned by identity and order.
         $deleted = @($gateBody | Where-Object { $_ -match 'DeleteFile\(' })
-        $targets = @($gateBody | Where-Object { $_ -match '^\s*(GrowthFile|InboxFile)\s*:=' } |
+        # SCANNED OVER $procBody, NOT $gateBody - and that one word is the whole assertion. The
+        # `GrowthFile :=` assignment sits ONE LINE ABOVE the `if RemoveGrowth then` head, so it was never
+        # inside the gate body this scan used: the `GrowthFile|` alternation was DEAD and this pinned
+        # three of the five deletions while the count below said five. MEASURED 2026-08-26: repointing
+        # that assignment at %USERPROFILE%\.claude\CLAUDE.md - so a PURGE uninstall destroys THAT file
+        # and its .sha256 instead of the growth header - left this suite 16/0 GREEN. Widening to the
+        # procedure is safe: these two variables exist in it for no purpose but deletion, so a new
+        # assignment SHOULD red here and be looked at.
+        $targets = @($procBody | Where-Object { $_ -match '^\s*(GrowthFile|InboxFile)\s*:=' } |
                      ForEach-Object { ($_ -replace '^\s*(GrowthFile|InboxFile)\s*:=\s*', '') -replace ';\s*$', '' })
         $expected = @(
+            "ExpandConstant('{%USERPROFILE}\.clavity\golden-header.growth.md')"
             "ExpandConstant('{%USERPROFILE}') + '\.clavity\agy-observations.md'"
             "ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md.migrated-14g')"
             "ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md')"
@@ -304,6 +313,14 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         $allDeletes = @($procBody | Where-Object { $_ -match 'DeleteFile\(' })
         $deleted.Count | Should -Be $allDeletes.Count -Because 'every DeleteFile in this procedure must sit INSIDE the consent gate - one moved outside deletes a user''s observations on a KEEP uninstall, which is the exact misreading the comment above these calls was written to prevent'
         $deleted.Count | Should -Be 5 -Because 'growth, its .sha256, the canonical inbox, the migration sidecar, and the rolled-back plugin-folder copy - five deletions, and a count that drifts means the set changed'
+
+        # 3. THE CALL ARGUMENTS, pinned by identity and order. The assignment census above cannot reach
+        #    `GrowthFile + '.sha256'` - it is DERIVED, with no assignment of its own - so four assignments
+        #    can never pin five deletions. Changing that suffix would retarget a deletion while the set,
+        #    the count and the gate scope all still looked right.
+        $deleteArgs = @($deleted | ForEach-Object { ($_ -replace '^.*DeleteFile\(', '') -replace '\).*$', '' })
+        $expectedArgs = @('GrowthFile', "GrowthFile + '.sha256'", 'InboxFile', 'InboxFile', 'InboxFile')
+        ($deleteArgs -join "`n") | Should -BeExactly ($expectedArgs -join "`n") -Because 'each deletion must take the exact argument its path census pins - a derived suffix that drifts destroys a file nobody named'
     }
 
     It 'CLAIMS the source by rename BEFORE it writes anything' {
