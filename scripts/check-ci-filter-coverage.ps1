@@ -59,6 +59,8 @@ if (-not $WorkflowPath) { $WorkflowPath = Join-Path $RepoRoot '.github/workflows
 # Removing a row is a DECISION, not an oversight.
 $Required = [ordered]@{
     'scripts/**'                                        = 'the suite itself'
+    '.claude/hooks/**'                                  = 'run-hook-tests.sh fixture-tests agy-verify-reminder.sh, which is committed here and wired in this repo .claude/settings.json'
+    'agy-autotrain/verify/**'                           = 'the same suite lives there, and assertions.md is the data it reads'
     'installer/_shared/**'                              = 'register-plugin.Tests.ps1 dot-sources installer/_shared/register-plugin.ps1'
     'clavity-dotnet/install/**'                         = 'test-suite-registration.Tests.ps1 pins clavity-install.Tests.ps1 by PATH and asserts the file exists'
     'clavity-dotnet/plugin/**'                          = 'agy-mark / agy-shield-lib / agy-seam-inject / agy-discipline-reaching suites all read hooks from this tree'

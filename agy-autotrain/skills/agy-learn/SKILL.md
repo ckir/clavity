@@ -75,11 +75,25 @@ the need for both - so a failure you swallow is an observation nobody ever finds
 
 ### Appending is safe during a drain; this is why
 
-`agy-curate` **claims** the inbox by renaming it before it reads anything. So if a drain is in flight,
-your append either lands in the file before the rename (and is drained with the rest) or creates a fresh
-canonical file after it (and is drained next time). **Neither case loses a bullet, and that property
-depends on you only ever APPENDING** - never read-then-rewrite the file, which would clobber whatever the
-drain is about to write back.
+**Appending is the SAFEST thing you can do, and it is not perfectly safe. Both halves are true and the
+second was missing here until 2026-08-27.**
+
+A drain moves the `## Pending` region to a staging snapshot and then rewrites the inbox. That closes the
+LARGE window - an append landing during the 30-60s curator run goes into the now-empty `## Pending` and
+drains next time, losing nothing. But `drain-lib.ps1` states the residue in as many words: *"a narrow
+SUB-SECOND race remains - an agy-learn append between this read and the inbox rewrite is clobbered"*,
+because this skill is deliberately a dumb, uncoordinated appender and coordination is a spec non-goal.
+
+This paragraph previously said `agy-curate` "**claims** the inbox by renaming it before it reads
+anything", and concluded "**neither case loses a bullet**". Neither statement was true: there is no
+claiming rename of the inbox - the only `Move-Item` in that path moves a TEMP file onto the staging
+snapshot - and the code comment asserts the opposite of the guarantee. Promising a safety property the
+implementation documents as absent is worse than stating the residue, because it stops the reader taking
+the one precaution that helps.
+
+**So: only ever APPEND** - never read-then-rewrite the file, which would clobber whatever the drain is
+about to write back - and if a bullet ever seems to vanish during a drain, that sub-second race is the
+first thing to suspect rather than the last.
 
 **Then verify what you wrote, with a check you can actually perform.** In the same turn, print the
 **resolved absolute path** and the **new pending count** you observe after appending. Both are within
