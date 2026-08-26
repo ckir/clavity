@@ -67,6 +67,7 @@ $Required = [ordered]@{
     'lefthook.yml'                                      = 'check-curate-in-progress asserts the pre-commit wiring lives there'
     'agy-autotrain/skills/agy-curate/SKILL.md'          = 'check-curate-in-progress asserts the marker path that skill ARMS is the one the guard READS'
     'agy-autotrain/knowledge/driver-cheatsheet.core.md' = 'check-cheatsheet-budget reads the canonical cheatsheet; listed narrowly so the high-churn observations inbox beside it does not trigger CI'
+    'agy-autotrain/installer/**'                        = 'agy-autotrain-installer.Tests.ps1 reads agy-autotrain.iss and asserts 16 structural guards over MigrateInboxToUserState and the uninstall purge branch. Listed as a TREE, not narrowly like the cheatsheet row above: this directory holds exactly one tracked file, so breadth costs no extra CI runs today and covers a second installer asset without another review round having to notice'
     'docs/agy-disciplines-marker-contract.md'           = 'check-injected-context resolves that token against the real repo root, so a rename reds the row'
     'build/members.json'                                = 'check-roster reads the real members manifest (validate-members.yml fires on it but does NOT run Pester)'
     '.github/workflows/ci-scripts.yml'                  = 'the filter must re-run the job it controls'
