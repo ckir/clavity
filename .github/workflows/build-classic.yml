@@ -67,11 +67,17 @@ jobs:
         shell: pwsh
         run: |
           pwsh -NoProfile -File scripts/build-classic-release.ps1
-          # CHECKED EXPLICITLY, because this is NOT the last statement in the step. GitHub appends an
-          # `exit $LASTEXITCODE` to a pwsh step, so a native command's failure propagates only when it is
-          # the final statement; here the Test-Path lines below run afterwards and their success becomes the
-          # step's exit code. A build script that failed AFTER staging - or a stale publish/clavity.exe from
-          # an earlier run - then produces a GREEN job over a broken build.
+          # CHECKED EXPLICITLY, AND THE REASON WRITTEN HERE ON 2026-08-26 WAS WRONG. It claimed the
+          # Test-Path lines below would overwrite this exit code, so the failure would be swallowed.
+          # MEASURED 2026-08-27, pwsh 7: `$LASTEXITCODE` is set only by NATIVE executables and survives
+          # every cmdlet - Test-Path found, Test-Path not-found, Get-Item, and a cmdlet that throws all
+          # leave a native `exit 7` reading 7. GitHub's appended `exit $LASTEXITCODE` would therefore have
+          # seen this script's failure, and it was never swallowed. A reviewer caught the false mechanism.
+          #
+          # The check STAYS, on its merits rather than the fiction: it fails at the point of failure with a
+          # named message instead of at the end of the step with a bare code, and it keeps holding if
+          # someone later adds a NATIVE command below it - which IS the case that would overwrite the code
+          # and is the only one that ever could.
           if ($LASTEXITCODE -ne 0) { throw "build-classic-release.ps1 failed with exit code $LASTEXITCODE" }
           if (-not (Test-Path publish/clavity.exe)) { throw "publish/clavity.exe not produced" }
           if (Test-Path publish/agy-mcp-bridge/.env) { throw "SECURITY: .env staged" }
