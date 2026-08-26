@@ -52,13 +52,18 @@ gate() {
   local cwd="$1" head cap aud base changed
   # The executable-path list, held ONCE and used by both callers below. Two copies would be two definitions
   # of "executable code" free to drift apart.
-  # WHAT COUNTS AS EXECUTABLE. Until 2026-08-26 this listed seventeen source extensions and NONE of the
-  # things this repository actually gates itself with. Measured that day, on the very range it was added
-  # in: rounds 17, 18 and 19 all changed `agy-autotrain/installer/agy-autotrain.iss` - a Pascal program
-  # that deletes user data - four `.yml` workflows were rewritten, and the test gate itself is a
-  # `justfile`. None matched. Both readers of this list then failed in the same direction: a range of
-  # such changes never nudged for an audit, and a capstone GREEN was extended across them as though
-  # nothing executable had landed.
+  # WHAT COUNTS AS EXECUTABLE. Until 2026-08-26 this listed seventeen source extensions and none of the
+  # three things this repository gates ITSELF with: `agy-autotrain/installer/agy-autotrain.iss`, a Pascal
+  # program that deletes user data; the `.yml` workflows; and the `justfile` that is the test gate. Both
+  # readers of this list failed in the same direction: a range of such changes never nudged for an audit,
+  # and a capstone GREEN was extended across them as though nothing executable had landed.
+  #
+  # The sentence here used to attribute that to "rounds 17, 18 and 19 all changed the .iss", which is
+  # FALSE - measured with `git show --name-only`, none of those three folds touched it; the .iss changes
+  # in this range came from earlier folds and from round 21. The defect was real and the fix is unchanged;
+  # the provenance was invented, in a commit whose subject was other people's false claims. Naming the
+  # FILE TYPES rather than the rounds also cannot rot: which commit changed what is a fact about history,
+  # and this list is about what the repository is made of.
   local CODE_RE='(\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1|psm1|psd1|iss|yml|yaml|bat|cmd|csproj|fsproj|props|targets|toml)$|(^|/)justfile$)'
   head=$(git -C "$cwd" rev-parse HEAD 2>/dev/null) || return 1
   [ -n "$head" ] || return 1

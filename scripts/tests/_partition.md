@@ -52,6 +52,10 @@ load once and accumulates across files.
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
 - `just test-scripts-slow` — everything else. **24 suites, 644 tests** (638 measured 2026-08-26 by running
+  the recipe, plus SIX rows added that day across three folds - the ledger-row gate pair, the file-types
+  and divergent-branch rows, and the two audit-marker matrix rows. The derivation said "the two rows" and
+  summed to 640 while the headline was bumped twice past it; a derivation that no longer reaches its own
+  total is how a number stops being evidence.
   the recipe backgrounded, plus the two rows the ledger-row gate fix added that day; the 626 here was the
   2026-08-25 count and was stale before either addition. Runtime NOT re-measured; this half
   GAINED `agy-curate-nudge` and `check-injected-context` that day). The runtime below predates that
@@ -69,7 +73,10 @@ load once and accumulates across files.
   watching a process count. **A backgrounded run can also be STOPPED before it finishes** (one was, at 9
   of 13 suites, on 2026-08-06): a log with no `Tests Passed:` line is an ABORTED run, not a passing one,
   and its zero failures mean only that nothing had failed YET.
-- `just test-scripts` — both, unchanged in meaning: still every test.
+- `just test-scripts` — every suite UNDER `scripts/tests`, which is not quite everything: it globs a
+  directory, so it cannot reach `clavity-dotnet/install/clavity-install.Tests.ps1`, which the slow half
+  names explicitly. Called "still every test" here until 2026-08-26 - the `justfile` copy of that same
+  claim was corrected a commit earlier and this one was not.
 
 **The runtime target is ~120s, and it is a TARGET, not an enforceable invariant.** Do not gate anything on
 it. Day-to-day variance on this machine exceeds the margin it would police: the SAME 162-test fast half

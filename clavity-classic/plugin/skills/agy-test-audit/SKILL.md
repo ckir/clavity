@@ -315,8 +315,11 @@ bash "<BASE>/../../hooks/agy-mark.sh" head "agy-test-audit" "$(git rev-parse HEA
   > This line said "the audited sha ... not ambient HEAD" until 2026-08-26, which CONTRADICTED the command
   > four lines above it - and the command is the half an agent actually runs. Each half read as correct on
   > its own, which is how it survived nineteen review rounds. Ambient `HEAD` is the right content: the
-  > reminder hook goes quiet on `audit-marker == HEAD`, so writing anything else leaves it nudging forever
-  > after a completed audit. The case the old wording worried about - closing gaps advanced HEAD - is
+  > reminder hook goes quiet when the audit marker STILL DESCRIBES HEAD - it either equals HEAD, or is an
+  > ancestor of it with nothing executable landed since - so writing anything else leaves it nudging
+  > forever after a completed audit. (This paragraph said `audit-marker == HEAD` until 2026-08-26. That
+  > was the rule when it was written and was relaxed one round later, by a fold that changed no
+  > `SKILL.md` - the same fact, one artifact further on.) The case the old wording worried about - closing gaps advanced HEAD - is
   > already handled elsewhere and more strictly: executable changes after the capstone's reviewed tip make
   > the capstone GREEN stale, the hook falls silent on its own, and this skill's own capstone-invalidation
   > rule requires a re-capstone before the branch is done.

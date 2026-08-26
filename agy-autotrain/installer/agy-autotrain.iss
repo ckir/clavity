@@ -355,9 +355,11 @@ begin
       if FileExists(GrowthFile + '.sha256') then DeleteFile(GrowthFile + '.sha256');
       { REMOVED 2026-08-24, and the removal matters more than the text did. This comment claimed the
         inbox was "marked uninsneveruninstall so a KEEP-data uninstall cannot destroy it" and that it
-        "lives inside the install dir". BOTH halves were false at 14g: `uninsneveruninstall` appeared
-        nowhere in this file except that sentence - no [Files] entry ever carried it - and the inbox
-        moved to %USERPROFILE%\.clavity. Sitting directly above the only code that deletes a user's
+        "lives inside the install dir". BOTH halves were false at 14g: `uninsneveruninstall` appears
+        nowhere in this file TODAY, and the inbox moved to %USERPROFILE%\.clavity. (It said "no [Files]
+        entry ever carried it" until 2026-08-26, which the comment TWENTY-THREE LINES BELOW contradicts
+        outright: dc85d2d, 25b83cf and bd83435 each shipped that entry with the flag. Same fact, two
+        statements, one procedure - and the ROADMAP's re-correction of it landed while this copy did not.) Sitting directly above the only code that deletes a user's
         observations, it invited exactly the misreading that would license moving these DeleteFile calls
         out of the `if RemoveGrowth` gate: "the flag protects it anyway". Nothing protects it but the
         gate. The comment below states the actual contract. }

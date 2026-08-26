@@ -44,7 +44,12 @@ fi
 # comments), so `p` stays 1 to EOF. An unanchored date scan therefore reads dates out of those comments and
 # reports an "oldest pending entry" no bullet carries - which latched the age nudge ON permanently, because
 # draining cannot remove a drain log. Pinned by scripts/tests/agy-curate-nudge.Tests.ps1.
-# BOTH RULES MUST MATCH THE CANONICAL READER, and the first attempt at this only fixed one of them.
+# BOTH RULES MUST MATCH THE CANONICAL READER, and it took THREE attempts to get there - which is the
+# most useful thing this comment records. The first fixed only the CLOSE rule and claimed both agreed.
+# The second anchored the OPEN rule to `^## Pending[ \t]*$` and still did not match: the canonical reader
+# opens on `^##\s+Pending\s*$`, one-or-MORE whitespace, so `##  Pending` with two spaces opened the
+# region for PowerShell and for neither reader here. Each attempt narrowed the gap and then asserted it
+# was closed. It is `[ \t]+` now, which is the same set `\s+` means for this line.
 # drain-lib.ps1's Get-PendingRegionLines OPENS on `^##\s+Pending\s*$` - an exact line - and CLOSES on any
 # heading `^#{1,6}\s`. On 2026-08-26 these scans were changed to close on `^#+[ \t]`, and a comment here
 # claimed the two readers now agreed. They did not: the OPEN rule was still a bare prefix match, so a
@@ -57,8 +62,8 @@ fi
 # and `[ \t]` is narrower than `\s`. Interval expressions are not portable across every awk this hook may
 # meet, so the wider form stays - and seven hashes is not a markdown heading anyway, which is the reason
 # the divergence is acceptable and not the reason it does not exist.
-count="$(awk '/^## Pending[ \t]*$/{p=1;next} /^#+[ \t]/{p=0} p && /^- \[/{c++} END{print c+0}' "$OBS" 2>/dev/null)"
-oldest="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^## Pending[ \t]*$/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print m }' "$OBS" 2>/dev/null)"
+count="$(awk '/^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{p=0} p && /^- \[/{c++} END{print c+0}' "$OBS" 2>/dev/null)"
+oldest="$(awk 'function flush(){ v=(stamp!=""?stamp:cur); if(v!=""){ if(m==""||v<m) m=v }; cur=""; stamp="" } /^##[ \t]+Pending[ \t]*$/{p=1;next} /^#+[ \t]/{ flush(); p=0 } p && /^- \[/ { flush(); inrec=1 } p && (/^[ \t]*$/ || /^[ \t]*<!--/) { flush(); inrec=0 } p && inrec { s=$0; while(match(s,/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)){ pre=substr(s,1,RSTART-1); d=substr(s,RSTART,10); s=substr(s,RSTART+10); sub(/[ \t]+$/,"",pre); if(s ~ /^[^0-9A-Za-z]*agy([ \t]|$)/ && pre !~ /[0-9A-Za-z]$/) stamp=d; cur=d } } END{ flush(); print m }' "$OBS" 2>/dev/null)"
 [ -z "$count" ] && exit 0
 
 # Age gate (spec section 5.C-A: nudge on "N entries / an age threshold"): is the oldest pending entry too old?

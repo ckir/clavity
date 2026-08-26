@@ -15,7 +15,8 @@
 #
 # LINE INDEX, NEVER A BRACE PARSER. A brace-counting parser over an .iss is vacuous here: Inno's `{{`
 # escape and its brace-delimited COMMENTS unbalance any naive counter, and one such parser reported a
-# file - 292 lines then, 296 now - as having 4 executable lines while still printing a confident
+# file - whose length has grown steadily across this review - as having 4 executable lines while still
+# printing a confident
 # verdict. (The count moved in the same commit that rewrote this block, which is why it is stated
 # as history rather than as a fact about the file today.) The procedure
 # body is therefore delimited by line index between its own header and the next top-level declaration.
