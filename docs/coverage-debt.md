@@ -203,6 +203,38 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 - **Deferred by the owner:** 2026-08-25, AGY-CAPSTONE round 7 on `f29cd42..a1ad1d1`. Verified by
   sandboxed mutation with a passing and a failing control.
 
+### 9. The migration's ENCODING fix has only a structural pin, never a behavioural one
+
+- **Where:** `agy-autotrain/installer/agy-autotrain.iss` (`LoadStringFromFile`/`SaveStringToFile` in
+  `MigrateInboxToUserState`), guarded by `scripts/tests/agy-autotrain-installer.Tests.ps1`.
+- **The gap:** the guard asserts the singular byte-oriented CALL IS PRESENT. It does not assert that a
+  non-ASCII byte SURVIVES. Any change that re-encodes while still using a call of that name passes.
+- **The regression that would slip through:** the exact defect fixed in `1b2f7b7` - an em-dash entering
+  as UTF-8 `e2 80 94` and leaving as the Windows-1252 byte `97`, which PowerShell then renders as
+  U+FFFD. MEASURED on the live inbox: **138 non-ASCII lines** would be destroyed, while the bullet count
+  and the `^- \[` anchor stay correct so nothing notices.
+- **The test that should exist:** a behavioural step in the migration smoke that plants a known
+  multi-byte marker in the pre-migration inbox and asserts the post-migration file contains those exact
+  bytes. The reproduction is already written and proven: a no-`[Files]` probe installer that aborts in
+  `InitializeSetup` exercises the real Pascal pair and installs nothing.
+- **Why it is NOT being added here:** it belongs in a CI workflow that cannot be executed locally, and
+  an assertion nobody can run before merging is how round 1's smoke defects got in - a poll that could
+  never fail red. Owner to scope.
+- **Raised:** 2026-08-26, AGY-CAPSTONE round 14, stop-condition seat.
+
+### 10. The PURGE destruction path is structurally asserted and behaviourally unreachable in CI
+
+- **Where:** the migration smoke in `.github/workflows/build-agy-autotrain.yml`; the gate itself at
+  `agy-autotrain/installer/agy-autotrain.iss` under `if RemoveGrowth then`.
+- **The gap:** a silent uninstall defaults the consent prompt to IDNO, so CI always takes the KEEP path.
+  The reviewer put it exactly: **removing the `DeleteFile` calls from the purge gate entirely would
+  leave the smoke green.** Deletion on consent is asserted structurally and never once executed.
+- **The regression that would slip through:** any change that stops the purge deleting - including the
+  two paths added in `f06fb3e` and the census that pins them, all of which assert TEXT, not behaviour.
+- **Note:** the structural census added in `f06fb3e` is real coverage and is not being double-counted
+  here; the gap is that nothing runs the branch.
+- **Raised:** 2026-08-26, AGY-CAPSTONE round 14, unrun-guard and stop-condition seats agreeing.
+
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 
 🔴 **Letters are assigned in CAPTURE order and are NOT alphabetically sorted - do not "tidy" them.**
