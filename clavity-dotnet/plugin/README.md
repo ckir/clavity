@@ -78,15 +78,22 @@ Start.
 ```json
 {
   "mcpServers": {
-    "clavity-ls": { "command": "clavity-ls", "args": ["--mcp"] }
+    "clavity-ls": {
+      "command": "clavity-ls",
+      "args": ["--mcp"],
+      "env": { "CLAVITY_AGY_IDLE_MAX_SECONDS": "1800" }
+    }
   }
 }
 ```
 
 Claude starts this process automatically once the plugin is enabled and `clavity-ls` is on PATH — an
 integrator does not invoke `--mcp` by hand. At runtime the server reads `CLAVITY_AGY_LOG` and
-`CLAVITY_SESSION_ID` (set by `clavity-ls start` for that session) and `CLAVITY_GOLDEN_HEADER` (an
-optional override); see [`../README.md#configuration`](../README.md#configuration) for the full list.
+`CLAVITY_SESSION_ID` (set by `clavity-ls start` for that session), `CLAVITY_GOLDEN_HEADER` (an optional
+override), and `CLAVITY_AGY_IDLE_MAX_SECONDS` - the env block above raises the idle-wait ceiling from its
+600s default to 1800s, so a long review consult is not abandoned mid-answer. An MCP `env` block is read
+only when the server process starts, so changing it takes a reconnect, not a restart of the consult. See
+[`../README.md#configuration`](../README.md#configuration) for the full list.
 
 ## Troubleshooting
 

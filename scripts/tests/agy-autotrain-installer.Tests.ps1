@@ -323,6 +323,54 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         ($deleteArgs -join "`n") | Should -BeExactly ($expectedArgs -join "`n") -Because 'each deletion must take the exact argument its path census pins - a derived suffix that drifts destroys a file nobody named'
     }
 
+    It 'the CONSENT DIALOG names every path the PURGE destroys' {
+        # THE CONSENT ASYMMETRY. The test above pins the destructive SET by identity and order, and pins
+        # that every deletion sits inside the consent gate. Nothing pinned the PROMPT THAT OBTAINS THAT
+        # CONSENT. A path can enter the set - reddening the census above, so someone dutifully updates
+        # $expected - while this dialog goes on describing the old set, and the user consents to losing
+        # three things and loses four. Consent to a list that is no longer the list is not consent.
+        # MEASURED 2026-08-26: gutting this dialog so it named none of the observation files, while all
+        # five DeleteFile calls still ran, left the whole suite GREEN.
+        #
+        # Comments are STRIPPED first, deliberately: the .iss comment sitting INSIDE this very dialog
+        # mentions `.migrated-14g`, so a scan over the raw text would be satisfied by prose no user sees.
+        $all = @(Get-Content -LiteralPath $script:IssPath)
+        $noComments = @(Remove-InnoComments -Lines $all)
+
+        $start = -1
+        for ($i = 0; $i -lt $noComments.Count; $i++) {
+            if ($noComments[$i] -match 'RemoveGrowth\s*:=\s*SuppressibleMsgBox\(') { $start = $i; break }
+        }
+        $start | Should -BeGreaterThan -1 -Because 'the consent dialog must exist - without it the purge runs on an answer nobody was asked for'
+        $end = -1
+        for ($i = $start; $i -lt $noComments.Count; $i++) {
+            if ($noComments[$i] -match 'IDNO\)\s*=\s*IDYES;') { $end = $i; break }
+        }
+        $end | Should -BeGreaterThan $start -Because 'the dialog must terminate, or this scan is inspecting nothing'
+        $dialog = ($noComments[$start..$end] -join "`n")
+
+        # One token per deletion, in the order the purge performs them.
+        $mustName = @(
+            'golden-header.growth.md'
+            '.sha256'
+            '\.clavity'
+            '.migrated-14g'
+            'roll back'
+        )
+        foreach ($tok in $mustName) {
+            $dialog | Should -BeLike "*$tok*" -Because "the consent dialog must name what it is about to delete, and it does not mention '$tok'"
+        }
+
+        # And the two must stay the same size. A sixth deletion added without a sixth thing named reds
+        # HERE, which is the coupling the census above cannot express.
+        $gateAt = -1
+        for ($i = 0; $i -lt $noComments.Count; $i++) {
+            if ($noComments[$i] -match '^\s*if\s+RemoveGrowth\s+then\s*$') { $gateAt = $i; break }
+        }
+        $gateAt | Should -BeGreaterThan -1 -Because 'the consent gate must exist for this count to mean anything'
+        $gateDeletes = @(Get-BranchBody -Lines $noComments -HeadIndex $gateAt | Where-Object { $_ -match 'DeleteFile\(' })
+        $mustName.Count | Should -Be $gateDeletes.Count -Because 'every deletion the purge performs must be named in the dialog that consents to it - if these drift apart the user is agreeing to a list that is not the list'
+    }
     It 'CLAIMS the source by rename BEFORE it writes anything' {
         # THE ORDERING INVARIANT. Pre-fold the procedure wrote first and renamed last, discarding the
         # rename's Boolean: a rename that failed after a successful write left the source in place, so

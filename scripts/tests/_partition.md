@@ -18,8 +18,9 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 411 tests** (count measured 2026-08-26 by running the recipe; the 492,9s warm / 550,4s cold
-  runtime still stands from the 407-test measurement of 2026-08-25)
+- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 412 tests** (411 measured 2026-08-26 by
+  running the recipe, plus the one row the consent-dialog pin added that day; the 492,9s warm / 550,4s cold
+  runtime still stands from the 407-test measurement of 2026-08-25 and was NOT re-measured for either addition)
   (counts AND runtime measured 2026-08-25, backgrounded, two consecutive runs with a 240s idle lead-in and
   the orchestrator issuing no tool call for the duration; 407 passed / 0 failed both times).
   🔴 **Quote the RANGE 493-550s, not one number** - and note the cold run is 92% of the 600s
@@ -543,7 +544,7 @@ agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.
-agy-autotrain-installer.Tests.ps1                 1,3s   16 tests   <- FAST, new 2026-08-24. WARM on an idle
+agy-autotrain-installer.Tests.ps1                 1,3s   17 tests   <- FAST, new 2026-08-24. WARM on an idle
   CPU (cold 9,8s - almost all of that is Pester module load, which this suite does not pay again once
   warm). Pure file parsing, no bash and no process launches, which is why it is the cheapest row here.
 agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new 2026-08-24. 6,4s WARM on an
@@ -580,7 +581,7 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   39 tests   <- FAST, re-measured 2026-08-05
-check-cheatsheet-budget.Tests.ps1                43,1s    6 tests   <- SLOW as of 2026-08-25; was FAST, re-measured 2026-08-12
+check-cheatsheet-budget.Tests.ps1                43,1s    7 tests   <- SLOW as of 2026-08-25; was FAST, re-measured 2026-08-12
 check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       pre-commit parity gate's own suite.
                                                                       Every row builds a throwaway git repo,

@@ -171,9 +171,18 @@ been wrong before: it read "5 bullets and 2.5 KB" while the file was 4750B, so a
 work against this sentence would have concluded the artifact was fine when it was over budget. The
 ENFORCED number is the one in the script named below, and that is the only one to size against.
 
-**The budget is whatever `scripts/check-cheatsheet-budget.ps1` declares as its `-MaxBytes` default (6144 bytes at the time of writing), and it is ENFORCED** by that script (run in CI and
-by `scripts/tests/check-cheatsheet-budget.Tests.ps1` under `just test-scripts-slow` - that suite moved
-out of the fast half on 2026-08-25). Above that the
+**The budget is 6144 bytes** - the `-MaxBytes` default of `scripts/check-cheatsheet-budget.ps1`, and it is
+ENFORCED by that script (run in CI and by `scripts/tests/check-cheatsheet-budget.Tests.ps1` under
+`just test-scripts-slow` - that suite moved out of the fast half on 2026-08-25).
+
+> 🔴 **That script is a REPO tool and is NOT shipped into the installed plugin tree.** Measured 2026-08-26:
+> an install has no `scripts/` directory at all. Until then this sentence told you the inline number was
+> untrustworthy and to go read the script instead - which, from the installed tree this skill explicitly
+> supports running in, does not exist. So the number above is the contract, and it is kept honest
+> MECHANICALLY rather than by hand: the suite named above asserts this sentence quotes the same number the
+> script defaults to, so a drift reds in CI instead of misinforming a curator who cannot check.
+
+Above that the
 checker fails and you must either consolidate or raise the default deliberately, in a committed edit. The
 runtime hard cap is separate and much higher - `clavity-classic/src/driver_cheatsheet.rs:12` sets
 `MAX_BYTES = 16 * 1024`, and a runtime file over it degrades to the compiled-in baseline floor with a

@@ -37,6 +37,35 @@ Describe "check-cheatsheet-budget.ps1" {
         $LASTEXITCODE | Should -Be 1
     }
 
+    It "the curate SKILL.md quotes the budget this script actually enforces" {
+        # WHY THIS EXISTS. agy-curate/SKILL.md tells the curator what the cheatsheet budget is. Until
+        # 2026-08-26 it did not state a number at all - it told the curator that any inline number was
+        # untrustworthy and to go read `scripts/check-cheatsheet-budget.ps1` instead. MEASURED that day:
+        # the installed plugin tree, which that skill explicitly supports running from, has no `scripts/`
+        # directory at all, so the only authority it named was unreachable from half the places it runs.
+        # The skill now states the number outright, and a stated number rots unless something checks it.
+        #
+        # PIN THE BEHAVIOUR, NOT THE SOURCE TEXT - the same lesson as the row below, whose comment records
+        # two source-matching forms that were both defeated. This never reads the script's declaration. It
+        # takes the number the SKILL states and probes the script's REAL default with it: a file of exactly
+        # that many bytes must pass, and one byte more must fail. Drift in either direction reds - a skill
+        # quoting too high fails the first assertion, too low fails the second.
+        $skill = Join-Path $script:RepoRoot 'agy-autotrain/skills/agy-curate/SKILL.md'
+        Test-Path -LiteralPath $skill | Should -BeTrue -Because 'the curate skill must exist, or this scan is inspecting nothing'
+        $m = [regex]::Match([System.IO.File]::ReadAllText($skill), '\*\*The budget is (\d+) bytes\*\*')
+        $m.Success | Should -BeTrue -Because 'the curate skill must STATE the budget as a number - it is the only authority a curator running from an installed tree can reach, because this script is not shipped there'
+        $stated = [int]$m.Groups[1].Value
+
+        $at = Join-Path $script:Tmp 'at-stated-budget.md'
+        [System.IO.File]::WriteAllBytes($at, [byte[]]::new($stated))
+        & pwsh -NoProfile -File $script:Script -Path $at
+        $LASTEXITCODE | Should -Be 0 -Because "the curate skill states $stated bytes, so exactly that many must be within this script's default budget - if this fails the skill is quoting a HIGHER number than the script enforces and a curator would be told they had room they do not have"
+
+        $over = Join-Path $script:Tmp 'one-over-stated-budget.md'
+        [System.IO.File]::WriteAllBytes($over, [byte[]]::new($stated + 1))
+        & pwsh -NoProfile -File $script:Script -Path $over
+        $LASTEXITCODE | Should -Be 1 -Because "the curate skill states $stated bytes, so one byte more must fail - if this passes the skill is quoting a LOWER number than the script enforces and the two have drifted"
+    }
     It "pins the committed default budget at 6144 bytes" {
         # WITHOUT THIS ROW the enforcing row below is defeated by a one-line edit. It invokes the script
         # with NO arguments, so it measures against whatever the default happens to be at call time -
