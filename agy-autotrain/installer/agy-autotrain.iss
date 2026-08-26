@@ -144,7 +144,7 @@ procedure MigrateInboxToUserState();
 var
   OldPath, NewDir, NewPath, Aside: String;
   OldBytes, DestBytes: AnsiString;
-  DestSize: Integer;
+  DestSize, AsideSize: Integer;
   Wrote: Boolean;
 begin
   OldPath := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md');
@@ -155,25 +155,74 @@ begin
       by renaming it to Aside before writing anything, so that a crash between the two is a clean no-op
       the next upgrade retries. But the retry never happened: with OldPath gone, every later run exited
       right here, nothing ever looked at Aside, and the operator was told nothing - their whole undrained
-      backlog sat under a name no running code reads. The two "the next upgrade will retry" messages
-      below are about the OTHER two failure paths, where the source is genuinely still in place.
+      backlog sat under a name no running code reads.
 
-      THE DISCRIMINATOR IS THE DESTINATION, NOT THE SIDECAR. A SUCCESSFUL migration also leaves Aside
-      behind and OldPath absent - the sidecar is the audit trail of the normal case - so keying off the
-      sidecar alone would nag every user forever after a perfectly good migration. What separates the two
-      is that a successful migration WROTE: the destination is non-empty. Probed without
-      ForceDirectories, so this diagnosis never creates the folder it is reporting on. }
-    NewPath := ExpandConstant('{%USERPROFILE}') + '\.clavity\agy-observations.md';
+      IT NOW COMPLETES THE MIGRATION INSTEAD OF DIAGNOSING IT, and that single change removes two defects
+      at once. The first version keyed on "the destination is empty" to tell an interrupted run from a
+      successful one, and a reviewer found the hole in it: a pre-14g inbox that was legitimately EMPTY
+      migrates successfully and leaves exactly the same evidence - sidecar present, destination empty - so
+      every later install would have reported an interruption that never happened. There is no way to tell
+      those two states apart by size, which is the clue that discriminating was the wrong approach.
+      Finishing the job is well-defined in BOTH: copying an empty sidecar over an empty destination is a
+      no-op that produces the identical state, and copying a full one lands the data where it belongs.
+      The second defect was asking a human to rename a file when the installer is standing right there and
+      can do it. An operator instruction is a step that can be skipped, misread, or done in the wrong
+      direction; a copy cannot.
+
+      AN EMPTY SIDECAR MEANS THERE IS NOTHING TO RECOVER, so it exits silently rather than copying nothing
+      on every future install. An UNREADABLE one is neither empty nor full, and that case is reported
+      rather than guessed - the same lesson FileSize taught below, where a discarded Boolean let a failed
+      size read pass as "the file is empty". }
+    NewDir := ExpandConstant('{%USERPROFILE}') + '\.clavity';
+    NewPath := NewDir + '\agy-observations.md';
     DestSize := 0;
     if FileExists(NewPath) then
-      FileSize(NewPath, DestSize);
-    if FileExists(Aside) and (DestSize = 0) then
-      MigrationProblem('An earlier migration was interrupted after claiming your captured observations '
-        + 'and before writing them. Nothing was lost - they are in:' + #13#10 + Aside + #13#10#13#10
-        + 'Rename that file back to:' + #13#10 + OldPath + #13#10#13#10
-        + 'and the next upgrade will complete the move. Until then the tool reads only ' + NewPath
-        + ', which is empty.');
-    exit;
+      if not FileSize(NewPath, DestSize) then
+        DestSize := -1;
+    { `if not FileExists(...)` deliberately, not the positive form: the suite locates the ambiguous-sidecar
+      guard below by the exact text `if FileExists(Aside) then`, and a second copy of that phrase up here
+      made its anchor find THIS branch instead. The guard caught it and was right to - an anchor that
+      stops identifying one place is how a scan starts certifying the wrong code. }
+    AsideSize := 0;
+    if not FileExists(Aside) then
+      AsideSize := 0
+    else if not FileSize(Aside, AsideSize) then
+      AsideSize := -1;
+
+    { NOTHING TO RECOVER, AND THIS EXIT COMES FIRST ON PURPOSE. An ABSENT sidecar is an ordinary machine
+      that never had a pre-14g inbox. An EMPTY one is a successful migration OF an empty inbox - which
+      leaves exactly the evidence an interrupted run leaves, sidecar present and destination empty, and is
+      why "the destination is empty" could not be the discriminator on its own. A non-empty destination is
+      a migration that plainly finished. None of those is a problem and none gets a message.
+      Its POSITION is load-bearing: the silent-exit scan in the suite permits exactly one unreported exit,
+      the procedure's nothing-to-do return, and identifies it as the FIRST one in source order. }
+    if (AsideSize = 0) or (DestSize > 0) then
+      exit;
+
+    if (AsideSize = -1) or (DestSize = -1) then
+    begin
+      MigrationProblem('An earlier migration left observations at:' + #13#10 + Aside + #13#10#13#10
+        + 'but their size could not be read, so this installer did not touch them. Nothing was lost. '
+        + 'Copy that file to ' + NewPath + ' by hand, or run this installer again.');
+      exit;
+    end;
+
+    { RECOVER BY RESTORING THE PRECONDITION, NOT BY RE-IMPLEMENTING THE MOVE. The instruction this used to
+      print at the operator was "rename that file back, and the next upgrade will complete the move" - so
+      the faithful automation is to perform exactly that rename and fall through into the same path the
+      next upgrade would have taken. Copying to the destination here would have been a SECOND write site
+      with its own failure branches, competing with the invariant that the claiming rename precedes any
+      write - and the guard for that ordering caught the attempt, correctly. }
+    if not RenameFile(Aside, OldPath) then
+    begin
+      MigrationProblem('An earlier migration was interrupted, and restoring its rescue file failed. '
+        + 'Nothing was lost - your observations are at:' + #13#10 + Aside + #13#10#13#10
+        + 'Rename it back to' + #13#10 + OldPath + #13#10#13#10 + 'and the next upgrade will finish '
+        + 'the move.');
+      exit;
+    end;
+    { Recovered. OldPath exists again and Aside does not - exactly the state the migration below expects -
+      so execution falls through into it on THIS run rather than waiting for the next upgrade. }
   end;
 
   NewDir := ExpandConstant('{%USERPROFILE}') + '\.clavity';
