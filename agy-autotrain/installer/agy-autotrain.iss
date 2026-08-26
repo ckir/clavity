@@ -283,7 +283,8 @@ begin
     explicit answer. }
   RemoveGrowth := SuppressibleMsgBox('Also remove agy-autotrain''s learned data?' + #13#10#13#10 +
     '  - the learned golden-header growth (~\.clavity\golden-header.growth.md and its .sha256)' + #13#10 +
-    '  - any observations captured but not yet drained (~\.clavity\agy-observations.md)' + #13#10#13#10 +
+    '  - any observations captured but not yet drained (in ~\.clavity, and any copy a failed'#13#10 +
+    '    migration left in the plugin folder)' + #13#10#13#10 +
     'Choose No to keep both for a future reinstall.',
     mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
 end;
@@ -314,6 +315,18 @@ begin
       InboxFile := ExpandConstant('{%USERPROFILE}') + '\.clavity\agy-observations.md';
       if FileExists(InboxFile) then DeleteFile(InboxFile);
       InboxFile := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md.migrated-14g');
+      if FileExists(InboxFile) then DeleteFile(InboxFile);
+      { And the PLAIN path, not only the sidecar. When a migration write fails it ROLLS BACK by renaming
+        the aside file to the plugin knowledge folder's plain agy-observations.md (spelled with ExpandConstant
+        below, not here: an app-constant's closing brace inside a Pascal brace comment ENDS the
+        comment early - measured, it broke this compile once), so after a
+        rollback the user's ENTIRE undrained backlog sits at that name. The installer has not shipped
+        that file since 14g, so it can only exist because a pre-14g install left it or a rollback put it
+        back - user data either way. Inno's uninstaller removes only files it LOGGED, and this is not
+        one, so nothing else would ever take it: a user who explicitly chose PURGE kept their whole
+        backlog. That is the "consent ignored in the other direction" the comment above forbids, and it
+        is why this line sits INSIDE the gate - deleted on an explicit purge, never on KEEP. }
+      InboxFile := ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md');
       if FileExists(InboxFile) then DeleteFile(InboxFile);
     end;
     { KEEP (RemoveGrowth=False): leave growth.md exactly where it is. It lives outside the install dir,

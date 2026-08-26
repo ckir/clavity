@@ -253,6 +253,59 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         $code | Should -Not -Match 'Roll the claim back so the source returns' -Because 'comment prose must be stripped, or a literal hidden in a comment satisfies these guards'
     }
 
+    It "the PURGE branch deletes EXACTLY the user-data paths it promises, and only under the consent gate" {
+        # This whole procedure is the only code in the product that deletes a user's captured
+        # observations, and until 2026-08-26 NOTHING pinned which paths it touches: the suite was green
+        # both before and after a path was ADDED to the destructive set. A deletion set with no census is
+        # the same hole `Get-DrainOutputPaths` had - see drain-lib.Tests.ps1, where an identity pin
+        # existed but had frozen a wrong value.
+        #
+        # Two properties are asserted, and they are different:
+        #   1. the SET is exactly these five, in this order - so adding or losing one is visible;
+        #   2. every one of them sits INSIDE `if RemoveGrowth then` - the consent gate. The comment in
+        #      the .iss above these calls exists because a false claim once "invited exactly the
+        #      misreading that would license moving these DeleteFile calls out of the gate". Nothing
+        #      protects the user's data but that gate, so its scope is asserted, not assumed.
+        $all = @(Get-Content -LiteralPath $script:IssPath)
+        $procStart = -1
+        for ($i = 0; $i -lt $all.Count; $i++) {
+            if ($all[$i] -match '^procedure\s+CurUninstallStepChanged\s*\(') { $procStart = $i; break }
+        }
+        $procStart | Should -BeGreaterThan -1 -Because 'CurUninstallStepChanged must exist, or this scan is inspecting nothing'
+
+        $procEnd = $all.Count
+        for ($i = $procStart + 1; $i -lt $all.Count; $i++) {
+            if ($all[$i] -match '^(procedure|function)\s') { $procEnd = $i; break }
+        }
+        $procBody = @(Remove-InnoComments -Lines $all[$procStart..($procEnd - 1)])
+
+        # The gate opens at `if RemoveGrowth then` and closes at the `end;` that matches its `begin`.
+        $gateAt = -1
+        for ($i = 0; $i -lt $procBody.Count; $i++) {
+            if ($procBody[$i] -match '^\s*if\s+RemoveGrowth\s+then\s*$') { $gateAt = $i; break }
+        }
+        $gateAt | Should -BeGreaterThan -1 -Because 'the consent gate must exist - without it every DeleteFile below runs on a KEEP uninstall'
+        $gateBody = @(Get-BranchBody -Lines $procBody -HeadIndex $gateAt)
+        $gateBody.Count | Should -BeGreaterThan 0 -Because 'the gate must have a body, or this scan is inspecting nothing'
+
+        # 1. THE SET, pinned by identity and order.
+        $deleted = @($gateBody | Where-Object { $_ -match 'DeleteFile\(' })
+        $targets = @($gateBody | Where-Object { $_ -match '^\s*(GrowthFile|InboxFile)\s*:=' } |
+                     ForEach-Object { ($_ -replace '^\s*(GrowthFile|InboxFile)\s*:=\s*', '') -replace ';\s*$', '' })
+        $expected = @(
+            "ExpandConstant('{%USERPROFILE}') + '\.clavity\agy-observations.md'"
+            "ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md.migrated-14g')"
+            "ExpandConstant('{app}\plugins\agy-autotrain\knowledge\agy-observations.md')"
+        )
+        ($targets -join "`n") | Should -BeExactly ($expected -join "`n") -Because 'the destructive set must be pinned by identity and order - a path silently entering or leaving it is a user-data change nobody would see. The plain agy-observations.md is here because a failed migration ROLLS BACK to it, and without it a user who chose PURGE kept their whole backlog'
+
+        # 2. EVERY delete is inside the gate. Counted against the procedure as a whole, so a call moved
+        #    OUT of the gate reds here even though the set above would still look right.
+        $allDeletes = @($procBody | Where-Object { $_ -match 'DeleteFile\(' })
+        $deleted.Count | Should -Be $allDeletes.Count -Because 'every DeleteFile in this procedure must sit INSIDE the consent gate - one moved outside deletes a user''s observations on a KEEP uninstall, which is the exact misreading the comment above these calls was written to prevent'
+        $deleted.Count | Should -Be 5 -Because 'growth, its .sha256, the canonical inbox, the migration sidecar, and the rolled-back plugin-folder copy - five deletions, and a count that drifts means the set changed'
+    }
+
     It 'CLAIMS the source by rename BEFORE it writes anything' {
         # THE ORDERING INVARIANT. Pre-fold the procedure wrote first and renamed last, discarding the
         # rename's Boolean: a rename that failed after a successful write left the source in place, so
