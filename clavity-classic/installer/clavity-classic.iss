@@ -248,7 +248,16 @@ begin
     so this is just the data keep/purge decision. Enumerate the data classes it governs so the choice is informed:
     golden-header ALWAYS; the bridge API key ONLY when a post-install .env exists (opt-in, default-OFF). }
   Prompt := 'Also remove clavity''s data?' + #13#10#13#10 +
-    '  - the golden-header seed baseline (~\.clavity\golden-header.seed.md, its .sha256, and any' + #13#10 +
+    { `~` IS NOT A WINDOWS PATH, and this is the last operator-facing instance of it in the family.
+      agy-autotrain's purge dialog was corrected on 2026-08-26 for a reason that applies identically
+      here: this is the screen a user reads before consenting to the destruction of their own data, and
+      the one moment they might want to go and look at it first. `~\.clavity` resolves in a POSIX shell
+      and in PowerShell, and in none of the places a Windows operator would paste it - Explorer's address
+      bar, cmd.exe, or Win+R. All five .iss were enumerated when this was found; the remaining `~\`
+      occurrences are inside BRACE comments, which no user sees - and the words are spelled out here
+      because writing the brace characters literally ENDS this comment at the first one, which is the
+      trap agy-autotrain.iss already records breaking a compile. ISCC caught it again on this edit. }
+    '  - the golden-header seed baseline (%USERPROFILE%\.clavity\golden-header.seed.md, its .sha256, and any' + #13#10 +
     '    pre-split golden-header.md). The learned growth file belongs to agy-autotrain and is' + #13#10 +
     '    removed by that product''s own uninstaller, not this one.';
   if FileExists(ExpandConstant('{app}\agy-mcp-bridge\.env')) then

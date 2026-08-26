@@ -38,6 +38,17 @@ function Invoke-BashHook {
         [hashtable]$Env = @{},
         [string[]]$Arguments = @()
     )
+    # THE HOOK MUST EXIST, ASSERTED HERE RATHER THAN IN FOURTEEN SUITES. bash reports a missing script
+    # on STDERR as "No such file or directory" and the message CONTAINS THE HOOK'S OWN FILENAME - so a
+    # suite that runs the hook through `2>&1` and matches a bare substring of that name passes with
+    # nothing implemented. That is not hypothetical here: `assertion-strength-reminder.Tests.ps1` records
+    # being measured green with NO HOOK ON DISK, five FIRES rows plus three more, and carries an
+    # existence guard of its own because of it. Three suites learned that lesson individually; eleven did
+    # not. Asserting it in the shared entry point covers every caller at once, including the ones written
+    # after this comment.
+    if (-not (Test-Path -LiteralPath $HookPath)) {
+        throw "Invoke-BashHook: the hook '$HookPath' does not exist - every assertion against its output would be vacuous, because bash echoes the missing filename to stderr and a substring match on it passes"
+    }
     $bash = Get-GitBashOrThrow
     $hookPosix = ($HookPath -replace '\\','/')
     # ABSENCE AND EMPTINESS ARE DIFFERENT STATES, and restoring them is not the same operation.

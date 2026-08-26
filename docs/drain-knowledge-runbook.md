@@ -176,8 +176,13 @@ running, do not create files under `agy-autotrain/docs/fix-the-tool-backlog/`.
 `abort-drain` needs it because its `git clean -fd` step deletes untracked files under those paths: the
 manifest is how it tells the curator's own new backlog file (safe to remove) from a note you dropped in
 the same directory during the review pause (must not be). An empty manifest is valid and means the
-curator created nothing new. Its **absence** means the run predates this mechanism, and `abort-drain`
-then falls back to refusing on any unrecognised untracked file there. Both `accept-drain` and
+curator created nothing new. Its **absence** means one of TWO things the tool cannot tell apart - a run
+predating this mechanism, or a MODERN run interrupted before it wrote one - and `abort-drain` then falls
+back to refusing on any unrecognised untracked file there. (This paragraph said "the run predates this
+mechanism" until 2026-08-27. `6d02a57` corrected exactly that single-route claim in the message and in
+the exit-code table below, and round 16 corrected the table row again - and both times this paragraph,
+twenty-seven lines above the row, was missed. Someone whose run died minutes ago should not be sent
+hunting a version problem that does not exist.) Both `accept-drain` and
 `abort-drain` delete it alongside the staging snapshot, so it never outlives its run.
 
 **`drain-knowledge` exit codes:**

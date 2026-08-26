@@ -82,7 +82,9 @@ duplicate paid consult). SP-C's reader consumes this same constant.
   > and committing that row advances HEAD. MEASURED in this repository - marker `f29cd42`, next commit the
   > ledger row, silent for the 34 commits that followed. The relaxation is applied to BOTH markers by one
   > shared helper, because they age for the same reason: relaxing only the capstone one nudged the driver
-  > who ran the audit at the reviewed tip and then filed the paperwork. This is sound precisely because `agy-capstone.head` is written ONLY at a
+  > who ran the audit at the reviewed tip and then filed the paperwork.
+
+  The cross-marker read is sound precisely because `agy-capstone.head` is written ONLY at a
   gate-satisfied terminal state (GREEN or a `round-cap` waiver) - so its presence at HEAD is a reliable
   "capstone is satisfied here" signal for a *different* hook to read. The audit hook, like every reader,
   never writes a `.head` marker.
