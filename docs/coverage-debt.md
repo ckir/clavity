@@ -196,6 +196,10 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
 - **The test that should exist:** a SEPARATE assertion (not a wider row regex) that parses the two
   aggregate bullets and compares the suite count against the justfile recipe parse and the test count
   against the discovery total the census row already computes.
+🔴 **IT DECAYED AGAIN ON 2026-08-26, exactly as this entry predicted.** Five folds added tests.
+  The per-suite ROW guard caught two drifted rows and went RED; this aggregate silently went 407 -> 411
+  with nothing red at all. The gap is no longer hypothetical - it was demonstrated by the very work
+  going on while the entry sat open, which is the strongest argument available for closing it.
 - **Deferred by the owner:** 2026-08-25, AGY-CAPSTONE round 7 on `f29cd42..a1ad1d1`. Verified by
   sandboxed mutation with a passing and a failing control.
 

@@ -18,7 +18,8 @@ only on sort order, so it is not reproducible and is not used.
 one `Invoke-Pester` process measured 94.2s / 75.1s / 73.7s, against a 65.8s warm per-file sum. One process saves repeated pwsh startup but pays cold module
 load once and accumulates across files.
 
-- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 407 tests, 492,9s warm / 550,4s cold**
+- `just test-scripts-fast` — the agent inner-loop gate. **25 suites, 411 tests** (count measured 2026-08-26 by running the recipe; the 492,9s warm / 550,4s cold
+  runtime still stands from the 407-test measurement of 2026-08-25)
   (counts AND runtime measured 2026-08-25, backgrounded, two consecutive runs with a 240s idle lead-in and
   the orchestrator issuing no tool call for the duration; 407 passed / 0 failed both times).
   🔴 **Quote the RANGE 493-550s, not one number** - and note the cold run is 92% of the 600s
