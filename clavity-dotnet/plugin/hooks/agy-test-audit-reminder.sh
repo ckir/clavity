@@ -45,7 +45,14 @@ gate() {
   local cwd="$1" head cap aud base changed
   # The executable-path list, held ONCE and used by both callers below. Two copies would be two definitions
   # of "executable code" free to drift apart.
-  local CODE_RE='\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1)$'
+  # WHAT COUNTS AS EXECUTABLE. Until 2026-08-26 this listed seventeen source extensions and NONE of the
+  # things this repository actually gates itself with. Measured that day, on the very range it was added
+  # in: rounds 17, 18 and 19 all changed `agy-autotrain/installer/agy-autotrain.iss` - a Pascal program
+  # that deletes user data - four `.yml` workflows were rewritten, and the test gate itself is a
+  # `justfile`. None matched. Both readers of this list then failed in the same direction: a range of
+  # such changes never nudged for an audit, and a capstone GREEN was extended across them as though
+  # nothing executable had landed.
+  local CODE_RE='(\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1|psm1|psd1|iss|yml|yaml|bat|cmd|csproj|fsproj|props|targets|toml)$|(^|/)justfile$)'
   head=$(git -C "$cwd" rev-parse HEAD 2>/dev/null) || return 1
   [ -n "$head" ] || return 1
   # THE LEDGER-ROW CASE, in one line each. agy-capstone writes the reviewed tip to its marker and then

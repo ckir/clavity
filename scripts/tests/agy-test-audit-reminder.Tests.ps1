@@ -167,9 +167,15 @@ Describe 'agy-test-audit-reminder.sh' {
         # its operative sentence ("tell the user it runs about 5x leaner...") from all four hooks left the
         # entire 45-test suite GREEN, because the assertions pinned only the opening token and the closing
         # words - leaving ~380 of its 399 characters, and everything actionable in it, unguarded.
-        # The hook's executable-path list, held once so the fixture's postcondition and the hook cannot
-        # drift apart silently. Mirrors agy-test-audit-reminder.sh's CODE_RE.
-        $script:CodeExtRe = '(?i)\.(cs|fs|rs|ts|tsx|js|jsx|py|go|java|rb|c|h|cpp|hpp|sh|ps1)$'
+        # PARSED OUT OF THE HOOK, never copied. A duplicated list is two definitions free to drift, and
+        # the drift is invisible in BOTH directions: a copy here cannot fail when the hook's list is wrong,
+        # and cannot notice when the hook's list changes. MEASURED 2026-08-26: the hook omitted `.iss`,
+        # `.yml` and `justfile` - the installer, the workflows and the test gate of this very repository -
+        # and the copy that lived here omitted exactly the same ones, so 20 green rows said nothing at all.
+        $hookText = [System.IO.File]::ReadAllText($script:Hook, [System.Text.Encoding]::UTF8)
+        $m = [regex]::Match($hookText, "(?m)^\s*local CODE_RE='([^']+)'\s*$")
+        if (-not $m.Success) { throw 'cannot parse CODE_RE out of the hook - this fixture is inspecting nothing' }
+        $script:CodeExtRe = '(?i)' + $m.Groups[1].Value
         $script:CostClause = 'COST: this discipline re-reads the whole session context every round, so running it in a long session burns several times the tokens - and subscription quota - of running it fresh. If this session carries substantial history, do not run it inline: tell the user it runs about 5x leaner after /compact or in a fresh session, and follow their answer. This changes WHERE the review runs, never WHETHER.'
     }
 
@@ -250,6 +256,53 @@ Describe 'agy-test-audit-reminder.sh' {
             Set-Marker $r.Dir 'agy-capstone' $r.Cap
             $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
             $out.StdOut | Should -BeNullOrEmpty -Because 'executable code landed after the reviewed tip, so the capstone GREEN no longer describes HEAD and a re-capstone is owed before an audit means anything - this is the boundary that stops the relaxation above from becoming "any stale marker will do"'
+        } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'treats this repository OWN gating file types as executable code' {
+        # A LIST WITH NO ORACLE. The hook's CODE_RE decides two different things - whether a capstone GREEN
+        # survives later commits, and whether a reviewed range is worth auditing - and until 2026-08-26 it
+        # recognised none of the file types this project gates itself with. These are not hypothetical
+        # extensions: each one below names a file this very review range changed.
+        foreach ($p in @(
+            'agy-autotrain/installer/agy-autotrain.iss',   # a Pascal program that deletes user data
+            '.github/workflows/build-classic.yml',          # rewritten by round 20
+            'justfile',                                     # the test gate itself, no extension at all
+            'scripts/drain-lib.ps1',                        # the original list did cover this
+            'clavity-dotnet/plugin/hooks/agy-mark.sh'       # and this
+        )) {
+            $p | Should -Match $script:CodeExtRe -Because "the hook must treat '$p' as executable code, or a capstone GREEN is extended over changes nobody reviewed and no audit is ever nudged for them"
+        }
+        # And the boundary: prose must still NOT count, or every docs commit nudges for a test audit.
+        foreach ($p in @('README.md', 'docs/coverage-debt.md', 'scripts/tests/_partition.md')) {
+            $p | Should -Not -Match $script:CodeExtRe -Because "'$p' is prose - if it counted as executable code the docs-only silence this hook promises would be gone"
+        }
+    }
+    It 'is SILENT when a capstone marker on a DIVERGENT branch would otherwise look current' {
+        # THE ANCESTOR HALF'S ORACLE. The hook's own comment calls the merge-base test load-bearing, and
+        # nothing exercised it: MEASURED 2026-08-26, deleting that line from both mirrors left this suite
+        # 20/0 green. Its sibling row (a sha the repo does not contain) does NOT cover it - an unknown sha
+        # fails the ancestor test AND every other test, so it passes for several reasons at once. This row
+        # builds a sha that genuinely exists, is genuinely not an ancestor of HEAD, and carries no code
+        # change - so ONLY the ancestor test can reject it.
+        $r = New-PostMarkerRepo -Kind docs
+        try {
+            & git -C $r.Dir checkout -q -b sidebranch $r.Cap
+            # The directory must be created: checking out the earlier commit removed docs/, and a
+            # failed Set-Content here produces an EMPTY commit whose sha is the marker itself - which
+            # IS an ancestor, so the row would have gone green while testing nothing. The
+            # postcondition below caught exactly that on the first run.
+            $side = Join-Path $r.Dir 'docs/side.md'
+            New-Item -ItemType Directory -Path (Split-Path -Parent $side) -Force | Out-Null
+            Set-Content -LiteralPath $side -Value 'x' -Encoding ascii
+            & git -C $r.Dir add -A
+            & git -C $r.Dir -c user.email='t@t' -c user.name='t' -c commit.gpgsign=false -c core.hooksPath= commit -qm side
+            $sideSha = (& git -C $r.Dir rev-parse HEAD).Trim()
+            & git -C $r.Dir checkout -q feature
+            & git -C $r.Dir merge-base --is-ancestor $sideSha $r.Head
+            if ($LASTEXITCODE -eq 0) { throw 'fixture is NOT in its promised state: the side sha IS an ancestor of HEAD, so the ancestor test is not what would reject it' }
+            Set-Marker $r.Dir 'agy-capstone' $sideSha
+            $out = Invoke-BashHook -HookPath $script:Hook -Payload (New-AuditPayload (& $script:Cwd $r.Dir))
+            $out.StdOut | Should -BeNullOrEmpty -Because 'a GREEN reached on a branch that was never merged says nothing about HEAD - without the ancestor test, any abandoned branch tip with no code after it would satisfy this gate'
         } finally { Remove-Item $r.Dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'is SILENT when the capstone marker names a sha this repository does not contain' {

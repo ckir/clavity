@@ -186,7 +186,16 @@ Above that the
 checker fails and you must either consolidate or raise the default deliberately, in a committed edit. The
 runtime hard cap is separate and much higher - `clavity-classic/src/driver_cheatsheet.rs:12` sets
 `MAX_BYTES = 16 * 1024`, and a runtime file over it degrades to the compiled-in baseline floor with a
-warning on stderr (`clavity-classic/src/driver_cheatsheet.rs:28-29`). That budget exists so drift is caught long before it reaches that cliff. **Do not restate the number here when it changes - the script's default is the single source of truth, and a copy in this prose is the unenforced duplicate F1 exists to remove.**
+warning on stderr (`clavity-classic/src/driver_cheatsheet.rs:28-29`). That budget exists so drift is caught long before it reaches that cliff.
+
+> **This paragraph used to end "do not restate the number here - a copy in this prose is an unenforced
+> duplicate".** That rule was right when it was written and is now superseded, and the superseding is the
+> point: on 2026-08-26 the sentence above was found to be unusable from an installed plugin tree, which
+> has no `scripts/` directory to read the script from, so the number IS restated there deliberately. What
+> made the old rule right was the word UNENFORCED - and the duplicate is no longer unenforced, because
+> `scripts/tests/check-cheatsheet-budget.Tests.ps1` probes the script's real default with whatever number
+> that sentence states and reds in either direction if they drift. Restating it anywhere ELSE is still
+> forbidden, for exactly the original reason.
 
 **[!] The two compiled-in pins are GENERATED OUTPUT and must never be hand-edited.** A pinning test in
 each driver asserts its compiled-in baseline equals `driver-cheatsheet.core.md` (normalized CRLF->LF,

@@ -52,9 +52,16 @@ Describe "check-cheatsheet-budget.ps1" {
         # quoting too high fails the first assertion, too low fails the second.
         $skill = Join-Path $script:RepoRoot 'agy-autotrain/skills/agy-curate/SKILL.md'
         Test-Path -LiteralPath $skill | Should -BeTrue -Because 'the curate skill must exist, or this scan is inspecting nothing'
-        $m = [regex]::Match([System.IO.File]::ReadAllText($skill), '\*\*The budget is (\d+) bytes\*\*')
-        $m.Success | Should -BeTrue -Because 'the curate skill must STATE the budget as a number - it is the only authority a curator running from an installed tree can reach, because this script is not shipped there'
-        $stated = [int]$m.Groups[1].Value
+        # COMMENTS STRIPPED, AND EXACTLY ONE MATCH REQUIRED. A bare first-match regex was defeated twice,
+        # MEASURED 2026-08-26: the pinned sentence hidden inside an HTML comment while the visible prose
+        # said 20000 passed 7/0, and a SECOND contradictory sentence added later in the file also passed,
+        # because [regex]::Match takes the first hit and nothing asserted there was only one. A reader sees
+        # the visible text and the last word on the subject; this row must see the same thing they do.
+        $skillText = [System.IO.File]::ReadAllText($skill, [System.Text.Encoding]::UTF8)
+        $visible = [regex]::Replace($skillText, '(?s)<!--.*?-->', '')
+        $hits = [regex]::Matches($visible, '\*\*The budget is (\d+) bytes\*\*')
+        $hits.Count | Should -Be 1 -Because 'the skill must state the budget exactly once in visible prose - zero means a curator on an installed tree has no number at all, and two means the file contradicts itself while this row silently pins whichever came first'
+        $stated = [int]$hits[0].Groups[1].Value
 
         $at = Join-Path $script:Tmp 'at-stated-budget.md'
         [System.IO.File]::WriteAllBytes($at, [byte[]]::new($stated))

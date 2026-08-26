@@ -278,6 +278,9 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
             if ($all[$i] -match '^(procedure|function)\s') { $procEnd = $i; break }
         }
         $procBody = @(Remove-InnoComments -Lines $all[$procStart..($procEnd - 1)])
+        # The whole file, comments stripped - so a deletion hidden in a helper procedure, or in a comment,
+        # cannot escape the census below.
+        $noComments = @(Remove-InnoComments -Lines $all)
 
         # The gate opens at `if RemoveGrowth then` and closes at the `end;` that matches its `begin`.
         $gateAt = -1
@@ -288,8 +291,24 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
         $gateBody = @(Get-BranchBody -Lines $procBody -HeadIndex $gateAt)
         $gateBody.Count | Should -BeGreaterThan 0 -Because 'the gate must have a body, or this scan is inspecting nothing'
 
+        # EVERY COUNT BELOW COUNTS CALLS, NOT LINES - and that distinction is the whole guard. Until
+        # 2026-08-26 each scan filtered LINES containing `DeleteFile(`, so a sixth deletion stacked onto the
+        # same line as a pinned one contributed nothing to any count: the set looked unchanged, the count
+        # stayed 5, and the greedy `^.*DeleteFile\(` extractor returned only the LAST call on the line.
+        # MEASURED: a mutant doing exactly that destroyed %USERPROFILE%\.claude\CLAUDE.md on a PURGE
+        # uninstall with this suite 17/0 green.
+        function Get-DeleteCalls([string[]]$Lines) {
+            $out = @()
+            foreach ($l in $Lines) {
+                foreach ($m in [regex]::Matches($l, 'DeleteFile\(([^)]*)\)')) { $out += $m.Groups[1].Value }
+            }
+            return ,$out
+        }
+
         # 1. THE SET, pinned by identity and order.
-        $deleted = @($gateBody | Where-Object { $_ -match 'DeleteFile\(' })
+        $deleted = Get-DeleteCalls $gateBody   # NOT @(...): the function returns ,$out to survive the
+                                               # pipeline, and @() would wrap that array rather than
+                                               # unroll it - measured, .Count came back 1 instead of 5.
         # SCANNED OVER $procBody, NOT $gateBody - and that one word is the whole assertion. The
         # `GrowthFile :=` assignment sits ONE LINE ABOVE the `if RemoveGrowth then` head, so it was never
         # inside the gate body this scan used: the `GrowthFile|` alternation was DEAD and this pinned
@@ -310,15 +329,27 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
 
         # 2. EVERY delete is inside the gate. Counted against the procedure as a whole, so a call moved
         #    OUT of the gate reds here even though the set above would still look right.
-        $allDeletes = @($procBody | Where-Object { $_ -match 'DeleteFile\(' })
+        # SCANNED OVER THE WHOLE FILE, not just this procedure. Scoping it to the procedure asked only
+        # "did a call move out of the gate but stay in this procedure" - a deletion moved into a HELPER that
+        # the gate calls left both scans satisfied. MEASURED 2026-08-26: that mutant was invisible here.
+        # The invariant is stronger and simpler to state: this installer deletes user data in exactly one
+        # place, and that place is inside the consent gate.
+        $allDeletes = Get-DeleteCalls $noComments
         $deleted.Count | Should -Be $allDeletes.Count -Because 'every DeleteFile in this procedure must sit INSIDE the consent gate - one moved outside deletes a user''s observations on a KEEP uninstall, which is the exact misreading the comment above these calls was written to prevent'
         $deleted.Count | Should -Be 5 -Because 'growth, its .sha256, the canonical inbox, the migration sidecar, and the rolled-back plugin-folder copy - five deletions, and a count that drifts means the set changed'
+
+        # 2b. AND `DeleteFile` MUST REMAIN THE ONLY WAY THIS INSTALLER DESTROYS ANYTHING. Every census above
+        #     is spelled in terms of DeleteFile, so all of them are blind to a sibling primitive. MEASURED
+        #     2026-08-26: replacing the five calls with a single `DelTree` of %USERPROFILE%\.clavity - which
+        #     takes growth.md, the inbox AND the discipline markers - left this suite green. If a future
+        #     change genuinely needs DelTree, this row is where the new destruction gets census'd.
+        @($noComments | Where-Object { $_ -match '\bDelTree\s*\(' }).Count | Should -Be 0 -Because 'DelTree removes a whole directory tree and no census here can see what was in it - the destructive set is pinned call by call, and a primitive that deletes by directory defeats every one of those pins at once'
 
         # 3. THE CALL ARGUMENTS, pinned by identity and order. The assignment census above cannot reach
         #    `GrowthFile + '.sha256'` - it is DERIVED, with no assignment of its own - so four assignments
         #    can never pin five deletions. Changing that suffix would retarget a deletion while the set,
         #    the count and the gate scope all still looked right.
-        $deleteArgs = @($deleted | ForEach-Object { ($_ -replace '^.*DeleteFile\(', '') -replace '\).*$', '' })
+        $deleteArgs = $deleted
         $expectedArgs = @('GrowthFile', "GrowthFile + '.sha256'", 'InboxFile', 'InboxFile', 'InboxFile')
         ($deleteArgs -join "`n") | Should -BeExactly ($expectedArgs -join "`n") -Because 'each deletion must take the exact argument its path census pins - a derived suffix that drifts destroys a file nobody named'
     }
@@ -357,6 +388,12 @@ Describe 'agy-autotrain installer: the 14g inbox migration' {
             '.migrated-14g'
             'roll back'
         )
+        # THE TOKENS ALONE DO NOT MAKE IT A CONSENT PROMPT. MEASURED 2026-08-26: a dialog rewritten to read
+        # "Nothing you captured will be deleted. Your data is safe." kept all five tokens, ran all five
+        # deletions, and left this suite green - the guard's stated property exactly inverted. So the
+        # QUESTION is pinned too, verbatim: this text is what the user answers Yes or No to.
+        $dialog | Should -BeLike "*Also remove agy-autotrain*s learned data?*" -Because 'the dialog must ASK whether to remove the data - a version that reassures the reader instead still satisfies every path token below while deleting exactly the same five files'
+
         foreach ($tok in $mustName) {
             $dialog | Should -BeLike "*$tok*" -Because "the consent dialog must name what it is about to delete, and it does not mention '$tok'"
         }
