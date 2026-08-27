@@ -95,10 +95,14 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   `domain root missing: <path> - if a product moved or was renamed, update $script:DomainRoots`. That
   closed-failure design is documented in prose in that same file, beside the `domain root missing:` message.
 - **The regression that would slip through:** the non-vacuity guard - the one asserting the population is
-  `-BeGreaterThan 20` - **Measured population is 31, unevenly spread:** `clavity-dotnet/plugin` 13,
-  `clavity-classic/plugin` 14, `agy-autotrain` 4, and the remaining six roots contribute ZERO. So losing
-  either large root reds the guard (18, 17), but **losing `agy-autotrain` (4 -> 27) does not** - and that
-  is the root most actively edited here.
+  `-BeGreaterThan 20` - **Measured population is 35, unevenly spread:** `clavity-dotnet/plugin` 15,
+  `clavity-classic/plugin` 16, `agy-autotrain` 4, and the remaining six roots contribute ZERO. So losing
+  either large root reds the guard (20 and 19 - and 20 is NOT greater than 20), but **losing
+  `agy-autotrain` (4 -> 31) does not** - and that is the root most actively edited here.
+  (RE-MEASURED 2026-08-27 against the tracked tree. This bullet previously said 31 / 13 / 14 and derived
+  the reds as 18 and 17: the conclusion was right and EVERY NUMBER OFFERED AS ITS EVIDENCE was wrong. It
+  was re-authored inside this review range as an added line with the old figures carried across unchecked,
+  which is the cheapest way for a stale number to acquire a fresh date.)
 - **Why this is LOW and not High:** the audit peer rated it High on the claim that dropped hooks "evade
   all budget/hygiene audits". They do not - sibling rows in this file call discovery, which throws, so a
   missing root reds the suite elsewhere and the corpus never silently shrinks. What remains is a real
@@ -188,9 +192,15 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   8 passed / 0 failed; falsifying one TABLE ROW reds exactly `every _partition.md row states the CURRENT
   test count for its suite`; but `407 tests -> 999 tests`, `25 suites -> 3 suites` and
   `492,9s warm -> 5,0s warm` each pass 8/0 with nothing red.
-- 🔴 **This is a GAP, not a defect in the guard.** `test-suite-registration.Tests.ps1:246-249`
-  scopes to the fenced table DELIBERATELY and records why: an unscoped first-match-wins parse let a prose
+- 🔴 **This is a GAP, not a defect in the guard.** The `SCOPE TO THE FENCED TABLE` comment in
+  `test-suite-registration.Tests.ps1` states the deliberate choice and records why: an unscoped first-match-wins parse let a prose
   line 77 lines above the fence supply the count, and the real row was then never compared at all.
+  (The citation here read `:246-249` until 2026-08-27 and landed four lines short - on the non-vacuity
+  floor and the discovery-equality assertion, not the scoping rationale. It was ADDED during the
+  round-22-to-26 pass that converted fifteen line-number citations to named references, so a line number
+  entered in the same range that was removing them. Named now, per the rule that pass established: NAME
+  THE SYMBOL, NEVER THE LINE. Confirmed the hard way while auditing this - a parse of that very table
+  matched a PROSE heading 356 lines above the real one and returned 19 rows instead of 49.)
   Widening the row regex back into prose would re-open that measured defect.
 - **The regression that would slip through:** the aggregate drifts from the recipe it describes and no
   test notices. This is not hypothetical - this file's own history records the aggregates decaying three
@@ -213,8 +223,13 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   non-ASCII byte SURVIVES. Any change that re-encodes while still using a call of that name passes.
 - **The regression that would slip through:** the exact defect fixed in `1b2f7b7` - an em-dash entering
   as UTF-8 `e2 80 94` and leaving as the Windows-1252 byte `97`, which PowerShell then renders as
-  U+FFFD. MEASURED on the live inbox: **138 non-ASCII lines** would be destroyed, while the bullet count
-  and the `^- \[` anchor stay correct so nothing notices.
+  U+FFFD. On a live inbox this destroys every non-ASCII line while the bullet count and the `^- \[`
+  anchor stay correct, so nothing notices - which is the whole point and does not depend on the size.
+  (This said "MEASURED on the live inbox: 138 non-ASCII lines" with NO DATE. Re-measured 2026-08-27 on the
+  same machine: 343. The figure was not wrong so much as UNRE-DERIVABLE - it describes user-local state
+  outside the repository that no reader of this file can check, that changes every time anyone captures an
+  observation, and that a different machine will never reproduce. A count like that is not evidence, it is
+  a timestamp wearing evidence's clothes; the invariant is what matters and it is stated without it.)
 - **The test that should exist:** a behavioural step in the migration smoke that plants a known
   multi-byte marker in the pre-migration inbox and asserts the post-migration file contains those exact
   bytes. The reproduction is already written and proven: a no-`[Files]` probe installer that aborts in

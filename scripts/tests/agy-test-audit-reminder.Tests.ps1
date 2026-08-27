@@ -65,7 +65,7 @@ Describe 'agy-test-audit-reminder.sh' {
         # then a second commit on top. MEASURED in the live repo that day: the capstone marker was f29cd42
         # and the very next commit was `f209632 docs(ledger): record ... GREEN` - the ledger row the
         # agy-capstone skill REQUIRES before a plan may be declared complete. From that commit onward
-        # `cap == head` was false and this hook stayed silent for 34 commits, so the discipline's own
+        # `cap == head` was false and this hook stayed silent for every commit that followed, so the discipline's own
         # mandatory final step destroyed its successor's trigger.
         #
         # Built on the DiffPath shape (main pinned at init) so gate() takes the PRIMARY `diff base..HEAD`

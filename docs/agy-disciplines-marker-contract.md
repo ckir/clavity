@@ -80,7 +80,7 @@ duplicate paid consult). SP-C's reader consumes this same constant.
   > Both markers were `== HEAD` until 2026-08-26. Strict equality was silenced by AGY-CAPSTONE's own
   > mandatory final step: the skill writes the reviewed tip to its marker and then REQUIRES a ledger row,
   > and committing that row advances HEAD. MEASURED in this repository - marker `f29cd42`, next commit the
-  > ledger row, silent for the 34 commits that followed. The relaxation is applied to BOTH markers by one
+  > ledger row, silent for every commit that followed. The relaxation is applied to BOTH markers by one
   > shared helper, because they age for the same reason: relaxing only the capstone one nudged the driver
   > who ran the audit at the reviewed tip and then filed the paperwork.
 

@@ -70,7 +70,7 @@ gate() {
   # THE LEDGER-ROW CASE, in one line each. agy-capstone writes the reviewed tip to its marker and then
   # REQUIRES a row in docs/agy-capstone-ledger.md before a plan may be declared complete; committing that
   # row advances HEAD. MEASURED 2026-08-26 in this repository: marker f29cd42, next commit f209632
-  # "docs(ledger): record ... GREEN", silent for the 34 commits that followed - which is why two
+  # "docs(ledger): record ... GREEN", silent for EVERY commit that followed - which is why two
   # test-audits were owed with nothing nudging for either.
   cap=$(cat "$cwd/$DIR_CONST/agy-capstone.head" 2>/dev/null)
   still_describes_head "$cwd" "$cap" "$head" "$CODE_RE" || return 1   # no GREEN that covers HEAD
