@@ -96,7 +96,17 @@ jobs:
         run: |
           $name = "clavity-dotnet-setup-$env:CLAVITY_VER.exe"
           $h = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
-          "$h  $name" | Set-Content -Path "dist/$name.sha256" -Encoding ascii
+          # LF-ONLY, NO BOM - `Set-Content` writes CRLF on Windows and GNU `sha256sum -c` then treats the
+          # trailing \r as part of the filename. MEASURED 2026-08-27 on this box: `Set-Content -Encoding
+          # ascii` ends the file `78 65 0d 0a`, `WriteAllText` ends it `65 78 65 0a`.
+          #
+          # THIS FILE WAS THE ONE MISSED. 99449a3 converted build-agy-autotrain, build-commonmemory and
+          # build-ghidrust in a single commit (build-classic already wrote it this way) and left
+          # build-dotnet on Set-Content, so the flagship member shipped the one .sha256 a user is most
+          # likely to verify with a trailing CR in the filename. None of the three rationales it wrote
+          # named a fifth member, which is exactly how an incomplete fold survives review: each file it
+          # touched reads as complete and correct on its own.
+          [IO.File]::WriteAllText("$PWD/dist/$name.sha256", "$h  $name`n")
 
       - name: Smoke — silent install then uninstall
         timeout-minutes: 6

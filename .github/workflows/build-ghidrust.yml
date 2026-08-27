@@ -115,7 +115,10 @@ jobs:
           # LF-ONLY, NO BOM - `Set-Content` writes CRLF on Windows and GNU `sha256sum -c` then treats the
           # trailing \r as part of the filename. MEASURED 2026-08-26, coreutils 8.32: the CRLF form fails
           # with "No such file or directory" and exits 1 while the LF control passes. build-classic.yml has
-          # always written it this way; these copies diverged silently.
+          # always written it this way; these copies diverged silently. THIS SENTENCE WAS INCOMPLETE until
+          # 2026-08-27: the commit that wrote it fixed three of the four divergent copies and left
+          # build-dotnet.yml on `Set-Content`, and saying "these copies" without naming which invited
+          # exactly that. All five members now write the companion identically.
           [IO.File]::WriteAllText("$PWD/dist/$name.sha256", "$h  $name`n")
 
       - name: Smoke — install/uninstall lifecycle + namespace (BLOCKING — first-ever for ghidrust)
