@@ -51,6 +51,29 @@ Two things follow, and both are load-bearing here:
 - **CONVENTION IS NOT A MECHANISM.** Same shape as this repo's own measurement that an instruction
   competing with other content is honoured probabilistically.
 
+### 1.2 Why the store is NOT `agentmemory`, and how this relates to the `commonmemory` product
+The peer's store is not hypothetical to us: **`agentmemory` is the shared store both agents already use,
+and `commonmemory/` is OUR OWN plugin shipping the convention that governs it.** So the loop closes on
+itself, and the closure is evidence rather than coincidence:
+
+- `commonmemory/skills/commonmemory/SKILL.md:19` states it outright — *"agentmemory is append-mostly, so
+  superseded notes linger"* — and mitigates by **convention**: *"prefer the most recent note (check its
+  timestamp), trust its `Status:`"*.
+- Asked independently, the peer named **dilution** as its lived failure mode and said *"the system itself
+  does not merge or complain."*
+
+**Our own product documents the limitation; the peer confirms it from the other side.** That is two
+independent sources on the same defect, which is stronger than either alone.
+
+🔴 **Therefore `agentmemory` MUST NOT be the store for this design.** It is append-mostly, its bound is
+unknown to its own users, and the peer **could not confirm its deletions are recoverable** — so it fails
+constraint 1(a), *never destroyed*, as a preservation tier. Git does not.
+
+⚠ **This does NOT duplicate or criticise `commonmemory`.** That plugin serves cross-agent HANDOFFS and
+shared decisions, where a convention over a shared append-mostly store is the right tool and staleness is
+tolerable. This design serves the **driver-rule corpus**, where preservation must be mechanical. Different
+purpose, different substrate; they should not be merged.
+
 ## 2. The model
 - **THE STORE — tier 2, never injected, unbounded, and IN THE REPO UNDER GIT.** Every rule earned lives
   here permanently, whether or not it is currently projected.
