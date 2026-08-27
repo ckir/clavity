@@ -26,8 +26,17 @@ name: ci-scripts
 #
 # THAT RULE IS NOW ENFORCED MECHANICALLY, AND THIS COMMENT DELIBERATELY KEEPS NO COUNT OR ROSTER.
 # `scripts/check-ci-filter-coverage.ps1` owns both: it carries the required-entry table with a REASON per
-# entry, asserts each appears in BOTH blocks below, and separately fails closed on any git-tracked
-# top-level tree a suite names but the filter does not reach. Read that file, not a prose list here.
+# entry and asserts each appears in BOTH blocks below. Read that file, not a prose list here.
+#
+# IT DOES NOT DISCOVER NEW TREES, and this comment claimed it did until 2026-08-27. It promised a second
+# half that "fails closed on any git-tracked top-level tree a suite names but the filter does not reach".
+# That half was DELETED by owner decision - see WHAT IT DELIBERATELY DOES NOT CHECK in that script, which
+# records the evidence: across five capstone rounds it produced four defects of its own against five real
+# gaps found ONCE. So the table is the ONLY mechanism here, a tree named by a NEW suite is not detected,
+# and the sentence instructing you to trust the script over a prose list was itself the stale prose.
+# It would not have caught the `agy-autotrain/hooks/**` gap that sat here either, and that is the sharper
+# point: it worked at TOP-LEVEL granularity, and `agy-autotrain` IS reached - by four narrow rows. A
+# promise of protection is worth less than no promise, because it stops the next reader looking.
 #
 # WHY THE ROSTER MOVED OUT. It was maintained by hand and was wrong every time it was examined: it said
 # TWO when it was four, then FOUR when it was nine, inside one afternoon. The rule had no implementation,
@@ -66,6 +75,7 @@ on:
       - 'docs/agy-disciplines-marker-contract.md'
       - '.claude/hooks/**'
       - 'agy-autotrain/verify/**'
+      - 'agy-autotrain/hooks/**'
       - 'build/members.json'
       - '.github/workflows/ci-scripts.yml'
   pull_request:
@@ -83,6 +93,7 @@ on:
       - 'docs/agy-disciplines-marker-contract.md'
       - '.claude/hooks/**'
       - 'agy-autotrain/verify/**'
+      - 'agy-autotrain/hooks/**'
       - 'build/members.json'
       - '.github/workflows/ci-scripts.yml'
 
@@ -230,11 +241,18 @@ jobs:
       - name: Verify-gate fixture tests (bash)
         # A COMMITTED, WIRED HOOK WHOSE ONLY TEST NOTHING RAN. `.claude/hooks/agy-verify-reminder.sh` is
         # tracked, is wired in this repo's .claude/settings.json, and is the SessionStart gate that decides
-        # when the verify harness nags. Its 15-case fixture suite is invoked by `just check-verify-hook` -
-        # and MEASURED 2026-08-27, that recipe name appears exactly ONCE in the whole repository: its own
-        # definition. No hook, no CI job, no aggregate called it. Neither the hook nor its suite was
+        # when the verify harness nags. Its 15-case fixture suite is invoked by `just check-verify-hook`,
+        # and NOTHING INVOKED THAT RECIPE: no hook, no CI job, no aggregate. Neither the hook nor its suite
+        # was
         # reachable by any filter here either. Run locally before wiring: 15 passed, 0 failed - it was
         # never broken, just never run, which is the same shape as the installer guards round 14 found.
+        #
+        # THIS COMMENT SAID SOMETHING FALSE WHEN IT WAS WRITTEN, corrected 2026-08-27. It claimed the
+        # recipe name "appears exactly ONCE in the whole repository: its own definition". Measured at the
+        # parent commit: SIX occurrences across THREE files - the justfile definition plus two plan
+        # documents, one naming it twice as a literal `Run: just check-verify-hook`. The true claim is the
+        # one now above: nothing INVOKED it. A mention is not a caller, and stating the stronger,
+        # checkable-and-false version of a true claim is how a rationale stops being evidence.
         shell: bash
         run: bash agy-autotrain/verify/testdata/run-hook-tests.sh
 
