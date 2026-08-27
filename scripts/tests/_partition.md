@@ -624,6 +624,11 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
 check-injected-context.Tests.ps1                 91,5s  153 tests   <- SLOW as of 2026-08-24; was FAST -
+check-knowledge-store.Tests.ps1                   68,4s   8 tests   <- SLOW. Each case builds a THROWAWAY
+                                                                      GIT REPO: the deletion check compares
+                                                                      against a git baseline and cannot be
+                                                                      exercised without one. MEASURED
+                                                                      2026-08-27.
   the single largest suite in that half, moved to buy back cap headroom. Figure measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file
@@ -646,7 +651,7 @@ check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-
 compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-measured 2026-08-06
 docs-audit.Tests.ps1                            130,0s   80 tests   <- SLOW, re-measured 2026-08-06
 drain-knowledge.Tests.ps1                        40,5s    8 tests   <- SLOW, re-measured 2026-08-06
-drain-lib.Tests.ps1                               4,2s   28 tests   <- FAST, re-measured 2026-08-24 WARM
+drain-lib.Tests.ps1                               4,2s   29 tests   <- FAST, re-measured 2026-08-24 WARM
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
 generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning
