@@ -646,8 +646,13 @@ fn ask_stdout_warns_when_driver_cheatsheet_is_over_cap() {
     let dir = std::env::temp_dir().join(format!("clavity-t4b-overcap-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    // 16 KiB + 1 byte: over the (bumped) driver_cheatsheet::MAX_BYTES cap.
-    std::fs::write(dir.join("driver-cheatsheet.md"), "x".repeat(16 * 1024 + 1)).unwrap();
+    // 16 KiB + 1 byte: over driver_cheatsheet::MAX_BYTES. REPOINTED 2026-08-27 from the pre-split
+    // "driver-cheatsheet.md" to the GROWTH region. That file is now deliberately ignored, so the old
+    // fixture produced no degrade at all and this assertion went red - which is the correct outcome and
+    // the reason the assertion is POSITIVE ("the warning is present") rather than a negative match: a
+    // `-Not -Match`-shaped guard would have passed VACUOUSLY here and reported a retired code path as
+    // still covered.
+    std::fs::write(dir.join("driver-cheatsheet.growth.md"), "x".repeat(16 * 1024 + 1)).unwrap();
 
     let (url, _state) = start_fake_bus(Reply::EchoReqIdAfter(1));
     let out = clavity_bus(&url)

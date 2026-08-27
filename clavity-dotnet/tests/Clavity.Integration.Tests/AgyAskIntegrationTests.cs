@@ -399,6 +399,36 @@ public class AgyAskIntegrationTests
         Assert.Contains("## agy knowledge — escalation index\n- x", block);
     }
 
+    // PARITY GAP CLOSED 2026-08-27. DriverCheatsheet.DegradedWarningPrefix is added to the delivered block at
+    // AgyView.cs:97 so an anomalous degrade is OBSERVABLE to the driver and not merely an eprintln nobody reads
+    // (panel F2). clavity-classic pins that end to end in ask_stdout_warns_when_driver_cheatsheet_is_over_cap;
+    // dotnet pinned it NOWHERE — deleting line 97 reddened no dotnet test. Asked the guard-law question directly:
+    // "which test goes red if I delete this?" The answer was "none", so here is one.
+    [Fact]
+    public void TryTakeGuidanceBlock_leads_with_the_degrade_warning_when_the_cheatsheet_GROWTH_is_unusable()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "clavity-degrade-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // Present-but-empty is an ANOMALOUS degrade: the region exists and cannot be used.
+            File.WriteAllText(Path.Combine(dir, DriverCheatsheet.GrowthFileName), "");
+            var view = new AgyView(new AgyViewOptions
+            {
+                CliLogPath = "unused-in-this-test",
+                GoldenHeaderDir = dir,
+                EscalationIndex = null,
+            });
+
+            var block = view.TryTakeGuidanceBlock();
+
+            Assert.NotNull(block);
+            Assert.Contains(DriverCheatsheet.DegradedWarningPrefix, block);
+            Assert.Contains(DriverCheatsheet.BaselineFloor, block);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
+    }
+
     // F1: with NEITHER source present, there is nothing to deliver, so the block stays null (and — per the
     // existing once-per-process contract — this bail-out must not itself consume the delivery gate, though that
     // is covered by the once-per-process assertion above; here we just pin the null result).

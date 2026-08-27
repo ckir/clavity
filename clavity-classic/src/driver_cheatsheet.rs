@@ -4,7 +4,19 @@
 
 use std::path::Path;
 
-pub const FILE_NAME: &str = "driver-cheatsheet.md";
+/// The curator-written GROWTH region. The cheatsheet's SEED is `BASELINE_FLOOR`, COMPILED IN rather than
+/// a runtime file - the one asymmetry against the golden header's split, and it makes this reader simpler:
+/// the floor is unconditionally available, so there is no "neither region present" case.
+pub const GROWTH_FILE_NAME: &str = "driver-cheatsheet.growth.md";
+
+/// The pre-split runtime file, DELIBERATELY IGNORED since 2026-08-27. It used to WHOLLY SUPPLANT the
+/// compiled floor - the hazard the split removes, since its only writer could silently delete every
+/// baseline rule with nothing gating it. Dropping it loses no knowledge, VERIFIED before the change:
+/// `agy-curate/SKILL.md:223` is its only writer and writes the compiled core, so it is structurally a
+/// duplicate of the floor; a sentence-level diff against the floor returned exactly two unique fragments,
+/// both clauses the same commit rewrote. Named rather than deleted so a reader who finds one knows why it
+/// is inert.
+pub const RETIRED_LEGACY_FILE_NAME: &str = "driver-cheatsheet.md";
 /// T4b (golden-header audience split): raised from `4 * 1024` to match `golden_header::MAX_BYTES` — the
 /// cheatsheet is delivered to the driver ALONGSIDE the golden header in one stdout block (see
 /// `main.rs::maybe_emit_driver_guidance`).
@@ -25,17 +37,20 @@ pub const BASELINE_FLOOR: &str = "Driving the agy peer - TACTICAL reminders only
 /// surface a DRIVER-VISIBLE warning; false for content OR a genuinely-absent file (absence is the normal
 /// fresh-install state — the floor is expected, no warning). ONE metadata stat, so no TOCTOU (panel F4).
 pub fn read_with_status(dir: &Path) -> (String, bool) {
-    let path = dir.join(FILE_NAME);
+    let path = dir.join(GROWTH_FILE_NAME);
     // Check length via metadata BEFORE reading, so a pathologically large file (e.g. a redirected log)
     // degrades to the floor instead of OOM-ing the process.
     match std::fs::metadata(&path) {
         Ok(m) if m.len() > MAX_BYTES as u64 => {
-            eprintln!("clavity: driver-cheatsheet exceeds {MAX_BYTES} bytes; using baseline floor");
+            eprintln!("clavity: driver-cheatsheet GROWTH exceeds {MAX_BYTES} bytes; using baseline floor");
             (BASELINE_FLOOR.to_string(), true)
         }
+        // ABSENT IS THE NORMAL FRESH STATE, not a degrade: the floor is compiled in, so a machine that has
+        // never run a drain is fully served and must stay silent. Only a PRESENT-but-unusable region is
+        // anomalous enough to surface to the driver.
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => (BASELINE_FLOOR.to_string(), false),
         Err(e) => {
-            eprintln!("clavity: driver-cheatsheet unreadable ({e}); using baseline floor");
+            eprintln!("clavity: driver-cheatsheet GROWTH unreadable ({e}); using baseline floor");
             (BASELINE_FLOOR.to_string(), true)
         }
         Ok(_) => match std::fs::read(&path) {
@@ -43,15 +58,28 @@ pub fn read_with_status(dir: &Path) -> (String, bool) {
                 let text = String::from_utf8_lossy(&bytes).trim().to_string();
                 if text.is_empty() {
                     eprintln!(
-                        "clavity: driver-cheatsheet is present but empty; using baseline floor"
+                        "clavity: driver-cheatsheet GROWTH is present but empty; using baseline floor"
                     );
                     (BASELINE_FLOOR.to_string(), true)
                 } else {
-                    (text, false)
+                    // SEED-then-GROWTH, blank-line separated - the same order and separator the golden
+                    // header uses, so the two injected regions read consistently to the driver.
+                    let combined = format!("{BASELINE_FLOOR}\n\n{text}");
+                    if combined.len() <= MAX_BYTES {
+                        (combined, false)
+                    } else {
+                        // OVER THE COMBINED CAP: keep SEED, drop GROWTH - mirroring the golden header.
+                        // Dropping both, or truncating, would lose the shipped baseline to an accreting
+                        // runtime file, which is the failure this split exists to prevent.
+                        eprintln!(
+                            "clavity: combined driver-cheatsheet exceeds {MAX_BYTES} bytes; dropping GROWTH, keeping the baseline floor"
+                        );
+                        (BASELINE_FLOOR.to_string(), true)
+                    }
                 }
             }
             Err(e) => {
-                eprintln!("clavity: driver-cheatsheet unreadable ({e}); using baseline floor");
+                eprintln!("clavity: driver-cheatsheet GROWTH unreadable ({e}); using baseline floor");
                 (BASELINE_FLOOR.to_string(), true)
             }
         },
@@ -103,16 +131,42 @@ mod tests {
     }
 
     #[test]
-    fn read_returns_file_when_present() {
+    fn read_returns_floor_then_growth_when_growth_present() {
         let d = fresh_dir("present");
-        std::fs::write(d.join(FILE_NAME), "custom core\n").unwrap();
-        assert_eq!(read(&d), "custom core");
+        std::fs::write(d.join(GROWTH_FILE_NAME), "learned rule\n").unwrap();
+        // EXTEND, not replace: the compiled floor survives and GROWTH is appended after a blank line.
+        assert_eq!(read(&d), format!("{BASELINE_FLOOR}\n\nlearned rule"));
+    }
+
+    #[test]
+    fn read_ignores_the_retired_legacy_file() {
+        // THE POINT OF THE SPLIT. Before 2026-08-27 this file WHOLLY SUPPLANTED the compiled floor, so its
+        // only writer could silently delete every baseline rule. It is now inert. Without this test the
+        // retirement is asserted NOWHERE and a future reader could wire it back in unnoticed.
+        let d = fresh_dir("legacy-ignored");
+        std::fs::write(d.join(RETIRED_LEGACY_FILE_NAME), "stale replacement content").unwrap();
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(text, BASELINE_FLOOR, "the retired legacy file must not be read");
+        assert!(!degraded, "an ignored file is not a degrade - nothing about it is anomalous");
+    }
+
+    #[test]
+    fn read_drops_growth_and_keeps_the_floor_when_combined_is_over_cap() {
+        // The growth file FITS on its own but floor+growth does not. Mirrors the golden header: keep SEED,
+        // drop GROWTH - never lose the shipped baseline to an accreting runtime file.
+        let d = fresh_dir("combined-overcap");
+        let growth = "g".repeat(MAX_BYTES - BASELINE_FLOOR.len() + 1);
+        assert!(growth.len() <= MAX_BYTES, "fixture must fit alone or it tests the wrong branch");
+        std::fs::write(d.join(GROWTH_FILE_NAME), &growth).unwrap();
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(text, BASELINE_FLOOR, "over the combined cap the floor must survive alone");
+        assert!(degraded, "dropping GROWTH is anomalous and must be observable to the driver");
     }
 
     #[test]
     fn read_returns_floor_when_over_cap() {
         let d = fresh_dir("overcap");
-        std::fs::write(d.join(FILE_NAME), "x".repeat(MAX_BYTES + 1)).unwrap();
+        std::fs::write(d.join(GROWTH_FILE_NAME), "x".repeat(MAX_BYTES + 1)).unwrap();
         assert_eq!(read(&d), BASELINE_FLOOR);
     }
 
@@ -143,7 +197,7 @@ mod tests {
     #[test]
     fn read_with_status_over_cap_is_degraded() {
         let d = fresh_dir("rws-overcap");
-        std::fs::write(d.join(FILE_NAME), "x".repeat(MAX_BYTES + 1)).unwrap();
+        std::fs::write(d.join(GROWTH_FILE_NAME), "x".repeat(MAX_BYTES + 1)).unwrap();
         let (text, degraded) = read_with_status(&d);
         assert_eq!(text, BASELINE_FLOOR);
         assert!(degraded, "over-cap must report a degrade");
@@ -152,7 +206,7 @@ mod tests {
     #[test]
     fn read_with_status_empty_present_is_degraded() {
         let d = fresh_dir("rws-empty");
-        std::fs::write(d.join(FILE_NAME), "").unwrap();
+        std::fs::write(d.join(GROWTH_FILE_NAME), "").unwrap();
         let (text, degraded) = read_with_status(&d);
         assert_eq!(text, BASELINE_FLOOR);
         assert!(degraded, "present-but-empty must report a degrade");
@@ -161,9 +215,9 @@ mod tests {
     #[test]
     fn read_with_status_content_is_not_degraded() {
         let d = fresh_dir("rws-content");
-        std::fs::write(d.join(FILE_NAME), "custom core\n").unwrap();
+        std::fs::write(d.join(GROWTH_FILE_NAME), "custom core\n").unwrap();
         let (text, degraded) = read_with_status(&d);
-        assert_eq!(text, "custom core");
+        assert_eq!(text, format!("{BASELINE_FLOOR}\n\ncustom core"));
         assert!(!degraded);
     }
 

@@ -18,16 +18,45 @@ public sealed class DriverCheatsheetTests : IDisposable
     }
 
     [Fact]
-    public void Read_returns_file_contents_when_present()
+    public void Read_returns_floor_then_growth_when_growth_present()
     {
-        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.FileName), "custom core\n");
-        Assert.Equal("custom core", DriverCheatsheet.Read(_dir));
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), "learned rule\n");
+        // EXTEND, not replace: the compiled floor survives and GROWTH is appended after a blank line.
+        Assert.Equal(DriverCheatsheet.BaselineFloor + "\n\nlearned rule", DriverCheatsheet.Read(_dir));
+    }
+
+    // THE POINT OF THE SPLIT. Before 2026-08-27 this file WHOLLY SUPPLANTED the compiled floor, so its only
+    // writer could silently delete every baseline rule. It is now inert. Without this test the retirement is
+    // asserted NOWHERE and a future reader could wire it back in unnoticed.
+    [Fact]
+    public void Read_ignores_the_retired_legacy_file()
+    {
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.RetiredLegacyFileName), "stale replacement content");
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor, text);
+        Assert.False(degraded); // an ignored file is not a degrade - nothing about it is anomalous
+    }
+
+    // Over the COMBINED cap the floor must survive alone, mirroring GoldenHeader.TryReadCombined. The growth
+    // file fits on its own; only floor+growth exceeds. Dropping both, or truncating, would lose the shipped
+    // baseline to an accreting runtime file - the failure this split exists to prevent.
+    [Fact]
+    public void ReadWithDegradeStatus_drops_growth_and_keeps_the_floor_when_combined_over_cap()
+    {
+        var room = DriverCheatsheet.MaxBytes - Encoding.UTF8.GetByteCount(DriverCheatsheet.BaselineFloor);
+        var growth = new string('g', room + 1);
+        Assert.True(Encoding.UTF8.GetByteCount(growth) <= DriverCheatsheet.MaxBytes,
+            "fixture must fit alone or it exercises the wrong branch");
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), growth);
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor, text);
+        Assert.True(degraded);
     }
 
     [Fact]
     public void Read_falls_back_to_floor_when_over_cap()
     {
-        File.WriteAllBytes(Path.Combine(_dir, DriverCheatsheet.FileName),
+        File.WriteAllBytes(Path.Combine(_dir, DriverCheatsheet.GrowthFileName),
             Encoding.UTF8.GetBytes(new string('x', DriverCheatsheet.MaxBytes + 1)));
         Assert.Equal(DriverCheatsheet.BaselineFloor, DriverCheatsheet.Read(_dir));
     }
@@ -46,7 +75,7 @@ public sealed class DriverCheatsheetTests : IDisposable
     [Fact]
     public void ReadWithDegradeStatus_reports_degraded_when_over_cap()
     {
-        File.WriteAllBytes(Path.Combine(_dir, DriverCheatsheet.FileName),
+        File.WriteAllBytes(Path.Combine(_dir, DriverCheatsheet.GrowthFileName),
             Encoding.UTF8.GetBytes(new string('x', DriverCheatsheet.MaxBytes + 1)));
         var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
         Assert.Equal(DriverCheatsheet.BaselineFloor, text);
@@ -57,7 +86,7 @@ public sealed class DriverCheatsheetTests : IDisposable
     [Fact]
     public void ReadWithDegradeStatus_reports_degraded_when_file_present_but_empty()
     {
-        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.FileName), "");
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), "");
         var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
         Assert.Equal(DriverCheatsheet.BaselineFloor, text);
         Assert.True(degraded);
@@ -67,9 +96,9 @@ public sealed class DriverCheatsheetTests : IDisposable
     [Fact]
     public void ReadWithDegradeStatus_reports_not_degraded_when_file_present_and_readable()
     {
-        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.FileName), "custom core\n");
+        File.WriteAllText(Path.Combine(_dir, DriverCheatsheet.GrowthFileName), "custom core\n");
         var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
-        Assert.Equal("custom core", text);
+        Assert.Equal(DriverCheatsheet.BaselineFloor + "\n\ncustom core", text);
         Assert.False(degraded);
     }
 
