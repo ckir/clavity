@@ -1,0 +1,19 @@
+<!-- A rule in the agy-driving knowledge STORE (tier 2). Never injected; GROWTH selects from here.
+     PURE ASCII BY POLICY, inherited from the GROWTH region this was split out of: that region is
+     published through a byte transport which corrupted it once (2026-07-19 to 2026-08-01).
+     The rule TEXT below is verbatim from the compiled GROWTH and must stay so - editing it is
+     consolidation, which is allowed, but it is never a mechanical reformat. -->
+
+# round count is not convergence and
+
+**Section:** CRITICAL ANTI-PATTERNS - newly learned, additive to SEED
+**Origin:** split verbatim from the compiled runtime GROWTH region on 2026-08-27, when the store was
+seeded. Before that this text existed ONLY at a runtime path outside version control.
+
+- ROUND COUNT IS NOT CONVERGENCE, AND SEVERITY RISES LATE. Two long reviews: the worst defects landed at
+  rounds 9-11 of fifteen and 10-15 of seventeen, and the fix-spawns-a-defect law held SEVEN consecutive
+  rounds. A thinning finding count is the weakest signal you have. Two better ones: a lens that must walk
+  the procedure end to end and report the FURTHEST POINT reached (it advances monotonically, and reaching
+  the end predicts the first clean round), and a FOLD AUDITOR aimed only at the previous round's edits
+  with those edits ENUMERATED (a)(b)(c) in the brief - asking generically for "defects in recent fixes"
+  does not work.
