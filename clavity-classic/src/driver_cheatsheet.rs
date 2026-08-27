@@ -23,8 +23,14 @@ pub const RETIRED_LEGACY_FILE_NAME: &str = "driver-cheatsheet.md";
 ///
 /// THE TWO CAPS ARE NO LONGER EQUAL AND MUST NOT BE RE-COUPLED. `golden_header::MAX_BYTES` went to 32 KiB
 /// on 2026-08-27 to clear a production breach; this one deliberately stayed at 16 KiB because the
-/// cheatsheet is under no pressure — MEASURED the same day at 4,750 B, 3.4x headroom. They bound different
-/// files for different reasons, and coupling them is how a cap gets raised with no measured need.
+/// cheatsheet is under no pressure. They bound different files for different reasons, and coupling them is
+/// how a cap gets raised with no measured need.
+///
+/// NO SIZE IS QUOTED HERE ON PURPOSE. An earlier version of this comment froze "4,750 B, 3.4x headroom";
+/// both figures were wrong within the same commit range, because 4,750 B was the size of the RUNTIME legacy
+/// file, not of this floor, and the floor was then rewritten. A byte count is volatile state and rots
+/// wherever prose stores it. The live figure has a mechanical oracle instead — `scripts/
+/// check-cheatsheet-budget.ps1`, run by `build-classic.yml` and `build-dotnet.yml` — so read it from there.
 pub const MAX_BYTES: usize = 16 * 1024;
 pub const LABEL: &str = "[driver_guidance]";
 
@@ -210,6 +216,23 @@ mod tests {
         let (text, degraded) = read_with_status(&d);
         assert_eq!(text, BASELINE_FLOOR);
         assert!(degraded, "present-but-empty must report a degrade");
+    }
+
+    // CAPSTONE R1, pair parity. This side ALREADY passed when the test was written - metadata() succeeds
+    // on a directory, then read() fails and takes the warn-and-degrade arm. It is committed anyway because
+    // it pins the behaviour the dotnet half had to be CHANGED to match (File.Exists returned false for a
+    // directory and degraded silently). Without it, the two implementations could drift apart again with
+    // only one of them under test.
+    #[test]
+    fn read_with_status_directory_at_growth_path_is_degraded() {
+        let d = fresh_dir("rws-dir");
+        std::fs::create_dir_all(d.join(GROWTH_FILE_NAME)).unwrap();
+        let (text, degraded) = read_with_status(&d);
+        assert_eq!(text, BASELINE_FLOOR);
+        assert!(
+            degraded,
+            "a directory at the growth path is present-but-unusable, not absent"
+        );
     }
 
     #[test]

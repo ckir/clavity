@@ -1462,10 +1462,15 @@ coherent — while the drift was entirely in `%USERPROFILE%\.clavity\driver-chea
 pins and nothing gates**. Unpinning would delete the half that works. The peer conceded and adopted this
 split as the target architecture.
 ⚠ **THE DRIFT FIGURE IN THAT ARGUMENT IS HISTORICAL — DO NOT RE-QUOTE IT AS PRESENT TENSE.** It read
-"3 days stale, 3515 B vs 3508 B" on 2026-08-17. **Re-measured 2026-08-27: the drift is GONE** — core and
-runtime are both 4750 B and byte-equal after CRLF normalisation, and `check-cheatsheet-parity.ps1` exits 0.
-The ARGUMENT still stands (nothing pins the runtime file; it merely happens to be in sync), but the
-sentence was written in the present tense and would now be false.
+"3 days stale, 3515 B vs 3508 B" on 2026-08-17. An intermediate re-measurement on 2026-08-27 read "the
+drift is GONE — core and runtime are both 4750 B"; **that too is now false, and it was falsified the same
+day** by the commit that rewrote `core.md`. Re-measured at the end of 2026-08-27: `core.md` is **5,595 B**
+while the runtime `~/.clavity/driver-cheatsheet.md` is still **4,750 B**. They are not equal, and nothing
+detected the divergence — `check-cheatsheet-parity.ps1` still exits 0 because it compares the repo core
+against the two COMPILED LITERALS and never against the runtime file at all.
+**This strengthens the ARGUMENT rather than weakening it: nothing pins the runtime file, and the period in
+which it "merely happened to be in sync" has now visibly ended.** Do not re-quote any of these byte counts
+in the present tense — that is the third time this one sentence has rotted.
 
 **Three attacks on the split, from that same consult:**
 1. 🔴 **Contradiction between regions — CONFIRMED LIVE 2026-08-27, no longer hypothetical.** Domain facts

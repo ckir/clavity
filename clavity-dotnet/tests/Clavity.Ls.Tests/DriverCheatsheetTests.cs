@@ -92,6 +92,20 @@ public sealed class DriverCheatsheetTests : IDisposable
         Assert.True(degraded);
     }
 
+    // CAPSTONE R1: a DIRECTORY at the growth path is present-but-unusable, so it must degrade. This is a
+    // PAIR-PARITY test, not a hypothetical: MEASURED, the Rust half already reports degraded here (its
+    // metadata() succeeds on a directory, then read() fails with PermissionDenied and it warns), while
+    // File.Exists returns FALSE for a directory and sent C# down the silent "genuinely absent" branch —
+    // the one case the Degraded flag exists to prevent, since absence deliberately warns about nothing.
+    [Fact]
+    public void ReadWithDegradeStatus_reports_degraded_when_the_growth_path_is_a_directory()
+    {
+        Directory.CreateDirectory(Path.Combine(_dir, DriverCheatsheet.GrowthFileName));
+        var (text, degraded) = DriverCheatsheet.ReadWithDegradeStatus(_dir);
+        Assert.Equal(DriverCheatsheet.BaselineFloor, text);
+        Assert.True(degraded, "a directory at the growth path is present-but-unusable, not absent");
+    }
+
     // F2: a small, present, non-empty file is normal content delivery — never a degrade.
     [Fact]
     public void ReadWithDegradeStatus_reports_not_degraded_when_file_present_and_readable()

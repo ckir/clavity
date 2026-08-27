@@ -29,9 +29,15 @@ public static class DriverCheatsheet
     /// (SEED+GROWTH) and the escalation index, not just the cheatsheet, since T4b moved that content off the
     /// peer-facing wire entirely. 16 KiB ONCE matched the golden header's cap; it no longer does —
     /// <see cref="GoldenHeader.MaxBytes"/> went to 32 KiB on 2026-08-27 and this one deliberately did NOT
-    /// follow, because the cheatsheet is under no pressure: MEASURED the same day at 4,750 B against this
-    /// 16,384 B cap, 3.4x headroom. Do not re-couple these two numbers — they bound different files for
-    /// different reasons, and coupling them is how a cap gets raised without a measured need.</summary>
+    /// follow, because the cheatsheet is under no pressure. Do not re-couple these two numbers — they bound
+    /// different files for different reasons, and coupling them is how a cap gets raised without a measured
+    /// need.
+    ///
+    /// NO SIZE IS QUOTED HERE ON PURPOSE. An earlier version of this comment froze "4,750 B, 3.4x headroom";
+    /// both figures were wrong within the same commit range, because 4,750 B was the size of the RUNTIME
+    /// legacy file, not of this floor, and the floor was then rewritten. A byte count is volatile state and
+    /// rots wherever prose stores it. The live figure has a mechanical oracle instead — scripts/
+    /// check-cheatsheet-budget.ps1, run by build-dotnet.yml and build-classic.yml — so read it from there.</summary>
     public const int MaxBytes = 16 * 1024;
 
     public const string Label = "[driver_guidance]";
@@ -72,7 +78,27 @@ public const string BaselineFloor =
             // ABSENT IS THE NORMAL FRESH STATE, not a degrade: the floor is compiled in, so a machine that
             // has never run a drain is fully served and must stay silent. Only a PRESENT-but-unusable
             // region is anomalous enough to surface to the driver.
-            if (!File.Exists(path)) return (BaselineFloor, false);
+            //
+            // GetAttributes, NOT File.Exists — this mirrors Rust's std::fs::metadata(), which is the only
+            // way to keep the pair's degrade semantics identical. MEASURED: File.Exists returns FALSE for a
+            // path that EXISTS as a directory (and also when the caller lacks permission), collapsing
+            // present-but-unusable into the silent "absent" branch — precisely the silent degrade this
+            // flag exists to surface. GetAttributes instead THROWS for a genuinely missing path and
+            // SUCCEEDS for a directory, so the two cases stay distinguishable.
+            //
+            // A FileInfo-based variant was proposed and REJECTED by measurement: FileInfo.Exists is also
+            // false for a directory and the constructor never throws, so it reproduces the same bug.
+            FileAttributes attrs;
+            try { attrs = File.GetAttributes(path); }
+            catch (FileNotFoundException) { return (BaselineFloor, false); }
+            catch (DirectoryNotFoundException) { return (BaselineFloor, false); }
+            // Any OTHER failure (permission, IO) falls through to the outer catch, which degrades — again
+            // matching Rust, whose non-NotFound metadata errors take its warn-and-degrade arm.
+            if ((attrs & FileAttributes.Directory) != 0)
+            {
+                warn?.Invoke("driver-cheatsheet GROWTH path is a directory, not a file; using baseline floor");
+                return (BaselineFloor, true);
+            }
             // Check length via metadata BEFORE reading, so a pathologically large file (e.g. a redirected
             // log) degrades to the floor instead of OOM-ing the process.
             if (new FileInfo(path).Length > MaxBytes)

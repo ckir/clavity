@@ -163,13 +163,15 @@ CI regression tests are built yet, so gate 1 above cannot hold for any entry).
 ### Compile the core driver-cheatsheet (spec section 5.C-C)
 
 The `driver/probabilistic` entries that survived the gate are the durable driver knowledge. Distil the
-variant-agnostic core (peer psychology - identical for both drivers) into a lean cheatsheet - today
-about 4.7 KB. The canonical text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync there.
+variant-agnostic core (peer psychology - identical for both drivers) into a lean cheatsheet. The canonical
+text lives at `knowledge/driver-cheatsheet.core.md`; keep it in sync there.
 
-**Do not treat that figure as the target.** It is a description of what the file currently is, and it has
-been wrong before: it read "5 bullets and 2.5 KB" while the file was 4750B, so a reader checking their
-work against this sentence would have concluded the artifact was fine when it was over budget. The
-ENFORCED number is the one in the script named below, and that is the only one to size against.
+**No size is quoted here, deliberately - do not add one back.** A descriptive byte count in this paragraph
+has now rotted TWICE and misled a reader both times: it read "5 bullets and 2.5 KB" while the file was
+4750 B, and was then corrected to "about 4.7 KB" only for the file to be rewritten to 5,595 B in the same
+week. A reader sizing their work against either sentence would have concluded the artifact was fine while
+it was over budget. The ENFORCED number is the one in the script named below, and that is the only one to
+size against.
 
 **The budget is 6144 bytes** - the `-MaxBytes` default of `scripts/check-cheatsheet-budget.ps1`, and it is
 ENFORCED by that script (run in CI and by `scripts/tests/check-cheatsheet-budget.Tests.ps1` under
