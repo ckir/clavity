@@ -241,7 +241,13 @@ function Get-DrainOutputManifestEntries([string]$ManifestPath) {
 
 function Get-SidecarRecoverySections([string]$SidecarPath) {
     # R-V1: the append-only drain-log records ONLY what git can't otherwise recover — the F11 verbatim
-    # `## Dropped` + `## Parked (verify-needed)` sections. Promoted / Proposed-demotions detail lives in the
+    # `## Dropped` + `## Parked (verify-needed)` sections, and since 2026-08-27 `## GROWTH accounting`.
+    #
+    # WHY ACCOUNTING JOINS THEM. It is the record of every rule that left the GROWTH region and why. The
+    # sidecar holding it is OVERWRITTEN every run, so without this the record would live only in git history
+    # — and MEASURED 2026-08-27, `git log` shows ZERO commits have ever touched either the proposal or the
+    # sidecar, so that recovery path is sound in principle and has never once been exercised. Knowledge here
+    # cannot be implemented, only earned; the record of losing some belongs in the append-only file. Promoted / Proposed-demotions detail lives in the
     # committed manual diffs + the (git-tracked, per-run-overwritten) sidecar, so it is NOT duplicated into the
     # growing log. (The log still grows linearly with drains — an intentional append-only maintainer record, like a
     # CHANGELOG — but each entry is bounded to the essentials.)
@@ -250,7 +256,7 @@ function Get-SidecarRecoverySections([string]$SidecarPath) {
     # a BULLET, so a `##` INSIDE an entry (`- …##…`) never starts a line with `##` and cannot trip the toggle or
     # truncate the section (the same bullet-schema robustness as the inbox gate, F17).
     if (-not (Test-Path $SidecarPath)) { return '(no sidecar written)' }
-    $keep = @('Dropped', 'Parked')
+    $keep = @('Dropped', 'Parked', 'GROWTH')   # 'GROWTH' matches the `## GROWTH accounting` heading's first word
     $out = @(); $emit = $false
     foreach ($l in (Get-Content $SidecarPath)) {
         if ($l -match '^##\s+(\w+)') { $emit = ($keep -contains $Matches[1]); if ($emit) { $out += $l }; continue }

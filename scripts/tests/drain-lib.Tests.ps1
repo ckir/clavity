@@ -233,6 +233,31 @@ Describe "drain-lib primitives" {
         $r | Should -Not -Match 'promoted thing'                      # Promoted excluded (recoverable from git)
     }
 
+    It "Get-SidecarRecoverySections: RETAINS the GROWTH accounting section - the record of what left GROWTH" {
+        # The accounting section names every rule that left the GROWTH region and why. The sidecar holding it
+        # is OVERWRITTEN every run, so if the append-only log did not keep it the record would exist only in
+        # git history - and MEASURED 2026-08-27, zero commits have ever touched the proposal or the sidecar,
+        # so that path has never been exercised. This assertion is what makes the retention load-bearing
+        # rather than incidental; without it, widening $keep was untested and a later narrowing would be
+        # silent. NOTE the assertions are POSITIVE: a `-Not -Match` here would pass vacuously if the section
+        # were dropped entirely, which is the exact failure it would need to catch.
+        $sc = Join-Path $script:Work 'sidecar-accounting.md'
+        Set-Content -Path $sc -Value @(
+            '# drain proposal',
+            '## Promoted', '- promoted thing',
+            '## GROWTH accounting',
+            '- old rule about banners | dropped: refuted by a later measurement',
+            '- old rule about seats | merged-into: the round-shaping rule',
+            '## Dropped', '- some noise'
+        )
+        $r = Get-SidecarRecoverySections $sc
+        $r | Should -Match 'old rule about banners'
+        $r | Should -Match 'refuted by a later measurement'
+        $r | Should -Match 'old rule about seats'
+        $r | Should -Match 'some noise'                                # Dropped still retained alongside it
+        $r | Should -Not -Match 'promoted thing'                       # Promoted still excluded
+    }
+
     It "Restore-StagingToPending keeps chronological order: staged BEFORE mid-run captures (SC2)" {
         Set-Content -Path $script:Inbox -Value @('# inbox', '', '## Pending', '- [heuristic] MIDRUN  ·  x')
         $staging = Join-Path $script:Work 'agy-observations.staging.RID.md'
