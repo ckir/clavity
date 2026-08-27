@@ -51,15 +51,21 @@ load once and accumulates across files.
   during a run slows it down by construction** (see the contention entries below). **Do not quote any
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
-- `just test-scripts-slow` — everything else. **24 suites, 644 tests** (638 measured 2026-08-26 by running
-  the recipe, plus SIX rows added that day across three folds - the ledger-row gate pair, the file-types
-  and divergent-branch rows, and the two audit-marker matrix rows. The derivation said "the two rows" and
-  summed to 640 while the headline was bumped twice past it; a derivation that no longer reaches its own
-  total is how a number stops being evidence.
-  the recipe backgrounded, plus the two rows the ledger-row gate fix added that day; the 626 here was the
-  2026-08-25 count and was stale before either addition. Runtime NOT re-measured; this half
-  GAINED `agy-curate-nudge` and `check-injected-context` that day). The runtime below predates that
-  move. Previously **19 suites, 382 tests, measured 1346,49s solo** (2026-08-17,
+- `just test-scripts-slow` — everything else. **25 suites named by the recipe; 633 tests across the 24 of
+  them that have a row** (recomputed 2026-08-27 from the `## Measured runtimes` table joined against the
+  recipe, not by arithmetic on a previous figure). It said **24 suites, 644 tests** until then, and both
+  halves were wrong in opposite directions: the recipe names 25 files, and 644 matched neither the 633 the
+  table gives nor any total including `clavity-install.Tests.ps1`.
+  **`clavity-install.Tests.ps1` HAS NO ROW IN THAT TABLE**, which is why the suite count and the test count
+  disagree about what "the slow half" means. It is the one entry the recipe names from outside
+  `scripts/tests`, and `test-suite-registration.Tests.ps1` pins rows for the directory it globs, so this
+  suite sits in a gate and outside the guard that would notice it missing. The only figure for it anywhere
+  is the prose "12" further down this file, which nothing enforces.
+  (The previous text carried an ORPHANED SENTENCE FRAGMENT here - a lower-case clause beginning "the recipe
+  backgrounded" spliced under a paragraph that had already ended in a full stop, still arguing about a 626
+  that no line claimed any more. It was residue of an in-place edit, and it is deleted rather than repaired
+  because no reader could tell which derivation it belonged to. The runtime below predates the
+  `agy-curate-nudge` / `check-injected-context` move.) Previously **19 suites, 382 tests, measured 1346,49s solo** (2026-08-17,
   after the capstone added `check-ci-filter-coverage` to this half and none to fast; the anomaly hot-fix
   batch before it had added five, also all to this half). **ALWAYS MEASURE, EVEN THOUGH DERIVING IS OFTEN
   RIGHT** — and both outcomes are on record here. Deriving 364 + 13 predicted 377 when the truth was 379
@@ -106,8 +112,21 @@ diff <(ls scripts/tests/*.Tests.ps1 | xargs -n1 basename | sort) \
 
 which exits 0 when clean and names the orphan when a suite is unreachable. **Do not pin a test COUNT as
 the invariant** — 358 was pinned once and was wrong by the next task, because every milestone that adds a
-test raises it. The count today is fast **407** and slow **626**, **both measured, not added up**
-(re-measured 2026-08-25 by Pester discovery: 1033 tests over 49 containers; 407 + 626 = 1033).
+test raises it. **The count today is not written here on purpose, as of 2026-08-27.** Read it off the
+`## Measured runtimes` table - that table is the only enforced oracle in this file, and joining it against
+the two recipes is a mechanical step anyone can repeat.
+
+This sentence used to name one. It said fast **407** and slow **626** and then derived
+`407 + 626 = 1033` - the exact arithmetic the paragraph immediately above forbids - while the two bullets
+at the top of this file said 412 and 644. Recomputed from the table on 2026-08-27: fast **412**, slow
+**633** over the 24 rowed suites, table total **1045**. So all three of the old numbers were wrong, and
+they were wrong in a sentence whose own subject is numbers going stale.
+
+The four notes below record this same decay in 2026-08-06, twice on 2026-08-16, and again on 2026-08-24,
+each time predicting the next recurrence. It recurred a FIFTH time. A number that decays through five
+recorded corrections is not a fact that keeps going stale, it is the wrong thing to write down: the
+per-row figures are enforced by `test-suite-registration.Tests.ps1` and the aggregate is not, so the
+aggregate is deleted rather than re-measured. Nothing downstream reads it.
 🔴 **And it decayed a THIRD time, within hours, exactly as the paragraph below predicts.** The
 figures were 399/1025 for two commits because they were computed by ARITHMETIC before `ba4fa4f` added
 one test to `agy-autotrain-installer` - a FAST suite. The count guard caught the per-row drift (its row
