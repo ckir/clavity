@@ -151,6 +151,49 @@ forcing functions, not a flat "find bugs":
 - **Rotate seats across rounds.** Each additional round seats at least one lens not used in a prior
   round, so the loop surfaces NEW defect-classes instead of re-deriving covered ones.
 
+## The stopping rule - what BLOCKS green (agreed with the live peer, 2026-08-27)
+
+A finding that survives disposition as a real `defect` is then CLASSED. **BLOCKING findings block GREEN;
+DEBT findings are appended to the coverage-debt ledger and do NOT.** GREEN means "the software behaves
+correctly", NOT "every comment is synchronised with HEAD". Those were ONE bucket for 27 rounds, which made
+GREEN unreachable by construction: a fatal CI bypass and a comment stating a drifted number were both
+simply `defect`.
+
+**The class is DERIVED, never assigned by the driver.** The driver is the party that benefits from
+stopping, so a class it assigns is a preference with paperwork. Evaluate IN ORDER; first match wins:
+
+| # | test | class |
+|---|---|---|
+| 0 | **Executable consequence** - some command currently EXITS NON-ZERO because of this finding. Quote the command and its exit code. | BLOCKING |
+| 1 | **Lexical code** - the cited line is an executable statement, a CI YAML key, or a build-recipe command. | BLOCKING |
+| 2 | **User-facing contract** - the file ships in an installer payload. DERIVE this from the payload; never hand-maintain a roster of "user-facing" directories. | BLOCKING |
+| 3 | **Lexical prose** - the cited line is a comment or internal markdown. | DEBT |
+| 4 | **False Safety Promise** - the prose asserts that a mechanical guard, gate or test EXISTS, and it is absent or unwired. | BLOCKING |
+| 5 | **Unclassifiable** - no quotable line, or no rule above matched. | BLOCKING |
+
+**Rule 0 exists because rules 1-5 are blind to CONSEQUENCE by construction.** MEASURED: a repo gate that
+had been RED for 29 commits surfaced as two non-ASCII characters in internal markdown - not executable,
+not user-facing, asserting no guard - so rules 1-5 alone would have deferred the round's most serious
+finding as hygiene. A lexical rule asks what a line RESEMBLES; only a command MEASURES.
+
+**Rule 4 is the REVIEWER's hatch alone, and its escalation is FINAL** - the driver may not downgrade it.
+That asymmetry is safe precisely because the remedy is cheap: fixing the comment costs seconds, so an
+over-escalating reviewer costs the driver time, never a blocked release. It replaces the softer test
+"would a maintainer plausibly be misled", which is unmeasurable and which the driver will argue its way
+out of every time.
+
+**Rule 5 fails CLOSED.** An absence has no line to quote - "no workflow triggers on this tree" cites what
+is NOT there - and a guard that fails open certifies exactly what it stopped checking.
+
+**Name the severity vocabulary IN THE BRIEF, every round.** MEASURED: the reply contract carried a
+`severity` field while no brief had ever defined a scale or a floor for it, and two arms in one round
+returned `critical/high/medium/none` and `low/medium` - non-comparable, so nothing could aggregate or gate
+on them. A field no rule reads is not a control.
+
+**A round is clean when no BLOCKING finding remains** - not when findings stop arriving. Dryness is a fact
+about the reviewer's supply of lenses, not about the code: MEASURED, a fresh axis returned nine findings
+after several near-dry rounds.
+
 Send the peer the committed range + this framing + the do-not-re-raise ledger; ask it to enumerate
 reachable defects citing file:line. **Commit before the next round:** the peer reviews COMMITTED code, so
 `git commit` every measurement-verified fold-fix BEFORE re-capturing `HEAD` and launching the next round
