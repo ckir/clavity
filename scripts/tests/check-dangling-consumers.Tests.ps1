@@ -63,6 +63,37 @@ Describe 'check-dangling-consumers' {
 
     # The exemption is DERIVED from the identifier, never a hand-maintained roster - and it is PRINTED, so
     # an exemption cannot be quiet. Renaming a live constant to dodge the gate is then a visible lie.
+    # CAPSTONE R2 - A MENTION IS NOT A WRITE. The first version accepted any non-test file containing the
+    # literal, so documentation counted as a producer. MEASURED on the real tree: SEVEN files contained
+    # the name and exactly ONE wrote it - the other six were troubleshooting prose and reader docs, four of
+    # which the same commit had just added. Deleting the only writer would have left this gate GREEN.
+    It 'does NOT accept a file that merely MENTIONS the name in prose' {
+        $d = New-Tree
+        Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
+        Set-Content -Path (Join-Path $d 'README.md') `
+            -Value 'Troubleshooting: if thing.growth.md is over its cap it is ignored and the baseline is used.'
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'DANGLING CONSUMER'
+        Remove-Item -Recurse -Force $d
+    }
+
+    # (Its paired control is the FIRST row in this suite, whose producer file says "The curator WRITES
+    # thing.growth.md" - so that row proves the tightening did not simply break the gate into always
+    # failing. No separate row is added here for it, because a duplicate assertion is padding, not cover.)
+
+    # CAPSTONE R2, the FALSE-ALARM direction, which is the one a gate rarely gets tested for. The old
+    # `-like '*Tests.*'` exclusion matched `contests.md` - an ordinary English word - so a genuine producer
+    # with an unlucky name was silently discounted. This asserts the gate now sees it.
+    It 'does not mistake an ordinary word like "contests" for a test file' {
+        $d = New-Tree
+        Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
+        Set-Content -Path (Join-Path $d 'contests.md') -Value 'This publishes thing.growth.md to the runtime directory.'
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $d
+    }
+
     It 'EXEMPTS a constant whose identifier declares it legacy, and SAYS SO' {
         $d = New-Tree
         Set-Reader $d 'public const string LegacyFileName = "old-thing.md";'

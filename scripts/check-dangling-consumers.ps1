@@ -21,6 +21,13 @@
   for `driver-cheatsheet.growth.md` the literal appears in three test files and nowhere else. A gate that
   accepted those would have been green on F1. See the exclusion test in the suite, which pins this.
 
+  WHAT THIS PROVES, AND WHAT IT DOES NOT. A producer is a file that contains the literal NEAR a write
+  indicator. That is a DECLARED INTENT TO WRITE, not a proven write - nothing here executes the writer or
+  watches the filesystem, and a skill that says it writes a file may still fail to. The claim is therefore
+  deliberately narrow: this gate catches a reader whose filename NOBODY EVEN CLAIMS to produce, which is
+  the shape that has actually occurred. Do not upgrade that sentence to "verifiable producer" - an earlier
+  draft of this header said exactly that, and the check underneath it accepted a bare MENTION.
+
   THE EXEMPTION IS DERIVED, NEVER A HAND-MAINTAINED ROSTER. A constant whose IDENTIFIER declares it legacy
   or retired is read-only by design - it names a file an EARLIER version wrote, kept so an upgrading user's
   file is still recognised. Those are skipped, and every skip is PRINTED, so an exemption cannot be quiet.
@@ -86,12 +93,45 @@ $readerPaths = @($sources | ForEach-Object { $_.FullName })
 function Test-IsProducerCandidate([string]$path) {
     if ($readerPaths -contains $path) { return $false }
     $leaf = Split-Path -Leaf $path
-    if ($leaf -like '*.Tests.*' -or $leaf -like '*Tests.*' -or $leaf -eq 'integration.rs') { return $false }
     if ($leaf -eq 'check-dangling-consumers.ps1') { return $false }
+    # ANCHORED ON THIS REPO'S ENFORCED TEST CONVENTIONS, not a loose wildcard. MEASURED: the previous
+    # `-like '*Tests.*'` excluded `contests.md` - an ordinary word - and `gather-tests.ps1`, so a real
+    # producer with an unlucky name was silently discounted and could cause a FALSE failure; while
+    # `test_golden_header.rs` and `e2e-test.ps1` were NOT excluded, which is the silent-pass direction.
+    # `-like` is case-insensitive too, widening both mistakes at once.
+    #
+    # PowerShell suites are `*.Tests.ps1` - the convention test-suite-registration.Tests.ps1 already
+    # enforces, so anchoring here is DERIVED rather than invented. The dot is what does the work: it is
+    # the whole difference between a suite and `gather-tests.ps1`.
+    if ($leaf -match '(?i)\.Tests\.(ps1|psm1)$') { return $false }
+    # xunit files are `<Thing>Tests.cs` - CamelCase, no dot - matched CASE-SENSITIVELY so `contests.cs`
+    # cannot collide with it.
+    if ($leaf -cmatch 'Tests\.cs$') { return $false }
+    # Rust integration tests live under `tests/` (caught below) or are named integration.rs / test_*.rs.
+    if ($leaf -eq 'integration.rs' -or $leaf -match '(?i)^test_.*\.rs$') { return $false }
     # Any path segment that is a test directory.
     $norm = $path.Replace('\', '/')
     if ($norm -match '/tests?/') { return $false }
     return $true
+}
+
+# A write indicator, in prose or in either language's file APIs. Deliberately NOT a roster of "writer
+# files" - that would be the hand-maintained list this repo forbids elsewhere. It is a property of the
+# TEXT, so a new writer in a new file is recognised with no edit here.
+$writeIndicator = '(?i)\b(write|writes|writing|written|publish(?:es|ed)?|curate-commit|Set-Content|Out-File|WriteAll\w*|fs::write|atomic(?:ally)?\s+rename|\.tmp\s*->)\b'
+$WriteProximityLines = 2
+
+function Test-NearWriteIndicator([string]$Text, [string]$Literal) {
+    $lines = $Text -split "`r?`n"
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if (-not $lines[$i].Contains($Literal)) { continue }
+        $lo = [math]::Max(0, $i - $WriteProximityLines)
+        $hi = [math]::Min($lines.Count - 1, $i + $WriteProximityLines)
+        for ($j = $lo; $j -le $hi; $j++) {
+            if ($lines[$j] -match $writeIndicator) { return $true }
+        }
+    }
+    return $false
 }
 
 $searchable = @(Get-ChildItem -LiteralPath $repo -Recurse -File -ErrorAction SilentlyContinue |
@@ -115,7 +155,17 @@ foreach ($c in $consts) {
     foreach ($f in $searchable) {
         if (-not (Test-IsProducerCandidate $f.FullName)) { continue }
         $txt = try { [System.IO.File]::ReadAllText($f.FullName) } catch { continue }
-        if ($txt.Contains($c.Literal)) {
+        if (-not $txt.Contains($c.Literal)) { continue }
+        # A MENTION IS NOT A WRITE - this was a hole in the first version of this gate and it was measured,
+        # not theorised. On the real tree SEVEN files contained the literal while exactly ONE wrote the
+        # file; the other six were troubleshooting prose and reader documentation, four of which this same
+        # commit had just added. So deleting the only writer would have left the gate GREEN, which is the
+        # precise failure it exists to prevent, one level up.
+        #
+        # So the literal must sit NEAR a write indicator. This proves a DECLARED INTENT TO WRITE, not a
+        # proven write - see the honesty note in the header. Proximity rather than same-line because a
+        # skill instruction and a script assignment both routinely wrap.
+        if (Test-NearWriteIndicator $txt $c.Literal) {
             $producers += $f.FullName.Substring($repo.Length).TrimStart('\', '/')
         }
     }

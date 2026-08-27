@@ -96,6 +96,30 @@ Describe 'check-knowledge-store' {
         Remove-Item -Recurse -Force $d
     }
 
+    # CAPSTONE R2 - the SAME moving-baseline defect as the deletion check, in its sibling, missed when that
+    # one was fixed. MEASURED: committing the gutting made the previous size equal the current size, so the
+    # ratio was 1.0 and the gate passed while printing "none gutted undeclared". The baseline is now the
+    # file's HIGH-WATER MARK across history, which no commit can move.
+    It 'FAILS a gutting that has already been COMMITTED' {
+        $d = New-StoreFixture
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "x`n"
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'gut beta' 2>$null
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'GUTTED: beta\.md'
+        Remove-Item -Recurse -Force $d
+    }
+
+    It 'PASSES a COMMITTED reduction that declares itself retired' {
+        $d = New-StoreFixture
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "# beta`n`n> Retired: folded into alpha`n"
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'retire beta' 2>$null
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match '2 rule\(s\)'
+        Remove-Item -Recurse -Force $d
+    }
+
     It 'FAILS an orphan - a rule on disk that the index does not link' {
         $d = New-StoreFixture
         Set-Content -NoNewline -Path (Join-Path $d 'rules/gamma.md') -Value "# gamma`n`n- GAMMA.`n"

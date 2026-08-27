@@ -147,9 +147,26 @@ foreach ($f in $onDisk) {
         Problem "OBLITERATED: $f is 0 bytes. Every other check still passes - it is on disk, it is linked, and an empty file has no CRLF and no high bytes - which is exactly why this one exists. Retire a rule by editing it to a declared stub, never by emptying it."
         continue
     }
-    $was = @(& git -C $repo show "${BaselineRef}:$StoreDir/$f" 2>$null)
-    if ($LASTEXITCODE -ne 0) { continue }   # new file, nothing to compare against
-    $wasBytes = ($was -join "`n").Length
+    # THE HIGH-WATER MARK, not the tip - the same lesson as the deletion baseline, and it had to be
+    # learned TWICE. A capstone round caught that this check still compared against ${BaselineRef}, so
+    # committing a gutting made the previous size equal the current size, $kept became 1.0, and the gate
+    # passed while printing "none gutted undeclared". Fixing the deletion baseline and leaving its sibling
+    # on a moving ref is exactly the half-fold this repo keeps paying for.
+    #
+    # Comparing against the LARGEST size the file has ever had is monotonic, so a gutting stays visible
+    # however long ago it was committed - and it is the honest question anyway: has this rule lost most of
+    # what it once held?
+    $revs = @(& git -C $repo log --format=%H $BaselineRef -- "$StoreDir/$f" 2>$null | Where-Object { $_ })
+    if ($revs.Count -eq 0) { continue }     # new file, nothing to compare against
+    $wasBytes = 0
+    foreach ($rev in $revs) {
+        $entry = & git -C $repo ls-tree -l $rev -- "$StoreDir/$f" 2>$null
+        if (-not $entry) { continue }
+        # `ls-tree -l` prints: <mode> <type> <sha> <size>\t<path>
+        $sz = ($entry -split '\s+')[3]
+        $n = 0
+        if ([int]::TryParse($sz, [ref]$n) -and $n -gt $wasBytes) { $wasBytes = $n }
+    }
     if ($wasBytes -le 0) { continue }
     $kept = $bytes / $wasBytes
     if ($kept -lt $ShrinkFloor) {
