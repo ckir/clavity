@@ -62,8 +62,22 @@ itself, and the closure is evidence rather than coincidence:
 - Asked independently, the peer named **dilution** as its lived failure mode and said *"the system itself
   does not merge or complain."*
 
-**Our own product documents the limitation; the peer confirms it from the other side.** That is two
-independent sources on the same defect, which is stronger than either alone.
+🔴 **RETRACTED IN ROUND 7 — THIS WAS CIRCULAR, AND THE DISCLOSURE WAS IN THE ANSWER I QUOTED FROM.**
+An earlier draft of this section called the above *"two independent sources on the same defect, stronger
+than either alone."* **False.** The peer has `commonmemory` loaded as a skill — confirmed two ways:
+`agy plugin list` shows it imported with `components: [skills]`, and **the peer itself disclosed the
+provenance in the same reply I was quoting**: *"I know this because these facts are explicitly stated in
+my system rules and loaded skills (`commonmemory`)."*
+
+So the "corroboration" was our own plugin, and a reader of our own plugin paraphrasing it back. **One
+source wearing two hats.** The round-7 seat aimed at my own reasoning found it; four rounds of seats aimed
+at the artifact did not.
+
+**What actually survives, and it is weaker but real:** `commonmemory` documents that `agentmemory` is
+append-mostly and that superseded notes linger. That is a first-party statement about a store we depend
+on — sufficient to exclude it as a preservation tier, and NOT evidence of independent confirmation.
+⚠ **Genuinely independent evidence would have to come from a source that has never read our plugin.**
+None has been obtained; do not describe this as corroborated until one is.
 
 🔴 **Therefore `agentmemory` MUST NOT be the store for this design.** It is append-mostly, its bound is
 unknown to its own users, and the peer **could not confirm its deletions are recoverable** — so it fails
