@@ -9,9 +9,31 @@
   artifact drifted to roughly 4x it unnoticed. This is the enforcement half: an unenforced budget is how
   the drift happened, so the number and its checker ship together.
 
-  This is NOT the runtime cap. clavity-classic/src/driver_cheatsheet.rs:12 sets MAX_BYTES = 16 * 1024 on
-  the RUNTIME driver-cheatsheet.md, and a file over it degrades to the compiled-in baseline floor. This
-  budget is deliberately far below that, so drift is caught long before the cliff.
+  This is NOT the runtime cap. `driver_cheatsheet.rs` / `DriverCheatsheet.cs` set MAX_BYTES = 16 * 1024 on
+  the COMBINED block, and a combined block over it degrades to the compiled-in baseline floor. This budget
+  is deliberately far below that, so drift in the FLOOR is caught long before the cliff.
+.PARAMETER CheckCombined
+  Also measure the floor PLUS the runtime GROWTH file against the runtime 16 KiB cap, and print the
+  REMAINING budget a curator may spend.
+
+  This exists because the floor budget above is blind to the half that actually moves. Since the readers
+  became EXTEND, what gets injected is `floor + "
+
+" + growth`, and only the SUM is capped - a growth
+  file that fits its own cap can still push the combined block over, at which point the binary silently
+  drops GROWTH and keeps the floor. MEASURED 2026-08-27, the sibling golden header was in exactly that
+  state in production: 16,803 B against a 16,384 B cap, dropping its GROWTH on EVERY injection, while its
+  own budget gate measured REPO paths and so could not see it.
+
+  agy-curate/SKILL.md tells the curator to run this rather than hand-computing the remaining bytes from a
+  figure written in prose - that figure has rotted twice.
+.PARAMETER GrowthPath
+  The runtime growth file to add when -CheckCombined is given. Defaults to the resolved runtime path
+  (CLAVITY_GOLDEN_HEADER, else ~/.clavity), which is what the binary actually reads. A parameter so the
+  suite can point it at a fixture - a gate that can only run against one machine's home directory cannot
+  have its failure path proven.
+.PARAMETER CombinedMaxBytes
+  The runtime combined cap. Default 16384, mirroring MAX_BYTES / MaxBytes in the two readers.
 .PARAMETER Path
   Path to the canonical cheatsheet. Defaults to agy-autotrain/knowledge/driver-cheatsheet.core.md.
 .PARAMETER MaxBytes
@@ -33,7 +55,10 @@
 [CmdletBinding()]
 param(
     [string]$Path,
-    [int]$MaxBytes = 6144
+    [int]$MaxBytes = 6144,
+    [switch]$CheckCombined,
+    [string]$GrowthPath,
+    [int]$CombinedMaxBytes = 16384
 )
 
 Set-StrictMode -Version Latest
@@ -72,4 +97,28 @@ if ($bytes -gt $MaxBytes) {
 }
 
 Write-Host "check-cheatsheet-budget: OK - cheatsheet ${bytes}B <= ${MaxBytes}B" -ForegroundColor Green
+
+if ($CheckCombined) {
+    if (-not $GrowthPath) {
+        # Resolve exactly as the binaries do: the override DIRECTORY first, then the user profile.
+        $dir = $env:CLAVITY_GOLDEN_HEADER
+        if (-not $dir) { $dir = Join-Path ($env:USERPROFILE ? $env:USERPROFILE : $HOME) '.clavity' }
+        $GrowthPath = Join-Path $dir 'driver-cheatsheet.growth.md'
+    }
+    $growth = 0
+    if (Test-Path -LiteralPath $GrowthPath) {
+        $growth = [System.IO.File]::ReadAllBytes($GrowthPath).Length
+    }
+    # The separator is two bytes and is spent whether or not the curator remembers it. Count it always, so
+    # the REMAINING figure a curator sizes against is never one that only just fits.
+    $sep = 2
+    $combined = $bytes + $sep + $growth
+    if ($combined -gt $CombinedMaxBytes) {
+        Fail ("combined driver-cheatsheet is ${combined}B > ${CombinedMaxBytes}B (floor ${bytes}B + separator ${sep}B + growth ${growth}B at ${GrowthPath}). " +
+              "The binary DROPS GROWTH SILENTLY above this and keeps the floor alone, so nothing else will tell you. Trim the growth file.")
+    }
+    $remaining = $CombinedMaxBytes - $bytes - $sep
+    Write-Host "check-cheatsheet-budget: OK - combined ${combined}B <= ${CombinedMaxBytes}B (floor ${bytes}B + sep ${sep}B + growth ${growth}B)" -ForegroundColor Green
+    Write-Host "check-cheatsheet-budget: REMAINING GROWTH BUDGET = ${remaining}B" -ForegroundColor Cyan
+}
 exit 0

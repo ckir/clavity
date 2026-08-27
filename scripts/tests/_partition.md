@@ -624,11 +624,20 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
 check-injected-context.Tests.ps1                 91,5s  153 tests   <- SLOW as of 2026-08-24; was FAST -
-check-knowledge-store.Tests.ps1                   68,4s   8 tests   <- SLOW. Each case builds a THROWAWAY
+check-knowledge-store.Tests.ps1                   91,0s  12 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       GIT REPO: the deletion check compares
-                                                                      against a git baseline and cannot be
-                                                                      exercised without one. MEASURED
-                                                                      2026-08-27.
+                                                                      against the ref's HISTORY and cannot be
+                                                                      exercised without one. 8 -> 12 tests on
+                                                                      2026-08-28, adding the committed-
+                                                                      deletion and content-obliteration rows
+                                                                      a capstone round found missing.
+                                                                      RE-MEASURED 2026-08-28.
+check-dangling-consumers.Tests.ps1                73,1s   8 tests   <- SLOW. Each case builds a THROWAWAY
+                                                                      SOURCE TREE, and one row walks the REAL
+                                                                      repository, so the cost is a full
+                                                                      recursive read per case. MEASURED
+                                                                      2026-08-28 (73,1s / 80,1s across two
+                                                                      runs - quote the range, not a point).
   the single largest suite in that half, moved to buy back cap headroom. Figure measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file

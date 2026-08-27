@@ -105,7 +105,7 @@ test-scripts-fast:
 # Slow script gate. EXCEEDS the 600s foreground tool cap - an agent MUST background this and read the
 # result from the task output file, never run it in the foreground.
 test-scripts-slow:
-    pwsh -NoProfile -c "Invoke-Pester @('scripts/tests/abort-drain.Tests.ps1', 'scripts/tests/accept-drain.Tests.ps1', 'scripts/tests/agy-anomaly-reminder.Tests.ps1', 'scripts/tests/agy-consult-guard.Tests.ps1', 'scripts/tests/agy-curate-nudge.Tests.ps1', 'scripts/tests/assertion-strength-reminder.Tests.ps1', 'scripts/tests/check-cheatsheet-budget.Tests.ps1', 'scripts/tests/check-curate-in-progress.Tests.ps1', 'scripts/tests/check-injected-context.Tests.ps1', 'scripts/tests/check-knowledge-store.Tests.ps1', 'scripts/tests/agy-inbox-snapshot.Tests.ps1', 'scripts/tests/agy-learn-reminder.Tests.ps1', 'scripts/tests/agy-liveness-check.Tests.ps1', 'scripts/tests/agy-mark.Tests.ps1', 'scripts/tests/agy-seam-inject.Tests.ps1', 'scripts/tests/agy-shield-lib.Tests.ps1', 'scripts/tests/agy-test-audit-reminder.Tests.ps1', 'scripts/tests/check-cheatsheet-parity.Tests.ps1', 'scripts/tests/check-core-integrity.Tests.ps1', 'scripts/tests/check-plugin-namespace.Tests.ps1', 'scripts/tests/compute-release.Tests.ps1', 'scripts/tests/docs-audit.Tests.ps1', 'scripts/tests/drain-knowledge.Tests.ps1', 'scripts/tests/generate-cheatsheet-literals.Tests.ps1', 'clavity-dotnet/install/clavity-install.Tests.ps1') -Output Detailed -CI"
+    pwsh -NoProfile -c "Invoke-Pester @('scripts/tests/abort-drain.Tests.ps1', 'scripts/tests/accept-drain.Tests.ps1', 'scripts/tests/agy-anomaly-reminder.Tests.ps1', 'scripts/tests/agy-consult-guard.Tests.ps1', 'scripts/tests/agy-curate-nudge.Tests.ps1', 'scripts/tests/assertion-strength-reminder.Tests.ps1', 'scripts/tests/check-cheatsheet-budget.Tests.ps1', 'scripts/tests/check-curate-in-progress.Tests.ps1', 'scripts/tests/check-injected-context.Tests.ps1', 'scripts/tests/check-knowledge-store.Tests.ps1', 'scripts/tests/check-dangling-consumers.Tests.ps1', 'scripts/tests/agy-inbox-snapshot.Tests.ps1', 'scripts/tests/agy-learn-reminder.Tests.ps1', 'scripts/tests/agy-liveness-check.Tests.ps1', 'scripts/tests/agy-mark.Tests.ps1', 'scripts/tests/agy-seam-inject.Tests.ps1', 'scripts/tests/agy-shield-lib.Tests.ps1', 'scripts/tests/agy-test-audit-reminder.Tests.ps1', 'scripts/tests/check-cheatsheet-parity.Tests.ps1', 'scripts/tests/check-core-integrity.Tests.ps1', 'scripts/tests/check-plugin-namespace.Tests.ps1', 'scripts/tests/compute-release.Tests.ps1', 'scripts/tests/docs-audit.Tests.ps1', 'scripts/tests/drain-knowledge.Tests.ps1', 'scripts/tests/generate-cheatsheet-literals.Tests.ps1', 'clavity-dotnet/install/clavity-install.Tests.ps1') -Output Detailed -CI"
 
 # Every suite UNDER scripts/tests, which is not quite "everything": it globs a directory, so it cannot
 # reach clavity-dotnet/install/clavity-install.Tests.ps1, which test-scripts-slow names explicitly and
@@ -132,6 +132,14 @@ check-installer-ascii:
 # decision about the whole check-* family rather than something to smuggle in here.
 check-injected-context:
     pwsh -NoProfile -Command "./scripts/check-injected-context.ps1"
+
+# The knowledge store is the only copy of the earned driver corpus under version control.
+check-knowledge-store:
+    pwsh -NoProfile -File scripts/check-knowledge-store.ps1
+
+# Fail when a binary reads a runtime filename that nothing in the repository writes.
+check-dangling-consumers:
+    pwsh -NoProfile -File scripts/check-dangling-consumers.ps1
 
 # Regenerate the two compiled-in cheatsheet literals from agy-autotrain/knowledge/driver-cheatsheet.core.md.
 # core.md is the single source of truth; the two literals are GENERATED OUTPUT and must never be hand-edited.

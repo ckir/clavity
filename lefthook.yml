@@ -30,6 +30,13 @@ pre-push:
       run: just check-user-facing-docs
     register-hash:
       run: just check-register-hash
+    knowledge-store:
+      # Seconds-range, as this hook's header requires: one pwsh start plus a `git log` over one directory.
+      # Placed here rather than pre-commit deliberately - a pre-commit glob does not reliably fire on a
+      # DELETED path, which is the exact change this gate exists to catch.
+      run: just check-knowledge-store
+    dangling-consumers:
+      run: just check-dangling-consumers
     installer-ascii:
       # ~6s, nearly all pwsh startup. Earns its place: pwsh 7 defaults to UTF-8, so a BOM-less
       # non-ASCII .ps1 in the end-user installer surface is invisible to every OTHER local gate and

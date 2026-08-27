@@ -139,7 +139,7 @@ only when the server process starts, so changing it takes a reconnect, not a res
   GROWTH is dropped for this injection and only SEED is used. Trim GROWTH (e.g. via `agy-curate`'s
   promotion rubric) to fit the remaining budget.
 - **`driver-cheatsheet exceeds 16384 bytes; using baseline floor`** (stderr warning). The learned
-  cheatsheet at `%USERPROFILE%\.clavity\driver-cheatsheet.md` is over its 16 KiB cap, so it is ignored
+  cheatsheet at `%USERPROFILE%\.clavity\driver-cheatsheet.growth.md` is over its 16 KiB cap, so it is ignored
   and the shipped baseline is injected instead. Your curated additions stop reaching agy until you
   trim it — the only symptom otherwise is that learned rules quietly stop applying.
 - **`driver-cheatsheet read failed: <error>`** (stderr warning). Same outcome as above, from an I/O

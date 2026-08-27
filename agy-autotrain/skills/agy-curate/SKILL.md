@@ -221,11 +221,36 @@ non-ASCII there red-gates the injected-context check. Escape the remaining liter
 embedded `"` is easy to corrupt by hand); do not retype the text through a terminal, whose codepage can
 mangle characters.
 
-Write the compiled core to the shared runtime path so every driver surface reads ONE file:
-`<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md`, using the SAME atomic
-`.tmp`->rename the golden-header uses (a reader must never see a half-written file). Prefer the binary's
-`curate-commit` path if it grows a cheatsheet subcommand; otherwise write the file directly with an atomic
-rename. Do NOT lengthen it to cover per-variant transport mechanics - those belong in each variant's
+### EMIT GROWTH ONLY - the floor is already injected
+
+**The write target is `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.growth.md`.**
+Use the SAME atomic `.tmp`->rename the golden-header uses (a reader must never see a half-written file).
+
+**DO NOT WRITE `%USERPROFILE%\.clavity\driver-cheatsheet.md`.** That name is RETIRED and both binaries deliberately IGNORE it
+(`DriverCheatsheet.RetiredLegacyFileName`, `driver_cheatsheet::RETIRED_LEGACY_FILE_NAME`). Writing it
+publishes to a file nothing reads. This is not a hypothetical caution: between `f497aaa` and the fix, this
+skill wrote the retired name while both readers looked for the growth name, so the whole EXTEND path was
+unreachable in production and NOTHING WARNED - an absent growth file is deliberately not a degrade.
+`scripts/check-dangling-consumers.ps1` now fails CI on that shape.
+
+**What you emit changed with the target.** The readers now EXTEND: they deliver
+`BaselineFloor + "\n\n" + <this file>`. The floor is therefore ALREADY in the block, unconditionally.
+
+- Emit **STRICTLY NOVEL** tactical rules only. Do not repeat, restate, summarise, or re-edit a rule that is
+  already in `knowledge/driver-cheatsheet.core.md` - read that file as your dedup floor, exactly as you read
+  the golden-header SEED before compiling GROWTH.
+- Emitting the whole compiled core here **double-injects it**: the block becomes the floor plus a near-copy
+  of the floor. MEASURED on a real machine, the pre-fix runtime file and the floor shared 6 of 8 lines while
+  the other 2 were STALE - so the duplicate would also have resurrected framing a later commit deliberately
+  removed. Duplication is not merely wasteful here; it re-publishes retracted text.
+- **The ceiling is the REMAINING budget, not the cap.** The combined block must fit `MaxBytes` (16,384 B),
+  and the floor plus the blank-line separator are spent before you write a byte. Over the combined cap, the
+  binary silently drops GROWTH and keeps the floor - you get no error, just a block missing everything you
+  just wrote. Do not hand-compute the remaining budget from a number written here (that figure has rotted
+  twice): run `pwsh -File scripts/check-cheatsheet-budget.ps1 -CheckCombined` and read the remaining bytes
+  it prints.
+
+Do NOT lengthen the cheatsheet to cover per-variant transport mechanics - those belong in each variant's
 driving skill appendix, not the shared core.
 
 ## For each inbox entry - decide
@@ -423,7 +448,7 @@ not a rollback, so state the partial effect rather than leaving an executor to g
 
 | already happened | reverted when the run reaches this block? | where it lives |
 |---|---|---|
-| the compiled cheatsheet was written to `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.md` | **no** | user profile - **live, and read by both drivers** |
+| the compiled cheatsheet GROWTH was written to `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.growth.md` | **no** | user profile - **live, and EXTENDS the floor on every ask** |
 | `knowledge/driver-cheatsheet.core.md` and its two GENERATED pins may have been regenerated | **no** | **IN THE REPOSITORY - these are uncommitted edits in the working tree** |
 | `golden-header.growth.md` (the GROWTH publish) | **never written** | - this is exactly what the gate withheld |
 | the inbox `## Pending` section | untouched, per the paragraph above | - |

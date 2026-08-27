@@ -34,13 +34,25 @@
 .PARAMETER StoreDir
   Repo-relative store path. Default agy-autotrain/knowledge/rules.
 .PARAMETER BaselineRef
-  Git ref the store is compared against for deletions. Default HEAD.
+  Git ref whose HISTORY the store is compared against. Default HEAD. Note this is a history, not a tree -
+  see the deletion section for why a tree baseline was useless.
+.PARAMETER ShrinkFloor
+  The fraction of its previous size a rule may shrink to before it must declare itself retired. Default
+  0.4 (i.e. losing more than 60% of the file must be announced).
+
+  THIS NUMBER IS PROVISIONAL AND UNMEASURED, and it is a parameter so that says so honestly. The design
+  spec lists it as an OPEN FORK: too tight and every legitimate consolidation trips it, too loose and
+  gutting passes. Nobody has yet measured it against a corpus of real consolidations, because the store
+  was seeded on 2026-08-27 and no rule has been consolidated even once. Measure it when there is something
+  to measure, and change the default deliberately. The ZERO-BYTE half of the check needs no threshold at
+  all and is therefore kept separate from this one.
 #>
 [CmdletBinding()]
 param(
     [string]$RepoRoot,
     [string]$StoreDir = 'agy-autotrain/knowledge/rules',
-    [string]$BaselineRef = 'HEAD'
+    [string]$BaselineRef = 'HEAD',
+    [double]$ShrinkFloor = 0.4
 )
 
 Set-StrictMode -Version Latest
@@ -63,22 +75,37 @@ if (-not (Test-Path -LiteralPath $abs)) {
 
 $onDisk = @(Get-ChildItem -LiteralPath $abs -Filter '*.md' -File | ForEach-Object { $_.Name })
 
-# ---- 1. DELETION vs the git baseline -------------------------------------------------------------
-# FAIL CLOSED if the baseline cannot be read. A gate that treats "I could not look" as "nothing is
-# missing" certifies exactly what it stopped checking.
-$baseline = @(& git -C $repo ls-tree --name-only "${BaselineRef}:$StoreDir" 2>$null)
-if ($LASTEXITCODE -ne 0) {
-    if (@(& git -C $repo rev-parse --verify --quiet $BaselineRef 2>$null).Count -eq 0) {
-        Write-Host "check-knowledge-store: SKIP - baseline ref '$BaselineRef' does not resolve (a fresh repo has no HEAD)" -ForegroundColor DarkGray
-        exit 0
-    }
-    Write-Host "check-knowledge-store: SKIP - the store does not exist at '$BaselineRef' yet (first commit)" -ForegroundColor DarkGray
-    $baseline = @()
+# ---- 1. DELETION vs EVERY RULE THAT HAS EVER EXISTED ---------------------------------------------
+# THE BASELINE IS HISTORY, NOT A TREE. An earlier version compared the working tree against the
+# BaselineRef TREE, which made the guard useless the moment it mattered: MEASURED 2026-08-28, deleting a
+# rule and its index pointer failed the gate while UNCOMMITTED (exit 1) and PASSED once committed (exit 0,
+# printing "none deleted since HEAD") - because HEAD moves WITH the deletion. A guard whose baseline is
+# carried along by the change it guards against certifies exactly what it stopped checking, and this one
+# announced that certification in its success message.
+#
+# The fix is a baseline that cannot move: every path ever ADDED under the store along this ref's history.
+# That is monotonic by construction - a rule that existed at any point must still exist now - so a
+# deletion stays visible however long ago it was committed, on a branch or on main, with no fixed sha to
+# hand-maintain and no dependence on the gate having run at the right moment.
+if (@(& git -C $repo rev-parse --verify --quiet $BaselineRef 2>$null).Count -eq 0) {
+    Write-Host "check-knowledge-store: SKIP - baseline ref '$BaselineRef' does not resolve (a fresh repo has no HEAD)" -ForegroundColor DarkGray
+    exit 0
 }
+$everExisted = @(& git -C $repo log --pretty=format: --name-only --diff-filter=A $BaselineRef -- $StoreDir 2>$null |
+    Where-Object { $_ -and $_.Trim() })
+# Union with the ref's current tree: a store added in the very first commit of a shallow clone can be in
+# the tree without an ADD record reachable here.
+$currentTree = @(& git -C $repo ls-tree --name-only "${BaselineRef}:$StoreDir" 2>$null |
+    ForEach-Object { "$StoreDir/$_" })
+$prefix = "$StoreDir/"
+$baseline = @($everExisted + $currentTree |
+    Where-Object { $_ -like "$prefix*" -and $_ -like '*.md' } |
+    ForEach-Object { $_.Substring($prefix.Length) } |
+    Sort-Object -Unique)
+
 foreach ($b in $baseline) {
-    if ($b -notlike '*.md') { continue }
     if ($onDisk -notcontains $b) {
-        Problem "DELETED: $b existed at $BaselineRef and is gone. A rule file is never removed - retire it by editing its content to a superseded stub. Git history is the preservation tier and a deletion severs it. (A RENAME lands here too, and that is intended.)"
+        Problem "DELETED: $b existed at some point in ${BaselineRef}'s history and is gone. A rule file is never removed - retire it by editing its content to a superseded stub. Git history is the preservation tier and a deletion severs it. (A RENAME lands here too, and that is intended.)"
     }
 }
 
@@ -102,7 +129,39 @@ if (-not (Test-Path -LiteralPath $indexPath)) {
     }
 }
 
-# ---- 3. HYGIENE: LF and pure ASCII ---------------------------------------------------------------
+# ---- 3. CONTENT OBLITERATION ---------------------------------------------------------------------
+# The three checks above guard the FILENAME, the LINK and the REFERENCE. None guards the CONTENT, and a
+# curator can satisfy all of them while destroying the knowledge: MEASURED 2026-08-28, emptying a rule to
+# ZERO BYTES passed with exit 0 and the message "OK - 2 rule(s), none deleted, all reachable, LF + pure
+# ASCII" - every word of it true, and the rule gone.
+#
+# This is a SHAPE test, not a judgement. It does not ask whether the remaining text is any good; it asks
+# whether a large removal DECLARED ITSELF. A rule deliberately retired to a stub passes by saying so; a
+# rule gutted in silence fails. That is the most this class of gate can honestly do.
+foreach ($f in $onDisk) {
+    if ($f -eq 'INDEX.md') { continue }
+    $bytes = [System.IO.File]::ReadAllBytes((Join-Path $abs $f)).Length
+    # Zero bytes is unconditional: no marker can exist inside an empty file, so there is no legitimate
+    # reading of it. This half needs no threshold and no baseline, which is why it is separate.
+    if ($bytes -eq 0) {
+        Problem "OBLITERATED: $f is 0 bytes. Every other check still passes - it is on disk, it is linked, and an empty file has no CRLF and no high bytes - which is exactly why this one exists. Retire a rule by editing it to a declared stub, never by emptying it."
+        continue
+    }
+    $was = @(& git -C $repo show "${BaselineRef}:$StoreDir/$f" 2>$null)
+    if ($LASTEXITCODE -ne 0) { continue }   # new file, nothing to compare against
+    $wasBytes = ($was -join "`n").Length
+    if ($wasBytes -le 0) { continue }
+    $kept = $bytes / $wasBytes
+    if ($kept -lt $ShrinkFloor) {
+        $text = [System.IO.File]::ReadAllText((Join-Path $abs $f))
+        if ($text -notmatch '(?m)^>\s*(Superseded by|Retired:)') {
+            $pct = [math]::Round((1 - $kept) * 100)
+            Problem "GUTTED: $f lost $pct% of its bytes ($wasBytes -> $bytes) without declaring itself retired. A large removal must say so: add a line '> Superseded by [<title>](<slug>.md)' or '> Retired: <reason>'. Consolidation is allowed and expected - announcing it is what makes it distinguishable from destruction."
+        }
+    }
+}
+
+# ---- 4. HYGIENE: LF and pure ASCII ---------------------------------------------------------------
 # Inherited from the GROWTH region these rules were split out of: that region is published through a
 # byte transport which corrupted it once (2026-07-19 to 2026-08-01, 22 CP437 sequences, with a sha256
 # sidecar that matched the CORRUPT content and so certified it).
@@ -119,5 +178,5 @@ if ($problems.Count -gt 0) {
     exit 1
 }
 $ruleCount = @($onDisk | Where-Object { $_ -ne 'INDEX.md' }).Count
-Write-Host "check-knowledge-store: OK - $ruleCount rule(s), none deleted since $BaselineRef, all reachable from INDEX.md, LF + pure ASCII." -ForegroundColor Green
+Write-Host "check-knowledge-store: OK - $ruleCount rule(s); all $($baseline.Count) that ever existed in ${BaselineRef}'s history are still present, none gutted undeclared, all reachable from INDEX.md, LF + pure ASCII." -ForegroundColor Green
 exit 0

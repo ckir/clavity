@@ -78,6 +78,23 @@ jobs:
         shell: pwsh
         run: pwsh -File scripts/check-register-hash-synced.ps1
 
+      - name: Knowledge store gate
+        shell: pwsh
+        # The store is the ONLY copy of the earned driver corpus outside one machine's runtime paths, so a
+        # deletion here is unrecoverable in a way no other file in this repo is. The gate was unwired when
+        # it shipped, which meant the only window it could fire in was a manual run between `rm` and
+        # `git commit` - a window nothing creates. Its baseline is now the ref's HISTORY rather than a
+        # tree, so this catches a deletion however long ago it was committed.
+        run: pwsh -File scripts/check-knowledge-store.ps1
+
+      - name: Dangling-consumer gate
+        shell: pwsh
+        # Fails when a binary reads a runtime filename nothing writes. This is invisible to every other
+        # gate: it compiles, the tests pass because they write the file themselves, and the reader
+        # degrades to its fallback in silence. MEASURED - it was red on this repo for the whole life of
+        # the driver-cheatsheet EXTEND path, and nothing else noticed.
+        run: pwsh -File scripts/check-dangling-consumers.ps1
+
       - name: Install Pester v6
         shell: powershell
         # Pin the v6 LINE. -MinimumVersion alone resolves to the newest version >= the floor, so an

@@ -47,6 +47,55 @@ Describe 'check-knowledge-store' {
         $out | Should -Match 'DELETED: beta\.md'
     }
 
+    # CAPSTONE R1 / F2 - THE ROW THE ORIGINAL SUITE WAS MISSING, and its absence is what let the gate ship
+    # broken. The row above proves an UNCOMMITTED deletion fails. MEASURED 2026-08-28, committing that same
+    # deletion made it PASS (exit 0, "none deleted since HEAD"), because the tree baseline moves with the
+    # commit. Every real deletion arrives committed, so the guard was decoration on the only path that
+    # matters. The baseline is now the ref's HISTORY, which cannot move.
+    It 'FAILS a deletion that has already been COMMITTED - the baseline must not move with it' {
+        $d = New-StoreFixture
+        Remove-Item (Join-Path $d 'rules/beta.md')
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/INDEX.md') -Value "# store`n`n- [alpha](alpha.md) - a`n"
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'retire beta' 2>$null
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'DELETED: beta\.md'
+        Remove-Item -Recurse -Force $d
+    }
+
+    # CAPSTONE R1 / F3 - content obliteration. Zero bytes satisfies filename, link and hygiene checks
+    # simultaneously (an empty file has no CRLF and no high bytes), so before this row the gate reported
+    # "OK - 2 rule(s), all reachable, LF + pure ASCII" over a destroyed rule - every clause true.
+    It 'FAILS a rule emptied to 0 bytes' {
+        $d = New-StoreFixture
+        [System.IO.File]::WriteAllBytes((Join-Path $d 'rules/beta.md'), [byte[]]@())
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'OBLITERATED: beta\.md'
+        Remove-Item -Recurse -Force $d
+    }
+
+    It 'FAILS a rule gutted to a fraction of its size with no declaration' {
+        $d = New-StoreFixture
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "x`n"
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'GUTTED: beta\.md'
+        Remove-Item -Recurse -Force $d
+    }
+
+    # THE PAIRED CONTROL, and the one that makes the row above mean something. The SAME reduction passes
+    # once it declares itself. Without this, the gutting check could be passing merely because the file got
+    # smaller, and it would trip every legitimate consolidation - the failure mode the design spec named.
+    It 'PASSES the same reduction when it DECLARES itself retired' {
+        $d = New-StoreFixture
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "# beta`n`n> Superseded by [alpha](alpha.md)`n"
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match '2 rule\(s\)'
+        Remove-Item -Recurse -Force $d
+    }
+
     It 'FAILS an orphan - a rule on disk that the index does not link' {
         $d = New-StoreFixture
         Set-Content -NoNewline -Path (Join-Path $d 'rules/gamma.md') -Value "# gamma`n`n- GAMMA.`n"
