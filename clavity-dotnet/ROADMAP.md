@@ -856,7 +856,7 @@ on this platform — Windows `jq` terminates with `\r\n`, `printf` with `\n` (61
   `case` patterns are a deliberate complete set. **Below the reachability floor** — recorded in the backlog
   entry's *Known limit* section, not tracked here.
 
-### 13. Anomaly promotions — three entries from the 2026-08-10 triages (13c later corrected) · ▶ **OPEN**
+### 13. Anomaly promotions — three entries from the 2026-08-10 triages (13c later corrected) · ✅ **DONE 2026-08-20**
 
 Promoted from `.clavity/local-anomalies.md`. Every one was **verified by measurement at triage**, not
 accepted on reading; two other entries in that file were deleted with recorded reasons (see the triage
@@ -889,7 +889,14 @@ with a *different* message.
 that review range — schedule it with that epic's remaining work (Stage 2, AGY-TEST-AUDIT), not as a
 drive-by.
 
-#### 13b. No discipline requires a peer's ANSWER to survive truncation · ▶ **OPEN**
+#### 13b. No discipline requires a peer's ANSWER to survive truncation · ✅ **SHIPPED 2026-08-20** (`20f38cc`; built then TRIMMED over the range `103aa87..20f38cc`, AGY-CAPSTONE **GREEN after 11 rounds**, owner-adjudicated - see `docs/agy-capstone-ledger.md`).
+
+> ⚠ **THIS ENTRY READ `▶ OPEN` FOR SEVEN DAYS AFTER IT SHIPPED**, corrected 2026-08-27 while
+> reconciling this document against `git`. It is the same defect class that has dominated every capstone
+> round - one fact in two places with only one updated - sitting in the document the sequence is planned
+> FROM. A stale `OPEN` is worse than a stale `SHIPPED`: it invites the work to be scheduled and done
+> twice. **Whoever closes an item writes its CLOSING SHA here in the same commit** - an item with no sha
+> cannot be checked against `git` by anyone, which is exactly how this one survived.
 
 All four peer-review disciplines (`agy-capstone`, `agy-test-audit`, `adversarial-panel-review`,
 `agy-first`) send the peer an **input** path and a scratch dir, but **nothing specifies where the peer's
@@ -1127,7 +1134,7 @@ batch, not here:** once the literals are generated, `SKILL.md:122-124`'s instruc
 becomes wrong, so the batch must update it. That is tracked in the spec, not in this item.
 
 **§14g — the agy-observations inbox lives INSIDE the plugin tree, so it exists in N copies and both
-skills must be INSTRUCTED which one is live.** · ✅ **RULED 2026-08-19** · ✅ **DONE 2026-08-24**
+skills must be INSTRUCTED which one is live.** · ✅ **RULED 2026-08-19** · ✅ **DONE 2026-08-24** (`8127373`; AGY-CAPSTONE **GREEN** over `bd3aa94..f29cd42`, owner-confirmed 2026-08-24). ⚠ **AGY-TEST-AUDIT is still owed on that range and has never run.**
 
 > **SHIPPED.** The canonical inbox is now `<USERPROFILE or HOME>/.clavity/agy-observations.md`.
 > Both skills collapsed to that one path (`agy-learn` 183 — 130 lines, reversing the +138% growth this
