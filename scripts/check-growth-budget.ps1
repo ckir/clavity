@@ -2,18 +2,24 @@
 <#
 .SYNOPSIS
   Warn gate: assert the compiled GROWTH proposal, prepended after the SEED, fits the binary's COMBINED injection
-  cap. The binary injects SEED + GROWTH only when their combined UTF-8 size is <= 16 KiB; over that it silently
-  drops GROWTH and injects SEED-only, so a proposal that fits its own 16 KiB cap but overflows combined is written
+  cap. The binary injects SEED + GROWTH only when their combined UTF-8 size is <= 32 KiB; over that it silently
+  drops GROWTH and injects SEED-only, so a proposal that fits its own 32 KiB cap but overflows combined is written
   yet never injected. drain-knowledge.ps1 runs this WARN-only (breach does not abort the drain).
 .PARAMETER RepoRoot
   Repo root (default: this script's parent's parent).
 .PARAMETER MaxBytes
-  The combined cap. Default 16384 = 16 KiB, matching GoldenHeader.MaxBytes in both binaries.
+  The combined cap. Default 32768 = 32 KiB, matching GoldenHeader.MaxBytes in both binaries.
+  RAISED 16384 -> 32768 on 2026-08-27 in lockstep with those constants. This default is not cosmetic: it IS
+  the number the drain is warned against, so leaving it at 16384 after the binaries moved would have warned
+  on GROWTH the binaries would happily inject.
+  WARNING, and it is why the cap was breached unnoticed in the first place: this gate reads the REPO paths
+  below, NOT the runtime files under %USERPROFILE%\.clavity\ that are actually injected. It cannot see a
+  runtime breach and never could.
 #>
 [CmdletBinding()]
 param(
     [string]$RepoRoot,
-    [int]$MaxBytes = 16384
+    [int]$MaxBytes = 32768
 )
 
 Set-StrictMode -Version Latest
@@ -42,7 +48,7 @@ $seedBytes   = Get-RawBytes $seedPath
 $growthBytes = Get-RawBytes $growthPath
 
 # THE SEED CASE IS A REAL FAIL-OPEN, NOT A REPORTING DEFECT. A missing seed silently measures 0, so
-# `0 + <proposal> <= 16384` certifies a proposal of up to the FULL cap; the binary then combines the
+# `0 + <proposal> <= 32768` certifies a proposal of up to the FULL cap; the binary then combines the
 # REAL seed with it, overflows, and silently drops GROWTH - the exact failure this gate exists to
 # prevent. The gate does not merely report badly; it validates a falsified equation and returns green.
 if ($seedMissing) {

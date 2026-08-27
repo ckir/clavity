@@ -11,8 +11,20 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-/// 16 KiB cap on the golden header, in BYTES (`16 * 1024`), identical to dotnet `GoldenHeader.MaxBytes`.
-pub const MAX_BYTES: usize = 16 * 1024;
+/// 32 KiB cap on the golden header (SEED+GROWTH COMBINED), in BYTES, identical to dotnet
+/// `GoldenHeader.MaxBytes`. Over-cap keeps SEED and drops GROWTH.
+///
+/// THIS IS A TOKEN BUDGET, NOT A FILE-SIZE LIMIT. The block is prepended to every ask, once per process,
+/// so every byte is charged to the user's agent context in every session — 16 KiB was deliberately frugal.
+///
+/// RAISED 16 KiB -> 32 KiB on 2026-08-27 (owner decision) because the cap was BREACHED IN PRODUCTION and
+/// silently: measured seed 5,190 B + growth 11,611 B + 2 B separator = 16,803 B against 16,384 B, so the
+/// combined read had been dropping GROWTH from every injection with only a stderr line to show for it.
+///
+/// NOT licence for GROWTH to expand into the new room. The drain compiles GROWTH to fit (cap - seed); the
+/// breach came from one drain overshooting by 417 B with nothing checking, because the budget gate reads
+/// REPO paths and cannot see the runtime files it is meant to bound.
+pub const MAX_BYTES: usize = 32 * 1024;
 
 /// Cap on the `.sha256` sidecar file, in bytes. A sha256 hex digest is 64 characters, so 1 KiB is
 /// generous headroom for a trailing newline or BOM. Identical to dotnet `GoldenHeader.MaxSidecarBytes`.

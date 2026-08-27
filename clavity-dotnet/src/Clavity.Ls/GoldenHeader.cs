@@ -16,8 +16,27 @@ public static class GoldenHeader
 {
     public const string PathVar = "CLAVITY_GOLDEN_HEADER";
 
-    /// <summary>Strict byte cap (security §size-cap): over-cap content is refused, not injected.</summary>
-    public const int MaxBytes = 16 * 1024;
+    /// <summary>Strict byte cap on SEED+GROWTH COMBINED (security §size-cap): over-cap content is refused,
+    /// not injected — the read keeps SEED and drops GROWTH.
+    ///
+    /// 🔴 THIS NUMBER IS A TOKEN BUDGET, NOT A FILE-SIZE LIMIT, AND THAT IS WHY IT WAS SMALL. The block is
+    /// prepended to EVERY ask, once per process, so every byte here is charged to the user's agent context
+    /// in every session. 16 KiB was chosen deliberately to keep that spend minimal; it was never headroom
+    /// nobody had got around to using.
+    ///
+    /// RAISED 16 KiB -> 32 KiB on 2026-08-27, by owner decision, because the cap was BREACHED IN
+    /// PRODUCTION and the breach was silent. MEASURED that day on the live runtime files: seed 5,190 B +
+    /// growth 11,611 B + a 2 B separator = 16,803 B against a 16,384 B cap, so <see cref="TryReadCombined"/>
+    /// had been taking the over-cap branch and dropping GROWTH from EVERY injection. The entire accumulated
+    /// learned header was inert, and the only signal was a stderr warning.
+    ///
+    /// ⚠ THE RAISE IS NOT LICENCE FOR GROWTH TO GROW INTO IT. The drain's own rule is to compile GROWTH to
+    /// fit (cap - seed); the breach happened because one drain overshot that budget by 417 B and nothing
+    /// checked. `scripts/check-growth-budget.ps1` reads the REPO paths (`seed/golden-header.md`,
+    /// `docs/agy-golden-header.growth.md`), so it structurally CANNOT see the runtime files under
+    /// %USERPROFILE%\.clavity\ that actually get injected. Raising this again without closing that hole
+    /// just buys another silent breach at a higher number.</summary>
+    public const int MaxBytes = 32 * 1024;
 
     /// <summary>How many pre-mutation snapshot slots to retain per artifact (AT-2). FIFO.</summary>
     public const int SnapshotKeep = 5;

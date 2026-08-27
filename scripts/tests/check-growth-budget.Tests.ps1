@@ -49,14 +49,17 @@ Describe "check-growth-budget.ps1 (SEED + GROWTH <= combined cap)" {
         $LASTEXITCODE | Should -Be 1
     }
 
-    It "defaults MaxBytes to 16 KiB (the binary's combined injection cap)" {
+    It "defaults MaxBytes to 32 KiB (the binary's combined injection cap)" {
         # SEED REQUIRED - see the note on the multibyte row above. The comment here used to read
         # "1 over, seed absent"; under 13c "seed absent" is now an immediate exit 1, so the row proved
         # nothing about the default cap.
         Set-Content -NoNewline -Path $script:Seed -Value ('s' * 10)
-        # 10 + 2 separator + 16373 = 16385, exactly ONE byte over the 16384 default. A larger default
-        # would let this pass and redden the row, which is the property under test.
-        Set-Content -NoNewline -Path $script:Growth -Value ('g' * 16373)
+        # 10 + 2 separator + 32757 = 32769, exactly ONE byte over the 32768 default. A larger default
+        # would let this pass and redden the row, which is the property under test. Recomputed 2026-08-27
+        # when the cap moved 16384 -> 32768: the OLD fixture (16373) now sits 16,383 bytes UNDER the cap and
+        # would have passed silently, turning this row vacuous rather than red. A boundary fixture is tied
+        # to the boundary - move one, recompute the other.
+        Set-Content -NoNewline -Path $script:Growth -Value ('g' * 32757)
         & pwsh -File $script:Script -RepoRoot $script:Repo
         $LASTEXITCODE | Should -Be 1
     }
@@ -97,7 +100,7 @@ Describe "check-growth-budget.ps1 (SEED + GROWTH <= combined cap)" {
                 $d
             }
             function Invoke-Budget {
-                param([string]$Root, [int]$MaxBytes = 16384)
+                param([string]$Root, [int]$MaxBytes = 32768)
                 $out = & pwsh -NoProfile -File (Join-Path $script:RepoRoot 'scripts/check-growth-budget.ps1') -RepoRoot $Root -MaxBytes $MaxBytes 2>&1 | Out-String
                 [pscustomobject]@{ Out = $out; Rc = $LASTEXITCODE }
             }
@@ -120,7 +123,7 @@ Describe "check-growth-budget.ps1 (SEED + GROWTH <= combined cap)" {
             $r.Rc  | Should -Be 0
         }
         It 'SEED missing: names the MISSING SEED, never an overflow, and exits NON-ZERO' {
-            # The fail-open this item's anomaly never looked at: 0 + 16384 <= 16384 certifies a
+            # The fail-open this item's anomaly never looked at: 0 + 32768 <= 32768 certifies a
             # full-cap proposal, the binary then combines the REAL seed, overflows, and drops GROWTH.
             $r = Invoke-Budget (New-BudgetFixture -NoSeed)
             $r.Out | Should -Match '(?i)seed'

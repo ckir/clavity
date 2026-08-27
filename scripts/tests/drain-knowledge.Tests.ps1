@@ -92,7 +92,12 @@ Describe "drain-knowledge orchestrator guards" {
         $out = & pwsh -File $script:Drain -InboxPath $script:Inbox -RepoRoot $script:Repo -SkipCurator 2>&1 | Out-String
         $LASTEXITCODE | Should -Be 0   # warn-only: the drain still completes
         $out | Should -Match '(?i)SEED.*ABSENT'
-        $out | Should -Not -Match '(?i)exceeds the 16 KiB combined cap'
+        # NUMBER-AGNOSTIC BY DESIGN. This guards against a REGRESSION to the old hardcoded overflow
+        # wording, so it must key on the SHAPE of that wording, not on the cap of the day. Pinned to the
+        # literal '16 KiB' it would have gone silently vacuous the moment the cap moved to 32 KiB on
+        # 2026-08-27 - still green, no longer discriminating, which is the failure mode a `-Not -Match`
+        # hides best.
+        $out | Should -Not -Match '(?i)exceeds the \d+ KiB combined cap'
     }
 
     It "TARGETED-REVERTS a curator's protected-file edit to HEAD and exits 3 (F2 revert path — previously live-only, now pinned via -CuratorStub)" {

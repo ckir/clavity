@@ -373,7 +373,7 @@ exit 0
     }
 
     It "Invoke-CurateCommit returns 2 (over-cap) WITHOUT loading an absurdly large file into RAM (capstone R3-2)" {
-        # A file far past the 16 KiB cap (here ~1.1 MiB) must be rejected by size BEFORE ReadAllBytes, so a multi-GB
+        # A file far past the 32 KiB cap (here ~1.1 MiB) must be rejected by size BEFORE ReadAllBytes, so a multi-GB
         # hallucinated proposal can never OOM the accept process. Returns curate-commit's over-cap code (2); the exe
         # is never launched (a bogus exe path proves Start was not reached).
         $big = Join-Path $script:Work 'big.md'

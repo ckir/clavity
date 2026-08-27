@@ -44,11 +44,11 @@ For each observation in the staging snapshot, apply agy-curate rules:
    Keep it dense and decision-changing; drop anything already in the SEED floor. GROWTH is VARIANT-AGNOSTIC:
    forbid project nouns AND variant-specific driving mechanics (e.g. `agy_ask` vs `clavity ask` flag shaping).
 5. GROWTH must fit the REMAINING budget: it is injected as SEED + GROWTH only when their COMBINED size is within
-   16 KiB; over that the binary drops GROWTH and keeps SEED, WARNING ON STDERR as it does - both variants do
+   32 KiB; over that the binary drops GROWTH and keeps SEED, WARNING ON STDERR as it does - both variants do
    (`clavity-classic/src/golden_header.rs`, `clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs`). This line said
    "silently" until 2026-08-26 and that was false. It matters which: a curator told the loss is silent has no
    reason to look for a signal, when in fact one exists and is simply on a stream they are unlikely to be
-   watching. Size GROWTH to fit rather than relying on the warning. Compile it to roughly 16 KiB minus the current
+   watching. Size GROWTH to fit rather than relying on the warning. Compile it to roughly 32 KiB minus the current
    size of seed/golden-header.md. A warn gate double-checks this; keep GROWTH lean.
 6. A wanted change to the driver cheatsheet (driver/probabilistic core wisdom) is NOT applied here — record it as
    a bullet under `## Proposed cheatsheet changes` in the sidecar for the maintainer to hand-apply to

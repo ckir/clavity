@@ -138,7 +138,7 @@ function Invoke-Main {
         exit 3
     }
 
-    # 7. Combined GROWTH budget — WARN only. Over the 16 KiB combined cap the binary injects SEED-only and drops
+    # 7. Combined GROWTH budget — WARN only. Over the 32 KiB combined cap the binary injects SEED-only and drops
     # GROWTH; the maintainer trims the proposal and re-drains. (The shipped-SEED budget is a separate CI gate,
     # check-seed-budget.ps1 — unchanged, and not run here because the drain never edits the SEED.)
     & pwsh -File (Join-Path $PSScriptRoot 'check-growth-budget.ps1') -RepoRoot $RepoRoot   # forward the drain's tree (panel R3-F1)

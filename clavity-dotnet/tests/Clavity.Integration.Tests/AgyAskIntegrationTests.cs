@@ -419,13 +419,22 @@ public class AgyAskIntegrationTests
     public void Driver_guidance_block_has_a_documented_inherent_bound()
     {
         // F3: no explicit total cap; the composed block is bounded because every section is. Pin the arithmetic
-        // so a future per-region cap bump forces re-examination of the ~33 KiB bound instead of silently growing
-        // the delivered block. cheatsheet <= DriverCheatsheet.MaxBytes; header <= GoldenHeader.MaxBytes (combined);
+        // so a future per-region cap bump forces re-examination of the bound instead of silently growing the
+        // delivered block. cheatsheet <= DriverCheatsheet.MaxBytes; header <= GoldenHeader.MaxBytes (combined);
         // escalation index < 1 KiB by construction; warning + separators < 256 B.
+        //
+        // RE-EXAMINED AND RAISED 34 KiB -> 50 KiB on 2026-08-27. This tripwire did exactly its job: raising
+        // GoldenHeader.MaxBytes from 16 to 32 KiB turned it red, which is the forced re-examination, not an
+        // obstacle to route around. New arithmetic: 16384 + 32768 + 1024 + 256 = 50,432 B (49.25 KiB).
+        //
+        // WHAT THE BOUND IS FOR, restated because the number alone does not carry it: this block is prepended
+        // to EVERY ask, once per process, so the bound is the worst-case TOKEN charge on the user's agent in
+        // every session — roughly 12k tokens at 50 KiB. It is not a memory-safety limit. Raise it only with a
+        // measured reason, and record the reason here rather than only in a commit message.
         const int indexBound = 1024;
         const int warningAndSeparators = 256;
         var inherent = DriverCheatsheet.MaxBytes + GoldenHeader.MaxBytes + indexBound + warningAndSeparators;
-        Assert.True(inherent <= 34 * 1024, $"driver-guidance inherent bound grew to {inherent} B; re-examine panel finding F3");
+        Assert.True(inherent <= 50 * 1024, $"driver-guidance inherent bound grew to {inherent} B; re-examine panel finding F3");
     }
 
     [Fact]

@@ -11,9 +11,11 @@ public static class DriverCheatsheet
 
     /// <summary>Raised from 4 KiB (T4b): the driver-guidance block now also carries the golden header
     /// (SEED+GROWTH) and the escalation index, not just the cheatsheet, since T4b moved that content off the
-    /// peer-facing wire entirely. 16 KiB matches the golden header's own per-region cap
-    /// (clavity-classic/src/golden_header.rs ~line 104 / <see cref="GoldenHeader.MaxBytes"/>), and leaves real
-    /// margin over the measured live payload (~8 KB: 6,822 B header + 1,139 B cheatsheet).</summary>
+    /// peer-facing wire entirely. 16 KiB ONCE matched the golden header's cap; it no longer does —
+    /// <see cref="GoldenHeader.MaxBytes"/> went to 32 KiB on 2026-08-27 and this one deliberately did NOT
+    /// follow, because the cheatsheet is under no pressure: MEASURED the same day at 4,750 B against this
+    /// 16,384 B cap, 3.4x headroom. Do not re-couple these two numbers — they bound different files for
+    /// different reasons, and coupling them is how a cap gets raised without a measured need.</summary>
     public const int MaxBytes = 16 * 1024;
 
     public const string Label = "[driver_guidance]";

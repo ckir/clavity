@@ -5,10 +5,14 @@
 use std::path::Path;
 
 pub const FILE_NAME: &str = "driver-cheatsheet.md";
-/// T4b (golden-header audience split): raised from `4 * 1024` to match `golden_header::MAX_BYTES`
-/// (`src/golden_header.rs:15`, `16 * 1024`) — the cheatsheet is now delivered to the driver ALONGSIDE
-/// the golden header in one stdout block (see `main.rs::maybe_emit_driver_guidance`), so it shares that
-/// block's cap rather than a separate, smaller one. Measured live payload is ~8 KB, so this has margin.
+/// T4b (golden-header audience split): raised from `4 * 1024` to match `golden_header::MAX_BYTES` — the
+/// cheatsheet is delivered to the driver ALONGSIDE the golden header in one stdout block (see
+/// `main.rs::maybe_emit_driver_guidance`).
+///
+/// THE TWO CAPS ARE NO LONGER EQUAL AND MUST NOT BE RE-COUPLED. `golden_header::MAX_BYTES` went to 32 KiB
+/// on 2026-08-27 to clear a production breach; this one deliberately stayed at 16 KiB because the
+/// cheatsheet is under no pressure — MEASURED the same day at 4,750 B, 3.4x headroom. They bound different
+/// files for different reasons, and coupling them is how a cap gets raised with no measured need.
 pub const MAX_BYTES: usize = 16 * 1024;
 pub const LABEL: &str = "[driver_guidance]";
 

@@ -321,13 +321,18 @@ legacy wisdom above) - the ones NOT already in the SEED floor:
 3. Keep it short - GROWTH is prepended (after SEED) to *every* ask; trim anything not decision-changing.
 
 **GROWTH must fit the REMAINING budget.** The binary injects `SEED + GROWTH` only when their **combined** size
-is within the 16 KB cap; over that it degrades to SEED-only, so a GROWTH that fits the per-file cap but
+is within the 32 KB cap; over that it degrades to SEED-only, so a GROWTH that fits the per-file cap but
 overflows the combined cap is written yet **never injected**. **That degrade is NOT silent** - both drivers
 warn with the same message, "combined golden-header at {dir} exceeds the {MaxBytes}B cap - dropping GROWTH,
 keeping SEED" (`clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs:186`,
 `clavity-classic/src/golden_header.rs:237`), so if you never saw that warning your GROWTH was injected.
-Compile GROWTH to fit roughly `16 KB - (current size of golden-header.seed.md)`. **Measured 2026-08-11:
-seed 5190 B + growth 7984 B = 13174 of 16384 - 80% full, with 3210 bytes of headroom.** Re-measure rather
+Compile GROWTH to fit roughly `32 KB - (current size of golden-header.seed.md)`. **RE-MEASURED 2026-08-27:
+seed 5190 B + growth 11611 B + 2 B separator = 16803 of 32768 - 51% full, with 15965 bytes of headroom.**
+**CRITICAL: that same measurement against the OLD 16384 cap was 16803 of 16384 - 419 BYTES OVER, and the binary had
+been silently dropping GROWTH from every injection as a result.** The cap was raised to 32 KiB the same day.
+The overshoot was 417 B against this very rule, so treat the rule as load-bearing and not advisory: nothing
+downstream can catch a breach, because the budget gate reads REPO paths and never sees the runtime files.
+Re-measure rather
 than trusting that figure; it moves with every drain.
 
 **[STOP] Human-review gate - before any runtime write.** This skill publishes directly to the **live** runtime
