@@ -28,7 +28,21 @@ to give the projection a store to be a projection OF.**
 
 v6 ported the memory-index pattern — tier 1 bounded and always loaded, tier 2 unbounded and on demand,
 compaction = relocation with a pointer. **MEASURED: tier 2 is 96× tier 1** (2,320,862 B / 24,400 B),
-eleven compactions, no fact lost, **no ledger** — its guarantee is *reachability*.
+eleven compactions, **no ledger** — its guarantee is *reachability*.
+
+🔴 **RETRACTED IN ROUND 8 — an earlier draft wrote "eleven compactions, NO FACT LOST" as if MEASURED.
+It was not, it could not be, and it is FALSE.** Two independent reasons:
+- The source has **no git history** (established in the same paragraph), so there is **no baseline to diff
+  against**. A zero-loss claim over eleven manual compactions is not measurable there, by construction.
+- **The artifact I was citing records the opposite on its face.** Its own banner says earlier compactions
+  *"orphaned 28 files that way, one of them Task 4's own design record."*
+
+**So the source system HAS lost facts, and it says so in the text I quoted from.** The byte ratio was
+genuinely measured; the preservation guarantee was confidence dressed as data — the same error class as
+§1.1's circular corroboration, in the same document, found one round later.
+⚠ **What the pattern actually demonstrates is a bounded index with an unbounded store at 96×. It does NOT
+demonstrate zero loss, and this design must not lean on it as if it did** — which is precisely why §3
+puts preservation on **git** rather than on the ported pattern.
 
 Round 6: **coordinated deletion defeats reachability.** Remove a file *and* its pointer and both checks
 pass. So I measured the source: 🔴 **the memory directory is NOT A GIT REPO** — no history, no recovery.
