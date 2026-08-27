@@ -18,84 +18,44 @@ name: ci-scripts
 # temp .ps1, so non-ASCII in a `shell: powershell` block would hit the very bug the ASCII gate exists
 # to prevent.
 #
-# THE RULE FOR THE `paths:` FILTER, stated once so the next addition does not have to rediscover it:
-# EVERY FILE THE SCRIPTS SUITE READS AND ASSERTS AGAINST MUST APPEAR BELOW. A suite can only gate what
-# CI actually runs it on, so a file the suite asserts against but the filter omits produces the worst
-# outcome available - the assertion reds on a developer's machine and the same edit merges with a green
-# check, because no job ever ran.
+# THERE IS NO `paths:` FILTER, AND ITS ABSENCE IS THE DESIGN. Read this before adding one back.
 #
-# THAT RULE IS NOW ENFORCED MECHANICALLY, AND THIS COMMENT DELIBERATELY KEEPS NO COUNT OR ROSTER.
-# `scripts/check-ci-filter-coverage.ps1` owns both: it carries the required-entry table with a REASON per
-# entry and asserts each appears in BOTH blocks below. Read that file, not a prose list here.
+# A path filter decides WHETHER this workflow runs. That decision is the only way a suite can be
+# bypassed: a file changes, the filter does not name it, and the suite that guards it never runs while
+# the commit merges green. That defect class produced SEVEN known misses in this repository - six found
+# by audit, and one found by AGY-CAPSTONE round 27, where FIVE suites asserted against
+# `agy-autotrain/hooks/**` and no workflow in the repo triggered on it.
 #
-# IT DOES NOT DISCOVER NEW TREES, and this comment claimed it did until 2026-08-27. It promised a second
-# half that "fails closed on any git-tracked top-level tree a suite names but the filter does not reach".
-# That half was DELETED by owner decision - see WHAT IT DELIBERATELY DOES NOT CHECK in that script, which
-# records the evidence: across five capstone rounds it produced four defects of its own against five real
-# gaps found ONCE. So the table is the ONLY mechanism here, a tree named by a NEW suite is not detected,
-# and the sentence instructing you to trust the script over a prose list was itself the stale prose.
-# It would not have caught the `agy-autotrain/hooks/**` gap that sat here either, and that is the sharper
-# point: it worked at TOP-LEVEL granularity, and `agy-autotrain` IS reached - by four narrow rows. A
-# promise of protection is worth less than no promise, because it stops the next reader looking.
+# Three mechanisms were tried against that class and all three failed for the same reason - each relied
+# on a human remembering to record a dependency somewhere:
+#   - a hand-maintained `$Required` roster: wrong at least six times;
+#   - a static AST scanner over the suites: DELETED by owner decision after producing four defects of
+#     its own against five real gaps, and it worked at top-level granularity so it would not have caught
+#     round 27's defect anyway;
+#   - Declarative Coverage Registration, where each suite declares its own trigger paths: specced and
+#     torn down over three adversarial panel rounds, which established it would not have caught any of
+#     the six historical misses either, because a forgotten declaration passes the gate silently.
 #
-# WHY THE ROSTER MOVED OUT. It was maintained by hand and was wrong every time it was examined: it said
-# TWO when it was four, then FOUR when it was nine, inside one afternoon. The rule had no implementation,
-# so it drifted exactly as an unimplemented rule does - `agy-autotrain/skills/agy-curate/SKILL.md` was
-# MISSED when `lefthook.yml` was added, in the very commit that added the row reading it, and a later
-# audit found five more: both plugin trees, the driver cheatsheet, the marker contract, and
-# `build/members.json`. Every one of those merged green while the suite that asserts against it never ran.
+# THE DECISION WAS REMOVED INSTEAD OF BEING AUTOMATED. A bypass needs a path to change AND CI to decline
+# to run. With no filter there is no declining, so the class cannot occur - it is not detected, it is
+# structurally impossible.
 #
-# TWO JUDGEMENTS WORTH KEEPING, because the gate records the WHAT and not the WHY:
-#   - The plugin trees are listed WHOLE (`clavity-*/plugin/**`). Measured over 400 commits, that adds ~10
-#     workflow runs - 10 of the 23 plugin-touching commits do not already touch `scripts/**` - which is
-#     noise against one silently-merged breakage.
-#   - `agy-autotrain` is listed NARROWLY, by file. The whole tree was rejected because it would fire on
-#     every knowledge-inbox capture; a `!` negation was rejected too, because no `paths:` filter in this
-#     repo uses one and its behaviour cannot be verified without pushing.
+# MEASURED 2026-08-27, which is what makes this affordable and is the whole argument:
+#   - this workflow's full run, all 49 suites, took 6m41s end to end (07:44:12Z -> 07:50:53Z);
+#   - it fired 17 times in 30 days, NOT once per commit - GitHub triggers on PUSHES and this repository
+#     batches heavily, so a 65-commit push is one run;
+#   - the repository is PUBLIC, so Actions minutes cost nothing.
+# The filter was therefore buying roughly five to fifteen skipped runs a month, of a seven-minute job,
+# for free - against a roster, a gate, a checker and a proposed fifty-suite migration.
 #
-# MOVING one of these files is covered regardless of this filter: the suite's own Test-Path reds the
-# moment the file is not where the guard expects it. Whether the filter ALSO fires is unestablished -
-# it turns on whether the platform reports a rename as a change to the old path or collapses it to the
-# destination, as git's own rename detection does - and settling that needs a push, so it is asserted
-# in neither direction here.
+# WHEN TO REVISIT: if this workflow's runtime approaches the point where waiting on it changes how people
+# work. At 6m41s it does not. Re-measure before assuming it still does not - and note that restoring a
+# filter restores the defect class with it, so the trade is runtime against correctness, not against
+# tidiness.
 on:
   push:
     branches: [main]
-    paths:
-      - 'scripts/**'
-      - 'installer/_shared/**'
-      - 'clavity-dotnet/install/**'
-      - 'clavity-dotnet/plugin/**'
-      - 'clavity-classic/plugin/**'
-      - 'justfile'
-      - 'lefthook.yml'
-      - 'agy-autotrain/skills/agy-curate/SKILL.md'
-      - 'agy-autotrain/installer/**'
-      - 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
-      - 'docs/agy-disciplines-marker-contract.md'
-      - '.claude/hooks/**'
-      - 'agy-autotrain/verify/**'
-      - 'agy-autotrain/hooks/**'
-      - 'build/members.json'
-      - '.github/workflows/ci-scripts.yml'
   pull_request:
-    paths:
-      - 'scripts/**'
-      - 'installer/_shared/**'
-      - 'clavity-dotnet/install/**'
-      - 'clavity-dotnet/plugin/**'
-      - 'clavity-classic/plugin/**'
-      - 'justfile'
-      - 'lefthook.yml'
-      - 'agy-autotrain/skills/agy-curate/SKILL.md'
-      - 'agy-autotrain/installer/**'
-      - 'agy-autotrain/knowledge/driver-cheatsheet.core.md'
-      - 'docs/agy-disciplines-marker-contract.md'
-      - '.claude/hooks/**'
-      - 'agy-autotrain/verify/**'
-      - 'agy-autotrain/hooks/**'
-      - 'build/members.json'
-      - '.github/workflows/ci-scripts.yml'
 
 concurrency:
   group: ci-scripts-${{ github.ref }}
@@ -201,28 +161,6 @@ jobs:
           $env:PATH = "$prefix;$env:PATH"
           lefthook version
           if ($LASTEXITCODE -ne 0) { throw "lefthook install failed: lefthook is not on PATH" }
-
-      - name: Install yq (pinned)
-        shell: pwsh
-        # scripts/check-ci-filter-coverage.ps1 parses THIS file with yq instead of hand-written regexes:
-        # six consecutive review rounds each found a defect in those regexes, two of them fail-CLOSED on
-        # legal YAML. The gate treats a missing yq as a hard failure and never as a skip, so it must be
-        # present here. It is NOT on the windows-latest image - the runner manifest lists jq and not yq -
-        # so it is installed explicitly. PINNED for the same reason the Pester step below pins its major
-        # line: an unpinned install silently changed the runner under us once already.
-        run: |
-          $ver = 'v4.50.1'
-          $dir = Join-Path $env:RUNNER_TEMP 'yq'
-          New-Item -ItemType Directory -Force -Path $dir | Out-Null
-          $exe = Join-Path $dir 'yq.exe'
-          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/mikefarah/yq/releases/download/$ver/yq_windows_amd64.exe" -OutFile $exe
-          # Prepend to GITHUB_PATH so the LATER Pester step sees it, exactly as the lefthook step above does.
-          $dir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $env:PATH = "$dir;$env:PATH"
-          $got = (yq --version) -join ' '
-          if ($LASTEXITCODE -ne 0) { throw "yq install failed: yq is not on PATH" }
-          if ($got -notmatch [regex]::Escape($ver)) { throw "yq version mismatch: wanted $ver, got '$got'" }
-          "yq installed: $got"
 
       - name: Install Pester v6
         shell: pwsh

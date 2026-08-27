@@ -44,16 +44,6 @@ pre-push:
       run: pwsh -NoProfile -File scripts/check-versions-all.ps1
     check-plugin-namespace:
       run: pwsh -NoProfile -File scripts/check-plugin-namespace.ps1
-    check-ci-filter-coverage:
-      # HERE SPECIFICALLY BECAUSE CI CANNOT GUARD THIS ONE. The gate lives in ci-scripts.yml's own Pester
-      # suite, and that workflow is path-filtered on itself - so deleting `.github/workflows/ci-scripts.yml`
-      # from its own `paths:` block means GitHub evaluates the PUSHED commit's filter, does not fire the
-      # workflow, and the gate that would have caught the deletion never runs. The change merges green
-      # having disabled its own guard. A pre-push run is the last point where that is still catchable.
-      # One pwsh process, in the seconds range this hook's header requires.
-      run: pwsh -NoProfile -File scripts/check-ci-filter-coverage.ps1
-pre-commit:
-  commands:
     ruff:
       # Two patterns, not one: lefthook's doublestar treats a bare "**/*.py" as requiring 1+
       # path segments before the filename, so it does NOT match top-level files directly in

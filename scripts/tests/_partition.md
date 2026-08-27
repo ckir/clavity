@@ -617,37 +617,6 @@ check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW
                                                                       modest test count. Measured solo as the
                                                                       sole command: "Tests completed in
                                                                       135,92s", 16 passed / 0 failed.
-check-ci-filter-coverage.Tests.ps1               54,4s   17 tests   <- SLOW, NEW 2026-08-17: the ci-scripts
-                                                                      paths-filter gate's own suite. Nearly
-                                                                      every row spawns pwsh to run the gate
-                                                                      against a separately mutated copy of the
-                                                                      workflow, which is the whole cost - the
-                                                                      test count is small and the process count
-                                                                      is not. Measured SOLO AND IN BACKGROUND
-                                                                      with the driver idle: 54 360 ms at 16 rows
-                                                                      (54 450 at 19, 53 857 at 17),
-                                                                      after the owner deleted the gate's second
-                                                                      half (2026-08-17) and seven rows went with
-                                                                      it - the seven that each built a throwaway
-                                                                      git repo, which is where the time was.
-                                                                      🔴 THE FULL SERIES REFUTES ANY PER-ROW
-                                                                      COST: 78 990 ms at 11 rows, 103 065 at 13,
-                                                                      120 448 at 20, 163 863 at 22, 147 313 at
-                                                                      24 (LOWER at more rows), 53 857 at 17.
-                                                                      Cost tracks what a row DOES, not how many
-                                                                      there are. Re-measure; never predict. At 11 rows it also measured
-                                                                      95s with the driver WORKING - a 1,2x
-                                                                      inflation - so every figure here is the
-                                                                      idle one, per the warning above.
-                                                                      🔴 DO NOT DERIVE A PER-ROW COST FROM THESE.
-                                                                      An earlier version of this row claimed
-                                                                      "~4-6s apiece" from the 11->20 average;
-                                                                      the very next two rows cost ~21s each.
-                                                                      Marginal cost depends on what a row DOES
-                                                                      (these two build fixtures and spawn the
-                                                                      gate) and on the same machine variance
-                                                                      this file documents elsewhere. Re-measure
-                                                                      after adding rows; do not predict.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the

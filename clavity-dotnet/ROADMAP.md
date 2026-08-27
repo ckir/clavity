@@ -1392,7 +1392,7 @@ case documented as a known limit. Not mechanical — hence tracked rather than f
 > ten pre-push gates had passed, including an unresolvable action ref and a RUSTSEC advisory in a lockfile.
 > That is evidence FOR relying on CI as the gate - not evidence for hardening pre-push into a second one.
 
-**Measured at triage:** `lefthook.yml:19-55` defines **10** pre-push jobs — `seed-sync`, `agy-skills`,
+**Measured at triage:** `lefthook.yml` then defined **10** pre-push jobs — `seed-sync`, `agy-skills`,
 `doc-stubs`, `member-docs`, `user-facing-docs`, `register-hash`, `installer-ascii`, `check-versions`,
 `check-plugin-namespace`, `check-ci-filter-coverage` — and **zero** of them consult `git show <ref>:<path>`,
 `--cached`, or the push refs a pre-push hook receives on stdin. Every one resolves paths from the worktree
@@ -1402,8 +1402,13 @@ via `$PSScriptRoot`/`$RepoRoot` and reads with `Get-Content`/`Get-ChildItem`.
 uncommitted fix can **false-GREEN** a push of the broken commit. The verdict is about state git is not
 about to publish.
 
+⚠ **`check-ci-filter-coverage` was DELETED on 2026-08-27** when the `paths:` filter it guarded was removed
+(see `docs/superpowers/specs/2026-08-27-declarative-coverage-registration-design.md`). NINE pre-push jobs
+remain and the finding is unaffected: it was never about that gate, and the nine survivors all still read
+the worktree.
+
 **Why it is filed rather than fixed.** This is the repo-wide SHAPE of the hook, not one gate's defect —
-`check-ci-filter-coverage` is merely the newest instance. Making one gate read blobs from the pushed commit
+`check-ci-filter-coverage` was merely the newest instance at the time. Making one gate read blobs from the pushed commit
 would leave it inconsistent with its nine siblings, and changing all ten is an **owner-level decision about
 what a pre-push gate is FOR**. Surfaced by an agy capstone seat, then confirmed against the hook block.
 

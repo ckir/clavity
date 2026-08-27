@@ -86,11 +86,5 @@
     "why": "Read the per-driver status columns in agy-autotrain/verify/assertions.md. The SessionStart verify gate nags when awk is absent rather than failing silent, so a missing awk is visible but blocking.",
     "install": "Ships with Git for Windows (/usr/bin/awk); otherwise: winget install GnuWin32.Gawk",
     "in_path": "awk"
-  },
-  {
-    "name": "yq",
-    "why": "REQUIRED, not merely recommended: scripts/check-ci-filter-coverage.ps1 parses .github/workflows/ci-scripts.yml with yq and treats a missing yq as a hard failure, never a skip - it runs on lefthook pre-push, so without yq that push is blocked. It replaced hand-written regexes after six consecutive review rounds each found a defect in them. Also the YAML oracle for proving a workflow edit is valid before it reaches CI.",
-    "install": "winget install MikeFarah.yq",
-    "in_path": "yq"
   }
 ]
