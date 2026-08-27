@@ -120,7 +120,7 @@ For EACH pending entry, in order:
    may be `fix-the-tool` on one variant (its transport exposes the needed signal) and a carried
    `driver` cheatsheet rule on another (its transport cannot) - record which.
 
-> 🔴 **ROUTING REQUIRES A REPO CHECKOUT - do not resolve backlog paths relative to THIS FILE.**
+> **ROUTING REQUIRES A REPO CHECKOUT - do not resolve backlog paths relative to THIS FILE.**
 > This skill runs from the installed plugin tree AND from every checkout and worktree, and the header at
 > the top of this file already states the consequence: *a relative path resolves to whichever copy is
 > running*. A `../../`-style anchor was tried on 2026-08-25 and is withdrawn, because in an installed
@@ -175,7 +175,7 @@ ENFORCED number is the one in the script named below, and that is the only one t
 ENFORCED by that script (run in CI and by `scripts/tests/check-cheatsheet-budget.Tests.ps1` under
 `just test-scripts-slow` - that suite moved out of the fast half on 2026-08-25).
 
-> 🔴 **That script is a REPO tool and is NOT shipped into the installed plugin tree.** Measured 2026-08-26:
+> **That script is a REPO tool and is NOT shipped into the installed plugin tree.** Measured 2026-08-26:
 > an install has no `scripts/` directory at all. Until then this sentence told you the inline number was
 > untrustworthy and to go read the script instead - which, from the installed tree this skill explicitly
 > supports running in, does not exist. So the number above is the contract, and it is kept honest
