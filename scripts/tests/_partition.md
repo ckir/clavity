@@ -666,6 +666,15 @@ plugin-hooks-payload.Tests.ps1                    3,4s    3 tests   <- FAST. COU
                                                                       2026-08-05 figure, taken at 2 tests.
 register-plugin.Tests.ps1                         6,6s   18 tests   <- FAST, re-measured 2026-08-05
 release-lib.Tests.ps1                             5,5s   23 tests   <- FAST, re-measured 2026-08-05
+clavity-install.Tests.ps1                         7,9s   12 tests   <- SLOW, ADDED 2026-08-27. The one
+                                                                      suite `test-scripts-slow` names from
+                                                                      OUTSIDE scripts/tests, so it sat
+                                                                      outside this table's population until
+                                                                      that population was widened to every
+                                                                      TRACKED suite. It ran in a gate with no
+                                                                      row for weeks and nothing noticed -
+                                                                      found twice, independently, before the
+                                                                      blind spot itself was closed.
 ```
 
 Every FAST row above was re-measured in ONE sweep on 2026-08-05 (the 292,09s sample below). The SLOW rows

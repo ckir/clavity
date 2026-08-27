@@ -58,7 +58,12 @@ Describe 'test suite registration' {
             # THE TRAILING LOOKAHEAD IS LOAD-BEARING. Without it, a recipe entry naming a disabled
             # path (`foo.Tests.ps1.bak`) still captures `foo.Tests.ps1`, so the row certifies a suite
             # the recipe never runs. It also keeps this parse and the census parse in agreement.
-            @([regex]::Matches($body, "scripts/tests/(?<n>[A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._#-])") |
+            # ANY directory prefix, not a hardcoded `scripts/tests/`. That literal was the THIRD place the
+            # 50th-suite blind spot lived (with the population and the runtimes table): a recipe naming
+            # `clavity-dotnet/install/clavity-install.Tests.ps1` matched nothing here, so a suite that IS
+            # registered read as unregistered the moment the population was widened to see it. The NAME
+            # group still forbids a separator - the leaf is what every comparison keys on.
+            @([regex]::Matches($body, "[A-Za-z0-9._/-]+/(?<n>[A-Za-z0-9._-]+\.Tests\.ps1)(?![A-Za-z0-9._#-])") |
                 ForEach-Object { $_.Groups['n'].Value } | Sort-Object -Unique)
         }
 
@@ -69,11 +74,22 @@ Describe 'test suite registration' {
         # to the same file, still reported GREEN: Pester does not stop a Describe on a failed It, so one
         # run would announce the violation and certify the registration. A suite this file cannot see
         # must never be a suite it certifies.
-        $script:OnDisk = @(
-            Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Filter '*.Tests.ps1' |
-                ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) -replace '\\', '/' } |
-                Sort-Object
+        # THE POPULATION IS EVERY TRACKED SUITE IN THE REPOSITORY, NOT JUST THIS DIRECTORY.
+        # It was `Get-ChildItem $PSScriptRoot` until 2026-08-27, and that blind spot cost two defects:
+        # `clavity-dotnet/install/clavity-install.Tests.ps1` is named by `test-scripts-slow` and runs in
+        # CI, but sat outside this glob - so it carried NO `_partition.md` row and nothing noticed, and
+        # AGY-CAPSTONE round 27 found the same file missing from that table independently.
+        #
+        # `git ls-files` rather than a recursive walk, DELIBERATELY. A repo-wide `**/*.Tests.ps1` crosses
+        # into `clavity-classic/target` and `ghidrust/target` - MEASURED, 46,991 files on disk against 620
+        # tracked, 36,205 of them in those two trees. Tracking is the bound; a glob is not.
+        $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+        $script:AllSuitePaths = @(
+            & git -C $script:RepoRoot ls-files '*.Tests.ps1' |
+                Where-Object { $_ } |
+                ForEach-Object { Join-Path $script:RepoRoot ($_ -replace '/', '\') }
         )
+        $script:OnDisk = @($script:AllSuitePaths | ForEach-Object { Split-Path $_ -Leaf } | Sort-Object)
     }
 
     It 'parsed a plausible population out of both partition recipes' {
@@ -102,7 +118,7 @@ Describe 'test suite registration' {
         $nested -join ', ' | Should -BeExactly '' -Because 'a nested suite can never be MATCHED to a registration or a table row: Get-RecipeSuites forbids a directory separator and the runtimes table is a flat list of file names - to allow one, both must learn about paths first'
     }
 
-    It 'registers every suite in scripts/tests in the fast or slow gate' {
+    It 'registers every TRACKED suite in the repository in the fast or slow gate' {
         $registered = @($script:Fast + $script:Slow | Sort-Object -Unique)
         $unregistered = @($script:OnDisk | Where-Object { $_ -notin $registered })
         # Name them, AND name the file to edit. A count sends a reader hunting; a name sends them to the
@@ -125,7 +141,7 @@ Describe 'test suite registration' {
         $both -join ', ' | Should -BeExactly '' -Because 'fast and slow are a partition; a suite in both is paid for twice and its measured timing is wrong - remove it from one recipe in the repo-root justfile'
     }
 
-    It 'the _partition.md runtimes table is a complete census of the suites in scripts/tests' {
+    It 'the _partition.md runtimes table is a complete census of every TRACKED suite' {
         # The table claims to be the suite set, so something must hold it to that - it had silently
         # drifted to three missing rows. Same shape as `scripts-readme-inventory.Tests.ps1`.
         # It asserts PRESENCE OF A ROW, never that the figure is current: a time cannot be verified by
@@ -194,7 +210,8 @@ $ErrorActionPreference = "Stop"
 # -LiteralPath: positional binds -Path, which interprets wildcards, so a clone under a directory
 # containing [ or ] returned an EMPTY set - which this guard would have reported as "the child process
 # failed", sending the reader to the child instead of to the bracket in their path.
-$files = @(Get-ChildItem -LiteralPath $args[0] -Filter *.Tests.ps1 -File | ForEach-Object { $_.FullName })
+# EXPLICIT FILE PATHS, not a directory: the population spans more than one directory since 2026-08-27.
+$files = @($args)
 $c = New-PesterConfiguration
 $c.Run.Path = $files
 $c.Run.SkipRun = $true
@@ -222,7 +239,7 @@ foreach ($cont in $r.Containers) {
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ("pester-discover-" + [Guid]::NewGuid().ToString('N') + ".ps1")
         Set-Content -LiteralPath $tmp -Value $childScript -Encoding utf8
         try {
-            $raw = & pwsh -NoProfile -File $tmp $PSScriptRoot 2>&1
+            $raw = & pwsh -NoProfile -File $tmp @script:AllSuitePaths 2>&1
         } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
 
         $discovered = @{}
@@ -242,7 +259,7 @@ foreach ($cont in $r.Containers) {
 
         # NON-VACUITY, tied to what is actually on disk rather than to a slack constant. The previous
         # floor was `-BeGreaterThan 20` against 49 suites: 28 could vanish and it still passed.
-        $onDiskCount = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter *.Tests.ps1 -File).Count
+        $onDiskCount = $script:AllSuitePaths.Count
         $onDiskCount | Should -BeGreaterThan 20 -Because 'the suite directory itself must be non-empty, or every count below is compared against nothing'
         $discovered.Count | Should -Be $onDiskCount -Because "discovery reported $($discovered.Count) containers for $onDiskCount files on disk - a partial or truncated child result must not read as success"
 
