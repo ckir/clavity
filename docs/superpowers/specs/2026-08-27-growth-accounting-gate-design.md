@@ -1,164 +1,145 @@
-# GROWTH accounting gate — design
+# GROWTH knowledge tiering — design
 
-**Status:** SPEC **v5 — a SUBTRACTION.** v1–v4 all REJECTED (rounds 1–4, 27 findings). v5 adds no
-mechanism and **deletes two**. Owner-directed after the round-4 pattern became clear: since round 3 the
-core has gone unchallenged, and every finding since has landed on a mitigation bolted over an admitted
-limitation. **Round 5 not yet run.**
+**Status:** SPEC **v6.** v1–v5 were all REJECTED (rounds 1–5, 32 findings) and all five were the same
+artifact: an **accounting gate**. v6 deletes that idea entirely. **Round 6 not yet run.**
+
+**The redirect is the owner's:** the memory index already solves this exact problem in production — bounded
+tier 1, unbounded tier 2, nothing lost — and it does so **without any ledger**. v6 ports that pattern.
 
 ## Standing constraints, in priority order
 1. **KNOWLEDGE MUST BE PRESERVED — nothing lost.** It cannot be implemented, only earned.
-2. **MINIMAL TOKEN SPENDING** — both the injected block (charged every session) and the drain's own
-   context and output (charged every run).
+2. **MINIMAL TOKEN SPENDING** — the injected block is charged every session; the drain's context and
+   output are charged every run.
 
-### v5's honest cost against constraint 2
-- **Injected bytes: zero.** Every mechanism lives in the gate, the sidecar and the log — offline
-  maintainer artifacts. The GROWTH file is untouched, so nothing here reaches a session's context.
-- 🔴 **Output tokens: NOT zero, and v4 hid this behind the input-side claim.** Requiring the full verbatim
-  text of every departed rule costs the curator **output** tokens — the expensive, latency-bound side —
-  and risks **max-output truncation mid-sidecar**. See §3.6: the answer is to bound how much a single
-  drain may shed, not to shrink the record.
+**v6 cost against constraint 2: injected bytes go DOWN, not up.** GROWTH becomes a *selected projection*
+rather than the store, so it is bounded by choice rather than by a cap it keeps hitting. Everything else
+lives in files that are never injected. There is no verbatim-block output cost, because there are no
+accounting entries.
 
 ---
 
-## 0. The guarantee
-> Every rule that leaves the GROWTH region, by any route, has its **full verbatim text** recorded in the
-> append-only drain log, permanently.
+## 0. 🔴 THE ROOT CAUSE OF FIVE REJECTED VERSIONS, NAMED
 
-**GROWTH is NOT a cache** (retracted in v4, restated here because it is the axiom everything rests on).
-The curator is never fed the log, so if GROWTH is emptied the next drain rebuilds from the inbox alone.
-**Preserved ≠ recoverable.** The log preserves departed text for **human** recovery via a documented
-manual procedure — read the log, re-add the wanted text to the inbox as pending, drain. Feeding the log
-to the curator would make GROWTH genuinely rebuildable but is **ruled out by constraint 2**: it grows
-without bound and would be re-read every run.
+**GROWTH is currently both the store and the projection.** That conflation is why every version had to
+defend it so hard: if the only copy of a rule is the thing being regenerated wholesale, then every
+regeneration is a potential loss, and the only defence left is to audit the regeneration.
 
-**What this does not do:** it does not judge whether a curation decision was wise, and it does not prevent
-a curator emptying GROWTH. If one does, GROWTH is empty and every rule's text is in the log.
+Five rounds of findings were all downstream of that one design error. **The fix is not a better audit. It
+is to give the projection a store to be a projection OF.**
 
-🔴 **AND IT DOES REQUIRE A DEPARTURE TO BE RECORDED — INCLUDING A HUMAN'S.** v3 and v4 claimed "no
-decision forbidden". **That was false and is withdrawn.** A gate that fails on an unrecorded deletion is,
-precisely, forbidding an unrecorded deletion. That is the entire point; dressing it up as neutral was the
-dishonest part, not the requirement.
+### The pattern being ported, with its production numbers
+| tier | role | bounded? |
+|---|---|---|
+| `MEMORY.md` | always loaded; pointers + live state only | **hard cap, 24,400 B** |
+| topic files | detail, loaded on demand | unbounded — **2,320,862 B across 95 files** |
 
-## 1. What is already shipped
-The drain regenerates GROWTH **wholesale** each run — deliberate, because it allows consolidation (merge,
-supersede, drop-on-later-evidence) which append-only forbids. The same property is the hazard.
+**Tier 2 is 96× tier 1.** The index has been compacted eleven times and has never lost a fact, because
+compaction there means **relocation down a tier, leaving a pointer** — never deletion.
 
-**Shipped in `ad3c454` — do not re-solve:** the existing GROWTH is a curator INPUT; step 4 regenerates
-from previous + new; `## GROWTH accounting` exists; the append-only log retains it (mutation-verified).
-**What remains: nothing CHECKS the account.**
+🔴 **And its guarantee is not an account. It is REACHABILITY.** The index verifies one thing: that nothing
+has become unreferenced. There are no dispositions, no verbatim ledgers, no per-entry binding — the
+apparatus five versions of this spec kept failing to make sound.
 
-## 2. Killed approaches — the reason, so none is re-proposed
-| approach | why |
-|---|---|
-| Count-based assertion | Drop one, add one. Count unchanged. **Count is not an oracle for identity.** |
-| Semantic matching | Measured **low-recall twice**: two readers, same 45 entries, 2 findings each, **zero overlap**. Fails open silently. |
-| ~~80-char prefix identity~~ | R1: impossible for short rules, collides on shared tags, needed a delimiter that occurs in rule text. |
-| ~~SHA-256 identity~~ | R2, fatal: the curator IS the LLM and would emit hashes for text **it just wrote**. |
-| ~~`dropped` as demotion-to-inbox~~ | R2: ping-pongs with no terminal state; deadlocks on legacy rules; mutates state. |
-| ~~Target verification~~ | R2: existence ≠ relatedness. |
-| ~~Feeding the log to the curator~~ | v4: killed by **constraint 2**, not by correctness. |
-| ~~The `unexplained` census arithmetic~~ | 🔴 **DELETED IN v5.** R4 killed it twice: it is **1:1 arithmetic over an N:M domain** (merge 3 into 1 ⇒ `1-3 = -2`; supersede 1 with 3 ⇒ false alarm), and it was **forgeable** — fabricate entries to zero the balance and smuggle the payload it existed to expose. |
-| ~~"No decision forbidden"~~ | 🔴 **WITHDRAWN IN v5** as a false claim about what the gate does. See §0. |
+## 1. The model
+- **The STORE (tier 2, never injected, unbounded):** durable rule files. Every rule earned lives here,
+  permanently, whether or not it is currently injected.
+- **GROWTH (tier 1, injected every ask, capped):** a *selected projection* of the store — the rules worth
+  spending session tokens on right now, plus pointers.
+- **The inbox** is upstream of both: raw observations awaiting distillation into store rules.
 
-## 3. The design
+**A rule absent from GROWTH is not gone. It is not currently projected.** That single sentence dissolves
+`dropped`, `merged`, `superseded`, demotion, ping-pong, legacy deadlock, count-neutrality, hashes,
+ordinals, target verification, per-entry binding and verbatim output cost — **all 32 findings become moot
+rather than fixed**, because none of them describes a real event any more.
 
-### 3.1 The rule unit, and a TOTAL parse
-MEASURED: **18 top-level bullets under 2 section headers**, 123 lines. A *rule* is a `^- ` bullet plus
-continuation lines, terminated by the next `^- `, a `^[` header, **or EOF**.
+## 2. The guarantee
+> Every rule in the store is **reachable**. Nothing is verified about what GROWTH chooses to project.
 
-🔴 **The parse must ROUND-TRIP.** If 18 rules parse as 15, the gate demands accounting for 15 and 3 vanish
-unaccounted — the gate's blind spot becomes the loss channel, and a count check cannot see it.
-**Re-concatenating parsed rules + headers must reproduce the source byte-for-byte after newline
-normalisation. Any residue fails closed, naming it.**
+Preservation is a property of the **store**, which nothing overwrites. Selection is a property of
+**GROWTH**, which is regenerated freely — which is what made wholesale regeneration desirable in the
+first place, and it is now harmless.
 
-### 3.2 Normalisation — ONE shared implementation, and it MUST DEDENT
-CRLF→LF · **dedent the block** · strip trailing whitespace per line · strip leading/trailing blank lines.
+## 3. The checks — two DIFFERENT directions, and only one is off-the-shelf
 
-🔴 **The dedent is not optional.** v3 mandated a two-space indent while normalising trailing whitespace
-only, so `- rule` and `  - rule` could never match and **every departed rule would have failed on every
-run.** One shared implementation: two copies that drift pass at drain time and fail at accept time on
-identical bytes.
+⚠ MEASURED 2026-08-27 against a fixture with known ground truth, because the tool's actual behaviour
+decides the design:
 
-### 3.3 The accounting entry
-For **every** rule in `PREV` absent from `NEW`:
-```
-- [<disposition>] <reason>
-  <the full verbatim text of the previous rule, indented two spaces>
-```
-`<disposition>` ∈ `reworded` · `merged` · `superseded` · `dropped` — bracketed, exactly one, **prose for
-the human; the gate does not verify it** (R2: target verification proves nothing about relatedness).
-`<reason>` required. The verbatim block is load-bearing: it is what the log preserves and the gate matches.
+| condition | `mlc` v1.2.0 | usable? |
+|---|---|---|
+| link → **missing file** (dangling pointer) | `[Err] Target filename not found`, **exit 1** | ✅ gate it |
+| file that **nothing links to** (orphan) | **reports nothing at all** | ❌ opposite direction |
+| `[[wikilink]]` | `[Warn] Markdown reference not found` — unresolved | ❌ invisible to it |
 
-⚠ **Uniform across dispositions ON PURPOSE.** If only `dropped` required the text, a curator could evade
-the record by labelling a deletion `merged`.
+### 3.1 Dangling pointers — `mlc`, gated on exit code
+The index or GROWTH promises a rule that does not exist. `mlc` exits **1**; wire it as a gate.
 
-### 3.4 The check — the whole mechanical contract
-> **For every rule in `PREV`: its normalised text appears verbatim EITHER in `NEW`, OR as the verbatim
-> block of EXACTLY ONE well-formed `ACCT` entry** — bracketed disposition, non-empty reason.
+🔴 **THE STORE MUST USE STANDARD MARKDOWN LINKS `[text](rule.md)`, NOT `[[wikilinks]]`.** Measured above:
+mlc cannot resolve `[[...]]` and merely warns. A store written in wikilink style is **invisible to its own
+gate** — the shape of a guard that certifies what it never checked.
 
-Per-entry binding matters: v3 asked only whether the text appeared in `ACCT` anywhere, so ten rules dumped
-into one entry's reason block passed while every disposition and reason was destroyed.
+⚠ **Read mlc's exit code directly, never through a pipe.** Measured: `mlc . | tail` reported exit 0 while
+mlc itself exited 1 — `$?` was `tail`'s. This is the repo's standing "run the gate, read ITS exit code"
+trap, and it bit inside this very measurement.
 
-Anything else is an **unaccounted departure**: FAIL, named by bounded excerpt. Never print a whole rule.
+### 3.2 Orphans — a complement, ~10 lines, because `mlc` does not do this
+`mlc` validates that pointers resolve. It says nothing about a file nothing points at, and **an
+unreachable rule is exactly what "lost" means here.** The complement: enumerate store files, enumerate
+linked targets, report the difference. Fail on non-empty.
 
-**That is the entire contract.** No targets, no hashes, no arithmetic, no state mutation.
+This is not new machinery — it is the check already run by hand when compacting the memory index, where
+it found that a topic file had **exactly one inbound link**, so cutting one line would have orphaned a
+whole design record.
 
-### 3.5 The census — RAW COUNTS ONLY, and one honest limitation
-**Prints, and never gates on:** `|PREV|`, `|NEW|`, survived-verbatim, entries per disposition, rules in
-`NEW` with no counterpart in `PREV`, and **`ACCT` entries matching no `PREV` rule** (non-zero means
-something is wrong; it is an observation, not a verdict).
+### 3.3 The infrastructure ALREADY EXISTS — this wires it, it does not build it
+⚠ **Correcting my own claim in an earlier draft of this section**, which said mlc was undeclared. It was
+written from a `head -12` of a **14-entry** manifest — a positional-truncation error, the same class this
+repo has logged before. The facts, re-measured:
 
-⚠ **STATED LIMITATION, no longer papered over:** the gate **cannot** distinguish a reworded rule's new
-text from a hallucinated new rule. Removing target verification bought implementability and cost this.
-v4 tried to recover it with derived arithmetic; the arithmetic was wrong and forgeable, so **v5 reports
-the raw numbers and says plainly what they do not tell you.** A number a reviewer can interpret beats a
-metric that is confidently wrong.
+- `mlc` **is** declared in `.claude/recommended-tools.json` (`cargo install mlc --locked`).
+- `just check-links` **exists** and runs `mlc` config-driven.
+- `.mlc.toml` **exists**, scoped to *"TRACKED PRODUCT DOCS ONLY"* with a deliberate ignore list, because
+  *"a link error in those is noise that would train us to ignore the whole report."*
 
-### 3.6 Bounding the output cost — the answer to constraint 2
-A drain that sheds many rules must emit each one verbatim, which is where the output-token and truncation
-risk lives. **The bound is on the DRAIN, not the record:** if a single drain would shed more than `N`
-rules, it **fails and says the drain is too large — split it**. Shrinking the record instead would
-re-open the `merged`-relabelling evasion. `N` is unset; see §6.
+🔴 **But it is wired into NOTHING** — measured: `check-links` appears in neither `lefthook.yml` nor any CI
+workflow. It is a manual recipe, so today it catches a dangling pointer only when someone remembers to run
+it. Wiring the existing recipe is the work; building a checker is not.
 
-### 3.7 Where it runs — both, each on a DIFFERENT baseline
-- **Drain time**, pre-review: `PREV` = GROWTH at `HEAD`, `NEW` = the working-tree proposal.
-- **Accept time**, at publish: on the exact bytes about to publish.
-  🔴 **`PREV` is resolved BY RUN-ID from the committed drain log, never by git position.** v4 said "the
-  drain commit's PARENT", and R4 showed a blind `HEAD^` validates only the last commit — so a human who
-  commits more than once before publishing gets a **vacuous pass while the gate reports success**.
-  `accept-drain` already requires the run to be in the committed log (F30), so the run-id is available and
-  the baseline is derivable from it rather than guessed from history shape.
+🔴 **AND THE STORE MUST FALL INSIDE `.mlc.toml`'s SCOPE.** That config deliberately ignores gitignored
+working artifacts. **A store placed under a gitignored path would be invisible to the very gate meant to
+protect it** — the same shape as `check-growth-budget.ps1` reading repo paths while the breach was in the
+runtime files. Choose the store's location against the gate's scope, not after it.
 
-🔴 A human deleting a rule at review gets the **complete ready-to-paste entry printed** by the failure.
-This reduces the burden; §0 is now honest that it does not remove it.
+## 4. 🔴 THE HONEST DISANALOGY — where the ported pattern does NOT reach
+`MEMORY.md`'s tier 2 works because **a reader chooses to follow a pointer**. The golden header is injected
+**blind**; there is no follow step.
 
-## 4. 🔴 THE FIRST RUN IS UNPROTECTED UNLESS A BASELINE IS COMMITTED
-MEASURED: **zero commits** have ever touched `docs/agy-golden-header.growth.md` or
-`docs/agy-drain-proposal.md`. `PREV` from git is empty today, so the gate passes vacuously on exactly the
-transition where loss occurs. **Commit the current runtime GROWTH as the baseline first**; until then the
-gate MUST print `PREV is empty — this run is unprotected`, never a silent PASS.
+And measured this session across 22 blind driver instances: **11 of 12 ignored a rule that was literally
+present in the context window.** A pointer is strictly weaker than presence.
 
-## 5. Acceptance criteria
-1. A `PREV` rule absent from both `NEW` and `ACCT` **fails**, named by bounded excerpt.
-2. Drop a rule and add a new one (count-neutral) **fails** unless the dropped text is present.
-3. Labelling a deletion `merged` rather than `dropped` changes nothing — **no disposition is an escape**.
-4. Ten rules' text dumped into ONE entry's reason block **fails** (per-entry binding).
-5. A rule indented differently in `ACCT` than in `PREV` still **matches** (the dedent — without a test it
-   regresses silently and fails every run).
-6. All rules surviving verbatim passes with an **empty** account and a census showing it.
-7. A first drain with no previous GROWTH passes **and prints the unprotected-run warning**.
-8. A parse leaving ANY residue fails closed, naming the residue.
-9. A rule accounted for in `ACCT` is present **verbatim in the append-only log** after the run — §0
-   asserted end to end, not assumed from the retention code.
-10. A drain shedding more than `N` rules **fails as too large**.
-11. Accept-time resolves its baseline by **run-id**; a run with two commits between drain and accept is
-    still checked against the drain's baseline, not `HEAD^`.
-12. Every new check is **mutation-verified**: the specific test reds under a logic mutant, and assertions
-    are POSITIVE wherever a `-Not -Match` could pass vacuously.
+**So tiering solves PRESERVATION completely and does NOT solve PRESENCE.** That is acceptable only under
+reading (a) of constraint 1 — *never destroyed* — and not under reading (b) — *always available to the
+agent*. **The owner has not yet ruled between them**, and v6 assumes (a). If (b) is meant, v6 is the wrong
+design and the answer is a bounded curated tier the curator reads, not a pointer.
 
-## 6. Open forks — for the owner
-- **`N`, the per-drain departure bound.** Unset deliberately. It should be *measured* against a real drain
-  rather than guessed, and it trades constraint 2 against drain ergonomics.
-- **Drain-time severity:** hard-fail or warn-and-halt? The neighbouring budget gate is **warn-only**, and
-  that is part of how the cap breach went unnoticed for weeks.
-- **Checker interface** — script name, exit codes, invocation from both placements — belongs in the plan.
+## 5. What this deletes
+The entire accounting apparatus: dispositions, verbatim blocks, per-entry binding, the census, the
+per-drain departure bound, run-id baselines, drain-time and accept-time placements. **None survives,
+because none has anything left to check.**
+
+## 6. Acceptance criteria
+1. A store file nothing links to **fails** the orphan check, named.
+2. A pointer to a non-existent rule **fails** `mlc`, and the wiring reads **mlc's own exit code**, proven
+   by a test that pipes it and shows the code is masked.
+3. A store written in `[[wikilink]]` style **fails** — the gate must be able to see its own subject.
+4. GROWTH regenerated with any subset of the store passes: **selection is never an error.**
+5. A rule removed from GROWTH but present in the store passes — the case five versions treated as a loss.
+6. A rule removed from the STORE with no relocation **fails**.
+7. Every new check is **mutation-verified**: the specific test reds under a logic mutant, and assertions
+   are POSITIVE wherever a `-Not -Match` could pass vacuously.
+
+## 7. Open forks — for the owner
+- 🔴 **Reading (a) vs (b) of constraint 1.** Everything above assumes (a). This is now the only question
+  that can invalidate the whole design, and it is unruled.
+- **Store granularity:** one file per rule, or themed files as the memory dir uses? The memory dir chose
+  themed and it has held at 95 files.
+- **Who selects the projection** — the curator, a ranking, or the maintainer — and against what budget.
