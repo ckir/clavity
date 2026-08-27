@@ -1416,7 +1416,7 @@ what a pre-push gate is FOR**. Surfaced by an agy capstone seat, then confirmed 
 a safety net, it is a report you get later"*. If pre-push is also not measuring the pushed state, then this
 branch — 319 commits ahead and never pushed — currently has **neither** gate reasoning about what would land.
 
-### §18 — SEED/GROWTH split for the driver cheatsheet — ▶ **OPEN, and 64 parked inbox entries wait on it**
+### §18 — SEED/GROWTH split for the driver cheatsheet — ▶ **OPEN. Measurement 1 is DONE and it changed the design.**
 
 **The problem, measured at the 2026-08-17 drain.** `driver-cheatsheet.core.md` is 100% SEED-shaped: it is
 byte-pinned to two compiled literals (`clavity-classic/src/driver_cheatsheet.rs` `BASELINE_FLOOR`,
@@ -1425,6 +1425,17 @@ knowledge costs an implementation-source change** — regenerate both literals, 
 re-capstone. That toll is why the loop stopped being run at cadence: **69 pending entries had accumulated,
 31 of them in a second inbox copy no flow read.**
 
+🔴 **THE STRONGEST ARGUMENT FOR THE SPLIT IS A SAFETY ARGUMENT, AND THIS ITEM DID NOT MAKE IT UNTIL NOW.
+The cheatsheet read is REPLACE, not EXTEND.** Measured 2026-08-27 by reading both readers —
+`DriverCheatsheet.ReadWithDegradeStatus` (`clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs:49-72`) and
+`driver_cheatsheet::read_with_status` (`clavity-classic/src/driver_cheatsheet.rs:23-54`): **if the runtime
+`driver-cheatsheet.md` exists and is usable, it WHOLLY SUPPLANTS the compiled floor.** The floor is a
+fallback for absent/over-cap/empty/unreadable — never a base that runtime content extends. **So a drain
+today can silently DELETE every SEED rule, and nothing anywhere notices** (`check-cheatsheet-parity.ps1`
+compares the *staged literals* against *core.md*, both repo-side; the runtime file is pinned and gated by
+nothing). The split does not INTRODUCE the contradiction hazard — **it replaces a strictly worse one.**
+Erasing a guard is worse than contradicting it.
+
 **The fix: apply the split this system ALREADY uses one layer up.** The injected golden-header is
 SEED (driver-owned, shipped, static) + GROWTH (drain-written at runtime, atomic write, `.sha256` sidecar,
 read as an extension of SEED). The cheatsheet has no such split. Give it one:
@@ -1432,41 +1443,158 @@ read as an extension of SEED). The cheatsheet has no such split. Give it one:
 - the compiled literal stays a **pinned FLOOR** — rarely edited, guarantees a baseline when no runtime file
   exists or it fails its integrity check. The existing parity gate keeps doing the job it demonstrably does;
 - add a **cheatsheet-growth region** the drain writes through the same atomic-write + sidecar path;
-- drains stop touching compiled source, so the per-drain toll goes to zero.
+- drains stop touching compiled source, so **the per-drain SOURCE-CHURN toll goes to zero.**
+  ⚠ **It is the source toll that vanishes, not the toll.** An earlier revision of this item said "the
+  per-drain toll goes to zero" full stop; that was false and is corrected here. Attack 3's mandated
+  human-review gate before any runtime GROWTH write is a per-drain cost that SURVIVES the split. The toll
+  moves from a source change to a review prompt.
+
+**The pattern to mirror is already written and panel-hardened:** `GoldenHeader.TryReadCombined`
+(`clavity-dotnet/src/Clavity.Ls/GoldenHeader.cs:160-188`) — seed + growth joined, a migration window for a
+pre-split flat file (inject the legacy file ALONE while no growth exists, or the baseline lands twice), and
+an over-cap degrade that **keeps SEED and drops GROWTH**.
 
 **Provenance — this was NEGOTIATED, and the negotiation moved.** Consulted as a design fork, the peer first
 recommended **UNPINNING** the cheatsheet outright, arguing a continuous learning loop cannot afford a
 compile-time constraint. Its own stated counter-argument was that unpinning risks silent runtime divergence.
 **One measurement killed that recommendation:** `check-cheatsheet-parity` exits 0 — the pinned trio is
 coherent — while the drift was entirely in `%USERPROFILE%\.clavity\driver-cheatsheet.md`, which **nothing
-pins and nothing gates** (3 days stale, 3515B vs 3508B). The divergence it named as the COST of unpinning was
-already realised, in the part that was never pinned. Unpinning would delete the half that works. The peer
-conceded and adopted this split as the target architecture.
+pins and nothing gates**. Unpinning would delete the half that works. The peer conceded and adopted this
+split as the target architecture.
+⚠ **THE DRIFT FIGURE IN THAT ARGUMENT IS HISTORICAL — DO NOT RE-QUOTE IT AS PRESENT TENSE.** It read
+"3 days stale, 3515 B vs 3508 B" on 2026-08-17. **Re-measured 2026-08-27: the drift is GONE** — core and
+runtime are both 4750 B and byte-equal after CRLF normalisation, and `check-cheatsheet-parity.ps1` exits 0.
+The ARGUMENT still stands (nothing pins the runtime file; it merely happens to be in sync), but the
+sentence was written in the present tense and would now be false.
 
-**Three attacks on the split, from that same consult. Two stand; record them in the design:**
-1. **Contradiction between regions.** Domain facts compose; operational rules **override**. If SEED says
-   "never do X" and a drain writes "always do X" into GROWTH, the driver gets opposed constraints in one
-   context window. The header does not face this because it carries facts, not instructions. **A resolution
-   order must be part of the design, not an afterthought.**
+**Three attacks on the split, from that same consult:**
+1. 🔴 **Contradiction between regions — CONFIRMED LIVE 2026-08-27, no longer hypothetical.** Domain facts
+   compose; operational rules **override**. If SEED says "never do X" and a drain writes "always do X" into
+   GROWTH, the driver gets opposed constraints in one context window. **Four real instances were measured —
+   see measurement 1 below.** A resolution order is therefore BINDING, not an afterthought.
 2. **Compaction debt.** The split BATCHES the review toll rather than removing it — GROWTH eventually
    overflows or tangles and must be compacted back into SEED, paying the source-churn and re-review cost on
-   a slower cadence. Budget for that; do not claim the toll is gone.
+   a slower cadence. Budget for that; do not claim the toll is gone. ⚠ Partially answered already: the
+   golden-header's over-cap degrade **keeps SEED and drops GROWTH**, so overflow degrades to the floor
+   rather than to nothing. Mirror that, and the failure mode is bounded even when the budget is not.
 3. **~~Poisoning~~ — CLOSED at the consult.** The concern was that a free-writing drain lets a bad capture
    become steering law. The `agy-curate` skill already **mandates a human-review gate before any runtime
    GROWTH write**. The requirement this adds is that the cheatsheet-growth region must inherit **that gate**,
    not merely the atomic-write path.
 
-**The two measurements the peer named as gates on building it — do these first:**
-- **Toxicity rate.** How many pending entries are steering hazards? If even one is, an ungated drain is
-  structurally unsafe. **Partially measured 2026-08-17:** a pattern scan for guard-weakening phrasing over
-  all 69 returned **zero**. That is a pattern scan, NOT a semantic read of all 69 — treat it as encouraging,
-  not as the measurement.
-- **Override behaviour.** Append a deliberate contradiction to the current cheatsheet and measure whether the
-  driver reliably privileges the newer rule. If it does not, the split needs a conflict-resolution layer
-  before rendering, and attack 1 is fatal rather than manageable.
+#### ✅ MEASUREMENT 1 — TOXICITY — DONE 2026-08-27. IT DOES NOT RETURN ZERO, AND IT RETIRED ITS OWN GATE.
 
-**What is parked on this.** 64 inbox entries carry `parked=seed-growth-split-roadmap-18`. That is a real
-release condition, not a parking lot: when this ships, they become drainable at no source cost.
+The gate as originally written: *"How many pending entries are steering hazards? If even one is, an ungated
+drain is structurally unsafe."* A 2026-08-17 pattern scan for guard-weakening phrasing over all 69 returned
+zero, and this item correctly refused to treat a pattern scan as the measurement.
+
+**Method:** a semantic read of all **45** entries carrying `parked=seed-growth-split-roadmap-18`, by two
+independent readers (the driver, and the live peer under a numbered brief with an out-of-range quote
+control). Hazard classes: guard-weakening, contradicts-a-SEED-clause, over-generalised imperative, false
+fact.
+
+| class | result |
+|---|---|
+| guard-weakening | **0** — the pattern scan's finding, upgraded by a semantic read |
+| false fact | 0 — every entry cites its own measurement |
+| **contradicts a SEED clause** | **4** — two found by each reader, **zero overlap** |
+
+The two sharpest, both quotes verified by grep against the files:
+- SEED *"Don't lead the frame… feeding it your own measurements buys an echo, not a check"* vs the entry
+  *"Handing the peer NAMED suspicions of your own and demanding CONFIRM-or-REFUTE with evidence is
+  high-yield"*.
+- SEED *"phrase exploratory asks as 'reason about'… never as an imperative naming an artifact"* vs the
+  entry *"Asking a peer to EDIT A COPY of an artifact, rather than describe defects in prose…"*.
+
+🔴 **THE RESULT THAT MATTERS IS THE ZERO OVERLAP, NOT THE COUNT.** Two independent readers of the SAME 45
+entries each found two contradictions and **neither found the other's**. Natural-language hazard detection
+is therefore low-recall: a hazard count is a random sample, not an inventory, and **"we found zero" can
+only ever mean "the reader missed them".** So the gate this item wrote for itself **FAILS OPEN SILENTLY**
+and cannot be a gate. ⚠ **Do not re-run it hoping for a total.** The gating question moves from *preventing*
+collisions statically to *resolving* them structurally.
+
+⚠ Note the shape of the hazard: **each colliding entry is individually CORRECT and cites a real
+measurement.** The defect is not a bad entry — it is two good entries in one context window. A filter that
+scores entries one at a time is the wrong instrument for this class.
+
+#### 🔴 THE RESOLUTION LAYER — DECIDED 2026-08-27 over four negotiation rounds with the peer
+
+Three designs were proposed and **all three were killed, each by an argument the other party made:**
+- **Blanket precedence** ("GROWTH strictly overrides SEED where they conflict") — dead twice over. It is
+  not deterministic (a model told this still resolves probabilistically), and it **structurally re-opens
+  the guard-weakening class the toxicity read found none of**: any drain-written line would outrank any
+  SEED guard by construction, catchable only by the detection just proven low-recall.
+- **Citation-based refinement** (a GROWTH rule touching a SEED rule must cite the clause it refines) —
+  dead. Not because authors miss collisions, but because it asks the **driver** to notice a missing
+  citation, cross-reference SEED, recognise the conflict and apply "uncited GROWTH loses". That is
+  blanket precedence with more prompt engineering.
+- **Asymmetric precedence** (GROWTH may refine but never negate a marked guard, enforced at drain time) —
+  dead. Deciding whether one natural-language rule *negates* another is semantic entailment, i.e. **the
+  exact low-recall operation measurement 1 discarded.** A rigid gate cannot be built from probabilistic
+  material.
+
+✅ **ADOPTED — STRUCTURAL ISOLATION (the two-block SEED).** Split SEED into two explicitly labelled,
+disjoint domains — `[SAFETY_GUARDS]` (absolute boundaries) and `[TACTICAL_HEURISTICS]` (operational
+efficiencies) — and **GROWTH is only ever appended to `[TACTICAL_HEURISTICS]`.** The driver is never asked
+to weigh a heuristic against a guard, because the prompt structure makes them categorically different.
+All three dead options ask the model to ADJUDICATE; this one removes the adjudication.
+
+🔴 **THE PARTITION CRITERION: a clause is a `[SAFETY_GUARD]` iff its violation is CATASTROPHIC *and* NOT
+MECHANICALLY PREVENTABLE.** The inverse criterion — "a guard is whatever has an out-of-prompt mechanism" —
+was proposed and refuted: a rule already backed by a mechanical wall is safe whether or not the text is
+obeyed, so its prompt line is only a hint that saves a wasted turn, which makes it tactical. Marking by
+that rule *"builds an armoured vault and fills it exclusively with things that already have armour."*
+**The guards block is small on purpose.**
+
+⚠ **The consequence, and it has teeth.** For a non-computable guard there is **no "build the mechanism"
+fallback** — nothing can script *"did the driver lead the peer's frame"*. If structural isolation fails its
+falsifier, the finding is that text-based steering cannot secure that boundary at all, and the honest
+response is to **revoke the capability**, not reword the prompt.
+
+#### ▶ MEASUREMENT 2 — OVERRIDE BEHAVIOUR — REDEFINED, NOT YET RUN
+
+The original form ("does the driver privilege the newer rule?") is superseded: after structural isolation
+the question is whether the two-block framing HOLDS. Run the forcing task with a `[SAFETY_GUARDS]` clause
+contradicted by a freshly appended `[TACTICAL_HEURISTICS]` GROWTH rule, over N independent driver instances
+blind to each other.
+
+**Score three buckets, not two:**
+1. silently completed the task using the GROWTH rule;
+2. silently completed it using the SEED rule;
+3. halted or emitted a diagnostic to flag the collision.
+
+⚠ **Bucket 3 is a FAILURE, not the managed outcome** — this was argued and conceded. The cheatsheet is
+invisible background framework injected into a driver doing the USER's work; halting that work to have a
+human adjudicate a contradiction inside their own injected guidance **leaks framework maintenance debt into
+every session, and recurs every process until someone edits the entry.** It converts one maintainer's
+review into an interruption for every user.
+
+**Two control arms are mandatory — without them the measurement is unfalsifiable:** Control A delivers
+SEED only, Control B delivers GROWTH only, each with the same forcing task. 🔴 **The throw-it-all-out
+result is Control B failing to elicit the GROWTH behaviour:** an uncontradicted rule that cannot drive the
+target behaviour means the forcing task never forced anything, and the combined arm measures nothing.
+
+✅ **The fixtures are REAL, not synthetic** — measurement 1 produced them. Two of the four collisions are
+guard-vs-heuristic under the adopted criterion: the *don't-lead-the-frame vs name-your-suspicions* pair
+(review corruption, non-computable), and the *never-an-imperative-naming-an-artifact vs edit-a-copy* pair
+(its originating incident was an unrecoverable overwrite — a tree diff DETECTS after the fact, it does not
+PREVENT). The other two are heuristic-vs-heuristic and are resolved by construction under structural
+isolation.
+
+**What is parked on this.** ⚠ **MEASURED 2026-08-27: 45 entries** carry `parked=seed-growth-split-roadmap-18`
+(46 grep hits = 45 entries + 1 prose note); 15 of them are ALSO `parked=OWNER`. An earlier revision of this
+item said 64 — that number was never re-measured and is corrected here. **A count in prose is volatile
+state: re-measure it, never re-quote it.** That is a real release condition, not a parking lot: when this
+ships, they become drainable at no source cost.
+
+**Sequencing — this rides an already-ruled batch.** Structural isolation edits `core.md` + both compiled
+literals + both pinning oracles: the SAME blast radius as the owner-ruled cheatsheet-core batch (2026-08-23),
+which is itself batched with raising the golden-header cap. Three items, one re-capstone.
+⚠ **Owner ruling 2026-08-27 on an ambiguity in that batch's release condition:** "the 16 KiB golden-header
+cap raise" means **raise the EXISTING 16 KiB cap HIGHER** — not "raise it to 16 KiB". Measured the same day,
+all four constants are ALREADY 16 KiB (`DriverCheatsheet.cs:17`, `GoldenHeader.cs:20`,
+`driver_cheatsheet.rs:12`, `golden_header.rs:15`), so that half of the condition would otherwise read as
+already satisfied. The new ceiling is not yet chosen.
 
 ### §19 — `agy-mark.sh` exit codes: collapse the tri-state to 0 / non-zero — ▶ **DECIDED, DEFERRED**
 
