@@ -87,6 +87,11 @@ Describe "drain-lib primitives" {
             # FAILS with "Expected @(239, 187, 191) to be different from the actual value, but got the same
             # value". Pester compares the sliced collection as a whole here. Do not "fix" it into a
             # single-byte compare; that would test less, not more.
+            # The peer's explanation, UNVERIFIED by me and recorded as its claim rather than a measurement:
+            # Pester v4 did unwrap a piped collection and assert element-by-element, so this shape really
+            # was vacuous there; v5 collects the pipeline before asserting. This repo runs v6, and the
+            # control above is what actually establishes the row works - but if anyone ever back-ports this
+            # shape to a v4 harness, re-run that control first.
             $bytes[0..2] | Should -Not -Be @(0xEF, 0xBB, 0xBF)
             ($bytes -contains 0x0D) | Should -BeFalse -Because 'a CR would break the consumer''s line split and this repo has shipped that bug before'
             $bytes[-1] | Should -Be 0x0A -Because 'each entry is terminated, not separated'
