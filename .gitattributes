@@ -24,3 +24,12 @@ installer/_shared/register-plugin.ps1 text eol=crlf
 agy-autotrain/knowledge/driver-cheatsheet.core.md text eol=lf
 clavity-classic/src/driver_cheatsheet.rs text eol=lf
 clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs text eol=lf
+
+# The knowledge STORE must be LF everywhere. check-knowledge-store.ps1 enforces LF + pure ASCII, and
+# without this pin `git check-attr text eol` reports `unspecified` for these files, so under
+# core.autocrlf a fresh clone checks all 19 out as CRLF and the gate fails immediately on content it
+# has never touched. MEASURED 2026-08-28 on a default `git clone` of this repository: 19 of 19 rule
+# files came out CRLF and the gate reported 19 problems. CI runs on windows-latest, so that fresh
+# clone IS the CI checkout - the gate would have failed on its very first run.
+# Same mechanism, same reason, as the cheatsheet trio above.
+agy-autotrain/knowledge/rules/*.md text eol=lf
