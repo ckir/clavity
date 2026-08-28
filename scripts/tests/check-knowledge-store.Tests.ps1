@@ -161,21 +161,20 @@ Describe 'check-knowledge-store' {
         Remove-Item -Recurse -Force $d, $fu -ErrorAction SilentlyContinue
     }
 
-    # CAPSTONE R3 - a DECLARED consolidation re-baselines the high-water mark. Without this, a rule
-    # legitimately consolidated once is measured against its all-time peak forever and ordinary later
-    # trims eventually trip the gate for nothing. The monotonic property that matters is preserved: only a
-    # DECLARED retirement moves the mark, never a silent gutting.
-    It 'does not trap a rule against its all-time peak once a retirement is DECLARED' {
-        $d = New-StoreFixture
-        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "# beta`n`n> Retired: folded into alpha`n"
-        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'declare retirement' 2>$null
-        # A later trivial trim, still tiny against the ORIGINAL peak but not against the declared stub.
-        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "# beta`n`n> Retired: folded into alpha"
-        $out = Invoke-Check $d
-        $LASTEXITCODE | Should -Be 0
-        $out | Should -Match '2 rule\(s\)'
-        Remove-Item -Recurse -Force $d
-    }
+    # A ROW WAS DELETED HERE IN CAPSTONE ROUND 7, and the deletion is the point rather than a tidy-up.
+    #
+    # It was called "does not trap a rule against its all-time peak once a retirement is DECLARED", and its
+    # comment asserted that a declared consolidation RE-BASELINES the high-water mark and that "only a
+    # DECLARED retirement moves the mark". Round 4 DELETED that re-baselining mechanism outright - it
+    # turned out to have no legitimate case and to be reachable only by abuse (declare, then silently
+    # remove the declaration). The row kept passing afterwards, but for a completely different reason than
+    # its comment gave: the file carries a `> Retired:` line, so the declaration guard passes it whatever
+    # the size ratio is. That made it an exact duplicate of "PASSES a COMMITTED reduction that declares
+    # itself retired" above, wearing a rationale for code that no longer exists.
+    #
+    # A capstone round auditing CLAIMS rather than logic found it - the only finding in 26 checked. Keeping
+    # a test whose stated reason was deleted is how a suite starts asserting a design nobody ships, and a
+    # future round would have folded against that comment believing the mechanism was still there.
 
     # CAPSTONE R4 - THE GATE MUST SURVIVE A FRESH CHECKOUT, which is the only kind CI ever has.
     # MEASURED on a default `git clone` of this repository BEFORE the fix: 19 of 19 rule files came out

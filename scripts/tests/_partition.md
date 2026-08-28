@@ -51,11 +51,18 @@ load once and accumulates across files.
   during a run slows it down by construction** (see the contention entries below). **Do not quote any
   single figure here as the recipe's runtime**, do not read the fast half as cap-safe on the strength of
   one sample, and background it rather than assuming it fits the 600s foreground cap.
-- `just test-scripts-slow` — everything else. **25 suites named by the recipe; 633 tests across the 24 of
-  them that have a row** (recomputed 2026-08-27 from the `## Measured runtimes` table joined against the
-  recipe, not by arithmetic on a previous figure). It said **24 suites, 644 tests** until then, and both
-  halves were wrong in opposite directions: the recipe names 25 files, and 644 matched neither the 633 the
-  table gives nor any total including `clavity-install.Tests.ps1`.
+- `just test-scripts-slow` — everything else. **The recipe names the files; the test count is NOT recorded
+  here, deliberately.** It said **24 suites, 644 tests**, then **25 suites, 633 tests** (recomputed
+  2026-08-27), and the second figure was stale within a day: the 2026-08-28 capstone rounds added roughly
+  two dozen tests across two SLOW suites and neither number moved with them.
+  🔴 **That is the same decay recorded five times below, and correcting it a sixth time is the mistake -
+  so the aggregate is deleted here too.** It was deleted once already further down this file, and this
+  bullet was missed in the same edit, which is the incomplete-fold shape this repo pays for repeatedly:
+  the fact lived in TWO places and only one was obvious. Join the `## Measured runtimes` table against the
+  recipe if you need a current number; the per-row figures ARE enforced by
+  `test-suite-registration.Tests.ps1`, and nothing enforces a total.
+  **`clavity-install.Tests.ps1` HAS NO ROW IN THAT TABLE**, which is why any suite count and any test count
+  computed here will disagree about what "the slow half" means.
   **`clavity-install.Tests.ps1` HAS NO ROW IN THAT TABLE**, which is why the suite count and the test count
   disagree about what "the slow half" means. It is the one entry the recipe names from outside
   `scripts/tests`, and `test-suite-registration.Tests.ps1` pins rows for the directory it globs, so this
@@ -118,9 +125,20 @@ the two recipes is a mechanical step anyone can repeat.
 
 This sentence used to name one. It said fast **407** and slow **626** and then derived
 `407 + 626 = 1033` - the exact arithmetic the paragraph immediately above forbids - while the two bullets
-at the top of this file said 412 and 644. Recomputed from the table on 2026-08-27: fast **412**, slow
-**633** over the 24 rowed suites, table total **1045**. So all three of the old numbers were wrong, and
-they were wrong in a sentence whose own subject is numbers going stale.
+at the top of this file said 412 and 644. So all three of the old numbers were wrong, and they were wrong
+in a sentence whose own subject is numbers going stale.
+
+🔴 **AND SO WAS ITS REPLACEMENT - RECURRENCE SIX, ON 2026-08-28.** The correction written on 2026-08-27
+named a fresh aggregate here in the present tense. One day later the capstone rounds added roughly two
+dozen tests across two suites, and it was stale again - in the same sentence that had just finished
+explaining why aggregates go stale, and four lines above the paragraph declaring the aggregate DELETED
+rather than re-measured. The file contradicted itself.
+
+**So the figures are gone rather than corrected, which is what the paragraph below already decided and
+what this sentence failed to obey.** Anyone who wants the current numbers computes them from the
+`## Measured runtimes` table, which IS enforced per-row by `test-suite-registration.Tests.ps1`. Do not
+write the answer back here: a number nothing enforces, in a document about numbers nothing enforces, has
+now decayed six recorded times. **Correcting it is the mistake. Deleting it is the fix.**
 
 The four notes below record this same decay in 2026-08-06, twice on 2026-08-16, and again on 2026-08-24,
 each time predicting the next recurrence. It recurred a FIFTH time. A number that decays through five
@@ -624,15 +642,18 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
 check-injected-context.Tests.ps1                 91,5s  153 tests   <- SLOW as of 2026-08-24; was FAST -
-check-knowledge-store.Tests.ps1              163-252s  22 tests   <- SLOW. Each case builds a THROWAWAY
+check-knowledge-store.Tests.ps1              163-252s  21 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       GIT REPO: the deletion check compares
                                                                       against the ref's HISTORY and cannot be
                                                                       exercised without one. 8 -> 12 tests on
                                                                       2026-08-28, adding the committed-
                                                                       deletion and content-obliteration rows
                                                                       a capstone round found missing.
-                                                                      8 -> 22 across capstone rounds
-                                                                      1-6. Two rows were added because a
+                                                                      8 -> 22 -> 21 across capstone
+                                                                      rounds 1-7; round 7 DELETED a row
+                                                                      whose comment described a mechanism
+                                                                      round 4 had removed.
+                                                                      Two rows were added because a
                                                                       MUTATION AUDIT proved a guard had NO
                                                                       test and another passed for the wrong
                                                                       reason.
