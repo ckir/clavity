@@ -627,7 +627,11 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1             6,6s   39 tests   <- FAST, re-measured 2026-08-05
-check-cheatsheet-budget.Tests.ps1                43,1s    7 tests   <- SLOW as of 2026-08-25; was FAST, re-measured 2026-08-12
+check-cheatsheet-budget.Tests.ps1                43,1s   13 tests   <- SLOW as of 2026-08-25; was FAST, re-measured 2026-08-12.
+                                                                      COUNT 7 -> 13 on 2026-08-28 (AGY-TEST-AUDIT
+                                                                      covered -CheckCombined, which had none).
+                                                                      The TIMING above predates those 6 rows and
+                                                                      is due a re-measure.
 check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       pre-commit parity gate's own suite.
                                                                       Every row builds a throwaway git repo,
@@ -666,7 +670,7 @@ check-knowledge-store.Tests.ps1              163-252s  21 tests   <- SLOW. Each 
                                                                       Two rows CLONE (shallow + full), which
                                                                       is the bulk of the cost.
                                                                       RE-MEASURED 2026-08-28.
-check-dangling-consumers.Tests.ps1                58,4s   9 tests   <- SLOW. Each case builds a THROWAWAY
+check-dangling-consumers.Tests.ps1                58,4s  10 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       SOURCE TREE, and one row walks the REAL
                                                                       repository, so the cost is a full
                                                                       recursive read per case. MEASURED
@@ -700,7 +704,9 @@ check-user-facing-docs.Tests.ps1                 10,4s   15 tests   <- FAST, re-
 compute-release.Tests.ps1                        25,0s    7 tests   <- SLOW, re-measured 2026-08-06
 docs-audit.Tests.ps1                            130,0s   80 tests   <- SLOW, re-measured 2026-08-06
 drain-knowledge.Tests.ps1                        40,5s    8 tests   <- SLOW, re-measured 2026-08-06
-drain-lib.Tests.ps1                               4,2s   29 tests   <- FAST, re-measured 2026-08-24 WARM
+drain-lib.Tests.ps1                               4,2s   36 tests   <- FAST, re-measured 2026-08-24 WARM.
+                                                                      COUNT 29 -> 36 on 2026-08-28 (AGY-TEST-AUDIT
+                                                                      covered the output-manifest producer).
   (cold 6,1s) after the test-audit closure added 2 tests and strengthened 3.
 generate-cheatsheet-literals.Tests.ps1           41,6s   18 tests   <- SLOW, NEW 2026-08-16 (14e): the
                                                                       cheatsheet-literal generator's pinning

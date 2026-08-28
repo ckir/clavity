@@ -136,6 +136,42 @@ public sealed class DriverCheatsheetTests : IDisposable
         Assert.Equal(DriverCheatsheet.BaselineFloor, core);
     }
 
+    // AGY-TEST-AUDIT 2026-08-28. The classic side asserts this string's CONTENT
+    // (driver_cheatsheet.rs degraded_warning_mentions_floor, "baseline floor"); the dotnet side did not.
+    // The only C# row that named the const at all, AgyAskIntegrationTests.cs:426, compares it against
+    // ITSELF inside the delivered block - so it pins PLACEMENT and is content-tautological: rewrite the
+    // const to "WARNING: x" and that row still passes while the Rust row goes red. Pair parity restored.
+    [Fact]
+    public void DegradedWarningPrefix_mentions_the_baseline_floor()
+    {
+        Assert.Contains("baseline floor", DriverCheatsheet.DegradedWarningPrefix.ToLowerInvariant());
+    }
+
+    // AGY-TEST-AUDIT 2026-08-28. driver_cheatsheet.rs:113 says the two variants' warning strings are "kept
+    // byte-identical", then concedes in the next sentence that "the two must be edited together by hand".
+    // MEASURED: nothing in the repository read both, so that invariant was prose with no enforcement - the
+    // shape this project keeps paying for, where the claim outlives the property and the next reader folds
+    // against it believing the mechanism exists. This is the missing oracle. It reads the classic literal
+    // rather than restating it, so the pin cannot drift by being edited here.
+    [Fact]
+    public void DegradedWarningPrefix_matches_the_classic_literal()
+    {
+        var rust = File.ReadAllText(ClassicCheatsheetSourcePath());
+        var m = System.Text.RegularExpressions.Regex.Match(
+            rust, @"pub fn degraded_warning\(\)[^""]*""([^""]*)""");
+        Assert.True(m.Success,
+            "could not locate the classic degraded_warning() literal; if that function was renamed this pin must be REPOINTED, not deleted");
+        Assert.Equal(DriverCheatsheet.DegradedWarningPrefix, m.Groups[1].Value);
+    }
+
+    // Sibling of CoreSourcePath below: clavity/clavity-dotnet/tests/Clavity.Ls.Tests -> 3 dirs up == repo root.
+    private static string ClassicCheatsheetSourcePath([System.Runtime.CompilerServices.CallerFilePath] string? thisFile = null)
+    {
+        var dir = Path.GetDirectoryName(thisFile)!;
+        var repoRoot = Path.GetFullPath(Path.Combine(dir, "..", "..", ".."));
+        return Path.Combine(repoRoot, "clavity-classic", "src", "driver_cheatsheet.rs");
+    }
+
     // Locate agy-autotrain/knowledge/driver-cheatsheet.core.md via THIS test's compile-time source path
     // (robust to the test's runtime working dir). This file lives at
     // clavity/clavity-dotnet/tests/Clavity.Ls.Tests/DriverCheatsheetTests.cs -> 3 dirs up == repo root.

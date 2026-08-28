@@ -109,4 +109,86 @@ Describe "check-cheatsheet-budget.ps1" {
         & pwsh -NoProfile -File $script:Script
         $LASTEXITCODE | Should -Be 0 -Because 'agy-curate/SKILL.md states this budget; an unenforced number is how it drifted to 4x before'
     }
+
+    # -CheckCombined WAS ENTIRELY UNCOVERED UNTIL AGY-TEST-AUDIT 2026-08-28. Every row above stops at the
+    # FLOOR budget, so the whole combined branch - the one agy-curate/SKILL.md now instructs a curator to
+    # RUN and read a number out of - could have been broken by any edit with the suite staying green. It
+    # exists because the prose figure it replaced had already rotted twice; a live measurement that nothing
+    # measures is the same failure one level down.
+    #
+    # Every row here passes -GrowthPath explicitly except the override row, which is the point of that row:
+    # left to itself the script resolves the growth file under the USER PROFILE, and a suite that reads the
+    # developer's real runtime file is not hermetic and would answer differently on another machine.
+    Context '-CheckCombined' {
+        It 'sums floor + separator + growth the way the readers do' {
+            $growth = Join-Path $script:Tmp 'g.md'
+            [System.IO.File]::WriteAllBytes($script:File, [byte[]](, [byte]0x78 * 100))   # 100 x 'x'
+            [System.IO.File]::WriteAllBytes($growth,      [byte[]](, [byte]0x79 * 50))    # 50 x 'y'
+            $out = & pwsh -NoProfile -File $script:Script -Path $script:File -CheckCombined -GrowthPath $growth 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 0
+            # The ARITHMETIC, not merely the exit code: floor 100 + separator 2 + growth 50 = 152.
+            $out | Should -Match 'combined 152B'
+            $out | Should -Match 'floor 100B \+ sep 2B \+ growth 50B'
+        }
+
+        It 'FAILS when floor + growth exceed the combined cap, and says the binary drops GROWTH silently' {
+            $growth = Join-Path $script:Tmp 'g.md'
+            [System.IO.File]::WriteAllBytes($script:File, [byte[]](, [byte]0x78 * 100))
+            [System.IO.File]::WriteAllBytes($growth,      [byte[]](, [byte]0x79 * 50))
+            $out = & pwsh -NoProfile -File $script:Script -Path $script:File -CheckCombined -GrowthPath $growth -CombinedMaxBytes 100 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 1
+            # The message is load-bearing: over this cap the runtime drops GROWTH with only a stderr line,
+            # so this gate is the only thing that tells anyone. MEASURED live once - the accumulated header
+            # was inert for days at 16,803B against a 16,384B cap and nothing surfaced it.
+            $out | Should -Match 'DROPS GROWTH SILENTLY'
+        }
+
+        # THE ROW THAT JUSTIFIES THE WHOLE BRANCH. The readers decode LOSSILY, so each invalid byte becomes
+        # U+FFFD - three bytes where one sat on disk. A gate counting disk bytes therefore UNDER-reports,
+        # which is the dangerous direction: it certifies a budget the runtime then breaks. Two bytes on
+        # disk (0x41 0xFF) must be counted as four ('A' plus a three-byte replacement character).
+        It 'counts a lossily-decoded invalid byte as three, not one' {
+            $growth = Join-Path $script:Tmp 'g.md'
+            [System.IO.File]::WriteAllBytes($script:File, [byte[]](, [byte]0x78 * 100))
+            [System.IO.File]::WriteAllBytes($growth, [byte[]]@(0x41, 0xFF))
+            (Get-Item $growth).Length | Should -Be 2 -Because 'the fixture must be two bytes ON DISK, or this row is not testing the decode'
+            $out = & pwsh -NoProfile -File $script:Script -Path $script:File -CheckCombined -GrowthPath $growth 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 0
+            $out | Should -Match 'growth 4B' -Because 'a disk count would say 2B and certify room the runtime does not have'
+        }
+
+        # The other direction of the same mirror: Trim() removes trailing whitespace, so a disk count
+        # OVER-reports. Six bytes on disk, three counted.
+        It 'TRIMS trailing whitespace off the growth the way the readers do' {
+            $growth = Join-Path $script:Tmp 'g.md'
+            [System.IO.File]::WriteAllBytes($script:File, [byte[]](, [byte]0x78 * 100))
+            [System.IO.File]::WriteAllBytes($growth, [byte[]]@(0x61, 0x62, 0x63, 0x0A, 0x0A, 0x20))  # "abc\n\n "
+            (Get-Item $growth).Length | Should -Be 6 -Because 'six bytes on disk, or this row is not testing the trim'
+            $out = & pwsh -NoProfile -File $script:Script -Path $script:File -CheckCombined -GrowthPath $growth 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 0
+            $out | Should -Match 'growth 3B'
+        }
+
+        # The REMAINING figure is what a curator actually sizes a drain against, so it is the number most
+        # worth pinning: cap minus floor minus separator, and NOT minus the current growth.
+        It 'reports REMAINING as the cap minus the floor and the separator' {
+            $growth = Join-Path $script:Tmp 'g.md'
+            [System.IO.File]::WriteAllBytes($script:File, [byte[]](, [byte]0x78 * 100))
+            [System.IO.File]::WriteAllBytes($growth,      [byte[]](, [byte]0x79 * 50))
+            $out = & pwsh -NoProfile -File $script:Script -Path $script:File -CheckCombined -GrowthPath $growth -CombinedMaxBytes 1000 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 0
+            $out | Should -Match 'REMAINING GROWTH BUDGET = 898B'
+        }
+
+        # The default-resolution branch: with no -GrowthPath the script must resolve the growth file the way
+        # the binaries do - the CLAVITY_GOLDEN_HEADER override DIRECTORY first. Untested, this branch could
+        # silently read nothing and report a full budget forever, which is indistinguishable from a pass.
+        It 'honours the CLAVITY_GOLDEN_HEADER override directory when no -GrowthPath is given' {
+            [System.IO.File]::WriteAllBytes($script:File, [byte[]](, [byte]0x78 * 100))
+            [System.IO.File]::WriteAllBytes((Join-Path $script:Tmp 'driver-cheatsheet.growth.md'), [byte[]](, [byte]0x79 * 50))
+            $out = & pwsh -NoProfile -Command "`$env:CLAVITY_GOLDEN_HEADER = '$($script:Tmp)'; & '$($script:Script)' -Path '$($script:File)' -CheckCombined" 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 0
+            $out | Should -Match 'growth 50B' -Because 'the override directory must be consulted; 0B here means the branch resolved somewhere else and measured nothing'
+        }
+    }
 }

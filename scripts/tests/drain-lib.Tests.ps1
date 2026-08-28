@@ -41,6 +41,95 @@ Describe "drain-lib primitives" {
     }
 
 
+    # THE OUTPUT MANIFEST PRODUCER, UNCOVERED UNTIL AGY-TEST-AUDIT 2026-08-28. abort-drain.Tests.ps1 tests
+    # the CONSUMER, but against `.outputs.txt` fixtures it hand-writes itself - so producer and consumer
+    # were each tested against a different idea of the format and nothing compared them. That is the
+    # classic contract gap: both suites stay green while the two halves drift apart. The manifest is a
+    # TRUST BOUNDARY (abort-drain deletes every path it names via `git clean -fd`), which is why the
+    # round-trip row below matters more than any single-sided assertion.
+    Context "the drain output manifest (producer side)" {
+
+        # THE CONTRACT ROW. What the producer writes, the consumer must read back EXACTLY - not
+        # equivalently, not after normalisation. This is the only row that spans both halves.
+        It "round-trips through the real consumer, path for path" {
+            $m = Get-DrainOutputManifestPath $script:Work 'RID1'
+            $paths = @('docs/agy-drain-log.md', 'agy-autotrain/docs/fix-the-tool-backlog/some-slug.md')
+            Write-DrainOutputManifest -ManifestPath $m -Paths $paths
+            $read = @(Get-DrainOutputManifestEntries $m)
+            $read | Should -Be $paths
+        }
+
+        # The empty set is a VALID manifest meaning "this run created nothing new", and it must stay
+        # distinguishable from an ABSENT manifest, which means "this run predates the feature" and sends
+        # abort-drain down a conservative fallback. Collapse the two and abort-drain silently changes mode.
+        It "writes a 0-byte manifest for an empty set, which is NOT the same as no manifest" {
+            $m = Get-DrainOutputManifestPath $script:Work 'RID2'
+            Write-DrainOutputManifest -ManifestPath $m -Paths @()
+            Test-Path $m | Should -BeTrue -Because 'an empty run must still leave a manifest, or abort-drain reads it as a legacy run'
+            (Get-Item $m).Length | Should -Be 0
+            @(Get-DrainOutputManifestEntries $m).Count | Should -Be 0
+        }
+
+        # LF and no BOM, matching every other write in this lib; and the atomic tmp+rename must leave
+        # nothing behind. A stray .tmp beside the manifest would be an untracked file in the very tree the
+        # drain's pristine-tree check inspects.
+        # TWO paths, deliberately. A single-element -join emits no separator at all, so a one-path fixture
+        # cannot see the separator change from LF to CRLF - MEASURED during this audit's own mutation pass,
+        # where a CRLF mutant left the one-path version of this row GREEN. The terminator and the separator
+        # are different bytes and only a multi-entry manifest exercises both.
+        It "writes LF with no BOM and leaves no .tmp behind" {
+            $m = Get-DrainOutputManifestPath $script:Work 'RID3'
+            Write-DrainOutputManifest -ManifestPath $m -Paths @('docs/agy-drain-log.md', 'docs/agy-verify-needed.md')
+            $bytes = [System.IO.File]::ReadAllBytes($m)
+            $bytes[0..2] | Should -Not -Be @(0xEF, 0xBB, 0xBF)
+            ($bytes -contains 0x0D) | Should -BeFalse -Because 'a CR would break the consumer''s line split and this repo has shipped that bug before'
+            $bytes[-1] | Should -Be 0x0A -Because 'each entry is terminated, not separated'
+            Test-Path ($m + '.tmp') | Should -BeFalse
+        }
+
+        # The stated reason for the .outputs.txt extension: the manifest sits beside the staging snapshot
+        # and must never be picked up as one. If it did, a drain would try to parse its own bookkeeping.
+        It "names the manifest so it cannot match the staging-file glob" {
+            $m = Get-DrainOutputManifestPath $script:Work 'RID4'
+            [System.IO.Path]::GetFileName($m) | Should -BeLike 'agy-observations.staging.RID4.*'
+            [System.IO.Path]::GetFileName($m) | Should -Not -BeLike 'agy-observations.staging.*.md'
+        }
+
+        Context "Get-UntrackedDrainOutputFiles (asks git, never the curator)" {
+            BeforeEach {
+                $script:Repo = Join-Path $script:Work 'repo'
+                New-Item -ItemType Directory -Path (Join-Path $script:Repo 'docs') -Force | Out-Null
+                New-Item -ItemType Directory -Path (Join-Path $script:Repo 'agy-autotrain/docs/fix-the-tool-backlog') -Force | Out-Null
+                & git -C $script:Repo init -q 2>$null | Out-Null
+            }
+
+            It "reports a new untracked drain output, repo-relative with forward slashes" {
+                Set-Content -Path (Join-Path $script:Repo 'docs/agy-drain-log.md') -Value 'x'
+                @(Get-UntrackedDrainOutputFiles $script:Repo) | Should -Contain 'docs/agy-drain-log.md'
+            }
+
+            It "does NOT report a file outside the owned output paths" {
+                Set-Content -Path (Join-Path $script:Repo 'docs/unrelated.md') -Value 'x'
+                @(Get-UntrackedDrainOutputFiles $script:Repo) | Should -Not -Contain 'docs/unrelated.md'
+            }
+
+            # THE QUOTING ROW. Under the default core.quotepath, git C-QUOTES any path with non-ASCII
+            # bytes, so ls-files returns a name wrapped in double quotes with backslash escapes. Left
+            # unwrapped, the manifest records a path that matches nothing and abort-drain then refuses to
+            # clean a file it created. This repo has already eaten the identical bug once, in
+            # check-knowledge-store.ps1, where quoted paths made a DELETED rule read as "still present".
+            It "unwraps a git-quoted non-ASCII path instead of recording the quotes" {
+                $name = [string][char]0x00FC + 'nicode-slug.md'   # u-umlaut: forces git to C-quote
+                Set-Content -Path (Join-Path $script:Repo "agy-autotrain/docs/fix-the-tool-backlog/$name") -Value 'x'
+                $got = @(Get-UntrackedDrainOutputFiles $script:Repo)
+                $hit = @($got | Where-Object { $_ -like '*fix-the-tool-backlog/*' })
+                $hit.Count | Should -Be 1 -Because 'the file is inside an owned output path, so git must report it'
+                $hit[0] | Should -Not -Match '"' -Because 'a recorded path carrying git''s quote characters matches nothing downstream'
+                $hit[0] | Should -Not -Match '\\\\' -Because 'nor its backslash escapes'
+            }
+        }
+    }
+
     It "counts only ^- [ pending bullets, immune to a ## in observation text (F17)" {
         Set-Content -Path $script:Inbox -Value @(
             '# inbox', '', '## Pending',
