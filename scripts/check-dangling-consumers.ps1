@@ -88,8 +88,19 @@ if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).
 # .FullName is always native - so $repo would be longer than the paths derived from it and every
 # .Substring($repo.Length) below would throw. MEASURED 2026-08-28: .Path keeps the prefix and the
 # subtraction throws MethodInvocationException; .ProviderPath returns the bare path and both agree in the
-# ordinary case. No current caller passes such a path, so this is hardening rather than a live defect -
-# but it is one word and it also covers the pre-existing subtraction that builds the reported File column.
+# ordinary case.
+#
+# AND THE QUIETER CASE, WHICH IS THE WORSE ONE. For a repo rooted on a PSDrive, .Path returns the DRIVE
+# spelling while .FullName returns the underlying location - MEASURED, `ZZ:\` against
+# `C:\Users\...\psd-<guid>\sub`, so .FullName does not even START with .Path. The subtraction then does
+# not throw at all: it chops the DRIVE SPELLING LENGTH off an unrelated string and yields a MANGLED
+# relative path, which the exclusions below then match against. A crash is loud; this answers wrongly in
+# silence, and it is the reason to prefer .ProviderPath over merely guarding the prefix case.
+# The change also covers the pre-existing subtraction that builds the reported File column.
+# NOT SEPARATELY TESTED, deliberately: the suite invokes this gate in a CHILD pwsh, and a PSDrive created
+# in the test process does not exist there, so the case is unreachable through the harness. It needs no
+# row of its own - the guard is the .ProviderPath CHOICE, and the provider-prefix row already pins it:
+# the single mutant that would reintroduce the PSDrive bug (.ProviderPath -> .Path) reds that row.
 $repo = (Resolve-Path -LiteralPath $RepoRoot).ProviderPath
 
 # The reader sources scanned for runtime filename constants.
