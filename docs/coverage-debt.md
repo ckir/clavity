@@ -538,3 +538,30 @@ here, because it needs a new registered suite and this batch's scope is the seve
   satisfied. **Re-check trigger:** any change to the wait loop's limit-label branch, or the arrival of a
   mockable clock (`TimeProvider`) in `AgyView`, which would make the case constructible and retire this
   entry outright.
+
+### L. The PSDrive-rooted repository root cannot cross the test harness's process boundary (AGY-TEST-AUDIT 2026-08-28)
+
+- **Behaviour:** `scripts/check-dangling-consumers.ps1` resolves its root with
+  `(Resolve-Path -LiteralPath $RepoRoot).ProviderPath`. `.ProviderPath` rather than `.Path` matters for two
+  inputs: a provider-prefixed argument (`Microsoft.PowerShell.Core\FileSystem::C:\...`), and a repository
+  rooted on a **PSDrive**. The second is the worse one. MEASURED: for a PSDrive `ZZ:`, `.Path` returns
+  `ZZ:\` while `Get-ChildItem`'s `.FullName` returns the underlying `C:\Users\...\psd-<guid>\sub`, so
+  `.FullName` does not even START with `.Path`. The subtraction that derives each repo-relative path then
+  does not throw - it removes the drive spelling's LENGTH from an unrelated string and yields a MANGLED
+  relative path, which the exclusion filter matches against. A silent wrong answer, not a crash.
+- **Why uncovered:** the suite invokes the gate in a CHILD `pwsh` process (`Invoke-Check` runs
+  `pwsh -NoProfile -File`). A PSDrive created in the test process does not exist in that child, so the case
+  is not constructible through this harness at all. Testing it would mean either dot-sourcing a script that
+  has a `param` block and a main body, or standing up a second process that creates the drive itself -
+  both of which test the harness more than the gate.
+- **Compensation:** the guard is the `.ProviderPath` CHOICE, and that choice is already pinned. The row
+  `'does not crash when handed a PROVIDER-PREFIXED repository root'` in
+  `scripts/tests/check-dangling-consumers.Tests.ps1` exercises the same accessor through the constructible
+  input, and the single mutant that would reintroduce the PSDrive defect - reverting `.ProviderPath` to
+  `.Path` - is exactly the mutant that reds it. MEASURED 2026-08-28: that revert gives 10 passed / 1 failed,
+  the failure being precisely that row. So there is no mutant that reopens the PSDrive case while leaving
+  the suite green.
+- **Anchor (its disappearance voids this entry):** `.ProviderPath` on the `$repo` assignment, together with
+  the provider-prefix row that pins it. If either goes, this is a live gap again, not a satisfied one.
+  **Re-check trigger:** any change to how `$repo` is resolved, or a harness change that stops spawning a
+  child process - which would make the PSDrive case constructible and retire this entry outright.
