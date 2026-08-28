@@ -220,9 +220,35 @@ Describe 'check-knowledge-store' {
         Add-Content -Path (Join-Path $d 'rules/INDEX.md') -Value ("- [u](" + [char]0x00FC + "ber.md) - u")
         & git -C $d add -A 2>$null; & git -C $d commit -q -m 'add an odd name' 2>$null
         Remove-Item -LiteralPath $odd
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/INDEX.md') -Value "# store`n`n- [alpha](alpha.md) - a`n- [beta](beta.md) - b`n"
+        # THE DELETION MUST BE COMMITTED, and a mutation audit is what proved it. An earlier version of
+        # this row deleted the file from disk only, so HEAD's TREE still held it and `ls-tree` supplied the
+        # baseline - meaning the row passed without ever exercising the `git log` history path this test
+        # exists to guard. MEASURED: removing core.quotePath=false from the log read turned NO test red.
+        # Committing the deletion removes it from the tree, so only history can see it, and the quoted-path
+        # bug is then the only thing standing between this row and a false pass.
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'delete the odd name' 2>$null
         $out = Invoke-Check $d
         $LASTEXITCODE | Should -Be 1
         $out | Should -Match 'DELETED'
+        Remove-Item -Recurse -Force $d
+    }
+
+    # CAPSTONE R5 - added because a MUTATION AUDIT proved the guard had NO test: disabling the non-ASCII
+    # filename check left the whole suite green. The check shipped in round 4 with nothing covering it,
+    # which is precisely the question the guard law says to ask - "which test goes red if I delete this,
+    # or none?" - and the answer was none.
+    #
+    # Note this row keeps the file PRESENT. The sibling row about a non-ASCII name deletes it and asserts
+    # DELETED, so it exercises the git-history read instead; between them the two directions are covered.
+    It 'FAILS a rule whose FILENAME is not ASCII, while it is still present' {
+        $d = New-StoreFixture
+        $odd = Join-Path $d ("rules/" + [char]0x00FC + "ber.md")
+        [System.IO.File]::WriteAllText($odd, "# u`n`n- RULE.`n")
+        Add-Content -Path (Join-Path $d 'rules/INDEX.md') -Value ("- [u](" + [char]0x00FC + "ber.md) - u")
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'NON-ASCII NAME'
         Remove-Item -Recurse -Force $d
     }
 

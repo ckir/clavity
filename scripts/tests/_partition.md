@@ -624,15 +624,17 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
 check-injected-context.Tests.ps1                 91,5s  153 tests   <- SLOW as of 2026-08-24; was FAST -
-check-knowledge-store.Tests.ps1                  155,5s  20 tests   <- SLOW. Each case builds a THROWAWAY
+check-knowledge-store.Tests.ps1                  163,0s  21 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       GIT REPO: the deletion check compares
                                                                       against the ref's HISTORY and cannot be
                                                                       exercised without one. 8 -> 12 tests on
                                                                       2026-08-28, adding the committed-
                                                                       deletion and content-obliteration rows
                                                                       a capstone round found missing.
-                                                                      8 -> 12 -> 14 -> 17 -> 20 on the
-                                                                      SAME day across capstone rounds 1-4.
+                                                                      8 -> 21 across capstone rounds
+                                                                      1-5. The last row was added because a
+                                                                      MUTATION AUDIT proved a guard had NO
+                                                                      test covering it at all.
                                                                       Two rows CLONE (shallow + full), which
                                                                       is the bulk of the cost.
                                                                       RE-MEASURED 2026-08-28.
