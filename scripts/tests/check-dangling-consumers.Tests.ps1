@@ -22,6 +22,16 @@ BeforeAll {
         New-Item -ItemType Directory -Path (Join-Path $d 'clavity-classic/src') -Force | Out-Null
         $d
     }
+    # The same fixture tree, but nested under a directory whose NAME is a segment the gate excludes, so the
+    # fixture's ABSOLUTE path carries that segment while the tree itself is healthy. New-Tree above is its
+    # paired clean-path control: the two differ in the checkout path and in nothing else.
+    function New-TreeUnder([string]$Segment) {
+        $outer = Join-Path ([System.IO.Path]::GetTempPath()) ("clv-dangling-" + [guid]::NewGuid().ToString('N'))
+        $d = Join-Path (Join-Path $outer $Segment) 'repo'
+        New-Item -ItemType Directory -Path (Join-Path $d 'clavity-dotnet/src/Clavity.Ls') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $d 'clavity-classic/src') -Force | Out-Null
+        $d
+    }
     function Set-Reader([string]$Root, [string]$Body) {
         Set-Content -NoNewline -Path (Join-Path $Root 'clavity-dotnet/src/Clavity.Ls/Thing.cs') -Value $Body
     }
@@ -130,6 +140,27 @@ Describe 'check-dangling-consumers' {
         $LASTEXITCODE | Should -Be 0
         $out | Should -Match 'no runtime filename constants found'
         Remove-Item -Recurse -Force $d
+    }
+
+    # THE ABSOLUTE-PATH TRAP, AND IT IS A RECURRENCE OF A CAPSTONE FINDING IN THIS SAME FILE. Round 4 found
+    # the then-current test-directory exclusion matching the ABSOLUTE path, so a clone into any directory
+    # containing 'tests' failed 100% red on a healthy tree. The round-5 redesign deleted that exclusion but
+    # left the $searchable filter matching $_.FullName, which is equally absolute - so a checkout under any
+    # bin/target/obj/node_modules segment excludes EVERY file, $declared comes back empty, and every
+    # consumer is reported dangling. MEASURED 2026-08-28 with a paired control: byte-identical fixture
+    # trees, real gate, exit 0 at a clean path and exit 1 one directory deeper under 'bin'.
+    #
+    # This is also why the live-tree row below cannot stand alone: it passes only because this repository
+    # happens to be cloned somewhere with no excluded segment in its path. That makes it a hostage to the
+    # checkout location rather than an assertion about the gate.
+    It 'is not fooled by an excluded segment in the ABSOLUTE checkout path' {
+        $d = New-TreeUnder 'bin'
+        Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
+        Set-Content -Path (Join-Path $d 'writer-skill.md') -Value "The curator writes it. $($script:Marker) `"thing.growth.md`""
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match 'OK - 1 runtime filename constant'
+        Remove-Item -Recurse -Force (Split-Path (Split-Path $d -Parent) -Parent)
     }
 
     # The live-tree control. It must not cry wolf on the real repository, and it is the row that goes red

@@ -122,9 +122,18 @@ if ($consts.Count -eq 0) {
     exit 0
 }
 
+# The exclusions match the path RELATIVE to the repository root, never $_.FullName. An absolute path
+# carries whatever directory the checkout happens to sit under, so matching it excluded EVERY file in a
+# repository cloned beneath a directory named bin/target/obj/node_modules: $declared came back empty and
+# the gate reported every consumer dangling on a perfectly healthy tree. MEASURED 2026-08-28 with a paired
+# control - byte-identical fixtures, exit 0 at a clean path and exit 1 one directory deeper under 'bin'.
+# That is capstone round 4's defect recurring in this same file: the test-directory exclusion round 5
+# deleted read the absolute path in exactly this way. The leading '/' anchors each segment so a directory
+# is matched only from the repo root down, and it is why this is not merely a performance filter - the
+# under-inclusive direction is a false ALARM that reddens CI, not a slower scan.
 $searchable = @(Get-ChildItem -LiteralPath $repo -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object {
-        $n = $_.FullName.Replace('\', '/')
+        $n = '/' + $_.FullName.Substring($repo.Length).TrimStart('\', '/').Replace('\', '/')
         $n -notmatch '/\.git/' -and $n -notmatch '/\.clavity/' -and
         $n -notmatch '/target/' -and $n -notmatch '/bin/' -and $n -notmatch '/obj/' -and
         $n -notmatch '/node_modules/' -and $_.Length -lt 2MB
