@@ -20,6 +20,14 @@ BeforeAll {
         & git -C $d commit -q -m baseline 2>$null
         $d
     }
+    # Add-Content appends with CRLF on Windows, which trips this gate's own LF hygiene check and makes a
+    # fixture fail for a reason the row is not about. MEASURED: the space-in-filename row failed at
+    # BASELINE for exactly that, while the gate passed the identical scenario when run by hand. Fixture
+    # noise that looks like a real red is worse than no fixture at all - it sends you debugging the code.
+    function Add-IndexLine([string]$Repo, [string]$Line) {
+        $p = Join-Path $Repo 'rules/INDEX.md'
+        [System.IO.File]::WriteAllText($p, [System.IO.File]::ReadAllText($p) + $Line + "`n")
+    }
     function Invoke-Check([string]$Repo) {
         & pwsh -NoProfile -File $script:Script -RepoRoot $Repo -StoreDir 'rules' 2>&1 | Out-String
     }
@@ -45,6 +53,7 @@ Describe 'check-knowledge-store' {
         $out = Invoke-Check $d
         $LASTEXITCODE | Should -Be 1
         $out | Should -Match 'DELETED: beta\.md'
+        Remove-Item -Recurse -Force $d   # this row alone leaked its fixture; every sibling cleans up
     }
 
     # CAPSTONE R1 / F2 - THE ROW THE ORIGINAL SUITE WAS MISSING, and its absence is what let the gate ship
@@ -217,7 +226,7 @@ Describe 'check-knowledge-store' {
         $d = New-StoreFixture
         $odd = Join-Path $d ("rules/" + [char]0x00FC + "ber.md")
         [System.IO.File]::WriteAllText($odd, "# u`n`n- RULE.`n")
-        Add-Content -Path (Join-Path $d 'rules/INDEX.md') -Value ("- [u](" + [char]0x00FC + "ber.md) - u")
+        Add-IndexLine $d ("- [u](" + [char]0x00FC + "ber.md) - u")
         & git -C $d add -A 2>$null; & git -C $d commit -q -m 'add an odd name' 2>$null
         Remove-Item -LiteralPath $odd
         Set-Content -NoNewline -Path (Join-Path $d 'rules/INDEX.md') -Value "# store`n`n- [alpha](alpha.md) - a`n- [beta](beta.md) - b`n"
@@ -245,10 +254,24 @@ Describe 'check-knowledge-store' {
         $d = New-StoreFixture
         $odd = Join-Path $d ("rules/" + [char]0x00FC + "ber.md")
         [System.IO.File]::WriteAllText($odd, "# u`n`n- RULE.`n")
-        Add-Content -Path (Join-Path $d 'rules/INDEX.md') -Value ("- [u](" + [char]0x00FC + "ber.md) - u")
+        Add-IndexLine $d ("- [u](" + [char]0x00FC + "ber.md) - u")
         $out = Invoke-Check $d
         $LASTEXITCODE | Should -Be 1
         $out | Should -Match 'NON-ASCII NAME'
+        Remove-Item -Recurse -Force $d
+    }
+
+    # CAPSTONE R6 - the FALSE-ALARM direction of the orphan check. MEASURED: the old link pattern
+    # `[A-Za-z0-9_.-]+\.md` did not match `my rule.md`, so a rule that WAS correctly linked from the index
+    # was reported as an ORPHAN. Nothing forbids a space in a rule filename, and a checker that cries wolf
+    # is ignored within a week. This is the row that goes red if the pattern is ever narrowed again.
+    It 'does NOT report an orphan for a linked rule whose filename contains a space' {
+        $d = New-StoreFixture
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/my rule.md') -Value "# my rule`n`n- RULE.`n"
+        Add-IndexLine $d '- [my rule](my rule.md) - m'
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match '3 rule\(s\)'
         Remove-Item -Recurse -Force $d
     }
 
@@ -266,7 +289,7 @@ Describe 'check-knowledge-store' {
     It 'does NOT count a link that appears only inside a code span' {
         $d = New-StoreFixture
         Set-Content -NoNewline -Path (Join-Path $d 'rules/gamma.md') -Value "# gamma`n`n- GAMMA.`n"
-        Add-Content -Path (Join-Path $d 'rules/INDEX.md') -Value "`nExample of the link syntax: ``[gamma](gamma.md)``"
+        Add-IndexLine $d "Example of the link syntax: ``[gamma](gamma.md)``"
         $out = Invoke-Check $d
         $LASTEXITCODE | Should -Be 1
         $out | Should -Match 'ORPHAN: gamma\.md'

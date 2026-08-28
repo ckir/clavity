@@ -1,7 +1,13 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Fail when a binary READS a runtime filename that nothing in the repository DECLARES it produces.
+  Fail when a binary reads a runtime filename FROM A NAMED CONSTANT that nothing in the repository
+  DECLARES it produces.
+
+  The "from a named constant" clause is not padding - see WHAT THIS DOES NOT COVER below. An earlier
+  version of this line said simply "when a binary READS a runtime filename", which claimed a coverage the
+  check does not have, and overclaiming in this header has already produced one weaker-than-documented
+  gate in this file's history.
 
 .DESCRIPTION
   A "dangling consumer" is a reader pointed at a filename that has no producer. It is invisible to every
@@ -29,8 +35,21 @@
   Each fix was a smaller epicycle on one mistake - inferring intent from unstructured text by regex
   proximity. Four rounds of that IS the evidence. The marker asks the producer to state the fact instead
   of asking this script to deduce it, turning a semantic guess into an exact string match. It also deleted
-  the entire test-file exclusion: a test does not carry a production declaration, so no rule is needed to
-  recognise one - and every exclusion rule this gate ever had became a defect of its own.
+  the entire test-file exclusion, because every exclusion rule this gate ever had became a defect of its
+  own. That deletion is a TRADE, not a free win: a test CAN contain a marker - this file assembles its own
+  from a char code precisely so its suite does not vouch for the filenames it discusses, which is proof
+  that the case is real rather than theoretical. The residual assumption is stated below; an earlier draft
+  of this paragraph claimed no rule was needed at all, which contradicted it two paragraphs later.
+
+  WHAT THIS DOES NOT COVER, and the gap is structural rather than an oversight. Only a filename bound to a
+  NAMED CONSTANT in one of the scanned sources is checked. A reader that computes its path, or names the
+  file inline, has no constant to extract - so it is not checked and the gate reports OK. That is a false
+  NEGATIVE, which is the worse direction: under the previous design the same shape produced a false ALARM,
+  which is loud. MEASURED 2026-08-28, the tree contains the SHAPE (two manuals named in a tuple array in
+  EscalationIndex.cs, and a joined "SKILL.md" in main.rs) but no live instance of the DEFECT - both are
+  written or existence-checked by the same code that names them. Tracked as debt rather than closed,
+  because the honest fixes are either a reader-side marker or a real analyzer, and neither is worth its
+  cost while the live count is zero. Re-check that count before relying on this gate for a new reader.
 
   WHAT THIS PROVES, AND WHAT IT DOES NOT. The marker is a DECLARATION, not a proven write - nothing here
   executes the writer or watches a filesystem, and a file that declares it may still fail to write. The

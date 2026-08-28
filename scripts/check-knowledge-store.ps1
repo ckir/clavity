@@ -142,7 +142,14 @@ if (-not (Test-Path -LiteralPath $indexPath)) {
     # ignored within a week - the same reason .mlc.toml scopes itself so tightly.
     $stripped = [regex]::Replace($indexText, '`[^`]*`', ' ')
     $stripped = [regex]::Replace($stripped, '(?s)```.*?```', ' ')
-    $linked = @([regex]::Matches($stripped, '\(([A-Za-z0-9_.-]+\.md)\)') | ForEach-Object { $_.Groups[1].Value })
+    # `[^)]+` rather than an allow-list of name characters. MEASURED: the old class `[A-Za-z0-9_.-]+`
+    # failed to match `my rule.md` - a plain SPACE - and any non-ASCII name, so a rule that WAS correctly
+    # linked from the index got reported as an ORPHAN. That is the false-alarm direction, and a checker
+    # that cries wolf is ignored within a week. Nothing forbids a space in a rule filename.
+    # A link carrying a markdown TITLE - `(rule.md "Title")` - still does not match, under either pattern.
+    # Left alone deliberately: the store's index is generated with plain links, and widening far enough to
+    # parse titles is how a small regex becomes the heuristic pile this review already deleted once.
+    $linked = @([regex]::Matches($stripped, '\(([^)]+\.md)\)') | ForEach-Object { $_.Groups[1].Value })
     foreach ($f in $onDisk) {
         if ($f -eq 'INDEX.md') { continue }
         if ($linked -notcontains $f) {

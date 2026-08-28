@@ -252,6 +252,29 @@ Per-run audit reports are ephemeral and are NOT committed - they live under `.cl
   here; the gap is that nothing runs the branch.
 - **Raised:** 2026-08-26, AGY-CAPSTONE round 14, unrun-guard and stop-condition seats agreeing.
 
+### 11. `check-dangling-consumers.ps1` cannot see a reader that does not use a NAMED CONSTANT
+
+- **The gap:** the gate extracts runtime filenames by matching a constant declaration
+  (`const string X = "....md"` / `pub const X: &str = "....md"`). A reader that COMPUTES its path, or
+  names the file inline, yields no constant, so it is never checked and the gate reports OK.
+- **The direction that makes it matter:** this is a false NEGATIVE. Under the gate's previous
+  (heuristic) design the same shape produced a false ALARM, which is loud and self-correcting. A silent
+  pass is the failure mode a gate exists to prevent, so the trade is real and is recorded rather than
+  waved off.
+- **MEASURED 2026-08-28:** the tree contains the SHAPE but no live instance of the DEFECT. Two manuals
+  are named in a tuple array in `EscalationIndex.cs:16-17`, and `main.rs:786` joins `"SKILL.md"` - and in
+  both cases the same code that names the file also writes it or existence-checks it, so neither is a
+  dangling consumer. **Live count: zero.**
+- **The regression that would slip through:** a NEW reader added with a computed or inline path, pointed
+  at a file nothing produces. The gate would stay green and say so.
+- **Why deferred rather than closed:** the honest fixes are a reader-side marker (`@consumes`) or a real
+  analyzer. The first doubles the annotation burden for a class with no live instance; the second means
+  loading Roslyn, `syn`, and the PowerShell parser inside a gate whose own header demands the
+  seconds-range - and it still could not analyse the markdown skills that drive this system, so it would
+  fall back to a marker anyway. Reconsider when the live count stops being zero.
+- **Raised:** 2026-08-28, AGY-CAPSTONE round 6, after the round-5 redesign; the peer named the direction
+  and the driver measured the live count.
+
 ## Accepted-boundary ledger - deliberately uncovered, do NOT re-raise
 
 🔴 **Letters are assigned in CAPTURE order and are NOT alphabetically sorted - do not "tidy" them.**
