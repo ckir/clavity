@@ -163,6 +163,24 @@ Describe 'check-dangling-consumers' {
         Remove-Item -Recurse -Force (Split-Path (Split-Path $d -Parent) -Parent)
     }
 
+    # A PROVIDER-PREFIXED root must not crash the gate. Resolve-Path's .Path preserves such a prefix while
+    # Get-ChildItem's .FullName is always native, so $repo came out LONGER than the paths derived from it
+    # and every .Substring($repo.Length) threw. MEASURED 2026-08-28: with .Path the subtraction raises
+    # MethodInvocationException; with .ProviderPath the two agree. Raised by a capstone round whose stated
+    # trigger - "invoked from a non-FileSystem provider" - did NOT reproduce (from inside HKLM:\, .Path
+    # returns the bare path), but whose FIX was right for a different input. No caller passes this shape
+    # today, so this row guards hardening rather than a live defect; it exists because the failure mode is
+    # a crash rather than a wrong answer, and a crash in a gate reads as a broken build.
+    It 'does not crash when handed a PROVIDER-PREFIXED repository root' {
+        $d = New-Tree
+        Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
+        Set-Content -Path (Join-Path $d 'writer-skill.md') -Value "The curator writes it. $($script:Marker) `"thing.growth.md`""
+        $out = Invoke-Check ('Microsoft.PowerShell.Core\FileSystem::' + $d)
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match 'OK - 1 runtime filename constant'
+        Remove-Item -Recurse -Force $d
+    }
+
     # The live-tree control. It must not cry wolf on the real repository, and it is the row that goes red
     # if a future commit repoints a reader at an undeclared name.
     It 'is GREEN against the real repository' {

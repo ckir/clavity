@@ -81,6 +81,12 @@ Describe "drain-lib primitives" {
             $m = Get-DrainOutputManifestPath $script:Work 'RID3'
             Write-DrainOutputManifest -ManifestPath $m -Paths @('docs/agy-drain-log.md', 'docs/agy-verify-needed.md')
             $bytes = [System.IO.File]::ReadAllBytes($m)
+            # A capstone round called this line vacuous, on the theory that piping a collection into Should
+            # unwraps it and compares each byte against the whole right-hand array, which can never match.
+            # REFUTED BY MEASUREMENT 2026-08-28: fed a file that really does start EF BB BF, this assertion
+            # FAILS with "Expected @(239, 187, 191) to be different from the actual value, but got the same
+            # value". Pester compares the sliced collection as a whole here. Do not "fix" it into a
+            # single-byte compare; that would test less, not more.
             $bytes[0..2] | Should -Not -Be @(0xEF, 0xBB, 0xBF)
             ($bytes -contains 0x0D) | Should -BeFalse -Because 'a CR would break the consumer''s line split and this repo has shipped that bug before'
             $bytes[-1] | Should -Be 0x0A -Because 'each entry is terminated, not separated'

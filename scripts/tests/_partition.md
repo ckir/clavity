@@ -670,7 +670,7 @@ check-knowledge-store.Tests.ps1              163-252s  21 tests   <- SLOW. Each 
                                                                       Two rows CLONE (shallow + full), which
                                                                       is the bulk of the cost.
                                                                       RE-MEASURED 2026-08-28.
-check-dangling-consumers.Tests.ps1                58,4s  10 tests   <- SLOW. Each case builds a THROWAWAY
+check-dangling-consumers.Tests.ps1                58,4s  11 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       SOURCE TREE, and one row walks the REAL
                                                                       repository, so the cost is a full
                                                                       recursive read per case. MEASURED

@@ -83,7 +83,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
-$repo = (Resolve-Path -LiteralPath $RepoRoot).Path
+# .ProviderPath, never .Path. Both are the native path for every ordinary input, but a PROVIDER-PREFIXED
+# argument (`Microsoft.PowerShell.Core\FileSystem::C:\...`) survives into .Path while Get-ChildItem's
+# .FullName is always native - so $repo would be longer than the paths derived from it and every
+# .Substring($repo.Length) below would throw. MEASURED 2026-08-28: .Path keeps the prefix and the
+# subtraction throws MethodInvocationException; .ProviderPath returns the bare path and both agree in the
+# ordinary case. No current caller passes such a path, so this is hardening rather than a live defect -
+# but it is one word and it also covers the pre-existing subtraction that builds the reported File column.
+$repo = (Resolve-Path -LiteralPath $RepoRoot).ProviderPath
 
 # The reader sources scanned for runtime filename constants.
 $sourceGlobs = @('clavity-dotnet/src/Clavity.Ls/*.cs', 'clavity-classic/src/*.rs')
@@ -128,9 +135,17 @@ if ($consts.Count -eq 0) {
 # the gate reported every consumer dangling on a perfectly healthy tree. MEASURED 2026-08-28 with a paired
 # control - byte-identical fixtures, exit 0 at a clean path and exit 1 one directory deeper under 'bin'.
 # That is capstone round 4's defect recurring in this same file: the test-directory exclusion round 5
-# deleted read the absolute path in exactly this way. The leading '/' anchors each segment so a directory
-# is matched only from the repo root down, and it is why this is not merely a performance filter - the
+# deleted read the absolute path in exactly this way. This is not merely a performance filter: the
 # under-inclusive direction is a false ALARM that reddens CI, not a slower scan.
+#
+# WHAT THE LEADING '/' DOES, AND WHAT IT DELIBERATELY DOES NOT. It makes the FIRST segment matchable, so
+# a top-level `bin/` yields `/bin/...` and is caught like any nested one. It is NOT a `^` anchor, and must
+# not become one: these exclusions are meant to skip build output WHEREVER it sits, and the tree's build
+# output is nested (`clavity-dotnet/bin`, `clavity-dotnet/obj`, `clavity-classic/target`). MEASURED
+# 2026-08-28 on this repository - anchoring them with `^` takes the scan from 3.940 files to 40.006,
+# re-admitting 36.066 build artifacts. A capstone round proposed exactly that anchoring; it was rejected
+# on this measurement. An earlier wording of this paragraph said the '/' meant a directory "is matched
+# only from the repo root down", which reads as a `^` claim and is what invited the suggestion.
 $searchable = @(Get-ChildItem -LiteralPath $repo -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object {
         $n = '/' + $_.FullName.Substring($repo.Length).TrimStart('\', '/').Replace('\', '/')
