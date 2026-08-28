@@ -78,6 +78,15 @@ jobs:
         shell: pwsh
         run: pwsh -File scripts/check-register-hash-synced.ps1
 
+      - name: Deepen history for the knowledge-store gate
+        # actions/checkout is SHALLOW by default (fetch-depth 1), and the store gate's baseline is the
+        # ref's HISTORY. MEASURED on a real `git clone --depth 1`: a committed deletion is invisible and
+        # the gate reports every rule still present - a false statement. Without this the gate below is
+        # decoration. The script ALSO refuses to run against a shallow repo, so if this step is ever
+        # removed the gate fails loudly rather than silently passing.
+        run: git fetch --unshallow --quiet || git fetch --quiet --depth=2147483647
+        shell: bash
+
       - name: Knowledge store gate
         shell: pwsh
         # The store is the ONLY copy of the earned driver corpus outside one machine's runtime paths, so a

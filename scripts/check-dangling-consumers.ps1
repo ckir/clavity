@@ -121,6 +121,13 @@ function Test-IsProducerCandidate([string]$path) {
 $writeIndicator = '(?i)\b(write|writes|writing|written|publish(?:es|ed)?|curate-commit|Set-Content|Out-File|WriteAll\w*|fs::write|atomic(?:ally)?\s+rename|\.tmp\s*->)\b'
 $WriteProximityLines = 2
 
+# A NEGATED write is not a write. MEASURED 2026-08-28: the line "Note: we do NOT write thing.growth.md
+# here; the curator owns it" satisfied the producer check, so a comment DENYING a write counted as
+# declaring one - the proxy-versus-real-property shape for the third time in this review. "Failed to
+# write to X" in an error string is the same trap. Proximity is still a heuristic and this does not make
+# it a parser; it closes the specific inversion that was measured.
+$negationIndicator = '(?i)\b(not|never|no longer|cannot|can''t|don''t|does\s+not|do\s+not|failed|failure|unable|refus\w*|without|instead\s+of|rather\s+than)\b'
+
 function Test-NearWriteIndicator([string]$Text, [string]$Literal) {
     $lines = $Text -split "`r?`n"
     for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -128,7 +135,11 @@ function Test-NearWriteIndicator([string]$Text, [string]$Literal) {
         $lo = [math]::Max(0, $i - $WriteProximityLines)
         $hi = [math]::Min($lines.Count - 1, $i + $WriteProximityLines)
         for ($j = $lo; $j -le $hi; $j++) {
-            if ($lines[$j] -match $writeIndicator) { return $true }
+            if ($lines[$j] -notmatch $writeIndicator) { continue }
+            # The negation must be judged on the line carrying the indicator, not on the whole window:
+            # an unrelated "not" two lines away would otherwise veto a genuine writer.
+            if ($lines[$j] -match $negationIndicator) { continue }
+            return $true
         }
     }
     return $false

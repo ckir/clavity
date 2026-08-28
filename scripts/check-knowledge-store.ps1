@@ -91,6 +91,21 @@ if (@(& git -C $repo rev-parse --verify --quiet $BaselineRef 2>$null).Count -eq 
     Write-Host "check-knowledge-store: SKIP - baseline ref '$BaselineRef' does not resolve (a fresh repo has no HEAD)" -ForegroundColor DarkGray
     exit 0
 }
+
+# FAIL CLOSED ON A SHALLOW REPOSITORY. The header has claimed fail-closed behaviour since this gate was
+# written; until a capstone round measured it, the code did the opposite. MEASURED 2026-08-28 on a real
+# `git clone --depth 1`: a rule deleted in an earlier commit is invisible, because the commit that ADDED
+# it is not in the shallow history - and the gate then printed "all 2 that ever existed in HEAD's history
+# are still present", which is a false statement, not merely an unhelpful one.
+#
+# This matters because `actions/checkout` clones shallow BY DEFAULT, so the CI wiring added alongside this
+# check was certifying a store it structurally could not inspect. The workflow now passes fetch-depth: 0,
+# but a gate must not depend on its caller remembering that: anyone can invoke it anywhere.
+$isShallow = (& git -C $repo rev-parse --is-shallow-repository 2>$null) -join ''
+if ($isShallow -eq 'true') {
+    Write-Host "check-knowledge-store: FAIL: this is a SHALLOW repository, so the history baseline is incomplete and a committed deletion CANNOT be seen. Refusing to certify the store. Fetch full history (in GitHub Actions: actions/checkout with fetch-depth: 0)." -ForegroundColor Red
+    exit 1
+}
 $everExisted = @(& git -C $repo log --pretty=format: --name-only --diff-filter=A $BaselineRef -- $StoreDir 2>$null |
     Where-Object { $_ -and $_.Trim() })
 # Union with the ref's current tree: a store added in the very first commit of a shallow clone can be in
@@ -169,6 +184,31 @@ foreach ($f in $onDisk) {
     }
     if ($wasBytes -le 0) { continue }
     $kept = $bytes / $wasBytes
+    if ($kept -lt $ShrinkFloor) {
+        $text = [System.IO.File]::ReadAllText((Join-Path $abs $f))
+        # A DECLARED consolidation RE-BASELINES the high-water mark. Without this, a rule that was
+        # legitimately consolidated once is measured against its all-time peak forever, so ordinary later
+        # trims eventually trip the gate for no reason - a false alarm, and a checker that cries wolf is
+        # ignored within a week. Only revisions from the most recent DECLARED retirement onward count, so
+        # the mark still cannot be moved by a silent gutting, which is the property that matters.
+        # Computed only on the failing path, so the common case stays one `git log` per rule.
+        $declaredFrom = $null
+        foreach ($rev in $revs) {   # git log order: newest first
+            $blob = (& git -C $repo show "${rev}:$StoreDir/$f" 2>$null) -join "`n"
+            if ($blob -match '(?m)^>\s*(Superseded by|Retired:)') { $declaredFrom = $rev; break }
+        }
+        if ($declaredFrom) {
+            $rebased = 0
+            foreach ($rev in $revs) {
+                $entry = & git -C $repo ls-tree -l $rev -- "$StoreDir/$f" 2>$null
+                if (-not $entry) { continue }
+                $sz = ($entry -split '\s+')[3]; $n = 0
+                if ([int]::TryParse($sz, [ref]$n) -and $n -gt $rebased) { $rebased = $n }
+                if ($rev -eq $declaredFrom) { break }
+            }
+            if ($rebased -gt 0) { $wasBytes = $rebased; $kept = $bytes / $wasBytes }
+        }
+    }
     if ($kept -lt $ShrinkFloor) {
         $text = [System.IO.File]::ReadAllText((Join-Path $abs $f))
         if ($text -notmatch '(?m)^>\s*(Superseded by|Retired:)') {

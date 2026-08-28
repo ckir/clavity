@@ -624,25 +624,29 @@ check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as o
                                                                       already warns above.
 check-growth-budget.Tests.ps1                    15,3s   15 tests   <- FAST, re-measured 2026-08-05
 check-injected-context.Tests.ps1                 91,5s  153 tests   <- SLOW as of 2026-08-24; was FAST -
-check-knowledge-store.Tests.ps1                  118,4s  14 tests   <- SLOW. Each case builds a THROWAWAY
+check-knowledge-store.Tests.ps1                  150,1s  17 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       GIT REPO: the deletion check compares
                                                                       against the ref's HISTORY and cannot be
                                                                       exercised without one. 8 -> 12 tests on
                                                                       2026-08-28, adding the committed-
                                                                       deletion and content-obliteration rows
                                                                       a capstone round found missing.
-                                                                      12 -> 14 on the SAME day, capstone
-                                                                      round 2 adding the committed-gutting
-                                                                      pair. RE-MEASURED 2026-08-28.
-check-dangling-consumers.Tests.ps1                80,0s  10 tests   <- SLOW. Each case builds a THROWAWAY
+                                                                      8 -> 12 -> 14 -> 17 on the SAME
+                                                                      day across capstone rounds 1-3. Two
+                                                                      rows now CLONE (shallow + full), which
+                                                                      is the bulk of the growth.
+                                                                      RE-MEASURED 2026-08-28.
+check-dangling-consumers.Tests.ps1                84,2s  11 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       SOURCE TREE, and one row walks the REAL
                                                                       repository, so the cost is a full
                                                                       recursive read per case. MEASURED
-                                                                      2026-08-28: 73,1s / 80,1s / 80,0s
-                                                                      across three runs - quote the range,
-                                                                      never a point. 8 -> 10 tests in capstone
-                                                                      round 2 (mention-is-not-a-write, and the
-                                                                      false-alarm direction).
+                                                                      2026-08-28: 73,1s / 80,1s / 80,0s /
+                                                                      84,2s across four runs - quote the
+                                                                      range, never a point. 8 -> 10 -> 11
+                                                                      tests across capstone rounds 2-3
+                                                                      (mention-is-not-a-write, the false-alarm
+                                                                      direction, and denial-is-not-a-
+                                                                      declaration).
   the single largest suite in that half, moved to buy back cap headroom. Figure measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file

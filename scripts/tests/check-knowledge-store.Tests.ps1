@@ -120,6 +120,54 @@ Describe 'check-knowledge-store' {
         Remove-Item -Recurse -Force $d
     }
 
+    # CAPSTONE R3 - the gate must REFUSE to certify what it cannot see. MEASURED on a real
+    # `git clone --depth 1`: a committed deletion was invisible and the gate reported every rule still
+    # present, which is a false statement rather than a merely unhelpful one. actions/checkout is shallow
+    # BY DEFAULT, so the CI wiring added one commit earlier was certifying a store it could not inspect.
+    # The workflow now deepens history, but a gate must not depend on its caller remembering that.
+    It 'FAILS CLOSED on a shallow repository instead of certifying blind' {
+        $d = New-StoreFixture
+        # A second commit, so a shallow clone genuinely truncates something.
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/alpha.md') -Value "# alpha`n`n- ALPHA REVISED.`n"
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m second 2>$null
+        $sh = Join-Path ([System.IO.Path]::GetTempPath()) ("clavity-shallow-" + [guid]::NewGuid().ToString('N'))
+        & git -c core.autocrlf=false clone -q --depth 1 "file://$($d -replace '\\','/')" $sh 2>$null
+        $out = & pwsh -NoProfile -File $script:Script -RepoRoot $sh -StoreDir 'rules' 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'SHALLOW repository'
+        Remove-Item -Recurse -Force $d, $sh -ErrorAction SilentlyContinue
+    }
+
+    # The paired control for the row above - without it, "fails closed" could just mean "always fails",
+    # and no other row in this suite clones at all.
+    It 'PASSES a FULL clone of that same repository' {
+        $d = New-StoreFixture
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/alpha.md') -Value "# alpha`n`n- ALPHA REVISED.`n"
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m second 2>$null
+        $fu = Join-Path ([System.IO.Path]::GetTempPath()) ("clavity-full-" + [guid]::NewGuid().ToString('N'))
+        & git -c core.autocrlf=false clone -q $d $fu 2>$null
+        $out = & pwsh -NoProfile -File $script:Script -RepoRoot $fu -StoreDir 'rules' 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match '2 rule\(s\)'
+        Remove-Item -Recurse -Force $d, $fu -ErrorAction SilentlyContinue
+    }
+
+    # CAPSTONE R3 - a DECLARED consolidation re-baselines the high-water mark. Without this, a rule
+    # legitimately consolidated once is measured against its all-time peak forever and ordinary later
+    # trims eventually trip the gate for nothing. The monotonic property that matters is preserved: only a
+    # DECLARED retirement moves the mark, never a silent gutting.
+    It 'does not trap a rule against its all-time peak once a retirement is DECLARED' {
+        $d = New-StoreFixture
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "# beta`n`n> Retired: folded into alpha`n"
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'declare retirement' 2>$null
+        # A later trivial trim, still tiny against the ORIGINAL peak but not against the declared stub.
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "# beta`n`n> Retired: folded into alpha"
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match '2 rule\(s\)'
+        Remove-Item -Recurse -Force $d
+    }
+
     It 'FAILS an orphan - a rule on disk that the index does not link' {
         $d = New-StoreFixture
         Set-Content -NoNewline -Path (Join-Path $d 'rules/gamma.md') -Value "# gamma`n`n- GAMMA.`n"

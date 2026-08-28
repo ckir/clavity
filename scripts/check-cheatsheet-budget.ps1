@@ -17,9 +17,8 @@
   REMAINING budget a curator may spend.
 
   This exists because the floor budget above is blind to the half that actually moves. Since the readers
-  became EXTEND, what gets injected is `floor + "
-
-" + growth`, and only the SUM is capped - a growth
+  became EXTEND, what gets injected is the floor, a blank-line separator, then the growth - and only the
+  SUM is capped against the runtime cliff. A growth
   file that fits its own cap can still push the combined block over, at which point the binary silently
   drops GROWTH and keeps the floor. MEASURED 2026-08-27, the sibling golden header was in exactly that
   state in production: 16,803 B against a 16,384 B cap, dropping its GROWTH on EVERY injection, while its
@@ -105,20 +104,39 @@ if ($CheckCombined) {
         if (-not $dir) { $dir = Join-Path ($env:USERPROFILE ? $env:USERPROFILE : $HOME) '.clavity' }
         $GrowthPath = Join-Path $dir 'driver-cheatsheet.growth.md'
     }
-    $growth = 0
+    # MEASURE WHAT THE BINARY MEASURES, NOT WHAT IS ON DISK. The readers do
+    # bytes -> lossy UTF-8 decode -> Trim() -> byte count of the COMBINED string. Two things move:
+    #   * Trim() REMOVES trailing whitespace, so a disk count over-reports; and
+    #   * a lossy decode REPLACES each invalid byte with U+FFFD, three bytes, so a disk count
+    #     UNDER-reports - the dangerous direction, since the gate would certify a budget the runtime then
+    #     breaks by silently dropping GROWTH.
+    # A budget gate that measures a different quantity than the thing it is protecting is worse than no
+    # gate, so this mirrors the reader's sequence exactly.
+    $growthText = ''
     if (Test-Path -LiteralPath $GrowthPath) {
-        $growth = [System.IO.File]::ReadAllBytes($GrowthPath).Length
+        $growthText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($GrowthPath)).Trim()
     }
+    $growth = [System.Text.Encoding]::UTF8.GetByteCount($growthText)
     # The separator is two bytes and is spent whether or not the curator remembers it. Count it always, so
     # the REMAINING figure a curator sizes against is never one that only just fits.
     $sep = 2
-    $combined = $bytes + $sep + $growth
+    # The FLOOR side needs the same treatment, or this fixes one half of the sum and leaves the other -
+    # the half-fold this review has already caught twice. The compiled literal is core.md normalised
+    # CRLF->LF and TRIMMED (that is exactly what the two pinning oracles assert), so a raw disk count
+    # over-reports it by any trailing newline. $bytes above deliberately stays a raw disk count, because
+    # the FLOOR budget check is about bytes on disk including a BOM; this is a different question.
+    $floorText = ''
+    if (Test-Path $Path) {
+        $floorText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($Path)).Replace("`r`n", "`n").Trim()
+    }
+    $floorBytes = [System.Text.Encoding]::UTF8.GetByteCount($floorText)
+    $combined = $floorBytes + $sep + $growth
     if ($combined -gt $CombinedMaxBytes) {
-        Fail ("combined driver-cheatsheet is ${combined}B > ${CombinedMaxBytes}B (floor ${bytes}B + separator ${sep}B + growth ${growth}B at ${GrowthPath}). " +
+        Fail ("combined driver-cheatsheet is ${combined}B > ${CombinedMaxBytes}B (floor ${floorBytes}B + separator ${sep}B + growth ${growth}B at ${GrowthPath}). " +
               "The binary DROPS GROWTH SILENTLY above this and keeps the floor alone, so nothing else will tell you. Trim the growth file.")
     }
-    $remaining = $CombinedMaxBytes - $bytes - $sep
-    Write-Host "check-cheatsheet-budget: OK - combined ${combined}B <= ${CombinedMaxBytes}B (floor ${bytes}B + sep ${sep}B + growth ${growth}B)" -ForegroundColor Green
+    $remaining = $CombinedMaxBytes - $floorBytes - $sep
+    Write-Host "check-cheatsheet-budget: OK - combined ${combined}B <= ${CombinedMaxBytes}B (floor ${floorBytes}B + sep ${sep}B + growth ${growth}B, measured the way the readers measure)" -ForegroundColor Green
     Write-Host "check-cheatsheet-budget: REMAINING GROWTH BUDGET = ${remaining}B" -ForegroundColor Cyan
 }
 exit 0

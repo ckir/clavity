@@ -82,6 +82,22 @@ Describe 'check-dangling-consumers' {
     # thing.growth.md" - so that row proves the tightening did not simply break the gate into always
     # failing. No separate row is added here for it, because a duplicate assertion is padding, not cover.)
 
+    # CAPSTONE R3 - A DENIAL IS NOT A DECLARATION. MEASURED: the line "Note: we do NOT write
+    # thing.growth.md here; the curator owns it" satisfied the producer check, so a comment explicitly
+    # denying a write counted as declaring one. "Failed to write to X" in an error string is the same
+    # trap. This is the proxy-versus-real-property shape for the third time in one review, which is why
+    # it gets a row rather than a comment.
+    It 'does NOT accept a line that DENIES writing the name' {
+        $d = New-Tree
+        Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
+        Set-Content -Path (Join-Path $d 'note.md') `
+            -Value 'Note: we do NOT write thing.growth.md here; the curator owns it.'
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'DANGLING CONSUMER'
+        Remove-Item -Recurse -Force $d
+    }
+
     # CAPSTONE R2, the FALSE-ALARM direction, which is the one a gate rarely gets tested for. The old
     # `-like '*Tests.*'` exclusion matched `contests.md` - an ordinary English word - so a genuine producer
     # with an unlucky name was silently discounted. This asserts the gate now sees it.
