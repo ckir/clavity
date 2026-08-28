@@ -636,14 +636,18 @@ check-knowledge-store.Tests.ps1                  155,5s  20 tests   <- SLOW. Eac
                                                                       Two rows CLONE (shallow + full), which
                                                                       is the bulk of the cost.
                                                                       RE-MEASURED 2026-08-28.
-check-dangling-consumers.Tests.ps1                91,9s  13 tests   <- SLOW. Each case builds a THROWAWAY
+check-dangling-consumers.Tests.ps1                58,4s   9 tests   <- SLOW. Each case builds a THROWAWAY
                                                                       SOURCE TREE, and one row walks the REAL
                                                                       repository, so the cost is a full
                                                                       recursive read per case. MEASURED
-                                                                      2026-08-28: 73,1s to 91,9s across
-                                                                      five runs - quote the range, never a
-                                                                      point. 8 -> 10 -> 11 -> 13 tests across
-                                                                      capstone rounds 2-4.
+                                                                      2026-08-28: 58,4s to 91,9s across
+                                                                      six runs - quote the range, never a
+                                                                      point. Rose 8 -> 13 across capstone
+                                                                      rounds 2-4, then FELL to 9 in round 5
+                                                                      when the gate was redesigned around an
+                                                                      explicit producer marker and four
+                                                                      heuristic rows were deleted WITH the
+                                                                      heuristics they tested.
   the single largest suite in that half, moved to buy back cap headroom. Figure measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
                                                                       tests and the agent, as this file

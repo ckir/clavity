@@ -303,9 +303,11 @@ public static class GoldenHeader
     public static string Sha256Hex(byte[] bytes) =>
         Convert.ToHexStringLower(SHA256.HashData(bytes));
 
-    /// <summary>agy-curate writes ONLY this. Never touches SEED.</summary>
+    /// <summary>agy-curate writes ONLY this. Never touches SEED.
+    /// @produces "golden-header.growth.md"</summary>
     public static void CommitGrowth(string dir, string content) => Commit(GrowthPath(dir), content);
 
-    /// <summary>Driver install writes ONLY this. Never touches GROWTH.</summary>
+    /// <summary>Driver install writes ONLY this. Never touches GROWTH.
+    /// @produces "golden-header.seed.md"</summary>
     public static void CommitSeed(string dir, string content) => Commit(SeedPath(dir), content);
 }

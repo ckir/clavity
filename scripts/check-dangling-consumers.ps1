@@ -1,32 +1,47 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Fail when a binary READS a runtime filename that nothing in the repository WRITES.
+  Fail when a binary READS a runtime filename that nothing in the repository DECLARES it produces.
 
 .DESCRIPTION
   A "dangling consumer" is a reader pointed at a filename that has no producer. It is invisible to every
   other gate we own: the code compiles, every test passes (the tests write the file themselves), and the
-  reader degrades to its fallback in silence. MEASURED 2026-08-27, this is not hypothetical - commit
-  f497aaa repointed both driver-cheatsheet readers at `driver-cheatsheet.growth.md` while the only writer
-  (agy-curate/SKILL.md) kept writing the RETIRED name, so the EXTEND path was unreachable in production
-  from the moment it shipped and nothing said a word. This gate would have failed that commit.
+  reader degrades to its fallback in silence. MEASURED 2026-08-27 - commit f497aaa repointed both
+  driver-cheatsheet readers at a new filename while the only writer kept writing the RETIRED one, so the
+  EXTEND path was unreachable in production from the moment it shipped and nothing said a word.
 
-  WHY THE LITERAL, NOT THE SYMBOL. Symbol names collide across files - `GrowthFileName` is declared in
-  BOTH DriverCheatsheet.cs and GoldenHeader.cs - so a symbol search reports a producer for one constant
-  because a DIFFERENT constant of the same name has one. The literal is unique and unambiguous.
+  HOW A PRODUCER IS IDENTIFIED: IT SAYS SO. A file declares itself the producer of a runtime artifact with
+  an explicit marker, on any line, in any file type - the marker word followed by the quoted filename. The
+  gate looks for exactly that. Nothing else counts.
 
-  WHY TEST FILES ARE NOT PRODUCERS - this is the whole subtlety, and it was volunteered as the likely
-  false negative before the gate was written. A test necessarily writes the file it is testing the reader
-  against, so counting tests as producers makes this gate PASS on precisely the bug it exists to catch:
-  for `driver-cheatsheet.growth.md` the literal appears in three test files and nowhere else. A gate that
-  accepted those would have been green on F1. See the exclusion test in the suite, which pins this.
+  WHY THE MARKER, AND WHAT IT REPLACED - the load-bearing part of this header. Four earlier versions
+  INFERRED production from prose, and a capstone round measured each inference wrong in turn:
+    * v1 accepted any non-test file CONTAINING the filename. MEASURED: seven files contained it and
+      exactly one wrote it, so deleting the real writer would have left the gate green.
+    * v2 required the filename NEAR a write word. MEASURED: a line saying we do NOT write that file
+      satisfied it - a denial counted as a declaration.
+    * v3 added a negation list. MEASURED: a PowerShell line guarding a real write with the -not operator
+      was read as a denial, so the guard vetoed the only genuine writer in the tree.
+    * v4 added a lookbehind, on the theory that a leading hyphen distinguishes the OPERATOR from prose.
+      MEASURED false twice over: PowerShell also spells that operator with a bang, and a write line
+      carrying an ordinary English comment containing "not" trips the filter anyway.
 
-  WHAT THIS PROVES, AND WHAT IT DOES NOT. A producer is a file that contains the literal NEAR a write
-  indicator. That is a DECLARED INTENT TO WRITE, not a proven write - nothing here executes the writer or
-  watches the filesystem, and a skill that says it writes a file may still fail to. The claim is therefore
-  deliberately narrow: this gate catches a reader whose filename NOBODY EVEN CLAIMS to produce, which is
-  the shape that has actually occurred. Do not upgrade that sentence to "verifiable producer" - an earlier
-  draft of this header said exactly that, and the check underneath it accepted a bare MENTION.
+  Each fix was a smaller epicycle on one mistake - inferring intent from unstructured text by regex
+  proximity. Four rounds of that IS the evidence. The marker asks the producer to state the fact instead
+  of asking this script to deduce it, turning a semantic guess into an exact string match. It also deleted
+  the entire test-file exclusion: a test does not carry a production declaration, so no rule is needed to
+  recognise one - and every exclusion rule this gate ever had became a defect of its own.
+
+  WHAT THIS PROVES, AND WHAT IT DOES NOT. The marker is a DECLARATION, not a proven write - nothing here
+  executes the writer or watches a filesystem, and a file that declares it may still fail to write. The
+  claim is deliberately narrow, and it is exactly the shape that has actually occurred: a reader whose
+  filename NOBODY EVEN CLAIMS to produce. Do not upgrade that sentence to "verifiable producer" - an
+  earlier header said precisely that while the check underneath accepted a bare mention.
+
+  THE ONE RESIDUAL ASSUMPTION, stated rather than hidden: a fixture that writes a marker for a REAL
+  runtime filename into a tracked file would satisfy this gate falsely. Nothing guards that, deliberately.
+  Use a fictional filename in fixtures, as this gate's own suite does. One greppable convention beats a
+  pile of semantic guesses.
 
   THE EXEMPTION IS DERIVED, NEVER A HAND-MAINTAINED ROSTER. A constant whose IDENTIFIER declares it legacy
   or retired is read-only by design - it names a file an EARLIER version wrote, kept so an upgrading user's
@@ -51,15 +66,11 @@ $ErrorActionPreference = 'Stop'
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
 $repo = (Resolve-Path -LiteralPath $RepoRoot).Path
 
-# The reader sources we scan. These are also, by construction, NOT producers for their own constants.
+# The reader sources scanned for runtime filename constants.
 $sourceGlobs = @('clavity-dotnet/src/Clavity.Ls/*.cs', 'clavity-classic/src/*.rs')
 $sources = @()
 foreach ($g in $sourceGlobs) {
     $sources += @(Get-ChildItem -Path (Join-Path $repo $g) -File -ErrorAction SilentlyContinue)
-}
-if ($sources.Count -eq 0) {
-    Write-Host "check-dangling-consumers: SKIP - no binary sources under $($sourceGlobs -join ', ')" -ForegroundColor DarkGray
-    exit 0
 }
 
 # A constant bound to a *.md literal, in either language:
@@ -83,80 +94,13 @@ foreach ($f in $sources) {
     }
 }
 
+# ONE early exit, not two. A capstone round found the previous version's "no binary sources" exit was
+# unreachable BY ITS OWN TEST: the row asserted exit 0 plus the word SKIP, and a SECOND exit downstream
+# produced both, so the row passed with the code it claimed to guard deleted. Collapsing the two removes
+# the vacuity at its source instead of bolting a sharper assertion onto a redundant branch.
 if ($consts.Count -eq 0) {
-    Write-Host "check-dangling-consumers: SKIP - no runtime filename constants found" -ForegroundColor DarkGray
+    Write-Host "check-dangling-consumers: SKIP - no runtime filename constants found under $($sourceGlobs -join ', ')" -ForegroundColor DarkGray
     exit 0
-}
-
-# A file is not evidence of a producer if it is one of the readers we scanned, a test, or this gate.
-$readerPaths = @($sources | ForEach-Object { $_.FullName })
-function Test-IsProducerCandidate([string]$path) {
-    if ($readerPaths -contains $path) { return $false }
-    $leaf = Split-Path -Leaf $path
-    if ($leaf -eq 'check-dangling-consumers.ps1') { return $false }
-    # ANCHORED ON THIS REPO'S ENFORCED TEST CONVENTIONS, not a loose wildcard. MEASURED: the previous
-    # `-like '*Tests.*'` excluded `contests.md` - an ordinary word - and `gather-tests.ps1`, so a real
-    # producer with an unlucky name was silently discounted and could cause a FALSE failure; while
-    # `test_golden_header.rs` and `e2e-test.ps1` were NOT excluded, which is the silent-pass direction.
-    # `-like` is case-insensitive too, widening both mistakes at once.
-    #
-    # PowerShell suites are `*.Tests.ps1` - the convention test-suite-registration.Tests.ps1 already
-    # enforces, so anchoring here is DERIVED rather than invented. The dot is what does the work: it is
-    # the whole difference between a suite and `gather-tests.ps1`.
-    if ($leaf -match '(?i)\.Tests\.(ps1|psm1)$') { return $false }
-    # xunit files are `<Thing>Tests.cs` - CamelCase, no dot - matched CASE-SENSITIVELY so `contests.cs`
-    # cannot collide with it.
-    if ($leaf -cmatch 'Tests\.cs$') { return $false }
-    # Rust integration tests live under `tests/` (caught below) or are named integration.rs / test_*.rs.
-    if ($leaf -eq 'integration.rs' -or $leaf -match '(?i)^test_.*\.rs$') { return $false }
-    # Any path segment that is a test directory - matched on the REPO-RELATIVE path, never the absolute
-    # one. MEASURED: with the absolute path, a checkout at `~/projects/tests/clavity` matched `/tests/` for
-    # EVERY file in the tree, so a perfectly healthy repository reported every constant dangling and the
-    # gate failed 100% red. The gate's answer must not depend on where someone cloned.
-    $rel = $path
-    if ($rel.StartsWith($repo, [StringComparison]::OrdinalIgnoreCase)) {
-        $rel = $rel.Substring($repo.Length)
-    }
-    $rel = $rel.Replace('\', '/')
-    if (-not $rel.StartsWith('/')) { $rel = '/' + $rel }
-    if ($rel -match '/tests?/') { return $false }
-    return $true
-}
-
-# A write indicator, in prose or in either language's file APIs. Deliberately NOT a roster of "writer
-# files" - that would be the hand-maintained list this repo forbids elsewhere. It is a property of the
-# TEXT, so a new writer in a new file is recognised with no edit here.
-$writeIndicator = '(?i)\b(write|writes|writing|written|publish(?:es|ed)?|curate-commit|Set-Content|Out-File|WriteAll\w*|fs::write|atomic(?:ally)?\s+rename|\.tmp\s*->)\b'
-$WriteProximityLines = 2
-
-# A NEGATED write is not a write. MEASURED 2026-08-28: the line "Note: we do NOT write thing.growth.md
-# here; the curator owns it" satisfied the producer check, so a comment DENYING a write counted as
-# declaring one - the proxy-versus-real-property shape for the third time in this review. "Failed to
-# write to X" in an error string is the same trap. Proximity is still a heuristic and this does not make
-# it a parser; it closes the specific inversion that was measured.
-# The lookbehind is load-bearing. MEASURED: without it, the legitimate PowerShell line
-# `if (-not $empty) { Out-File -FilePath "thing.growth.md" }` was read as a denial, so the negation filter
-# added to stop a false PASS created a false FAIL instead - it vetoed the only real writer in the tree.
-# `-not` is an OPERATOR and its leading hyphen is what distinguishes it from English prose: "we do NOT
-# write X" has a space before it, `(-not $x)` has a hyphen. Same word, opposite meaning, and the character
-# in front is the whole signal.
-$negationIndicator = '(?i)(?<![-\w])(not|never|no longer|cannot|can''t|don''t|does\s+not|do\s+not|failed|failure|unable|refus\w*|without|instead\s+of|rather\s+than)\b'
-
-function Test-NearWriteIndicator([string]$Text, [string]$Literal) {
-    $lines = $Text -split "`r?`n"
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        if (-not $lines[$i].Contains($Literal)) { continue }
-        $lo = [math]::Max(0, $i - $WriteProximityLines)
-        $hi = [math]::Min($lines.Count - 1, $i + $WriteProximityLines)
-        for ($j = $lo; $j -le $hi; $j++) {
-            if ($lines[$j] -notmatch $writeIndicator) { continue }
-            # The negation must be judged on the line carrying the indicator, not on the whole window:
-            # an unrelated "not" two lines away would otherwise veto a genuine writer.
-            if ($lines[$j] -match $negationIndicator) { continue }
-            return $true
-        }
-    }
-    return $false
 }
 
 $searchable = @(Get-ChildItem -LiteralPath $repo -Recurse -File -ErrorAction SilentlyContinue |
@@ -167,6 +111,26 @@ $searchable = @(Get-ChildItem -LiteralPath $repo -Recurse -File -ErrorAction Sil
         $n -notmatch '/node_modules/' -and $_.Length -lt 2MB
     })
 
+# The marker is ASSEMBLED, never written literally in this file, so that the gate's own prose cannot vouch
+# for a filename it discusses. The previous design had to special-case its own filename to avoid exactly
+# that; removing the possibility beats excluding a path.
+$marker = [char]64 + 'produces'
+$markerPattern = $marker + '\s+"([^"]+)"'
+
+# Collect every declaration in the tree ONCE rather than re-reading every file per constant. The cheap
+# -notlike guard runs first: only a handful of files carry a marker, and reading the whole tree is the
+# expensive part.
+$declared = @{}
+foreach ($f in $searchable) {
+    $txt = try { [System.IO.File]::ReadAllText($f.FullName) } catch { continue }
+    if ($txt -notlike "*$marker*") { continue }
+    foreach ($m in [regex]::Matches($txt, $markerPattern)) {
+        $name = $m.Groups[1].Value
+        if (-not $declared.ContainsKey($name)) { $declared[$name] = @() }
+        $declared[$name] += $f.FullName.Substring($repo.Length).TrimStart('\', '/')
+    }
+}
+
 $problems = @()
 $skipped = @()
 foreach ($c in $consts) {
@@ -175,27 +139,8 @@ foreach ($c in $consts) {
         $skipped += "$($c.Symbol) = '$($c.Literal)' ($($c.File):$($c.Line)) - identifier declares it read-only"
         continue
     }
-
-    $producers = @()
-    foreach ($f in $searchable) {
-        if (-not (Test-IsProducerCandidate $f.FullName)) { continue }
-        $txt = try { [System.IO.File]::ReadAllText($f.FullName) } catch { continue }
-        if (-not $txt.Contains($c.Literal)) { continue }
-        # A MENTION IS NOT A WRITE - this was a hole in the first version of this gate and it was measured,
-        # not theorised. On the real tree SEVEN files contained the literal while exactly ONE wrote the
-        # file; the other six were troubleshooting prose and reader documentation, four of which this same
-        # commit had just added. So deleting the only writer would have left the gate GREEN, which is the
-        # precise failure it exists to prevent, one level up.
-        #
-        # So the literal must sit NEAR a write indicator. This proves a DECLARED INTENT TO WRITE, not a
-        # proven write - see the honesty note in the header. Proximity rather than same-line because a
-        # skill instruction and a script assignment both routinely wrap.
-        if (Test-NearWriteIndicator $txt $c.Literal) {
-            $producers += $f.FullName.Substring($repo.Length).TrimStart('\', '/')
-        }
-    }
-    if ($producers.Count -eq 0) {
-        $problems += "DANGLING CONSUMER: $($c.File):$($c.Line) reads '$($c.Literal)' (const $($c.Symbol)), but NOTHING in the repository writes that name. Tests do not count as producers - a test writes the file it is testing, so counting them makes this gate green on exactly the bug it exists to catch. Either point the producer at this name, or - if the file is written by an earlier version and only READ here - rename the constant to declare it Legacy/Retired, which is the derived exemption."
+    if (-not $declared.ContainsKey($c.Literal)) {
+        $problems += "DANGLING CONSUMER: $($c.File):$($c.Line) reads '$($c.Literal)' (const $($c.Symbol)), but NOTHING in the repository declares it produces that file. Add a marker line to whatever writes it - the word $marker followed by the quoted filename - or, if the file is written by an EARLIER version and only read here for compatibility, rename the constant to declare it Legacy/Retired, which is the derived exemption."
     }
 }
 
@@ -207,5 +152,5 @@ if ($problems.Count -gt 0) {
     exit 1
 }
 $checked = $consts.Count - $skipped.Count
-Write-Host "check-dangling-consumers: OK - $checked runtime filename constant(s) each have a producer outside the readers and tests; $($skipped.Count) exempt." -ForegroundColor Green
+Write-Host "check-dangling-consumers: OK - $checked runtime filename constant(s) each carry a producer declaration; $($skipped.Count) exempt." -ForegroundColor Green
 exit 0

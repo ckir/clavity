@@ -226,6 +226,14 @@ mangle characters.
 **The write target is `<CLAVITY_GOLDEN_HEADER or %USERPROFILE%\.clavity>\driver-cheatsheet.growth.md`.**
 Use the SAME atomic `.tmp`->rename the golden-header uses (a reader must never see a half-written file).
 
+@produces "driver-cheatsheet.growth.md"
+
+That marker line is machine-read by `scripts/check-dangling-consumers.ps1`, which fails CI when a binary
+reads a runtime filename that nothing declares it produces. **If you ever change the write target, change
+that line in the same edit** - it is the only thing connecting this skill to the readers, and the defect
+it exists to catch is exactly the one that happened here: the readers were repointed at a new filename
+while this skill kept writing the old one, and nothing noticed.
+
 **DO NOT WRITE `%USERPROFILE%\.clavity\driver-cheatsheet.md`.** That name is RETIRED and both binaries deliberately IGNORE it
 (`DriverCheatsheet.RetiredLegacyFileName`, `driver_cheatsheet::RETIRED_LEGACY_FILE_NAME`). Writing it
 publishes to a file nothing reads. This is not a hypothetical caution: between `f497aaa` and the fix, this
