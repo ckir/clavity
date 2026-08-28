@@ -110,6 +110,37 @@ Describe 'check-dangling-consumers' {
         Remove-Item -Recurse -Force $d
     }
 
+    # CAPSTONE R4 - the exclusion was matched against the ABSOLUTE path. MEASURED: a healthy tree cloned
+    # into a directory whose name contains "tests" matched `/tests/` for EVERY file, so nothing counted as
+    # a producer and the gate failed 100% red on a repository with nothing wrong with it. A gate's answer
+    # must not depend on where somebody cloned.
+    It 'is unaffected by a checkout path that itself contains a tests directory' {
+        $base = Join-Path ([System.IO.Path]::GetTempPath()) ("clv-" + [guid]::NewGuid().ToString('N'))
+        $d = Join-Path $base 'tests/clavity'
+        New-Item -ItemType Directory -Path (Join-Path $d 'clavity-dotnet/src/Clavity.Ls') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $d 'clavity-classic/src') -Force | Out-Null
+        Set-Content -NoNewline -Path (Join-Path $d 'clavity-dotnet/src/Clavity.Ls/Thing.cs') `
+            -Value 'public const string GrowthFileName = "thing.growth.md";'
+        Set-Content -Path (Join-Path $d 'writer.md') -Value 'The curator writes thing.growth.md using an atomic rename.'
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 0
+        $out | Should -Match 'OK - 1 runtime filename constant'
+        Remove-Item -Recurse -Force $base
+    }
+
+    # CAPSTONE R4 - the negation filter added in round 3 vetoed a REAL writer. MEASURED:
+    # `if (-not $empty) { Out-File -FilePath "thing.growth.md" }` was read as a denial, so the guard added
+    # to stop a false PASS produced a false FAIL instead. `-not` is an operator; the leading hyphen is the
+    # entire difference from English prose, and that is what the lookbehind keys on.
+    It 'does not mistake the PowerShell -not operator for a denial' {
+        $d = New-Tree
+        Set-Reader $d 'public const string GrowthFileName = "thing.growth.md";'
+        Set-Content -Path (Join-Path $d 'writer.ps1') -Value 'if (-not $empty) { Out-File -FilePath "thing.growth.md" }'
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 0
+        Remove-Item -Recurse -Force $d
+    }
+
     It 'EXEMPTS a constant whose identifier declares it legacy, and SAYS SO' {
         $d = New-Tree
         Set-Reader $d 'public const string LegacyFileName = "old-thing.md";'

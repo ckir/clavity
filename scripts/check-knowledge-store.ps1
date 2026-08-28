@@ -106,11 +106,18 @@ if ($isShallow -eq 'true') {
     Write-Host "check-knowledge-store: FAIL: this is a SHALLOW repository, so the history baseline is incomplete and a committed deletion CANNOT be seen. Refusing to certify the store. Fetch full history (in GitHub Actions: actions/checkout with fetch-depth: 0)." -ForegroundColor Red
     exit 1
 }
-$everExisted = @(& git -C $repo log --pretty=format: --name-only --diff-filter=A $BaselineRef -- $StoreDir 2>$null |
+# -c core.quotePath=false is load-bearing. MEASURED: git DEFAULTS to quoting any path containing a
+# non-ASCII byte. MEASURED with a rule whose filename carried two umlauts: git emitted the path wrapped
+# in double quotes with each non-ASCII character octal-escaped, so the prefix filter below rejected it, it
+# never entered the baseline, and DELETING that rule passed the gate reporting "all present". A guard that
+# silently skips the paths it finds hardest to read fails worst exactly where a name is unusual.
+# The hygiene section now also FORBIDS such names, so this is belt and braces - but the read must be
+# correct regardless, because a name already in history predates any policy forbidding it.
+$everExisted = @(& git -C $repo -c core.quotePath=false log --pretty=format: --name-only --diff-filter=A $BaselineRef -- $StoreDir 2>$null |
     Where-Object { $_ -and $_.Trim() })
 # Union with the ref's current tree: a store added in the very first commit of a shallow clone can be in
 # the tree without an ADD record reachable here.
-$currentTree = @(& git -C $repo ls-tree --name-only "${BaselineRef}:$StoreDir" 2>$null |
+$currentTree = @(& git -C $repo -c core.quotePath=false ls-tree --name-only "${BaselineRef}:$StoreDir" 2>$null |
     ForEach-Object { "$StoreDir/$_" })
 $prefix = "$StoreDir/"
 $baseline = @($everExisted + $currentTree |
@@ -183,32 +190,18 @@ foreach ($f in $onDisk) {
         if ([int]::TryParse($sz, [ref]$n) -and $n -gt $wasBytes) { $wasBytes = $n }
     }
     if ($wasBytes -le 0) { continue }
+    # THE MARK IS NEVER RE-BASELINED. A round-3 "fix" let the most recent commit carrying a declaration
+    # reset it; round 4 removed that. MEASURED: declare a retirement in one commit, silently delete the
+    # declaration line in the next, and a rule went 1,209 bytes -> 12 with the gate reporting OK, because
+    # it had re-baselined to the 26-byte declared stub. It also had NO legitimate case: when the current
+    # file DOES carry a declaration the check below already passes, so the re-baseline could only ever
+    # fire once the declaration had been REMOVED. It was a pure hole.
+    #
+    # What it was meant to solve - a rule shrinking below the floor across several individually reasonable
+    # edits - is answered by accepting the cost instead: that rule carries a one-line declaration. Cheap,
+    # one-time, and it keeps the baseline monotonic. A baseline anything in the repo can move is the defect
+    # this review has now found three separate times.
     $kept = $bytes / $wasBytes
-    if ($kept -lt $ShrinkFloor) {
-        $text = [System.IO.File]::ReadAllText((Join-Path $abs $f))
-        # A DECLARED consolidation RE-BASELINES the high-water mark. Without this, a rule that was
-        # legitimately consolidated once is measured against its all-time peak forever, so ordinary later
-        # trims eventually trip the gate for no reason - a false alarm, and a checker that cries wolf is
-        # ignored within a week. Only revisions from the most recent DECLARED retirement onward count, so
-        # the mark still cannot be moved by a silent gutting, which is the property that matters.
-        # Computed only on the failing path, so the common case stays one `git log` per rule.
-        $declaredFrom = $null
-        foreach ($rev in $revs) {   # git log order: newest first
-            $blob = (& git -C $repo show "${rev}:$StoreDir/$f" 2>$null) -join "`n"
-            if ($blob -match '(?m)^>\s*(Superseded by|Retired:)') { $declaredFrom = $rev; break }
-        }
-        if ($declaredFrom) {
-            $rebased = 0
-            foreach ($rev in $revs) {
-                $entry = & git -C $repo ls-tree -l $rev -- "$StoreDir/$f" 2>$null
-                if (-not $entry) { continue }
-                $sz = ($entry -split '\s+')[3]; $n = 0
-                if ([int]::TryParse($sz, [ref]$n) -and $n -gt $rebased) { $rebased = $n }
-                if ($rev -eq $declaredFrom) { break }
-            }
-            if ($rebased -gt 0) { $wasBytes = $rebased; $kept = $bytes / $wasBytes }
-        }
-    }
     if ($kept -lt $ShrinkFloor) {
         $text = [System.IO.File]::ReadAllText((Join-Path $abs $f))
         if ($text -notmatch '(?m)^>\s*(Superseded by|Retired:)') {
@@ -223,6 +216,12 @@ foreach ($f in $onDisk) {
 # byte transport which corrupted it once (2026-07-19 to 2026-08-01, 22 CP437 sequences, with a sha256
 # sidecar that matched the CORRUPT content and so certified it).
 foreach ($f in $onDisk) {
+    # ASCII FILENAMES, not just ASCII content. The store already forbids non-ASCII bytes inside a rule;
+    # a non-ASCII NAME is the same policy applied to the other half, and it removes a whole class of
+    # tool-reading hazard - git quotes such paths, and every consumer then has to un-quote them correctly.
+    if ($f -match '[^ -~]') {
+        Problem "NON-ASCII NAME: $f has a non-ASCII character in its FILENAME. The store is pure ASCII by policy, names included - git quotes and octal-escapes such paths, so every tool reading them has to un-quote correctly and one that does not will silently skip the file."
+    }
     $bytes = [System.IO.File]::ReadAllBytes((Join-Path $abs $f))
     if ($bytes -contains 13) { Problem "CRLF: $f contains a carriage return; the store is authored LF." }
     $hi = @($bytes | Where-Object { $_ -gt 127 })

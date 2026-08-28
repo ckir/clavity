@@ -168,6 +168,64 @@ Describe 'check-knowledge-store' {
         Remove-Item -Recurse -Force $d
     }
 
+    # CAPSTONE R4 - THE GATE MUST SURVIVE A FRESH CHECKOUT, which is the only kind CI ever has.
+    # MEASURED on a default `git clone` of this repository BEFORE the fix: 19 of 19 rule files came out
+    # CRLF and the gate reported 19 problems, because `git check-attr` said `unspecified` and core.autocrlf
+    # converted them. The files are LF in a working tree only until git re-materialises them.
+    #
+    # This asserts the CAUSE - what git itself will do on checkout - rather than cloning the whole monorepo
+    # per run. check-attr is not a proxy for that question; it is the same computation git performs.
+    #
+    # The second path is the one that matters long-term: it is a rule file that DOES NOT EXIST, so it
+    # proves the PATTERN covers rules added in future, not merely the 19 that happen to be there today.
+    It 'pins the store to LF on checkout, including rules that do not exist yet' {
+        foreach ($p in @('agy-autotrain/knowledge/rules/INDEX.md',
+                         'agy-autotrain/knowledge/rules/a-rule-nobody-has-written-yet.md')) {
+            $out = (& git -C $script:RepoRoot check-attr text eol -- $p) -join ' '
+            $out | Should -Match 'text: set'
+            $out | Should -Match 'eol: lf'
+        }
+    }
+
+    # CAPSTONE R4 - the hole I built in round 3 and asked the peer to find. A round-3 "fix" let the most
+    # recent commit carrying a declaration re-baseline the high-water mark. MEASURED: declare a retirement
+    # in one commit, silently delete the declaration line in the next, and a rule went 1,209 bytes -> 12
+    # with the gate reporting OK. The re-baseline is gone; the mark is never moved by anything.
+    It 'FAILS a gutting laundered through a declaration that was then REMOVED' {
+        $d = New-StoreFixture
+        # The shared fixture's beta is only ~26 bytes, so a drop to 13 is 50% and legitimately above the
+        # floor - the first version of this row failed for that reason, not because the fix was wrong.
+        # Give it real bulk first, so the later reduction is unambiguously a gutting.
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') `
+            -Value ("# beta`n`n" + ("- BETA RULE, a long hard-won paragraph. " * 30) + "`n")
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'beta grows' 2>$null
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "# beta`n`n> Retired: folded`n"
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m declare 2>$null
+        Set-Content -NoNewline -Path (Join-Path $d 'rules/beta.md') -Value "# beta`n`n- x`n"
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'drop the declaration' 2>$null
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'GUTTED: beta\.md'
+        Remove-Item -Recurse -Force $d
+    }
+
+    # CAPSTONE R4 - git QUOTES a path containing a non-ASCII byte by default, so the deletion of such a
+    # rule was invisible: MEASURED, the path arrived as a double-quoted, octal-escaped string, failed the
+    # prefix filter, never entered the baseline, and the gate reported "all present". Reading is fixed with
+    # core.quotePath=false; the name is now forbidden outright as well, since the store is ASCII by policy.
+    It 'CATCHES the deletion of a rule whose filename is not ASCII' {
+        $d = New-StoreFixture
+        $odd = Join-Path $d ("rules/" + [char]0x00FC + "ber.md")
+        [System.IO.File]::WriteAllText($odd, "# u`n`n- RULE.`n")
+        Add-Content -Path (Join-Path $d 'rules/INDEX.md') -Value ("- [u](" + [char]0x00FC + "ber.md) - u")
+        & git -C $d add -A 2>$null; & git -C $d commit -q -m 'add an odd name' 2>$null
+        Remove-Item -LiteralPath $odd
+        $out = Invoke-Check $d
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'DELETED'
+        Remove-Item -Recurse -Force $d
+    }
+
     It 'FAILS an orphan - a rule on disk that the index does not link' {
         $d = New-StoreFixture
         Set-Content -NoNewline -Path (Join-Path $d 'rules/gamma.md') -Value "# gamma`n`n- GAMMA.`n"

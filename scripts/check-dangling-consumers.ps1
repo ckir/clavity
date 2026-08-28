@@ -109,9 +109,17 @@ function Test-IsProducerCandidate([string]$path) {
     if ($leaf -cmatch 'Tests\.cs$') { return $false }
     # Rust integration tests live under `tests/` (caught below) or are named integration.rs / test_*.rs.
     if ($leaf -eq 'integration.rs' -or $leaf -match '(?i)^test_.*\.rs$') { return $false }
-    # Any path segment that is a test directory.
-    $norm = $path.Replace('\', '/')
-    if ($norm -match '/tests?/') { return $false }
+    # Any path segment that is a test directory - matched on the REPO-RELATIVE path, never the absolute
+    # one. MEASURED: with the absolute path, a checkout at `~/projects/tests/clavity` matched `/tests/` for
+    # EVERY file in the tree, so a perfectly healthy repository reported every constant dangling and the
+    # gate failed 100% red. The gate's answer must not depend on where someone cloned.
+    $rel = $path
+    if ($rel.StartsWith($repo, [StringComparison]::OrdinalIgnoreCase)) {
+        $rel = $rel.Substring($repo.Length)
+    }
+    $rel = $rel.Replace('\', '/')
+    if (-not $rel.StartsWith('/')) { $rel = '/' + $rel }
+    if ($rel -match '/tests?/') { return $false }
     return $true
 }
 
@@ -126,7 +134,13 @@ $WriteProximityLines = 2
 # declaring one - the proxy-versus-real-property shape for the third time in this review. "Failed to
 # write to X" in an error string is the same trap. Proximity is still a heuristic and this does not make
 # it a parser; it closes the specific inversion that was measured.
-$negationIndicator = '(?i)\b(not|never|no longer|cannot|can''t|don''t|does\s+not|do\s+not|failed|failure|unable|refus\w*|without|instead\s+of|rather\s+than)\b'
+# The lookbehind is load-bearing. MEASURED: without it, the legitimate PowerShell line
+# `if (-not $empty) { Out-File -FilePath "thing.growth.md" }` was read as a denial, so the negation filter
+# added to stop a false PASS created a false FAIL instead - it vetoed the only real writer in the tree.
+# `-not` is an OPERATOR and its leading hyphen is what distinguishes it from English prose: "we do NOT
+# write X" has a space before it, `(-not $x)` has a hyphen. Same word, opposite meaning, and the character
+# in front is the whole signal.
+$negationIndicator = '(?i)(?<![-\w])(not|never|no longer|cannot|can''t|don''t|does\s+not|do\s+not|failed|failure|unable|refus\w*|without|instead\s+of|rather\s+than)\b'
 
 function Test-NearWriteIndicator([string]$Text, [string]$Literal) {
     $lines = $Text -split "`r?`n"
