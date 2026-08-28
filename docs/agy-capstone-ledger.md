@@ -20,8 +20,14 @@ commit that added the ledger row — that commit is by construction unreviewed).
 
 **How to tell a confirmed GREEN from a waiver, later, without asking anyone.** Both write the marker, so
 the marker alone does not distinguish them. A round-cap waiver ALSO appends a `WAIVED` line to
-`.clavity/agy-marks/skipped.log`; a confirmed GREEN appends nothing. Absence of a line there, plus a
-written marker, is the confirmation. Note that log is gitignored runtime state, so this check works on the
+`.clavity/agy-marks/skipped.log`; a confirmed GREEN appends nothing.
+
+🔴 **MATCH THE LINE TO THE HEAD, NOT TO THE FILE.** That log is APPEND-ONLY ACROSS EVERY CAPSTONE, so
+"absence of a line there" is never true after the first waiver and was the wrong test to write down. On
+2026-08-28 it already held three `WAIVED` lines from 2026-08-24, -25 and -26, none of them belonging to
+the capstone being adjudicated - and the driver, checking the file rather than the range, briefly recorded
+"no WAIVED line exists". Each line carries `HEAD=<sha>`, so the check is: **is there a `WAIVED` line whose
+HEAD is inside the range this row claims?** Absence of THAT, plus a written marker, is the confirmation. Note that log is gitignored runtime state, so this check works on the
 machine that ran the capstone and nowhere else — if you need the fact to survive the machine, put it in
 the row.
 
