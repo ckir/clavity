@@ -397,11 +397,18 @@ Describe 'agy-mark.sh' {
         }
 
         It 'a rejected HEAD write fails too - not just a rejected log write' {
-            # THE EXIT-2 CONTRACT HAD EXACTLY ONE ROW AND IT TESTED `log` MODE ONLY (AGY-TEST-AUDIT
-            # round A, GAP-7). `head` carries the same `|| { ...; exit 2; }` at agy-mark.sh:116, and
-            # dropping it there lets a rejected marker write fall through to `exit 0` - a discipline
-            # reporting success while its marker was never written, which is the one failure this exit
-            # code exists to make visible. The two modes are separate code paths; one row cannot cover both.
+            # THIS ROW'S JUSTIFICATION HAD EXACTLY ONE ROW AND IT TESTED `log` MODE ONLY (AGY-TEST-AUDIT
+            # round A, GAP-7). `head` carries the same rejected-write guard, and dropping it there lets a
+            # rejected marker write fall through to `exit 0` - a discipline reporting success while its
+            # marker was never written, which is the one failure this guard exists to make visible. The two
+            # modes are separate code paths; one row cannot cover both.
+            # THE COMMENT USED TO SAY `|| { ...; exit 2; }` AT agy-mark.sh:116, AND BOTH HALVES OF THAT
+            # WERE STALE - capstone round 10. Roadmap 19 collapsed the tri-state, so there is no `exit 2`
+            # anywhere in that script any more (grep confirms none), and line 116 is now an unrelated
+            # `esac`. A comment citing a construct the change DELETED, at a line number the change MOVED,
+            # is the shape a later round folds against believing the mechanism still exists - which is
+            # exactly what round 7 of the previous capstone was run to catch. Cite the behaviour, not the
+            # exit code that used to carry it.
             # SAME FIXTURE TECHNIQUE AS ABOVE, aimed one level deeper: making `.clavity/agy-marks` a file
             # would fail the `mkdir -p` at :114 and exit 1, never reaching the write. Making the TARGET
             # a directory lets mkdir succeed and makes the redirect itself fail - `>` cannot open a
