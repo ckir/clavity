@@ -71,9 +71,33 @@ if [ "$mode" = 'log' ]; then
     # here manufactures exactly the false attestation the whole discipline exists to prevent.
     # Replaced with a space rather than deleted: the finding text stays readable, and the record stays
     # one line. `${var//}` is a bashism, which this script already relies on two lines up (`${*:5}`).
-    _pl_status=${_pl_status//[$'\n\r']/ }
-    _pl_sha=${_pl_sha//[$'\n\r']/ }
-    _pl_text=${_pl_text//[$'\n\r']/ }
+    # THE SEPARATOR IS FLATTENED TOO, NOT ONLY THE LINE BREAK - capstone round 4. Stripping newlines
+    # closed the "forge a second RECORD" hole and left the "disturb the FIELDS of this record" one open:
+    # the format separates fields with TWO SPACES, so two spaces inside a caller-supplied value shift every
+    # column after it, and a reader that scans for a status rather than indexing to it can be fooled inside
+    # a single line. Same principle as the newline: this script owns the record format, so it owns the
+    # bytes that define the format. Runs are collapsed to one space rather than removed, so the text stays
+    # readable. Tabs go too - not a separator here, but no reader expects one mid-record.
+    # ALL FOUR FIELDS, and the previous version's comment claimed "every interpolated field" while covering
+    # three - `_pl_disc` is interpolated into the same line and was not flattened. It cannot reach
+    # skipped.log (the validator rejects anything outside [A-Za-z0-9._-], and MEASURED: a newline in it
+    # refuses the write and the file is never created) but it DOES reach the stderr record that a refused
+    # log emits, which is the copy an operator is expected to keep. A forged-looking line there is the same
+    # defect one surface over.
+    _pl_flat=''
+    _pl_flatten() {
+        _pl_flat=${1//[$'\n\r\t']/ }
+        while :; do
+            case "$_pl_flat" in
+                *"  "*) _pl_flat=${_pl_flat//"  "/ } ;;
+                *)      break ;;
+            esac
+        done
+    }
+    _pl_flatten "$_pl_disc";   _pl_disc=$_pl_flat
+    _pl_flatten "$_pl_status"; _pl_status=$_pl_flat
+    _pl_flatten "$_pl_sha";    _pl_sha=$_pl_flat
+    _pl_flatten "$_pl_text";   _pl_text=$_pl_flat
     printf -v _pl_ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null || _pl_ts=$(TZ=UTC date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
     if [ -n "$_pl_text" ]; then
         _pending_log=$(printf '%s  %s  %s  HEAD=%s  %s' "$_pl_ts" "$_pl_disc" "$_pl_status" "$_pl_sha" "$_pl_text")

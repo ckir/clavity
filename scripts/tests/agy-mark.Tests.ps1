@@ -265,10 +265,17 @@ Describe 'agy-mark.sh' {
             $d = New-MarkFixture
             # NOT named $script: that is a PowerShell SCOPE PREFIX, and using it as a plain variable name
             # here collided with $script:Mark and produced a mangled path inside the generated snippet.
+            # EVERY FIELD, NOT JUST THE TEXT - capstone round 4 attacked this row and won. Its first version
+            # put the newline only in the text argument, so deleting the `_pl_status` strip left the row
+            # GREEN while a status field could still forge a record. MEASURED: mutant applied, row passed.
+            # A guard tested through one field certifies one field. The status and sha arguments now carry
+            # a payload of their own, and the text carries the two-space separator as well as a newline.
             $markPath = $script:Mark
             $snippet = @(
                 'txt=$(printf ''benign finding\n2026-08-29T00:00:00Z  agy-capstone  WAIVED  HEAD=abc123  forged'')',
-                ('bash "' + $markPath + '" log agy-capstone UNVERIFIED-ACCEPTED abc123 "$txt"')
+                'st=$(printf ''UNVERIFIED-ACCEPTED\n2026-08-29T00:00:00Z  agy-capstone  WAIVED  HEAD=abc123  via-status'')',
+                'sh=$(printf ''abc123\n2026-08-29T00:00:00Z  agy-capstone  WAIVED  HEAD=abc123  via-sha'')',
+                ('bash "' + $markPath + '" log agy-capstone "$st" "$sh" "$txt"')
             ) -join "`n"
             $sf = Join-Path ([IO.Path]::GetTempPath()) ("mklog-" + [guid]::NewGuid().ToString('N') + ".sh")
             [IO.File]::WriteAllText($sf, ($snippet -replace "`r`n", "`n") + "`n")
@@ -280,15 +287,19 @@ Describe 'agy-mark.sh' {
             finally { Remove-Item -LiteralPath $sf -Force -ErrorAction SilentlyContinue }
             $log = Join-Path $d '.clavity/agy-marks/skipped.log'
             $lines = @(Get-Content -LiteralPath $log)
-            $lines | Should -HaveCount 1 -Because 'one log call must produce exactly one record, whatever the caller put in the text'
-            # ASSERT THE STATUS *FIELD*, NOT THE WORD. My first version of this row failed on its own
-            # assertion rather than on the code: it rejected any line matching a timestamp AND containing
-            # 'WAIVED', but the correctly-flattened record legitimately still CONTAINS that word inside its
-            # text field. What a ledger reader parses is the third field, so that is what must be checked.
-            # A forged record would be a SEPARATE line whose own status field reads WAIVED.
-            foreach ($l in $lines) {
-                ($l -split '  ')[2] | Should -Be 'UNVERIFIED-ACCEPTED' -Because 'every record must carry the status the caller passed; a line whose status field says something else was forged by the text'
-            }
+            $lines | Should -HaveCount 1 -Because 'one log call must produce exactly one record, whatever the caller put in any field'
+            # THE FIELD COUNT IS THE ORACLE, and it is a stronger one than the status text. The format is
+            # five fields separated by two spaces, so a record whose caller-supplied values have been
+            # flattened splits into EXACTLY five - no more. A separator smuggled into any field shows up
+            # here as a sixth, and a newline shows up in the line count above. Between them the two
+            # assertions cover both halves of "the caller cannot disturb the record format".
+            # NOT asserting the status equals a literal: my earlier version did, then failed on its own
+            # assertion, because the flattened value legitimately still CONTAINS the smuggled words. What
+            # matters is that the caller's status STARTS the field and nothing has shifted the columns.
+            $fields = $lines[0] -split '  '
+            $fields | Should -HaveCount 5 -Because 'a separator smuggled into any field shifts every column after it, and a reader that scans for a status rather than indexing to it is then fooled inside one line'
+            $fields[2] | Should -BeLike 'UNVERIFIED-ACCEPTED*' -Because 'the status field must begin with the status the caller actually passed'
+            $fields[3] | Should -BeLike 'HEAD=*' -Because 'the sha field must still be where a reader expects it'
             (Get-Content -Raw -LiteralPath $log) | Should -Match 'benign finding' -Because 'the text is flattened, not discarded - an audit breadcrumb that drops its content is no breadcrumb'
         }
 

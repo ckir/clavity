@@ -739,6 +739,20 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # `mktemp` is forced to fail with a shell FUNCTION rather than a PATH shim, the same technique
             # the sweep-ordering row uses: the helper calls it unqualified, so a function intercepts it, and
             # nothing outside this body is affected.
+            #
+            # TWO STATED LIMITS, both raised by capstone round 4 and both left as limits deliberately.
+            # (a) `attrib` is Windows-only, and so is this suite - it resolves Git Bash through
+            #     Get-GitBashOrThrow and CI runs windows-latest. Somewhere the read-only attribute did not
+            #     take, the append would SUCCEED, and the control below would fail: the row goes RED rather
+            #     than passing on a branch it never reached. That is the safe direction, and it is why the
+            #     control is first rather than an afterthought.
+            # (b) A mutant that replaced the checked write with a PREDICATE - `if [ -w "$_as_shield" ]` -
+            #     would keep this row green while misreporting a write that fails on a writable file, disk
+            #     full being the obvious case. This harness cannot construct that: it can make a file
+            #     unwritable, not a filesystem full. The compensation is that the shipped code tests the
+            #     ACTUAL RESULT of the write, which is strictly stronger than any predicate about it, so
+            #     that mutation is a deliberate weakening rather than a slip - and this comment is here so
+            #     that anyone proposing it reads why it was rejected before they make it.
             $r = New-FixtureRepo -Shield "!keep.md`n"
             $shield = Join-Path $r '.clavity/.gitignore'
             & attrib +R ($shield -replace '/','\') 2>$null
