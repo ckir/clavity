@@ -201,7 +201,7 @@ case "$mode" in
         # a fresh clone fails "No such file or directory" on the first discipline that runs.
         mkdir -p "$root/.clavity/agy-marks" 2>/dev/null || _die_refuse 'could not create .clavity/agy-marks'
         # BARE sha and nothing else (docs/agy-disciplines-marker-contract.md:18).
-        printf '%s' "$sha" > "$root/$rel" 2>/dev/null || { printf 'agy-mark: write FAILED for %s - the filesystem rejected it\n' "$rel" >&2; exit 1; }
+        printf '%s' "$sha" 2>/dev/null > "$root/$rel" || { printf 'agy-mark: write FAILED for %s - the filesystem rejected it\n' "$rel" >&2; exit 1; }
         exit 0
         ;;
     log)
@@ -227,7 +227,7 @@ case "$mode" in
         # ONE printf >>, never read-modify-write: two sessions can be open on the same repository, and a
         # single short append is atomic on POSIX, so concurrent writers interleave lines rather than
         # corrupting them.
-        printf '%s\n' "$line" >> "$root/$rel" 2>/dev/null || { _log_lost 'the filesystem rejected the append'; exit 1; }
+        printf '%s\n' "$line" 2>/dev/null >> "$root/$rel" || { _log_lost 'the filesystem rejected the append'; exit 1; }
         exit 0
         ;;
     prepare)

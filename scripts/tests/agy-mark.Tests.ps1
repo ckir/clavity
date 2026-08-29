@@ -364,6 +364,13 @@ Describe 'agy-mark.sh' {
             # prints "could not create .clavity/agy-marks". Asserting only the LOG LINE NOT WRITTEN prefix
             # would NOT discriminate: _die_refuse emits that same prefix at :59.
             $r.Err | Should -Match 'the filesystem rejected the append' -Because 'the fixture must reach the APPEND; a row that also passes on the mkdir refusal is the weakness panel R14 removed'
+            # ONLY THIS SCRIPT MAY SPEAK - capstone round 8; see the sibling assertion in the rejected-HEAD
+            # row for the measurement. The `>>` here had the same leaking redirect order.
+            # THE INDENTED CONTINUATION IS OURS TOO: _log_lost deliberately prints the line it could not
+            # write on a second, two-space-indented line, so that shape is allowed rather than counted as
+            # stray output. Without that exemption this assertion would fail on correct behaviour.
+            @($r.Err -split "`r?`n" | Where-Object { $_.Trim() -ne '' -and $_ -notmatch '^agy-mark: ' -and $_ -notmatch '^  \S' }) |
+                Should -HaveCount 0 -Because 'a raw OS diagnostic reaching the operator is what the redirect order exists to prevent'
         }
 
         It 'a rejected HEAD write fails too - not just a rejected log write' {
@@ -385,6 +392,16 @@ Describe 'agy-mark.sh' {
             # _die_refuse path produces it, so this row still tells a rejected write from a refusal.
             $r.ExitCode | Should -Not -Be 0 -Because 'a rejected write must fail; roadmap 19 collapsed the tri-state, so the CODE no longer says WHICH failure this was'
             $r.Err | Should -Match 'write FAILED' -Because 'a marker that silently did not land is the failure mode this branch exists to surface'
+            # ONLY THIS SCRIPT MAY SPEAK - capstone round 8, and it is the same defect round 6 fixed in the
+            # shield helper and I failed to sweep for here. `printf ... > "$f" 2>/dev/null` does NOT
+            # suppress a failure to OPEN "$f": the shell applies redirections left to right and attempts
+            # the open while stderr is still the terminal. MEASURED before the fix: this exact fixture
+            # printed "agy-mark.sh: line 204: ...: Is a directory" ABOVE the script's own accurate message,
+            # so the operator saw a raw OS diagnostic first. Asserted as "every line is one of ours"
+            # rather than as the absence of one known wording, because a -Not against a single shape only
+            # ever guards that shape - which is how round 7 beat the equivalent row in the other suite.
+            @($r.Err -split "`r?`n" | Where-Object { $_.Trim() -ne '' -and $_ -notmatch '^agy-mark: ' }) |
+                Should -HaveCount 0 -Because 'a raw OS diagnostic reaching the operator is what the redirect order exists to prevent'
             # THIRD ASSERTION, because a refusal row that checks only code and message cannot tell
             # "rejected cleanly" from "rejected after mangling the target".
             (Test-Path -LiteralPath $target -PathType Container) | Should -BeTrue -Because 'the rejected write must leave the target exactly as it found it'
