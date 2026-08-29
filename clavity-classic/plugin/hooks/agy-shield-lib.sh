@@ -373,8 +373,14 @@ agy_shield() {
             # '.clavity-shield-*' sits inside _agy_shield_say, on the branch that CREATES a marker - and on
             # a HEALTHY repository _agy_shield_say is never called at all, because Stage B returns at its
             # "ignored" branch. Meanwhile this gate writes a fresh .clavity-shield-swept-<key> for every new
-            # session. Before roadmap 17a those landed in the OS temp directory and the OS cleaned them;
-            # now they land in the repository, so without this they would accumulate one per session for
+            # KEY - and "key" is the accurate word, which this sentence got wrong until capstone round 9.
+            # It used to say "for every new session", contradicting the block above that measured the
+            # opposite for the consumer that matters: with the empty key agy-mark.sh supplies, the name is
+            # the constant `nosession` and the gate writes ONCE for the life of the checkout, not once per
+            # session. Two comments in one file stating opposite things about the same mechanism, both
+            # written during this same review.
+            # Before roadmap 17a these landed in the OS temp directory and the OS cleaned them;
+            # now they land in the repository, so without this they would accumulate one per KEY for
             # the life of the checkout.
             # NOT a wider glob: the siblings own '.clavity-anomaly-*' and '.clavity-assert-*', and eating
             # those would prune another hook's markers on this hook's schedule.

@@ -265,6 +265,24 @@ Describe 'agy-mark.sh' {
             (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-capstone.head')) | Should -BeFalse -Because 'a refused write must leave no marker; a partial one would attest to a discipline that never ran'
         }
 
+        It 'log REFUSES a malformed sha too, not just head' {
+            # CAPSTONE ROUND 9. Round 5 added _check_sha and wired it into `head` ONLY. MEASURED: the same
+            # `not-a-sha` argument was refused by head and written straight into the HEAD= field of
+            # skipped.log by log, exit 0. One fact, two modes, folded into one - the incomplete-fold shape
+            # round 8 had just caught one file over, which is why round 9 went looking for its siblings.
+            # THE REFUSAL MUST CARRY THE LOG-LINE PREFIX AND NOT 'REFUSED', because the header contract
+            # rewritten in round 5 says a refusal from log's OWN validation emits the LOG LINE prefix
+            # alone. Asserting only the exit code would let a future edit reach for _check_sha here - the
+            # tidier-looking change - and silently falsify that documentation.
+            $d = New-MarkFixture
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('log','agy-first','SKIPPED-UNREACHABLE','not-a-sha')
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'LOG LINE NOT WRITTEN - sha must be hexadecimal' -Because 'log-mode validation emits the LOG LINE prefix, and the reason must name the argument'
+            $r.Err | Should -Not -Match 'REFUSED' -Because 'the header contract says log''s own validation does not emit that prefix; a fix that reused the head-mode helper would break it'
+            $r.Err | Should -Match 'not-a-sha' -Because 'a refused log must still surface the record it could not write - there is no re-fire path'
+            (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/skipped.log')) | Should -BeFalse -Because 'a malformed record must not reach the audit file'
+        }
+
         It 'a NEWLINE in the log text cannot forge a second record' {
             # CAPSTONE ROUND 3. This script OWNS the one-line record format - that is the stated reason the
             # format lives here instead of in the callers - but it interpolated caller-supplied text into
@@ -287,17 +305,22 @@ Describe 'agy-mark.sh' {
             $d = New-MarkFixture
             # NOT named $script: that is a PowerShell SCOPE PREFIX, and using it as a plain variable name
             # here collided with $script:Mark and produced a mangled path inside the generated snippet.
-            # EVERY FIELD, NOT JUST THE TEXT - capstone round 4 attacked this row and won. Its first version
-            # put the newline only in the text argument, so deleting the `_pl_status` strip left the row
-            # GREEN while a status field could still forge a record. MEASURED: mutant applied, row passed.
-            # A guard tested through one field certifies one field. The status and sha arguments now carry
-            # a payload of their own, and the text carries the two-space separator as well as a newline.
+            # EVERY FIELD THAT CAN STILL CARRY ONE - capstone round 4 attacked this row and won. Its first
+            # version put the newline only in the text argument, so deleting the `_pl_status` strip left
+            # the row GREEN while a status field could still forge a record. MEASURED: mutant applied, row
+            # passed. A guard tested through one field certifies one field.
+            # THE SHA ARM WAS REMOVED IN ROUND 9, AND NOT BY WEAKENING THE ROW. Round 9 made a malformed
+            # sha REFUSE outright, which is a stronger guarantee than flattening: the record never reaches
+            # the file at all. That change broke this row - the full suite caught it, the sha arm's premise
+            # being that the record IS written - and the honest reconciliation is that the sha field can no
+            # longer carry a payload to flatten. It is covered by 'log REFUSES a malformed sha too, not
+            # just head' instead. Status and text remain here because they are free-form by contract and
+            # flattening is the only thing standing behind them.
             $markPath = $script:Mark
             $snippet = @(
                 'txt=$(printf ''benign finding\n2026-08-29T00:00:00Z  agy-capstone  WAIVED  HEAD=abc123  forged'')',
                 'st=$(printf ''UNVERIFIED-ACCEPTED\n2026-08-29T00:00:00Z  agy-capstone  WAIVED  HEAD=abc123  via-status'')',
-                'sh=$(printf ''abc123\n2026-08-29T00:00:00Z  agy-capstone  WAIVED  HEAD=abc123  via-sha'')',
-                ('bash "' + $markPath + '" log agy-capstone "$st" "$sh" "$txt"')
+                ('bash "' + $markPath + '" log agy-capstone "$st" abc123 "$txt"')
             ) -join "`n"
             $sf = Join-Path ([IO.Path]::GetTempPath()) ("mklog-" + [guid]::NewGuid().ToString('N') + ".sh")
             [IO.File]::WriteAllText($sf, ($snippet -replace "`r`n", "`n") + "`n")

@@ -222,6 +222,22 @@ case "$mode" in
             ''|*[!A-Za-z0-9._-]*) _log_lost "discipline must match [A-Za-z0-9._-]+, got: [$discipline]"; exit 1 ;;
         esac
         [ -n "$status" ] || { _log_lost 'no status given'; exit 1; }
+        # THE SHA IS VALIDATED HERE TOO, and capstone round 9 caught that it was not. Round 5 added
+        # _check_sha and wired it into `head` ONLY, so `log` accepted anything: MEASURED, `not-a-sha` was
+        # flattened and written straight into the HEAD= field of skipped.log, exit 0, while the identical
+        # argument to `head` was refused. One fact, two modes, folded into one - the same incomplete-fold
+        # shape round 8 caught one file over.
+        # REFUSED THROUGH _log_lost, NOT _check_sha, and the difference is the contract this file now
+        # documents in its header: a refusal from log's OWN validation emits the LOG LINE prefix alone,
+        # while _check_sha calls _die_refuse and would add a REFUSED line that the header says log-mode
+        # validation does not produce. Reusing the head-mode helper here would have been the tidier-looking
+        # change and would have falsified the documentation in the same commit that relied on it.
+        # AN EMPTY SHA IS STILL ACCEPTED, deliberately: `log` has no re-fire path, so refusing destroys an
+        # audit record with nothing to recreate it, and this file already ranks recording above refusing
+        # for that reason. Only a MALFORMED sha is rejected.
+        case "$_pl_sha" in
+            *[!0-9a-fA-F]*) _log_lost "sha must be hexadecimal and nothing else, got: [$_pl_sha]"; exit 1 ;;
+        esac
         agy_shield "$root" "$rel" "$_key"
         mkdir -p "$root/.clavity/agy-marks" 2>/dev/null || { _log_lost 'could not create .clavity/agy-marks'; exit 1; }
         # ONE printf >>, never read-modify-write: two sessions can be open on the same repository, and a
