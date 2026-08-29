@@ -247,6 +247,14 @@ Both rows keep their existing assertions (`SWEPT_MARKER_PRESENT`, `GATE_LATCHED`
 
 Each row also carries a comment block explaining that `-Env @{ TMPDIR = ... }` is dead under Git Bash because bash rewrites a Windows TMPDIR. That reasoning is now irrelevant rather than wrong — the rows no longer touch TMPDIR at all. Replace it with one line: `# The marker lives in the repository's own .clavity/ since roadmap 17a, so no temp-directory games are needed here.`
 
+**A THIRD row is coupled to the old location, and the first execution of this plan discovered it the hard way.** `'the marker sweep deletes ONLY its own aged markers - not fresh ones, not a sibling hook''s'` blocks `TMPDIR` (pointing it below a regular file) and exports a fake `HOME`, then plants its fixtures in `$HOME/.clavity-tmp` — forcing the fallback candidate this step removes. Its precondition assertion then fails, because the marker is created in `.clavity/` instead.
+
+**It must be REPOINTED, not deleted**: unlike the fallback row, what it asserts — prune my own aged markers, spare fresh ones, spare a sibling hook's — is behaviour this step KEEPS. Drop the `TMPDIR`/`HOME` manipulation entirely, set `$dir = Join-Path $r '.clavity'`, and call `agy_shield` plainly.
+
+**Why the plan missed it, which is the transferable part:** the two rows above name the path with the string `clavity-shield-swept`, and a grep for that spelling found exactly those two. This row spells it `clavity-shield-persistent` and assembles its directory differently. **Grepping one spelling of a fact is not grepping the fact** — search for `clavity-tmp`, `TMPDIR` and `clavity-shield-` together before assuming the sweep is complete.
+
+**Also now inert, though nothing fails because of it:** the suite's MARKER HYGIENE machinery (`$script:MarkerDir = [IO.Path]::GetTempPath()` with its snapshot/diff at the top and in `AfterAll`) exists because markers accumulated in the shared temp directory — 989 of them at one triage. After this step markers land in throwaway fixture repos that `AfterAll` already deletes, so the machinery guards nothing. Leave the code (harmless) but correct its comment, or remove both together; do not leave a paragraph claiming a hazard the design has eliminated.
+
 - [ ] **Step 6: Run the pinning test — it must now pass**
 
 ```bash
@@ -261,7 +269,7 @@ Expected: `Tests Passed: 1, Failed: 0`.
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/agy-shield-lib.Tests.ps1 -Output Detailed"
 ```
 
-Expected: **38 passed, 2 failed**, and BOTH failures are predicted. **Any THIRD failure is a real regression — stop and diagnose it rather than proceeding.**
+Expected: **38 passed, 2 failed**, and BOTH failures are predicted. **Any THIRD failure is a real regression — stop and diagnose it rather than proceeding.** (The first execution of this plan DID hit a third, and stopping was the right call: it was a location-coupled row Step 5a had not covered. Step 5a now names it, so a re-execution should see exactly two.)
 
 1. `'falls back to $HOME/.clavity-tmp when TMPDIR cannot be created, and STILL debounces there'` (currently `:605`). It tests a fallback this task deliberately removed; Task 4 deletes the row.
 
@@ -424,9 +432,11 @@ cmp clavity-dotnet/plugin/hooks/agy-shield-lib.sh clavity-classic/plugin/hooks/a
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/agy-shield-lib.Tests.ps1 -Output Detailed"
 ```
 
-Expected: **40 passed, 2 failed** — 42 rows now, with the same two predicted failures Task 2 Step 7 named (the `$HOME/.clavity-tmp` fallback row and the A1-mkdir-failure row). Both are closed in Task 4. A third failure is a regression.
+Expected: **41 passed, 2 failed** — 43 rows at this point (the ordering row still exists; Step 6 deletes it), with the same two predicted failures Task 2 Step 7 named (the `$HOME/.clavity-tmp` fallback row and the A1-mkdir-failure row). Both are closed in Task 4. A third failure is a regression.
 
-**The row-count derivation, stated once so every later total is checkable rather than asserted:** 39 rows at `3e12e87` · **+1** Task 1 cross-repo · **+1** Task 3 ordering · **+1** Task 3 Step 4a sweep-prune · **−1** Task 4 deleted fallback · = **41 at completion**. Intermediate totals follow from where you are in that sequence.
+**The row-count derivation, stated once so every later total is checkable rather than asserted:** 39 rows at `3e12e87` · **+1** Task 1 cross-repo · **+1** Task 3 Step 4a sweep-prune · **−1** Task 4 deleted fallback · = **40 at completion**.
+
+**The ordering row is NOT in that sum, and its absence is the execution's sharpest finding.** It was written as Task 3 Step 2 prescribes, then DELETED when Step 6's mutant proved it vacuous: with the sweep block moved back above Stage A2 (verified applied - sweep at 209, A2 banner at 235) the row stayed GREEN. The two orders are end-state identical, so no post-hoc assertion can separate them; the hazard is a window, not a state. Logged as accepted-boundary entry M in `docs/coverage-debt.md`. **A re-execution should write the row, run the mutant, see it survive, and delete it again - or skip it and read entry M.**
 
 - [ ] **Step 6: Prove the new row is not vacuous, with a LOGIC mutant**
 
@@ -547,7 +557,7 @@ cp clavity-dotnet/plugin/hooks/agy-shield-lib.sh clavity-classic/plugin/hooks/ag
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/agy-shield-lib.Tests.ps1 -Output Detailed"
 ```
 
-Expected: **41 passed, 0 failed** — the completion total from the derivation in Task 3 Step 5. The A1-mkdir row is repaired in place by Step 1a rather than removed, so it is still counted.
+Expected: **40 passed, 0 failed** — the completion total from the derivation in Task 3 Step 5. The A1-mkdir row is repaired in place by Step 1a rather than removed, so it is still counted.
 
 ```bash
 git add scripts/tests/agy-shield-lib.Tests.ps1 clavity-dotnet/plugin/hooks/agy-shield-lib.sh clavity-classic/plugin/hooks/agy-shield-lib.sh
@@ -720,7 +730,9 @@ pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/agy-shield-lib.Tests
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/agy-mark.Tests.ps1 -Output Detailed"
 ```
 
-Expected: **41 passed / 0 failed** for the shield suite (the completion total derived in Task 3 Step 5) and all-pass for `agy-mark`. **A run with no `Tests Passed:` line is an ABORTED run, not a pass.**
+Expected: **40 passed / 0 failed** for the shield suite (the completion total derived in Task 3 Step 5) and **27 / 0** for `agy-mark`. **A run with no `Tests Passed:` line is an ABORTED run, not a pass.**
+
+**⚠ THIS CLAIM WAS HALF-RIGHT ON EXECUTION AND THE GATE CAUGHT THE OTHER HALF.** The registration LIST needs no change - true, and the reasoning below holds. But `test-suite-registration.Tests.ps1` also asserts a COUNT CENSUS, `'every _partition.md row states the CURRENT test count for its suite'`, and that row FAILED with `agy-shield-lib.Tests.ps1 says 39 but discovers 40`. **Update the shield suite's row in `scripts/tests/_partition.md` as part of Task 4** (count only - leave the TIMING, which needs an idle machine). Keep the column alignment: the count is right-aligned and a one-space drift is visible against its neighbours.
 
 **No suite REGISTRATION change is needed, and that is a fact rather than an omission:** this plan modifies existing test files and creates none, so the explicit list in `justfile:108` — which is a list, not a glob, and is enforced by `test-suite-registration.Tests.ps1` — is already correct. Run it anyway, because it is the gate that would catch it if that assumption were wrong:
 
