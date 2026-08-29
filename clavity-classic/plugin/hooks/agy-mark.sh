@@ -18,14 +18,36 @@
 #
 # Exit codes: 0 wrote; NON-ZERO did not. The reason is on stderr, and the reason is the point.
 #
-# THE THREE MESSAGES, IN FULL, BECAUSE THEY ARE NOW THE ENTIRE CONTRACT. A caller that reads only one of
-# them misclassifies the others - and each mode has its OWN rejection wording, which is easy to miss:
-#   "REFUSED - <reason>"                                   -> refused before trying; fix the arguments.
-#   "write FAILED for <path> - the filesystem rejected it" -> HEAD mode, attempted and rejected; escalate.
-#   "LOG LINE NOT WRITTEN - <reason>"                      -> LOG mode. The <reason> discriminates:
-#        "the filesystem rejected the append"  is the attempted-and-rejected case; escalate.
-#        anything else ("could not create .clavity/agy-marks", "no status given", ...) is a refusal.
-#     Note this prefix is emitted on BOTH refusal and rejection, so the prefix alone decides nothing.
+# THE MESSAGES, IN FULL, BECAUSE THEY ARE NOW THE ENTIRE CONTRACT. A caller that reads only one of them
+# misclassifies the others. CAPSTONE ROUND 5 REWROTE THIS BLOCK because the previous version was wrong in
+# two ways that mattered exactly here, where the exit code no longer discriminates anything:
+#
+#   "REFUSED - <reason>"
+#       Emitted by _die_refuse. The old text glossed this as "fix the arguments", which is FALSE for two
+#       paths: head's and prepare's `mkdir -p ... || _die_refuse` are ENVIRONMENTAL failures, not argument
+#       faults, and they carry this prefix. Read it as "this run refused to write", not as "you passed a
+#       bad argument".
+#       NOT emitted by log mode's OWN validation - see below. MEASURED: `log "bad discipline" ...` emits
+#       only the LOG LINE prefix, while `head "bad discipline" ...` emits only REFUSED.
+#
+#   "write FAILED for <path> - the filesystem rejected it"
+#       HEAD mode only; attempted and rejected by the filesystem. Escalate.
+#
+#   "LOG LINE NOT WRITTEN - <reason>"
+#       LOG mode. The <reason> discriminates, and the prefix alone decides NOTHING:
+#         "the filesystem rejected the append"  -> attempted and rejected; escalate.
+#         anything else ("could not create .clavity/agy-marks", "no status given", ...) -> a refusal.
+#
+# WHICH PREFIXES APPEAR TOGETHER, which the old block did not say and a caller cannot guess:
+#   log refused BEFORE its branch is reached (helper missing, no mode, bad cwd) -> BOTH prefixes, REFUSED
+#       first, then the line it could not write.
+#   log refused BY ITS OWN validation (bad discipline, no status)              -> LOG LINE prefix ONLY.
+#   head or prepare refused, for any reason                                    -> REFUSED only.
+#
+# PRECONDITION A CALLER CANNOT SEE FROM THE ARGUMENTS: this script reads $AGY_SESSION_ID from the
+# environment and passes it to the shield helper as a debounce key. Unset is legal and means "do not
+# debounce" for the notice path - but see the sweep-gate comment in agy-shield-lib.sh, where an empty key
+# has a different and deliberately-documented consequence.
 #
 # THIS USED TO BE A TRI-STATE (1 refused before trying, 2 attempted and rejected) and roadmap 19 collapsed
 # it, on a measurement rather than taste: every call site across agy-first, agy-capstone and agy-test-audit
@@ -127,6 +149,18 @@ _check_discipline() {
         .|..)                 _die_refuse "discipline must not be a path segment alias: [$1]" ;;
     esac
 }
+# THE SHA IS VALIDATED TOO, and the marker contract is why. docs/agy-disciplines-marker-contract.md:18
+# says the content is "the commit sha from `git rev-parse HEAD` at consult time, and nothing else". The
+# code wrote whatever it was handed, verbatim - MEASURED (capstone round 5): a two-line argument produced
+# a TWO-LINE marker file and exit 0, so the file silently stopped being what its own contract says it is.
+# Every real call site passes "$(git rev-parse HEAD)", so this refuses nothing that happens today; it
+# stops a caller from making the marker unreadable to the hook that consumes it. Checked AFTER the
+# non-empty test so the "head requires a sha argument" message survives for the empty case.
+_check_sha() {
+    case "$1" in
+        *[!0-9a-fA-F]*) _die_refuse "sha must be hexadecimal and nothing else, got: [$1]" ;;
+    esac
+}
 _check_relpath() {
     case "$1" in
         '')    _die_refuse 'relpath is empty' ;;
@@ -159,6 +193,7 @@ case "$mode" in
         discipline=${2:-}; sha=${3:-}
         _check_discipline "$discipline"
         [ -n "$sha" ] || _die_refuse 'head requires a sha argument'
+        _check_sha "$sha"
         rel=".clavity/agy-marks/$discipline.head"
         agy_shield "$root" "$rel" "$_key"
         # EVERY mode creates the directory it writes into. The helper's Stage A1 creates .clavity/ and

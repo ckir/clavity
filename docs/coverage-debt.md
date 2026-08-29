@@ -586,3 +586,27 @@ here, because it needs a new registered suite and this batch's scope is the seve
   builtin, so moving ONLY that line below the sweep leaves grep-before-find green while the property is
   broken. The row reads the shield's CONTENT at sweep time instead, which is the property rather than a
   stand-in for it. **"I cannot observe X" deserves the same suspicion as any other unfalsifiable claim.**
+
+### N. `head` mode's marker write is not atomic (roadmap 19 capstone, 2026-08-29)
+
+- **Behaviour:** `agy-mark.sh` writes the marker with `printf '%s' "$sha" > "$root/$rel"`. The shell
+  truncates the target when it opens it, so a process killed between the open and the write leaves a
+  ZERO-BYTE marker, and the previous sha is gone. Two sessions writing the same discipline's marker race
+  on the same truncation. MEASURED: with a marker holding a valid sha, running a command that opens the
+  target for writing and then does nothing leaves the file at 0 bytes.
+- **Why accepted rather than fixed:** the damage is the design's own documented safe direction. An absent
+  or unreadable marker makes the discipline RE-FIRE, which `agy-mark.Tests.ps1` already pins as correct
+  (`'head fails CLOSED: an absent marker makes the discipline re-fire, which is safe'`), and the marker is
+  runtime state that the next run regenerates. Nothing downstream treats an empty marker as an
+  attestation - it reads as "no marker", which is the conservative answer.
+- **Why the obvious fix was rejected:** writing to a temp beside the target and renaming would be atomic,
+  but `mv` into a target that is a DIRECTORY moves the temp INSIDE it, which is precisely the state the
+  row `'a rejected HEAD write fails too'` exists to forbid ("nothing may be created underneath a target
+  the write could not open"). Making the rename safe requires a directory test, a mktemp dependency and
+  two new failure paths in a data-leak-adjacent script, to prevent an outcome the design already calls
+  safe. Cost exceeds benefit; recorded rather than smuggled in.
+- **Compensation:** the fail-closed re-fire above, pinned by a named test row.
+- **Anchor (its disappearance voids this entry):** the `printf '%s' "$sha" > "$root/$rel"` write in
+  `head` mode, and the fail-closed row named above. **Re-check trigger:** any change that makes an empty
+  or partial marker read as a valid attestation rather than as an absent one - that would turn this from
+  a safe truncation into a false GREEN, and it must be fixed rather than accepted.

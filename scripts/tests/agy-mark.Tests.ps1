@@ -243,6 +243,28 @@ Describe 'agy-mark.sh' {
             Remove-Item -LiteralPath $errF, "$errF.out" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $isolated -Recurse -Force -ErrorAction SilentlyContinue
         }
+        It 'head REFUSES a sha that is not bare hex, and writes no marker' {
+            # CAPSTONE ROUND 5, found only when the peer read the whole file instead of the diff.
+            # docs/agy-disciplines-marker-contract.md:18 says the marker holds "the commit sha from
+            # `git rev-parse HEAD` at consult time, and nothing else". The code wrote whatever it was
+            # handed - MEASURED: a two-line argument produced a TWO-LINE marker and exit 0, so the file
+            # silently stopped being what its contract says it is, and the hook that reads it would be
+            # comparing a sha against two lines of something else.
+            # THREE ASSERTIONS, because exit-code-only would stay green against a script that wrote a
+            # broken marker and then exited 1 - the same reasoning as the other refusal rows here.
+            # THE FIXTURE USES A NON-HEX SHA, NOT A MULTI-LINE ONE, AND THAT IS DELIBERATE. The defect was
+            # measured with a two-line sha, but `Start-Process -ArgumentList` cannot deliver an embedded
+            # newline at all - it splits the argument, which is measured and documented in the log row
+            # below. A multi-line sha would therefore arrive here as its own tail and this row would pass
+            # for a reason its own comment does not give. Both cases reach the SAME guard, so the row
+            # asserts the one this harness can deliver honestly rather than staging the one it cannot.
+            $d = New-MarkFixture
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-capstone','not-a-sha')
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'sha must be hexadecimal' -Because 'the refusal must name the argument it rejected, not just fail'
+            (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-capstone.head')) | Should -BeFalse -Because 'a refused write must leave no marker; a partial one would attest to a discipline that never ran'
+        }
+
         It 'a NEWLINE in the log text cannot forge a second record' {
             # CAPSTONE ROUND 3. This script OWNS the one-line record format - that is the stated reason the
             # format lives here instead of in the callers - but it interpolated caller-supplied text into
