@@ -14,11 +14,16 @@ Describe 'agy-shield-lib.sh' {
         # registered here as it is created and removed in AfterAll. Without this the suite leaks one git
         # repository per row - the pattern that has already left 321 orphaned directories in this repo.
         $script:Fixtures = New-Object System.Collections.ArrayList
-        # MARKER HYGIENE - the same class as FIXTURE HYGIENE above, for the debounce markers rather than
-        # the fixture repos. Every Invoke-Shield call writes `.clavity-shield-<class>-<key>` into the
-        # shell's temp directory and NOTHING removed it: the helper's own sweep prunes only at -mtime +30
-        # and only on a run that creates a marker, so the suite's own markers are always too young for it.
-        # MEASURED at anomaly triage 2026-08-17: 989 of them had accumulated in TMPDIR.
+        # MARKER HYGIENE - VESTIGIAL SINCE ROADMAP 17a, AND KEPT ONLY AS A BACKSTOP. It exists because
+        # every Invoke-Shield call used to write `.clavity-shield-<class>-<key>` into the shell's shared
+        # temp directory where nothing removed it - the helper's own prune runs only at -mtime +30 and only
+        # on a run that creates a marker, so the suite's markers were always too young for it. MEASURED at
+        # anomaly triage 2026-08-17: 989 had accumulated in TMPDIR.
+        # That cannot happen now: markers land inside each throwaway fixture repo, which AfterAll deletes
+        # wholesale. The snapshot/diff below therefore has nothing to find in the ordinary case. It is left
+        # in place because it costs one directory listing and would still catch a regression that put
+        # markers back in a shared location - but do not read it as load-bearing, and do not "fix" it by
+        # broadening the delete.
         # SNAPSHOT-AND-DIFF, not a blanket delete of `.clavity-shield-*`. Two sessions can be open on this
         # repository at once, and other hooks write markers with the SAME prefix - wiping them all would
         # silence another session's live data-leak debounce, which is the one thing these markers exist for.
@@ -61,17 +66,21 @@ Describe 'agy-shield-lib.sh' {
                 [hashtable]$Env = @{}
             )
             $libSh = ($script:Lib -replace '\\', '/')
-            # DEBOUNCE ISOLATION - without this the suite is not re-runnable and the mutation controls
-            # are uninterpretable. The helper's marker is ${TMPDIR:-/tmp}/.clavity-shield-<class>-<key>
-            # with NO repository component, so a LITERAL key shared between rows debounces across
-            # independent fixture repos AND across suite runs, because the marker outlives the run.
-            # MEASURED, with a control that rules out a broken fixture: repo A key k1 REPORTS; repo A
-            # key k1 again is silent (correct); repo B key k1 - a fresh repo never touched - is SILENT;
-            # repo B key kZ REPORTS. Three rows asserting a report FIRES therefore passed only for
-            # whichever ran first: 34 tests, 31 passed, 3 failed.
-            # Every invocation gets its own key, so "silent" always means silent BY CONTROL FLOW and
-            # never by a leftover marker. That matters most under the Step 7 mutation controls, where a
-            # stale marker would mask a mutation-induced report and score the mutation as caught.
+            # DEBOUNCE ISOLATION. Since roadmap 17a the marker lives in each repository's own .clavity/
+            # (`<root>/.clavity/.clavity-shield-<class>-<key>`), so independent fixture repos no longer
+            # collide by construction and markers no longer outlive the run - each fixture is deleted in
+            # AfterAll. What REMAINS true is that a LITERAL key shared between rows debounces across two
+            # calls against the SAME fixture, so a row asserting a report FIRES would pass only if it ran
+            # first. Every invocation therefore still gets its own key, and "silent" always means silent
+            # BY CONTROL FLOW rather than by a leftover marker - which matters most under the mutation
+            # controls, where a stale marker would mask a mutation-induced report and score it as caught.
+            # THE HISTORICAL MEASUREMENT, kept because it IS the defect 17a fixed: the marker used to be
+            # ${TMPDIR:-/tmp}/.clavity-shield-<class>-<key> with NO repository component, and repo A key k1
+            # REPORTED; repo A key k1 again was silent (correct); a FRESH repo B under the same key was
+            # SILENT; repo B under a different key REPORTED. Three rows asserting a report fires passed
+            # only for whichever ran first: 34 tests, 31 passed, 3 failed. That third result is now
+            # asserted to be the OPPOSITE, by 'reports the SAME fault in a SECOND repository under the
+            # SAME key (roadmap 17a)'.
             # `-replace` computes its replacement ONCE, so a body calling the helper twice still shares
             # one key - the same-key semantics those rows rely on survive. Rows that deliberately pin
             # debounce behaviour already build their own GUID keys and contain no `k1` to substitute.
@@ -388,7 +397,7 @@ Describe 'agy-shield-lib.sh' {
             (Get-Shield $r) | Should -BeExactly $before -Because 'a refused call must not touch the shield'
         }
 
-        It 'A1 mkdir FAILURE: returns 0, writes nothing, reports ENVIRONMENT once per key' {
+        It 'A1 mkdir FAILURE: returns 0, writes nothing, reports ENVIRONMENT every time (no store, no debounce)' {
             # Make .clavity a FILE, so mkdir -p cannot create the directory. This is the only branch that
             # exercises A1's failure path, and the existing rows all presuppose the directory exists.
             $r = New-FixtureRepo -NoClavityDir
@@ -396,7 +405,15 @@ Describe 'agy-shield-lib.sh' {
             $k = 'mk-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"`nagy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`"`necho RC=`$?"
             $res.Out | Should -Match 'RC=0' -Because 'A1 failure must never hard-block'
-            ([regex]::Matches($res.Err, 'could not create')).Count | Should -Be 1 -Because 'class ENVIRONMENT is debounced per key'
+            # WAS 1 UNTIL ROADMAP 17a, AND THE CHANGE IS DELIBERATE. The marker directory is now the
+            # repository's own .clavity/ - which is precisely what this fixture prevents from being created
+            # - so there is nowhere to record a debounce, and _agy_shield_say takes its "no writable marker
+            # location" branch and emits every time. That branch's own comment states the principle: a
+            # data-leak notice must never be lost because the debounce store is unavailable. Restoring
+            # once-per-key here would require a shared fallback directory, which is exactly the
+            # cross-repository collision 17a removed. The cost is real and accepted: in a repository
+            # misconfigured this way, every invocation warns rather than one per session.
+            ([regex]::Matches($res.Err, 'could not create')).Count | Should -Be 2 -Because 'with no writable .clavity/ there is no debounce store, so the ENVIRONMENT fault is emitted on every call rather than swallowed'
         }
 
         It 'the A2 temp SWEEP is gated - it does not run on every call' {
@@ -417,7 +434,7 @@ Describe 'agy-shield-lib.sh' {
             $k = 'sw-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body @"
 agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
-_m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
+_m=".clavity/.clavity-shield-swept-$k"
 [ -f "`$_m" ] && echo "SWEPT_MARKER_PRESENT"
 "@
             $res.Out | Should -Match 'SWEPT_MARKER_PRESENT' -Because 'the sweep marker must latch, or the gate never closes'
@@ -443,7 +460,7 @@ _m="`${TMPDIR:-/tmp}/.clavity-shield-swept-$k"
             $k = 'sweepwork-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             $res = Invoke-Shield -Root $r -Body @"
 agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
-[ -f "`${TMPDIR:-/tmp}/.clavity-shield-swept-$k" ] && echo "GATE_LATCHED"
+[ -f ".clavity/.clavity-shield-swept-$k" ] && echo "GATE_LATCHED"
 "@
 
             # ASSERT THE PRECONDITION, do not assume it (capstone R3). The sweep is deliberately gated on
@@ -531,6 +548,24 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             ([regex]::Matches($res.Err, 'git rm --cached')).Count | Should -Be 2
         }
 
+        It 'reports the SAME fault in a SECOND repository under the SAME key (roadmap 17a)' {
+            # THE DEFECT THIS STEP EXISTS FOR, promoted from a comment into an assertion. Invoke-Shield's
+            # header at :64-80 already records the measurement - "repo B key k1 - a fresh repo never
+            # touched - is SILENT" - and works around it with a per-invocation key. A workaround that
+            # keeps the suite honest is not the same as a guard: one session across two repositories got
+            # ONE fault report in total, and the second repository's leak was never surfaced.
+            #
+            # ITS OWN KEY, and never the literal "k1": Invoke-Shield rewrites that token, which would give
+            # the two calls DIFFERENT keys and make this row pass no matter what the marker is keyed on.
+            $rA = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
+            $rB = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
+            $k  = 'xrepo-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
+            $body = "agy_shield `"$rA`" `".clavity/local-anomalies.md`" `"$k`"`n" +
+                    "agy_shield `"$rB`" `".clavity/local-anomalies.md`" `"$k`""
+            $res = Invoke-Shield -Root $rA -Body $body
+            ([regex]::Matches($res.Err, 'git rm --cached')).Count | Should -Be 2 -Because 'two repositories are two separate leaks; a marker for one must never silence the other'
+        }
+
         It 'distinguishes keys that differ ONLY IN THEIR TAIL - the whole key is load-bearing' {
             # CAPSTONE ROUND 2, Mechanism Gamer. The row above cannot catch a TRUNCATING implementation,
             # because its two keys ('k1-...' / 'k2-...') already differ in their SECOND character. MEASURED
@@ -596,35 +631,54 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # ROADMAP section 16, not for a row that would be hard-coding a path today.
         }
 
-        # ------------------------------------------------------------------ AGY-TEST-AUDIT round A.
-        # THE MARKER DIRECTORY IS RESOLVED BY A LOOP (agy-shield-lib.sh:58) AND ONLY ITS FIRST CANDIDATE
-        # WAS EVER EXERCISED. Both rows below drive the SECOND candidate, and they do it by assigning
-        # TMPDIR *inside the shell body* - NOT with `-Env`. The suite records at the top of Invoke-Shield
-        # that Git Bash silently rewrites a Windows TMPDIR handed to it to `/tmp/`, so an -Env override is
-        # dead on this platform; an in-body export is not, and is what these rows measured working.
-        It 'falls back to $HOME/.clavity-tmp when TMPDIR cannot be created, and STILL debounces there' {
-            # The fallback is not decoration: if it goes, `_ass_dir` is empty, the helper takes its
-            # "no writable marker location" branch and emits on EVERY call. So the discriminating
-            # assertion is the COUNT, not the presence, of the report.
-            $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
-            $k = 'fb-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
-            # TMPDIR points BELOW A REGULAR FILE, so `mkdir -p` cannot create it - a deterministic
-            # unwritable temp that needs no permissions games and no elevation.
-            $body = @"
-: > "`$PWD/blocker"
-export TMPDIR="`$PWD/blocker/sub"
-export HOME="`$PWD/fakehome"
-mkdir -p "`$HOME"
-agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
-agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
-"@
-            $res = Invoke-Shield -Root $r -Body $body
-            $fallbackDir = Join-Path $r 'fakehome/.clavity-tmp'
-            (Test-Path -LiteralPath $fallbackDir) | Should -BeTrue -Because 'an unwritable TMPDIR must resolve to the HOME candidate, not to no directory at all'
-            @(Get-ChildItem -LiteralPath $fallbackDir -Filter ".clavity-shield-persistent-$k" -Force).Count |
-                Should -Be 1 -Because 'the debounce marker must actually land in the fallback directory'
-            ([regex]::Matches($res.Err, 'git rm --cached')).Count |
-                Should -Be 1 -Because 'TWO reports would mean the fallback directory was found but never used as the debounce store - the guard degrading to warn-every-time'
+        # THE $HOME/.clavity-tmp FALLBACK ROW WAS DELETED HERE (roadmap 17a), together with the
+        # AGY-TEST-AUDIT round A header that introduced it - which opened "THE MARKER DIRECTORY IS RESOLVED
+        # BY A LOOP ... AND ONLY ITS FIRST CANDIDATE WAS EVER EXERCISED". There is no loop any more: the
+        # marker directory is the repository's own .clavity/, or nothing at all.
+        # DELETED RATHER THAN REWRITTEN TO PASS. Keeping a row for deleted behaviour is how a suite starts
+        # asserting a design nobody ships, and this project has already shrunk a suite 13 -> 9 on exactly
+        # that reasoning.
+        # WHAT REPLACED THE BEHAVIOUR IS PINNED ELSEWHERE: an unwritable .clavity/ means no debounce store
+        # and a report on EVERY call, asserted by 'A1 mkdir FAILURE: returns 0, writes nothing, reports
+        # ENVIRONMENT every time (no store, no debounce)'.
+        # DO NOT REINTRODUCE A FALLBACK. A fallback to any shared directory would restore the
+        # cross-repository collision this step removed - see 'reports the SAME fault in a SECOND repository
+        # under the SAME key (roadmap 17a)'.
+
+        # NO ROW PINS THE SWEEP-AFTER-A2 ORDERING, and the reason is recorded here so nobody writes one
+        # believing it works. A row WAS written and then deleted, because a mutant PROVED it vacuous:
+        # moving the sweep block back above Stage A2 (verified applied - sweep at 209, A2 banner at 235)
+        # left it GREEN.
+        # WHY IT CANNOT BE PINNED FROM OUTSIDE THE PROCESS. The two orders are end-state identical:
+        #   sweep first -> marker written, then shield written
+        #   sweep after -> shield written, then marker written
+        # By the time any assertion runs, both have produced the same files and git ignores all of them.
+        # The one fixture that could strand the marker - a shield path that cannot be written, so A2 fails
+        # while the marker still lands - strands it under BOTH orders, so it does not discriminate either.
+        # The hazard the ordering removes is a WINDOW, not an end state: a `git add -A` from a second
+        # session, or an interrupt, between the marker write and the shield write. Nothing this harness can
+        # observe after the call distinguishes them.
+        # Tracked as an accepted boundary in docs/coverage-debt.md with its compensation. Do NOT replace
+        # this with a row that greps the source for block positions: this suite records two source-text
+        # matchers that were defeated, and the standing rule is to pin behaviour, not layout.
+
+        It 'the SWEEP prunes aged shield markers too - the healthy path is the only one that runs' {
+            # WITHOUT THIS THE MARKERS GROW WITHOUT BOUND. The other prune lives in _agy_shield_say, on the
+            # branch that CREATES a marker - and on a healthy repository _agy_shield_say is never called,
+            # because Stage B returns at its "ignored" branch. So the sweep is the only prune that runs in
+            # the common case, and before roadmap 17a it did not prune these at all: they lived in the OS
+            # temp directory and the OS cleaned them.
+            $r = New-FixtureRepo -Shield "*`n"
+            $aged    = Join-Path $r '.clavity/.clavity-shield-persistent-ancient'
+            $fresh   = Join-Path $r '.clavity/.clavity-shield-persistent-recent'
+            $sibling = Join-Path $r '.clavity/.clavity-anomaly-ancient'
+            foreach ($f in @($aged, $fresh, $sibling)) { [IO.File]::WriteAllText($f, "x`n") }
+            foreach ($f in @($aged, $sibling)) { (Get-Item -LiteralPath $f -Force).LastWriteTime = (Get-Date).AddDays(-40) }
+            $k = 'sweepprune-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
+            $null = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`""
+            (Test-Path -LiteralPath $aged)    | Should -BeFalse -Because 'an aged shield marker must be swept, or they accumulate one per session forever'
+            (Test-Path -LiteralPath $fresh)   | Should -BeTrue  -Because 'a FRESH marker is a live debounce; sweeping it would re-arm every warning'
+            (Test-Path -LiteralPath $sibling) | Should -BeTrue  -Because 'the sibling hooks own .clavity-anomaly-*; a broadened glob would delete their markers on our schedule'
         }
 
         It 'the marker sweep deletes ONLY its own aged markers - not fresh ones, not a sibling hook''s' {
@@ -634,10 +688,15 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # :75-79 warns the siblings own `.clavity-anomaly-*` and `.clavity-assert-*`) eats files this
             # hook does not own. A row asserting only "the stale one is gone" catches the first and scores
             # the second as a pass.
+            # SINCE ROADMAP 17a THE MARKERS LIVE IN THE REPOSITORY'S OWN .clavity/, so this row no longer
+            # blocks TMPDIR and fakes a HOME to force a fallback candidate that no longer exists. WHAT it
+            # asserts is unchanged - prune my own aged markers, spare fresh ones, spare a sibling's - only
+            # WHERE the fixtures are planted moved. This row was not predicted to break by the plan that
+            # made the change: two other rows named the marker path with the string 'clavity-shield-swept'
+            # and were found by grepping for it, while this one spells it 'clavity-shield-persistent' and
+            # builds its directory a different way. Grepping one spelling is not grepping the fact.
             $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
-            $home2 = Join-Path $r 'fakehome'
-            $dir = Join-Path $home2 '.clavity-tmp'
-            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            $dir = Join-Path $r '.clavity'
             $stale   = Join-Path $dir '.clavity-shield-persistent-STALE'
             $fresh   = Join-Path $dir '.clavity-shield-persistent-FRESH'
             $foreign = Join-Path $dir '.clavity-anomaly-STALE'
@@ -645,13 +704,7 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # -mtime +30 reads the modification time, so age the two that must LOOK stale.
             foreach ($f in @($stale, $foreign)) { (Get-Item -LiteralPath $f -Force).LastWriteTime = (Get-Date).AddDays(-40) }
             $k = 'sw-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
-            $body = @"
-: > "`$PWD/blocker"
-export TMPDIR="`$PWD/blocker/sub"
-export HOME="`$PWD/fakehome"
-agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
-"@
-            $res = Invoke-Shield -Root $r -Body $body
+            $null = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/local-anomalies.md`" `"$k`""
             # PRECONDITION FIRST (the standing rule): the sweep runs ONLY on the call that creates a
             # marker. If no marker was created the sweep never ran, and every assertion below would be
             # reporting on a sweep that did not happen rather than on one that misbehaved.

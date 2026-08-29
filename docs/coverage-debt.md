@@ -565,3 +565,31 @@ here, because it needs a new registered suite and this batch's scope is the seve
   the provider-prefix row that pins it. If either goes, this is a live gap again, not a satisfied one.
   **Re-check trigger:** any change to how `$repo` is resolved, or a harness change that stops spawning a
   child process - which would make the PSDrive case constructible and retire this entry outright.
+
+### M. The sweep-after-Stage-A2 ordering is not observable after the call (roadmap 17a, 2026-08-29)
+
+- **Behaviour:** `agy_shield` runs its sweep gate AFTER Stage A2 has asserted the shield, so the marker it
+  writes (`.clavity/.clavity-shield-swept-<key>`) never exists in a `.clavity/` that is not yet ignored.
+  Before the block was moved, a marker could be created at a point where Stage A1 had made the directory
+  but Stage A2 had not yet written `.gitignore`.
+- **Why uncovered:** the two orders are END-STATE IDENTICAL. Sweep-first writes the marker then the
+  shield; sweep-after writes the shield then the marker; by the time any assertion runs both have produced
+  the same files and git ignores all of them. MEASURED: a row asserting that every file left in `.clavity/`
+  is ignored stayed GREEN under a verified logic mutant that moved the block back above Stage A2 (sweep at
+  209, A2 banner at 235). The one fixture that could strand the marker - a shield path that cannot be
+  written, so A2 fails while the marker still lands - strands it under BOTH orders, so it does not
+  discriminate either. **The hazard the ordering removes is a WINDOW, not an end state:** a `git add -A`
+  from a second session on the same repository, or an interrupt, landing between the two writes.
+- **Compensation:** the ordering constraint is stated at the block itself, in terms, including why it must
+  also stay BEFORE Stage B (whose early returns are the common case, so a sweep placed after them would
+  almost never run). The vacuous row was DELETED rather than kept, and the suite carries a comment at its
+  former location recording the mutant result so it is not rewritten by someone who assumes it works.
+  The adjacent property that IS observable - that the sweep prunes aged shield markers, without which they
+  accumulate one per session forever - is pinned by `'the SWEEP prunes aged shield markers too - the
+  healthy path is the only one that runs'`, proven non-vacuous by narrowing the `find` back to
+  `.gitignore.tmp.*` alone (that mutant reds exactly that row).
+- **Anchor (its disappearance voids this entry):** the sweep block's position between Stage A2's closing
+  `fi` and the `Stage B: verify the EFFECT` banner in `agy-shield-lib.sh`, and the comment block that
+  explains it. **Re-check trigger:** any harness change that can observe intermediate state within a single
+  `agy_shield` call - a shim, an injected hook, or an in-process runner - would make this constructible and
+  retire this entry outright.

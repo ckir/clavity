@@ -44,23 +44,38 @@ _AS_CR=$(printf '\r')   # a literal CR, for the optional-trailing-CR shield matc
 #       destructive act on the operator's own file rather than a condition of the machine. This is a
 #       DELIBERATE, NARROW deviation from the spec's "ENVIRONMENT is debounced per key" rule, recorded
 #       here rather than smuggled in as a mislabel.
-# Resolve a marker directory that actually EXISTS and is WRITABLE, creating it if needed.
-# Echoes the directory, or nothing at all when no candidate works.
+# Resolve the marker directory for THIS repository: the repository's own .clavity/, which Stage A1 has
+# already created and Stage A2 shields. Echoes the directory, or NOTHING when it is absent or unwritable
+# - and nothing is a SAFE answer, because _agy_shield_say's [ -z ] branch then emits on every call rather
+# than swallowing a data-leak notice.
 #
-# THIS EXISTS BECAUSE THE TWO CALLERS HAD DIVERGED, and the divergence was the defect. The notice
-# path below did `mkdir -p` + `-w` and walked a fallback; the A2 sweep gate 90 lines down did none of
-# it and simply assumed "${TMPDIR:-/tmp}" was there. So on any host where that directory does not yet
-# exist - which costs nothing to arrange and is not exotic - the notice path worked and the sweep path
-# failed. MEASURED: a full-suite run produced
-#   agy-shield-lib.sh: line 154: <dir>/.clavity-shield-swept-<key>: No such file or directory
-# on three rows whose whole contract is that they are SILENT. One resolver, two callers, no drift.
+# WHY THE REPOSITORY AND NOT A TEMP DIRECTORY (roadmap 17a). The marker used to live under
+# "${TMPDIR:-/tmp}" keyed on the caller's session id alone, so it carried NO repository component.
+# MEASURED with a control: repo A key k1 REPORTS; repo A key k1 again is silent (correct); a FRESH repo B
+# under the same key is SILENT; repo B under a different key REPORTS. One session across two
+# repositories therefore got ONE fault report in total.
+#
+# ENCODING THE ROOT PATH INTO THE FILENAME WAS CONSIDERED AND REJECTED, and the reasons are recorded so
+# it is not re-proposed: this file is POSIX sh (no ${var//a/b}), so replacing separators needs a
+# character loop; the replacement collides - /a/b and /a_b both sanitise to the same name, which is the
+# very reason the basename option was rejected; and a sanitised absolute path can approach the 255-byte
+# filename limit. Storing the marker IN the directory it describes needs no encoding, cannot collide, and
+# is one fewer subprocess than the mkdir-and-probe loop it replaces.
+#
+# THE ROOT ARRIVES AS A PARAMETER, not by POSIX dynamic scoping. Reading the caller's $_as_root directly
+# would work - there is no `local` in this file - but it makes a helper silently depend on a variable its
+# signature does not mention, and every other helper here takes what it needs.
+#
+# ONE RESOLVER, TWO CALLERS, NO DRIFT - the reason this function exists at all, kept because the
+# divergence it ended was a real defect: the notice path once walked a fallback while the A2 sweep gate
+# assumed "${TMPDIR:-/tmp}" was present, so on a host where that did not exist the notice worked and the
+# sweep failed silently on rows whose whole contract is that they are silent.
 _agy_shield_markerdir() {
+    _asm_root=${1:-}
     _asm_dir=''
-    for _asm_cand in "${TMPDIR:-/tmp}" "$HOME/.clavity-tmp"; do
-        [ -n "$_asm_cand" ] || continue
-        mkdir -p "$_asm_cand" 2>/dev/null || continue
-        if [ -w "$_asm_cand" ]; then _asm_dir=$_asm_cand; break; fi
-    done
+    if [ -n "$_asm_root" ] && [ -d "$_asm_root/.clavity" ] && [ -w "$_asm_root/.clavity" ]; then
+        _asm_dir="$_asm_root/.clavity"
+    fi
     printf '%s' "$_asm_dir"
 }
 
@@ -68,13 +83,17 @@ _agy_shield_say() {
     _ass_class=$1
     _ass_key=$2
     _ass_msg=$3
+    # ${4:-} rather than $4: agy-mark.sh sources this file under `set -u` (agy-mark.sh:32), where reading
+    # an unset positional aborts the CALLER. Every call site below passes it, but the guard costs nothing
+    # and the failure it prevents is a hook that dies mid-chain.
+    _ass_root=${4:-}
 
     if [ "$_ass_class" = "validation" ] || [ -z "$_ass_key" ]; then
         printf 'agy-shield: %s\n' "$_ass_msg" >&2
         return 0
     fi
 
-    _ass_dir=$(_agy_shield_markerdir)
+    _ass_dir=$(_agy_shield_markerdir "$_ass_root")
     if [ -z "$_ass_dir" ]; then
         # No writable marker location: emit rather than swallow. A data-leak notice must never be
         # lost because the debounce store is unavailable.
@@ -106,15 +125,15 @@ agy_shield() {
     # argument it rejected. Silence here is a fail-open - a hook that passes the wrong path would get
     # a clean return, proceed to write its anomaly, and leave the file unshielded with nothing said.
     if [ -z "$_as_root" ] || [ ! -d "$_as_root" ]; then
-        _agy_shield_say validation '' "REFUSING - root argument is not an existing directory: [$_as_root]"
+        _agy_shield_say validation '' "REFUSING - root argument is not an existing directory: [$_as_root]" "$_as_root"
         return 0
     fi
     case "$_as_rel" in
-        '')        _agy_shield_say validation '' 'REFUSING - path argument is empty'; return 0 ;;
-        /*)        _agy_shield_say validation '' "REFUSING - path argument must be relative to the root: [$_as_rel]"; return 0 ;;
-        *..*)      _agy_shield_say validation '' "REFUSING - path argument contains '..': [$_as_rel]"; return 0 ;;
+        '')        _agy_shield_say validation '' 'REFUSING - path argument is empty' "$_as_root"; return 0 ;;
+        /*)        _agy_shield_say validation '' "REFUSING - path argument must be relative to the root: [$_as_rel]" "$_as_root"; return 0 ;;
+        *..*)      _agy_shield_say validation '' "REFUSING - path argument contains '..': [$_as_rel]" "$_as_root"; return 0 ;;
         .clavity/?*) : ;;
-        *)         _agy_shield_say validation '' "REFUSING - path must resolve under .clavity/: [$_as_rel]"; return 0 ;;
+        *)         _agy_shield_say validation '' "REFUSING - path must resolve under .clavity/: [$_as_rel]" "$_as_root"; return 0 ;;
     esac
     # THE KEY LANDS IN A FILENAME, so an unvalidated key is a path-traversal primitive. An EMPTY key
     # is LEGAL - it is the sanctioned way to disable debouncing - so validate only a NON-empty one,
@@ -123,7 +142,7 @@ agy_shield() {
     if [ -n "$_as_key" ]; then
         case "$_as_key" in
             *[!A-Za-z0-9._-]*)
-                _agy_shield_say validation '' "ignoring a malformed debounce key (debouncing disabled for this call): [$_as_key]"
+                _agy_shield_say validation '' "ignoring a malformed debounce key (debouncing disabled for this call): [$_as_key]" "$_as_root"
                 _as_key='' ;;
         esac
     fi
@@ -136,57 +155,8 @@ agy_shield() {
     # shipped open-issues snippet already does this at its own :69, for exactly this reason.
     if [ ! -d "$_as_dir" ]; then
         if ! mkdir -p "$_as_dir" 2>/dev/null; then
-            _agy_shield_say environment "$_as_key" "could not create $_as_dir - the shield cannot be asserted"
+            _agy_shield_say environment "$_as_key" "could not create $_as_dir - the shield cannot be asserted" "$_as_root"
             return 0
-        fi
-    fi
-    # Sweep abandoned prepend temps. AFTER the mkdir, never before it: on a fresh clone the directory
-    # does not exist, so a sweep running first has nothing to sweep and fails every time. Stderr is
-    # redirected because a GENUINE failure (a read-only mount) must not break a silent branch - not
-    # because it is hiding the avoidable error the ordering already removes.
-    #
-    # GATED, NOT UNCONDITIONAL - and the sibling hooks say why in terms. assertion-strength-reminder.sh
-    # :114-119: "THE EXISTS AND CREATE CASES MUST STAY SEPARATE, and the prune belongs ONLY to create...
-    # Collapsing these into a single `[ -f ] || : >` condition puts `find` - a SUBPROCESS - on EVERY
-    # test-file write, which is the hottest path this plugin has. Do not re-merge them." An unconditional
-    # sweep here is that same anti-pattern one level over, and it lands in a hook registered with
-    # "timeout": 10 (hooks.json:56). So it runs ONLY when this session has not swept yet - at most once per
-    # session, never on the hot path.
-    # THIS GATE DOES **NOT** SHARE THE DEBOUNCE'S DIRECTORY RESOLUTION, and the comment here used to claim
-    # it did (capstone R2). `_agy_shield_say` above walks "${TMPDIR:-/tmp}" then "$HOME/.clavity-tmp" and
-    # takes the first WRITABLE one; this line takes "${TMPDIR:-/tmp}" and nothing else. On a host where
-    # TMPDIR is unwritable the two therefore diverge: the debounce still works from the HOME fallback while
-    # this marker cannot be created, so the sweep never runs. That outcome is CORRECT and deliberate - the
-    # paragraph below says no marker means no sweep, and the sweep is housekeeping, never a guard - but the
-    # claim that both key off one directory was simply false, and a reader would have believed it.
-    # THE GATE MUST LATCH BEFORE THE SWEEP RUNS, not merely be attempted. Panel R10: the first version
-    # wrote the marker with 2>/dev/null and then swept unconditionally - so on an unwritable TMPDIR the
-    # marker never appeared, the gate never latched, and `find` ran on EVERY call. That is precisely the
-    # per-call subprocess cost this gate was added to remove, restored by the gate itself. Chaining the
-    # creation into the condition makes the sweep fail CLOSED on cost: no marker, no sweep. That is the
-    # safe direction here because the sweep is housekeeping for stale temp files, never a guard.
-    #
-    # THE REDIRECT ORDER IS LOAD-BEARING. `: > "$f" 2>/dev/null` does NOT suppress a failure to OPEN
-    # "$f": a shell applies redirections left to right, so `> "$f"` is attempted while stderr is still
-    # the terminal, and only then is `2>/dev/null` installed. MEASURED:
-    #   bash -c ': > /nonexistent/m 2>/dev/null'   -> "No such file or directory" on stderr
-    #   bash -c ': 2>/dev/null > /nonexistent/m'   -> silent
-    # The suppression that was written here never worked; the leaked diagnostic was the ONLY signal
-    # this gate had, which is why the failure below is now reported deliberately instead.
-    _as_swdir=$(_agy_shield_markerdir)
-    if [ -z "$_as_swdir" ]; then
-        printf 'agy-shield: sweep gate disabled - no writable marker directory (tried "%s" and "%s"). Stale .gitignore.tmp.* files will accumulate.\n' "${TMPDIR:-/tmp}" "${HOME:-}/.clavity-tmp" >&2
-    else
-        _as_sweep="$_as_swdir/.clavity-shield-swept-${_as_key:-nosession}"
-        if [ -f "$_as_sweep" ]; then
-            :   # already swept for this key - the gate doing its job, and NOT a failure to report.
-        elif : 2>/dev/null > "$_as_sweep"; then
-            find "$_as_dir" -maxdepth 1 -name '.gitignore.tmp.*' -mtime +30 -delete 2>/dev/null
-        else
-            # Fail CLOSED on cost (no marker, no sweep) but never fail SILENT. Without this the gate
-            # simply stops sweeping and nothing says so, and stale temps accumulate unbounded - the
-            # 2026-08-17 triage measured 989 of them.
-            printf 'agy-shield: sweep gate could not latch at "%s" - stale .gitignore.tmp.* files will accumulate.\n' "$_as_sweep" >&2
         fi
     fi
 
@@ -250,7 +220,7 @@ agy_shield() {
             # on the path that exists to be the safe floor. With a trailing newline (the control) the
             # same input shielded correctly, which is why every existing row passed.
             printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null
-            _agy_shield_say validation '' "could not create a temp file in $_as_dir, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand."
+            _agy_shield_say validation '' "could not create a temp file in $_as_dir, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand." "$_as_root"
         fi
     else
         # A FILE WHOSE LAST LINE HAS NO TRAILING NEWLINE WOULD OTHERWISE CONCATENATE. Measured, with a
@@ -269,6 +239,78 @@ agy_shield() {
             printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null
         else
             printf '%s\n' '*' >> "$_as_shield" 2>/dev/null
+        fi
+    fi
+
+    # Sweep abandoned prepend temps.
+    #
+    # PLACED AFTER STAGE A2, AND THE ORDER IS LOAD-BEARING. Since roadmap 17a the marker directory IS the
+    # repository's .clavity/, so a marker written before A2 lands in a directory that exists but is not yet
+    # shielded - and a `git add -A` in that window stages this helper's own bookkeeping, which is the exact
+    # leak the helper exists to prevent. A1 still guarantees the directory exists, and -mtime +30 cannot
+    # touch the .gitignore.tmp.XXXXXX that A2 may have just created.
+    # BEFORE STAGE B, NOT AFTER: B returns early at its not-a-work-tree and already-ignored branches, which
+    # are the common cases, so a sweep placed after them would almost never run.
+    #
+    # AFTER THE MKDIR, never before it: on a fresh clone the directory
+    # does not exist, so a sweep running first has nothing to sweep and fails every time. Stderr is
+    # redirected because a GENUINE failure (a read-only mount) must not break a silent branch - not
+    # because it is hiding the avoidable error the ordering already removes.
+    #
+    # GATED, NOT UNCONDITIONAL - and the sibling hooks say why in terms. assertion-strength-reminder.sh
+    # :114-119: "THE EXISTS AND CREATE CASES MUST STAY SEPARATE, and the prune belongs ONLY to create...
+    # Collapsing these into a single `[ -f ] || : >` condition puts `find` - a SUBPROCESS - on EVERY
+    # test-file write, which is the hottest path this plugin has. Do not re-merge them." An unconditional
+    # sweep here is that same anti-pattern one level over, and it lands in a hook registered with
+    # "timeout": 10 (hooks.json:56). So it runs ONLY when this session has not swept yet - at most once per
+    # session, never on the hot path.
+    # THIS GATE AND THE DEBOUNCE NOW SHARE ONE DIRECTORY RESOLUTION, and that is a change from the design
+    # this comment used to describe. Until roadmap 17a the notice path walked "${TMPDIR:-/tmp}" then
+    # "$HOME/.clavity-tmp" and took the first WRITABLE one, while this gate took "${TMPDIR:-/tmp}" and
+    # nothing else - so on a host where TMPDIR was unwritable the two diverged: the debounce still worked
+    # from the HOME fallback while this marker could not be created and the sweep never ran. Both now call
+    # _agy_shield_markerdir with the same root and get the same answer, so they cannot diverge. If that
+    # resolver returns nothing the sweep does not run and says so below - housekeeping, never a guard.
+    # (The history is kept because the divergence was a real defect and the claim that both keyed off one
+    # directory was false when it was written; it is true now, and a reader needs to know which era they
+    # are in.)
+    # THE GATE MUST LATCH BEFORE THE SWEEP RUNS, not merely be attempted. Panel R10: the first version
+    # wrote the marker with 2>/dev/null and then swept unconditionally - so on an unwritable TMPDIR the
+    # marker never appeared, the gate never latched, and `find` ran on EVERY call. That is precisely the
+    # per-call subprocess cost this gate was added to remove, restored by the gate itself. Chaining the
+    # creation into the condition makes the sweep fail CLOSED on cost: no marker, no sweep. That is the
+    # safe direction here because the sweep is housekeeping for stale temp files, never a guard.
+    #
+    # THE REDIRECT ORDER IS LOAD-BEARING. `: > "$f" 2>/dev/null` does NOT suppress a failure to OPEN
+    # "$f": a shell applies redirections left to right, so `> "$f"` is attempted while stderr is still
+    # the terminal, and only then is `2>/dev/null` installed. MEASURED:
+    #   bash -c ': > /nonexistent/m 2>/dev/null'   -> "No such file or directory" on stderr
+    #   bash -c ': 2>/dev/null > /nonexistent/m'   -> silent
+    # The suppression that was written here never worked; the leaked diagnostic was the ONLY signal
+    # this gate had, which is why the failure below is now reported deliberately instead.
+    _as_swdir=$(_agy_shield_markerdir "$_as_root")
+    if [ -z "$_as_swdir" ]; then
+        printf 'agy-shield: sweep gate disabled - "%s" is not a writable directory. Stale .gitignore.tmp.* files will accumulate.\n' "$_as_root/.clavity" >&2
+    else
+        _as_sweep="$_as_swdir/.clavity-shield-swept-${_as_key:-nosession}"
+        if [ -f "$_as_sweep" ]; then
+            :   # already swept for this key - the gate doing its job, and NOT a failure to report.
+        elif : 2>/dev/null > "$_as_sweep"; then
+            # BOTH PREFIXES, and the shield-marker half is not tidiness. The only other prune of
+            # '.clavity-shield-*' sits inside _agy_shield_say, on the branch that CREATES a marker - and on
+            # a HEALTHY repository _agy_shield_say is never called at all, because Stage B returns at its
+            # "ignored" branch. Meanwhile this gate writes a fresh .clavity-shield-swept-<key> for every new
+            # session. Before roadmap 17a those landed in the OS temp directory and the OS cleaned them;
+            # now they land in the repository, so without this they would accumulate one per session for
+            # the life of the checkout.
+            # NOT a wider glob: the siblings own '.clavity-anomaly-*' and '.clavity-assert-*', and eating
+            # those would prune another hook's markers on this hook's schedule.
+            find "$_as_dir" -maxdepth 1 \( -name '.gitignore.tmp.*' -o -name '.clavity-shield-*' \) -mtime +30 -delete 2>/dev/null
+        else
+            # Fail CLOSED on cost (no marker, no sweep) but never fail SILENT. Without this the gate
+            # simply stops sweeping and nothing says so, and stale temps accumulate unbounded - the
+            # 2026-08-17 triage measured 989 of them.
+            printf 'agy-shield: sweep gate could not latch at "%s" - stale .gitignore.tmp.* files will accumulate.\n' "$_as_sweep" >&2
         fi
     fi
 
@@ -292,7 +334,7 @@ agy_shield() {
         # would rewrite a healthy shield forever and never surface the only remedy that works.
         if git -C "$_as_root" ls-files --error-unmatch -- "$_as_rel" >/dev/null 2>&1; then
             _agy_shield_say persistent "$_as_key" \
-                "$_as_rel is TRACKED by git, so .gitignore cannot hide it. Stage A secured the directory; this file needs: git rm --cached -- \"$_as_rel\""
+                "$_as_rel is TRACKED by git, so .gitignore cannot hide it. Stage A secured the directory; this file needs: git rm --cached -- \"$_as_rel\"" "$_as_root"
         else
             # Untracked and STILL not ignored after Stage A restored the shield text. The only way to
             # reach this is a negation line. REPORT; do NOT silently rewrite - auto-deleting a line a
@@ -300,7 +342,7 @@ agy_shield() {
             # restorable where a destroyed intent is not.
             _as_why=$(git -C "$_as_root" check-ignore -v -- "$_as_rel" 2>/dev/null | head -n 1)
             _agy_shield_say persistent "$_as_key" \
-                "$_as_rel is NOT ignored: a negation line in $_as_shield overrides the shield [${_as_why:-no matching rule reported}]. It stays visible to git until you remove that line."
+                "$_as_rel is NOT ignored: a negation line in $_as_shield overrides the shield [${_as_why:-no matching rule reported}]. It stays visible to git until you remove that line." "$_as_root"
         fi
         return 0
     fi
@@ -310,6 +352,6 @@ agy_shield() {
     # rejects every cheap way of producing a 128, so this branch is reachable only by genuine
     # repository corruption - it has NO honest oracle and deliberately has no test row.
     _agy_shield_say environment "$_as_key" \
-        "git check-ignore failed (exit $_as_ci) inside a work tree; the shield text was asserted but its effect could not be verified for $_as_rel"
+        "git check-ignore failed (exit $_as_ci) inside a work tree; the shield text was asserted but its effect could not be verified for $_as_rel" "$_as_root"
     return 0
 }
