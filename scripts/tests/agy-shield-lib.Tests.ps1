@@ -738,11 +738,24 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # message of any kind and left .clavity/ unshielded. Silent and leaking is the exact failure
             # this file exists to prevent.
             # THE FIXTURE IS NOT A GIT REPOSITORY, deliberately - that is the whole point of the row, so it
-            # does not use New-FixtureRepo. The shield path is a DIRECTORY, which makes every A2 write fail.
+            # does not use New-FixtureRepo.
+            # THE SHIELD IS A READ-ONLY REGULAR FILE, NOT A DIRECTORY, and capstone round 7 is why. The
+            # first version made it a directory, and the peer named the mutant that beat it: replace the
+            # `printf` result check with `[ ! -f "$_as_shield" ]`. Against a directory that predicate is
+            # FALSE, so the mutant still reports and the row stays GREEN - while a genuine write failure on
+            # a REGULAR file would be swallowed silently, which is the case the row exists for. With a
+            # regular read-only file the predicate is TRUE, the mutant does NOT report, and the row reds.
+            # The fixture now discriminates the thing it claims to.
             $d = Join-Path ([IO.Path]::GetTempPath()) ("shieldnr-" + [guid]::NewGuid().ToString('N'))
-            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity/.gitignore') | Out-Null
+            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity') | Out-Null
             [void]$script:Fixtures.Add($d)
-            $res = Invoke-Shield -Root $d -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            $shieldPath = Join-Path $d '.clavity/.gitignore'
+            [IO.File]::WriteAllText($shieldPath, "keep-me.txt`n")
+            & attrib +R ($shieldPath -replace '/','\') 2>$null
+            try   { $res = Invoke-Shield -Root $d -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"' }
+            finally { & attrib -R ($shieldPath -replace '/','\') 2>$null }
+            # CONTROL: the append must really have failed, or the branch under test was never reached.
+            (Get-Content -Raw -LiteralPath $shieldPath) | Should -Not -Match '(?m)^\*$' -Because 'the fixture must make the write fail, or this row is testing nothing'
             # THE PRECONDITION: if this ever became a git repository the row would be testing Stage B's
             # backstop instead of the branch it names, and would pass for the wrong reason.
             (Test-Path -LiteralPath (Join-Path $d '.git')) | Should -BeFalse -Because 'this row exists to cover the path where Stage B returns early; a repository here would test something else'
@@ -764,9 +777,28 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             $k = 'leak-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
             New-Item -ItemType Directory -Force -Path (Join-Path $r ".clavity/.clavity-shield-persistent-$k") | Out-Null
             $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/keep.md`" `"$k`""
-            # PRECONDITION: the helper must actually have spoken, or a -Not assertion below is vacuous.
+            # PRECONDITION: the helper must actually have spoken, or the assertion below is vacuous.
             $res.Err | Should -Match 'agy-shield:' -Because 'the row must reach a branch that reports, or it asserts nothing'
-            $res.Err | Should -Not -Match 'agy-shield-lib\.sh: line \d+' -Because 'an OS diagnostic reaching the operator is exactly what the redirect-order rule exists to prevent'
+            # ASSERT THE CONTRACT POSITIVELY, NOT ONE SHAPE OF ITS VIOLATION - capstone round 7 attacked
+            # the first version and won. That version pinned `agy-shield-lib\.sh: line \d+`, which is the
+            # format BASH uses for a redirect it could not open. A diagnostic leaked by a SUBPROCESS looks
+            # nothing like it - `cat: ...: Is a directory` carries no such prefix - so removing 2>/dev/null
+            # from the `cat` would leak to the operator with this row still GREEN. The contract in the
+            # file's header is "the helper's own messages are the only thing it may print", so the honest
+            # assertion is that EVERY line is one of the helper's, whatever the alternative would look
+            # like. A -Not against one known shape only ever guards that shape.
+            $strayLines = @($res.Err -split "`r?`n" | Where-Object { $_.Trim() -ne '' -and $_ -notmatch '^agy-shield: ' })
+            $strayLines | Should -HaveCount 0 -Because "only the helper may speak; these lines came from somewhere else: $($strayLines -join ' || ')"
+            # ONE LEAK SITE THIS ROW CANNOT RED, and it is worth saying why rather than implying coverage.
+            # Removing 2>/dev/null from the `cat "$_as_shield"` in the prepend branch leaves this row green.
+            # MEASURED: the fixture DOES reach that cat - the shield carries a negation, so A2 takes the
+            # mktemp path - but the cat SUCCEEDS, so the mutant has nothing to leak. It could only leak if
+            # the shield were unreadable, and the `elif` above it already required `grep -q '^!'` to have
+            # READ that same file. Reaching a failing cat therefore needs the shield to become unreadable
+            # between the grep and the cat, which no fixture can arrange. The mutant survives because the
+            # path it damages is unreachable, not because this assertion is weak - and the assertion above
+            # is deliberately shaped as "every line is the helper's" so that it does guard every leak site
+            # a fixture CAN reach, whatever form the stray output takes.
         }
 
         It 'when the fallback append ALSO fails it says the directory is NOT protected' {
