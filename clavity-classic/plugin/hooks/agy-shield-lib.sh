@@ -277,8 +277,26 @@ agy_shield() {
     # Collapsing these into a single `[ -f ] || : >` condition puts `find` - a SUBPROCESS - on EVERY
     # test-file write, which is the hottest path this plugin has. Do not re-merge them." An unconditional
     # sweep here is that same anti-pattern one level over, and it lands in a hook registered with
-    # "timeout": 10 (hooks.json:56). So it runs ONLY when this session has not swept yet - at most once per
-    # session, never on the hot path.
+    # "timeout": 10 (hooks.json:56). So it runs ONLY when this key has not swept yet, never on the hot path.
+    #
+    # IT IS ONCE PER KEY, NOT ONCE PER SESSION, AND THAT DISTINCTION IS NOT PEDANTRY - this comment used to
+    # claim "at most once per session" and capstone round 1 of roadmap 17a measured that false for the
+    # consumer that matters. agy-mark.sh:117 supplies the key as ${AGY_SESSION_ID:-}, and NOTHING in this
+    # repository sets that variable outside the test suites, so for that caller the key is the empty string,
+    # the marker is the constant '.clavity-shield-swept-nosession', and the sweep runs ONCE FOR THE LIFE OF
+    # THE CHECKOUT rather than once per session. MEASURED with a paired control: with a constant key a
+    # 45-day-old .gitignore.tmp.* survives every subsequent call; with a fresh key per call it is swept.
+    # WHY IT IS LEFT THIS WAY (owner ruling, 2026-08-29). agy-discipline-reaching.sh:111 passes a real
+    # per-session id, and its fresh key creates a marker whose prune deletes the aged constant one, so in
+    # any repository where both consumers run the gate re-arms after 30 days and the leak is bounded. It is
+    # unbounded only where agy-mark.sh and the open-issues snippet are the ONLY callers. The alternatives
+    # all cost more than they buy: sweeping unconditionally on an empty key puts `find` back on every call,
+    # which is the cost this gate exists to remove, and a derived per-call key would create a marker per
+    # call and make the accumulation worse rather than better.
+    # NOTE THE INCONSISTENCY DELIBERATELY, so nobody "fixes" one half in isolation: at :91 an EMPTY key
+    # means "do not debounce, emit every time"; here the same empty key selects a shared constant marker
+    # and debounces indefinitely. The two are opposite readings of one input. That is a known wart with a
+    # measured bound, not an oversight.
     # THIS GATE AND THE DEBOUNCE NOW SHARE ONE DIRECTORY RESOLUTION, and that is a change from the design
     # this comment used to describe. Until roadmap 17a the notice path walked "${TMPDIR:-/tmp}" then
     # "$HOME/.clavity-tmp" and took the first WRITABLE one, while this gate took "${TMPDIR:-/tmp}" and
