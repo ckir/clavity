@@ -727,6 +727,48 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             (Get-Content -Raw -LiteralPath $observed).Trim() | Should -Be 'PRESENT' -Because 'Stage A2 must shield .clavity/ BEFORE the sweep writes its marker into it, or a concurrent `git add -A` in that window stages this helper''s own bookkeeping'
         }
 
+        It 'a failed shield write OUTSIDE a git repository is reported, not swallowed' {
+            # CAPSTONE ROUND 6, and it is the worst reachable state this helper had left. Round 3 made the
+            # PREPEND fallback report a failed write; the ORDINARY append - the path a fresh clone takes -
+            # still wrote with 2>/dev/null and checked nothing. Inside a repository Stage B catches that
+            # and reports. OUTSIDE one it does not: B1 returns at its not-a-work-tree branch, which the
+            # helper's own comment calls a NORMAL state for a skill shipping into non-repositories, so
+            # that path had no backstop whatsoever.
+            # MEASURED before the fix: a non-repository whose shield path could not be written produced NO
+            # message of any kind and left .clavity/ unshielded. Silent and leaking is the exact failure
+            # this file exists to prevent.
+            # THE FIXTURE IS NOT A GIT REPOSITORY, deliberately - that is the whole point of the row, so it
+            # does not use New-FixtureRepo. The shield path is a DIRECTORY, which makes every A2 write fail.
+            $d = Join-Path ([IO.Path]::GetTempPath()) ("shieldnr-" + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Force -Path (Join-Path $d '.clavity/.gitignore') | Out-Null
+            [void]$script:Fixtures.Add($d)
+            $res = Invoke-Shield -Root $d -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            # THE PRECONDITION: if this ever became a git repository the row would be testing Stage B's
+            # backstop instead of the branch it names, and would pass for the wrong reason.
+            (Test-Path -LiteralPath (Join-Path $d '.git')) | Should -BeFalse -Because 'this row exists to cover the path where Stage B returns early; a repository here would test something else'
+            $res.Err | Should -Match 'is NOT protected' -Because 'a data-leak guard outside a work tree has no Stage B behind it, so silence there is the one failure nothing else can catch'
+        }
+
+        It 'a failed marker write leaks no OS diagnostic - only the helper speaks' {
+            # CAPSTONE ROUND 6. The file's own rule (see its header) is that the helper's messages are the
+            # ONLY thing it may print, and its own MEASURED note on redirect ordering says why that is easy
+            # to get wrong: `: > "$f" 2>/dev/null` does NOT suppress a failure to OPEN "$f", because the
+            # shell applies redirections left to right and attempts the open while stderr is still the
+            # terminal. That measurement was applied to the sweep gate and to nowhere else, so four sibling
+            # writes still leaked. MEASURED: forcing the debounce marker's creation to fail printed
+            # "agy-shield-lib.sh: line NNN: ...: Is a directory" straight to the operator.
+            # The fixture makes the MARKER PATH a directory, so `: > marker` fails while everything else
+            # succeeds, and drives Stage B3 to reach the marker-creating branch.
+            $r = New-FixtureRepo -Shield "!keep.md`n"
+            [IO.File]::WriteAllText((Join-Path $r '.clavity/keep.md'), "x`n")
+            $k = 'leak-' + $script:RunTag + '-' + [guid]::NewGuid().ToString('N')
+            New-Item -ItemType Directory -Force -Path (Join-Path $r ".clavity/.clavity-shield-persistent-$k") | Out-Null
+            $res = Invoke-Shield -Root $r -Body "agy_shield `"`$PWD`" `".clavity/keep.md`" `"$k`""
+            # PRECONDITION: the helper must actually have spoken, or a -Not assertion below is vacuous.
+            $res.Err | Should -Match 'agy-shield:' -Because 'the row must reach a branch that reports, or it asserts nothing'
+            $res.Err | Should -Not -Match 'agy-shield-lib\.sh: line \d+' -Because 'an OS diagnostic reaching the operator is exactly what the redirect-order rule exists to prevent'
+        }
+
         It 'when the fallback append ALSO fails it says the directory is NOT protected' {
             # CAPSTONE ROUND 3, and this one is the worst class of message this file can carry. The prepend
             # fallback wrote the star with 2>/dev/null and then asserted "The directory is protected"

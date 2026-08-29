@@ -610,7 +610,7 @@ agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   42 tests   <- SLOW, NEW 2026-08-16. Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   44 tests   <- SLOW, NEW 2026-08-16. Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:

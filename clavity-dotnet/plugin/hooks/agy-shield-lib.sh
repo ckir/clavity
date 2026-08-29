@@ -25,9 +25,24 @@
 # invocation for both the decision and the message INVERTS B2 and B3 - a leaking file would be read as
 # ignored, and the guard would pass on exactly the state it exists to catch.
 #
-# Args: $1 = repository root  $2 = path to protect, RELATIVE to that root, under .clavity/
-#       $3 = debounce key (the caller's session id; EMPTY is legal and disables debouncing)
+# Args: $1 = repository root
+#       $2 = a path under .clavity/, RELATIVE to that root
+#       $3 = debounce key (the caller's session id)
 # Returns: 0, always.
+#
+# $2 IS A PROBE PATH, NOT THE THING BEING PROTECTED, and the old wording ("path to protect") misled on
+# exactly that - capstone round 6. Stage A does not shield $2: it shields the whole DIRECTORY, by putting
+# a bare `*` in .clavity/.gitignore. $2 is the canary Stage B hands to `git check-ignore` to find out
+# whether that blanket actually took effect, and the file it names need not even exist. A caller who reads
+# the old wording and expects one file to be protected, or expects a DIFFERENT file to be left alone, has
+# misunderstood the guarantee. The guarantee is per-directory and unconditional; the spec ranks it above
+# preserving one human negation, which is why the fallback below overrides a negation rather than skipping.
+#
+# $3 EMPTY IS LEGAL, and it means two different things in this file, which is a wart worth knowing before
+# you pass one. For the NOTICE path it disables debouncing: every call reports (_agy_shield_say's first
+# branch). For the SWEEP GATE it does the opposite - the marker name falls back to the constant
+# `nosession`, so the gate latches once and that key never sweeps again. Both are documented at their own
+# sites; the asymmetry is deliberate and owner-ruled, not an oversight. See the sweep-gate comment.
 
 _AS_CR=$(printf '\r')   # a literal CR, for the optional-trailing-CR shield match in A2.
 
@@ -105,7 +120,7 @@ _agy_shield_say() {
     if [ -f "$_ass_marker" ]; then
         return 0
     fi
-    : > "$_ass_marker" 2>/dev/null
+    : 2>/dev/null > "$_ass_marker"
     # PRUNE OUR OWN PREFIX ONLY, and only on the run that CREATED a marker - never on the hot path.
     # The siblings prune '.clavity-anomaly-*' and '.clavity-assert-*'; reusing either prefix would
     # delete another hook's markers on our schedule, and a broader glob would delete them all.
@@ -203,7 +218,7 @@ agy_shield() {
         _as_prepended=0
         _as_cause="could not create a temp file in $_as_dir"
         if [ -n "$_as_tmp" ] && [ -f "$_as_tmp" ]; then
-            if printf '%s\n' '*' > "$_as_tmp" 2>/dev/null && cat "$_as_shield" >> "$_as_tmp" 2>/dev/null; then
+            if printf '%s\n' '*' 2>/dev/null > "$_as_tmp" && cat "$_as_shield" 2>/dev/null >> "$_as_tmp"; then
                 if mv -f "$_as_tmp" "$_as_shield" 2>/dev/null; then
                     _as_prepended=1
                 else
@@ -243,7 +258,7 @@ agy_shield() {
             # moment it is leaking, is the worst possible failure of this message. Stage B does report the
             # truth a few lines later, which makes it worse rather than better: the reassuring line comes
             # FIRST, and a reader who stops there stops at the false one.
-            if printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null; then
+            if printf '\n%s\n' '*' 2>/dev/null >> "$_as_shield"; then
                 _agy_shield_say validation '' "$_as_cause, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand." "$_as_root"
             else
                 _agy_shield_say validation '' "$_as_cause, AND the fallback append to $_as_shield ALSO failed. The directory is NOT protected - .clavity/ is exposed to git until $_as_shield is writable and contains a bare '*'." "$_as_root"
@@ -262,10 +277,23 @@ agy_shield() {
         # or fails for any reason makes the probe return empty, silently selects the bare append, and
         # reproduces the exact corruption this branch exists to prevent. One less subprocess, one less
         # tool assumed present, and no silent failure mode.
+        # THE ORDINARY APPEND IS CHECKED TOO, and capstone round 6 found the gap. Round 3 made the
+        # PREPEND fallback report a failed write; this branch - the common path, the one a fresh clone
+        # takes - still wrote with 2>/dev/null and then looked at nothing. Inside a git repository
+        # Stage B catches it and reports. OUTSIDE one it does not: B1 returns at its not-a-work-tree
+        # branch, which is a NORMAL state for a skill shipping into non-repositories, so on that path
+        # there is no backstop at all. MEASURED: a non-repository whose shield path could not be
+        # written produced NO message of any kind and left .clavity/ unshielded. Silent and leaking is
+        # the precise failure this helper exists to prevent, and it was reachable on the one path with
+        # nothing behind it.
+        _as_wrote=0
         if [ -s "$_as_shield" ]; then
-            printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null
+            printf '\n%s\n' '*' 2>/dev/null >> "$_as_shield" && _as_wrote=1
         else
-            printf '%s\n' '*' >> "$_as_shield" 2>/dev/null
+            printf '%s\n' '*' 2>/dev/null >> "$_as_shield" && _as_wrote=1
+        fi
+        if [ "$_as_wrote" -eq 0 ]; then
+            _agy_shield_say validation '' "could not write the shield text to $_as_shield - .clavity/ is NOT protected and is exposed to git. Check that it is a regular, writable file." "$_as_root"
         fi
     fi
 
