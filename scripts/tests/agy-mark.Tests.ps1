@@ -348,6 +348,52 @@ Describe 'agy-mark.sh' {
             (Get-Content -Raw -LiteralPath $log) | Should -Match 'benign finding' -Because 'the text is flattened, not discarded - an audit breadcrumb that drops its content is no breadcrumb'
         }
 
+        It 'prepare REFUSES when it cannot create the parent - it must not exit 0 silently' {
+            # AGY-TEST-AUDIT 2026-08-30, and this is the gap the peer DISCARDED below its severity floor.
+            # Its reasoning was that removing the guard still fails loudly because "the subsequent redirect
+            # or command will fail anyway". There is no subsequent command: `mkdir -p` is the LAST
+            # statement in prepare mode before `exit 0`. MEASURED both ways - unmutated, prepare refuses
+            # and names the directory; with the `|| _die_refuse` removed it is SILENT and exits 0 having
+            # created nothing, and all thirty rows of this suite still passed. The caller then writes into
+            # a directory that does not exist and fails far from the cause.
+            # THE FIXTURE makes the INTERMEDIATE a file, so `mkdir -p .clavity/scratch/topic` cannot
+            # succeed while everything before it does - the refusal has to come from the mkdir itself
+            # rather than from argument validation, which `_check_relpath` already covers elsewhere.
+            $d = New-MarkFixture
+            [IO.File]::WriteAllText((Join-Path $d '.clavity/scratch'), "x`n")
+            $r = Invoke-Mark -Cwd $d -MarkArgs @('prepare','scratch/topic/notes.md')
+            $r.ExitCode | Should -Be 1 -Because 'a prepare that created nothing must not report success'
+            $r.Err | Should -Match 'could not create' -Because 'the operator needs to know the directory creation was what failed'
+            $r.Err | Should -Match 'scratch' -Because 'naming the path is what makes the refusal actionable; a bare failure sends them looking'
+            (Test-Path -LiteralPath (Join-Path $d '.clavity/scratch') -PathType Container) | Should -BeFalse -Because 'the blocking file must be left exactly as it was found'
+        }
+
+        It 'log ACCEPTS an empty sha - a missing sha must not destroy an audit record' {
+            # AGY-TEST-AUDIT 2026-08-30. `log` deliberately accepts an empty sha where `head` requires one,
+            # because log has NO re-fire path: refusing destroys an audit breadcrumb with nothing to
+            # recreate it, and this script ranks recording above refusing for exactly that reason. That
+            # decision was written into a comment during the capstone and pinned by nothing. A later edit
+            # "aligning" log's validation with head's - which looks like tidying - would silently start
+            # destroying records, and no row would turn red.
+            # DRIVEN THROUGH BASH, not Invoke-Mark, because an EMPTY argument is not reliably delivered by
+            # `Start-Process -ArgumentList`; the same transport property that cost this suite a vacuous row
+            # when a newline was passed that way. In a script file, "" is unambiguously one empty argument.
+            $d = New-MarkFixture
+            $markPath = $script:Mark
+            $snippet = 'bash "' + $markPath + '" log agy-first SKIPPED-UNREACHABLE "" "some finding"'
+            $sf = Join-Path ([IO.Path]::GetTempPath()) ("mkempty-" + [guid]::NewGuid().ToString('N') + ".sh")
+            [IO.File]::WriteAllText($sf, $snippet + "`n")
+            try {
+                $p = Start-Process -FilePath $script:Bash -ArgumentList @(($sf -replace '\\', '/')) `
+                        -WorkingDirectory $d -NoNewWindow -Wait -PassThru
+                $p.ExitCode | Should -Be 0 -Because 'an absent sha is a caller mistake, but destroying the record is the worse outcome'
+            }
+            finally { Remove-Item -LiteralPath $sf -Force -ErrorAction SilentlyContinue }
+            $lines = @(Get-Content -LiteralPath (Join-Path $d '.clavity/agy-marks/skipped.log'))
+            $lines | Should -HaveCount 1 -Because 'the record must still be written'
+            ($lines[0] -split '  ')[3] | Should -Be 'HEAD=' -Because 'the field stays in place and simply carries nothing, so a reader indexing to it still parses the record'
+        }
+
         It 'prepare refuses an EMPTY relpath AND creates nothing' {
             $d = New-MarkFixture -Shield ''
             $r = Invoke-Mark -Cwd $d -MarkArgs @('prepare','')

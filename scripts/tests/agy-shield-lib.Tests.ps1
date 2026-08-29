@@ -614,6 +614,30 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             ([regex]::Matches($res.Err, 'REFUSING')).Count | Should -Be 2 -Because 'a broken CALLER must not be silenced by a marker'
         }
 
+        It 'a MALFORMED key disables DEBOUNCING - the fault is emitted every time' {
+            # AGY-TEST-AUDIT 2026-08-30. The row below proves a malformed key still lets the guard FIRE.
+            # It cannot prove the other half of that contract - that the malformed key is reset to empty so
+            # debouncing is DISABLED - because it invokes the shield only ONCE, and one call cannot tell
+            # "debouncing is off" from "this is the first call". MEASURED: deleting the `_as_key=''` reset
+            # leaves that row GREEN.
+            # THE KEY HERE IS MALFORMED BUT WRITABLE, and that is the whole trick. The sibling row uses
+            # `../../escape`, which cannot discriminate: under the mutant the marker path traverses out of
+            # .clavity/ and cannot be created, so the second call finds no marker and reports anyway -
+            # the mutant would pass. `bad@key` is rejected by the validator (@ is outside [A-Za-z0-9._-])
+            # yet forms a perfectly creatable filename, so under the mutant the first call DOES create the
+            # marker and the second is silenced. Exactly one emission instead of two.
+            # A TRACKED file drives Stage B3's persistent branch, which is the debounced class - a
+            # `validation` fault would emit twice regardless and prove nothing.
+            $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
+            $body = @(
+                'agy_shield "$PWD" ".clavity/local-anomalies.md" "bad@key"',
+                'agy_shield "$PWD" ".clavity/local-anomalies.md" "bad@key"'
+            ) -join "`n"
+            $res = Invoke-Shield -Root $r -Body $body
+            $hits = @([regex]::Matches($res.Err, 'git rm --cached')).Count
+            $hits | Should -Be 2 -Because 'a malformed session id must disable debouncing, not merely survive it: both calls must report, or a bad id silently suppresses a data-leak notice from the second call onward'
+        }
+
         It 'a MALFORMED key does not disable the guard' {
             $r = New-FixtureRepo -Shield "*`n" -Track @('.clavity/local-anomalies.md')
             $res = Invoke-Shield -Root $r -Body 'agy_shield "$PWD" ".clavity/local-anomalies.md" "../../escape"'
