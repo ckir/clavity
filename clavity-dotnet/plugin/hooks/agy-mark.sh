@@ -16,18 +16,33 @@
 #   log     <discipline> <status> <sha> [text...] -> append one line to .clavity/agy-marks/skipped.log
 #   prepare <relpath>                             -> create + shield the parent of .clavity/<relpath>
 #
-# Exit codes: 0 wrote; 1 REFUSED before trying, nothing written; 2 the write was ATTEMPTED and the
-# filesystem rejected it. A caller must be able to tell "refused" from "wrote", and one non-zero cannot
-# express that: on 1 the caller fixes its arguments, on 2 it retries or escalates an environmental fault.
+# Exit codes: 0 wrote; NON-ZERO did not. The reason is on stderr, and the reason is the point.
 #
-# 2 IS NOT "FAILED PARTWAY", AND THE DISCRIMINATOR IS NOT A BYTE COUNT. With `>` and `>>` the SHELL opens
-# the target BEFORE the command runs, so an unopenable target - a directory, a permission error - fails
-# with printf never executing at all and ZERO bytes written, and still exits 2. MEASURED: a directory
-# target reports "Is a directory" and writes nothing. Defining 2 by bytes-on-disk would ALSO leave it with
-# no reachable fixture, because :127-129 relies on a single short append being ATOMIC on POSIX - a genuine
-# partial write is exactly what this design excludes. The question 2 answers is WHO stopped the write, not
-# how much of it landed. (The wording said "failed partway" until a capstone round measured the directory
-# case; the code was always right, the sentence describing it was not.)
+# THE THREE MESSAGES, IN FULL, BECAUSE THEY ARE NOW THE ENTIRE CONTRACT. A caller that reads only one of
+# them misclassifies the others - and each mode has its OWN rejection wording, which is easy to miss:
+#   "REFUSED - <reason>"                                   -> refused before trying; fix the arguments.
+#   "write FAILED for <path> - the filesystem rejected it" -> HEAD mode, attempted and rejected; escalate.
+#   "LOG LINE NOT WRITTEN - <reason>"                      -> LOG mode. The <reason> discriminates:
+#        "the filesystem rejected the append"  is the attempted-and-rejected case; escalate.
+#        anything else ("could not create .clavity/agy-marks", "no status given", ...) is a refusal.
+#     Note this prefix is emitted on BOTH refusal and rejection, so the prefix alone decides nothing.
+#
+# THIS USED TO BE A TRI-STATE (1 refused before trying, 2 attempted and rejected) and roadmap 19 collapsed
+# it, on a measurement rather than taste: every call site across agy-first, agy-capstone and agy-test-audit
+# either spells it `if ! bash .../agy-mark.sh ...; then <echo>; exit 1; fi` or ignores the status entirely.
+# `if !` is a TWO-outcome construct, so every non-zero already collapsed to "abort", and the `then` blocks
+# contain nothing but an echo and an exit - no cleanup that could vary by failure kind. Both failures are
+# terminally fatal with no programmatic recovery: refused means this script's own caller is malformed,
+# rejected means it cannot write the repo-anchored state the discipline requires and has no legal fallback
+# location. The caller pattern was evidence the API was over-designed, not that the callers were buggy.
+#
+# WHAT THE COLLAPSE COST, AND WHERE IT WENT. The exit code no longer distinguishes a refusal from a
+# rejected write, so the stderr messages carry that burden alone and MUST NOT be merged or reworded -
+# agy-mark.Tests.ps1 asserts each by its distinct text for exactly this reason. Note also that a rejected
+# write is not "failed partway": with `>` and `>>` the SHELL opens the target BEFORE the command runs, so
+# an unopenable target fails with printf never executing and ZERO bytes written. MEASURED: a directory
+# target reports "Is a directory" and writes nothing. The question the message answers is WHO stopped the
+# write, not how much of it landed.
 
 set -u
 
@@ -113,7 +128,7 @@ case "$mode" in
         # a fresh clone fails "No such file or directory" on the first discipline that runs.
         mkdir -p "$root/.clavity/agy-marks" 2>/dev/null || _die_refuse 'could not create .clavity/agy-marks'
         # BARE sha and nothing else (docs/agy-disciplines-marker-contract.md:18).
-        printf '%s' "$sha" > "$root/$rel" 2>/dev/null || { printf 'agy-mark: write FAILED for %s - the filesystem rejected it\n' "$rel" >&2; exit 2; }
+        printf '%s' "$sha" > "$root/$rel" 2>/dev/null || { printf 'agy-mark: write FAILED for %s - the filesystem rejected it\n' "$rel" >&2; exit 1; }
         exit 0
         ;;
     log)
@@ -126,7 +141,9 @@ case "$mode" in
         line=$_pending_log
         # log has NO re-fire path - skipped.log is a durable audit breadcrumb - so a refused or failed
         # write destroys a record with nothing to recreate it. Emit BOTH the line AND the reason on
-        # stderr. This binds on exit 1 AND on exit 2: in both cases the record did not reach disk.
+        # stderr. This binds on EVERY non-zero exit, refusal and rejection alike: in both cases the record
+        # did not reach disk, and since roadmap 19 collapsed the tri-state the exit code no longer says
+        # which happened - the reason passed to _log_lost is what distinguishes them.
         _log_lost() { printf 'agy-mark: LOG LINE NOT WRITTEN - %s\n  %s\n' "$1" "$line" >&2; }
         case "$discipline" in
             ''|*[!A-Za-z0-9._-]*) _log_lost "discipline must match [A-Za-z0-9._-]+, got: [$discipline]"; exit 1 ;;
@@ -137,7 +154,7 @@ case "$mode" in
         # ONE printf >>, never read-modify-write: two sessions can be open on the same repository, and a
         # single short append is atomic on POSIX, so concurrent writers interleave lines rather than
         # corrupting them.
-        printf '%s\n' "$line" >> "$root/$rel" 2>/dev/null || { _log_lost 'the filesystem rejected the append'; exit 2; }
+        printf '%s\n' "$line" >> "$root/$rel" 2>/dev/null || { _log_lost 'the filesystem rejected the append'; exit 1; }
         exit 0
         ;;
     prepare)

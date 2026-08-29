@@ -253,7 +253,7 @@ Describe 'agy-mark.sh' {
             @(Get-ChildItem -LiteralPath (Join-Path $d '.clavity') -Directory -ErrorAction SilentlyContinue).Count | Should -Be 0
         }
 
-        It 'a write the filesystem REJECTS exits 2, not 1 - the two codes mean different things' {
+        It 'a write the filesystem REJECTS fails, and its MESSAGE says the append was attempted' {
             # THE MUTATION TABLE PAIRED A MUTATION WITH THIS ROW AND THE ROW DID NOT EXIST - it said
             # "(add if absent)" and nobody added it, so that mutation mapped to nothing (panel R13).
             # Make agy-marks a FILE so the directory cannot be created but the refusal is not an
@@ -272,11 +272,19 @@ Describe 'agy-mark.sh' {
             # runs, so printf never executes and ZERO bytes land - measured. The row and the code were both
             # right; only the sentence explaining them was wrong. 2 means the write was ATTEMPTED and the
             # filesystem rejected it; 1 means refused before trying. The discriminator is WHO stopped it.
-            $r.ExitCode | Should -Be 2 -Because 'an attempted-and-rejected write is exit 2, distinct from refused-before-trying (exit 1); this fixture writes zero bytes and is still a 2, which is exactly the point'
+            $r.ExitCode | Should -Not -Be 0 -Because 'a rejected write must fail; roadmap 19 collapsed the tri-state, so the CODE no longer says WHICH failure this was'
             $r.Err | Should -Match 'LOG LINE NOT WRITTEN' -Because 'the record must survive a rejected write too'
+            # THE MESSAGE IS NOW THE DISCRIMINATOR, and this assertion is what keeps roadmap 19 from costing
+            # coverage. With one non-zero code the fixture-reaches-the-APPEND property can no longer be read
+            # from $r.ExitCode - which is precisely the weakness panel R14 removed when it rejected an
+            # earlier `-BeIn @(1,2)` for silently accepting the mkdir failure as a pass. _log_lost prints
+            # its REASON, so this string separates the rejected append from the mkdir refusal at :136, which
+            # prints "could not create .clavity/agy-marks". Asserting only the LOG LINE NOT WRITTEN prefix
+            # would NOT discriminate: _die_refuse emits that same prefix at :59.
+            $r.Err | Should -Match 'the filesystem rejected the append' -Because 'the fixture must reach the APPEND; a row that also passes on the mkdir refusal is the weakness panel R14 removed'
         }
 
-        It 'a rejected HEAD write exits 2 as well - not just a rejected log write' {
+        It 'a rejected HEAD write fails too - not just a rejected log write' {
             # THE EXIT-2 CONTRACT HAD EXACTLY ONE ROW AND IT TESTED `log` MODE ONLY (AGY-TEST-AUDIT
             # round A, GAP-7). `head` carries the same `|| { ...; exit 2; }` at agy-mark.sh:116, and
             # dropping it there lets a rejected marker write fall through to `exit 0` - a discipline
@@ -290,7 +298,10 @@ Describe 'agy-mark.sh' {
             $target = Join-Path $d '.clavity/agy-marks/agy-first.head'
             New-Item -ItemType Directory -Force -Path $target | Out-Null
             $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first','0123456789abcdef0123456789abcdef01234567')
-            $r.ExitCode | Should -Be 2 -Because 'the filesystem rejected an ATTEMPTED write; exit 1 would tell a caller it was refused before trying, which is a different remedy'
+            # ROADMAP 19 collapsed the tri-state, so the code says only that it failed. The discrimination
+            # lives in the message below - 'write FAILED' is emitted by this branch alone, and no
+            # _die_refuse path produces it, so this row still tells a rejected write from a refusal.
+            $r.ExitCode | Should -Not -Be 0 -Because 'a rejected write must fail; roadmap 19 collapsed the tri-state, so the CODE no longer says WHICH failure this was'
             $r.Err | Should -Match 'write FAILED' -Because 'a marker that silently did not land is the failure mode this branch exists to surface'
             # THIRD ASSERTION, because a refusal row that checks only code and message cannot tell
             # "rejected cleanly" from "rejected after mangling the target".
