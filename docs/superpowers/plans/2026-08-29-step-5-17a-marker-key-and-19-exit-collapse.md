@@ -83,9 +83,9 @@ Expected: `Tests Passed: 0, Failed: 1`, with `Expected 2, but got 1`.
 
 **Do not commit a red test here.** `.github/workflows/ci-scripts.yml:199` runs `Invoke-Pester scripts/tests` over the whole directory, and this work lands on `main` (risky work accumulating on `main` is an owner ruling, and this plan has no branch step). A commit between Task 1 and Task 2 would therefore red CI for everyone until Task 2 lands — and if execution is interrupted between the two tasks, it stays red.
 
-The red-then-green control is not lost by skipping the commit; it just lives in the commit MESSAGE instead, which is this repository's established pattern. Copy the exact failure line from Step 3 — `Expected 2, but got 1` — and carry it into Task 2 Step 8's commit message as evidence the row can fail.
+The red-then-green control is not lost by skipping the commit; it just lives in the commit MESSAGE instead, which is this repository's established pattern. Copy the exact failure line from Step 3 — `Expected 2, but got 1` — and carry it into the combined commit message at Task 3 Step 7 as evidence the row can fail.
 
-Leave the test uncommitted and go straight to Task 2. The first commit of this plan is Task 2 Step 8, which contains the row and the fix together and is green.
+Leave the test uncommitted and go straight to Task 2. **The first commit of this plan is Task 3 Step 7**, which carries this row, the marker change and the ordering fix together - and is green. Task 2 deliberately does not commit; see its Step 8 for why.
 
 ---
 
