@@ -79,12 +79,13 @@ Expected: `Tests Passed: 0, Failed: 1`, with `Expected 2, but got 1`.
 
 **A count of 0 is NOT this defect** — it means neither call reported, i.e. the fixture is broken (usually the tracked file missing, so no `persistent` fault fires at all). Fix the fixture before continuing; do not weaken the assertion.
 
-- [ ] **Step 4: Commit the red test**
+- [ ] **Step 4: Record the failure output — do NOT commit it**
 
-```bash
-git add scripts/tests/agy-shield-lib.Tests.ps1
-git commit -m "test(17a): pin the cross-repository debounce defect (currently RED)"
-```
+**Do not commit a red test here.** `.github/workflows/ci-scripts.yml:199` runs `Invoke-Pester scripts/tests` over the whole directory, and this work lands on `main` (risky work accumulating on `main` is an owner ruling, and this plan has no branch step). A commit between Task 1 and Task 2 would therefore red CI for everyone until Task 2 lands — and if execution is interrupted between the two tasks, it stays red.
+
+The red-then-green control is not lost by skipping the commit; it just lives in the commit MESSAGE instead, which is this repository's established pattern. Copy the exact failure line from Step 3 — `Expected 2, but got 1` — and carry it into Task 2 Step 8's commit message as evidence the row can fail.
+
+Leave the test uncommitted and go straight to Task 2. The first commit of this plan is Task 2 Step 8, which contains the row and the fix together and is green.
 
 ---
 
@@ -270,9 +271,39 @@ Expected: **38 passed, 2 failed**, and BOTH failures are predicted. **Any THIRD 
 
 - [ ] **Step 8: Commit**
 
+**DO NOT COMMIT YET. Stage the work and go to Task 3 — the commit happens at Task 3 Step 7, carrying both tasks.**
+
+The reason is a hazardous intermediate state, and it is the whole point of the ordering: **this task moves the marker directory into `.clavity/` while the sweep block is still ABOVE Stage A2.** For the duration of that intermediate state, the sweep writes its marker into a directory that exists but is not yet shielded — precisely the defect Task 3 exists to remove. Committing here would put that defect on `main`, and if execution were interrupted between the two tasks it would stay there.
+
+Verify the work first (Steps 6 and 7 above must be green/as-predicted), then leave it staged:
+
 ```bash
-git add clavity-dotnet/plugin/hooks/agy-shield-lib.sh clavity-classic/plugin/hooks/agy-shield-lib.sh
-git commit -m "fix(17a): key the shield markers on the repository by storing them in it"
+git add scripts/tests/agy-shield-lib.Tests.ps1 clavity-dotnet/plugin/hooks/agy-shield-lib.sh clavity-classic/plugin/hooks/agy-shield-lib.sh
+```
+
+The combined commit message belongs at Task 3 Step 7. Carry Task 1's red-then-green evidence into it, since Task 1 deliberately did not commit:
+
+```bash
+git add scripts/tests/agy-shield-lib.Tests.ps1 clavity-dotnet/plugin/hooks/agy-shield-lib.sh clavity-classic/plugin/hooks/agy-shield-lib.sh
+git commit -F - <<'MSG'
+fix(17a): key the shield markers on the repository by storing them in it
+
+The marker lived under ${TMPDIR:-/tmp} keyed on the session id alone, so it
+carried no repository component: one session working across two repositories
+got ONE fault report in total and the second repository's leak was never
+surfaced. The marker directory is now the repository's own .clavity/, which
+carries the identity structurally - no sanitisation, no collision, no filename
+length bound, and one fewer subprocess than the mkdir-and-probe loop it
+replaces.
+
+The new row is a real failing-then-passing control: RED before this change
+with "Expected 2, but got 1", GREEN after. It is committed here rather than
+ahead of the fix because ci-scripts.yml:199 runs the whole scripts/tests
+directory and this work lands on main.
+
+Two sweep rows that hardcoded the old marker location are repointed at the
+repository-relative path.
+MSG
 ```
 
 ---
@@ -754,6 +785,20 @@ Three things to put in the round-1 brief, because they are where this change is 
 - [ ] **Step 3: Write the ledger row and the marker**
 
 Append a row to `docs/agy-capstone-ledger.md` citing the folds and the REVIEWED tip. On owner confirmation write `.clavity/agy-marks/agy-capstone.head` with the reviewed sha. **Never commit a marker** — `.clavity/` is gitignored.
+
+- [ ] **Step 3a: If the capstone forces a ROLLBACK, clean up by hand — `git revert` is not enough**
+
+Only relevant if a capstone round produces a blocking defect severe enough to revert this step. Write it down now rather than discovering it then.
+
+**A revert does not undo everything this step did.** While the new code was live — during execution and every capstone round — the hooks wrote `.clavity/.clavity-shield-swept-<key>` (and possibly `.clavity-shield-<class>-<key>`) into every repository they ran in. Those files are untracked AND gitignored, so `git revert` does not touch them. And the reverted code will never collect them, MEASURED against the old lines: its `.clavity-shield-*` prune targets the TEMP directory (`:94`, whose resolver returns `${TMPDIR:-/tmp}`), while the only thing it prunes inside `.clavity/` is `.gitignore.tmp.*` (`:184`). Nothing in the old code ever looks for a shield marker in a repository.
+
+So the markers would be stranded permanently — harmless in size, invisible to git, and unbounded. Clean them in every repository touched during execution and review:
+
+```bash
+rm -f .clavity/.clavity-shield-*
+```
+
+This is why the rollback path is documented rather than assumed: the step's side effects live outside version control, which is exactly the category a revert cannot reach.
 
 - [ ] **Step 4: AGY-TEST-AUDIT**
 
