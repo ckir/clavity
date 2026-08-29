@@ -249,9 +249,15 @@ Describe 'agy-shield-lib.sh' {
             # test would emit "is TRACKED by git ... git rm --cached" and still be scored green here.
             # AGY-TEST-AUDIT round A, GAP-2. Two assertions, because they fail to different mutations:
             $script:Res.Err | Should -Match 'is NOT ignored' -Because 'this row names the UNTRACKED branch; the filename alone cannot tell the two B3 branches apart'
-            # The bracketed reason is the ONLY thing `check-ignore -v` contributes (agy-shield-lib.sh:266).
-            # Delete that line and the message degrades to the `[no matching rule reported]` default, which
-            # this pattern does not match - so the extraction has an oracle for the first time.
+            # The bracketed reason is the ONLY thing `check-ignore -v` contributes, so this pattern is the
+            # oracle for that extraction: delete the `check-ignore -v` line and `$_as_why` is empty.
+            # WHAT HAPPENS THEN CHANGED IN roadmap 17a's capstone, and the old wording here described the
+            # behaviour it USED to have - it said the message "degrades to the `[no matching rule reported]`
+            # default". There is no such default any more. An empty `$_as_why` now selects a different B3
+            # message entirely, which carries no bracketed rule at all, because the old one asserted a
+            # negation line that measurement showed need not exist. Either way this pattern fails to match,
+            # so the row keeps its oracle - but it keeps it for a different reason than it used to, and a
+            # future round folding against the old sentence would have been folding against fiction.
             $script:Res.Err | Should -Match '\[\.clavity/\.gitignore:\d+:!local-anomalies\.md' -Because 'the operator needs the RULE that is overriding the shield, not just the filename they already knew'
         }
 
@@ -645,22 +651,50 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
         # cross-repository collision this step removed - see 'reports the SAME fault in a SECOND repository
         # under the SAME key (roadmap 17a)'.
 
-        # NO ROW PINS THE SWEEP-AFTER-A2 ORDERING, and the reason is recorded here so nobody writes one
-        # believing it works. A row WAS written and then deleted, because a mutant PROVED it vacuous:
-        # moving the sweep block back above Stage A2 (verified applied - sweep at 209, A2 banner at 235)
-        # left it GREEN.
-        # WHY IT CANNOT BE PINNED FROM OUTSIDE THE PROCESS. The two orders are end-state identical:
-        #   sweep first -> marker written, then shield written
-        #   sweep after -> shield written, then marker written
-        # By the time any assertion runs, both have produced the same files and git ignores all of them.
-        # The one fixture that could strand the marker - a shield path that cannot be written, so A2 fails
-        # while the marker still lands - strands it under BOTH orders, so it does not discriminate either.
-        # The hazard the ordering removes is a WINDOW, not an end state: a `git add -A` from a second
-        # session, or an interrupt, between the marker write and the shield write. Nothing this harness can
-        # observe after the call distinguishes them.
-        # Tracked as an accepted boundary in docs/coverage-debt.md with its compensation. Do NOT replace
-        # this with a row that greps the source for block positions: this suite records two source-text
-        # matchers that were defeated, and the standing rule is to pin behaviour, not layout.
+        It 'the sweep runs AFTER Stage A2, so the shield is in place before the marker lands' {
+            # THIS ROW REPLACES ACCEPTED-BOUNDARY ENTRY M, WHICH WAS WRONG. The entry claimed the ordering
+            # could not be pinned, and the reasoning that produced it is worth stating because it is
+            # seductive: the two orders ARE end-state identical - sweep-first writes marker then shield,
+            # sweep-after writes shield then marker, and afterwards both leave the same files, all ignored.
+            # That much is true, and a row asserting anything about the state AFTER the call really is
+            # vacuous; one was written, proved vacuous by a mutant, and deleted. The error was concluding
+            # from that that NOTHING can observe the ordering. The hazard is a WINDOW, so the observation
+            # has to happen INSIDE the window rather than after it.
+            #
+            # HOW. The helper is SOURCED, and it calls `find` unqualified. A shell FUNCTION named `find`,
+            # defined in the body before the source, therefore intercepts the sweep at the exact moment it
+            # runs and can record the state of the world at that instant. It records whether the shield
+            # text exists yet, then delegates to the real `find` via `command`, so the helper's own
+            # behaviour is unchanged.
+            #
+            # WHY IT READS THE SHIELD'S CONTENT AND NOT THE CALL ORDER, which is the whole point. The
+            # obvious version records that `grep` (Stage A2) ran before `find` (the sweep) - and that is a
+            # PROXY for the property, the defect shape this repository has now hit five times. The line
+            # that actually WRITES the shield is a `printf` builtin with a redirect: no subprocess, nothing
+            # a PATH shim could intercept. Move ONLY that line below the sweep and a grep-before-find
+            # assertion stays GREEN while the property is broken. Reading the shield at sweep time observes
+            # the property itself, and reds on exactly that mutation too.
+            #
+            # MUTATION-PROVEN, anchor checked BOTH ways: relocating the sweep block to just after Stage A1
+            # (verified applied - the mutant's sweep line precedes its A2 banner, and the mutant still
+            # parses) flips the observation from PRESENT to ABSENT and reds this row.
+            $r = New-FixtureRepo -NoClavityDir
+            $body = @(
+                'find() {',
+                '  if grep -qFx ''*'' "$PWD/.clavity/.gitignore" 2>/dev/null; then echo PRESENT > "$PWD/sweep-order.txt"',
+                '  else echo ABSENT > "$PWD/sweep-order.txt"; fi',
+                '  command find "$@"',
+                '}',
+                'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+            ) -join "`n"
+            $null = Invoke-Shield -Root $r -Body $body
+            $observed = Join-Path $r 'sweep-order.txt'
+            # ASSERT THE PRECONDITION FIRST. Without this the row passes vacuously against any change that
+            # stops the sweep running at all: the file would simply be absent, and an assertion about its
+            # contents would never run. A control that cannot state its own precondition is not a control.
+            (Test-Path -LiteralPath $observed) | Should -BeTrue -Because 'the sweep must actually run, or this row asserts nothing at all'
+            (Get-Content -Raw -LiteralPath $observed).Trim() | Should -Be 'PRESENT' -Because 'Stage A2 must shield .clavity/ BEFORE the sweep writes its marker into it, or a concurrent `git add -A` in that window stages this helper''s own bookkeeping'
+        }
 
         It 'the SWEEP prunes aged shield markers too - the healthy path is the only one that runs' {
             # WITHOUT THIS THE MARKERS GROW WITHOUT BOUND. The other prune lives in _agy_shield_say, on the

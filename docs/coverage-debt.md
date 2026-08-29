@@ -566,30 +566,23 @@ here, because it needs a new registered suite and this batch's scope is the seve
   **Re-check trigger:** any change to how `$repo` is resolved, or a harness change that stops spawning a
   child process - which would make the PSDrive case constructible and retire this entry outright.
 
-### M. The sweep-after-Stage-A2 ordering is not observable after the call (roadmap 17a, 2026-08-29)
+### M. RETRACTED - the sweep-after-Stage-A2 ordering IS observable (roadmap 17a, 2026-08-29)
 
-- **Behaviour:** `agy_shield` runs its sweep gate AFTER Stage A2 has asserted the shield, so the marker it
-  writes (`.clavity/.clavity-shield-swept-<key>`) never exists in a `.clavity/` that is not yet ignored.
-  Before the block was moved, a marker could be created at a point where Stage A1 had made the directory
-  but Stage A2 had not yet written `.gitignore`.
-- **Why uncovered:** the two orders are END-STATE IDENTICAL. Sweep-first writes the marker then the
-  shield; sweep-after writes the shield then the marker; by the time any assertion runs both have produced
-  the same files and git ignores all of them. MEASURED: a row asserting that every file left in `.clavity/`
-  is ignored stayed GREEN under a verified logic mutant that moved the block back above Stage A2 (sweep at
-  209, A2 banner at 235). The one fixture that could strand the marker - a shield path that cannot be
-  written, so A2 fails while the marker still lands - strands it under BOTH orders, so it does not
-  discriminate either. **The hazard the ordering removes is a WINDOW, not an end state:** a `git add -A`
-  from a second session on the same repository, or an interrupt, landing between the two writes.
-- **Compensation:** the ordering constraint is stated at the block itself, in terms, including why it must
-  also stay BEFORE Stage B (whose early returns are the common case, so a sweep placed after them would
-  almost never run). The vacuous row was DELETED rather than kept, and the suite carries a comment at its
-  former location recording the mutant result so it is not rewritten by someone who assumes it works.
-  The adjacent property that IS observable - that the sweep prunes aged shield markers, without which they
-  accumulate one per session forever - is pinned by `'the SWEEP prunes aged shield markers too - the
-  healthy path is the only one that runs'`, proven non-vacuous by narrowing the `find` back to
-  `.gitignore.tmp.*` alone (that mutant reds exactly that row).
-- **Anchor (its disappearance voids this entry):** the sweep block's position between Stage A2's closing
-  `fi` and the `Stage B: verify the EFFECT` banner in `agy-shield-lib.sh`, and the comment block that
-  explains it. **Re-check trigger:** any harness change that can observe intermediate state within a single
-  `agy_shield` call - a shim, an injected hook, or an in-process runner - would make this constructible and
-  retire this entry outright.
+- **Status:** withdrawn the day after it was written. It claimed the ordering could not be pinned by a
+  test. That was wrong, and it is recorded here rather than deleted because the reasoning behind it is
+  seductive enough to be re-derived by the next person who looks.
+- **What was right:** the two orders really are end-state identical, so any assertion made AFTER the call
+  is vacuous - one such row was written, proved vacuous by a mutant, and deleted. **What was wrong:** the
+  step from there to "nothing can observe it". The hazard is a WINDOW, so the observation has to happen
+  INSIDE the window. The entry's own re-check trigger named the escape ("a harness change that can observe
+  intermediate state within a single `agy_shield` call") and then failed to notice that the harness could
+  already do it: the helper is SOURCED and calls `find` unqualified, so a shell FUNCTION named `find`
+  defined in the test body intercepts the sweep at the instant it runs.
+- **Now covered by** `'the sweep runs AFTER Stage A2, so the shield is in place before the marker lands'`
+  in `scripts/tests/agy-shield-lib.Tests.ps1`, mutation-proven: relocating the sweep block above Stage A2
+  (anchor verified, mutant parses) flips its observation from PRESENT to ABSENT and reds it.
+- **The transferable lesson, and it is the fifth recurrence of this shape here:** the obvious form of this
+  test records that `grep` ran before `find` - a PROXY. The line that writes the shield is a `printf`
+  builtin, so moving ONLY that line below the sweep leaves grep-before-find green while the property is
+  broken. The row reads the shield's CONTENT at sweep time instead, which is the property rather than a
+  stand-in for it. **"I cannot observe X" deserves the same suspicion as any other unfalsifiable claim.**

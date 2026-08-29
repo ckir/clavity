@@ -191,12 +191,27 @@ agy_shield() {
         # still produces the right bytes whenever nothing races, so the loss is invisible. Create it
         # beside the shield. Unique per invocation, never a fixed name: two sessions can be open on
         # the same repository, and a fixed name races exactly when the guard matters.
+        # THE CAUSE IS TRACKED, NOT ASSUMED, and capstone round 1 of roadmap 17a is why. This branch is
+        # reached by THREE different failures and the message below used to name only the first of them:
+        # it said "could not create a temp file" even when mktemp had succeeded and the RENAME was what
+        # failed. MEASURED with a paired control (a `mv` that always fails, against a real `mv`): the
+        # fallback append is correct and the directory stays protected in both, but the operator reading
+        # that line during an incident is sent to check directory permissions when the temp file was
+        # created without trouble. A diagnostic that names the wrong cause is worse than a vague one,
+        # because it is actionable and wrong.
         _as_tmp=$(mktemp "$_as_dir/.gitignore.tmp.XXXXXX" 2>/dev/null)
         _as_prepended=0
+        _as_cause="could not create a temp file in $_as_dir"
         if [ -n "$_as_tmp" ] && [ -f "$_as_tmp" ]; then
             if printf '%s\n' '*' > "$_as_tmp" 2>/dev/null && cat "$_as_shield" >> "$_as_tmp" 2>/dev/null; then
-                if mv -f "$_as_tmp" "$_as_shield" 2>/dev/null; then _as_prepended=1; else rm -f "$_as_tmp" 2>/dev/null; fi
+                if mv -f "$_as_tmp" "$_as_shield" 2>/dev/null; then
+                    _as_prepended=1
+                else
+                    _as_cause="could not rename a temp file over $_as_shield"
+                    rm -f "$_as_tmp" 2>/dev/null
+                fi
             else
+                _as_cause="could not write the temp file in $_as_dir"
                 rm -f "$_as_tmp" 2>/dev/null
             fi
         fi
@@ -220,7 +235,7 @@ agy_shield() {
             # on the path that exists to be the safe floor. With a trailing newline (the control) the
             # same input shielded correctly, which is why every existing row passed.
             printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null
-            _agy_shield_say validation '' "could not create a temp file in $_as_dir, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand." "$_as_root"
+            _agy_shield_say validation '' "$_as_cause, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand." "$_as_root"
         fi
     else
         # A FILE WHOSE LAST LINE HAS NO TRAILING NEWLINE WOULD OTHERWISE CONCATENATE. Measured, with a
@@ -336,13 +351,26 @@ agy_shield() {
             _agy_shield_say persistent "$_as_key" \
                 "$_as_rel is TRACKED by git, so .gitignore cannot hide it. Stage A secured the directory; this file needs: git rm --cached -- \"$_as_rel\"" "$_as_root"
         else
-            # Untracked and STILL not ignored after Stage A restored the shield text. The only way to
-            # reach this is a negation line. REPORT; do NOT silently rewrite - auto-deleting a line a
-            # human deliberately wrote is a destructive footgun, and a missing shield is trivially
-            # restorable where a destroyed intent is not.
+            # Untracked and STILL not ignored after Stage A. A negation line is the ORDINARY cause, and it
+            # used to be stated here as the ONLY one - "the only way to reach this is a negation line".
+            # MEASURED FALSE (capstone round 1 of roadmap 17a): make .clavity/.gitignore a DIRECTORY and
+            # every write in Stage A2 fails, so the shield text was never asserted at all, and this branch
+            # is reached with no negation line anywhere. The old message then told the operator to remove a
+            # line that does not exist, while the real fault - the shield is not a writable regular file -
+            # went unnamed. So the two cases are SPLIT on what git actually reports rather than assumed.
+            # REPORT; do NOT silently rewrite - auto-deleting a line a human deliberately wrote is a
+            # destructive footgun, and a missing shield is trivially restorable where a destroyed intent is
+            # not. That reasoning is unchanged; only the claim about how this branch is reached was wrong.
             _as_why=$(git -C "$_as_root" check-ignore -v -- "$_as_rel" 2>/dev/null | head -n 1)
-            _agy_shield_say persistent "$_as_key" \
-                "$_as_rel is NOT ignored: a negation line in $_as_shield overrides the shield [${_as_why:-no matching rule reported}]. It stays visible to git until you remove that line." "$_as_root"
+            if [ -n "$_as_why" ]; then
+                _agy_shield_say persistent "$_as_key" \
+                    "$_as_rel is NOT ignored: a rule in $_as_shield overrides the shield [$_as_why]. It stays visible to git until you remove that line." "$_as_root"
+            else
+                # No matching rule AND not ignored: Stage A could not put a bare '*' in place. The commonest
+                # way to get here is a shield that is not a regular file, so name that rather than guessing.
+                _agy_shield_say persistent "$_as_key" \
+                    "$_as_rel is NOT ignored and git reports no matching rule, so the shield text was never asserted. Check that $_as_shield is a regular, writable file whose contents include a bare '*'." "$_as_root"
+            fi
         fi
         return 0
     fi
