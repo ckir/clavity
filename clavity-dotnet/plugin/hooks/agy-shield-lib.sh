@@ -234,8 +234,20 @@ agy_shield() {
             # DIRECTORY was left exposed, which is the precise failure this whole item exists to stop,
             # on the path that exists to be the safe floor. With a trailing newline (the control) the
             # same input shielded correctly, which is why every existing row passed.
-            printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null
-            _agy_shield_say validation '' "$_as_cause, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand." "$_as_root"
+            # THE APPEND'S RESULT IS CHECKED, and capstone round 3 is why. This branch used to write the
+            # star with 2>/dev/null and then assert "The directory is protected" unconditionally - a claim
+            # about a write it never looked at. MEASURED, with a control proving the append really can fail
+            # (a shield made read-only, mktemp forced to fail): the helper announced the directory was
+            # protected while the shield still held only the negation line and `check-ignore` reported the
+            # file NOT ignored. A data-leak guard telling an operator the directory is safe, at the exact
+            # moment it is leaking, is the worst possible failure of this message. Stage B does report the
+            # truth a few lines later, which makes it worse rather than better: the reassuring line comes
+            # FIRST, and a reader who stops there stops at the false one.
+            if printf '\n%s\n' '*' >> "$_as_shield" 2>/dev/null; then
+                _agy_shield_say validation '' "$_as_cause, so '*' was APPENDED rather than prepended - a negation line in $_as_shield is now overridden. The directory is protected; restore your intent by hand." "$_as_root"
+            else
+                _agy_shield_say validation '' "$_as_cause, AND the fallback append to $_as_shield ALSO failed. The directory is NOT protected - .clavity/ is exposed to git until $_as_shield is writable and contains a bare '*'." "$_as_root"
+            fi
         fi
     else
         # A FILE WHOSE LAST LINE HAS NO TRAILING NEWLINE WOULD OTHERWISE CONCATENATE. Measured, with a

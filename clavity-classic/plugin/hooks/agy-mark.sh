@@ -60,6 +60,20 @@ if [ "$mode" = 'log' ]; then
     _pl_disc=${2:-}; _pl_status=${3:-}; _pl_sha=${4:-}
     _pl_text=''
     [ $# -gt 4 ] && _pl_text=${*:5}
+    # NEWLINES ARE STRIPPED FROM EVERY INTERPOLATED FIELD, and capstone round 3 found why. This file
+    # OWNS the one-line record format - that is the stated reason the format lives here rather than in
+    # the callers - but it interpolated caller-supplied text into it without ever enforcing "one line".
+    # The <finding> argument at the agy-capstone skill's log call is DRIVER-SUPPLIED prose, so a newline
+    # in it is ordinary, not hostile. MEASURED: one call carrying a two-line finding produced FOUR lines
+    # in skipped.log, one of them a syntactically perfect `WAIVED` record. That is not cosmetic. The
+    # ledger convention corrected in c5477ad reads this file to decide whether a capstone was waived
+    # inside a given range, by looking for a WAIVED line whose HEAD is in that range - so a forged line
+    # here manufactures exactly the false attestation the whole discipline exists to prevent.
+    # Replaced with a space rather than deleted: the finding text stays readable, and the record stays
+    # one line. `${var//}` is a bashism, which this script already relies on two lines up (`${*:5}`).
+    _pl_status=${_pl_status//[$'\n\r']/ }
+    _pl_sha=${_pl_sha//[$'\n\r']/ }
+    _pl_text=${_pl_text//[$'\n\r']/ }
     printf -v _pl_ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null || _pl_ts=$(TZ=UTC date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
     if [ -n "$_pl_text" ]; then
         _pending_log=$(printf '%s  %s  %s  HEAD=%s  %s' "$_pl_ts" "$_pl_disc" "$_pl_status" "$_pl_sha" "$_pl_text")

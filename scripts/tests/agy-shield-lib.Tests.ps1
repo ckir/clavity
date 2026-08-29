@@ -727,6 +727,37 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             (Get-Content -Raw -LiteralPath $observed).Trim() | Should -Be 'PRESENT' -Because 'Stage A2 must shield .clavity/ BEFORE the sweep writes its marker into it, or a concurrent `git add -A` in that window stages this helper''s own bookkeeping'
         }
 
+        It 'when the fallback append ALSO fails it says the directory is NOT protected' {
+            # CAPSTONE ROUND 3, and this one is the worst class of message this file can carry. The prepend
+            # fallback wrote the star with 2>/dev/null and then asserted "The directory is protected"
+            # unconditionally - a claim about a write it never looked at. MEASURED with a control proving
+            # the append really can fail (shield read-only, mktemp forced to fail): the helper announced the
+            # directory was protected while the shield still held only the negation line and check-ignore
+            # reported the file NOT ignored. Stage B does tell the truth a few lines later, which makes it
+            # worse rather than better - the REASSURING line comes first, and a reader who stops there stops
+            # at the false one.
+            # `mktemp` is forced to fail with a shell FUNCTION rather than a PATH shim, the same technique
+            # the sweep-ordering row uses: the helper calls it unqualified, so a function intercepts it, and
+            # nothing outside this body is affected.
+            $r = New-FixtureRepo -Shield "!keep.md`n"
+            $shield = Join-Path $r '.clavity/.gitignore'
+            & attrib +R ($shield -replace '/','\') 2>$null
+            try {
+                $body = @(
+                    'mktemp() { return 1; }',
+                    'agy_shield "$PWD" ".clavity/local-anomalies.md" "k1"'
+                ) -join "`n"
+                $res = Invoke-Shield -Root $r -Body $body
+            }
+            finally { & attrib -R ($shield -replace '/','\') 2>$null }
+            # THE CONTROL FIRST. If the append actually SUCCEEDED, this fixture never reached the branch
+            # under test and every assertion below would be vacuous - which is exactly how a row certifies
+            # a behaviour it never exercised.
+            (Get-Content -Raw -LiteralPath $shield) | Should -Not -Match '(?m)^\*$' -Because 'the fixture must make the append fail, or this row is testing nothing'
+            $res.Err | Should -Match 'is NOT protected' -Because 'a data-leak guard must not report success for a write that failed'
+            $res.Err | Should -Not -Match 'The directory is protected' -Because 'the reassuring wording is the defect; it must not appear when the append failed'
+        }
+
         It 'the SWEEP prunes aged shield markers too - the healthy path is the only one that runs' {
             # WITHOUT THIS THE MARKERS GROW WITHOUT BOUND. The other prune lives in _agy_shield_say, on the
             # branch that CREATES a marker - and on a healthy repository _agy_shield_say is never called,

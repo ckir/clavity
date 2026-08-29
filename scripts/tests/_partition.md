@@ -597,7 +597,7 @@ agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
 agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
-agy-mark.Tests.ps1                               93,0s   27 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
+agy-mark.Tests.ps1                               93,0s   28 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
                                                                       agy-mark.sh, the sanctioned .clavity writer for the
                                                                       skills. Bash + git subprocess spawns across 26 Its; the
                                                                       FORWARDS $AGY_SESSION_ID row alone costs ~33,5s (three
@@ -610,7 +610,7 @@ agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   41 tests   <- SLOW, NEW 2026-08-16. Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   42 tests   <- SLOW, NEW 2026-08-16. Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:

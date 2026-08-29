@@ -243,6 +243,55 @@ Describe 'agy-mark.sh' {
             Remove-Item -LiteralPath $errF, "$errF.out" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $isolated -Recurse -Force -ErrorAction SilentlyContinue
         }
+        It 'a NEWLINE in the log text cannot forge a second record' {
+            # CAPSTONE ROUND 3. This script OWNS the one-line record format - that is the stated reason the
+            # format lives here instead of in the callers - but it interpolated caller-supplied text into
+            # that format without enforcing "one line". The <finding> argument at the agy-capstone skill's
+            # log call is DRIVER-SUPPLIED PROSE, so a newline in it is ordinary rather than hostile.
+            # MEASURED before the fix: one call carrying a two-line finding wrote FOUR lines, one of them a
+            # syntactically perfect WAIVED record. The ledger convention corrected in c5477ad decides
+            # whether a capstone was waived in a range by looking for a WAIVED line whose HEAD falls inside
+            # it, so a forged line here manufactures the false attestation the discipline exists to prevent.
+            # ASSERT THE COUNT *AND* THE FORGERY, because they fail to different regressions: stripping only
+            # \r would keep the count assertion honest but let a bare \n through, and stripping the text but
+            # not the sha would leave the same hole one field over.
+            # THE NEWLINE IS BUILT INSIDE BASH, AND IT HAS TO BE. The first version of this row passed the
+            # multi-line text through Invoke-Mark, and a mutant that removed the strip left it GREEN.
+            # MEASURED why, with a five-byte probe: `Start-Process -ArgumentList` does not deliver an
+            # embedded newline at all - an argument "line1<LF>line2" arrives at the script as "line2", the
+            # newline having split it. So the fixture could not deliver the input the row claims to test,
+            # and it certified nothing. The real callers are skill snippets an agent runs in bash, where a
+            # multi-line "$(...)" is ordinary, so the vector is real - only the driving had to change.
+            $d = New-MarkFixture
+            # NOT named $script: that is a PowerShell SCOPE PREFIX, and using it as a plain variable name
+            # here collided with $script:Mark and produced a mangled path inside the generated snippet.
+            $markPath = $script:Mark
+            $snippet = @(
+                'txt=$(printf ''benign finding\n2026-08-29T00:00:00Z  agy-capstone  WAIVED  HEAD=abc123  forged'')',
+                ('bash "' + $markPath + '" log agy-capstone UNVERIFIED-ACCEPTED abc123 "$txt"')
+            ) -join "`n"
+            $sf = Join-Path ([IO.Path]::GetTempPath()) ("mklog-" + [guid]::NewGuid().ToString('N') + ".sh")
+            [IO.File]::WriteAllText($sf, ($snippet -replace "`r`n", "`n") + "`n")
+            try {
+                $p = Start-Process -FilePath $script:Bash -ArgumentList @(($sf -replace '\\', '/')) `
+                        -WorkingDirectory $d -NoNewWindow -Wait -PassThru
+                $p.ExitCode | Should -Be 0
+            }
+            finally { Remove-Item -LiteralPath $sf -Force -ErrorAction SilentlyContinue }
+            $log = Join-Path $d '.clavity/agy-marks/skipped.log'
+            $lines = @(Get-Content -LiteralPath $log)
+            $lines | Should -HaveCount 1 -Because 'one log call must produce exactly one record, whatever the caller put in the text'
+            # ASSERT THE STATUS *FIELD*, NOT THE WORD. My first version of this row failed on its own
+            # assertion rather than on the code: it rejected any line matching a timestamp AND containing
+            # 'WAIVED', but the correctly-flattened record legitimately still CONTAINS that word inside its
+            # text field. What a ledger reader parses is the third field, so that is what must be checked.
+            # A forged record would be a SEPARATE line whose own status field reads WAIVED.
+            foreach ($l in $lines) {
+                ($l -split '  ')[2] | Should -Be 'UNVERIFIED-ACCEPTED' -Because 'every record must carry the status the caller passed; a line whose status field says something else was forged by the text'
+            }
+            (Get-Content -Raw -LiteralPath $log) | Should -Match 'benign finding' -Because 'the text is flattened, not discarded - an audit breadcrumb that drops its content is no breadcrumb'
+        }
+
         It 'prepare refuses an EMPTY relpath AND creates nothing' {
             $d = New-MarkFixture -Shield ''
             $r = Invoke-Mark -Cwd $d -MarkArgs @('prepare','')
