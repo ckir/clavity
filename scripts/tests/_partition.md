@@ -610,7 +610,7 @@ agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-
                                                                       been comment-only). Time had said
                                                                       18,0s and was "count 2026-08-03,
                                                                       time older" - now both are current.
-agy-shield-lib.Tests.ps1                        409,1s   40 tests   <- SLOW, NEW 2026-08-16. Fixture-
+agy-shield-lib.Tests.ps1                        409,1s   41 tests   <- SLOW, NEW 2026-08-16. Fixture-
                                                                       heavy: many git + bash subprocess spawns per
                                                                       row across 17 Its. Measured solo, two
                                                                       consecutive runs immediately back to back:
@@ -620,6 +620,16 @@ agy-shield-lib.Tests.ps1                        409,1s   40 tests   <- SLOW, NEW
                                                                       per-invocation debounce-key isolation was
                                                                       added to Invoke-Shield (see that function's
                                                                       comment).
+                                                                      COUNT 40 -> 41 on 2026-08-29 (roadmap 17a
+                                                                      capstone round 1 added the sweep-ordering
+                                                                      row that retired accepted-boundary entry M).
+                                                                      THE TIME IS NOT RE-MEASURED and deliberately
+                                                                      so: this box was running a capstone when the
+                                                                      row landed, and the timing discipline forbids
+                                                                      quoting a wall-clock figure taken off a
+                                                                      machine the agent is working on. The 409,1s
+                                                                      is the last figure measured under the stated
+                                                                      conditions and is now one row short.
 agy-test-audit-reminder.Tests.ps1                50,8s   24 tests   <- SLOW, re-measured 2026-08-06 (+4)
 assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the

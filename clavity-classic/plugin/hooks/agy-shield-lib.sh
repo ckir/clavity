@@ -375,14 +375,23 @@ agy_shield() {
             # every write in Stage A2 fails, so the shield text was never asserted at all, and this branch
             # is reached with no negation line anywhere. The old message then told the operator to remove a
             # line that does not exist, while the real fault - the shield is not a writable regular file -
-            # went unnamed. So the two cases are SPLIT on what git actually reports rather than assumed.
+            # went unnamed. So the two cases are SPLIT on whether git reported a rule at all; neither branch
+            # may name the file holding it, because this code does not know it (see the if-branch below).
             # REPORT; do NOT silently rewrite - auto-deleting a line a human deliberately wrote is a
             # destructive footgun, and a missing shield is trivially restorable where a destroyed intent is
             # not. That reasoning is unchanged; only the claim about how this branch is reached was wrong.
             _as_why=$(git -C "$_as_root" check-ignore -v -- "$_as_rel" 2>/dev/null | head -n 1)
             if [ -n "$_as_why" ]; then
+                # THE PROSE MUST NOT NAME THE FILE - capstone round 2, and this is the SECOND time the same
+                # mistake has been folded out of this one message. The first version blamed a negation line
+                # in $_as_shield; the fix stopped ASSUMING there was a negation but went on naming
+                # $_as_shield as the file holding it. MEASURED: with the shield unwritable and a negation in
+                # .git/info/exclude, this branch fires and reports "a rule in <root>/.clavity/.gitignore
+                # overrides the shield [.git/info/exclude:1:!local-anomalies.md]" - the bracket is right and
+                # the sentence in front of it is wrong. `check-ignore -v` already prints file:line:pattern,
+                # so the only honest thing to do is let it speak and say nothing the code does not know.
                 _agy_shield_say persistent "$_as_key" \
-                    "$_as_rel is NOT ignored: a rule in $_as_shield overrides the shield [$_as_why]. It stays visible to git until you remove that line." "$_as_root"
+                    "$_as_rel is NOT ignored: a rule overrides the shield [$_as_why]. It stays visible to git until you remove that rule." "$_as_root"
             else
                 # No matching rule AND not ignored: Stage A could not put a bare '*' in place. The commonest
                 # way to get here is a shield that is not a regular file, so name that rather than guessing.

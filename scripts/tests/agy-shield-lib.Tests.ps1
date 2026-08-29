@@ -675,13 +675,39 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             # assertion stays GREEN while the property is broken. Reading the shield at sweep time observes
             # the property itself, and reds on exactly that mutation too.
             #
-            # MUTATION-PROVEN, anchor checked BOTH ways: relocating the sweep block to just after Stage A1
-            # (verified applied - the mutant's sweep line precedes its A2 banner, and the mutant still
-            # parses) flips the observation from PRESENT to ABSENT and reds this row.
+            # TWO OBSERVATION POINTS, AND THE SECOND ONE EXISTS BECAUSE THE FIRST WAS DEFEATED. The row
+            # originally watched only `find`, and capstone round 2 broke it: hoist the gate (the marker
+            # existence check AND the `: >` that creates it) above Stage A2 while leaving the `find` below,
+            # and the marker lands in an unshielded directory - the exact hazard - while `find` still runs
+            # after A2 and observes the shield PRESENT. MEASURED: that mutant left this row GREEN.
+            # The second checkpoint closes it. `grep` is the FIRST subprocess Stage A2 runs, and every one
+            # of its `grep` calls happens BEFORE the `printf` that writes the shield, so "has the marker
+            # been created yet?" asked at grep time is a direct question about ordering. Under correct code
+            # the answer is always ABSENT; under the round-2 mutant the first grep already sees it PRESENT.
+            # Both shims delegate with `command` so the helper's behaviour is unchanged, and the find shim
+            # uses `command grep` so it cannot recurse into the grep shim.
+            #
+            # MUTATION-PROVEN AGAINST THREE MUTANTS, anchors checked both ways and each mutant re-parsed.
+            # BOTH checkpoints are load-bearing - do not delete either as redundant, because they catch
+            # DIFFERENT regressions and the first mapping I wrote for them was wrong until I ran mutant 3:
+            #   1. whole sweep block relocated above A2      -> caught at GREP time (marker already there)
+            #   2. gate hoisted above A2, find left below    -> caught at GREP time (this is the round-2
+            #                                                   mutant, and it defeated the find-time
+            #                                                   checkpoint on its own - that is why the
+            #                                                   grep checkpoint exists)
+            #   3. only the shield WRITE deferred below the  -> caught at FIND time, and ONLY there: the
+            #      sweep, gate and find left in place           marker is created after A2 begins, so the
+            #                                                   grep checkpoint sees nothing wrong
             $r = New-FixtureRepo -NoClavityDir
             $body = @(
+                'grep() {',
+                '  _m=$(command ls "$PWD"/.clavity/.clavity-shield-swept-* 2>/dev/null | command head -1)',
+                '  if [ -n "$_m" ]; then echo PRESENT >> "$PWD/marker-at-grep.txt"',
+                '  else echo ABSENT >> "$PWD/marker-at-grep.txt"; fi',
+                '  command grep "$@"',
+                '}',
                 'find() {',
-                '  if grep -qFx ''*'' "$PWD/.clavity/.gitignore" 2>/dev/null; then echo PRESENT > "$PWD/sweep-order.txt"',
+                '  if command grep -qFx ''*'' "$PWD/.clavity/.gitignore" 2>/dev/null; then echo PRESENT > "$PWD/sweep-order.txt"',
                 '  else echo ABSENT > "$PWD/sweep-order.txt"; fi',
                 '  command find "$@"',
                 '}',
@@ -689,6 +715,11 @@ agy_shield "`$PWD" ".clavity/local-anomalies.md" "$k"
             ) -join "`n"
             $null = Invoke-Shield -Root $r -Body $body
             $observed = Join-Path $r 'sweep-order.txt'
+            $atGrep = Join-Path $r 'marker-at-grep.txt'
+            # THE GREP CHECKPOINT. Its own precondition first, for the same reason as below: if Stage A2
+            # stopped calling grep entirely this file would be absent and the -NotContain would be vacuous.
+            (Test-Path -LiteralPath $atGrep) | Should -BeTrue -Because 'Stage A2 must call grep, or this checkpoint observes nothing'
+            @(Get-Content -LiteralPath $atGrep) | Should -Not -Contain 'PRESENT' -Because 'the sweep marker must not exist yet when Stage A2 begins; if it does, it was written into a directory that is not yet shielded'
             # ASSERT THE PRECONDITION FIRST. Without this the row passes vacuously against any change that
             # stops the sweep running at all: the file would simply be absent, and an assertion about its
             # contents would never run. A control that cannot state its own precondition is not a control.
