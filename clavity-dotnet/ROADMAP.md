@@ -1753,6 +1753,161 @@ pattern, not the instance, is the problem. **Do not do it as a standalone commit
 
 ---
 
+### §21 — Ship the peer REPLY CONTRACT: disposition labels + the dual prose/JSON output — ▶ **OPEN, owner leans SHIP (2026-08-30)**
+
+**Why this is here and not in a seam.** Both halves of this contract have been in active use for months
+in `.clavity/seams/*.md` briefs and in nothing else. They were never shipped and never written to memory,
+so when a session compacted on 2026-08-30 the successor lost them and ran an eleven-round AGY-CAPSTONE and
+two AGY-TEST-AUDITs without them, noticing nothing, because no file on disk said they should exist. The
+owner spotted it from the outside (*“you don’t use the triage scheme (labels) for peers findings
+anymore”*). **A protocol that lives only in the last brief you happened to write is one compaction from
+gone.** Recorded here so the decision survives regardless of which way it goes.
+
+**The half that is ALREADY shipped, and the half that is not.** `plugin/skills/agy-capstone/SKILL.md:156`
+reads *“A finding that survives **disposition** as a real `defect` is then CLASSED”* and then gives the
+class table (0–5 → BLOCKING/DEBT). **Disposition itself is defined nowhere in the shipped payload.** The
+shipped contract therefore references a step it never specifies: a reader has the second half of a
+two-step procedure and no way to reach it. That is the strongest argument for shipping — it closes an
+incomplete contract rather than adding a new one.
+
+#### Part A — the disposition layer (per finding, BEFORE the class)
+
+| disposition | meaning | must cite |
+|---|---|---|
+| `defect` | reachable, in scope, should change | the concrete trigger |
+| `by-design` | true, but intended | **the line stating the intent** |
+| `out-of-scope` | true, outside the reviewed range | **the range check, RUN** |
+| `true-unsupported` | holds; nothing shows anyone verified it | what provenance is missing |
+| `already-known` | matches the do-not-re-raise ledger | which entry |
+
+`confidence`: `measured` (opened the line or ran a read-only command and can quote it) · `reasoned` (**the
+honest default**) · `speculative`. For a `defect`, one line on why it is NOT `by-design`/`out-of-scope`.
+
+⚠ **The brief must say these labels ask the peer to change nothing.** This repo binds the word *triage* to
+a MUTATING promote-or-delete pass over `.clavity/local-anomalies.md`; unqualified, the word reads as an
+instruction to act on a file that is out of bounds during a review-only consult.
+
+#### Part B — the dual output
+
+Reply in BOTH formats: a prose `.md` (**the ANSWER**) and a `.json` ARRAY with exactly ten keys, every one
+present, empty string rather than omitted — `seat`, `id`, `file`, `line`, `quoted_line`, `disposition`,
+`confidence`, `trigger`, `severity`, `detail`. **`quoted_line` is checked mechanically against a NAMED
+SHA**, not against a working tree: a citation once drifted by eleven lines because the tree moved under
+the reader.
+
+#### The condition on shipping Part B, and it is not optional
+
+**Ship the JSON only WITH a checker that reads it.** `SKILL.md:184` already rules on this: *“A field no
+rule reads is not a control.”* A ten-key array nothing parses is a longer brief and no more rigour, and
+shipping one would reproduce, in the same file, the defect that rule exists to prevent.
+
+**A working prototype exists and has a paired control.** Run against the 13b audit’s round-2 reply it
+verified 5 of 5 `quoted_line` fields against `20f38cc` and exited 0; with one row’s line number drifted by
+eleven it exited 1 naming that row. **The two DISCARDED items were among the five verified** — previously
+a discarded finding was unverifiable prose, and this repository’s history says twice over that the
+discarded list is where the real finding hides.
+
+#### What the trial measured (2026-08-30, 13b audit round 2)
+
+- **A census, which is the part that changes the verdict’s meaning.** `TerminalToken` 8/8 rows read, 9
+  behaviours, 8 covered · `SemanticEcho` 17/17 read, ~15 behaviours, 12 covered · `DisciplineContract`
+  4/4 · `AskReply` 10/10 read (count independently verified). **“No gaps” acquires a denominator.**
+- **`confidence` would have saved four mutants.** The round-1 reply claimed tightening `TailLines` to 2 OR
+  loosening it to 10 would both leave the suite green. MEASURED: →2 REDDENS a row; only →10 is unpinned.
+  A `reasoned` label states that uncertainty up front instead of costing a measurement to discover.
+
+#### Cost and blast radius, stated before anyone starts
+
+- **These skills ship in the installer payload** → class 2 → any defect here is BLOCKING by the skill’s own
+  table, and both plugin halves must move byte-identically (`agy-capstone`, `agy-test-audit`, and the
+  `adversarial-panel-review` copy in each of `clavity-dotnet/` and `clavity-classic/`).
+- **Part B widens the write surface of a review-only discipline.** The peer must write two files. Five
+  review-only breaches are on record, one during the step-5 capstone’s round 10. The contract must name
+  the scratch path explicitly and the envelope must state that those two writes are the ONLY sanctioned
+  ones.
+- Sequencing: Part A stands alone and closes the incomplete contract. Part B needs the checker in the same
+  change, plus a suite for the checker itself.
+
+#### ✅ TRANSPORT MEASURED 2026-08-30 — and the recommendation is INLINE, so the envelope never moves
+
+The fork was: does the findings array travel INLINE in the reply, or must the peer WRITE it to a file?
+The case against inline was that this channel eats replies. **Measured, four probes, all inline, all
+carrying the ten-key array and a unique terminal sentinel:**
+
+| probe | payload | conditions | result |
+|---|---|---|---|
+| A | 10-row JSON alone, ~4.5 KB | synchronous, no tool work | **arrived, sentinel present** |
+| B | full prose report + the same JSON, ~11 KB | synchronous | **arrived, sentinel present** |
+| C | JSON after five genuine tool turns | synchronous | **arrived, sentinel present** |
+| D | full prose + JSON, ~10 tool turns | **BACKGROUNDED past 120 s** | **arrived, sentinel present** |
+
+`AnswerTruncated` was `false` on all four. **So the three hypotheses I actually held are all FALSIFIED:**
+it is not payload size, not the presence of tool work, and not the consult being backgrounded — probe D
+was the exact shape of every round that had failed, and it survived.
+
+**THE REAL MECHANISM, self-reported by the peer when asked to describe the impulse instead of acting on
+it:** *“I do genuinely feel a strong, natural impulse to close this message with a wrap-up pleasantry like
+‘I’ve completed the full analysis…’ or ‘Standing by for the next audit step.’ … I am describing the
+impulse here instead of acting on it.”*
+
+**The reply the driver receives is the peer’s FINAL message.** When the peer closes with a pleasantry,
+that pleasantry IS the final message and it DISPLACES the payload — the report is still there, one step
+back in the activity trail, but the driver never sees it. Every degraded reply on record reads exactly
+like this: *“Standing by for your feedback”*, *“I see the background task I started earlier has finished”*.
+**Nothing was ever truncated. The wrong message was collected.**
+
+**A TERMINAL TOKEN ALONE DOES NOT FIX IT, and that is the sharp part.** Every capstone round in the
+step-5 review already required `[VERDICT: …]` on its own final line, and payloads were still lost. What
+made all four probes survive was the explicit clause **forbidding anything AFTER the sentinel**. The peer
+does not classify a closing pleasantry as content, so “end with the token” leaves the habit untouched
+while “add nothing after it” names the actual behaviour.
+
+#### ▶ RECOMMENDATION (2026-08-30): ship Part B as INLINE, and leave the envelope exactly as it is
+
+On the owner’s own criterion — *does the shape produce output the main agent can easily process?* — inline
+scores equal and costs nothing:
+
+- **Equally processable.** A fenced block the driver extracts, parses, and runs the `quoted_line` checker
+  over. Demonstrated end-to-end: 5/5 citations verified against a named sha, exit 0; one line number
+  drifted by eleven and the checker exited 1 naming the row.
+- **No envelope change at all — and I first justified this WRONGLY, so the corrected version is here.**
+  I wrote that the capstone envelope forbids all writes with no scratch exemption, citing
+  `plugin/skills/agy-capstone/SKILL.md:65-66`. **That quote is accurate and the conclusion drawn from it
+  was false:** the same envelope names `.clavity/scratch/<topic>/` six lines later at `:71`, and requires
+  it to be prepared through the shipped writer. I had read to :69 and stopped one line short. So the FILE
+  route would not have needed an envelope change either, and that argument for inline is withdrawn.
+  **What survives is the simpler claim:** inline needs no write AT ALL, and every write location is a
+  breach location — five review-only breaches are on record, one of them in this very review, from a peer
+  script that had a perfectly good scratch directory and redirected to the repo root anyway.
+
+- **The anti-wrap-up clause is LOAD-BEARING and must ship as contract text, not as advice.** It is the
+  mechanism, not a nicety.
+
+**What is NOT established, stated so nobody over-reads this.** n=4, one peer, one session, one model
+version. And the comparison is not fully controlled: the failing rounds came from briefs that differed in
+more than the anti-wrap-up clause, so the clause is strongly SUPPORTED as the cause and not ISOLATED as
+one. The cheap way to close that: run one deliberate round that OMITS the clause and see whether the
+payload is displaced. Until someone does, treat the clause as necessary and its sufficiency as untested.
+
+**The file route is not dead, it is unnecessary.** If a future payload ever does exceed what the reply can
+carry, the file is the fallback — and that day it needs the envelope decision this section deliberately
+did not take.
+#### 🔒 THE ENVELOPE DOES NOT MOVE UNTIL THERE IS A RECOMMENDATION (owner, 2026-08-30)
+
+**Nothing in this section licenses a change to the review-only envelope.** Part B needs the peer to write
+two files, and the note above about naming the scratch path is a PROPOSAL, not a decision. Until someone
+can actually recommend a shape — with a reason, not a preference — briefs keep the envelope exactly as it
+stands today: no edit, create, move or delete outside `.clavity/scratch/<topic>/`, and if the peer wants
+something run it names the command and the driver runs it.
+
+**Why the owner drew this line here.** The envelope is the only thing standing between a review-only
+consult and a mutating one, five breaches are on record, and a contract that requires writes is exactly
+the kind of change that erodes it by increments while every increment looks reasonable. A widened
+envelope adopted as a side effect of shipping a REPORTING format would never get reviewed on its own
+merits. **If Part B cannot be made to work inside the current shape, that is a finding about Part B.**
+**Provenance.** Richest surviving copy of both halves: `.clavity/seams/capstone-gapclosure-r27.md:11-40`.
+Rationale and the compaction post-mortem: the `feedback-use-the-disciplines-own-vocabulary` memory.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
