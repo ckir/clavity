@@ -1765,7 +1765,34 @@ gone.** Recorded here so the decision survives regardless of which way it goes.
 
 **The half that is ALREADY shipped, and the half that is not.** `plugin/skills/agy-capstone/SKILL.md:156`
 reads *“A finding that survives **disposition** as a real `defect` is then CLASSED”* and then gives the
-class table (0–5 → BLOCKING/DEBT). **Disposition itself is defined nowhere in the shipped payload.** The
+class table (0–5 → BLOCKING/DEBT).
+
+#### CORRECTION 2 (2026-08-30): THERE ARE **TWO VOCABULARIES**, AND I MISSTATED THIS SECTION'S PREMISE
+
+This section originally read *"Disposition itself is defined nowhere in the shipped payload"*. **False.**
+`plugin/skills/agy-capstone/SKILL.md:191` ships *"Disposition of findings (AGY-SCOPE)"* with a closed
+five-token set: `FOLDED`, `REJECTED`, `DISCARDED-BELOW-FLOOR`, `DEFERRED-TO-ANOMALIES`,
+`UNVERIFIED-ACCEPTED`. That is the SECOND premise in this section I asserted after reading only part of
+the file - the first was the envelope, corrected above.
+
+**The two are different axes, and the real finding is sharper than the one I claimed:**
+
+| axis | who assigns it | vocabulary | shipped? |
+|---|---|---|---|
+| what HAPPENED to a finding | the DRIVER, at resolution | FOLDED / REJECTED / DISCARDED-BELOW-FLOOR / DEFERRED-TO-ANOMALIES / UNVERIFIED-ACCEPTED | **yes**, `:191` |
+| what KIND of claim it is | the PEER, when reporting | defect / by-design / out-of-scope / true-unsupported / already-known | **no** |
+
+`:156`'s *"a finding that survives disposition as a real `defect`"* uses the PEER vocabulary - `defect` is
+not one of the five shipped tokens - so the reference genuinely dangles. The gap is real; my description
+of it was not.
+
+🔴 **CONSEQUENCE FOR SHIPPING: DO NOT SHIP THE PEER TABLE UNDER THE WORD "DISPOSITION".** One skill
+would carry two closed sets under one name, assigned by different parties at different moments. Name the
+peer-side axis so it cannot collide - `claim-type` is the obvious candidate - and make `:156` say which
+axis it means. A vocabulary collision inside a discipline whose whole purpose is precise classification is
+the most predictable own goal available here.
+
+The
 shipped contract therefore references a step it never specifies: a reader has the second half of a
 two-step procedure and no way to reach it. That is the strongest argument for shipping — it closes an
 incomplete contract rather than adding a new one.
@@ -1861,6 +1888,48 @@ step-5 review already required `[VERDICT: …]` on its own final line, and paylo
 made all four probes survive was the explicit clause **forbidding anything AFTER the sentinel**. The peer
 does not classify a closing pleasantry as content, so “end with the token” leaves the habit untouched
 while “add nothing after it” names the actual behaviour.
+
+#### ✅✅ OWNER ACCEPTED 2026-08-30 - THE IMPLEMENTATION PLAN, IN ORDER
+
+**Status: ACCEPTED, NOT STARTED.** This is the work item. Do these in order; each is independently
+shippable and step 1 does not depend on the rest.
+
+**1. Ship the anti-wrap-up clause NOW, on its own.** One sentence - *put nothing after the terminal
+token* - into the closer of all four skills. Cheapest change available and it fixes a MEASURED loss:
+several capstone rounds this session had their entire report displaced by "Standing by for your
+feedback". **A terminal token alone does NOT fix it** - every one of those rounds already demanded one.
+Independent of everything below.
+
+**2. Ship the peer-side table, but NOT under the word "disposition" - call it `claim-type`.** See
+CORRECTION 2: the payload already ships a closed five-token DISPOSITION set (AGY-SCOPE, `:191`) for what
+the DRIVER does with a finding. The peer-side table is a different axis - what KIND of claim it is - and
+`:156` dangles because `defect` is not one of the five. Fix `:156` to name which axis it means. The labels
+earned their place: `already-known` and `out-of-scope` were used accurately across three audits.
+
+**3. Ship `confidence` as a POINTER, never as authority.** 🔴 **MEASURED across four audits: it was
+WRONG 5 TIMES IN 14 CLAIMS.** Its value is real and specific - it names which mutant to run, which is why
+every false claim was cheap to kill. Its danger is that it reads as evidence. **Write the false rate INTO
+the skill**, with the driver instruction that a `measured` claim is ALWAYS re-run, and require the trigger
+to be phrased as a falsifiable prediction ("removing X leaves the suite green") - that phrasing is what
+made all five refutations mechanical.
+
+**4. Ship the JSON INLINE, with the checker, as a SEPARATE change.** Measured to survive size, tool work
+and backgrounding; needs no envelope move. It caught a wrong citation (`:86` vs `:84`) without the file
+being opened. **Two hard conditions:** it ships WITH a reader (else it is the "field no rule reads" this
+same skill forbids), and that reader MUST normalise non-ASCII - an em-dash arriving mangled already read
+as drift once. Prototype + paired control:
+`<scratch>/check_quoted_lines.py` (5/5 verified exit 0; one line drifted by eleven -> exit 1 naming the row).
+
+**NOT YET, and why.** All four skills ship in the installer payload, so by this skill's own table any
+defect here is class 2 -> BLOCKING, across six files in two byte-identical halves. **That argues for the
+full discipline on this change - panel, then capstone - not a quiet edit.** Also wanted: one deliberate
+round that OMITS the anti-wrap-up clause, because the clause is strongly SUPPORTED as the mechanism but
+not ISOLATED - the failing rounds differed from the probes in more than that one sentence.
+
+🔴 **READ THE SKILLS END TO END BEFORE IMPLEMENTING.** This section has TWO recorded corrections
+(the envelope, and disposition), both caused by asserting about a file after reading part of it. Any
+claim here about what is or is not already shipped has a demonstrated error rate and should be re-checked
+against the file rather than trusted.
 
 #### ▶ RECOMMENDATION (2026-08-30): ship Part B as INLINE, and leave the envelope exactly as it is
 
