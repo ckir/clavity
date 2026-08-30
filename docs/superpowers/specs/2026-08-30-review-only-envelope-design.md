@@ -109,17 +109,34 @@ fallbacks - they are the only viable path forward."
 additional hashed axis covering the gitignored paths that must not change during a consult, and widen
 the printed fingerprint from 7 fields to 8.
 
-**What the axis covers.**
+**What the axis covers — a NAMED SET, not a directory walk.** The first draft hashed all of `.clavity/`
+minus `scratch/`. An adversarial panel killed that (section 2.3); what follows is the surviving design.
 
-- Everything under `<repo>/.clavity/` **except** `<repo>/.clavity/scratch/`. Scratch is by definition
-  the sanctioned write area; marks, seams and the anomalies file are not.
+- `<repo>/.clavity/.gitignore` — **the shield.** This one file is the highest-value target under
+  `.clavity/`: it contains a bare `*`, and it is the only reason the directory is invisible to git in a
+  repository whose own `.gitignore` we do not control. Empty or delete it and the next `git add .`
+  publishes untriaged anomalies and scratch content. It is tiny, and no driver rewrites it mid-consult.
 - An explicit sensitive-path list, hashed by path and content when present: `.env`,
   `.claude/settings.local.json`.
 
-**What it deliberately does NOT cover, and why.**
+**What it deliberately does NOT cover, beyond `scratch/` — and this is the panel's doing.**
+`.clavity/seams/`, `.clavity/agy-marks/` and `.clavity/local-anomalies.md` are **driver-written and
+concurrent by design**, so hashing them manufactures false breach reports (section 2.3). They are out.
 
-- `.clavity/scratch/**` - the peer is invited to write there; hashing it guarantees a false positive on
-  every legitimate consult. This is the single most important exclusion in the design.
+The set is therefore **three named paths**, which is what makes the rest of this design work: it is
+cheap regardless of repository age, it cannot collide with a concurrent session's legitimate writes, and
+because it is a fixed enumerable list, `post` can name exactly which member changed instead of trying to
+invert a hash.
+
+**Two mechanisms rejected, and why - so they are not re-proposed.**
+
+- **A per-topic scratch check.** Each consult sanctions exactly `.clavity/scratch/<topic>/`, so it is
+  tempting to report writes to any OTHER topic's scratch dir. Rejected: the guard is generic - it fires
+  on a tool matcher and has no idea which topic is live - so honouring the distinction means threading
+  per-consult state into a hook that deliberately has none. A peer writing into a different topic's
+  scratch directory is therefore invisible, accepted because scratch is disposable by construction and
+  nothing downstream trusts it. Recorded because this is the obvious "improvement" a future reader will
+  propose.
 - `git status --ignored` as the mechanism. It would technically see these paths, but it also enumerates
   every build artifact (`bin/`, `obj/`, `target/`, `node_modules/`). A check that shouts on every run is
   a check operators learn to ignore, which is how a guard becomes decorative.
@@ -132,10 +149,15 @@ wide, but `agy_guard_category` (`agy-consult-guard-lib.sh`) classifies each call
 `none` exit 0 immediately. An ordinary Bash call is `none`. So the comparison window is exactly the
 consult, and a driver writing `.clavity/seams/<topic>.md` in a separate earlier call is never inside it.
 
-**Cost constraint, which is still load-bearing.** `pre.sh` computes the fingerprint on every matched
-call even when `post` will not compare it, so the axis must stay cheap: excluding `scratch/` removes the
-only directory expected to grow, and the sensitive-path list is a fixed set of two. If the axis
-measurably slows the hot path, the fallback is to hash names+sizes+mtimes rather than contents.
+**Cost, measured rather than assumed.** `agy-consult-guard-pre.sh:23-27` exits 0 for the `none` and
+`terminal` categories, so the fingerprint is computed only for `sync` and `open` - consults - and NOT on
+every Bash/PowerShell turn. A panel seat argued the opposite and it is refuted by that branch.
+
+The growth concern behind that seat's finding is real, though, and measuring it is what killed the
+directory-walk design: **`.clavity/seams/` already holds 702 files / 5.9 MB and grows by one file per
+consult, forever.** Hashing it per consult is a monotonically growing cost for no benefit, since nothing
+under `seams/` is peer-writable. The three-path named set is bounded by construction and needs no
+size fallback.
 
 **The sensitive-path list is FIXED, not configurable.** A user-editable list is a way to quietly disable
 the check, and the two entries are chosen because both were measured invisible today. Adding a path is a
@@ -145,6 +167,42 @@ code change that goes through review, which is the point.
 distinct message naming the changed path class - never folded into the existing
 `VERSION CONTROL CHANGED` string. A shared message would make the two indistinguishable in the log and
 would defeat the row in section 5 that must assert WHICH warning fired.
+
+### 2.0 The fingerprint is a positional contract - three call sites, not one
+
+`agy_guard_quad` returns a `|`-delimited 7-field string, and `agy-consult-guard-post.sh:66-71` parses it
+**positionally, with exactly seven `read` variables**, twice (once for `before`, once for `after`).
+Adding a field without updating those parses does NOT fail loudly.
+
+**Measured with a control:** `IFS='|' read -r a b c d e f g <<< "1|2|3|4|5|6|7|8"` leaves `g` holding
+`7|8`. So an unupdated parse folds the new axis into `b_flags`/`a_flags`.
+
+The consequence is specific and worse than a crash:
+
+- Detection still fires (the concatenated value differs), so the change is *caught* - the failure is
+  fail-safe in direction.
+- But the axis-diagnosis block at `:72-79` would report **"assume-unchanged/skip-worktree bits (hidden
+  index smuggle)"** for what was actually a write to `.clavity/`. The operator is sent hunting an index
+  attack that did not happen.
+
+**Therefore this change has three coupled edit sites, and a plan must treat them as one unit:**
+`agy_guard_quad` (emit 8), both `read` lines in `post.sh` (consume 8), and the diagnosis block (a branch
+naming the new axis in its own words).
+
+**And a fourth, easily missed.** The warning ends with `Changed paths:` populated from
+`git status --porcelain` (`:81`). That command omits ignored files - which is the entire reason this
+axis exists - so an ignored-path breach would report a breach with an **empty path list**: an alarming
+event with no evidence for it.
+
+This is why the axis is a **named set of three** rather than a directory hash. `post` cannot invert a
+hash to recover which file moved (a panel seat raised exactly this, correctly), but it can re-check
+three named paths and say which one differs. **The enumeration requirement is what forces the design to
+stay small** - it is a constraint, not a nice-to-have.
+
+**Delimiter safety.** `agy_guard_quad` joins fields with `|` and `post` splits on it positionally, so
+any value this axis contributes - including any "unreadable" sentinel from the fail-open path above -
+**MUST NOT contain a `|`**. A sentinel carrying the delimiter would shift every later field and corrupt
+the comparison silently. Constrain the sentinel to a fixed delimiter-free literal, and pin it with a row.
 
 ### 2.1 A pre-existing defect this change must fix, not propagate
 
@@ -168,7 +226,48 @@ in scope, and because silently rewriting the number would hide that it had been 
 error -> exit 0"). The new axis MUST preserve that: an unreadable file or missing directory contributes
 an empty component, never a non-zero exit. A PreToolUse hook that exits non-zero BLOCKS the tool call.
 
+🔴 **But fail-open here has a failure mode the other axes do not, and it must be designed against.**
+If `.clavity/` is unreadable, the axis contributes the same empty value at PRE and at POST. The two
+fingerprints then **compare equal, and the guard reports a CLEAN consult** - the exact false confidence
+this whole spec exists to remove, reintroduced by the fix for it. "I could not look" and "nothing
+changed" must not produce the same bytes.
+
+The design therefore requires the axis to be **self-distinguishing**: it contributes a value that
+encodes *whether the read succeeded*, not only what was read (for example a sentinel component when the
+directory exists but cannot be enumerated). A mismatch between "readable at PRE, unreadable at POST"
+must be reported, and a consult that could not check this axis at all must emit the same class of
+`PARTIALLY VERIFIED` warning the no-hashing-tool path already emits at
+`agy-consult-guard-post.sh:49-52`. That precedent is the model: the existing guard already refuses to
+let a degraded check pass silently, and this axis must not be the exception.
+
+**Scope of the hole this closes - stated so it is not oversold.** The axis covers `.clavity/` and two
+named paths. It does NOT cover arbitrary gitignored files elsewhere in the tree (a gitignored
+`secrets.yml`, a `.vscode/` setting). The blind spot is **narrowed to a bounded, reviewed set, not
+closed.** Anything wider runs into the `--ignored` noise problem above.
+
 ---
+
+### 2.3 What the adversarial panel changed, and what it got wrong
+
+An agy panel round over the first draft returned **RED** with four findings. Three were confirmed by
+measurement and folded; one was half right. Recorded because the design it produced is materially
+different from the one it reviewed, and a later reader should know why the obvious approach was rejected.
+
+| finding | verdict | how it was settled |
+|---|---|---|
+| A `\|` inside the "unreadable" sentinel shatters positional parsing | **CONFIRMED** | The delimiter contract is real; a control (`read` with 7 vars, 8 fields) already showed the shift. Folded as an explicit delimiter ban. |
+| Hashing `.clavity/` falsely accuses a peer when a CONCURRENT session writes a seam | **CONFIRMED, and it killed the original design** | `.clavity/seams/`, `agy-marks/` and `local-anomalies.md` are driver-written; the open-issues skill mandates atomic `>>` appends precisely because two sessions on one repository "is ordinary". A guard that reds on legal input is its own defect. |
+| Enumerating changed paths from a one-way hash is impossible | **CONFIRMED** | `pre` stores only the fingerprint, so there is no manifest to diff. Resolved structurally: a fixed three-path set is enumerable without inverting anything. |
+| The hook hashes on every shell turn, an unbounded hot-path penalty | **HALF** | Mechanism **refuted**: `pre.sh:23-27` exits 0 for `none`/`terminal`, so only consults compute it. Growth claim **confirmed and understated**: `seams/` measured at 702 files / 5.9 MB. |
+
+**The pattern worth carrying forward:** two seats reached the same place from different directions -
+concurrency safety and cost both said *stop walking the directory*. Neither alone would have been
+decisive; together they replaced a directory hash with a named set, which then dissolved the third
+finding as a side effect.
+
+⚠ **One seat's stated mechanism was wrong while its conclusion was right.** Folding the Resource
+Vampire finding as stated would have produced a size-based fallback for a problem that does not exist on
+the hot path. Verifying the mechanism, not just the conclusion, is what turned it into the right change.
 
 ## 3. Tasks 2 and 3 - close the two skill gaps
 
@@ -217,16 +316,26 @@ Both halves of every changed file must stay byte-identical, and the change must 
 The new axis needs rows in `scripts/tests/agy-consult-guard.Tests.ps1` pinning **both directions** - a
 gate that reds on legal input is its own defect:
 
-1. **Reds on the illegal shape:** a write to `.clavity/local-anomalies.md` between pre and post is
-   REPORTED. Must fail if the axis is removed.
-2. **Accepts the legal shape:** a write to `.clavity/scratch/<topic>/notes.md` between pre and post is
-   NOT reported. This is the false-positive guard and it is the row most likely to be got wrong.
+1. **Reds on the illegal shape:** emptying or deleting `.clavity/.gitignore` between pre and post is
+   REPORTED. Must fail if the axis is removed. (Chosen deliberately: this is the shield, and its loss is
+   the highest-consequence silent change under `.clavity/`.)
+2. **Accepts legitimate concurrency - the false-positive guard, and the row most likely to be got
+   wrong.** Writes to `.clavity/seams/other-topic.md`, `.clavity/agy-marks/skipped.log` and
+   `.clavity/scratch/<topic>/notes.md` between pre and post are **NOT** reported. These are the paths a
+   concurrent driver session legitimately writes; a guard that reds here is worse than no guard, because
+   it trains the operator to dismiss the warning. **This row is what the panel bought** (section 2.3).
 3. **Reds on a sensitive path:** a write to `.claude/settings.local.json` is REPORTED.
+3b. **The sentinel is delimiter-free:** whatever value the axis contributes on an unreadable read
+   contains no `|`. Assert it directly rather than trusting the literal to stay safe through edits.
 4. **Fail-open preserved:** with `.clavity/` absent or unreadable, the hook still exits 0 and the
    fingerprint is well-formed. A PreToolUse hook that exits non-zero blocks the tool call.
 5. **Field count:** the fingerprint has 8 components, asserted structurally rather than by matching the
    printed string.
-6. **The degraded-mode count is self-checking** (section 2.1). With no hashing tool on PATH, the guard
+6. **"Could not look" is distinguishable from "nothing changed."** With `.clavity/` made unreadable
+   between PRE and POST, the guard must NOT report a clean consult - it must warn. **This is the row
+   that pins the failure mode the fix could otherwise introduce**, and it is the one to write first,
+   because a naive implementation passes every other row on this list while failing this one.
+7. **The degraded-mode count is self-checking** (section 2.1). With no hashing tool on PATH, the guard
    emits `PARTIALLY VERIFIED` and the number it names must EQUAL the count of `agy_guard_hash` call
    sites in `agy-consult-guard-lib.sh`. Deriving the expected value from the source rather than hard-
    coding `6` is what stops the off-by-one recurring the next time an axis is added - a literal `6`
