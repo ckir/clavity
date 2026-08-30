@@ -42,6 +42,13 @@ public class AgyAskIntegrationTests
         private readonly IReadOnlyList<WaitStep>? _waitPlan;
         private int _waitCalls;
         public int WaitCalls => _waitCalls;
+        // AGY-TEST-AUDIT 2026-08-30 (13b second pass): the stale-catalog refresh had no oracle. It needs
+        // a send that FAILS with a non-Cancelled RpcException, and a way to see whether the catalog was
+        // re-fetched afterwards. SETTABLE rather than a ctor flag because one test must fail a send and
+        // then succeed on the next ask with the SAME view - the memoized cache lives on the view.
+        public bool ThrowOnSend { get; set; }
+        private int _catalogCalls;
+        public int CatalogCalls => _catalogCalls;
         private int _trajectoryCalls;
         public int TrajectoryCalls => _trajectoryCalls;
         // When true, GetCascadeTrajectory throws RpcException(Unavailable) on the PROBE call (after >=1 wait window)
@@ -106,6 +113,7 @@ public class AgyAskIntegrationTests
         public override Task<SendUserCascadeMessageResponse> SendUserCascadeMessage(
             SendUserCascadeMessageRequest request, ServerCallContext context)
         {
+            if (ThrowOnSend) throw new RpcException(new Status(StatusCode.Internal, "send failed"));
             lock (_gate)
             {
                 LastSentText = request.Items.Count > 0 ? request.Items[0].Text : null;
@@ -162,6 +170,7 @@ public class AgyAskIntegrationTests
         public override Task<GetAvailableModelsResponse> GetAvailableModels(
             FetchAvailableModelsRequest request, ServerCallContext context)
         {
+            System.Threading.Interlocked.Increment(ref _catalogCalls);
             if (_throwCatalogUnavailable)
                 throw new RpcException(new Status(StatusCode.Unavailable, "catalog down"));
             if (_catalog is null)
@@ -1189,6 +1198,50 @@ public class AgyAskIntegrationTests
     }
 
     [Fact]
+    public async Task A_FAILED_send_invalidates_the_model_catalog_so_the_next_ask_refetches()
+    {
+        // AGY-TEST-AUDIT 2026-08-30, second pass. The catalog is memoized per LS session and the ONLY
+        // thing that drops it is InvalidateCatalog() on a non-Cancelled RpcException from the send - a
+        // stale cache may have approved a now-deprecated model id. MEASURED: deleting that call left the
+        // integration suite at 81/81, so the self-healing behaviour had no oracle at all.
+        // THE ORACLE IS A COUNT, NOT A MESSAGE, because the refresh is invisible in the reply: it shows
+        // up only as a second GetAvailableModels round trip on the NEXT ask.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        // A catalog with a DEFAULT: an empty one makes ResolveSendModelAsync throw before the send is
+        // ever reached, which would fail this row for a reason that has nothing to do with the refresh.
+        var catalog = new FetchAvailableModelsResponse { DefaultAgentModelId = "gemini-3.1-flash" };
+        catalog.Models["gemini-3.1-flash"] = new ModelDetails { Model = 1042 };
+        var fake = new FakeAskLs("conv-1", "reply", TimeSpan.Zero, Array.Empty<CascadeStep>(),
+                                 catalog: catalog, waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+
+            await view.AskAsync("first");
+            var afterFirst = fake.CatalogCalls;
+            Assert.True(afterFirst >= 1, "precondition: the first ask must consult the catalog at least once");
+
+            // THE PASSING CONTROL. A second successful ask must NOT refetch - otherwise the assertion
+            // below would hold even with InvalidateCatalog() deleted, and the row would be vacuous.
+            await view.AskAsync("second");
+            Assert.Equal(afterFirst, fake.CatalogCalls);
+
+            // Now fail a send. Internal is deliberately NOT Cancelled: a caller-cancel is not a
+            // stale-catalog signal and must NOT drop the cache (capstone F3).
+            fake.ThrowOnSend = true;
+            await Assert.ThrowsAsync<RpcException>(() => view.AskAsync("third"));
+            fake.ThrowOnSend = false;
+
+            await view.AskAsync("fourth");
+            Assert.True(fake.CatalogCalls > afterFirst,
+                "the failed send must have invalidated the catalog, so this ask refetches it");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task StatusAsync_reports_idle_when_probe_returns_fast()
     {
         var fake = new FakeAskLs("conv-1", "x", TimeSpan.Zero, Array.Empty<CascadeStep>()); // idle resolves immediately
@@ -1214,6 +1267,47 @@ public class AgyAskIntegrationTests
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
             var st = await view.StatusAsync();
             Assert.Equal("working", st.State);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task StatusAsync_reports_working_from_the_LOCAL_in_flight_map_not_from_the_probe()
+    {
+        // AGY-TEST-AUDIT 2026-08-30, second pass. There are TWO routes to the string "working" and only
+        // one was tested. StatusAsync_reports_working_when_probe_outlasts_the_deadline drives the PROBE
+        // route with a slow fake; the LOCAL fast path - `if (_inFlight.ContainsKey(conversationId))` -
+        // had no row at all. MEASURED: neutering it left the integration suite at 81/81.
+        // WHY THE FIXTURE DISCRIMINATES, which is the whole point. The probe here resolves IDLE
+        // immediately (idleDelay TimeSpan.Zero), so the probe route would answer "idle". Only the
+        // in-flight map can answer "working". Remove the fast path and this row gets "idle" and reds -
+        // whereas a slow-probe fixture would answer "working" by the other route and prove nothing.
+        // The wait plan blocks (GoesIdle: false) so the ask is still in flight when status is asked, and
+        // WaitBlockedSignal is what makes that certain rather than racing a sleep against channel setup.
+        // TWO WINDOWS, AND THE SECOND IS WHAT MAKES THIS DISCRIMINATE. The probe calls the SAME
+        // WaitForConversationFullyIdle the ask does (LsClient.ProbeIdleAsync, 300ms deadline), so with a
+        // single blocking entry the plan is clamped and the PROBE blocks too - answering "working" by the
+        // other route and proving nothing. MEASURED: the first version of this row did exactly that and
+        // the mutant PASSED. Window 0 blocks (the ask stays in flight); window 1 goes idle (the probe
+        // answers "idle"). Only the in-flight map can now produce "working".
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: false),
+                           new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "x", TimeSpan.Zero, Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            using var cts = new CancellationTokenSource();
+            var askTask = view.AskAsync("long one", timeout: TimeSpan.FromSeconds(30),
+                                        cancellationToken: cts.Token);
+            await fake.WaitBlockedSignal;   // the ask is genuinely parked inside the RPC
+
+            var st = await view.StatusAsync();
+            Assert.Equal("working", st.State);
+
+            cts.Cancel();
+            try { await askTask; } catch { /* the ask is torn down deliberately; its outcome is not this row */ }
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -1437,6 +1531,39 @@ public class AgyAskIntegrationTests
                 new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone");
             var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
             Assert.Contains(texts, t => t.Contains("[13b] TRUNCATED REPLY"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task AgyAsk_appends_an_ECHO_MISSING_block_when_the_reply_never_echoes()
+    {
+        // AGY-TEST-AUDIT 2026-08-30, second pass. The FLAG was pinned and the BLOCK was not.
+        // AskAsync_flags_EchoMissing_... asserts reply.EchoMissing is true, and the sibling block one
+        // branch up (TRUNCATED REPLY) has three Assert.Contains rows - but ECHO MISSING appeared in this
+        // suite ONLY inside DoesNotContain assertions. The suite pinned the block's ABSENCE and never its
+        // PRESENCE, so the emission could be deleted outright and nothing would notice.
+        // MEASURED: replacing the else-if condition with `false` left the integration suite at 81/81.
+        // Same shape as AgyAsk_appends_a_TRUNCATED_block_...: without this the detector is inert - the
+        // flag is set and no caller ever sees it.
+        // THE REPLY CARRIES ITS TERMINAL TOKEN DELIBERATELY. TerminalTokenMissing is checked FIRST and
+        // this is an else-if, so a reply missing the token would take the branch above and this row would
+        // pass on the wrong block. The artifact supplies a last line the reply never quotes.
+        var plan = new[] { new FakeAskLs.WaitStep(AppendSteps: 0, GoesIdle: true) };
+        var fake = new FakeAskLs("conv-1", "Review complete.\n\n[VERDICT: ALIGNED]", TimeSpan.Zero,
+                                 Array.Empty<CascadeStep>(), waitPlan: plan);
+        await using var app = await StartFakeAsync(fake);
+        var dir = SetUpAgyDir(PortOf(app), out var cliLog);
+        try
+        {
+            var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
+            var result = await McpTools.AgyAsk(view, "review it",
+                new CollectingProgress<ProgressNotificationValue>(), discipline: "agy-capstone",
+                artifactPath: WriteArtifact(dir, "notes\nthe last line of the artifact\n"));
+            var texts = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+            Assert.Contains(texts, t => t.Contains("[13b] ECHO MISSING"));
+            // The block that must NOT have fired: proves the else-if took THIS arm and not the one above.
+            Assert.DoesNotContain(texts, t => t.Contains("[13b] TRUNCATED REPLY"));
         }
         finally { Directory.Delete(dir, true); }
     }
