@@ -306,9 +306,10 @@ Describe 'agy-consult-guard' {
             # worse than none, because it reads as coverage. The pipe and colon halves of the sanitizer
             # are UNTESTABLE on this platform; the ',' and '=' halves are tested by the control below,
             # and all four are stripped by the same single `tr`, which is what carries the guarantee.
-            # Positive control: prove the sanitizer actually ran, rather than inferring it from the
-            # absence of a character the fixture may never have produced.
-            $ax | Should -Match 'we_ird_name\.txt'
+            # Positive control: prove the sanitiser actually ran, rather than inferring it from the
+            # absence of a character the fixture may never have produced. The encoding is
+            # PERCENT-ENCODING, not replacement with '_': see the collision row below for why.
+            $ax | Should -Match 'we%2Cird%3Dname\.txt'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -468,6 +469,33 @@ Describe 'agy-consult-guard' {
             $after = & bash -lc $sh
             $after | Should -Not -Be $before
             $after | Should -Match 'local-anomalies\.md=DIR'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does not let two names collide into one census entry' {
+        # Capstone R3, and the sharpest finding of that round. The sanitiser used to map every
+        # reserved character onto '_', which is MANY-TO-ONE. MEASURED: with `a=b` and `a_b` both
+        # present, both became `a_b`, and because the entry list is SORTED afterwards, swapping
+        # their two contents produced a BYTE-IDENTICAL census - before == after, so the guard
+        # reported a clean consult while two files had changed. That is lost DETECTION, not lost
+        # attribution. Percent-encoding is injective, so distinct names cannot collide.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path $c -Force | Out-Null
+            # ',' and '=' are legal in Windows filenames; '|' and ':' are not, which is why the
+            # fixture uses these two. Both would previously sanitise to the same string.
+            Set-Content (Join-Path $c 'a=b') 'ONE' -Encoding ascii
+            Set-Content (Join-Path $c 'a_b') 'TWO' -Encoding ascii
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+            $before = & bash -lc $sh
+            # Swap the contents. Nothing is created or removed - only the pairing changes.
+            Set-Content (Join-Path $c 'a=b') 'TWO' -Encoding ascii
+            Set-Content (Join-Path $c 'a_b') 'ONE' -Encoding ascii
+            $after = & bash -lc $sh
+            $after | Should -Not -Be $before -Because 'a swap between two colliding names must not be invisible'
+            $before | Should -Match 'a%3Db=' -Because 'the encoding must distinguish the two names'
+            $before | Should -Match 'a_b='
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

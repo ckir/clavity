@@ -126,16 +126,29 @@ agy_guard_census() {
         local-anomalies.md|discipline-reaching.jsonl) continue ;;
       esac
     fi
-    b=${e//[|:,=]/_}
-    # Literal control characters held in variables, NOT ANSI-C quoting inline in the PATTERN of
-    # ${var//pat/repl}. A reviewer raised that bash 3.2 - which macOS still ships, and which this
-    # `#!/usr/bin/env bash` file can land on - may not interpret $'\n' there, leaving the newline
-    # in place. I could NOT measure that claim: there is no bash 3.2 on this machine, so it is
-    # UNPROVEN rather than confirmed. This form is portable either way and costs nothing, and the
-    # cost if the claim IS true is severe - the newline survives and post.sh's line-oriented read
-    # then truncates the entire fingerprint, silently dropping every axis after this one.
-    b=${b//$AGY_GUARD_NL/_}
-    b=${b//$AGY_GUARD_CR/_}
+    # PERCENT-ENCODE the reserved characters; do NOT collapse them onto '_'. Replacement is
+    # MANY-TO-ONE, and MEASURED, that cost DETECTION and not merely attribution: with `a=b` and
+    # `a_b` both present in .clavity/, both sanitise to `a_b`, and because the entry list is SORTED
+    # afterwards, SWAPPING their two contents yields a BYTE-IDENTICAL census. before == after, so
+    # the guard reports a clean consult while two files changed. Percent-encoding is injective, so
+    # distinct names cannot collide. '%' MUST be encoded first or the mapping stops being injective.
+    # None of '%' or the hex digits is a delimiter in either the ':' or the 'name=state,' encoding.
+    b=${e//%/%25}
+    b=${b//|/%7C}
+    b=${b//:/%3A}
+    b=${b//,/%2C}
+    b=${b//=/%3D}
+    # Literal control characters held in variables, NOT ANSI-C quoting inline in the pattern, and the
+    # pattern is QUOTED. Two reviewer claims sit behind this, and NEITHER is proven: that bash 3.2 -
+    # which macOS ships, and which this `#!/usr/bin/env bash` file can land on - may not interpret
+    # $'\n' in a pattern, and that an UNQUOTED variable there undergoes word splitting, which would
+    # erase a newline pattern because IFS contains one. MEASURED on bash 5.3.15 here: quoted and
+    # unquoted give the same result, so both claims are UNPROVEN, not confirmed. Both forms cost
+    # nothing and are correct either way, and the cost if either claim IS true is severe: the newline
+    # survives into the fingerprint and post.sh's line-oriented `read` then truncates it, silently
+    # dropping every axis after this one.
+    b=${b//"$AGY_GUARD_NL"/%0A}
+    b=${b//"$AGY_GUARD_CR"/%0D}
     if   [ -d "$p" ];   then st='DIR'
     elif [ ! -f "$p" ]; then st='UNREADABLE'
     elif [ ! -r "$p" ]; then st='UNREADABLE'
@@ -163,6 +176,14 @@ agy_guard_census() {
       # overwrite was not - and an overwrite of the shield is the case this axis exists for.
       # A guard that answers the same thing for every input has stopped answering. Fall back to
       # hashing each file on its own: slower, but only on this rare path, and correct.
+      #
+      # ACCEPTED LIMIT, stated rather than implied: neither path is a point-in-time snapshot. A
+      # reviewer argued this fallback is worse because it abandons the batch hash's atomicity - but
+      # the batch has none either: `sha256sum f1 f2 f3` is ONE process reading the files in
+      # sequence. Widening the window changes the odds, not the kind. A concurrent writer that
+      # restores a file to its baseline exactly while it is being read can hide a change from any
+      # before/after fingerprint, and this guard already states it cannot attribute a change to the
+      # peer rather than to a concurrent session.
       i=0
       while [ "$i" -lt "${#hp[@]}" ]; do
         states[${hi[$i]}]=$(agy_guard_file_state "${hp[$i]}")
