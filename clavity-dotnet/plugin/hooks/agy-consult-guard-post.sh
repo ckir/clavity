@@ -50,11 +50,13 @@ if [ "$slot" = async ] && [ -n "$(find "$sf" -mmin +"$AGY_GUARD_TTL_MIN" 2>/dev/
   exit 0
 fi
 
-# Degraded-guard: with no hashing tool, 4 of 7 axes collapse to a constant and would compare-equal
-# silently. Fail LOUD instead of giving false confidence.
+# Degraded-guard: with no hashing tool the hashed axes collapse to a constant and would
+# compare-equal silently. Fail LOUD instead of giving false confidence. Do NOT reintroduce a
+# hard-coded axis COUNT here - the previous one said "4 of 7" while the message said only HEAD
+# and stash were compared, which implies 5. A maintained number rots; an enumeration cannot.
 if ! agy_guard_have_hash; then
   rm -f "$sf" 2>/dev/null
-  emit "AGY CONSULT GUARD - PARTIALLY VERIFIED (no hashing tool): neither sha256sum nor shasum is on PATH, so this review-only agy consult could NOT be checked for worktree / index / .git-metadata / refs changes (only HEAD and stash were compared). Do NOT trust the absence of a warning - manually confirm the peer made no version-control changes."
+  emit "AGY CONSULT GUARD - PARTIALLY VERIFIED (no hashing tool): neither sha256sum nor shasum is on PATH, so this review-only agy consult could NOT be checked for worktree / index / .git-metadata / refs changes, and gitignored paths degrade to names only. Only HEAD and stash were fully compared. Do NOT trust the absence of a warning - manually confirm the peer made no version-control changes."
   exit 0
 fi
 
@@ -64,10 +66,10 @@ rm -f "$sf" 2>/dev/null            # consume the baseline
 
 [ "$before" = "$after" ] && exit 0   # clean: peer honored review-only
 
-IFS='|' read -r b_head b_status b_diff b_stash b_refs b_meta b_flags <<EOF
+IFS='|' read -r b_head b_status b_diff b_stash b_refs b_meta b_flags b_ign <<EOF
 $before
 EOF
-IFS='|' read -r a_head a_status a_diff a_stash a_refs a_meta a_flags <<EOF
+IFS='|' read -r a_head a_status a_diff a_stash a_refs a_meta a_flags a_ign <<EOF
 $after
 EOF
 axes=""
@@ -78,14 +80,21 @@ axes=""
 [ "$b_refs"   != "$a_refs"   ] && axes="${axes}other refs (tags/branches/notes moved); "
 [ "$b_meta"   != "$a_meta"   ] && axes="${axes}.git hooks/config/exclude (ARBITRARY-CODE-EXEC or hide-file vector); "
 [ "$b_flags"  != "$a_flags"  ] && axes="${axes}assume-unchanged/skip-worktree bits (hidden index smuggle); "
+[ "$b_ign"    != "$a_ign"    ] && axes="${axes}gitignored paths (.clavity/ shield, .env, .claude/settings.local.json, or a new/changed .clavity top-level entry); "
 [ -z "$axes" ] && axes="VCS state; "
 
 paths=$(git -C "$cwd" status --porcelain 2>/dev/null | head -20)
+# The porcelain listing above CANNOT show ignored paths - that omission is the whole reason this
+# axis exists - so an ignored-path breach would otherwise announce itself with no evidence.
+ignmsg=""
+if [ "$b_ign" != "$a_ign" ]; then
+  ignmsg="\nIgnored-path axis before: ${b_ign}\nIgnored-path axis after:  ${a_ign}"
+fi
 headmsg=""
 if [ "$b_head" != "$a_head" ]; then
   headmsg=" New commit(s): $(git -C "$cwd" log --oneline "${b_head}..${a_head}" 2>/dev/null | head -5 | tr '\n' ';')"
 fi
 
-msg="AGY CONSULT GUARD - VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT: the agy peer appears to have modified git state during a consult that was supposed to make ZERO changes. What changed: ${axes}CAVEAT - this guard compares VCS state before and after the consult and CANNOT attribute a change to the peer rather than to anything else running in this repository at the same time. If you dispatched a local subagent, or another session is open on this repo, that is the likelier cause, and reverting would destroy its in-flight work. Next: verify the peer - not you, and not a concurrent local agent - made these changes; if so, undo them with a TARGETED per-file 'git checkout -- <file>' / 'git reset' (NEVER a broad 'git checkout <dir>/'), then re-issue the consult with a louder forbidden-actions banner. Changed paths:\n${paths}${headmsg}"
+msg="AGY CONSULT GUARD - VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT: the agy peer appears to have modified git state during a consult that was supposed to make ZERO changes. What changed: ${axes}CAVEAT - this guard compares VCS state before and after the consult and CANNOT attribute a change to the peer rather than to anything else running in this repository at the same time. If you dispatched a local subagent, or another session is open on this repo, that is the likelier cause, and reverting would destroy its in-flight work. Next: verify the peer - not you, and not a concurrent local agent - made these changes; if so, undo them with a TARGETED per-file 'git checkout -- <file>' / 'git reset' (NEVER a broad 'git checkout <dir>/'), then re-issue the consult with a louder forbidden-actions banner. Changed paths:\n${paths}${headmsg}${ignmsg}"
 emit "$msg"
 exit 0

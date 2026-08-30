@@ -43,6 +43,71 @@ agy_guard_hash() {
 }
 agy_guard_have_hash() { command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; }
 
+# --- ignored-path axis -------------------------------------------------------------------------
+# `git status --porcelain` omits ignored files BY DESIGN, so a peer write to .clavity/, .env or
+# .claude/settings.local.json was invisible to every other axis. These helpers close that.
+#
+# DELIMITER CONTRACT: the fingerprint joins fields with '|' and this axis joins components with ':'.
+# NO value below may contain either character. A sentinel like 'ERROR:UNREADABLE' would shatter the
+# inner parse and misalign the components at post.
+#
+# ABSENT and UNREADABLE must differ from each other AND from any digest. If "I could not look"
+# produced the same bytes as "nothing changed", the two fingerprints would compare equal and the
+# guard would report a CLEAN consult - the exact false confidence this axis exists to remove.
+agy_guard_file_state() {
+  local p="$1" s
+  [ -e "$p" ] || { printf 'ABSENT'; return 0; }
+  [ -r "$p" ] || { printf 'UNREADABLE'; return 0; }
+  s=$(agy_guard_hash < "$p" 2>/dev/null) || s=''
+  [ -n "$s" ] || s='UNREADABLE'
+  printf '%s' "$s"
+}
+
+# Top-level census of .clavity/. Carries the entry NAMES LITERALLY (not a hash of them) so post can
+# say WHICH entry appeared or vanished; a one-way hash could only say "something changed".
+# Content is hashed for top-level FILES except the concurrent-append targets: local-anomalies.md is
+# appended by the open-issues capture path and discipline-reaching.jsonl once per session, both from
+# OTHER sessions on the same repository. Hashing those manufactures a false breach report.
+# LC_ALL=C is MANDATORY: collation order is locale-dependent, and a LANG difference between the pre
+# and post environments would reorder the list and manufacture a false RED.
+# The `while` is fed by a HEREDOC, not a pipe, on purpose: a pipe would run the loop in a subshell
+# and every append to $out would be discarded, yielding an empty census that compares equal forever.
+agy_guard_census() {
+  local d="$1" out='' e b st
+  [ -d "$d" ] || { printf 'ABSENT'; return 0; }
+  [ -r "$d" ] || { printf 'UNREADABLE'; return 0; }
+  while IFS= read -r e; do
+    [ -n "$e" ] || continue
+    b=$(printf '%s' "$e" | tr '|:,=' '____')
+    if [ -d "$d/$e" ]; then st='DIR'
+    else
+      case "$e" in
+        local-anomalies.md|discipline-reaching.jsonl) st='SKIP' ;;
+        *) st=$(agy_guard_file_state "$d/$e") ;;
+      esac
+    fi
+    out="${out}${b}=${st},"
+  done <<EOF
+$(ls -A "$d" 2>/dev/null | LC_ALL=C sort)
+EOF
+  # Bounded: degrade to a digest rather than growing the fingerprint without limit, and SAY SO so a
+  # reader knows enumeration is unavailable instead of assuming nothing appeared.
+  if [ "${#out}" -gt 4096 ]; then
+    printf 'CAPPED=%s' "$(printf '%s' "$out" | agy_guard_hash)"
+  else
+    printf '%s' "$out"
+  fi
+}
+
+agy_guard_ignored() {
+  local c="$1"
+  printf '%s:%s:%s:%s' \
+    "$(agy_guard_file_state "$c/.clavity/.gitignore")" \
+    "$(agy_guard_file_state "$c/.env")" \
+    "$(agy_guard_file_state "$c/.claude/settings.local.json")" \
+    "$(agy_guard_census "$c/.clavity")"
+}
+
 # State dir mirrors remote-iteration-breaker.sh: /tmp is a clean POSIX dir under Git Bash.
 # $1 = session_id (caller-sanitized)  $2 = slot ('sync'|'async')
 agy_guard_state_file() {
@@ -99,8 +164,11 @@ agy_guard_category() {
 #             appending to info/exclude hides new worktree files from `status`)
 #   flags   : `git ls-files -v` non-`H` lines (`update-index --assume-unchanged`/`--skip-worktree`
 #             mutate a tracked file while hiding it from status AND diff)
+#   ignored : gitignored paths a review-only consult must not touch - the .clavity/ shield, .env,
+#             .claude/settings.local.json, and a bounded top-level census of .clavity/. `git status`
+#             omits all of these, which is why peer writes there were invisible.
 agy_guard_quad() {
-  local c="$1" head status diff stash refs gitmeta flags gitdir
+  local c="$1" head status diff stash refs gitmeta flags ignored gitdir
   head=$(git -C "$c" rev-parse HEAD 2>/dev/null)
   status=$(git -C "$c" status --porcelain 2>/dev/null | agy_guard_hash)
   diff=$( { git -C "$c" diff 2>/dev/null; git -C "$c" diff --cached 2>/dev/null; } | agy_guard_hash)
@@ -117,5 +185,6 @@ agy_guard_quad() {
     cat "$gitdir/info/exclude" 2>/dev/null
   } | agy_guard_hash)
   flags=$(git -C "$c" ls-files -v 2>/dev/null | grep -Ev '^H ' | agy_guard_hash)
-  printf '%s|%s|%s|%s|%s|%s|%s' "$head" "$status" "$diff" "$stash" "$refs" "$gitmeta" "$flags"
+  ignored=$(agy_guard_ignored "$c")
+  printf '%s|%s|%s|%s|%s|%s|%s|%s' "$head" "$status" "$diff" "$stash" "$refs" "$gitmeta" "$flags" "$ignored"
 }

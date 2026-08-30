@@ -23,6 +23,18 @@ Describe 'agy-consult-guard' {
         function Payload { param([string]$Tool, [string]$Cmd, [string]$Cwd)
             @{ tool_name = $Tool; tool_input = @{ command = $Cmd }; cwd = ($Cwd -replace '\\','/'); session_id = 'guardtest' } | ConvertTo-Json -Compress
         }
+        # Run a consult around a scriptblock that mutates the repo; return the post hook's stdout.
+        # Defined HERE, not in the Describe body: MEASURED under Pester 6.1.0 with a paired control,
+        # a function declared in the Describe body is not visible inside an It at run time
+        # (CommandNotFoundException), while one declared in BeforeAll is. New-GuardRepo and Payload
+        # above are in BeforeAll for the same reason.
+        function Invoke-ConsultAround {
+            param([string]$Repo, [scriptblock]$Between)
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $Repo
+            Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
+            & $Between
+            return (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
+        }
     }
 
     It 'WARNS when version control changes across an MCP consult' {
@@ -161,5 +173,147 @@ Describe 'agy-consult-guard' {
             $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
             $out | Should -Match 'CONSULT GUARD' -Because 'a .no-agy in the repo must not be able to silence the guard that watches the repo'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- the ignored-paths axis (roadmap: review-only envelope) -------------------------------
+    # git status --porcelain OMITS ignored files, which is why every one of these was invisible.
+
+    It 'WARNS when the .clavity shield file is emptied' {
+        # The shield is a bare '*'. Empty it and .clavity/ becomes visible to git, so the next
+        # `git add .` publishes untriaged anomalies. Highest-consequence silent change there is.
+        $r = New-GuardRepo
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $r '.clavity/.gitignore') '*' -Encoding ascii -NoNewline
+            $out = Invoke-ConsultAround $r { Set-Content (Join-Path $r '.clavity/.gitignore') '' -Encoding ascii -NoNewline }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'gitignored paths'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when a payload is dropped into .clavity at top level' {
+        # The name census. A content hash of named paths alone would never see a NEW file.
+        $r = New-GuardRepo
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $r '.clavity/.gitignore') '*' -Encoding ascii -NoNewline
+            $out = Invoke-ConsultAround $r { Set-Content (Join-Path $r '.clavity/backdoor.ps1') 'evil' -Encoding ascii }
+            $out | Should -Match 'gitignored paths'
+            $out | Should -Match 'backdoor\.ps1'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when an existing top-level .clavity file is silently overwritten' {
+        # Names-only would have missed this: the entry list is unchanged, the CONTENT is not.
+        $r = New-GuardRepo
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $r '.clavity/.gitignore') '*' -Encoding ascii -NoNewline
+            Set-Content (Join-Path $r '.clavity/agy-model') 'original' -Encoding ascii
+            $out = Invoke-ConsultAround $r { Set-Content (Join-Path $r '.clavity/agy-model') 'hijacked' -Encoding ascii }
+            $out | Should -Match 'gitignored paths'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when a named sensitive path outside .clavity is written' {
+        $r = New-GuardRepo
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $r '.claude') -Force | Out-Null
+            Set-Content (Join-Path $r '.claude/settings.local.json') '{}' -Encoding ascii
+            $out = Invoke-ConsultAround $r { Set-Content (Join-Path $r '.claude/settings.local.json') '{"x":1}' -Encoding ascii }
+            $out | Should -Match 'gitignored paths'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is SILENT when only the concurrent-append targets change' {
+        # THE FALSE-POSITIVE GUARD, and the row most likely to be got wrong. local-anomalies.md is
+        # appended by the open-issues capture path and discipline-reaching.jsonl once per session,
+        # both from OTHER sessions on the same repo. Hashing their contents would accuse this
+        # session's peer of a breach every time a second session captured an anomaly.
+        $r = New-GuardRepo
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $r '.clavity/.gitignore') '*' -Encoding ascii -NoNewline
+            Set-Content (Join-Path $r '.clavity/local-anomalies.md') "# h" -Encoding ascii
+            Set-Content (Join-Path $r '.clavity/discipline-reaching.jsonl') "{}" -Encoding ascii
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity/scratch/t') -Force | Out-Null
+            $out = Invoke-ConsultAround $r {
+                Add-Content (Join-Path $r '.clavity/local-anomalies.md') '- [defect] x * n/a * 2026-08-30 * task=t'
+                Add-Content (Join-Path $r '.clavity/discipline-reaching.jsonl') '{"v":3}'
+                Set-Content (Join-Path $r '.clavity/scratch/t/notes.md') 'peer working' -Encoding ascii
+            }
+            # Assert the SPECIFIC warning is absent, not merely that output is empty: an empty
+            # assertion cannot tell silence from one of the three other warnings this hook emits.
+            $out | Should -Not -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does not report a CLEAN consult when the axis could not be read at all' {
+        # THE FIXTURE ORDERING IS THE ENTIRE ROW. .clavity/ is absent BEFORE pre and still absent at
+        # post, so both sides observe the same failure. A naive implementation returns the same empty
+        # value twice, they compare EQUAL, and the guard reports clean - the exact false confidence
+        # this axis exists to remove. An "unreadable only between pre and post" fixture would pass on
+        # that defective code, because PRE would hold a real digest and POST a sentinel.
+        $r = New-GuardRepo
+        try {
+            $out = Invoke-ConsultAround $r { Set-Content (Join-Path $r 'c.txt') 'x' -Encoding ascii }
+            # The tracked-file change must still be reported, and the absent axis must not
+            # manufacture a false ignored-path accusation.
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Not -Match 'gitignored paths'
+            # MEASURED VACUITY, and why this half exists. The two assertions above are satisfied by
+            # the c.txt change alone: under a mutant that made an absent file contribute an EMPTY
+            # string instead of the ABSENT sentinel, both still held and this row stayed GREEN. They
+            # cannot see the distinction they were written to pin. Assert the contract DIRECTLY -
+            # every component of a bare repo's axis must be an explicit sentinel, never empty, so
+            # "I could not look" can never encode identically to "nothing changed".
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_ignored '$($r -replace '\\','/')'"
+            (& bash -lc $sh) | Should -Be 'ABSENT:ABSENT:ABSENT:ABSENT'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'emits an eight-component fingerprint' {
+        # Structural, not a string match: count the '|' separators the lib actually prints.
+        $r = New-GuardRepo
+        try {
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_quad '$($r -replace '\\','/')'"
+            $fp = & bash -lc $sh
+            (($fp -split '\|').Count) | Should -Be 8
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'never emits either delimiter inside the ignored axis' {
+        # Both delimiters. Banning only '|' leaves 'ERROR:UNREADABLE'-shaped sentinels free to
+        # shatter the INNER parse and misalign the components at post.
+        #
+        # THE FIXTURE NAME IS LOAD-BEARING, and it is NOT the obvious one. A name containing '|' or
+        # ':' cannot be created on Windows at all, so a fixture using those characters would leave NO
+        # file behind and the row would assert against an empty census - passing identically whether
+        # the sanitizer exists or not. ',' and '=' ARE legal Windows filename characters and are
+        # sanitized by the same tr, so they exercise the real code path on this platform. They also
+        # happen to be the census's OWN encoding characters ('name=state,'), which is the inner parse
+        # an unsanitized name would shatter first.
+        $r = New-GuardRepo
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $r '.clavity/we,ird=name.txt') 'x' -Encoding ascii
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_ignored '$($r -replace '\\','/')'"
+            $ax = & bash -lc $sh
+            ($ax -split ':').Count | Should -Be 4
+            $ax | Should -Not -Match '\|'
+            # Positive control: prove the sanitizer actually ran, rather than inferring it from the
+            # absence of a character the fixture may never have produced.
+            $ax | Should -Match 'we_ird_name\.txt'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'names the degraded axes instead of carrying a count that can rot' {
+        # The message previously said "4 of 7 axes" while also saying "only HEAD and stash were
+        # compared" - which implies 5. MEASURED: agy_guard_hash had 5 call sites. A maintained
+        # number is what rotted; an enumeration cannot go out of sync with itself.
+        $post = Get-Content $script:Post -Raw
+        $post | Should -Not -Match 'of 7 axes'
+        $post | Should -Not -Match 'of 8 axes'
+        $post | Should -Match 'gitignored paths degrade to names only'
     }
 }
