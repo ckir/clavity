@@ -64,14 +64,23 @@ A bare "review-only" once let the peer write to the tree anyway. Wrap each consu
 3. **Permission to pass** - the peer may decline or say it needs more; it must not act.
 4. **Point at files, not summaries** - write the fork/options to `.clavity/seams/<topic>.md` and send
    the peer the PATH; let it read the artifact itself. Never consult it on a pasted summary of your own
-   measurements. Prepare that directory through the shipped writer FIRST - it asserts the `.clavity/`
-   shield before anything is written there, and it fails closed:
+   measurements. Any measure-and-reproduce framing MUST name the scratch dir
+   (`.clavity/scratch/<topic>/`) in the payload so the peer never writes to cwd. Prepare that
+   directory through the shipped writer FIRST - it asserts the `.clavity/` shield before anything is
+   written there, and it fails closed:
 
 ```bash
 if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "seams/<topic>.md"; then
   # ABORT the discipline and say why. A skill that ignores this exit code converts a clean refusal
   # into a mid-run crash on the next write.
   echo "agy-first: ABORTING - could not prepare a shielded .clavity/ directory for seams/<topic>.md." >&2
+  exit 1
+fi
+# The peer needs somewhere LEGAL to write. A payload that demands verification while forbidding all
+# writes leaves no legal scratch area, and that contradiction is on record as the cause of a
+# review-only breach. Takes a concrete FILE path, never a bare directory.
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "scratch/<topic>/notes.md"; then
+  echo "agy-first: ABORTING - could not prepare a shielded .clavity/ directory for scratch/<topic>/notes.md." >&2
   exit 1
 fi
 ```
