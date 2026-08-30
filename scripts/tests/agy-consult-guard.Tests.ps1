@@ -517,33 +517,85 @@ Describe 'agy-consult-guard' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'stays SILENT for writes inside scratch and seams, but still sees one deleted' {
-        # The two halves of the exclusion, in one row because they are one decision. scratch/ and
-        # seams/ are where the peer and the driver are TOLD to write, so hashing their contents would
-        # turn every sanctioned write into a breach report - and a false alarm is what teaches an
-        # operator to ignore this guard. But `-prune -print0` still emits the directory itself, so
-        # REMOVING one is caught. Without that second half the exclusion would be a hole.
+    It 'stays SILENT for writes inside scratch, but still sees it deleted' {
+        # scratch/ is where the peer is TOLD to write, so hashing its contents would turn every
+        # sanctioned write into a breach report - and a false alarm is what teaches an operator to
+        # ignore this guard. But the directory itself is still recorded, so REMOVING it is caught.
+        # Without that second half the exclusion would be a hole.
+        # seams/ is deliberately NOT exempt any more - see the row below.
         $r = New-GuardRepo
         try {
             $c = Join-Path $r '.clavity'
             New-Item -ItemType Directory -Path (Join-Path $c 'scratch/t') -Force | Out-Null
-            New-Item -ItemType Directory -Path (Join-Path $c 'seams') -Force | Out-Null
             Set-Content (Join-Path $c '.gitignore') '*' -Encoding ascii -NoNewline
             Set-Content (Join-Path $c 'scratch/t/notes.md') 'peer working' -Encoding ascii
-            Set-Content (Join-Path $c 'seams/topic.md') 'brief' -Encoding ascii
             $out = Invoke-ConsultAround $r {
                 Set-Content (Join-Path $c 'scratch/t/notes.md') 'peer still working' -Encoding ascii
                 Set-Content (Join-Path $c 'scratch/t/extra.md') 'more' -Encoding ascii
-                Set-Content (Join-Path $c 'seams/topic.md') 'edited brief' -Encoding ascii
             }
-            $out | Should -Not -Match 'VERSION CONTROL CHANGED' -Because 'the sanctioned write areas must not raise a breach'
+            $out | Should -Not -Match 'VERSION CONTROL CHANGED' -Because 'the sanctioned write area must not raise a breach'
 
-            # Second half: the directory's own presence is still tracked.
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
             $withScratch = & bash -lc $sh
             Remove-Item (Join-Path $c 'scratch') -Recurse -Force
             $withoutScratch = & bash -lc $sh
             $withoutScratch | Should -Not -Be $withScratch -Because 'deleting an excluded directory must still be visible'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when a brief in seams is rewritten, renamed, or joined by a new entry' {
+        # Owner ruled 2026-08-31 that seams/ is MONITORED, reversing an earlier decision to exempt it
+        # alongside scratch/. The asymmetry is the point: the peer WRITES in scratch/ but only READS
+        # seams/, and a brief there is an instruction to a FUTURE review round - so a peer able to
+        # rewrite one unobserved could inject instructions into the loop meant to be checking it.
+        # It is watched as ONE aggregate digest rather than per file: this repository already holds
+        # 706 briefs, and enumerating them measured ~69 KB of census, which capped the whole thing
+        # and destroyed per-entry naming for every other directory too.
+        #
+        # All three mutations are asserted because the digest covers TWO streams - the full entry
+        # listing and the contents of regular files - and each mutation exercises a different one.
+        # A `-type f`-only digest would have missed the empty subdirectory entirely.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path (Join-Path $c 'seams') -Force | Out-Null
+            Set-Content (Join-Path $c '.gitignore') '*' -Encoding ascii -NoNewline
+            Set-Content (Join-Path $c 'seams/topic.md') 'the original brief' -Encoding ascii
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+
+            $base = & bash -lc $sh
+            Set-Content (Join-Path $c 'seams/topic.md') 'rewritten by the peer' -Encoding ascii
+            (& bash -lc $sh) | Should -Not -Be $base -Because 'a rewritten brief is the threat this monitors'
+
+            $base = & bash -lc $sh
+            Rename-Item (Join-Path $c 'seams/topic.md') 'renamed.md'
+            (& bash -lc $sh) | Should -Not -Be $base -Because 'a rename must be caught, so the listing is hashed too'
+
+            $base = & bash -lc $sh
+            New-Item -ItemType Directory -Path (Join-Path $c 'seams/sub') -Force | Out-Null
+            (& bash -lc $sh) | Should -Not -Be $base -Because 'an EMPTY subdirectory has no regular file, so -type f alone would miss it'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does not fall back to a constant digest when the hashing helper misbehaves' {
+        # The seams digest used `xargs -0 -r`, and `-r` is a GNU extension: macOS xargs rejects it,
+        # the pipeline sent stderr to /dev/null, and hashing the resulting EMPTY stream yields the
+        # constant e3b0c442... - MEASURED. The digest would then never change again and the guard
+        # would report clean forever on macOS. A guard that fails open certifies exactly what it
+        # stopped checking, so the empty-input digest must never be a reachable answer here.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path (Join-Path $c 'seams') -Force | Out-Null
+            Set-Content (Join-Path $c 'seams/topic.md') 'a brief' -Encoding ascii
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+            $out = & bash -lc $sh
+            $out | Should -Match 'seams=[0-9a-f]{64}'
+            $out | Should -Not -Match 'seams=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' -Because 'that is the sha256 of empty input - the signature of a silently failed pipeline'
+            # And no xargs remains in the shipped hook, in either half.
+            foreach ($half in @($script:Lib, (Join-Path $script:Classic 'agy-consult-guard-lib.sh'))) {
+                (Get-Content $half -Raw) | Should -Not -Match '(?m)^[^#]*xargs' -Because "$half must not invoke xargs"
+            }
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

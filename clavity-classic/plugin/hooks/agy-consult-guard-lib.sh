@@ -103,6 +103,47 @@ AGY_GUARD_NL='
 AGY_GUARD_CR=$(printf '\r')
 AGY_GUARD_BS=$(printf '\134')
 
+# One digest covering every file under a directory, contents AND relative paths, so a rename is
+# caught as well as an edit. Used for seams/, which is MONITORED but must not be ENUMERATED: this
+# repository already holds 706 briefs there and the set only grows, so listing them per-file produced
+# a ~69 KB census - over any sane cap, which collapsed the WHOLE census to a single CAPPED digest and
+# destroyed the per-entry naming for every other directory too. One entry keeps naming everywhere
+# else while still detecting any change here.
+# sort -z before hashing: readdir order is not stable across machines or filesystems.
+agy_guard_dir_digest() {
+  local dd="$1" p h
+  [ -d "$dd" ] || { printf 'ABSENT'; return 0; }
+  [ -r "$dd" ] || { printf 'UNREADABLE'; return 0; }
+
+  # NO xargs. A reviewer found that `xargs -0 -r` is a GNU extension: macOS xargs rejects -r, this
+  # pipeline sends its stderr to /dev/null, and the hash of the resulting EMPTY stream is the
+  # constant e3b0c442... - MEASURED. The digest would then never change again, so the guard would go
+  # permanently blind on macOS while reporting clean. A guard that fails open certifies exactly what
+  # it stopped checking. agy_guard_hash_files already handles the sha256sum/shasum split portably.
+  local files=()
+  while IFS= read -r -d '' p; do files+=("$dd/$p"); done < <(
+    cd "$dd" 2>/dev/null && find . -type f -print0 2>/dev/null | LC_ALL=C sort -z)
+
+  # The digest covers TWO streams: the full entry LISTING - every path, whatever its type - and the
+  # CONTENTS of the regular files. The listing is what catches a rename, a new subdirectory, or a
+  # new symlink, none of which `-type f` alone would see. Replacing a regular file with a symlink of
+  # the same name is caught too, because that path then drops out of the hashed set and the content
+  # stream is one digest shorter. sort -z because readdir order is not stable across filesystems.
+  if [ "${#files[@]}" -gt 0 ]; then
+    local digests=() line
+    while IFS= read -r line; do digests+=("$line"); done < <(agy_guard_hash_files "${files[@]}")
+    # Fail LOUD on a short count rather than hashing a truncated stream into a plausible-looking
+    # digest - the same rule the census fallback follows, for the same reason.
+    if [ "${#digests[@]}" -ne "${#files[@]}" ]; then printf 'UNREADABLE'; return 0; fi
+    h=$( { (cd "$dd" 2>/dev/null && find . -print0 2>/dev/null | LC_ALL=C sort -z)
+           printf '%s\n' "${digests[@]}"; } | agy_guard_hash )
+  else
+    h=$( (cd "$dd" 2>/dev/null && find . -print0 2>/dev/null | LC_ALL=C sort -z) | agy_guard_hash )
+  fi
+  [ -n "$h" ] || h='UNREADABLE'
+  printf '%s' "$h"
+}
+
 agy_guard_census() {
   local d="$1" p rel b st out sorted i
   [ -d "$d" ] || { printf 'ABSENT'; return 0; }
@@ -131,11 +172,17 @@ agy_guard_census() {
   # SessionStart / SessionEnd hooks. A top-level census records only `scratch=DIR`, so overwriting a
   # script this machine EXECUTES was invisible to the guard. Owner ruled 2026-08-31 to widen.
   #
-  # scratch/ and seams/ stay excluded because they are where the peer and the driver are TOLD to
-  # write; hashing them would turn every sanctioned write into a breach report, and a false alarm is
-  # what teaches an operator to ignore this guard. They are still listed as entries - `-prune
-  # -print0` prints the directory itself before skipping its contents - so DELETING one is still
-  # caught even though its contents are not walked.
+  # ONLY scratch/ is excluded: it is where the peer is TOLD to write, so hashing it would turn
+  # every sanctioned write into a breach report, and a false alarm is what teaches an operator to
+  # ignore this guard. It is still listed as an entry - `-prune -print0` prints the directory itself
+  # before skipping its contents - so DELETING it is still caught.
+  #
+  # seams/ is MONITORED, but as a SINGLE AGGREGATE DIGEST rather than per file. Owner ruled
+  # 2026-08-31 that it must be watched: the peer only READS seams/, and a brief there is an
+  # instruction to a FUTURE review round, so a peer able to rewrite one unobserved could inject
+  # instructions into the very loop that is meant to be checking it. Enumerating it per-file was
+  # MEASURED at ~69 KB of census on this repository's 706 briefs, which capped the whole census and
+  # destroyed per-entry naming everywhere else - so it is watched, not listed.
   #
   # -print0 / read -d '' rather than a line-oriented read: a filename containing a newline would
   # otherwise split into two phantom entries, which is the round-1 defect this file already carries
@@ -149,9 +196,19 @@ agy_guard_census() {
     # peer write into a breach report. A boundary that depends on shell pattern matching is not a
     # boundary. If the prune fails the walk gets slower (measured 11s against 0.5s on this tree) and
     # stays CORRECT, which is the right way round for a guard.
+    # ONLY scratch/ is exempt. seams/ is MONITORED - owner ruled 2026-08-31, reversing the earlier
+    # "exclude both". The asymmetry is the point: the peer is told to WRITE in scratch/, so hashing
+    # it would turn every sanctioned write into a breach report. It is told only to READ seams/, and
+    # MEASURED across four consults this session, every brief was written BEFORE agy_ask fired the
+    # pre-hook, so seams/ is stable across the window and monitoring it costs no false alarm.
+    # What it buys: a brief is an INSTRUCTION TO A FUTURE ROUND, so a peer that could rewrite one
+    # unobserved could inject instructions into the review loop that is supposed to be checking it.
     case "$rel" in
-      scratch|seams)     ;;                # record the directory itself, so deleting one is caught
-      scratch/*|seams/*) continue ;;       # never record their contents
+      scratch)     ;;                      # record the directory itself, so deleting it is caught
+      scratch/*)   continue ;;             # never record its contents
+      seams)       st=$(agy_guard_dir_digest "$p")
+                   names+=("seams"); states+=("$st"); continue ;;
+      seams/*)     continue ;;             # covered by the aggregate above, never listed per-file
     esac
     # The two concurrent-append targets are exempt only as FILES, and only at the top level.
     case "$rel" in
@@ -218,10 +275,16 @@ agy_guard_census() {
   fi
 
   # Bounded: degrade to a digest rather than growing the fingerprint without limit, and SAY SO so a
-  # reader knows enumeration is unavailable instead of assuming nothing appeared. Recursion makes
-  # this cap reachable on a real tree, where the top-level-only form rarely hit it - that is the
-  # cost of the wider scope, and CAPPED still detects a change, it just cannot name the entry.
-  if [ "${#out}" -gt 4096 ]; then
+  # reader knows enumeration is unavailable instead of assuming nothing appeared. CAPPED still
+  # DETECTS a change; it just cannot NAME the entry, and naming is the whole reason this axis carries
+  # entry names literally instead of a single hash.
+  #
+  # The limit is 64 KiB, not the 4096 this started at. 4096 was sized when the census was top-level
+  # only. MEASURED once seams/ became monitored: this repository's .clavity/ produces ~56 KB of
+  # census, so a 4096 cap put every real consult permanently into CAPPED - detection intact, every
+  # entry name gone, on the one tree the guard actually runs against. The fingerprint is written to
+  # a temp file and compared as a string; 64 KiB there costs nothing worth measuring.
+  if [ "${#out}" -gt 65536 ]; then
     printf 'CAPPED=%s' "$(printf '%s' "$out" | agy_guard_hash)"
   else
     printf '%s' "$out"
