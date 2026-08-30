@@ -586,7 +586,7 @@ agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- SLOW as o
   cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an
   idle CPU (cold 53,6s) after the test-audit closure added 6 tests. The count row had ALSO been stale
   since before that: it said 11 when the file held 14.
-agy-inbox-snapshot.Tests.ps1                    120,1s   31 tests   <- SLOW, re-measured 2026-08-24 WARM
+agy-inbox-snapshot.Tests.ps1                    120,1s   32 tests   <- SLOW, re-measured 2026-08-24 WARM
   (cold 119,5s - this suite is I/O bound, so warm and cold agree). The test-audit closure added 3 It
   blocks; Pester expands them to 31 because two use -ForEach. The old row said 22. Before 2026-08-03 this
   suite was MISSING from this table entirely.

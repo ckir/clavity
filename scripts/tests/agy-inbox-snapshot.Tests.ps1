@@ -76,6 +76,26 @@ Describe 'agy-inbox-snapshot' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'refuses to rotate when the MAIN HEADER is missing' {
+        # AGY-TEST-AUDIT 2026-08-30. The hook carries TWO structural invariants on consecutive lines -
+        # the main header and the ## Pending section - and only the second was pinned. MEASURED: deleting
+        # the main-header grep left the whole suite GREEN at 31/0, while deleting the ## Pending grep is
+        # caught by the row below. One invariant guarded, its neighbour not.
+        # WHY IT MATTERS RATHER THAN BEING SYMMETRY FOR ITS OWN SAKE: these invariants exist so the ring
+        # never destroys its own history. A file that has lost its main header is not the inbox any more -
+        # rotating on it would spend a snapshot slot on something unrecognisable and push a real snapshot
+        # out of the ring. Refusing is the conservative direction and it is what the hook does; nothing
+        # asserted that it keeps doing it.
+        # THE FIXTURE IS THE MIRROR OF THE SIBLING ROW: everything the hook needs EXCEPT the header, so a
+        # refusal can only be attributable to the header check. It carries ## Pending and a valid bullet,
+        # which are exactly what the other two invariants demand.
+        $r = New-PluginRoot "## Pending`n`n- [assumption] (peer/probabilistic) x`n"
+        try {
+            Invoke-BashHook -HookPath $script:Hook -Payload (Payload 'agy-autotrain:agy-curate') -Env (HookEnv $r) | Out-Null
+            BakCount $r | Should -Be 0
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'refuses to rotate when ## Pending is missing' {
         $r = New-PluginRoot "# agy observations inbox (raw, project-agnostic)`n`n- [assumption] (peer/probabilistic) x`n"
         try {
