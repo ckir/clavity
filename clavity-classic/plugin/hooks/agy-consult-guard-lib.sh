@@ -101,11 +101,26 @@ agy_guard_hash_files() {
 AGY_GUARD_NL='
 '
 AGY_GUARD_CR=$(printf '\r')
+AGY_GUARD_BS=$(printf '\134')
 
 agy_guard_census() {
   local d="$1" p rel b st out sorted i
   [ -d "$d" ] || { printf 'ABSENT'; return 0; }
   [ -r "$d" ] || { printf 'UNREADABLE'; return 0; }
+
+  # Normalise trailing slashes BEFORE anything derives from $d. MEASURED with `dir/`: the -path
+  # prune matched nothing, so scratch/ was walked and hashed, AND `${p#"$d/"}` failed to strip, so
+  # every entry name came out as an absolute path - machine-specific, enormous, and different from
+  # the same directory addressed without the slash.
+  while [ "$d" != "/" ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done
+
+  # Escape glob metacharacters for the -path patterns below. `find -path` matches with fnmatch, not
+  # literally: MEASURED, a repository path containing '[' made the prune silently match nothing.
+  # This restores the FAST path; it is not what makes the exclusion correct - see the loop.
+  local dpat=${d//"$AGY_GUARD_BS"/"$AGY_GUARD_BS$AGY_GUARD_BS"}
+  dpat=${dpat//[/"$AGY_GUARD_BS"[}
+  dpat=${dpat//\*/"$AGY_GUARD_BS"\*}
+  dpat=${dpat//\?/"$AGY_GUARD_BS"\?}
 
   local names=() states=() hp=() hi=() entries=()
 
@@ -127,6 +142,17 @@ agy_guard_census() {
   # a fix for. Paths are recorded relative to .clavity/ so the entry names say WHERE.
   while IFS= read -r -d '' p; do
     rel=${p#"$d/"}
+    # THE EXCLUSION IS ENFORCED HERE, on the relative path, not by the find prune. The prune is a
+    # PERFORMANCE optimisation and its -path argument is a GLOB over a path we do not control:
+    # MEASURED, it silently matched nothing when the repository path contained '[' or when $d
+    # carried a trailing slash, and scratch/ was then walked and hashed - turning every sanctioned
+    # peer write into a breach report. A boundary that depends on shell pattern matching is not a
+    # boundary. If the prune fails the walk gets slower (measured 11s against 0.5s on this tree) and
+    # stays CORRECT, which is the right way round for a guard.
+    case "$rel" in
+      scratch|seams)     ;;                # record the directory itself, so deleting one is caught
+      scratch/*|seams/*) continue ;;       # never record their contents
+    esac
     # The two concurrent-append targets are exempt only as FILES, and only at the top level.
     case "$rel" in
       local-anomalies.md|discipline-reaching.jsonl) [ -d "$p" ] || continue ;;
@@ -147,7 +173,7 @@ agy_guard_census() {
     fi
     names+=("$b")
     states+=("$st")
-  done < <(find "$d" -mindepth 1 \( -path "$d/scratch" -o -path "$d/seams" \) -prune -print0 -o -print0 2>/dev/null)
+  done < <(find "$d" -mindepth 1 \( -path "$dpat/scratch" -o -path "$dpat/seams" \) -prune -print0 -o -print0 2>/dev/null)
 
   if [ "${#hp[@]}" -gt 0 ]; then
     local digests=() line
@@ -188,7 +214,7 @@ agy_guard_census() {
     # Sort once, under LC_ALL=C: collation is locale-dependent, and a LANG difference between the
     # pre and post environments would reorder the list and manufacture a false RED.
     sorted=$(printf '%s\n' "${entries[@]}" | LC_ALL=C sort)
-    out="${out}${sorted//$AGY_GUARD_NL/}"
+    out="${out}${sorted//"$AGY_GUARD_NL"/}"
   fi
 
   # Bounded: degrade to a digest rather than growing the fingerprint without limit, and SAY SO so a

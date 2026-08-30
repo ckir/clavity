@@ -546,4 +546,52 @@ Describe 'agy-consult-guard' {
             $withoutScratch | Should -Not -Be $withScratch -Because 'deleting an excluded directory must still be visible'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'excludes scratch even when the prune pattern cannot match' {
+        # Capstone R4. The exclusion used to rest ENTIRELY on `find -path "$d/scratch" -prune`, and
+        # -path matches with fnmatch, not literally. MEASURED, it silently matched nothing in two
+        # reachable cases, and scratch/ was then walked and hashed - turning every sanctioned peer
+        # write into a breach report, which is the failure that teaches an operator to ignore the
+        # guard. The exclusion is now enforced on the relative path inside the loop; the prune is
+        # only a performance optimisation. This row uses a '[' in the directory name, which is legal
+        # on Windows and is a glob metacharacter.
+        $base = Join-Path ([IO.Path]::GetTempPath()) ("guard[1]-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            $c = Join-Path $base '.clavity'
+            # .NET APIs, not the PowerShell providers: '[' is a WILDCARD to PowerShell's path
+            # resolution, so New-Item/Set-Content misbind on this fixture. That is a property of the
+            # harness, not of the code under test - and using -LiteralPath everywhere would be easy
+            # to lose on the next edit, so the fixture avoids the provider entirely.
+            [IO.Directory]::CreateDirectory((Join-Path $c 'scratch/t')) | Out-Null
+            [IO.Directory]::CreateDirectory((Join-Path $c 'agy-marks')) | Out-Null
+            [IO.File]::WriteAllText((Join-Path $c 'scratch/t/peer.md'), 'peer work')
+            [IO.File]::WriteAllText((Join-Path $c 'agy-marks/m'), 'marker')
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+            $out = & bash -lc $sh
+            $out | Should -Not -Match 'scratch/t/peer\.md' -Because 'a glob metacharacter in the path must not defeat the exclusion'
+            $out | Should -Match 'scratch=DIR' -Because 'the directory itself is still recorded'
+            $out | Should -Match 'agy-marks/m=' -Because 'the rest of the tree must still be walked'
+        } finally { [IO.Directory]::Delete($base, $true) }
+    }
+
+    It 'gives the same census whether or not the path carries a trailing slash' {
+        # Capstone R4. A trailing slash broke TWO things at once, measured: the -path prune matched
+        # nothing, AND `${p#"$d/"}` failed to strip, so every entry name came out as an ABSOLUTE
+        # path - machine-specific, far larger, and different from the same directory addressed
+        # without the slash. Two callers naming the same directory must agree, or the pre and post
+        # halves of one consult could disagree for no reason at all.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path (Join-Path $c 'scratch/t') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $c 'agy-marks') -Force | Out-Null
+            Set-Content (Join-Path $c 'scratch/t/peer.md') 'peer work' -Encoding ascii
+            Set-Content (Join-Path $c 'agy-marks/m') 'marker' -Encoding ascii
+            $p = ($c -replace '\\','/')
+            $bare  = & bash -lc "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$p'"
+            $slash = & bash -lc "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$p/'"
+            $slash | Should -Be $bare
+            $bare | Should -Not -Match 'scratch/t/peer\.md'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
