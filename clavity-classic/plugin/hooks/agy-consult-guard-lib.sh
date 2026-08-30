@@ -97,6 +97,11 @@ agy_guard_hash_files() {
 # Sorting is done once, through `sort` under LC_ALL=C, rather than by relying on glob collation:
 # collation is locale-dependent, and a LANG difference between the pre and post environments would
 # reorder the list and manufacture a false RED.
+# Literal newline and carriage return, built once - see the note at their use site below.
+AGY_GUARD_NL='
+'
+AGY_GUARD_CR=$(printf '')
+
 agy_guard_census() {
   local d="$1" p e b st out sorted i
   [ -d "$d" ] || { printf 'ABSENT'; return 0; }
@@ -112,12 +117,25 @@ agy_guard_census() {
 
   for p in "$d"/*; do
     e=${p##*/}
-    case "$e" in
-      local-anomalies.md|discipline-reaching.jsonl) continue ;;
-    esac
+    # Skip the two concurrent-append targets - but ONLY when they are files. A reviewer filed this
+    # below its own severity floor and it is real: an unconditional `continue` meant a DIRECTORY
+    # created under either name was skipped entirely, so its appearance did not register and
+    # nothing beneath it was monitored. Directories now fall through and are recorded as DIR.
+    if [ ! -d "$p" ]; then
+      case "$e" in
+        local-anomalies.md|discipline-reaching.jsonl) continue ;;
+      esac
+    fi
     b=${e//[|:,=]/_}
-    b=${b//$'\n'/_}
-    b=${b//$'\r'/_}
+    # Literal control characters held in variables, NOT ANSI-C quoting inline in the PATTERN of
+    # ${var//pat/repl}. A reviewer raised that bash 3.2 - which macOS still ships, and which this
+    # `#!/usr/bin/env bash` file can land on - may not interpret $'\n' there, leaving the newline
+    # in place. I could NOT measure that claim: there is no bash 3.2 on this machine, so it is
+    # UNPROVEN rather than confirmed. This form is portable either way and costs nothing, and the
+    # cost if the claim IS true is severe - the newline survives and post.sh's line-oriented read
+    # then truncates the entire fingerprint, silently dropping every axis after this one.
+    b=${b//$AGY_GUARD_NL/_}
+    b=${b//$AGY_GUARD_CR/_}
     if   [ -d "$p" ];   then st='DIR'
     elif [ ! -f "$p" ]; then st='UNREADABLE'
     elif [ ! -r "$p" ]; then st='UNREADABLE'
@@ -136,9 +154,20 @@ agy_guard_census() {
     if [ "${#digests[@]}" -eq "${#hp[@]}" ]; then
       i=0; while [ "$i" -lt "${#hp[@]}" ]; do states[${hi[$i]}]="${digests[$i]}"; i=$((i+1)); done
     else
-      # Count mismatch means a file vanished mid-read, was unreadable, or no hashing tool exists.
-      # Fail LOUD per entry rather than leaving an empty state that would compare equal to anything.
-      i=0; while [ "$i" -lt "${#hp[@]}" ]; do states[${hi[$i]}]='UNREADABLE'; i=$((i+1)); done
+      # The batch returned a different number of digests than files handed to it: a file vanished
+      # between the glob and the hash - .clavity/ is a CONCURRENT write area, so this races by
+      # construction - or was locked by another process, or the tool refused the argument list.
+      # Do NOT collapse every entry onto one constant. MEASURED with a verified mutant that always
+      # emitted a single digest: marking them all UNREADABLE masked EVERY content change in the
+      # directory for that consult. Names still moved, so a NEW file was still caught, but an
+      # overwrite was not - and an overwrite of the shield is the case this axis exists for.
+      # A guard that answers the same thing for every input has stopped answering. Fall back to
+      # hashing each file on its own: slower, but only on this rare path, and correct.
+      i=0
+      while [ "$i" -lt "${#hp[@]}" ]; do
+        states[${hi[$i]}]=$(agy_guard_file_state "${hp[$i]}")
+        i=$((i+1))
+      done
     fi
   fi
 

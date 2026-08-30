@@ -416,4 +416,58 @@ Describe 'agy-consult-guard' {
             ($digests | Sort-Object -Unique).Count | Should -Be 40
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'still detects a content change when the batch hash returns a short count' {
+        # Capstone R2. The one-process rewrite zips digests to entries BY POSITION, and the original
+        # count-mismatch fallback marked EVERY hashed entry UNREADABLE. MEASURED with a mutant that
+        # always emitted a single digest: that masked EVERY content change in the directory for that
+        # consult - names still moved, so a new file was caught, but an OVERWRITE was not, and an
+        # overwrite of the shield is exactly what this axis exists for. A mismatch is reachable
+        # without any tampering: .clavity/ is a concurrent write area, so a file can vanish between
+        # the glob and the hash. The fallback is now per-file.
+        $d = Join-Path ([IO.Path]::GetTempPath()) ("zip-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            $libCopy = Join-Path $d 'lib.sh'
+            Copy-Item $script:Lib $libCopy
+            # Neuter the BATCH hasher only, forcing the mismatch path on every call.
+            $txt = [IO.File]::ReadAllText($libCopy)
+            $mutated = [regex]::Replace($txt, "agy_guard_hash_files\(\) \{.*?
+\}
+",
+                "agy_guard_hash_files() {`n  printf 'deadbeef
+'`n}`n", 'Singleline')
+            [IO.File]::WriteAllText($libCopy, $mutated)
+            ($mutated -match "printf 'deadbeef") | Should -BeTrue -Because 'the mutant must actually apply, or this row proves nothing'
+
+            $c = Join-Path $d '.clavity'
+            New-Item -ItemType Directory -Path $c -Force | Out-Null
+            Set-Content (Join-Path $c 'f1.txt') 'a' -Encoding ascii
+            Set-Content (Join-Path $c 'f2.txt') 'b' -Encoding ascii
+            $sh = "set +e; . '$($libCopy -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+            $before = & bash -lc $sh
+            Set-Content (Join-Path $c 'f2.txt') 'MUTATED' -Encoding ascii
+            $after = & bash -lc $sh
+            $after | Should -Not -Be $before -Because 'a content overwrite must survive the mismatch fallback'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'records a DIRECTORY created under a skip-listed name' {
+        # Capstone R2, from the reviewer's DISCARDED list - which is where a real defect surfaced in
+        # this repo once before, so it is read as carefully as the findings. The skip was
+        # unconditional, so a directory created as `local-anomalies.md` was skipped entirely: its
+        # appearance did not register and nothing beneath it was monitored.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path $c -Force | Out-Null
+            Set-Content (Join-Path $c '.gitignore') '*' -Encoding ascii -NoNewline
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+            $before = & bash -lc $sh
+            New-Item -ItemType Directory -Path (Join-Path $c 'local-anomalies.md') -Force | Out-Null
+            $after = & bash -lc $sh
+            $after | Should -Not -Be $before
+            $after | Should -Match 'local-anomalies\.md=DIR'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
