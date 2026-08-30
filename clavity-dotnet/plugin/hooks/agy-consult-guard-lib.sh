@@ -100,7 +100,7 @@ agy_guard_hash_files() {
 # Literal newline and carriage return, built once - see the note at their use site below.
 AGY_GUARD_NL='
 '
-AGY_GUARD_CR=$(printf '')
+AGY_GUARD_CR=$(printf '\r')
 
 agy_guard_census() {
   local d="$1" p e b st out sorted i
