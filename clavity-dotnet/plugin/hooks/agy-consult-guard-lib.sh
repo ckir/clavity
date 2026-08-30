@@ -103,50 +103,41 @@ AGY_GUARD_NL='
 AGY_GUARD_CR=$(printf '\r')
 
 agy_guard_census() {
-  local d="$1" p e b st out sorted i
+  local d="$1" p rel b st out sorted i
   [ -d "$d" ] || { printf 'ABSENT'; return 0; }
   [ -r "$d" ] || { printf 'UNREADABLE'; return 0; }
 
   local names=() states=() hp=() hi=() entries=()
-  # Save and restore the caller's globbing options - this library is SOURCED into the hook's shell,
-  # so leaving nullglob/dotglob set would silently change behaviour in the rest of that hook.
-  local had_null=0 had_dot=0
-  shopt -q nullglob && had_null=1
-  shopt -q dotglob  && had_dot=1
-  shopt -s nullglob dotglob
 
-  for p in "$d"/*; do
-    e=${p##*/}
-    # Skip the two concurrent-append targets - but ONLY when they are files. A reviewer filed this
-    # below its own severity floor and it is real: an unconditional `continue` meant a DIRECTORY
-    # created under either name was skipped entirely, so its appearance did not register and
-    # nothing beneath it was monitored. Directories now fall through and are recorded as DIR.
-    if [ ! -d "$p" ]; then
-      case "$e" in
-        local-anomalies.md|discipline-reaching.jsonl) continue ;;
-      esac
-    fi
-    # PERCENT-ENCODE the reserved characters; do NOT collapse them onto '_'. Replacement is
-    # MANY-TO-ONE, and MEASURED, that cost DETECTION and not merely attribution: with `a=b` and
-    # `a_b` both present in .clavity/, both sanitise to `a_b`, and because the entry list is SORTED
-    # afterwards, SWAPPING their two contents yields a BYTE-IDENTICAL census. before == after, so
-    # the guard reports a clean consult while two files changed. Percent-encoding is injective, so
-    # distinct names cannot collide. '%' MUST be encoded first or the mapping stops being injective.
-    # None of '%' or the hex digits is a delimiter in either the ':' or the 'name=state,' encoding.
-    b=${e//%/%25}
+  # RECURSIVE, excluding scratch/ and seams/. The census was top-level only, and a reviewer called
+  # that an architectural flaw across two rounds while I refuted it twice on "nothing executes from
+  # .clavity/" - a refutation whose grep only covered the plugin directories. MEASURED on the third
+  # round: .claude/settings.local.json wired THREE mode-755 scripts under .clavity/scratch/ as live
+  # SessionStart / SessionEnd hooks. A top-level census records only `scratch=DIR`, so overwriting a
+  # script this machine EXECUTES was invisible to the guard. Owner ruled 2026-08-31 to widen.
+  #
+  # scratch/ and seams/ stay excluded because they are where the peer and the driver are TOLD to
+  # write; hashing them would turn every sanctioned write into a breach report, and a false alarm is
+  # what teaches an operator to ignore this guard. They are still listed as entries - `-prune
+  # -print0` prints the directory itself before skipping its contents - so DELETING one is still
+  # caught even though its contents are not walked.
+  #
+  # -print0 / read -d '' rather than a line-oriented read: a filename containing a newline would
+  # otherwise split into two phantom entries, which is the round-1 defect this file already carries
+  # a fix for. Paths are recorded relative to .clavity/ so the entry names say WHERE.
+  while IFS= read -r -d '' p; do
+    rel=${p#"$d/"}
+    # The two concurrent-append targets are exempt only as FILES, and only at the top level.
+    case "$rel" in
+      local-anomalies.md|discipline-reaching.jsonl) [ -d "$p" ] || continue ;;
+    esac
+    # Percent-encode: injective, unlike collapsing onto '_', which MEASURED as a lost detection when
+    # two colliding names swapped contents. '%' first or the mapping stops being injective.
+    b=${rel//%/%25}
     b=${b//|/%7C}
     b=${b//:/%3A}
     b=${b//,/%2C}
     b=${b//=/%3D}
-    # Literal control characters held in variables, NOT ANSI-C quoting inline in the pattern, and the
-    # pattern is QUOTED. Two reviewer claims sit behind this, and NEITHER is proven: that bash 3.2 -
-    # which macOS ships, and which this `#!/usr/bin/env bash` file can land on - may not interpret
-    # $'\n' in a pattern, and that an UNQUOTED variable there undergoes word splitting, which would
-    # erase a newline pattern because IFS contains one. MEASURED on bash 5.3.15 here: quoted and
-    # unquoted give the same result, so both claims are UNPROVEN, not confirmed. Both forms cost
-    # nothing and are correct either way, and the cost if either claim IS true is severe: the newline
-    # survives into the fingerprint and post.sh's line-oriented `read` then truncates it, silently
-    # dropping every axis after this one.
     b=${b//"$AGY_GUARD_NL"/%0A}
     b=${b//"$AGY_GUARD_CR"/%0D}
     if   [ -d "$p" ];   then st='DIR'
@@ -156,10 +147,7 @@ agy_guard_census() {
     fi
     names+=("$b")
     states+=("$st")
-  done
-
-  [ "$had_null" = 1 ] || shopt -u nullglob
-  [ "$had_dot"  = 1 ] || shopt -u dotglob
+  done < <(find "$d" -mindepth 1 \( -path "$d/scratch" -o -path "$d/seams" \) -prune -print0 -o -print0 2>/dev/null)
 
   if [ "${#hp[@]}" -gt 0 ]; then
     local digests=() line
@@ -168,7 +156,7 @@ agy_guard_census() {
       i=0; while [ "$i" -lt "${#hp[@]}" ]; do states[${hi[$i]}]="${digests[$i]}"; i=$((i+1)); done
     else
       # The batch returned a different number of digests than files handed to it: a file vanished
-      # between the glob and the hash - .clavity/ is a CONCURRENT write area, so this races by
+      # between the walk and the hash - .clavity/ is a CONCURRENT write area, so this races by
       # construction - or was locked by another process, or the tool refused the argument list.
       # Do NOT collapse every entry onto one constant. MEASURED with a verified mutant that always
       # emitted a single digest: marking them all UNREADABLE masked EVERY content change in the
@@ -197,12 +185,16 @@ agy_guard_census() {
 
   out='discipline-reaching.jsonl=SKIP,local-anomalies.md=SKIP,'
   if [ "${#entries[@]}" -gt 0 ]; then
+    # Sort once, under LC_ALL=C: collation is locale-dependent, and a LANG difference between the
+    # pre and post environments would reorder the list and manufacture a false RED.
     sorted=$(printf '%s\n' "${entries[@]}" | LC_ALL=C sort)
-    out="${out}${sorted//$'\n'/}"
+    out="${out}${sorted//$AGY_GUARD_NL/}"
   fi
 
   # Bounded: degrade to a digest rather than growing the fingerprint without limit, and SAY SO so a
-  # reader knows enumeration is unavailable instead of assuming nothing appeared.
+  # reader knows enumeration is unavailable instead of assuming nothing appeared. Recursion makes
+  # this cap reachable on a real tree, where the top-level-only form rarely hit it - that is the
+  # cost of the wider scope, and CAPPED still detects a change, it just cannot name the entry.
   if [ "${#out}" -gt 4096 ]; then
     printf 'CAPPED=%s' "$(printf '%s' "$out" | agy_guard_hash)"
   else

@@ -498,4 +498,52 @@ Describe 'agy-consult-guard' {
             $before | Should -Match 'a_b='
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'WARNS when a script inside a .clavity SUBDIRECTORY is overwritten' {
+        # Owner ruled 2026-08-31 to widen the census after a reviewer raised the shallow-census blind
+        # spot twice and I refuted it twice - wrongly, on a grep that only covered the plugin dirs.
+        # MEASURED on the third round: .claude/settings.local.json wired three mode-755 scripts under
+        # .clavity/scratch/ as live SessionStart / SessionEnd hooks. With a top-level-only census the
+        # entry read `scratch=DIR` and overwriting a script this machine EXECUTES was invisible.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path (Join-Path $c 'agy-marks') -Force | Out-Null
+            Set-Content (Join-Path $c '.gitignore') '*' -Encoding ascii -NoNewline
+            Set-Content (Join-Path $c 'agy-marks/probe.sh') 'echo ok' -Encoding ascii
+            $out = Invoke-ConsultAround $r { Set-Content (Join-Path $c 'agy-marks/probe.sh') 'echo PWNED' -Encoding ascii }
+            $out | Should -Match 'gitignored paths'
+            $out | Should -Match 'agy-marks/probe\.sh'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'stays SILENT for writes inside scratch and seams, but still sees one deleted' {
+        # The two halves of the exclusion, in one row because they are one decision. scratch/ and
+        # seams/ are where the peer and the driver are TOLD to write, so hashing their contents would
+        # turn every sanctioned write into a breach report - and a false alarm is what teaches an
+        # operator to ignore this guard. But `-prune -print0` still emits the directory itself, so
+        # REMOVING one is caught. Without that second half the exclusion would be a hole.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path (Join-Path $c 'scratch/t') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $c 'seams') -Force | Out-Null
+            Set-Content (Join-Path $c '.gitignore') '*' -Encoding ascii -NoNewline
+            Set-Content (Join-Path $c 'scratch/t/notes.md') 'peer working' -Encoding ascii
+            Set-Content (Join-Path $c 'seams/topic.md') 'brief' -Encoding ascii
+            $out = Invoke-ConsultAround $r {
+                Set-Content (Join-Path $c 'scratch/t/notes.md') 'peer still working' -Encoding ascii
+                Set-Content (Join-Path $c 'scratch/t/extra.md') 'more' -Encoding ascii
+                Set-Content (Join-Path $c 'seams/topic.md') 'edited brief' -Encoding ascii
+            }
+            $out | Should -Not -Match 'VERSION CONTROL CHANGED' -Because 'the sanctioned write areas must not raise a breach'
+
+            # Second half: the directory's own presence is still tracked.
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+            $withScratch = & bash -lc $sh
+            Remove-Item (Join-Path $c 'scratch') -Recurse -Force
+            $withoutScratch = & bash -lc $sh
+            $withoutScratch | Should -Not -Be $withScratch -Because 'deleting an excluded directory must still be visible'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
