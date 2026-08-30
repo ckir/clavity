@@ -30,7 +30,17 @@ case "$cat" in
 esac
 agy_guard_in_git_repo "$cwd" || exit 0
 
-sf=$(agy_guard_state_file "$sid" "$slot") || exit 0
+if ! sf=$(agy_guard_state_file "$sid" "$slot"); then
+  # MEASURED with a paired control: with TMPDIR pointing at a non-directory, `mkdir -p` fails,
+  # agy_guard_state_file returns 1, and a bare `|| exit 0` here dropped the consult SILENTLY -
+  # never reaching the "failed to initialize" warning below whose own comment names this exact
+  # case ("e.g. TMPDIR unwritable"). Control warned (410 bytes); this path emitted 0 bytes.
+  # Silence from a guard reads as "verified clean", which is the one thing it must never do.
+  if [ "$cat" = sync ]; then
+    emit "AGY CONSULT GUARD - NOT VERIFIED (guard failed to initialize): no VCS baseline was captured for this review-only agy consult, because the Pre hook could not write its state file (e.g. an unwritable TMPDIR). This consult was therefore NOT checked for peer-made version-control changes - confirm manually that the peer changed nothing."
+  fi
+  exit 0
+fi
 
 if [ ! -f "$sf" ]; then
   # A SYNC consult always has its Pre run first, so a missing baseline means Pre could not write
@@ -54,17 +64,27 @@ fi
 # compare-equal silently. Fail LOUD instead of giving false confidence. Do NOT reintroduce a
 # hard-coded axis COUNT here - the previous one said "4 of 7" while the message said only HEAD
 # and stash were compared, which implies 5. A maintained number rots; an enumeration cannot.
-if ! agy_guard_have_hash; then
-  rm -f "$sf" 2>/dev/null
-  emit "AGY CONSULT GUARD - PARTIALLY VERIFIED (no hashing tool): neither sha256sum nor shasum is on PATH, so this review-only agy consult could NOT be checked for worktree / index / .git-metadata / refs changes, and gitignored paths degrade to names only. Only HEAD and stash were fully compared. Do NOT trust the absence of a warning - manually confirm the peer made no version-control changes."
-  exit 0
-fi
+#
+# This branch used to emit and `exit 0` IMMEDIATELY - before $before and $after were ever
+# computed - while its own message asserted that HEAD and stash "were fully compared". NOTHING
+# was compared. That is a guard certifying a check it never ran. HEAD and stash are the two axes
+# that are NOT hashed, so they compare perfectly well without a hashing tool: set a flag and
+# fall through to the real comparison, which makes the claim true rather than softening it.
+degraded=0
+agy_guard_have_hash || degraded=1
 
 before=$(cat "$sf" 2>/dev/null)
 after=$(agy_guard_quad "$cwd")
 rm -f "$sf" 2>/dev/null            # consume the baseline
 
-[ "$before" = "$after" ] && exit 0   # clean: peer honored review-only
+if [ "$before" = "$after" ]; then
+  # Clean - but in degraded mode "clean" covers only the unhashed axes, so say exactly that
+  # rather than staying silent, which would read as a full verification.
+  if [ "$degraded" = 1 ]; then
+    emit "AGY CONSULT GUARD - PARTIALLY VERIFIED (no hashing tool): neither sha256sum nor shasum is on PATH, so the worktree / index / .git-metadata / refs axes collapsed to a constant and were NOT checked, and gitignored paths degraded to names only. HEAD and stash WERE compared and did not move. Do NOT trust the absence of a further warning - manually confirm the peer made no version-control changes."
+  fi
+  exit 0                             # clean: peer honored review-only
+fi
 
 IFS='|' read -r b_head b_status b_diff b_stash b_refs b_meta b_flags b_ign <<EOF
 $before
@@ -87,6 +107,8 @@ paths=$(git -C "$cwd" status --porcelain 2>/dev/null | head -20)
 # The porcelain listing above CANNOT show ignored paths - that omission is the whole reason this
 # axis exists - so an ignored-path breach would otherwise announce itself with no evidence.
 ignmsg=""
+degmsg=""
+[ "$degraded" = 1 ] && degmsg=" CAVEAT - no hashing tool was available, so the worktree / index / .git-metadata / refs axes were NOT compared and gitignored paths degraded to names only; what follows may UNDERSTATE what changed."
 if [ "$b_ign" != "$a_ign" ]; then
   ignmsg="\nIgnored-path axis before: ${b_ign}\nIgnored-path axis after:  ${a_ign}"
 fi
@@ -95,6 +117,6 @@ if [ "$b_head" != "$a_head" ]; then
   headmsg=" New commit(s): $(git -C "$cwd" log --oneline "${b_head}..${a_head}" 2>/dev/null | head -5 | tr '\n' ';')"
 fi
 
-msg="AGY CONSULT GUARD - VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT: the agy peer appears to have modified git state during a consult that was supposed to make ZERO changes. What changed: ${axes}CAVEAT - this guard compares VCS state before and after the consult and CANNOT attribute a change to the peer rather than to anything else running in this repository at the same time. If you dispatched a local subagent, or another session is open on this repo, that is the likelier cause, and reverting would destroy its in-flight work. Next: verify the peer - not you, and not a concurrent local agent - made these changes; if so, undo them with a TARGETED per-file 'git checkout -- <file>' / 'git reset' (NEVER a broad 'git checkout <dir>/'), then re-issue the consult with a louder forbidden-actions banner. Changed paths:\n${paths}${headmsg}${ignmsg}"
+msg="AGY CONSULT GUARD - VERSION CONTROL CHANGED DURING A REVIEW-ONLY CONSULT: the agy peer appears to have modified git state during a consult that was supposed to make ZERO changes. What changed: ${axes}CAVEAT - this guard compares VCS state before and after the consult and CANNOT attribute a change to the peer rather than to anything else running in this repository at the same time. If you dispatched a local subagent, or another session is open on this repo, that is the likelier cause, and reverting would destroy its in-flight work. Next: verify the peer - not you, and not a concurrent local agent - made these changes; if so, undo them with a TARGETED per-file 'git checkout -- <file>' / 'git reset' (NEVER a broad 'git checkout <dir>/'), then re-issue the consult with a louder forbidden-actions banner. Changed paths:\n${paths}${headmsg}${ignmsg}${degmsg}"
 emit "$msg"
 exit 0

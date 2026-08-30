@@ -63,33 +63,94 @@ agy_guard_file_state() {
   printf '%s' "$s"
 }
 
+# Hash MANY files in ONE process, printing one digest per line IN THE ORDER GIVEN. Callers zip by
+# POSITION and must never parse the filename column: coreutils escapes names containing a backslash
+# or newline and prefixes such lines, so the name column is not a reliable key.
+# MEASURED on Git Bash, the per-file form this replaces cost ~470ms PER ENTRY - 0 entries 493ms,
+# 12 entries 5.835s, 100 entries 47.2s - and the census runs twice per consult. Process creation is
+# the cost on Windows, not hashing, so the fix is fewer processes, not a faster hash.
+agy_guard_hash_files() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$@" 2>/dev/null | cut -d' ' -f1
+  elif command -v shasum   >/dev/null 2>&1; then shasum -a 256 -- "$@" 2>/dev/null | cut -d' ' -f1
+  else return 1
+  fi
+}
+
 # Top-level census of .clavity/. Carries the entry NAMES LITERALLY (not a hash of them) so post can
 # say WHICH entry appeared or vanished; a one-way hash could only say "something changed".
-# Content is hashed for top-level FILES except the concurrent-append targets: local-anomalies.md is
-# appended by the open-issues capture path and discipline-reaching.jsonl once per session, both from
-# OTHER sessions on the same repository. Hashing those manufactures a false breach report.
-# LC_ALL=C is MANDATORY: collation order is locale-dependent, and a LANG difference between the pre
-# and post environments would reorder the list and manufacture a false RED.
-# The `while` is fed by a HEREDOC, not a pipe, on purpose: a pipe would run the loop in a subshell
-# and every append to $out would be discarded, yielding an empty census that compares equal forever.
+#
+# The two concurrent-append targets are emitted UNCONDITIONALLY at a constant state, whether or not
+# they exist. Listing them only when present meant the FIRST-EVER capture by a concurrent session -
+# which CREATES local-anomalies.md - changed the census and read as a breach. Their existence is
+# exactly as concurrent as their contents. Recorded trade-off: this also hides their DELETION, which
+# this guard could never attribute to the peer anyway, and a false breach report is the failure mode
+# that trains an operator to ignore the guard entirely.
+#
+# Entries are GLOBBED, never read from `ls` line by line. A filename containing a NEWLINE splits into
+# two phantom entries under a line-oriented read; both then resolve to ABSENT, so a later write to
+# that file changes nothing and the guard stays silent - an evasion path in a breach detector. Such a
+# name is illegal on Windows but legal on macOS and Linux, and this library ships to all three (see
+# the shasum branch above). Newlines and carriage returns are also stripped from the recorded name,
+# because an embedded newline would otherwise truncate post.sh's line-oriented `read` of the whole
+# fingerprint and silently drop every axis after this one.
+#
+# Sorting is done once, through `sort` under LC_ALL=C, rather than by relying on glob collation:
+# collation is locale-dependent, and a LANG difference between the pre and post environments would
+# reorder the list and manufacture a false RED.
 agy_guard_census() {
-  local d="$1" out='' e b st
+  local d="$1" p e b st out sorted i
   [ -d "$d" ] || { printf 'ABSENT'; return 0; }
   [ -r "$d" ] || { printf 'UNREADABLE'; return 0; }
-  while IFS= read -r e; do
-    [ -n "$e" ] || continue
-    b=$(printf '%s' "$e" | tr '|:,=' '____')
-    if [ -d "$d/$e" ]; then st='DIR'
-    else
-      case "$e" in
-        local-anomalies.md|discipline-reaching.jsonl) st='SKIP' ;;
-        *) st=$(agy_guard_file_state "$d/$e") ;;
-      esac
+
+  local names=() states=() hp=() hi=() entries=()
+  # Save and restore the caller's globbing options - this library is SOURCED into the hook's shell,
+  # so leaving nullglob/dotglob set would silently change behaviour in the rest of that hook.
+  local had_null=0 had_dot=0
+  shopt -q nullglob && had_null=1
+  shopt -q dotglob  && had_dot=1
+  shopt -s nullglob dotglob
+
+  for p in "$d"/*; do
+    e=${p##*/}
+    case "$e" in
+      local-anomalies.md|discipline-reaching.jsonl) continue ;;
+    esac
+    b=${e//[|:,=]/_}
+    b=${b//$'\n'/_}
+    b=${b//$'\r'/_}
+    if   [ -d "$p" ];   then st='DIR'
+    elif [ ! -f "$p" ]; then st='UNREADABLE'
+    elif [ ! -r "$p" ]; then st='UNREADABLE'
+    else st=''; hp+=("$p"); hi+=("${#names[@]}")
     fi
-    out="${out}${b}=${st},"
-  done <<EOF
-$(ls -A "$d" 2>/dev/null | LC_ALL=C sort)
-EOF
+    names+=("$b")
+    states+=("$st")
+  done
+
+  [ "$had_null" = 1 ] || shopt -u nullglob
+  [ "$had_dot"  = 1 ] || shopt -u dotglob
+
+  if [ "${#hp[@]}" -gt 0 ]; then
+    local digests=() line
+    while IFS= read -r line; do digests+=("$line"); done < <(agy_guard_hash_files "${hp[@]}")
+    if [ "${#digests[@]}" -eq "${#hp[@]}" ]; then
+      i=0; while [ "$i" -lt "${#hp[@]}" ]; do states[${hi[$i]}]="${digests[$i]}"; i=$((i+1)); done
+    else
+      # Count mismatch means a file vanished mid-read, was unreadable, or no hashing tool exists.
+      # Fail LOUD per entry rather than leaving an empty state that would compare equal to anything.
+      i=0; while [ "$i" -lt "${#hp[@]}" ]; do states[${hi[$i]}]='UNREADABLE'; i=$((i+1)); done
+    fi
+  fi
+
+  i=0
+  while [ "$i" -lt "${#names[@]}" ]; do entries+=("${names[$i]}=${states[$i]},"); i=$((i+1)); done
+
+  out='discipline-reaching.jsonl=SKIP,local-anomalies.md=SKIP,'
+  if [ "${#entries[@]}" -gt 0 ]; then
+    sorted=$(printf '%s\n' "${entries[@]}" | LC_ALL=C sort)
+    out="${out}${sorted//$'\n'/}"
+  fi
+
   # Bounded: degrade to a digest rather than growing the fingerprint without limit, and SAY SO so a
   # reader knows enumeration is unavailable instead of assuming nothing appeared.
   if [ "${#out}" -gt 4096 ]; then

@@ -300,7 +300,12 @@ Describe 'agy-consult-guard' {
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_ignored '$($r -replace '\\','/')'"
             $ax = & bash -lc $sh
             ($ax -split ':').Count | Should -Be 4
-            $ax | Should -Not -Match '\|'
+            # There is deliberately NO `Should -Not -Match '\|'` here. It was, and it was VACUOUS:
+            # '|' cannot occur in a Windows filename, so the fixture could never introduce one and the
+            # assertion held whether or not `tr` stripped anything. An assertion that cannot fail is
+            # worse than none, because it reads as coverage. The pipe and colon halves of the sanitizer
+            # are UNTESTABLE on this platform; the ',' and '=' halves are tested by the control below,
+            # and all four are stripped by the same single `tr`, which is what carries the guarantee.
             # Positive control: prove the sanitizer actually ran, rather than inferring it from the
             # absence of a character the fixture may never have produced.
             $ax | Should -Match 'we_ird_name\.txt'
@@ -314,6 +319,101 @@ Describe 'agy-consult-guard' {
         $post = Get-Content $script:Post -Raw
         $post | Should -Not -Match 'of 7 axes'
         $post | Should -Not -Match 'of 8 axes'
-        $post | Should -Match 'gitignored paths degrade to names only'
+        $post | Should -Match 'gitignored paths degraded to names only'
+    }
+
+    # --- capstone round 1 folds -----------------------------------------------------------------
+
+    It 'is SILENT when a concurrent session creates the anomalies file for the FIRST time' {
+        # The exemption used to cover only the CONTENTS of the concurrent-append targets, not their
+        # EXISTENCE, so the very first anomaly capture in a repo - which CREATES local-anomalies.md -
+        # changed the census and read as a breach. Their existence is as concurrent as their contents.
+        $r = New-GuardRepo
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
+            Set-Content (Join-Path $r '.clavity/.gitignore') '*' -Encoding ascii -NoNewline
+            # NOTE: neither skip-listed file exists at baseline. That is the whole point of the row.
+            $out = Invoke-ConsultAround $r {
+                Set-Content (Join-Path $r '.clavity/local-anomalies.md') '# h' -Encoding ascii
+                Set-Content (Join-Path $r '.clavity/discipline-reaching.jsonl') '{}' -Encoding ascii
+            }
+            $out | Should -Not -Match 'VERSION CONTROL CHANGED'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS instead of going silent when it cannot create its own state directory' {
+        # MEASURED before the fix with a paired control: with TMPDIR pointing at a FILE, mkdir -p
+        # fails, agy_guard_state_file returns 1, and a bare `|| exit 0` dropped the consult in
+        # total silence - 0 bytes, versus 410 for the control - never reaching the warning whose own
+        # comment names this exact case. Silence from a guard reads as "verified clean".
+        $r = New-GuardRepo
+        $blocker = Join-Path ([IO.Path]::GetTempPath()) ("guardblock-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            Set-Content $blocker 'not a directory' -Encoding ascii
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ TMPDIR = ($blocker -replace '\\','/') }).StdOut
+            $out | Should -Match 'guard failed to initialize'
+        } finally {
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $blocker -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'actually compares HEAD in degraded mode instead of only claiming to' {
+        # The degraded branch emitted "Only HEAD and stash were fully compared" and then exited BEFORE
+        # $before and $after were ever computed - it compared nothing at all. A guard certifying a
+        # check it never ran is the exact false confidence this file exists to prevent.
+        #
+        # THIS ROW IS BEHAVIOURAL ON PURPOSE. The first version asserted the source text did not
+        # contain 'were fully compared' - and it FAILED, matching the COMMENT above that quotes the old
+        # wording to explain the fix. A source-text assertion cannot tell a live message from prose
+        # about it, so it is the wrong instrument twice over. Run the path instead.
+        $r = New-GuardRepo
+        $d = Join-Path ([IO.Path]::GetTempPath()) ("degr-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            # Copy all three hooks: pre sources the lib by its OWN dirname, so the copy must be complete.
+            Copy-Item $script:Pre  (Join-Path $d 'agy-consult-guard-pre.sh')
+            Copy-Item $script:Post (Join-Path $d 'agy-consult-guard-post.sh')
+            Copy-Item $script:Lib  (Join-Path $d 'agy-consult-guard-lib.sh')
+            # Force the no-hashing-tool branch on the COPY only - never on the shipped file.
+            $libCopy = Join-Path $d 'agy-consult-guard-lib.sh'
+            $txt = [IO.File]::ReadAllText($libCopy) -replace '(?m)^agy_guard_have_hash\(\) .*$', 'agy_guard_have_hash() { return 1; }'
+            [IO.File]::WriteAllText($libCopy, $txt)
+            ($txt -match 'agy_guard_have_hash\(\) \{ return 1; \}') | Should -BeTrue -Because 'the probe must actually apply, or this row proves nothing'
+
+            $p = Payload 'mcp__plugin_clavity_clavity-ls__agy_ask' '' $r
+            Invoke-BashHook -HookPath (Join-Path $d 'agy-consult-guard-pre.sh') -Payload $p | Out-Null
+            # Move HEAD. If degraded mode still exits before comparing, this goes completely undetected.
+            Push-Location $r; Set-Content 'z.txt' 'z' -Encoding ascii; git add z.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath (Join-Path $d 'agy-consult-guard-post.sh') -Payload $p).StdOut
+
+            $out | Should -Match 'VERSION CONTROL CHANGED' -Because 'HEAD moved, and HEAD is not a hashed axis - degraded mode can and must still catch it'
+            $out | Should -Match 'committed-HEAD'
+            $out | Should -Match 'may UNDERSTATE what changed' -Because 'the caveat must travel with the finding, not replace it'
+        } finally {
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'produces a correct census for a directory with many entries' {
+        # Guards the ONE-PROCESS hashing rewrite. The per-file form was replaced because it cost
+        # ~470ms PER ENTRY on Git Bash (12 entries 5.8s, 100 entries 47.2s) and the census runs twice
+        # per consult. The rewrite zips digests to entries BY POSITION, so an off-by-one or an
+        # ordering slip would mislabel every entry - this row is what catches that.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path $c -Force | Out-Null
+            0..39 | ForEach-Object { Set-Content (Join-Path $c "f$_.txt") "body$_" -Encoding ascii }
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+            $out = & bash -lc $sh
+            # Every entry present exactly once, each with a 64-hex digest - not a shared or empty one.
+            0..39 | ForEach-Object { $out | Should -Match "f$_\.txt=[0-9a-f]{64}," }
+            # Distinct bodies must yield distinct digests: a zip bug would repeat one digest.
+            $digests = [regex]::Matches($out, '=([0-9a-f]{64}),') | ForEach-Object { $_.Groups[1].Value }
+            ($digests | Sort-Object -Unique).Count | Should -Be 40
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
