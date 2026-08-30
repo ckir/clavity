@@ -46,6 +46,37 @@ other seat's. A seat that finds nothing new says exactly that — "no new findin
 section with restated or trivial observations to look useful. Close every panel round, including this
 one, with a single-line PANEL VERDICT summarizing the round's outcome.
 
+## Safety envelope (every escalation round, no exceptions)
+A bare "review-only" once let the peer write to the tree anyway, and this repository's
+`.clavity/agy-marks/skipped.log` records several such breaches. Wrap every Step 2 round:
+
+1. **Snapshot before** - capture `git status --short`.
+2. **Forbidden-actions banner** - state in the payload: "REVIEW-ONLY. Do not edit, create, move, or
+   delete any file. Do not run mutating commands. Respond with analysis only."
+3. **Permission to pass** - the peer may decline or say it needs more; it must not act.
+4. **Point at files, not summaries** - you already send the artifact's PATH rather than its text.
+   Any measure-and-reproduce framing MUST also name a scratch dir (`.clavity/scratch/<topic>/`) so
+   the peer never writes to cwd. Prepare it through the shipped writer FIRST - it asserts the
+   `.clavity/` shield before anything is written there, and it fails closed. It takes a concrete
+   FILE path, never a bare directory:
+
+```bash
+if ! bash "<BASE>/../../hooks/agy-mark.sh" prepare "scratch/<topic>/notes.md"; then
+  # ABORT the round and say why. A skill that ignores this exit code converts a clean refusal into
+  # a mid-run crash on the next write.
+  echo "adversarial-panel-review: ABORTING - could not prepare a shielded .clavity/ directory for scratch/<topic>/notes.md." >&2
+  exit 1
+fi
+```
+
+5. **Diff after** - re-check `git status` against the before-snapshot. If the tree changed, the peer
+   breached review-only: surface it loudly, best-effort revert only paths that were clean before
+   (never a blind `git checkout -- .`), and halt-and-ask your human.
+
+WARNING: `git status` is a hygiene check, not a boundary. It cannot see ignored paths. The automatic
+consult guard covers the `.clavity/` shield, `.env` and `.claude/settings.local.json`; writes
+elsewhere under an ignored path remain invisible to both.
+
 ### Step 2 — agy escalation (high-leverage)
 For a high-leverage artifact only, route the artifact to the live agy peer for an independent second-model
 panel. Precheck the peer is idle, then send the review request over your driver's review-ask transport using
