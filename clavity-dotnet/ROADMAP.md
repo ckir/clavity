@@ -1977,6 +1977,100 @@ merits. **If Part B cannot be made to work inside the current shape, that is a f
 **Provenance.** Richest surviving copy of both halves: `.clavity/seams/capstone-gapclosure-r27.md:11-40`.
 Rationale and the compaction post-mortem: the `feedback-use-the-disciplines-own-vocabulary` memory.
 
+### §22 — The leaking redirect order in four plugin hooks — ▶ **OPEN, promoted from the anomalies file 2026-08-30**
+
+**Promoted at triage, not captured as opinion.** This was anomaly 1 of 2 in `.clavity/local-anomalies.md`,
+raised during the AGY-CAPSTONE round-8 Law-3 sweep on step 5. The capture recorded the pattern as
+confirmed by grep but explicitly noted that **each file was not individually measured**. Triage is the
+verification gate, so both the mechanism and the per-site reachability were measured before promoting.
+
+**The mechanism, measured 2026-08-30 with a full paired control.** `CMD > "$f" 2>/dev/null` does NOT
+suppress a failure to OPEN `$f`. The shell applies redirections left to right, so at the moment the open
+fails stderr is still the terminal, and a raw OS diagnostic reaches the operator above the script's own
+message. `CMD 2>/dev/null > "$f"` is silent. Target was a path whose parent is a regular file, so the
+open cannot succeed on any platform:
+
+| form | target | rc | what the operator sees |
+|---|---|---|---|
+| `: > "$f" 2>/dev/null` | unopenable | 1 | `bash: line 1: blocker/child: Not a directory` |
+| `: 2>/dev/null > "$f"` | unopenable | 1 | *(nothing)* |
+| `: > "$f" 2>/dev/null` | writable | 0 | *(nothing)* |
+| `: 2>/dev/null > "$f"` | writable | 0 | *(nothing)* |
+
+The two writable rows are the control: they prove the difference is the ORDER and not the fixture. The
+`>>` append form behaves identically to `>`, so the append sites are not a separate case.
+
+**The sites: 8 per plugin half, 16 in total, across 4 byte-identical pairs.** 🔴 **The capture said
+"six plugin hooks" and that count is WRONG** — it is four files per half. The line citations in the capture
+were all correct. A sweep with a paired regex control (the safe order matches 2 sites in `agy-mark.sh` and
+6 in `agy-shield-lib.sh`, both already fixed in the step-5 range) found no site the capture had missed.
+
+| file (both halves) | line | site | why the open can fail |
+|---|---|---|---|
+| `agy-anomaly-capture-reminder.sh` | 109 | `if : > "$_s" 2>/dev/null; then` | **the loop's designed control flow.** It iterates `${TMPDIR:-/tmp}` then `$HOME/.clavity-tmp` precisely so that "an unusable location is skipped". On a host with an unwritable TMPDIR the first iteration ALWAYS fails, leaks a raw diagnostic, then succeeds on HOME — an OS error from a hook that worked correctly. |
+| `agy-anomaly-capture-reminder.sh` | 131 | `: > "$sent" 2>/dev/null` | lower: `$sent`'s directory already proved readable earlier in the same run. |
+| `agy-consult-guard-pre.sh` | 41 | `printf ... > "$tmp" 2>/dev/null && mv -f` | `$tmp` is `$sf.tmp.$$`; nothing in the hook establishes that `$sf`'s directory is writable. |
+| `agy-discipline-reaching.sh` | 130, 132 | `printf ... >> "$root/.clavity/.gitignore" 2>/dev/null` | the preceding `mkdir -p "$root/.clavity" 2>/dev/null` has its failure **explicitly tolerated** (no `\|\| exit`), so an unwritable repository reaches the append. Same shape as the two sites already fixed in range. |
+| `agy-discipline-reaching.sh` | 148 | jsonl append | guarded by `[ -d "$out" ] \|\| mkdir -p "$out" 2>/dev/null \|\| exit 0`, so the directory exists — but an **existing unwritable** directory passes `[ -d ]` and the append still fails. |
+| `assertion-strength-reminder.sh` | 42 | `if : > "$_dw" 2>/dev/null; then` | the same two-candidate loop as `:109`, with the same explicit "no writable location" fallback message. |
+| `assertion-strength-reminder.sh` | 121 | `if : > "$_s" 2>/dev/null; then` | as above. |
+
+🔴 **THE REACHABILITY ARGUMENT IS THE `2>/dev/null` ITSELF.** Every one of these sites carries that
+redirect because its author expected the open to fail; two of them are wrapped in loops whose stated
+purpose is to skip an unusable location, and two more sit after a `mkdir` whose failure is deliberately
+ignored. The suppression is there because the failure is on the designed path — and it does not work.
+
+**Scoping is the owner's.** These are installer-payload files, so by the capstone's own table a defect
+here is class 2 → BLOCKING, across 8 files in two byte-identical halves; the change must mirror and pass
+`plugin-hooks-payload.Tests.ps1` + `check-seed-artifacts-synced.sh`. The edit is one token per site, but
+⚠ **a fix is unreviewed code, and `agy-discipline-reaching.sh:120-122` carries a comment recording
+exactly that cost in this very file** — a round-1 fix pasted an unpatched idiom into a new branch and
+recreated the defect it had just closed. Worth considering: this shares a blast radius with §21 (plugin-
+shipped files, both halves, wants a panel and a capstone), so batching them would buy one review cycle
+instead of two.
+
+---
+
+### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere — ▶ **OPEN, promoted from the anomalies file 2026-08-30**
+
+🔴 **THE CAPTURE'S PREMISE WAS FALSE AND THE CORRECTED FINDING IS LARGER.** This was anomaly 2 of 2.
+It claimed the discipline-keyed marker "cannot represent more than one audited range", so auditing an
+older range "silently discards the record that the newer range was audited". Two of its three claims
+measure true; the load-bearing one does not.
+
+**True, and re-measured at triage:**
+- The marker is discipline-keyed — `docs/agy-disciplines-marker-contract.md:11-12`: one file
+  `<discipline>.head`, content one sha "and nothing else".
+- The ancestry: `git merge-base --is-ancestor 20f38cc 62eb46f` exits 0, so the older range's tip is indeed
+  an ancestor of the newer one's.
+
+🔴 **FALSE: the marker was never a coverage attestation.** `plugin/skills/agy-test-audit/SKILL.md:313-314`
+specifies **ambient `HEAD`**, and carries a note recording that this line said "the audited sha ... not
+ambient HEAD" **until 2026-08-26**, when it was corrected because it contradicted the command four lines
+above it. The hook agrees: `agy-test-audit-reminder.sh:77` reads one value and passes it to
+`still_describes_head`, which goes quiet when the marker equals HEAD **or is an ancestor with nothing
+executable landed since**. It is a nudge debounce, and a debounce token is supposed to hold one value.
+
+**So the real defect is the absent record.** `docs/agy-capstone-ledger.md` exists and carries a range
+column; **there is no AGY-TEST-AUDIT ledger at all.** Audited ranges live only in per-topic memory files
+— volatile state kept in static prose, which is precisely the shape the type-mismatch law names. The
+capstone has a ledger because its completion gate requires a row before a plan may be declared complete;
+the audit has no such gate and therefore no record.
+
+⚠ **The consequence is already measured and written into the tree.**
+`agy-test-audit-reminder.sh:70-74` records that committing the capstone's ledger row advances HEAD and
+silences the nudge — "which is why two test-audits were owed with nothing nudging for either."
+
+⚠ **Also corrected at triage: two markers in this repo hold an audited tip rather than ambient HEAD**
+(`agy-capstone.head` and `agy-test-audit.head`, both `62eb46f`), written under the superseded rule. They
+are harmless — executable changes landed after that sha, so `still_describes_head` is false and the
+discipline re-fires, which is the pessimistic and safe direction — but they are not what the contract
+specifies, and the reasoning that produced them is stale.
+
+**The open question, deliberately not decided here:** a ledger mirroring the capstone's, a completion gate
+that requires a row, or an explicit accepted limitation that audited ranges are not tracked. That is a
+design fork and belongs to the owner.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
