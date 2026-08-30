@@ -42,6 +42,57 @@ public class SemanticEchoTests : IDisposable
     }
 
     [Fact]
+    public void The_tail_window_is_pinned_at_BOTH_edges_not_just_the_far_one()
+    {
+        // AGY-TEST-AUDIT 2026-08-30. TailLines is the whole tolerance of this check, and only its TIGHT
+        // edge was pinned: the positive row puts the echo 2 non-blank lines from the end and the
+        // negative row puts it 11, so every value from 3 to 10 satisfied the suite equally.
+        // MEASURED, and it is why this row is shaped like this: TailLines -> 2 REDDENS a row already,
+        // so the tight edge IS covered - but TailLines -> 10 left all 21 green. The gap was the LOOSE
+        // edge alone. Pinning both means the constant cannot drift either way without a named failure.
+        // THE BLANK LINES ARE DELIBERATE: the window counts NON-BLANK lines, so a fixture built from
+        // consecutive lines would still pass if someone changed it to count raw lines instead.
+        var justInside = "ECHO: the final line of the file\n\nanalysis\n\n[VERDICT: ALIGNED]\n";
+        Assert.True(SemanticEcho.IsSatisfied(justInside, "the final line of the file"));
+
+        var justOutside = "ECHO: the final line of the file\n\nanalysis\n\nmore\n\n[VERDICT: ALIGNED]\n";
+        Assert.False(SemanticEcho.IsSatisfied(justOutside, "the final line of the file"));
+    }
+
+    [Fact]
+    public void A_null_or_blank_answer_with_a_usable_expectation_is_NOT_satisfied()
+    {
+        // AGY-TEST-AUDIT 2026-08-30. IsSatisfied guards a null answer before splitting it, and nothing
+        // exercised that guard: the existing null rows pass a null EXPECTATION, which returns true one
+        // line above and never reaches the split. MEASURED: removing the guard left all 21 rows green,
+        // while a null answer carrying a usable expectation would throw inside Split - and a truncated
+        // reply is precisely when this is called.
+        // THE SIBLING CLASS ALREADY HAS THIS ROW. TerminalTokenTests carries
+        // Null_or_blank_answer_with_an_expectation_is_NOT_satisfied for the identical guard shape.
+        Assert.False(SemanticEcho.IsSatisfied(null, "the final line of the file"));
+        Assert.False(SemanticEcho.IsSatisfied("", "the final line of the file"));
+        Assert.False(SemanticEcho.IsSatisfied("   \n\t\n", "the final line of the file"));
+    }
+
+    [Fact]
+    public void Markdown_UNDERSCORE_emphasis_around_the_echo_still_counts()
+    {
+        // AGY-TEST-AUDIT 2026-08-30. Normalise strips > ` * _ and whitespace so formatting never fails an
+        // honest echo. The suite covered the blockquote, the backtick and the asterisk; the underscore was
+        // the one character in that set with no row.
+        // THE UNDERSCORES GO ON THE EXPECTATION SIDE, AND THE FIRST VERSION OF THIS ROW PUT THEM ON THE
+        // REPLY SIDE AND WAS VACUOUS. A mutant dropping '_' from the Trim set left it GREEN, because
+        // IsSatisfied matches with Contains, not equality: "_the final line_".Contains("the final line")
+        // holds whether or not the underscore was stripped. Stripping is only OBSERVABLE when the
+        // decoration is on the expectation, where Normalise builds the NEEDLE - an undecorated reply then
+        // cannot contain a needle that still carries its underscores. Same shape as the existing row
+        // An_expected_echo_carrying_its_OWN_markdown_matches_an_undecorated_quote, for the other characters.
+        var undecoratedReply = "the final line of the file\n\n[VERDICT: ALIGNED]\n";
+        Assert.True(SemanticEcho.IsSatisfied(undecoratedReply, "_the final line of the file_"));
+        Assert.True(SemanticEcho.IsSatisfied(undecoratedReply, "__the final line of the file__"));
+    }
+
+    [Fact]
     public void A_reply_that_never_echoes_is_NOT_satisfied()
     {
         // The lone-verdict-line shape: a peer that never read the artifact cannot produce its last line.
