@@ -6,9 +6,17 @@
 what is forbidden, (b) gives it a legal place to work, and (c) lets the driver DETECT a breach
 afterwards - including breaches the current detection cannot see.
 
-**Success criterion, checkable.** After this change, a peer write to `.clavity/` outside its sanctioned
-scratch directory, or to a named sensitive path, is reported by the automatic guard. Today it is not:
-measured, `git status --short` reports a clean run after such a write.
+**Success criterion, checkable — and deliberately narrower than the first draft's.** After this change
+the automatic guard reports: a change to the `.clavity/` shield file; a change to a named sensitive path
+(`.env`, `.claude/settings.local.json`); and the appearance or disappearance of any top-level entry
+under `.clavity/`. Today none of these is reported - measured, `git status --short` returns clean after
+all of them.
+
+⚠ **It does NOT report arbitrary writes inside driver-written subtrees** (`seams/`, `agy-marks/`,
+`scratch/`). The first draft claimed to catch "a peer write to `.clavity/` outside its sanctioned
+scratch directory"; a panel seat correctly pointed out that the revised design cannot honour that, and
+the criterion is narrowed here rather than left overclaimed. Files in those subtrees are inert - nothing
+executes or trusts them - whereas the shield governs whether the whole directory is exposed to git.
 
 ---
 
@@ -118,6 +126,19 @@ minus `scratch/`. An adversarial panel killed that (section 2.3); what follows i
   publishes untriaged anomalies and scratch content. It is tiny, and no driver rewrites it mid-consult.
 - An explicit sensitive-path list, hashed by path and content when present: `.env`,
   `.claude/settings.local.json`.
+- **The sorted list of top-level entry NAMES under `.clavity/`** - names only, not contents, not
+  recursive. This is what catches a peer dropping a new file (`.clavity/backdoor.ps1`) that no
+  content-hash of three named paths would ever see. It is one `readdir`, so it stays cheap, and it is
+  concurrency-safe in practice because the churn under `.clavity/` happens *inside* `seams/`,
+  `agy-marks/` and `scratch/` - a NEW top-level entry appears about once per install, not once per
+  consult.
+
+  ⚠ **Do not implement this as an allowlist of expected names.** Measured on this repository today,
+  `.clavity/` holds **ten** top-level entries (`RUNBOOK-sessionstart-install.md`, `agy-marks`,
+  `agy-model`, `consult-baseline`, `discipline-reaching.jsonl`, `local-anomalies.md`, two `.bak` files,
+  `scratch`, `seams`) - and that set drifts as tooling is added. An allowlist would red on legal input
+  the first time a new runtime file appears. Hash the observed set at PRE and compare to the observed
+  set at POST; the guard needs to know only that it CHANGED, not what the legitimate set is.
 
 **What it deliberately does NOT cover, beyond `scratch/` — and this is the panel's doing.**
 `.clavity/seams/`, `.clavity/agy-marks/` and `.clavity/local-anomalies.md` are **driver-written and
@@ -227,18 +248,29 @@ error -> exit 0"). The new axis MUST preserve that: an unreadable file or missin
 an empty component, never a non-zero exit. A PreToolUse hook that exits non-zero BLOCKS the tool call.
 
 🔴 **But fail-open here has a failure mode the other axes do not, and it must be designed against.**
-If `.clavity/` is unreadable, the axis contributes the same empty value at PRE and at POST. The two
-fingerprints then **compare equal, and the guard reports a CLEAN consult** - the exact false confidence
-this whole spec exists to remove, reintroduced by the fix for it. "I could not look" and "nothing
-changed" must not produce the same bytes.
+If a member of the set cannot be read, the naive implementation contributes the same empty value at PRE
+and at POST. The two fingerprints then **compare equal, and the guard reports a CLEAN consult** - the
+exact false confidence this whole spec exists to remove, reintroduced by the fix for it. "I could not
+look" and "nothing changed" must not produce the same bytes.
 
-The design therefore requires the axis to be **self-distinguishing**: it contributes a value that
-encodes *whether the read succeeded*, not only what was read (for example a sentinel component when the
-directory exists but cannot be enumerated). A mismatch between "readable at PRE, unreadable at POST"
-must be reported, and a consult that could not check this axis at all must emit the same class of
-`PARTIALLY VERIFIED` warning the no-hashing-tool path already emits at
-`agy-consult-guard-post.sh:49-52`. That precedent is the model: the existing guard already refuses to
-let a degraded check pass silently, and this axis must not be the exception.
+**The axis is therefore FOUR independent components, not one blended hash**, joined by a delimiter that
+is not `|`:
+
+    <shield-hash-or-sentinel>:<env-hash-or-sentinel>:<settings-hash-or-sentinel>:<toplevel-names-hash>
+
+Two properties follow, and both are required:
+
+1. **Per-member state is recoverable at POST**, so the warning can name WHICH member changed. A single
+   blended hash cannot support the enumeration section 2.0 requires - a panel seat raised exactly this
+   and it is correct.
+2. **Each component distinguishes "absent", "unreadable" and "present with content X"** using distinct
+   delimiter-free sentinels. Absent is a legitimate steady state (`.env` usually does not exist); it must
+   compare equal to itself across a clean consult, and must NOT compare equal to "unreadable".
+
+A member that was readable at PRE and unreadable at POST must be reported, and a consult that could not
+check the axis at all must emit the same class of `PARTIALLY VERIFIED` warning the no-hashing-tool path
+already emits at `agy-consult-guard-post.sh:49-52`. That precedent is the model: the existing guard
+already refuses to let a degraded check pass silently, and this axis must not be the exception.
 
 **Scope of the hole this closes - stated so it is not oversold.** The axis covers `.clavity/` and two
 named paths. It does NOT cover arbitrary gitignored files elsewhere in the tree (a gitignored
@@ -268,6 +300,26 @@ finding as a side effect.
 ⚠ **One seat's stated mechanism was wrong while its conclusion was right.** Folding the Resource
 Vampire finding as stated would have produced a size-based fallback for a problem that does not exist on
 the hot path. Verifying the mechanism, not just the conclusion, is what turned it into the right change.
+
+### 2.4 Panel round 2 - the fix reopened the hole, and a seat caught it
+
+Round 2 was RED with four more findings: three confirmed, one refuted. The round was worth running
+specifically because a bespoke seat was staffed at *"where does this fix introduce the defect it was
+written to prevent?"* - and that is the seat that found the worst item.
+
+| finding | verdict | how it was settled |
+|---|---|---|
+| The named 3-path set ignores NEW files dropped into `.clavity/`, so a payload write reports CLEAN - **"you fixed the false positive by reopening the literal hole you started with"** | **CONFIRMED, and worse than stated** | Correct, and it also broke the spec's own success criterion. Fixed by adding a top-level NAME census, and by narrowing the success criterion instead of leaving it overclaimed. The seat assumed a small known set; measured, `.clavity/` holds **ten** top-level entries and drifts - which is why the census must hash the observed set rather than check an allowlist. |
+| `post` cannot name which member changed if the axis is one blended hash | **CONFIRMED** | The axis is now four independently-serialized components. |
+| The fail-open text still describes directory enumeration, vestigial from the killed design | **CONFIRMED** | Rewritten for a named set, with explicit absent / unreadable / present sentinels. A genuine internal inconsistency my own consistency pass missed because I re-read only the top of section 2. |
+| The hook matcher omits agy's own shell tool (`run_command`), so the guard never fires for peer shell execution | **REFUTED** | This is a **Claude Code** hook (`${CLAUDE_PLUGIN_ROOT}`, `PreToolUse`/`PostToolUse`) matching on *Claude's* tool names. It brackets the driver's `agy_ask` call; the peer runs in a separate process and its tool calls are never visible to it. Adding `run_command` would match nothing. The seat misread whose tools the matcher covers. |
+
+**The lesson this round paid for:** the round-1 fix was correct about concurrency and *introduced* a
+false-GREEN while removing a false-RED. Nothing in rounds 0 or 1 would have caught it, because both were
+looking at the design as proposed rather than at the delta between designs. **A seat aimed explicitly at
+the fix, rather than at the artifact, is what found it** - and this repository already had the evidence
+that it would (three consecutive rounds in one file, each finding a defect created by the previous
+round's fix).
 
 ## 3. Tasks 2 and 3 - close the two skill gaps
 
@@ -325,6 +377,9 @@ gate that reds on legal input is its own defect:
    concurrent driver session legitimately writes; a guard that reds here is worse than no guard, because
    it trains the operator to dismiss the warning. **This row is what the panel bought** (section 2.3).
 3. **Reds on a sensitive path:** a write to `.claude/settings.local.json` is REPORTED.
+3a. **Reds on a dropped payload:** creating `.clavity/backdoor.ps1` between pre and post is REPORTED by
+   the top-level name census. **This is the row that pins the hole the round-1 fix reopened**
+   (section 2.4); without it the design passes every other row while failing its own success criterion.
 3b. **The sentinel is delimiter-free:** whatever value the axis contributes on an unreadable read
    contains no `|`. Assert it directly rather than trusting the literal to stay safe through edits.
 4. **Fail-open preserved:** with `.clavity/` absent or unreadable, the hook still exits 0 and the
