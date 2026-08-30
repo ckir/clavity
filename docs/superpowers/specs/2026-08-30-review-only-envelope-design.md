@@ -126,12 +126,30 @@ minus `scratch/`. An adversarial panel killed that (section 2.3); what follows i
   publishes untriaged anomalies and scratch content. It is tiny, and no driver rewrites it mid-consult.
 - An explicit sensitive-path list, hashed by path and content when present: `.env`,
   `.claude/settings.local.json`.
-- **The sorted list of top-level entry NAMES under `.clavity/`** - names only, not contents, not
-  recursive. This is what catches a peer dropping a new file (`.clavity/backdoor.ps1`) that no
-  content-hash of three named paths would ever see. It is one `readdir`, so it stays cheap, and it is
-  concurrency-safe in practice because the churn under `.clavity/` happens *inside* `seams/`,
-  `agy-marks/` and `scratch/` - a NEW top-level entry appears about once per install, not once per
-  consult.
+- **The top-level census of `.clavity/`**: the sorted list of entry NAMES, **plus the content hash of
+  each top-level FILE except a named concurrent-write exclusion set**. Not recursive. This catches both a
+  peer dropping a new file (`.clavity/backdoor.ps1`) and a peer silently corrupting an existing one.
+
+  **Stored as the NAME LIST ITSELF, not a hash of it.** `post` must be able to say *which* entry
+  appeared or vanished, and a one-way hash of the set cannot support that - a panel seat raised exactly
+  this. The list is small (ten entries today, short names), so it is stored literally, escaped for both
+  delimiters. If it ever exceeds a sane cap the component degrades to a hash **and says so**, reporting
+  "the top-level set changed, enumeration unavailable" rather than silently losing the detail.
+
+  **Sorted with `LC_ALL=C`, mandatory.** Collation order is locale-dependent, so a `LANG` difference
+  between the PRE and POST environments would reorder the list and manufacture a false RED. The same
+  file already does this at `agy-consult-guard-lib.sh:112` for the `.git/hooks` walk; follow that
+  precedent rather than inventing one.
+
+  **The concurrent-write exclusion set is `local-anomalies.md` and `discipline-reaching.jsonl`** -
+  measured: the first is appended by the open-issues capture path (designed for concurrent atomic
+  appends), the second is appended per session by `agy-discipline-reaching.sh` and stands at 30 KB.
+  Content-hashing either would manufacture a false RED. Their NAMES are still censused, so deleting one
+  is still caught.
+
+  ⚠ **If a future concurrent writer is added and not excluded, this produces a false RED.** That is the
+  deliberate direction: a false RED is loud, gets diagnosed, and gets fixed; a false GREEN is silent and
+  is the failure this whole spec exists to remove. For a guard, prefer the noisy failure.
 
   ⚠ **Do not implement this as an allowlist of expected names.** Measured on this repository today,
   `.clavity/` holds **ten** top-level entries (`RUNBOOK-sessionstart-install.md`, `agy-marks`,
@@ -144,10 +162,12 @@ minus `scratch/`. An adversarial panel killed that (section 2.3); what follows i
 `.clavity/seams/`, `.clavity/agy-marks/` and `.clavity/local-anomalies.md` are **driver-written and
 concurrent by design**, so hashing them manufactures false breach reports (section 2.3). They are out.
 
-The set is therefore **three named paths**, which is what makes the rest of this design work: it is
-cheap regardless of repository age, it cannot collide with a concurrent session's legitimate writes, and
-because it is a fixed enumerable list, `post` can name exactly which member changed instead of trying to
-invert a hash.
+The axis is therefore **three named paths plus a bounded top-level census** - never a recursive walk.
+That is what makes the rest of the design work: it is cheap regardless of repository age, it cannot
+collide with a concurrent session's legitimate writes, and every component is stored so that `post` can
+name what changed rather than only that something did. **The enumeration property is a constraint on the
+whole axis, not a courtesy** - a component stored as a bare one-way hash cannot satisfy it, which is why
+the census carries its name list literally.
 
 **Two mechanisms rejected, and why - so they are not re-proposed.**
 
@@ -220,10 +240,16 @@ hash to recover which file moved (a panel seat raised exactly this, correctly), 
 three named paths and say which one differs. **The enumeration requirement is what forces the design to
 stay small** - it is a constraint, not a nice-to-have.
 
-**Delimiter safety.** `agy_guard_quad` joins fields with `|` and `post` splits on it positionally, so
-any value this axis contributes - including any "unreadable" sentinel from the fail-open path above -
-**MUST NOT contain a `|`**. A sentinel carrying the delimiter would shift every later field and corrupt
-the comparison silently. Constrain the sentinel to a fixed delimiter-free literal, and pin it with a row.
+**Delimiter safety - BOTH delimiters, which is the part that is easy to get half right.**
+`agy_guard_quad` joins fields with `|` and `post` splits on it positionally; this axis joins its own
+components with `:`. **Every value the axis contributes - the sentinels above and every censused entry
+name - must contain NEITHER `|` NOR `:`**, or it must be escaped.
+
+Banning only the outer delimiter is the trap: a sentinel like `ERROR:UNREADABLE` passes the `|` check
+and then shatters the INNER parse, misaligning the four components at POST and producing a false RED
+from the fail-open path. A panel seat caught exactly that after the first delimiter fold - the first fix
+was half a fix. Use fixed literals free of both characters, escape censused names, and pin both
+directions with rows.
 
 ### 2.1 A pre-existing defect this change must fix, not propagate
 
@@ -321,6 +347,27 @@ the fix, rather than at the artifact, is what found it** - and this repository a
 that it would (three consecutive rounds in one file, each finding a defect created by the previous
 round's fix).
 
+### 2.5 Panel round 3 - five findings, and the test plan was the weakest part
+
+Round 3 was RED with five, **all confirmed by measurement**. It was authorised by the owner because
+round 2 had found something worse than round 1 - the opposite of the pattern that says stop - and that
+judgement was right: this round found a shipped-ready test row that provided zero protection.
+
+| finding | verdict | how it was settled |
+|---|---|---|
+| **Row 6 was VACUOUS** - "unreadable BETWEEN pre and post" gives PRE a hash and POST a sentinel, so they differ and **every** implementation warns, including the defective one | **CONFIRMED - the best finding of the review** | Fixture reordered to unreadable-at-BOTH-ends, which is the only way to reach the `empty == empty` defect. Would have shipped as a row that "guards" the exact failure it cannot detect. |
+| The name-only census lets a peer silently corrupt the CONTENTS of any existing top-level file | **CONFIRMED** | Census extended to content-hash top-level files. Its own fix needed measurement: `local-anomalies.md` and `discipline-reaching.jsonl` (30 KB) are concurrent-append targets, so they are content-excluded and name-censused only. |
+| Banning only `\|` leaves the INNER `:` delimiter unprotected; `ERROR:UNREADABLE` shatters the component parse | **CONFIRMED** | The round-1 delimiter fold was half a fix. Both delimiters now banned/escaped. |
+| Locale collation makes the sorted census non-deterministic across environments -> false RED | **CONFIRMED** | `LC_ALL=C` mandated, following the existing precedent at `agy-consult-guard-lib.sh:112`. |
+| The census hash cannot name WHICH entry appeared, so the enumeration promise is still unmet for that component | **CONFIRMED** | The census is stored as the escaped NAME LIST rather than a hash, with a capped degrade-and-say-so path. |
+
+🔴 **The pattern across three rounds, and it is the finding about the process rather than the artifact:
+every round's worst item was created by the previous round's fix.** Round 1's concurrency fix opened the
+dropped-payload hole; round 2's census fix opened the content-tampering hole and left the enumeration
+promise unmet; round 1's delimiter fix was half a fix. **Two bespoke seats - one aimed at the fix rather
+than the artifact, one aimed at whether a test row can fail - found four of the last nine findings
+between them.** Staff both on any round that follows a fold.
+
 ## 3. Tasks 2 and 3 - close the two skill gaps
 
 **Task 2 - `agy-first` gets a legal scratch directory.** It currently prepares only
@@ -380,16 +427,28 @@ gate that reds on legal input is its own defect:
 3a. **Reds on a dropped payload:** creating `.clavity/backdoor.ps1` between pre and post is REPORTED by
    the top-level name census. **This is the row that pins the hole the round-1 fix reopened**
    (section 2.4); without it the design passes every other row while failing its own success criterion.
+3c. **Reds on content tampering of an existing top-level file:** overwriting `.clavity/agy-model` (a
+   file whose NAME does not change) is REPORTED. Pins the hole the name-only census left open.
+3d. **Accepts the concurrent-write exclusions:** appending to `.clavity/local-anomalies.md` and to
+   `.clavity/discipline-reaching.jsonl` is NOT reported. The second guard against a false RED; both are
+   measured concurrent-append targets.
 3b. **The sentinel is delimiter-free:** whatever value the axis contributes on an unreadable read
    contains no `|`. Assert it directly rather than trusting the literal to stay safe through edits.
 4. **Fail-open preserved:** with `.clavity/` absent or unreadable, the hook still exits 0 and the
    fingerprint is well-formed. A PreToolUse hook that exits non-zero blocks the tool call.
 5. **Field count:** the fingerprint has 8 components, asserted structurally rather than by matching the
    printed string.
-6. **"Could not look" is distinguishable from "nothing changed."** With `.clavity/` made unreadable
-   between PRE and POST, the guard must NOT report a clean consult - it must warn. **This is the row
-   that pins the failure mode the fix could otherwise introduce**, and it is the one to write first,
-   because a naive implementation passes every other row on this list while failing this one.
+6. **"Could not look" is distinguishable from "nothing changed."** The target is made unreadable
+   **BEFORE PRE and left unreadable through POST**, so both sides observe the same failure. The guard
+   must still NOT report a clean consult - it must emit `PARTIALLY VERIFIED`.
+
+   🔴 **THE FIXTURE ORDERING IS THE ENTIRE ROW, and the first draft of it was VACUOUS.** It said
+   "unreadable BETWEEN pre and post", which gives PRE a real hash and POST a sentinel. Those differ, so
+   **every implementation warns - including the defective one**, and the row would have passed on the
+   exact code it claims to guard. The defect at section 2 is `empty == empty` producing a false CLEAN,
+   and only an unreadable-at-BOTH-ends fixture can reach it. Caught by a panel seat staffed specifically
+   at vacuity; the general shape is in this repo's record already - *before trusting a row, ask what
+   would have to be true for it to FAIL.*
 7. **The degraded-mode count is self-checking** (section 2.1). With no hashing tool on PATH, the guard
    emits `PARTIALLY VERIFIED` and the number it names must EQUAL the count of `agy_guard_hash` call
    sites in `agy-consult-guard-lib.sh`. Deriving the expected value from the source rather than hard-
