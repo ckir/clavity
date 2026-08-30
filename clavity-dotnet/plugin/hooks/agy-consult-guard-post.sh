@@ -36,9 +36,14 @@ if ! sf=$(agy_guard_state_file "$sid" "$slot"); then
   # never reaching the "failed to initialize" warning below whose own comment names this exact
   # case ("e.g. TMPDIR unwritable"). Control warned (410 bytes); this path emitted 0 bytes.
   # Silence from a guard reads as "verified clean", which is the one thing it must never do.
-  if [ "$cat" = sync ]; then
-    emit "AGY CONSULT GUARD - NOT VERIFIED (guard failed to initialize): no VCS baseline was captured for this review-only agy consult, because the Pre hook could not write its state file (e.g. an unwritable TMPDIR). This consult was therefore NOT checked for peer-made version-control changes - confirm manually that the peer changed nothing."
-  fi
+  #
+  # NOT gated on the slot, deliberately, and this is the correction of an earlier fix of mine that
+  # WAS. The two no-baseline situations are different: a baseline FILE that is simply absent is
+  # genuinely ambiguous for an async terminal (there may have been no matching send), which is why
+  # the block below still gates on sync. But reaching THIS branch means the state DIRECTORY could not
+  # be created at all - unambiguous, whatever the slot. MEASURED: an async consult with an unwritable
+  # TMPDIR emitted 0 bytes and read as a clean consult.
+  emit "AGY CONSULT GUARD - NOT VERIFIED (guard failed to initialize): no VCS baseline could be captured for this review-only agy consult, because the guard could not create its state directory (e.g. an unwritable TMPDIR). This consult was therefore NOT checked for peer-made version-control changes - confirm manually that the peer changed nothing."
   exit 0
 fi
 

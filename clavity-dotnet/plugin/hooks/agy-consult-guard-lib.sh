@@ -132,9 +132,23 @@ agy_guard_dir_digest() {
   if [ "${#files[@]}" -gt 0 ]; then
     local digests=() line
     while IFS= read -r line; do digests+=("$line"); done < <(agy_guard_hash_files "${files[@]}")
-    # Fail LOUD on a short count rather than hashing a truncated stream into a plausible-looking
-    # digest - the same rule the census fallback follows, for the same reason.
-    if [ "${#digests[@]}" -ne "${#files[@]}" ]; then printf 'UNREADABLE'; return 0; fi
+    # A short count means the batch did not answer for every file: a file vanished mid-read, one was
+    # locked, or the argument list was refused. Do NOT hash a truncated stream into a plausible
+    # digest - and do NOT return a bare sentinel either.
+    #
+    # Returning 'UNREADABLE' here was a CONSTANT-ANSWER defect, and the third of its kind in this
+    # file. Both the pre and the post hook would return the same 'UNREADABLE', they would compare
+    # EQUAL, and the guard would report a clean consult while seams/ changed underneath it - the
+    # monitor blinded permanently on any repository big enough to reach the failure. That the census
+    # already falls back per-file here and this function did not was an inconsistency, not a design.
+    # Reachability is bounded but real: 5000 files hash fine, and the ceiling was NOT established
+    # (the 20000-file fixture timed out before the measurement could run), so the cliff's distance
+    # is unknown rather than proven far away - which is exactly why the fallback must not be a
+    # constant.
+    if [ "${#digests[@]}" -ne "${#files[@]}" ]; then
+      digests=()
+      for p in "${files[@]}"; do digests+=("$(agy_guard_file_state "$p")"); done
+    fi
     h=$( { (cd "$dd" 2>/dev/null && find . -print0 2>/dev/null | LC_ALL=C sort -z)
            printf '%s\n' "${digests[@]}"; } | agy_guard_hash )
   else

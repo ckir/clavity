@@ -646,4 +646,57 @@ Describe 'agy-consult-guard' {
             $bare | Should -Not -Match 'scratch/t/peer\.md'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'never lets the seams digest collapse to a constant on a short hash count' {
+        # Capstone R5, and the THIRD appearance of one defect class in this file: a guard returning
+        # the same answer regardless of its input while reporting clean. The first two were
+        # agy_guard_hash's NOHASH and the census's all-UNREADABLE fallback. This one returned a bare
+        # 'UNREADABLE' when the batch hash answered for fewer files than it was given - so pre and
+        # post both produced 'UNREADABLE', they compared EQUAL, and seams/ could change underneath a
+        # consult that reported clean. The census already fell back per-file here; this function did
+        # not, which was an inconsistency rather than a design.
+        $d = Join-Path ([IO.Path]::GetTempPath()) ("dd-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            $libCopy = Join-Path $d 'lib.sh'
+            Copy-Item $script:Lib $libCopy
+            # Force the short-count path on every call by neutering ONLY the batch hasher.
+            $txt = [IO.File]::ReadAllText($libCopy)
+            $mut = [regex]::Replace($txt, "agy_guard_hash_files\(\) \{.*?\n\}\n",
+                "agy_guard_hash_files() {`n  printf 'deadbeef\n'`n}`n", 'Singleline')
+            [IO.File]::WriteAllText($libCopy, $mut)
+            ($mut -match "printf 'deadbeef") | Should -BeTrue -Because 'the mutant must apply, or this row proves nothing'
+
+            $c = Join-Path $d '.clavity'
+            New-Item -ItemType Directory -Path (Join-Path $c 'seams') -Force | Out-Null
+            Set-Content (Join-Path $c 'seams/a.md') 'one' -Encoding ascii
+            Set-Content (Join-Path $c 'seams/b.md') 'two' -Encoding ascii
+            $sh = "set +e; . '$($libCopy -replace '\\','/')'; agy_guard_census '$($c -replace '\\','/')'"
+            $before = & bash -lc $sh
+            Set-Content (Join-Path $c 'seams/b.md') 'CHANGED' -Encoding ascii
+            $after = & bash -lc $sh
+            $after | Should -Not -Be $before -Because 'the fallback must still track content, not answer the same thing every time'
+            $before | Should -Not -Match 'seams=UNREADABLE' -Because 'a bare sentinel here compares equal to itself and blinds the monitor'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'warns on an unwritable state directory for an ASYNC consult too' {
+        # Capstone R5, correcting an earlier fix of MINE that was too narrow. The two no-baseline
+        # situations are different: a baseline FILE that is simply absent is genuinely ambiguous for
+        # an async terminal, because there may have been no matching send - that one still gates on
+        # sync. But failing to CREATE the state directory is unambiguous whatever the slot, and it
+        # was gated on sync too. MEASURED: an async consult with an unwritable TMPDIR emitted 0
+        # bytes and read as a clean consult.
+        $r = New-GuardRepo
+        $blocker = Join-Path ([IO.Path]::GetTempPath()) ("blk-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            Set-Content $blocker 'not a directory' -Encoding ascii
+            $p = Payload 'Bash' 'clavity await-reply' $r
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $p -Env @{ TMPDIR = ($blocker -replace '\\','/') }).StdOut
+            $out | Should -Match 'failed to initialize'
+        } finally {
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $blocker -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
