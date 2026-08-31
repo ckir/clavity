@@ -469,7 +469,9 @@ git commit -m "feat(0c): detect installed-plugin drift by content hash at a decl
 
 **Files:** none in the repo. This task changes **local machine state only** and cannot be committed.
 
-- [ ] **Step 1: Reinstall the clavity plugin**
+- [x] **Step 1: Reinstall the clavity plugin**
+
+**AS EXECUTED 2026-08-31 - and it can ONLY be done by the owner.** `installer/_shared/claude-running.iss:14-35` runs `tasklist /FI "IMAGENAME eq claude.exe"` in `InitializeSetup` and ABORTS if Claude Code is running - "a running Claude overwrites the plugin registration and leaves it unregistered". Measured: the silent attempt exited **1**, aborting BEFORE touching any file. The published installer is also the wrong route - it downloads a GitHub RELEASE, ~100 commits behind. What worked: `dotnet publish` per `.github/workflows/build-dotnet.yml:50-53`, `dotnet test tests/Clavity.Ls.Tests` (**208/208**), `ISCC.exe installer\clavity-dotnet.iss`, then the owner quit Claude Code and ran the setup `/VERYSILENT`.
 
 Reinstall from `clavity-dotnet/install/clavity-install.ps1` (or re-run the installer you normally use) so
 the installed tree at `$env:LOCALAPPDATA\Programs\clavity-dotnet\plugins\clavity` matches the repo payload.
@@ -477,7 +479,7 @@ the installed tree at `$env:LOCALAPPDATA\Programs\clavity-dotnet\plugins\clavity
 **Ask the operator to do this if you are an agent** - it writes outside the repository, and the plan's own
 rule is that a step touching machine state is the operator's.
 
-- [ ] **Step 2: Delete the stray backup the detector found**
+- [x] **Step 2: Delete the stray backup the detector found**
 
 ```
 Remove-Item -LiteralPath "$env:LOCALAPPDATA\Programs\clavity-dotnet\plugins\clavity\.mcp.json.bak-2026-08-25"
@@ -485,7 +487,7 @@ Remove-Item -LiteralPath "$env:LOCALAPPDATA\Programs\clavity-dotnet\plugins\clav
 This is the one EXTRA file. A reinstall will not remove it, because installers add and overwrite rather
 than prune.
 
-- [ ] **Step 3: Re-run the detector and confirm it is clean**
+- [x] **Step 3: Re-run the detector and confirm it is clean**
 
 ```
 pwsh -NoProfile -File scripts/check-plugin-drift.ps1
@@ -495,7 +497,7 @@ Expected: **exit 0**, `check-plugin-drift: OK - 30 payload file(s) identical to 
 If any file still drifts, the installer is not shipping it - **report which, and stop.** That is a finding
 about the installer, and inventing a deny-list for it here would rebuild the fail-open this task closes.
 
-- [ ] **Step 4: Confirm the four review skills specifically**
+- [x] **Step 4: Confirm the four review skills specifically**
 
 ```
 pwsh -NoProfile -c "'adversarial-panel-review','agy-capstone','agy-first','agy-test-audit' | ForEach-Object { $r = 'clavity-dotnet/plugin/skills/' + $_ + '/SKILL.md'; $i = Join-Path $env:LOCALAPPDATA ('Programs\clavity-dotnet\plugins\clavity\skills\' + $_ + '\SKILL.md'); '{0,-26} repo={1,-5} installed={2}' -f $_, (Get-Content $r).Count, (Get-Content $i).Count }"
@@ -983,7 +985,7 @@ git commit -m "fix(0b): assert the suite-registration oracle itself ran"
 
 ### Task 6: run the gates the repository actually uses
 
-- [ ] **Step 1: Run the fast script gate**
+- [x] **Step 1: Run the fast script gate** - AND THE SLOW ONE, which this step did not ask for
 
 ```
 pwsh -NoProfile -c "just test-scripts-fast"
@@ -994,7 +996,20 @@ run - absence of the line is not a pass.
 **Do not run both halves at once, and never two Pester suites concurrently.** The fast half measured 576s
 against a 600s foreground cap; run it backgrounded and stay idle until it reports.
 
-- [ ] **Step 2: Confirm the three new/changed checkers are green**
+**MEASURED 2026-09-01, both halves, backgrounded and sequential:**
+- fast: **425 passed, 0 failed, 544,03s** - **91% of the 600s cap**
+- slow: **727 passed, 0 failed, 2699,37s**
+
+**THE SLOW HALF WAS NOT IN THIS STEP AND HAD TO BE ADDED.** The step assumes the new suites went into
+the FAST half, as Task 1 Step 5 and Task 4 Step 8 originally said. They were moved to SLOW, so running
+only the fast half would have exercised **neither new suite in a batch** - the gate would have been
+green while never running the code this phase exists to add. A deviation earlier in a plan invalidates
+the verification step at the end of it.
+
+**That 544,03s also settles the partition by direct measurement rather than from a recorded figure:**
+one new suite would have put the fast half at ~589s and both at ~640s, against a 600s cap.
+
+- [x] **Step 2: Confirm the three new/changed checkers are green**
 
 ```
 pwsh -NoProfile -File scripts/check-plugin-drift.ps1
@@ -1002,7 +1017,7 @@ pwsh -NoProfile -File scripts/check-roadmap-claims.ps1
 ```
 Expected: both exit 0.
 
-- [ ] **Step 3: Verify what actually landed, by code rather than by checkbox**
+- [x] **Step 3: Verify what actually landed, by code rather than by checkbox**
 
 ```bash
 git log --oneline -3
@@ -1010,6 +1025,43 @@ git show --stat HEAD~2 HEAD~1 HEAD
 ```
 Expected: exactly three commits, touching only the files named in this plan. A checkbox is not evidence a
 task landed; the diff is.
+
+---
+
+## OUTCOME - Phase 0 as executed, 2026-08-31 / 2026-09-01
+
+**Four commits, not three.** The fourth is a pre-existing red this phase surfaced.
+
+| commit | what |
+|---|---|
+| `ee39d3c` | 0c - the drift detector + its 8-row suite |
+| `507a7d2` | 0a - four stale headers reconciled, the claims guard + its 8-row suite |
+| `36f16e9` | 0b - the self-guarding registration oracle (CI + one row) |
+| `20ae6c4` | the `scripts/README.md` inventory gate, RED at HEAD before this phase |
+
+**Gates:** fast **425/0** (544,03s), slow **727/0** (2699,37s), both new checkers exit 0, the live
+install exit 0 at 30/30 identical.
+
+**Three deviations, all recorded at their steps:** the two suites went to the SLOW half rather than
+FAST (owner-ruled once, then applied a second time on identical measured facts); the registration gate
+cannot pass until the new files are STAGED, because its population is `git ls-files`; and Task 6 had to
+run the slow half too.
+
+**Two PRE-EXISTING reds were folded in, neither caused here:** `_partition.md` claimed 11 and 39 tests
+for suites discovering 44 and 43 (in `ee39d3c`), and `scripts/README.md` had never indexed
+`check-knowledge-store.ps1` or `check-dangling-consumers.ps1` (in `20ae6c4`). **Both live in the FAST
+half - the gate agents are meant to run in their inner loop had been red at HEAD for days.**
+
+**The plan itself was wrong three times, every one a COUNT or EXPECTATION claim, every one caught only
+by running it:** Task 3 Step 4's "8 of 9" (it is 8); Task 5's `:265` citation (blank; it is `:264`);
+Task 5 Step 2's "exactly one failure" (there are two, because the registration suite counts itself).
+All three are corrected above. **That is the defect class this phase exists to close, recurring inside
+the plan that closes it.**
+
+**STILL OWED: AGY-CAPSTONE over `ee2b385..20ae6c4`.** A plan is not complete until the committed
+implementation has been reviewed by the live peer under adversarial lenses. One anomaly is also open on
+the triage gate: `check-plugin-drift.ps1` tells the operator to reinstall, but a reinstall can never
+clear an EXTRA file.
 
 ---
 
