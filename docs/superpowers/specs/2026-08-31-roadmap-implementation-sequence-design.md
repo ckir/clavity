@@ -1,6 +1,7 @@
 # ROADMAP implementation sequence - design
 
-**Date:** 2026-08-31. **HEAD at authoring:** `e5179a5`.
+**Date:** 2026-08-31. **HEAD at authoring:** `e5179a5`; **revised after adversarial panel round 1 at
+`4392ddf`.**
 **Status:** owner-approved sequence. Each phase still needs its own spec-or-plan before execution.
 
 **Goal:** decide the ORDER and BATCHING of the remaining open ROADMAP work. This document does not
@@ -24,6 +25,7 @@ contradict what shipped:
 | §17 | `▶ OPEN` | §17a shipped `99910c0`, capstone GREEN (ledger `eb26709`); §17b RULED KILLED |
 | §18 | `▶ OPEN` | shipped, capstone GREEN after 7 rounds (ledger `519833f`) |
 | §19 | `DECIDED, DEFERRED` | shipped `64d5be4`, same capstone GREEN |
+| §14h | `▶ OPEN - promoted at the 2026-08-15 triage` | **shipped `a652d8d` on 2026-08-16** - "14c + 14h ... seat a panel" |
 
 This is a recurrence of a recorded failure - §13b read `▶ OPEN` seven days after shipping - and the rule
 earned from it is that **whoever closes an item writes its closing sha in the same commit.** That rule
@@ -35,33 +37,79 @@ is therefore Phase 0, not a tidy-up.
 **§16 is a PATTERN, not schedulable work** (it records the transient-Pester edit-verification approach for
 future plans and changes nothing shipped).
 
-**§14a-e and §14g shipped. §14h is open. §14f needs one check, and my first draft of this document got it
-wrong.** §14f was not shipped - it was RULED on 2026-08-19 as "ANSWERED BY §18 and sequenced behind it",
+**§14a-e and §14g shipped. §14f needs one check, and my first draft of this document got it
+wrong.**
+
+**§14h is NOT open - it shipped in `a652d8d` on 2026-08-16, the day after the measurement its ROADMAP entry
+records, and that entry was never updated.** Panel round 1 caught this; the first draft of this document
+scheduled it as Phase 2's first item. Verified at HEAD: `agy-first/SKILL.md:103` reads **"Seat a panel, not
+a persona."** with seat rotation at `:112`; `agy-test-audit/SKILL.md:109` reads **"Seat the audit, do not
+send one voice."** placed after the `## The audit round` heading - *exactly* the insertion point the ROADMAP
+entry prescribes - and the old `"Optional per-run mitigation: rotate the audit's lens"` wording it names is
+**gone** (grep returns nothing). **This is a fourth stale header, and the section above found only three.**
+That is not an incidental miss: it is the same defect this document opens by condemning, committed by this
+document, and the reason it happened is the drift finding below. §14f was not shipped - it was RULED on 2026-08-19 as "ANSWERED BY §18 and sequenced behind it",
 on the reasoning that once §18 ships, `core.md` becomes the pinned driver-owned FLOOR and the growth
 region becomes curator-owned, so the ownership contradiction "dissolves rather than being adjudicated".
 **§18 has since shipped, but nobody has verified the dissolution actually happened.** A ruling that an
 item will resolve as a consequence of other work is not evidence that it did. **Phase 0 must check it and
 close or reopen §14f explicitly** - the same discipline this document applies to §17, §18 and §19.
 
-**The genuinely open set:** §14h, §15, §20, §21, §22, §23, §24, §25, plus three items promoted from the
-anomalies file at the 2026-08-31 triage.
+**The genuinely open set:** §15, §20, §21, §22, §23, §24, §25, plus three items promoted from the
+anomalies file at the 2026-08-31 triage. **§14h is closed** (above).
+
+### 1a. Why the §14h miss happened - and why it is the sequence's first problem, not a footnote
+
+**Every skill citation in this document's first draft resolved against the INSTALLED plugin copy, not the
+repository copy.** The two have drifted apart under an identical version string.
+
+**MEASURED 2026-08-31, installed vs repo, `SKILL.md` line counts:**
+
+| skill | installed | repo | drift |
+|---|---|---|---|
+| `agy-capstone` | 236 | 429 | **193 lines** |
+| `agy-test-audit` | 159 | 332 | **173 lines** |
+| `adversarial-panel-review` | 240 | 360 | **120 lines** |
+| `agy-first` | 123 | 214 | **91 lines** |
+| `open-issues` | 192 | 221 | 29 lines |
+
+**Both sides report `"version": "0.7.0"`.** Nothing detects this.
+
+Two citations in the first draft are corrected below as a direct result, and both were *only* true of the
+installed copy: `agy-first/SKILL.md:54-56` for a single default persona (repo `:52-58` is about flagged
+replies; the persona text exists at installed `:54-56` verbatim), and `agy-capstone/SKILL.md:191` for the
+five-token disposition set (repo `:191` is about `severity`; the real set - `FOLDED`, `REJECTED`,
+`DISCARDED-BELOW-FLOOR`, `DEFERRED-TO-ANOMALIES`, `UNVERIFIED-ACCEPTED` - is at repo `:358-360`). **The
+substance of the §21 step-2 argument survives** - "disposition" is genuinely taken, on a different axis -
+**only its anchor was wrong.**
+
+**This is not a hazard to the phases below. It is corrupting the review of this document.** The panel that
+found the §14h miss ran under a `adversarial-panel-review` skill that is 120 lines behind the repo copy.
+The live agy peer independently reached the same conclusion from the artifact alone, and put it first:
+
+> *"You cannot execute a sequence built on reviews if the review mechanism is unpinned. Fix the drift in
+> Phase 0 or the sequence fails on contact."*
+
+**Consequence for the sequence: the drift moves OUT of "not scheduled here" and INTO Phase 0**, ahead of
+every other item. See Phase 0c.
 
 ---
 
 ## 2. The batching axis - the decision that shapes everything else
 
-The obvious axis is **shared files**. Five items all edit the same four byte-identical `SKILL.md` pairs:
+The obvious axis is **shared files**. Four items all edit the same four byte-identical `SKILL.md` pairs
+(**five before panel round 1 found §14h already shipped** - and note that removing it took `agy-first` out
+of the batch entirely, which only sharpens the argument below):
 
 | item | edits |
 |---|---|
-| §14h - two skills prescribe a single persona | `agy-first`, `agy-test-audit` |
 | §21 - the peer reply contract | all four |
 | §23 - AGY-TEST-AUDIT has no ledger | `agy-test-audit` + a new `docs/` ledger |
 | §24 - AGY-FIRST mandatory when a capstone develops new code | `agy-capstone` |
 | §25 - a negotiation discipline | all four |
 
 Since a plan on plugin-payload code costs a full panel -> capstone -> test-audit cycle, and recent
-capstones ran **7, 8 and 11 rounds**, batching by file looks like it saves four review cycles.
+capstones ran **7, 8 and 11 rounds**, batching by file looks like it saves three review cycles.
 
 **That axis was rejected, and the reasoning is the peer's.** Grouping by file is grouping by storage
 location, not by what the instructions DO. These skills are the procedure the capstone itself executes,
@@ -84,15 +132,31 @@ before its own change, or the one after.
 
 ## 3. The sequence
 
-### Phase 0 - reconcile the index AND repair the suite floor (prerequisite)
+### Phase 0 - pin the toolchain, reconcile the index, repair the suite floor (prerequisite)
 
-Two pieces of work, both prerequisite because everything after them depends on their being true.
+Three pieces of work, all prerequisite because everything after them depends on their being true.
+**0c is new after panel round 1 and it comes first**, because 0a and 0b are themselves reviewed by the
+drifted skills.
 
-**0a - reconcile the ROADMAP index.** Correct the §17, §18 and §19 headers to CLOSED with their closing
-shas, per the earned rule, and **resolve §14f** - verify by measurement whether §18 shipping actually
-dissolved its ownership contradiction, then close it with its evidence or reopen it as live work. No code
-changes. This is prerequisite rather than housekeeping because every later phase cites ROADMAP sections,
-and a plan that cites a stale header is a plan built on a false claim about the repository.
+**0c - pin the installed plugin to the repo copy, and give the drift a detector.** The census in §1a is
+the evidence. Two deliverables, and the second is the one that lasts: reinstall so the four review skills
+match the repo, **and add a mechanical check that fails when they do not.** A version string that does not
+change when 193 lines do is not a detector. Without 0c, every review in every phase below is run by an
+agent holding instructions nobody has verified - which is exactly how §14h came to be scheduled as open
+work sixteen days after it shipped.
+
+**0a - reconcile the ROADMAP index.** Correct the §17, §18, §19 **and §14h** headers to CLOSED with their
+closing shas, per the earned rule. No code changes. This is prerequisite rather than housekeeping because
+every later phase cites ROADMAP sections, and a plan that cites a stale header is a plan built on a false
+claim about the repository.
+
+**§14f needs a criterion before it needs a verdict, and the first draft did not give it one.** It said
+"verify by measurement whether §18 shipping actually dissolved its ownership contradiction". The peer's
+Literal Implementer seat rejected that as unexecutable, and it is right: *"How do you mechanically measure
+the absence of a contradiction? You cannot grep for 'dissolved.'"* **Replace it with a checkable question:**
+§14f's contradiction was over who owns `core.md`. So - **name the writer.** Identify every committed path
+that writes `core.md` or the growth region, and check whether exactly one owner remains. If two writers
+still exist, §14f is open; if one does, it is closed and the sha is its evidence. That is greppable.
 
 **0b - repair the Pester suite floor.** `ci-scripts.yml:203` fails the whole `scripts/tests` sweep only if
 `TotalCount -lt 100`. **MEASURED 2026-08-31: the suite holds 982 static `It` blocks across 50 suites** - a
@@ -101,15 +165,36 @@ the suite has stopped running.** A misnamed file, a `BeforeAll` that throws, a s
 being discovered: none of it reaches 100. This is the same fail-open class the whole repository keeps
 finding, sitting on the gate that guards all 50 suites.
 
+**Two corrections from panel round 1, and together they change what 0b should build.**
+
+**First, one of those three modes is already covered - MEASURED with a paired control.** A suite whose
+`BeforeAll` throws yields `FailedCount=1` *and* container `Result=Failed`, so `ci-scripts.yml:200` and
+`:201-202` both throw on it independently of the count floor. Only the *misnamed* and *silently
+undiscovered* modes reach the floor. Overstating the hole is not harmless here: the size of the hole is
+the entire argument for widening Phase 0's charter to touch CI.
+
+**Second, the oracle this phase proposes to build ALREADY EXISTS, is stronger than proposed, and keys on
+something else.** `test-suite-registration.Tests.ps1:265` asserts
+`$discovered.Count | Should -Be $onDiskCount` - **exact equality, not a floor** - against
+`git ls-files '*.Tests.ps1'` (`:87-92`), not against the justfile partition. So 0b must not re-implement it.
+
+**The real hole is one the first draft never named: that oracle guards everything except itself.** Its
+equality row only runs while `test-suite-registration.Tests.ps1` is itself discovered. If *that* file is
+the one misnamed or lost, its row never executes and the only surviving backstop is `TotalCount -lt 100` -
+the very floor it was supposed to make redundant. **A self-guarding oracle is 0b's actual subject.** The
+cheapest fix is a CI assertion naming that one suite explicitly, which cannot be satisfied by the suite's
+own absence.
+
 **Phase 0's charter widens from docs-only to include this one CI change**, and that is deliberate: every
 phase below ends with "the suite is green", and that claim is worth exactly what this floor is worth.
 Both the peer and the driver placed it first, independently.
 
 **The fix is NOT raising the integer, and the peer's "trivial - raising an integer" was wrong in a useful
-direction.** A static floor rots the moment a suite is added. **The repository already contains the right
-oracle:** `scripts/tests/test-suite-registration.Tests.ps1` parses the justfile's fast/slow partition into
-an authoritative registered list and asserts every suite on disk appears in exactly one half. CI should
-assert it discovered **as many SUITES as that list holds**, not a hand-maintained test count.
+direction.** A static floor rots the moment a suite is added. `test-suite-registration.Tests.ps1` also
+parses the justfile's fast/slow partition and asserts every suite on disk appears in exactly one half -
+and `:131` ("names no suite that is missing from disk") is the row that catches a *rename*, because the
+recipe still names the old path while `git ls-files` no longer does. **That row does key on the justfile**,
+which is what makes the scope-decision below load-bearing.
 
 **Sweep the same defect class while in there.** That registration suite's own floors are
 `Should -BeGreaterThan 5` on each partition and `-BeGreaterThan 20` on the on-disk enumeration, against 50
@@ -123,7 +208,10 @@ suites. The guard against weak floors is itself weakly floored.
 the ROADMAP; it is NOT re-litigated here:
 1. the anti-wrap-up clause, shipped standalone into all four skills' closers;
 2. the peer-side table shipped as **`claim-type`, not "disposition"** - the payload already ships a
-   5-token AGY-SCOPE disposition set at `agy-capstone/SKILL.md:191`, a different axis under the same word;
+   5-token AGY-SCOPE disposition set (`FOLDED`, `REJECTED`, `DISCARDED-BELOW-FLOOR`,
+   `DEFERRED-TO-ANOMALIES`, `UNVERIFIED-ACCEPTED`) at **repo `agy-capstone/SKILL.md:358-360`**, a different
+   axis under the same word. **The first draft cited `:191`, which is the INSTALLED copy's numbering; the
+   argument holds, the anchor did not** (see §1a);
 3. `confidence` shipped as a POINTER with its measured false rate written in;
 4. the JSON shipped INLINE plus a checker, separately.
 
@@ -140,10 +228,18 @@ yet.** Two findings, both from live consults today:
   per-discipline variation - and every row failed on SCHEMA, so **the citation check silently never ran**.
   A control on a capstone reply using `trigger` passed 4/4, so the checker works; it just cannot survive
   a discipline using different keys. **This is a requirement for §21 step 4, discovered by measurement.**
-- **The inline reply channel truncates.** The sequencing consult that produced this design returned only
-  its `## Anomalies noticed` block and the verdict token; the entire body was lost. It survived solely
-  because the peer wrote `reply.md` unprompted. **This is direct evidence for §21's dual prose/JSON file
-  output** and against relying on the inline channel.
+- **The reply body is DISPLACED, not truncated - and the first draft of this document had the diagnosis
+  wrong.** The sequencing consult returned only its `## Anomalies noticed` block and the verdict token;
+  the body was lost, and this was written up as "the inline reply channel truncates". **That is false, and
+  the ROADMAP at HEAD already said so** (`clavity-dotnet/ROADMAP.md:1884`: *"Nothing was ever truncated.
+  The wrong message was collected."*, and `:1917-1919` names this exact write-up as one made before
+  probing). `AnswerTruncated` was `false` on all four probes - a field that was available and unread.
+  **The measured mechanism is that a brief asking the peer to write a reply FILE makes the peer treat the
+  file as the deliverable, degrading its inline message to a receipt.** The fix is one sentence in the
+  brief stating the file is not a substitute for the message; it was applied to this document's own panel
+  round 1 and the full body arrived inline with `AnswerTruncated: false`. **It still argues for §21's dual
+  prose/JSON output** - a durable artifact beats a chat message - **but for that reason, not for a
+  truncation that does not happen.**
 
 So every round run before §21 lands is a round whose brief asserts citations are "checked mechanically"
 while they are not. That is a False Safety Promise in our own instructions, and it argues for OUTPUT
@@ -152,13 +248,10 @@ first more strongly than the multiplier argument does.
 **Reviewed by:** the CURRENT discipline versions. Phase 1 changes no conduct rule, so the reviewer is
 unchanged by its own subject matter.
 
-### Phase 2 - CONDUCT: §14h, then §24, then §25
+### Phase 2 - CONDUCT: §24, then §25
 
-**§14h - two skills prescribe a single persona**, so their consults are single-voice by instruction.
-`agy-first/SKILL.md:54-56` names one default persona with three ad-hoc alternatives; `agy-test-audit`'s
-only lens language is an optional, singular line in a footer section. The ROADMAP entry specifies the
-insertion point (`agy-test-audit/SKILL.md`, after the `## The audit round` heading, not the footer) -
-follow it.
+**§14h was the first item here and has been REMOVED - it shipped in `a652d8d`** (see §1a). Its removal
+takes the phase from three items to two and deletes the only one that touched `agy-first`.
 
 **§24 - AGY-FIRST becomes mandatory when a capstone round develops new code.** Trigger is mechanical: a
 new file, a new function/class declaration, or a whole-function rewrite, in non-test shipped code. It
@@ -167,13 +260,13 @@ PAUSES the fold rather than aborting the round.
 **§25 - a negotiation discipline in all four review-only skills**, with AGREEMENT explicitly NOT the
 criterion; the criterion is EXHAUSTION OF EVIDENCE - one measured round each, then straight to the human.
 
-**Internal order: §14h first.** The peer argued §14h must precede §24 because its seats supply the
-independence that defeats §24's rubber-stamp problem. **That justification is overstated and the
-conclusion still holds.** A persona is the same model in the same cascade under a different framing; it
-is not reviewer independence, and §24's stated problem is about *who* reviews ("the SAME peer ... a design
-it endorsed"), not in what voice. But seats demonstrably produce independent findings - the ROADMAP
-records the peer finding three defects in a shape it had itself just chosen - so seats MITIGATE. Having
-them in place before §24 makes §24 systematically safer, which is reason enough for the order.
+**Internal order: §24 then §25.** The first draft ordered §14h first, arguing its seats supply
+independence that mitigates §24's rubber-stamp problem. **That argument is now moot in the best way:
+§14h already shipped, so the mitigation is already in place before §24 starts.** The reasoning is worth
+keeping for §24's own design, though, and one half of it was wrong: a persona is the same model in the
+same cascade under a different framing, so seats are *not* reviewer independence, and §24's stated problem
+is about *who* reviews ("the SAME peer ... a design it endorsed"), not in what voice. Seats MITIGATE and
+do not resolve - which is why the open question below is still open.
 
 **§25 stays in this batch. The owner rejected the peer's recommendation to defer it, on measurement.**
 The peer's Resource Vampire objection targets unbounded multi-turn negotiation. The committed §25 is
@@ -190,6 +283,12 @@ explicitly rather than inheriting it.
 
 **Reviewed by:** a discipline version this phase is itself changing. State in the Phase 2 plan whether
 each round runs under the pre-change or post-change rules, and do not let a round silently switch.
+
+**That instruction FAILS OPEN, and panel round 1 said so.** The peer's Cascade Analyst seat:
+*"Stating a version in a markdown plan does not mechanically bind the agent executing the review."* It is
+right, and §1a is the proof - the version that actually bound this document's own panel was the installed
+one, which no statement in any plan would have changed. **So the Phase 2 plan must record the reviewing
+version as a SHA it can be checked against, not as prose**, and 0c is what makes that sha meaningful.
 
 ### Phase 3 - HOOKS: §22 + two promoted backlog items
 
@@ -228,8 +327,12 @@ what cost under concurrent load.
 
 ### Phase 5 - §20, a mockable clock (`TimeProvider`) in `AgyView`, plus the Live Acceptance gating
 
-**§20** - `AgyView` samples `DateTime.UtcNow` directly inside the idle-wait loop (`AgyView.cs:232`, `:243`),
-making wall-clock an ambient dependency. Note the ROADMAP records that `AgyView` is implementation source,
+**§20** - `AgyView` samples `DateTime.UtcNow` directly, making wall-clock an ambient dependency.
+**The first draft cited `AgyView.cs:232` and `:243`; both are wrong and the scale was understated 4x.**
+MEASURED at `4392ddf`: **eight** occurrences, at `:277`, `:288`, `:356`, `:400`, `:417`, `:445`, `:465`,
+`:502`. Lines `232` and `243` are a `TryRemove` call and a doc comment. This matters because Phase 5 is the
+phase whose budget is hardest to recover if wrong - it is the one that invalidates a capstone GREEN - and
+because fabricated line precision is exactly what this repository's plan-vs-spec discipline forbids. Note the ROADMAP records that `AgyView` is implementation source,
 so **§20 invalidates the AGY-CAPSTONE GREEN and requires a re-capstone** - owner-confirmed, and the only
 phase here that carries that cost.
 
@@ -288,9 +391,12 @@ runs is not a test - wire it up, or delete it.*
   nothing. Verified: 0 references outside their own definitions. `ci-scripts.yml` runs
   `Invoke-Pester scripts/tests` directly and bypasses them. **This is already known inside the repository**:
   `test-suite-registration.Tests.ps1:8-9` says so in its own header comment, which is also why that suite
-  exists. Note the recipes are not merely decorative - the fast/slow partition they define is the
-  authoritative registration list that Phase 0b's fix should key on, so **deleting them would delete the
-  oracle**.
+  exists. **The recipes are not decorative, but the first draft named the wrong row.** The discovery-count
+  oracle keys on `git ls-files` and does not need them. The row that *does* need them is `:131`, "names no
+  suite that is missing from disk", which is the only check that catches a suite RENAMED out of the gate -
+  a rename drops the file from `git ls-files` and from disk simultaneously, so the equality row at `:265`
+  stays satisfied and sees nothing. **Deleting the recipes would delete the rename detector**, which is a
+  narrower and more precise reason than "deleting the oracle", and still a sufficient one.
 
 A third finding is **already tracked and is not re-opened here**: roughly 66 ghidrust live-worker tests run
 nowhere automatically, because `ci-ghidrust.yml:31` deliberately runs `just test` without `GHIDRUST_E2E=1`
@@ -304,11 +410,11 @@ existing SP3 smoke debt.
 - **The content of any phase.** Each carries its own committed ROADMAP section or backlog file.
 - **§24's structural independence question.** Named as Phase 2's gating decision, for the owner.
 - **Whether §15's naming measurement changes its design.** That belongs to Phase 4.
-- **The installed-plugin drift** (`docs/backlog/installed-plugin-drifts-under-an-unchanged-version.md`).
-  It caused a real wrong action today - the audit followed a 159-line installed skill whose marker
-  contract contradicts the 332-line repo copy, and wrote the wrong marker as a result. It is a live
-  hazard for EVERY phase below, because an agent verifies against the instructions it was handed. It is
-  not scheduled here, and that is a gap the owner should close deliberately rather than by omission.
+- ~~**The installed-plugin drift.**~~ **MOVED. It is now Phase 0c**, after panel round 1 measured the
+  drift across all four review skills and the peer put it ahead of everything else. The first draft left
+  it unscheduled and called that "a gap the owner should close deliberately rather than by omission" -
+  the panel closed it, and the owner should confirm rather than re-decide. Background:
+  `docs/backlog/installed-plugin-drifts-under-an-unchanged-version.md`.
 
 ## 5. Risks
 
@@ -319,10 +425,20 @@ existing SP3 smoke debt.
 - **Phase 1 must actually fix the checker**, not merely ship JSON. If step 4 lands a checker that is still
   schema-rigid, the multiplier that justifies OUTPUT-first never materialises and later phases inherit a
   gate that reports SCHEMA failures instead of checking citations.
-- **Phase 0b must not delete its own oracle.** The fix keys on the justfile fast/slow partition as the
-  authoritative suite list - and that same partition lives in three recipes the scope-decisions section
-  records as invoked by nothing. If those recipes are deleted as dead weight before 0b lands, the fix
-  loses the list it depends on. Sequence the decision after 0b, or key the fix on something else.
+- **Phase 0b must not delete the rename detector.** Narrowed after round 1. The discovery-count oracle
+  keys on `git ls-files` and survives deleting the recipes; the rename detector at
+  `test-suite-registration.Tests.ps1:131` does not. Sequence the recipe decision after 0b either way.
+- **THE PANEL'S OWN RESULT IS THE STRONGEST RISK IN THIS LIST.** Round 1 found that this document
+  scheduled sixteen-day-shipped work (§14h), cited two skill lines that exist only in a stale installed
+  copy, and mis-cited §20 by 4x - and it found them by opening the files rather than by reasoning. **Every
+  phase below is authored the same way this one was.** Treat 0c as the mitigation and read every later
+  citation as unverified until measured.
+- **The peer's round 1 was 5 findings, 4 of them real, and it missed every citation defect.** It found the
+  drift (independently and first), the fail-open "state the version in the plan" instruction, the
+  unmeasurable §14f criterion, and the doubled sync cost; its Mechanism Gamer seat honestly returned "no
+  new findings"; its Resource Vampire finding restates a cost `:63-71` already accepts with a reason it
+  does not engage. **It found nothing that required reading a cited line.** That is the division of labour
+  to expect: the peer reasons about the artifact's shape, the driver measures its claims.
 - **Phase 5 is the only phase that invalidates a capstone GREEN.** `AgyView` is implementation source, so
   §20 requires a re-capstone over the new code - owner-confirmed in the ROADMAP. Budget for it.
 - **The peer's advice was 1 of 3 correct on its supporting claims in the sequencing consult, and 2 of 4
