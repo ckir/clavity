@@ -30,6 +30,8 @@ directly.
 | `sync-register-hash.ps1` | Regenerate `register-plugin-hash.iss` with the current SHA-256 of `register-plugin.ps1` | `just sync-register-hash` |
 | `check-agy-discipline-skills.ps1` | Lints shipped agy-driving discipline skills (frontmatter, ASCII-only [VERDICT] grammar, transports, marker constant) | `just check-agy-skills` (pre-push) |
 | `check-plugin-namespace.ps1` | SP-0 namespace-rename completeness gate: fails if the mass rename left any stray old plugin-namespace, skill-dir, or plugin-identity reference | lefthook pre-push (`check-plugin-namespace`); run directly, no `just` recipe |
+| `check-plugin-drift.ps1` | Fail when an INSTALLED plugin tree has drifted from the repo payload at a DECLARED sha: set comparison (missing/extra) plus a CRLF-normalized SHA-256 per file. Compares CONTENT because the version string does not move when the content does - measured 2026-08-31, 16 files differed while both sides read `"version": "0.7.0"` | run directly, no `just` recipe; read-only
+| `check-dangling-consumers.ps1` | Fail when a binary reads a runtime filename FROM A NAMED CONSTANT that nothing in the repository DECLARES it produces | `just check-dangling-consumers` (lefthook pre-push; CI `ci-scripts.yml`)
 | `check-injected-context.ps1` | Audit every file this repo injects into an agent's context (encoding, plan-residue, tag-hygiene, namespace, payload-budget, reference resolution). Discovery is SUBTRACTIVE: walk `$script:DomainRoots`, subtract `injected-context-ignore.txt`; per-file waivers live in `injected-context-exemptions.json` | `just check-injected-context` |
 
 ## Seed / golden-header integrity
@@ -41,6 +43,7 @@ directly.
 | `check-cheatsheet-budget.ps1` | Assert the canonical driver cheatsheet (`driver-cheatsheet.core.md`) is within its committed byte budget (default 4096 B) | CI (`build-dotnet.yml`, `build-classic.yml`); run directly, no `just` recipe |
 | `check-curate-in-progress.ps1` | Refuse to commit a driver-cheatsheet pinned file while `.clavity/curate-in-progress` exists, i.e. while an agy-curate run is in flight or ended abnormally leaving unreviewed distilled content in the tree | `lefthook.yml` `pre-commit`, globbed to the three pinned files so it costs nothing on any other commit; run directly to check by hand |
 | `check-core-integrity.ps1` | Assert every protected driver-owned file (the SEED, the four driver manuals, `driver-cheatsheet.core.md`) is byte-identical to its committed HEAD version after a drain | invoked by `drain-knowledge.ps1` |
+| `check-knowledge-store.ps1` | Guard the agy-driving knowledge STORE (tier 2): no rule file may be DELETED, none may be unreachable from the index, and the corpus stays LF + pure ASCII | `just check-knowledge-store` (lefthook pre-push; CI `ci-scripts.yml`)
 | `check-growth-budget.ps1` | Warn-only gate: assert SEED+GROWTH combined size fits the binary's 32 KiB injection cap | invoked by `drain-knowledge.ps1` (warn-only) |
 | `generate-cheatsheet-literals.ps1` | Regenerate the two compiled-in cheatsheet literals (`clavity-classic/src/driver_cheatsheet.rs`, `clavity-dotnet/src/Clavity.Ls/DriverCheatsheet.cs`) from the canonical `driver-cheatsheet.core.md`, so the three can never diverge | `just gen-cheatsheet-literals` |
 | `check-cheatsheet-parity.ps1` | Pre-commit gate: compare the STAGED literals against freshly generated output, INDEX to INDEX (`git show :<path>`), never the worktree, and never write in place | `lefthook.yml` `pre-commit`, globbed to the three pinned files so it costs nothing on any other commit; run directly to check by hand |
@@ -67,6 +70,7 @@ because the check is worth re-running by hand when that area changes.
 | Script | Purpose | Run via |
 |---|---|---|
 | `check-rulings-recorded.ps1` | Assert each named `ROADMAP.md` entry carries an `OWNER RULING (` block. Written for the steps-0-1 plan after its first verifier - an inline `awk` one-liner - FAILED SILENTLY on the last of four entries: it bounded each section by scanning to the next `#### ` heading, but the entry after `§17b` is `### §18`, so the bound never matched, the loop ran to EOF, and it printed nothing. **No output read as "not ruled" to a human and as success to a pipeline.** Matching is case-SENSITIVE (`-cnotmatch`) on purpose: PowerShell's `-match` is case-insensitive, which had certified `§14f` as ruled because its prose says "needs an owner ruling, not a fix" | `pwsh -File scripts/check-rulings-recorded.ps1` |
+| `check-roadmap-claims.ps1` | Verify the ROADMAP's own mechanically checkable claims: every `` `path` (N lines) `` claim matches the tracked file it names (an ambiguous claim resolving to two tracked files with different counts is an error, not a coin flip), and every backticked 7-40 hex sha on a line carrying a closure token actually exists | run directly, no `just` recipe; read-only
 
 ## Subdirectories
 
