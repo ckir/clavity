@@ -573,7 +573,9 @@ test-suite-registration.Tests.ps1                21,9s    9 tests   <- FAST. MEA
                                                                       is the mechanism working, not a
                                                                       defect. TIME not re-measured.
   idle CPU (cold 34,5s); the time field was `?` until then. The single count-guard It is 20,9s of that
-  21,9s - about 95% - because it spawns a child pwsh and runs Pester DISCOVERY over all 49 suites.
+  21,9s - about 95% - because it spawns a child pwsh and runs Pester DISCOVERY over every tracked
+  suite (49 when measured; 52 on 2026-09-01 - the COUNT is checked mechanically by this very suite,
+  so trust that, not this sentence).
   🔴 The previous note here read "0,7s in the contended sweep... does no I/O beyond reading justfile,
   so it is genuinely near-free". All three clauses were false once the count guard landed, and the guard
   this fold added checks the NUMBER in a row, never its prose - so nothing caught it.
@@ -716,13 +718,17 @@ check-dangling-consumers.Tests.ps1                58,4s  11 tests   <- SLOW. Eac
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
-check-plugin-drift.Tests.ps1                    39-45s   11 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-plugin-drift.Tests.ps1                    56-80s   11 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 45,3s
-                                                                      cold / 39,2s warm, 8/8 both times.
+                                                                      cold / 39,2s warm at 8 rows. RE-
+                                                                      MEASURED 2026-09-01 at 11 rows,
+                                                                      after AGY-CAPSTONE grew it: 79,6s
+                                                                      cold / 55,9s warm, 11/11 both. The
+                                                                      row above carries the NEW figure.
                                                                       An earlier solo figure of 74,8s was
                                                                       CONTENDED by an orphaned
                                                                       Invoke-Pester and is NOT quoted.
-                                                                      Each of the 8 rows spawns its own
+                                                                      Each row spawns its own
                                                                       child pwsh - the script under test
                                                                       calls exit - over a throwaway git
                                                                       repo + fake install under
@@ -743,11 +749,15 @@ check-plugin-drift.Tests.ps1                    39-45s   11 tests   <- SLOW, NEW
                                                                       file survives a reinstall. TIME not
                                                                       re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
-check-roadmap-claims.Tests.ps1                  38-51s   12 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-roadmap-claims.Tests.ps1                  54-55s   12 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s
-                                                                      cold / 38,4s warm, 8/8 both times.
+                                                                      cold / 38,4s warm at 8 rows. RE-
+                                                                      MEASURED 2026-09-01 at 12 rows:
+                                                                      55,4s cold / 54,1s warm, 12/12
+                                                                      both. The row above is the NEW
+                                                                      figure.
                                                                       Same shape as check-plugin-drift
-                                                                      above - 8 rows, each spawning its
+                                                                      above - each row spawning its
                                                                       own child pwsh because the script
                                                                       under test calls exit, over a
                                                                       throwaway git repo under $TestDrive.
@@ -756,6 +766,8 @@ check-roadmap-claims.Tests.ps1                  38-51s   12 tests   <- SLOW, NEW
                                                                       warm / 550,4s cold against a 600s
                                                                       cap, and BOTH new suites in FAST
                                                                       would put the cold run at ~647s.
+                                                                      RE-MEASURED 2026-09-01 after the
+                                                                      capstone grew both suites: ~679s.
                                                                       One row exercises the REAL ROADMAP
                                                                       and is the oracle that Task 4's
                                                                       reconcile actually happened.

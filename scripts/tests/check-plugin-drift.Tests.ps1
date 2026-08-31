@@ -206,8 +206,12 @@ Describe 'check-plugin-drift.ps1' {
             'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
         }
         $res = Invoke-Drift $r.Root $r.Sha $i
-        # Case-SENSITIVE for the same reason as the rows above: the OK line must not contain a
-        # category token in ANY case, and a case-insensitive -Not -Match would be the weaker claim.
-        $res.Out | Should -Not -CMatch 'DRIFTED|MISSING|EXTRA|UNREADABLE'
+        # CASE-INSENSITIVE, AND THE POLARITY IS THE WHOLE REASON. Round 4 made this -CMatch "for the
+        # same reason as the rows above" - that reasoning was WRONG and round 5 caught it. On a POSITIVE
+        # assertion, case-sensitivity NARROWS what satisfies it, which is stronger. On a NEGATIVE one it
+        # narrows what VIOLATES it, which is weaker: `-Not -CMatch 'DRIFTED'` is satisfied by output
+        # containing "drifted". MEASURED - a mutant printing "0 drifted" on the clean path passed 1/0.
+        # A negative assertion wants the WIDEST possible matcher.
+        $res.Out | Should -Not -Match 'DRIFTED|MISSING|EXTRA|UNREADABLE'
     }
 }
