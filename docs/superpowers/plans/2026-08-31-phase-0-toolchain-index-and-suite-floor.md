@@ -888,7 +888,7 @@ git commit -m "fix(0a): reconcile four stale ROADMAP headers and guard the claim
 
 ### Task 5: assert that the registration oracle actually ran
 
-**The defect, stated precisely.** `scripts/tests/test-suite-registration.Tests.ps1:265` already asserts
+**The defect, stated precisely.** `scripts/tests/test-suite-registration.Tests.ps1:264` already asserts (**corrected from `:265` on execution; `:265` is blank - off by one**)
 `$discovered.Count | Should -Be $onDiskCount` - **exact equality**, against `git ls-files '*.Tests.ps1'`
 (`:87-92`). That is a strictly better oracle than the `TotalCount -lt 100` floor at
 `.github/workflows/ci-scripts.yml:203`, and it already exists, so **do not rebuild it**.
@@ -901,7 +901,7 @@ make redundant - a floor that MEASURED 2026-08-31 tolerates losing about 89% of 
 - Modify: `.github/workflows/ci-scripts.yml:199-203`
 - Modify: `scripts/tests/test-suite-registration.Tests.ps1`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add this row to `scripts/tests/test-suite-registration.Tests.ps1`, inside the top-level `Describe`. Reading
 a workflow's text is an established pattern here (`check-injected-context.Tests.ps1:329` does the same).
@@ -920,14 +920,19 @@ a workflow's text is an established pattern here (`check-injected-context.Tests.
     }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 ```
 pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force; Invoke-Pester scripts/tests/test-suite-registration.Tests.ps1 -Output Detailed"
 ```
-Expected: exactly one failure, the new row, because `ci-scripts.yml` does not yet name the suite.
+Expected: **TWO** failures, not one. **CORRECTED 2026-08-31 by running it.** The new row reds because
+`ci-scripts.yml` does not yet name the suite - and `every _partition.md row states the CURRENT test
+count` reds in the same run with `test-suite-registration.Tests.ps1 says 8 but discovers 9`, **because
+this suite counts ITSELF**. Adding a row to it invalidates its own `_partition.md` figure instantly.
+That is the mechanism working, not a defect, and Step 4 already anticipated the count bump - only this
+step's "exactly one" was wrong.
 
-- [ ] **Step 3: Add the CI assertion**
+- [x] **Step 3: Add the CI assertion**
 
 In `.github/workflows/ci-scripts.yml`, in the `Pester - full scripts suite (pwsh 7)` step, insert after the
 `TotalCount -lt 100` line at `:203`:
@@ -942,7 +947,7 @@ In `.github/workflows/ci-scripts.yml`, in the `Pester - full scripts suite (pwsh
           if ($oracle.Count -ne 1) { throw "the registration oracle did not run (found $($oracle.Count) container(s) named test-suite-registration.Tests.ps1) - it is the check that proves every other suite was discovered, so this run cannot be trusted" }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```
 pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force; Invoke-Pester scripts/tests/test-suite-registration.Tests.ps1 -Output Detailed"
@@ -951,7 +956,7 @@ Expected: all rows pass, including the new one. Note the count went up by one - 
 `scripts/tests/_partition.md` accordingly, or its own `every _partition.md row states the CURRENT test
 count` row will red.
 
-- [ ] **Step 5: Prove the CI guard is not vacuous**
+- [x] **Step 5: Prove the CI guard is not vacuous**
 
 The YAML cannot be unit-tested, so exercise its logic directly against a container set that lacks the
 oracle:
@@ -963,7 +968,13 @@ Expected: `WOULD THROW - correct`. Then run the same snippet with the container 
 `scripts/tests/test-suite-registration.Tests.ps1` and expect no throw - a passing and a failing control on
 the same expression.
 
-- [ ] **Step 6: Commit**
+**A THIRD CONTROL WAS ADDED ON EXECUTION, and it is the one that matters.** Both controls above hand
+the guard an `Item` that is a **string**, while a real Pester container's `Item` is a
+`System.IO.FileInfo` - the only shape CI ever passes it. A guard proven solely against the synthetic
+shape could still be broken against the real one. Measured 2026-08-31 against a live
+`Invoke-Pester -SkipRun` result: `count=1`, `Item type=System.IO.FileInfo`, no throw - correct.
+
+- [x] **Step 6: Commit**
 
 ```bash
 git add .github/workflows/ci-scripts.yml scripts/tests/test-suite-registration.Tests.ps1 scripts/tests/_partition.md

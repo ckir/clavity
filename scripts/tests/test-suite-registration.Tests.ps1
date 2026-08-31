@@ -346,4 +346,16 @@ foreach ($cont in $r.Containers) {
         $script:Justfile | Should -Match ([regex]::Escape($rel)) -Because 'the suite ran in no gate at all until it was named in a recipe (ROADMAP 14b)'
         Test-Path -LiteralPath (Join-Path $script:RepoRoot $rel) | Should -BeTrue -Because 'a recipe naming a file that does not exist silently shrinks the gate'
     }
+
+    It 'CI asserts that THIS suite itself was discovered' {
+        # SELF-GUARDING ORACLE. The equality row in this file proves every other suite was discovered -
+        # but only while this file is itself discovered. If this one is misnamed or deleted, its row
+        # never runs and CI falls back to `TotalCount -lt 100`, which MEASURED 2026-08-31 tolerates
+        # losing ~89% of 982 assertions. So CI must name this suite explicitly, and that naming is what
+        # this row pins. Source-text pinning is used because the assertion lives in YAML, where there is
+        # no behaviour to call.
+        $wf = Get-Content -LiteralPath (Join-Path $script:RepoRoot '.github/workflows/ci-scripts.yml') -Raw
+        $wf | Should -Match 'test-suite-registration\.Tests\.ps1' -Because 'ci-scripts.yml must name this suite so its absence cannot pass quietly'
+        $wf | Should -Match 'registration oracle' -Because 'the guard must say WHY it exists, or a later reader will delete it as redundant'
+    }
 }

@@ -563,7 +563,15 @@ agy-drive-session-reset.Tests.ps1                   ?    6 tests   <- FAST, NEW 
                                                                       is a different mode again. Re-measure
                                                                       in the next solo fast sweep rather
                                                                       than copying either figure.
-test-suite-registration.Tests.ps1                21,9s    8 tests   <- FAST. MEASURED 2026-08-24 WARM on an
+test-suite-registration.Tests.ps1                21,9s    9 tests   <- FAST. MEASURED 2026-08-24 WARM on an
+                                                                      COUNT 8 -> 9 on 2026-08-31: the
+                                                                      self-guarding row (0b) that pins
+                                                                      CI naming this very suite. NOTE
+                                                                      THIS SUITE COUNTS ITSELF - adding
+                                                                      the row made its own count-guard
+                                                                      red until this figure moved, which
+                                                                      is the mechanism working, not a
+                                                                      defect. TIME not re-measured.
   idle CPU (cold 34,5s); the time field was `?` until then. The single count-guard It is 20,9s of that
   21,9s - about 95% - because it spawns a child pwsh and runs Pester DISCOVERY over all 49 suites.
   🔴 The previous note here read "0,7s in the contended sweep... does no I/O beyond reading justfile,

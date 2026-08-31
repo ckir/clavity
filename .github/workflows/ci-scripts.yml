@@ -201,6 +201,13 @@ jobs:
           $bad = @($r.Containers | Where-Object { $_.Result -ne 'Passed' })
           if ($bad.Count -gt 0) { throw "$($bad.Count) container(s) failed to run or discover" }
           if ($r.TotalCount -lt 100) { throw "only $($r.TotalCount) tests discovered - expected the full suite (>=100); a misnamed/misplaced *.Tests.ps1?" }
+          # The registration oracle must itself have run. test-suite-registration.Tests.ps1 asserts an
+          # EXACT equality between discovered containers and `git ls-files '*.Tests.ps1'`, which is what
+          # proves every other suite was discovered - but that row only runs while this suite is itself
+          # discovered. Without this check, losing THAT file degrades the whole gate to the count floor
+          # above, which tolerates losing ~89% of the suite.
+          $oracle = @($r.Containers | Where-Object { (Split-Path $_.Item -Leaf) -eq 'test-suite-registration.Tests.ps1' })
+          if ($oracle.Count -ne 1) { throw "the registration oracle did not run (found $($oracle.Count) container(s) named test-suite-registration.Tests.ps1) - it is the check that proves every other suite was discovered, so this run cannot be trusted" }
 
       - name: Verify-gate fixture tests (bash)
         # A COMMITTED, WIRED HOOK WHOSE ONLY TEST NOTHING RAN. `.claude/hooks/agy-verify-reminder.sh` is
