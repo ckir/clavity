@@ -2071,6 +2071,99 @@ specifies, and the reasoning that produced them is stale.
 that requires a row, or an explicit accepted limitation that audited ranges are not tracked. That is a
 design fork and belongs to the owner.
 
+### §24 — AGY-FIRST is mandatory when a capstone round has to DEVELOP NEW CODE — ▶ **OWNER ACCEPTED 2026-08-31, not yet planned**
+
+**Owner accepted both this and §25 on 2026-08-31, to be executed as one plan.** Raised by the owner,
+consulted with the live peer, refinements folded. The peer's answer was YES with a mechanical trigger.
+
+🔴 **THE EVIDENCE IS THE 8-ROUND CAPSTONE THAT JUST SHIPPED** (`6c998ce..274afbd`, ledger `8c7bf18`).
+Three pieces of NEW code were written mid-capstone. **Every single one produced a defect in the very
+next round:**
+- the recursive census (a whole-function rewrite) -> R4 found its exclusion boundary was a GLOB over a
+  path we do not control, silently defeated by a `[` in the path or a trailing slash;
+- the chunked batch hasher -> R7 found `else return 1` sat on the LEFT OF A PIPELINE, so it ran in a
+  subshell and the function reported SUCCESS instead of failing;
+- `agy_guard_dir_digest` (a new function) -> R5 found it returned a CONSTANT on a short count, which
+  compares equal to itself and blinds the monitor.
+
+**The one piece that got a design consult FIRST was the seams-monitoring shape.** The peer
+independently chose the same shape without being told which was implemented, and then found three
+defects in it - including `xargs -r` being a GNU extension that would have made the digest a constant
+on macOS: blind while reporting clean. Same class of defect, found BEFORE shipping instead of after.
+
+**THE TRIGGER MUST BE MECHANICAL, evaluated by a script, never by the agent that wants to skip it.**
+The peer's proposal was: the `git diff` against the round's base adds a new file, OR adds a new
+`function`/`class` declaration, OR adds >10 lines of non-test executable code.
+
+**Refinements folded (drop the line-count, pause rather than abort):**
+- **DROP the `>10 lines` clause.** It is comment-sensitive and noisy - this repository's folds are
+  heavily commented, so a two-line behavioural change routinely exceeds ten lines. A NEW FUNCTION
+  DECLARATION or a WHOLE-FUNCTION REWRITE is crisp, and **checked against the three cases above it
+  would have fired on exactly those three and on none of the small folds.**
+- **PAUSE THE FOLD, do not hard-abort the capstone.** An abort throws away a round's accumulated
+  context and ledger for something one consult fixes. The round pauses, the consult runs, the round
+  resumes.
+- Trigger, final: **a new file, a new function/class declaration, or a whole-function rewrite, in
+  NON-TEST shipped code.**
+
+**Open, for the owner at plan time - the STRUCTURAL INDEPENDENCE PROBLEM.** If the capstone's new code
+gets its AGY-FIRST from the SAME peer that reviews it in the next round, the peer is reviewing a design
+it endorsed. In this run it did not rubber-stamp - it found three defects in the shape it had just
+chosen - but this proposal makes the arrangement systematic rather than incidental. **Owner deferred
+this to plan time (2026-08-31).** Decide whether the design consult and the review rounds may be the
+same peer.
+
+---
+
+### §25 — A negotiation discipline in ALL four review-only skills — ▶ **OWNER ACCEPTED 2026-08-31, not yet planned**
+
+**Ship the mechanism; do NOT make AGREEMENT the success criterion.** Owner accepted with that
+refinement on 2026-08-31, to be executed alongside §24.
+
+**What exists today:** `agy-capstone/SKILL.md` has an `AGY-NEGOTIATE` section - auto-fires on MATERIAL
+disagreement, caps at `MAX_NEGOTIATE_ROUNDS = 2`, hands the human a tie-break on impasse with both
+positions documented. **It exists in exactly one skill.** `agy-first`, `agy-test-audit` and
+`adversarial-panel-review` each require one substantive counter-turn but have no loop and no impasse
+protocol.
+
+🔴 **THE PEER DECLARED A CONFLICT OF INTEREST AND THEN ARGUED AGAINST ITS OWN INTEREST.** Asked to
+review a proposal about how much weight its own opinion carries, it wrote that its RLHF tuning biases
+it toward agreeability and autonomous completion, so its interest points **in favour** of the proposal
+- and then recommended rejecting the agreement requirement. That is the most credible shape an answer
+can take, and it is why the refinement below is adopted rather than the proposal as stated.
+
+**Why AGREEMENT is the wrong criterion:**
+- It creates a direct contradiction: *be an adversarial reviewer* versus *you must agree to finish*.
+  Under pressure to converge, a valid technical objection gets folded to satisfy the stopping
+  condition - compliance theater instead of truth.
+- **MEASURED over the 8-round capstone: roughly 60% of the peer's findings were confirmed and 40% were
+  refuted** - a fabricated census string, a `chmod 000` trigger that does not exist on this platform,
+  an ARG_MAX ceiling that measured fine at 12000 files. An agreement requirement means burning rounds
+  arguing the peer out of those, or conceding to move on.
+- **The cost neither party had listed, raised by the peer:** under pressure to agree, two models will
+  synthesise a FABRICATED COMPROMISE DESIGN that neither originally proposed and neither has measured.
+  Maximum tokens spent to receive an unmeasured hallucination that then has to be untangled.
+
+**The criterion instead: EXHAUSTION OF EVIDENCE.** Both sides have put one round of MEASURED proof on
+the table. If divergence remains after that, stop and hand the human both positions with their
+evidence. Impasse must stay cheap and legitimate, never a failure state.
+
+**The distinction that matters, and it is not the peer's own framing.** The peer said negotiation is
+"for implementation trivia, not structural integrity". That merges two different things. The CONSULT is
+most valuable precisely ON structural forks - the seams shape was structural and was the highest-yield
+consult of the entire run. It is the AGREEMENT LOOP that must never run there. **So: consult always,
+agree never; and on a structural fork, one evidence round each, then straight to the human.**
+
+**Straight to the human with no negotiation at all:** a material design fork, a security boundary, or
+an architectural axiom. The moment the two agents disagree on a load-bearing system shape, the human
+decides.
+
+**Where it must be written:** all four review-only skills ship as byte-identical pairs under
+`clavity-dotnet/plugin/skills/` and `clavity-classic/plugin/skills/`, so any change lands in both
+halves in the same commit and must pass `plugin-hooks-payload.Tests.ps1`.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
