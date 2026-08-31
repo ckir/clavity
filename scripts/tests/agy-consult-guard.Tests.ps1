@@ -171,7 +171,16 @@ Describe 'agy-consult-guard' {
             Invoke-BashHook -HookPath $script:Pre -Payload $p | Out-Null
             Push-Location $r; Set-Content 'b.txt' 'two' -Encoding ascii; git add b.txt; git commit -qm peer; Pop-Location
             $out = (Invoke-BashHook -HookPath $script:Post -Payload $p).StdOut
-            $out | Should -Match 'CONSULT GUARD' -Because 'a .no-agy in the repo must not be able to silence the guard that watches the repo'
+            # AGY-TEST-AUDIT 2026-08-31. This assertion used to be `-Match 'CONSULT GUARD'`, and that
+            # is a needle the FAILURE banner also contains: post.sh:55 emits "AGY CONSULT GUARD - NOT
+            # VERIFIED (guard failed to initialize)" when no baseline exists. MEASURED - patch pre.sh to
+            # honour .no-agy and it writes no baseline, so post.sh took that branch, the row matched it
+            # and passed GREEN while the mutation check never ran at all. The row promised in its own
+            # comment to catch exactly that change and did not. Assert the DETECTION phrase, and reject
+            # the initialize-failure route explicitly so the row can never again pass by it.
+            $out | Should -Match 'VERSION CONTROL CHANGED' -Because 'a .no-agy in the repo must not be able to silence the guard that watches the repo'
+            $out | Should -Match 'committed-HEAD' -Because 'the commit made during the consult is what the guard must name'
+            $out | Should -Not -Match 'guard failed to initialize' -Because 'passing via the no-baseline banner is the confound this row exists to exclude'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -654,6 +663,11 @@ Describe 'agy-consult-guard' {
             $bare  = & bash -lc "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$p'"
             $slash = & bash -lc "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_census '$p/'"
             $slash | Should -Be $bare
+            # AGY-TEST-AUDIT 2026-08-31: the negative below is satisfied for free by an EMPTY census,
+            # so it is paired with a positive that proves the census actually listed something. The
+            # row as a whole was NOT vacuous - deleting only the trailing-slash normalisation reds the
+            # comparison above - but a bare -Not -Match is not evidence on its own.
+            $bare | Should -Match 'agy-marks/m=' -Because 'the census must actually enumerate entries, or the negative below proves nothing'
             $bare | Should -Not -Match 'scratch/t/peer\.md'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -835,6 +849,98 @@ echo "digests=$n calls=$(wc -l < "$count")"
             $empty | Should -Match '^[0-9a-f]{64}$'
             $empty | Should -Not -Be $full -Because 'emptying the shield is the change this axis exists to catch'
             $empty | Should -Not -Be 'ABSENT' -Because 'an empty file and a missing file are different states'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- the smuggle-vector axes (AGY-TEST-AUDIT 2026-08-31) -----------------------------------
+    # agy_guard_quad carries eight axes. The ignored axis arrived with a full row family; these four
+    # older ones had NONE. MEASURED before writing them: blind stash, gitmeta and flags to constants
+    # and the full suite still reported 38 passed / 1 failed, where the single red was
+    # 'is byte-identical to the clavity-classic mirror' - an artifact of mutating one half of the
+    # pair, and precisely the gate that does NOT fire on a properly-mirrored change, which is how
+    # every real edit to these files lands. Each axis below guards a documented smuggle vector that
+    # leaves `git status` completely clean.
+
+    It 'WARNS when a stash is created during a consult' {
+        # A stash moves refs/stash and then restores the worktree, so status, diff and HEAD all read
+        # exactly as they did at baseline. Without this axis the peer could park a change in the
+        # stash and the guard would report the consult clean.
+        $r = New-GuardRepo
+        try {
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Push-Location $r
+                Set-Content 'a.txt' 'stashed change' -Encoding ascii
+                git stash -q
+                Pop-Location
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'stash \(refs/stash moved\)' -Because 'the stash axis must NAME itself, or the operator cannot tell what to look at'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when a .git hook is planted during a consult' {
+        # The highest-consequence vector of the four: a file under .git/hooks/ is EXECUTED by later
+        # git commands, so planting one is arbitrary code execution that no `git status` will ever
+        # show. .git is not tracked, so this axis is the only thing watching it.
+        $r = New-GuardRepo
+        try {
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Set-Content (Join-Path $r '.git/hooks/post-commit') "#!/bin/sh`necho pwned" -Encoding ascii
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'ARBITRARY-CODE-EXEC' -Because 'a planted hook is code execution and the warning must say so'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'WARNS when an assume-unchanged bit is set during a consult' {
+        # --assume-unchanged makes git IGNORE later edits to a tracked file: the smuggle is that it
+        # hides a subsequent modification from `status` AND from `diff` at once. Setting the bit is
+        # invisible to both, so only `ls-files -v` can see it.
+        $r = New-GuardRepo
+        try {
+            $out = Invoke-ConsultAround -Repo $r -Between {
+                Push-Location $r; git update-index --assume-unchanged a.txt; Pop-Location
+            }
+            $out | Should -Match 'VERSION CONTROL CHANGED'
+            $out | Should -Match 'hidden index smuggle' -Because 'the flags axis must name itself'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # --- the ASYNC half of the contract (AGY-TEST-AUDIT 2026-08-31) ----------------------------
+    # Every other row in this file drives the SYNC path. Nothing anywhere drove `clavity send`, so
+    # the open -> terminal flow, and with it pre.sh's preserve-the-oldest branch, had no coverage at
+    # all - even though that branch's own comment says it exists to "never drop an in-flight
+    # mutation across multi-message async".
+
+    It 'catches a mutation across an ASYNC send/await-reply consult' {
+        $r = New-GuardRepo
+        try {
+            $c = ($r -replace '\\','/')
+            $send = @{ tool_name = 'Bash'; tool_input = @{ command = 'clavity send "please review"' }; cwd = $c; session_id = 'guardasync1' } | ConvertTo-Json -Compress
+            $term = @{ tool_name = 'Bash'; tool_input = @{ command = 'clavity await-reply' }; cwd = $c; session_id = 'guardasync1' } | ConvertTo-Json -Compress
+            Invoke-BashHook -HookPath $script:Pre -Payload $send | Out-Null
+            Push-Location $r; Set-Content 'b.txt' 'two' -Encoding ascii; git add b.txt; git commit -qm peer; Pop-Location
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $term).StdOut
+            $out | Should -Match 'VERSION CONTROL CHANGED' -Because 'the async slot must detect a mutation exactly as the sync slot does'
+            $out | Should -Match 'committed-HEAD'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'keeps the OLDEST async baseline when a second send arrives mid-flight' {
+        # pre.sh:35-37, and the reason the async slot is write-IF-NONE rather than write-always: a
+        # multi-message async exchange fires Pre again on every send. If the second send re-baselined,
+        # a mutation made before it would be folded into the new baseline and silently disappear.
+        # This row commits BETWEEN the two sends, so a re-baselining Pre reports the consult clean.
+        $r = New-GuardRepo
+        try {
+            $c = ($r -replace '\\','/')
+            $send = @{ tool_name = 'Bash'; tool_input = @{ command = 'clavity send "please review"' }; cwd = $c; session_id = 'guardasync2' } | ConvertTo-Json -Compress
+            $term = @{ tool_name = 'Bash'; tool_input = @{ command = 'clavity await-reply' }; cwd = $c; session_id = 'guardasync2' } | ConvertTo-Json -Compress
+            Invoke-BashHook -HookPath $script:Pre -Payload $send | Out-Null
+            Push-Location $r; Set-Content 'b.txt' 'two' -Encoding ascii; git add b.txt; git commit -qm peer; Pop-Location
+            Invoke-BashHook -HookPath $script:Pre -Payload $send | Out-Null   # the second send
+            $out = (Invoke-BashHook -HookPath $script:Post -Payload $term).StdOut
+            $out | Should -Match 'committed-HEAD' -Because 'the second send must NOT re-baseline away a mutation that already landed'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
