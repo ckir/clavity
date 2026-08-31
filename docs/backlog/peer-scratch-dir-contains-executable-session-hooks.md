@@ -1,12 +1,15 @@
 # Backlog stub - the scratch directory handed to the peer contains code this machine executes
 
-**Status:** OPEN. Promoted 2026-08-31 from `.clavity/local-anomalies.md`.
+**Status:** PARTIALLY CLOSED 2026-08-31 - the three hooks are un-wired (owner instruction). The
+remaining scope is the durable question in `## What is still open`, not the original exposure.
+Promoted 2026-08-31 from `.clavity/local-anomalies.md`.
 **Raised:** 2026-08-30, during agy-capstone round 3 on the review-only envelope.
-**Re-verified 2026-08-31** during AGY-TEST-AUDIT: still true, all three files present.
+**Re-verified 2026-08-31** during AGY-TEST-AUDIT: still true then, all three files present.
+**Un-wired later the same day** - see the update at the foot of this file.
 
-## The fact
+## The fact, AS FOUND on 2026-08-30 (the wiring was removed on 2026-08-31 - see the update below)
 
-Three executable scripts under `.clavity/scratch/discipline-efficacy/` are wired as **live
+Three executable scripts under `.clavity/scratch/discipline-efficacy/` were wired as **live
 SessionStart / SessionEnd hooks**:
 
 | file | mode | wired at |
@@ -50,3 +53,33 @@ plugin directories. The wider grep is what found the three wired hooks.
 
 Option 3 is the only one that stays correct if a future session wires something from `scratch/` again,
 so it is worth considering even alongside option 1.
+
+
+## Update 2026-08-31 - option 1 taken, exposure closed
+
+The owner instructed un-wiring. The entire `hooks` block was removed from
+`.claude/settings.local.json` - it contained nothing but these three probes, so no empty scaffolding was
+left behind. VERIFIED by parsing both versions and diffing the decoded objects: `hooks` is the ONLY key
+that changed; `env`, `permissions` and `enabledPlugins` are value-identical. A backup of the previous
+file was taken first. No hook anywhere is now wired from `.clavity/`.
+
+**The code is still there, it is merely no longer invoked.** Six mode-755 scripts remain in the peer's
+sanctioned write zone:
+
+    abs-probe.sh   env-probe.sh   probe-hotreload.sh
+    probe12-sessionend.sh   probe7-concurrent-append.sh   sessionstart-probe.sh
+
+Only three of those six were ever wired. That ratio is the reason this item is not closed outright:
+executable files accumulate in `scratch/` as a by-product of ordinary probe work, and the wiring is a
+separate, easily-repeated act.
+
+## What is still open
+
+The durable question, unchanged by the un-wiring: **`.clavity/scratch/` is a directory the peer is
+explicitly invited to write to, and the consult guard records it by NAME ONLY.** Un-wiring removed
+today's exposure; it did not make the write zone monitored, and nothing prevents a future session from
+wiring something from there again.
+
+Option 3 above - censusing the **executable bit** rather than content - remains the only proposal that
+keeps this correct without reintroducing false alarms on sanctioned peer writes. Worth scheduling on its
+own merits.
