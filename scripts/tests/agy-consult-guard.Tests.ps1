@@ -181,6 +181,14 @@ Describe 'agy-consult-guard' {
     It 'WARNS when the .clavity shield file is emptied' {
         # The shield is a bare '*'. Empty it and .clavity/ becomes visible to git, so the next
         # `git add .` publishes untriaged anomalies. Highest-consequence silent change there is.
+        #
+        # WHAT THIS ROW ACTUALLY PINS is the OUTCOME - that emptying the shield warns - NOT the
+        # dedicated `.clavity/.gitignore` component of agy_guard_ignored. MEASURED: replacing that
+        # component with a constant leaves this row green, because .gitignore is a top-level entry
+        # in .clavity/ and the census covers it anyway. The component is redundant with the census
+        # by construction, and that redundancy is deliberate defence in depth - but a row cannot
+        # claim to guard a component that another component already guards. The direct coverage for
+        # the component's building block is the agy_guard_file_state row below.
         $r = New-GuardRepo
         try {
             New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
@@ -764,7 +772,7 @@ Describe 'agy-consult-guard' {
 set +e
 lib=$1
 dir=$2
-real=$(command -v sha256sum) || { echo "no-sha256sum"; exit 0; }
+real=$(command -v sha256sum) || { echo "digests=SKIP calls=SKIP"; exit 0; }
 shim=$(mktemp -d); count="$shim/count"; : > "$count"
 mkdir -p "$shim/bin"
 printf '#!/bin/sh\necho x >> "%s"\nexec "%s" "$@"\n' "$count" "$real" > "$shim/bin/sha256sum"
@@ -776,6 +784,15 @@ n=$(PATH="$shim/bin:$PATH" bash -c '. "$1"; shift; agy_guard_hash_files "$@"' _ 
 echo "digests=$n calls=$(wc -l < "$count")"
 '@.Replace("`r`n", "`n"))
             $out = & bash -lc "sh '$($probePath -replace '\\','/')' '$($script:Lib -replace '\\','/')' '$($files -replace '\\','/')'"
+            # A box with no sha256sum - macOS ships shasum instead - cannot run this probe at all,
+            # and the first version FAILED there rather than skipping: it printed 'no-sha256sum' and
+            # both assertions went red. CI is windows-latest only (ci-scripts.yml), so it was never
+            # reachable there, but a red row on a developer's machine for a tool that is legitimately
+            # absent is a false alarm, and false alarms are what teach people to ignore a suite.
+            if ($out -match 'digests=SKIP') {
+                Set-ItResult -Skipped -Because 'sha256sum is absent on this host, so the invocation-counting shim cannot run'
+                return
+            }
             $out | Should -Match 'digests=300' -Because 'every file must still get exactly one digest'
             $out | Should -Match 'calls=2' -Because '300 files at 256 per chunk is 2 invocations; an unchunked call would be 1'
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
@@ -792,5 +809,32 @@ echo "digests=$n calls=$(wc -l < "$count")"
         # Shadow `command` so neither tool resolves, without breaking the rest of the shell.
         $rc = & bash -lc "set +e; . '$lib'; command() { return 1; }; agy_guard_hash_files /etc/hosts >/dev/null 2>&1; echo `$?"
         $rc | Should -Be '1' -Because 'no hashing tool is a failure the caller must be able to see'
+    }
+
+    It 'tracks the .clavity shield file as a state of its own' {
+        # Capstone R8, and the direct coverage the shield row above cannot provide. The dedicated
+        # `.clavity/.gitignore` component of agy_guard_ignored is redundant with the census, so no
+        # end-to-end row can isolate it - stub the component out and the census still catches the
+        # change. This row tests the building block itself, where nothing else can shadow it.
+        $r = New-GuardRepo
+        try {
+            $c = Join-Path $r '.clavity'
+            New-Item -ItemType Directory -Path $c -Force | Out-Null
+            $g = (Join-Path $c '.gitignore') -replace '\\','/'
+            $lib = $script:Lib -replace '\\','/'
+
+            $absent = & bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
+            $absent | Should -Be 'ABSENT' -Because 'a missing shield must be an explicit sentinel, never an empty string'
+
+            Set-Content (Join-Path $c '.gitignore') '*' -Encoding ascii -NoNewline
+            $full = & bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
+            $full | Should -Match '^[0-9a-f]{64}$'
+
+            Set-Content (Join-Path $c '.gitignore') '' -Encoding ascii -NoNewline
+            $empty = & bash -lc "set +e; . '$lib'; agy_guard_file_state '$g'"
+            $empty | Should -Match '^[0-9a-f]{64}$'
+            $empty | Should -Not -Be $full -Because 'emptying the shield is the change this axis exists to catch'
+            $empty | Should -Not -Be 'ABSENT' -Because 'an empty file and a missing file are different states'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
