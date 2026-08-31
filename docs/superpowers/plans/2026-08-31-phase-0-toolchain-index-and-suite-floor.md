@@ -82,7 +82,15 @@ Create `scripts/tests/check-plugin-drift.Tests.ps1`:
 # real installed plugin: CI has no install, and a row that silently skips when the install is absent is
 # the exact fail-open this checker exists to close. The live check is a manual step in the plan, not a row.
 BeforeAll {
-    $script:Script = (Resolve-Path (Join-Path $PSScriptRoot '..' 'check-plugin-drift.ps1')).Path
+    # FAIL LOUDLY IF THE SCRIPT IS ABSENT. Do not use `(Resolve-Path ...).Path` here: on a missing file
+    # it raises a NON-TERMINATING error, so `$script:Script` is left unusable and any row that does not
+    # happen to touch it still reports PASSED. MEASURED 2026-08-31 with a paired control - Resolve-Path
+    # form: "Passed: 2, Failed: 0" on two rows that ignored the variable; this throw form: "Failed: 2".
+    # A suite that cannot run must say so, not go green on the rows that were not looking.
+    $script:Script = Join-Path $PSScriptRoot '..' 'check-plugin-drift.ps1'
+    if (-not (Test-Path -LiteralPath $script:Script)) {
+        throw "check-plugin-drift.ps1 not found at $script:Script - this suite cannot run"
+    }
 
     function New-FixtureRepo {
         param([hashtable]$Files)
@@ -233,8 +241,14 @@ Run:
 ```
 pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force; Invoke-Pester scripts/tests/check-plugin-drift.Tests.ps1 -Output Detailed"
 ```
-Expected: **every row fails**, because `scripts/check-plugin-drift.ps1` does not exist yet. Read the
-`Tests Passed:` line - a run with no such line ABORTED and is not a result.
+Expected: **every row fails** (`Tests Passed: 0, Failed: 8`), because `scripts/check-plugin-drift.ps1`
+does not exist yet and the `BeforeAll` throws. Read the `Tests Passed:` line - a run with no such line
+ABORTED and is not a result.
+
+**MEASURED, so you know what you are looking at:** with the `throw` guard above, a missing script fails
+**every** row including any that would not have touched it. Without it - i.e. with `(Resolve-Path ...).Path`
+- the same situation reported `Passed: 2, Failed: 0` on rows that ignored the variable. That is why the
+guard is there, and it is the reason this step's expectation is trustworthy.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -494,7 +508,12 @@ Create `scripts/tests/check-roadmap-claims.Tests.ps1`:
 # Fixture ROADMAPs under $TestDrive plus a throwaway git repo for the sha-existence half. The real
 # ROADMAP is exercised by exactly one row, and only AFTER Task 4 reconciles it.
 BeforeAll {
-    $script:Script   = (Resolve-Path (Join-Path $PSScriptRoot '..' 'check-roadmap-claims.ps1')).Path
+    # Same hardening as check-plugin-drift.Tests.ps1, for the same measured reason: a missing script
+    # under `(Resolve-Path ...).Path` is a non-terminating error and lets unrelated rows report PASSED.
+    $script:Script   = Join-Path $PSScriptRoot '..' 'check-roadmap-claims.ps1'
+    if (-not (Test-Path -LiteralPath $script:Script)) {
+        throw "check-roadmap-claims.ps1 not found at $script:Script - this suite cannot run"
+    }
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
 
     function New-ClaimRepo {
