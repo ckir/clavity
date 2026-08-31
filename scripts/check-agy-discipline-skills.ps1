@@ -84,6 +84,25 @@ foreach ($skill in $skills) {
 # there to reach this single check would red the linter on three unrelated invariants and invent
 # requirements that discipline was never meant to meet. A separate list gets the coverage without the
 # false failures. AGY-AFTER was previously covered by NO lint at all here.
+# AGY-TEST-AUDIT 2026-08-31: the REVIEW-ONLY SAFETY ENVELOPE, required of all four review disciplines.
+# MEASURED before this guard existed: deleting all 30 lines of the envelope from
+# adversarial-panel-review/SKILL.md left this linter printing 'agy-discipline skills OK' with rc=0, and
+# every other repo gate green with it. That envelope is the only thing standing between a consult and a
+# peer that writes to the tree - and the peer HAS breached it twice in eight rounds on this repository,
+# so it is load-bearing in practice and not merely on paper.
+#
+# HONEST LIMITATION, stated rather than hidden: these are literal-text needles, so they prove the steps
+# are PRESENT, never that the skill's surrounding prose still means anything. A determined author can
+# satisfy them without substance. They exist to catch DELETION and drift, which is the regression that
+# was actually measured, not to certify the envelope's quality.
+$envelopeSteps = @(
+    'Snapshot before',
+    'Forbidden-actions banner',
+    'Permission to pass',
+    'Point at files',
+    'Diff after'
+)
+
 $disciplineNames = $skills + @('adversarial-panel-review')
 foreach ($skill in $disciplineNames) {
     $rel = "clavity-dotnet/plugin/skills/$skill/SKILL.md"
@@ -94,6 +113,17 @@ foreach ($skill in $disciplineNames) {
     $mandate = 'discipline: "' + $skill + '"'
     if (-not $raw.Contains($mandate)) {
         Fail "$rel : does not instruct the caller to pass $mandate - its consults will run UNCHECKED"
+    }
+
+    foreach ($step in $envelopeSteps) {
+        if (-not $raw.Contains($step)) {
+            Fail "$rel : missing review-only safety-envelope step '$step' - a consult from this discipline would run with no snapshot / forbidden-actions / diff-after discipline"
+        }
+    }
+    # The sanctioned scratch directory is the other half of the envelope: without one, a
+    # measure-and-reproduce framing sends the peer to write in the repository's working directory.
+    if (-not $raw.Contains('.clavity/scratch/')) {
+        Fail "$rel : names no sanctioned scratch directory (.clavity/scratch/) - a measure-and-reproduce consult would have nowhere to write but cwd"
     }
 }
 

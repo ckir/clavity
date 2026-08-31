@@ -155,6 +155,35 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
+        It 'fails when the review-only safety envelope is stripped from <skill>' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # AGY-TEST-AUDIT 2026-08-31, and this row exists because the gap was MEASURED, not supposed:
+            # with a control run first (rc=0 on an unmutated copy), deleting the entire 30-line safety
+            # envelope from adversarial-panel-review/SKILL.md left the linter printing 'agy-discipline
+            # skills OK' and exiting 0. Nothing in the repository noticed. The envelope is what keeps a
+            # review-only consult review-only, and the live peer has breached it twice in eight rounds,
+            # so its deletion has to be a red gate rather than a silent drift.
+            #
+            # One step is stripped rather than the whole block: it isolates the new check, and it is the
+            # realistic regression - an edit that reorganises the section and drops a step is far likelier
+            # than one that deletes all five at once.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $real.Contains('Diff after') | Should -BeTrue -Because "the fixture needs the envelope present in $skill before it can be stripped"
+            $body = $real.Replace('Diff after', '')
+            $body | Should -Not -Be $real -Because 'the strip must take effect'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'safety-envelope step'
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'fails when <skill> does not instruct the caller to name its discipline (13b)' -ForEach @(
             @{ skill = 'agy-first' },
             @{ skill = 'agy-capstone' },
