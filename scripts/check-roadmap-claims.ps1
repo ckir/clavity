@@ -49,7 +49,14 @@ $claimRe = [regex]'`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`\s*\((\d+)\s+lines\)'
 for ($i = 0; $i -lt $lines.Count; $i++) {
     foreach ($m in $claimRe.Matches($lines[$i])) {
         $rel     = $m.Groups[1].Value
-        $claimed = [int]$m.Groups[2].Value
+        # TryParse, not a bare [int] cast. The regex's `\d+` is unbounded, so a claim like
+        # `(99999999999999999999999999 lines)` overflowed Int32 and threw an unhandled conversion error.
+        # Uncontrolled input must not crash a checker: report it and carry on. AGY-CAPSTONE round 2.
+        $claimed = 0
+        if (-not [int]::TryParse($m.Groups[2].Value, [ref]$claimed)) {
+            $problems += "UNPARSEABLE ROADMAP:$($i+1)  ``$rel`` claims '$($m.Groups[2].Value)' lines, which is not a number this checker can hold"
+            continue
+        }
         $hits    = @($tracked | Where-Object { $_ -eq $rel -or $_.EndsWith("/$rel") })
         if ($hits.Count -eq 0) {
             $problems += "UNRESOLVED  ROADMAP:$($i+1)  ``$rel`` is not a tracked file"
@@ -60,11 +67,16 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
         # threw an unhandled FileNotFoundException and the script exited **1**, which is the "a claim is
         # false" code - so a broken worktree was indistinguishable from a stale line count, sending the
         # reader to hunt a number that was never wrong. Fail CLOSED, and say which thing broke.
+        # -PathType Leaf, NOT a bare Test-Path. AGY-CAPSTONE round 2 caught this in round 1's OWN FIX:
+        # a bare Test-Path returns TRUE for a DIRECTORY, so a tracked file replaced by a directory of the
+        # same name passed this guard and then threw an unhandled UnauthorizedAccessException at
+        # ReadAllText. MEASURED: Test-Path -> True, Test-Path -PathType Leaf -> False. A fix is a fresh
+        # claim, and this one shipped its own edge.
         $absent = @($hits | Where-Object {
-            -not (Test-Path -LiteralPath (Join-Path $RepoRoot ($_ -replace '/', [IO.Path]::DirectorySeparatorChar)))
+            -not (Test-Path -LiteralPath (Join-Path $RepoRoot ($_ -replace '/', [IO.Path]::DirectorySeparatorChar)) -PathType Leaf)
         })
         if ($absent.Count -gt 0) {
-            $problems += "UNREADABLE  ROADMAP:$($i+1)  ``$rel`` is tracked but absent from the worktree ($($absent -join ', ')) - the claim cannot be checked"
+            $problems += "UNREADABLE  ROADMAP:$($i+1)  ``$rel`` is tracked but is not a readable file in the worktree ($($absent -join ', ')) - the claim cannot be checked"
             continue
         }
         $counts = @($hits | ForEach-Object {

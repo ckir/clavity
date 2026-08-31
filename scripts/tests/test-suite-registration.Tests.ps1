@@ -354,17 +354,39 @@ foreach ($cont in $r.Containers) {
         # losing ~89% of 982 assertions. So CI must name this suite explicitly, and that naming is what
         # this row pins. Source-text pinning is used because the assertion lives in YAML, where there is
         # no behaviour to call.
-        # MEASURED VACUOUS AT AGY-CAPSTONE ROUND 1. This row used to grep the whole file for the two
-        # strings. Both also appear in the guard's own explanatory COMMENT, so commenting out its two
-        # executable lines - the likeliest way anyone disables it - left the row passing 1/0 while the
-        # guard was dead. A source-text pin must match a line that EXECUTES, not one that merely
-        # mentions. Proven by re-running the same mutant against this version.
+        # BEHAVIOURAL, NOT LEXICAL - and it took two capstone rounds to get here.
+        # Round 1: this row grepped the whole file for two strings that also appear in the guard's own
+        #   COMMENT, so commenting the guard out left the row green. MEASURED with a mutant.
+        # Round 2: matching only UNCOMMENTED lines was still lexical, and a `<# ... #>` block comment
+        #   defeated it - the lines still start with whitespace, so the regex still matched.
+        # A text match cannot see SEMANTICS. So: strip PowerShell comments, extract the guard's own two
+        # lines, and RUN them against synthetic container sets. A block comment, a line comment, an
+        # inverted test and a `-ne 2` typo all fail this; none of them fail a text match.
         $wfPath  = Join-Path $script:RepoRoot '.github/workflows/ci-scripts.yml'
         $wfLines = @(Get-Content -LiteralPath $wfPath)
-        $assign  = @($wfLines | Where-Object { $_ -match '^\s*\$oracle = @\(\$r\.Containers' })
-        $throw   = @($wfLines | Where-Object { $_ -match '^\s*if \(\$oracle\.Count -ne 1\)' })
-        $assign.Count | Should -Be 1 -Because 'ci-scripts.yml must ASSIGN $oracle on an UNCOMMENTED line - a commented-out guard is not a guard'
-        $throw.Count  | Should -Be 1 -Because 'ci-scripts.yml must THROW when the oracle did not run, on an UNCOMMENTED line'
+
+        $live = @()
+        $inBlock = $false
+        foreach ($l in $wfLines) {
+            $t = $l.Trim()
+            if ($inBlock) { if ($t -match '#>') { $inBlock = $false }; continue }
+            if ($t -match '^<#') { if ($t -notmatch '#>') { $inBlock = $true }; continue }
+            if ($t.StartsWith('#')) { continue }
+            $live += $l
+        }
+
+        $assign = @($live | Where-Object { $_ -match '^\s*\$oracle = @\(\$r\.Containers' })
+        $throwL = @($live | Where-Object { $_ -match '^\s*if \(\$oracle\.Count -ne 1\)' })
+        $assign.Count | Should -Be 1 -Because 'ci-scripts.yml must ASSIGN $oracle on a line that is not commented out, in any comment syntax'
+        $throwL.Count | Should -Be 1 -Because 'ci-scripts.yml must THROW when the oracle did not run, on a line that is not commented out'
+
+        # Now RUN the guard's own source. $r is read from this scope by the scriptblock.
+        $guard = [scriptblock]::Create(($assign[0] + "`n" + $throwL[0]))
+        $r = [pscustomobject]@{ Containers = @([pscustomobject]@{ Item = 'scripts/tests/other.Tests.ps1' }) }
+        { & $guard } | Should -Throw -Because 'the guard must THROW when the registration oracle is absent from the run - that is the entire point of it'
+        $r = [pscustomobject]@{ Containers = @([pscustomobject]@{ Item = 'scripts/tests/test-suite-registration.Tests.ps1' }) }
+        { & $guard } | Should -Not -Throw -Because 'the guard must stay silent on a healthy run, or it is a false alarm rather than a gate'
+
         # The rationale comment is still required, separately: without it a later reader deletes the
         # guard as redundant. Asserted on raw text because a comment is exactly what this one is.
         (Get-Content -LiteralPath $wfPath -Raw) |

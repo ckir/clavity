@@ -91,6 +91,33 @@ Describe 'check-roadmap-claims.ps1 - the (N lines) half' {
         $r.Out  | Should -Not -Match 'STALE'
     }
 
+    It 'says UNREADABLE when the tracked path is a DIRECTORY, not a file' {
+        # AGY-CAPSTONE round 2, against round 1's OWN FIX. A bare `Test-Path` is TRUE for a directory, so
+        # a tracked file replaced by a directory of the same name slipped past the absent-check and threw
+        # an unhandled UnauthorizedAccessException. MEASURED both ways: Test-Path True, -PathType Leaf
+        # False. This row is the distractor the first fix had no case for.
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } `
+             -Roadmap "Entry. ``skills/a/SKILL.md`` (3 lines).`n"
+        $p = Join-Path $f.Root 'skills' 'a' 'SKILL.md'
+        Remove-Item $p -Force
+        $null = New-Item -ItemType Directory -Path $p -Force
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'UNREADABLE'
+        $r.Out  | Should -Not -Match 'UnauthorizedAccessException|Access to the path'
+    }
+
+    It 'reports an unparseable line-count claim instead of crashing on it' {
+        # AGY-CAPSTONE round 2. `\d+` is unbounded and the old `[int]` cast threw on a claim too large
+        # for Int32 - uncontrolled markdown must not crash a checker.
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } `
+             -Roadmap "Entry. ``skills/a/SKILL.md`` (99999999999999999999999999 lines).`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'UNPARSEABLE'
+        $r.Out  | Should -Not -Match 'Cannot convert value|too large or too small'
+    }
+
     It 'checks a claim about ANY extension, not a hard-coded whitelist' {
         # AGY-CAPSTONE round 1. The regex read `(?:md|ps1|sh|cs|rs|json)`, so a claim about a .yml, .txt
         # or .iss file was SILENTLY ignored - a fail-open inside a guard whose job is closing one. This
