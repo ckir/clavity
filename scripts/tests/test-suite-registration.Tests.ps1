@@ -370,8 +370,15 @@ foreach ($cont in $r.Containers) {
         # Extract the `run: |` block of the full-suite Pester step, by indentation.
         $stepIx = [Array]::FindIndex($wfLines, [Predicate[string]]{ param($l) $l -match '^\s*- name: Pester - full scripts suite' })
         $stepIx | Should -BeGreaterThan -1 -Because 'the full-suite Pester step must exist in ci-scripts.yml, or nothing below is checking anything'
+        # BOUND THE SEARCH TO THIS STEP. FindIndex would otherwise run to end-of-file, so if this step
+        # ever stopped carrying a `run: |` the extractor would silently adopt a LATER step's block and
+        # certify the wrong thing. AGY-CAPSTONE round 4; measured NOT currently reachable (the run: | is
+        # 2 lines below the step, the next `- name:` is 15 below) - which is exactly when to fix it.
+        $nextStep = [Array]::FindIndex($wfLines, $stepIx + 1, [Predicate[string]]{ param($l) $l -match '^\s*- name:' })
+        if ($nextStep -lt 0) { $nextStep = $wfLines.Count }
         $runIx = [Array]::FindIndex($wfLines, $stepIx, [Predicate[string]]{ param($l) $l -match '^\s*run: \|' })
         $runIx | Should -BeGreaterThan -1 -Because 'that step must carry a run: | block'
+        $runIx | Should -BeLessThan $nextStep -Because 'the run: | block must belong to the full-suite Pester step itself, not to a later step the search ran on into'
         $indent = ($wfLines[$runIx] -replace '\S.*$', '').Length
         $block = @()
         for ($n = $runIx + 1; $n -lt $wfLines.Count; $n++) {

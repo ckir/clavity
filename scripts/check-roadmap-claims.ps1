@@ -13,7 +13,12 @@
 #   B. every backticked 7-40 hex sha on a line ALSO carrying a closure token actually exists.
 # Check B passed 28/28 when written - it is a trap for a future phantom, not a backlog.
 #
-# EXIT CODES: 0 = every claim holds · 1 = at least one claim is false · 2 = cannot check.
+# EXIT CODES: 0 = every claim holds · 1 = at least one claim is false OR could not be checked ·
+#             2 = the RUN could not start (no ROADMAP file, not a git repository).
+# The 1-vs-2 split is per-RUN, not per-claim, and AGY-CAPSTONE round 4 caught the header claiming
+# otherwise: UNREADABLE and UNPARSEABLE print "cannot be checked" and exit 1, not 2. Exiting 1 is
+# the right behaviour - one uncheckable claim must not hide the OTHER claims that are provably
+# false - so the PROSE was what needed fixing, not the code.
 [CmdletBinding()]
 param(
     [string]$RepoRoot,

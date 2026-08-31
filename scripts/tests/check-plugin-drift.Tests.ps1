@@ -93,8 +93,12 @@ Describe 'check-plugin-drift.ps1' {
         }
         $res = Invoke-Drift $r.Root $r.Sha $i
         $res.Code | Should -Be 1
-        $res.Out  | Should -Match 'DRIFTED'
-        $res.Out  | Should -Match 'skills/a/SKILL\.md'
+        # PAIRED AND CASE-SENSITIVE. MEASURED VACUOUS at AGY-CAPSTONE round 4: the failure summary
+        # always prints "(N drifted, N missing, N extra, N unreadable, N identical)", and -Match is
+        # case-INSENSITIVE, so `-Match 'DRIFTED'` was satisfied by the word "drifted" in that count
+        # line. A mutant routing drifted files into the MISSING bucket passed this row 1/0. Pairing
+        # the token WITH the path, case-sensitively, is what makes the category actually checked.
+        $res.Out  | Should -CMatch 'DRIFTED\s+skills/a/SKILL\.md'
     }
 
     It 'exits 1 and NAMES the file when it is missing from the install' {
@@ -107,8 +111,7 @@ Describe 'check-plugin-drift.ps1' {
         }
         $res = Invoke-Drift $r.Root $r.Sha $i
         $res.Code | Should -Be 1
-        $res.Out  | Should -Match 'MISSING'
-        $res.Out  | Should -Match 'hooks/h\.sh'
+        $res.Out  | Should -CMatch 'MISSING\s+hooks/h\.sh'
     }
 
     It 'exits 1 and NAMES the file when the install carries an extra file' {
@@ -121,8 +124,7 @@ Describe 'check-plugin-drift.ps1' {
         }
         $res = Invoke-Drift $r.Root $r.Sha $i
         $res.Code | Should -Be 1
-        $res.Out  | Should -Match 'EXTRA'
-        $res.Out  | Should -Match 'bak-2026-01-01'
+        $res.Out  | Should -CMatch 'EXTRA\s+\.mcp\.json\.bak-2026-01-01'
     }
 
     It 'reports UNREADABLE - not a crash - when an installed file is exclusively LOCKED' {
@@ -140,8 +142,7 @@ Describe 'check-plugin-drift.ps1' {
         try {
             $res = Invoke-Drift $r.Root $r.Sha $i
             $res.Code | Should -Be 1
-            $res.Out  | Should -Match 'UNREADABLE'
-            $res.Out  | Should -Match 'skills/a/SKILL\.md'
+            $res.Out  | Should -CMatch 'UNREADABLE\s+skills/a/SKILL\.md'
             $res.Out  | Should -Not -Match 'being used by another process'
         } finally { $fs.Dispose() }
     }
@@ -158,8 +159,7 @@ Describe 'check-plugin-drift.ps1' {
         $null = New-Item -ItemType Directory -Path (Join-Path $i 'skills' 'a' 'SKILL.md') -Force
         $res = Invoke-Drift $r.Root $r.Sha $i
         $res.Code | Should -Be 1
-        $res.Out  | Should -Match 'MISSING'
-        $res.Out  | Should -Match 'skills/a/SKILL\.md'
+        $res.Out  | Should -CMatch 'MISSING\s+skills/a/SKILL\.md'
         $res.Out  | Should -Not -Match 'UnauthorizedAccessException|Access to the path'
     }
 
@@ -177,7 +177,7 @@ Describe 'check-plugin-drift.ps1' {
         }
         $res = Invoke-Drift $r.Root $r.Sha $i
         $res.Code | Should -Be 1
-        $res.Out  | Should -Match 'EXTRA'
+        $res.Out  | Should -CMatch 'EXTRA\s+\.mcp\.json\.bak-2026-01-01'
         $res.Out  | Should -Match 'NOT removed by a reinstall'
     }
 
@@ -206,6 +206,8 @@ Describe 'check-plugin-drift.ps1' {
             'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
         }
         $res = Invoke-Drift $r.Root $r.Sha $i
-        $res.Out | Should -Not -Match 'DRIFTED|MISSING|EXTRA'
+        # Case-SENSITIVE for the same reason as the rows above: the OK line must not contain a
+        # category token in ANY case, and a case-insensitive -Not -Match would be the weaker claim.
+        $res.Out | Should -Not -CMatch 'DRIFTED|MISSING|EXTRA|UNREADABLE'
     }
 }
