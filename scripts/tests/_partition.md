@@ -726,6 +726,22 @@ check-plugin-drift.Tests.ps1                    39-45s    8 tests   <- SLOW, NEW
                                                                       cold against the 600s cap, and this
                                                                       suite would have taken it to ~98%.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
+check-roadmap-claims.Tests.ps1                  38-51s    8 tests   <- SLOW, NEW 2026-08-31. Two runs,
+                                                                      backgrounded on an idle box: 51,0s
+                                                                      cold / 38,4s warm, 8/8 both times.
+                                                                      Same shape as check-plugin-drift
+                                                                      above - 8 rows, each spawning its
+                                                                      own child pwsh because the script
+                                                                      under test calls exit, over a
+                                                                      throwaway git repo under $TestDrive.
+                                                                      SLOW although the plan said FAST:
+                                                                      the fast half was already 492,9s
+                                                                      warm / 550,4s cold against a 600s
+                                                                      cap, and BOTH new suites in FAST
+                                                                      would put the cold run at ~647s.
+                                                                      One row exercises the REAL ROADMAP
+                                                                      and is the oracle that Task 4's
+                                                                      reconcile actually happened.
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
 check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had

@@ -521,7 +521,7 @@ This guard is unusual and deliberately so: **it fails on the real repository rig
 what turns it green. That coupling is the point - the guard proves the reconcile happened instead of
 asserting it did.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `scripts/tests/check-roadmap-claims.Tests.ps1`:
 
@@ -644,7 +644,7 @@ Describe 'check-roadmap-claims.ps1 - the real repository' {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 ```
@@ -652,7 +652,7 @@ pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6
 ```
 Expected: all rows fail (no script yet).
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `scripts/check-roadmap-claims.ps1`:
 
@@ -750,7 +750,9 @@ Write-Host "check-roadmap-claims: OK - every line-count claim and closure sha in
 exit 0
 ```
 
-- [ ] **Step 4: Run the tests - 8 of 9 must pass, and the 9th must fail for the RIGHT reason**
+- [x] **Step 4: Run the tests - 7 of 8 must pass, and the 8th must fail for the RIGHT reason**
+
+**CORRECTED 2026-08-31:** this heading said "8 of 9 ... the 9th" while its own body said "`Tests Passed: 7, Failed: 1` (the suite has **8** `It` blocks)". The body was right - measured, the suite discovers **8**. Same count-claim defect class this whole phase exists to close, in the plan that closes it.
 
 Run:
 ```
@@ -761,7 +763,7 @@ Expected: `Tests Passed: 7, Failed: 1` (the suite has **8** `It` blocks). The si
 ROADMAP:1222, 1223, 1224 and 1225**. If it fails for any other reason, or names a different count, stop and
 diagnose - do not proceed to Task 4.
 
-- [ ] **Step 5: Confirm the guard discriminates (non-vacuity, half B)**
+- [x] **Step 5: Confirm the guard discriminates (non-vacuity, half B)**
 
 Half A is proven non-vacuous by the real ROADMAP failing it. Half B currently passes 28/28, so prove it
 can fail:
@@ -781,7 +783,7 @@ on the same mechanism.
 
 All four closing shas below were verified to exist on 2026-08-31.
 
-- [ ] **Step 1: Close §14h**
+- [x] **Step 1: Close §14h**
 
 At `clavity-dotnet/ROADMAP.md:1215-1216`, replace:
 
@@ -803,7 +805,7 @@ HEAD: `agy-first/SKILL.md:103` reads "**Seat a panel, not a persona.**" with sea
 "Optional per-run mitigation: rotate the audit's lens" wording is gone.
 ```
 
-- [ ] **Step 2: Correct the four line-count claims**
+- [x] **Step 2: Correct the four line-count claims**
 
 At `:1222-1225`, the measurement table's four rows carry counts taken on 2026-08-15 that no longer hold.
 Update each to its current value, and mark the table as historical so the numbers are not read as current:
@@ -824,7 +826,7 @@ unchanged version string — see Phase 0c. `scripts/check-roadmap-claims.ps1` no
 again.
 ```
 
-- [ ] **Step 3: Close §17**
+- [x] **Step 3: Close §17**
 
 At `:1343`, replace `### §17 — anomalies promoted at the 2026-08-17 triage — ▶ **OPEN**` with:
 
@@ -832,7 +834,7 @@ At `:1343`, replace `### §17 — anomalies promoted at the 2026-08-17 triage �
 ### §17 — anomalies promoted at the 2026-08-17 triage — ✅ **CLOSED 2026-08-30** (§17a SHIPPED `99910c0`, AGY-CAPSTONE GREEN per ledger `eb26709`; §17b RULED KILLED — see the sub-entries)
 ```
 
-- [ ] **Step 4: Close §18**
+- [x] **Step 4: Close §18**
 
 At `:1419`, replace the `▶ **OPEN. BOTH gating measurements are DONE...**` status with:
 
@@ -840,7 +842,7 @@ At `:1419`, replace the `▶ **OPEN. BOTH gating measurements are DONE...**` sta
 ### §18 — SEED/GROWTH split for the driver cheatsheet — ✅ **SHIPPED, AGY-CAPSTONE GREEN after 7 rounds** (ledger `519833f`)
 ```
 
-- [ ] **Step 5: Close §19**
+- [x] **Step 5: Close §19**
 
 At `:1652`, replace `▶ **DECIDED, DEFERRED**` with:
 
@@ -848,7 +850,7 @@ At `:1652`, replace `▶ **DECIDED, DEFERRED**` with:
 ### §19 — `agy-mark.sh` exit codes: collapse the tri-state to 0 / non-zero — ✅ **SHIPPED 2026-08-29** (`64d5be4`, same capstone GREEN as §17a — ledger `eb26709`)
 ```
 
-- [ ] **Step 6: Run the guard against the real ROADMAP**
+- [x] **Step 6: Run the guard against the real ROADMAP**
 
 ```
 pwsh -NoProfile -File scripts/check-roadmap-claims.ps1
@@ -856,7 +858,7 @@ pwsh -NoProfile -File scripts/check-roadmap-claims.ps1
 Expected: `check-roadmap-claims: OK - every line-count claim and closure sha in ...ROADMAP.md holds`,
 exit 0.
 
-- [ ] **Step 7: Run the full suite for this task**
+- [x] **Step 7: Run the full suite for this task**
 
 ```
 pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force; Invoke-Pester scripts/tests/check-roadmap-claims.Tests.ps1 -Output Detailed"
@@ -864,15 +866,16 @@ pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6
 Expected: `Tests Passed: 8, Failed: 0`. The row that failed in Task 3 Step 4 now passes **because the
 ROADMAP was fixed, not because the test was**. If you find yourself editing that row, stop: the oracle wins.
 
-- [ ] **Step 8: Register the suite and add its runtimes row**
+- [x] **Step 8: Register the suite in the ~~fast~~ SLOW half, and add its runtimes row** - DEVIATION
 
-In `justfile:100` (`test-scripts-fast:`), add `'scripts/tests/check-roadmap-claims.Tests.ps1', ` before
-`'scripts/tests/check-agy-discipline-skills.Tests.ps1'`. Then add its row to the fenced table in
+**Same correction as Task 1 Step 5, on the same measured grounds, and NOT re-asked** - the owner already ruled the identical case on 2026-08-31. Measured: this suite costs **51,0s cold / 38,4s warm** (two backgrounded runs on an idle box, 8/8 both). The fast half was already **492,9s warm / 550,4s cold against a 600s foreground cap**; with BOTH new suites in it the cold run reaches **~647s**, and even one alone breaches. `test-scripts-slow` already exceeds the cap by design and is backgrounded-only (`justfile:104-106`).
+
+**As executed:** in `justfile:107` (`test-scripts-slow:`), added `'scripts/tests/check-roadmap-claims.Tests.ps1', ` before `'scripts/tests/compute-release.Tests.ps1'` (alphabetical among the `check-*` entries). Then add its row to the fenced table in
 `scripts/tests/_partition.md`, with a **measured** time and `8 tests`. **That count is load-bearing:**
 `test-suite-registration.Tests.ps1` parses this row and compares it against a live discovery, so a wrong
 number reds the gate - which is how this very figure was caught wrong in the plan's self-audit.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add scripts/check-roadmap-claims.ps1 scripts/tests/check-roadmap-claims.Tests.ps1 clavity-dotnet/ROADMAP.md justfile scripts/tests/_partition.md
