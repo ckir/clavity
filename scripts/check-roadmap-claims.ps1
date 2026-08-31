@@ -30,8 +30,12 @@ $ErrorActionPreference = 'Stop'
 if (-not $RepoRoot)    { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
 if (-not $RoadmapPath) { $RoadmapPath = Join-Path $RepoRoot 'clavity-dotnet' 'ROADMAP.md' }
 
-if (-not (Test-Path -LiteralPath $RoadmapPath)) {
-    Write-Host "check-roadmap-claims: '$RoadmapPath' not found - nothing was checked" -ForegroundColor Yellow
+# -PathType Leaf, for the SAME reason as the per-claim check below - and this is the sibling that
+# round 2's fix MISSED. A bare Test-Path is TRUE for a DIRECTORY, so a directory passed here and
+# then threw an unhandled UnauthorizedAccessException at ReadAllText. MEASURED at AGY-CAPSTONE
+# round 6. Fixing one instance of a class and not grepping for its siblings is how this reappeared.
+if (-not (Test-Path -LiteralPath $RoadmapPath -PathType Leaf)) {
+    Write-Host "check-roadmap-claims: '$RoadmapPath' is not a readable file - nothing was checked" -ForegroundColor Yellow
     exit 2
 }
 
@@ -98,7 +102,12 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
 }
 
 # --- B. sha existence beside a closure token -------------------------------------------------------
-$closure = [regex]'SHIPPED|RULED|OWNER ACCEPTED|CLOSED'
+# CASE-INSENSITIVE, DELIBERATELY. .NET `[regex]` is case-SENSITIVE by default, so a line saying
+# "the instructional fix shipped (`33851cf`..`9f6b394`)" carried closure shas that were NEVER
+# checked. MEASURED at AGY-CAPSTONE round 6: widening brings 7 more shas into scope, ALL of which
+# exist - so this buys coverage and reds nothing today. Checking a sha that turns out to be real is
+# free; skipping one that is phantom is the whole failure this guard exists to catch.
+$closure = [regex]::new('SHIPPED|RULED|OWNER ACCEPTED|CLOSED', 'IgnoreCase')
 $shaRe   = [regex]'`([0-9a-f]{7,40})`'
 $seen    = @{}
 for ($i = 0; $i -lt $lines.Count; $i++) {

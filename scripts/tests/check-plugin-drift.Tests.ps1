@@ -197,6 +197,19 @@ Describe 'check-plugin-drift.ps1' {
         $res.Out  | Should -Match 'not installed|does not exist'
     }
 
+    It 'exits 2 - NOT 1 - when the installed root is a FILE rather than a directory' {
+        # AGY-CAPSTONE round 6. MEASURED: a file passed a bare Test-Path and the run reported all 30
+        # payload files MISSING - it failed closed, but 30 wrong lines is a worse answer than one right
+        # one, and "everything is missing" reads like a broken install rather than a bad argument.
+        $r = New-FixtureRepo $script:Payload
+        $f = Join-Path $TestDrive ("notadir-" + [Guid]::NewGuid().ToString('N') + ".txt")
+        [IO.File]::WriteAllText($f, "x")
+        $res = Invoke-Drift $r.Root $r.Sha $f
+        $res.Code | Should -Be 2 -Because "a non-directory root is 'cannot check', not 'everything drifted'; output was:`n$($res.Out)"
+        $res.Out  | Should -Match 'not a directory'
+        $res.Out  | Should -Not -Match 'MISSING'
+    }
+
     It 'reports a clean tree without printing any of the three defect tokens' {
         # Guards against a report that always prints its own vocabulary and so can never be read.
         $r = New-FixtureRepo $script:Payload

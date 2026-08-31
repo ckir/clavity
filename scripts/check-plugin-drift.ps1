@@ -41,8 +41,11 @@ function Fail2([string]$m) { Write-Host "check-plugin-drift: $m" -ForegroundColo
 if ($LASTEXITCODE -ne 0) { Fail2 "declared sha '$Sha' does not exist in $RepoRoot - cannot check" }
 $resolved = (& git -C $RepoRoot rev-parse $Sha).Trim()
 
-if (-not (Test-Path -LiteralPath $InstalledRoot)) {
-    Fail2 "installed root '$InstalledRoot' does not exist - the plugin is not installed, so nothing was checked"
+# -PathType Container. MEASURED at AGY-CAPSTONE round 6: a FILE passed a bare Test-Path and the run
+# then reported all 30 payload files MISSING - it failed CLOSED, so this is diagnosis quality rather
+# than a crash, but 30 wrong lines is a worse answer than one right one.
+if (-not (Test-Path -LiteralPath $InstalledRoot -PathType Container)) {
+    Fail2 "installed root '$InstalledRoot' is not a directory - the plugin is not installed there, so nothing was checked"
 }
 
 $prefix = $PluginPath.TrimEnd('/') + '/'

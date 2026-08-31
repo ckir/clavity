@@ -718,7 +718,7 @@ check-dangling-consumers.Tests.ps1                58,4s  11 tests   <- SLOW. Eac
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
-check-plugin-drift.Tests.ps1                    56-80s   11 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-plugin-drift.Tests.ps1                    56-80s   12 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 45,3s
                                                                       cold / 39,2s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 11 rows,
@@ -748,8 +748,13 @@ check-plugin-drift.Tests.ps1                    56-80s   11 tests   <- SLOW, NEW
                                                                       report tells the operator an EXTRA
                                                                       file survives a reinstall. TIME not
                                                                       re-measured.
+                                                                      COUNT 11 -> 12 at AGY-CAPSTONE
+                                                                      round 6: a FILE passed the bare
+                                                                      installed-root Test-Path and the
+                                                                      run reported all 30 payload files
+                                                                      MISSING. TIME not re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
-check-roadmap-claims.Tests.ps1                  54-55s   12 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-roadmap-claims.Tests.ps1                  54-55s   14 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s
                                                                       cold / 38,4s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 12 rows:
@@ -785,6 +790,12 @@ check-roadmap-claims.Tests.ps1                  54-55s   12 tests   <- SLOW, NEW
                                                                       bare Test-Path, TRUE for a dir) and
                                                                       an unparseable-claim row. TIME not
                                                                       re-measured.
+                                                                      COUNT 12 -> 14 at AGY-CAPSTONE
+                                                                      round 6: a DIRECTORY as the ROADMAP
+                                                                      path (the SIBLING round 2's fix
+                                                                      missed) and a lowercase closure word
+                                                                      whose sha was never checked.
+                                                                      TIME not re-measured.
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
 check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had

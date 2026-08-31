@@ -161,6 +161,33 @@ Describe 'check-roadmap-claims.ps1 - the sha-existence half' {
     }
 }
 
+Describe 'check-roadmap-claims.ps1 - inputs it does not control' {
+
+    It 'exits 2 - NOT 1 - when the ROADMAP path is a DIRECTORY' {
+        # AGY-CAPSTONE round 6. This is the SIBLING of the bug round 2 fixed in the per-claim path, and
+        # round 2 missed it: a bare Test-Path is TRUE for a directory, so it fell through to ReadAllText
+        # and threw an unhandled UnauthorizedAccessException, exiting 1 - the "a claim is FALSE" code.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $dir = Join-Path $f.Root 'a-directory'
+        $null = New-Item -ItemType Directory -Path $dir -Force
+        $r = Invoke-Claims $f.Root $dir
+        $r.Code | Should -Be 2 -Because "an unreadable input is 'cannot check', not 'a claim is false'; output was:`n$($r.Out)"
+        $r.Out  | Should -Not -Match 'UnauthorizedAccessException|Access to the path'
+    }
+
+    It 'checks a closure sha even when the closure word is not UPPERCASE' {
+        # AGY-CAPSTONE round 6. .NET [regex] is case-SENSITIVE by default, so a line reading
+        # "the fix shipped (`deadbee`)" carried a sha that was never checked. MEASURED on the real
+        # ROADMAP: widening brought 7 more shas into scope, all of which exist.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $rm = Join-Path $f.Root 'R3.md'
+        [IO.File]::WriteAllText($rm, "The instructional fix shipped (``63eb46f0000000000000000000000000deadbeef``).`n")
+        $r = Invoke-Claims $f.Root $rm
+        $r.Code | Should -Be 1 -Because "a lowercase closure word must not exempt its sha; output was:`n$($r.Out)"
+        $r.Out  | Should -Match 'PHANTOM'
+    }
+}
+
 Describe 'check-roadmap-claims.ps1 - the real repository' {
     It 'passes on the committed ROADMAP' {
         # RED until Task 4 reconciles the four stale headers. That is deliberate: this row is the
