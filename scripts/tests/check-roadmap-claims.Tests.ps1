@@ -4,7 +4,9 @@ BeforeAll {
     # Same hardening as check-plugin-drift.Tests.ps1, for the same measured reason: a missing script
     # under `(Resolve-Path ...).Path` is a non-terminating error and lets unrelated rows report PASSED.
     $script:Script   = Join-Path $PSScriptRoot '..' 'check-roadmap-claims.ps1'
-    if (-not (Test-Path -LiteralPath $script:Script)) {
+    # -PathType Leaf: a directory of that name would otherwise satisfy the guard and the suite
+    # would proceed to run a script that cannot execute. AGY-CAPSTONE round 7 sibling sweep.
+    if (-not (Test-Path -LiteralPath $script:Script -PathType Leaf)) {
         throw "check-roadmap-claims.ps1 not found at $script:Script - this suite cannot run"
     }
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
@@ -173,6 +175,31 @@ Describe 'check-roadmap-claims.ps1 - inputs it does not control' {
         $r = Invoke-Claims $f.Root $dir
         $r.Code | Should -Be 2 -Because "an unreadable input is 'cannot check', not 'a claim is false'; output was:`n$($r.Out)"
         $r.Out  | Should -Not -Match 'UnauthorizedAccessException|Access to the path'
+    }
+
+    It 'says UNREADABLE - not a crash - when a claimed file is exclusively LOCKED' {
+        # AGY-CAPSTONE round 7. The drift detector was given this guard in round 3; this sibling was
+        # not. MEASURED with a real FileShare::None lock: ReadAllText threw and the run died at :91.
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } `
+             -Roadmap "Entry. ``skills/a/SKILL.md`` (3 lines).`n"
+        $p = Join-Path $f.Root 'skills' 'a' 'SKILL.md'
+        $fs = [IO.File]::Open($p, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+        try {
+            $r = Invoke-Claims $f.Root $f.Roadmap
+            $r.Code | Should -Be 1
+            $r.Out  | Should -Match 'UNREADABLE'
+            $r.Out  | Should -Not -Match 'being used by another process'
+        } finally { $fs.Dispose() }
+    }
+
+    It 'checks a line-count claim whose unit word is not lowercase' {
+        # AGY-CAPSTONE round 7, the sibling of round 6's closure-regex fix. MEASURED: the literal
+        # `lines` is case-sensitive, so `(3 LINES)` matched nothing and the claim went unchecked.
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } `
+             -Roadmap "Entry. ``skills/a/SKILL.md`` (99 LINES).`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1 -Because "an uppercase unit word must not exempt the claim; output was:`n$($r.Out)"
+        $r.Out  | Should -Match 'STALE'
     }
 
     It 'checks a closure sha even when the closure word is not UPPERCASE' {

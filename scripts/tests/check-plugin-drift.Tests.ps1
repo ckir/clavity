@@ -8,7 +8,9 @@ BeforeAll {
     # form: "Passed: 2, Failed: 0" on two rows that ignored the variable; this throw form: "Failed: 2".
     # A suite that cannot run must say so, not go green on the rows that were not looking.
     $script:Script = Join-Path $PSScriptRoot '..' 'check-plugin-drift.ps1'
-    if (-not (Test-Path -LiteralPath $script:Script)) {
+    # -PathType Leaf: a directory of that name would otherwise satisfy the guard and the suite
+    # would proceed to run a script that cannot execute. AGY-CAPSTONE round 7 sibling sweep.
+    if (-not (Test-Path -LiteralPath $script:Script -PathType Leaf)) {
         throw "check-plugin-drift.ps1 not found at $script:Script - this suite cannot run"
     }
 

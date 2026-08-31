@@ -754,7 +754,7 @@ check-plugin-drift.Tests.ps1                    56-80s   12 tests   <- SLOW, NEW
                                                                       run reported all 30 payload files
                                                                       MISSING. TIME not re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
-check-roadmap-claims.Tests.ps1                  54-55s   14 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-roadmap-claims.Tests.ps1                  54-55s   16 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s
                                                                       cold / 38,4s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 12 rows:
@@ -796,6 +796,12 @@ check-roadmap-claims.Tests.ps1                  54-55s   14 tests   <- SLOW, NEW
                                                                       missed) and a lowercase closure word
                                                                       whose sha was never checked.
                                                                       TIME not re-measured.
+                                                                      COUNT 14 -> 16 at AGY-CAPSTONE
+                                                                      round 7: a LOCKED claimed file (the
+                                                                      guard the drift detector got in
+                                                                      round 3 and this one did not) and an
+                                                                      uppercase unit word. TIME not
+                                                                      re-measured.
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
 check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had

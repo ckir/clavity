@@ -54,7 +54,11 @@ $problems = @()
 # claims exist today (measured), so this closes a latent hole rather than fixing a live miss. The
 # backticks plus the literal `(N lines)` already make the shape specific enough that widening the
 # extension cannot pull in prose. AGY-CAPSTONE round 1.
-$claimRe = [regex]'`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`\s*\((\d+)\s+lines\)'
+# IgnoreCase, for the SAME reason the closure regex below is - and this is its sibling, missed in
+# round 6. MEASURED: the literal `lines` is case-sensitive, so `(3 LINES)` matched nothing and the
+# claim went unchecked. A guard that silently skips the input it does not recognise is the exact
+# fail-open shape this file exists to close.
+$claimRe = [regex]::new('`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`\s*\((\d+)\s+lines\)', 'IgnoreCase')
 for ($i = 0; $i -lt $lines.Count; $i++) {
     foreach ($m in $claimRe.Matches($lines[$i])) {
         $rel     = $m.Groups[1].Value
@@ -66,7 +70,15 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             $problems += "UNPARSEABLE ROADMAP:$($i+1)  ``$rel`` claims '$($m.Groups[2].Value)' lines, which is not a number this checker can hold"
             continue
         }
-        $hits    = @($tracked | Where-Object { $_ -eq $rel -or $_.EndsWith("/$rel") })
+        # CASE-INSENSITIVE ON BOTH HALVES. MEASURED at AGY-CAPSTONE round 7:
+        #   'A/B/Skill.MD' -eq 'a/b/skill.md'      -> True   (PowerShell -eq is case-INsensitive)
+        #   'A/B/Skill.MD'.EndsWith('/skill.md')   -> False  (.NET EndsWith(string) is case-SENSITIVE)
+        # So the exact-match half and the suffix half disagreed about the same two paths. On Windows the
+        # filesystem is case-insensitive while `git ls-files` reports the committed case, so a claim
+        # written in a different case matched one half and not the other.
+        $hits    = @($tracked | Where-Object {
+            $_ -eq $rel -or $_.EndsWith("/$rel", [StringComparison]::OrdinalIgnoreCase)
+        })
         if ($hits.Count -eq 0) {
             $problems += "UNRESOLVED  ROADMAP:$($i+1)  ``$rel`` is not a tracked file"
             continue
@@ -88,9 +100,24 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             $problems += "UNREADABLE  ROADMAP:$($i+1)  ``$rel`` is tracked but is not a readable file in the worktree ($($absent -join ', ')) - the claim cannot be checked"
             continue
         }
-        $counts = @($hits | ForEach-Object {
-            ([IO.File]::ReadAllText((Join-Path $RepoRoot ($_ -replace '/', [IO.Path]::DirectorySeparatorChar))) -split "`n").Count - 1
-        })
+        # UNREADABLE covers PRESENT-BUT-UNREADABLE too, not just absent. MEASURED at AGY-CAPSTONE
+        # round 7 with a real FileShare::None lock: ReadAllText threw and the run died. The drift
+        # detector was given this exact guard in round 3 and this sibling was not - the third time in
+        # this review that one instance of a class was fixed and its twin left in place.
+        $counts = @()
+        $failed = @()
+        foreach ($h in $hits) {
+            $hp = Join-Path $RepoRoot ($h -replace '/', [IO.Path]::DirectorySeparatorChar)
+            try {
+                $counts += ([IO.File]::ReadAllText($hp) -split "`n").Count - 1
+            } catch {
+                $failed += "$h ($($_.Exception.GetType().Name))"
+            }
+        }
+        if ($failed.Count -gt 0) {
+            $problems += "UNREADABLE  ROADMAP:$($i+1)  ``$rel`` could not be read ($($failed -join ', ')) - the claim cannot be checked"
+            continue
+        }
         if (@($counts | Sort-Object -Unique).Count -gt 1) {
             $problems += "AMBIGUOUS   ROADMAP:$($i+1)  ``$rel`` resolves to $($hits.Count) tracked files with different counts ($($counts -join ', ')) - disambiguate it with the FULL repo-relative path, e.g. ``clavity-dotnet/plugin/$rel``"
             continue
