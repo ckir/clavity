@@ -84,14 +84,38 @@ before its own change, or the one after.
 
 ## 3. The sequence
 
-### Phase 0 - reconcile the ROADMAP index (prerequisite, not a phase of work)
+### Phase 0 - reconcile the index AND repair the suite floor (prerequisite)
 
-Correct the §17, §18 and §19 headers to CLOSED with their closing shas, per the earned rule, and
-**resolve §14f** - verify by measurement whether §18 shipping actually dissolved its ownership
-contradiction, then close it with its evidence or reopen it as live work. No code changes.
+Two pieces of work, both prerequisite because everything after them depends on their being true.
 
-This is a prerequisite rather than housekeeping because every later phase cites ROADMAP sections, and a
-plan that cites a stale header is a plan built on a false claim about the repository.
+**0a - reconcile the ROADMAP index.** Correct the §17, §18 and §19 headers to CLOSED with their closing
+shas, per the earned rule, and **resolve §14f** - verify by measurement whether §18 shipping actually
+dissolved its ownership contradiction, then close it with its evidence or reopen it as live work. No code
+changes. This is prerequisite rather than housekeeping because every later phase cites ROADMAP sections,
+and a plan that cites a stale header is a plan built on a false claim about the repository.
+
+**0b - repair the Pester suite floor.** `ci-scripts.yml:203` fails the whole `scripts/tests` sweep only if
+`TotalCount -lt 100`. **MEASURED 2026-08-31: the suite holds 982 static `It` blocks across 50 suites** - a
+LOWER bound, since `-ForEach` rows expand at runtime. **The floor therefore trips only after roughly 89% of
+the suite has stopped running.** A misnamed file, a `BeforeAll` that throws, a suite that silently stops
+being discovered: none of it reaches 100. This is the same fail-open class the whole repository keeps
+finding, sitting on the gate that guards all 50 suites.
+
+**Phase 0's charter widens from docs-only to include this one CI change**, and that is deliberate: every
+phase below ends with "the suite is green", and that claim is worth exactly what this floor is worth.
+Both the peer and the driver placed it first, independently.
+
+**The fix is NOT raising the integer, and the peer's "trivial - raising an integer" was wrong in a useful
+direction.** A static floor rots the moment a suite is added. **The repository already contains the right
+oracle:** `scripts/tests/test-suite-registration.Tests.ps1` parses the justfile's fast/slow partition into
+an authoritative registered list and asserts every suite on disk appears in exactly one half. CI should
+assert it discovered **as many SUITES as that list holds**, not a hand-maintained test count.
+
+**Sweep the same defect class while in there.** That registration suite's own floors are
+`Should -BeGreaterThan 5` on each partition and `-BeGreaterThan 20` on the on-disk enumeration, against 50
+suites. The guard against weak floors is itself weakly floored.
+
+**Reviewed by:** unchanged disciplines. This phase touches no skill and no hook.
 
 ### Phase 1 - OUTPUT: §21 then §23
 
@@ -202,10 +226,32 @@ unblocked**. Do not restart the design; read the spec. It inherits at least one 
 discipline's NAME waits on a measurement of whether bare `sync` actually flushes on this platform, and at
 what cost under concurrent load.
 
-### Phase 5 - §20, a mockable clock (`TimeProvider`) in `AgyView`
+### Phase 5 - §20, a mockable clock (`TimeProvider`) in `AgyView`, plus the Live Acceptance gating
 
-C#, touches none of the above. Genuinely independent; ordered last because nothing depends on it and
-nothing about it is time-sensitive.
+**§20** - `AgyView` samples `DateTime.UtcNow` directly inside the idle-wait loop (`AgyView.cs:232`, `:243`),
+making wall-clock an ambient dependency. Note the ROADMAP records that `AgyView` is implementation source,
+so **§20 invalidates the AGY-CAPSTONE GREEN and requires a re-capstone** - owner-confirmed, and the only
+phase here that carries that cost.
+
+**Paired with it: the `Clavity.Live.Acceptance` gating.** Five files in
+`clavity-dotnet/tests/Clavity.Live.Acceptance/` are referenced by no workflow and no justfile. They skip
+without `CLAVITY_LIVE_AGY=1`, so CI never fails on them and never exercises them.
+
+**Why here rather than a track of its own.** Three of those files construct
+`new AgyView(new AgyViewOptions { ... })`, and §20's own ROADMAP entry says it **widens `AgyViewOptions`
+or the constructor**. So they sit directly on §20's blast radius, and §20 is the moment someone is already
+inside that code.
+
+**What is and is not at risk, measured rather than assumed.** `Clavity.Live.Acceptance.csproj` **is** listed
+in `clavity-dotnet/clavity.slnx`, and `ci-dotnet.yml:25` runs a bare `dotnet build` from `clavity-dotnet`,
+so **CI does compile these files and a constructor change would red the build.** The compiler covers the
+call sites. The residual exposure is narrower and is a vacuity risk rather than a breakage risk: nothing
+runs these tests, so **drift in the skip condition or the `[Trait("Category","LiveAgy")]` attribute is
+undetectable, and the failure mode is a vacuous pass the day someone finally runs them by hand expecting
+coverage.**
+
+The peer placed this in a separate later track, reasoning that Phases 0-4 do not touch .NET. That reasoning
+is correct as far as it goes and misses Phase 5, which is exactly where the coupling is.
 
 ### UNSCHEDULED - `agy_status` misreports an idle peer as working
 
@@ -225,6 +271,31 @@ which then also defeats it for the cases where the peer really is busy. The back
 interim mitigation available to the driver today, with no code change: **treat an unchanged `TotalSteps`
 across two polls as evidence of idleness regardless of the reported state**, which is precisely the
 inference that identified the defect.
+
+---
+
+### Scope decisions for the owner - NOT scheduled work
+
+Two findings from the same test-gating audit are **decisions rather than defects**, and are recorded here
+so they are not silently carried as if they were tasks. Both reduce to the same question: *a test nobody
+runs is not a test - wire it up, or delete it.*
+
+- **Nine Python bridge test files** under `clavity-classic/agy-mcp-bridge/` have no `pytest` invocation in
+  any workflow, justfile or hook. Verified: the `pre-commit` lefthook runs `ruff` on `.py` files, which is
+  lint and format, not tests. Wiring them would need `uv run --project clavity-classic/agy-mcp-bridge pytest`
+  and would surface however much rot has accumulated while they were unrun.
+- **Three justfile recipes** - `test-scripts-fast`, `test-scripts-slow`, `test-scripts` - are invoked by
+  nothing. Verified: 0 references outside their own definitions. `ci-scripts.yml` runs
+  `Invoke-Pester scripts/tests` directly and bypasses them. **This is already known inside the repository**:
+  `test-suite-registration.Tests.ps1:8-9` says so in its own header comment, which is also why that suite
+  exists. Note the recipes are not merely decorative - the fast/slow partition they define is the
+  authoritative registration list that Phase 0b's fix should key on, so **deleting them would delete the
+  oracle**.
+
+A third finding is **already tracked and is not re-opened here**: roughly 66 ghidrust live-worker tests run
+nowhere automatically, because `ci-ghidrust.yml:31` deliberately runs `just test` without `GHIDRUST_E2E=1`
+(its own comment says so) and the release workflow isolates exactly two named smoke tests. That is the
+existing SP3 smoke debt.
 
 ---
 
@@ -248,6 +319,17 @@ inference that identified the defect.
 - **Phase 1 must actually fix the checker**, not merely ship JSON. If step 4 lands a checker that is still
   schema-rigid, the multiplier that justifies OUTPUT-first never materialises and later phases inherit a
   gate that reports SCHEMA failures instead of checking citations.
-- **The peer's advice was 1 of 3 correct on its supporting claims** while its central reframing was
-  sound. Later consults in these phases should be read the same way: adopt the reasoning, measure the
-  facts.
+- **Phase 0b must not delete its own oracle.** The fix keys on the justfile fast/slow partition as the
+  authoritative suite list - and that same partition lives in three recipes the scope-decisions section
+  records as invoked by nothing. If those recipes are deleted as dead weight before 0b lands, the fix
+  loses the list it depends on. Sequence the decision after 0b, or key the fix on something else.
+- **Phase 5 is the only phase that invalidates a capstone GREEN.** `AgyView` is implementation source, so
+  §20 requires a re-capstone over the new code - owner-confirmed in the ROADMAP. Budget for it.
+- **The peer's advice was 1 of 3 correct on its supporting claims in the sequencing consult, and 2 of 4
+  in the placement consult** - "fixing the floor is trivial, raising an integer" understated the fix and
+  missed that the repository already holds the right oracle, and its reason for deferring the Live
+  Acceptance work missed Phase 5 entirely. Its central reframing was sound both times. Later consults in
+  these phases should be read the same way: adopt the reasoning, measure the facts.
+- **The peer's cost argument is conditional and is recorded as such.** It argued that anything inserted
+  before Phase 1 is paid at the expensive pre-§21 capstone rate. That assumes §21's multiplier exists;
+  measured today, it does not. If Phase 1 fails to deliver it, that argument never applied to anything.
