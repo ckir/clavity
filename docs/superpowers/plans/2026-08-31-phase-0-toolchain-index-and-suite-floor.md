@@ -716,7 +716,7 @@ Run:
 ```
 pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force; Invoke-Pester scripts/tests/check-roadmap-claims.Tests.ps1 -Output Detailed"
 ```
-Expected: `Tests Passed: 8, Failed: 1`. The single failure must be
+Expected: `Tests Passed: 7, Failed: 1` (the suite has **8** `It` blocks). The single failure must be
 `the real repository.passes on the committed ROADMAP`, and its output must name **four STALE claims at
 ROADMAP:1222, 1223, 1224 and 1225**. If it fails for any other reason, or names a different count, stop and
 diagnose - do not proceed to Task 4.
@@ -821,14 +821,16 @@ exit 0.
 ```
 pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force; Invoke-Pester scripts/tests/check-roadmap-claims.Tests.ps1 -Output Detailed"
 ```
-Expected: `Tests Passed: 9, Failed: 0`. The row that failed in Task 3 Step 4 now passes **because the
+Expected: `Tests Passed: 8, Failed: 0`. The row that failed in Task 3 Step 4 now passes **because the
 ROADMAP was fixed, not because the test was**. If you find yourself editing that row, stop: the oracle wins.
 
 - [ ] **Step 8: Register the suite and add its runtimes row**
 
 In `justfile:100` (`test-scripts-fast:`), add `'scripts/tests/check-roadmap-claims.Tests.ps1', ` before
 `'scripts/tests/check-agy-discipline-skills.Tests.ps1'`. Then add its row to the fenced table in
-`scripts/tests/_partition.md`, with a **measured** time and `9 tests`.
+`scripts/tests/_partition.md`, with a **measured** time and `8 tests`. **That count is load-bearing:**
+`test-suite-registration.Tests.ps1` parses this row and compares it against a live discovery, so a wrong
+number reds the gate - which is how this very figure was caught wrong in the plan's self-audit.
 
 - [ ] **Step 9: Commit**
 
