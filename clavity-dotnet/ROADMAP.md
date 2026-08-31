@@ -1889,6 +1889,41 @@ made all four probes survive was the explicit clause **forbidding anything AFTER
 does not classify a closing pleasantry as content, so “end with the token” leaves the habit untouched
 while “add nothing after it” names the actual behaviour.
 
+#### ✅ A SECOND DISPLACEMENT MECHANISM, MEASURED 2026-08-31 - asking for a reply FILE
+
+The 2026-08-30 probes above found the pleasantry mechanism and the clause that fixes it. **A second,
+independent mechanism was measured on 2026-08-31, and step 1's clause does NOT cover it.**
+
+Four probes. Identical trivial task in all four (read one file, report its first line, line count, and one
+sentence about a variable), identical tool work, unique sentinel per probe. **Only the ending contract
+varied:**
+
+| probe | reply FILE requested? | `## Anomalies noticed` between body and token? | body arrived inline? |
+|---|---|---|---|
+| P1 | no | no | **YES** |
+| P2 | no | yes | **YES** |
+| P3 | **yes** | yes | **NO - only the anomalies block and the token** |
+| P4 | **yes**, plus an explicit "the file is NOT a substitute; reproduce the full block in the message too" | yes | **YES, and the file was written as well** |
+
+`AnswerTruncated` was `false` on all four, and P3's content was sitting in its file, complete.
+
+**THE MECHANISM: when a brief asks the peer to write its answer to a FILE, the peer treats the file as THE
+answer and its final message becomes a RECEIPT.** P1 and P2 are the controls that make this readable - the
+anomalies block was suspected and is EXONERATED, and size, tool work and backgrounding were already
+falsified by the 2026-08-30 probes.
+
+**This is not a defect and nothing is lost** - it is rational behaviour, and the four AGY-* disciplines
+that ask for reply files also read those files. The hazard is narrower: **a driver that asks for a file and
+then reads only the inline reply will conclude the payload was truncated.** That happened twice on
+2026-08-31 and was written up as "the inline channel truncates" before being probed - a diagnosis this
+section had already falsified in general terms ("Nothing was ever truncated. The wrong message was
+collected.").
+
+**REFINEMENT TO STEP 1, measured rather than reasoned.** Step 1's clause governs what may come AFTER the
+token. It does not require the answer to be IN the message, so a file-requesting brief satisfies it
+completely while returning a receipt. **Any brief that asks for a reply file must ALSO state that the file
+is not a substitute for the message.** P4 is the evidence that this works and costs one sentence.
+
 #### ✅✅ OWNER ACCEPTED 2026-08-30 - THE IMPLEMENTATION PLAN, IN ORDER
 
 **Status: ACCEPTED, NOT STARTED.** This is the work item. Do these in order; each is independently
