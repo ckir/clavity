@@ -70,6 +70,20 @@ agy_guard_file_state() {
 # 12 entries 5.835s, 100 entries 47.2s - and the census runs twice per consult. Process creation is
 # the cost on Windows, not hashing, so the fix is fewer processes, not a faster hash.
 agy_guard_hash_files() {
+  # Resolve the tool ONCE, at function level. It used to be an if/elif/else INSIDE the chunk loop,
+  # with the whole block piped into `cut`. That put `else return 1` on the left-hand side of a
+  # pipeline, which bash runs in a SUBSHELL: the return exited the subshell, not the function.
+  # MEASURED with a paired control - `f() { if false; then :; else return 1; fi | cat; ...; }` reaches
+  # the line after the return and yields rc 0, while the same return outside a pipeline yields rc 1.
+  # So with no hashing tool the function did not short-circuit: it looped over every remaining chunk
+  # doing nothing and then reported success. Hoisting the check makes the return a real return, and
+  # costs one `command -v` instead of one per chunk.
+  local tool=''
+  if   command -v sha256sum >/dev/null 2>&1; then tool='sha256sum'
+  elif command -v shasum    >/dev/null 2>&1; then tool='shasum'
+  else return 1
+  fi
+
   # CHUNKED, 256 paths at a time. Expanding an unbounded array into one command is an E2BIG waiting
   # to happen as .clavity/seams/ accumulates briefs, and the failure was NOT benign: the batch would
   # return zero digests, the short-count path would drop to the per-file fallback, and that fallback
@@ -80,15 +94,14 @@ agy_guard_hash_files() {
   while [ "$#" -gt 0 ]; do
     batch=()
     while [ "$#" -gt 0 ] && [ "${#batch[@]}" -lt 256 ]; do batch+=("$1"); shift; done
-    # Strip a LEADING BACKSLASH from each digest line. GNU coreutils escapes an output line whose
-    # FILENAME contains a backslash or a newline by prefixing the whole line with '\\', which
-    # `cut -d' ' -f1` then leaves welded to the digest. The per-file fallback reads from stdin and
-    # never carries that prefix, so the two paths would disagree for the same bytes and a pre/post
-    # pair straddling the fallback boundary would report a false breach. Unverifiable on Windows,
-    # where neither character is legal in a filename; free to defend against, so defended.
-    if   command -v sha256sum >/dev/null 2>&1; then sha256sum -- "${batch[@]}" 2>/dev/null
-    elif command -v shasum   >/dev/null 2>&1; then shasum -a 256 -- "${batch[@]}" 2>/dev/null
-    else return 1
+    # Strip a LEADING FILENAME ESCAPE from each digest line. GNU coreutils prefixes an output line
+    # whose FILENAME contains a backslash or a newline, and `cut -d' ' -f1` then leaves that prefix
+    # welded to the digest, while the per-file fallback reads from stdin and never carries it - so
+    # the two paths would disagree for identical bytes and a pre/post pair straddling the fallback
+    # boundary would report a false breach. The class stops at the first hex digit, and a digest is
+    # hex throughout, so it removes the escape and cannot touch the digest.
+    if [ "$tool" = 'sha256sum' ]; then sha256sum -- "${batch[@]}" 2>/dev/null
+    else                              shasum -a 256 -- "${batch[@]}" 2>/dev/null
     fi | cut -d' ' -f1 | sed 's/^[^0-9a-fA-F]*//'
   done
 }

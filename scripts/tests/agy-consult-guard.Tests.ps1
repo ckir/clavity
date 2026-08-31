@@ -733,24 +733,64 @@ Describe 'agy-consult-guard' {
         $litP | Should -Not -Be $eq -Because 'encoding % first is what keeps the mapping injective'
     }
 
-    It 'hashes a large file set in chunks, with one distinct digest per file' {
-        # Capstone R6. The batch hasher expanded an unbounded array into a single command, which is
-        # an E2BIG waiting to happen as seams/ accumulates briefs - and the failure was not benign:
-        # zero digests would drop it to the per-file fallback at ~470ms per file, blocking the hook
-        # for hours rather than merely slowing it. Chunking removes the trigger. This row also
-        # guards the zip: digests are paired to files BY POSITION, so a chunk-boundary slip would
-        # mislabel every entry after it.
+    It 'actually splits a large file set into chunks, not just hashes it correctly' {
+        # Capstone R7, replacing a row that was VACUOUS with respect to the thing it claimed to
+        # guard. The old version fed 600 short filenames - about 6 KB of argv, nowhere near ARG_MAX -
+        # and asserted 600 distinct digests. MEASURED: reverting the implementation to a single
+        # `sha256sum -- "$@"` left the whole suite GREEN at 37/37, because an unchunked call handles
+        # 600 files perfectly well. Correct output is not evidence of chunking.
+        #
+        # This version COUNTS THE INVOCATIONS with a shim first on PATH that tallies each call and
+        # delegates to the real tool. 300 files at 256 per chunk is exactly 2 calls; an unchunked
+        # implementation makes 1. That distinction is the entire point of the rewrite, which exists
+        # so an oversized argv can never reach the kernel and trigger E2BIG.
+        #
+        # The probe is written to disk as a POSIX script rather than built as a PowerShell
+        # here-string: the here-string version failed to PARSE, taking the whole file to 0 tests.
         $d = Join-Path ([IO.Path]::GetTempPath()) ("chunk-" + [Guid]::NewGuid().ToString('N'))
         try {
             New-Item -ItemType Directory -Path $d -Force | Out-Null
-            # Deliberately more than the 256 chunk size, and not a multiple of it.
-            0..599 | ForEach-Object { Set-Content (Join-Path $d "f$_.txt") "body$_" -Encoding ascii }
-            $p = $d -replace '\\','/'
-            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; files=(); while IFS= read -r -d '' q; do files+=(`"`$q`"); done < <(find '$p' -type f -print0); agy_guard_hash_files `"`${files[@]}`""
-            $out = & bash -lc $sh
-            $out.Count | Should -Be 600 -Because 'every file must get exactly one digest across chunk boundaries'
-            ($out | Sort-Object -Unique).Count | Should -Be 600 -Because 'distinct bodies must give distinct digests - a repeat means a chunk was hashed twice'
-            ($out | Where-Object { $_ -notmatch '^[0-9a-f]{64}$' }).Count | Should -Be 0 -Because 'no line may carry a filename-escape prefix welded to the digest'
+            # The files go in a SUBDIRECTORY and the probe script does not. First attempt put both
+            # in $d and the probe counted ITSELF - digests=601. The probe was right and the fixture
+            # was wrong, which is what a hard-coded expected count is for.
+            #
+            # 300, not 600: two chunks is all it takes to tell chunked (2 calls) from unchunked (1),
+            # and 600 pushed this one row past ten minutes of fixture creation.
+            $files = Join-Path $d 'files'
+            New-Item -ItemType Directory -Path $files -Force | Out-Null
+            0..299 | ForEach-Object { Set-Content (Join-Path $files "f$_.txt") "body$_" -Encoding ascii }
+            $probePath = Join-Path $d 'probe.sh'
+            [IO.File]::WriteAllText($probePath, @'
+set +e
+lib=$1
+dir=$2
+real=$(command -v sha256sum) || { echo "no-sha256sum"; exit 0; }
+shim=$(mktemp -d); count="$shim/count"; : > "$count"
+mkdir -p "$shim/bin"
+printf '#!/bin/sh\necho x >> "%s"\nexec "%s" "$@"\n' "$count" "$real" > "$shim/bin/sha256sum"
+chmod +x "$shim/bin/sha256sum"
+. "$lib"
+files=()
+while IFS= read -r -d '' q; do files+=("$q"); done < <(find "$dir" -type f -print0)
+n=$(PATH="$shim/bin:$PATH" bash -c '. "$1"; shift; agy_guard_hash_files "$@"' _ "$lib" "${files[@]}" | wc -l)
+echo "digests=$n calls=$(wc -l < "$count")"
+'@.Replace("`r`n", "`n"))
+            $out = & bash -lc "sh '$($probePath -replace '\\','/')' '$($script:Lib -replace '\\','/')' '$($files -replace '\\','/')'"
+            $out | Should -Match 'digests=300' -Because 'every file must still get exactly one digest'
+            $out | Should -Match 'calls=2' -Because '300 files at 256 per chunk is 2 invocations; an unchunked call would be 1'
         } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reports failure when no hashing tool exists, instead of looping and reporting success' {
+        # Capstone R7. The tool check was an if/elif/else INSIDE the chunk loop, with the whole block
+        # piped into `cut`. That put `else return 1` on the left of a pipeline, which bash runs in a
+        # SUBSHELL - so the return exited the subshell, not the function. MEASURED with a paired
+        # control: a return on the left of a pipeline leaves rc 0 and execution continues past it,
+        # while the same return outside a pipeline gives rc 1. The function therefore looped over
+        # every remaining chunk doing nothing and then reported SUCCESS.
+        $lib = $script:Lib -replace '\\','/'
+        # Shadow `command` so neither tool resolves, without breaking the rest of the shell.
+        $rc = & bash -lc "set +e; . '$lib'; command() { return 1; }; agy_guard_hash_files /etc/hosts >/dev/null 2>&1; echo `$?"
+        $rc | Should -Be '1' -Because 'no hashing tool is a failure the caller must be able to see'
     }
 }
