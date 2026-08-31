@@ -70,10 +70,27 @@ agy_guard_file_state() {
 # 12 entries 5.835s, 100 entries 47.2s - and the census runs twice per consult. Process creation is
 # the cost on Windows, not hashing, so the fix is fewer processes, not a faster hash.
 agy_guard_hash_files() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$@" 2>/dev/null | cut -d' ' -f1
-  elif command -v shasum   >/dev/null 2>&1; then shasum -a 256 -- "$@" 2>/dev/null | cut -d' ' -f1
-  else return 1
-  fi
+  # CHUNKED, 256 paths at a time. Expanding an unbounded array into one command is an E2BIG waiting
+  # to happen as .clavity/seams/ accumulates briefs, and the failure was NOT benign: the batch would
+  # return zero digests, the short-count path would drop to the per-file fallback, and that fallback
+  # costs ~470ms per file - thousands of files would block the hook for HOURS and hang the consult
+  # rather than merely slowing it. Chunking removes the trigger, so the per-file fallback stays what
+  # it was meant to be: a rare path for genuine per-file errors.
+  local batch=()
+  while [ "$#" -gt 0 ]; do
+    batch=()
+    while [ "$#" -gt 0 ] && [ "${#batch[@]}" -lt 256 ]; do batch+=("$1"); shift; done
+    # Strip a LEADING BACKSLASH from each digest line. GNU coreutils escapes an output line whose
+    # FILENAME contains a backslash or a newline by prefixing the whole line with '\\', which
+    # `cut -d' ' -f1` then leaves welded to the digest. The per-file fallback reads from stdin and
+    # never carries that prefix, so the two paths would disagree for the same bytes and a pre/post
+    # pair straddling the fallback boundary would report a false breach. Unverifiable on Windows,
+    # where neither character is legal in a filename; free to defend against, so defended.
+    if   command -v sha256sum >/dev/null 2>&1; then sha256sum -- "${batch[@]}" 2>/dev/null
+    elif command -v shasum   >/dev/null 2>&1; then shasum -a 256 -- "${batch[@]}" 2>/dev/null
+    else return 1
+    fi | cut -d' ' -f1 | sed 's/^[^0-9a-fA-F]*//'
+  done
 }
 
 # Top-level census of .clavity/. Carries the entry NAMES LITERALLY (not a hash of them) so post can
@@ -158,6 +175,23 @@ agy_guard_dir_digest() {
   printf '%s' "$h"
 }
 
+# Percent-encode a census entry name. INJECTIVE, unlike collapsing reserved characters onto '_',
+# which MEASURED as a lost detection: two names colliding onto one string let a content swap between
+# them produce a byte-identical census. '%' MUST be encoded first or the mapping stops being
+# injective. Newline and carriage return are encoded too - an embedded newline would otherwise
+# truncate post.sh's line-oriented read of the whole fingerprint, silently dropping every later axis.
+agy_guard_encode_name() {
+  local b="$1"
+  b=${b//%/%25}
+  b=${b//|/%7C}
+  b=${b//:/%3A}
+  b=${b//,/%2C}
+  b=${b//=/%3D}
+  b=${b//"$AGY_GUARD_NL"/%0A}
+  b=${b//"$AGY_GUARD_CR"/%0D}
+  printf '%s' "$b"
+}
+
 agy_guard_census() {
   local d="$1" p rel b st out sorted i
   [ -d "$d" ] || { printf 'ABSENT'; return 0; }
@@ -228,15 +262,13 @@ agy_guard_census() {
     case "$rel" in
       local-anomalies.md|discipline-reaching.jsonl) [ -d "$p" ] || continue ;;
     esac
-    # Percent-encode: injective, unlike collapsing onto '_', which MEASURED as a lost detection when
-    # two colliding names swapped contents. '%' first or the mapping stops being injective.
-    b=${rel//%/%25}
-    b=${b//|/%7C}
-    b=${b//:/%3A}
-    b=${b//,/%2C}
-    b=${b//=/%3D}
-    b=${b//"$AGY_GUARD_NL"/%0A}
-    b=${b//"$AGY_GUARD_CR"/%0D}
+    # Extracted into agy_guard_encode_name so it can be tested directly. It USED to be inline, and
+    # the only test covering it drove it through a real FILENAME - which on Windows can never contain
+    # '|' or ':'. MEASURED: deleting the lines that encode those two left the whole suite GREEN at
+    # 35/35. The row proved only that ',' and '=' were handled, while its own comment claimed all
+    # four were covered "by the same single tr" - a tr that no longer existed. A function can be
+    # called with any string; a fixture can only be given a name the filesystem will accept.
+    b=$(agy_guard_encode_name "$rel")
     if   [ -d "$p" ];   then st='DIR'
     elif [ ! -f "$p" ]; then st='UNREADABLE'
     elif [ ! -r "$p" ]; then st='UNREADABLE'

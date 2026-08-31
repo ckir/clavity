@@ -300,12 +300,15 @@ Describe 'agy-consult-guard' {
             $sh = "set +e; . '$($script:Lib -replace '\\','/')'; agy_guard_ignored '$($r -replace '\\','/')'"
             $ax = & bash -lc $sh
             ($ax -split ':').Count | Should -Be 4
-            # There is deliberately NO `Should -Not -Match '\|'` here. It was, and it was VACUOUS:
-            # '|' cannot occur in a Windows filename, so the fixture could never introduce one and the
-            # assertion held whether or not `tr` stripped anything. An assertion that cannot fail is
-            # worse than none, because it reads as coverage. The pipe and colon halves of the sanitizer
-            # are UNTESTABLE on this platform; the ',' and '=' halves are tested by the control below,
-            # and all four are stripped by the same single `tr`, which is what carries the guarantee.
+            # There is deliberately NO `Should -Not -Match '\|'` here: '|' cannot occur in a Windows
+            # filename, so the fixture could never introduce one and the assertion could not fail.
+            #
+            # THIS ROW ONLY EVER COVERED ',' AND '='. An earlier version of this comment claimed all
+            # four reserved characters were "stripped by the same single tr" and were therefore
+            # covered - the tr had already been replaced by five independent replacements, and
+            # MEASURED, deleting the two that encode '|' and ':' left the whole suite GREEN at 35/35.
+            # The guarantee for those two now comes from the DIRECT encoder test below, which calls
+            # agy_guard_encode_name with strings the filesystem would never accept as names.
             # Positive control: prove the sanitiser actually ran, rather than inferring it from the
             # absence of a character the fixture may never have produced. The encoding is
             # PERCENT-ENCODING, not replacement with '_': see the collision row below for why.
@@ -698,5 +701,56 @@ Describe 'agy-consult-guard' {
             Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item $blocker -Force -ErrorAction SilentlyContinue
         }
+    }
+
+    It 'encodes every reserved character, including ones no filename can carry' {
+        # Capstone R6. The encoder was inline in agy_guard_census and its only coverage drove it
+        # through a real FILENAME - so on Windows, where '|' and ':' are illegal in names, two of the
+        # five replacements were untestable and untested. MEASURED: deleting both left the suite
+        # green at 35/35. Extracting agy_guard_encode_name makes them reachable, because a function
+        # accepts any string while a fixture only accepts a name the filesystem allows.
+        #
+        # '%' MUST be first: encoding it after the others would let a literal '%3D' in a name collide
+        # with the encoding of '=', and injectivity is the whole point - a many-to-one mapping let a
+        # content swap between two colliding names produce a byte-identical census.
+        $lib = $script:Lib -replace '\\','/'
+        $cases = @(
+            @{ raw = 'a|b';   enc = 'a%7Cb' },
+            @{ raw = 'a:b';   enc = 'a%3Ab' },
+            @{ raw = 'a,b';   enc = 'a%2Cb' },
+            @{ raw = 'a=b';   enc = 'a%3Db' },
+            @{ raw = 'a%b';   enc = 'a%25b' },
+            @{ raw = 'plain.md'; enc = 'plain.md' }
+        )
+        foreach ($c in $cases) {
+            $got = & bash -lc "set +e; . '$lib'; agy_guard_encode_name '$($c.raw)'"
+            $got | Should -Be $c.enc -Because "'$($c.raw)' must encode to '$($c.enc)'"
+        }
+        # Injectivity, the property the encoding exists for: a literal '%3D' in a name must NOT
+        # collide with the encoding of '='.
+        $litP = & bash -lc "set +e; . '$lib'; agy_guard_encode_name 'a%3Db'"
+        $eq    = & bash -lc "set +e; . '$lib'; agy_guard_encode_name 'a=b'"
+        $litP | Should -Not -Be $eq -Because 'encoding % first is what keeps the mapping injective'
+    }
+
+    It 'hashes a large file set in chunks, with one distinct digest per file' {
+        # Capstone R6. The batch hasher expanded an unbounded array into a single command, which is
+        # an E2BIG waiting to happen as seams/ accumulates briefs - and the failure was not benign:
+        # zero digests would drop it to the per-file fallback at ~470ms per file, blocking the hook
+        # for hours rather than merely slowing it. Chunking removes the trigger. This row also
+        # guards the zip: digests are paired to files BY POSITION, so a chunk-boundary slip would
+        # mislabel every entry after it.
+        $d = Join-Path ([IO.Path]::GetTempPath()) ("chunk-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            # Deliberately more than the 256 chunk size, and not a multiple of it.
+            0..599 | ForEach-Object { Set-Content (Join-Path $d "f$_.txt") "body$_" -Encoding ascii }
+            $p = $d -replace '\\','/'
+            $sh = "set +e; . '$($script:Lib -replace '\\','/')'; files=(); while IFS= read -r -d '' q; do files+=(`"`$q`"); done < <(find '$p' -type f -print0); agy_guard_hash_files `"`${files[@]}`""
+            $out = & bash -lc $sh
+            $out.Count | Should -Be 600 -Because 'every file must get exactly one digest across chunk boundaries'
+            ($out | Sort-Object -Unique).Count | Should -Be 600 -Because 'distinct bodies must give distinct digests - a repeat means a chunk was hashed twice'
+            ($out | Where-Object { $_ -notmatch '^[0-9a-f]{64}$' }).Count | Should -Be 0 -Because 'no line may carry a filename-escape prefix welded to the digest'
+        } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
