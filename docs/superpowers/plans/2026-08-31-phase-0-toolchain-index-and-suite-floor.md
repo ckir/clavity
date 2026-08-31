@@ -73,7 +73,7 @@ is green. Merging them would produce one script with two disjoint halves and a s
 - Create: `scripts/tests/check-plugin-drift.Tests.ps1`
 - Create: `scripts/check-plugin-drift.ps1`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `scripts/tests/check-plugin-drift.Tests.ps1`:
 
@@ -235,7 +235,7 @@ Describe 'check-plugin-drift.ps1' {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 ```
@@ -250,7 +250,7 @@ ABORTED and is not a result.
 - the same situation reported `Passed: 2, Failed: 0` on rows that ignored the variable. That is why the
 guard is there, and it is the reason this step's expectation is trustworthy.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `scripts/check-plugin-drift.ps1`:
 
@@ -383,7 +383,7 @@ just as badly. If making this compile or run would change the shape, type or enc
 even trivially - STOP and report `[original] -> [yours] because <reason>`. "It runs" is not justification;
 this comparison is the entire product.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run:
 ```
@@ -392,14 +392,28 @@ pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6
 Expected: `Tests Passed: 8, Failed: 0`. **Read the count.** A `-Path` that matches nothing exits 0 with
 `Tests Passed: 0`, which reads like success and is not.
 
-- [ ] **Step 5: Register the suite in the fast partition**
+- [x] **Step 5: Register the suite in the ~~fast~~ SLOW partition** - DEVIATION, owner-ruled 2026-08-31
 
 Registration is an explicit list, not a glob, and `test-suite-registration.Tests.ps1` fails if a suite on
-disk is in neither half. In `justfile:100`, inside the `test-scripts-fast:` recipe's quoted array, add
-`'scripts/tests/check-plugin-drift.Tests.ps1', ` immediately before
-`'scripts/tests/check-agy-discipline-skills.Tests.ps1'`.
+disk is in neither half.
 
-- [ ] **Step 6: Add its row to the runtimes table**
+**THIS STEP AS WRITTEN SAID FAST, AND FAST WAS WRONG.** Measured before executing it: the new suite costs
+**45,3s cold / 39,2s warm** (two backgrounded runs on an idle box, 8/8 both times), while
+`scripts/tests/_partition.md` records the fast half at **492,9s warm / 550,4s cold against a 600s
+foreground cap** and calls it "cap-ADJACENT" in bold. Registering here would have put the cold fast run at
+**~590s, 98% of the cap** - the plan would have spent the whole remaining headroom of the gate agents run
+in their inner loop. The live agy peer, seated as Resource Vampire and given the file paths rather than
+this conclusion, reached SLOW independently and called FAST "a reckless bet"; the owner ruled SLOW.
+
+`test-scripts-slow` already exceeds the cap by design and is backgrounded-only (`justfile:104-106`), so
++45s changes nothing structurally there.
+
+**As executed:** in `justfile:107`, inside the `test-scripts-slow:` recipe's quoted array, added
+`'scripts/tests/check-plugin-drift.Tests.ps1', ` immediately before
+`'scripts/tests/check-plugin-namespace.Tests.ps1'` (alphabetical among the `check-*` entries; the oracle
+asserts presence, uniqueness and count, never order).
+
+- [x] **Step 6: Add its row to the runtimes table**
 
 In `scripts/tests/_partition.md`, inside the fenced block that opens at `:529`, add a row in the same
 column shape as its neighbours (suite name, measured time, test count):
@@ -413,7 +427,14 @@ check-plugin-drift.Tests.ps1                      <MEASURED>s    8 tests   <- FA
 Replace `<MEASURED>` with the real figure from a run - do not invent one. The registration suite parses
 this row and compares the count against a live discovery, so a wrong count reds the gate.
 
-- [ ] **Step 7: Verify the registration gate is green**
+- [x] **Step 7: Verify the registration gate is green** - STAGE THE FILES FIRST
+
+**ORDERING CORRECTION.** This step cannot pass before the new files are staged, and the plan did not say
+so. The oracle's population is `git ls-files` (`scripts/tests/test-suite-registration.Tests.ps1:86-90`),
+i.e. TRACKED files - deliberately, because a repo-wide glob crosses into `clavity-classic/target` and
+`ghidrust/target` (46.991 files on disk against 620 tracked). An untracked new suite is therefore a
+*phantom*: measured, three rows red with `check-plugin-drift.Tests.ps1` reported as a suite that "does not
+exist". `git add` the four paths from Step 9 first, then run this.
 
 Run:
 ```
@@ -422,7 +443,7 @@ pwsh -NoProfile -c "Import-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6
 Expected: all rows pass. If `every _partition.md row states the CURRENT test count` fails, the count you
 wrote in Step 6 is wrong - fix the row, not the test.
 
-- [ ] **Step 8: Run it against the REAL install and record the result**
+- [x] **Step 8: Run it against the REAL install and record the result**
 
 This is the real-world proof, and it is a manual verification step, not a test row.
 
@@ -437,7 +458,7 @@ named as MISSING and `.mcp.json.bak-2026-08-25` as EXTRA.
 If the numbers differ from those, **stop and report it** rather than adjusting the plan: the install may
 have changed since 2026-08-31, and that is information, not noise.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add scripts/check-plugin-drift.ps1 scripts/tests/check-plugin-drift.Tests.ps1 justfile scripts/tests/_partition.md

@@ -533,12 +533,20 @@ abort-drain.Tests.ps1                            72,9s   13 tests   <- SLOW, re-
                                                                       the old figure simply decayed. This is
                                                                       the same failure as agy-discipline-
                                                                       reaching's below, in the other half.
-agy-consult-guard.Tests.ps1                     134,4s   11 tests   <- SLOW, moved 2026-08-02; re-measured
+agy-consult-guard.Tests.ps1                     134,4s   44 tests   <- SLOW, moved 2026-08-02; re-measured
                                                                       2026-08-06 (+2 tests: the cross-driver
                                                                       byte-identity check now covers lib.sh
                                                                       too, and the deliberate .no-agy
                                                                       omission is pinned). Now the LARGEST
                                                                       suite in the slow half, past docs-audit.
+                                                                      COUNT 11 -> 44 on 2026-08-31: the row
+                                                                      had decayed by 33 across the
+                                                                      review-only envelope epic and was
+                                                                      RED at HEAD before this commit
+                                                                      touched anything. The TIME was NOT
+                                                                      re-measured - a count is a claim the
+                                                                      registration oracle can settle, a
+                                                                      time is not.
 accept-drain.Tests.ps1                           42,4s   10 tests   <- SLOW, re-measured 2026-08-06
 agy-after-reminder.Tests.ps1                      9,7s   14 tests   <- COUNT 2026-08-06 (+4: root-walk
                                                                       silence + control, jq and no-jq).
@@ -636,7 +644,10 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1             6,6s   39 tests   <- FAST, re-measured 2026-08-05
+check-agy-discipline-skills.Tests.ps1             6,6s   43 tests   <- FAST, re-measured 2026-08-05
+                                                                      COUNT 39 -> 43 on 2026-08-31, same
+                                                                      pre-existing red as agy-consult-guard
+                                                                      above. TIME not re-measured.
 check-cheatsheet-budget.Tests.ps1                43,1s   13 tests   <- SLOW as of 2026-08-25; was FAST, re-measured 2026-08-12.
                                                                       COUNT 7 -> 13 on 2026-08-28 (AGY-TEST-AUDIT
                                                                       covered -CheckCombined, which had none).
@@ -697,6 +708,23 @@ check-dangling-consumers.Tests.ps1                58,4s  11 tests   <- SLOW. Eac
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
+check-plugin-drift.Tests.ps1                    39-45s    8 tests   <- SLOW, NEW 2026-08-31. Two runs,
+                                                                      backgrounded on an idle box: 45,3s
+                                                                      cold / 39,2s warm, 8/8 both times.
+                                                                      An earlier solo figure of 74,8s was
+                                                                      CONTENDED by an orphaned
+                                                                      Invoke-Pester and is NOT quoted.
+                                                                      Each of the 8 rows spawns its own
+                                                                      child pwsh - the script under test
+                                                                      calls exit - over a throwaway git
+                                                                      repo + fake install under
+                                                                      $TestDrive, so the cost is 8
+                                                                      process launches and does NOT
+                                                                      amortize in a batch. SLOW although
+                                                                      the plan said FAST: the fast half
+                                                                      was already 492,9s warm / 550,4s
+                                                                      cold against the 600s cap, and this
+                                                                      suite would have taken it to ~98%.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
 check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
