@@ -139,24 +139,59 @@ Three pieces of work, all prerequisite because everything after them depends on 
 drifted skills.
 
 **0c - pin the installed plugin to the repo copy, and give the drift a detector.** The census in §1a is
-the evidence. Two deliverables, and the second is the one that lasts: reinstall so the four review skills
-match the repo, **and add a mechanical check that fails when they do not.** A version string that does not
-change when 193 lines do is not a detector. Without 0c, every review in every phase below is run by an
-agent holding instructions nobody has verified - which is exactly how §14h came to be scheduled as open
-work sixteen days after it shipped.
+the evidence. Without 0c, every review in every phase below is run by an agent holding instructions nobody
+has verified - which is exactly how §14h came to be scheduled as open work sixteen days after it shipped.
 
-**0a - reconcile the ROADMAP index.** Correct the §17, §18, §19 **and §14h** headers to CLOSED with their
-closing shas, per the earned rule. No code changes. This is prerequisite rather than housekeeping because
-every later phase cites ROADMAP sections, and a plan that cites a stale header is a plan built on a false
-claim about the repository.
+**Two deliverables, and panel round 2 established they are not the same KIND of thing:**
+
+- **0c-local - reinstall** so the four review skills match the repo. **This is a local machine action and
+  cannot be committed**, so it is not "shipped" the way 0a and 0b are. It is a precondition on the operator,
+  and it must be re-satisfied after every phase that edits a skill - which is Phases 1 and 2.
+- **0c-repo - the detector**, which is committable and is the deliverable that lasts.
+
+**The detector MUST hash the installed files' CONTENTS against the repo copies.** Round 2's Blindspot
+Auditor seat put this precisely, and the artifact already contains its own proof: *"If this mechanical check
+keys on a plugin manifest, package version, or git SHA, it will glow false green"* - because `:76` records
+that both sides report `"version": "0.7.0"` across a 193-line divergence. **Any detector keyed on version,
+manifest or sha reproduces the exact blindspot it exists to close.** Content hash, or nothing.
+
+**0a - reconcile the ROADMAP index, AND close the mechanism that keeps corrupting it.** Correct the §17,
+§18, §19 **and §14h** headers to CLOSED with their closing shas, per the earned rule. This is prerequisite
+rather than housekeeping because every later phase cites ROADMAP sections, and a plan that cites a stale
+header is a plan built on a false claim about the repository.
+
+**Correcting the four headers is NOT sufficient, and round 2's State Corruptor seat is why:** *"This repairs
+the stale state but leaves the corruption mechanism wide open ... Manually correcting the markdown does
+nothing to prevent Phase 1 from doing exactly the same thing."* It is right, and it is measurable.
+**MEASURED at `f4b128a`: the earned rule "whoever closes an item writes its closing sha in the same commit"
+has ZERO implementation** - `grep -rl "closing sha"` across `.github/workflows/`, `scripts/`,
+`clavity-dotnet/plugin/hooks/` and `lefthook.yml` returns **nothing**. It is prose, and this repository
+already holds the law that **a rule with no implementation is worse than no rule**, because it is believed.
+
+Four stale headers is the measured cost of leaving it prose. **So 0a acquires a second deliverable: a guard,
+however cheap, that ties a section's status token to something checkable.** If a guard proves genuinely
+infeasible, that is a finding to record explicitly - not a reason to ship the fifth stale header.
+
+**0a is therefore no longer "no code changes",** and the phase's charter widens a second time. That is worth
+stating plainly rather than letting it drift.
 
 **§14f needs a criterion before it needs a verdict, and the first draft did not give it one.** It said
 "verify by measurement whether §18 shipping actually dissolved its ownership contradiction". The peer's
 Literal Implementer seat rejected that as unexecutable, and it is right: *"How do you mechanically measure
 the absence of a contradiction? You cannot grep for 'dissolved.'"* **Replace it with a checkable question:**
 §14f's contradiction was over who owns `core.md`. So - **name the writer.** Identify every committed path
-that writes `core.md` or the growth region, and check whether exactly one owner remains. If two writers
-still exist, §14f is open; if one does, it is closed and the sha is its evidence. That is greppable.
+that writes `core.md` or the growth region.
+
+**That is still not a criterion, and round 2's Axiom Breaker caught it:** *"'Owner' is a human role (curator
+vs driver), not a mechanical git property ... the agent still has to guess whether that path constitutes a
+'curator' or a 'driver'."* Correct - the first fix replaced one unexecutable judgement with another, and the
+enumeration step is mechanical while the adjudication step is not.
+
+**So the criterion is the ENUMERATION, and the adjudication is the owner's:** list every committed writer of
+`core.md` and the growth region, with file and line, and put that list to the owner. **§14f closes on the
+owner's ruling over a measured list, not on an agent's judgement about what counts as an owner.** If the
+list cannot be produced mechanically, §14f is REOPENED as live work. Either outcome is executable; "verify
+the contradiction dissolved" never was.
 
 **0b - repair the Pester suite floor.** `ci-scripts.yml:203` fails the whole `scripts/tests` sweep only if
 `TotalCount -lt 100`. **MEASURED 2026-08-31: the suite holds 982 static `It` blocks across 50 suites** - a
@@ -185,9 +220,32 @@ the very floor it was supposed to make redundant. **A self-guarding oracle is 0b
 cheapest fix is a CI assertion naming that one suite explicitly, which cannot be satisfied by the suite's
 own absence.
 
+**Round 2 challenged that placement, and MEASURING it made the situation worse rather than better.** The
+Activation Auditor seat argued a CI-only assertion leaves local `just test` failing open. **The mechanism is
+inverted: `just test` (`justfile:17` - `dotnet::test classic::test ghidrust::test`) does not run the Pester
+scripts suite AT ALL.** Measured at `f4b128a`, the 50-suite net has **exactly one real invocation path**,
+`ci-scripts.yml:199`; the three `test-scripts*` recipes that would give it a local one are referenced only
+from `.clavity/scratch/` sandboxes, i.e. by nothing.
+
+So the seat's conclusion (put the assertion where CI is not the only reader) is **not** actionable as stated
+- there is no second reader to protect - **but its finding stands in a worse form: this suite has no local
+runner at all, so every one of its 982 assertions is invisible until a push.** That materially raises the
+stakes of the scope decision below: deleting those three recipes would remove the only local path that could
+ever be revived.
+
 **Phase 0's charter widens from docs-only to include this one CI change**, and that is deliberate: every
 phase below ends with "the suite is green", and that claim is worth exactly what this floor is worth.
 Both the peer and the driver placed it first, independently.
+
+**Round 2 challenged Phase 0's SHAPE, and the challenge is half right.** The Cascade Analyst seat called it
+"a bag of unrelated prerequisites" - 0a a docs fix, 0b a CI fix, 0c a plugin fix - warning that batching
+them means one failure blocks the others. **They do share a property, and it is the one that matters: each
+is a thing every later phase ASSUMES is true.** That is what a prerequisite is, and prerequisites are not
+required to be semantically related to each other.
+
+**But the seat is right that they must not be one commit.** 0c-local is not even committable, 0b touches CI
+and can red the gate, and 0a now ships a guard. **Land them as three independent commits in the order
+0c, 0a, 0b**, so a failure in any one does not strand the others.
 
 **The fix is NOT raising the integer, and the peer's "trivial - raising an integer" was wrong in a useful
 direction.** A static floor rots the moment a suite is added. `test-suite-registration.Tests.ps1` also
@@ -228,6 +286,14 @@ yet.** Two findings, both from live consults today:
   per-discipline variation - and every row failed on SCHEMA, so **the citation check silently never ran**.
   A control on a capstone reply using `trigger` passed 4/4, so the checker works; it just cannot survive
   a discipline using different keys. **This is a requirement for §21 step 4, discovered by measurement.**
+
+  **Round 2 sharpened this into a constraint rather than a fix, and it is the more useful form.** The
+  Protocol Pedant seat: *"if the checker absorbs arbitrary schema variations, it is no longer a rigid
+  protocol. A parser that silently ignores schema drift cannot enforce a contract."* That is right, and it
+  rules out the obvious repair. **So step 4's requirement is a schema each discipline DECLARES, validated
+  strictly against that declaration** - not a universal ten-key list, and not a parser loose enough to
+  swallow anything. A checker that accepts `missing_test` because it accepts everything has the same value
+  as one that rejected it: neither is reading the citations.
 - **The reply body is DISPLACED, not truncated - and the first draft of this document had the diagnosis
   wrong.** The sequencing consult returned only its `## Anomalies noticed` block and the verdict token;
   the body was lost, and this was written up as "the inline reply channel truncates". **That is false, and
@@ -397,6 +463,8 @@ runs is not a test - wire it up, or delete it.*
   a rename drops the file from `git ls-files` and from disk simultaneously, so the equality row at `:265`
   stays satisfied and sees nothing. **Deleting the recipes would delete the rename detector**, which is a
   narrower and more precise reason than "deleting the oracle", and still a sufficient one.
+  **A second reason, measured during round 2: they are also the only local invocation path this suite has
+  or could have.** `just test` does not run it; CI is the sole reader. Deleting them makes that permanent.
 
 A third finding is **already tracked and is not re-opened here**: roughly 66 ghidrust live-worker tests run
 nowhere automatically, because `ci-ghidrust.yml:31` deliberately runs `just test` without `GHIDRUST_E2E=1`
@@ -428,6 +496,13 @@ existing SP3 smoke debt.
 - **Phase 0b must not delete the rename detector.** Narrowed after round 1. The discovery-count oracle
   keys on `git ls-files` and survives deleting the recipes; the rename detector at
   `test-suite-registration.Tests.ps1:131` does not. Sequence the recipe decision after 0b either way.
+- **Phase 0 now carries three deliverables it did not have when it was approved** - a content-hash drift
+  detector, a closing-sha guard, and a CI suite assertion - none of which is docs-only. The phase that was
+  a prerequisite has become the phase with the most new code. **The owner approved "reconcile the index";
+  this is materially more than that** and should be re-confirmed rather than assumed.
+- **The 50-suite Pester net has exactly one invocation path** (`ci-scripts.yml:199`). Measured at
+  `f4b128a`. Nothing runs it locally, so every assertion in it is invisible until a push - which also means
+  every phase's "the suite is green" is a claim about CI, never about the working tree.
 - **THE PANEL'S OWN RESULT IS THE STRONGEST RISK IN THIS LIST.** Round 1 found that this document
   scheduled sixteen-day-shipped work (§14h), cited two skill lines that exist only in a stale installed
   copy, and mis-cited §20 by 4x - and it found them by opening the files rather than by reasoning. **Every
