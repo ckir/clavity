@@ -135,6 +135,8 @@ before its own change, or the one after.
 ### Phase 0 - pin the toolchain, reconcile the index, repair the suite floor (prerequisite)
 
 Three pieces of work, all prerequisite because everything after them depends on their being true.
+**Owner-ruled 2026-08-31: this phase's growth beyond its approved docs-only charter is ACCEPTED**, and the
+three land as three independent commits, in the order 0c, 0a, 0b.
 **0c is new after panel round 1 and it comes first**, because 0a and 0b are themselves reviewed by the
 drifted skills.
 
@@ -155,6 +157,27 @@ keys on a plugin manifest, package version, or git SHA, it will glow false green
 that both sides report `"version": "0.7.0"` across a 193-line divergence. **Any detector keyed on version,
 manifest or sha reproduces the exact blindspot it exists to close.** Content hash, or nothing.
 
+**Round 3 added three constraints on that detector, and it does not work without them.**
+
+**It must hash the WHOLE payload, not the skills.** The Mechanism Gamer seat argued a `.md`-only hash leaves
+`.json` schemas unpinned. **That specific claim is REFUTED - measured, the skill directories contain zero
+non-`.md` files** - but the generalisation is true and sharper than the seat knew: the plugin also ships
+**16 hooks (`.sh`), `plugin.json` and `.mcp.json`**, none of them `.md`. **Phase 3 is hook work**, so a
+skills-only detector would be blind to exactly the payload the sequence edits next.
+
+**It must compare against a DECLARED sha, not ambient repo HEAD** - and this one is a genuine contradiction
+the earlier rounds created. The Axiom Breaker seat: a detector enforcing *installed == current repo* cannot
+coexist with `:358-359`, which requires Phase 2 to review its own changes under a recorded pre-change
+version. Install the pre-change copy to conduct that review and the detector reds; satisfy the detector and
+the review runs under the rules it is reviewing. **Comparing installed against a NAMED sha dissolves it:**
+Phase 2 declares the pre-change sha, the detector validates against that, and both rules hold. This is the
+same ambient-HEAD-versus-named-sha distinction that produced a wrong marker on 2026-08-31.
+
+**It must not land as a blocking pre-commit hook before 0c-local has run.** The Cascade Analyst seat: if
+0c-repo ships a pre-commit hook and the reinstall has not happened, **the first commit fails its own hook**
+and the driver's workflow breaks on the phase meant to unblock everything. 0c-local is a precondition of
+0c-repo's commit, not a parallel task - which is a second reason the two are separated above.
+
 **0a - reconcile the ROADMAP index, AND close the mechanism that keeps corrupting it.** Correct the §17,
 §18, §19 **and §14h** headers to CLOSED with their closing shas, per the earned rule. This is prerequisite
 rather than housekeeping because every later phase cites ROADMAP sections, and a plan that cites a stale
@@ -171,6 +194,13 @@ already holds the law that **a rule with no implementation is worse than no rule
 Four stale headers is the measured cost of leaving it prose. **So 0a acquires a second deliverable: a guard,
 however cheap, that ties a section's status token to something checkable.** If a guard proves genuinely
 infeasible, that is a finding to record explicitly - not a reason to ship the fifth stale header.
+
+**That guard must verify the sha EXISTS, not that it looks like one** - round 3's Mechanism Gamer seat, and
+the precedent is in this very document. A guard checking only for a 40-character hex string is satisfied by
+an invented commit. **`agy-mark.sh` already has exactly that defect**, it is listed as a Phase 3 item below
+("accepts a non-existent sha ... writes any 40-character string with rc=0"), and it produced a real wrong
+marker on 2026-08-31. Shipping the same shape in 0a would be this document scheduling a fix for a bug while
+committing it. **`git cat-file -e <sha>` is the difference**, and it costs nothing.
 
 **0a is therefore no longer "no code changes",** and the phase's charter widens a second time. That is worth
 stating plainly rather than letting it drift.
@@ -192,6 +222,14 @@ enumeration step is mechanical while the adjudication step is not.
 owner's ruling over a measured list, not on an agent's judgement about what counts as an owner.** If the
 list cannot be produced mechanically, §14f is REOPENED as live work. Either outcome is executable; "verify
 the contradiction dissolved" never was.
+
+**One more constraint, from round 3's Boundary Smuggler seat, and it is the difference between a gate and a
+formality.** The list crosses a trust boundary: an agent generates it, the owner rules on it, and **an
+omitted row is invisible to the person deciding.** *"A gate that relies on an untrusted generator not
+dropping rows is trivially bypassable."* **So the deliverable is the COMMAND, not the list** - a named,
+re-runnable search the owner can execute to reproduce the same rows. A list the owner cannot regenerate is
+evidence of nothing, and this failure mode is not hypothetical here: the citation defects that opened this
+review were all agent-generated claims nobody re-ran.
 
 **0b - repair the Pester suite floor.** `ci-scripts.yml:203` fails the whole `scripts/tests` sweep only if
 `TotalCount -lt 100`. **MEASURED 2026-08-31: the suite holds 982 static `It` blocks across 50 suites** - a
@@ -317,7 +355,8 @@ unchanged by its own subject matter.
 ### Phase 2 - CONDUCT: §24, then §25
 
 **§14h was the first item here and has been REMOVED - it shipped in `a652d8d`** (see §1a). Its removal
-takes the phase from three items to two and deletes the only one that touched `agy-first`.
+takes the phase from three items to two. **It does not shrink the blast radius**: §25 still edits all four
+skill pairs, so `agy-first` remains in scope for this phase.
 
 **§24 - AGY-FIRST becomes mandatory when a capstone round develops new code.** Trigger is mechanical: a
 new file, a new function/class declaration, or a whole-function rewrite, in non-test shipped code. It
@@ -488,18 +527,23 @@ existing SP3 smoke debt.
 
 - **Self-reference is reduced, not removed.** Phases 1 and 2 both edit the disciplines that review them.
   Each plan must state which version reviews it.
-- **Phase 2 is the expensive one.** Three items, all four skill pairs, and the only phase whose subject
-  matter is the reviewer's own reasoning. If any phase overruns its round budget it will be this one.
+- **Phase 2 is the expensive one.** **Two** items (§24, §25), still across all four skill pairs - §24
+  touches `agy-capstone`, §25 touches all four - and the only phase whose subject matter is the reviewer's
+  own reasoning. If any phase overruns its round budget it will be this one. **The count read "three items"
+  until round 3, stale since round 1 removed §14h.** An incomplete fold, in the risks section, in a document
+  whose own opening finding is that stale indices misdirect work. **Note the item count fell and the BLAST
+  RADIUS did not** - the first correction of this line said "three of the four pairs" and was wrong for
+  exactly that reason.
 - **Phase 1 must actually fix the checker**, not merely ship JSON. If step 4 lands a checker that is still
   schema-rigid, the multiplier that justifies OUTPUT-first never materialises and later phases inherit a
   gate that reports SCHEMA failures instead of checking citations.
 - **Phase 0b must not delete the rename detector.** Narrowed after round 1. The discovery-count oracle
   keys on `git ls-files` and survives deleting the recipes; the rename detector at
   `test-suite-registration.Tests.ps1:131` does not. Sequence the recipe decision after 0b either way.
-- **Phase 0 now carries three deliverables it did not have when it was approved** - a content-hash drift
-  detector, a closing-sha guard, and a CI suite assertion - none of which is docs-only. The phase that was
-  a prerequisite has become the phase with the most new code. **The owner approved "reconcile the index";
-  this is materially more than that** and should be re-confirmed rather than assumed.
+- ~~**Phase 0 now carries three deliverables it did not have when it was approved.**~~ **SURFACED AND
+  RULED: the owner accepted the growth on 2026-08-31**, with the three landing as independent commits in
+  the order 0c, 0a, 0b. Recorded here because the phase that was approved as docs-only is now the phase
+  with the most new code, and a later reader should see that this was decided rather than drifted into.
 - **The 50-suite Pester net has exactly one invocation path** (`ci-scripts.yml:199`). Measured at
   `f4b128a`. Nothing runs it locally, so every assertion in it is invisible until a push - which also means
   every phase's "the suite is green" is a claim about CI, never about the working tree.
