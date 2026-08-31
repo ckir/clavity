@@ -125,6 +125,62 @@ Describe 'check-plugin-drift.ps1' {
         $res.Out  | Should -Match 'bak-2026-01-01'
     }
 
+    It 'reports UNREADABLE - not a crash - when an installed file is exclusively LOCKED' {
+        # AGY-CAPSTONE round 3, MEASURED with a real FileShare::None lock: ReadAllBytes threw an unhandled
+        # IOException, the run died mid-scan, and every file after it went unchecked while the exit code
+        # still read as ordinary drift. An unreadable file is a first-class outcome, not a crash.
+        $r = New-FixtureRepo $script:Payload
+        $i = New-FixtureInstall @{
+            'skills/a/SKILL.md' = "line one`nline two`n"
+            'hooks/h.sh'        = "#!/usr/bin/env bash`necho hi`n"
+            'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
+        }
+        $locked = Join-Path $i 'skills' 'a' 'SKILL.md'
+        $fs = [IO.File]::Open($locked, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+        try {
+            $res = Invoke-Drift $r.Root $r.Sha $i
+            $res.Code | Should -Be 1
+            $res.Out  | Should -Match 'UNREADABLE'
+            $res.Out  | Should -Match 'skills/a/SKILL\.md'
+            $res.Out  | Should -Not -Match 'being used by another process'
+        } finally { $fs.Dispose() }
+    }
+
+    It 'counts a DIRECTORY standing where a payload file belongs as MISSING, not present' {
+        # AGY-CAPSTONE round 3, hardening the same class the sibling checker was caught by in round 2:
+        # a bare Test-Path is TRUE for a directory, so the file would have been treated as present and
+        # then failed to read.
+        $r = New-FixtureRepo $script:Payload
+        $i = New-FixtureInstall @{
+            'hooks/h.sh'  = "#!/usr/bin/env bash`necho hi`n"
+            'plugin.json' = "{`n  `"version`": `"0.7.0`"`n}`n"
+        }
+        $null = New-Item -ItemType Directory -Path (Join-Path $i 'skills' 'a' 'SKILL.md') -Force
+        $res = Invoke-Drift $r.Root $r.Sha $i
+        $res.Code | Should -Be 1
+        $res.Out  | Should -Match 'MISSING'
+        $res.Out  | Should -Match 'skills/a/SKILL\.md'
+        $res.Out  | Should -Not -Match 'UnauthorizedAccessException|Access to the path'
+    }
+
+    It 'tells the operator that an EXTRA file survives a reinstall' {
+        # The remedy the report used to give could not clear an EXTRA file: the installer has no
+        # [InstallDelete] and Inno `ignoreversion` overwrites without removing. MEASURED 2026-08-31 - a
+        # stray backup survived a full reinstall and had to be deleted by hand. A guard that prints an
+        # instruction which cannot work sends the reader round a loop that never terminates.
+        $r = New-FixtureRepo $script:Payload
+        $i = New-FixtureInstall @{
+            'skills/a/SKILL.md'        = "line one`nline two`n"
+            'hooks/h.sh'               = "#!/usr/bin/env bash`necho hi`n"
+            'plugin.json'              = "{`n  `"version`": `"0.7.0`"`n}`n"
+            '.mcp.json.bak-2026-01-01' = "stale`n"
+        }
+        $res = Invoke-Drift $r.Root $r.Sha $i
+        $res.Code | Should -Be 1
+        $res.Out  | Should -Match 'EXTRA'
+        $res.Out  | Should -Match 'NOT removed by a reinstall'
+    }
+
     It 'exits 2 - NOT 0 - when the declared sha does not exist' {
         # Fail-closed. A checker that cannot check must never report clean.
         $r = New-FixtureRepo $script:Payload

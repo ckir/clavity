@@ -716,7 +716,7 @@ check-dangling-consumers.Tests.ps1                58,4s  11 tests   <- SLOW. Eac
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
-check-plugin-drift.Tests.ps1                    39-45s    8 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-plugin-drift.Tests.ps1                    39-45s   11 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 45,3s
                                                                       cold / 39,2s warm, 8/8 both times.
                                                                       An earlier solo figure of 74,8s was
@@ -733,6 +733,15 @@ check-plugin-drift.Tests.ps1                    39-45s    8 tests   <- SLOW, NEW
                                                                       was already 492,9s warm / 550,4s
                                                                       cold against the 600s cap, and this
                                                                       suite would have taken it to ~98%.
+                                                                      COUNT 8 -> 11 at AGY-CAPSTONE
+                                                                      round 3: a LOCKED-file row (an
+                                                                      exclusive lock threw an unhandled
+                                                                      IOException and killed the scan
+                                                                      mid-way), a directory-in-place-of-a
+                                                                      file row, and a row pinning that the
+                                                                      report tells the operator an EXTRA
+                                                                      file survives a reinstall. TIME not
+                                                                      re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
 check-roadmap-claims.Tests.ps1                  38-51s   12 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s

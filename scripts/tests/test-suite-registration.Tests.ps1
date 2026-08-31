@@ -354,33 +354,50 @@ foreach ($cont in $r.Containers) {
         # losing ~89% of 982 assertions. So CI must name this suite explicitly, and that naming is what
         # this row pins. Source-text pinning is used because the assertion lives in YAML, where there is
         # no behaviour to call.
-        # BEHAVIOURAL, NOT LEXICAL - and it took two capstone rounds to get here.
-        # Round 1: this row grepped the whole file for two strings that also appear in the guard's own
-        #   COMMENT, so commenting the guard out left the row green. MEASURED with a mutant.
-        # Round 2: matching only UNCOMMENTED lines was still lexical, and a `<# ... #>` block comment
-        #   defeated it - the lines still start with whitespace, so the regex still matched.
-        # A text match cannot see SEMANTICS. So: strip PowerShell comments, extract the guard's own two
-        # lines, and RUN them against synthetic container sets. A block comment, a line comment, an
-        # inverted test and a `-ne 2` typo all fail this; none of them fail a text match.
+        # BEHAVIOURAL, NOT LEXICAL - and it took THREE capstone rounds to get here. Keep the history:
+        # R1: grepped the whole file for two strings that also appear in the guard's own COMMENT, so
+        #     commenting the guard out left this row green. MEASURED with a mutant.
+        # R2: matching only lines not starting with '#' was still lexical - a `<# ... #>` block comment
+        #     defeated it, since the lines still start with whitespace.
+        # R3: a hand-rolled block-comment stripper missed a block OPENED MID-LINE (`$x = 1 <#`).
+        #     MEASURED: guard inside a block comment, row still green.
+        # The lesson is that hand-rolled comment detection keeps losing. PowerShell already has a
+        # tokenizer that knows every comment form, so ask IT which lines carry live code, then RUN the
+        # guard's own source. Tokenize the run BLOCK only - the file is YAML, not PowerShell.
         $wfPath  = Join-Path $script:RepoRoot '.github/workflows/ci-scripts.yml'
         $wfLines = @(Get-Content -LiteralPath $wfPath)
 
-        $live = @()
-        $inBlock = $false
-        foreach ($l in $wfLines) {
-            $t = $l.Trim()
-            if ($inBlock) { if ($t -match '#>') { $inBlock = $false }; continue }
-            if ($t -match '^<#') { if ($t -notmatch '#>') { $inBlock = $true }; continue }
-            if ($t.StartsWith('#')) { continue }
-            $live += $l
+        # Extract the `run: |` block of the full-suite Pester step, by indentation.
+        $stepIx = [Array]::FindIndex($wfLines, [Predicate[string]]{ param($l) $l -match '^\s*- name: Pester - full scripts suite' })
+        $stepIx | Should -BeGreaterThan -1 -Because 'the full-suite Pester step must exist in ci-scripts.yml, or nothing below is checking anything'
+        $runIx = [Array]::FindIndex($wfLines, $stepIx, [Predicate[string]]{ param($l) $l -match '^\s*run: \|' })
+        $runIx | Should -BeGreaterThan -1 -Because 'that step must carry a run: | block'
+        $indent = ($wfLines[$runIx] -replace '\S.*$', '').Length
+        $block = @()
+        for ($n = $runIx + 1; $n -lt $wfLines.Count; $n++) {
+            $l = $wfLines[$n]
+            if ($l.Trim() -eq '') { $block += ''; continue }
+            if (($l -replace '\S.*$', '').Length -le $indent) { break }
+            $block += $l
         }
+        $block.Count | Should -BeGreaterThan 3 -Because 'an empty or truncated run block means this parse broke, not that CI is small'
 
-        $assign = @($live | Where-Object { $_ -match '^\s*\$oracle = @\(\$r\.Containers' })
-        $throwL = @($live | Where-Object { $_ -match '^\s*if \(\$oracle\.Count -ne 1\)' })
-        $assign.Count | Should -Be 1 -Because 'ci-scripts.yml must ASSIGN $oracle on a line that is not commented out, in any comment syntax'
-        $throwL.Count | Should -Be 1 -Because 'ci-scripts.yml must THROW when the oracle did not run, on a line that is not commented out'
+        # Ask PowerShell which lines carry NON-comment tokens. This is the part that kept being wrong.
+        $errs = $null
+        $toks = [System.Management.Automation.PSParser]::Tokenize(($block -join "`n"), [ref]$errs)
+        $liveLine = @{}
+        foreach ($tk in $toks) {
+            if ($tk.Type -ne 'Comment' -and $tk.Type -ne 'NewLine') { $liveLine[$tk.StartLine] = $true }
+        }
+        $live = @(for ($n = 1; $n -le $block.Count; $n++) { if ($liveLine.ContainsKey($n)) { $block[$n - 1] } })
 
-        # Now RUN the guard's own source. $r is read from this scope by the scriptblock.
+        $assign = @($live | Where-Object { $_ -match '\$oracle = @\(\$r\.Containers' })
+        $throwL = @($live | Where-Object { $_ -match 'if \(\$oracle\.Count -ne 1\)' })
+        $assign.Count | Should -Be 1 -Because 'ci-scripts.yml must ASSIGN $oracle on a line PowerShell itself considers live code - in any comment syntax'
+        $throwL.Count | Should -Be 1 -Because 'ci-scripts.yml must THROW when the oracle did not run, on a line PowerShell considers live code'
+
+        # Now RUN the guard's own source. $r is read from this scope by the scriptblock. A text match
+        # cannot see `-ne 2` or an inverted test; this can.
         $guard = [scriptblock]::Create(($assign[0] + "`n" + $throwL[0]))
         $r = [pscustomobject]@{ Containers = @([pscustomobject]@{ Item = 'scripts/tests/other.Tests.ps1' }) }
         { & $guard } | Should -Throw -Because 'the guard must THROW when the registration oracle is absent from the run - that is the entire point of it'

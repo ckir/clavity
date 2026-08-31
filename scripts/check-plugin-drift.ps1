@@ -14,7 +14,8 @@
 # core.autocrlf, LF for .sh), while `git show` returns the COMMITTED form (LF). MEASURED: raw-byte
 # comparison reports 19 drifted files where 16 have really drifted. CRLF -> LF, then hash.
 #
-# EXIT CODES: 0 = clean * 1 = drift found * 2 = CANNOT CHECK (bad sha, absent install, bad payload path).
+# EXIT CODES: 0 = clean * 1 = drift OR an unreadable payload file * 2 = CANNOT CHECK (bad sha, absent
+# install, bad payload path).
 # 2 is deliberately NOT 0: a checker that cannot check must never report clean.
 [CmdletBinding()]
 param(
@@ -92,26 +93,46 @@ function Get-NormalizedHash([byte[]]$Bytes) {
     finally { $sha.Dispose() }
 }
 
-$drifted = @(); $missing = @(); $extra = @(); $same = 0
+$drifted = @(); $missing = @(); $extra = @(); $unreadable = @(); $same = 0
 foreach ($f in ($repoFiles | Sort-Object)) {
     $ip = Join-Path $InstalledRoot ($f -replace '/', [IO.Path]::DirectorySeparatorChar)
-    if (-not (Test-Path -LiteralPath $ip)) { $missing += $f; continue }
+    # -PathType Leaf: a bare Test-Path is TRUE for a DIRECTORY, and the sibling checker shipped exactly
+    # that bug (AGY-CAPSTONE round 2). A directory where a payload file belongs is MISSING, not present.
+    if (-not (Test-Path -LiteralPath $ip -PathType Leaf)) { $missing += $f; continue }
     $rb = Get-BlobBytes -RepoRoot $RepoRoot -Rev $resolved -Path "${prefix}${f}"
-    $ib = [IO.File]::ReadAllBytes($ip)
+    # AN INSTALLED FILE CAN BE UNREADABLE - exclusively locked by an editor or a running process, or
+    # denied by an ACL. MEASURED at AGY-CAPSTONE round 3 with a real FileShare::None lock: ReadAllBytes
+    # threw an unhandled IOException and the run died mid-scan, so every file after it went unchecked
+    # while the exit code still read as ordinary drift. Report it and keep scanning; it is a first-class
+    # outcome, not a crash.
+    try {
+        $ib = [IO.File]::ReadAllBytes($ip)
+    } catch {
+        $unreadable += "$f ($($_.Exception.GetType().Name))"
+        continue
+    }
     if ((Get-NormalizedHash $rb) -ne (Get-NormalizedHash $ib)) { $drifted += $f } else { $same++ }
 }
 foreach ($f in ($installed | Sort-Object)) { if ($repoFiles -notcontains $f) { $extra += $f } }
 
-foreach ($f in $missing) { Write-Host "MISSING  $f" -ForegroundColor Red }
-foreach ($f in $drifted) { Write-Host "DRIFTED  $f" -ForegroundColor Red }
-foreach ($f in $extra)   { Write-Host "EXTRA    $f" -ForegroundColor Red }
+foreach ($f in $missing)    { Write-Host "MISSING     $f" -ForegroundColor Red }
+foreach ($f in $drifted)    { Write-Host "DRIFTED     $f" -ForegroundColor Red }
+foreach ($f in $extra)      { Write-Host "EXTRA       $f" -ForegroundColor Red }
+foreach ($f in $unreadable) { Write-Host "UNREADABLE  $f" -ForegroundColor Red }
 
-$bad = $missing.Count + $drifted.Count + $extra.Count
+$bad = $missing.Count + $drifted.Count + $extra.Count + $unreadable.Count
 if ($bad -gt 0) {
     Write-Host ""
-    Write-Host ("check-plugin-drift: {0} file(s) differ from {1} ({2} drifted, {3} missing, {4} extra, {5} identical)" -f `
-        $bad, $resolved.Substring(0, 7), $drifted.Count, $missing.Count, $extra.Count, $same) -ForegroundColor Red
+    Write-Host ("check-plugin-drift: {0} file(s) differ from {1} ({2} drifted, {3} missing, {4} extra, {5} unreadable, {6} identical)" -f `
+        $bad, $resolved.Substring(0, 7), $drifted.Count, $missing.Count, $extra.Count, $unreadable.Count, $same) -ForegroundColor Red
     Write-Host "Reinstall the plugin, then re-run. Until then every discipline is running instructions nobody has verified." -ForegroundColor Red
+    if ($extra.Count -gt 0) {
+        # A REINSTALL CANNOT CLEAR AN EXTRA FILE, so do not send the operator round a loop that
+        # cannot terminate. MEASURED 2026-08-31: clavity-dotnet.iss has no [InstallDelete] and Inno
+        # `ignoreversion` overwrites without removing, so .mcp.json.bak-2026-08-25 survived a full
+        # reinstall and had to be deleted by hand.
+        Write-Host "EXTRA files are NOT removed by a reinstall (the installer overwrites, it never deletes) - delete them by hand first." -ForegroundColor Red
+    }
     exit 1
 }
 Write-Host ("check-plugin-drift: OK - {0} payload file(s) identical to {1}" -f $same, $resolved.Substring(0, 7)) -ForegroundColor Green
