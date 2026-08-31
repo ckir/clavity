@@ -43,3 +43,36 @@ changes is not a version.
 
 `docs/coverage-debt.md` accepted boundary **F** ("Repo-vs-install drift is undetected") records the
 *coverage* half of this; this stub is the defect half.
+
+
+## 2026-08-31 - the drift CAUSED A WRONG ACTION, not just a risk
+
+Until now this item recorded a truncated `agy-curate/SKILL.md` and argued the *risk* that a discipline
+would execute half its procedure. Today it happened, and it is worth recording because the failure was
+silent and the agent had no way to notice from inside the run.
+
+`agy-test-audit/SKILL.md`, measured during a real AGY-TEST-AUDIT:
+
+| artifact | installed | repo source |
+|---|---|---|
+| `agy-test-audit/SKILL.md` | **159 lines** | **332 lines** |
+
+The two copies **contradict each other on a load-bearing contract**, and the installed copy carries the
+side that was deliberately retired:
+
+- installed `:152`, `:157` - "the audited sha ... not ambient HEAD"
+- repo `:312` - "**ambient `HEAD`**, exactly as the command above writes it"
+
+The repo copy carries a note at `:315` recording that the installed wording was removed on **2026-08-26**
+precisely because it CONTRADICTED the `git rev-parse HEAD` command four lines above it, and that the
+contradiction "survived nineteen review rounds" because each half read as correct alone.
+
+**Consequence, and it is the exact one the repo note predicts.** The audit followed the installed copy and
+wrote the AUDITED sha as its debounce marker. Under the current contract that marker never equals `HEAD`,
+so the reminder hook "keeps nudging forever after a completed audit". The audit had even *reported* the
+re-nudge to the owner as intended behaviour, citing the installed skill. It was corrected only because an
+unrelated ROADMAP read (§23) quoted the repo line and the two did not match.
+
+**What this adds to the case for fixing this item:** the existing entry showed drift produces INCOMPLETE
+work. This shows it produces CONFIDENTLY WRONG work that passes its own self-checks, because the agent
+verifies against the text it was given. No amount of care inside a run detects a stale instruction file.
