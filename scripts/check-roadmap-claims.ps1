@@ -40,7 +40,12 @@ $lines = [IO.File]::ReadAllText($RoadmapPath) -split "`r?`n"
 $problems = @()
 
 # --- A. line-count claims -------------------------------------------------------------------------
-$claimRe = [regex]'`([A-Za-z0-9_./-]+\.(?:md|ps1|sh|cs|rs|json))`\s*\((\d+)\s+lines\)'
+# ANY extension, not a whitelist. It was `(?:md|ps1|sh|cs|rs|json)`, which SILENTLY ignored a claim
+# about a .yml, .txt or .iss file - a fail-open in a guard whose whole job is to close one. Zero such
+# claims exist today (measured), so this closes a latent hole rather than fixing a live miss. The
+# backticks plus the literal `(N lines)` already make the shape specific enough that widening the
+# extension cannot pull in prose. AGY-CAPSTONE round 1.
+$claimRe = [regex]'`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`\s*\((\d+)\s+lines\)'
 for ($i = 0; $i -lt $lines.Count; $i++) {
     foreach ($m in $claimRe.Matches($lines[$i])) {
         $rel     = $m.Groups[1].Value
@@ -50,11 +55,23 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             $problems += "UNRESOLVED  ROADMAP:$($i+1)  ``$rel`` is not a tracked file"
             continue
         }
+        # A TRACKED FILE CAN BE ABSENT FROM THE WORKTREE - `git ls-files` reads the INDEX, so a file
+        # deleted but not staged is still listed. MEASURED at AGY-CAPSTONE round 1: `ReadAllText` then
+        # threw an unhandled FileNotFoundException and the script exited **1**, which is the "a claim is
+        # false" code - so a broken worktree was indistinguishable from a stale line count, sending the
+        # reader to hunt a number that was never wrong. Fail CLOSED, and say which thing broke.
+        $absent = @($hits | Where-Object {
+            -not (Test-Path -LiteralPath (Join-Path $RepoRoot ($_ -replace '/', [IO.Path]::DirectorySeparatorChar)))
+        })
+        if ($absent.Count -gt 0) {
+            $problems += "UNREADABLE  ROADMAP:$($i+1)  ``$rel`` is tracked but absent from the worktree ($($absent -join ', ')) - the claim cannot be checked"
+            continue
+        }
         $counts = @($hits | ForEach-Object {
             ([IO.File]::ReadAllText((Join-Path $RepoRoot ($_ -replace '/', [IO.Path]::DirectorySeparatorChar))) -split "`n").Count - 1
         })
         if (@($counts | Sort-Object -Unique).Count -gt 1) {
-            $problems += "AMBIGUOUS   ROADMAP:$($i+1)  ``$rel`` resolves to $($hits.Count) tracked files with different counts ($($counts -join ', ')) - name the path"
+            $problems += "AMBIGUOUS   ROADMAP:$($i+1)  ``$rel`` resolves to $($hits.Count) tracked files with different counts ($($counts -join ', ')) - disambiguate it with the FULL repo-relative path, e.g. ``clavity-dotnet/plugin/$rel``"
             continue
         }
         if ($counts[0] -ne $claimed) {

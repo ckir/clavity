@@ -734,7 +734,7 @@ check-plugin-drift.Tests.ps1                    39-45s    8 tests   <- SLOW, NEW
                                                                       cold against the 600s cap, and this
                                                                       suite would have taken it to ~98%.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
-check-roadmap-claims.Tests.ps1                  38-51s    8 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-roadmap-claims.Tests.ps1                  38-51s   10 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s
                                                                       cold / 38,4s warm, 8/8 both times.
                                                                       Same shape as check-plugin-drift
@@ -750,6 +750,14 @@ check-roadmap-claims.Tests.ps1                  38-51s    8 tests   <- SLOW, NEW
                                                                       One row exercises the REAL ROADMAP
                                                                       and is the oracle that Task 4's
                                                                       reconcile actually happened.
+                                                                      COUNT 8 -> 10 at AGY-CAPSTONE
+                                                                      round 1: an UNREADABLE row (a
+                                                                      TRACKED file absent from the
+                                                                      worktree used to throw an unhandled
+                                                                      FileNotFoundException and exit 1 -
+                                                                      the 'claim is FALSE' code) and a
+                                                                      non-whitelisted-extension row. TIME
+                                                                      not re-measured.
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
 check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had

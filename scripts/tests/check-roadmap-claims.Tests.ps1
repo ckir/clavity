@@ -16,6 +16,7 @@ BeforeAll {
         & git -C $repo init -q
         & git -C $repo config user.email 't@t.t'
         & git -C $repo config user.name  'T'
+        & git -C $repo config core.autocrlf false
         foreach ($rel in $Files.Keys) {
             $p = Join-Path $repo ($rel -replace '/', [IO.Path]::DirectorySeparatorChar)
             $null = New-Item -ItemType Directory -Path (Split-Path $p -Parent) -Force
@@ -73,6 +74,33 @@ Describe 'check-roadmap-claims.ps1 - the (N lines) half' {
         $r = Invoke-Claims $f.Root $f.Roadmap
         $r.Code | Should -Be 1
         $r.Out  | Should -Match 'AMBIGUOUS'
+    }
+
+    It 'exits 1 and says UNREADABLE when a claimed file is TRACKED but absent from the worktree' {
+        # AGY-CAPSTONE round 1, MEASURED: `git ls-files` reads the INDEX, so a file deleted from the
+        # worktree without being staged is still tracked. `ReadAllText` then threw an unhandled
+        # FileNotFoundException and the script exited 1 - the "a claim is FALSE" code - so a broken
+        # worktree was indistinguishable from a stale line count.
+        $f = New-ClaimRepo -Files @{ 'skills/a/SKILL.md' = "1`n2`n3`n" } `
+             -Roadmap "Entry. ``skills/a/SKILL.md`` (3 lines).`n"
+        Remove-Item (Join-Path $f.Root 'skills' 'a' 'SKILL.md') -Force
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'UNREADABLE'
+        $r.Out  | Should -Not -Match 'FileNotFoundException'
+        $r.Out  | Should -Not -Match 'STALE'
+    }
+
+    It 'checks a claim about ANY extension, not a hard-coded whitelist' {
+        # AGY-CAPSTONE round 1. The regex read `(?:md|ps1|sh|cs|rs|json)`, so a claim about a .yml, .txt
+        # or .iss file was SILENTLY ignored - a fail-open inside a guard whose job is closing one. This
+        # row is the distractor case: a stale claim about a non-whitelisted extension must still RED.
+        $f = New-ClaimRepo -Files @{ 'ci/workflow.yml' = "a`nb`n" } `
+             -Roadmap "Entry. ``ci/workflow.yml`` (99 lines).`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'STALE'
+        $r.Out  | Should -Match 'workflow\.yml'
     }
 }
 

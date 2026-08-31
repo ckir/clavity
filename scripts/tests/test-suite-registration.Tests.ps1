@@ -354,8 +354,20 @@ foreach ($cont in $r.Containers) {
         # losing ~89% of 982 assertions. So CI must name this suite explicitly, and that naming is what
         # this row pins. Source-text pinning is used because the assertion lives in YAML, where there is
         # no behaviour to call.
-        $wf = Get-Content -LiteralPath (Join-Path $script:RepoRoot '.github/workflows/ci-scripts.yml') -Raw
-        $wf | Should -Match 'test-suite-registration\.Tests\.ps1' -Because 'ci-scripts.yml must name this suite so its absence cannot pass quietly'
-        $wf | Should -Match 'registration oracle' -Because 'the guard must say WHY it exists, or a later reader will delete it as redundant'
+        # MEASURED VACUOUS AT AGY-CAPSTONE ROUND 1. This row used to grep the whole file for the two
+        # strings. Both also appear in the guard's own explanatory COMMENT, so commenting out its two
+        # executable lines - the likeliest way anyone disables it - left the row passing 1/0 while the
+        # guard was dead. A source-text pin must match a line that EXECUTES, not one that merely
+        # mentions. Proven by re-running the same mutant against this version.
+        $wfPath  = Join-Path $script:RepoRoot '.github/workflows/ci-scripts.yml'
+        $wfLines = @(Get-Content -LiteralPath $wfPath)
+        $assign  = @($wfLines | Where-Object { $_ -match '^\s*\$oracle = @\(\$r\.Containers' })
+        $throw   = @($wfLines | Where-Object { $_ -match '^\s*if \(\$oracle\.Count -ne 1\)' })
+        $assign.Count | Should -Be 1 -Because 'ci-scripts.yml must ASSIGN $oracle on an UNCOMMENTED line - a commented-out guard is not a guard'
+        $throw.Count  | Should -Be 1 -Because 'ci-scripts.yml must THROW when the oracle did not run, on an UNCOMMENTED line'
+        # The rationale comment is still required, separately: without it a later reader deletes the
+        # guard as redundant. Asserted on raw text because a comment is exactly what this one is.
+        (Get-Content -LiteralPath $wfPath -Raw) |
+            Should -Match 'registration oracle' -Because 'the guard must say WHY it exists, or a later reader will delete it as redundant'
     }
 }
