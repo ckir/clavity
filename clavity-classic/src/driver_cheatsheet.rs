@@ -21,10 +21,14 @@ pub const GROWTH_FILE_NAME: &str = "driver-cheatsheet.growth.md";
 /// scope is the accurate statement of the fact and keeps the doc above visible to a reader, rather
 /// than silencing the dead-code lint for this item forever.
 ///
-/// PRIVATE, not `pub`: this crate has NO lib target (`cargo metadata` lists only the `clavity` and
-/// `fake_tmux` bins plus the `integration` test), so nothing outside it can ever name this item —
-/// `pub` here declared a visibility that is structurally impossible to use. `mod tests` is a child
-/// module of this one and reads a private parent const fine, which is why the narrowing is free.
+/// PRIVATE, not `pub`. Be precise about why, because an earlier version of this comment was not:
+/// `pub` in a BINARY crate is NOT meaningless — it governs cross-module visibility inside the crate,
+/// and `main.rs` uses exactly that to reach `read_with_status`. It is meaningless *for this item*:
+/// no other module names it, and with no lib target (`cargo metadata` lists only the `clavity` and
+/// `fake_tmux` bins plus the `integration` test) nothing outside the crate can. The earlier wording,
+/// "a visibility that is structurally impossible to use", generalised no-lib-target into
+/// no-visibility-at-all. `mod tests` is a child of this module and reads a private parent const
+/// fine, which is why the narrowing is free.
 #[cfg(test)]
 const RETIRED_LEGACY_FILE_NAME: &str = "driver-cheatsheet.md";
 /// T4b (golden-header audience split): raised from `4 * 1024` to match `golden_header::MAX_BYTES` — the
