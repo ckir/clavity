@@ -246,7 +246,16 @@ if ($problems.Count -gt 0) {
     # "the claim cannot be checked" - and then erased it here. MEASURED at AGY-CAPSTONE round 10: on a
     # shallow clone the run printed "1 false claim(s)" having evaluated NONE. The exit code was right
     # all along; the accusation was the defect.
-    $stale = @($problems | Where-Object { $_ -like 'STALE*' }).Count
+    # ENUMERATE THE TOKENS, do not pattern-match one of them. Round 10 split on `-like 'STALE*'`,
+    # which quietly put PHANTOM - a claim that WAS checked and IS false - into the "could not be
+    # checked" bucket. MEASURED at AGY-CAPSTONE round 11: a bogus sha printed "does not exist in this
+    # repository" and then "1 claim(s) that could not be checked", two lines apart. PHANTOM is the
+    # entire product of check B, so the one outcome that half exists to produce was the one mislabelled.
+    # The full token set, and which bucket each belongs to - keep this list complete:
+    #   FALSE (checked, and wrong): STALE, PHANTOM
+    #   NOT CHECKED:                UNPARSEABLE, UNRESOLVED, UNREADABLE, AMBIGUOUS, SHALLOW
+    $falseTokens = @('STALE', 'PHANTOM')
+    $stale = @($problems | Where-Object { $falseTokens -contains (($_ -split '\s+')[0]) }).Count
     $other = $problems.Count - $stale
     $summary = if ($other -eq 0) { "$stale false claim(s)" }
                elseif ($stale -eq 0) { "$other claim(s) that could not be checked" }

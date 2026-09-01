@@ -776,7 +776,7 @@ check-plugin-drift.Tests.ps1                    56-80s   17 tests   <- SLOW, NEW
                                                                       could adopt the wrong repository.
                                                                       TIME not re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
-check-roadmap-claims.Tests.ps1                  54-55s   26 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-roadmap-claims.Tests.ps1                  54-55s   28 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s
                                                                       cold / 38,4s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 12 rows:
@@ -845,6 +845,14 @@ check-roadmap-claims.Tests.ps1                  54-55s   26 tests   <- SLOW, NEW
                                                                       checked' summary and its control, and
                                                                       a SHALLOW de-dup row. TIME not
                                                                       re-measured.
+                                                                      COUNT 26 -> 28 at AGY-CAPSTONE
+                                                                      round 11: a PHANTOM sha is a FALSE
+                                                                      claim, not an uncheckable one (round
+                                                                      10's own summary fix split on
+                                                                      'STALE*' and mis-bucketed it), and a
+                                                                      bracketed-repo-root row this suite
+                                                                      lacked while its twin had one.
+                                                                      TIME not re-measured.
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
 check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had

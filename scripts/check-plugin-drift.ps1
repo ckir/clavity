@@ -195,7 +195,11 @@ foreach ($f in $unreadable) { Write-Host "UNREADABLE  $f" -ForegroundColor Red }
 $bad = $missing.Count + $drifted.Count + $extra.Count + $unreadable.Count
 if ($bad -gt 0) {
     Write-Host ""
-    Write-Host ("check-plugin-drift: {0} file(s) differ from {1} ({2} drifted, {3} missing, {4} extra, {5} unreadable, {6} identical)" -f `
+    # "path(s)", not "file(s)": since round 10 the $unreadable bucket can hold a DIRECTORY that could
+    # not be enumerated, and a directory is neither a file nor shown to differ. Same class as the
+    # summary defect folded in the sibling checker at AGY-CAPSTONE round 11 - a total asserting a verdict
+    # over a bucket that carries more than one kind of thing.
+    Write-Host ("check-plugin-drift: {0} path(s) differ or could not be read at {1} ({2} drifted, {3} missing, {4} extra, {5} unreadable, {6} identical)" -f `
         $bad, $resolved.Substring(0, 7), $drifted.Count, $missing.Count, $extra.Count, $unreadable.Count, $same) -ForegroundColor Red
     Write-Host "Reinstall the plugin, then re-run. Until then every discipline is running instructions nobody has verified." -ForegroundColor Red
     if ($extra.Count -gt 0) {

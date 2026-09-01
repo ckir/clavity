@@ -9,7 +9,13 @@ BeforeAll {
     if (-not (Test-Path -LiteralPath $script:Script -PathType Leaf)) {
         throw "check-roadmap-claims.ps1 not found at $script:Script - this suite cannot run"
     }
-    $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+    # -LiteralPath and .ProviderPath, for the two reasons the comment four lines above already gives
+    # and this line did not obey. `Resolve-Path <path>` binds the WILDCARD parameter set, so a clone
+    # under a path containing [ or ] is globbed (round 10), and `.Path` is PROVIDER-QUALIFIED
+    # (round 9). Both checkers were fixed in those rounds; this line - which supplies the ONLY row
+    # that runs the guard against the real committed ROADMAP, and so its only CI enforcement - was
+    # missed by both sweeps. AGY-CAPSTONE round 11.
+    $script:RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..' '..')).ProviderPath
 
     function New-ClaimRepo {
         param([string]$Roadmap, [hashtable]$Files = @{})
@@ -155,6 +161,22 @@ Describe 'check-roadmap-claims.ps1 - the (N lines) half' {
         $r.Out  | Should -Not -Match 'false claim'
     }
 
+    It 'calls a PHANTOM sha a FALSE claim, not one that could not be checked' {
+        # AGY-CAPSTONE round 11, and round 10's own summary fix shipping its own edge. That fix split on
+        # `-like 'STALE*'`, so PHANTOM - a claim the checker DID check and found false - landed in the
+        # "could not be checked" bucket. MEASURED: the run printed "does not exist in this repository"
+        # and then "1 claim(s) that could not be checked", two lines apart. The remedies for the
+        # uncheckable class are all environmental and none of them fixes a bogus sha.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $rm = Join-Path $f.Root 'RP.md'
+        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``63eb46f0000000000000000000000000deadbee``).`n")
+        $r = Invoke-Claims $f.Root $rm
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'PHANTOM'
+        $r.Out  | Should -Match 'false claim'
+        $r.Out  | Should -Not -Match 'could not be checked'
+    }
+
     It 'DOES say false claim when the claim really is false' {
         # The paired control: the wording fix must not stop the checker calling a lie a lie.
         $f = New-ClaimRepo -Files @{ 'a/gone.md' = "1`n2`n3`n" } `
@@ -162,6 +184,23 @@ Describe 'check-roadmap-claims.ps1 - the (N lines) half' {
         $r = Invoke-Claims $f.Root $f.Roadmap
         $r.Code | Should -Be 1
         $r.Out  | Should -Match 'false claim'
+    }
+
+    It 'resolves its own repository root under a path containing [ or ]' {
+        # AGY-CAPSTONE round 11. The twin row in check-plugin-drift.Tests.ps1 has existed since round 10;
+        # this checker's half of the same fold shipped UNPINNED, which is exactly why the identical bug
+        # survived in this suite's own BeforeAll until round 11 found it. `Resolve-Path <path>` binds the
+        # WILDCARD parameter set and [ and ] are legal Windows filename characters.
+        $brk = Join-Path $TestDrive ('repo[wip]-' + [Guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path (Join-Path $brk 'scripts') -Force
+        Copy-Item -LiteralPath $script:Script -Destination (Join-Path $brk 'scripts') -Force
+        $probe = Join-Path $brk 'scripts' 'check-roadmap-claims.ps1'
+        # No -RepoRoot and no -RoadmapPath: the script must work out both from $PSScriptRoot, which is
+        # the code path under test. It then fails because the fixture has no ROADMAP - exit 2 - and 2 is
+        # the proof, because the glob bug died at 1 while resolving its own root, before reaching that.
+        $out = & pwsh -NoProfile -File $probe 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 2 -Because "a bracketed path must reach the ROADMAP check (2), not die resolving its own root (1); output was:`n$out"
+        $out | Should -Not -Match "property 'Path' cannot be found"
     }
 
     It 'checks a claim about ANY extension, not a hard-coded whitelist' {
