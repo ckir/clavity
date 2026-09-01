@@ -73,3 +73,7 @@ testResults.xml
 
 # Claude Code personal overrides - shared .claude/settings.json IS tracked, the .local one never is.
 .claude/settings.local.json
+# Per-developer plugin config - re-ghidra-mcp-cc, and any future *.local.md. The plugin's own
+# template says these belong here; each carries LOCAL MACHINE PATHS, which this PUBLIC repo excludes
+# by policy (see the provenance note at the top of this file).
+.claude/*.local.md
