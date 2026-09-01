@@ -574,8 +574,9 @@ test-suite-registration.Tests.ps1                21,9s    9 tests   <- FAST. MEA
                                                                       defect. TIME not re-measured.
   idle CPU (cold 34,5s); the time field was `?` until then. The single count-guard It is 20,9s of that
   21,9s - about 95% - because it spawns a child pwsh and runs Pester DISCOVERY over every tracked
-  suite (49 when measured; 52 on 2026-09-01 - the COUNT is checked mechanically by this very suite,
-  so trust that, not this sentence).
+  suite (49 when measured; 53 on 2026-09-01 - the population is EVERY TRACKED SUITE IN THE REPOSITORY,
+  which is 52 under scripts/tests PLUS clavity-dotnet/install/clavity-install.Tests.ps1; the COUNT
+  is checked mechanically by this very suite, so trust that, not this sentence).
   🔴 The previous note here read "0,7s in the contended sweep... does no I/O beyond reading justfile,
   so it is genuinely near-free". All three clauses were false once the count guard landed, and the guard
   this fold added checks the NUMBER in a row, never its prose - so nothing caught it.
