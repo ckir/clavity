@@ -240,6 +240,21 @@ Describe 'check-roadmap-claims.ps1 - sha notations the document actually uses' {
         $r.Code | Should -Be 0 -Because "a range of real shas must pass; output was:`n$($r.Out)"
     }
 
+    It 'counts both ENDPOINTS of a range in the SHALLOW message, not one per match' {
+        # AGY-CAPSTONE round 9. The SHALLOW line is the entire product of that branch - the only thing an
+        # operator sees - and it counted regex MATCHES. A range is ONE match carrying TWO shas, so round
+        # 8's own fold (b), which taught the non-shallow path about both endpoints, was not carried here.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $shallow = Join-Path $TestDrive ("shc-" + [Guid]::NewGuid().ToString('N'))
+        & git clone --depth 1 --quiet ("file:///" + ($f.Root -replace '\\', '/')) $shallow 2>&1 | Out-Null
+        (& git -C $shallow rev-parse --is-shallow-repository).Trim() | Should -Be 'true' -Because 'the fixture must actually be shallow, or this row proves nothing'
+        $s = $f.Sha.Substring(0, 7)
+        $rm = Join-Path $shallow 'R8.md'
+        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``$s..$s``).`n")
+        $r = Invoke-Claims $shallow $rm
+        $r.Out | Should -Match 'so 2 cited sha' -Because "a two-endpoint range is two shas, not one; output was:`n$($r.Out)"
+    }
+
     It 'checks a sha written in UPPERCASE' {
         # AGY-CAPSTONE round 8, the third sibling of the case class folded in rounds 6 and 7. Git
         # resolves an uppercase object name happily (measured: cat-file -e on an upper-cased HEAD

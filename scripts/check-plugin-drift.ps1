@@ -31,11 +31,28 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+function Fail2([string]$m) { Write-Host "check-plugin-drift: $m" -ForegroundColor Yellow; exit 2 }
+
 if (-not $InstalledRoot) {
+    # $env:LOCALAPPDATA IS NOT GUARANTEED. It is absent in a Windows service or scheduled-task context,
+    # in some SSH sessions, and on every non-Windows host. MEASURED at AGY-CAPSTONE round 9: Join-Path
+    # then failed to bind and the run died with "Cannot bind argument to parameter 'Path'" instead of the
+    # contracted exit 2 - so an UNCONFIGURABLE ENVIRONMENT was indistinguishable from a DRIFTED INSTALL,
+    # the exact mislabelling this file has now been bitten by four times.
+    if (-not $env:LOCALAPPDATA) {
+        Fail2 "no -InstalledRoot was given and `$env:LOCALAPPDATA is not set, so the default install path cannot be built - nothing was checked"
+    }
     $InstalledRoot = Join-Path $env:LOCALAPPDATA 'Programs\clavity-dotnet\plugins\clavity'
 }
 
-function Fail2([string]$m) { Write-Host "check-plugin-drift: $m" -ForegroundColor Yellow; exit 2 }
+
+# GIT ITSELF MUST BE PRESENT. Under `$ErrorActionPreference = 'Stop'` a missing `git` raises a
+# TERMINATING CommandNotFoundException, which fires BEFORE any $LASTEXITCODE check below can classify
+# it - so the run died with exit 1, the DRIFT code, for an environment that could not be checked at all.
+# MEASURED at AGY-CAPSTONE round 9 with PATH stripped to System32. Probe it first and fail with 2.
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Fail2 "git is not on PATH, so nothing about the repository could be read - nothing was checked"
+}
 
 # --- the sha must EXIST, not merely look like one -------------------------------------------------
 # `agy-mark.sh` shipped the other shape (accept any 40-char string) and wrote a phantom marker on
@@ -52,13 +69,27 @@ $resolved = (& git -C $RepoRoot rev-parse $Sha).Trim()
 # at AGY-CAPSTONE round 8: a `..` segment threw "startIndex cannot be larger than length of string"
 # and exited 1 - the DRIFT code - having compared nothing. Resolve-Path is already applied to the
 # sibling parameter above; this is the same idiom applied to one of a pair and not the other.
-if (Test-Path -LiteralPath $InstalledRoot) { $InstalledRoot = (Resolve-Path -LiteralPath $InstalledRoot).Path }
+# .ProviderPath, NOT .Path - and this is round 8's OWN fix shipping its own edge, the ninth round
+# running that has happened. `.Path` is PROVIDER-QUALIFIED: for a path addressed through a PSDrive
+# (PowerShell 7 defines `Temp:` out of the box, and `TestDrive:` is the idiomatic Pester spelling)
+# it returns `Temp:\x`, which is NOT a prefix of the absolute `$_.FullName` below and cannot be
+# handed to [IO.File]. MEASURED at AGY-CAPSTONE round 9 on a CLEAN, IDENTICAL install addressed as
+# `Temp:\...`: EXTRA plus UNREADABLE, exit 1, and the report told the operator to hand-delete a real
+# payload file. That is strictly worse than the crash it replaced - a confident WRONG answer beats a
+# loud one only in the sense that nobody notices it.
+if (Test-Path -LiteralPath $InstalledRoot) { $InstalledRoot = (Resolve-Path -LiteralPath $InstalledRoot).ProviderPath }
 if (-not (Test-Path -LiteralPath $InstalledRoot -PathType Container)) {
     Fail2 "installed root '$InstalledRoot' is not a directory - the plugin is not installed there, so nothing was checked"
 }
 
 $prefix = $PluginPath.TrimEnd('/') + '/'
-$repoFiles = @(& git -C $RepoRoot ls-tree -r --name-only $resolved -- $PluginPath |
+# -c core.quotePath=false. Git C-QUOTES a non-ASCII path by default (`"plugin/caf\303\251.md"`),
+# and the quoted form fails the StartsWith below, so the file drops out of $repoFiles entirely: its
+# content is never compared AND it then surfaces as EXTRA, telling the operator to delete a real
+# payload file. MEASURED at AGY-CAPSTONE round 9 with a `café.md` fixture. Latent today - zero
+# quoted paths in the payload or the index - which is the same standing on which the uppercase-sha
+# fold was accepted in round 8.
+$repoFiles = @(& git -C $RepoRoot -c core.quotePath=false ls-tree -r --name-only $resolved -- $PluginPath |
     Where-Object { $_ -and $_.StartsWith($prefix) } |
     ForEach-Object { $_.Substring($prefix.Length) })
 if ($repoFiles.Count -eq 0) { Fail2 "no files under '$PluginPath' at $resolved - wrong payload path?" }

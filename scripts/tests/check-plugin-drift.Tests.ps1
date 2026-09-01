@@ -247,6 +247,51 @@ Describe 'check-plugin-drift.ps1' {
         $res.Out  | Should -Not -Match 'startIndex cannot be larger'
     }
 
+    It 'accepts an installed root addressed through a PSDrive' {
+        # AGY-CAPSTONE round 9, and this is ROUND 8'S OWN FIX shipping its own edge - the ninth round
+        # running that has happened. Round 8 added Resolve-Path to canonicalise the root and took
+        # `.Path`, which is PROVIDER-QUALIFIED: for a PSDrive it returns 'Temp:\x', which is not a prefix
+        # of the absolute $_.FullName and cannot be handed to [IO.File]. MEASURED on a CLEAN, IDENTICAL
+        # install addressed as 'Temp:\...': EXTRA plus UNREADABLE, exit 1, and the report told the
+        # operator to hand-delete a real payload file - strictly worse than the crash it replaced.
+        #
+        # The drive must be `Temp:`, NOT `TestDrive:`. Invoke-Drift spawns a CHILD pwsh, and TestDrive:
+        # is defined by Pester inside THIS process only - measured, the child cannot resolve it and the
+        # row failed for a reason that had nothing to do with the defect. Temp: is a PowerShell default
+        # and exists in every session, which is also what makes the real-world case reachable.
+        $r = New-FixtureRepo $script:Payload
+        $leaf = "drive-" + [Guid]::NewGuid().ToString('N')
+        $i = Join-Path $env:TEMP $leaf
+        $null = New-Item -ItemType Directory -Path (Join-Path $i 'skills' 'a') -Force
+        $null = New-Item -ItemType Directory -Path (Join-Path $i 'hooks') -Force
+        [IO.File]::WriteAllText((Join-Path $i 'skills' 'a' 'SKILL.md'), "line one`nline two`n")
+        [IO.File]::WriteAllText((Join-Path $i 'hooks' 'h.sh'), "#!/usr/bin/env bash`necho hi`n")
+        [IO.File]::WriteAllText((Join-Path $i 'plugin.json'), "{`n  `"version`": `"0.7.0`"`n}`n")
+        try {
+            $viaDrive = "Temp:\$leaf"
+            $rp = Resolve-Path -LiteralPath $viaDrive
+            $rp.Path | Should -Not -Be $rp.ProviderPath -Because 'this row only means something while .Path and .ProviderPath differ - if they ever stop differing it is proving nothing'
+
+            $control = Invoke-Drift $r.Root $r.Sha $i
+            $control.Code | Should -Be 0 -Because "the filesystem-path control must be clean first, or the attack proves nothing; output was:`n$($control.Out)"
+
+            $res = Invoke-Drift $r.Root $r.Sha $viaDrive
+            $res.Code | Should -Be 0 -Because "the SAME clean install addressed through a PSDrive must still be clean; output was:`n$($res.Out)"
+            $res.Out  | Should -Not -Match 'EXTRA|UNREADABLE'
+        } finally { Remove-Item $i -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'exits 2 when no -InstalledRoot is given and LOCALAPPDATA is unset' {
+        # AGY-CAPSTONE round 9. $env:LOCALAPPDATA is absent in a Windows service or scheduled-task
+        # context, in some SSH sessions, and on every non-Windows host. MEASURED: Join-Path then failed
+        # to bind and the run died with "Cannot bind argument to parameter 'Path'" instead of the
+        # contracted 2 - an UNCONFIGURABLE ENVIRONMENT reading as a DRIFTED INSTALL.
+        $out = & pwsh -NoProfile -c "`$env:LOCALAPPDATA=''; & '$script:Script' *>&1 | Out-String; exit `$LASTEXITCODE" 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 2 -Because "an unbuildable default path is 'cannot check', not drift; output was:`n$out"
+        $out | Should -Match 'LOCALAPPDATA'
+        $out | Should -Not -Match 'Cannot bind argument'
+    }
+
     It 'reports a clean tree without printing any of the three defect tokens' {
         # Guards against a report that always prints its own vocabulary and so can never be read.
         $r = New-FixtureRepo $script:Payload

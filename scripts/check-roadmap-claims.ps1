@@ -39,7 +39,17 @@ if (-not (Test-Path -LiteralPath $RoadmapPath -PathType Leaf)) {
     exit 2
 }
 
-$tracked = @(& git -C $RepoRoot ls-files)
+# GIT ITSELF MUST BE PRESENT - see the twin in check-plugin-drift.ps1. Under 'Stop' a missing git
+# raises a TERMINATING error before the $LASTEXITCODE guard below can classify it, so the run exited 1
+# (a claim is false) for an environment that could not be checked. MEASURED at AGY-CAPSTONE round 9.
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "check-roadmap-claims: git is not on PATH - nothing was checked" -ForegroundColor Yellow
+    exit 2
+}
+
+# -c core.quotePath=false: git C-quotes a non-ASCII path by default, and a quoted entry would never
+# match a claim, yielding a false UNRESOLVED. Same one-flag fix as the drift detector's ls-tree.
+$tracked = @(& git -C $RepoRoot -c core.quotePath=false ls-files)
 if ($LASTEXITCODE -ne 0) {
     Write-Host "check-roadmap-claims: '$RepoRoot' is not a git repository - nothing was checked" -ForegroundColor Yellow
     exit 2
@@ -171,7 +181,16 @@ $seen    = @{}
 $shaCount = 0
 for ($i = 0; $i -lt $lines.Count; $i++) {
     if (-not $closure.IsMatch($lines[$i])) { continue }
-    if ($isShallow) { $shaCount += $shaRe.Matches($lines[$i]).Count; continue }
+    # COUNT ENDPOINTS, NOT MATCHES. A range is ONE match carrying TWO shas, so this under-reported
+    # every range - and the SHALLOW line is the entire product of this branch, the only thing an
+    # operator sees. MEASURED at AGY-CAPSTONE round 9: a two-sha range line counted 1. Round 8's own
+    # fold (b) taught the non-shallow path about both endpoints and did not carry it here.
+    if ($isShallow) {
+        foreach ($m in $shaRe.Matches($lines[$i])) {
+            foreach ($s in @($m.Groups[1].Value, $m.Groups[2].Value)) { if ($s) { $shaCount++ } }
+        }
+        continue
+    }
     foreach ($m in $shaRe.Matches($lines[$i])) {
         # BOTH endpoints of a range, not only the first - Groups[2] is empty for a bare sha.
         foreach ($s in @($m.Groups[1].Value, $m.Groups[2].Value)) {
