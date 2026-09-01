@@ -453,11 +453,16 @@ Describe 'agy-consult-guard' {
             Copy-Item $script:Lib $libCopy
             # Neuter the BATCH hasher only, forcing the mismatch path on every call.
             $txt = [IO.File]::ReadAllText($libCopy)
-            $mutated = [regex]::Replace($txt, "agy_guard_hash_files\(\) \{.*?
-\}
-",
-                "agy_guard_hash_files() {`n  printf 'deadbeef
-'`n}`n", 'Singleline')
+            # LINE-ENDING AGNOSTIC PATTERN. This regex used to embed LITERAL newlines taken from THIS
+            # FILE's own source. `*.sh` is pinned `text eol=lf` by .gitattributes, but a `.ps1` is not,
+            # so under core.autocrlf the pattern's newlines become CRLF while the shell library it
+            # matches stays LF - and the mutation silently fails to apply. MEASURED: this row is green
+            # locally (both files LF here) and RED on GitHub's windows-latest runner, which checks the
+            # .ps1 out as CRLF. The row caught its own failure through the precondition assertion below
+            # rather than passing vacuously, which is why this is a broken FIXTURE and not a false green.
+            $pat = 'agy_guard_hash_files\(\) \{.*?\r?\n\}\r?\n'
+            $rep = "agy_guard_hash_files() {`n  printf 'deadbeef`n'`n}`n"
+            $mutated = [regex]::Replace($txt, $pat, $rep, 'Singleline')
             [IO.File]::WriteAllText($libCopy, $mutated)
             ($mutated -match "printf 'deadbeef") | Should -BeTrue -Because 'the mutant must actually apply, or this row proves nothing'
 
