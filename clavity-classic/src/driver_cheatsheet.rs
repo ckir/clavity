@@ -16,6 +16,11 @@ pub const GROWTH_FILE_NAME: &str = "driver-cheatsheet.growth.md";
 /// duplicate of the floor; a sentence-level diff against the floor returned exactly two unique fragments,
 /// both clauses the same commit rewrote. Named rather than deleted so a reader who finds one knows why it
 /// is inert.
+/// `cfg(test)` because it IS test-only: its single use is the retirement test below, which lives in
+/// `mod tests`, so the `bin` target compiled it as dead code and `-D warnings` failed CI. Naming the
+/// scope is the accurate statement of the fact and keeps the doc above visible to a reader, rather
+/// than silencing the dead-code lint for this item forever.
+#[cfg(test)]
 pub const RETIRED_LEGACY_FILE_NAME: &str = "driver-cheatsheet.md";
 /// T4b (golden-header audience split): raised from `4 * 1024` to match `golden_header::MAX_BYTES` — the
 /// cheatsheet is delivered to the driver ALONGSIDE the golden header in one stdout block (see
