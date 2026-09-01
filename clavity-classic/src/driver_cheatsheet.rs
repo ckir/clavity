@@ -107,12 +107,17 @@ pub fn read_with_status(dir: &Path) -> (String, bool) {
 }
 
 /// Back-compat convenience: the cheatsheet text alone, baseline floor on any miss. Not called from
-/// `main.rs` (which needs the `degraded` flag and uses `read_with_status` directly) — kept public and
-/// exercised by the tests below, so the dead-code lint (true for a binary crate's non-test build,
-/// where `pub` doesn't imply an external caller) is a false positive here, not a sign the function is
-/// unused in practice.
-#[allow(dead_code)]
-pub fn read(dir: &Path) -> String {
+/// `main.rs` (which needs the `degraded` flag and uses `read_with_status` directly) — its ONLY callers
+/// are the tests below.
+///
+/// `cfg(test)` rather than `#[allow(dead_code)]`, and private rather than `pub`, for exactly the
+/// reasons given on `RETIRED_LEGACY_FILE_NAME` above. The previous comment here called the dead-code
+/// lint "a false positive ... not a sign the function is unused in practice" — but it IS unused in
+/// production, and that is the whole fact. `allow` suppressed the lint for this item FOREVER, so
+/// deleting the last test caller would have warned nobody; `cfg(test)` keeps the lint live where the
+/// item actually exists.
+#[cfg(test)]
+fn read(dir: &Path) -> String {
     read_with_status(dir).0
 }
 
