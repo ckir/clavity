@@ -652,7 +652,11 @@ fn ask_stdout_warns_when_driver_cheatsheet_is_over_cap() {
     // the reason the assertion is POSITIVE ("the warning is present") rather than a negative match: a
     // `-Not -Match`-shaped guard would have passed VACUOUSLY here and reported a retired code path as
     // still covered.
-    std::fs::write(dir.join("driver-cheatsheet.growth.md"), "x".repeat(16 * 1024 + 1)).unwrap();
+    std::fs::write(
+        dir.join("driver-cheatsheet.growth.md"),
+        "x".repeat(16 * 1024 + 1),
+    )
+    .unwrap();
 
     let (url, _state) = start_fake_bus(Reply::EchoReqIdAfter(1));
     let out = clavity_bus(&url)

@@ -48,7 +48,9 @@ pub fn read_with_status(dir: &Path) -> (String, bool) {
     // degrades to the floor instead of OOM-ing the process.
     match std::fs::metadata(&path) {
         Ok(m) if m.len() > MAX_BYTES as u64 => {
-            eprintln!("clavity: driver-cheatsheet GROWTH exceeds {MAX_BYTES} bytes; using baseline floor");
+            eprintln!(
+                "clavity: driver-cheatsheet GROWTH exceeds {MAX_BYTES} bytes; using baseline floor"
+            );
             (BASELINE_FLOOR.to_string(), true)
         }
         // ABSENT IS THE NORMAL FRESH STATE, not a degrade: the floor is compiled in, so a machine that has
@@ -85,7 +87,9 @@ pub fn read_with_status(dir: &Path) -> (String, bool) {
                 }
             }
             Err(e) => {
-                eprintln!("clavity: driver-cheatsheet GROWTH unreadable ({e}); using baseline floor");
+                eprintln!(
+                    "clavity: driver-cheatsheet GROWTH unreadable ({e}); using baseline floor"
+                );
                 (BASELINE_FLOOR.to_string(), true)
             }
         },
@@ -150,10 +154,20 @@ mod tests {
         // only writer could silently delete every baseline rule. It is now inert. Without this test the
         // retirement is asserted NOWHERE and a future reader could wire it back in unnoticed.
         let d = fresh_dir("legacy-ignored");
-        std::fs::write(d.join(RETIRED_LEGACY_FILE_NAME), "stale replacement content").unwrap();
+        std::fs::write(
+            d.join(RETIRED_LEGACY_FILE_NAME),
+            "stale replacement content",
+        )
+        .unwrap();
         let (text, degraded) = read_with_status(&d);
-        assert_eq!(text, BASELINE_FLOOR, "the retired legacy file must not be read");
-        assert!(!degraded, "an ignored file is not a degrade - nothing about it is anomalous");
+        assert_eq!(
+            text, BASELINE_FLOOR,
+            "the retired legacy file must not be read"
+        );
+        assert!(
+            !degraded,
+            "an ignored file is not a degrade - nothing about it is anomalous"
+        );
     }
 
     #[test]
@@ -162,11 +176,20 @@ mod tests {
         // drop GROWTH - never lose the shipped baseline to an accreting runtime file.
         let d = fresh_dir("combined-overcap");
         let growth = "g".repeat(MAX_BYTES - BASELINE_FLOOR.len() + 1);
-        assert!(growth.len() <= MAX_BYTES, "fixture must fit alone or it tests the wrong branch");
+        assert!(
+            growth.len() <= MAX_BYTES,
+            "fixture must fit alone or it tests the wrong branch"
+        );
         std::fs::write(d.join(GROWTH_FILE_NAME), &growth).unwrap();
         let (text, degraded) = read_with_status(&d);
-        assert_eq!(text, BASELINE_FLOOR, "over the combined cap the floor must survive alone");
-        assert!(degraded, "dropping GROWTH is anomalous and must be observable to the driver");
+        assert_eq!(
+            text, BASELINE_FLOOR,
+            "over the combined cap the floor must survive alone"
+        );
+        assert!(
+            degraded,
+            "dropping GROWTH is anomalous and must be observable to the driver"
+        );
     }
 
     #[test]
