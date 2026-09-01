@@ -292,6 +292,25 @@ Describe 'check-plugin-drift.ps1' {
         $out | Should -Not -Match 'Cannot bind argument'
     }
 
+    It 'resolves its own repository root under a path containing [ or ]' {
+        # AGY-CAPSTONE round 10. `Resolve-Path <path>` binds the WILDCARD parameter set, and [ and ] are
+        # legal Windows filename characters - so a clone under `repo[wip]` was treated as a GLOB.
+        # MEASURED: it resolved to NOTHING, `.Path` on $null threw, and the run exited 1 (the drift
+        # code); with a glob-matching sibling present it resolves to the WRONG DIRECTORY and the whole
+        # report is computed against a repository the script is not in. Every other path call in the
+        # file already used -LiteralPath.
+        $brk = Join-Path $TestDrive ('repo[wip]-' + [Guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path (Join-Path $brk 'scripts') -Force
+        Copy-Item -LiteralPath $script:Script -Destination (Join-Path $brk 'scripts') -Force
+        $probe = Join-Path $brk 'scripts' 'check-plugin-drift.ps1'
+        # No -RepoRoot: the script must work out its own root from $PSScriptRoot, which is the code path
+        # under test. It will then fail on the SHA (this fixture is not a git repo) - exit 2, not 1 -
+        # and 2 is the proof, because the glob bug died at 1 before ever reaching the sha check.
+        $out = & pwsh -NoProfile -File $probe 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 2 -Because "a bracketed path must reach the sha check (2), not die resolving its own root (1); output was:`n$out"
+        $out | Should -Not -Match "property 'Path' cannot be found"
+    }
+
     It 'reports a clean tree without printing any of the three defect tokens' {
         # Guards against a report that always prints its own vocabulary and so can never be read.
         $r = New-FixtureRepo $script:Payload

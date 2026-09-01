@@ -14,7 +14,9 @@
 # Check B passed 28/28 when written - it is a trap for a future phantom, not a backlog.
 #
 # EXIT CODES: 0 = every claim holds · 1 = at least one claim is false OR could not be checked ·
-#             2 = the RUN could not start (no ROADMAP file, not a git repository).
+#             2 = the RUN could not start, which is: no readable ROADMAP file, $RepoRoot not a git
+#             repository, or git not on PATH. Keep this list COMPLETE - rounds 8 and 9 each added a
+#             cause and left the enumeration behind, which is how a contract stops being one.
 # The 1-vs-2 split is per-RUN, not per-claim, and AGY-CAPSTONE round 4 caught the header claiming
 # otherwise: UNREADABLE and UNPARSEABLE print "cannot be checked" and exit 1, not 2. Exiting 1 is
 # the right behaviour - one uncheckable claim must not hide the OTHER claims that are provably
@@ -27,7 +29,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $RepoRoot)    { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+# -LiteralPath. `Resolve-Path <path>` binds the WILDCARD parameter set, and `[` and `]` are legal
+# Windows filename characters - so a clone under a path like `repo[wip]` is treated as a GLOB.
+# MEASURED at AGY-CAPSTONE round 10: it resolved to NOTHING and `.Path` on $null threw, exiting 1
+# (the drift code) for an environment that could not be read; with a glob-matching sibling
+# present it resolves to the WRONG DIRECTORY and the whole report is computed against a
+# repository the script is not in. Every other path call in this file (see the twin in check-plugin-drift.ps1) already uses
+# -LiteralPath; this was the one that was missed, three rounds running.
+if (-not $RepoRoot)    { $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath }
 if (-not $RoadmapPath) { $RoadmapPath = Join-Path $RepoRoot 'clavity-dotnet' 'ROADMAP.md' }
 
 # -PathType Leaf, for the SAME reason as the per-claim check below - and this is the sibling that
@@ -129,7 +138,15 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
         foreach ($h in $hits) {
             $hp = Join-Path $RepoRoot ($h -replace '/', [IO.Path]::DirectorySeparatorChar)
             try {
-                $counts += ([IO.File]::ReadAllText($hp) -split "`n").Count - 1
+                # ReadAllLines, NOT a newline COUNT. `(ReadAllText -split "`n").Count - 1` is `wc -l`
+                # semantics: it counts terminators, so a file whose last line has no final newline is
+                # reported one line SHORT and a TRUE claim is accused of being STALE. MEASURED at
+                # AGY-CAPSTONE round 10 on a 3-line file with no trailing newline: "claims 3 lines,
+                # actual 2", where appending the newline alone made it pass. **10 of 663 tracked files
+                # in this repository have no final newline.** ReadAllLines agrees with every editor,
+                # with `git diff --stat`, and - for a file that DOES end in a newline - with the old
+                # expression, so the four claims live in the ROADMAP today are unaffected.
+                $counts += ([IO.File]::ReadAllLines($hp)).Count
             } catch {
                 # GetBaseException, NOT Exception.GetType(). MEASURED at AGY-CAPSTONE round 8:
                 # PowerShell wraps every exception thrown by a .NET METHOD CALL in a
@@ -178,6 +195,7 @@ $isShallow = ((& git -C $RepoRoot rev-parse --is-shallow-repository 2>$null) -jo
 #    third sibling of the case class folded in rounds 6 and 7.
 $shaRe   = [regex]'`([0-9a-fA-F]{7,40})(?:\.\.([0-9a-fA-F]{7,40}))?`'
 $seen    = @{}
+$shaSeen = @{}
 $shaCount = 0
 for ($i = 0; $i -lt $lines.Count; $i++) {
     if (-not $closure.IsMatch($lines[$i])) { continue }
@@ -187,7 +205,16 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
     # fold (b) taught the non-shallow path about both endpoints and did not carry it here.
     if ($isShallow) {
         foreach ($m in $shaRe.Matches($lines[$i])) {
-            foreach ($s in @($m.Groups[1].Value, $m.Groups[2].Value)) { if ($s) { $shaCount++ } }
+            # DEDUPE, exactly as the checking branch does at its $seen key. Round 9 taught this
+            # branch about both endpoints and did not carry the dedupe across, so the two branches
+            # disagreed about what "a cited sha" is. MEASURED on the committed ROADMAP: line 892 cites
+            # 20f38cc bare AND as the tail of 103aa87..20f38cc, so the shallow line reported 49 for 48.
+            foreach ($s in @($m.Groups[1].Value, $m.Groups[2].Value)) {
+                if ($s -and -not $shaSeen.ContainsKey("$s|$($i+1)")) {
+                    $shaSeen["$s|$($i+1)"] = $true
+                    $shaCount++
+                }
+            }
         }
         continue
     }
@@ -213,7 +240,18 @@ if ($isShallow) {
 if ($problems.Count -gt 0) {
     foreach ($p in $problems) { Write-Host $p -ForegroundColor Red }
     Write-Host ""
-    Write-Host "check-roadmap-claims: $($problems.Count) false claim(s) in $RoadmapPath" -ForegroundColor Red
+    # "problem(s)", NOT "false claim(s)". $problems mixes STALE (the claim IS false) with UNPARSEABLE,
+    # UNRESOLVED, UNREADABLE, AMBIGUOUS and SHALLOW (the claim could NOT BE CHECKED). This file draws
+    # that distinction twice - in the exit contract above and in the UNREADABLE text itself, which ends
+    # "the claim cannot be checked" - and then erased it here. MEASURED at AGY-CAPSTONE round 10: on a
+    # shallow clone the run printed "1 false claim(s)" having evaluated NONE. The exit code was right
+    # all along; the accusation was the defect.
+    $stale = @($problems | Where-Object { $_ -like 'STALE*' }).Count
+    $other = $problems.Count - $stale
+    $summary = if ($other -eq 0) { "$stale false claim(s)" }
+               elseif ($stale -eq 0) { "$other claim(s) that could not be checked" }
+               else { "$stale false claim(s) and $other that could not be checked" }
+    Write-Host "check-roadmap-claims: $summary in $RoadmapPath" -ForegroundColor Red
     exit 1
 }
 Write-Host "check-roadmap-claims: OK - every line-count claim and closure sha in $RoadmapPath holds" -ForegroundColor Green

@@ -14,8 +14,10 @@
 # core.autocrlf, LF for .sh), while `git show` returns the COMMITTED form (LF). MEASURED: raw-byte
 # comparison reports 19 drifted files where 16 have really drifted. CRLF -> LF, then hash.
 #
-# EXIT CODES: 0 = clean * 1 = any of DRIFTED, MISSING, EXTRA or UNREADABLE * 2 = CANNOT CHECK (bad
-# sha, installed root absent or not a directory, bad payload path).
+# EXIT CODES: 0 = clean * 1 = any of DRIFTED, MISSING, EXTRA or UNREADABLE * 2 = CANNOT CHECK, which
+# is: a bad sha, an installed root that is absent or not a directory, a payload path matching nothing,
+# LOCALAPPDATA unset with no -InstalledRoot, or git not on PATH. Keep this list COMPLETE - rounds 8 and
+# 9 each added a cause and left the enumeration behind, which is how a contract stops being one.
 # The 1-clause used to read "drift OR an unreadable payload file", which was wrong twice over: UNREADABLE
 # is the INSTALLED file, not the payload, and $bad sums FOUR buckets while the prose named two.
 # AGY-CAPSTONE round 8.
@@ -30,7 +32,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+# -LiteralPath. `Resolve-Path <path>` binds the WILDCARD parameter set, and `[` and `]` are legal
+# Windows filename characters - so a clone under a path like `repo[wip]` is treated as a GLOB.
+# MEASURED at AGY-CAPSTONE round 10: it resolved to NOTHING and `.Path` on $null threw, exiting 1
+# (the drift code) for an environment that could not be read; with a glob-matching sibling
+# present it resolves to the WRONG DIRECTORY and the whole report is computed against a
+# repository the script is not in. Every other path call in this file already uses
+# -LiteralPath; this was the one that was missed, three rounds running.
+if (-not $RepoRoot) { $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath }
 function Fail2([string]$m) { Write-Host "check-plugin-drift: $m" -ForegroundColor Yellow; exit 2 }
 
 if (-not $InstalledRoot) {
@@ -98,7 +107,15 @@ if ($repoFiles.Count -eq 0) { Fail2 "no files under '$PluginPath' at $resolved -
 # reported EXTRA when normal, and produced "OK - N payload file(s) identical" with exit 0 once the
 # Hidden attribute was set. EXTRA is the one outcome a reinstall cannot fix, so telling the operator
 # the tree is clean is the worst available answer. -Force also recurses INTO hidden directories.
-$installed = @(Get-ChildItem -LiteralPath $InstalledRoot -Recurse -File -Force |
+# COLLECT ENUMERATION ERRORS RATHER THAN DYING ON THEM. Under `$ErrorActionPreference = 'Stop'` a
+# single unreadable SUBDIRECTORY (an ACL deny, a reparse point into somewhere denied) made this whole
+# statement terminate, so the run exited 1 - the DRIFT code - having compared nothing. An unreadable
+# FILE has been a first-class outcome since round 3; the directory case was not. MEASURED at
+# AGY-CAPSTONE round 10 with an icacls deny ACE. Silently skipping is NOT acceptable either: a stray
+# hiding under an unreadable directory would go unreported, which is the EXTRA fail-open all over
+# again. So: enumerate best-effort, and report every directory we could not read.
+$enumErrors = @()
+$installed = @(Get-ChildItem -LiteralPath $InstalledRoot -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable +enumErrors |
     ForEach-Object { $_.FullName.Substring($InstalledRoot.Length).TrimStart('\', '/') -replace '\\', '/' })
 
 function Get-BlobBytes {
@@ -125,7 +142,9 @@ function Get-BlobBytes {
         if ($p.ExitCode -ne 0) { throw "git cat-file blob ${Rev}:${Path} exited $($p.ExitCode)" }
         # The leading comma stops PowerShell unrolling the array into the pipeline.
         ,$ms.ToArray()
-    } finally { $ms.Dispose() }
+    # DISPOSE THE PROCESS TOO. It was leaked once per payload file - 30 handles on the real payload -
+    # and this function is the one place in either checker that allocates an OS handle in a loop.
+    } finally { $ms.Dispose(); if ($p) { $p.Dispose() } }
 }
 
 function Get-NormalizedHash([byte[]]$Bytes) {
@@ -163,6 +182,10 @@ foreach ($f in ($repoFiles | Sort-Object)) {
     if ((Get-NormalizedHash $rb) -ne (Get-NormalizedHash $ib)) { $drifted += $f } else { $same++ }
 }
 foreach ($f in ($installed | Sort-Object)) { if ($repoFiles -notcontains $f) { $extra += $f } }
+foreach ($e in $enumErrors) {
+    $target = if ($e.TargetObject) { "$($e.TargetObject)" } else { '<unknown path>' }
+    $unreadable += "$target (directory could not be enumerated - a stray under it would be invisible)"
+}
 
 foreach ($f in $missing)    { Write-Host "MISSING     $f" -ForegroundColor Red }
 foreach ($f in $drifted)    { Write-Host "DRIFTED     $f" -ForegroundColor Red }

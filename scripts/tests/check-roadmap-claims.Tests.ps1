@@ -120,6 +120,50 @@ Describe 'check-roadmap-claims.ps1 - the (N lines) half' {
         $r.Out  | Should -Not -Match 'Cannot convert value|too large or too small'
     }
 
+    It 'counts a file with NO final newline by its visible lines, not its terminators' {
+        # AGY-CAPSTONE round 10. `(ReadAllText -split "`n").Count - 1` is `wc -l` semantics - it counts
+        # TERMINATORS - so a file whose last line has no newline was reported one line SHORT and a TRUE
+        # claim was accused of being STALE. MEASURED: a 3-line file with no trailing newline gave
+        # "claims 3 lines, actual 2", and appending the newline alone made it pass. TEN of 663 tracked
+        # files in this repository have no final newline.
+        $f = New-ClaimRepo -Files @{ 'a/nonl.md' = "1`n2`n3" } `
+             -Roadmap "Entry. ``a/nonl.md`` (3 lines).`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 0 -Because "three visible lines are three lines whether or not the file ends in a newline; output was:`n$($r.Out)"
+    }
+
+    It 'still calls a genuinely wrong count STALE when the file has no final newline' {
+        # The paired control for the row above: the newline fix must not blunt the check it lives in.
+        $f = New-ClaimRepo -Files @{ 'a/nonl.md' = "1`n2`n3" } `
+             -Roadmap "Entry. ``a/nonl.md`` (99 lines).`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'STALE'
+    }
+
+    It 'does not call an UNCHECKABLE claim a FALSE one in its summary' {
+        # AGY-CAPSTONE round 10. $problems mixes STALE (the claim IS false) with UNREADABLE, UNRESOLVED,
+        # AMBIGUOUS, UNPARSEABLE and SHALLOW (the claim could NOT BE CHECKED). The summary called all of
+        # them "false claim(s)" - MEASURED, a shallow clone printed "1 false claim(s)" having evaluated
+        # NONE. The exit code was right all along; the accusation was the defect.
+        $f = New-ClaimRepo -Files @{ 'a/gone.md' = "1`n2`n3`n" } `
+             -Roadmap "Entry. ``a/gone.md`` (3 lines).`n"
+        Remove-Item (Join-Path $f.Root 'a' 'gone.md') -Force
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'could not be checked'
+        $r.Out  | Should -Not -Match 'false claim'
+    }
+
+    It 'DOES say false claim when the claim really is false' {
+        # The paired control: the wording fix must not stop the checker calling a lie a lie.
+        $f = New-ClaimRepo -Files @{ 'a/gone.md' = "1`n2`n3`n" } `
+             -Roadmap "Entry. ``a/gone.md`` (99 lines).`n"
+        $r = Invoke-Claims $f.Root $f.Roadmap
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'false claim'
+    }
+
     It 'checks a claim about ANY extension, not a hard-coded whitelist' {
         # AGY-CAPSTONE round 1. The regex read `(?:md|ps1|sh|cs|rs|json)`, so a claim about a .yml, .txt
         # or .iss file was SILENTLY ignored - a fail-open inside a guard whose job is closing one. This
@@ -240,19 +284,36 @@ Describe 'check-roadmap-claims.ps1 - sha notations the document actually uses' {
         $r.Code | Should -Be 0 -Because "a range of real shas must pass; output was:`n$($r.Out)"
     }
 
-    It 'counts both ENDPOINTS of a range in the SHALLOW message, not one per match' {
+    It 'counts both ENDPOINTS of a range in the SHALLOW message' {
         # AGY-CAPSTONE round 9. The SHALLOW line is the entire product of that branch - the only thing an
-        # operator sees - and it counted regex MATCHES. A range is ONE match carrying TWO shas, so round
-        # 8's own fold (b), which taught the non-shallow path about both endpoints, was not carried here.
+        # operator sees - and it counted regex MATCHES. A range is ONE match carrying TWO shas.
+        # The endpoints are two DISTINCT tokens on purpose: round 10 added de-duplication, and a
+        # `sha..sha` fixture would now correctly collapse to 1 and prove nothing about endpoints.
+        # The shallow branch never resolves these, it only counts them, so they need not be real.
         $f = New-ClaimRepo -Roadmap "placeholder`n"
         $shallow = Join-Path $TestDrive ("shc-" + [Guid]::NewGuid().ToString('N'))
         & git clone --depth 1 --quiet ("file:///" + ($f.Root -replace '\\', '/')) $shallow 2>&1 | Out-Null
         (& git -C $shallow rev-parse --is-shallow-repository).Trim() | Should -Be 'true' -Because 'the fixture must actually be shallow, or this row proves nothing'
-        $s = $f.Sha.Substring(0, 7)
         $rm = Join-Path $shallow 'R8.md'
-        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``$s..$s``).`n")
+        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``deadbee1234..cafe5678901``).`n")
         $r = Invoke-Claims $shallow $rm
-        $r.Out | Should -Match 'so 2 cited sha' -Because "a two-endpoint range is two shas, not one; output was:`n$($r.Out)"
+        $r.Out | Should -Match 'so 2 cited sha' -Because "a range has two endpoints; output was:`n$($r.Out)"
+    }
+
+    It 'de-duplicates a sha cited twice on one line in the SHALLOW message' {
+        # AGY-CAPSTONE round 10, and round 9's own fold shipping its own edge. The CHECKING branch
+        # dedupes by "sha|line"; the shallow branch, added by the same round-9 fold, did not - so the
+        # two branches disagreed about what "a cited sha" is. This is the shape of the real
+        # clavity-dotnet/ROADMAP.md:892, which cites one sha bare AND as the tail of a range:
+        # measured, the shallow line reported 49 citations for 48 distinct shas.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $shallow = Join-Path $TestDrive ("shd-" + [Guid]::NewGuid().ToString('N'))
+        & git clone --depth 1 --quiet ("file:///" + ($f.Root -replace '\\', '/')) $shallow 2>&1 | Out-Null
+        (& git -C $shallow rev-parse --is-shallow-repository).Trim() | Should -Be 'true' -Because 'the fixture must actually be shallow, or this row proves nothing'
+        $rm = Join-Path $shallow 'R9.md'
+        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``cafe5678901``; built then ``deadbee1234..cafe5678901``).`n")
+        $r = Invoke-Claims $shallow $rm
+        $r.Out | Should -Match 'so 2 cited sha' -Because "three citations of two distinct shas is two; output was:`n$($r.Out)"
     }
 
     It 'checks a sha written in UPPERCASE' {

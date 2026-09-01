@@ -719,7 +719,7 @@ check-dangling-consumers.Tests.ps1                58,4s  11 tests   <- SLOW. Eac
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
-check-plugin-drift.Tests.ps1                    56-80s   16 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-plugin-drift.Tests.ps1                    56-80s   17 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 45,3s
                                                                       cold / 39,2s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 11 rows,
@@ -768,8 +768,15 @@ check-plugin-drift.Tests.ps1                    56-80s   16 tests   <- SLOW, NEW
                                                                       the operator to delete real payload
                                                                       files) and an unset LOCALAPPDATA.
                                                                       TIME not re-measured.
+                                                                      COUNT 16 -> 17 at AGY-CAPSTONE
+                                                                      round 10: a repo path containing [ ]
+                                                                      - Resolve-Path's DEFAULT parameter
+                                                                      set is the WILDCARD one, so the
+                                                                      checker globbed for its own root and
+                                                                      could adopt the wrong repository.
+                                                                      TIME not re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
-check-roadmap-claims.Tests.ps1                  54-55s   21 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-roadmap-claims.Tests.ps1                  54-55s   26 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s
                                                                       cold / 38,4s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 12 rows:
@@ -830,6 +837,14 @@ check-roadmap-claims.Tests.ps1                  54-55s   21 tests   <- SLOW, NEW
                                                                       regex MATCHES, and a range is one
                                                                       match carrying two shas.
                                                                       TIME not re-measured.
+                                                                      COUNT 21 -> 26 at AGY-CAPSTONE
+                                                                      round 10: a file with NO final
+                                                                      newline (wc -l semantics accused a
+                                                                      TRUE claim), its STALE control, the
+                                                                      'false claim' vs 'could not be
+                                                                      checked' summary and its control, and
+                                                                      a SHALLOW de-dup row. TIME not
+                                                                      re-measured.
 check-roster.Tests.ps1                            4,2s    5 tests   <- FAST, re-measured 2026-08-05
 check-seed-artifacts-synced.Tests.ps1            71,9s   10 tests   <- re-measured 2026-08-04, again
                                                                       said 4,1s / 2 tests; the suite had
