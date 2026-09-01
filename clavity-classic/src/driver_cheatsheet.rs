@@ -20,8 +20,13 @@ pub const GROWTH_FILE_NAME: &str = "driver-cheatsheet.growth.md";
 /// `mod tests`, so the `bin` target compiled it as dead code and `-D warnings` failed CI. Naming the
 /// scope is the accurate statement of the fact and keeps the doc above visible to a reader, rather
 /// than silencing the dead-code lint for this item forever.
+///
+/// PRIVATE, not `pub`: this crate has NO lib target (`cargo metadata` lists only the `clavity` and
+/// `fake_tmux` bins plus the `integration` test), so nothing outside it can ever name this item —
+/// `pub` here declared a visibility that is structurally impossible to use. `mod tests` is a child
+/// module of this one and reads a private parent const fine, which is why the narrowing is free.
 #[cfg(test)]
-pub const RETIRED_LEGACY_FILE_NAME: &str = "driver-cheatsheet.md";
+const RETIRED_LEGACY_FILE_NAME: &str = "driver-cheatsheet.md";
 /// T4b (golden-header audience split): raised from `4 * 1024` to match `golden_header::MAX_BYTES` — the
 /// cheatsheet is delivered to the driver ALONGSIDE the golden header in one stdout block (see
 /// `main.rs::maybe_emit_driver_guidance`).
