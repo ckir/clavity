@@ -719,7 +719,7 @@ check-dangling-consumers.Tests.ps1                58,4s  11 tests   <- SLOW. Eac
                                                                       tests and the agent, as this file
                                                                       already warns above.
 check-member-docs.Tests.ps1                       7,3s   35 tests   <- FAST, re-measured 2026-08-05
-check-plugin-drift.Tests.ps1                    56-80s   17 tests   <- SLOW, NEW 2026-08-31. Two runs,
+check-plugin-drift.Tests.ps1                    56-80s   18 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 45,3s
                                                                       cold / 39,2s warm at 8 rows. RE-
                                                                       MEASURED 2026-09-01 at 11 rows,
@@ -775,6 +775,13 @@ check-plugin-drift.Tests.ps1                    56-80s   17 tests   <- SLOW, NEW
                                                                       checker globbed for its own root and
                                                                       could adopt the wrong repository.
                                                                       TIME not re-measured.
+                                                                      COUNT 17 -> 18 on 2026-09-01: an 8.3
+                                                                      SHORT installed root. THE FIRST CI RUN
+                                                                      FOUND THIS AND TWELVE CAPSTONE ROUNDS
+                                                                      DID NOT - Resolve-Path keeps the short
+                                                                      form, Get-ChildItem returns the long
+                                                                      one, and the prefix arithmetic between
+                                                                      them misaligned. TIME not re-measured.
 check-plugin-namespace.Tests.ps1                 27,2s    8 tests   <- SLOW, re-measured 2026-08-06
 check-roadmap-claims.Tests.ps1                  54-55s   28 tests   <- SLOW, NEW 2026-08-31. Two runs,
                                                                       backgrounded on an idle box: 51,0s

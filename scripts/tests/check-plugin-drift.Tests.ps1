@@ -311,6 +311,41 @@ Describe 'check-plugin-drift.ps1' {
         $out | Should -Not -Match "property 'Path' cannot be found"
     }
 
+    It 'accepts an installed root given as an 8.3 SHORT path' {
+        # THE ONE CI FOUND AND TWELVE REVIEW ROUNDS DID NOT. Resolve-Path preserves an 8.3 short path
+        # (`...\Temp\SHORTN~1`) while Get-ChildItem's .FullName returns the LONG form, so the raw prefix
+        # arithmetic cut the wrong number of characters and a CLEAN install reported
+        # `EXTRA 21b27fd7410b932d53a8017bd9c4/a.md` - a garbage relative path carrying the delete-by-hand
+        # remedy. GitHub's windows-latest runner hands out 8.3 TEMP paths; this box does too, which is how
+        # it was reproduced. The fix is that BOTH sides now come from the same API (Get-Item .FullName).
+        $r = New-FixtureRepo $script:Payload
+        $i = New-FixtureInstall @{
+            'skills/a/SKILL.md' = "line one`nline two`n"
+            'hooks/h.sh'        = "#!/usr/bin/env bash`necho hi`n"
+            'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
+        }
+        # 8.3 generation can be disabled per volume. If it is, this row must SKIP VISIBLY rather than
+        # pass without testing anything - a silent pass is the fail-open class this whole suite exists to
+        # close.
+        $short = $null
+        try {
+            $fso = New-Object -ComObject Scripting.FileSystemObject
+            $short = $fso.GetFolder($i).ShortPath
+        } catch { $short = $null }
+        if (-not $short -or $short -eq $i) {
+            Set-ItResult -Skipped -Because "8.3 short-name generation is not available for $i, so the divergence this row pins cannot be constructed here"
+            return
+        }
+        $short.Length | Should -BeLessThan $i.Length -Because 'the fixture is only meaningful while the short and long forms differ'
+
+        $control = Invoke-Drift $r.Root $r.Sha $i
+        $control.Code | Should -Be 0 -Because "the long-path control must be clean first, or the attack proves nothing; output was:`n$($control.Out)"
+
+        $res = Invoke-Drift $r.Root $r.Sha $short
+        $res.Code | Should -Be 0 -Because "the SAME clean install addressed by its 8.3 short path must still be clean; output was:`n$($res.Out)"
+        $res.Out  | Should -Not -Match 'EXTRA'
+    }
+
     It 'reports a clean tree without printing any of the three defect tokens' {
         # Guards against a report that always prints its own vocabulary and so can never be read.
         $r = New-FixtureRepo $script:Payload

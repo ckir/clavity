@@ -86,7 +86,17 @@ $resolved = (& git -C $RepoRoot rev-parse $Sha).Trim()
 # `Temp:\...`: EXTRA plus UNREADABLE, exit 1, and the report told the operator to hand-delete a real
 # payload file. That is strictly worse than the crash it replaced - a confident WRONG answer beats a
 # loud one only in the sense that nobody notices it.
-if (Test-Path -LiteralPath $InstalledRoot) { $InstalledRoot = (Resolve-Path -LiteralPath $InstalledRoot).ProviderPath }
+# Get-Item .FullName, NOT Resolve-Path .ProviderPath. THE TWO APIS NORMALISE DIFFERENTLY, and the
+# comparison below is raw prefix arithmetic against Get-ChildItem's .FullName - so BOTH SIDES MUST
+# COME FROM THE SAME API. MEASURED after CI caught this on a real runner: Resolve-Path preserves an
+# 8.3 SHORT path (`...\Temp\SHORTN~1`) while Get-Item and Get-ChildItem both return the LONG form,
+# so Substring($InstalledRoot.Length) cut the wrong number of characters and a CLEAN install
+# reported `EXTRA 21b27fd7410b932d53a8017bd9c4/a.md` - a garbage relative path, with the
+# delete-by-hand remedy attached. GitHub's windows-latest runner hands out 8.3 TEMP paths, which is
+# why twelve review rounds and every local run missed it and the first CI run did not.
+# This is the FOURTH correction to this one expression: round 8 added it, round 9 fixed the MEMBER,
+# round 10 fixed the PARAMETER SET, and this fixes the API. Prefix arithmetic is unforgiving.
+if (Test-Path -LiteralPath $InstalledRoot) { $InstalledRoot = (Get-Item -LiteralPath $InstalledRoot).FullName }
 if (-not (Test-Path -LiteralPath $InstalledRoot -PathType Container)) {
     Fail2 "installed root '$InstalledRoot' is not a directory - the plugin is not installed there, so nothing was checked"
 }
