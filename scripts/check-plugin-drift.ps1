@@ -14,8 +14,11 @@
 # core.autocrlf, LF for .sh), while `git show` returns the COMMITTED form (LF). MEASURED: raw-byte
 # comparison reports 19 drifted files where 16 have really drifted. CRLF -> LF, then hash.
 #
-# EXIT CODES: 0 = clean * 1 = drift OR an unreadable payload file * 2 = CANNOT CHECK (bad sha, absent
-# install, bad payload path).
+# EXIT CODES: 0 = clean * 1 = any of DRIFTED, MISSING, EXTRA or UNREADABLE * 2 = CANNOT CHECK (bad
+# sha, installed root absent or not a directory, bad payload path).
+# The 1-clause used to read "drift OR an unreadable payload file", which was wrong twice over: UNREADABLE
+# is the INSTALLED file, not the payload, and $bad sums FOUR buckets while the prose named two.
+# AGY-CAPSTONE round 8.
 # 2 is deliberately NOT 0: a checker that cannot check must never report clean.
 [CmdletBinding()]
 param(
@@ -44,6 +47,12 @@ $resolved = (& git -C $RepoRoot rev-parse $Sha).Trim()
 # -PathType Container. MEASURED at AGY-CAPSTONE round 6: a FILE passed a bare Test-Path and the run
 # then reported all 30 payload files MISSING - it failed CLOSED, so this is diagnosis quality rather
 # than a crash, but 30 wrong lines is a worse answer than one right one.
+# CANONICALISE IT FIRST. `$_.FullName` below is always absolute and $InstalledRoot was used as a raw
+# string PREFIX, so a relative path or a `..` segment made the Substring arithmetic wrong. MEASURED
+# at AGY-CAPSTONE round 8: a `..` segment threw "startIndex cannot be larger than length of string"
+# and exited 1 - the DRIFT code - having compared nothing. Resolve-Path is already applied to the
+# sibling parameter above; this is the same idiom applied to one of a pair and not the other.
+if (Test-Path -LiteralPath $InstalledRoot) { $InstalledRoot = (Resolve-Path -LiteralPath $InstalledRoot).Path }
 if (-not (Test-Path -LiteralPath $InstalledRoot -PathType Container)) {
     Fail2 "installed root '$InstalledRoot' is not a directory - the plugin is not installed there, so nothing was checked"
 }
@@ -54,7 +63,11 @@ $repoFiles = @(& git -C $RepoRoot ls-tree -r --name-only $resolved -- $PluginPat
     ForEach-Object { $_.Substring($prefix.Length) })
 if ($repoFiles.Count -eq 0) { Fail2 "no files under '$PluginPath' at $resolved - wrong payload path?" }
 
-$installed = @(Get-ChildItem -LiteralPath $InstalledRoot -Recurse -File |
+# -Force, or a HIDDEN stray is invisible. MEASURED at AGY-CAPSTONE round 8: the identical stray file
+# reported EXTRA when normal, and produced "OK - N payload file(s) identical" with exit 0 once the
+# Hidden attribute was set. EXTRA is the one outcome a reinstall cannot fix, so telling the operator
+# the tree is clean is the worst available answer. -Force also recurses INTO hidden directories.
+$installed = @(Get-ChildItem -LiteralPath $InstalledRoot -Recurse -File -Force |
     ForEach-Object { $_.FullName.Substring($InstalledRoot.Length).TrimStart('\', '/') -replace '\\', '/' })
 
 function Get-BlobBytes {
@@ -111,7 +124,9 @@ foreach ($f in ($repoFiles | Sort-Object)) {
     try {
         $ib = [IO.File]::ReadAllBytes($ip)
     } catch {
-        $unreadable += "$f ($($_.Exception.GetType().Name))"
+        # GetBaseException - see the twin in check-roadmap-claims.ps1. PowerShell wraps every .NET
+        # method-call exception, so this printed MethodInvocationException for every cause alike.
+        $unreadable += "$f ($($_.Exception.GetBaseException().GetType().Name))"
         continue
     }
     if ((Get-NormalizedHash $rb) -ne (Get-NormalizedHash $ib)) { $drifted += $f } else { $same++ }

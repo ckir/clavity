@@ -45,7 +45,17 @@ if ($LASTEXITCODE -ne 0) {
     exit 2
 }
 
-$lines = [IO.File]::ReadAllText($RoadmapPath) -split "`r?`n"
+# READ IT INSIDE A try. `Test-Path -PathType Leaf` tests SHAPE, not READABILITY: it is True for an
+# exclusively locked or ACL-denied file, so the guard above passes and this line threw unhandled,
+# exiting 1 - the "a claim is FALSE" code - for a run that never started. MEASURED at AGY-CAPSTONE
+# round 8 with a real FileShare::None lock. Same class as the per-claim read folded in round 7, one
+# scope up: the FOURTH instance of it found in this review.
+try {
+    $lines = [IO.File]::ReadAllText($RoadmapPath) -split "`r?`n"
+} catch {
+    Write-Host "check-roadmap-claims: '$RoadmapPath' could not be read ($($_.Exception.GetBaseException().GetType().Name)) - nothing was checked" -ForegroundColor Yellow
+    exit 2
+}
 $problems = @()
 
 # --- A. line-count claims -------------------------------------------------------------------------
@@ -58,7 +68,7 @@ $problems = @()
 # round 6. MEASURED: the literal `lines` is case-sensitive, so `(3 LINES)` matched nothing and the
 # claim went unchecked. A guard that silently skips the input it does not recognise is the exact
 # fail-open shape this file exists to close.
-$claimRe = [regex]::new('`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`\s*\((\d+)\s+lines\)', 'IgnoreCase')
+$claimRe = [regex]::new('`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`\s*\((\d+)\s+lines\)', 'IgnoreCase, CultureInvariant')
 for ($i = 0; $i -lt $lines.Count; $i++) {
     foreach ($m in $claimRe.Matches($lines[$i])) {
         $rel     = $m.Groups[1].Value
@@ -111,7 +121,12 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             try {
                 $counts += ([IO.File]::ReadAllText($hp) -split "`n").Count - 1
             } catch {
-                $failed += "$h ($($_.Exception.GetType().Name))"
+                # GetBaseException, NOT Exception.GetType(). MEASURED at AGY-CAPSTONE round 8:
+                # PowerShell wraps every exception thrown by a .NET METHOD CALL in a
+                # MethodInvocationException, so this field printed that same constant for a lock, an
+                # ACL denial and a missing directory alike - zero bits, in the one channel whose job
+                # is to say WHICH thing broke. Base types: IOException vs DirectoryNotFoundException.
+                $failed += "$h ($($_.Exception.GetBaseException().GetType().Name))"
             }
         }
         if ($failed.Count -gt 0) {
@@ -134,21 +149,46 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
 # checked. MEASURED at AGY-CAPSTONE round 6: widening brings 7 more shas into scope, ALL of which
 # exist - so this buys coverage and reds nothing today. Checking a sha that turns out to be real is
 # free; skipping one that is phantom is the whole failure this guard exists to catch.
-$closure = [regex]::new('SHIPPED|RULED|OWNER ACCEPTED|CLOSED', 'IgnoreCase')
-$shaRe   = [regex]'`([0-9a-f]{7,40})`'
+$closure = [regex]::new('SHIPPED|RULED|OWNER ACCEPTED|CLOSED', 'IgnoreCase, CultureInvariant')
+
+# A SHALLOW CLONE HAS NO HISTORY, so every `cat-file -e` fails and check B would report EVERY cited
+# sha as a phantom. MEASURED at AGY-CAPSTONE round 8: `git clone --depth 1` of this repository gave
+# 43 PHANTOM lines and exit 1 where the full clone exits 0. That is a false accusation, not a
+# finding - and it is what CI would have produced, because `actions/checkout` is shallow by default
+# and the dev-scripts job had no deepen step. Say it in ONE line instead, and still FAIL: a check
+# that cannot run must never report clean.
+$isShallow = ((& git -C $RepoRoot rev-parse --is-shallow-repository 2>$null) -join '').Trim() -eq 'true'
+# RANGES AND UPPERCASE, both measured at AGY-CAPSTONE round 8.
+#  * RANGE: the old pattern demanded a backtick immediately after the hex, so this repository's own
+#    dominant notation - `a..b` in ONE code span - matched nothing and the whole line was skipped.
+#    MEASURED on the committed ROADMAP: 3 closure lines carry a range, hiding SIX shas the guard
+#    never looked at, while it printed "every closure sha holds". A LIVE miss, not a latent one.
+#  * CASE: `[0-9a-f]` rejected an uppercase sha, which git resolves happily (measured: `cat-file -e`
+#    on an upper-cased HEAD exits 0). Latent - zero uppercase shas in the ROADMAP today - and the
+#    third sibling of the case class folded in rounds 6 and 7.
+$shaRe   = [regex]'`([0-9a-fA-F]{7,40})(?:\.\.([0-9a-fA-F]{7,40}))?`'
 $seen    = @{}
+$shaCount = 0
 for ($i = 0; $i -lt $lines.Count; $i++) {
     if (-not $closure.IsMatch($lines[$i])) { continue }
+    if ($isShallow) { $shaCount += $shaRe.Matches($lines[$i]).Count; continue }
     foreach ($m in $shaRe.Matches($lines[$i])) {
-        $s = $m.Groups[1].Value
-        $key = "$s|$($i+1)"
-        if ($seen.ContainsKey($key)) { continue }
-        $seen[$key] = $true
-        & git -C $RepoRoot cat-file -e "$s^{commit}" 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            $problems += "PHANTOM     ROADMAP:$($i+1)  ``$s`` does not exist in this repository"
+        # BOTH endpoints of a range, not only the first - Groups[2] is empty for a bare sha.
+        foreach ($s in @($m.Groups[1].Value, $m.Groups[2].Value)) {
+            if (-not $s) { continue }
+            $key = "$s|$($i+1)"
+            if ($seen.ContainsKey($key)) { continue }
+            $seen[$key] = $true
+            & git -C $RepoRoot cat-file -e "$s^{commit}" 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                $problems += "PHANTOM     ROADMAP:$($i+1)  ``$s`` does not exist in this repository"
+            }
         }
     }
+}
+
+if ($isShallow) {
+    $problems += "SHALLOW     this repository has no history, so $shaCount cited sha(s) could not be verified - deepen the checkout (git fetch --unshallow) and re-run"
 }
 
 if ($problems.Count -gt 0) {

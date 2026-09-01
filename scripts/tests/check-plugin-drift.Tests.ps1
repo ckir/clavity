@@ -212,6 +212,41 @@ Describe 'check-plugin-drift.ps1' {
         $res.Out  | Should -Not -Match 'MISSING'
     }
 
+    It 'sees a HIDDEN stray file, which Get-ChildItem skips without -Force' {
+        # AGY-CAPSTONE round 8. MEASURED: the identical stray reported EXTRA when normal and produced
+        # "OK - N payload file(s) identical", exit 0, once the Hidden attribute was set. EXTRA is the
+        # one outcome a reinstall cannot fix, so a false clean there is the worst available answer.
+        $r = New-FixtureRepo $script:Payload
+        $i = New-FixtureInstall @{
+            'skills/a/SKILL.md' = "line one`nline two`n"
+            'hooks/h.sh'        = "#!/usr/bin/env bash`necho hi`n"
+            'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
+        }
+        $stray = Join-Path $i '.hidden-stray.bak'
+        [IO.File]::WriteAllText($stray, "stale`n")
+        (Get-Item $stray).Attributes = 'Hidden'
+        $res = Invoke-Drift $r.Root $r.Sha $i
+        $res.Code | Should -Be 1 -Because "a hidden stray is still a stray; output was:`n$($res.Out)"
+        $res.Out  | Should -CMatch 'EXTRA\s+\.hidden-stray\.bak'
+    }
+
+    It 'canonicalises the installed root, so a path with a .. segment does not crash' {
+        # AGY-CAPSTONE round 8. MEASURED: $_.FullName is absolute and $InstalledRoot was used as a raw
+        # string PREFIX, so a `..` segment threw "startIndex cannot be larger than length of string" and
+        # exited 1 - the DRIFT code - having compared nothing at all.
+        $r = New-FixtureRepo $script:Payload
+        $i = New-FixtureInstall @{
+            'skills/a/SKILL.md' = "line one`nline two`n"
+            'hooks/h.sh'        = "#!/usr/bin/env bash`necho hi`n"
+            'plugin.json'       = "{`n  `"version`": `"0.7.0`"`n}`n"
+        }
+        $leaf = Split-Path $i -Leaf
+        $weird = Join-Path (Split-Path $i -Parent) ($leaf + '\..\' + $leaf)
+        $res = Invoke-Drift $r.Root $r.Sha $weird
+        $res.Code | Should -Be 0 -Because "the path denotes the same clean directory; output was:`n$($res.Out)"
+        $res.Out  | Should -Not -Match 'startIndex cannot be larger'
+    }
+
     It 'reports a clean tree without printing any of the three defect tokens' {
         # Guards against a report that always prints its own vocabulary and so can never be read.
         $r = New-FixtureRepo $script:Payload

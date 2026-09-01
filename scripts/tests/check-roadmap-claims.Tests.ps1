@@ -215,6 +215,61 @@ Describe 'check-roadmap-claims.ps1 - inputs it does not control' {
     }
 }
 
+Describe 'check-roadmap-claims.ps1 - sha notations the document actually uses' {
+
+    It 'checks BOTH endpoints of a sha RANGE, not just the first' {
+        # AGY-CAPSTONE round 8, and a LIVE miss rather than a latent one. The old pattern demanded a
+        # backtick immediately after the hex, so `a..b` in ONE code span - this repository's dominant
+        # notation - matched nothing and the whole line was skipped. MEASURED on the committed ROADMAP:
+        # 3 closure lines carry a range, hiding SIX shas the guard printed "holds" over.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $rm = Join-Path $f.Root 'R4.md'
+        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``63eb46f0000000000000000000000000deadbee..73eb46f0000000000000000000000000deadbef``).`n")
+        $r = Invoke-Claims $f.Root $rm
+        $r.Code | Should -Be 1
+        ([regex]::Matches($r.Out, 'PHANTOM')).Count | Should -Be 2 -Because "both endpoints of a range must be checked, not one; output was:`n$($r.Out)"
+    }
+
+    It 'does not invent a PHANTOM for a range of REAL shas' {
+        # The paired control for the row above: widening must not manufacture false accusations.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $s = $f.Sha.Substring(0, 7)
+        $rm = Join-Path $f.Root 'R5.md'
+        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``$s..$s``).`n")
+        $r = Invoke-Claims $f.Root $rm
+        $r.Code | Should -Be 0 -Because "a range of real shas must pass; output was:`n$($r.Out)"
+    }
+
+    It 'checks a sha written in UPPERCASE' {
+        # AGY-CAPSTONE round 8, the third sibling of the case class folded in rounds 6 and 7. Git
+        # resolves an uppercase object name happily (measured: cat-file -e on an upper-cased HEAD
+        # exits 0), so `[0-9a-f]` silently exempted a real citation.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $rm = Join-Path $f.Root 'R6.md'
+        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``63EB46F0000000000000000000000000DEADBEE``).`n")
+        $r = Invoke-Claims $f.Root $rm
+        $r.Code | Should -Be 1
+        $r.Out  | Should -Match 'PHANTOM'
+    }
+
+    It 'reports SHALLOW - once - instead of accusing every sha, on a repository with no history' {
+        # AGY-CAPSTONE round 8. MEASURED on a real `git clone --depth 1` of this repository: 43 PHANTOM
+        # lines and exit 1, where the full clone exits 0. actions/checkout is shallow by DEFAULT, so
+        # this is what CI would have produced. It must still FAIL - a check that cannot run must never
+        # report clean - but as one honest line, not a wall of false accusations.
+        $f = New-ClaimRepo -Roadmap "placeholder`n"
+        $shallow = Join-Path $TestDrive ("sh-" + [Guid]::NewGuid().ToString('N'))
+        & git clone --depth 1 --quiet ("file:///" + ($f.Root -replace '\\', '/')) $shallow 2>&1 | Out-Null
+        (& git -C $shallow rev-parse --is-shallow-repository).Trim() | Should -Be 'true' -Because 'the fixture must actually be shallow, or this row proves nothing'
+        $rm = Join-Path $shallow 'R7.md'
+        [IO.File]::WriteAllText($rm, "Item. SHIPPED (``$($f.Sha.Substring(0,7))``).`n")
+        $r = Invoke-Claims $shallow $rm
+        $r.Code | Should -Be 1 -Because "cannot-check must not read as clean; output was:`n$($r.Out)"
+        $r.Out  | Should -Match 'SHALLOW'
+        $r.Out  | Should -Not -Match 'PHANTOM'
+    }
+}
+
 Describe 'check-roadmap-claims.ps1 - the real repository' {
     It 'passes on the committed ROADMAP' {
         # RED until Task 4 reconciles the four stale headers. That is deliberate: this row is the

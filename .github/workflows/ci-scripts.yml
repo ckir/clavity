@@ -148,6 +148,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Deepen history for the ROADMAP claims gate
+        # actions/checkout is SHALLOW by default (fetch-depth 1), and check B of
+        # scripts/check-roadmap-claims.ps1 resolves every sha the ROADMAP cites beside a closure word.
+        # MEASURED on a real `git clone --depth 1` of this repository: 43 PHANTOM lines and exit 1,
+        # where the full clone exits 0 - the gate would have accused every closure entry in the document
+        # of citing a sha that does not exist. The same reasoning, and the same fix, as the knowledge-
+        # store gate above. The script ALSO detects a shallow repository and reports SHALLOW rather than
+        # a wall of false phantoms, so if this step is ever removed the gate fails in one honest line
+        # instead of silently passing OR lying.
+        run: git fetch --unshallow --quiet || git fetch --quiet --depth=2147483647
+        shell: bash
+
       - name: Install ripgrep
         shell: pwsh
         # scripts/check-plugin-namespace.ps1 hard-requires `rg` on PATH and Write-Errors without it, so
