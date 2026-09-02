@@ -2,7 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the peer REPLY CONTRACT (§21) into the four AGY-* discipline skills, in the owner-fixed order, each step independently shippable and mechanically enforced by the existing discipline linter.
+**Goal:** Ship the peer REPLY CONTRACT (§21) into the four AGY-* discipline skills, in the owner-fixed
+order, mechanically enforced by the existing discipline linter.
+
+⚠ **NOT every step is independently shippable, and an earlier draft of this line claimed otherwise.**
+Tasks 1, 2, 3 and 5 are. **Task 4 is NOT: it hardcodes `claim-type` in its schemas, which Task 2
+introduces.** Shipping Task 4 first would have the checker reject 100% of replies still using the old
+word - the same 100%-rejection failure mode the panel already caught once in this plan. **Execution
+order: 1, 5, 2, 3, 4**, and the 2-before-4 edge is a hard dependency, not a preference.
 
 **Architecture:** Every change is contract TEXT in four `SKILL.md` files that exist as **byte-identical pairs** across `clavity-dotnet/plugin/skills/` and `clavity-classic/plugin/skills/` — so each edit touches **8 files**. Text alone is unenforced, so each step also adds an invariant to `scripts/check-agy-discipline-skills.ps1` and a **passing row plus a REJECTION row** to `scripts/tests/check-agy-discipline-skills.Tests.ps1`. That suite already stages a scratch root containing all four skills and perturbs exactly one, so its rejection rows are non-vacuity proofs by construction.
 
@@ -216,7 +223,10 @@ specific — it names which mutant to run. Its danger is that it reads as eviden
         $root = New-ScratchRoot
         $p = & $script:SkillPath $root 'agy-test-audit'
         $txt = [IO.File]::ReadAllText($p)
-        $mutated = $txt -replace 'WRONG 5 TIMES IN 14 CLAIMS', 'sometimes wrong'
+        # WHITESPACE-TOLERANT. The clause is markdown and markdown WRAPS: the phrase currently sits
+        # across a line break in the inserted text, so a literal-space match finds nothing. A matcher
+        # that breaks when prose re-wraps is not a guard, it is a time bomb.
+        $mutated = $txt -replace 'WRONG\s+5\s+TIMES\s+IN\s+14\s+CLAIMS', 'sometimes wrong'
         ($mutated -ne $txt) | Should -BeTrue -Because 'the mutant must actually apply, or this row proves nothing'
         [IO.File]::WriteAllText($p, $mutated)
 
@@ -233,14 +243,18 @@ Expected: FAIL at the mutant precondition.
 
 - [ ] **Step 3: Add the clause to all EIGHT files**
 
-Insert immediately after the paragraph beginning **`A flagged reply is INCOMPLETE, not empty.`** - the
-same anchor Task 1 uses, so both contract clauses sit together. Task 1 gave an anchor and this step did
+Insert immediately after **Task 1's clause** (the paragraph beginning
+`**Put nothing after the terminal token.**`), NOT after the `A flagged reply is INCOMPLETE` anchor.
+
+⚠ Both clauses share a neighbourhood, so anchoring both on the SAME paragraph wedges this one BETWEEN
+that anchor and Task 1's text - mechanically fine, and confusingly interleaved to read. Since the
+execution order puts Task 1 first, its clause is already in the file and is the better anchor. Task 1 gave an anchor and this step did
 not; an implementer with no anchor invents a location, which this plan's own "anchor on QUOTED TEXT"
 rule forbids.
 
 ```markdown
-**`confidence` IS A POINTER, NEVER AUTHORITY.** MEASURED across four audits: it was **WRONG 5 TIMES IN 14
-CLAIMS**. It is still worth carrying, because it names WHICH MUTANT TO RUN - which is why every false
+**`confidence` IS A POINTER, NEVER AUTHORITY.**
+MEASURED across four audits: it was **WRONG 5 TIMES IN 14 CLAIMS**. It is still worth carrying, because it names WHICH MUTANT TO RUN - which is why every false
 claim was cheap to kill. **A `measured` claim is ALWAYS re-run by the driver before folding; the label
 buys the finding no credit whatsoever.** Phrase every trigger as a FALSIFIABLE PREDICTION - "removing X
 leaves the suite green" - because that phrasing is what made all five refutations mechanical.
@@ -255,7 +269,9 @@ leaves the suite green" - because that phrasing is what made all five refutation
     # "answer with high confidence" would be ordered to paste an unrelated statistical caveat. Both
     # readings fail for one reason: the TRIGGER was the wrong thing. Every discipline skill carries the
     # false rate, full stop.
-    if ($text -notmatch 'WRONG 5 TIMES IN 14 CLAIMS') {
+    # WHITESPACE-TOLERANT, for the reason above: the clause wraps in the markdown, so a literal-space
+    # match would red on a skill that CORRECTLY carries it - a guard failing closed against valid input.
+    if ($text -notmatch 'WRONG\s+5\s+TIMES\s+IN\s+14\s+CLAIMS') {
         Write-Error "$skill : ships confidence without its measured false rate - add the POINTER clause"
         $failed = $true
     }
@@ -358,11 +374,15 @@ Describe 'check-peer-reply-citations' {
     It 'reports EVERY bad row, not just the first' {
         # A checker that aborts on row 1 hides all citation drift after it - the same silent-drop shape
         # as the TEN_KEYS bug this replaces, just relocated.
-        $r = New-Reply '[{"file":"justfile","quoted_line":"NOT A REAL LINE"},{"file":"justfile","quoted_line":"ALSO NOT REAL"}]'
+        # UNDECLARED KEYS, deliberately. An earlier fixture used only VALID keys, so it exercised the
+        # citation-resolution path and never entered the schema validator at all - the row would have
+        # passed with check_row_schema still aborting on its first error, which is the exact behaviour
+        # it claims to disprove. A test must enter the code it names.
+        $r = New-Reply '[{"file":"justfile","quoted_line":"x","smuggled_one":"a"},{"file":"justfile","quoted_line":"y","smuggled_two":"b"}]'
         $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
         $LASTEXITCODE | Should -Be 1
-        $out | Should -Match 'NOT A REAL LINE'
-        $out | Should -Match 'ALSO NOT REAL' -Because 'aborting on the first bad row hides every later one'
+        $out | Should -Match 'smuggled_one'
+        $out | Should -Match 'smuggled_two' -Because 'aborting on the first bad row hides every later one'
     }
 
     It 'resolves a citation whose only difference is a MANGLED EM-DASH' {
@@ -465,7 +485,10 @@ Expected: 6 passed, 0 failed.
 🔴 **THEN PROVE THE NORMALISATION ROW CAN FAIL.** The row now exists (`resolves a citation whose only
 difference is a MANGLED EM-DASH`), but a row that exists is not a row that bites. Fill its placeholder
 with a REAL line from a file that genuinely contains an em-dash, presented mangled; then delete `norm()`'s
-dash replacement and confirm **that specific row** goes red. A normalisation row asserted against plain
+dash replacement and confirm **that specific row** goes red - **then RESTORE it and re-run before you
+commit.** The plan previously said to break `norm()` and never said to put it back; a literal
+implementer commits the crippled checker. Every mutation in this plan is temporary: break, observe red,
+restore, observe green, and only then commit. A normalisation row asserted against plain
 ASCII passes against a checker that normalises nothing — the exact class this repository keeps paying
 for, and it may not ship unproven.
 
@@ -484,7 +507,12 @@ In `justfile`, append to the chosen recipe's array literal:
 `, 'scripts/tests/check-peer-reply-citations.Tests.ps1'`
 
 In `scripts/tests/_partition.md`, add a row to the `## Measured runtimes` fenced block:
-`check-peer-reply-citations.Tests.ps1          <measured>s    3 tests   <- FAST, added 2026-09-02`
+`check-peer-reply-citations.Tests.ps1          <measured>s    6 tests   <- <FAST|SLOW>, added 2026-09-02`
+
+⚠ **SIX, not three - and the count is mechanically enforced.** The suite grew from 3 rows to 6 during
+review and this figure went stale with it. `test-suite-registration.Tests.ps1` re-runs Pester discovery
+per suite and compares the COUNT, so a stale number reds the gate. **Count the `It` blocks you actually
+wrote, do not copy this figure.**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/test-suite-registration.Tests.ps1"`
 Expected: 9 passed. ⚠ **`git add` the new suite FIRST** — that gate reads TRACKED files, so an unstaged suite reads as a PHANTOM.
@@ -515,8 +543,16 @@ brief differs from the baseline in FOUR ways and isolates nothing. **Execution o
 ```bash
 git status --short > /tmp/panel-before.txt   # the envelope check every consult owes
 ```
-Send a brief that is byte-identical to a recent successful round **run AFTER Task 1 shipped** - i.e. one
-that CARRIED the clause - except that the anti-wrap-up paragraph is deleted.
+**Run BOTH conditions here, back to back. Task 5 generates its own baseline.**
+
+1. Send a brief WITH the clause (the post-Task-1 norm). Record whether the body arrived inline.
+2. Send the same brief with the anti-wrap-up paragraph deleted, and nothing else changed. Record the same.
+
+🔴 **THIS REPLACED A TEMPORAL PARADOX I INTRODUCED WHILE FIXING SOMETHING ELSE.** The previous
+wording demanded a baseline from "a recent successful round run AFTER Task 1 shipped" - while the
+execution order says to run Task 5 IMMEDIATELY after Task 1, when no such round exists yet. Generating
+both arms inside the task removes the dependency on history entirely, and is a better experiment anyway:
+the two arms are minutes apart on one peer version rather than compared across an unknown gap.
 
 🔴 **THE BASELINE ERA IS THE WHOLE EXPERIMENT, and "a recent successful round" is ambiguous
 without it.** Every round before Task 1 also lacked the clause, so deleting it from a pre-Task-1 baseline
@@ -612,6 +648,40 @@ claimed a fix that was not in the tree. Root cause, measured: backslash escapes 
 applied under a hard assertion, and one by line surgery rather than string replace.** The lesson is the
 one the repository already knows and it was violated while folding a finding about exactly it: a mutation
 that is not asserted did not happen.
+
+## Panel round 2 - dispositions (AGY-AFTER, 2026-09-02)
+
+Rotation added **State Corruptor** (dropped in round 1) and a bespoke **Execution Order Auditor**,
+because round 1 REWROTE the execution order and nothing had reviewed the rewrite. **9 findings, 9 FOLDED,
+0 refuted.** Six seats returned "no new findings" WITH an explicit statement of what they did not examine.
+Escalation verdict: `REQUEST CHANGES`.
+
+- `FOLDED: the inserted clause WRAPS across a newline while the linter and mutant match a contiguous
+  string` - MEASURED: the phrase sits across lines 242-243 and both matchers searched for it with literal
+  spaces, so the linter would have RED on a skill that correctly carries the clause. Both matchers are now
+  whitespace-tolerant AND the phrase is kept unwrapped: a guard that breaks when prose re-wraps is a time
+  bomb, so fixing only one side would have left it armed.
+- `FOLDED: Step 4 told the implementer to break norm() and never to restore it` - MEASURED: the word
+  "restore" appeared ZERO times in the plan. A literal implementer commits the crippled checker.
+- `FOLDED: a temporal paradox I introduced while fixing something else` - the order says run Task 5
+  immediately after Task 1, while Task 5 demanded a baseline from a round run AFTER Task 1 shipped. Task 5
+  now generates BOTH arms itself, which removes the dependency on history and is a better experiment.
+- `FOLDED: the Goal claimed every step is independently shippable; Task 4 is not` - it hardcodes
+  `claim-type`, which Task 2 introduces. Shipping 4 before 2 rejects 100% of replies still using the old
+  word - the same failure mode the panel caught once already in this plan.
+- `FOLDED: the _partition.md row said 3 tests; the suite has 6` - the suite doubled during review and the
+  figure went stale. That count is mechanically enforced by re-running discovery, so it reds the gate.
+- `FOLDED: the "reports EVERY bad row" test never entered the code it names` - its fixture used only
+  DECLARED keys, so it exercised citation resolution, not the schema validator. It would have passed with
+  the abort-on-first-error behaviour it claims to disprove. Fixture now carries undeclared keys.
+- `FOLDED: both plugin halves must be committed together` - the pair gate is fail-closed and runs on push.
+- `FOLDED: Task 5's baseline era was ambiguous` - superseded by the both-arms design above.
+- `FOLDED: Task 3 anchored on the same paragraph as Task 1` - interleaving the two clauses. Now anchored
+  after Task 1's clause.
+
+⚠ **Two of round 2's findings were defects round 1's FOLDS introduced** (the temporal paradox, and the
+line-wrap that arrived with the clause text). That is the documented reason to re-run a round after
+folding: a fix spawns its own edges.
 
 ## Stand-downs
 
