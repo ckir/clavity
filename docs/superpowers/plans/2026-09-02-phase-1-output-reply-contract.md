@@ -289,6 +289,25 @@ history, and is checkable by reading the rest of the skill:
 
 ### Task 4: §21 step 4 — JSON INLINE, with a reader that validates a DECLARED schema
 
+**DONE 2026-09-02 - commit `b577298`. §21 IS COMPLETE.** Suite 10/0 (10 rows, not the 8 this plan
+predicted - two were added for defects found during execution). Discipline suite 49 -> 52/0.
+Registration 9/0. Registered in the SLOW half: measured twice solo, **31,1s cold / 28,1s warm**.
+
+🔴 **THREE OF THIS TASK'S SIX FIXTURES DID NOT EXIST IN THE FILES THEY CITED.** The em-dash row quoted
+`### 20 - A mockable clock (TimeProvider) in AgyView` - the real line carries backticks and a trailing
+clause; the indentation row quoted a PREFIX of justfile's 2,000-character Invoke-Pester line, and the
+checker compares WHOLE lines. Both replaced with lines verified verbatim at HEAD. **A plan that writes
+test fixtures is making claims about file contents, and these were never checked.**
+
+🔴 **THE CHECKER CRASHED ON EXACTLY WHAT IT EXISTS FOR.** stdout is cp1252 here, which encodes an em
+dash but NOT U+2212, so echoing a citation with the repr conversion raised UnicodeEncodeError instead of
+reporting drift - exit 1 either way, so it read as "problems found" with the problem list never printed.
+All four peer-echo sites now use `ascii()`, pinned by a row.
+
+🔴 **THE REGISTRATION GATE CAUGHT A ROW STALED TWO TASKS EARLIER** - the discipline suite's
+`_partition.md` count still said 43 after Tasks 1 and 2 took it to 49, so both were committed with that
+gate red. **lefthook's pre-push does not run it; only CI does, and nothing has been pushed.**
+
 **Two hard conditions from the ROADMAP, plus one from the spec:**
 1. it ships WITH a reader (else it is the "field no rule reads" this same skill forbids);
 2. the reader MUST normalise non-ASCII (an em-dash arriving mangled already read as drift once);
@@ -308,7 +327,7 @@ failed on SCHEMA, and **the citation check silently never ran** — while the br
 - Modify: `{dotnet,classic}/plugin/skills/agy-capstone/SKILL.md` and `.../agy-test-audit/SKILL.md`
 - Modify: `justfile` (register the new suite) and `scripts/tests/_partition.md` (its runtimes row)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 🔴 **THE DISCIPLINE DECLARES THE SCHEMA - NOT THE REPLY.** The first draft had each ROW carry a
 `schema` key, which puts the declaration in the hands of the party being checked: the peer declares
@@ -414,12 +433,12 @@ Describe 'check-peer-reply-citations' {
 }
 ```
 
-- [ ] **Step 2: Run it and confirm it FAILS**
+- [x] **Step 2: Run it and confirm it FAILS**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-peer-reply-citations.Tests.ps1 -Output Detailed"`
 Expected: FAIL — the checker rejects every row on the hardcoded `TEN_KEYS` and knows nothing of `discipline`.
 
-- [ ] **Step 3: Replace the hardcoded schema with a DISCIPLINE-OWNED registry**
+- [x] **Step 3: Replace the hardcoded schema with a DISCIPLINE-OWNED registry**
 
 In `scripts/check-peer-reply-citations.py`, replace the `TEN_KEYS` block:
 
@@ -512,7 +531,7 @@ why.** The key must be renamed in the same commit that declares the schemas: ren
 the peer emitting a key this checker still rejected, and renaming later leaves the field named for the
 authority it is not supposed to carry. Step 3b ships the rule that says so, into the same two skills.
 
-- [ ] **Step 3b: ship the JSON contract INLINE into the two skills - the half the plan's Files list named but no step performed**
+- [x] **Step 3b: ship the JSON contract INLINE into the two skills - the half the plan's Files list named but no step performed**
 
 🔴 **ADDED 2026-09-02. Task 4's Files list said "Modify `{dotnet,classic}/.../agy-capstone/SKILL.md` and
 `.../agy-test-audit/SKILL.md`", and not one of its six steps touched them.** The ROADMAP requirement is
@@ -558,7 +577,7 @@ checker but no inline contract here, deliberately: they are consult and panel di
 are prose. Declaring a schema the skill never asks for is exactly the referent-free rule that killed
 Task 3 - do NOT "for consistency" paste this block into them.
 
-- [ ] **Step 3c: add the rename-enforcing rows to the suite**
+- [x] **Step 3c: add the rename-enforcing rows to the suite**
 
 Two more `It` blocks in `scripts/tests/check-peer-reply-citations.Tests.ps1`. The rename is the owner's
 ruling; without a row it is a convention, not a contract:
@@ -582,7 +601,7 @@ ruling; without a row it is a convention, not a contract:
 per suite and compares the COUNT, so the `_partition.md` figure must say 8. **Count the `It` blocks you
 actually wrote rather than copying any number from this plan** - that figure has already gone stale once.
 
-- [ ] **Step 4: Run the suite to verify it passes, then PROVE the normalisation row can fail**
+- [x] **Step 4: Run the suite to verify it passes, then PROVE the normalisation row can fail**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-peer-reply-citations.Tests.ps1 -Output Detailed"`
 Expected: 8 passed, 0 failed (or 8 SKIPPED if python is absent - read which).
@@ -601,7 +620,7 @@ dash written as `-`, and the row passes because `norm()` maps the file's dash to
 Prove it can fail: delete the dash-replacement loop from `norm()`, confirm **that row alone** goes red,
 then RESTORE it and confirm green before committing.
 
-- [ ] **Step 5: Register the new suite — it will otherwise EXIST, PASS and NEVER RUN**
+- [x] **Step 5: Register the new suite — it will otherwise EXIST, PASS and NEVER RUN**
 
 🔴 **DECIDE THE HALF BEFORE EDITING, and the default is SLOW.** The fast half measured **493-550s
 against a 600s cap** and already took `gitignore-policy.Tests.ps1` (+6,6s) earlier the same day. This
@@ -626,7 +645,7 @@ wrote, do not copy this figure.**
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/test-suite-registration.Tests.ps1"`
 Expected: 9 passed. ⚠ **`git add` the new suite FIRST** — that gate reads TRACKED files, so an unstaged suite reads as a PHANTOM.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/check-peer-reply-citations.py scripts/tests/check-peer-reply-citations.Tests.ps1 justfile scripts/tests/_partition.md clavity-dotnet/plugin/skills clavity-classic/plugin/skills
