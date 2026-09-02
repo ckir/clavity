@@ -302,9 +302,16 @@ mod tests {
         std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o000)).unwrap();
 
         // PRECONDITION - the fixture must actually apply, or this test proves nothing. Root ignores
-        // the permission bits, and metadata would then come back NotFound: a DIFFERENT arm, whose
-        // correct flag is the OPPOSITE of the one asserted below. Restore and skip loudly rather than
-        // assert against the wrong branch.
+        // the permission bits, so the denial never happens. MEASURED as root under WSL:
+        // `metadata()` SUCCEEDS OUTRIGHT - `kind` is `None`, not `Some(NotFound)` - because the file
+        // was just written and exists, and a root process traverses the 0o000 directory anyway. The
+        // call then falls through to the `Ok(_)` arm and reads the file, which is a DIFFERENT arm
+        // whose correct flag is the OPPOSITE of the one asserted below.
+        //
+        // An earlier version of this comment said metadata would "come back NotFound". That was
+        // wrong, and wrong against evidence recorded in the very commit that introduced it - the
+        // commit message states `kind = None, not even NotFound`. Caught by an audit; kept here
+        // because a comment that contradicts its own commit's measurement is worse than no comment.
         let kind = std::fs::metadata(d.join(GROWTH_FILE_NAME))
             .err()
             .map(|e| e.kind());

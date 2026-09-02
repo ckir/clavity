@@ -144,11 +144,20 @@ Describe 'check-plugin-drift.ps1' {
         try {
             # PRECONDITION - the fixture must actually apply, or this row proves nothing. AGY-TEST-AUDIT
             # 2026-09-02: this is `1913bdc`'s class, where a mutation silently failed to apply and only a
-            # precondition assertion caught it. FileShare::None is a MANDATORY lock on Windows and an
-            # advisory one on POSIX, so on a non-Windows host the read below would succeed, the checker
-            # would report no drift, and the row would fail loudly rather than pass vacuously - but it
-            # would fail for a reason nothing states. Assert the lock blocks a reader first, so the row
-            # names its own environmental premise instead of assuming it.
+            # precondition assertion caught it.
+            #
+            # NOTE - AN EARLIER VERSION OF THIS COMMENT ARGUED THAT `FileShare::None` IS MERELY ADVISORY ON
+            # POSIX, so the read below would succeed on a non-Windows host. THAT CLAIM IS RETRACTED and
+            # was refuted by measurement in this same commit range - see `docs/coverage-debt.md` entry O:
+            # the LOCKED row PASSES on Linux, because .NET honours the share mode between .NET processes.
+            # The retraction landed in the ledger and this comment was missed, leaving the repository
+            # arguing both sides of a settled question. That is the incomplete-fold class: the FACT
+            # changed, so every place stating the fact had to change with it.
+            #
+            # So the precondition is NOT about POSIX semantics. It is the narrower and more durable
+            # point: assert the lock actually blocks a reader, so that if the premise ever stops holding
+            # - on any host, for any reason - the row fails at this line naming the cause, instead of
+            # passing while testing nothing.
             { [IO.File]::ReadAllBytes($locked) } | Should -Throw -Because 'the exclusive lock must actually block a reader, or UNREADABLE is not what is being tested'
             $res = Invoke-Drift $r.Root $r.Sha $i
             $res.Code | Should -Be 1
