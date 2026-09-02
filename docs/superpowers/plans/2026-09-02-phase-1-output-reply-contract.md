@@ -69,9 +69,8 @@ Add to `scripts/tests/check-agy-discipline-skills.Tests.ps1`, inside `Describe '
         $p = & $script:SkillPath $root 'agy-capstone'
         $txt = [IO.File]::ReadAllText($p)
         # THE ANCHOR IS `**Put`, NOT `Put`. MEASURED in the solo panel: '(?m)^Put nothing...' does NOT
-        # match '**Put nothing...**' while the linter's '(?m)^\*\*Put...' does - so the first draft's
-        # mutant could never apply and this row could never pass. The TEST and the LINTER must agree
-        # about the same string or one of them is guarding nothing.
+        # match '**Put nothing...**' while the linter's '(?m)^\*\*Put...' does. THE TEST AND THE LINTER
+        # MUST AGREE ABOUT THE SAME STRING or one of them is guarding nothing.
         $mutated = $txt -replace '(?m)^\*\*Put nothing after the terminal token\.\*\*.*$', ''
         ($mutated -ne $txt) | Should -BeTrue -Because 'the mutant must actually apply, or this row proves nothing'
         [IO.File]::WriteAllText($p, $mutated)
@@ -263,12 +262,10 @@ leaves the suite green" - because that phrasing is what made all five refutation
 - [ ] **Step 4: Add the invariant**
 
 ```powershell
-    # UNCONDITIONAL, and the first draft's conditional form was worse than it looked. It fired only when
-    # the skill already contained the word `confidence`, which (a) makes the guard removable by deleting
-    # the very word it guards, and (b) treats a common English noun as a banned word - a skill writing
-    # "answer with high confidence" would be ordered to paste an unrelated statistical caveat. Both
-    # readings fail for one reason: the TRIGGER was the wrong thing. Every discipline skill carries the
-    # false rate, full stop.
+    # UNCONDITIONAL, deliberately. Gating this on the skill already containing the word `confidence`
+    # would (a) make the guard removable by deleting the very word it guards, and (b) treat a common
+    # English noun as banned - a skill writing "answer with high confidence" would be ordered to paste
+    # an unrelated statistical caveat. Every discipline skill carries the false rate, full stop.
     # WHITESPACE-TOLERANT, for the reason above: the clause wraps in the markdown, so a literal-space
     # match would red on a skill that CORRECTLY carries it - a guard failing closed against valid input.
     if ($text -notmatch 'WRONG\s+5\s+TIMES\s+IN\s+14\s+CLAIMS') {
@@ -420,10 +417,9 @@ In `scripts/check-peer-reply-citations.py`, replace the `TEN_KEYS` block:
 import unicodedata
 
 # THE CHECKER OWNS THE DECLARATION, and the DRIVER names the discipline on the COMMAND LINE.
-# The first draft required a "discipline" key inside each reply row - but NO task in this plan tells the
-# peer to emit that key, so the checker would have rejected 100% of real replies while looking strict.
-# The driver already knows which discipline it just ran; asking the peer for it added a failure mode and
-# bought nothing.
+# THE DRIVER NAMES THE DISCIPLINE, THE PEER DOES NOT. Requiring a "discipline" key inside each reply row
+# would reject every reply from a peer that was never told to emit it - strict-looking and useless. The
+# driver already knows which discipline it just ran.
 #   usage: python check-peer-reply-citations.py <reply.json> <sha> <discipline>
 SCHEMAS = {
     "agy-capstone":   ["seat", "id", "file", "line", "quoted_line",
@@ -457,8 +453,8 @@ def check_row_schema(row, idx, declared, problems):
         if key not in declared:
             problems.append("row %d: key %r is not declared for this discipline" % (idx, key))
 
-# WIRING - the first draft defined these and never called them, so replacing the old constant would have
-# left the script crashing on a name that no longer existed.
+# WIRING. Defining the helpers without calling them would leave the script crashing on the old constant
+# this block replaces - the definitions below are not optional scaffolding.
 reply_path, sha, discipline = sys.argv[1], sys.argv[2], sys.argv[3]
 if discipline not in SCHEMAS:
     raise SystemExit("unknown discipline %r - add it to SCHEMAS deliberately" % discipline)
@@ -468,7 +464,19 @@ rows = json.load(io.open(reply_path, encoding="utf-8"))
 problems = []
 for idx, row in enumerate(rows, 1):
     check_row_schema(row, idx, declared, problems)
-    # ... existing quoted_line resolution, comparing norm(claimed) against norm(actual) ...
+    claimed = norm(row["quoted_line"])
+    blob = subprocess.run(["git", "show", "%s:%s" % (sha, row["file"])],
+                          capture_output=True, text=True, encoding="utf-8")
+    if blob.returncode != 0:
+        problems.append("row %d: cannot read %s at %s" % (idx, row["file"], sha))
+        continue
+    # LOCATE BY CONTENT, NOT BY LINE NUMBER. The contract treats line numbers as untrusted - a peer
+    # reading a diff computes them from hunk headers and gets them wrong - so the quoted text is the
+    # citation and the driver finds it.
+    if not any(norm(line) == claimed for line in blob.stdout.split("
+")):
+        problems.append("row %d: quoted_line not found in %s at %s: %r"
+                        % (idx, row["file"], sha, row["quoted_line"]))
 for msg in problems:
     print(msg)
 raise SystemExit(1 if problems else 0)
