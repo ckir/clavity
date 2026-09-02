@@ -152,12 +152,21 @@ git commit -m "feat(skills): 21.1 - put nothing after the terminal token"
 is not one of the five shipped AGY-SCOPE disposition tokens. **Two different axes wear one word.** The
 peer-side axis is what KIND of claim it is; the driver-side axis is what the driver DID with it.
 
+**DONE 2026-09-02 - commit `06bc5e0`.** Discipline suite 47/0 -> 49/0. **CONTROL: neutering the guard
+reddens EXACTLY the two new rows (47/2), so each is red because of THIS guard, not incidentally.** Two
+deviations, both deliberate: (1) the block sits ABOVE "The class is DERIVED", not immediately above the
+severity table - placed as written it wedged a paragraph between "Evaluate IN ORDER; first match wins:"
+and the table that colon introduces; (2) the closing sentence "`already-known` and `out-of-scope` earned
+their place: both were used accurately across three audits" was DROPPED - neither "accurately" nor the
+count is verifiable, and this is the THIRD unverifiable claim this plan has carried into execution.
+The guard has two halves: a negative check alone is satisfied by DELETING the sentence.
+
 **Files:**
 - Modify: `{dotnet,classic}/plugin/skills/agy-capstone/SKILL.md` (the `:156` paragraph)
 - Modify: `scripts/check-agy-discipline-skills.ps1`
 - Test: `scripts/tests/check-agy-discipline-skills.Tests.ps1`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```powershell
     It 'REJECTS a capstone skill that uses "disposition" for the PEER-side axis' {
@@ -174,12 +183,12 @@ peer-side axis is what KIND of claim it is; the driver-side axis is what the dri
     }
 ```
 
-- [ ] **Step 2: Run it and confirm it FAILS**
+- [x] **Step 2: Run it and confirm it FAILS**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Detailed"`
 Expected: FAIL at the mutant precondition — the target string does not exist yet.
 
-- [ ] **Step 3: Fix the dangle in both halves**
+- [x] **Step 3: Fix the dangle in both halves**
 
 Replace the sentence at `agy-capstone/SKILL.md:156`:
 
@@ -198,7 +207,7 @@ which is exactly why calling the peer-side axis "disposition" dangled. `already-
 `out-of-scope` earned their place: both were used accurately across three audits.
 ```
 
-- [ ] **Step 4: Add the invariant**
+- [x] **Step 4: Add the invariant**
 
 ```powershell
     if ($skill -eq 'agy-capstone' -and $text -match '(?m)survives disposition as a real') {
@@ -207,12 +216,12 @@ which is exactly why calling the peer-side axis "disposition" dangled. `already-
     }
 ```
 
-- [ ] **Step 5: Run the suite and the pair gate**
+- [x] **Step 5: Run the suite and the pair gate**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Detailed"` → all PASS
 Run: `bash scripts/check-seed-artifacts-synced.sh` → exit 0
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add clavity-dotnet/plugin/skills clavity-classic/plugin/skills scripts/check-agy-discipline-skills.ps1 scripts/tests/check-agy-discipline-skills.Tests.ps1
@@ -258,9 +267,16 @@ Expected: FAIL at the mutant precondition.
 
 - [ ] **Step 3: Add the clause to all EIGHT files**
 
-Insert after **the WHOLE of Task 1's block**, which is now TWO paragraphs. Anchor on the SECOND one,
-beginning `**Every REQUIRED block comes immediately BEFORE the token`. Anchoring on the first would land
-this clause between Task 1's opening and its own explanation, splitting a block that reads as one.
+🔴 **ANCHOR CORRECTED 2026-09-02 - the text below was written against a Task 1 that no longer
+exists.** Task 1's fold at `62be727` re-shaped that block: the clause is now a driver-facing lead-in
+(`**Demand this in your payload too**`) plus a BLOCKQUOTE plus two paragraphs, and the sentence this step
+originally named as its anchor - `**Every REQUIRED block comes immediately BEFORE the token` - is no
+longer a paragraph opener at all. It lives inside the blockquote, reading `> ... Every REQUIRED block
+comes immediately BEFORE it`. MEASURED at `06bc5e0`.
+
+**Insert after the WHOLE of Task 1's block. Anchor on its LAST paragraph, which begins**
+`**The `>` is load-bearing, not formatting.**` - verified present exactly once in all 8 files. Anchoring
+on anything earlier lands this clause inside Task 1's block and splits something that reads as one.
 
 ⚠ Both clauses share a neighbourhood, so anchoring both on the SAME paragraph wedges this one BETWEEN
 that anchor and Task 1's text - mechanically fine, and confusingly interleaved to read. Since the
