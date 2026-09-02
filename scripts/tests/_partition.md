@@ -601,7 +601,13 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
-check-peer-reply-citations.Tests.ps1             47,3s   31 tests   <- SLOW, added 2026-09-02
+check-peer-reply-citations.Tests.ps1             46,1s   32 tests   <- SLOW, added 2026-09-02
+  COUNT RAISED 2026-09-02 by AGY-CAPSTONE R7, 31 -> 32, and one existing row was rewritten. The three
+  dash literals are now \u ESCAPES, so the checker is PURE ASCII and the corruption vector its own
+  comment records is removed rather than merely detected. The pin moved with them: it evaluates the
+  DASHES line with ast.literal_eval and asserts the codepoints of the VALUE, because a pin on the
+  source BYTES would have gone red on exactly that improvement. The new row asserts the file contains
+  no byte above 0x7F - the property the four SKILL.md files are linted for and this one was not.
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R6, 30 -> 31, and the OTHER change to this suite matters
   more than the count. Seven of its thirty rows piped stdout to Out-Null and asserted only exit 0;
   MEASURED, they all stayed GREEN against a checker replaced by nothing but sys.exit(0). Every

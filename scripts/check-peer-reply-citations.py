@@ -33,7 +33,13 @@ REQUIRED = ["file", "quoted_line"]
 # replace() becomes a no-op and every citation still resolves or fails on its own merits. This source has
 # been hand-patched through a lossy channel more than once, so the suite pins them BY CODEPOINT rather
 # than trusting them to survive the next edit.
-DASHES = ("—", "–", "−")   # em dash, en dash, minus sign
+# WRITTEN AS ESCAPES, NOT AS CHARACTERS, and that is the whole point of capstone R7. The comment above
+# says this source has been hand-patched through a lossy channel more than once; escapes make the file
+# PURE ASCII, so there is no byte in it that a lossy channel can mangle. The runtime tuple is identical.
+# The suite's pin moved with it: it now evaluates this line with ast.literal_eval and asserts the
+# CODEPOINTS OF THE VALUE, which is what actually matters, rather than the bytes of the source, which is
+# what it used to read. A pin on the source text would have gone red on this very change.
+DASHES = ("\u2014", "\u2013", "\u2212")   # em dash, en dash, minus sign - ESCAPED, see below
 
 
 def norm(s):

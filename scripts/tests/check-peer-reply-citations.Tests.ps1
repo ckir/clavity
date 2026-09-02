@@ -57,9 +57,15 @@ Describe 'check-peer-reply-citations' {
         # with nothing but `sys.exit(0)` left SEVEN of thirty rows green, because every success path
         # piped stdout to Out-Null and asked only for exit 0, which a no-op satisfies. The summary line
         # is the cheapest proof the checker actually walked the rows it was handed.
+        #
+        # THE ROW COUNT IS THE EVIDENCE, NOT THE WORD 'problem'. The first version of this
+        # assertion matched 'across \d+ row(s)' and bought nothing: a checker that validated
+        # nothing but printed a well-formed ZERO-row summary passed the same seven rows -
+        # measured, 7 of 31, identical to the no-op. Pinning the count the fixture actually
+        # supplied is what makes the line proof that the reply was parsed.
         $out = ((& $script:Py $script:Checker $r HEAD 'agy-test-audit' 2>&1) -join "`n")
-        $LASTEXITCODE | Should -Be 0
-        $out | Should -Match 'problem\(s\) across \d+ row\(s\), discipline agy-test-audit'
+        $LASTEXITCODE | Should -Be 0 -Because "the checker said: $out"
+        $out | Should -Match 'problem\(s\) across 1 row\(s\), discipline agy-test-audit'
     }
 
     It 'REJECTS a key the discipline did not declare - the peer cannot widen its own contract' {
@@ -103,9 +109,15 @@ Describe 'check-peer-reply-citations' {
         # with nothing but `sys.exit(0)` left SEVEN of thirty rows green, because every success path
         # piped stdout to Out-Null and asked only for exit 0, which a no-op satisfies. The summary line
         # is the cheapest proof the checker actually walked the rows it was handed.
+        #
+        # THE ROW COUNT IS THE EVIDENCE, NOT THE WORD 'problem'. The first version of this
+        # assertion matched 'across \d+ row(s)' and bought nothing: a checker that validated
+        # nothing but printed a well-formed ZERO-row summary passed the same seven rows -
+        # measured, 7 of 31, identical to the no-op. Pinning the count the fixture actually
+        # supplied is what makes the line proof that the reply was parsed.
         $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
         $LASTEXITCODE | Should -Be 0 -Because 'normalisation must absorb a dash difference rather than call it drift'
-        $out | Should -Match 'problem\(s\) across \d+ row\(s\), discipline agy-capstone'
+        $out | Should -Match 'problem\(s\) across 1 row\(s\), discipline agy-capstone'
     }
 
     It 'resolves an indented citation WHETHER OR NOT the peer reproduced the indent' -ForEach @(
@@ -125,9 +137,15 @@ Describe 'check-peer-reply-citations' {
         # with nothing but `sys.exit(0)` left SEVEN of thirty rows green, because every success path
         # piped stdout to Out-Null and asked only for exit 0, which a no-op satisfies. The summary line
         # is the cheapest proof the checker actually walked the rows it was handed.
+        #
+        # THE ROW COUNT IS THE EVIDENCE, NOT THE WORD 'problem'. The first version of this
+        # assertion matched 'across \d+ row(s)' and bought nothing: a checker that validated
+        # nothing but printed a well-formed ZERO-row summary passed the same seven rows -
+        # measured, 7 of 31, identical to the no-op. Pinning the count the fixture actually
+        # supplied is what makes the line proof that the reply was parsed.
         $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
         $LASTEXITCODE | Should -Be 0 -Because "a citation with the indent $label must resolve"
-        $out | Should -Match 'problem\(s\) across \d+ row\(s\), discipline agy-capstone'
+        $out | Should -Match 'problem\(s\) across 1 row\(s\), discipline agy-capstone'
     }
 
     It 'REPORTS a non-list JSON root instead of crashing - <label>' -ForEach @(
@@ -178,9 +196,15 @@ Describe 'check-peer-reply-citations' {
         # with nothing but `sys.exit(0)` left SEVEN of thirty rows green, because every success path
         # piped stdout to Out-Null and asked only for exit 0, which a no-op satisfies. The summary line
         # is the cheapest proof the checker actually walked the rows it was handed.
+        #
+        # THE ROW COUNT IS THE EVIDENCE, NOT THE WORD 'problem'. The first version of this
+        # assertion matched 'across \d+ row(s)' and bought nothing: a checker that validated
+        # nothing but printed a well-formed ZERO-row summary passed the same seven rows -
+        # measured, 7 of 31, identical to the no-op. Pinning the count the fixture actually
+        # supplied is what makes the line proof that the reply was parsed.
         $out = ((& $script:Py $script:Checker $r HEAD 'agy-test-audit' 2>&1) -join "`n")
-        $LASTEXITCODE | Should -Be 0
-        $out | Should -Match 'problem\(s\) across \d+ row\(s\), discipline agy-test-audit'
+        $LASTEXITCODE | Should -Be 0 -Because "the checker said: $out"
+        $out | Should -Match 'problem\(s\) across 1 row\(s\), discipline agy-test-audit'
     }
 
     It 'REJECTS the retired key `confidence` - the rename is enforced, not merely documented' {
@@ -209,15 +233,47 @@ Describe 'check-peer-reply-citations' {
         $out | Should -Not -Match 'Traceback' -Because 'a console encoding must never turn a report into a crash'
     }
 
-    It 'pins the three dash literals BY CODEPOINT - a mangled one is a silent no-op' {
+    It 'pins the three dash literals BY CODEPOINT OF THE VALUE - a mangled one is a silent no-op' {
         # norm()'s dash folding is the module's whole purpose, and a mangled literal disables it without
         # reddening anything: a mangled dash matches nothing, so replace() becomes a no-op and every
         # citation still resolves or fails on its own merits. Only a codepoint assertion catches it.
-        $src = [IO.File]::ReadAllText((Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py'))
-        $line = ($src -split "`n" | Where-Object { $_ -like 'DASHES = *' })
-        $line | Should -Not -BeNullOrEmpty -Because 'the DASHES tuple must still exist to be pinned'
-        $points = ([int[]][char[]]$line) | Where-Object { $_ -gt 127 }
-        $points | Should -Be @(0x2014, 0x2013, 0x2212) -Because 'em dash, en dash and minus sign, in that order'
+        #
+        # THE PIN MOVED FROM THE SOURCE BYTES TO THE RUNTIME VALUE, capstone R7, and the change that
+        # forced it is the better half of the story. The literals are now written as \u escapes, so the
+        # checker is PURE ASCII and there is no byte in it for a lossy channel to mangle - prevention
+        # rather than detection. The old pin read the source line's own characters, so it would have
+        # gone RED on exactly that improvement: it asserted the bytes, not the meaning.
+        #
+        # ast.literal_eval is what makes both forms equivalent to this row. A future maintainer may write
+        # the characters literally again and this pin still passes, because it asks what Python BUILDS.
+        $checker = Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py'
+        $prog = @'
+import ast, io, re, sys
+src = io.open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"^DASHES = (\(.*?\))", src, re.M)
+if not m:
+    raise SystemExit("no DASHES assignment found")
+print(",".join(str(ord(c)) for c in ast.literal_eval(m.group(1))))
+'@
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("dashpin-" + [guid]::NewGuid() + ".py")
+        [IO.File]::WriteAllText($tmp, $prog); $script:Made.Add($tmp)
+        $out = ((& $script:Py $tmp $checker 2>&1) -join '').Trim()
+        $LASTEXITCODE | Should -Be 0 -Because "the extractor must run; it said: $out"
+        $out | Should -Be '8212,8211,8722' -Because 'em dash U+2014, en dash U+2013, minus sign U+2212, in that order'
+    }
+
+    It 'keeps the checker PURE ASCII, so no byte in it can be mangled in transit' {
+        # AGY-CAPSTONE R7. The module's own comment records that this source has been hand-patched
+        # through a lossy channel more than once, and the three dash literals were the only non-ASCII
+        # bytes in it. They are escapes now, which removes the vector rather than detecting it - but
+        # nothing asserted the property, so the next non-ASCII character to arrive would reinstate it
+        # silently. The four shipped SKILL.md files are linted for exactly this; the checker was not.
+        #
+        # BYTES, NOT CHARACTERS. Reading the file as text and inspecting the decoded string would answer
+        # a question about the decoder; the claim here is about what is ON DISK.
+        $checker = Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py'
+        $bad = [IO.File]::ReadAllBytes($checker) | Where-Object { $_ -gt 127 }
+        @($bad).Count | Should -Be 0 -Because 'the checker must contain no byte above 0x7F - write non-ASCII as a \u escape'
     }
 
     It 'REPORTS a missing required key <key> instead of crashing on it' -ForEach @(
@@ -291,7 +347,7 @@ Describe 'check-peer-reply-citations' {
             $out | Should -Match $key -Because "$key is not declared for $discipline and must be named in the rejection"
         } else {
             # The ACCEPTING half needs the summary too, or a no-op checker satisfies it (capstone R6).
-            $out | Should -Match "problem\(s\) across \d+ row\(s\), discipline $discipline"
+            $out | Should -Match "problem\(s\) across 1 row\(s\), discipline $discipline"
         }
     }
 
