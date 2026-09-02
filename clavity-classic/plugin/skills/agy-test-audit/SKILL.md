@@ -51,16 +51,25 @@ artifact. `[13b] UNCHECKED` - you named no known discipline; shown once per sess
 against the peer's own trajectory - not from any local file - or re-ask AT MOST ONCE, then halt and ask
 your human. An unbounded "re-ask until it passes" reproduces the same mismatch and burns a budget.
 
-**Put nothing after the terminal token.** The token must be the LAST thing in the reply - no summary, no
-"standing by for your feedback", no offer of next steps. MEASURED: several rounds had their ENTIRE report
-displaced by a closing pleasantry, because what the driver collects is the peer's FINAL message. A
-terminal token alone does NOT fix this - every one of those rounds already demanded one.
+**Demand this in your payload too**, alongside the echo:
 
-**Every REQUIRED block comes immediately BEFORE the token, in this order: your report, then any
-`[VERIFIED: ...]` block, then any closing disclosures, then the token.** This is not a style note. Where
-a discipline requires a `[VERIFIED: ...]` block and rules a verdict INVALID without one, the observed
-habit is to place it AFTER the verdict - so "nothing after the token" and "the verdict needs a VERIFIED
-block" would otherwise instruct opposite things, and a peer obeying one would breach the other.
+> Put nothing after the terminal token. It must be the LAST thing in your reply - no summary, no
+> "standing by for your feedback", no offer of next steps. Every REQUIRED block comes immediately
+> BEFORE it, in this order: your report, then any `[VERIFIED: ...]` block, then any closing
+> disclosures, then the token.
+
+MEASURED: several rounds had their ENTIRE report displaced by a closing pleasantry, because what the
+driver collects is the peer's FINAL message - and a terminal token alone does NOT fix it, since every one
+of those rounds already demanded one. The ordering half is not a style note either: where a discipline
+requires a `[VERIFIED: ...]` block and rules a verdict INVALID without one, the observed habit is to place
+it AFTER the verdict, so "nothing after the token" and "the verdict needs a VERIFIED block" would
+otherwise instruct opposite things and a peer obeying one would breach the other.
+
+**The `>` is load-bearing, not formatting.** MEASURED across all four of these skills: `> ` marks the one
+thing that is verbatim payload text rather than prose addressed to YOU, and nothing else uses it. This
+clause governs the PEER's reply, so unmarked it reads as a rule about your own output - which is neither
+what it says nor what it is for, and in at least one of these disciplines contradicts a rule about when
+you emit a token at all. `scripts/check-agy-discipline-skills.ps1` pins the marker, not just the words.
 
 **On clavity-classic neither parameter exists** - `clavity ask --review-only` does not carry them. Still
 demand the echo, but verify it by eye: no automatic verdict will arrive.

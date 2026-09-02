@@ -131,11 +131,14 @@ foreach ($skill in $disciplineNames) {
     # FINAL message - and every one of those rounds already demanded a terminal token, so the token alone
     # does not fix it. Enforced across all FOUR disciplines (this loop), not just the three in $skills.
     #
-    # The needle anchors on '**Put', not 'Put': in (?m) mode '^Put nothing' does NOT match the shipped
-    # '**Put nothing ...**' line. The suite's rejection rows strip the same anchored line, so the test and
-    # this guard agree about one string; if they ever disagree, one of the two is guarding nothing.
-    if ($raw -notmatch '(?m)^\*\*Put nothing after the terminal token\.\*\*') {
-        Fail "$rel : missing the anti-wrap-up clause (**Put nothing after the terminal token.**) - a peer's closing pleasantry can displace its entire report"
+    # THE NEEDLE PINS THE '> ' MARKER, NOT JUST THE WORDS - and that is the whole point of this guard.
+    # MEASURED across all four skills: '> ' marks the ONE thing that is verbatim payload text (the 13b echo
+    # demand) and nothing else uses it. The clause governs the PEER's reply; shipped unmarked it read as a
+    # rule about the DRIVER's own output, which in agy-capstone contradicts ':213' ("Intermediate
+    # fold-and-loop rounds report progress and loop; they emit **no** token"). An anchor on the bare words
+    # would go green on exactly that broken form, so it matches '^> Put', deliberately.
+    if ($raw -notmatch '(?m)^> Put nothing after the terminal token\.') {
+        Fail "$rel : missing the anti-wrap-up clause as PAYLOAD text ('> Put nothing after the terminal token.') - unmarked, it reads as a rule about the driver's own reply, and a peer's closing pleasantry can displace its entire report"
     }
 }
 
