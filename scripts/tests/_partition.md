@@ -601,7 +601,13 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
-check-peer-reply-citations.Tests.ps1             28,1s   18 tests   <- SLOW, added 2026-09-02
+check-peer-reply-citations.Tests.ps1             38,6s   27 tests   <- SLOW, added 2026-09-02
+  COUNT RAISED AGAIN 2026-09-02 by AGY-TEST-AUDIT, 18 -> 27. Nine rows for five MEASURED coverage
+  gaps: a missing required key, an unreadable file, malformed JSON SYNTAX (which was a SOURCE
+  defect - a raw traceback - not merely an untested branch), and the agy-first and
+  adversarial-panel-review schemas, two of the four declared, which no row had ever invoked.
+  38,6s is one warm solo run on a box whose background load I do not control; the earlier 28,1s
+  was taken at 18 rows. Each row spawns a python process, so the figure tracks the count.
   COUNTS RAISED TWICE MORE 2026-09-02 by capstone rounds 1 and 2: 52 -> 57 -> 59, and 10 -> 15 -> 18.
   Round 1's folds added five key-list drift rows
   and 10 -> 15 (the leading-whitespace and JSON-root rows). Third correction to these two rows in one
@@ -679,7 +685,17 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1             6,6s   59 tests   <- FAST, re-measured 2026-08-05
+check-agy-discipline-skills.Tests.ps1            38,9s   66 tests   <- FAST, re-measured 2026-09-02
+  COUNT RAISED 2026-09-02 by AGY-TEST-AUDIT, 59 -> 66: four Fail branches had NO reddening row
+  (the sanctioned-scratch guard, the strictness line, the checker-absent branch and the
+  registry-entry branch), each confirmed by neutering it and seeing the suite stay at 59/0.
+  THE DURATION IS THE FINDING HERE, and it is flagged rather than acted on. The 6,6s this row
+  carried was taken 2026-08-05 at 43 tests, BEFORE the F3 guard row began spawning a child pwsh.
+  Five solo runs on 2026-09-02 gave 35,0s 38,9s 38,9s 40,5s 41,9s - roughly SIX TIMES the
+  recorded figure, and that was already true before this audit; two of the rows added here spawn
+  a child pwsh as well. The box was NOT idle and I make no claim that it was, so treat the spread
+  as indicative. Whether a ~40s suite still belongs in the FAST half is a partition decision for
+  the owner, not something an audit should quietly re-file: the fast half is cap-adjacent.
   COUNT CORRECTED 2026-09-02, 43 -> 52, and the correction is a finding in its own right. Phase 1 grew
   this suite three times - 43 -> 47 (the anti-wrap-up rows), -> 49 (the claim-type rows), -> 52 (the JSON
   contract rows) - and the FIRST TWO WERE COMMITTED WITH THIS ROW STALE. Nothing local objected, because

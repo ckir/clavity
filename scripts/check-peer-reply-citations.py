@@ -110,7 +110,19 @@ if discipline not in SCHEMAS:
     raise SystemExit("unknown discipline %s - add it to SCHEMAS deliberately, never by defaulting"
                      % ascii(discipline))
 declared = SCHEMAS[discipline]
-rows = json.load(io.open(reply_path, encoding="utf-8"))
+# MALFORMED SYNTAX, not a wrong SHAPE - and the two failed differently until AGY-TEST-AUDIT measured it.
+# The guard below this one catches a root that parses but is the wrong type; a trailing comma or a stray
+# byte never reaches it, because json.load raises first. MEASURED: a trailing comma and non-JSON garbage
+# each exited 1 with a raw JSONDecodeError TRACEBACK - the identical disguised-crash shape this module
+# already carries two guards for, at the one layer neither of them could reach. Exit 1 either way is what
+# makes it nasty: the run reads as "problems found" while the problem list was never printed, and the
+# driver has nothing to hand back to the peer that would let it correct its own reply.
+# ValueError, not JSONDecodeError - the latter is a subclass, and naming the parent also covers the
+# decoder variants a future Python may raise.
+try:
+    rows = json.load(io.open(reply_path, encoding="utf-8"))
+except ValueError as exc:
+    raise SystemExit("reply is not valid JSON: %s" % ascii(str(exc)))
 
 # THE ROOT MUST BE A LIST OF OBJECTS, and both wrong shapes failed badly before this guard.
 # MEASURED: a bare `true` or `42` raised TypeError and printed a traceback instead of a report - exit 1

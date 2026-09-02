@@ -199,4 +199,76 @@ Describe 'check-peer-reply-citations' {
         $points = ([int[]][char[]]$line) | Where-Object { $_ -gt 127 }
         $points | Should -Be @(0x2014, 0x2013, 0x2212) -Because 'em dash, en dash and minus sign, in that order'
     }
+
+    It 'REPORTS a missing required key <key> instead of crashing on it' -ForEach @(
+        @{ key = 'file';        body = '[{"quoted_line":"test-scripts-fast:"}]' },
+        @{ key = 'quoted_line'; body = '[{"file":"justfile"}]' }
+    ) {
+        # AGY-TEST-AUDIT 2026-09-02, and the gap was MEASURED rather than supposed: neutering the
+        # `if key not in row:` branch left this suite at 18/0. Not one fixture omitted a required key, so
+        # the branch whose own docstring calls its return value "load-bearing" had never once executed.
+        # Deleting it does not merely lose a diagnostic - the very next line indexes the key just reported
+        # absent, so the run dies on a KeyError at row 1 and every later citation is silently dropped,
+        # which is the collect-do-not-abort property the module claims in prose two lines above it.
+        $r = New-Reply $body
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match "missing required key '$key'"
+        $out | Should -Not -Match 'Traceback' -Because 'an absent key must be REPORTED, never raised'
+    }
+
+    It 'REPORTS a file it cannot read at the named sha, instead of crashing' {
+        # Same measurement, same result: neutering `if blobs[row["file"]] is None:` left the suite at
+        # 18/0, because every fixture in it cited a file that exists. The nearest existing row cites a
+        # REAL file and a line that is not in it - that exercises the citation compare and never reaches
+        # the read-failure branch at all. Without the guard a None blob flows into the membership test
+        # and raises TypeError.
+        $r = New-Reply '[{"file":"no/such/file.md","quoted_line":"anything"}]'
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'cannot read no/such/file\.md'
+        $out | Should -Not -Match 'Traceback' -Because 'an unreadable file must be REPORTED, never raised'
+    }
+
+    It 'REPORTS malformed JSON SYNTAX instead of a traceback - <label>' -ForEach @(
+        @{ label = 'trailing comma';  body = '[{"file":"justfile","quoted_line":"test-scripts-fast:"},]' },
+        @{ label = 'not json at all'; body = 'not json at all' }
+    ) {
+        # A wrong SHAPE and malformed SYNTAX are different failures, and only the first was ever guarded.
+        # MEASURED 2026-09-02: both bodies below exited 1 with a raw json.decoder.JSONDecodeError
+        # TRACEBACK - the same disguised crash this module already carried two guards for, one layer
+        # further out than either could reach, because json.load raises before any shape check runs.
+        # Exit 1 either way is what made it nasty: the run reads as "problems found" while the problem
+        # list was never printed, so the driver has nothing to hand back that would let the peer correct
+        # its own reply.
+        $r = New-Reply $body
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'reply is not valid JSON'
+        $out | Should -Not -Match 'Traceback' -Because 'malformed syntax must be REPORTED, never raised'
+    }
+
+    It 'exercises the <discipline> schema - <mode>' -ForEach @(
+        @{ discipline = 'agy-first';                mode = 'accepts a declared key'; key = 'detail';   expect = 0 },
+        @{ discipline = 'agy-first';                mode = 'REJECTS trigger';        key = 'trigger';  expect = 1 },
+        @{ discipline = 'adversarial-panel-review'; mode = 'accepts a declared key'; key = 'detail';   expect = 0 },
+        @{ discipline = 'adversarial-panel-review'; mode = 'REJECTS severity';       key = 'severity'; expect = 1 }
+    ) {
+        # TWO OF THE FOUR DECLARED SCHEMAS WERE NEVER INVOKED. Measured by counting the discipline
+        # argument across this file before these rows existed: agy-capstone 7 times, agy-test-audit 4,
+        # not-a-discipline once, and these two never. Either entry could have been widened - or deleted
+        # outright - with the suite still green at 18/0.
+        #
+        # THE REJECTING HALF IS THE DISCRIMINATING ONE, and it is why each pair cites a key that is real
+        # SOMEWHERE. `trigger` is declared for agy-capstone and `severity` for both of the other two, so
+        # a row pinning only acceptance would stay green against a checker that had collapsed the four
+        # schemas into one permissive union - which is precisely the hardcoded-TEN_KEYS behaviour this
+        # checker replaced.
+        $r = New-Reply ('[{"file":"justfile","quoted_line":"test-scripts-fast:","' + $key + '":"x"}]')
+        $out = ((& $script:Py $script:Checker $r HEAD $discipline 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be $expect
+        if ($expect -eq 1) {
+            $out | Should -Match $key -Because "$key is not declared for $discipline and must be named in the rejection"
+        }
+    }
 }

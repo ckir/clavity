@@ -21,6 +21,62 @@ BeforeAll {
         return $scratch
     }
     $script:SkillPath = { param($root, $skill) Join-Path $root "clavity-dotnet/plugin/skills/$skill/SKILL.md" }
+
+    # Stage a COPY of the linter in a temp directory of its own. This is the ONLY way to reach three of
+    # its branches, and AGY-TEST-AUDIT 2026-09-02 measured why: the linter resolves the schema registry
+    # with `Join-Path $PSScriptRoot 'check-peer-reply-citations.py'`, so where the linter LIVES decides
+    # whether that file is found. No fixture built under -Root can move it.
+    #
+    #   -Checker real   the repository's own checker, copied beside the linter (the isolated case)
+    #   -Checker none   no checker at all, which trips the "names a checker that is not there" branch
+    #   -Checker <text> that text written as the checker, for a registry mutated on purpose
+    function New-TempLinter {
+        param([string]$Source, [string]$Checker = 'real')
+        $dir = Join-Path ([IO.Path]::GetTempPath()) ("lintdir-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $lint = Join-Path $dir 'lint-copy.ps1'
+        Set-Content -Path $lint -Value $Source -NoNewline -Encoding utf8
+        if ($Checker -eq 'real') {
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py') `
+                      (Join-Path $dir 'check-peer-reply-citations.py')
+        } elseif ($Checker -ne 'none') {
+            Set-Content -Path (Join-Path $dir 'check-peer-reply-citations.py') -Value $Checker -NoNewline -Encoding utf8
+        }
+        return $lint
+    }
+
+    # PowerShell's Write-Error formatter WRAPS a long message at the console width and prefixes every
+    # continuation line with '     | ', so a needle that straddles a wrap point never matches however
+    # correct it is. MEASURED 2026-09-02: the registry-entry row below went RED on
+    # 'declares no SCHEMAS entry' while the linter had visibly emitted exactly that - the break fell
+    # between 'SCHEMAS' and 'entry'. Collapsing whitespace alone does NOT fix it, because the pipe
+    # survives the collapse; the markers have to go first.
+    #
+    # This is also why the older rows in this file match only SHORT needles. They fit inside one wrapped
+    # segment by luck rather than by design, and a message reworded slightly longer would break them
+    # without any guard changing. Route new assertions through this helper.
+    function Get-LintText {
+        param([object[]]$Output)
+        $t = (($Output | ForEach-Object { $_.ToString() }) -join "`n")
+        $t = $t -replace '\x1b\[[0-9;]*m', ''
+        $t = $t -replace '(?m)^\s*\|\s?', ''
+        return ($t -replace '\s+', ' ')
+    }
+
+    # A skill file that satisfies EVERY invariant the linter checks, so a fixture built on it fails on
+    # exactly the one thing the row perturbs. The previous phantom satisfied only the $skills-loop
+    # invariants and silently failed six more in the $disciplineNames loop.
+    $script:PhantomSkill = (@(
+        '---'
+        'name: phantom-unmapped'
+        '---'
+        'Transport: the agy_ask MCP tool, and clavity ask --review-only on classic.'
+        'Pass discipline: "phantom-unmapped" so the driver 13b completeness checks run.'
+        'Marker at .clavity/agy-marks/ per contract. Scratch dir .clavity/scratch/phantom/.'
+        'Envelope: Snapshot before. Forbidden-actions banner. Permission to pass. Point at files. Diff after.'
+        ''
+        '> Put nothing after the terminal token.'
+    ) -join "`n") + "`n"
 }
 
 Describe 'check-agy-discipline-skills' {
@@ -307,7 +363,15 @@ Describe 'check-agy-discipline-skills' {
             Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
-            ($out -join "`n") | Should -Match 'key list does not match SCHEMAS|does not tell the peer that undeclared keys are REJECTED'
+            # ASSERT THE SPECIFIC DIAGNOSTIC, NOT A DISJUNCTION. This line read
+            # 'key list does not match SCHEMAS|does not tell the peer...' until
+            # AGY-TEST-AUDIT 2026-09-02: every case here reddens the key-list oracle, so the
+            # alternation let the whole set pass on that one diagnostic while the strictness
+            # guard could be deleted outright. The Context's own comment argues against
+            # exactly this - "matching the specific message keeps the row pointed at ITS
+            # guard instead of passing on whichever guard happens to fire" - and this one row
+            # did the opposite. The strictness guard now has an isolating row of its own.
+            ($out -join "`n") | Should -Match 'key list does not match SCHEMAS'
             Remove-Item -Recurse -Force $scratch
         }
 
@@ -352,29 +416,136 @@ Describe 'check-agy-discipline-skills' {
             # deliberately NOT added to $requiredVerdicts. This is the exact shape the ContainsKey guard
             # exists to catch: without it, `foreach ($v in $requiredVerdicts[$skill])` iterates $null and
             # silently verifies nothing, so a skill with zero enforced invariants would pass clean.
+            # THE ISOLATION THIS ROW CLAIMS WAS FALSE UNTIL AGY-TEST-AUDIT 2026-09-02 MEASURED IT.
+            # The comment above used to end "so the ONLY possible failure is the missing
+            # $requiredVerdicts mapping". The run actually emitted ELEVEN diagnostics: :115 twice - the
+            # temp linter's $PSScriptRoot is TEMP, so the schema registry beside it is absent - plus
+            # :197, :202 five times, :208 and :223, because the old phantom satisfied only the
+            # $skills-loop invariants and none of the $disciplineNames-loop ones. The row still passed,
+            # because its needle is specific; but a fixture that trips six unrelated guards is not the
+            # controlled experiment its own comment advertised, and two of the guards it tripped by
+            # accident were branches this suite believed it was not covering at all.
             $realSrc = Get-Content -Raw $script:Lint
             $needle  = "`$skills = @('agy-first', 'agy-capstone', 'agy-test-audit')"
             $realSrc.Contains($needle) | Should -BeTrue -Because 'the mutation target line must match the real linter verbatim'
             $mutated = $realSrc.Replace($needle, "`$skills = @('agy-first', 'agy-capstone', 'agy-test-audit', 'phantom-unmapped')")
             $mutated | Should -Not -Be $realSrc -Because 'the phantom-skill injection into $skills must take effect; if the source array formatting changed, update the injection regex'
-            $tmpLint = Join-Path ([IO.Path]::GetTempPath()) ("lint-" + [guid]::NewGuid().ToString('N') + ".ps1")
-            Set-Content -Path $tmpLint -Value $mutated -Encoding utf8
+            $tmpLint = New-TempLinter -Source $mutated -Checker real
 
-            # Scratch root with all real skills (New-ScratchRoot) plus a VALID phantom skill dir that
-            # satisfies every OTHER invariant (frontmatter name==dir, ASCII, both transports, marker
-            # constant) so the ONLY possible failure is the missing $requiredVerdicts mapping.
             $scratch = New-ScratchRoot
             $pdir = Join-Path $scratch 'clavity-dotnet/plugin/skills/phantom-unmapped'
             New-Item -ItemType Directory -Force -Path $pdir | Out-Null
-            $valid = "---`nname: phantom-unmapped`n---`nTransport: the agy_ask MCP tool and clavity ask --review-only.`nMarker at .clavity/agy-marks/ per contract.`n"
-            Set-Content -Path (Join-Path $pdir 'SKILL.md') -Value $valid -NoNewline -Encoding utf8
+            Set-Content -Path (Join-Path $pdir 'SKILL.md') -Value $script:PhantomSkill -NoNewline -Encoding utf8
 
             try {
                 $guardOut = & pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1
                 $LASTEXITCODE | Should -Be 1
-                ($guardOut -join "`n") | Should -Match 'no required-verdict set mapped'
+                $text = Get-LintText $guardOut
+                $text | Should -Match 'no required-verdict set mapped'
+                # THE ISOLATION IS NOW ASSERTED, not merely asserted ABOUT. Every one of these fired in
+                # the old fixture. Any of them returning means the phantom skill or the temp-linter
+                # staging has drifted, and this row has quietly stopped being a controlled experiment.
+                $text | Should -Not -Match 'names a checker that is not there' -Because 'New-TempLinter -Checker real must place the registry beside the linter'
+                $text | Should -Not -Match 'does not instruct the caller to pass'
+                $text | Should -Not -Match 'safety-envelope step'
+                $text | Should -Not -Match 'names no sanctioned scratch directory'
+                $text | Should -Not -Match 'missing the anti-wrap-up clause'
             } finally {
-                Remove-Item -Force $tmpLint -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    Context 'AGY-TEST-AUDIT 2026-09-02: four Fail branches that had no reddening row' {
+        # Every row here was authored against a MEASURED gap, never a supposed one. The method was a
+        # logic mutant: force the guard's condition false, re-run this suite, see what reddens. All four
+        # branches reddened NOTHING at 59/0, so each could have been deleted outright with the gate still
+        # certifying the skills. A positive control ran alongside - neutering a DIFFERENT guard reddened
+        # exactly its own row - so the greens were real gaps and not a broken harness.
+
+        It 'REJECTS <skill> when the sanctioned scratch directory is stripped' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # The envelope row above strips 'Diff after' and reddens the envelope-step branch. This is a
+            # SEPARATE Fail on the next line of the linter and had no row at all. It is what gives a
+            # measure-and-reproduce consult somewhere to write other than the repository root, and a peer
+            # under a prohibition-only banner has dumped files into a repo root here before - one of them
+            # overwriting an untracked file unrecoverably.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $real.Contains('.clavity/scratch/') | Should -BeTrue -Because "the fixture needs the scratch dir present in $skill before it can be stripped"
+            $body = $real.Replace('.clavity/scratch/', '')
+            $body | Should -Not -Be $real -Because 'the strip must take effect'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match 'names no sanctioned scratch directory'
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS agy-capstone when the strictness line is no longer BLOCKQUOTED' {
+            # THE ISOLATING ROW, and the reason its sibling's assertion had to be split in two.
+            # The existing 'strictness line gone' case replaces the very phrase the KEY-LIST regex is
+            # built from, so it reddens BOTH branches; asserted as a disjunction, it passed on the other
+            # guard's diagnostic and this one could be deleted unnoticed. Neutered: 59/0.
+            #
+            # Removing only the '> ' prefix separates them. The key sequence stays contiguous, so the
+            # key-list oracle still matches, while '(?m)^>.*and no others are accepted' no longer does.
+            # The blockquote is the load-bearing half: '> ' marks the one text that is verbatim PAYLOAD
+            # rather than prose addressed to the driver, so an unquoted contract instructs nobody.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'agy-capstone'
+            $real = Get-Content -Raw $target
+            $body = $real.Replace("`n> discipline and no others are accepted", "`ndiscipline and no others are accepted")
+            $body | Should -Not -Be $real -Because 'the un-blockquoting must take effect, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = Get-LintText (& $script:Lint -Root $scratch 2>&1)
+            $LASTEXITCODE | Should -Be 1
+            $out | Should -Match 'does not tell the peer that undeclared keys are REJECTED'
+            $out | Should -Not -Match 'key list does not match SCHEMAS' -Because 'this row must ISOLATE the strictness guard from the key-list oracle, or it proves nothing its sibling did not'
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS a linter that cannot find the schema registry beside itself' {
+            # Reachable only by moving the LINTER, because it resolves the registry from $PSScriptRoot -
+            # no fixture built under -Root can move it. Until this row the branch was exercised only BY
+            # ACCIDENT, as one of the eleven diagnostics the F3 fixture used to emit; repairing that
+            # fixture's isolation removed the accident, so this row is what keeps the branch covered.
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker none
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 1
+                $out | Should -Match 'names a checker that is not there'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'REJECTS a discipline whose schema the registry does not declare' {
+            # A skill's inline contract is enforceable only if SCHEMAS carries a matching entry. Neutered,
+            # 59/0: the entry could be renamed or deleted with the gate still green, while every reply
+            # from that discipline would then be validated against nothing at all.
+            # The mutation RENAMES rather than deletes, so the registry stays valid Python and the
+            # failure is the missing-entry branch rather than a syntax error somewhere else.
+            $py = Get-Content -Raw (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py')
+            $py.Contains('"agy-test-audit":') | Should -BeTrue -Because 'the registry entry must be present to be renamed away'
+            $noEntry = $py.Replace('"agy-test-audit":', '"agy-test-audit-RENAMED":')
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noEntry
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 1
+                $out | Should -Match 'declares no SCHEMAS entry'
+                $out | Should -Not -Match 'names a checker that is not there' -Because 'the registry must be PRESENT for this row to reach the entry check'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
                 Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
             }
         }
