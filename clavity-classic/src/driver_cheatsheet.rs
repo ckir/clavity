@@ -277,6 +277,62 @@ mod tests {
         );
     }
 
+    // AGY-TEST-AUDIT 2026-09-02. The OUTER `Err(e)` arm - a metadata failure that is NOT NotFound -
+    // had no test, and that was PROVEN rather than assumed: flipping its flag from `true` to `false`
+    // left all 13 tests green with exit 0. `read_with_status_directory_at_growth_path_is_degraded`
+    // cannot cover it, because `metadata()` SUCCEEDS on a directory (measured: Ok, len=0) and the
+    // failure happens later inside `read()`, in the INNER `Err` arm. Two distinct sites returning the
+    // same pair, which is exactly why reading the tests could not settle it and a mutant could.
+    //
+    // UNIX ONLY, and absent rather than silently-passing on Windows. Reaching this arm needs a
+    // metadata error other than NotFound. Measured on Windows: pointing `dir` at a FILE returns
+    // NotFound (raw OS error 3), so the obvious route lands on the wrong arm, and what is left needs
+    // ACL manipulation. On unix, clearing the parent's search bit gives PermissionDenied directly.
+    // `ci-classic.yml` runs the matrix [ubuntu-latest, windows-latest], so this executes in CI.
+    #[cfg(unix)]
+    #[test]
+    fn read_with_status_metadata_error_other_than_not_found_is_degraded() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = fresh_dir("rws-permdenied");
+        std::fs::write(
+            d.join(GROWTH_FILE_NAME),
+            "content that must never be reached",
+        )
+        .unwrap();
+        std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        // PRECONDITION - the fixture must actually apply, or this test proves nothing. Root ignores
+        // the permission bits, and metadata would then come back NotFound: a DIFFERENT arm, whose
+        // correct flag is the OPPOSITE of the one asserted below. Restore and skip loudly rather than
+        // assert against the wrong branch.
+        let kind = std::fs::metadata(d.join(GROWTH_FILE_NAME))
+            .err()
+            .map(|e| e.kind());
+        if kind != Some(std::io::ErrorKind::PermissionDenied) {
+            std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o755)).unwrap();
+            eprintln!(
+                "SKIPPED read_with_status_metadata_error_other_than_not_found_is_degraded: metadata \
+                 gave {kind:?}, not PermissionDenied (running as root?) - the arm under test was \
+                 never reached, so this run asserted nothing"
+            );
+            return;
+        }
+
+        let (text, degraded) = read_with_status(&d);
+        // Restore BEFORE asserting, so a failure still leaves a removable directory behind.
+        std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(
+            text, BASELINE_FLOOR,
+            "an unreadable region must fall back to the compiled-in floor"
+        );
+        assert!(
+            degraded,
+            "present-but-unreadable is anomalous and must surface to the driver, exactly as the \
+             inner read() failure does - treating it as absence is a SILENT degrade"
+        );
+    }
+
     #[test]
     fn read_with_status_content_is_not_degraded() {
         let d = fresh_dir("rws-content");

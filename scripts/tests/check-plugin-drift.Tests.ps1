@@ -142,6 +142,14 @@ Describe 'check-plugin-drift.ps1' {
         $locked = Join-Path $i 'skills' 'a' 'SKILL.md'
         $fs = [IO.File]::Open($locked, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
         try {
+            # PRECONDITION - the fixture must actually apply, or this row proves nothing. AGY-TEST-AUDIT
+            # 2026-09-02: this is `1913bdc`'s class, where a mutation silently failed to apply and only a
+            # precondition assertion caught it. FileShare::None is a MANDATORY lock on Windows and an
+            # advisory one on POSIX, so on a non-Windows host the read below would succeed, the checker
+            # would report no drift, and the row would fail loudly rather than pass vacuously - but it
+            # would fail for a reason nothing states. Assert the lock blocks a reader first, so the row
+            # names its own environmental premise instead of assuming it.
+            { [IO.File]::ReadAllBytes($locked) } | Should -Throw -Because 'the exclusive lock must actually block a reader, or UNREADABLE is not what is being tested'
             $res = Invoke-Drift $r.Root $r.Sha $i
             $res.Code | Should -Be 1
             $res.Out  | Should -CMatch 'UNREADABLE\s+skills/a/SKILL\.md'
@@ -225,6 +233,14 @@ Describe 'check-plugin-drift.ps1' {
         $stray = Join-Path $i '.hidden-stray.bak'
         [IO.File]::WriteAllText($stray, "stale`n")
         (Get-Item $stray).Attributes = 'Hidden'
+        # PRECONDITION - assert the row's own premise, which is an ENVIRONMENT property, not a logic one.
+        # AGY-TEST-AUDIT 2026-09-02, `1913bdc`'s class: the whole point of this row is that a plain
+        # enumeration MISSES this file and only `-Force` finds it. On a filesystem that does not honour
+        # the Hidden attribute the assignment above silently no-ops, `Get-ChildItem` sees the stray
+        # anyway, EXTRA is reported for the ordinary reason, and the row goes green having tested
+        # nothing about hidden files at all. Pin the premise before depending on it.
+        (Get-ChildItem -LiteralPath $i -File | Where-Object Name -eq '.hidden-stray.bak') |
+            Should -BeNullOrEmpty -Because 'a plain Get-ChildItem must MISS the stray, or this row is not testing the -Force blind spot it names'
         $res = Invoke-Drift $r.Root $r.Sha $i
         $res.Code | Should -Be 1 -Because "a hidden stray is still a stray; output was:`n$($res.Out)"
         $res.Out  | Should -CMatch 'EXTRA\s+\.hidden-stray\.bak'

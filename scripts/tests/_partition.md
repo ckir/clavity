@@ -600,6 +600,15 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       figure was taken at 22 tests - the 9
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
+gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
+  ONE SAMPLE, NOT A MEASUREMENT, and recorded that way on purpose: 6,6s is the per-file figure from a
+  single solo run (16,6s wall including Pester cold start) on a box whose background load I do not
+  control. The discipline here wants two runs and a range; this row has neither, so treat 6,6s as
+  indicative and re-measure it with the half. Added by AGY-TEST-AUDIT 2026-09-02 to close the gap that
+  `.gitignore`'s `.claude/*.local.md` privacy rule had no coverage anywhere in the repository. Every
+  row is four `git check-ignore` / `git ls-files` calls, so nearly all of the figure is process launch.
+  ⚠ It joins the FAST half, which measured 493-550s against the 600s foreground cap and is
+  cap-ADJACENT - this adds ~6s to a half that has no headroom left to spend.
 agy-curate-nudge.Tests.ps1                       48,1s   20 tests   <- SLOW as of 2026-08-24; was FAST.
   MOVED with check-injected-context because the FAST half measured 576,0s against the 600s foreground
   cap - see the note under ## Measured runtimes. Re-measured 2026-08-24 WARM on an

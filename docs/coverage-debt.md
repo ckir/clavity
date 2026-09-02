@@ -610,3 +610,29 @@ here, because it needs a new registered suite and this batch's scope is the seve
   `head` mode, and the fail-closed row named above. **Re-check trigger:** any change that makes an empty
   or partial marker read as a valid attestation rather than as an absent one - that would turn this from
   a safe truncation into a false GREEN, and it must be fixed rather than accepted.
+
+### O. The `scripts/tests` Pester suites are WINDOWS-ONLY by CI construction (AGY-TEST-AUDIT 2026-09-02)
+
+- **What gets re-raised, and was:** that rows in `scripts/tests/check-plugin-drift.Tests.ps1` behave
+  differently on macOS/Linux - notably `[IO.FileShare]::None` being a MANDATORY lock on Windows and an
+  ADVISORY one on POSIX, and `.Attributes = 'Hidden'` not hiding anything on a filesystem that ignores
+  it. The 2026-09-02 audit raised both as gaps, with the second marked `confidence: measured`.
+- **Why it is not a gap:** the premise is false. **MEASURED 2026-09-02:** `ci-scripts.yml` is the only
+  workflow that runs `Invoke-Pester scripts/tests`, and BOTH of its jobs are `runs-on: windows-latest`
+  (lines 67 and 147). No workflow runs these suites on any non-Windows host, so non-Windows behaviour of
+  a `.ps1` row is unreachable, not merely unlikely. The peer had flagged this exact assumption as the one
+  it did not verify.
+- **Compensation, and it is real rather than nominal:** both rows now ASSERT their own environmental
+  premise before depending on it - the lock must actually block a reader, and a plain `Get-ChildItem`
+  must actually miss the stray. So if either premise ever stops holding, on any host, the row fails
+  LOUDLY at its precondition instead of passing while testing nothing. That is the `1913bdc` lesson
+  applied, and each assertion was proven non-vacuous by mutating its fixture: the LOCKED row goes red at
+  its precondition when the share mode is loosened, the HIDDEN row when the attribute assignment is
+  removed, with the other 16 rows unaffected.
+- **Anchor (its disappearance voids this entry):** `runs-on: windows-latest` on BOTH jobs in
+  `.github/workflows/ci-scripts.yml`. **Re-check trigger:** adding any non-Windows runner to a job that
+  invokes `Invoke-Pester scripts/tests`. At that moment these stop being unreachable and become real
+  gaps - and the two preconditions above become the rows that will tell you so.
+- **NOT covered by this entry:** the `clavity-classic` Rust suites, which DO run on Linux -
+  `ci-classic.yml` uses the matrix `[ubuntu-latest, windows-latest]`. Cross-platform reasoning about
+  those is in scope and one such test was added the same day.
