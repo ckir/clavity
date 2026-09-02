@@ -693,7 +693,15 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            60,0s   72 tests   <- FAST, re-measured 2026-09-02
+check-agy-discipline-skills.Tests.ps1            86,6s   75 tests   <- FAST, re-measured 2026-09-02
+  COUNT RAISED 2026-09-02 by AGY-CAPSTONE R4, 72 -> 75: a decoy 'SCHEMAS = {' BLOCK in the module
+  docstring was read as the registry (the R3 smuggle one level up), and two strict anchors produced
+  LOUD FALSE REDS on valid input - a quoted YAML name and an indented markdown blockquote.
+  ** THE FAST-HALF FLAG IS NOW THE LOUDEST THING ON THIS ROW. ** 6,6s at 43 tests on 2026-08-05;
+  86,6s at 75 today, one warm solo run. Thirteen-fold. Most of it is child-pwsh spawning: the rows
+  added across this capstone each launch one. The fast half measured 445/0 in 413,03s at d528328
+  against a 600s foreground tool cap, and this suite is inside it. THE MARGIN IS THE OWNER'S CALL
+  AND IT IS NARROWING; the box was not idle and I claim no more than the figure.
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R3, 70 -> 72. R2 bounded the ROSTER scan to the SCHEMAS
   block and left the PER-SKILL key-list lookup scanning the whole file, so the same defect class
   survived one line away from its own fix. Both readers now go through one Get-SchemasBlock helper.

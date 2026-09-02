@@ -23,8 +23,26 @@ function Fail($msg) { Write-Error $msg -ErrorAction Continue; $script:fail = $tr
 # key/list pairs and no nested dict, so the first line whose content is a closing brace IS the closer at
 # any indent. An inline 'SCHEMAS = {}' still returns $null, which fails closed, which is correct - an
 # empty registry is not a thing this repository can have.
+# EXACTLY ONE ASSIGNMENT, OR NOTHING. Capstone R4 measured what R3's consolidation did NOT fix: bounding
+# the scan to "the SCHEMAS block" still has to DECIDE which block that is, and [regex]::Match takes the
+# first. A decoy 'SCHEMAS = {' block written at column 0 inside the module docstring was read as the
+# registry, and a drifted real entry passed - the same smuggle as R3, one level up, because the repair had
+# narrowed the class instead of removing it.
+#
+# The answer is not a cleverer pattern. It is to REFUSE TO GUESS: count the assignments and fail unless
+# there is exactly one. A file with two is ambiguous, and a guard that picks one of two candidate
+# registries is asserting something it cannot know. This also ends the class rather than narrowing it -
+# any future decoy, in a docstring or anywhere else, raises the count.
+#
+# What this still is NOT: a Python parse. The reviewer's position, twice stated, is that only ast.parse()
+# removes regex from the equation, and it is right that a text scan can always be surprised. That is a
+# dependency decision for the owner (this linter runs today with no Python on PATH), recorded rather than
+# taken quietly - and uniqueness makes the surprise LOUD, which is the property that actually matters.
 function Get-SchemasBlock([string]$Path) {
-    $m = [regex]::Match((Get-Content -Raw $Path), '(?ms)^SCHEMAS\s*=\s*\{(?<body>.*?)^\s*\}')
+    $text = Get-Content -Raw $Path
+    $starts = [regex]::Matches($text, '(?m)^SCHEMAS\s*=\s*\{')
+    if ($starts.Count -ne 1) { return $null }
+    $m = [regex]::Match($text, '(?ms)^SCHEMAS\s*=\s*\{(?<body>.*?)^\s*\}')
     if ($m.Success) { return $m.Groups['body'].Value }
     return $null
 }
@@ -68,7 +86,16 @@ foreach ($skill in $skills) {
     # '---' fences) so a stray 'name:' smuggled into the BODY plus any body '---' cannot falsely satisfy it
     # (capstone R1, Protocol/Mechanism: the old lazy '(?ms).*?' spanned past the closing fence -> false-GREEN).
     if ($raw -match "(?s)\A---\r?\n(?<fm>.*?)\r?\n---\r?\n") {
-        if ($Matches['fm'] -notmatch "(?m)^name:\s*$skill\s*$") {
+        # OPTIONAL QUOTES, capstone R4: YAML lets a scalar be quoted, and `name: "agy-first"` is the
+        # same value as `name: agy-first`. MEASURED before this fix - the quoted form produced a false
+        # RED reading "frontmatter 'name:' must equal 'agy-first'" on a valid file. The quote characters
+        # are matched as a pair-insensitive option rather than a balanced pair, which is deliberate: the
+        # frontmatter parser downstream is YAML's, not this regex's, and a mismatched pair is that
+        # parser's problem to report, not a shape this gate should invent an opinion about.
+        # \x22 is the REGEX escape for a double quote, not a PowerShell one. Writing the character
+        # literally terminates this double-quoted string and the file stops parsing - which is how the
+        # first version of this line shipped for about ninety seconds.
+        if ($Matches['fm'] -notmatch "(?m)^name:\s*[\x22']?$skill[\x22']?\s*$") {
             Fail "$rel : frontmatter 'name:' must equal '$skill'"
         }
     } else {
@@ -149,7 +176,7 @@ foreach ($skill in $skills) {
             # folded, arriving by a different route.
             $py = Get-SchemasBlock $checkerPath
             if ($null -eq $py) {
-                Fail "$rel : could not locate the 'SCHEMAS = {' block in $checkerPath, so the inline contract cannot be checked against it"
+                Fail "$rel : did not find exactly ONE 'SCHEMAS = {' assignment in $checkerPath - it is missing, unparseable, or DUPLICATED - so the inline contract cannot be checked against it"
                 continue
             }
             $m  = [regex]::Match($py, '"' + [regex]::Escape($skill) + '":\s*\[(?<keys>[^\]]*)\]')
@@ -177,7 +204,7 @@ foreach ($skill in $skills) {
                     Fail "$rel : the inline contract's key list does not match SCHEMAS in scripts/check-peer-reply-citations.py - expected, in order: $($declared -join ', ')"
                 }
             }
-            if ($raw -notmatch '(?m)^>.*and no others are accepted') {
+            if ($raw -notmatch '(?m)^ {0,3}>.*and no others are accepted') {
                 Fail "$rel : the inline contract does not tell the peer that undeclared keys are REJECTED - the strictness is the contract's whole point"
             }
         }
@@ -256,7 +283,7 @@ foreach ($skill in $disciplineNames) {
     # rule about the DRIVER's own output, which in agy-capstone contradicts ':213' ("Intermediate
     # fold-and-loop rounds report progress and loop; they emit **no** token"). An anchor on the bare words
     # would go green on exactly that broken form, so it matches '^> Put', deliberately.
-    if ($raw -notmatch '(?m)^> Put nothing after the terminal token\.') {
+    if ($raw -notmatch '(?m)^ {0,3}> Put nothing after the terminal token\.') {
         Fail "$rel : missing the anti-wrap-up clause as PAYLOAD text ('> Put nothing after the terminal token.') - unmarked, it reads as a rule about the driver's own reply, and a peer's closing pleasantry can displace its entire report"
     }
 }
@@ -302,7 +329,7 @@ if (-not (Test-Path -LiteralPath $checkerPath)) {
         # FAILS CLOSED, deliberately. An unparseable registry is indistinguishable from an empty one,
         # and an empty one would report every roster name as unregistered - a true red for a false
         # reason. Say which it is.
-        Fail "roster reconciliation: could not locate the 'SCHEMAS = {' block in $checkerPath, so the roster cannot be reconciled at all"
+        Fail "roster reconciliation: did not find exactly ONE 'SCHEMAS = {' assignment in $checkerPath - it is missing, unparseable, or DUPLICATED - so the roster cannot be reconciled at all"
         $registry = $disciplineNames        # suppress the misleading second diagnostic
     } else {
         $registry = [regex]::Matches($blockBody, '(?m)^\s{4}"(?<name>[^"]+)":\s*\[') |

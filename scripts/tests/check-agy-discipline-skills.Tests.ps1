@@ -680,7 +680,8 @@ Describe 'check-agy-discipline-skills' {
             try {
                 $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
-                $out | Should -Match "could not locate the 'SCHEMAS = \{' block"
+                $out | Should -Match "did not find exactly ONE 'SCHEMAS = \{' assignment"
+                $out | Should -Match 'unparseable' -Because 'this fixture removes the block entirely, so the diagnostic must name that cause alongside duplication'
                 $out | Should -Not -Match 'declares no SCHEMAS entry for:' -Because 'the block-not-found branch suppresses the second diagnostic deliberately; four phantom mismatches would bury the real cause'
             } finally {
                 Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
@@ -754,11 +755,79 @@ Example of a registry row:
             try {
                 $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 0 -Because 'an indented closing brace is valid Python and must not break the registry read'
-                $out | Should -Not -Match 'could not locate'
+                $out | Should -Not -Match 'exactly ONE'
             } finally {
                 Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
                 Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
             }
+        }
+
+        It 'REFUSES TO GUESS when a second SCHEMAS assignment exists' {
+            # AGY-CAPSTONE R4, and it is the THIRD time this class has been folded. R2 bounded the roster
+            # scan; R3 bounded the per-skill lookup through a shared helper; and the helper still had to
+            # DECIDE which block was the registry, taking the first match. A decoy 'SCHEMAS = {' block at
+            # column 0 in the module docstring was read as the registry and a drifted real entry passed -
+            # MEASURED, the same smuggle one level up.
+            #
+            # The fix is not a cleverer pattern but a refusal: count the assignments, and fail unless
+            # there is exactly one. That ends the class instead of narrowing it, because ANY future decoy
+            # raises the count rather than having to be anticipated.
+            $py = Get-Content -Raw (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py')
+            ([regex]::Matches($py, '(?m)^SCHEMAS\s*=\s*\{')).Count | Should -Be 1 -Because 'the real file must carry exactly one assignment for a second to be a mutation'
+
+            $docLine = 'Exit 0 = every row matched its schema and every quoted_line resolved; 1 = at least one problem.'
+            $decoy = @'
+
+
+SCHEMAS = {
+    "agy-capstone":   ["seat", "id", "file", "line", "quoted_line",
+                       "claim-type", "evidence", "trigger", "severity", "detail"],
+}
+'@
+            $py.Contains($docLine) | Should -BeTrue -Because 'the docstring anchor must exist verbatim'
+            $twoBlocks = $py.Replace($docLine, $docLine + $decoy)
+            ([regex]::Matches($twoBlocks, '(?m)^SCHEMAS\s*=\s*\{')).Count | Should -Be 2 -Because 'the decoy must actually add a second assignment, or this row proves nothing'
+
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $twoBlocks
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 1
+                $out | Should -Match 'exactly ONE' -Because 'an ambiguous registry must be refused, not guessed at'
+                $out | Should -Match 'DUPLICATED' -Because 'the diagnostic must name duplication as a cause; "could not locate" sent the reader looking for a missing block that is present twice'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'ACCEPTS valid input a strict anchor used to reject - <case>' -ForEach @(
+            @{ case = 'a QUOTED frontmatter name';   find = 'name: agy-first';                          repl = 'name: "agy-first"' },
+            @{ case = 'an INDENTED anti-wrap clause'; find = "`n> Put nothing after the terminal token."; repl = "`n  > Put nothing after the terminal token." }
+        ) {
+            # AGY-CAPSTONE R4. Both anchors produced a LOUD FALSE RED on input that is perfectly valid in
+            # its own format - YAML lets a scalar be quoted, and markdown lets a blockquote carry up to
+            # three leading spaces. Neither could ever produce a false GREEN, which is why both are MINOR;
+            # they cost a maintainer an afternoon, not a shipped defect.
+            #
+            # THE BLOCKQUOTE FIX WENT TO THE SET, NOT THE INSTANCE. The reviewer reported the anti-wrap
+            # anchor; the linter had TWO '(?m)^>' anchors and both were loosened, because R3's whole
+            # lesson was that folding the reported instance leaves the class one line away.
+            #
+            # Asserted as a PASS. A green run is the only thing that says valid input is accepted, and
+            # these rows redden immediately if either anchor is tightened back.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'agy-first'
+            $real = Get-Content -Raw $target
+            $real.Contains($find) | Should -BeTrue -Because "the fixture needs '$find' present verbatim before it can be rewritten"
+            $body = $real.Replace($find, $repl)
+            $body | Should -Not -Be $real -Because 'the rewrite must take effect'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 0 -Because "$case is valid in its own format and must not trip a gate"
+            (Get-LintText $out) | Should -Match 'agy-discipline skills OK'
+            Remove-Item -Recurse -Force $scratch
         }
     }
 }
