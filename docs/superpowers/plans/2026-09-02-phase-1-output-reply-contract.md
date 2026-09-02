@@ -248,8 +248,9 @@ Expected: FAIL at the mutant precondition.
 
 - [ ] **Step 3: Add the clause to all EIGHT files**
 
-Insert immediately after **Task 1's clause** (the paragraph beginning
-`**Put nothing after the terminal token.**`), NOT after the `A flagged reply is INCOMPLETE` anchor.
+Insert after **the WHOLE of Task 1's block**, which is now TWO paragraphs. Anchor on the SECOND one,
+beginning `**Every REQUIRED block comes immediately BEFORE the token`. Anchoring on the first would land
+this clause between Task 1's opening and its own explanation, splitting a block that reads as one.
 
 ⚠ Both clauses share a neighbourhood, so anchoring both on the SAME paragraph wedges this one BETWEEN
 that anchor and Task 1's text - mechanically fine, and confusingly interleaved to read. Since the
@@ -261,7 +262,8 @@ rule forbids.
 **`confidence` IS A POINTER, NEVER AUTHORITY.**
 MEASURED across four audits: it was **WRONG 5 TIMES IN 14 CLAIMS**. It is still worth carrying, because it names WHICH MUTANT TO RUN - which is why every false
 claim was cheap to kill. **A `measured` claim is ALWAYS re-run by the driver before folding; the label
-buys the finding no credit whatsoever.** Phrase every trigger as a FALSIFIABLE PREDICTION - "removing X
+buys the finding no credit whatsoever.** Phrase your REASON FIELD - whatever your discipline declares, `trigger` for the capstone and
+`missing_test` for the audit - as a FALSIFIABLE PREDICTION - "removing X
 leaves the suite green" - because that phrasing is what made all five refutations mechanical.
 ```
 
@@ -403,7 +405,10 @@ Describe 'check-peer-reply-citations' {
         # checker that normalises nothing, which is the vacuity this whole phase is about.
         # Pick the citation from a file that genuinely carries one, and prove the row RED by deleting
         # norm()'s dash replacement before marking Step 4 done.
-        $r = New-Reply '[{"file":"clavity-dotnet/ROADMAP.md","quoted_line":"<a real line containing an em-dash, with the dash mangled>"}]'
+        # Quote an em-dash line with the dash written as plain ASCII. norm() maps the FILE side to "-"
+        # as well, so the two meet. Complete as written - no placeholder to swap in later, which is what
+        # blocked the suite from ever reaching a green run.
+        $r = New-Reply '[{"file":"clavity-dotnet/ROADMAP.md","quoted_line":"### 20 - A mockable clock (TimeProvider) in AgyView"}]'
         & $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1 | Out-Null
         $LASTEXITCODE | Should -Be 0 -Because 'normalisation must absorb a mangled dash rather than call it drift'
     }
@@ -496,8 +501,11 @@ for idx, row in enumerate(rows, 1):
     # LOCATE BY CONTENT, NOT BY LINE NUMBER. The contract treats line numbers as untrusted - a peer
     # reading a diff computes them from hunk headers and gets them wrong - so the quoted text is the
     # citation and the driver finds it.
-    if not any(norm(line) == claimed for line in blob.stdout.split("
-")):
+    # splitlines(), NOT split with an escape. An escaped newline in this line was mangled in
+    # transit twice and shipped a literal newline inside the string literal - a SyntaxError that
+    # crashes the checker on every invocation. splitlines() needs no escape, so the class cannot
+    # recur.
+    if not any(norm(line) == claimed for line in blob.stdout.splitlines()):
         problems.append("row %d: quoted_line not found in %s at %s: %r"
                         % (idx, row["file"], sha, row["quoted_line"]))
 for msg in problems:
@@ -513,21 +521,19 @@ the checker declares a key the contract does not yet name.
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-peer-reply-citations.Tests.ps1 -Output Detailed"`
 Expected: 6 passed, 0 failed.
 
-🔴 **THEN PROVE THE NORMALISATION ROW CAN FAIL.** The row now exists (`resolves a citation whose only
-difference is a MANGLED EM-DASH`), but a row that exists is not a row that bites. Build the fixture mechanically rather than hunting for one - run this, take the line it prints, and
-replace its em-dash with the mojibake form to get the `quoted_line`:
+🔴 **THEN PROVE THE NORMALISATION ROW CAN FAIL - and note this test was SIMPLIFIED, deliberately.**
 
-```bash
-grep -n -m1 -P 'â' clavity-dotnet/ROADMAP.md
-```
+An earlier version demanded a MOJIBAKE fixture. That proof was impossible: `norm()` maps real unicode
+dashes to a hyphen and does nothing to a mojibake sequence, so the fixture could never have matched, and
+the placeholder it left behind blocked the suite from ever reaching a green run. **The rigour had stopped
+serving the outcome.**
 
-Then; then delete `norm()`'s
-dash replacement and confirm **that specific row** goes red - **then RESTORE it and re-run before you
-commit.** The plan previously said to break `norm()` and never said to put it back; a literal
-implementer commits the crippled checker. Every mutation in this plan is temporary: break, observe red,
-restore, observe green, and only then commit. A normalisation row asserted against plain
-ASCII passes against a checker that normalises nothing — the exact class this repository keeps paying
-for, and it may not ship unproven.
+The property `norm()` actually provides is simple, so test that: **a citation quoting an em-dash line as
+plain ASCII must still resolve.** Pick any line containing an em-dash, quote it in the fixture with the
+dash written as `-`, and the row passes because `norm()` maps the file's dash to `-` too.
+
+Prove it can fail: delete the dash-replacement loop from `norm()`, confirm **that row alone** goes red,
+then RESTORE it and confirm green before committing.
 
 - [ ] **Step 5: Register the new suite — it will otherwise EXIST, PASS and NEVER RUN**
 
@@ -591,7 +597,21 @@ when composing that brief. An earlier reading of this task had the implementer e
 had just committed, which leaves a dirty tree carrying into Task 2 - and this task has no business
 mutating the tree at all.
 
-- [ ] **Step 2b: Record BOTH arms in the ledger, and COMMIT them**
+- [ ] **Step 2: Record the OUTCOME and the FIELD, not an impression**
+
+The mechanism is displacement, not truncation, so record `AnswerTruncated` explicitly — it was `false`
+on all four earlier probes, and reading it is what distinguished the two. Note whether the body arrived
+inline or only a receipt did.
+
+- [ ] **Step 3: Write the result into `docs/agy-capstone-ledger.md`, including a negative one**
+
+If the body arrives intact WITHOUT the clause, the clause is **not** isolated as the mechanism and the
+ledger must say exactly that. A supported-but-unisolated claim written up as measured is the failure
+this whole phase exists to remove — n=1 either way is a datum, not a proof, and the row must say which.
+
+---
+
+- [ ] **Step 4: Record BOTH arms in the ledger, and COMMIT them**
 
 ```bash
 git add docs/agy-capstone-ledger.md
@@ -612,20 +632,6 @@ the two arms are minutes apart on one peer version rather than compared across a
 without it.** Every round before Task 1 also lacked the clause, so deleting it from a pre-Task-1 baseline
 changes nothing and the run measures noise. The comparison that isolates is: rounds WITH the clause
 (post-Task-1, the new normal) against this one deliberate round WITHOUT it. Changing anything else destroys the isolation this task exists to establish.
-
-- [ ] **Step 2: Record the OUTCOME and the FIELD, not an impression**
-
-The mechanism is displacement, not truncation, so record `AnswerTruncated` explicitly — it was `false`
-on all four earlier probes, and reading it is what distinguished the two. Note whether the body arrived
-inline or only a receipt did.
-
-- [ ] **Step 3: Write the result into `docs/agy-capstone-ledger.md`, including a negative one**
-
-If the body arrives intact WITHOUT the clause, the clause is **not** isolated as the mechanism and the
-ledger must say exactly that. A supported-but-unisolated claim written up as measured is the failure
-this whole phase exists to remove — n=1 either way is a datum, not a proof, and the row must say which.
-
----
 
 ## §23 — NOT PLANNED HERE, AND THAT IS DELIBERATE
 
@@ -673,6 +679,39 @@ instructions. Two things from it are worth carrying here because they change how
 - **Two of round 2's findings were defects round 1's FOLDS introduced.** A fix spawns its own edges;
   re-run a round after folding.
 - **Line numbers in this plan are untrusted.** Anchor every edit on quoted text.
+
+## Panel round 4 - dispositions
+
+**6 findings, 6 FOLDED, 0 refuted.** Verdict: `REJECT - critical defects`. Seats: **The Obeying Peer**
+(reads the contract as the agent required to comply) and **The Second-Order Auditor** (round 3's folds).
+
+🔴 **EVERY DEFECT THIS ROUND WAS INTRODUCED BY AN EARLIER ROUND'S FOLD.** None was inherited from the
+original plan. That is the fourth consecutive round in which a fix spawned an edge - and the first in
+which fixes were the ONLY source.
+
+- `FOLDED: a fatal SyntaxError` - `split("
+")` shipped a LITERAL newline inside the string literal, so
+  the checker would crash on every invocation. Introduced by a round-3 fold, via the same escape-mangling
+  diagnosed in round 2 and then walked into again. Fixed with `splitlines()`, which needs no escape at
+  all: **the class is removed rather than re-escaped.**
+- `FOLDED: the normalisation proof was impossible` - it demanded a MOJIBAKE fixture while `norm()` only
+  maps real unicode dashes, so the two sides could never meet, and its placeholder blocked the suite from
+  ever reaching a green run. **Simplified to the property `norm()` actually provides:** quote an em-dash
+  line as plain ASCII and it resolves. Provable, and the mutant still reds it.
+- `FOLDED: Task 5 committed the ledger BEFORE writing it` - the commit step was inserted above the write
+  step, so the run would commit a stale file.
+- `FOLDED: the contract text baited a schema violation` - it told the peer to phrase "every trigger" as a
+  falsifiable prediction while the audit schema declares `missing_test` and forbids `trigger`. A peer
+  obeying the prose would be rejected by the checker. Now names the reason field per discipline.
+- `FOLDED: Task 3's anchor split Task 1's block` - Task 1 became two paragraphs in round 4's solo pass and
+  Task 3 still anchored on the first, landing between an opening and its own explanation.
+- `FOLDED: a placeholder blocked the execution path` - Step 4 said "expect 6 passed" while the fixture
+  still carried `<a real line...>`, so the implementer could never reach green.
+
+⚠ **THE OVER-FITTING FINDING WAS UPHELD AND ACTED ON.** Asked whether the process was serving reviewers
+rather than the outcome, the panel pointed at the em-dash non-vacuity rigour. It was right: that rigour
+produced an impossible proof and a blocking placeholder. **Simplifying it made the plan shorter, correct
+and executable** - the first round whose net effect was subtraction.
 
 ## Stand-downs
 
