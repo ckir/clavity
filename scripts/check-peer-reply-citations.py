@@ -39,14 +39,23 @@ DASHES = ("—", "–", "−")   # em dash, en dash, minus sign
 def norm(s):
     """Normalise for COMPARISON ONLY, and apply it to BOTH sides or it is worse than nothing.
 
-    Mangled non-ASCII already read as citation drift once. Leading indentation is PRESERVED: flattening
-    it would make every indented citation - a YAML key, a nested block, a recipe body - unresolvable,
-    trading one false-drift class for a larger one. Only trailing whitespace is dropped.
+    Mangled non-ASCII already read as citation drift once.
+
+    LEADING WHITESPACE IS FOLDED, and the comment that used to sit here argued the exact opposite: that
+    flattening indentation "would make every indented citation unresolvable". That was backwards - both
+    sides are normalised, so an indented citation still matches its indented source line either way.
+    What folding actually costs is the ability to tell apart two lines whose only difference is indent.
+
+    MEASURED, in the first capstone round run under this contract: the peer cited two lines correctly and
+    both were reported as DRIFT, because it had stripped the 8 and 4 leading spaces. Two of four rows in
+    a reply that had predicted this very failure. The false-drift class is real and routine; the
+    false-match class costs a citation resolving against a same-texted line at a different indent, whose
+    content is by definition identical. Fold.
     """
     s = unicodedata.normalize("NFKC", s)
     for dash in DASHES:
         s = s.replace(dash, "-")
-    return s.rstrip()
+    return s.strip()
 
 
 def check_row_schema(row, idx, declared, problems):
@@ -89,8 +98,20 @@ if discipline not in SCHEMAS:
 declared = SCHEMAS[discipline]
 rows = json.load(io.open(reply_path, encoding="utf-8"))
 
+# THE ROOT MUST BE A LIST OF OBJECTS, and both wrong shapes failed badly before this guard.
+# MEASURED: a bare `true` or `42` raised TypeError and printed a traceback instead of a report - exit 1
+# either way, which is what makes it nasty, exactly like the console-encoding crash this module already
+# carries a guard for. A dict root was worse because it did NOT crash: enumerate() walked its KEYS, each
+# key string was then treated as a row, and iterating a string yields characters - 17 invented problems
+# from one well-formed object, with nothing anywhere saying the shape was wrong.
+if not isinstance(rows, list):
+    raise SystemExit("reply root must be a JSON ARRAY of row objects, got %s" % type(rows).__name__)
+
 problems = []
 for idx, row in enumerate(rows, 1):
+    if not isinstance(row, dict):
+        problems.append("row %d: expected an object, got %s" % (idx, type(row).__name__))
+        continue
     if not check_row_schema(row, idx, declared, problems):
         continue        # record it and move on - never index a key just reported missing
     claimed = norm(row["quoted_line"])

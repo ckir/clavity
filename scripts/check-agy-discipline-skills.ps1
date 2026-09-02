@@ -99,6 +99,43 @@ foreach ($skill in $skills) {
         if (-not $raw.Contains($invocation)) {
             Fail "$rel : does not name its OWN checker invocation ('$invocation') - a discipline citing another's schema name validates against the wrong keys and reports nothing"
         }
+
+        # CROSS-FILE ORACLE: the key list in the skill must match SCHEMAS in the checker, key for key.
+        # Capstone R1 measured the gap this closes: the whole blockquoted key list could be DELETED while
+        # the bold header above it stayed, and this linter still exited 0 - it pinned a heading and
+        # certified a contract. That is the guard-fails-open shape, and the peer independently named the
+        # same divergence as the thing most likely to be quietly wrong in six months: add a key to the
+        # Python and the markdown, later drop it from the markdown, and nothing notices.
+        #
+        # The checker is resolved from $PSScriptRoot, NOT from $Root: $Root is the skills fixture the
+        # suite stages, and the SCHEMAS registry is a real repository file. Resolving it from $Root would
+        # red every rejection row in the suite on a missing checker.
+        $checkerPath = Join-Path $PSScriptRoot 'check-peer-reply-citations.py'
+        if (-not (Test-Path -LiteralPath $checkerPath)) {
+            Fail "$rel : names a checker that is not there - $checkerPath"
+        } else {
+            $py = Get-Content -Raw $checkerPath
+            $m  = [regex]::Match($py, '"' + [regex]::Escape($skill) + '":\s*\[(?<keys>[^\]]*)\]')
+            if (-not $m.Success) {
+                Fail "$rel : scripts/check-peer-reply-citations.py declares no SCHEMAS entry for '$skill', so its inline contract is unenforceable"
+            } else {
+                $declared = [regex]::Matches($m.Groups['keys'].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value }
+                # PIN THE LIST, NOT MERE MEMBERSHIP - and this is the second attempt, because the first
+                # was proven hollow by its own control. Asking whether each key appears SOMEWHERE in the
+                # blockquote passes when a key is dropped from the enumeration but still mentioned in the
+                # prose beneath it: deleting `trigger` from the key list left `Phrase `trigger` as a
+                # FALSIFIABLE PREDICTION` two lines below, the guard found it, and the drop went green.
+                # Matching the whole comma-separated sequence pins ORDER and MEMBERSHIP together.
+                # The separator tolerates the markdown wrap: the list spans several '> ' lines.
+                $seq = ($declared | ForEach-Object { '`' + [regex]::Escape($_) + '`' }) -join ',\s*(?:\r?\n>\s*)?'
+                if ($raw -notmatch $seq) {
+                    Fail "$rel : the inline contract's key list does not match SCHEMAS in scripts/check-peer-reply-citations.py - expected, in order: $($declared -join ', ')"
+                }
+            }
+            if ($raw -notmatch '(?m)^>.*and no others are accepted') {
+                Fail "$rel : the inline contract does not tell the peer that undeclared keys are REJECTED - the strictness is the contract's whole point"
+            }
+        }
     }
 
     if ($skill -eq 'agy-capstone') {

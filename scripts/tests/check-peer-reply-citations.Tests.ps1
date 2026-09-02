@@ -86,14 +86,47 @@ Describe 'check-peer-reply-citations' {
         $LASTEXITCODE | Should -Be 0 -Because 'normalisation must absorb a dash difference rather than call it drift'
     }
 
-    It 'PRESERVES leading indentation - an indented citation must still resolve' {
-        # norm() deliberately does NOT flatten leading whitespace: doing so would make every indented
-        # citation unresolvable, trading one false-drift class for a larger one.
-        # A WHOLE line, not a prefix. The checker compares whole lines, so the plan's original fixture
+    It 'resolves an indented citation WHETHER OR NOT the peer reproduced the indent' -ForEach @(
+        @{ label = 'indent reproduced'; quoted = '    bash scripts/check-seed-artifacts-synced.sh' },
+        @{ label = 'indent stripped';   quoted = 'bash scripts/check-seed-artifacts-synced.sh' }
+    ) {
+        # BOTH ARMS, because the second is the one that was MEASURED failing. Capstone round 1 cited two
+        # lines correctly and both were reported as DRIFT - the peer had stripped their 8 and 4 leading
+        # spaces. Two of four rows, in a reply that had itself predicted this exact failure.
+        # norm() now folds leading whitespace on BOTH sides. The cost is real and accepted: two lines
+        # differing only in indent become indistinguishable, and a citation may resolve against the
+        # wrong one - whose text is by definition identical. False-drift is routine; that is not.
+        # A WHOLE line, not a prefix: the checker compares whole lines, so the plan's original fixture
         # (a prefix of justfile's 2,000-character Invoke-Pester line) could never have matched.
-        $r = New-Reply '[{"file":"justfile","quoted_line":"    bash scripts/check-seed-artifacts-synced.sh"}]'
+        $r = New-Reply ('[{"file":"justfile","quoted_line":"' + $quoted + '"}]')
         & $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1 | Out-Null
-        $LASTEXITCODE | Should -Be 0
+        $LASTEXITCODE | Should -Be 0 -Because "a citation with the indent $label must resolve"
+    }
+
+    It 'REPORTS a non-list JSON root instead of crashing - <label>' -ForEach @(
+        @{ label = 'bool'; body = 'true' },
+        @{ label = 'int';  body = '42' },
+        @{ label = 'dict'; body = '{"file":"justfile","quoted_line":"test-scripts-fast:"}' }
+    ) {
+        # MEASURED in capstone round 1. `true` and `42` raised TypeError and printed a TRACEBACK instead
+        # of a report - exit 1 either way, the same shape as the console-encoding crash this module
+        # already guards. The dict was worse because it did NOT crash: enumerate() walked its KEYS, each
+        # key string became a row, and iterating a string yields characters - 17 invented problems from
+        # one well-formed object, with nothing saying the shape was wrong.
+        $r = New-Reply $body
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'must be a JSON ARRAY'
+        $out | Should -Not -Match 'Traceback' -Because 'a bad root shape must be REPORTED, never raised'
+    }
+
+    It 'REPORTS a row that is not an object, and keeps going' {
+        $r = New-Reply '[1, {"file":"justfile","quoted_line":"nope","smuggled":"x"}]'
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'expected an object, got int'
+        $out | Should -Match 'smuggled' -Because 'a bad row must not abort the rows after it'
+        $out | Should -Not -Match 'Traceback'
     }
 
     It 'accepts `evidence` as the declared pointer key' {

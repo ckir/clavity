@@ -271,6 +271,40 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
+        It 'REJECTS <skill> when the contract KEY LIST drifts from SCHEMAS - <case>' -ForEach @(
+            @{ skill = 'agy-capstone';   case = 'whole list deleted, header kept'; from = ''; to = '' },
+            @{ skill = 'agy-test-audit'; case = 'whole list deleted, header kept'; from = ''; to = '' },
+            @{ skill = 'agy-capstone';   case = 'one key dropped';   from = '`evidence`, `trigger`, `severity`'; to = '`evidence`, `severity`' },
+            @{ skill = 'agy-capstone';   case = 'two keys reordered'; from = '`seat`, `id`, `file`'; to = '`id`, `seat`, `file`' },
+            @{ skill = 'agy-capstone';   case = 'strictness line gone'; from = 'and no others are accepted'; to = 'and other keys are fine' }
+        ) {
+            # CAPSTONE R1 MEASURED THE HOLE THIS CLOSES: the entire blockquoted key list could be deleted
+            # while the bold header above it stayed, and the linter exited 0 - it pinned a heading and
+            # certified a contract. The peer independently named skill/SCHEMAS divergence as the thing
+            # most likely to be quietly wrong in six months.
+            #
+            # THE REORDER ROW IS NOT DECORATION. The FIRST version of this guard asked whether each key
+            # appeared SOMEWHERE in the blockquote, and its own control proved that hollow: dropping
+            # `trigger` from the list left `Phrase `trigger` as a FALSIFIABLE PREDICTION` two lines
+            # below, the guard found it there, and the drop went green. Matching the whole comma-separated
+            # sequence pins ORDER and MEMBERSHIP together, so a row that changes only order must red.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            if ($from -eq '') {
+                $body = $real -replace '(?m)^> Emit one fenced .*(\r?\n> .*)*', ''
+            } else {
+                $real.Contains($from) | Should -BeTrue -Because "the fixture needs '$from' present to mutate"
+                $body = $real.Replace($from, $to)
+            }
+            $body | Should -Not -Be $real -Because 'the mutation must take effect, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'key list does not match SCHEMAS|does not tell the peer that undeclared keys are REJECTED'
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'REJECTS a skill that names ANOTHER discipline in its checker invocation' {
             # THE COPY-PASTE ROW. The two contracts differ in three places and this is the difference that
             # fails silently: an audit brief naming agy-capstone has its rows validated against the
