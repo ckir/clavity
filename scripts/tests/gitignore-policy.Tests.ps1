@@ -27,7 +27,22 @@ Describe 'gitignore privacy policy' {
         function script:Get-IgnoreRule {
             param([string]$RelPath)
             $out = & git -C $script:RepoRoot check-ignore -v -- $RelPath 2>$null
-            if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
+            $code = $LASTEXITCODE
+            # THREE OUTCOMES, NOT TWO, AND CONFLATING TWO OF THEM WAS A REAL DEFECT. MEASURED:
+            # `git check-ignore` exits 0 = ignored, 1 = NOT ignored, 128 = git itself failed. The first
+            # version of this function returned $null for anything non-zero, so "not ignored" and
+            # "git is broken" became the same answer - and three of the four rows below assert exactly
+            # that $null. A broken git would have passed them silently, including the CONTROL row whose
+            # entire job is to prove this oracle can answer no. The control shared the oracle's failure
+            # mode, which makes it no control at all. Found by an audit of this file; the shape is the
+            # same fail-open the rest of this suite exists to catch.
+            if ($code -eq 1) { return $null }              # a genuine "not ignored"
+            if ($code -ne 0) {
+                throw "git check-ignore failed with exit $code for '$RelPath' - the oracle is broken, so no row in this suite can be trusted"
+            }
+            if (-not $out) {
+                throw "git check-ignore exited 0 for '$RelPath' but printed nothing - unparseable oracle output"
+            }
             # `check-ignore -v` emits `<source>:<linenum>:<pattern>\t<pathname>`; keep the rule half.
             return (($out | Select-Object -First 1) -split "`t")[0]
         }
@@ -63,6 +78,15 @@ Describe 'gitignore privacy policy' {
         # above pin git's matcher; this one pins the actual index, so a file added with `git add -f`
         # before the rule existed cannot hide behind a correctly-working pattern.
         $tracked = @(& git -C $script:RepoRoot ls-files -- '*.local.md')
+        # THE SAME FAIL-OPEN AS Get-IgnoreRule, AND FIXING THAT ONE ALONE LEFT THIS ONE OPEN - caught by
+        # the paired control, not by reading. `git ls-files` prints nothing and exits non-zero when git
+        # fails, which is INDISTINGUISHABLE from the healthy "nothing is tracked" answer this row wants.
+        # MEASURED against a deliberately broken git: with only the other fix in place this row was the
+        # last one still passing vacuously. A different command needs its own check; one guard does not
+        # cover a sibling just because the failure mode is the same shape.
+        if ($LASTEXITCODE -ne 0) {
+            throw "git ls-files failed with exit $LASTEXITCODE - this row cannot distinguish 'nothing tracked' from 'git did not run'"
+        }
         $tracked | Should -BeNullOrEmpty -Because "a *.local.md in the index is already published whatever .gitignore says; found: $($tracked -join ', ')"
     }
 }

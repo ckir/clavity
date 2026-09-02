@@ -310,12 +310,20 @@ mod tests {
             .map(|e| e.kind());
         if kind != Some(std::io::ErrorKind::PermissionDenied) {
             std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o755)).unwrap();
-            eprintln!(
-                "SKIPPED read_with_status_metadata_error_other_than_not_found_is_degraded: metadata \
-                 gave {kind:?}, not PermissionDenied (running as root?) - the arm under test was \
-                 never reached, so this run asserted nothing"
+            // PANIC, NOT `return`. An earlier version printed "SKIPPED" and returned, which the test
+            // runner reports as GREEN - a test announcing success having evaluated no assertion. That
+            // is the fail-open shape this whole commit range exists to remove, and an audit caught me
+            // building a fresh one: as root the permission bits do not bite, metadata comes back
+            // NotFound, and the guard silently certified an arm it never reached. MEASURED as root
+            // under WSL. A runner that cannot construct the precondition must SAY SO, because the
+            // alternative is a green tick that means nothing. `ci-classic.yml` runs ubuntu-latest as
+            // the non-root `runner` user, so this bites only a root container - exactly the change
+            // that would otherwise silently disarm the test.
+            panic!(
+                "PRECONDITION NOT MET: metadata gave {kind:?}, not PermissionDenied. Running as root \
+                 defeats the permission bits, so the arm under test is unreachable here and this test \
+                 can assert nothing. Run the suite as a non-root user."
             );
-            return;
         }
 
         let (text, degraded) = read_with_status(&d);
