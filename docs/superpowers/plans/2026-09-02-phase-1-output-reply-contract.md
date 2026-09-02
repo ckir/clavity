@@ -230,95 +230,60 @@ git commit -m "feat(skills): 21.2 - the peer-side axis is claim-type, not dispos
 
 ---
 
-### Task 3: §21 step 3 — `confidence` as a POINTER, never authority
+### Task 3: SUPERSEDED 2026-09-02 by owner ruling - folded into Task 4
 
-**MEASURED across four audits: `confidence` was WRONG 5 TIMES IN 14 CLAIMS.** Its value is real and
-specific — it names which mutant to run. Its danger is that it reads as evidence.
+🔴 **DO NOT EXECUTE THIS TASK. It is kept, rather than deleted, because the reason it died is worth more
+than the task was.**
 
-**Files:**
-- Modify: all 8 `SKILL.md` files (the reply-format section of each)
-- Modify: `scripts/check-agy-discipline-skills.ps1`
-- Test: `scripts/tests/check-agy-discipline-skills.Tests.ps1`
+**WHAT KILLED IT, MEASURED at `5aab08c` before any edit was made.** Task 3 inserted a caveat governing
+the `confidence` FIELD into eight `SKILL.md` files. **No shipped skill defines that field.** Searching
+all four skills for `quoted_line`, `"seat"` and `TEN_KEYS` returns nothing at all, and every occurrence
+of the word `confidence` in them is ordinary English prose - "the peer states false claims with full
+confidence" - never a schema key. The field exists in exactly one place in the repository,
+`scripts/check-peer-reply-citations.py:12`, and **Task 4 is the task that first puts a reply schema into
+the skills.** So Task 3 shipped a rule with no referent in the files it edited, and would have done for
+as long as Task 4 remained unexecuted.
 
-- [ ] **Step 1: Write the failing test**
+Four rounds of adversarial panel review did not find this. It took opening the files.
 
-```powershell
-    It 'REJECTS a skill that ships confidence without its measured false rate' {
-        $root = New-ScratchRoot
-        $p = & $script:SkillPath $root 'agy-test-audit'
-        $txt = [IO.File]::ReadAllText($p)
-        # WHITESPACE-TOLERANT. The clause is markdown and markdown WRAPS: the phrase currently sits
-        # across a line break in the inserted text, so a literal-space match finds nothing. A matcher
-        # that breaks when prose re-wraps is not a guard, it is a time bomb.
-        $mutated = $txt -replace 'WRONG\s+5\s+TIMES\s+IN\s+14\s+CLAIMS', 'sometimes wrong'
-        ($mutated -ne $txt) | Should -BeTrue -Because 'the mutant must actually apply, or this row proves nothing'
-        [IO.File]::WriteAllText($p, $mutated)
+**THE SECOND DEFECT, independent of the first.** The clause asserted `MEASURED across four audits: it
+was WRONG 5 TIMES IN 14 CLAIMS`, and added a linter that pinned that exact string. **The figure has no
+source anywhere in this repository except the plan sentence itself** - the design spec that produced the
+plan says only "with its measured false rate written in" and never states a number; the nearest
+reconstructible denominator is a different order of magnitude (283 confidence-labelled claims across 49
+recorded reply files); and `docs/agy-capstone-ledger.md` has no per-claim record, so the rate cannot be
+recomputed by anyone. Shipping it under the word MEASURED would have been a class-4 False Safety Promise
+in eight files, pinned by a guard that made it unremovable.
 
-        $out = & $script:Lint -Root $root 2>&1
-        $LASTEXITCODE | Should -Be 1
-        ($out -join "`n") | Should -Match 'false rate'
-    }
-```
+**THE CONSULT (AGY-FIRST, three rounds).** The peer's own reading: for an AGENT reader a frozen statistic
+that silently goes stale is worse than none, because agents lack the temporal discounting a human applies
+to an old number; a specific rate adds "zero marginal compliance" since the mechanism is what anchors
+obedience; and provenance would not rescue it - a sourced figure frozen in a linter is merely
+*verifiably stale* rather than unverifiable. It also killed my proposed replacement label,
+`HISTORICALLY OBSERVED`, as a softer unverifiable claim, correctly.
 
-- [ ] **Step 2: Run it and confirm it FAILS**
+⚠ **The fair case FOR the number, which I had loaded out of my own first framing and the peer put back:**
+a concrete rate calibrates a HUMAN operator instantly, where "frequently wrong" could mean 5% or 95%.
+The owner ruled against it on durability grounds with that case on the record, not absent from it.
 
-Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Detailed"`
-Expected: FAIL at the mutant precondition.
+⚠ **One peer proposal was refuted rather than folded.** It argued for deleting the key outright, on the
+premise that the falsifiable prediction already lives in a dedicated `trigger` field. **Measured: false.**
+`trigger` appears 16 times across the four skills and every hit is an activation condition for a hook or
+a panel seat; it is never defined as a prediction field. The peer retracted it as a hallucination once
+shown the search.
 
-- [ ] **Step 3: Add the clause to all EIGHT files**
+**THE OWNER'S RULING, 2026-09-02:** fold this task into Task 4, rename the key `confidence` -> `evidence`,
+and ship no figure. Rationale: the rule must arrive in the same commit as the schema that defines the
+field it governs; and a familiar word that names a PROCESS (`evidence: measured`) satisfies a model's
+priors without projecting authority, where an invented key such as `mutant_pointer` would have had no
+priors at all and risked being skipped or filled badly. Blast radius measured independently by driver and
+peer, agreeing: **11 occurrences across 9 files, no live programmatic consumer** outside them.
 
-🔴 **ANCHOR CORRECTED 2026-09-02 - the text below was written against a Task 1 that no longer
-exists.** Task 1's fold at `62be727` re-shaped that block: the clause is now a driver-facing lead-in
-(`**Demand this in your payload too**`) plus a BLOCKQUOTE plus two paragraphs, and the sentence this step
-originally named as its anchor - `**Every REQUIRED block comes immediately BEFORE the token` - is no
-longer a paragraph opener at all. It lives inside the blockquote, reading `> ... Every REQUIRED block
-comes immediately BEFORE it`. MEASURED at `06bc5e0`.
+**The clause itself now ships in Task 4, Step 3b, in this form** - which asserts no statistic and no
+history, and is checkable by reading the rest of the skill:
 
-**Insert after the WHOLE of Task 1's block. Anchor on its LAST paragraph, which begins**
-`**The `>` is load-bearing, not formatting.**` - verified present exactly once in all 8 files. Anchoring
-on anything earlier lands this clause inside Task 1's block and splits something that reads as one.
-
-⚠ Both clauses share a neighbourhood, so anchoring both on the SAME paragraph wedges this one BETWEEN
-that anchor and Task 1's text - mechanically fine, and confusingly interleaved to read. Since the
-execution order puts Task 1 first, its clause is already in the file and is the better anchor. Task 1 gave an anchor and this step did
-not; an implementer with no anchor invents a location, which this plan's own "anchor on QUOTED TEXT"
-rule forbids.
-
-```markdown
-**`confidence` IS A POINTER, NEVER AUTHORITY.**
-MEASURED across four audits: it was **WRONG 5 TIMES IN 14 CLAIMS**. It is still worth carrying, because it names WHICH MUTANT TO RUN - which is why every false
-claim was cheap to kill. **A `measured` claim is ALWAYS re-run by the driver before folding; the label
-buys the finding no credit whatsoever.** Phrase your REASON FIELD - whatever your discipline declares, `trigger` for the capstone and
-`missing_test` for the audit - as a FALSIFIABLE PREDICTION - "removing X
-leaves the suite green" - because that phrasing is what made all five refutations mechanical.
-```
-
-- [ ] **Step 4: Add the invariant**
-
-```powershell
-    # UNCONDITIONAL, deliberately. Gating this on the skill already containing the word `confidence`
-    # would (a) make the guard removable by deleting the very word it guards, and (b) treat a common
-    # English noun as banned - a skill writing "answer with high confidence" would be ordered to paste
-    # an unrelated statistical caveat. Every discipline skill carries the false rate, full stop.
-    # WHITESPACE-TOLERANT, for the reason above: the clause wraps in the markdown, so a literal-space
-    # match would red on a skill that CORRECTLY carries it - a guard failing closed against valid input.
-    if ($text -notmatch 'WRONG\s+5\s+TIMES\s+IN\s+14\s+CLAIMS') {
-        Write-Error "$skill : ships confidence without its measured false rate - add the POINTER clause"
-        $failed = $true
-    }
-```
-
-- [ ] **Step 5: Run the suite and the pair gate**
-
-Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Detailed"` → all PASS
-Run: `bash scripts/check-seed-artifacts-synced.sh` → exit 0
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add clavity-dotnet/plugin/skills clavity-classic/plugin/skills scripts/check-agy-discipline-skills.ps1 scripts/tests/check-agy-discipline-skills.Tests.ps1
-git commit -m "feat(skills): 21.3 - confidence is a pointer, with its measured false rate"
-```
+> **`evidence` IS A POINTER, NEVER AUTHORITY. It buys the finding no credit, because the driver is
+> required to re-run every claim before folding it.**
 
 ---
 
@@ -468,12 +433,12 @@ import unicodedata
 #   usage: python check-peer-reply-citations.py <reply.json> <sha> <discipline>
 SCHEMAS = {
     "agy-capstone":   ["seat", "id", "file", "line", "quoted_line",
-                       "claim-type", "confidence", "trigger", "severity", "detail"],
+                       "claim-type", "evidence", "trigger", "severity", "detail"],
     "agy-test-audit": ["seat", "id", "file", "line", "quoted_line",
-                       "claim-type", "confidence", "missing_test", "severity", "detail"],
-    "agy-first":      ["seat", "file", "line", "quoted_line", "claim-type", "confidence", "detail"],
+                       "claim-type", "evidence", "missing_test", "severity", "detail"],
+    "agy-first":      ["seat", "file", "line", "quoted_line", "claim-type", "evidence", "detail"],
     "adversarial-panel-review": ["seat", "file", "line", "quoted_line",
-                                 "claim-type", "confidence", "detail"],
+                                 "claim-type", "evidence", "detail"],
 }
 REQUIRED = ["file", "quoted_line"]
 
@@ -539,13 +504,88 @@ for msg in problems:
 raise SystemExit(1 if problems else 0)
 ```
 
-⚠ **`claim-type` appears in every schema above. It is defined by Task 2** — do Task 2 before Task 4, or
-the checker declares a key the contract does not yet name.
+⚠ **`claim-type` appears in every schema above. It is defined by Task 2** — shipped at `06bc5e0`, so
+this dependency is satisfied.
+
+🔴 **`evidence` REPLACES `confidence` HERE, BY OWNER RULING 2026-09-02 - see the superseded Task 3 for
+why.** The key must be renamed in the same commit that declares the schemas: renaming earlier would have
+the peer emitting a key this checker still rejected, and renaming later leaves the field named for the
+authority it is not supposed to carry. Step 3b ships the rule that says so, into the same two skills.
+
+- [ ] **Step 3b: ship the JSON contract INLINE into the two skills - the half the plan's Files list named but no step performed**
+
+🔴 **ADDED 2026-09-02. Task 4's Files list said "Modify `{dotnet,classic}/.../agy-capstone/SKILL.md` and
+`.../agy-test-audit/SKILL.md`", and not one of its six steps touched them.** The ROADMAP requirement is
+that the JSON ships **INLINE** - in the skill the peer is driven by - and a checker with no contract in
+the skills validates a shape nothing ever told the peer to emit. Without this step Task 4 would ship the
+reader and leave the contract unwritten, which is the "field no rule reads" defect inverted.
+
+This is also where the owner's 2026-09-02 ruling lands: the `evidence` rule ships in the SAME commit as
+the schema that defines the field, which is the whole reason Task 3 was folded in here.
+
+Anchor on the LAST paragraph of Task 1's block, which begins `**The `>` is load-bearing, not
+formatting.**` - verified present exactly once in all 8 files at `06bc5e0`. Insert AFTER it.
+
+**Into `agy-capstone/SKILL.md`, BOTH halves:**
+
+```markdown
+**Demand the JSON block in your payload too**, after the prose report and before the terminal token:
+
+> Emit one fenced `json` block: an ARRAY of row objects, one per finding. These keys are DECLARED by this
+> discipline and no others are accepted - `seat`, `id`, `file`, `line`, `quoted_line`, `claim-type`,
+> `evidence`, `trigger`, `severity`, `detail`. `file` and `quoted_line` are REQUIRED in every row.
+> `quoted_line` must be a VERBATIM line from `file`; the driver locates by that text and treats `line` as
+> untrusted. `evidence` is `measured` or `reasoned`. Phrase `trigger` as a FALSIFIABLE PREDICTION -
+> "removing X leaves the suite green" - because that phrasing is what makes a refutation mechanical.
+
+**`evidence` IS A POINTER, NEVER AUTHORITY. It buys the finding no credit, because the driver is required
+to re-run every claim before folding it.** The field earns its place by naming WHICH MUTANT to run first,
+not by attesting to anything. It is deliberately NOT called `confidence`: that word projects epistemic
+authority a peer's self-report cannot carry, and a prose rule saying "ignore what this word means" would
+have to win that argument on every single run. `evidence: measured` states a PROCESS, which is checkable.
+
+The driver validates the block with
+`python scripts/check-peer-reply-citations.py <reply.json> <sha> agy-capstone`, which rejects any key
+this discipline did not declare.
+```
+
+**Into `agy-test-audit/SKILL.md`, BOTH halves:** identical, except the two discipline-specific parts -
+`missing_test` replaces `trigger` in the key list, the FALSIFIABLE PREDICTION sentence reads
+`Phrase `missing_test` as the test's NAME and what it ASSERTS`, and the command names `agy-test-audit`.
+
+⚠ **Only these two skills.** `agy-first` and `adversarial-panel-review` have `SCHEMAS` entries in the
+checker but no inline contract here, deliberately: they are consult and panel disciplines whose replies
+are prose. Declaring a schema the skill never asks for is exactly the referent-free rule that killed
+Task 3 - do NOT "for consistency" paste this block into them.
+
+- [ ] **Step 3c: add the rename-enforcing rows to the suite**
+
+Two more `It` blocks in `scripts/tests/check-peer-reply-citations.Tests.ps1`. The rename is the owner's
+ruling; without a row it is a convention, not a contract:
+
+```powershell
+    It 'accepts `evidence` as the declared pointer key' {
+        $r = New-Reply '[{"file":"justfile","quoted_line":"test-scripts-fast:","evidence":"reasoned"}]'
+        & $script:Py $script:Checker $r HEAD 'agy-test-audit' 2>&1 | Out-Null
+        $LASTEXITCODE | Should -Be 0
+    }
+
+    It 'REJECTS the retired key `confidence` - the rename is enforced, not merely documented' {
+        $r = New-Reply '[{"file":"justfile","quoted_line":"test-scripts-fast:","confidence":"measured"}]'
+        $out = & $script:Py $script:Checker $r HEAD 'agy-test-audit' 2>&1
+        $LASTEXITCODE | Should -Be 1
+        ($out -join "`n") | Should -Match 'confidence'
+    }
+```
+
+⚠ **The suite is now EIGHT rows, not six.** `test-suite-registration.Tests.ps1` re-runs Pester discovery
+per suite and compares the COUNT, so the `_partition.md` figure must say 8. **Count the `It` blocks you
+actually wrote rather than copying any number from this plan** - that figure has already gone stale once.
 
 - [ ] **Step 4: Run the suite to verify it passes, then PROVE the normalisation row can fail**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-peer-reply-citations.Tests.ps1 -Output Detailed"`
-Expected: 6 passed, 0 failed.
+Expected: 8 passed, 0 failed (or 8 SKIPPED if python is absent - read which).
 
 🔴 **THEN PROVE THE NORMALISATION ROW CAN FAIL - and note this test was SIMPLIFIED, deliberately.**
 
@@ -576,10 +616,10 @@ In `justfile`, append to the chosen recipe's array literal:
 `, 'scripts/tests/check-peer-reply-citations.Tests.ps1'`
 
 In `scripts/tests/_partition.md`, add a row to the `## Measured runtimes` fenced block:
-`check-peer-reply-citations.Tests.ps1          <measured>s    6 tests   <- <FAST|SLOW>, added 2026-09-02`
+`check-peer-reply-citations.Tests.ps1          <measured>s    8 tests   <- <FAST|SLOW>, added 2026-09-02`
 
-⚠ **SIX, not three - and the count is mechanically enforced.** The suite grew from 3 rows to 6 during
-review and this figure went stale with it. `test-suite-registration.Tests.ps1` re-runs Pester discovery
+⚠ **EIGHT, not six, and not three - and the count is mechanically enforced.** The suite grew 3 -> 6 during
+review, and Step 3c adds the two rename rows. This figure has now gone stale TWICE. `test-suite-registration.Tests.ps1` re-runs Pester discovery
 per suite and compares the COUNT, so a stale number reds the gate. **Count the `It` blocks you actually
 wrote, do not copy this figure.**
 
