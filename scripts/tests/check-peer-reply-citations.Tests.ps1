@@ -244,16 +244,22 @@ Describe 'check-peer-reply-citations' {
         # rather than detection. The old pin read the source line's own characters, so it would have
         # gone RED on exactly that improvement: it asserted the bytes, not the meaning.
         #
+        # IT REFUSES TO GUESS, capstone R8, and it had to: the first version used re.search, which takes
+        # the FIRST match. MEASURED - a correct decoy placed in the module docstring above a BROKEN
+        # runtime assignment made this row PASS while certifying nothing. That is the third time in this
+        # capstone that a guard reading another file's source text was fooled by a docstring, and the
+        # answer is the same one the owner ruled for the linter: count the assignments, fail unless there
+        # is exactly one. '\s*=\s*' is there so an ordinary formatter pass cannot turn it into a false RED.
         # ast.literal_eval is what makes both forms equivalent to this row. A future maintainer may write
         # the characters literally again and this pin still passes, because it asks what Python BUILDS.
         $checker = Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py'
         $prog = @'
 import ast, io, re, sys
 src = io.open(sys.argv[1], encoding="utf-8").read()
-m = re.search(r"^DASHES = (\(.*?\))", src, re.M)
-if not m:
-    raise SystemExit("no DASHES assignment found")
-print(",".join(str(ord(c)) for c in ast.literal_eval(m.group(1))))
+hits = re.findall(r"^DASHES\s*=\s*(\(.*?\))", src, re.M)
+if len(hits) != 1:
+    raise SystemExit("expected exactly ONE DASHES assignment, found %d" % len(hits))
+print(",".join(str(ord(c)) for c in ast.literal_eval(hits[0])))
 '@
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ("dashpin-" + [guid]::NewGuid() + ".py")
         [IO.File]::WriteAllText($tmp, $prog); $script:Made.Add($tmp)
@@ -262,6 +268,26 @@ print(",".join(str(ord(c)) for c in ast.literal_eval(m.group(1))))
         $out | Should -Be '8212,8211,8722' -Because 'em dash U+2014, en dash U+2013, minus sign U+2212, in that order'
     }
 
+    It 'FOLDS <name> in the citation onto a plain hyphen in the file' -ForEach @(
+        @{ name = 'an EN DASH';    code = 0x2013 },
+        @{ name = 'a MINUS SIGN'; code = 0x2212 }
+    ) {
+        # AGY-CAPSTONE R8, and this gap was MINE, found by neutering each dash in turn: removing the em
+        # dash reddened a behavioural row AND the codepoint pin, but removing the EN DASH or the MINUS
+        # SIGN reddened ONLY the pin. Two thirds of norm()'s dash folding was pinned by a source-text
+        # assertion and by nothing that ever ran it.
+        #
+        # THE DASH GOES IN THE CITATION, NOT THE FILE, which is what makes these rows possible at all:
+        # no tracked file need contain an en dash or a minus sign. norm() folds BOTH sides, so a citation
+        # written with the dash meets a file line written with a plain hyphen. Drop that dash from DASHES
+        # and the fold stops happening and the citation no longer resolves.
+        $dash    = [string][char]$code
+        $citation = 'test' + $dash + 'scripts-fast:'
+        $r = New-Reply ('[{"file":"justfile","quoted_line":"' + $citation + '"}]')
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 0 -Because "norm() must fold $name onto '-' on the CITATION side; it said: $out"
+        $out | Should -Match 'problem\(s\) across 1 row\(s\), discipline agy-capstone'
+    }
     It 'keeps the checker PURE ASCII, so no byte in it can be mangled in transit' {
         # AGY-CAPSTONE R7. The module's own comment records that this source has been hand-patched
         # through a lossy channel more than once, and the three dash literals were the only non-ASCII
@@ -272,8 +298,13 @@ print(",".join(str(ord(c)) for c in ast.literal_eval(m.group(1))))
         # BYTES, NOT CHARACTERS. Reading the file as text and inspecting the decoded string would answer
         # a question about the decoder; the claim here is about what is ON DISK.
         $checker = Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py'
-        $bad = [IO.File]::ReadAllBytes($checker) | Where-Object { $_ -gt 127 }
-        @($bad).Count | Should -Be 0 -Because 'the checker must contain no byte above 0x7F - write non-ASCII as a \u escape'
+        # NUL TOO, not only the high bytes, capstone R8. MEASURED: a UTF-16LE file with no BOM encodes
+        # an em dash as 0x14 0x20 - every byte under 128 - so a byte-range test alone certifies it as
+        # ASCII. That exact file cannot be a Python script (`SyntaxError: source code cannot contain
+        # null bytes`), so the hole was never reachable; closing it costs one comparison, which is less
+        # than the sentence explaining why it was left open.
+        $bad = [IO.File]::ReadAllBytes($checker) | Where-Object { $_ -eq 0 -or $_ -gt 127 }
+        @($bad).Count | Should -Be 0 -Because 'the checker must contain no NUL and no byte above 0x7F - write non-ASCII as a \u escape'
     }
 
     It 'REPORTS a missing required key <key> instead of crashing on it' -ForEach @(

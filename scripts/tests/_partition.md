@@ -601,7 +601,14 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
-check-peer-reply-citations.Tests.ps1             46,1s   32 tests   <- SLOW, added 2026-09-02
+check-peer-reply-citations.Tests.ps1             49,2s   34 tests   <- SLOW, added 2026-09-02
+  COUNT RAISED 2026-09-02 by AGY-CAPSTONE R8, 32 -> 34, the last round. The dash pin added one commit
+  earlier was itself fooled by a docstring decoy - MEASURED, it passed while certifying a broken
+  runtime value - so it now counts the assignments and refuses to guess, the same answer the owner
+  ruled for the linter. Two BEHAVIOURAL rows were added for the en dash and the minus sign: neutering
+  either reddened ONLY the codepoint pin before, so two thirds of norm()'s folding was pinned by a
+  source-text assertion and by nothing that ever ran it. The dash goes in the CITATION, so no tracked
+  file needs to contain one.
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R7, 31 -> 32, and one existing row was rewritten. The three
   dash literals are now \u ESCAPES, so the checker is PURE ASCII and the corruption vector its own
   comment records is removed rather than merely detected. The pin moved with them: it evaluates the
