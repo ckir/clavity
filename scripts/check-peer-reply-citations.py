@@ -122,6 +122,7 @@ if not isinstance(rows, list):
     raise SystemExit("reply root must be a JSON ARRAY of row objects, got %s" % type(rows).__name__)
 
 problems = []
+blobs = {}          # file -> normalised lines, or None when the file could not be read
 for idx, row in enumerate(rows, 1):
     if not isinstance(row, dict):
         problems.append("row %d: expected an object, got %s" % (idx, type(row).__name__))
@@ -129,9 +130,16 @@ for idx, row in enumerate(rows, 1):
     if not check_row_schema(row, idx, declared, problems):
         continue        # record it and move on - never index a key just reported missing
     claimed = norm(row["quoted_line"])
-    blob = subprocess.run(["git", "show", "%s:%s" % (sha, row["file"])],
-                          capture_output=True, text=True, encoding="utf-8")
-    if blob.returncode != 0:
+    # ONE `git show` PER FILE, NOT PER ROW. Capstone R3: every row citing the same file spawned its own
+    # identical subprocess and re-normalised the same blob, so a reply citing twenty lines of one file
+    # paid twenty process launches for one distinct read. Keyed on the file alone - `sha` is fixed for
+    # the whole run - and the normalised lines are cached, not the raw text, so norm() runs once per line
+    # rather than once per line per row.
+    if row["file"] not in blobs:
+        r = subprocess.run(["git", "show", "%s:%s" % (sha, row["file"])],
+                           capture_output=True, text=True, encoding="utf-8")
+        blobs[row["file"]] = [norm(l) for l in r.stdout.splitlines()] if r.returncode == 0 else None
+    if blobs[row["file"]] is None:
         problems.append("row %d: cannot read %s at %s" % (idx, row["file"], sha))
         continue
     # LOCATE BY CONTENT, NOT BY LINE NUMBER. The contract treats line numbers as untrusted - a peer
@@ -141,7 +149,7 @@ for idx, row in enumerate(rows, 1):
     # splitlines(), NOT a split on an escaped newline. An escape in this exact line was mangled in transit
     # twice and shipped a literal newline inside the string literal - a SyntaxError that crashes the
     # checker on every invocation. splitlines() needs no escape, so the class cannot recur.
-    if not any(norm(line) == claimed for line in blob.stdout.splitlines()):
+    if claimed not in blobs[row["file"]]:
         problems.append("row %d: quoted_line not found in %s at %s: %s"
                         % (idx, row["file"], sha, ascii(row["quoted_line"])))
 

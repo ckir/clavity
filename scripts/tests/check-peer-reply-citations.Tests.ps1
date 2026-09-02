@@ -21,6 +21,18 @@ BeforeAll {
         try { $null = & $cand --version 2>&1; if ($LASTEXITCODE -eq 0) { $script:Py = $cand } } catch { }
     }
 
+    # SKIP LOCALLY, FAIL IN CI - capstone R3, class 4. Skipping is right on a developer box without
+    # python; it is a FALSE SAFETY PROMISE on a runner, because Pester exits 0 on a skipped test, so a CI
+    # job missing the interpreter reports this suite GREEN while executing none of it. The gate would
+    # certify a checker it never ran. A missing dependency is a broken runner, not a passing build.
+    if (-not $script:Py -and $env:CI) {
+        throw ('python is required by this suite and is not on PATH. In CI a missing dependency must ' +
+               'FAIL rather than skip: a skipped suite exits 0 and reports GREEN while testing nothing.')
+    }
+    if (-not $script:Py) {
+        Write-Warning 'python not found - this suite will SKIP. Acceptable locally; it would FAIL in CI.'
+    }
+
     $script:Made = [System.Collections.Generic.List[string]]::new()
     function New-Reply { param([string]$Json)
         $p = Join-Path ([IO.Path]::GetTempPath()) ("reply-" + [guid]::NewGuid() + ".json")
