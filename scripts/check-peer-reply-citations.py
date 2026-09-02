@@ -119,8 +119,22 @@ declared = SCHEMAS[discipline]
 # driver has nothing to hand back to the peer that would let it correct its own reply.
 # ValueError, not JSONDecodeError - the latter is a subclass, and naming the parent also covers the
 # decoder variants a future Python may raise.
+#
+# AND THE SAME CLASS ONE LAYER FURTHER OUT AGAIN, which is now the FOURTH place this module has had to
+# stop a disguised crash: the ValueError guard covers what json.load raises about the CONTENT, but
+# io.open raises first and raises something else entirely. MEASURED at f3ea3e9: a reply path that does
+# not exist printed a raw FileNotFoundError traceback, and a path naming a directory printed a raw
+# PermissionError one, both exiting 1 - the driver's own typo reported as "problems found" with no
+# problem list, exactly like the three before it. OSError is the parent of both, and of the
+# IsADirectoryError a POSIX box raises where Windows raises PermissionError.
+#
+# The `with` is load-bearing too, not tidiness: the old form leaked the handle on every successful run,
+# and CPython only closed it because refcounting happened to.
 try:
-    rows = json.load(io.open(reply_path, encoding="utf-8"))
+    with io.open(reply_path, encoding="utf-8") as fh:
+        rows = json.load(fh)
+except OSError as exc:
+    raise SystemExit("cannot read the reply file %s: %s" % (ascii(reply_path), ascii(str(exc))))
 except ValueError as exc:
     raise SystemExit("reply is not valid JSON: %s" % ascii(str(exc)))
 

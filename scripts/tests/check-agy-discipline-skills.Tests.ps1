@@ -7,8 +7,25 @@ BeforeAll {
     # test that perturbs ONE skill fails on THAT defect, not on a MISSING sibling (SP-B: once
     # 'agy-capstone' joined $skills, a fixture staging only agy-first exited 1 for MISSING agy-capstone,
     # silently losing its discriminating power).
+    # EVERY temp directory this file stages is tracked and swept, mirroring the $script:Made list in the
+    # sibling suite scripts/tests/check-peer-reply-citations.Tests.ps1, whose comment states the same rule.
+    # AGY-CAPSTONE 2026-09-02 measured why it was needed here: 20 New-ScratchRoot call sites, 3 try/finally
+    # blocks and NO AfterAll, so 17 sites ended in a bare `Remove-Item $scratch` that a failing assertion
+    # never reaches - Pester's `Should` THROWS, aborting the It block. A two-arm control settled it: a
+    # passing row of this exact shape removed its directory, a failing row left its directory on disk.
+    #
+    # BOTH MAKERS ARE TRACKED, not just the scratch roots. The reviewing peer's objection to a
+    # roots-only sweep was correct as far as it went - New-TempLinter stages directories too - so the list
+    # is shared and both helpers add to it. The per-row `Remove-Item` and the three try/finally blocks
+    # STAY: they keep a passing run from holding twenty roots at once, and this sweep exists only for the
+    # rows that fail. The residual the peer named is real and accepted: a hard Ctrl+C bypasses AfterAll
+    # where a CLR finally would still run, which loses the same directories the developer is already
+    # abandoning the run over.
+    $script:TempDirs = [System.Collections.Generic.List[string]]::new()
+
     function New-ScratchRoot {
         $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("agyskilltest-" + [guid]::NewGuid())
+        $script:TempDirs.Add($scratch)
         # FOUR, not three. The 13b discipline-mandate check runs over adversarial-panel-review too, so a
         # scratch root without it makes EVERY rejection test below fail on a MISSING sibling rather than
         # on its own defect - the precise discriminating-power loss the comment above records.
@@ -33,6 +50,7 @@ BeforeAll {
     function New-TempLinter {
         param([string]$Source, [string]$Checker = 'real')
         $dir = Join-Path ([IO.Path]::GetTempPath()) ("lintdir-" + [guid]::NewGuid().ToString('N'))
+        $script:TempDirs.Add($dir)
         New-Item -ItemType Directory -Path $dir | Out-Null
         $lint = Join-Path $dir 'lint-copy.ps1'
         Set-Content -Path $lint -Value $Source -NoNewline -Encoding utf8
@@ -77,6 +95,15 @@ BeforeAll {
         ''
         '> Put nothing after the terminal token.'
     ) -join "`n") + "`n"
+}
+
+# The sweep the 17 bare-Remove-Item rows never reach when an assertion throws. Idempotent by design: a
+# row that already cleaned up leaves a path that is simply gone, which -ErrorAction SilentlyContinue
+# absorbs, exactly as the sibling suite's AfterAll does.
+AfterAll {
+    foreach ($d in $script:TempDirs) {
+        Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Describe 'check-agy-discipline-skills' {
@@ -544,6 +571,62 @@ Describe 'check-agy-discipline-skills' {
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'declares no SCHEMAS entry'
                 $out | Should -Not -Match 'names a checker that is not there' -Because 'the registry must be PRESENT for this row to reach the entry check'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    Context 'AGY-CAPSTONE 2026-09-02: the roster itself, which nothing reconciled' {
+        # Every guard in this file asks whether a LISTED discipline is well-formed. None asked whether the
+        # list is COMPLETE, so a fifth discipline skill added to the tree and forgotten in
+        # $disciplineNames was linted by nothing while the gate still exited 0. The mutant method cannot
+        # surface this class at all - there was no branch to neuter, which is precisely why it survived an
+        # audit that neutered every branch there was.
+        #
+        # THE ORACLE IS THE REGISTRY, NOT THE FOLDER LISTING. Discovering skills from disk was measured
+        # and rejected: the tree holds SEVEN skill folders and only four are disciplines, so discovery
+        # emitted 38 diagnostics against ls-driving, ls-pairing and open-issues and turned the gate red.
+
+        It 'REJECTS a SCHEMAS entry that the roster never checks' {
+            # Direction one: the registry grows a discipline and the linter is not told. Without the
+            # reconciliation the gate stays green while that discipline's skill file is read by nothing.
+            $py = Get-Content -Raw (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py')
+            $anchor = '    "agy-first":'
+            $py.Contains($anchor) | Should -BeTrue -Because 'the registry entry used as the insertion anchor must exist verbatim'
+            $extra = $py.Replace($anchor, "    `"agy-negotiate`":  [`"seat`", `"file`", `"quoted_line`"],`n$anchor")
+            $extra | Should -Not -Be $py -Because 'the phantom registry entry must take effect'
+
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $extra
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 1
+                $out | Should -Match 'declares SCHEMAS entries this linter never checks: agy-negotiate'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'REJECTS a roster name the registry does not declare' {
+            # Direction two, and it is a SEPARATE Fail rather than the mirror image: this one fires when a
+            # discipline is added to the linter but never registered, so every reply it produces would be
+            # validated against nothing. Asserted separately because one guard covering both directions
+            # would pass on whichever half happens to fire.
+            $realSrc = Get-Content -Raw $script:Lint
+            $needle  = "`$disciplineNames = `$skills + @('adversarial-panel-review')"
+            $realSrc.Contains($needle) | Should -BeTrue -Because 'the roster line must match the real linter verbatim'
+            $mutated = $realSrc.Replace($needle, "`$disciplineNames = `$skills + @('adversarial-panel-review', 'agy-phantom')")
+            $mutated | Should -Not -Be $realSrc -Because 'the phantom roster name must take effect'
+
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source $mutated -Checker real
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 1
+                $out | Should -Match 'declares no SCHEMAS entry for: agy-phantom'
             } finally {
                 Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
                 Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue

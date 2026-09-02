@@ -271,4 +271,25 @@ Describe 'check-peer-reply-citations' {
             $out | Should -Match $key -Because "$key is not declared for $discipline and must be named in the rejection"
         }
     }
+
+    It 'REPORTS a reply PATH it cannot open instead of a traceback - <label>' -ForEach @(
+        @{ label = 'no such file'; path = 'no/such/reply.json' },
+        @{ label = 'a directory';  path = 'scripts' }
+    ) {
+        # AGY-CAPSTONE 2026-09-02, and this is the FOURTH layer of the same disguised-crash class in one
+        # file. The guards already here cover the reply's CONTENT: a non-list root, a non-string nested
+        # value, and malformed JSON syntax. All three sit behind json.load - and io.open runs first and
+        # raises something json.load never does. MEASURED before the fix: a path that does not exist
+        # printed a raw FileNotFoundError traceback and a path naming a directory printed a raw
+        # PermissionError one, each exiting 1, so the driver's own typo read as "problems found" with the
+        # problem list never printed.
+        #
+        # BOTH SHAPES, because the exception differs by platform as well as by cause: Windows raises
+        # PermissionError for a directory where a POSIX box raises IsADirectoryError. OSError is the
+        # parent of all three, which is what the guard names.
+        $out = ((& $script:Py $script:Checker $path HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'cannot read the reply file'
+        $out | Should -Not -Match 'Traceback' -Because 'an unopenable reply path must be REPORTED, never raised'
+    }
 }

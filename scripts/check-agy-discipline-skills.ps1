@@ -224,6 +224,42 @@ foreach ($skill in $disciplineNames) {
     }
 }
 
+# ---------------------------------------------------------------------------------------------------
+# THE ROSTER ITSELF, which nothing checked until AGY-CAPSTONE 2026-09-02. Every guard above asks whether
+# a LISTED discipline is well-formed; not one asks whether the list is complete. Add a fifth discipline
+# skill and forget $disciplineNames and this gate exits 0 having read none of it - a guard that fails
+# open certifies exactly what it stopped checking, and an absence has no line for a reviewer to quote.
+#
+# THE ORACLE IS THE REGISTRY, NOT THE FOLDER LISTING, and the difference was measured rather than
+# assumed. The reviewing peer proposed discovering skills with Get-ChildItem over the skills directory.
+# Run: that fixture holds SEVEN skills, and only four are disciplines - ls-driving, ls-pairing and
+# open-issues carry no verdict tokens, no transports and no marker constant, so discovery produced 38
+# diagnostics and turned a green gate red on three files it was never meant to read. A correct finding
+# with a fix that regresses the thing it fixes.
+#
+# SCHEMAS is the right source of truth because it is already the deliberate one: check-peer-reply-
+# citations.py exits on a discipline it does not declare ("add it to SCHEMAS deliberately, never by
+# defaulting"), so a fifth discipline must be registered there before it can be validated at all. This
+# reconciles the two sides in the one direction the per-skill oracle above cannot see - it runs FOR each
+# name in the roster, so a name absent from the roster is a question it never gets asked.
+$checkerPath = Join-Path $PSScriptRoot 'check-peer-reply-citations.py'
+if (-not (Test-Path -LiteralPath $checkerPath)) {
+    Fail "roster reconciliation: the checker is not at $checkerPath, so the roster cannot be reconciled"
+} else {
+    $registry = [regex]::Matches((Get-Content -Raw $checkerPath), '(?m)^\s{4}"(?<name>[^"]+)":\s*\[') |
+                ForEach-Object { $_.Groups['name'].Value }
+    $onlyInRegistry = @($registry | Where-Object { $_ -notin $disciplineNames })
+    $onlyInRoster   = @($disciplineNames | Where-Object { $_ -notin $registry })
+    if ($onlyInRegistry.Count -gt 0) {
+        Fail ("roster reconciliation: check-peer-reply-citations.py declares SCHEMAS entries this linter never checks: " +
+              ($onlyInRegistry -join ', ') + " - add them to `$disciplineNames or drop the entries")
+    }
+    if ($onlyInRoster.Count -gt 0) {
+        Fail ("roster reconciliation: this linter checks disciplines the checker declares no SCHEMAS entry for: " +
+              ($onlyInRoster -join ', ') + " - add the entries or drop them from `$disciplineNames")
+    }
+}
+
 if ($fail) { Write-Error 'agy-discipline skill lint FAILED' -ErrorAction Continue; exit 1 }
 Write-Output 'agy-discipline skills OK'
 exit 0

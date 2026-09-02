@@ -601,7 +601,11 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
-check-peer-reply-citations.Tests.ps1             38,6s   27 tests   <- SLOW, added 2026-09-02
+check-peer-reply-citations.Tests.ps1             41,8s   29 tests   <- SLOW, added 2026-09-02
+  COUNT RAISED 2026-09-02 by the AGY-CAPSTONE over the audit's own fold, 27 -> 29. Two rows for
+  the FOURTH layer of one disguised-crash class in this file: the three guards already here all
+  sit behind json.load, and io.open runs first. A reply path that does not exist printed a raw
+  FileNotFoundError traceback; a path naming a directory printed a PermissionError one.
   COUNT RAISED AGAIN 2026-09-02 by AGY-TEST-AUDIT, 18 -> 27. Nine rows for five MEASURED coverage
   gaps: a missing required key, an unreadable file, malformed JSON SYNTAX (which was a SOURCE
   defect - a raw traceback - not merely an untested branch), and the agy-first and
@@ -685,7 +689,15 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            38,9s   66 tests   <- FAST, re-measured 2026-09-02
+check-agy-discipline-skills.Tests.ps1            58,6s   68 tests   <- FAST, re-measured 2026-09-02
+  COUNT RAISED 2026-09-02 by the AGY-CAPSTONE, 66 -> 68: nothing reconciled the ROSTER itself.
+  Every guard asked whether a LISTED discipline is well-formed; none asked whether the list was
+  complete, and the mutant method could not surface it because there was no branch to neuter.
+  THE DURATION FLAG BELOW IS NOW SHARPER, NOT RESOLVED. This row read 6,6s at 43 tests on
+  2026-08-05; one warm solo run today gave 58,6s at 68, against 35,0-41,9s across five runs at
+  66. The two rows added here each spawn a child pwsh, which is the bulk of the delta. The box
+  was NOT idle and I claim no more than the figure. A ~59s suite in the FAST half is an owner
+  partition call, and the fast half is cap-adjacent - it measured 445/0 in 413,03s at d528328.
   COUNT RAISED 2026-09-02 by AGY-TEST-AUDIT, 59 -> 66: four Fail branches had NO reddening row
   (the sanctioned-scratch guard, the strictness line, the checker-absent branch and the
   registry-entry branch), each confirmed by neutering it and seeing the suite stay at 59/0.
