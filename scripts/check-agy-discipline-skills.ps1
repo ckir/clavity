@@ -81,6 +81,26 @@ foreach ($skill in $skills) {
     # BOTH HALVES ARE REQUIRED, and the negative one alone would have a hole. "The old word must not
     # appear" is satisfied by DELETING the sentence outright, so the positive half pins the replacement
     # and the negative half pins the rename back. The suite carries one rejection row for each.
+    # (h) 21.4 the INLINE JSON reply contract, in EXACTLY the two disciplines that declare a schema in
+    # scripts/check-peer-reply-citations.py. agy-first and adversarial-panel-review have SCHEMAS entries
+    # but reply in prose, and pasting the contract into them "for consistency" would recreate the
+    # referent-free rule that got the whole of Task 3 withdrawn: a rule about a field the skill never asks
+    # for.
+    #
+    # The second check is the one that catches a COPY-PASTE. These two blocks differ in three places, and
+    # the discipline name in the checker invocation is the one that silently does the wrong thing: a
+    # capstone brief naming agy-test-audit validates its rows against the AUDIT's keys, so `trigger` is
+    # rejected and `missing_test` waved through, with nothing anywhere reporting a mismatch.
+    if ($skill -in @('agy-capstone', 'agy-test-audit')) {
+        if ($raw -notmatch '(?m)^\*\*Demand the JSON block in your payload too\*\*') {
+            Fail "$rel : missing the inline JSON reply contract - the checker would be validating a shape nothing ever told the peer to emit"
+        }
+        $invocation = 'check-peer-reply-citations.py <reply.json> <sha> ' + $skill
+        if (-not $raw.Contains($invocation)) {
+            Fail "$rel : does not name its OWN checker invocation ('$invocation') - a discipline citing another's schema name validates against the wrong keys and reports nothing"
+        }
+    }
+
     if ($skill -eq 'agy-capstone') {
         if ($raw -match '(?m)survives disposition as a real') {
             Fail "$rel : the PEER-side axis must be named claim-type, not disposition - 'defect' is not one of the five AGY-SCOPE disposition tokens"

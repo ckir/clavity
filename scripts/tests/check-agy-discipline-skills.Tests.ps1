@@ -253,6 +253,41 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
+        It 'REJECTS <skill> when the inline JSON reply contract is stripped' -ForEach @(
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' }
+        ) {
+            # The checker validates a schema; this contract is what TELLS the peer to emit it. Ship one
+            # without the other and the reader is validating a shape nothing ever asked for.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real -replace '(?m)^\*\*Demand the JSON block in your payload too\*\*.*$', ''
+            $body | Should -Not -Be $real -Because 'the strip must take effect, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'inline JSON reply contract'
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS a skill that names ANOTHER discipline in its checker invocation' {
+            # THE COPY-PASTE ROW. The two contracts differ in three places and this is the difference that
+            # fails silently: an audit brief naming agy-capstone has its rows validated against the
+            # CAPSTONE's keys, so `missing_test` is rejected and `trigger` waved through, and no output
+            # anywhere says the wrong schema was used.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'agy-test-audit'
+            $real = Get-Content -Raw $target
+            $body = $real.Replace('<reply.json> <sha> agy-test-audit', '<reply.json> <sha> agy-capstone')
+            $body | Should -Not -Be $real -Because 'the cross-wire must take effect'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'does not name its OWN checker invocation'
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'REJECTS agy-capstone when the claim-type sentence is DELETED outright' {
             # The row above only catches a RENAME back. A guard that is purely negative ("the old word must
             # not appear") goes green on an empty file, so this row deletes the sentence instead and

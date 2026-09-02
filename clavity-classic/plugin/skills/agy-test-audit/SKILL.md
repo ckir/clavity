@@ -71,6 +71,31 @@ clause governs the PEER's reply, so unmarked it reads as a rule about your own o
 what it says nor what it is for, and in at least one of these disciplines contradicts a rule about when
 you emit a token at all. `scripts/check-agy-discipline-skills.ps1` pins the marker, not just the words.
 
+**Demand the JSON block in your payload too**, after the prose report and before the terminal token:
+
+> Emit one fenced `json` block: an ARRAY of row objects, one per gap. These keys are DECLARED by this
+> discipline and no others are accepted - `seat`, `id`, `file`, `line`, `quoted_line`, `claim-type`,
+> `evidence`, `missing_test`, `severity`, `detail`. `file` and `quoted_line` are REQUIRED in every row.
+> `quoted_line` must be a VERBATIM line from `file`; the driver locates by that text and treats `line` as
+> untrusted. `evidence` is `measured` or `reasoned`. `missing_test` is the test's NAME and what it
+> ASSERTS - a specification, never code, because the driver authors every test itself.
+
+**`evidence` IS A POINTER, NEVER AUTHORITY. It buys the finding no credit, because the driver is required
+to re-run every claim before folding it.** The field earns its place by naming WHICH MUTANT to run first,
+not by attesting to anything. It is deliberately NOT called `confidence`: that word projects an epistemic
+authority a peer's self-report cannot carry, and a prose rule telling the peer to ignore what the word
+means would have to win that argument on every single run. `evidence: measured` states a PROCESS, which
+is checkable.
+
+The driver validates the block with
+`python scripts/check-peer-reply-citations.py <reply.json> <sha> agy-test-audit`, which rejects any key
+this discipline did not declare - so a peer cannot widen its own contract by inventing a field.
+
+**`missing_test` is this discipline's slot, and `trigger` is the capstone's.** MEASURED: the checker
+once hardcoded a single ten-key list including `trigger`, an audit brief used `missing_test`, every row
+failed on SCHEMA, and the citation check silently never ran while the brief asserted citations were
+"checked mechanically". That is why each discipline now declares its own keys.
+
 **On clavity-classic neither parameter exists** - `clavity ask --review-only` does not carry them. Still
 demand the echo, but verify it by eye: no automatic verdict will arrive.
 
