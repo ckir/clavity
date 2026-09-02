@@ -162,9 +162,23 @@ for idx, row in enumerate(rows, 1):
     # the whole run - and the normalised lines are cached, not the raw text, so norm() runs once per line
     # rather than once per line per row.
     if row["file"] not in blobs:
+        # errors="replace", and this is the FIFTH layer of the disguised-crash class in this module.
+        # MEASURED at df14515 with a reply citing a tracked .bin: strict utf-8 decoding of git show's
+        # output raised UnicodeDecodeError INSIDE subprocess's reader THREAD, which is worse than a
+        # plain crash - the thread died, r.stdout came back None, and the main thread then died on
+        # None.splitlines() with an AttributeError. Two tracebacks, exit 1, and the problem list never
+        # printed. A peer citing a binary file is not exotic: the repository tracks several .bin
+        # fixtures and the contract invites a citation from anywhere in the tree.
+        #
+        # Replacing undecodable bytes rather than raising is the right answer, not a workaround: a
+        # binary file HAS no verbatim line to cite, so the citation should be REPORTED as unresolved -
+        # which is exactly what a blob of replacement characters produces.
         r = subprocess.run(["git", "show", "%s:%s" % (sha, row["file"])],
-                           capture_output=True, text=True, encoding="utf-8")
-        blobs[row["file"]] = [norm(l) for l in r.stdout.splitlines()] if r.returncode == 0 else None
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        # `r.stdout is None` is belt-and-braces against the same shape returning by another route: it
+        # is precisely the value that turned a decode failure into a second, unrelated traceback.
+        ok = r.returncode == 0 and r.stdout is not None
+        blobs[row["file"]] = [norm(l) for l in r.stdout.splitlines()] if ok else None
     if blobs[row["file"]] is None:
         problems.append("row %d: cannot read %s at %s" % (idx, row["file"], sha))
         continue

@@ -632,6 +632,61 @@ Describe 'check-agy-discipline-skills' {
                 Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
             }
         }
+
+        It 'REFUSES to accept a discipline named only in the checker DOCSTRING' {
+            # AGY-CAPSTONE R2, and this row exists because the guard above FAILED OPEN in its first
+            # form. Scanning the whole .py for a four-space-indented '"name": [' reconciled a phantom
+            # named in the module docstring as though it were registered: the linter exited 0 while the
+            # checker itself exits "unknown discipline" on that name at runtime.
+            #
+            # MEASURED across three smuggle shapes before the fix. Only the DOCSTRING body smuggles -
+            # '#' at column 0 fails '^\s{4}"', and four spaces then '#' fails it too - so this row pins
+            # the one shape that was reachable. The fix scopes the scan to the 'SCHEMAS = {' block.
+            $py = Get-Content -Raw (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py')
+            $docLine = 'Exit 0 = every row matched its schema and every quoted_line resolved; 1 = at least one problem.'
+            $py.Contains($docLine) | Should -BeTrue -Because 'the docstring line used as the injection anchor must exist verbatim'
+            $smuggled = $py.Replace($docLine, $docLine + "`n`nExample of a registry row:`n    `"agy-phantom`": [`"seat`"]")
+            $smuggled | Should -Not -Be $py -Because 'the docstring injection must take effect'
+
+            $realSrc = Get-Content -Raw $script:Lint
+            $needle  = "`$disciplineNames = `$skills + @('adversarial-panel-review')"
+            $realSrc.Contains($needle) | Should -BeTrue -Because 'the roster line must match the real linter verbatim'
+            $mutated = $realSrc.Replace($needle, "`$disciplineNames = `$skills + @('adversarial-panel-review', 'agy-phantom')")
+
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source $mutated -Checker $smuggled
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 1
+                $out | Should -Match 'declares no SCHEMAS entry for: agy-phantom' -Because 'a name that appears only in the docstring is NOT registered, and the reconciliation must say so'
+                $out | Should -Not -Match 'could not locate' -Because 'the SCHEMAS block is present and parseable in this fixture; this row must isolate the smuggle from the block-not-found branch'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'FAILS CLOSED, and says so, when the SCHEMAS block cannot be located at all' {
+            # A separate Fail from the two reconciliation branches, because an unparseable registry and
+            # an empty one are indistinguishable by their effect: both would report every roster name as
+            # unregistered - a true red for a false reason, sending the reader after four phantom
+            # mismatches instead of the one real problem.
+            $py = Get-Content -Raw (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py')
+            $py.Contains('SCHEMAS = {') | Should -BeTrue -Because 'the block opener must be present to be removed'
+            $noBlock = $py.Replace('SCHEMAS = {', 'SCHEMAS = dict(')
+
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noBlock
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 1
+                $out | Should -Match "could not locate the 'SCHEMAS = \{' block"
+                $out | Should -Not -Match 'declares no SCHEMAS entry for:' -Because 'the block-not-found branch suppresses the second diagnostic deliberately; four phantom mismatches would bury the real cause'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
     }
 }
 

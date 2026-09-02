@@ -246,8 +246,31 @@ $checkerPath = Join-Path $PSScriptRoot 'check-peer-reply-citations.py'
 if (-not (Test-Path -LiteralPath $checkerPath)) {
     Fail "roster reconciliation: the checker is not at $checkerPath, so the roster cannot be reconciled"
 } else {
-    $registry = [regex]::Matches((Get-Content -Raw $checkerPath), '(?m)^\s{4}"(?<name>[^"]+)":\s*\[') |
-                ForEach-Object { $_.Groups['name'].Value }
+    # SCOPED TO THE SCHEMAS BLOCK, and capstone R2 measured why the unscoped version was worse than
+    # useless. Scanning the whole file for a four-space-indented '"name": [' made this guard FAIL OPEN:
+    # a phantom discipline named in the module DOCSTRING was reconciled clean and the gate exited 0,
+    # while the checker itself exits "unknown discipline" on it at runtime - a gate certifying a
+    # discipline the tool it guards would refuse. Measured across three smuggle shapes: the docstring
+    # body smuggles, and both comment forms do NOT ('#' at column 0 fails '^\s{4}"', and four spaces
+    # then '#' fails it too), so the docstring is the whole of the reachable surface. I had convinced
+    # myself this failed CLOSED; the reviewing peer said open, and it was right.
+    #
+    # Bounding the scan is not the same as parsing Python, and this comment is the honest statement of
+    # what remains: a string literal INSIDE the block at exactly four spaces would still smuggle. The
+    # block holds only key/list pairs, so that shape has nowhere to live - but it is a text scan, not an
+    # import, and it cannot be one: this module parses sys.argv at top level, so importing it to ask for
+    # SCHEMAS.keys() would run the script.
+    $blockMatch = [regex]::Match((Get-Content -Raw $checkerPath), '(?ms)^SCHEMAS\s*=\s*\{(?<body>.*?)^\}')
+    if (-not $blockMatch.Success) {
+        # FAILS CLOSED, deliberately. An unparseable registry is indistinguishable from an empty one,
+        # and an empty one would report every roster name as unregistered - a true red for a false
+        # reason. Say which it is.
+        Fail "roster reconciliation: could not locate the 'SCHEMAS = {' block in $checkerPath, so the roster cannot be reconciled at all"
+        $registry = $disciplineNames        # suppress the misleading second diagnostic
+    } else {
+        $registry = [regex]::Matches($blockMatch.Groups['body'].Value, '(?m)^\s{4}"(?<name>[^"]+)":\s*\[') |
+                    ForEach-Object { $_.Groups['name'].Value }
+    }
     $onlyInRegistry = @($registry | Where-Object { $_ -notin $disciplineNames })
     $onlyInRoster   = @($disciplineNames | Where-Object { $_ -notin $registry })
     if ($onlyInRegistry.Count -gt 0) {

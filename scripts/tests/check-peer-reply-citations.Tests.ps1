@@ -292,4 +292,30 @@ Describe 'check-peer-reply-citations' {
         $out | Should -Match 'cannot read the reply file'
         $out | Should -Not -Match 'Traceback' -Because 'an unopenable reply path must be REPORTED, never raised'
     }
+
+    It 'REPORTS a citation to a BINARY file instead of dying in a reader thread' {
+        # AGY-CAPSTONE R2, and this is the FIFTH layer of the same disguised-crash class in this file -
+        # the first one that was not even in the main thread. MEASURED at df14515 with a reply citing a
+        # tracked .bin fixture: strict utf-8 decoding of `git show`'s output raised UnicodeDecodeError
+        # inside subprocess's reader THREAD, the thread died, r.stdout came back None, and the main
+        # thread then died on None.splitlines() with an AttributeError. TWO tracebacks, exit 1, and the
+        # problem list never printed at all.
+        #
+        # It is not an exotic citation. This repository tracks several .bin fixtures and the reply
+        # contract invites a citation from anywhere in the tree; a peer sweeping a diff can reach one.
+        #
+        # THE ASSERTION IS THAT IT REPORTS, NOT THAT IT RESOLVES. A binary file has no verbatim line to
+        # cite, so 'quoted_line not found' is the correct answer - the defect was never the verdict, it
+        # was that no verdict was reached.
+        $binary = 'clavity-dotnet/tests/Clavity.Ls.Tests/TestData/GetCascadeTrajectory.bin'
+        (& git cat-file -e "HEAD:$binary" 2>&1) | Out-Null
+        $LASTEXITCODE | Should -Be 0 -Because "the fixture $binary must exist at HEAD for this row to exercise the decode path"
+
+        $r = New-Reply ('[{"file":"' + $binary + '","quoted_line":"anything"}]')
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'quoted_line not found'
+        $out | Should -Match '1 problem\(s\) across 1 row\(s\)' -Because 'the problem LIST must be reached and printed, which is the half the crash destroyed'
+        $out | Should -Not -Match 'Traceback' -Because 'an undecodable blob must be REPORTED, never raised'
+    }
 }

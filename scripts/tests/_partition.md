@@ -601,7 +601,11 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
-check-peer-reply-citations.Tests.ps1             41,8s   29 tests   <- SLOW, added 2026-09-02
+check-peer-reply-citations.Tests.ps1             43,9s   30 tests   <- SLOW, added 2026-09-02
+  COUNT RAISED 2026-09-02 by AGY-CAPSTONE R2, 29 -> 30. A citation to a BINARY file killed this
+  checker in a way none of the four earlier guards could reach: strict utf-8 decoding of git
+  show's output raised inside subprocess's reader THREAD, r.stdout came back None, and the main
+  thread died on None.splitlines(). Two tracebacks, exit 1, problem list never printed.
   COUNT RAISED 2026-09-02 by the AGY-CAPSTONE over the audit's own fold, 27 -> 29. Two rows for
   the FOURTH layer of one disguised-crash class in this file: the three guards already here all
   sit behind json.load, and io.open runs first. A reply path that does not exist printed a raw
@@ -689,7 +693,16 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            58,6s   68 tests   <- FAST, re-measured 2026-09-02
+check-agy-discipline-skills.Tests.ps1            60,2s   70 tests   <- FAST, re-measured 2026-09-02
+  COUNT RAISED 2026-09-02 by AGY-CAPSTONE R2, 68 -> 70. The roster reconciliation added in R1
+  FAILED OPEN in its first form: it scanned the whole .py for a four-space-indented key, so a
+  phantom discipline named in the module DOCSTRING reconciled clean and the gate exited 0. Only
+  the docstring body smuggles - both comment forms fail the anchor - and the scan is now bounded
+  to the 'SCHEMAS = {' block, with a third row for the block-not-found branch that fails closed.
+  THE DURATION FLAG STANDS AND GREW AGAIN: 60,2s at 70 tests in one warm solo run, against the
+  6,6s this row carried from 2026-08-05 at 43 tests. The box was NOT idle. A ~60s suite in the
+  cap-adjacent FAST half is an owner partition call; the fast half measured 445/0 in 413,03s at
+  d528328 and every row added since spawns a child pwsh.
   COUNT RAISED 2026-09-02 by the AGY-CAPSTONE, 66 -> 68: nothing reconciled the ROSTER itself.
   Every guard asked whether a LISTED discipline is well-formed; none asked whether the list was
   complete, and the mutant method could not surface it because there was no branch to neuter.
