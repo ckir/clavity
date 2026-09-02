@@ -53,8 +53,13 @@ Describe 'check-peer-reply-citations' {
 
     It 'accepts a reply whose keys match the DISCIPLINE-declared schema' {
         $r = New-Reply '[{"file":"justfile","quoted_line":"test-scripts-fast:","missing_test":"x"}]'
-        & $script:Py $script:Checker $r HEAD 'agy-test-audit' 2>&1 | Out-Null
+        # ASSERT THE SUMMARY, NOT ONLY THE EXIT CODE. Capstone R6 measured it: replacing this checker
+        # with nothing but `sys.exit(0)` left SEVEN of thirty rows green, because every success path
+        # piped stdout to Out-Null and asked only for exit 0, which a no-op satisfies. The summary line
+        # is the cheapest proof the checker actually walked the rows it was handed.
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-test-audit' 2>&1) -join "`n")
         $LASTEXITCODE | Should -Be 0
+        $out | Should -Match 'problem\(s\) across \d+ row\(s\), discipline agy-test-audit'
     }
 
     It 'REJECTS a key the discipline did not declare - the peer cannot widen its own contract' {
@@ -94,8 +99,13 @@ Describe 'check-peer-reply-citations' {
         # "### <section> - A mockable clock (`TimeProvider`) in `AgyView` - ..." with backticks and a
         # trailing clause. Verified verbatim at HEAD before use, which is why this one is short.
         $r = New-Reply '[{"file":"clavity-dotnet/ROADMAP.md","quoted_line":"# clavity umbrella - ROADMAP"}]'
-        & $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1 | Out-Null
+        # ASSERT THE SUMMARY, NOT ONLY THE EXIT CODE. Capstone R6 measured it: replacing this checker
+        # with nothing but `sys.exit(0)` left SEVEN of thirty rows green, because every success path
+        # piped stdout to Out-Null and asked only for exit 0, which a no-op satisfies. The summary line
+        # is the cheapest proof the checker actually walked the rows it was handed.
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
         $LASTEXITCODE | Should -Be 0 -Because 'normalisation must absorb a dash difference rather than call it drift'
+        $out | Should -Match 'problem\(s\) across \d+ row\(s\), discipline agy-capstone'
     }
 
     It 'resolves an indented citation WHETHER OR NOT the peer reproduced the indent' -ForEach @(
@@ -111,8 +121,13 @@ Describe 'check-peer-reply-citations' {
         # A WHOLE line, not a prefix: the checker compares whole lines, so the plan's original fixture
         # (a prefix of justfile's 2,000-character Invoke-Pester line) could never have matched.
         $r = New-Reply ('[{"file":"justfile","quoted_line":"' + $quoted + '"}]')
-        & $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1 | Out-Null
+        # ASSERT THE SUMMARY, NOT ONLY THE EXIT CODE. Capstone R6 measured it: replacing this checker
+        # with nothing but `sys.exit(0)` left SEVEN of thirty rows green, because every success path
+        # piped stdout to Out-Null and asked only for exit 0, which a no-op satisfies. The summary line
+        # is the cheapest proof the checker actually walked the rows it was handed.
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
         $LASTEXITCODE | Should -Be 0 -Because "a citation with the indent $label must resolve"
+        $out | Should -Match 'problem\(s\) across \d+ row\(s\), discipline agy-capstone'
     }
 
     It 'REPORTS a non-list JSON root instead of crashing - <label>' -ForEach @(
@@ -159,8 +174,13 @@ Describe 'check-peer-reply-citations' {
 
     It 'accepts `evidence` as the declared pointer key' {
         $r = New-Reply '[{"file":"justfile","quoted_line":"test-scripts-fast:","evidence":"reasoned"}]'
-        & $script:Py $script:Checker $r HEAD 'agy-test-audit' 2>&1 | Out-Null
+        # ASSERT THE SUMMARY, NOT ONLY THE EXIT CODE. Capstone R6 measured it: replacing this checker
+        # with nothing but `sys.exit(0)` left SEVEN of thirty rows green, because every success path
+        # piped stdout to Out-Null and asked only for exit 0, which a no-op satisfies. The summary line
+        # is the cheapest proof the checker actually walked the rows it was handed.
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-test-audit' 2>&1) -join "`n")
         $LASTEXITCODE | Should -Be 0
+        $out | Should -Match 'problem\(s\) across \d+ row\(s\), discipline agy-test-audit'
     }
 
     It 'REJECTS the retired key `confidence` - the rename is enforced, not merely documented' {
@@ -226,7 +246,7 @@ Describe 'check-peer-reply-citations' {
         $r = New-Reply '[{"file":"no/such/file.md","quoted_line":"anything"}]'
         $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
         $LASTEXITCODE | Should -Be 1
-        $out | Should -Match 'cannot read no/such/file\.md'
+        $out | Should -Match "cannot read 'no/such/file\.md'"   # ascii() quotes the path - capstone R6
         $out | Should -Not -Match 'Traceback' -Because 'an unreadable file must be REPORTED, never raised'
     }
 
@@ -269,6 +289,9 @@ Describe 'check-peer-reply-citations' {
         $LASTEXITCODE | Should -Be $expect
         if ($expect -eq 1) {
             $out | Should -Match $key -Because "$key is not declared for $discipline and must be named in the rejection"
+        } else {
+            # The ACCEPTING half needs the summary too, or a no-op checker satisfies it (capstone R6).
+            $out | Should -Match "problem\(s\) across \d+ row\(s\), discipline $discipline"
         }
     }
 
@@ -293,6 +316,31 @@ Describe 'check-peer-reply-citations' {
         $out | Should -Not -Match 'Traceback' -Because 'an unopenable reply path must be REPORTED, never raised'
     }
 
+    It 'REPORTS a FILE PATH that the console cannot encode, instead of crashing on it' {
+        # AGY-CAPSTONE R6, and it is a class-4 False Safety Promise as much as a crash. The module's own
+        # comment says EVERY message echoing peer-supplied text uses ascii() - and row["file"] was
+        # interpolated RAW into two of them while quoted_line and the schema keys were wrapped. MEASURED:
+        # a reply whose FILE path carries U+2212, run with PYTHONIOENCODING=cp1252 (the measured console
+        # encoding on this box), died with UnicodeEncodeError and printed no problem list - exit 1 either
+        # way, which is what makes it nasty, exactly like the three crashes this module already guards.
+        #
+        # THE ENVIRONMENT VARIABLE IS THE FIXTURE. Without it Python may use a wide-character path and
+        # absorb the character, so a row that did not force the encoding would pass against the broken
+        # code and prove nothing.
+        $r = New-Reply '[{"file":"no/such/file\u2212here.md","quoted_line":"anything"}]'
+        $old = $env:PYTHONIOENCODING
+        try {
+            $env:PYTHONIOENCODING = 'cp1252'
+            $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+            $LASTEXITCODE | Should -Be 1
+            $out | Should -Match 'cannot read'
+            $out | Should -Match 'u2212' -Because 'ascii() must escape the character rather than hand it to a codec that cannot encode it'
+            $out | Should -Not -Match 'UnicodeEncodeError' -Because 'an unencodable path must be REPORTED, never raised'
+            $out | Should -Match 'problem\(s\) across' -Because 'the problem LIST must be reached, which is the half the crash destroyed'
+        } finally {
+            $env:PYTHONIOENCODING = $old
+        }
+    }
     It 'REPORTS a citation to a BINARY file instead of dying in a reader thread' {
         # AGY-CAPSTONE R2, and this is the FIFTH layer of the same disguised-crash class in this file -
         # the first one that was not even in the main thread. MEASURED at df14515 with a reply citing a

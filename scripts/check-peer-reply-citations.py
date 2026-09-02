@@ -95,7 +95,13 @@ def check_row_schema(row, idx, declared, problems):
 
 
 
-# EVERY message that echoes peer-supplied text uses ascii(), never the repr conversion.
+# EVERY message that echoes peer-supplied text uses ascii(), never the repr conversion - and capstone
+# R6 caught this comment LYING. `quoted_line` and the schema keys were wrapped; `row["file"]`, which is
+# peer-supplied in exactly the same way, was interpolated raw into two of them. MEASURED: a reply whose
+# FILE path carries U+2212, run with PYTHONIOENCODING=cp1252, died with UnicodeEncodeError and printed
+# no problem list - the identical failure this paragraph was written to describe, in the one place the
+# paragraph did not cover. A comment asserting a guard that is only partly there is worse than no
+# comment: it is the reason nobody re-checked.
 # MEASURED on this box: stdout is cp1252, which can encode an em dash but NOT U+2212 MINUS SIGN - so a
 # citation carrying one made this checker die with a UnicodeEncodeError traceback instead of reporting the
 # drift. Exit status 1 either way, which is what makes it nasty: the run looks like "problems found" while
@@ -180,7 +186,7 @@ for idx, row in enumerate(rows, 1):
         ok = r.returncode == 0 and r.stdout is not None
         blobs[row["file"]] = [norm(l) for l in r.stdout.splitlines()] if ok else None
     if blobs[row["file"]] is None:
-        problems.append("row %d: cannot read %s at %s" % (idx, row["file"], sha))
+        problems.append("row %d: cannot read %s at %s" % (idx, ascii(row["file"]), sha))
         continue
     # LOCATE BY CONTENT, NOT BY LINE NUMBER. The contract treats line numbers as untrusted - a peer
     # reading a diff computes them from hunk headers and gets them wrong - so the quoted text IS the
@@ -191,7 +197,7 @@ for idx, row in enumerate(rows, 1):
     # checker on every invocation. splitlines() needs no escape, so the class cannot recur.
     if claimed not in blobs[row["file"]]:
         problems.append("row %d: quoted_line not found in %s at %s: %s"
-                        % (idx, row["file"], sha, ascii(row["quoted_line"])))
+                        % (idx, ascii(row["file"]), sha, ascii(row["quoted_line"])))
 
 for msg in problems:
     print(msg)

@@ -601,7 +601,14 @@ discipline-reaching-report.Tests.ps1              6,2s   31 tests   <- FAST. Was
                                                                       capstone tests are not in it.
 scripts-readme-inventory.Tests.ps1                0,1s    3 tests   <- FAST, re-measured 2026-08-05
 gitignore-policy.Tests.ps1                        6,6s    4 tests   <- FAST, added 2026-09-02
-check-peer-reply-citations.Tests.ps1             43,9s   30 tests   <- SLOW, added 2026-09-02
+check-peer-reply-citations.Tests.ps1             47,3s   31 tests   <- SLOW, added 2026-09-02
+  COUNT RAISED 2026-09-02 by AGY-CAPSTONE R6, 30 -> 31, and the OTHER change to this suite matters
+  more than the count. Seven of its thirty rows piped stdout to Out-Null and asserted only exit 0;
+  MEASURED, they all stayed GREEN against a checker replaced by nothing but sys.exit(0). Every
+  success path now also asserts the summary line, and the same mutant reddens 30 of 30. The new row
+  pins a class-4 False Safety Promise: the module claimed EVERY message wraps peer text in ascii()
+  while row["file"] went in raw, and a path carrying U+2212 under PYTHONIOENCODING=cp1252 died with
+  UnicodeEncodeError and printed no problem list.
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R2, 29 -> 30. A citation to a BINARY file killed this
   checker in a way none of the four earlier guards could reach: strict utf-8 decoding of git
   show's output raised inside subprocess's reader THREAD, r.stdout came back None, and the main
