@@ -465,7 +465,7 @@ Describe 'check-agy-discipline-skills' {
             Set-Content -Path (Join-Path $pdir 'SKILL.md') -Value $script:PhantomSkill -NoNewline -Encoding utf8
 
             try {
-                $guardOut = & pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1
+                $guardOut = & $tmpLint -Root $scratch 2>&1
                 $LASTEXITCODE | Should -Be 1
                 $text = Get-LintText $guardOut
                 $text | Should -Match 'no required-verdict set mapped'
@@ -546,7 +546,7 @@ Describe 'check-agy-discipline-skills' {
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker none
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'names a checker that is not there'
             } finally {
@@ -567,7 +567,7 @@ Describe 'check-agy-discipline-skills' {
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noEntry
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'declares no SCHEMAS entry'
                 $out | Should -Not -Match 'names a checker that is not there' -Because 'the registry must be PRESENT for this row to reach the entry check'
@@ -601,7 +601,7 @@ Describe 'check-agy-discipline-skills' {
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $extra
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'declares SCHEMAS entries this linter never checks: agy-negotiate'
             } finally {
@@ -624,7 +624,7 @@ Describe 'check-agy-discipline-skills' {
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source $mutated -Checker real
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'declares no SCHEMAS entry for: agy-phantom'
             } finally {
@@ -656,7 +656,7 @@ Describe 'check-agy-discipline-skills' {
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source $mutated -Checker $smuggled
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'declares no SCHEMAS entry for: agy-phantom' -Because 'a name that appears only in the docstring is NOT registered, and the reconciliation must say so'
                 $out | Should -Not -Match 'could not locate' -Because 'the SCHEMAS block is present and parseable in this fixture; this row must isolate the smuggle from the block-not-found branch'
@@ -678,7 +678,7 @@ Describe 'check-agy-discipline-skills' {
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $noBlock
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match "did not find exactly ONE 'SCHEMAS = \{' assignment"
                 $out | Should -Match 'unparseable' -Because 'this fixture removes the block entirely, so the diagnostic must name that cause alongside duplication'
@@ -725,7 +725,7 @@ Example of a registry row:
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $withDecoy
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'key list does not match SCHEMAS' -Because 'the drifted REAL entry must be the one read, not the decoy above it'
                 $out | Should -Match 'smuggled' -Because 'the diagnostic must name the keys from the REAL entry, which is how this row distinguishes the two sources'
@@ -753,7 +753,7 @@ Example of a registry row:
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $indented
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 0 -Because 'an indented closing brace is valid Python and must not break the registry read'
                 $out | Should -Not -Match 'exactly ONE'
             } finally {
@@ -791,7 +791,7 @@ SCHEMAS = {
             $scratch = New-ScratchRoot
             $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $twoBlocks
             try {
-                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $out = Get-LintText (& $tmpLint -Root $scratch 2>&1)
                 $LASTEXITCODE | Should -Be 1
                 $out | Should -Match 'exactly ONE' -Because 'an ambiguous registry must be refused, not guessed at'
                 $out | Should -Match 'DUPLICATED' -Because 'the diagnostic must name duplication as a cause; "could not locate" sent the reader looking for a missing block that is present twice'

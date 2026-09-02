@@ -93,8 +93,7 @@ foreach ($skill in $skills) {
         # frontmatter parser downstream is YAML's, not this regex's, and a mismatched pair is that
         # parser's problem to report, not a shape this gate should invent an opinion about.
         # \x22 is the REGEX escape for a double quote, not a PowerShell one. Writing the character
-        # literally terminates this double-quoted string and the file stops parsing - which is how the
-        # first version of this line shipped for about ninety seconds.
+        # literally would terminate this double-quoted string and the whole file would stop parsing.
         if ($Matches['fm'] -notmatch "(?m)^name:\s*[\x22']?$skill[\x22']?\s*$") {
             Fail "$rel : frontmatter 'name:' must equal '$skill'"
         }
@@ -316,8 +315,15 @@ if (-not (Test-Path -LiteralPath $checkerPath)) {
     # while the checker itself exits "unknown discipline" on it at runtime - a gate certifying a
     # discipline the tool it guards would refuse. Measured across three smuggle shapes: the docstring
     # body smuggles, and both comment forms do NOT ('#' at column 0 fails '^\s{4}"', and four spaces
-    # then '#' fails it too), so the docstring is the whole of the reachable surface. I had convinced
-    # myself this failed CLOSED; the reviewing peer said open, and it was right.
+    # then '#' fails it too). I had convinced myself this failed CLOSED; the reviewing peer said open,
+    # and it was right.
+    #
+    # THAT MEASUREMENT ENUMERATED THREE SHAPES, NOT EVERY SHAPE, and an earlier version of this comment
+    # over-claimed by calling the docstring "the whole of the reachable surface" - false, because any
+    # triple-quoted literal can hold the same text, not only a module docstring. It no longer matters
+    # WHERE the text lives: Get-SchemasBlock counts the assignments and refuses to guess when there is
+    # more than one, so a decoy is caught by arithmetic rather than by having been anticipated. The
+    # location claim is recorded as history, and nothing depends on it.
     #
     # Bounding the scan is not the same as parsing Python, and this comment is the honest statement of
     # what remains: a string literal INSIDE the block at exactly four spaces would still smuggle. The

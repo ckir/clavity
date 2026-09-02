@@ -693,7 +693,16 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            86,6s   75 tests   <- FAST, re-measured 2026-09-02
+check-agy-discipline-skills.Tests.ps1            40,5s   75 tests   <- FAST, re-measured 2026-09-02
+  RUNTIME MORE THAN HALVED 2026-09-02 by AGY-CAPSTONE R5, 86,6s -> 40,5s, with the row count and
+  every result unchanged at 75/0. Ten sites were spawning a child pwsh per row to run a staged copy
+  of the linter; MEASURED, `& $tmpLint` runs it in-process, $PSScriptRoot still resolves to the
+  staged directory, and `exit` sets $LASTEXITCODE without touching the host runspace. Two warm solo
+  runs: 40,49s and 40,42s. The box was NOT idle and the spread is indicative, not a controlled
+  figure. The earlier 86,6s was one warm run under the same uncontrolled conditions.
+  DISCRIMINATION WAS RE-VERIFIED, not assumed: the uniqueness mutant still reddens exactly its own
+  row in-process, and that row went 4,63s -> 1,04s. The FAST-half question stands but is no longer
+  urgent - the suite costs roughly what it did at 43 tests.
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R4, 72 -> 75: a decoy 'SCHEMAS = {' BLOCK in the module
   docstring was read as the registry (the R3 smuggle one level up), and two strict anchors produced
   LOUD FALSE REDS on valid input - a quoted YAML name and an indented markdown blockquote.
