@@ -260,3 +260,69 @@ was standard shell semantics. Each was captured honestly — the `.git/index` en
 cause as UNCONFIRMED — but each would have been promoted as a code defect on the strength of correlation
 alone. What settled all of them was reading the code, not re-running the scenario. **Correlation with a
 long-running suite is not evidence about that suite; it is evidence about which window was widest.**
+
+---
+
+## Isolation probes - NOT capstones
+
+**These rows are deliberately kept out of the table above, whose header says "One row per capstone."** An
+isolation probe answers "is this mechanism the one doing the work?", which is a different and much weaker
+claim than a capstone's. Filing one as a capstone row would quietly make the table mean two things.
+
+### 2026-09-02 - does the anti-wrap-up clause isolate as the mechanism? **NO. NEGATIVE RESULT.**
+
+**What was asked.** ROADMAP work on the peer reply contract rested on a clause that was strongly
+SUPPORTED as the mechanism but never ISOLATED: the rounds whose reports were displaced by a closing
+pleasantry differed from the successful probes in more than that one sentence. Phase 1 Task 5 exists to
+run the missing comparison.
+
+**Design.** Two arms, `.clavity/seams/task5-isolation-arm-with.md` and `...-arm-without.md`. Arm B was
+generated from arm A by deleting exactly one paragraph in code, with an assertion that the deletion
+applied; `diff -u` between the two briefs is **a single hunk, four lines plus its blank**, and nothing
+else differs - including the ask-don't-guess line that closes both. Both briefs demanded a 4-row census,
+findings, a `[VERIFIED: ...]` block, **closing disclosures**, and a terminal token, in that order. The
+closing-disclosure requirement is the point: it manufactures the exact ordering conflict the clause exists
+to resolve. Both arms omitted `discipline` and `artifactPath` on `agy_ask`, so the driver's 13b echo check
+could not add a second required-block-before-the-token and confound the measurement.
+
+**Order was reversed from the plan's, deliberately.** The plan lists WITH first. Contamination is
+asymmetric: a peer that has just been shown the rule and then answers correctly without it proves
+nothing, whereas the control run on a peer that has never seen the rule is clean either way it falls. So
+the control ran first, and it is the arm that carries the result.
+
+**Arm B - WITHOUT the clause (the control, and the informative arm).** `AnswerTruncated: false`,
+`TerminalTokenMissing: false`. **The full body arrived inline**: the 4-row census, two findings with
+dispositions and severity classes, the `[VERIFIED: ...]` block, both closing disclosures, and
+`[VERDICT: FINDINGS]` as the last thing in the reply. ~40 trajectory steps, i.e. it really did open the
+files. **Nothing was displaced, and the clause was absent.**
+
+**Arm A - WITH the clause. Contaminated, contributes nothing.** The answer came back essentially
+character-identical to arm B's in **~6 trajectory steps** against arm B's ~40 - the peer replayed its
+cached analysis rather than re-reading anything. This is the repetition confound that "send the same brief
+twice" makes unavoidable, and it was predicted before the arm ran.
+
+**Conclusion, stated as the plan requires.** **The clause is NOT isolated as the mechanism.** One
+uncontaminated arm, n=1, produced a complete inline body with the token last while the clause was absent.
+That is a datum against the clause being NECESSARY in this condition; it is not a refutation of its value,
+and it is not a licence to remove it. **The honest status is unchanged from before this probe:
+SUPPORTED, NOT ISOLATED** - and now with one negative datum on the record.
+
+**What this probe does NOT settle, stated rather than hidden.** This brief differs from the historically
+failing rounds in more than the clause: a different seat, a different deliverable shape, no 13b
+parameters, and a peer in a different conversation state. A single non-displacing control under those
+conditions cannot show that displacement never happens without the clause - only that it did not happen
+here. Two arms is not a sample.
+
+**Byproduct, and the more valuable half of the run.** The probe was pointed at real code - `d33416c..a72f618`,
+which had had no review - and it surfaced a genuine defect in that commit: the clause shipped as unmarked
+driver-facing prose although it is written in the peer's second person, in files where `> ` marks payload
+text 4 times out of 4. In `agy-capstone` that misreading contradicts `SKILL.md:213`. Folded at `62be727`
+with a passing AND a failing control. The peer's stated MECHANISM was rejected by measurement (it
+described a payload generator that does not exist, and its own closing disclosure flagged that assumption
+as unverified), and two of its four census rows were rejected as reply-vs-report conflations. **A probe
+designed to measure one thing paid for itself by finding another** - which is an argument for pointing
+probes at live code rather than at fixtures.
+
+**Envelope.** Clean in both arms: `git status --short` unchanged (only the owner's untracked `TODO.md`),
+`HEAD` and the reflog tip unmoved at `97bb44b`, and the sanctioned scratch dir
+`.clavity/scratch/task5-isolation/` still empty. No review-only breach.
