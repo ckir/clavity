@@ -61,7 +61,11 @@ Add to `scripts/tests/check-agy-discipline-skills.Tests.ps1`, inside `Describe '
         $root = New-ScratchRoot
         $p = & $script:SkillPath $root 'agy-capstone'
         $txt = [IO.File]::ReadAllText($p)
-        $mutated = $txt -replace '(?m)^Put nothing after the terminal token.*$', ''
+        # THE ANCHOR IS `**Put`, NOT `Put`. MEASURED in the solo panel: '(?m)^Put nothing...' does NOT
+        # match '**Put nothing...**' while the linter's '(?m)^\*\*Put...' does - so the first draft's
+        # mutant could never apply and this row could never pass. The TEST and the LINTER must agree
+        # about the same string or one of them is guarding nothing.
+        $mutated = $txt -replace '(?m)^\*\*Put nothing after the terminal token\.\*\*.*$', ''
         ($mutated -ne $txt) | Should -BeTrue -Because 'the mutant must actually apply, or this row proves nothing'
         [IO.File]::WriteAllText($p, $mutated)
 
@@ -277,6 +281,13 @@ failed on SCHEMA, and **the citation check silently never ran** — while the br
 
 - [ ] **Step 1: Write the failing test**
 
+🔴 **THE DISCIPLINE DECLARES THE SCHEMA - NOT THE REPLY.** The first draft had each ROW carry a
+`schema` key, which puts the declaration in the hands of the party being checked: the peer declares
+whatever keys it emitted and always passes. That is the "parser loose enough to swallow anything" the
+spec explicitly ruled out - *"a parser that silently ignores schema drift cannot enforce a contract"* -
+and it would have shipped a checker with the same value as the one it replaces. The declaration lives in
+a registry the checker owns; the reply names only WHICH discipline it is.
+
 Create `scripts/tests/check-peer-reply-citations.Tests.ps1`:
 
 ```powershell
@@ -286,6 +297,9 @@ BeforeAll {
     if (-not (Test-Path -LiteralPath $script:Checker -PathType Leaf)) {
         throw "checker not found at $script:Checker - this suite cannot run"
     }
+    # NO EXISTING SUITE IN scripts/tests INVOKES PYTHON - measured 2026-09-02, this is the first.
+    # A missing or Store-stub `python` must SKIP VISIBLY, never fail as though the checker were broken.
+    $script:Py = (Get-Command python -ErrorAction SilentlyContinue)?.Source
     function New-Reply { param([string]$Json)
         $p = Join-Path ([IO.Path]::GetTempPath()) ("reply-" + [guid]::NewGuid() + ".json")
         [IO.File]::WriteAllText($p, $Json); $p
@@ -293,27 +307,40 @@ BeforeAll {
 }
 
 Describe 'check-peer-reply-citations' {
-    It 'accepts a DECLARED schema that is not the ten-key default' {
-        # THE DEFECT THIS SUITE EXISTS FOR: a discipline declaring `missing_test` instead of `trigger`
-        # had every row fail on SCHEMA, so the citation check silently never ran while the brief said
-        # it had. A declared schema must be honoured; an undeclared key must still be rejected.
-        $r = New-Reply '[{"schema":["seat","file","quoted_line","missing_test"],"seat":"1","file":"justfile","quoted_line":"test-scripts-fast:","missing_test":"x"}]'
-        & python $script:Checker $r HEAD 2>&1 | Out-Null
+    BeforeEach {
+        if (-not $script:Py) {
+            Set-ItResult -Skipped -Because 'python is not on PATH, so the checker cannot be exercised here'
+        }
+    }
+
+    It 'accepts a reply whose keys match the DISCIPLINE-declared schema' {
+        $r = New-Reply '[{"discipline":"agy-test-audit","file":"justfile","quoted_line":"test-scripts-fast:","missing_test":"x"}]'
+        & $script:Py $script:Checker $r HEAD 2>&1 | Out-Null
         $LASTEXITCODE | Should -Be 0
     }
 
-    It 'REJECTS a row carrying a key the reply did not declare' {
-        $r = New-Reply '[{"schema":["seat","file","quoted_line"],"seat":"1","file":"justfile","quoted_line":"test-scripts-fast:","smuggled":"x"}]'
-        $out = & python $script:Checker $r HEAD 2>&1
+    It 'REJECTS a key the discipline did not declare - the peer cannot widen its own contract' {
+        $r = New-Reply '[{"discipline":"agy-test-audit","file":"justfile","quoted_line":"test-scripts-fast:","smuggled":"x"}]'
+        $out = & $script:Py $script:Checker $r HEAD 2>&1
         $LASTEXITCODE | Should -Be 1
         ($out -join "`n") | Should -Match 'smuggled'
     }
 
-    It 'normalises a mangled em-dash rather than reporting drift' {
-        # An em-dash arriving mangled already read as drift once. Normalisation is a hard condition.
-        $r = New-Reply '[{"schema":["seat","file","quoted_line"],"seat":"1","file":"justfile","quoted_line":"test-scripts-fast:"}]'
-        & python $script:Checker $r HEAD 2>&1 | Out-Null
-        $LASTEXITCODE | Should -Be 0
+    It 'REJECTS an unknown discipline rather than defaulting to permissive' {
+        $r = New-Reply '[{"discipline":"not-a-discipline","file":"justfile","quoted_line":"x"}]'
+        $out = & $script:Py $script:Checker $r HEAD 2>&1
+        $LASTEXITCODE | Should -Be 1
+        ($out -join "`n") | Should -Match 'not-a-discipline'
+    }
+
+    It 'reports EVERY bad row, not just the first' {
+        # A checker that aborts on row 1 hides all citation drift after it - the same silent-drop shape
+        # as the TEN_KEYS bug this replaces, just relocated.
+        $r = New-Reply '[{"discipline":"agy-capstone","file":"justfile","quoted_line":"NOT A REAL LINE"},{"discipline":"agy-capstone","file":"justfile","quoted_line":"ALSO NOT REAL"}]'
+        $out = ((& $script:Py $script:Checker $r HEAD 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'NOT A REAL LINE'
+        $out | Should -Match 'ALSO NOT REAL' -Because 'aborting on the first bad row hides every later one'
     }
 }
 ```
@@ -321,51 +348,80 @@ Describe 'check-peer-reply-citations' {
 - [ ] **Step 2: Run it and confirm it FAILS**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-peer-reply-citations.Tests.ps1 -Output Detailed"`
-Expected: FAIL — the checker rejects every row on the hardcoded `TEN_KEYS`.
+Expected: FAIL — the checker rejects every row on the hardcoded `TEN_KEYS` and knows nothing of `discipline`.
 
-- [ ] **Step 3: Replace the hardcoded schema with a declared one**
+- [ ] **Step 3: Replace the hardcoded schema with a DISCIPLINE-OWNED registry**
 
 In `scripts/check-peer-reply-citations.py`, replace the `TEN_KEYS` block:
 
 ```python
-# A DECLARED schema, validated STRICTLY against that declaration. NOT a universal key list, and NOT a
-# parser loose enough to swallow anything: "a parser that silently ignores schema drift cannot enforce a
-# contract." Each row names its own `schema`; every other key must appear in it, and the three keys the
-# checker itself reads are always required.
-REQUIRED = ["file", "quoted_line"]
-
-def row_schema(row, idx):
-    declared = row.get("schema")
-    if not isinstance(declared, list) or not declared:
-        raise SystemExit("row %d: no `schema` declared - the contract requires each row to name its keys" % idx)
-    for key in REQUIRED:
-        if key not in declared:
-            raise SystemExit("row %d: declared schema omits required key %r" % (idx, key))
-    for key in row:
-        if key != "schema" and key not in declared:
-            raise SystemExit("row %d: key %r is not in the declared schema" % (idx, key))
-    return declared
-```
-
-and normalise before comparing:
-
-```python
 import unicodedata
 
+# THE CHECKER OWNS THE DECLARATION. A reply names its discipline; it does not get to define what that
+# discipline's rows may contain. Adding a discipline is a deliberate edit HERE, reviewed like any other
+# contract change - which is the whole difference between a declared schema and a permissive parser.
+SCHEMAS = {
+    "agy-capstone":   ["discipline", "seat", "id", "file", "line", "quoted_line",
+                       "claim-type", "confidence", "trigger", "severity", "detail"],
+    "agy-test-audit": ["discipline", "seat", "id", "file", "line", "quoted_line",
+                       "claim-type", "confidence", "missing_test", "severity", "detail"],
+    "agy-first":      ["discipline", "seat", "file", "line", "quoted_line", "claim-type", "confidence", "detail"],
+    "adversarial-panel-review": ["discipline", "seat", "file", "line", "quoted_line",
+                                 "claim-type", "confidence", "detail"],
+}
+REQUIRED = ["discipline", "file", "quoted_line"]
+
+def check_row_schema(row, idx, problems):
+    """Validate one row STRICTLY against its discipline's declared keys. Collects rather than aborts:
+    a checker that exits on the first bad row hides every later citation, which is the same silent-drop
+    failure as the hardcoded key list it replaces."""
+    name = row.get("discipline")
+    if name not in SCHEMAS:
+        problems.append("row %d: unknown discipline %r - add it to SCHEMAS deliberately" % (idx, name))
+        return None
+    declared = SCHEMAS[name]
+    for key in REQUIRED:
+        if key not in row:
+            problems.append("row %d: missing required key %r" % (idx, key))
+    for key in row:
+        if key not in declared:
+            problems.append("row %d: key %r is not declared for discipline %r" % (idx, key, name))
+    return declared
+
 def norm(s):
-    # Mangled non-ASCII already read as drift once. Compare on a normalised form so an em-dash that
-    # survived a codepage round-trip does not masquerade as a citation that moved.
-    return unicodedata.normalize("NFKC", s).replace("—", "-").replace("–", "-").strip()
+    """Mangled non-ASCII already read as citation drift once. Compare on a normalised form so an em-dash
+    that survived a codepage round-trip does not masquerade as a line that moved."""
+    s = unicodedata.normalize("NFKC", s)
+    for dash in ("—", "–", "−"):
+        s = s.replace(dash, "-")
+    return " ".join(s.split())
 ```
 
-- [ ] **Step 4: Run the suite to verify it passes**
+⚠ **`claim-type` appears in every schema above. It is defined by Task 2** — do Task 2 before Task 4, or
+the checker declares a key the contract does not yet name.
+
+- [ ] **Step 4: Run the suite to verify it passes, then PROVE the normalisation row can fail**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-peer-reply-citations.Tests.ps1 -Output Detailed"`
-Expected: 3 passed, 0 failed.
+Expected: 4 passed, 0 failed.
+
+🔴 **THEN CLOSE THE KNOWN-VACUOUS ROW.** Add a fixture whose `quoted_line` carries a real em-dash where
+the file has one, delete `norm()`'s dash replacement, and confirm THAT row goes red. A normalisation row
+asserted against plain ASCII would pass against a checker that normalises nothing — it is the exact
+class this repository keeps paying for, and it is not permitted to ship unproven.
 
 - [ ] **Step 5: Register the new suite — it will otherwise EXIST, PASS and NEVER RUN**
 
-In `justfile`, append to the `test-scripts-fast` array literal:
+🔴 **DECIDE THE HALF BEFORE EDITING, and the default is SLOW.** The fast half measured **493-550s
+against a 600s cap** and already took `gitignore-policy.Tests.ps1` (+6,6s) earlier the same day. This
+plan adds a SECOND suite. Two additions to a half at 92% of a hard cap, neither of them re-measured, is
+how a gate starts timing out - and the failure mode is a red CI run that looks like a broken test.
+**Measure the suite solo first (Step 4 above gives you the figure), then:** if the fast half has not
+been re-measured since 2026-09-02, put this suite in `test-scripts-slow` and say so in the row. The slow
+half is backgrounded and past the cap already, so it absorbs the cost; the fast half has no headroom to
+spend. Moving it later is one line; a cap breach costs a CI cycle to diagnose.
+
+In `justfile`, append to the chosen recipe's array literal:
 `, 'scripts/tests/check-peer-reply-citations.Tests.ps1'`
 
 In `scripts/tests/_partition.md`, add a row to the `## Measured runtimes` fenced block:
@@ -389,9 +445,25 @@ git commit -m "feat(skills): 21.4 - JSON inline with a reader that validates a D
 > SUPPORTED as the mechanism but not ISOLATED — the failing rounds differed from the probes in more than
 > that one sentence."*
 
-- [ ] **Step 1: Run one consult whose brief omits the clause, everything else held constant**
-- [ ] **Step 2: Record whether the body was displaced, in `docs/agy-capstone-ledger.md`**
-- [ ] **Step 3: If the clause is NOT isolated as the mechanism, say so in the ledger** — a supported-but-unisolated claim must not be written up as measured.
+- [ ] **Step 1: Snapshot, then run one consult whose brief omits the clause and is otherwise identical**
+
+```bash
+git status --short > /tmp/panel-before.txt   # the envelope check every consult owes
+```
+Send a brief that is byte-identical to a recent successful round EXCEPT that the anti-wrap-up paragraph
+is deleted. Changing anything else destroys the isolation this task exists to establish.
+
+- [ ] **Step 2: Record the OUTCOME and the FIELD, not an impression**
+
+The mechanism is displacement, not truncation, so record `AnswerTruncated` explicitly — it was `false`
+on all four earlier probes, and reading it is what distinguished the two. Note whether the body arrived
+inline or only a receipt did.
+
+- [ ] **Step 3: Write the result into `docs/agy-capstone-ledger.md`, including a negative one**
+
+If the body arrives intact WITHOUT the clause, the clause is **not** isolated as the mechanism and the
+ledger must say exactly that. A supported-but-unisolated claim written up as measured is the failure
+this whole phase exists to remove — n=1 either way is a datum, not a proof, and the row must say which.
 
 ---
 
@@ -421,6 +493,25 @@ All four skills ship in the installer payload, so by the capstone's own table an
 then capstone** for this change. Do not skip to a quiet edit.
 
 ---
+
+## WHAT THESE GUARDS DO NOT PROVE — state it, or the plan ships a False Safety Promise
+
+Every invariant in this plan proves that **contract TEXT SHIPS**. None of them proves the peer OBEYS it.
+That gap is inherent — the discipline is best-effort prompt-discipline, not a sandbox — but it must be
+written down, because §21 exists precisely to remove a False Safety Promise from our own instructions and
+would be a poor place to introduce a fresh one. The only evidence of obedience is a measured round, which
+is what Task 5 is for and why it is not optional.
+
+## Stand-downs
+
+- `DISCARDED-BELOW-FLOOR: untrusted 'file' value in a reply row reaching the filesystem` — the checker
+  resolves citations through `git show <sha>:<path>`, which is repo-scoped by construction, so a
+  traversal-shaped value cannot escape the object database. Reachable only as a confusing error, never as
+  a read outside the repo.
+- `DISCARDED-BELOW-FLOOR: the anti-wrap-up clause could be pasted anywhere in a 429-line skill and still
+  satisfy its invariant` — position is unenforced, but the clause is peer-facing instruction text that is
+  read whole rather than executed at a location, so a correct paste at the wrong offset changes nothing
+  the peer does. Re-raise if the linter ever gains a position check for any other clause.
 
 ## SELF-AUDIT (run before handing over)
 
