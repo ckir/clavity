@@ -693,7 +693,10 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            60,2s   70 tests   <- FAST, re-measured 2026-09-02
+check-agy-discipline-skills.Tests.ps1            60,0s   72 tests   <- FAST, re-measured 2026-09-02
+  COUNT RAISED 2026-09-02 by AGY-CAPSTONE R3, 70 -> 72. R2 bounded the ROSTER scan to the SCHEMAS
+  block and left the PER-SKILL key-list lookup scanning the whole file, so the same defect class
+  survived one line away from its own fix. Both readers now go through one Get-SchemasBlock helper.
   COUNT RAISED 2026-09-02 by AGY-CAPSTONE R2, 68 -> 70. The roster reconciliation added in R1
   FAILED OPEN in its first form: it scanned the whole .py for a four-space-indented key, so a
   phantom discipline named in the module DOCSTRING reconciled clean and the gate exited 0. Only

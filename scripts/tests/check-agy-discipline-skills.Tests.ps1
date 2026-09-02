@@ -687,6 +687,79 @@ Describe 'check-agy-discipline-skills' {
                 Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
             }
         }
+
+        It 'CATCHES registry drift even when a DECOY key list sits in the docstring' {
+            # AGY-CAPSTONE R3, and this is the SECOND instance of the class R2 found. R2 bounded the
+            # ROSTER scan to the SCHEMAS block and left the PER-SKILL key-list lookup scanning the whole
+            # file, so the same defect survived one line away from its own fix. That is what comes of
+            # folding the instance a reviewer reports instead of enumerating the set.
+            #
+            # THIS IS THE FALSE-GREEN DIRECTION, which is the one that matters. [regex]::Match returns
+            # the FIRST match, so a decoy carrying the CORRECT keys in the docstring is read as the
+            # registry while the REAL entry has drifted. Measured before the fix: the oracle went GREEN
+            # on a registry with an appended key - the exact defect capstone R2 of the previous range
+            # folded, arriving by a different route. The control below, the same drift with no decoy,
+            # was CAUGHT both before and after.
+            $py = Get-Content -Raw (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py')
+
+            # Drift the REAL entry FIRST, while its line is still unique - inserting the decoy would
+            # make this text appear twice and .Replace() would drift both copies.
+            $realLine = '                       "claim-type", "evidence", "trigger", "severity", "detail"],'
+            $py.Contains($realLine) | Should -BeTrue -Because 'the agy-capstone key list must match verbatim to be drifted'
+            $drifted = $py.Replace($realLine, '                       "claim-type", "evidence", "trigger", "severity", "detail", "smuggled"],')
+            $drifted | Should -Not -Be $py -Because 'the registry drift must take effect'
+
+            $docLine = 'Exit 0 = every row matched its schema and every quoted_line resolved; 1 = at least one problem.'
+            $decoy = @'
+
+
+Example of a registry row:
+    "agy-capstone":   ["seat", "id", "file", "line", "quoted_line",
+                       "claim-type", "evidence", "trigger", "severity", "detail"],
+'@
+            $drifted.Contains($docLine) | Should -BeTrue -Because 'the docstring anchor must exist verbatim'
+            $withDecoy = $drifted.Replace($docLine, $docLine + $decoy)
+            $withDecoy | Should -Not -Be $drifted -Because 'the decoy injection must take effect'
+
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $withDecoy
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 1
+                $out | Should -Match 'key list does not match SCHEMAS' -Because 'the drifted REAL entry must be the one read, not the decoy above it'
+                $out | Should -Match 'smuggled' -Because 'the diagnostic must name the keys from the REAL entry, which is how this row distinguishes the two sources'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'LOCATES the SCHEMAS block even when its closing brace is indented' {
+            # AGY-CAPSTONE R3, the reviewer's finding. Anchoring the closer at column 0 assumed a
+            # formatter that never indents it; the block holds only key/list pairs and no nested dict,
+            # so the first line whose content is a closing brace IS the closer at any indent.
+            # Asserted as a PASS rather than a rejection: the point is that an indented brace must NOT
+            # trip the block-not-found branch, and a green run is the only thing that says so.
+            # LINE-ENDING AGNOSTIC, and the first version of this row was not - it anchored on
+            # "`n}`nREQUIRED" and its own precondition assertion caught it, because this .py is CRLF in
+            # the working tree and LF as committed. A regex on the line start touches only the brace and
+            # leaves whatever terminator follows it alone.
+            $py = Get-Content -Raw (Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py')
+            ([regex]::Matches($py, '(?m)^\}')).Count | Should -Be 1 -Because 'exactly one closing brace sits at column 0 - the SCHEMAS closer - so indenting "all of them" indents only it'
+            $indented = $py -replace '(?m)^\}', '    }'
+            $indented | Should -Not -Be $py -Because 'the indent must take effect'
+
+            $scratch = New-ScratchRoot
+            $tmpLint = New-TempLinter -Source (Get-Content -Raw $script:Lint) -Checker $indented
+            try {
+                $out = Get-LintText (& pwsh -NoProfile -File $tmpLint -Root $scratch 2>&1)
+                $LASTEXITCODE | Should -Be 0 -Because 'an indented closing brace is valid Python and must not break the registry read'
+                $out | Should -Not -Match 'could not locate'
+            } finally {
+                Remove-Item -Recurse -Force (Split-Path -Parent $tmpLint) -ErrorAction SilentlyContinue
+                Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
+            }
+        }
     }
 }
 

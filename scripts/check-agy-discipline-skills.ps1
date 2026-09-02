@@ -9,6 +9,26 @@ $ErrorActionPreference = 'Stop'
 $fail = $false
 function Fail($msg) { Write-Error $msg -ErrorAction Continue; $script:fail = $true }
 
+# THE ONE PLACE THAT DECIDES WHAT "THE REGISTRY" MEANS. Both readers of the checker's SCHEMAS map go
+# through here, because capstone R3 measured what happens when they do not: R2 bounded the roster scan to
+# this block and left the per-skill key-list lookup scanning the whole file, so the same defect class
+# survived one line away from its own fix. A shared helper makes "which text counts as the registry" a
+# single answerable question rather than two independent regexes that can drift apart.
+#
+# Returns $null when the block cannot be located, and every caller treats that as a FAILURE rather than
+# as an empty registry - an unparseable map and an empty one have identical effects and opposite causes.
+#
+# '^\s*\}' rather than '^\}', which is capstone R3's finding folded: the reviewer pointed out that
+# anchoring the closing brace at column 0 assumes a formatter that never indents it. The block holds only
+# key/list pairs and no nested dict, so the first line whose content is a closing brace IS the closer at
+# any indent. An inline 'SCHEMAS = {}' still returns $null, which fails closed, which is correct - an
+# empty registry is not a thing this repository can have.
+function Get-SchemasBlock([string]$Path) {
+    $m = [regex]::Match((Get-Content -Raw $Path), '(?ms)^SCHEMAS\s*=\s*\{(?<body>.*?)^\s*\}')
+    if ($m.Success) { return $m.Groups['body'].Value }
+    return $null
+}
+
 # Discipline skills shipped so far. SP-B appended 'agy-capstone'; AGY-TEST-AUDIT appends 'agy-test-audit'.
 $skills = @('agy-first', 'agy-capstone', 'agy-test-audit')
 
@@ -114,7 +134,24 @@ foreach ($skill in $skills) {
         if (-not (Test-Path -LiteralPath $checkerPath)) {
             Fail "$rel : names a checker that is not there - $checkerPath"
         } else {
-            $py = Get-Content -Raw $checkerPath
+            # BOUNDED TO THE SCHEMAS BLOCK, and this is the SECOND instance of a class capstone R2 found
+            # in the sibling guard below. That round bounded the ROSTER scan and left this one scanning
+            # the whole file, so the class survived one line away from its own fix - which is what comes
+            # of folding the instance a reviewer reports instead of enumerating the set.
+            #
+            # MEASURED at b9ea4bf, with a control. [regex]::Match returns the FIRST match, so a decoy
+            # '"agy-capstone": [...]' in the module docstring is read as the registry entry. Both
+            # directions were run: a decoy carrying WRONG keys made the oracle demand them of the
+            # markdown ("expected, in order: wrong, keys, entirely"), and - the direction that matters -
+            # a decoy carrying the CORRECT keys while the REAL entry had an appended key left the oracle
+            # GREEN on a drifted registry. The control, the identical drift with no decoy, was CAUGHT.
+            # A silently-appended key going green is the exact defect capstone R2 of the previous range
+            # folded, arriving by a different route.
+            $py = Get-SchemasBlock $checkerPath
+            if ($null -eq $py) {
+                Fail "$rel : could not locate the 'SCHEMAS = {' block in $checkerPath, so the inline contract cannot be checked against it"
+                continue
+            }
             $m  = [regex]::Match($py, '"' + [regex]::Escape($skill) + '":\s*\[(?<keys>[^\]]*)\]')
             if (-not $m.Success) {
                 Fail "$rel : scripts/check-peer-reply-citations.py declares no SCHEMAS entry for '$skill', so its inline contract is unenforceable"
@@ -260,15 +297,15 @@ if (-not (Test-Path -LiteralPath $checkerPath)) {
     # block holds only key/list pairs, so that shape has nowhere to live - but it is a text scan, not an
     # import, and it cannot be one: this module parses sys.argv at top level, so importing it to ask for
     # SCHEMAS.keys() would run the script.
-    $blockMatch = [regex]::Match((Get-Content -Raw $checkerPath), '(?ms)^SCHEMAS\s*=\s*\{(?<body>.*?)^\}')
-    if (-not $blockMatch.Success) {
+    $blockBody = Get-SchemasBlock $checkerPath
+    if ($null -eq $blockBody) {
         # FAILS CLOSED, deliberately. An unparseable registry is indistinguishable from an empty one,
         # and an empty one would report every roster name as unregistered - a true red for a false
         # reason. Say which it is.
         Fail "roster reconciliation: could not locate the 'SCHEMAS = {' block in $checkerPath, so the roster cannot be reconciled at all"
         $registry = $disciplineNames        # suppress the misleading second diagnostic
     } else {
-        $registry = [regex]::Matches($blockMatch.Groups['body'].Value, '(?m)^\s{4}"(?<name>[^"]+)":\s*\[') |
+        $registry = [regex]::Matches($blockBody, '(?m)^\s{4}"(?<name>[^"]+)":\s*\[') |
                     ForEach-Object { $_.Groups['name'].Value }
     }
     $onlyInRegistry = @($registry | Where-Object { $_ -notin $disciplineNames })
