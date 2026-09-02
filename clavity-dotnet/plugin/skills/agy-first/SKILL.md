@@ -53,6 +53,17 @@ artifact. `[13b] UNCHECKED` - you named no known discipline; shown once per sess
 against the peer's own trajectory - not from any local file - or re-ask AT MOST ONCE, then halt and ask
 your human. An unbounded "re-ask until it passes" reproduces the same mismatch and burns a budget.
 
+**Put nothing after the terminal token.** The token must be the LAST thing in the reply - no summary, no
+"standing by for your feedback", no offer of next steps. MEASURED: several rounds had their ENTIRE report
+displaced by a closing pleasantry, because what the driver collects is the peer's FINAL message. A
+terminal token alone does NOT fix this - every one of those rounds already demanded one.
+
+**Every REQUIRED block comes immediately BEFORE the token, in this order: your report, then any
+`[VERIFIED: ...]` block, then any closing disclosures, then the token.** This is not a style note. Where
+a discipline requires a `[VERIFIED: ...]` block and rules a verdict INVALID without one, the observed
+habit is to place it AFTER the verdict - so "nothing after the token" and "the verdict needs a VERIFIED
+block" would otherwise instruct opposite things, and a peer obeying one would breach the other.
+
 **On clavity-classic neither parameter exists** - `clavity ask --review-only` does not carry them. Still
 demand the echo, but verify it by eye: no automatic verdict will arrive.
 

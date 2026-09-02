@@ -125,6 +125,18 @@ foreach ($skill in $disciplineNames) {
     if (-not $raw.Contains('.clavity/scratch/')) {
         Fail "$rel : names no sanctioned scratch directory (.clavity/scratch/) - a measure-and-reproduce consult would have nowhere to write but cwd"
     }
+
+    # 21.1 the ANTI-WRAP-UP clause. MEASURED: several review rounds had their ENTIRE report displaced by a
+    # closing pleasantry ("standing by for your feedback"), because what the driver collects is the peer's
+    # FINAL message - and every one of those rounds already demanded a terminal token, so the token alone
+    # does not fix it. Enforced across all FOUR disciplines (this loop), not just the three in $skills.
+    #
+    # The needle anchors on '**Put', not 'Put': in (?m) mode '^Put nothing' does NOT match the shipped
+    # '**Put nothing ...**' line. The suite's rejection rows strip the same anchored line, so the test and
+    # this guard agree about one string; if they ever disagree, one of the two is guarding nothing.
+    if ($raw -notmatch '(?m)^\*\*Put nothing after the terminal token\.\*\*') {
+        Fail "$rel : missing the anti-wrap-up clause (**Put nothing after the terminal token.**) - a peer's closing pleasantry can displace its entire report"
+    }
 }
 
 if ($fail) { Write-Error 'agy-discipline skill lint FAILED' -ErrorAction Continue; exit 1 }

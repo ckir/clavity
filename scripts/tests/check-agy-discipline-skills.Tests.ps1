@@ -208,6 +208,31 @@ Describe 'check-agy-discipline-skills' {
             ($out -join "`n") | Should -Match ([regex]::Escape($skill))
             Remove-Item -Recurse -Force $scratch
         }
+
+        It 'REJECTS <skill> when its closer omits the anti-wrap-up clause' -ForEach @(
+            @{ skill = 'agy-first' },
+            @{ skill = 'agy-capstone' },
+            @{ skill = 'agy-test-audit' },
+            @{ skill = 'adversarial-panel-review' }
+        ) {
+            # NON-VACUITY BY CONSTRUCTION: the scratch root holds all four skills, so this fails on the
+            # PERTURBED skill, never on a missing sibling. Perturb exactly one and require exit 1.
+            #
+            # THE ANCHOR IS `**Put`, NOT `Put`. MEASURED in the solo panel: '(?m)^Put nothing...' does NOT
+            # match '**Put nothing...**' while the linter's '(?m)^\*\*Put...' does. THE TEST AND THE LINTER
+            # MUST AGREE ABOUT THE SAME STRING or one of them is guarding nothing.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $body = $real -replace '(?m)^\*\*Put nothing after the terminal token\.\*\*.*$', ''
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'anti-wrap-up'
+            ($out -join "`n") | Should -Match ([regex]::Escape($skill))
+            Remove-Item -Recurse -Force $scratch
+        }
     }
 
     Context 'F3 guard: a skill enrolled in $skills but not mapped in $requiredVerdicts must fail loud' {
