@@ -82,7 +82,13 @@ Expected: FAIL — the mutant precondition reds first (`the mutant must actually
 
 - [ ] **Step 3: Add the clause to all EIGHT files**
 
-Insert as a new paragraph immediately after the paragraph beginning `**A flagged reply is INCOMPLETE, not empty.**` in each of the four skills, then mirror to the classic half:
+Insert as a new paragraph immediately after the paragraph beginning `**A flagged reply is INCOMPLETE, not empty.**` in each of the four skills, **then mirror to the classic half IN THE SAME COMMIT.**
+
+🔴 **BOTH HALVES OR NEITHER - the pair gate is fail-closed.** `check-seed-artifacts-synced.sh`
+compares the two plugin trees and reds the moment they diverge, and it runs on push. Editing the four
+dotnet skills and committing before mirroring leaves the repository in a state that cannot be pushed,
+and the failure surfaces as a sync error rather than as "you forgot the other half". Do all eight files,
+then commit once.
 
 ```markdown
 **Put nothing after the terminal token.** The token must be the LAST thing in the reply - no summary, no
@@ -509,8 +515,13 @@ brief differs from the baseline in FOUR ways and isolates nothing. **Execution o
 ```bash
 git status --short > /tmp/panel-before.txt   # the envelope check every consult owes
 ```
-Send a brief that is byte-identical to a recent successful round EXCEPT that the anti-wrap-up paragraph
-is deleted. Changing anything else destroys the isolation this task exists to establish.
+Send a brief that is byte-identical to a recent successful round **run AFTER Task 1 shipped** - i.e. one
+that CARRIED the clause - except that the anti-wrap-up paragraph is deleted.
+
+🔴 **THE BASELINE ERA IS THE WHOLE EXPERIMENT, and "a recent successful round" is ambiguous
+without it.** Every round before Task 1 also lacked the clause, so deleting it from a pre-Task-1 baseline
+changes nothing and the run measures noise. The comparison that isolates is: rounds WITH the clause
+(post-Task-1, the new normal) against this one deliberate round WITHOUT it. Changing anything else destroys the isolation this task exists to establish.
 
 - [ ] **Step 2: Record the OUTCOME and the FIELD, not an impression**
 
