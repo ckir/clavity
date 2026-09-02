@@ -329,7 +329,15 @@ BeforeAll {
     }
     # NO EXISTING SUITE IN scripts/tests INVOKES PYTHON - measured 2026-09-02, this is the first.
     # A missing or Store-stub `python` must SKIP VISIBLY, never fail as though the checker were broken.
-    $script:Py = (Get-Command python -ErrorAction SilentlyContinue)?.Source
+    # RUN IT, do not merely RESOLVE it. MEASURED on this box: `Get-Command python` returns the
+    # WindowsApps STUB PATH, and a real Python 3.14.5 answers behind it. On a machine WITHOUT python
+    # the same path resolves and launches the Microsoft Store instead, so a `.Source` check proves
+    # nothing either way. Only an actual invocation distinguishes the two.
+    $script:Py = $null
+    $cand = (Get-Command python -ErrorAction SilentlyContinue)?.Source
+    if ($cand) {
+        try { $null = & $cand --version 2>&1; if ($LASTEXITCODE -eq 0) { $script:Py = $cand } } catch { }
+    }
     $script:Made = [System.Collections.Generic.List[string]]::new()
     function New-Reply { param([string]$Json)
         $p = Join-Path ([IO.Path]::GetTempPath()) ("reply-" + [guid]::NewGuid() + ".json")
@@ -445,13 +453,21 @@ def norm(s):
 def check_row_schema(row, idx, declared, problems):
     """Validate ONE row strictly against the discipline's declared keys. COLLECTS rather than aborts: a
     checker that exits on the first bad row hides every later citation, which is the same silent-drop
-    failure as the hardcoded key list it replaces."""
+    failure as the hardcoded key list it replaces.
+
+    RETURNS False when the row cannot be processed further. That return value is load-bearing: an
+    earlier version recorded a missing `quoted_line` and returned nothing, so the caller then indexed the
+    very key it had just reported absent and died on a KeyError - aborting the whole run on row 1 and
+    breaking the exact collect-do-not-abort property this docstring claims."""
+    usable = True
     for key in REQUIRED:
         if key not in row:
             problems.append("row %d: missing required key %r" % (idx, key))
+            usable = False
     for key in row:
         if key not in declared:
             problems.append("row %d: key %r is not declared for this discipline" % (idx, key))
+    return usable
 
 # WIRING. Defining the helpers without calling them would leave the script crashing on the old constant
 # this block replaces - the definitions below are not optional scaffolding.
@@ -463,7 +479,8 @@ rows = json.load(io.open(reply_path, encoding="utf-8"))
 
 problems = []
 for idx, row in enumerate(rows, 1):
-    check_row_schema(row, idx, declared, problems)
+    if not check_row_schema(row, idx, declared, problems):
+        continue        # record it and move on - never index a key just reported missing
     claimed = norm(row["quoted_line"])
     blob = subprocess.run(["git", "show", "%s:%s" % (sha, row["file"])],
                           capture_output=True, text=True, encoding="utf-8")
@@ -491,8 +508,14 @@ Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-peer-reply-citations
 Expected: 6 passed, 0 failed.
 
 🔴 **THEN PROVE THE NORMALISATION ROW CAN FAIL.** The row now exists (`resolves a citation whose only
-difference is a MANGLED EM-DASH`), but a row that exists is not a row that bites. Fill its placeholder
-with a REAL line from a file that genuinely contains an em-dash, presented mangled; then delete `norm()`'s
+difference is a MANGLED EM-DASH`), but a row that exists is not a row that bites. Build the fixture mechanically rather than hunting for one - run this, take the line it prints, and
+replace its em-dash with the mojibake form to get the `quoted_line`:
+
+```bash
+grep -n -m1 -P 'â' clavity-dotnet/ROADMAP.md
+```
+
+Then; then delete `norm()`'s
 dash replacement and confirm **that specific row** goes red - **then RESTORE it and re-run before you
 commit.** The plan previously said to break `norm()` and never said to put it back; a literal
 implementer commits the crippled checker. Every mutation in this plan is temporary: break, observe red,
@@ -556,6 +579,23 @@ git status --short > /tmp/panel-before.txt   # the envelope check every consult 
 1. Send a brief WITH the clause (the post-Task-1 norm). Record whether the body arrived inline.
 2. Send the same brief with the anti-wrap-up paragraph deleted, and nothing else changed. Record the same.
 
+**Delete the paragraph FROM THE PAYLOAD YOU SEND, never from the committed `SKILL.md` files.** The clause
+lives in the skill as an instruction to the DRIVER about what to put in a brief; arm 2 simply omits it
+when composing that brief. An earlier reading of this task had the implementer editing the files Task 1
+had just committed, which leaves a dirty tree carrying into Task 2 - and this task has no business
+mutating the tree at all.
+
+- [ ] **Step 2b: Record BOTH arms in the ledger, and COMMIT them**
+
+```bash
+git add docs/agy-capstone-ledger.md
+git commit -m "docs(ledger): 21.5 - the anti-wrap-up isolation round, both arms"
+```
+
+Without this the result is written and never staged: the execution order runs Task 5 second, and Task 2's
+commit step stages only skill and script files, so the ledger edit would be silently carried along or
+lost.
+
 🔴 **THIS REPLACED A TEMPORAL PARADOX I INTRODUCED WHILE FIXING SOMETHING ELSE.** The previous
 wording demanded a baseline from "a recent successful round run AFTER Task 1 shipped" - while the
 execution order says to run Task 5 IMMEDIATELY after Task 1, when no such round exists yet. Generating
@@ -618,78 +658,15 @@ written down, because §21 exists precisely to remove a False Safety Promise fro
 would be a poor place to introduce a fresh one. The only evidence of obedience is a measured round, which
 is what Task 5 is for and why it is not optional.
 
-## Panel round 1 - dispositions (AGY-AFTER, 2026-09-02)
+## Review record
 
-Solo floor (10 seats) + agy escalation (`code-reviewer` subagent, 10 seats). **16 findings, 15 FOLDED,
-1 REJECTED by measurement.** Verdict of the escalation round: `REQUEST CHANGES`.
+Three AGY-AFTER panel rounds produced ~35 folded corrections. **The full dispositions live in
+`2026-09-02-phase-1-review-record.md`**, deliberately kept out of this file so the plan reads as
+instructions. Two things from it are worth carrying here because they change how you execute:
 
-- `FOLDED: the mutant regex could not match the clause it perturbs` - '^Put' vs '**Put'; test and linter
-  disagreed about one string, so Task 1 could never have passed.
-- `FOLDED: the confidence invariant was conditional on the word it guards` - removable by deletion, and
-  it also treated a common English noun as banned. Now unconditional.
-- `FOLDED: the reply declared its own schema` - the peer declaring what it may emit always passes. Moved
-  to a checker-owned registry.
-- `FOLDED: the checker required a "discipline" key no task ever tells the peer to emit` - it would have
-  rejected 100% of real replies while looking strict. The driver now names the discipline on the CLI.
-- `FOLDED: check_row_schema was defined and never called` - replacing the old constant would have left
-  the script crashing on a deleted name.
-- `FOLDED: norm() flattened leading indentation` - every indented citation would become unresolvable,
-  trading one false-drift class for a larger one. Only trailing whitespace is dropped now.
-- `FOLDED: the checker aborted on the first bad row` - hiding all later drift, the same silent-drop shape
-  as the bug it replaces.
-- `FOLDED: Step 4 demanded proof of a normalisation row that was never written` - the row now exists.
-- `FOLDED: Task 5's isolation is destroyed by any task merging before it` - execution order is 1, 5, 2, 3, 4.
-- `FOLDED: Task 3 Step 3 had no insertion anchor` while Task 1 did.
-- `FOLDED: the "guards prove text, not obedience" claim was too broad` - Task 4 IS an obedience check.
-- `FOLDED: the Pester suite leaked a temp file per row per run` - AfterAll now removes them.
-- `FOLDED: a second suite was going into a cap-adjacent half unmeasured` - defaults to slow.
-- `FOLDED: no suite had ever invoked python` - the new one skips visibly when it is absent.
-- `FOLDED: the plan named no execution order for its own tasks` - now stated explicitly.
-- 🔴 `REJECTED: "Set-ItResult was removed entirely in Pester 5+, so the skip will crash CI"` - **FALSE,
-  killed by measurement.** `Get-Command Set-ItResult` resolves from Pester 6.1.0, and
-  `scripts/tests/check-plugin-drift.Tests.ps1:370` ships a row using it that passed 18/18 the same day.
-
-⚠ **A defect this round found in the REVIEW, not the artifact.** The first fold pass reported success on
-a replacement that silently did not apply, because the script asserted nothing - so a commit message
-claimed a fix that was not in the tree. Root cause, measured: backslash escapes were mangled in transit
-(`` arrived as a backspace byte), so the anchor could never match. **Every fold in this plan is now
-applied under a hard assertion, and one by line surgery rather than string replace.** The lesson is the
-one the repository already knows and it was violated while folding a finding about exactly it: a mutation
-that is not asserted did not happen.
-
-## Panel round 2 - dispositions (AGY-AFTER, 2026-09-02)
-
-Rotation added **State Corruptor** (dropped in round 1) and a bespoke **Execution Order Auditor**,
-because round 1 REWROTE the execution order and nothing had reviewed the rewrite. **9 findings, 9 FOLDED,
-0 refuted.** Six seats returned "no new findings" WITH an explicit statement of what they did not examine.
-Escalation verdict: `REQUEST CHANGES`.
-
-- `FOLDED: the inserted clause WRAPS across a newline while the linter and mutant match a contiguous
-  string` - MEASURED: the phrase sits across lines 242-243 and both matchers searched for it with literal
-  spaces, so the linter would have RED on a skill that correctly carries the clause. Both matchers are now
-  whitespace-tolerant AND the phrase is kept unwrapped: a guard that breaks when prose re-wraps is a time
-  bomb, so fixing only one side would have left it armed.
-- `FOLDED: Step 4 told the implementer to break norm() and never to restore it` - MEASURED: the word
-  "restore" appeared ZERO times in the plan. A literal implementer commits the crippled checker.
-- `FOLDED: a temporal paradox I introduced while fixing something else` - the order says run Task 5
-  immediately after Task 1, while Task 5 demanded a baseline from a round run AFTER Task 1 shipped. Task 5
-  now generates BOTH arms itself, which removes the dependency on history and is a better experiment.
-- `FOLDED: the Goal claimed every step is independently shippable; Task 4 is not` - it hardcodes
-  `claim-type`, which Task 2 introduces. Shipping 4 before 2 rejects 100% of replies still using the old
-  word - the same failure mode the panel caught once already in this plan.
-- `FOLDED: the _partition.md row said 3 tests; the suite has 6` - the suite doubled during review and the
-  figure went stale. That count is mechanically enforced by re-running discovery, so it reds the gate.
-- `FOLDED: the "reports EVERY bad row" test never entered the code it names` - its fixture used only
-  DECLARED keys, so it exercised citation resolution, not the schema validator. It would have passed with
-  the abort-on-first-error behaviour it claims to disprove. Fixture now carries undeclared keys.
-- `FOLDED: both plugin halves must be committed together` - the pair gate is fail-closed and runs on push.
-- `FOLDED: Task 5's baseline era was ambiguous` - superseded by the both-arms design above.
-- `FOLDED: Task 3 anchored on the same paragraph as Task 1` - interleaving the two clauses. Now anchored
-  after Task 1's clause.
-
-⚠ **Two of round 2's findings were defects round 1's FOLDS introduced** (the temporal paradox, and the
-line-wrap that arrived with the clause text). That is the documented reason to re-run a round after
-folding: a fix spawns its own edges.
+- **Two of round 2's findings were defects round 1's FOLDS introduced.** A fix spawns its own edges;
+  re-run a round after folding.
+- **Line numbers in this plan are untrusted.** Anchor every edit on quoted text.
 
 ## Stand-downs
 
