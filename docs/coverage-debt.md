@@ -611,28 +611,31 @@ here, because it needs a new registered suite and this batch's scope is the seve
   or partial marker read as a valid attestation rather than as an absent one - that would turn this from
   a safe truncation into a false GREEN, and it must be fixed rather than accepted.
 
-### O. The `scripts/tests` Pester suites are WINDOWS-ONLY by CI construction (AGY-TEST-AUDIT 2026-09-02)
+### O. The two environment-dependent rows in `check-plugin-drift.Tests.ps1` are MEASURED on both platforms (AGY-TEST-AUDIT 2026-09-02)
 
-- **What gets re-raised, and was:** that rows in `scripts/tests/check-plugin-drift.Tests.ps1` behave
-  differently on macOS/Linux - notably `[IO.FileShare]::None` being a MANDATORY lock on Windows and an
-  ADVISORY one on POSIX, and `.Attributes = 'Hidden'` not hiding anything on a filesystem that ignores
-  it. The 2026-09-02 audit raised both as gaps, with the second marked `confidence: measured`.
-- **Why it is not a gap:** the premise is false. **MEASURED 2026-09-02:** `ci-scripts.yml` is the only
-  workflow that runs `Invoke-Pester scripts/tests`, and BOTH of its jobs are `runs-on: windows-latest`
-  (lines 67 and 147). No workflow runs these suites on any non-Windows host, so non-Windows behaviour of
-  a `.ps1` row is unreachable, not merely unlikely. The peer had flagged this exact assumption as the one
-  it did not verify.
-- **Compensation, and it is real rather than nominal:** both rows now ASSERT their own environmental
-  premise before depending on it - the lock must actually block a reader, and a plain `Get-ChildItem`
-  must actually miss the stray. So if either premise ever stops holding, on any host, the row fails
-  LOUDLY at its precondition instead of passing while testing nothing. That is the `1913bdc` lesson
-  applied, and each assertion was proven non-vacuous by mutating its fixture: the LOCKED row goes red at
-  its precondition when the share mode is loosened, the HIDDEN row when the attribute assignment is
-  removed, with the other 16 rows unaffected.
-- **Anchor (its disappearance voids this entry):** `runs-on: windows-latest` on BOTH jobs in
-  `.github/workflows/ci-scripts.yml`. **Re-check trigger:** adding any non-Windows runner to a job that
-  invokes `Invoke-Pester scripts/tests`. At that moment these stop being unreachable and become real
-  gaps - and the two preconditions above become the rows that will tell you so.
-- **NOT covered by this entry:** the `clavity-classic` Rust suites, which DO run on Linux -
-  `ci-classic.yml` uses the matrix `[ubuntu-latest, windows-latest]`. Cross-platform reasoning about
-  those is in scope and one such test was added the same day.
+- **What gets re-raised, and was:** that the LOCKED row (`[IO.FileShare]::None`) and the HIDDEN row
+  (`.Attributes = 'Hidden'`) behave differently on macOS/Linux and are therefore untrustworthy.
+- **THIS ENTRY REPLACED AN ARGUMENT WITH A MEASUREMENT, and the argument was mine.** Its first version
+  said non-Windows behaviour was "unreachable, not merely unlikely" because `ci-scripts.yml` runs the
+  Pester suites on `windows-latest` only (true, and still true: both jobs, lines 67 and 147). That was
+  reasoning about REACHABILITY, not about the rows. The same day, WSL turned out to carry pwsh 7.6.5 and
+  **Pester 6.1.0 - the same version as Windows** - so a developer CAN run these on Linux even though CI
+  never will, and one run settled what neither the peer nor I had actually established.
+- **MEASURED on Linux 2026-09-02, and BOTH stated mechanisms were wrong:**
+  - **LOCKED PASSES.** The claim was that `FileShare.None` is merely advisory on POSIX so the checker
+    would read the file and the row would fail. It does not: .NET honours the share mode between .NET
+    processes, and the row's own precondition confirms the lock really blocked a reader.
+  - **HIDDEN was broken, but not for the stated reason and not vacuously.** The claim was that the file
+    stays VISIBLE on Linux. The opposite is true - a leading dot already hides it from a plain
+    `Get-ChildItem`, which is exactly the blind spot the row pins, reached by a different mechanism than
+    the Windows attribute. What actually failed was upstream: on Linux a bare `Get-Item` cannot see a
+    dot-file at all (IOException), so `.Attributes` was being set on `$null` and the row DIED before any
+    assertion. Fixed with `-Force`; the row now passes on Windows AND Linux and is meaningful on both.
+- **Compensation:** both rows now ASSERT their own environmental premise before depending on it - the
+  lock must actually block a reader, and a plain `Get-ChildItem` must actually miss the stray. Each was
+  proven non-vacuous by mutating its fixture, reddening its own row at its own precondition with the
+  other 16 rows unaffected.
+- **Anchor (its disappearance voids this entry):** the two precondition assertions themselves. If either
+  is deleted, this entry stops being true and the row returns to trusting its environment silently.
+- **Re-check trigger:** a THIRD platform (macOS), which nothing here has measured. Do not read "works on
+  Windows and Linux" as "portable".

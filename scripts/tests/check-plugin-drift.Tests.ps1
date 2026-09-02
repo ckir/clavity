@@ -232,7 +232,16 @@ Describe 'check-plugin-drift.ps1' {
         }
         $stray = Join-Path $i '.hidden-stray.bak'
         [IO.File]::WriteAllText($stray, "stale`n")
-        (Get-Item $stray).Attributes = 'Hidden'
+        # -Force AND -LiteralPath, both load-bearing, and NOT tidiness. MEASURED under WSL 2026-09-02:
+        # this file's name starts with a dot, and on Linux a bare `Get-Item` CANNOT SEE a dot-file - it
+        # raises an IOException, so `.Attributes` was being set on $null and the row died at
+        # "The property 'Attributes' cannot be found on this object" before reaching a single
+        # assertion. `ci-scripts.yml` runs this suite on windows-latest only, so CI never saw it; a
+        # developer running the suite under WSL does. -Force is the whole fix, and the row is
+        # MEANINGFUL on both platforms rather than merely surviving: measured on Linux, the dot prefix
+        # already hides the file from a plain `Get-ChildItem` while `-Force` finds it, which is exactly
+        # the blind spot this row pins - reached by a different mechanism than the Windows attribute.
+        (Get-Item -LiteralPath $stray -Force).Attributes = 'Hidden'
         # PRECONDITION - assert the row's own premise, which is an ENVIRONMENT property, not a logic one.
         # AGY-TEST-AUDIT 2026-09-02, `1913bdc`'s class: the whole point of this row is that a plain
         # enumeration MISSES this file and only `-Force` finds it. On a filesystem that does not honour
