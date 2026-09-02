@@ -587,11 +587,24 @@ differs from a recent successful round **by one paragraph only**. If Tasks 2, 3 
 also carries the `claim-type` axis, the `confidence` pointer clause and the JSON schema rules - so the
 brief differs from the baseline in FOUR ways and isolates nothing. **Execution order is 1, 5, 2, 3, 4.**
 
+**DONE 2026-09-02. NEGATIVE RESULT: the clause is NOT isolated as the mechanism.** Arm B (the control,
+WITHOUT the clause) returned the full body inline - census, findings, `[VERIFIED: ...]`, closing
+disclosures, `[VERDICT: FINDINGS]` last - with `AnswerTruncated: false`. Arm A is contaminated (~6
+trajectory steps against arm B's ~40: the peer replayed a cached analysis) and contributes nothing.
+**Arm order was reversed from the text below, deliberately** - contamination is asymmetric, so the
+control had to run on a peer that had never seen the rule. Recorded in `docs/agy-capstone-ledger.md`
+under a NEW "Isolation probes - NOT capstones" section rather than as a row in the table: that file's
+header says one row per capstone, and a probe makes a much weaker claim. Committed at `1efcc81`
+(step 4, under a message naming the result). Briefs `.clavity/seams/task5-isolation-arm-{with,without}.md`,
+differing by one `diff -u` hunk. **Byproduct: the probe found a real defect in Task 1's commit - the
+clause shipped as unmarked driver prose though it is peer-facing - folded at `62be727` with a passing
+AND a failing control.**
+
 > *"Also wanted: one deliberate round that OMITS the anti-wrap-up clause, because the clause is strongly
 > SUPPORTED as the mechanism but not ISOLATED — the failing rounds differed from the probes in more than
 > that one sentence."*
 
-- [ ] **Step 1: Snapshot, then run one consult whose brief omits the clause and is otherwise identical**
+- [x] **Step 1: Snapshot, then run one consult whose brief omits the clause and is otherwise identical**
 
 ```bash
 git status --short > /tmp/panel-before.txt   # the envelope check every consult owes
@@ -607,13 +620,13 @@ when composing that brief. An earlier reading of this task had the implementer e
 had just committed, which leaves a dirty tree carrying into Task 2 - and this task has no business
 mutating the tree at all.
 
-- [ ] **Step 2: Record the OUTCOME and the FIELD, not an impression**
+- [x] **Step 2: Record the OUTCOME and the FIELD, not an impression**
 
 The mechanism is displacement, not truncation, so record `AnswerTruncated` explicitly — it was `false`
 on all four earlier probes, and reading it is what distinguished the two. Note whether the body arrived
 inline or only a receipt did.
 
-- [ ] **Step 3: Write the result into `docs/agy-capstone-ledger.md`, including a negative one**
+- [x] **Step 3: Write the result into `docs/agy-capstone-ledger.md`, including a negative one**
 
 If the body arrives intact WITHOUT the clause, the clause is **not** isolated as the mechanism and the
 ledger must say exactly that. A supported-but-unisolated claim written up as measured is the failure
@@ -621,7 +634,7 @@ this whole phase exists to remove — n=1 either way is a datum, not a proof, an
 
 ---
 
-- [ ] **Step 4: Record BOTH arms in the ledger, and COMMIT them**
+- [x] **Step 4: Record BOTH arms in the ledger, and COMMIT them**
 
 ```bash
 git add docs/agy-capstone-ledger.md
