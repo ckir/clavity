@@ -52,12 +52,22 @@ produced this plan was itself burned once by citing an installed copy's numberin
 Cheapest change, fixes a MEASURED loss (capstone rounds whose entire report was displaced by
 "Standing by for your feedback"), and **independent of tasks 2-4**.
 
+**DONE 2026-09-02 - commit `a72f618`.** Two deviations from the text above, both measured and recorded in
+the commit message: (1) the linter invariant went into the FOUR-skill `$disciplineNames` loop, not the
+three-skill `$skills` loop the snippet sat beside - the clause ships in all four skills, and
+`adversarial-panel-review` is deliberately outside `$skills`; (2) the clause's second paragraph claimed
+"This skill already requires a `[VERIFIED: ...]` block" - MEASURED true only of `agy-test-audit`
+(`SKILL.md:128`), so it ships as a conditional ("Where a discipline requires..."), which is true in all
+four. Shipping it verbatim would have been a class-4 False Safety Promise in three of the eight files.
+Gates: 47/0 discipline suite (4 new rows, red before the clause), 3/0 payload, seed-sync /
+injected-context / dangling-consumers all 0.
+
 **Files:**
 - Modify: all 8 `SKILL.md` files, in the paragraph beginning `**A flagged reply is INCOMPLETE, not empty.**`
 - Modify: `scripts/check-agy-discipline-skills.ps1`
 - Test: `scripts/tests/check-agy-discipline-skills.Tests.ps1`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `scripts/tests/check-agy-discipline-skills.Tests.ps1`, inside `Describe 'check-agy-discipline-skills'`:
 
@@ -81,12 +91,12 @@ Add to `scripts/tests/check-agy-discipline-skills.Tests.ps1`, inside `Describe '
     }
 ```
 
-- [ ] **Step 2: Run it and confirm it FAILS**
+- [x] **Step 2: Run it and confirm it FAILS**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Detailed"`
 Expected: FAIL — the mutant precondition reds first (`the mutant must actually apply`), because no skill contains the clause yet.
 
-- [ ] **Step 3: Add the clause to all EIGHT files**
+- [x] **Step 3: Add the clause to all EIGHT files**
 
 Insert as a new paragraph immediately after the paragraph beginning `**A flagged reply is INCOMPLETE, not empty.**` in each of the four skills, **then mirror to the classic half IN THE SAME COMMIT.**
 
@@ -109,7 +119,7 @@ observed habit is to place it AFTER the verdict - so "nothing after the token" a
 VERIFIED block" would otherwise instruct opposite things, and a peer obeying one would breach the other.
 ```
 
-- [ ] **Step 4: Add the invariant to the linter**
+- [x] **Step 4: Add the invariant to the linter**
 
 In `scripts/check-agy-discipline-skills.ps1`, alongside the existing per-skill invariants:
 
@@ -120,14 +130,14 @@ In `scripts/check-agy-discipline-skills.ps1`, alongside the existing per-skill i
     }
 ```
 
-- [ ] **Step 5: Run the suite and the pair gate**
+- [x] **Step 5: Run the suite and the pair gate**
 
 Run: `pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Detailed"`
 Expected: all rows PASS, including the new rejection row.
 Run: `bash scripts/check-seed-artifacts-synced.sh`
 Expected: exit 0 — proves the classic half was mirrored.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add clavity-dotnet/plugin/skills clavity-classic/plugin/skills scripts/check-agy-discipline-skills.ps1 scripts/tests/check-agy-discipline-skills.Tests.ps1
