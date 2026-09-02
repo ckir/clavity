@@ -128,6 +128,14 @@ foreach ($skill in $skills) {
                 # Matching the whole comma-separated sequence pins ORDER and MEMBERSHIP together.
                 # The separator tolerates the markdown wrap: the list spans several '> ' lines.
                 $seq = ($declared | ForEach-Object { '`' + [regex]::Escape($_) + '`' }) -join ',\s*(?:\r?\n>\s*)?'
+                # ANCHORED AT BOTH ENDS, and this is the THIRD version of this guard. Capstone R2
+                # measured what an unanchored sequence misses: it verifies the markdown is a SUPERSET
+                # of SCHEMAS, so appending `smuggled` to the key list left the linter GREEN - the skill
+                # would instruct the peer to emit a key the checker then rejects, which is exactly the
+                # drift this oracle exists to prevent, running in the one direction nobody had tested.
+                # The intro phrase and the closing period bound the list, so neither a prepended nor an
+                # appended key can hide outside the matched span.
+                $seq = 'and no others are accepted - ' + $seq + '\.'
                 if ($raw -notmatch $seq) {
                     Fail "$rel : the inline contract's key list does not match SCHEMAS in scripts/check-peer-reply-citations.py - expected, in order: $($declared -join ', ')"
                 }

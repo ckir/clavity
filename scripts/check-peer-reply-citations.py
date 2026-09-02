@@ -48,9 +48,14 @@ def norm(s):
 
     MEASURED, in the first capstone round run under this contract: the peer cited two lines correctly and
     both were reported as DRIFT, because it had stripped the 8 and 4 leading spaces. Two of four rows in
-    a reply that had predicted this very failure. The false-drift class is real and routine; the
-    false-match class costs a citation resolving against a same-texted line at a different indent, whose
-    content is by definition identical. Fold.
+    a reply that had predicted this very failure.
+
+    THE TRADE WAS CHALLENGED IN ROUND 2 AND SURVIVED WITH A BETTER ARGUMENT THAN THE ONE ABOVE. Folding
+    makes two lines differing only in indent indistinguishable, so a citation can resolve against the
+    wrong one - worst for short duplicated syntax lines like a bare closing brace or `continue`. But the
+    contract already requires every citation to be a VERBATIM UNIQUE LINE, so a peer citing `}` has
+    broken the uniqueness rule before this function is reached. The cost therefore falls only on
+    citations that were already ambiguous, while the cure addresses a failure that is routine. Fold.
     """
     s = unicodedata.normalize("NFKC", s)
     for dash in DASHES:
@@ -73,6 +78,15 @@ def check_row_schema(row, idx, declared, problems):
     for key in REQUIRED:
         if key not in row:
             problems.append("row %d: missing required key %s" % (idx, ascii(key)))
+            usable = False
+        elif not isinstance(row[key], str):
+            # CAPSTONE R2. The root-shape guard added one round earlier stopped at the ROW level, so a
+            # well-shaped row carrying `"quoted_line": true` walked straight into norm() and raised
+            # TypeError - the same disguised crash the previous round was supposed to have eliminated,
+            # one level deeper. A type guard that checks the container and not the contents is half a
+            # guard.
+            problems.append("row %d: required key %s must be a string, got %s"
+                            % (idx, ascii(key), type(row[key]).__name__))
             usable = False
     for key in row:
         if key not in declared:

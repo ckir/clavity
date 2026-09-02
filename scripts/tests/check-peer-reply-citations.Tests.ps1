@@ -120,6 +120,22 @@ Describe 'check-peer-reply-citations' {
         $out | Should -Not -Match 'Traceback' -Because 'a bad root shape must be REPORTED, never raised'
     }
 
+    It 'REPORTS a non-string <key> instead of crashing on it' -ForEach @(
+        @{ key = 'quoted_line'; body = '[{"file":"justfile","quoted_line":true}]' },
+        @{ key = 'quoted_line'; body = '[{"file":"justfile","quoted_line":123}]' },
+        @{ key = 'file';        body = '[{"file":true,"quoted_line":"x"}]' }
+    ) {
+        # CAPSTONE R2. The root-shape guard added one round earlier stopped at the ROW level, so a
+        # well-shaped row carrying a non-string value walked into norm() and raised TypeError - the SAME
+        # disguised crash the previous round was meant to eliminate, one level deeper. A type guard that
+        # checks the container and not the contents is half a guard.
+        $r = New-Reply $body
+        $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")
+        $LASTEXITCODE | Should -Be 1
+        $out | Should -Match 'must be a string'
+        $out | Should -Not -Match 'Traceback' -Because 'a bad value type must be REPORTED, never raised'
+    }
+
     It 'REPORTS a row that is not an object, and keeps going' {
         $r = New-Reply '[1, {"file":"justfile","quoted_line":"nope","smuggled":"x"}]'
         $out = ((& $script:Py $script:Checker $r HEAD 'agy-capstone' 2>&1) -join "`n")

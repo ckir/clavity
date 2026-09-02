@@ -276,7 +276,13 @@ Describe 'check-agy-discipline-skills' {
             @{ skill = 'agy-test-audit'; case = 'whole list deleted, header kept'; from = ''; to = '' },
             @{ skill = 'agy-capstone';   case = 'one key dropped';   from = '`evidence`, `trigger`, `severity`'; to = '`evidence`, `severity`' },
             @{ skill = 'agy-capstone';   case = 'two keys reordered'; from = '`seat`, `id`, `file`'; to = '`id`, `seat`, `file`' },
-            @{ skill = 'agy-capstone';   case = 'strictness line gone'; from = 'and no others are accepted'; to = 'and other keys are fine' }
+            @{ skill = 'agy-capstone';   case = 'strictness line gone'; from = 'and no others are accepted'; to = 'and other keys are fine' },
+            # CAPSTONE R2: the sequence match was UNANCHORED, so it verified the markdown was a SUPERSET
+            # of SCHEMAS and nothing more. An appended key left the linter GREEN while the skill
+            # instructed the peer to emit a key the checker rejects - the drift this oracle exists to
+            # prevent, running in the one direction nobody had tested. Both ends are now bounded.
+            @{ skill = 'agy-capstone';   case = 'key APPENDED';  from = '`severity`, `detail`.'; to = '`severity`, `detail`, `smuggled`.' },
+            @{ skill = 'agy-capstone';   case = 'key PREPENDED'; from = 'accepted - `seat`,';    to = 'accepted - `smuggled`, `seat`,' }
         ) {
             # CAPSTONE R1 MEASURED THE HOLE THIS CLOSES: the entire blockquoted key list could be deleted
             # while the bold header above it stayed, and the linter exited 0 - it pinned a heading and
