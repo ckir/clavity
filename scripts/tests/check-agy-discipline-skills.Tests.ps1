@@ -235,6 +235,40 @@ Describe 'check-agy-discipline-skills' {
             ($out -join "`n") | Should -Match ([regex]::Escape($skill))
             Remove-Item -Recurse -Force $scratch
         }
+
+        It 'REJECTS agy-capstone when the PEER-side axis is called "disposition" again' {
+            # 21.2. TWO AXES, ONE WORD: `claim-type` is what KIND of claim the PEER made; `disposition` is
+            # the DRIVER's closed five-token AGY-SCOPE set. `defect` is not one of those five, which is
+            # exactly why calling the peer-side axis "disposition" dangled. This row restores the old
+            # wording and requires the linter to reject it.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'agy-capstone'
+            $real = Get-Content -Raw $target
+            $body = $real.Replace('survives its `claim-type` as a real', 'survives disposition as a real')
+            $body | Should -Not -Be $real -Because 'the mutant must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'claim-type'
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS agy-capstone when the claim-type sentence is DELETED outright' {
+            # The row above only catches a RENAME back. A guard that is purely negative ("the old word must
+            # not appear") goes green on an empty file, so this row deletes the sentence instead and
+            # requires the positive half of the invariant to fire. Both halves, or the guard has a hole
+            # you can drive a deletion through.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch 'agy-capstone'
+            $real = Get-Content -Raw $target
+            $body = $real -replace '(?m)^A finding that survives its `claim-type` as a real.*$', ''
+            $body | Should -Not -Be $real -Because 'the deletion must actually apply, or this row proves nothing'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            ($out -join "`n") | Should -Match 'claim-type'
+            Remove-Item -Recurse -Force $scratch
+        }
     }
 
     Context 'F3 guard: a skill enrolled in $skills but not mapped in $requiredVerdicts must fail loud' {

@@ -72,6 +72,23 @@ foreach ($skill in $skills) {
     if (-not $raw.Contains('clavity ask --review-only')) { Fail "$rel : missing classic transport 'clavity ask --review-only'" }
     # (f) marker-contract constant referenced
     if (-not $raw.Contains($markerConstant)) { Fail "$rel : missing marker-contract constant '$markerConstant'" }
+
+    # (g) 21.2 TWO AXES, ONE WORD - agy-capstone only, because it is the only discipline that CLASSES a
+    # finding after the peer has typed it. `claim-type` is the PEER's axis (what KIND of claim this is);
+    # `disposition` is the DRIVER's closed five-token AGY-SCOPE set, and `defect` is not one of those
+    # five - which is exactly why the old wording, "survives disposition as a real `defect`", dangled.
+    #
+    # BOTH HALVES ARE REQUIRED, and the negative one alone would have a hole. "The old word must not
+    # appear" is satisfied by DELETING the sentence outright, so the positive half pins the replacement
+    # and the negative half pins the rename back. The suite carries one rejection row for each.
+    if ($skill -eq 'agy-capstone') {
+        if ($raw -match '(?m)survives disposition as a real') {
+            Fail "$rel : the PEER-side axis must be named claim-type, not disposition - 'defect' is not one of the five AGY-SCOPE disposition tokens"
+        }
+        if (-not $raw.Contains('survives its `claim-type` as a real')) {
+            Fail "$rel : missing the claim-type sentence - the PEER-side axis must be named claim-type"
+        }
+    }
 }
 
 # 13b: the driver's completeness checks only run when the ask NAMES its discipline. If a skill does not

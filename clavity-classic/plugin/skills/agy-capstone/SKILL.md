@@ -173,11 +173,18 @@ forcing functions, not a flat "find bugs":
 
 ## The stopping rule - what BLOCKS green (agreed with the live peer, 2026-08-27)
 
-A finding that survives disposition as a real `defect` is then CLASSED. **BLOCKING findings block GREEN;
+A finding that survives its `claim-type` as a real `defect` is then CLASSED. **BLOCKING findings block GREEN;
 DEBT findings are appended to the coverage-debt ledger and do NOT.** GREEN means "the software behaves
 correctly", NOT "every comment is synchronised with HEAD". Those were ONE bucket for 27 rounds, which made
 GREEN unreachable by construction: a fatal CI bypass and a comment stating a drifted number were both
 simply `defect`.
+
+**TWO AXES, ONE WORD - keep them apart.** `claim-type` is the PEER's axis: what KIND of claim this is -
+`defect`, `by-design`, `out-of-scope`, `true-unsupported`, `already-known`. **`disposition` is the
+DRIVER's axis**, and it is the closed five-token set defined below: `FOLDED`, `REJECTED`,
+`DISCARDED-BELOW-FLOOR`, `DEFERRED-TO-ANOMALIES`, `UNVERIFIED-ACCEPTED`. `defect` is NOT one of those
+five, which is exactly why naming the peer-side axis "disposition" dangled: it made the sentence above
+read as if a finding could survive a driver-side ruling that had not been made yet.
 
 **The class is DERIVED, never assigned by the driver.** The driver is the party that benefits from
 stopping, so a class it assigns is a preference with paperwork. Evaluate IN ORDER; first match wins:
