@@ -101,6 +101,12 @@ then commit once.
 "standing by for your feedback", no offer of next steps. MEASURED: several rounds had their ENTIRE report
 displaced by a closing pleasantry, because what the driver collects is the peer's FINAL message. A
 terminal token alone does NOT fix this - every one of those rounds already demanded one.
+
+**Every REQUIRED block comes immediately BEFORE the token, in this order: your report, then any
+`[VERIFIED: ...]` block, then any closing disclosures, then the token.** This is not a style note. This
+skill already requires a `[VERIFIED: ...]` block and rules a verdict INVALID without one, and the
+observed habit is to place it AFTER the verdict - so "nothing after the token" and "the verdict needs a
+VERIFIED block" would otherwise instruct opposite things, and a peer obeying one would breach the other.
 ```
 
 - [ ] **Step 4: Add the invariant to the linter**
