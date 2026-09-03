@@ -2483,6 +2483,50 @@ in the section-21 capstone because every rewording becomes a false RED.** This o
 `DISCARDED-BELOW-FLOOR` rather than a fix.
 `scripts/tests/check-agy-discipline-skills.Tests.ps1:103,177`.
 
+### §31 — Two shipped SessionStart hooks misbehave in repositories that are not clavity — ▶ **PROMOTED from the anomalies file 2026-09-03, not yet planned**
+
+Both found on 2026-09-03 while diagnosing an owner report, both REPRODUCED in a throwaway git repo, and
+both are in the shipped plugin payload — so **class 2: byte-identical pair, and a reinstall before either
+fix takes effect.**
+
+**31a — `agy-anomaly-reminder.sh` renders as a HOOK ERROR on `compact`.** It emits via stderr + `exit 2`.
+On `SessionStart source=startup` that renders as INJECTED CONTEXT; on `source=compact` the identical
+exit 2 renders as a red **`SessionStart:compact hook error`**. A working reminder therefore reads to the
+owner as a broken plugin.
+
+- **REPRODUCED:** throwaway git repo + one untriaged entry in `.clavity/local-anomalies.md` + a
+  compact-shaped payload -> `exit 2` and `[AGY-ANOMALIES] 1 untriaged ...`. **With NO anomalies file it
+  exits 0**, which is why five earlier probes missed it — the hook only misbehaves when it has something
+  to say, so a fixture without the trigger cannot see it.
+- **ROOT CAUSE IS A STALE ASSUMPTION, not broken logic.** `:9-12` asserts *"exit 2 is non-blocking for
+  SessionStart"*, and `:2` says the hook was written for `SessionStart(startup)`. The matcher LATER grew
+  to `"startup|resume|clear|compact"` (`hooks.json:52`) and that claim was never re-checked against the
+  new source. Same shape as a drifted line citation: true when written, invalidated elsewhere, nothing
+  watching.
+- **A WORKING PRECEDENT ALREADY SHIPS.** `agy-anomaly-capture-reminder.sh` emits `systemMessage` JSON on
+  stdout with `exit 0` and renders cleanly — observed SUCCEEDING in the same PreCompact block that showed
+  this error. The fix does not need inventing. ⚠ **But it must not regress 31a's original purpose**, which
+  `:9-12` states plainly: at SessionStart there is no user turn, so stdout is absorbed into the model's
+  context and **the OWNER never sees it** — and the owner is the one who triages. Any fix must still reach
+  a human surface on `startup`.
+
+**31b — `agy-discipline-reaching.sh` creates a `.clavity/` directory in EVERY repository it runs in.**
+MEASURED per-hook in fresh throwaway repos: of the three clavity hooks on the `compact` matcher,
+`agy-anomaly-reminder` and `agy-anomaly-model-notice` create nothing; `agy-discipline-reaching` creates
+`.clavity/`. So installing the plugin in another profile silently adds an untracked directory to every
+repo opened there, including repos with nothing to do with clavity — and the directory is only invisible
+to git IF the shield write inside it succeeds.
+
+🔴 **THE TWO COMPOUND, WHICH IS WHY THEY ARE ONE ITEM.** 31b is what puts a `.clavity/` into an unrelated
+repository in the first place; once anything writes an anomaly there, 31a turns every `/compact` in that
+repository into a red hook error. The owner met them in that order, in `aiplugins`.
+
+**SEQUENCING — NOT YET PLACED, and the obvious home is Phase 3.** That phase's own criterion
+(`2026-08-31-roadmap-implementation-sequence-design.md:446-448`) is *"plugin hook pairs (`.sh`),
+mechanical, each with an already-measured mechanism, and **none touches review-discipline semantics**"*.
+Both halves of §31 satisfy every clause of that by direct reading. **Recorded rather than decided: the
+owner places it, as with §26-§30.**
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
