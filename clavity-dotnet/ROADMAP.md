@@ -2483,7 +2483,7 @@ in the section-21 capstone because every rewording becomes a false RED.** This o
 `DISCARDED-BELOW-FLOOR` rather than a fix.
 `scripts/tests/check-agy-discipline-skills.Tests.ps1:103,177`.
 
-### §31 — Two shipped SessionStart hooks misbehave in repositories that are not clavity — ▶ **PROMOTED from the anomalies file 2026-09-03, not yet planned**
+### §31 — Two shipped SessionStart hooks misbehave in repositories that are not clavity — ▶ **PROMOTED 2026-09-03, SEQUENCED as Phase 3's FIRST item (owner-ruled), not yet planned**
 
 Both found on 2026-09-03 while diagnosing an owner report, both REPRODUCED in a throwaway git repo, and
 both are in the shipped plugin payload — so **class 2: byte-identical pair, and a reinstall before either
@@ -2521,11 +2521,25 @@ to git IF the shield write inside it succeeds.
 repository in the first place; once anything writes an anomaly there, 31a turns every `/compact` in that
 repository into a red hook error. The owner met them in that order, in `aiplugins`.
 
-**SEQUENCING — NOT YET PLACED, and the obvious home is Phase 3.** That phase's own criterion
-(`2026-08-31-roadmap-implementation-sequence-design.md:446-448`) is *"plugin hook pairs (`.sh`),
-mechanical, each with an already-measured mechanism, and **none touches review-discipline semantics**"*.
-Both halves of §31 satisfy every clause of that by direct reading. **Recorded rather than decided: the
-owner places it, as with §26-§30.**
+**SEQUENCED 2026-09-03 — PHASE 3, AND IT RUNS FIRST WITHIN THAT PHASE.** Owner-ruled; recorded as
+AMENDMENT 3 in `docs/superpowers/specs/2026-08-31-roadmap-implementation-sequence-design.md`. That
+phase's own criterion (`:446-448`) is *"plugin hook pairs (`.sh`), mechanical, each with an
+already-measured mechanism, and **none touches review-discipline semantics**"*, and both halves of §31
+satisfy every clause by direct reading. **It leads the phase because it is the only backlog item causing
+visible daily friction, not because it is the cheapest ordering.**
+
+⚠ **IT SHARES A FILE WITH §22, AND THE OWNER ACCEPTED THE DOUBLE COST.** `agy-discipline-reaching.sh`
+carries 3 of §22's leaking-redirect sites AND is 31b's fix target, so that file is edited, mirrored to
+clavity-classic, and reinstalled TWICE. Merging the two into one pass was offered and declined.
+🔴 **§22's plan must therefore re-derive its site line numbers against post-§31 code, never against the
+paired-control table in §22 above.**
+
+**The AGY-FIRST consult inverted under challenge** (`.clavity/seams/agyfirst-s31-sequencing.md`, then
+`.clavity/seams/agyfirst-s31-negotiate.md`). The peer opened at NEGOTIATE — *"an active containment
+breach"* warranting a hotfix outside the sequence — and withdrew both that severity and its own
+counter-argument after one negotiation turn: `agy-discipline-reaching.sh:129-132` writes `*` into
+`.clavity/.gitignore`, so the created directory never reaches the unrelated repository's `git status`.
+**The harm is to the OWNER'S ATTENTION, not to any repository's integrity.**
 
 ## Non-goals / accepted limitations
 

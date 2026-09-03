@@ -441,12 +441,19 @@ BEFORE any Phase 2 work starts.** It is an operator action and Claude Code must 
 ⚠ **§26 IS ALSO SPECCED, UNBUILT AND UNSEQUENCED.** Its own deferral condition (*"until §23 ships"*) has
 fired. It is NOT placed by this amendment, and placing it is open work.
 
-### Phase 3 - HOOKS: §22 + two promoted backlog items
+### Phase 3 - HOOKS: §31 FIRST, then §22 + two promoted backlog items
 
-Three items share a blast radius - plugin hook pairs (`.sh`), mechanical, each with an already-measured
+Four items share a blast radius - plugin hook pairs (`.sh`), mechanical, each with an already-measured
 mechanism, and **none touches review-discipline semantics**, so this batch is immune to the
 self-reference problem that split Phases 1 and 2:
 
+- **§31 - RUNS FIRST, owner-ruled 2026-09-03. See AMENDMENT 3.** Two shipped SessionStart hooks misbehave
+  in repositories that are not this one: `agy-anomaly-reminder.sh` renders as a red
+  `SessionStart:compact hook error`, and `agy-discipline-reaching.sh` creates a `.clavity/` directory
+  everywhere it runs. **It leads the phase because it is the only item in the backlog causing visible
+  daily friction** - not because it is the cheapest. ⚠ **It shares `agy-discipline-reaching.sh` with §22
+  below, so that file is edited and reinstalled TWICE; §22 must re-derive its site line numbers against
+  post-§31 code rather than against the ROADMAP table.**
 - **§22** - the leaking redirect order across 16 sites in four plugin hooks. `CMD > "$f" 2>/dev/null` does
   not suppress a failure to OPEN `$f`, because redirections apply left to right; the ROADMAP carries the
   full paired-control table.
@@ -621,6 +628,80 @@ phase repairs something that is already wrong. It was deferred until §23 shippe
 now fired, so it is unblocked rather than blocked; it is placed last because a repair-ordered sequence
 finishes its repairs first. It also needs architectural design review that none of the others do, which
 is precisely why batching it with §28/§30 would have diluted the lens.
+
+## AMENDMENT 3 - placing §31 into Phase 3, ordered FIRST. Owner-ruled 2026-09-03.
+
+> ⚠ **§31 did not exist when this sequence was composed on 2026-08-31, nor when AMENDMENT 2 placed the
+> four orphans earlier the same day.** It is recorded as an amendment rather than folded silently into a
+> panel-reviewed artifact. AGY-FIRST consult: `.clavity/seams/agyfirst-s31-sequencing.md`; the single
+> negotiation turn that resolved it: `.clavity/seams/agyfirst-s31-negotiate.md`.
+
+**PLACED: Phase 3, as a SEPARATE item, RUN BEFORE §22.** §31 meets every clause of Phase 3's own
+criterion at `:446-448` - *"plugin hook pairs (`.sh`), mechanical, each with an already-measured
+mechanism, and none touches review-discipline semantics"* - by direct reading. Both halves are bash
+mechanics; neither touches review-discipline semantics.
+
+**ONE item, not two.** 31a (`exit 2` rendering as a hook error on `compact`) and 31b (unconditional
+`.clavity/` creation) share a single review lens with each other AND with §22's redirect-order work, so
+splitting them buys nothing. This is the opposite of the §27 case at `:418-423`, where a single panel
+would have had to split attention between prompt engineering and bash-git parsing.
+
+### The AGY-FIRST consult inverted under challenge, and that is worth recording
+
+The peer opened at `[VERDICT: NEGOTIATE]`, rejecting the frame: §31 was *"an active containment breach"*
+warranting an immediate hotfix outside the sequence entirely. Its own Q4 objected that a hotfix would
+ship before Phase 0 completed. **One negotiation turn, pointing it at files rather than handing it a
+conclusion, collapsed both positions:**
+
+- **The Q4 premise was FALSE.** Phase 0 is complete, Phase 1 shipped, and Phase 0c-local is satisfied -
+  the four review skills measure 380/476/393/234 identically in `clavity-dotnet/plugin/skills/` and in
+  the installed cache. The peer conceded: *"My objection collapses."*
+- **"Containment breach" was OVERSTATED, and the peer downgraded its own wording** to *"a standard,
+  contained defect"* after reading `agy-discipline-reaching.sh:129-132`, which writes `*` into
+  `.clavity/.gitignore`. The created directory therefore never reaches the unrelated repository's
+  `git status`. **The concrete harm is to the OWNER'S ATTENTION, not to any repository's integrity.**
+
+⚠ **ONE PEER CLAIM WAS FALSE AND IS NOT FOLDED.** It stated that Phase 0's range was never capstoned.
+`docs/agy-capstone-ledger.md` holds `ee2b385..4680613` and `4680613..9ef3f83`, whose commits are
+`fix(capstone-r4)` through `fix(capstone-r11)`. It reasoned from the marker's current value instead of
+reading the rows, and reached the right conclusion anyway - which is exactly how a false claim enters a
+record uncorrected.
+
+🔴 **DISCOUNT THE CONVERGENCE.** The peer ended on the placement this driver already favoured, after this
+driver wrote the challenges. What makes it less suspect than the usual case: Phase 3's criterion is a
+mechanical four-clause match, checkable by anyone who opens the file, not a judgment call.
+
+### The ordering decision, and the cost the owner accepted
+
+**MEASURED 2026-09-03: `agy-discipline-reaching.sh` is on BOTH lists.** It carries 3 of §22's leaking
+`CMD > "$f" 2>/dev/null` sites AND is 31b's fix target. §22's four files are
+`agy-anomaly-capture-reminder.sh`, `agy-consult-guard-pre.sh`, `agy-discipline-reaching.sh` and
+`assertion-strength-reminder.sh` (`agy-shield-lib.sh`'s 6 sites were already fixed in the step-5 range).
+
+The owner was offered merging the two into one pass and **ruled against it: §31 runs FIRST, as its own
+item.** The reason is that §31 is the only item in the entire backlog causing visible daily friction - a
+red `SessionStart:compact hook error` on every `/compact` in every repository where the plugin is
+installed - so it is fixed earliest rather than most cheaply.
+
+🔴 **THE ACCEPTED COST, recorded so a successor does not "optimise" it away:** `agy-discipline-reaching.sh`
+is edited TWICE and mirrored-and-reinstalled TWICE. **That is the ruling, not an oversight.** §22 will
+therefore review a file §31 has just changed; §22's plan must re-derive its site line numbers against
+post-§31 code rather than against the table in ROADMAP §22.
+
+**Blast radius.** Both §31 hooks are byte-identical pairs (`cmp` clean against
+`clavity-classic/plugin/hooks/`) inside the `hooks` tree that `scripts/check-seed-artifacts-synced.sh`
+walks. So §31 is class 2: **mirror to both plugins, and a plugin REINSTALL before either fix takes
+effect.** Phase 3 already carried that requirement through §22, so §31 adds a second reinstall cycle
+rather than a first.
+
+**A constraint on 31a's fix.** The working precedent is `agy-anomaly-capture-reminder.sh`, which emits
+`systemMessage` JSON on stdout with `exit 0` and renders cleanly. But 31a's header at `:9-12` records why
+it chose stderr: at SessionStart there is no user turn, so stdout is absorbed into the model's context and
+**the OWNER never sees it** - and the owner is who triages. Any fix must still reach a human surface on
+`startup`. The root cause is a STALE ASSUMPTION, not broken logic: `:9-12` asserts *"exit 2 is
+non-blocking for SessionStart"*, true when written for `SessionStart(startup)` (`:2`), and the matcher
+later widened to `"startup|resume|clear|compact"` (`plugin/hooks/hooks.json:52`) with nothing watching.
+
 
 ## 4. What this sequence deliberately does NOT decide
 
