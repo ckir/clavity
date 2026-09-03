@@ -35,6 +35,13 @@ BeforeAll {
             Copy-Item (Join-Path $script:RepoRoot "clavity-dotnet/plugin/skills/$s/SKILL.md") `
                       (Join-Path $dst 'SKILL.md')
         }
+        # The section-23 ledger check resolves docs/<x>-ledger.md from -Root, so a scratch root with no
+        # docs/ tree would redden every row in this suite. Stage empty stand-ins: the guard asserts
+        # EXISTENCE, never content, so an empty file is the correct fixture and says so by being empty.
+        New-Item -ItemType Directory -Path (Join-Path $scratch 'docs') -Force | Out-Null
+        foreach ($led in @('agy-capstone-ledger.md', 'agy-test-audit-ledger.md')) {
+            Set-Content -Path (Join-Path $scratch "docs/$led") -Value '' -NoNewline -Encoding utf8
+        }
         return $scratch
     }
     $script:SkillPath = { param($root, $skill) Join-Path $root "clavity-dotnet/plugin/skills/$skill/SKILL.md" }
@@ -114,6 +121,43 @@ Describe 'check-agy-discipline-skills' {
     }
 
     Context 'rejection cases (each perturbs one skill; the other stays valid)' {
+        It 'REJECTS <skill> when its ledger path is stripped' -ForEach @(
+            @{ skill = 'agy-capstone';   ledger = 'docs/agy-capstone-ledger.md' },
+            @{ skill = 'agy-test-audit'; ledger = 'docs/agy-test-audit-ledger.md' }
+        ) {
+            # Both disciplines own a ledger and both REQUIRE a row before a completing verdict. The
+            # capstone's clause shipped unpinned for weeks; this row closes the SET, not the instance.
+            $scratch = New-ScratchRoot
+            $target  = & $script:SkillPath $scratch $skill
+            $real = Get-Content -Raw $target
+            $real.Contains($ledger) | Should -BeTrue -Because "the fixture needs $ledger present in $skill before it can be stripped"
+            $body = $real.Replace($ledger, 'docs/some-other-file.md')
+            $body | Should -Not -Be $real -Because 'the strip must take effect'
+            Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            # Escape the needle: the path carries regex metacharacters, and an unescaped '.' would let a
+            # near-miss message satisfy this row.
+            (Get-LintText $out) | Should -Match ([regex]::Escape("never names '$ledger'"))
+            Remove-Item -Recurse -Force $scratch
+        }
+
+        It 'REJECTS <skill> when its ledger FILE is absent' -ForEach @(
+            @{ skill = 'agy-capstone';   ledger = 'docs/agy-capstone-ledger.md' },
+            @{ skill = 'agy-test-audit'; ledger = 'docs/agy-test-audit-ledger.md' }
+        ) {
+            # Naming a ledger that does not exist is the False Safety Promise shape: the skill's clause
+            # reads as enforced while the file it points at is gone.
+            $scratch = New-ScratchRoot
+            $led = Join-Path $scratch $ledger
+            (Test-Path $led) | Should -BeTrue -Because 'the fixture must stage the ledger before removing it'
+            Remove-Item -Force $led
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match ([regex]::Escape("names '$ledger', which is not on disk"))
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'fails loudly on a non-ASCII character in <skill>' -ForEach @(
             @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }, @{ skill = 'agy-test-audit' }
         ) {
@@ -579,6 +623,24 @@ Describe 'check-agy-discipline-skills' {
     }
 
     Context 'AGY-CAPSTONE 2026-09-02: the roster itself, which nothing reconciled' {
+        It 'fails closed when the ledger map names a discipline that is not linted' {
+            # Section 23. $ledgerFor is consulted with ContainsKey, so a misspelled key raises nothing -
+            # it silently checks nothing, which is the fails-open shape this Context exists for. Perturb
+            # the LINTER, not a skill, so this row needs a staged copy rather than a scratch root alone.
+            # New-TempLinter copies the real checker beside it, which three branches require.
+            $original = Get-Content -Raw $script:Lint
+            $src = $original.Replace(
+                "'agy-capstone'   = 'docs/agy-capstone-ledger.md'",
+                "'agy-capstoneX'  = 'docs/agy-capstone-ledger.md'")
+            $src | Should -Not -Be $original -Because 'the typo must actually take effect in the copy'
+            $lint    = New-TempLinter -Source $src
+            $scratch = New-ScratchRoot
+            $out = & $lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match 'is not a linted discipline'
+            Remove-Item -Recurse -Force $scratch
+        }
+
         # Every guard in this file asks whether a LISTED discipline is well-formed. None asked whether the
         # list is COMPLETE, so a fifth discipline skill added to the tree and forgotten in
         # $disciplineNames was linted by nothing while the gate still exited 0. The mutant method cannot

@@ -73,6 +73,22 @@ $requiredVerdicts = @{
 # The documented marker-contract constant the skill must reference (Task 5).
 $markerConstant = '.clavity/agy-marks/'
 
+# The two disciplines that own a ledger, and the file each must name. A discipline with a completing
+# verdict and no recorded range leaves "was this range reviewed?" unanswerable in the tree - which is
+# ROADMAP section 23, ruled by the owner on 2026-09-03.
+$ledgerFor = @{
+    'agy-capstone'   = 'docs/agy-capstone-ledger.md'
+    'agy-test-audit' = 'docs/agy-test-audit-ledger.md'
+}
+# FAIL CLOSED ON A TYPO. This map is keyed by discipline name and consulted with ContainsKey, so a
+# misspelled key does not error - it silently checks nothing, and the guard certifies exactly what it
+# stopped checking. Reconcile it against the roster that is actually iterated.
+foreach ($k in $ledgerFor.Keys) {
+    if ($skills -notcontains $k) {
+        Fail "check-agy-discipline-skills : ledger map names '$k', which is not a linted discipline - its ledger check would never run"
+    }
+}
+
 foreach ($skill in $skills) {
     $rel = "clavity-dotnet/plugin/skills/$skill/SKILL.md"
     $path = Join-Path $Root $rel
@@ -215,6 +231,30 @@ foreach ($skill in $skills) {
         }
         if (-not $raw.Contains('survives its `claim-type` as a real')) {
             Fail "$rel : missing the claim-type sentence - the PEER-side axis must be named claim-type"
+        }
+    }
+
+    # (i) section 23: a discipline that owns a ledger must NAME that ledger's path. The letters in this
+    # loop run in source order, so this one goes last; inserting it after (f) would leave them reading
+    # f, i, g, h.
+    #
+    # WHAT THIS MEASURES, EXACTLY: that the path string appears somewhere in the skill, and that the file
+    # it names is on disk. It does NOT measure that a row is REQUIRED - a skill naming the file in
+    # passing prose, or inside an HTML comment, would pass. Pinning the requirement SENTENCE verbatim was
+    # considered and rejected: every rewording would be a false RED, which this repository folded twice
+    # in the section 21 capstone. The check asserts the diagnostic, not the wording, and the messages
+    # below say only what was measured.
+    if ($ledgerFor.ContainsKey($skill)) {
+        if (-not $raw.Contains($ledgerFor[$skill])) {
+            Fail "$rel : never names '$($ledgerFor[$skill])', so a completing verdict records nothing"
+        }
+        # And the file must EXIST. Naming a ledger that is not on disk is the False Safety Promise
+        # shape - the clause reads as enforced while the record it points at is gone. An elseif, not a
+        # second if: an absent clause should produce ONE diagnostic, and the existence check is
+        # meaningless when the clause is already missing. Resolved from $Root, which defaults to the
+        # repository root and which the suite's scratch fixture stages.
+        elseif (-not (Test-Path -LiteralPath (Join-Path $Root $ledgerFor[$skill]))) {
+            Fail "$rel : names '$($ledgerFor[$skill])', which is not on disk - the clause points at nothing"
         }
     }
 }
