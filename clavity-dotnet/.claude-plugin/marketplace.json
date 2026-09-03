@@ -1,0 +1,15 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "clavity-dotnet-dev",
+  "owner": {
+    "name": "ckir",
+    "url": "https://github.com/ckir/clavity"
+  },
+  "plugins": [
+    {
+      "name": "clavity",
+      "source": "./plugin",
+      "description": "Pair Claude with a live agy peer via the clavity-ls Language-Server bridge (agy_look / agy_status / agy_ask). Dev-tree source."
+    }
+  ]
+}
