@@ -2121,9 +2121,34 @@ are harmless — executable changes landed after that sha, so `still_describes_h
 discipline re-fires, which is the pessimistic and safe direction — but they are not what the contract
 specifies, and the reasoning that produced them is stale.
 
-**The open question, deliberately not decided here:** a ledger mirroring the capstone's, a completion gate
-that requires a row, or an explicit accepted limitation that audited ranges are not tracked. That is a
-design fork and belongs to the owner.
+**The open question was decided by the owner on 2026-09-03: a ledger AND a row requirement - options 1
+and 2 together, not either alone.**
+
+- **`docs/agy-test-audit-ledger.md`**, mirroring `docs/agy-capstone-ledger.md`: one row per audit, with
+  the audited range.
+- **A row requirement attached to the audit's EXISTING completing terminus**, mirroring
+  `agy-capstone/SKILL.md:375`. This is one clause, not new machinery: the audit already has a
+  completing gate at `agy-test-audit/SKILL.md:278-280` - *"GAPS FOUND is a COMPLETING terminus - it ends
+  the run and writes the debounce marker"*.
+
+**AGY-FIRST was run before the ruling** (brief `.clavity/seams/agyfirst-s23-ledger-fork.md`, framed
+neutrally with the driver's lean withheld). The peer proposed a FOURTH option - fold the record into the
+capstone's ledger as a column - and then **conceded it under measurement**: writing that row to satisfy
+the CAPSTONE's gate leaves the audit cell empty, the audit's own `.head` marker then silences the nudge,
+so nothing forces the cell to be filled; and a `agy-capstone-ledger.md` holding audit rows is a lying
+artifact whose rename touches **23 files**. It then recommended option 3 - accept the limitation - having
+argued the opposite one turn earlier, and without revisiting its own claim that dropping the record
+*"deliberately loses high-leverage context"*.
+
+🔴 **Why the record is not "historical metadata": it is the INPUT to a gate that already exists.** The
+capstone-invalidation loop is `capstone-green -> audit -> fix -> re-capstone -> re-audit`; you cannot tell
+whether a re-audit is owed without knowing what was audited. Measured on 2026-09-02: *"was this range
+capstoned?"* is one grep over 37 ledger rows; *"was this range audited?"* is unanswerable, and that day's
+audit of `d33416c..d528328` survives only in a commit message and a private memory file.
+
+⚠ **Blast radius:** `agy-test-audit/SKILL.md` in BOTH plugin halves (byte-identical pair, gated by
+`check-seed-artifacts-synced.sh`) plus one new `docs/` file. Plugin-shipped, so class 2 - **panel, then
+capstone**, not a quiet edit.
 
 ### §24 — AGY-FIRST is mandatory when a capstone round has to DEVELOP NEW CODE — ▶ **OWNER ACCEPTED 2026-08-31, not yet planned**
 
