@@ -2085,7 +2085,7 @@ instead of two.
 
 ---
 
-### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere — ▶ **OPEN, promoted from the anomalies file 2026-08-30**
+### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere — ✅ **SHIPPED 2026-09-03** — `13f8a09` the ledger · `4154800` the row requirement + the ROADMAP line-count · `45b612e` the pins · `54eda7b` the suite count
 
 🔴 **THE CAPTURE'S PREMISE WAS FALSE AND THE CORRECTED FINDING IS LARGER.** This was anomaly 2 of 2.
 It claimed the discipline-keyed marker "cannot represent more than one audited range", so auditing an
