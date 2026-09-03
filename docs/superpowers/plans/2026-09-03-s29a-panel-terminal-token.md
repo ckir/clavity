@@ -82,10 +82,12 @@ do not record this as hardening. The only fix for that class is the rejected `[V
 | `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs` | end-to-end 13b behaviour | MODIFY (**2 sites** - `:1456`, `:1474`; **the fake reply text is NOT touched**) |
 
 **Blast radius: driver-only** - no plugin payload, no byte-identical pair, no `0c-local` reinstall, which
-is why §29a is a BOUNDED Phase 0d prerequisite. ⚠ **But it is NOT small: MEASURED at 5 files, 18
-insertions / 17 deletions, across TWO test projects.** An estimate of "3 values and one test file" was
-made during round 3 and was wrong by roughly threefold; it is recorded here so the next reader sizes the
-task from the measurement rather than from that estimate.
+is why §29a is a BOUNDED Phase 0d prerequisite. ⚠ **But it is NOT small: 5 files across TWO test
+projects.** An estimate of "3 values and one test file" was made during round 3 and was wrong by roughly
+threefold. 🔴 **NO LINE-COUNT IS QUOTED HERE ON PURPOSE.** A "18 insertions / 17 deletions" figure was
+carried until round 5, measured against a design that has since gained two `[Fact]`s and a public helper —
+**a diffstat is volatile state in static prose and rots on the next fold.** Size the task from the FILE
+LIST, which is stable, and read the real diffstat from git when you need one.
 
 🔴 **EVERY COMMAND IN THIS PLAN IS SELF-LOCATING, AND THAT IS NOT DECORATION.** The executor's shell
 **keeps its working directory between steps.** An earlier draft opened Task 1 with a bare
@@ -259,12 +261,23 @@ for f in clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs \
          clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs \
          clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs; do
   before=$(grep -c '"\[VERDICT:"' "$f"); sd '"\[VERDICT:"' '"VERDICT:"' "$f"
-  after=$(grep -c '"\[VERDICT:"' "$f"); echo "$f  $before -> $after"
+  after=$(grep -c '"\[VERDICT:"' "$f")
+  echo "$f  before=$before after=$after"
+  [ "$before" -gt 0 ] && [ "$after" -eq 0 ] || echo "  !! STATE_MISMATCH in $f"
 done
 ```
-Expected, **MEASURED**: `DisciplineContract.cs 3 -> 0` · `DisciplineContractTests.cs 5 -> 0` ·
-`TerminalTokenTests.cs 6 -> 0` · `AgyAskIntegrationTests.cs 2 -> 0`. **Any other numbers mean the tree is
-not the tree this plan was written against — STOP and report `STATE_MISMATCH`.**
+
+🔴 **THE ORACLE IS `before > 0` AND `after == 0` PER FILE — NOT a specific `before` value.** Every file
+must have had at least one occurrence and must have none left. **Do NOT re-introduce hardcoded expected
+counts here.** AGY-AFTER round 5 found exactly that: the previous draft asserted `3` and `5` for the
+first two files, **labelled the numbers MEASURED when they were not** (they came from a different grep
+pattern, without the surrounding quotes), and tied a mandatory abort to them — **so the plan halted
+itself at this step.** The real counts are `4` and `4`; a comment and an `Assert` carry the literal too,
+and any future comment mentioning it would shift them again. **A count that drifts with prose is not an
+oracle. `after == 0` is.**
+
+⚠ **The real proof is Step 5: both suites green.** This loop only stops the executor replacing the wrong
+occurrence by hand.
 
 ⚠ **DO NOT touch the fake reply text in `AgyAskIntegrationTests.cs`.** It emits
 `"findings here\n\n[VERDICT: ALIGNED]"` and **must keep its bracket** — with `expectTerminal` now
@@ -285,6 +298,11 @@ public static class TerminalToken
     // the line loses its '[' and can never match an expectation that still has one. This is the price
     // of storing the enforced token in DisciplineContract rather than normalising it at runtime.
     private static readonly char[] Decoration = { '*', '`', '_', '#', ' ', '[' };
+
+    /// <summary>Is this character stripped from the front of a line before matching? EXPOSED SO THE
+    /// INVARIANT TEST CANNOT ROT: a guard that hardcodes its own copy of the set stops covering the set
+    /// the moment a character is added here, while still claiming to enforce it.</summary>
+    public static bool IsDecoration(char c) => Array.IndexOf(Decoration, c) >= 0;
 ```
 
 and in the loop replace `TrimStart('*', '`', '_', '#', ' ')` with `TrimStart(Decoration)`.
@@ -305,7 +323,9 @@ A rule with no implementation is worse than no rule. Add to `DisciplineContractT
         foreach (var d in DisciplineContract.KnownDisciplines)
         {
             var tok = DisciplineContract.TerminalTokenFor(d)!;
-            Assert.False("*`_# [".Contains(tok[0]),
+            // ASK THE MATCHER, do not restate its set. A hardcoded copy would silently stop covering
+            // any character added to Decoration later, while still reading as an enforced invariant.
+            Assert.False(TerminalToken.IsDecoration(tok[0]),
                 $"discipline '{d}' stores token '{tok}', which begins with a stripped character");
         }
     }
@@ -523,13 +543,41 @@ below-floor discards.** The two dispositions that are not `FOLDED`:
   test becomes the end-to-end PROOF that a bracketed reply survives the wiring. The seat assumed the
   fixture would change too. The plan now says explicitly that it must not.
 
+**Round 5** — bespoke seats, because the standard palette was exhausted after four rounds:
+
+- 🔴 `FOLDED: the counted command asserted FABRICATED numbers and halted the plan` — **the worst finding
+  of the review, and it was mine.** Round 4's repair asserted `3` and `5` occurrences for the first two
+  files **and labelled them MEASURED. They were not.** They came from a different grep pattern
+  (`\[VERDICT:`, without the surrounding quotes) than the command actually runs
+  (`"\[VERDICT:"`). **The real counts are `4` and `4`** — a comment and an `Assert` carry the literal too.
+  Because the step tied a mandatory `STATE_MISMATCH` abort to those numbers, **the plan halted itself at
+  Task 3 Step 1** — the same self-halting shape round 1 found, reintroduced by round 4's own fix.
+  **The step now asserts `before > 0 && after == 0` per file and hardcodes no count**, because a count
+  that drifts whenever someone writes a comment is not an oracle.
+- `FOLDED: the invariant guard was decoupled from the thing it guards` — it hardcoded its own copy of the
+  decoration set, so adding a character to `Decoration` would leave it silently not covering that
+  character while still reading as an enforced invariant. `TerminalToken` now exposes
+  `IsDecoration(char)` and the guard asks it. **PROVEN by a second mutant: with `'~'` added to
+  `Decoration` and a token of `~VERDICT:`, the re-coupled guard FAILS — the hardcoded version could not
+  have seen it.**
+- `FOLDED: three stale folds contradicting each other` — `Total: 210` in Task 3 versus a "final: 209/209"
+  in Review status (the latter measured the MERGED design); a closing line still asking about "a third
+  round" after four had run; and a diffstat quoted as fact. **The diffstat is now removed rather than
+  corrected** — volatile state in static prose rots on the next fold, so the stable FILE LIST is the size
+  signal and git is the source for a real diffstat.
+- `REJECTED: the echo prints `$f`, and the expected output listed basenames` — correct as stated, but it
+  is subsumed: the fabricated counts were removed entirely, so there is no longer an expected output
+  string to mismatch.
+
 ## Review status
 
-⚠ **AGY-AFTER ROUNDS 1-4 COMPLETE — 14 folded, 7 rejected/discarded by measurement, 0 open.** Round 1:
-solo panel (8 seats) + live escalation. R2: State Corruptor, Activation Auditor, Literal Implementer.
+⚠ **AGY-AFTER ROUNDS 1-5 COMPLETE — 17 folded, 8 rejected/discarded by measurement, 0 open.** R1: solo
+panel (8 seats) + live escalation. R2: State Corruptor, Activation Auditor, Literal Implementer.
 R3: Blindspot Auditor, Cascade Analyst, Boundary Smuggler. R4: Resource Vampire, plus Axiom Breaker and
-Mechanism Gamer re-seated on the new design. **Every round produced a blocking finding, and rounds 2, 3
-and 4 each hit the PREVIOUS round's repair.**
+Mechanism Gamer re-seated. **R5 exhausted the palette and used two BESPOKE seats** — Fold Consistency
+Auditor and Executor Simulator — which the skill permits when the artifact needs a lens the palette does
+not cover. **Every round produced a blocking finding, and rounds 2-5 each found theirs inside the
+PREVIOUS round's repair.**
 
 🔴 **THAT PATTERN IS THE ARTIFACT'S MOST IMPORTANT PROPERTY, AND IT IS NOT A SIGN THE PANEL IS PADDING.**
 Three consecutive rounds found a real defect *in the fix the round before had just made*: a vacuous RED
@@ -549,7 +597,13 @@ its cwd, so the run would have died at Task 2 with `fatal: pathspec ... did not 
 fold defect is an incomplete fold.
 
 **Both rounds' fixes were verified by RED/GREEN with the source reverted and the tests kept**, so no new
-test is assumed non-vacuous — each was watched failing first. Final: full suite **209/209**.
+test is assumed non-vacuous — each was watched failing first.
+
+**Suite counts, reconciled after round 5 found them contradicting each other:** baseline **208** ·
+after **Task 2** still **208** (it adds no test — its oracle is the NAMED test from Task 1) · after
+**Task 3** **210** (the two new `[Fact]`s are the only things that move it) · `Clavity.Integration.Tests`
+**84** throughout. ⚠ **An earlier "final: 209/209" was the dry-run of the MERGED design and no longer
+describes this plan.**
 
 **Reviewing version, recorded because this plan edits the discipline that reviews it (sequence spec,
 "Risks"):** `adversarial-panel-review/SKILL.md` at repo HEAD **`42cfa84`**, 380 lines.
@@ -560,5 +614,7 @@ still expects `GREEN`. The reply was complete and its echo passed. **This plan's
 measured instance of the defect it fixes, and the discarded findings included the vacuous-TDD defect that
 would have halted execution.**
 
-▶ **READY TO EXECUTE**, subject to the owner's call on whether to run a third round. Every finding from
-both rounds carries a closed AGY-SCOPE token; nothing sits open.
+▶ **NOT YET EXECUTED. FIVE AGY-AFTER ROUNDS HAVE RUN**, each producing a blocking finding, and rounds
+2-5 each found theirs inside the PREVIOUS round's repair. Every finding from all five carries a closed
+AGY-SCOPE token; nothing sits open. **The hard round cap is 6, and whether to spend it is the owner's
+call — this line must be updated by whoever answers that, not left to rot as it did after round 2.**
