@@ -2376,6 +2376,88 @@ must let the waiver through without reopening the hole it closes.
 **Blast radius:** `agy-mark.sh` is a shipped, byte-identical pair — class 2, so plan → panel → capstone
 → audit, the full loop.
 
+### §28 — Four gate scripts repeat the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ▶ **PROMOTED from the anomalies file 2026-09-03, not yet planned**
+
+**The shape.** Each script resolves a root with `Resolve-Path ... .Path`/`.ProviderPath`, which
+**PRESERVES an 8.3 short path**, then computes a relative path by `Substring(<root>.Length)` against a
+`Get-ChildItem` `FullName`, which **NORMALISES to the long form**. Long minus short is arithmetic on two
+different strings, so `$rel` comes out mangled.
+
+**Confirmed still present at triage, at every line the capture cited** (2026-09-03, after an earlier
+narrower grep on `$root` MISSED them because these use `$repo`, `$RepoRoot` and `$prefix`):
+
+| site | the line |
+|---|---|
+| `scripts/check-dangling-consumers.ps1:104,127` | root via `.ProviderPath`; `$f.FullName.Substring($repo.Length)` |
+| `scripts/check-injected-context.ps1:20,186` | root via `Resolve-Path`; `$child.FullName.Substring($RepoRoot.Length + 1)` |
+| `scripts/check-installer-ascii.ps1:29,54` | root via `Resolve-Path`; `$f.FullName.Substring($RepoRoot.Length)` |
+| `scripts/check-knowledge-store.ps1:61,125` | root via `Resolve-Path`; `$_.Substring($prefix.Length)` |
+
+**Reachability: all four accept a `-RepoRoot` parameter, so a short root is CALLER-reachable** — this is
+not a theoretical Windows curiosity, it is an argument any caller can pass.
+
+⚠ **The MECHANISM is proven (seat-b-probe control); PER-SITE reachability is UNVERIFIED.** A short-root
+run of `check-installer-ascii` returned OK — but `$rel` is only printed on FAILURE, so that run could not
+have shown the bug. **A plan must establish per-site reachability before claiming a fix, and must not
+read that OK as evidence.**
+
+**`41eef75` already fixed this shape once, elsewhere.** The fix is known; what is missing is applying it
+to four more sites and pinning it so a fifth cannot appear.
+
+---
+
+### §29 — The 13b completeness check false-flags a valid reply, and its own remediation text says to discard the findings — ▶ **PROMOTED from the anomalies file 2026-09-03, not yet planned**
+
+**The defect.** `Clavity.Ls/DisciplineContract.cs:25` maps `adversarial-panel-review` to the literal
+`GREEN`. A panel round that FINDS something cannot emit `GREEN` — the skill's own Outputs section names
+"a list of the open findings" as a legitimate terminal disposition — so **every findings-bearing panel
+round fails the check by construction.**
+
+**The consequence is the serious half.** The flag's text reads *"Treat this consult as INCOMPLETE - do
+not fold findings from it."* MEASURED 2026-09-03: the first reply it flagged carried a **CONFIRMED
+BLOCKING defect** (`Test-Path` accepting a directory). Following the remediation would have discarded it.
+
+**It also flagged replies that were complete.** Four flags in one session; at least two were false:
+
+- one reply ended `[VERDICT: ALIGNED - ...] GREEN` — the expected literal IS on the last non-blank line
+  — and was still flagged `TerminalTokenMissing` AND `EchoMissing`;
+- one `EchoMissing` was **the driver's own fault** and is recorded as such: the brief told the peer to
+  quote the artifact's last line "with no backticks", and the source line CONTAINED backticks, so a
+  faithful echo could not match. **Fixing the instruction is part of this item**, not a separate one.
+
+**Cause of the second false flag is NOT determined.** The returned `Answer` satisfies `IsSatisfied` as
+documented (`TerminalToken.cs:14-21`), so either the driver evaluates a different delta than it returns,
+or the peer's escaping defeats the matcher. **A plan must measure that before changing either side.**
+
+---
+
+### §30 — Three coverage gaps in the section-23 ledger suite, owner-deferred at audit — ▶ **PROMOTED from the anomalies file 2026-09-03, not yet planned**
+
+Raised and VERIFIED by AGY-TEST-AUDIT over `73efca8..eba63a8`; the owner scoped that run to gap 1 (folded
+in `65b889a`) and deferred these three. Recorded here as tracked debt, which is where the audit
+discipline sends a deferred gap.
+
+**30a — the `-ForEach` roster nothing reconciles.** The ledger rejection rows hardcode a two-element
+array mirroring the linter's `$ledgerFor` map. Add a third ledger-owning discipline and its guards are
+never exercised while the suite stays green at 82/0. 🔴 **This is the SAME defect class the capstone
+closed for the linter's own roster one day earlier — a hand-maintained list with no reconciliation —
+reintroduced one layer up, in the tests.** Suggested test: parse `$ledgerFor`'s keys from the linter
+source and assert the arrays cover every key.
+`scripts/tests/check-agy-discipline-skills.Tests.ps1:87,144`.
+
+**30b — short-circuit masking.** The suite perturbs exactly ONE skill per row, so it structurally cannot
+see a rogue `break` replacing `Fail`'s `$script:fail = $true`: such a defect would halt the loop after the
+first failing skill and every existing row would stay green, because each perturbs only one.
+Suggested test: one row perturbing TWO skills, asserting BOTH diagnostics appear.
+`scripts/check-agy-discipline-skills.ps1:76`.
+
+**30c — needles assert only the message PREFIX**, so truncating an explanatory suffix passes silently and
+the operator loses the explanation. ⚠ **Recorded WITH its counter-argument, because the fix may be worse
+than the gap: pinning message suffixes is pinning prose verbatim, the anti-pattern this repo folded TWICE
+in the section-21 capstone because every rewording becomes a false RED.** This one may resolve as
+`DISCARDED-BELOW-FLOOR` rather than a fix.
+`scripts/tests/check-agy-discipline-skills.Tests.ps1:103,177`.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
