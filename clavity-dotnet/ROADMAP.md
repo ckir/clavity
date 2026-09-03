@@ -2243,6 +2243,65 @@ halves in the same commit and must pass `plugin-hooks-payload.Tests.ps1`.
 
 ---
 
+### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost — ▶ **OWNER ACCEPTED 2026-09-03, spec written, build DEFERRED until §23 ships**
+
+**The owner's ask, verbatim:** *"a static footprint analyzer so 1) a test for the maintainer so it does
+not ship bloated plugins 2) Merge the output of the static footprint analyzer to README docs so viewers
+of the repo can see the usage cost before decide to install a plugin."*
+
+**MEASURED 2026-09-03 at `b93fad1`, so the gap is not asserted from memory:**
+
+- `clavity-dotnet/plugin/` on disk: `skills/` 134.327 B, `hooks/` 192.395 B, `knowledge/` 21.504 B.
+- **Nothing computes an aggregate.** `grep -rlnE "TOTAL|aggregate|total bytes|footprint" scripts/*.ps1`
+  returns only `discipline-reaching-report.ps1` and `release.ps1`, neither a size analyzer.
+- **Neither README says anything about cost.** `grep -niE "KiB|KB|bytes|footprint|context cost|token"`
+  over `README.md` and `clavity-dotnet/README.md` returns nothing.
+- **Three per-artifact budget gates DO exist** and are not the gap: `check-growth-budget.ps1` (SEED +
+  GROWTH ≤ 32.768 B, matching `GoldenHeader.MaxBytes` in both binaries), `check-seed-budget.ps1`,
+  `check-cheatsheet-budget.ps1`. `check-injected-context.ps1` already performs SUBTRACTIVE discovery
+  over the injected surface. **What is missing is aggregation and publication, not measurement of
+  individual artifacts.**
+
+🔴 **THE PEER'S BEST CONTRIBUTION, and it is load-bearing for the design: ON-DISK SIZE IS THE WRONG
+NUMBER TO PUBLISH.** Publish "348 KB" as *usage cost* and a reader divides by four, concludes the plugin
+permanently consumes half their context window, and closes the tab — a technically true number producing
+a badly wrong decision. **And a naive analyzer over `plugin/` would not even see the real always-injected
+payload:** `scripts/injected-context-ignore.txt:37-45` records that
+`ghidrust/crates/ghidrust-mcp/src/tools.rs` holds 19 `pub const DESC_*` blocks, roughly 12 KB of
+description text *"that MCP delivers to EVERY agent via tools/list"*, deliberately excluded from the
+injected-context gate because auditing it for the ASCII invariant would red-gate correct content.
+**Verified against that file, not taken on the peer's word.**
+
+**Where the peer and I split, recorded because the owner ruled between us.** It concluded that a
+maintainer gate and a README disclosure *"are fundamentally incompatible; pairing them is a mistake"*,
+and recommended building the gate and publishing nothing. I disagreed on two measured grounds: it
+conflates ONE ANALYZER with ONE NUMBER — a vector of fields lets each consumer read the field it needs —
+and its cost objection (*"building and maintaining a custom Markdown parser for the README"*) is largely
+already paid, because `check-roadmap-claims.ps1` parses claims out of markdown and validates them against
+tracked files today. ⚠ Its own Q5 argued the disclosure case better than its recommendation did, and it
+never reconciled the two.
+
+## ✅ OWNER RULING, 2026-09-03 — all three forks
+
+1. **A VECTOR, not one number.** The analyzer emits at least: always-injected bytes, per-skill
+   on-invoke bytes, and on-disk bytes. The maintainer gate reads on-disk to block a committed blob; the
+   README reads always-injected and per-invoke. **Discovery extends `check-injected-context.ps1`'s
+   existing subtractive walk** rather than adding a second walk, so `tools.rs` is in scope by
+   construction instead of invisible.
+2. **The README block is GENERATED and GATED**, never hand-written. The analyzer writes between markers;
+   a checker recomputes and fails on drift, exactly as `check-roadmap-claims.ps1` already does for
+   `(N lines)` claims. Hand-editing becomes a red build rather than a silent lie.
+3. **SEQUENCING: spec now, build after §23 ships.** §23 is planned and panel-GREEN; finishing it closes
+   Phase 1.
+
+**Two constraints neither model raised, recorded so the spec does not have to rediscover them.** This
+repo hosts five products, so footprint is PER-PRODUCT and one repo-wide number would be meaningless. And
+**byte→token conversion is a claim about someone else's tokenizer** — publish BYTES with the conversion
+caveat stated; do not publish a token count.
+
+**Spec:** `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md`.
+**AGY-FIRST consult:** `.clavity/seams/agyfirst-footprint-analyzer.md`.
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
