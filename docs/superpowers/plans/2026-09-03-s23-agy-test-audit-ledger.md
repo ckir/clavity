@@ -447,40 +447,49 @@ Expected: `Tests Passed: 5, Failed: 0`.
 **One mutant at a time, and confirm the SPECIFIC row that reddens.** Two mutants at once cannot attribute
 a red to a guard, which is the whole point of the exercise.
 
+🔴 **EVERY MUTANT IS A SELF-CONTAINED CYCLE: apply -> run -> RESTORE -> PROVE THE RESTORE.** An earlier
+draft of this step wrote the restore into mutant A's block and then said "re-run the same command" for B
+and C. **The panel measured what that costs:** mutant C would have run on top of mutant B's still-neutered
+file, producing 3 failures where the step predicts 2 - and the executor would be staring at a count that
+matches nothing, with the attribution property this step exists for silently gone. **Never carry state
+between mutants, and never trust "the same command" to include a restore.**
+
+Take the backup once:
+
 ```bash
 mkdir -p .clavity/scratch/s23
 cp scripts/check-agy-discipline-skills.ps1 .clavity/scratch/s23/lint.bak
 ```
 
-**Mutant A - neuter the ledger check's condition, not its subject:** change
-`if ($ledgerFor.ContainsKey($skill)) {` to `if ($false) {`, then:
+Then run the cycle below **three times, once per mutant**, substituting that mutant's edit at step (1).
+`RUN` and `RESTORE` are identical every time:
 
 ```bash
+# (1) apply THIS mutant's one-line edit to scripts/check-agy-discipline-skills.ps1  (see A/B/C below)
+# (2) RUN
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
+# (3) RESTORE
 cp .clavity/scratch/s23/lint.bak scripts/check-agy-discipline-skills.ps1
-```
-Expected: **4 failed** (both path rows AND both existence rows - the existence check is nested inside
-this condition, so one mutant disables two guards), **1 passed** (the reconciliation row, which sits
-outside the loop and which this mutant does not touch - that asymmetry is the attribution).
-
-**Mutant B - neuter the reconciliation:** change `if ($skills -notcontains $k) {` to `if ($false) {`,
-then re-run the same command.
-Expected: **1 failed** (the reconciliation row), **4 passed**.
-
-**Mutant C - neuter ONLY the existence check:** change
-`elseif (-not (Test-Path -LiteralPath (Join-Path $Root $ledgerFor[$skill]))) {` to `elseif ($false) {`,
-then re-run the same command.
-Expected: **2 failed** (the two existence rows), **3 passed**. **Mutant C is the one that matters most**:
-A cannot distinguish the path guard from the existence guard, and without C a completely absent existence
-check would still look pinned.
-
-```bash
-cp .clavity/scratch/s23/lint.bak scripts/check-agy-discipline-skills.ps1
+# (4) PROVE THE RESTORE - do not start the next mutant until this prints 2
 md5sum scripts/check-agy-discipline-skills.ps1 .clavity/scratch/s23/lint.bak | awk '{print $1}' | uniq -c
 ```
-Expected: `2` on one hash after the final restore. **Restore with the `cp` backup, never
-`git checkout --`.** `.clavity/` is gitignored, so the backup never enters a commit - and **never
-`git add -f` anything under it.**
+
+**The three edits, and what each must produce at (2). Five rows are selected by the filter every time, so
+failed + passed must always total 5** - any other total means the filter missed, not that a guard held.
+
+| mutant | the one-line edit | expected |
+|---|---|---|
+| **A** | `if ($ledgerFor.ContainsKey($skill)) {` -> `if ($false) {` | **4 failed** (both path rows AND both existence rows - the existence check is nested inside this condition, so one mutant disables two guards), **1 passed** (the reconciliation row, which sits outside the loop) |
+| **B** | `if ($skills -notcontains $k) {` -> `if ($false) {` | **1 failed** (the reconciliation row), **4 passed** |
+| **C** | `elseif (-not (Test-Path -LiteralPath (Join-Path $Root $ledgerFor[$skill]))) {` -> `elseif ($false) {` | **2 failed** (the two existence rows), **3 passed** |
+
+**Mutant C is the one that matters most:** A cannot distinguish the path guard from the existence guard,
+so without C a completely absent existence check would still look pinned. **And C is precisely the one
+that reads wrong if B was not restored** - it would report 3 failed, 2 passed, which is why step (4) is
+not optional.
+
+**Restore with the `cp` backup, never `git checkout --`.** `.clavity/` is gitignored, so the backup never
+enters a commit - and **never `git add -f` anything under it.**
 
 - [ ] **Step 6: Run the whole suite**
 
@@ -510,8 +519,27 @@ The current row, at `scripts/tests/_partition.md:716`, reads:
 ```
 check-agy-discipline-skills.Tests.ps1            40,5s   75 tests   <- FAST, re-measured 2026-09-02
 ```
-Change `75 tests` to `80 tests`. **Re-measure the runtime rather than copying 40,5s** - run the suite
-once and use what it prints, and say the box was not idle.
+**Change `75 tests` to `80 tests`, and change nothing else on that line.**
+
+**Re-measure the runtime rather than copying 40,5s.** The figure comes from the run you already did in
+Task 3 Step 6: `-Output Minimal` prints a per-file `40,5s` and a `Tests completed in 40,54s` line - use
+what it printed. Replace `40,5s` with that figure, keeping this file's comma decimal separator.
+
+**Where the non-idle disclaimer goes, exactly.** Not free-floating prose: this table records provenance
+in INDENTED CONTINUATION LINES directly beneath the row, two spaces in, as the existing rows already do
+(see the 86,6s -> 40,5s note under this very row, and the `MEASURED 2026-08-24 WARM on an ...` note under
+`test-suite-registration.Tests.ps1`). Append one continuation line beneath this row:
+
+```
+  Re-measured <YYYY-MM-DD> for ROADMAP section 23, count 75 -> 80. The box was NOT verified idle: the
+  agent and the suite share one CPU, so treat this figure as indicative, not as a regression baseline.
+```
+
+🔴 **Do NOT "correct" the existing continuation note under this row.** It says the runtime halved *"with
+the row count and every result unchanged at 75/0"*, and that is a true statement about what happened on
+2026-09-02 - a historical record, not a live claim. `test-suite-registration.Tests.ps1` gates the row's
+COUNT FIELD and not this prose, so editing it changes nothing mechanical and destroys a measurement.
+**Only the `75 tests` field on the row itself is stale.**
 
 **The count is mechanically gated**, so a wrong number here is caught rather than believed:
 `test-suite-registration.Tests.ps1:185` - *"every `_partition.md` row states the CURRENT test count for
