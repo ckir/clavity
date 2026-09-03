@@ -2245,7 +2245,9 @@ halves in the same commit and must pass `plugin-hooks-payload.Tests.ps1`.
 
 ---
 
-### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost — ▶ **OWNER ACCEPTED 2026-09-03, spec written, build UNBLOCKED (its condition is now met)**
+### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost — ▶ **OWNER ACCEPTED 2026-09-03, spec written, SEQUENCED as Phase 6 (LAST), build DEFERRED**
+
+> **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s28-30-sequencing.md`): Phase 6, last, ON ITS OWN.** It is the ONLY additive item in the sequence — every other phase repairs something already wrong — and a repair-ordered sequence finishes its repairs first. Deliberately NOT batched with §28/§30: it needs architectural design review that contained fixes do not, and grouping them merely because all three are "tooling" is the shallow similarity that dilutes a panel.
 
 > ⚠ **This header read "build DEFERRED until §23 ships" for a few hours. §23 SHIPPED the same day
 > (`13f8a09` · `4154800` · `45b612e` · `54eda7b`, closed at `8606391`), so the condition is MET and the
@@ -2376,7 +2378,7 @@ must let the waiver through without reopening the hole it closes.
 **Blast radius:** `agy-mark.sh` is a shipped, byte-identical pair — class 2, so plan → panel → capstone
 → audit, the full loop.
 
-### §28 — Four gate scripts repeat the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ▶ **PROMOTED from the anomalies file 2026-09-03, not yet planned**
+### §28 — Four gate scripts repeat the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ▶ **PROMOTED 2026-09-03, SEQUENCED as Phase 3b with §30, not yet planned**
 
 **The shape.** Each script resolves a root with `Resolve-Path ... .Path`/`.ProviderPath`, which
 **PRESERVES an 8.3 short path**, then computes a relative path by `Substring(<root>.Length)` against a
@@ -2406,7 +2408,23 @@ to four more sites and pinning it so a fifth cannot appear.
 
 ---
 
-### §29 — The 13b completeness check false-flags a valid reply, and its own remediation text says to discard the findings — ▶ **PROMOTED from the anomalies file 2026-09-03, not yet planned**
+### §29 — The 13b completeness check false-flags a valid reply, and its own remediation text says to discard the findings — ▶ **PROMOTED 2026-09-03, SPLIT: §29a is a Phase 0d PREREQUISITE, §29b is tracked debt**
+
+> **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s28-30-sequencing.md`).**
+>
+> **§29a — PREREQUISITE (Phase 0d), and deliberately BOUNDED.** Phase 0's bar is *"everything after them
+> depends on their being true"*, which alone would promote almost any bug. The narrower test Phase 0
+> actually applies — and which 0b and 0c both fit — is that **the thing under repair is an INSTRUMENT OF
+> VERIFICATION**: a broken instrument does not merely block later work, it corrupts the evidence later
+> work produces. §29a covers ONLY the measured half — the `GREEN` literal at `DisciplineContract.cs:25`
+> that makes every findings-bearing panel round fail by construction, and the driver-side echo-instruction
+> wording that caused one false flag and is the driver's own fault.
+>
+> 🔴 **§29b — the flag whose cause is NOT DETERMINED — is explicitly OUT of the prerequisite and tracked
+> here as debt.** The returned reply satisfies `IsSatisfied` as documented (`TerminalToken.cs:14-21`), so
+> either the driver evaluates a different delta than it returns or the peer's escaping defeats the
+> matcher; **that must be MEASURED before either side is changed.** An open-ended investigation must not
+> gate the sequence — a prerequisite that is unbounded is how a prerequisite phase swallows a schedule.
 
 **The defect.** `Clavity.Ls/DisciplineContract.cs:25` maps `adversarial-panel-review` to the literal
 `GREEN`. A panel round that FINDS something cannot emit `GREEN` — the skill's own Outputs section names
@@ -2431,7 +2449,7 @@ or the peer's escaping defeats the matcher. **A plan must measure that before ch
 
 ---
 
-### §30 — Three coverage gaps in the section-23 ledger suite, owner-deferred at audit — ▶ **PROMOTED from the anomalies file 2026-09-03, not yet planned**
+### §30 — Three coverage gaps in the section-23 ledger suite, owner-deferred at audit — ▶ **PROMOTED 2026-09-03, SEQUENCED as Phase 3b with §28, not yet planned**
 
 Raised and VERIFIED by AGY-TEST-AUDIT over `73efca8..eba63a8`; the owner scoped that run to gap 1 (folded
 in `65b889a`) and deferred these three. Recorded here as tracked debt, which is where the audit

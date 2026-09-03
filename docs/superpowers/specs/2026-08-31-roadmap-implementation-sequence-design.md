@@ -558,6 +558,70 @@ existing SP3 smoke debt.
 
 ---
 
+## AMENDMENT 2 - placing the four orphans, owner-ruled 2026-09-03
+
+> ⚠ **NONE of §26, §28, §29 or §30 existed when this sequence was composed on 2026-08-31.** They are
+> placed here in ONE decision, and marked as an amendment rather than folded silently into a
+> panel-reviewed artifact. AGY-FIRST consult: `.clavity/seams/agyfirst-s28-30-sequencing.md`.
+
+**COMPOSITION IS NOT BATCHING, and that distinction is the ruling.** The peer recommended evaluating all
+four together (its Q1) and then, in its own Q5, warned that batching them would couple three contained
+fixes to a new feature and reproduce the review-lens dilution that kept §27 out of Phase 2. **Both halves
+are right.** The four are placed in ONE decision, into FOUR different slots, on their measured blast
+radii - which are genuinely different:
+
+| item | files | shipped payload? | placed |
+|---|---|---|---|
+| §29a | `Clavity.Ls/{DisciplineContract,TerminalToken}.cs` + their dotnet tests | no | **Phase 0d - PREREQUISITE** |
+| §28 + §30 | `scripts/*.ps1`, `scripts/tests/*.Tests.ps1` | no | **Phase 3b** |
+| §26 | new analyzer + a generated README block | no | **Phase 6 - last** |
+
+`check-seed-artifacts-synced.sh:23-24` walks only `hooks skills knowledge` inside the two plugin
+directories, so **none of these four touches a byte-identical pair and none needs the `0c-local`
+reinstall.** Only §27 (Phase 2b) does.
+
+### Phase 0d - §29a, the 13b completeness check. PREREQUISITE, and BOUNDED.
+
+**Why a prerequisite, and why this does not promote everything.** Phase 0's bar is *"everything after
+them depends on their being true"*, which on its own would promote almost any bug. The narrower test
+this phase actually applies - and 0b (the suite floor) and 0c (the drifted install) both fit it - is:
+**the thing under repair is an INSTRUMENT OF VERIFICATION.** A broken instrument does not merely block
+later work, it corrupts the evidence later work produces.
+
+§29 is that: the 13b check certifies whether a consult reply is COMPLETE, and it currently tells the
+driver *"Treat this consult as INCOMPLETE - do not fold findings from it."* **MEASURED 2026-09-03: the
+first reply it flagged carried a confirmed BLOCKING defect.** Obeying it would have discarded that.
+
+🔴 **BOUNDED, owner-ruled, because a prerequisite that is open-ended is how a prerequisite phase swallows
+a schedule.** Phase 0's own items were each a known fix. §29a covers ONLY the measured half:
+
+- the `GREEN` literal in `DisciplineContract.cs:25`, which makes **every findings-bearing panel round
+  fail the check by construction** - the panel skill names "a list of the open findings" as a legitimate
+  terminal disposition;
+- the driver-side ECHO INSTRUCTION wording, which caused one of the false flags and is the driver's own
+  fault: the brief told the peer to quote a line "with no backticks" and the source line contained them.
+
+**§29b - the flag whose cause is NOT determined - is explicitly OUT of this prerequisite** and tracked
+separately in the ROADMAP. It must not gate the sequence.
+
+### Phase 3b - §28 + §30, repo tooling
+
+**Batched, and for a real reason rather than a shared directory.** They share a blast radius (pure
+PowerShell repo tooling, no shipped payload, no reinstall) AND a review lens - Pester testing and static
+path/regex logic. That is the opposite of the §27 case, where a single panel would have had to split
+attention between prompt engineering and bash-git parsing.
+
+**Placed LATE because neither blocks anything.** §28's mechanism is proven but its per-site reachability
+is not, and a short root is only ever caller-supplied; §30 is coverage debt on a suite that is green.
+
+### Phase 6 - §26, the footprint analyzer. LAST.
+
+**On its own merits, not batched.** §26 is the ONLY additive item in the whole sequence - every other
+phase repairs something that is already wrong. It was deferred until §23 shipped, and that condition has
+now fired, so it is unblocked rather than blocked; it is placed last because a repair-ordered sequence
+finishes its repairs first. It also needs architectural design review that none of the others do, which
+is precisely why batching it with §28/§30 would have diluted the lens.
+
 ## 4. What this sequence deliberately does NOT decide
 
 - **The content of any phase.** Each carries its own committed ROADMAP section or backlog file.
