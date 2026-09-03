@@ -10,7 +10,7 @@ public class DisciplineContractTests
     [InlineData("agy-capstone", "[VERDICT:")]
     [InlineData("agy-test-audit", "[VERDICT:")]
     [InlineData("agy-first", "[VERDICT:")]
-    [InlineData("adversarial-panel-review", "GREEN")]
+    [InlineData("adversarial-panel-review", "PANEL VERDICT")]
     public void Every_discipline_maps_to_its_own_terminal_token(string discipline, string expected)
     {
         // The token literals live HERE and nowhere else. Measured 2026-08-19: the first three use

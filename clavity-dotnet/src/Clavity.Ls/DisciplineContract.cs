@@ -13,7 +13,15 @@ namespace Clavity.Ls;
 /// supplies the contract.
 ///
 /// The four do not share a grammar, which is exactly why this table exists rather than one regex:
-/// adversarial-panel-review ends on GREEN (its SKILL.md:208), the other three on [VERDICT:.</summary>
+/// adversarial-panel-review closes each ROUND on a single-line PANEL VERDICT (its SKILL.md, section
+/// "Step 1 - Solo panel"); the other three end on [VERDICT:. Cited by SECTION, not line: this comment
+/// said ":208" until 2026-09-03 and that line had long since become something else.
+///
+/// GREEN is NOT gone from the panel skill, and this table does not contradict it. GREEN remains that
+/// skill's RUN-level disposition (its Outputs, and its Completeness gate: "For this skill that means
+/// GREEN"). This table checks a single REPLY, which is one ROUND. Do not "reconcile" the two by
+/// reverting this - the mismatch flagged every findings-bearing panel round as truncated and told the
+/// driver to discard its findings.</summary>
 public static class DisciplineContract
 {
     private static readonly Dictionary<string, string> Tokens =
@@ -22,7 +30,7 @@ public static class DisciplineContract
             ["agy-capstone"] = "[VERDICT:",
             ["agy-test-audit"] = "[VERDICT:",
             ["agy-first"] = "[VERDICT:",
-            ["adversarial-panel-review"] = "GREEN",
+            ["adversarial-panel-review"] = "PANEL VERDICT",
         };
 
     /// <summary>The disciplines this driver knows. The skill linter enrols exactly these.</summary>

@@ -65,11 +65,29 @@ public class TerminalTokenTests
     }
 
     [Fact]
-    public void The_panel_discipline_token_GREEN_works_the_same_way()
+    public void The_panel_token_comes_from_the_contract_and_accepts_a_findings_bearing_round()
     {
-        // adversarial-panel-review does NOT use [VERDICT: - it ends on GREEN (SKILL.md:208).
-        // A single hardcoded [VERDICT: regex would flag every panel reply as truncated.
-        Assert.True(TerminalToken.IsSatisfied("panel ran\n\nGREEN\n", "GREEN"));
-        Assert.False(TerminalToken.IsSatisfied("panel ran\n\nopen findings remain\n", "GREEN"));
+        // adversarial-panel-review does NOT use [VERDICT: - it closes each ROUND on a single-line
+        // PANEL VERDICT (its SKILL.md, "Step 1 - Solo panel"). The token was GREEN until 2026-09-03,
+        // which flagged EVERY findings-bearing round: the skill's Outputs section declares four
+        // legitimate dispositions and only one is GREEN, so a round that found something was told it
+        // was incomplete and its findings should be discarded. Measured five times - by this change's
+        // own AGY-AFTER panel, every round of which was flagged while carrying real blocking defects.
+        //
+        // NOTE the two objects, or a later reader will "reconcile" them and revert this: GREEN is
+        // still the RUN-level disposition (that skill's Outputs, and its Completeness gate - "For this
+        // skill that means GREEN"). PANEL VERDICT is the PER-ROUND closing line, and a peer's reply IS
+        // one round. This table checks a reply, so it takes the round-level token.
+        //
+        // READ FROM THE TABLE. A literal here would pass before the table changed and prove nothing -
+        // measured: the literal form returned Failed 0, Passed 1 against the unchanged contract.
+        var tok = DisciplineContract.TerminalTokenFor("adversarial-panel-review");
+        Assert.True(TerminalToken.IsSatisfied("panel ran\n\nPANEL VERDICT: 2 open findings remain\n", tok));
+
+        // Decoration at the ENDS is compliance, not failure - a distinct branch (TrimStart).
+        Assert.True(TerminalToken.IsSatisfied("panel ran\n\n**PANEL VERDICT: GREEN**\n", tok));
+
+        // Still rejects a reply that never reached a verdict line at all.
+        Assert.False(TerminalToken.IsSatisfied("panel ran\n\nopen findings remain\n", tok));
     }
 }
