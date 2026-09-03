@@ -32,10 +32,24 @@ public class DisciplineContractTests
         foreach (var d in DisciplineContract.KnownDisciplines)
         {
             var tok = DisciplineContract.TerminalTokenFor(d)!;
+
+            // NON-EMPTY FIRST, or this guard CRASHES instead of reporting. AGY-CAPSTONE round 1: tok[0]
+            // on an empty token throws IndexOutOfRangeException, so the suite would die with a stack
+            // trace rather than naming the offending discipline. And an empty token is the worse bug it
+            // would have been hiding - IsSatisfied treats a blank expectation as "caller opted out" and
+            // returns true unconditionally, so that discipline's gate silently stops existing.
+            Assert.False(string.IsNullOrWhiteSpace(tok),
+                $"discipline '{d}' stores an empty token, which disables its completeness check entirely");
+
             // ASK THE MATCHER, do not restate its set. A hardcoded copy silently stops covering any
             // character added to Decoration later, while still reading as an enforced invariant.
             Assert.False(TerminalToken.IsDecoration(tok[0]),
                 $"discipline '{d}' stores token '{tok}', which begins with a stripped character");
+
+            // The mirror invariant, same family: Trim() removes trailing whitespace from the LINE before
+            // matching, so a token that ENDS in whitespace can never be matched by a line that is exactly
+            // that token. Cheap to guard, and the guard is the only thing that will say so out loud.
+            Assert.Equal(tok.TrimEnd(), tok);
         }
     }
 

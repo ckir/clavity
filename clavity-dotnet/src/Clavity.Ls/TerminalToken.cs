@@ -25,6 +25,18 @@ public static class TerminalToken
     // the line loses its '[' and can never match an expectation that still carries one.
     private static readonly char[] Decoration = { '*', '`', '_', '#', ' ', '[' };
 
+    // THE SKIP SET IS NOT THE STRIP SET, AND CONFLATING THEM WAS A REACHABLE FALSE-GREEN.
+    // A line is SKIPPED as ornamental only if it is blank or pure markdown furniture ("***", "---"'s
+    // cousins). '[' is deliberately ABSENT here: it earns its place in Decoration as a PREFIX to strip
+    // before matching, never as a reason to treat a line as absent.
+    //
+    // MEASURED (AGY-CAPSTONE round 1, and the defect was introduced by adding '[' to Decoration): with
+    // '[' in the skip set, a reply ending "VERDICT: ALIGNED\n[" - a model truncated mid-way through its
+    // next line - had that "[" stripped to empty, SKIPPED as blank, and the verdict above it matched.
+    // The completeness gate returned COMPLETE for a demonstrably truncated reply. Control: the same
+    // shape ending in "Z" correctly failed, which is what isolated it to '['.
+    private static readonly char[] Ornament = { '*', '`', '_', '#', ' ' };
+
     /// <summary>Is this character stripped from the front of a line before matching? EXPOSED so the
     /// invariant test cannot rot: a guard that hardcodes its own copy of the set silently stops covering
     /// the set the moment a character is added here, while still reading as an enforced invariant.</summary>
@@ -48,9 +60,15 @@ public static class TerminalToken
         var lines = answer.Split('\n');
         for (var i = lines.Length - 1; i >= 0; i--)
         {
-            var line = lines[i].Trim().TrimStart(Decoration);
-            if (line.Length == 0) continue;
-            return line.StartsWith(expected, StringComparison.Ordinal);
+            var raw = lines[i].Trim();
+
+            // SKIP decides whether this line EXISTS; STRIP decides how to match it. Two questions, two
+            // sets - see Ornament above. A line that is pure ornament is furniture and we look further
+            // up; a line that merely STARTS with decoration is a real line, and if what remains does not
+            // lead with the token, the reply did not end where it claims to.
+            if (raw.TrimStart(Ornament).Length == 0) continue;
+
+            return raw.TrimStart(Decoration).StartsWith(expected, StringComparison.Ordinal);
         }
         return false;
     }

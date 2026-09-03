@@ -113,4 +113,28 @@ public class TerminalTokenTests
         Assert.False(TerminalToken.IsSatisfied("x\n\nTests are not GREEN\n", "GREEN"));
         Assert.False(TerminalToken.IsSatisfied("x\n\nlast line with no token\n", "VERDICT:"));
     }
+
+    [Fact]
+    public void A_line_that_is_ONLY_decoration_does_not_mask_a_truncated_reply()
+    {
+        // AGY-CAPSTONE round 1, BLOCKING, and introduced by adding '[' to the strip set: a line
+        // containing only '[' stripped to empty, was SKIPPED as blank, and the verdict ABOVE it matched.
+        // A model truncated part-way through its next line was therefore reported COMPLETE - a
+        // false-GREEN in the completeness gate itself.
+        //
+        // The fix separates the two questions: Ornament decides whether a line EXISTS, Decoration
+        // decides how to match one that does.
+        Assert.False(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n[", "VERDICT:"));
+
+        // CONTROL, and it is what isolated the defect to '[': the identical shape ending in a character
+        // that was never in either set already failed. Without this row a fix could be credited to the
+        // wrong cause.
+        Assert.False(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\nZ", "VERDICT:"));
+
+        // AND THE BEHAVIOUR THAT MUST NOT REGRESS THE OTHER WAY. Markdown furniture after a verdict was
+        // skipped before this change and must still be: "only skip genuinely blank lines" would have
+        // fixed the false-GREEN by falsely flagging every reply that signs off with a rule.
+        Assert.True(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n***\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n\n   \n", "VERDICT:"));
+    }
 }
