@@ -213,7 +213,9 @@ cp clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md \
 md5sum clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md \
        clavity-classic/plugin/skills/agy-test-audit/SKILL.md | awk '{print $1}' | uniq -c
 ```
-Expected: `2` on one hash.
+Expected: ONE line, shaped `      2 <hash>` - `uniq -c` pads its count with leading spaces, so read the
+COUNT rather than string-matching `2` at the start of the line. **Two lines means the halves differ and
+the mirror did not take.**
 
 - [ ] **Step 4: Re-measure the file and update the ROADMAP's line-count claim IN THE SAME COMMIT**
 
@@ -470,9 +472,14 @@ Then run the cycle below **three times, once per mutant**, substituting that mut
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
 # (3) RESTORE
 cp .clavity/scratch/s23/lint.bak scripts/check-agy-discipline-skills.ps1
-# (4) PROVE THE RESTORE - do not start the next mutant until this prints 2
+# (4) PROVE THE RESTORE - do not start the next mutant until this reports a count of 2
 md5sum scripts/check-agy-discipline-skills.ps1 .clavity/scratch/s23/lint.bak | awk '{print $1}' | uniq -c
 ```
+
+⚠ **Step (4) prints ONE line shaped `      2 <hash>` - `uniq -c` pads its count with leading spaces.**
+(Measured: `printf 'h f1\nh f2\n' | awk '{print $1}' | uniq -c | cat -A` gives `      2 dummy_hash$`.)
+**Read the count, do not string-match `2` at the start of the line.** Two lines instead of one means the
+restore did not take and the files still differ - stop and re-copy before touching the next mutant.
 
 **The three edits, and what each must produce at (2). Five rows are selected by the filter every time, so
 failed + passed must always total 5** - any other total means the filter missed, not that a guard held.
@@ -519,11 +526,17 @@ The current row, at `scripts/tests/_partition.md:716`, reads:
 ```
 check-agy-discipline-skills.Tests.ps1            40,5s   75 tests   <- FAST, re-measured 2026-09-02
 ```
-**Change `75 tests` to `80 tests`, and change nothing else on that line.**
+**That one line carries THREE fields, and each has its own rule.** An earlier draft said "change nothing
+else on that line" and then told you to replace the runtime, which is on the same line - a flat
+contradiction that stopped the panel's literal-execution walk dead at this step. Field by field:
 
-**Re-measure the runtime rather than copying 40,5s.** The figure comes from the run you already did in
-Task 3 Step 6: `-Output Minimal` prints a per-file `40,5s` and a `Tests completed in 40,54s` line - use
-what it printed. Replace `40,5s` with that figure, keeping this file's comma decimal separator.
+| field on the row | what to do |
+|---|---|
+| `75 tests` | **change to `80 tests`** - or to whatever Task 3 Step 6 actually printed, if that differs |
+| `40,5s` | **replace with the runtime you just measured** in Task 3 Step 6. `-Output Minimal` prints a per-file figure and a `Tests completed in ...` line; use what it printed, keeping this file's comma decimal separator |
+| `<- FAST, re-measured 2026-09-02` | **update the date to today**, and leave `FAST` alone - the half it lives in is not changing |
+
+**Nothing else on the row changes**, and the columns stay aligned as the surrounding rows are.
 
 **Where the non-idle disclaimer goes, exactly.** Not free-floating prose: this table records provenance
 in INDENTED CONTINUATION LINES directly beneath the row, two spaces in, as the existing rows already do
@@ -570,7 +583,7 @@ lives in the slow half and which no local run had covered. Four targeted gates a
 
 ```bash
 git add scripts/tests/_partition.md
-git commit -m "docs(s23): reconcile the discipline-suite count, 75 -> 77"
+git commit -m "docs(s23): reconcile the discipline-suite count, 75 -> 80"
 ```
 
 ---
