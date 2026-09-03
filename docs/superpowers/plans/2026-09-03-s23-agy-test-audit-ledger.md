@@ -136,8 +136,25 @@ pwsh -NoProfile -Command "& './scripts/check-user-facing-docs.ps1'"; rc=$?; echo
 Expected: both `0`. (Verified while writing this plan: neither script names `agy-capstone-ledger.md`, so
 neither will name its sibling.)
 
-🔴 **THE STATUS-REPORTING SHAPE IS LOAD-BEARING. Two separate maskings were measured out of it, and every
-gate line in this plan uses the surviving form. Do not "simplify" any of them.**
+🔴 **TWO SHAPES ARE FORBIDDEN, AND TWO ARE CORRECT. Do not "simplify" a gate line into a forbidden one,
+and do not "fix" a correct one into the other correct one.**
+
+An earlier draft said *"every gate line in this plan uses the surviving form"*, which is false: several
+gate lines are deliberately BARE, and the panel was right that an executor reading a universal rule and
+then meeting an exception has to guess which the author meant. **The rule is about the two measured
+maskings, not about one blessed spelling:**
+
+| shape | verdict |
+|---|---|
+| `<gate>; 'name=' + $LASTEXITCODE` **inside** the `-Command` string | 🔴 **FORBIDDEN - masking 1** |
+| `<gate>; echo "name=$?"` | 🔴 **FORBIDDEN - masking 2** |
+| `<gate>` bare, with nothing after it | ✅ correct - the process's own exit status stands |
+| `<gate>; rc=$?; echo "name=$rc"; (exit $rc)` | ✅ correct - prints the value AND preserves the status |
+
+**Choose by whether the gate says enough on its own.** `check-agy-discipline-skills.ps1` and
+`check-roadmap-claims.ps1` print an explicit OK line, so they are invoked bare. `check-seed-artifacts-synced.sh`
+and the two doc checkers are quiet on success, so they carry the `rc=` form to surface a value. **Neither
+correct shape masks anything; only the two forbidden ones do.**
 
 **Masking 1, in the first draft:** `pwsh -Command "& './x.ps1'; 'name=' + $LASTEXITCODE"`. A script that
 `exit 1`s leaves the `pwsh` PROCESS exiting **0**, because the last thing evaluated is a string and pwsh
@@ -605,10 +622,10 @@ NOT ASCII-gated, so keep them):
 Replace the trailing state marker only, leaving the title untouched:
 
 ```
-### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere — ✅ **SHIPPED 2026-09-03** — `<task1-sha>` the ledger · `<task2-sha>` the row requirement + the ROADMAP line-count · `<task3-sha>` the pins · `<task4-sha>` the suite count
+### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere — ✅ **SHIPPED <YYYY-MM-DD>** — `<task1-sha>` the ledger · `<task2-sha>` the row requirement + the ROADMAP line-count · `<task3-sha>` the pins · `<task4-sha>` the suite count
 ```
 
-**Substitute the four real SHAs from `git log --oneline -5`.** Do not invent them: Step 2's gate
+**Substitute the four real SHAs from `git log --oneline -5`, and the real date.** Do not invent them: Step 2's gate
 validates closure shas as well as line counts.
 
 **The earned rule: whoever closes an item writes its CLOSING SHA in the same commit.** Section 21 shipped
@@ -718,3 +735,4 @@ The durable record for the panel discipline, which has no ledger file of its own
 - `REJECTED: check-growth-budget could overflow on a larger SKILL.md` - measured `scripts/check-growth-budget.ps1:55-110`: it measures the knowledge SEED and GROWTH proposal only, and names no skill payload. A SKILL.md edit cannot move that budget.
 - `REJECTED: -Output Minimal may not print the runtime Task 4 Step 1 needs` - measured on a one-test fixture: `Invoke-Pester -Path ./tiny.Tests.ps1 -Output Minimal` prints both a per-file `4.6s` and `Tests completed in 4.69s`. The runtime is available from the command the plan already gives; no improvisation is required.
 - `REJECTED: stripping the ledger path in the Task 3 fixture might break a row in another suite` - measured `grep -rn "agy-capstone-ledger" scripts/tests/*.ps1` -> one hit, in `agy-test-audit-reminder.Tests.ps1:92`, a different suite that stages its own fixture. Nothing in `check-agy-discipline-skills.Tests.ps1` reads the path, so the `.Replace()` cannot redden a sibling row.
+- `DISCARDED-BELOW-FLOOR: round 5 classed the bare-gate-line contradiction as class 1 BLOCKING` - the CITED line (`pwsh -NoProfile -Command "& './scripts/check-agy-discipline-skills.ps1'"`, Task 2 Step 5) is correct code: measured, a script that `exit 1`s invoked in that bare shape leaves the process exiting 1. What was wrong was the PROSE claiming every gate line used one shape. The finding was real and is folded; only its class is stood down, and the fold happened regardless of class rather than being argued away on it.
