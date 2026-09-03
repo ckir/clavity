@@ -2098,7 +2098,9 @@ measure true; the load-bearing one does not.
 - The ancestry: `git merge-base --is-ancestor 20f38cc 62eb46f` exits 0, so the older range's tip is indeed
   an ancestor of the newer one's.
 
-🔴 **FALSE: the marker was never a coverage attestation.** `plugin/skills/agy-test-audit/SKILL.md:313-314`
+🔴 **FALSE: the marker was never a coverage attestation.** `plugin/skills/agy-test-audit/SKILL.md`, section
+`## Debounce marker` (cited by SECTION since 2026-09-03 - it read `:313-314`, correct when written and
+drifted ~60 lines as the file grew),
 specifies **ambient `HEAD`**, and carries a note recording that this line said "the audited sha ... not
 ambient HEAD" **until 2026-08-26**, when it was corrected because it contradicted the command four lines
 above it. The hook agrees: `agy-test-audit-reminder.sh:77` reads one value and passes it to

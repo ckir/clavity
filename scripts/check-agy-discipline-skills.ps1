@@ -257,7 +257,7 @@ foreach ($skill in $skills) {
         # `mkdir docs/agy-test-audit-ledger.md` would satisfy this guard while the record it asserts does
         # not exist. MEASURED: bare -> True, -PathType Leaf -> False, on a directory of that name.
         elseif (-not (Test-Path -LiteralPath (Join-Path $Root $ledgerFor[$skill]) -PathType Leaf)) {
-            Fail "$rel : names '$($ledgerFor[$skill])', which is not on disk - the clause points at nothing"
+            Fail "$rel : names '$($ledgerFor[$skill])', which is not a FILE on disk - the clause points at nothing (a directory of that name does not count)"
         }
     }
 }

@@ -715,10 +715,12 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
 check-agy-discipline-skills.Tests.ps1            43,2s   82 tests   <- FAST, re-measured 2026-09-03
   Re-measured 2026-09-03 for ROADMAP section 23, count 75 -> 82 (five section-23 ledger pins, then two
-  more from the AGY-CAPSTONE R1 fold that pinned -PathType Leaf). RUNTIME IS UNRELIABLE HERE: two
-  observations the same afternoon gave 43,2s and 76,8s with only two rows added between them. The box
-  was NOT verified idle - the agent and the suite share one CPU, and a push plus three CI-adjacent
-  processes overlapped the second run. Treat the lower figure as indicative and neither as a baseline.
+  more from the AGY-CAPSTONE R1 fold that pinned -PathType Leaf). RUNTIME IS UNRELIABLE HERE: THREE
+  observations the same afternoon gave 43,2s, 76,8s and 143,4s - a 3,3x spread - with at most two rows
+  added across the whole span. The box was NOT verified idle: the agent and the suite share one CPU, and
+  pushes, CI polling and peer consults overlapped the later runs. The COUNT is mechanically gated and
+  trustworthy; the seconds are not. Quote the range, never a point, and never read a change here as a
+  regression without a controlled re-measurement.
   RUNTIME MORE THAN HALVED 2026-09-02 by AGY-CAPSTONE R5, 86,6s -> 40,5s, with the row count and
   every result unchanged at 75/0. Ten sites were spawning a child pwsh per row to run a staged copy
   of the linter; MEASURED, `& $tmpLint` runs it in-process, $PSScriptRoot still resolves to the

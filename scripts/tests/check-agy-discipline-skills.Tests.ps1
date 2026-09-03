@@ -154,7 +154,7 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Force $led
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
-            (Get-LintText $out) | Should -Match ([regex]::Escape("names '$ledger', which is not on disk"))
+            (Get-LintText $out) | Should -Match ([regex]::Escape("names '$ledger', which is not a FILE on disk"))
             Remove-Item -Recurse -Force $scratch
         }
 
@@ -173,7 +173,7 @@ Describe 'check-agy-discipline-skills' {
             (Test-Path -LiteralPath $led -PathType Container) | Should -BeTrue -Because 'the fixture must actually leave a DIRECTORY at the ledger path'
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
-            (Get-LintText $out) | Should -Match ([regex]::Escape("names '$ledger', which is not on disk"))
+            (Get-LintText $out) | Should -Match ([regex]::Escape("names '$ledger', which is not a FILE on disk"))
             Remove-Item -Recurse -Force $scratch
         }
 

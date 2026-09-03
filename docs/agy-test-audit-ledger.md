@@ -14,7 +14,10 @@ it honest, neither a guarantee: the `evidence` column must cite something indepe
 fold commits, or the brief in `.clavity/seams/`), and `none` is not a permitted value.
 
 **Why this file exists.** The audit's marker `.clavity/agy-marks/agy-test-audit.head` is a NUDGE DEBOUNCE
-holding ambient `HEAD` - `agy-test-audit/SKILL.md:313-314` - not a coverage attestation. Before this
+holding ambient `HEAD` - `agy-test-audit/SKILL.md`, section `## Debounce marker` - not a coverage
+attestation. (Cited by SECTION, not by line: this citation read `:313-314`, which was right when written
+and had drifted by ~60 lines before anyone noticed. A line number in static prose rots by construction;
+a section heading does not.) Before this
 ledger, no artifact in the repository recorded which range had been audited, so the question "is a
 re-audit owed?" could not be answered from the tree. That question is the input to the
 capstone-invalidation loop, which is why the record is not optional bookkeeping.
