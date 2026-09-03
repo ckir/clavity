@@ -91,6 +91,12 @@ should not have to learn a second shape.
 
 One row per audit. Appended before an audit run may COMPLETE.
 
+**Append the newest row at the BOTTOM of the table.** Say it here because the sibling ledger does not
+settle it: `docs/agy-capstone-ledger.md`'s rows are NOT in date order (2026-08-08 sits between 07-31 and
+08-01, and 08-16/08-17 precede 08-10/08-12), so "mirror the capstone" answers the shape of a row and not
+the order of the file. A ledger two agents append to differently is a merge conflict per branch-finish;
+appending at one end keeps the conflict trivial to resolve.
+
 **This is a RECORD, not a proof.** Nothing prevents someone appending a row without running anything; a
 self-asserted ledger is the same shape as the re-stamping defect the verify gate removed. Two things keep
 it honest, neither a guarantee: the `evidence` column must cite something independently checkable (the
@@ -179,18 +185,39 @@ md5sum clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md \
 ```
 Expected: `2` on one hash.
 
-- [ ] **Step 4: Run the gates this touches**
+- [ ] **Step 4: Re-measure the file and update the ROADMAP's line-count claim IN THE SAME COMMIT**
+
+🔴 **This step is not optional and it is the one this plan originally missed.**
+`clavity-dotnet/ROADMAP.md:1242` claims `` `agy-test-audit/SKILL.md` (377 lines) ``, and
+`scripts/check-roadmap-claims.ps1` validates every such claim against the tracked file
+(`check-roadmap-claims.ps1:12`, section A). Step 2 grows the file, so the claim goes FALSE the moment
+this task lands. **This is the identical failure that reddened CI on 2026-09-02** when section 21 grew
+all four SKILL.md files and the table was not updated (fixed at `b464db2`).
+
+**Do not hardcode the new number from this plan - measure it:**
+
+```bash
+wc -l clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md
+```
+Then edit that one number inside `` `agy-test-audit/SKILL.md` (N lines) `` at `ROADMAP.md:1242` to match.
+(For orientation only, and NOT to be pasted: at plan time the file was 377 lines and the clause block is
+9 lines plus one blank separator, so expect 387. **If `wc -l` disagrees, `wc -l` wins.**)
+
+- [ ] **Step 5: Run the gates this touches**
 
 ```bash
 bash scripts/check-seed-artifacts-synced.sh; echo "seed=$?"
 pwsh -NoProfile -Command "& './scripts/check-agy-discipline-skills.ps1'"
+pwsh -NoProfile -Command "& './scripts/check-roadmap-claims.ps1'; 'roadmap=' + \$LASTEXITCODE"
 ```
-Expected: `seed=0` and `agy-discipline skills OK`.
+Expected: `seed=0`, `agy-discipline skills OK`, and `roadmap=0`. **The third command is the one that
+proves Step 4 landed.** If it reports a stale count, Step 4 was skipped or mis-measured - fix it here,
+not later, because Task 4 runs this same gate and would only rediscover it.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md clavity-classic/plugin/skills/agy-test-audit/SKILL.md
+git add clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md clavity-classic/plugin/skills/agy-test-audit/SKILL.md clavity-dotnet/ROADMAP.md
 git commit -m "feat(s23): require a ledger row before an audit run may complete"
 ```
 
@@ -207,12 +234,12 @@ git commit -m "feat(s23): require a ledger row before an audit run may complete"
 it is a fixture, not an assertion. A rule with no implementation is worse than no rule, so this task pins
 the SET - both disciplines that own a ledger - rather than only the one section 23 names.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1a: Write the failing test for the ledger check**
 
 Append inside the `Context 'rejection cases (each perturbs one skill; the other stays valid)'` block:
 
 ```powershell
-        It 'REJECTS <skill> when its ledger row requirement is stripped' -ForEach @(
+        It 'REJECTS <skill> when its ledger path is stripped' -ForEach @(
             @{ skill = 'agy-capstone';   ledger = 'docs/agy-capstone-ledger.md' },
             @{ skill = 'agy-test-audit'; ledger = 'docs/agy-test-audit-ledger.md' }
         ) {
@@ -227,18 +254,48 @@ Append inside the `Context 'rejection cases (each perturbs one skill; the other 
             Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
-            (Get-LintText $out) | Should -Match 'does not require a row in its ledger'
+            # Escape the needle: the path carries regex metacharacters, and an unescaped '.' would let a
+            # near-miss message satisfy this row.
+            (Get-LintText $out) | Should -Match ([regex]::Escape("never names '$ledger'"))
             Remove-Item -Recurse -Force $scratch
         }
 ```
 
-- [ ] **Step 2: Run it and watch it FAIL**
+- [ ] **Step 1b: Write the failing test for the map's fail-closed reconciliation**
+
+The map is consulted with `ContainsKey`, so a misspelled key raises nothing - it silently checks nothing.
+That is the fails-open shape, and this repository has an existing home for exactly this defect class.
+Append inside `Context 'AGY-CAPSTONE 2026-09-02: the roster itself, which nothing reconciled'`:
+
+```powershell
+        It 'fails closed when the ledger map names a discipline that is not linted' {
+            # Perturb the LINTER, not a skill, so this row needs a staged copy rather than a scratch root
+            # alone. New-TempLinter copies the real checker beside it, which three branches require.
+            $original = Get-Content -Raw $script:Lint
+            $src = $original.Replace(
+                "'agy-capstone'   = 'docs/agy-capstone-ledger.md'",
+                "'agy-capstoneX'  = 'docs/agy-capstone-ledger.md'")
+            $src | Should -Not -Be $original -Because 'the typo must actually take effect in the copy'
+            $lint    = New-TempLinter -Source $src
+            $scratch = New-ScratchRoot
+            $out = & $lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match 'is not a linted discipline'
+            Remove-Item -Recurse -Force $scratch
+        }
+```
+
+- [ ] **Step 2: Run them and watch them FAIL**
 
 ```bash
-pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger row requirement*' -Output Minimal"
+pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
 ```
-Expected: **2 failed**, both on `Expected 1, but got 0` - the linter has no such check yet, so stripping
-the path changes nothing.
+Expected: **3 failed**. The two `-ForEach` rows fail on `Expected 1, but got 0` - the linter has no such
+check yet, so stripping the path changes nothing. The reconciliation row fails on its
+`Should -Not -Be $original` self-check, because the map it perturbs does not exist yet; that is the
+fixture proving its own precondition, not a broken test.
+
+⚠ **`-FullNameFilter` EXITS 0 ON NO MATCH.** Read the COUNT in the output, never the exit code alone.
 
 - [ ] **Step 3: Add the guard to the linter**
 
@@ -253,48 +310,85 @@ $ledgerFor = @{
     'agy-capstone'   = 'docs/agy-capstone-ledger.md'
     'agy-test-audit' = 'docs/agy-test-audit-ledger.md'
 }
+# FAIL CLOSED ON A TYPO. This map is keyed by discipline name and consulted with ContainsKey, so a
+# misspelled key does not error - it silently checks nothing, and the guard certifies exactly what it
+# stopped checking. Reconcile it against the roster that is actually iterated.
+foreach ($k in $ledgerFor.Keys) {
+    if ($skills -notcontains $k) {
+        Fail "check-agy-discipline-skills : ledger map names '$k', which is not a linted discipline - its ledger check would never run"
+    }
+}
 ```
 
-Then inside the `foreach ($skill in $skills)` loop, after the marker-constant check, add:
+Then, inside the `foreach ($skill in $skills)` loop, add the check **at the END of the loop body** -
+immediately after the closing brace of the `if ($skill -eq 'agy-capstone') { ... }` block that ends with
+`Fail "$rel : missing the claim-type sentence - the PEER-side axis must be named claim-type"`, and
+immediately before the loop's own closing brace:
 
 ```powershell
-    # (i) section 23: a discipline that owns a ledger must REQUIRE a row, not merely mention the file.
-    # Pinning the PATH alone would pass on a skill that names the ledger in passing prose, so the needle
-    # is the requirement sentence and the path together.
+    # (i) section 23: a discipline that owns a ledger must NAME that ledger's path. The letters in this
+    # loop run in source order, so this one goes last; inserting it after (f) would leave them reading
+    # f, i, g, h.
+    #
+    # WHAT THIS MEASURES, EXACTLY: that the path string appears somewhere in the skill. It does NOT
+    # measure that a row is required, and it does NOT measure that the ledger file exists - see the
+    # limits section of the section-23 plan. Pinning the requirement SENTENCE verbatim was considered and
+    # rejected: every rewording would be a false RED, which this repository folded twice in the section
+    # 21 capstone. The check asserts the diagnostic, not the wording, and the message below says only
+    # what was measured.
     if ($ledgerFor.ContainsKey($skill)) {
         if (-not $raw.Contains($ledgerFor[$skill])) {
-            Fail "$rel : does not require a row in its ledger - '$($ledgerFor[$skill])' is never named, so a completing verdict records nothing"
+            Fail "$rel : never names '$($ledgerFor[$skill])', so a completing verdict records nothing"
         }
     }
 ```
 
-- [ ] **Step 4: Run it and watch it PASS**
+- [ ] **Step 4: Run them and watch them PASS**
 
 ```bash
-pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger row requirement*' -Output Minimal"
+pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
 ```
-Expected: `Tests Passed: 2, Failed: 0`.
+Expected: `Tests Passed: 3, Failed: 0`.
 
-- [ ] **Step 5: Prove the guard is non-vacuous against a LOGIC mutant**
+- [ ] **Step 5: Prove EACH guard is non-vacuous against a LOGIC mutant - one at a time**
 
-Neuter the guard's condition, not its subject:
+**One mutant at a time, and confirm the SPECIFIC row that reddens.** Two mutants at once cannot attribute
+a red to a guard, which is the whole point of the exercise.
 
 ```bash
-cp scripts/check-agy-discipline-skills.ps1 /tmp/lint.bak
-# change: if ($ledgerFor.ContainsKey($skill)) {   ->   if ($false) {
-pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger row requirement*' -Output Minimal"
-cp /tmp/lint.bak scripts/check-agy-discipline-skills.ps1
-md5sum scripts/check-agy-discipline-skills.ps1 /tmp/lint.bak | awk '{print $1}' | uniq -c
+mkdir -p .clavity/scratch/s23
+cp scripts/check-agy-discipline-skills.ps1 .clavity/scratch/s23/lint.bak
 ```
-Expected: **2 failed** under the mutant, then `2` on one hash after restore. **Restore with the `cp`
-backup, never `git checkout --`.**
+
+**Mutant A - neuter the ledger check's condition, not its subject:** change
+`if ($ledgerFor.ContainsKey($skill)) {` to `if ($false) {`, then:
+
+```bash
+pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
+cp .clavity/scratch/s23/lint.bak scripts/check-agy-discipline-skills.ps1
+```
+Expected: **2 failed** (the two `-ForEach` rows), **1 passed** (the reconciliation row, which this mutant
+does not touch - that asymmetry is the attribution).
+
+**Mutant B - neuter the reconciliation:** change `if ($skills -notcontains $k) {` to `if ($false) {`,
+then re-run the same command.
+Expected: **1 failed** (the reconciliation row), **2 passed**.
+
+```bash
+cp .clavity/scratch/s23/lint.bak scripts/check-agy-discipline-skills.ps1
+md5sum scripts/check-agy-discipline-skills.ps1 .clavity/scratch/s23/lint.bak | awk '{print $1}' | uniq -c
+```
+Expected: `2` on one hash after the final restore. **Restore with the `cp` backup, never
+`git checkout --`.** `.clavity/` is gitignored, so the backup never enters a commit - and **never
+`git add -f` anything under it.**
 
 - [ ] **Step 6: Run the whole suite**
 
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Minimal"
 ```
-Expected: `Tests Passed: 77, Failed: 0` (75 before this task, plus the two rows above).
+Expected: `Tests Passed: 78, Failed: 0` (75 before this task, plus the three rows above). **A run with no
+`Tests Passed:` line was ABORTED, not passed.**
 
 - [ ] **Step 7: Commit**
 
@@ -312,12 +406,17 @@ git commit -m "test(s23): pin the ledger row requirement in BOTH disciplines tha
 
 - [ ] **Step 1: Update the row**
 
-The current row reads:
+The current row, at `scripts/tests/_partition.md:716`, reads:
 ```
 check-agy-discipline-skills.Tests.ps1            40,5s   75 tests   <- FAST, re-measured 2026-09-02
 ```
-Change `75 tests` to `77 tests`. **Re-measure the runtime rather than copying 40,5s** - run the suite
+Change `75 tests` to `78 tests`. **Re-measure the runtime rather than copying 40,5s** - run the suite
 once and use what it prints, and say the box was not idle.
+
+**The count is mechanically gated**, so a wrong number here is caught rather than believed:
+`test-suite-registration.Tests.ps1:185` - *"every `_partition.md` row states the CURRENT test count for
+its suite"* - discovers the real count per suite. The RUNTIME is not gated; treat the seconds as
+indicative.
 
 - [ ] **Step 2: Run the gate that reads that number**
 
@@ -355,8 +454,21 @@ git commit -m "docs(s23): reconcile the discipline-suite count, 75 -> 77"
 
 - [ ] **Step 1: Change the section 23 header**
 
-From `### section 23 - ... - **OPEN, promoted from the anomalies file 2026-08-30**` to
-`### section 23 - ... - SHIPPED <date>` followed by the commit SHAs from Tasks 1-4.
+The header is at `clavity-dotnet/ROADMAP.md:2088` and reads, verbatim (it carries em dashes - this file is
+NOT ASCII-gated, so keep them):
+
+```
+### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere — ▶ **OPEN, promoted from the anomalies file 2026-08-30**
+```
+
+Replace the trailing state marker only, leaving the title untouched:
+
+```
+### §23 — AGY-TEST-AUDIT has no ledger, so no audited range is recorded anywhere — ✅ **SHIPPED 2026-09-03** — `<task1-sha>` the ledger · `<task2-sha>` the row requirement + the ROADMAP line-count · `<task3-sha>` the pins · `<task4-sha>` the suite count
+```
+
+**Substitute the four real SHAs from `git log --oneline -5`.** Do not invent them: Step 2's gate
+validates closure shas as well as line counts.
 
 **The earned rule: whoever closes an item writes its CLOSING SHA in the same commit.** Section 21 shipped
 and its header still read `OPEN` a day later, which is the failure the sequencing spec's own section 1
@@ -381,9 +493,22 @@ git commit -m "docs(roadmap): close section 23 - the AGY-TEST-AUDIT ledger shipp
 
 ## WHAT THIS DOES NOT PROVE - state it, or the plan ships a False Safety Promise
 
-**The linter check proves the clause SHIPS. It does not prove any audit ever writes a row.** That is the
-same inherent gap section 21 hit: these are best-effort prompt-disciplines, not sandboxes, and the only
-mechanical enforcement available at commit time is that the contract text is present.
+**The linter check proves the ledger PATH is named in the skill. It proves nothing else.** Three distinct
+things it does NOT establish, each stated because a comment that overclaims a guard is itself a defect
+class this repository classes as BLOCKING:
+
+1. **It does not prove any audit ever writes a row.** Same inherent gap section 21 hit: these are
+   best-effort prompt-disciplines, not sandboxes, and the only mechanical enforcement available at commit
+   time is that the contract text is present.
+2. **It does not prove the clause REQUIRES a row.** A skill that named the file in passing prose would
+   pass. Pinning the requirement sentence verbatim was rejected deliberately - every rewording becomes a
+   false RED, which this repository folded twice in the section 21 capstone.
+3. **It does not prove `docs/agy-test-audit-ledger.md` EXISTS.** Delete the ledger and the linter stays
+   green. The obvious fix - also assert the file exists under `-Root` - was **tried and refuted**:
+   `check-agy-discipline-skills.Tests.ps1:26-38` stages a scratch root containing only four `SKILL.md`
+   files and no `docs/` tree, so that assertion would redden every rejection row in the suite. Resolving
+   the ledger from `$PSScriptRoot` instead would work, and is not worth a second resolution rule for a
+   file whose deletion would be visible in any diff.
 
 **A stronger gate was considered and is NOT in this plan.** A hook could refuse to write
 `agy-test-audit.head` unless the ledger's newest row cites the sha being marked. It is deliberately out of
@@ -400,22 +525,41 @@ would be visible precisely because this plan creates the file where the absence 
 "cannot rot" property the ruling depends on is Task 3. Tasks 4-5 are the repo's own hygiene gates. No
 part of the ruling is unimplemented.
 
-**2. Placeholders.** None. Every step carries its literal file content, command, and expected output.
-The one number that must not be copied is flagged: re-measure the runtime in Task 4 rather than reusing
-40,5s.
+**2. Placeholders.** None **now**. The first draft claimed this while Task 5 Step 1 elided the ROADMAP
+header behind two `...` and named it "section 23" when the file says `### §23 —`; the panel caught it and
+the header is now quoted verbatim from `ROADMAP.md:2088`. Two numbers are deliberately NOT to be copied,
+and both say so at the point of use: the runtime in Task 4, and the new SKILL.md line count in Task 2
+Step 4 (`wc -l` wins over the plan).
 
 **3. Consistency.** `docs/agy-test-audit-ledger.md` is spelled identically in Tasks 1, 2, 3 and in the
 `$ledgerFor` map. The column set `date | range | rounds | verdict | evidence` matches
 `docs/agy-capstone-ledger.md:39-40` exactly.
 
-**4. Known limits, stated rather than hidden.** The linter needle is the ledger PATH plus the requirement
-sentence, so a skill that names the file in passing prose without requiring a row would pass. That is
-weaker than pinning the sentence verbatim, and deliberately so: pinning prose verbatim makes every
-rewording a false RED, which this repository folded twice in the section 21 capstone. **The row asserts
-the diagnostic, not the wording.**
+**4. Known limits, stated rather than hidden.** The linter needle is **the ledger PATH, and nothing
+else** - the first draft said "the PATH plus the requirement sentence" in both the self-review and the
+linter's own comment, which was false against the code it specified and would have shipped a comment
+asserting a guard that does not exist. The three things the check does not prove are enumerated in the
+section above. **The row asserts the diagnostic, not the wording.**
 
-**5. Scope note for the owner.** Task 3 pins BOTH disciplines that own a ledger, not only
+**5. Panel round 1 (solo) folded eight findings.** One BLOCKING: Task 2 grows `agy-test-audit/SKILL.md`
+past the `(377 lines)` claim that `check-roadmap-claims.ps1` validates, so the plan as first written went
+RED at its own Task 4 gate - the identical failure that reddened CI at `b464db2`. The rest: a linter
+comment asserting a needle the code does not have; a fails-open `$ledgerFor` typo hole; an elided ROADMAP
+header; `/tmp` in place of the shielded scratch dir; unstated ledger row order; a mutant step that could
+not attribute its red; and one refuted fix, recorded in the limits section above.
+
+**6. Scope note for the owner.** Task 3 pins BOTH disciplines that own a ledger, not only
 `agy-test-audit`. Section 23 names only the audit; the capstone's identical clause has been unpinned
 since it was written. Closing the set costs one extra hashtable entry and one extra `-ForEach` case. **If
 you want this narrowed to the audit alone, drop the `agy-capstone` line from `$ledgerFor` and the first
 `-ForEach` case.**
+
+---
+
+## Stand-downs
+
+The durable record for the panel discipline, which has no ledger file of its own.
+
+- `DISCARDED-BELOW-FLOOR: "referenced from 23 files" is now 24` - measured `git grep -l agy-capstone-ledger | wc -l` -> 24 at `d14d18b`; it was 23 when the peer measured it and the ledger row commit `f9f8aa4` added one. The claim is rationale for NOT renaming the file, and that argument is identical at 23 or 24, so the number is not load-bearing. Volatile figures in static prose rot by construction; this one is left as-written rather than pinned.
+- `DISCARDED-BELOW-FLOOR: check-plugin-drift will report drift after Task 2 until the plugin is reinstalled` - unreachable as a gate failure because nothing invokes it: `grep -rn "check-plugin-drift.ps1" justfile .github/workflows lefthook.yml` returns no hit, so it is a manual operator tool, not a gate this plan can redden.
+- `REJECTED: check-growth-budget could overflow on a larger SKILL.md` - measured `scripts/check-growth-budget.ps1:55-110`: it measures the knowledge SEED and GROWTH proposal only, and names no skill payload. A SKILL.md edit cannot move that budget.
