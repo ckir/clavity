@@ -492,9 +492,10 @@ below-floor discards.** The two dispositions that are not `FOLDED`:
 
 - `FOLDED: Task 2 stores the enforced token` — the runtime normalisation made `DisciplineContract` claim
   an enforcement it did not perform (**measured: `* VERDICT: ALIGNED` satisfied `[VERDICT:`**). Owner-ruled.
-- `FOLDED: Task 2 Step 7 names a real oracle` — `Total: 208` was **indistinguishable from doing nothing**,
-  since 208 is the untouched baseline. The oracle is now `Total: 209` plus a named test that fails before
-  the task.
+- `FOLDED: the task checkpoints name a real oracle` — `Total: 208` was **indistinguishable from doing
+  nothing**, since 208 is the untouched baseline. ⚠ **Task 2 legitimately still expects `Total: 208`**
+  (it adds no test), so there the oracle is the NAMED TEST from Task 1, which fails before it. Task 3
+  expects `Total: 210` — the two new `[Fact]`s are the only things that move the count.
 - `FOLDED: Tasks 2 and 3 merged` — found while verifying the ruling, not by a seat: the contract and
   matcher changes leave the tree RED in **either** separated order, so they must be one commit.
 - `REJECTED: no .gitmodules exists; git submodule status is empty` — the claim that
