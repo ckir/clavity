@@ -7,11 +7,17 @@
 **Goal:** Make a findings-bearing `adversarial-panel-review` round satisfy the 13b completeness check,
 instead of being flagged every time with a message telling the driver to discard its findings.
 
-**Architecture:** One atomic driver-side change, in Task 2. **`DisciplineContract` stores the token that
-is actually ENFORCED** - `PANEL VERDICT` for the panel discipline, and `VERDICT:` (no bracket) for the
-other three - and **`TerminalToken` treats a leading `[` as decoration**, stripping it alongside `**`,
-`` ` ``, `_`, `#` and space. `StartsWith` stays, so the token must still LEAD the line. No `SKILL.md`
-edit, so no byte-identical pair, no plugin reinstall.
+**Architecture:** **TWO independent driver-side changes, in that order.** Task 2 swaps the panel
+discipline's token to `PANEL VERDICT` — the original §29a, small, and **measured green on its own**.
+Task 3 then fixes the bracket false-flag: **`DisciplineContract` stores the token that is actually
+ENFORCED** (`VERDICT:`, no bracket, for the other three) and **`TerminalToken` treats a leading `[` as
+decoration**, stripping it alongside `**`, `` ` ``, `_`, `#` and space. `StartsWith` stays, so the token
+must still LEAD the line. No `SKILL.md` edit, so no byte-identical pair, no plugin reinstall.
+
+⚠ **TASK 3 IS ATOMIC WITHIN ITSELF; TASK 2 IS NOT PART OF THAT.** An earlier draft merged both on an
+over-broad claim that "the contract and matcher cannot be separated". **AGY-AFTER round 4 corrected it,
+and the correction is MEASURED:** Task 2 applied alone gives `Clavity.Ls.Tests` 208/208 and
+`Clavity.Integration.Tests` 84/84.
 
 ⚠ **AMENDED TWICE BY OWNER RULING DURING AGY-AFTER.** Round 1: the plan was a one-value change; the panel
 found a reachable false-flag and the owner ruled the fix lands here. Round 3: an interim design stripped
@@ -69,11 +75,11 @@ do not record this as hardening. The only fix for that class is the rejected `[V
 
 | file | responsibility | status |
 |---|---|---|
-| `clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs` | the token table - the ONE place these literals live | MODIFY (**4 values** + doc comment) |
-| `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs` | the matcher; **LOGIC CHANGES** - `[` joins the decoration set | MODIFY (Task 2) |
-| `clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs` | pins the table | MODIFY (**5 sites** + comment) |
-| `clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs` | pins the matcher | MODIFY (**6 sites**, + Task 1's rewrite, + one new `[Fact]`) |
-| `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs` | end-to-end 13b behaviour | MODIFY (**2 sites** - `:1456`, `:1474`) |
+| `clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs` | the token table - the ONE place these literals live | MODIFY (**1 value in T2, 3 in T3** + doc comment) |
+| `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs` | the matcher; **LOGIC CHANGES** - `[` joins the decoration set | MODIFY (**Task 3**) |
+| `clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs` | pins the table | MODIFY (**1 `InlineData` in T2, 5 sites in T3**, + the invariant guard) |
+| `clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs` | pins the matcher | MODIFY (Task 1's rewrite, then **6 sites + 1 new `[Fact]`** in T3) |
+| `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs` | end-to-end 13b behaviour | MODIFY (**2 sites** - `:1456`, `:1474`; **the fake reply text is NOT touched**) |
 
 **Blast radius: driver-only** - no plugin payload, no byte-identical pair, no `0c-local` reinstall, which
 is why §29a is a BOUNDED Phase 0d prerequisite. ⚠ **But it is NOT small: MEASURED at 5 files, 18
@@ -161,58 +167,27 @@ contract changed`.
 
 ---
 
-## Task 2: The token contract and the matcher — ONE ATOMIC COMMIT
+## Task 2: The panel token — the ORIGINAL §29a, and it ships alone
 
-🔴 **TASKS 2 AND 3 WERE SEPARATE UNTIL AGY-AFTER ROUND 3. THEY CANNOT BE.** Splitting them leaves the
-tree RED in either order, which is why this is one task:
-
-- **Contract first, matcher second:** the contract says `VERDICT:` while the matcher still keeps `[`, so
-  `[VERDICT: ALIGNED]` fails `StartsWith("VERDICT:")`.
-- **Matcher first, contract second:** the matcher strips `[` while the contract still says `[VERDICT:`,
-  so the stripped `VERDICT: ALIGNED]` fails `StartsWith("[VERDICT:")`.
-
-**Both halves land together or neither does.**
+🔴 **THIS TASK IS INDEPENDENT AND LEAVES THE TREE GREEN.** An earlier draft merged it with Task 3 on the
+claim that "the contract and matcher cannot be separated". **That claim was over-broad and AGY-AFTER
+round 4 corrected it:** what cannot be split is the BRACKET fix's own contract/matcher halves (Task 3),
+not the panel token. **MEASURED with this task applied alone: `Clavity.Ls.Tests` 208/208 and
+`Clavity.Integration.Tests` 84/84.**
 
 **Files:**
-- Modify: `clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs` (4 values + doc comment)
-- Modify: `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs` (decoration set + doc comment)
-- Modify: `clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs` (5 sites + comment)
-- Modify: `clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs` (6 sites)
-- Modify: `clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs` (2 sites)
+- Modify: `clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs` (1 value + doc comment)
+- Modify: `clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs` (1 `InlineData`)
+- (Task 1 already rewrote the test that pins this.)
 
-⚠ **MEASURED TOTAL: 5 files, 18 insertions / 17 deletions, across TWO test projects.** An earlier
-estimate of "3 values and one test file" was wrong by roughly threefold. **Still driver-only** — no
-plugin payload, no byte-identical pair, no `0c-local` reinstall — which is what keeps §29a a legitimate
-Phase 0d prerequisite.
+- [ ] **Step 1: The token**
 
-**Owner ruling 2026-09-03, AGY-AFTER round 3: the CONTRACT stores what is actually enforced.** An earlier
-draft stripped `[` from the expected token at RUNTIME, which fixed the false-flag but left
-`DisciplineContract` reading `[VERDICT:` while the runtime enforced only `VERDICT:` — **MEASURED: a
-bullet-prefixed, bracketless `* VERDICT: ALIGNED` satisfied it.** That is a file asserting a guard it does
-not have. Storing the normalised token instead makes the real contract visible to anyone who opens it.
-
-- [ ] **Step 1: The contract values**
-
-`DisciplineContract.cs`, change all four:
-```csharp
-            ["agy-capstone"] = "[VERDICT:",
-            ["agy-test-audit"] = "[VERDICT:",
-            ["agy-first"] = "[VERDICT:",
-            ["adversarial-panel-review"] = "GREEN",
-```
-to:
-```csharp
-            ["agy-capstone"] = "VERDICT:",
-            ["agy-test-audit"] = "VERDICT:",
-            ["agy-first"] = "VERDICT:",
-            ["adversarial-panel-review"] = "PANEL VERDICT",
+```bash
+cd "$(git rev-parse --show-toplevel)" && sd '\["adversarial-panel-review"\] = "GREEN",' '["adversarial-panel-review"] = "PANEL VERDICT",' clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs
+cd "$(git rev-parse --show-toplevel)" && sd '\[InlineData\("adversarial-panel-review", "GREEN"\)\]' '[InlineData("adversarial-panel-review", "PANEL VERDICT")]' clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs
 ```
 
-⚠ **THE BRACKET IS DELIBERATELY ABSENT AND THAT IS THE POINT.** The skills still tell peers to write
-`[VERDICT: ...]`; the bracket is DECORATION, stripped before comparison like `**` and `` ` ``. Storing
-`[VERDICT:` here would claim an enforcement that does not exist.
-
-- [ ] **Step 2: The doc comment in the same file**
+- [ ] **Step 2: The doc comment**
 
 `DisciplineContract.cs`, change:
 ```csharp
@@ -221,102 +196,135 @@ to:
 to:
 ```csharp
 /// adversarial-panel-review closes each ROUND on a single-line PANEL VERDICT (its SKILL.md, section
-/// "Step 1 - Solo panel"); the other three end on VERDICT:. Cited by SECTION, not line: this comment
+/// "Step 1 - Solo panel"); the other three end on [VERDICT:. Cited by SECTION, not line: this comment
 /// said ":208" until 2026-09-03 and that line had long since become something else.
 ///
-/// THE TOKENS ARE STORED WITHOUT THEIR BRACKET ON PURPOSE. Peers are told to write "[VERDICT: ...]",
-/// and TerminalToken strips a leading '[' as decoration before comparing. A token stored as "[VERDICT:"
-/// would therefore describe an enforcement the matcher does not perform. GREEN is not gone from the
-/// panel skill either - it remains that skill's RUN-level disposition; this table checks a single
-/// REPLY, which is one ROUND.</summary>
+/// GREEN is not gone from the panel skill - it remains that skill's RUN-level disposition ("Outputs",
+/// and its Completeness gate: "For this skill that means GREEN"). This table checks a single REPLY,
+/// which is one ROUND. Do not "reconcile" the two by reverting this.</summary>
 ```
 
-- [ ] **Step 3: The matcher**
+- [ ] **Step 3: Run both suites**
 
-`TerminalToken.cs`, add the field to the class:
+```bash
+cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Ls.Tests
+cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Integration.Tests
+```
+Expected: **`Total: 208`, 0 failed** and **`Total: 84`, 0 failed** — both MEASURED.
+
+🔴 **`Total: 208` IS NOT THE ORACLE — it is also the untouched baseline.** The oracle is the named test
+from Task 1, which FAILS before this step:
+
+```bash
+cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~The_panel_token_comes_from_the_contract"
+```
+Expected: **1 passed.** ⚠ **`dotnet test --filter` EXITS 0 ON NO MATCH — read the COUNT.**
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd "$(git rev-parse --show-toplevel)" && git add clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs
+git commit -m "fix(s29a): the panel's terminal token is PANEL VERDICT, not GREEN"
+```
+
+---
+
+## Task 3: The bracket false-flag — contract and matcher together
+
+🔴 **THIS TASK IS ATOMIC AND THAT IS MEASURED, not assumed.** Its two halves cannot be separated:
+
+- **Contract first:** the contract says `VERDICT:` while the matcher still keeps `[`, so
+  `[VERDICT: ALIGNED]` fails `StartsWith("VERDICT:")`.
+- **Matcher first:** the matcher strips `[` while the contract still says `[VERDICT:`, so the stripped
+  `VERDICT: ALIGNED]` fails `StartsWith("[VERDICT:")`.
+
+**Files:** `TerminalToken.cs` · `DisciplineContract.cs` (3 values + comment) ·
+`DisciplineContractTests.cs` (5 sites) · `TerminalTokenTests.cs` (6 sites + 2 new `[Fact]`s) ·
+`AgyAskIntegrationTests.cs` (2 sites).
+
+**Owner ruling, AGY-AFTER round 3: the CONTRACT stores what is actually ENFORCED.** An earlier draft
+stripped `[` from the expected token at RUNTIME, which fixed the false-flag but left `DisciplineContract`
+reading `[VERDICT:` while the runtime enforced only `VERDICT:` — **MEASURED: a bullet-prefixed
+`* VERDICT: ALIGNED` satisfied it.** A file must not assert a guard it does not have.
+
+- [ ] **Step 1: The contract values and every test literal — as COMMANDS, not a search**
+
+⚠ **13 replacements across 4 files. Do NOT hunt them by hand** — that is how the wrong occurrence gets
+replaced. Run these and read the counts back:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+for f in clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs \
+         clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs \
+         clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs \
+         clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs; do
+  before=$(grep -c '"\[VERDICT:"' "$f"); sd '"\[VERDICT:"' '"VERDICT:"' "$f"
+  after=$(grep -c '"\[VERDICT:"' "$f"); echo "$f  $before -> $after"
+done
+```
+Expected, **MEASURED**: `DisciplineContract.cs 3 -> 0` · `DisciplineContractTests.cs 5 -> 0` ·
+`TerminalTokenTests.cs 6 -> 0` · `AgyAskIntegrationTests.cs 2 -> 0`. **Any other numbers mean the tree is
+not the tree this plan was written against — STOP and report `STATE_MISMATCH`.**
+
+⚠ **DO NOT touch the fake reply text in `AgyAskIntegrationTests.cs`.** It emits
+`"findings here\n\n[VERDICT: ALIGNED]"` and **must keep its bracket** — with `expectTerminal` now
+bracketless, that test becomes the end-to-end proof that a bracketed reply survives the wiring. A round-4
+seat argued this change "neuters" the test; **measured, the opposite is true, but only because the
+fixture keeps its bracket.**
+
+- [ ] **Step 2: The matcher**
+
 ```csharp
 public static class TerminalToken
 {
     // '[' IS DECORATION. Three disciplines tell their peer to write "[VERDICT: ...]", and a peer that
-    // brackets a complete verdict was being flagged as truncated. The tokens in DisciplineContract are
-    // stored WITHOUT the bracket so that stripping it here cannot contradict them.
+    // brackets a complete verdict was being flagged as truncated.
+    //
+    // 🔴 INVARIANT, and it is enforced by a test below: NO EXPECTED TOKEN MAY BEGIN WITH ONE OF THESE
+    // CHARACTERS. Only the LINE is stripped, so a token like "[NEW_VERDICT]" would be unsatisfiable -
+    // the line loses its '[' and can never match an expectation that still has one. This is the price
+    // of storing the enforced token in DisciplineContract rather than normalising it at runtime.
     private static readonly char[] Decoration = { '*', '`', '_', '#', ' ', '[' };
 ```
 
-and replace the strip in the loop:
-```csharp
-            var line = lines[i].Trim().TrimStart('*', '`', '_', '#', ' ');
-```
-with:
-```csharp
-            var line = lines[i].Trim().TrimStart(Decoration);
-```
+and in the loop replace `TrimStart('*', '`', '_', '#', ' ')` with `TrimStart(Decoration)`.
+**Nothing else changes.** `StartsWith` stays, so the token must still LEAD the line.
 
-**Nothing else in the method changes.** `StartsWith` stays, and so does the negation guard it provides:
-the token must LEAD the line, so *"Tests are not GREEN"* and *"no [VERDICT: ...] was produced"* are still
-rejected.
+- [ ] **Step 3: Make the invariant MECHANICAL, not a comment**
 
-- [ ] **Step 4: The doc comment on the matcher**
+A rule with no implementation is worse than no rule. Add to `DisciplineContractTests.cs`:
 
-`TerminalToken.cs:13-15`, change:
 ```csharp
-/// The expectation is supplied PER CALL because the four disciplines do not share a grammar: agy-capstone,
-/// agy-test-audit and agy-first end on "[VERDICT:", while adversarial-panel-review ends on "GREEN"
-/// (adversarial-panel-review/SKILL.md:208). A single hardcoded pattern would flag every panel reply.</summary>
-```
-to:
-```csharp
-/// The expectation is supplied PER CALL because the four disciplines do not share a grammar: agy-capstone,
-/// agy-test-audit and agy-first end on "VERDICT:", while adversarial-panel-review closes each round on a
-/// single-line "PANEL VERDICT" (its SKILL.md, section "Step 1 - Solo panel"). A single hardcoded pattern
-/// would flag every panel reply.</summary>
+    [Fact]
+    public void No_stored_token_begins_with_a_character_the_matcher_strips()
+    {
+        // TerminalToken strips leading decoration from the LINE only. A token that BEGINS with one of
+        // those characters could therefore never be matched - the line would lose the character and the
+        // expectation would keep it. Found as an unstated invariant by AGY-AFTER round 4; this test is
+        // what stops it being rediscovered as a live defect by whoever adds the fifth discipline.
+        foreach (var d in DisciplineContract.KnownDisciplines)
+        {
+            var tok = DisciplineContract.TerminalTokenFor(d)!;
+            Assert.False("*`_# [".Contains(tok[0]),
+                $"discipline '{d}' stores token '{tok}', which begins with a stripped character");
+        }
+    }
 ```
 
-- [ ] **Step 5: Every test literal that carries the old token**
+- [ ] **Step 4: The rows that prove the bracket is now decoration**
 
-**These are not optional — the suite goes RED without them.** Replace `"[VERDICT:"` with `"VERDICT:"` at
-**6 sites in `TerminalTokenTests.cs`** and **5 sites in `DisciplineContractTests.cs`**, and
-`expectTerminal: "[VERDICT:"` with `expectTerminal: "VERDICT:"` at **2 sites in
-`AgyAskIntegrationTests.cs`**.
-
-⚠ **MEASURED: skipping the integration file leaves
-`AskAsync_does_NOT_flag_when_the_reply_ends_with_the_expected_token` FAILING** (Integration suite:
-`Failed: 1, Passed: 83`). The plan's VERIFIED STATE row about the integration tests refers ONLY to
-`:1761` and does NOT cover these two.
-
-Then update `DisciplineContractTests.cs`'s comment block:
-```csharp
-        // The token literals live HERE and nowhere else. Measured 2026-08-19: the first three use
-        // [VERDICT: (17, 12 and 10 occurrences); adversarial-panel-review uses GREEN and has ZERO
-        // [VERDICT occurrences - SKILL.md:208, "For this skill that means GREEN".
-```
-to:
-```csharp
-        // The token literals live HERE and nowhere else. The three [VERDICT: skills carry 17, 12 and 10
-        // occurrences of that string (re-measured 2026-09-03, still exact) - but the token is stored
-        // WITHOUT the bracket, because TerminalToken strips a leading '[' as decoration. The panel skill
-        // has ZERO [VERDICT occurrences and closes each ROUND on a single-line PANEL VERDICT.
-        // Re-measure the counts before trusting them.
-```
-
-- [ ] **Step 6: Add the rows that prove the bracket is now decoration**
-
-Append inside `TerminalTokenTests.cs`:
+Append to `TerminalTokenTests.cs`:
 
 ```csharp
     [Fact]
     public void A_bracket_wrapped_verdict_is_compliance_not_truncation()
     {
-        // Three disciplines tell their peer to write "[VERDICT: ...]", so peers bracket by habit and a
-        // complete reply must not be flagged for it. MEASURED 2026-09-03: the bracket rows fail before
-        // this change and pass after it.
         Assert.True(TerminalToken.IsSatisfied("x\n\n[VERDICT: ALIGNED]\n", "VERDICT:"));
         Assert.True(TerminalToken.IsSatisfied("x\n\n[**VERDICT: ALIGNED**]\n", "VERDICT:"));
         Assert.True(TerminalToken.IsSatisfied("x\n\n**[VERDICT: ALIGNED]**\n", "VERDICT:"));
         Assert.True(TerminalToken.IsSatisfied("x\n\n[PANEL VERDICT: GREEN]\n", "PANEL VERDICT"));
 
-        // THE BRACKET IS NOW OPTIONAL, AND THE CONTRACT SAYS SO. This row exists to make that visible
-        // rather than to be discovered later by someone reading DisciplineContract.
+        // THE BRACKET IS NOW OPTIONAL AND THE CONTRACT SAYS SO. Pinned so it is not read as an oversight.
         Assert.True(TerminalToken.IsSatisfied("x\n\n* VERDICT: ALIGNED\n", "VERDICT:"));
 
         // REGRESSION GUARDS - the token must still LEAD the line.
@@ -326,41 +334,28 @@ Append inside `TerminalTokenTests.cs`:
     }
 ```
 
-⚠ **LITERALS ARE CORRECT IN *THIS* TEST, unlike Task 1 — do not "fix" them.** Task 1 pins the CONTRACT and
-must read the table. This test pins the MATCHER across token SHAPES, including other disciplines' tokens;
-coupling it to the table would let a table change silently alter which shapes are covered.
+⚠ **LITERALS ARE CORRECT HERE, unlike Task 1 — do not "fix" them.** Task 1 pins the CONTRACT and must
+read the table; this pins the MATCHER across token SHAPES, including other disciplines' tokens.
 
-- [ ] **Step 7: Run BOTH suites**
+- [ ] **Step 5: Run BOTH suites**
 
 ```bash
 cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Ls.Tests
-```
-Expected: **0 failed, `Total: 209`** — the 208 baseline plus the one new `[Fact]` from Step 6.
-
-```bash
 cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Integration.Tests
 ```
-Expected: **0 failed, `Total: 84`.** MEASURED — this suite is not CI-run, so it is easy to forget, and it
-is exactly where the missed literal shows up.
+Expected: **`Total: 210`, 0 failed** (208 baseline + the two new `[Fact]`s from Steps 3 and 4) and
+**`Total: 84`, 0 failed.** ⚠ **The integration suite is NOT CI-run**, which is exactly why a missed
+literal there survives to the next session.
 
-🔴 **`Total: 208` IS NOT AN ORACLE FOR THIS TASK AND NEVER WAS.** It is also the untouched baseline, so a
-run that does nothing at all prints it. **The oracle is the pair:** `Total: 209` on the Ls suite (only
-Step 6 moves it) AND the named test below passing, which fails before this task:
-
-```bash
-cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~The_panel_token_comes_from_the_contract"
-```
-Expected: **1 passed.** ⚠ **`dotnet test --filter` EXITS 0 ON NO MATCH — read the COUNT.**
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-cd "$(git rev-parse --show-toplevel)" && git add clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs clavity-dotnet/src/Clavity.Ls/TerminalToken.cs clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs
+cd "$(git rev-parse --show-toplevel)" && git add clavity-dotnet/src/Clavity.Ls/TerminalToken.cs clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs clavity-dotnet/tests/Clavity.Integration.Tests/AgyAskIntegrationTests.cs
 git commit -m "fix(s29a): store the enforced token, and treat a leading bracket as decoration"
 ```
 
 ---
-## Task 3: Close §29a in the ROADMAP with its SHA
+## Task 4: Close §29a in the ROADMAP with its SHA
 
 **Files:**
 - Modify: `clavity-dotnet/ROADMAP.md` (the §29 header and its §29a paragraph)
@@ -508,12 +503,38 @@ below-floor discards.** The two dispositions that are not `FOLDED`:
   `$(...)` idiom fails under `cmd.exe`. True of `cmd.exe`, but an executor running these bash blocks in
   `cmd.exe` fails on the fences long before the subshell, so the idiom is not the reachable defect.
 
+**Round 4:**
+
+- `FOLDED: Tasks 2 and 3 SPLIT again` — the merge was over-broad and my justification for it was wrong.
+  What cannot be split is Task 3's own contract/matcher halves; the panel token is independent.
+  **MEASURED: Task 2 alone gives 208/208 and 84/84.** The seat proposed the horizontal split and was right.
+- `FOLDED: DisciplineContractTests gains an invariant guard` — an **unstated invariant** was found: since
+  only the LINE is stripped, no stored token may BEGIN with a stripped character, or it becomes
+  unsatisfiable (a future `[NEW_VERDICT]` would be impossible to match). This is the real cost of storing
+  the enforced token instead of normalising at runtime. It is now a mechanical test over
+  `KnownDisciplines`, not a comment — a rule with no implementation is worse than no rule.
+- `FOLDED: Task 3 Step 1 is now a COMMAND with counts` — 13 replacements across 4 files were specified as
+  prose, which invites an executor to replace the wrong occurrence. Replaced with a loop that prints
+  `before -> after` per file and a `STATE_MISMATCH` instruction if the numbers differ.
+- `REJECTED: AgyAskIntegrationTests.cs:1468` — the claim that updating `expectTerminal` "neuters" the
+  integration test and bypasses the bracket logic. **The fixture emits
+  `"findings here\n\n[VERDICT: ALIGNED]"` and is NOT changed**, so with a bracketless expectation that
+  test becomes the end-to-end PROOF that a bracketed reply survives the wiring. The seat assumed the
+  fixture would change too. The plan now says explicitly that it must not.
+
 ## Review status
 
-⚠ **AGY-AFTER ROUNDS 1-3 COMPLETE — 11 folded, 6 rejected/discarded by measurement, 0 open.** Round 1:
-solo panel (8 seats) + live escalation. Round 2: State Corruptor, Activation Auditor, Literal Implementer.
-Round 3: Blindspot Auditor, Cascade Analyst, Boundary Smuggler. **Every round produced a blocking finding,
-and rounds 2 and 3 each hit the PREVIOUS round's repair.**
+⚠ **AGY-AFTER ROUNDS 1-4 COMPLETE — 14 folded, 7 rejected/discarded by measurement, 0 open.** Round 1:
+solo panel (8 seats) + live escalation. R2: State Corruptor, Activation Auditor, Literal Implementer.
+R3: Blindspot Auditor, Cascade Analyst, Boundary Smuggler. R4: Resource Vampire, plus Axiom Breaker and
+Mechanism Gamer re-seated on the new design. **Every round produced a blocking finding, and rounds 2, 3
+and 4 each hit the PREVIOUS round's repair.**
+
+🔴 **THAT PATTERN IS THE ARTIFACT'S MOST IMPORTANT PROPERTY, AND IT IS NOT A SIGN THE PANEL IS PADDING.**
+Three consecutive rounds found a real defect *in the fix the round before had just made*: a vacuous RED
+arm, an incomplete cwd fold, a contract that lied about its own enforcement, and an over-broad merge.
+**A fix is unreviewed code** — that is the whole reason this discipline re-runs after folding rather than
+stopping at the first clean-looking draft.
 
 ⚠ **ROUND 3's REPLY ECHOED A STALE LINE** (`round 2 has not been run.`) while citing line numbers that
 only exist AFTER round 2's fold — so it read the current file but produced the echo from its own context.
