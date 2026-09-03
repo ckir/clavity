@@ -111,6 +111,12 @@ capstone-invalidation loop, which is why the record is not optional bookkeeping.
 **What a row does NOT claim.** That the suite is now exhaustive. An audit raises the coverage FLOOR under
 one set of lenses; it does not prove no gap remains.
 
+🔴 **ESCAPE EVERY `|` INSIDE A CELL AS `\|`.** The `evidence` column carries free prose and citations, and
+a shell command pasted into it (`git log | grep ...`) contains the column delimiter. An unescaped pipe
+silently invents a new column boundary: the row misaligns, nothing errors, and the record it was supposed
+to preserve is the thing that gets mangled. Nothing validates this file's table structure, so the
+convention is the only guard.
+
 | date | range | rounds | verdict | evidence |
 |------|-------|--------|---------|----------|
 | 2026-09-02 | `d33416c..d528328` | 1 | **GAPS FOUND** - 9 verified gaps folded, 2 REJECTED by measurement, 2 DISCARDED-BELOW-FLOOR | fold commit `f3ea3e9`; brief `.clavity/seams/testaudit-phase1-r1.md`. Every gap was established by a guard mutant - force the guard false, re-run, record what reddens - with baselines 18/0 and 59/0 and a failing control in the same campaign. One finding was a live SOURCE defect rather than a coverage gap: malformed JSON syntax reached `json.load` unguarded. Gates at the fold: 27/0 and 66/0. |
@@ -124,11 +130,19 @@ worse than one that starts where the evidence starts. **Do not backfill anything
 - [ ] **Step 2: Verify no gate objects to a new docs file**
 
 ```bash
-pwsh -NoProfile -Command "& './scripts/check-doc-stubs.ps1'; 'stubs=' + \$LASTEXITCODE"
-pwsh -NoProfile -Command "& './scripts/check-user-facing-docs.ps1'; 'user-facing=' + \$LASTEXITCODE"
+pwsh -NoProfile -Command "& './scripts/check-doc-stubs.ps1'";       echo "stubs=$?"
+pwsh -NoProfile -Command "& './scripts/check-user-facing-docs.ps1'"; echo "user-facing=$?"
 ```
 Expected: both `0`. (Verified while writing this plan: neither script names `agy-capstone-ledger.md`, so
 neither will name its sibling.)
+
+🔴 **DO NOT rewrite these as `pwsh -Command "& './x.ps1'; 'name=' + $LASTEXITCODE"`.** That shape was in
+this plan's first draft at three sites and the panel killed it. **MEASURED, with both controls:** a
+script that `exit 1`s, invoked in that shape, leaves the `pwsh` PROCESS exiting **0** - because the last
+thing evaluated is a string, and pwsh reports the success of that. The same script invoked bare exits
+**1**. The printed text stays correct either way, so the failure is invisible to anything reading a
+status rather than reading prose - which defeats this repository's own rule to run the gate and read its
+EXIT CODE. Keep the value OUTSIDE the `-Command` string, as above.
 
 - [ ] **Step 3: Commit**
 
@@ -208,9 +222,10 @@ Then edit that one number inside `` `agy-test-audit/SKILL.md` (N lines) `` at `R
 ```bash
 bash scripts/check-seed-artifacts-synced.sh; echo "seed=$?"
 pwsh -NoProfile -Command "& './scripts/check-agy-discipline-skills.ps1'"
-pwsh -NoProfile -Command "& './scripts/check-roadmap-claims.ps1'; 'roadmap=' + \$LASTEXITCODE"
+pwsh -NoProfile -Command "& './scripts/check-roadmap-claims.ps1'"; echo "roadmap=$?"
 ```
-Expected: `seed=0`, `agy-discipline skills OK`, and `roadmap=0`. **The third command is the one that
+Expected: `seed=0`, `agy-discipline skills OK`, and `roadmap=0`. (The value is read OUTSIDE the
+`-Command` string for the exit-code reason measured in Task 1 Step 2.) **The third command is the one that
 proves Step 4 landed.** If it reports a stale count, Step 4 was skipped or mis-measured - fix it here,
 not later, because Task 4 runs this same gate and would only rediscover it.
 
@@ -501,8 +516,14 @@ class this repository classes as BLOCKING:
    best-effort prompt-disciplines, not sandboxes, and the only mechanical enforcement available at commit
    time is that the contract text is present.
 2. **It does not prove the clause REQUIRES a row.** A skill that named the file in passing prose would
-   pass. Pinning the requirement sentence verbatim was rejected deliberately - every rewording becomes a
-   false RED, which this repository folded twice in the section 21 capstone.
+   pass. **Sharper: the path inside an HTML comment - `<!-- docs/agy-test-audit-ledger.md -->` - also
+   passes, while the requirement is invisible to every reader of the rendered file.** Pinning the
+   requirement sentence verbatim was rejected deliberately - every rewording becomes a false RED, which
+   this repository folded twice in the section 21 capstone - and so was narrowing the needle to exclude
+   comments: three guards in that capstone were each fooled by a decoy in a docstring, and narrowing the
+   pattern failed twice before counting the candidates ended the class. **A needle that must out-guess an
+   adversary expires the moment someone invents a new decoy.** The honest position is a weak check whose
+   weakness is written down here, which is why it is.
 3. **It does not prove `docs/agy-test-audit-ledger.md` EXISTS.** Delete the ledger and the linter stays
    green. The obvious fix - also assert the file exists under `-Root` - was **tried and refuted**:
    `check-agy-discipline-skills.Tests.ps1:26-38` stages a scratch root containing only four `SKILL.md`
