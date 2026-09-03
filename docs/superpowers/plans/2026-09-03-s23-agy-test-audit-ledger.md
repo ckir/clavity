@@ -130,19 +130,35 @@ worse than one that starts where the evidence starts. **Do not backfill anything
 - [ ] **Step 2: Verify no gate objects to a new docs file**
 
 ```bash
-pwsh -NoProfile -Command "& './scripts/check-doc-stubs.ps1'";       echo "stubs=$?"
-pwsh -NoProfile -Command "& './scripts/check-user-facing-docs.ps1'"; echo "user-facing=$?"
+pwsh -NoProfile -Command "& './scripts/check-doc-stubs.ps1'";        rc=$?; echo "stubs=$rc";       (exit $rc)
+pwsh -NoProfile -Command "& './scripts/check-user-facing-docs.ps1'"; rc=$?; echo "user-facing=$rc"; (exit $rc)
 ```
 Expected: both `0`. (Verified while writing this plan: neither script names `agy-capstone-ledger.md`, so
 neither will name its sibling.)
 
-🔴 **DO NOT rewrite these as `pwsh -Command "& './x.ps1'; 'name=' + $LASTEXITCODE"`.** That shape was in
-this plan's first draft at three sites and the panel killed it. **MEASURED, with both controls:** a
-script that `exit 1`s, invoked in that shape, leaves the `pwsh` PROCESS exiting **0** - because the last
-thing evaluated is a string, and pwsh reports the success of that. The same script invoked bare exits
-**1**. The printed text stays correct either way, so the failure is invisible to anything reading a
-status rather than reading prose - which defeats this repository's own rule to run the gate and read its
-EXIT CODE. Keep the value OUTSIDE the `-Command` string, as above.
+🔴 **THE STATUS-REPORTING SHAPE IS LOAD-BEARING. Two separate maskings were measured out of it, and every
+gate line in this plan uses the surviving form. Do not "simplify" any of them.**
+
+**Masking 1, in the first draft:** `pwsh -Command "& './x.ps1'; 'name=' + $LASTEXITCODE"`. A script that
+`exit 1`s leaves the `pwsh` PROCESS exiting **0**, because the last thing evaluated is a string and pwsh
+reports the success of THAT. Bare, the same script exits **1**.
+
+**Masking 2, in the fix for masking 1:** `pwsh -Command "& './x.ps1'"; echo "name=$?"`. This restores
+pwsh's own exit status, but `a; b` returns **b**'s status and `echo` always succeeds - so the compound
+statement exits **0** on a failing gate. Fixing the inner masking left the outer one, which is the
+incomplete-fold shape this repository keeps paying for.
+
+**The surviving form, measured in BOTH directions** - failing gate -> prints `1`, block exits **1**;
+passing gate -> prints `0`, block exits **0**:
+
+```bash
+<the gate command>; rc=$?; echo "<name>=$rc"; (exit $rc)
+```
+
+The printed value was correct under all three shapes. **What the first two lose is the STATUS**, so the
+failure is invisible to anything that reads a status rather than prose - a `&&` chain, `set -e`, a hook,
+or an agent checking the step succeeded. That is precisely the rule "run the gate and read its EXIT CODE"
+being satisfied in letter and defeated in fact.
 
 - [ ] **Step 3: Commit**
 
@@ -220,9 +236,9 @@ Then edit that one number inside `` `agy-test-audit/SKILL.md` (N lines) `` at `R
 - [ ] **Step 5: Run the gates this touches**
 
 ```bash
-bash scripts/check-seed-artifacts-synced.sh; echo "seed=$?"
+bash scripts/check-seed-artifacts-synced.sh; rc=$?; echo "seed=$rc"; (exit $rc)
 pwsh -NoProfile -Command "& './scripts/check-agy-discipline-skills.ps1'"
-pwsh -NoProfile -Command "& './scripts/check-roadmap-claims.ps1'"; echo "roadmap=$?"
+pwsh -NoProfile -Command "& './scripts/check-roadmap-claims.ps1'"; rc=$?; echo "roadmap=$rc"; (exit $rc)
 ```
 Expected: `seed=0`, `agy-discipline skills OK`, and `roadmap=0`. (The value is read OUTSIDE the
 `-Command` string for the exit-code reason measured in Task 1 Step 2.) **The third command is the one that
@@ -300,17 +316,69 @@ Append inside `Context 'AGY-CAPSTONE 2026-09-02: the roster itself, which nothin
         }
 ```
 
-- [ ] **Step 2: Run them and watch them FAIL**
+- [ ] **Step 1c: Write the failing test for ledger EXISTENCE, and widen the fixture**
+
+The check in Step 3 asserts the ledger file is actually on disk, so the scratch root has to contain one.
+**Widen `New-ScratchRoot` first** - in `check-agy-discipline-skills.Tests.ps1`, immediately after the
+`foreach ($s in @('agy-first', ...))` loop that copies the four `SKILL.md` files and before `return
+$scratch`:
+
+```powershell
+        # The section-23 ledger check resolves docs/<x>-ledger.md from -Root, so a scratch root with no
+        # docs/ tree would redden every row in this suite. Stage empty stand-ins: the guard asserts
+        # EXISTENCE, never content, so an empty file is the correct fixture and says so by being empty.
+        New-Item -ItemType Directory -Path (Join-Path $scratch 'docs') -Force | Out-Null
+        foreach ($led in @('agy-capstone-ledger.md', 'agy-test-audit-ledger.md')) {
+            Set-Content -Path (Join-Path $scratch "docs/$led") -Value '' -NoNewline -Encoding utf8
+        }
+```
+
+**Verified safe before adopting:** no row in this suite asserts the scratch root's file list
+(`grep -n 'Get-ChildItem \$scratch' scripts/tests/check-agy-discipline-skills.Tests.ps1` -> no hits), so
+adding files cannot change an existing row's outcome. And `$Root` defaults to the repository root
+(`check-agy-discipline-skills.ps1:6`, `Split-Path -Parent $PSScriptRoot`), so the same resolution is
+correct in production.
+
+Then append to `Context 'rejection cases (each perturbs one skill; the other stays valid)'`:
+
+```powershell
+        It 'REJECTS <skill> when its ledger FILE is absent' -ForEach @(
+            @{ skill = 'agy-capstone';   ledger = 'docs/agy-capstone-ledger.md' },
+            @{ skill = 'agy-test-audit'; ledger = 'docs/agy-test-audit-ledger.md' }
+        ) {
+            # Naming a ledger that does not exist is the False Safety Promise shape: the skill's clause
+            # reads as enforced while the file it points at is gone.
+            $scratch = New-ScratchRoot
+            $led = Join-Path $scratch $ledger
+            (Test-Path $led) | Should -BeTrue -Because 'the fixture must stage the ledger before removing it'
+            Remove-Item -Force $led
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match ([regex]::Escape("names '$ledger', which is not on disk"))
+            Remove-Item -Recurse -Force $scratch
+        }
+```
+
+**Why this row exists at all, stated because the plan first got it wrong.** An earlier draft recorded
+this check as REFUTED, on the grounds that the scratch root stages no `docs/` tree. The panel's round-2
+Driver's-Reasoning seat rejected that and was right: *"letting a mock implementation detail dictate the
+strength of a production gate is the tail wagging the dog."* The fixture is ours to widen. **A refuted
+fix and a fix that needs one more line are not the same thing, and the first draft called one the other.**
+
+- [ ] **Step 2: Run all five and watch them FAIL**
 
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
 ```
-Expected: **3 failed**. The two `-ForEach` rows fail on `Expected 1, but got 0` - the linter has no such
-check yet, so stripping the path changes nothing. The reconciliation row fails on its
-`Should -Not -Be $original` self-check, because the map it perturbs does not exist yet; that is the
-fixture proving its own precondition, not a broken test.
+Expected: **5 failed**, and each for its own reason, which is what makes this a real red rather than a
+broken suite:
+- the two path rows and the two existence rows fail on `Expected 1, but got 0` - the linter has no such
+  check yet, so perturbing the fixture changes nothing;
+- the reconciliation row fails on its `Should -Not -Be $original` self-check, because the map it perturbs
+  does not exist yet. **That is the fixture proving its own precondition, not a broken test.**
 
-⚠ **`-FullNameFilter` EXITS 0 ON NO MATCH.** Read the COUNT in the output, never the exit code alone.
+⚠ **`-FullNameFilter` EXITS 0 ON NO MATCH.** Read the COUNT in the output, never the exit code alone. A
+run reporting 0 tests here means the filter missed, not that the rows passed.
 
 - [ ] **Step 3: Add the guard to the linter**
 
@@ -355,15 +423,24 @@ immediately before the loop's own closing brace:
         if (-not $raw.Contains($ledgerFor[$skill])) {
             Fail "$rel : never names '$($ledgerFor[$skill])', so a completing verdict records nothing"
         }
+        # And the file must EXIST. Naming a ledger that is not on disk is the False Safety Promise
+        # shape - the clause reads as enforced while the record it points at is gone. Resolved from
+        # $Root, which defaults to the repository root, and which the suite's scratch fixture stages.
+        elseif (-not (Test-Path -LiteralPath (Join-Path $Root $ledgerFor[$skill]))) {
+            Fail "$rel : names '$($ledgerFor[$skill])', which is not on disk - the clause points at nothing"
+        }
     }
 ```
+
+**`elseif`, not a second `if`, is deliberate.** A skill that never names the ledger should produce ONE
+diagnostic, not two; and the existence check is meaningless when the clause is already absent.
 
 - [ ] **Step 4: Run them and watch them PASS**
 
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
 ```
-Expected: `Tests Passed: 3, Failed: 0`.
+Expected: `Tests Passed: 5, Failed: 0`.
 
 - [ ] **Step 5: Prove EACH guard is non-vacuous against a LOGIC mutant - one at a time**
 
@@ -382,12 +459,20 @@ cp scripts/check-agy-discipline-skills.ps1 .clavity/scratch/s23/lint.bak
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
 cp .clavity/scratch/s23/lint.bak scripts/check-agy-discipline-skills.ps1
 ```
-Expected: **2 failed** (the two `-ForEach` rows), **1 passed** (the reconciliation row, which this mutant
-does not touch - that asymmetry is the attribution).
+Expected: **4 failed** (both path rows AND both existence rows - the existence check is nested inside
+this condition, so one mutant disables two guards), **1 passed** (the reconciliation row, which sits
+outside the loop and which this mutant does not touch - that asymmetry is the attribution).
 
 **Mutant B - neuter the reconciliation:** change `if ($skills -notcontains $k) {` to `if ($false) {`,
 then re-run the same command.
-Expected: **1 failed** (the reconciliation row), **2 passed**.
+Expected: **1 failed** (the reconciliation row), **4 passed**.
+
+**Mutant C - neuter ONLY the existence check:** change
+`elseif (-not (Test-Path -LiteralPath (Join-Path $Root $ledgerFor[$skill]))) {` to `elseif ($false) {`,
+then re-run the same command.
+Expected: **2 failed** (the two existence rows), **3 passed**. **Mutant C is the one that matters most**:
+A cannot distinguish the path guard from the existence guard, and without C a completely absent existence
+check would still look pinned.
 
 ```bash
 cp .clavity/scratch/s23/lint.bak scripts/check-agy-discipline-skills.ps1
@@ -402,7 +487,7 @@ Expected: `2` on one hash after the final restore. **Restore with the `cp` backu
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Minimal"
 ```
-Expected: `Tests Passed: 78, Failed: 0` (75 before this task, plus the three rows above). **A run with no
+Expected: `Tests Passed: 80, Failed: 0` (75 before this task, plus the five rows above). **A run with no
 `Tests Passed:` line was ABORTED, not passed.**
 
 - [ ] **Step 7: Commit**
@@ -425,7 +510,7 @@ The current row, at `scripts/tests/_partition.md:716`, reads:
 ```
 check-agy-discipline-skills.Tests.ps1            40,5s   75 tests   <- FAST, re-measured 2026-09-02
 ```
-Change `75 tests` to `78 tests`. **Re-measure the runtime rather than copying 40,5s** - run the suite
+Change `75 tests` to `80 tests`. **Re-measure the runtime rather than copying 40,5s** - run the suite
 once and use what it prints, and say the box was not idle.
 
 **The count is mechanically gated**, so a wrong number here is caught rather than believed:
@@ -445,7 +530,7 @@ Expected: `Tests Passed: 9, Failed: 0`. **This gate EXITS 0 ON NO MATCH if filte
 ```bash
 pwsh -NoProfile -Command "& './scripts/check-agy-discipline-skills.ps1'"
 pwsh -NoProfile -Command "& './scripts/check-roadmap-claims.ps1'"
-bash scripts/check-seed-artifacts-synced.sh; echo "seed=$?"
+bash scripts/check-seed-artifacts-synced.sh; rc=$?; echo "seed=$rc"; (exit $rc)
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/plugin-hooks-payload.Tests.ps1 -Output Minimal"
 ```
 Expected: `agy-discipline skills OK`; `check-roadmap-claims: OK`; `seed=0`; payload suite green.
@@ -524,12 +609,18 @@ class this repository classes as BLOCKING:
    pattern failed twice before counting the candidates ended the class. **A needle that must out-guess an
    adversary expires the moment someone invents a new decoy.** The honest position is a weak check whose
    weakness is written down here, which is why it is.
-3. **It does not prove `docs/agy-test-audit-ledger.md` EXISTS.** Delete the ledger and the linter stays
-   green. The obvious fix - also assert the file exists under `-Root` - was **tried and refuted**:
-   `check-agy-discipline-skills.Tests.ps1:26-38` stages a scratch root containing only four `SKILL.md`
-   files and no `docs/` tree, so that assertion would redden every rejection row in the suite. Resolving
-   the ledger from `$PSScriptRoot` instead would work, and is not worth a second resolution rule for a
-   file whose deletion would be visible in any diff.
+3. ~~It does not prove the ledger EXISTS.~~ **NO LONGER A LIMIT - it is checked, as of Task 3 Step 1c.**
+   This entry is kept rather than deleted because the reasoning that first put it here was wrong and the
+   error is worth more than the tidy version. The first draft recorded the existence check as
+   **refuted**, because `New-ScratchRoot` stages only four `SKILL.md` files and no `docs/` tree, so the
+   assertion would have reddened every rejection row. That measurement was correct; the CONCLUSION drawn
+   from it was not. The fixture is ours - widening it costs four lines. **What had actually been measured
+   was that one specific framing of the fix fails, and that was recorded as though the fix itself were
+   impossible.** A refuted fix and a fix that needs one more line are different things.
+
+   **What still is NOT proven:** that a row is ever WRITTEN to the ledger. An empty ledger file passes the
+   existence check, exactly as an unwritten one would - the guard asserts the file is there, never that it
+   has content, and the test fixture stages empty stand-ins for that reason.
 
 **A stronger gate was considered and is NOT in this plan.** A hook could refuse to write
 `agy-test-audit.head` unless the ledger's newest row cites the sha being marked. It is deliberately out of
@@ -562,7 +653,7 @@ linter's own comment, which was false against the code it specified and would ha
 asserting a guard that does not exist. The three things the check does not prove are enumerated in the
 section above. **The row asserts the diagnostic, not the wording.**
 
-**5. Panel round 1 (solo) folded eight findings.** One BLOCKING: Task 2 grows `agy-test-audit/SKILL.md`
+**5. What the panel changed.** Round 1 folded eleven findings, round 2 folded two more and corrected one of my own dispositions. One BLOCKING: Task 2 grows `agy-test-audit/SKILL.md`
 past the `(377 lines)` claim that `check-roadmap-claims.ps1` validates, so the plan as first written went
 RED at its own Task 4 gate - the identical failure that reddened CI at `b464db2`. The rest: a linter
 comment asserting a needle the code does not have; a fails-open `$ledgerFor` typo hole; an elided ROADMAP
@@ -584,3 +675,5 @@ The durable record for the panel discipline, which has no ledger file of its own
 - `DISCARDED-BELOW-FLOOR: "referenced from 23 files" is now 24` - measured `git grep -l agy-capstone-ledger | wc -l` -> 24 at `d14d18b`; it was 23 when the peer measured it and the ledger row commit `f9f8aa4` added one. The claim is rationale for NOT renaming the file, and that argument is identical at 23 or 24, so the number is not load-bearing. Volatile figures in static prose rot by construction; this one is left as-written rather than pinned.
 - `DISCARDED-BELOW-FLOOR: check-plugin-drift will report drift after Task 2 until the plugin is reinstalled` - unreachable as a gate failure because nothing invokes it: `grep -rn "check-plugin-drift.ps1" justfile .github/workflows lefthook.yml` returns no hit, so it is a manual operator tool, not a gate this plan can redden.
 - `REJECTED: check-growth-budget could overflow on a larger SKILL.md` - measured `scripts/check-growth-budget.ps1:55-110`: it measures the knowledge SEED and GROWTH proposal only, and names no skill payload. A SKILL.md edit cannot move that budget.
+- `REJECTED: -Output Minimal may not print the runtime Task 4 Step 1 needs` - measured on a one-test fixture: `Invoke-Pester -Path ./tiny.Tests.ps1 -Output Minimal` prints both a per-file `4.6s` and `Tests completed in 4.69s`. The runtime is available from the command the plan already gives; no improvisation is required.
+- `REJECTED: stripping the ledger path in the Task 3 fixture might break a row in another suite` - measured `grep -rn "agy-capstone-ledger" scripts/tests/*.ps1` -> one hit, in `agy-test-audit-reminder.Tests.ps1:92`, a different suite that stages its own fixture. Nothing in `check-agy-discipline-skills.Tests.ps1` reads the path, so the `.Replace()` cannot redden a sibling row.
