@@ -158,6 +158,25 @@ Describe 'check-agy-discipline-skills' {
             Remove-Item -Recurse -Force $scratch
         }
 
+        It 'REJECTS <skill> when its ledger is a DIRECTORY rather than a file' -ForEach @(
+            @{ skill = 'agy-capstone';   ledger = 'docs/agy-capstone-ledger.md' },
+            @{ skill = 'agy-test-audit'; ledger = 'docs/agy-test-audit-ledger.md' }
+        ) {
+            # AGY-CAPSTONE 2026-09-03 R1: a bare Test-Path returns $true for a directory, so the
+            # existence guard could be satisfied by `mkdir docs/<x>-ledger.md` with no record present.
+            # This row pins -PathType Leaf; delete that switch and it goes red while every sibling row
+            # stays green, which is what makes it attributable.
+            $scratch = New-ScratchRoot
+            $led = Join-Path $scratch $ledger
+            Remove-Item -Force $led
+            New-Item -ItemType Directory -Path $led -Force | Out-Null
+            (Test-Path -LiteralPath $led -PathType Container) | Should -BeTrue -Because 'the fixture must actually leave a DIRECTORY at the ledger path'
+            $out = & $script:Lint -Root $scratch 2>&1
+            $LASTEXITCODE | Should -Be 1
+            (Get-LintText $out) | Should -Match ([regex]::Escape("names '$ledger', which is not on disk"))
+            Remove-Item -Recurse -Force $scratch
+        }
+
         It 'fails loudly on a non-ASCII character in <skill>' -ForEach @(
             @{ skill = 'agy-first' }, @{ skill = 'agy-capstone' }, @{ skill = 'agy-test-audit' }
         ) {

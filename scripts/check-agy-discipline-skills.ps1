@@ -253,7 +253,10 @@ foreach ($skill in $skills) {
         # second if: an absent clause should produce ONE diagnostic, and the existence check is
         # meaningless when the clause is already missing. Resolved from $Root, which defaults to the
         # repository root and which the suite's scratch fixture stages.
-        elseif (-not (Test-Path -LiteralPath (Join-Path $Root $ledgerFor[$skill]))) {
+        # -PathType Leaf, not a bare Test-Path: a bare Test-Path returns $true for a DIRECTORY, so
+        # `mkdir docs/agy-test-audit-ledger.md` would satisfy this guard while the record it asserts does
+        # not exist. MEASURED: bare -> True, -PathType Leaf -> False, on a directory of that name.
+        elseif (-not (Test-Path -LiteralPath (Join-Path $Root $ledgerFor[$skill]) -PathType Leaf)) {
             Fail "$rel : names '$($ledgerFor[$skill])', which is not on disk - the clause points at nothing"
         }
     }

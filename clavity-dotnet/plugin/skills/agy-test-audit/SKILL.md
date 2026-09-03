@@ -286,6 +286,12 @@ the brief in `.clavity/seams/`. `none` is not a permitted evidence value: a run 
 produced a brief, so cite it. This binds to the SAME completing verdicts as the paragraph above, both of
 them, for the same reason - gating only the clean verdict would leave the hole wide open.
 
+**READ THAT FILE'S HEADER BEFORE YOU APPEND TO IT.** It carries two conventions that NOTHING validates:
+the newest row goes at the BOTTOM, and every `|` inside a cell must be escaped as `\|`. The evidence
+column invites shell commands and citations, so an unescaped pipe is the ordinary case, not an exotic
+one - and it silently invents a column boundary, mangling the very record you are writing. A rule the
+executor is never shown is not a rule.
+
 Without this row the marker is the only trace an audit ever ran, and the marker is a debounce holding
 ambient `HEAD`, not a record of what was audited. The question the loop above depends on - is a re-audit
 owed? - then has no answer in the tree.
