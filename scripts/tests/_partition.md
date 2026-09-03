@@ -713,7 +713,10 @@ assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as o
                                                                       tests and the agent, as this file
                                                                       already warns above.
 BashHookHelpers.Tests.ps1                         1,7s    8 tests   <- FAST, re-measured 2026-08-05
-check-agy-discipline-skills.Tests.ps1            40,5s   75 tests   <- FAST, re-measured 2026-09-02
+check-agy-discipline-skills.Tests.ps1            43,2s   80 tests   <- FAST, re-measured 2026-09-03
+  Re-measured 2026-09-03 for ROADMAP section 23, count 75 -> 80 and 40,5s -> 43,2s. The five added
+  rows are the section-23 ledger pins. The box was NOT verified idle - the agent and the suite share
+  one CPU - so treat this figure as indicative, not as a regression baseline.
   RUNTIME MORE THAN HALVED 2026-09-02 by AGY-CAPSTONE R5, 86,6s -> 40,5s, with the row count and
   every result unchanged at 75/0. Ten sites were spawning a child pwsh per row to run a staged copy
   of the linter; MEASURED, `& $tmpLint` runs it in-process, $PSScriptRoot still resolves to the
