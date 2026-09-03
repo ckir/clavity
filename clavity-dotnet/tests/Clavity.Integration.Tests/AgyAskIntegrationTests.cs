@@ -1453,7 +1453,7 @@ public class AgyAskIntegrationTests
         try
         {
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
-            var reply = await view.AskAsync("review it", expectTerminal: "[VERDICT:");
+            var reply = await view.AskAsync("review it", expectTerminal: "VERDICT:");
             Assert.True(reply.TerminalTokenMissing);
         }
         finally { Directory.Delete(dir, true); }
@@ -1471,7 +1471,7 @@ public class AgyAskIntegrationTests
         try
         {
             var view = new AgyView(new AgyViewOptions { CliLogPath = cliLog });
-            var reply = await view.AskAsync("review it", expectTerminal: "[VERDICT:");
+            var reply = await view.AskAsync("review it", expectTerminal: "VERDICT:");
             Assert.False(reply.TerminalTokenMissing);
         }
         finally { Directory.Delete(dir, true); }

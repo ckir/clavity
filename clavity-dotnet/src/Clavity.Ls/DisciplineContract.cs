@@ -7,7 +7,7 @@ namespace Clavity.Ls;
 /// <summary>Maps a discipline to the terminal token its replies must end with. THE ONLY PLACE these
 /// literals live.
 ///
-/// It exists because the alternative - every caller passing "[VERDICT:" by hand - makes the completeness
+/// It exists because the alternative - every caller passing "VERDICT:" by hand - makes the completeness
 /// check voluntary: mistype it or omit it and the guard silently does nothing. An AGY-AFTER panel called
 /// that compliance theater, and it was right. The caller now names only WHICH discipline it is; the driver
 /// supplies the contract.
@@ -27,9 +27,9 @@ public static class DisciplineContract
     private static readonly Dictionary<string, string> Tokens =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["agy-capstone"] = "[VERDICT:",
-            ["agy-test-audit"] = "[VERDICT:",
-            ["agy-first"] = "[VERDICT:",
+            ["agy-capstone"] = "VERDICT:",
+            ["agy-test-audit"] = "VERDICT:",
+            ["agy-first"] = "VERDICT:",
             ["adversarial-panel-review"] = "PANEL VERDICT",
         };
 

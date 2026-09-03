@@ -18,7 +18,7 @@ public class TerminalTokenTests
     public void Token_on_the_last_non_blank_line_is_satisfied()
     {
         var reply = "## Findings\n\nsomething\n\n[VERDICT: ALIGNED]\n\n   \n";
-        Assert.True(TerminalToken.IsSatisfied(reply, "[VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied(reply, "VERDICT:"));
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public class TerminalTokenTests
         // THE CASE THE SPEC NAMES: "a stored reply whose token is missing OR NOT AT THE END is a
         // truncated reply". A reply that quotes the token mid-body and then dies still lost its tail.
         var reply = "I will end with [VERDICT: ALIGNED] once done.\n\nNow the findings:\n- one\n";
-        Assert.False(TerminalToken.IsSatisfied(reply, "[VERDICT:"));
+        Assert.False(TerminalToken.IsSatisfied(reply, "VERDICT:"));
     }
 
     [Fact]
@@ -37,14 +37,14 @@ public class TerminalTokenTests
         // token: this is a model that truncated ITSELF while the transport delivered every byte.
         // It proves detection is STRUCTURAL, not size-based - a byte-count check would pass this.
         var reply = new string('x', 20 * 1024) + "\nlast line with no token\n";
-        Assert.False(TerminalToken.IsSatisfied(reply, "[VERDICT:"));
+        Assert.False(TerminalToken.IsSatisfied(reply, "VERDICT:"));
     }
 
     [Fact]
     public void Null_or_blank_answer_with_an_expectation_is_NOT_satisfied()
     {
-        Assert.False(TerminalToken.IsSatisfied(null, "[VERDICT:"));
-        Assert.False(TerminalToken.IsSatisfied("   \n\n", "[VERDICT:"));
+        Assert.False(TerminalToken.IsSatisfied(null, "VERDICT:"));
+        Assert.False(TerminalToken.IsSatisfied("   \n\n", "VERDICT:"));
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class TerminalTokenTests
         // GREEN - a reply asserting the opposite of completion would pass. This is why the check is
         // STARTS-WITH. Without this row the fix has no oracle.
         Assert.False(TerminalToken.IsSatisfied("panel ran\n\nTests are not GREEN\n", "GREEN"));
-        Assert.False(TerminalToken.IsSatisfied("done\n\nno [VERDICT: ...] was produced\n", "[VERDICT:"));
+        Assert.False(TerminalToken.IsSatisfied("done\n\nno [VERDICT: ...] was produced\n", "VERDICT:"));
     }
 
     [Fact]
@@ -89,5 +89,28 @@ public class TerminalTokenTests
 
         // Still rejects a reply that never reached a verdict line at all.
         Assert.False(TerminalToken.IsSatisfied("panel ran\n\nopen findings remain\n", tok));
+    }
+
+    [Fact]
+    public void A_bracket_wrapped_verdict_is_compliance_not_truncation()
+    {
+        // Three disciplines tell their peer to write "[VERDICT: ...]", so peers bracket by habit and a
+        // COMPLETE reply must not be flagged for it. The bracket is stripped as decoration; the tokens
+        // in DisciplineContract are stored without it so the contract states what is enforced.
+        Assert.True(TerminalToken.IsSatisfied("x\n\n[VERDICT: ALIGNED]\n", "VERDICT:"));
+
+        // Nesting works in EITHER order, because the characters are stripped as a set, not in sequence.
+        Assert.True(TerminalToken.IsSatisfied("x\n\n[**VERDICT: ALIGNED**]\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("x\n\n**[VERDICT: ALIGNED]**\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("x\n\n[PANEL VERDICT: GREEN]\n", "PANEL VERDICT"));
+
+        // THE BRACKET IS NOW OPTIONAL AND THE CONTRACT SAYS SO. Pinned here so it reads as a decision
+        // rather than an oversight: it cannot be optional decoration AND enforced structure at once.
+        Assert.True(TerminalToken.IsSatisfied("x\n\n* VERDICT: ALIGNED\n", "VERDICT:"));
+
+        // REGRESSION GUARDS - the token must still LEAD the line, which is what StartsWith enforces.
+        Assert.False(TerminalToken.IsSatisfied("x\n\nno [VERDICT: ...] was produced\n", "VERDICT:"));
+        Assert.False(TerminalToken.IsSatisfied("x\n\nTests are not GREEN\n", "GREEN"));
+        Assert.False(TerminalToken.IsSatisfied("x\n\nlast line with no token\n", "VERDICT:"));
     }
 }

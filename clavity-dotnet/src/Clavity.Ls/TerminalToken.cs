@@ -11,10 +11,25 @@ namespace Clavity.Ls;
 /// reader to infer from an absence.
 ///
 /// The expectation is supplied PER CALL because the four disciplines do not share a grammar: agy-capstone,
-/// agy-test-audit and agy-first end on "[VERDICT:", while adversarial-panel-review ends on "GREEN"
-/// (adversarial-panel-review/SKILL.md:208). A single hardcoded pattern would flag every panel reply.</summary>
+/// agy-test-audit and agy-first end on "VERDICT:", while adversarial-panel-review closes each round on a
+/// single-line "PANEL VERDICT" (its SKILL.md, section "Step 1 - Solo panel"). A single hardcoded pattern
+/// would flag every panel reply.</summary>
 public static class TerminalToken
 {
+    // '[' IS DECORATION. Three disciplines tell their peer to write "[VERDICT: ...]", so a peer that
+    // brackets a COMPLETE verdict was being flagged as truncated. The tokens in DisciplineContract are
+    // stored WITHOUT the bracket precisely so that stripping it here cannot contradict them.
+    //
+    // 🔴 INVARIANT, enforced by DisciplineContractTests: NO STORED TOKEN MAY BEGIN WITH ONE OF THESE
+    // CHARACTERS. Only the LINE is stripped, so a token like "[NEW_VERDICT]" would be unsatisfiable -
+    // the line loses its '[' and can never match an expectation that still carries one.
+    private static readonly char[] Decoration = { '*', '`', '_', '#', ' ', '[' };
+
+    /// <summary>Is this character stripped from the front of a line before matching? EXPOSED so the
+    /// invariant test cannot rot: a guard that hardcodes its own copy of the set silently stops covering
+    /// the set the moment a character is added here, while still reading as an enforced invariant.</summary>
+    public static bool IsDecoration(char c) => Array.IndexOf(Decoration, c) >= 0;
+
     /// <param name="answer">The reply text, or null when the delta ended on a non-assistant step.</param>
     /// <param name="expected">The literal the last non-blank line must contain; null = caller opts out.</param>
     public static bool IsSatisfied(string? answer, string? expected)
@@ -33,7 +48,7 @@ public static class TerminalToken
         var lines = answer.Split('\n');
         for (var i = lines.Length - 1; i >= 0; i--)
         {
-            var line = lines[i].Trim().TrimStart('*', '`', '_', '#', ' ');
+            var line = lines[i].Trim().TrimStart(Decoration);
             if (line.Length == 0) continue;
             return line.StartsWith(expected, StringComparison.Ordinal);
         }
