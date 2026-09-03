@@ -2310,7 +2310,15 @@ caveat stated; do not publish a token count.
 **Spec:** `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md`.
 **AGY-FIRST consult:** `.clavity/seams/agyfirst-footprint-analyzer.md`.
 
-### §27 — A completion marker can advance with no ledger row, and nothing in the tree can detect it — ▶ **OWNER ACCEPTED 2026-09-03, spec written, build DEFERRED**
+### §27 — A completion marker can advance with no ledger row, and nothing in the tree can detect it — ▶ **OWNER ACCEPTED 2026-09-03, spec written, SEQUENCED as its own Phase 2b, build DEFERRED**
+
+> **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s27-phase2-fold.md`): §27 gets its
+> OWN phase, after Phase 2 — not folded into it, and not Phase 3.** Not Phase 3 because this sequence
+> draws phase boundaries by SUBJECT and says so at
+> `2026-08-31-roadmap-implementation-sequence-design.md:401`; §27 edits a hook but defines what a valid
+> completion contract IS. Not folded into Phase 2 because of review-lens dilution — one panel splitting
+> attention between persona work and bash/git parsing is how a regex flaw slips through. The amendment,
+> with the two rejected counter-arguments, is at that spec's new **Phase 2b**.
 
 **The defect, stated as a measurement rather than a worry.** §23 shipped a ledger and a clause requiring
 a row before an audit may COMPLETE. The clause is enforced by a linter that proves the clause SHIPS. It

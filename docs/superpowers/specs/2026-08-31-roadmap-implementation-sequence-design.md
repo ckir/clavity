@@ -395,6 +395,52 @@ right, and §1a is the proof - the version that actually bound this document's o
 one, which no statement in any plan would have changed. **So the Phase 2 plan must record the reviewing
 version as a SHA it can be checked against, not as prose**, and 0c is what makes that sha meaningful.
 
+### Phase 2b - §27, the marker-write gate  — **AMENDMENT, owner-ruled 2026-09-03**
+
+> ⚠ **THIS PHASE WAS NOT IN THE 2026-08-31 SEQUENCE.** It is an amendment, added the day §27 was specced,
+> and it is marked as one rather than folded silently into a panel-reviewed artifact. §27 did not exist
+> when the phases were composed.
+
+**§27 - gate the completion-marker write on a ledger row.** Spec:
+`docs/superpowers/specs/2026-09-03-marker-write-gate-design.md`. AGY-FIRST consults:
+`.clavity/seams/agyfirst-s23-behavioural-gate.md` (the decision) and
+`.clavity/seams/agyfirst-s27-phase2-fold.md` (this placement).
+
+**It gets its OWN phase, sequenced after Phase 2 - it is NOT folded into it, and it is NOT Phase 3.**
+
+**Why not Phase 3, though it edits a hook.** This sequence draws its phase boundaries by SUBJECT, not by
+file type, and `:401` says so in its own words: Phase 3's batch is justified because *"none touches
+review-discipline semantics, so this batch is immune to the self-reference problem that split Phases 1
+and 2"*. §27 edits `agy-mark.sh`, a hook - but it defines what a valid completion contract IS, and its
+constraint C2 turns on the semantics of a `round-cap` waiver. **It touches review-discipline semantics
+squarely, so it lands on the Phase 1/2 side of the axis.**
+
+**Why not folded into Phase 2.** REVIEW LENS DILUTION. Phase 2 is persona and prompt work; §27 is bash,
+git sha resolution and ledger parsing. One adversarial panel hunting across both domains splits an
+attention budget that this repository has already measured to be the binding constraint - a fold
+introduced a defect in five consecutive review rounds during §23. A regex flaw in `agy-mark.sh` is
+exactly the kind of thing that slips through while a panel is arguing about prompt engineering.
+
+**Two arguments for this placement were CONSIDERED AND REJECTED, recorded so they are not re-run.** The
+peer offered both; measurement killed both.
+
+- *"Folding means §27 is reviewed by the drifted disciplines; deferring lets Phase 2 ship and re-satisfy
+  0c-local first."* **REJECTED:** `:151` requires 0c-local re-satisfied after every phase that edits a
+  skill, *"which is Phases 1 and 2"*. Phase 1 has ended, so the reinstall is owed BEFORE Phase 2 either
+  way. It does not differentiate the options.
+- *"Folding keeps the rule and its enforcement atomic."* **REJECTED:** the rule §27 enforces shipped in
+  §23 (`4154800`), not in Phase 2. The rule-without-gate state already exists and folding into Phase 2
+  would not make anything atomic. The atomic pairing was §23 and §27, and that opportunity is past.
+
+🔴 **BLOCKING PRECONDITION FOR PHASE 2, AND THEREFORE FOR THIS ONE: 0c-local IS UNSATISFIED RIGHT NOW.**
+MEASURED at `262386a` - `check-plugin-drift.ps1` reports **4 of 30 payload files drifted**, all four
+review skills. The installed `agy-test-audit/SKILL.md` is **332 lines against the repo's 393 and contains
+ZERO occurrences of the §23 ledger clause that shipped today**. **Owner ruled 2026-09-03: reinstall
+BEFORE any Phase 2 work starts.** It is an operator action and Claude Code must be fully closed for it.
+
+⚠ **§26 IS ALSO SPECCED, UNBUILT AND UNSEQUENCED.** Its own deferral condition (*"until §23 ships"*) has
+fired. It is NOT placed by this amendment, and placing it is open work.
+
 ### Phase 3 - HOOKS: §22 + two promoted backlog items
 
 Three items share a blast radius - plugin hook pairs (`.sh`), mechanical, each with an already-measured
