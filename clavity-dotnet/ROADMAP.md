@@ -2245,7 +2245,13 @@ halves in the same commit and must pass `plugin-hooks-payload.Tests.ps1`.
 
 ---
 
-### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost — ▶ **OWNER ACCEPTED 2026-09-03, spec written, build DEFERRED until §23 ships**
+### §26 — No plugin footprint is measured or published, so neither the maintainer nor a prospective installer can see the cost — ▶ **OWNER ACCEPTED 2026-09-03, spec written, build UNBLOCKED (its condition is now met)**
+
+> ⚠ **This header read "build DEFERRED until §23 ships" for a few hours. §23 SHIPPED the same day
+> (`13f8a09` · `4154800` · `45b612e` · `54eda7b`, closed at `8606391`), so the condition is MET and the
+> deferral is spent.** Corrected in the same session it went stale, which is the whole of the earned
+> rule: a deferral written against a condition rots the moment the condition fires, and nobody is
+> watching for it.
 
 **The owner's ask, verbatim:** *"a static footprint analyzer so 1) a test for the maintainer so it does
 not ship bloated plugins 2) Merge the output of the static footprint analyzer to README docs so viewers
@@ -2303,6 +2309,64 @@ caveat stated; do not publish a token count.
 
 **Spec:** `docs/superpowers/specs/2026-09-03-plugin-footprint-analyzer-design.md`.
 **AGY-FIRST consult:** `.clavity/seams/agyfirst-footprint-analyzer.md`.
+
+### §27 — A completion marker can advance with no ledger row, and nothing in the tree can detect it — ▶ **OWNER ACCEPTED 2026-09-03, spec written, build DEFERRED**
+
+**The defect, stated as a measurement rather than a worry.** §23 shipped a ledger and a clause requiring
+a row before an audit may COMPLETE. The clause is enforced by a linter that proves the clause SHIPS. It
+proves nothing about whether a row is ever WRITTEN — and:
+
+- **Nothing in the repository reads both `.clavity/agy-marks/agy-test-audit.head` and
+  `docs/agy-test-audit-ledger.md`.** MEASURED 2026-09-03: exactly one file mentions the marker
+  (`clavity-dotnet/plugin/hooks/agy-test-audit-reminder.sh`) and it never opens the ledger. The peer
+  verified this independently, from the source, and reported the same.
+- So a run that advances the marker and writes no row is **mechanically silent**: the reminder hook sees
+  a marker describing HEAD, goes quiet, and the tree looks exactly as it does after a correct run.
+
+🔴 **THAT IS WHY THE §23 PLAN'S OWN PROMOTION TRIGGER CANNOT FIRE.** It read: *"If a future audit is found
+to have completed with no row, that is the evidence that promotes this from out-of-scope to necessary."*
+The evidence it waits for is **unobservable by construction**. A trigger that can only be satisfied by
+someone happening to notice is not a trigger.
+
+## The AGY-FIRST consult, and how the peer's position moved
+
+Recorded because the trajectory is the useful part, not the destination.
+
+The peer rejected §23's frame **twice unprompted**, from two different disciplines — first proposing a
+git hook keyed on a commit CREATING the marker (**refuted**: `git check-ignore -v` resolves that path to
+`.gitignore:45`, so no commit ever creates it), then a hook intercepting the completing verdict and
+inspecting the diff. Asked to argue it properly under AGY-FIRST, it **reversed and recommended accepting
+the limitation** — while its own Q4, in the same reply, argued the opposite and better. One negotiation
+turn, framed by sending it to the files rather than handing it a conclusion, and it withdrew its Q1 and
+Q2: *"my claim that the missing row is 'highly visible' is entirely false and does NOT survive."*
+
+**Both reads then converged on the same option.** ⚠ Discount that convergence appropriately: the driver
+framed the questions that turned it, so two models agreeing here is weaker evidence than it looks.
+
+**The peer's one contribution neither of us had: a naive gate breaks on every CORRECT run.** The ledgers
+carry 7-character short SHAs and ranges (`73efca8..eba63a8`); `agy-mark.sh` is handed 40 characters. That
+dictates HOW the gate must be written, not whether.
+
+## ✅ OWNER RULING, 2026-09-03
+
+**Gate the MARKER WRITE, at `clavity-dotnet/plugin/hooks/agy-mark.sh` — the `head)` branch, the single
+chokepoint every discipline's completion marker passes through.** Not a new hook; code we already own.
+**SPEC NOW, BUILD DEFERRED**, as for §26.
+
+**What it will NOT prove, stated up front so the spec cannot ship a False Safety Promise:** it enforces
+that a row EXISTS, never that an audit HAPPENED. A fabricated row passes. Its value is narrower and real
+— it converts a sin of OMISSION (forgetting the step) into a sin of COMMISSION (deliberately writing a
+decoy), and agents forget far more readily than they fabricate.
+
+🔴 **A DESIGN FORK THE SPEC MUST RESOLVE, found while writing this entry: a `round-cap` waiver WRITES the
+marker** (`agy-capstone/SKILL.md:461`), and it exists precisely for the case where the owner accepts
+"done" with findings still live. A naive gate would block a legitimate owner waiver. Whatever is built
+must let the waiver through without reopening the hole it closes.
+
+**Spec:** `docs/superpowers/specs/2026-09-03-marker-write-gate-design.md`.
+**AGY-FIRST consult:** `.clavity/seams/agyfirst-s23-behavioural-gate.md`.
+**Blast radius:** `agy-mark.sh` is a shipped, byte-identical pair — class 2, so plan → panel → capstone
+→ audit, the full loop.
 
 ## Non-goals / accepted limitations
 
