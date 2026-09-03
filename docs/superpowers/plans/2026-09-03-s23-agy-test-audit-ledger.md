@@ -151,10 +151,15 @@ maskings, not about one blessed spelling:**
 | `<gate>` bare, with nothing after it | ✅ correct - the process's own exit status stands |
 | `<gate>; rc=$?; echo "name=$rc"; (exit $rc)` | ✅ correct - prints the value AND preserves the status |
 
-**Choose by whether the gate says enough on its own.** `check-agy-discipline-skills.ps1` and
-`check-roadmap-claims.ps1` print an explicit OK line, so they are invoked bare. `check-seed-artifacts-synced.sh`
-and the two doc checkers are quiet on success, so they carry the `rc=` form to surface a value. **Neither
-correct shape masks anything; only the two forbidden ones do.**
+**Choose per SITE, by what that step needs to see - not per script.** A gate that prints its own OK line
+(`check-agy-discipline-skills.ps1`, `check-roadmap-claims.ps1`) is normally invoked bare, because its
+output already answers the question. A gate that is quiet on success (`check-seed-artifacts-synced.sh`,
+the two doc checkers) carries the `rc=` form so there is something to read. **The same script can
+legitimately appear in both shapes:** `check-roadmap-claims.ps1` is bare in Task 4 Step 3 and Task 5
+Step 2, and carries the `rc=` form in Task 2 Step 5, where the printed value is the proof that Step 4's
+edit landed. An earlier draft of this paragraph assigned each script ONE shape and was contradicted by
+its own Task 2 - the criterion is the site's need, not the script's name. **Neither correct shape masks
+anything; only the two forbidden ones do.**
 
 **Masking 1, in the first draft:** `pwsh -Command "& './x.ps1'; 'name=' + $LASTEXITCODE"`. A script that
 `exit 1`s leaves the `pwsh` PROCESS exiting **0**, because the last thing evaluated is a string and pwsh
@@ -558,7 +563,8 @@ contradiction that stopped the panel's literal-execution walk dead at this step.
 **Where the non-idle disclaimer goes, exactly.** Not free-floating prose: this table records provenance
 in INDENTED CONTINUATION LINES directly beneath the row, two spaces in, as the existing rows already do
 (see the 86,6s -> 40,5s note under this very row, and the `MEASURED 2026-08-24 WARM on an ...` note under
-`test-suite-registration.Tests.ps1`). Append one continuation line beneath this row:
+`test-suite-registration.Tests.ps1`). Append the following note beneath this row - **it is TWO lines**,
+each indented two spaces, and both are continuation lines rather than table rows:
 
 ```
   Re-measured <YYYY-MM-DD> for ROADMAP section 23, count 75 -> 80. The box was NOT verified idle: the
@@ -723,6 +729,27 @@ not attribute its red; and one refuted fix, recorded in the limits section above
 since it was written. Closing the set costs one extra hashtable entry and one extra `-ForEach` case. **If
 you want this narrowed to the audit alone, drop the `agy-capstone` line from `$ledgerFor` and the first
 `-ForEach` case.**
+
+---
+
+## PANEL CLOSE - six rounds, and what none of them examined
+
+The panel ran six rounds and closed GREEN at the owner's cap. **A clean round is a claim about where you
+looked**, so the final round was spent asking the reviewer what no round had genuinely opened. It named
+three things. All three are now measured rather than assumed, and they are recorded here because this is
+the one kind of knowledge the follow-on AGY-CAPSTONE cannot inherit - it reviews committed code and never
+sees this plan.
+
+| never opened until the final round | measured resolution |
+|---|---|
+| Could creating `docs/agy-test-audit-ledger.md` redden `check-seed-artifacts-synced.sh`? | **No.** `check-seed-artifacts-synced.sh:63-64` walks only `hooks skills knowledge` inside the two plugin directories. It never looks at `docs/`. |
+| Does `_partition.md` have a fixed-width parser that a changed runtime string would break? | **No.** `test-suite-registration.Tests.ps1:293` matches `^([A-Za-z0-9._-]+\.Tests\.ps1)\s+\S+\s+([0-9]+)\s+tests?`. The time field is `\S+`, so any single non-whitespace token is accepted - `4,69s` and even `?` included. Indented continuation lines begin with whitespace and never match, which is why the note Task 4 appends cannot shadow the row. |
+| Is `.clavity/` really shielded, or was that taken on faith? | **Shielded.** `git check-ignore -v` resolves both `.clavity/scratch/s23/lint.bak` and `.clavity/agy-marks/agy-capstone.head` to `.gitignore:45:.clavity/`. |
+
+**What remains genuinely unexamined, stated rather than hidden: no round executed a single command this
+plan prescribes.** Every finding across six rounds was reached by reading the plan and the files it cites.
+That is the structural limit of a pre-execution review, and it is precisely the gap the capstone over the
+committed code exists to close. **Do not read this GREEN as evidence the plan RUNS.**
 
 ---
 
