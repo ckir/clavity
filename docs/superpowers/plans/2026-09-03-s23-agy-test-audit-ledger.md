@@ -81,7 +81,7 @@ for this change. Do not skip to a quiet edit.
 **Files:**
 - Create: `docs/agy-test-audit-ledger.md`
 
-- [ ] **Step 1: Write the file**
+- [x] **Step 1: Write the file**
 
 Columns are copied from `docs/agy-capstone-ledger.md:39-40` deliberately - a reader who knows one ledger
 should not have to learn a second shape.
@@ -127,7 +127,7 @@ be recovered from the tree today - the fold commit exists and the brief exists. 
 in commit subjects but their ranges are not recoverable without guessing, and a ledger that guesses is
 worse than one that starts where the evidence starts. **Do not backfill anything you cannot cite.**
 
-- [ ] **Step 2: Verify no gate objects to a new docs file**
+- [x] **Step 2: Verify no gate objects to a new docs file**
 
 ```bash
 pwsh -NoProfile -Command "& './scripts/check-doc-stubs.ps1'";        rc=$?; echo "stubs=$rc";       (exit $rc)
@@ -182,7 +182,7 @@ failure is invisible to anything that reads a status rather than prose - a `&&` 
 or an agent checking the step succeeded. That is precisely the rule "run the gate and read its EXIT CODE"
 being satisfied in letter and defeated in fact.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/agy-test-audit-ledger.md
@@ -197,7 +197,7 @@ git commit -m "docs(s23): create the AGY-TEST-AUDIT ledger, backfilled with the 
 - Modify: `clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md`
 - Modify: `clavity-classic/plugin/skills/agy-test-audit/SKILL.md`
 
-- [ ] **Step 1: Read the anchor and confirm it matches**
+- [x] **Step 1: Read the anchor and confirm it matches**
 
 ```bash
 grep -n "Completeness gate" clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md
@@ -207,7 +207,7 @@ Expected: `278:**Completeness gate.** You may NOT propose a verdict that COMPLET
 **If the line number differs, that is fine - anchor on the TEXT.** If the TEXT differs, STOP and report
 `STATE_MISMATCH: the Completeness gate paragraph is not as the plan describes`.
 
-- [ ] **Step 2: Add the clause immediately after that paragraph**
+- [x] **Step 2: Add the clause immediately after that paragraph**
 
 The paragraph ends with the line `marker - so gating only the clean verdict would leave the hole wide
 open.` Insert directly after it, separated by one blank line:
@@ -227,7 +227,7 @@ owed? - then has no answer in the tree.
 **ASCII ONLY.** The linter fails the file on any non-ASCII character
 (`check-agy-discipline-skills.ps1`, the `$nonAscii` branch). Write `-` not an em dash.
 
-- [ ] **Step 3: Mirror byte-for-byte into classic**
+- [x] **Step 3: Mirror byte-for-byte into classic**
 
 ```bash
 cp clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md \
@@ -239,7 +239,7 @@ Expected: ONE line, shaped `      2 <hash>` - `uniq -c` pads its count with lead
 COUNT rather than string-matching `2` at the start of the line. **Two lines means the halves differ and
 the mirror did not take.**
 
-- [ ] **Step 4: Re-measure the file and update the ROADMAP's line-count claim IN THE SAME COMMIT**
+- [x] **Step 4: Re-measure the file and update the ROADMAP's line-count claim IN THE SAME COMMIT**
 
 🔴 **This step is not optional and it is the one this plan originally missed.**
 `clavity-dotnet/ROADMAP.md:1242` claims `` `agy-test-audit/SKILL.md` (377 lines) ``, and
@@ -257,7 +257,7 @@ Then edit that one number inside `` `agy-test-audit/SKILL.md` (N lines) `` at `R
 (For orientation only, and NOT to be pasted: at plan time the file was 377 lines and the clause block is
 9 lines plus one blank separator, so expect 387. **If `wc -l` disagrees, `wc -l` wins.**)
 
-- [ ] **Step 5: Run the gates this touches**
+- [x] **Step 5: Run the gates this touches**
 
 ```bash
 bash scripts/check-seed-artifacts-synced.sh; rc=$?; echo "seed=$rc"; (exit $rc)
@@ -269,7 +269,7 @@ Expected: `seed=0`, `agy-discipline skills OK`, and `roadmap=0`. (The value is r
 proves Step 4 landed.** If it reports a stale count, Step 4 was skipped or mis-measured - fix it here,
 not later, because Task 4 runs this same gate and would only rediscover it.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md clavity-classic/plugin/skills/agy-test-audit/SKILL.md clavity-dotnet/ROADMAP.md
@@ -289,7 +289,7 @@ git commit -m "feat(s23): require a ledger row before an audit run may complete"
 it is a fixture, not an assertion. A rule with no implementation is worse than no rule, so this task pins
 the SET - both disciplines that own a ledger - rather than only the one section 23 names.
 
-- [ ] **Step 1a: Write the failing test for the ledger check**
+- [x] **Step 1a: Write the failing test for the ledger check**
 
 Append inside the `Context 'rejection cases (each perturbs one skill; the other stays valid)'` block:
 
@@ -316,7 +316,7 @@ Append inside the `Context 'rejection cases (each perturbs one skill; the other 
         }
 ```
 
-- [ ] **Step 1b: Write the failing test for the map's fail-closed reconciliation**
+- [x] **Step 1b: Write the failing test for the map's fail-closed reconciliation**
 
 The map is consulted with `ContainsKey`, so a misspelled key raises nothing - it silently checks nothing.
 That is the fails-open shape, and this repository has an existing home for exactly this defect class.
@@ -340,7 +340,7 @@ Append inside `Context 'AGY-CAPSTONE 2026-09-02: the roster itself, which nothin
         }
 ```
 
-- [ ] **Step 1c: Write the failing test for ledger EXISTENCE, and widen the fixture**
+- [x] **Step 1c: Write the failing test for ledger EXISTENCE, and widen the fixture**
 
 The check in Step 3 asserts the ledger file is actually on disk, so the scratch root has to contain one.
 **Widen `New-ScratchRoot` first** - in `check-agy-discipline-skills.Tests.ps1`, immediately after the
@@ -389,7 +389,7 @@ Driver's-Reasoning seat rejected that and was right: *"letting a mock implementa
 strength of a production gate is the tail wagging the dog."* The fixture is ours to widen. **A refuted
 fix and a fix that needs one more line are not the same thing, and the first draft called one the other.**
 
-- [ ] **Step 2: Run all five and watch them FAIL**
+- [x] **Step 2: Run all five and watch them FAIL**
 
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
@@ -404,7 +404,7 @@ broken suite:
 ⚠ **`-FullNameFilter` EXITS 0 ON NO MATCH.** Read the COUNT in the output, never the exit code alone. A
 run reporting 0 tests here means the filter missed, not that the rows passed.
 
-- [ ] **Step 3: Add the guard to the linter**
+- [x] **Step 3: Add the guard to the linter**
 
 In `scripts/check-agy-discipline-skills.ps1`, immediately before the `foreach ($skill in $skills)` loop,
 add the map:
@@ -459,14 +459,14 @@ immediately before the loop's own closing brace:
 **`elseif`, not a second `if`, is deliberate.** A skill that never names the ledger should produce ONE
 diagnostic, not two; and the existence check is meaningless when the clause is already absent.
 
-- [ ] **Step 4: Run them and watch them PASS**
+- [x] **Step 4: Run them and watch them PASS**
 
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -FullNameFilter '*ledger*' -Output Minimal"
 ```
 Expected: `Tests Passed: 5, Failed: 0`.
 
-- [ ] **Step 5: Prove EACH guard is non-vacuous against a LOGIC mutant - one at a time**
+- [x] **Step 5: Prove EACH guard is non-vacuous against a LOGIC mutant - one at a time**
 
 **One mutant at a time, and confirm the SPECIFIC row that reddens.** Two mutants at once cannot attribute
 a red to a guard, which is the whole point of the exercise.
@@ -520,7 +520,7 @@ not optional.
 **Restore with the `cp` backup, never `git checkout --`.** `.clavity/` is gitignored, so the backup never
 enters a commit - and **never `git add -f` anything under it.**
 
-- [ ] **Step 6: Run the whole suite**
+- [x] **Step 6: Run the whole suite**
 
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Minimal"
@@ -528,7 +528,7 @@ pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/check-agy-discipline
 Expected: `Tests Passed: 80, Failed: 0` (75 before this task, plus the five rows above). **A run with no
 `Tests Passed:` line was ABORTED, not passed.**
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/check-agy-discipline-skills.ps1 scripts/tests/check-agy-discipline-skills.Tests.ps1
@@ -542,7 +542,7 @@ git commit -m "test(s23): pin the ledger row requirement in BOTH disciplines tha
 **Files:**
 - Modify: `scripts/tests/_partition.md`
 
-- [ ] **Step 1: Update the row**
+- [x] **Step 1: Update the row**
 
 The current row, at `scripts/tests/_partition.md:716`, reads:
 ```
@@ -582,14 +582,14 @@ COUNT FIELD and not this prose, so editing it changes nothing mechanical and des
 its suite"* - discovers the real count per suite. The RUNTIME is not gated; treat the seconds as
 indicative.
 
-- [ ] **Step 2: Run the gate that reads that number**
+- [x] **Step 2: Run the gate that reads that number**
 
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester -Path scripts/tests/test-suite-registration.Tests.ps1 -Output Minimal"
 ```
 Expected: `Tests Passed: 9, Failed: 0`. **This gate EXITS 0 ON NO MATCH if filtered - read the COUNT.**
 
-- [ ] **Step 3: Run every gate this change touches**
+- [x] **Step 3: Run every gate this change touches**
 
 ```bash
 pwsh -NoProfile -Command "& './scripts/check-agy-discipline-skills.ps1'"
@@ -602,7 +602,7 @@ Expected: `agy-discipline skills OK`; `check-roadmap-claims: OK`; `seed=0`; payl
 **And run the SLOW half before pushing.** On 2026-09-02 a push went red on `check-roadmap-claims`, which
 lives in the slow half and which no local run had covered. Four targeted gates are not "the gates".
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts/tests/_partition.md
@@ -616,7 +616,7 @@ git commit -m "docs(s23): reconcile the discipline-suite count, 75 -> 80"
 **Files:**
 - Modify: `clavity-dotnet/ROADMAP.md`
 
-- [ ] **Step 1: Change the section 23 header**
+- [x] **Step 1: Change the section 23 header**
 
 The header is at `clavity-dotnet/ROADMAP.md:2088` and reads, verbatim (it carries em dashes - this file is
 NOT ASCII-gated, so keep them):
@@ -638,7 +638,7 @@ validates closure shas as well as line counts.
 and its header still read `OPEN` a day later, which is the failure the sequencing spec's own section 1
 table catalogues for sections 17, 18, 19 and 14h.
 
-- [ ] **Step 2: Verify the claims gate**
+- [x] **Step 2: Verify the claims gate**
 
 ```bash
 pwsh -NoProfile -Command "& './scripts/check-roadmap-claims.ps1'"
@@ -646,7 +646,7 @@ pwsh -NoProfile -Command "& './scripts/check-roadmap-claims.ps1'"
 Expected: `check-roadmap-claims: OK - every line-count claim and closure sha ... holds`. **This checker
 validates closure shas as well as line counts**, so a fabricated sha fails here.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add clavity-dotnet/ROADMAP.md
