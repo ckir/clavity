@@ -673,10 +673,18 @@ mechanical four-clause match, checkable by anyone who opens the file, not a judg
 
 ### The ordering decision, and the cost the owner accepted
 
-**MEASURED 2026-09-03: `agy-discipline-reaching.sh` is on BOTH lists.** It carries 3 of §22's leaking
-`CMD > "$f" 2>/dev/null` sites AND is 31b's fix target. §22's four files are
-`agy-anomaly-capture-reminder.sh`, `agy-consult-guard-pre.sh`, `agy-discipline-reaching.sh` and
-`assertion-strength-reminder.sh` (`agy-shield-lib.sh`'s 6 sites were already fixed in the step-5 range).
+⚠ **"FIRST" MEANS FIRST WITHIN PHASE 3, NOT SOON.** Phase 3 is still the THIRD phase, so §31 remains
+gated behind Phase 0d, Phase 2 and Phase 2b. **The owner was offered an immediate hotfix outside the
+sequence and DECLINED it**, so this ordering is not a fast-track - do not read it as one, and do not
+"rescue" it into an earlier phase on the grounds that it ships too late.
+
+**MEASURED 2026-09-03: `agy-discipline-reaching.sh` is on BOTH lists, and the two edits are LINE-ADJACENT.**
+It carries 3 of §22's leaking `CMD > "$f" 2>/dev/null` sites - **`:130`, `:132` and `:148` per §22's own
+table** - while 31b's fix targets the unconditional `mkdir` at **`:123` and `:136`**. Those interleave
+inside one ~30-line region that §22 separately flags as carrying prior-fold history at `:120-122`. §22's
+four files are `agy-anomaly-capture-reminder.sh`, `agy-consult-guard-pre.sh`, `agy-discipline-reaching.sh`
+and `assertion-strength-reminder.sh` - **read from §22's site table, not inferred** (`agy-shield-lib.sh`'s
+6 sites were already fixed in the step-5 range and are the safe-order control, not a target).
 
 The owner was offered merging the two into one pass and **ruled against it: §31 runs FIRST, as its own
 item.** The reason is that §31 is the only item in the entire backlog causing visible daily friction - a
