@@ -7,9 +7,15 @@
 **Goal:** Make a findings-bearing `adversarial-panel-review` round satisfy the 13b completeness check,
 instead of being flagged every time with a message telling the driver to discard its findings.
 
-**Architecture:** Change ONE dictionary value in the driver - the discipline's expected terminal token
-moves from `GREEN` to `PANEL VERDICT`, the line the panel skill already mandates. No matching logic
-changes; `StartsWith` stays. No `SKILL.md` edit, so no byte-identical pair, no plugin reinstall.
+**Architecture:** Two driver-side changes. (1) The discipline's expected terminal token moves from `GREEN`
+to `PANEL VERDICT`, the line the panel skill already mandates. (2) The matcher **normalises the EXPECTED
+token exactly as it normalises the line**, so decoration - now including `[` - is stripped from both sides
+before comparison. `StartsWith` stays; `DisciplineContract`'s three `[VERDICT:` values are UNCHANGED.
+No `SKILL.md` edit, so no byte-identical pair, no plugin reinstall.
+
+⚠ **AMENDED 2026-09-03 by owner ruling during AGY-AFTER round 1.** The plan was a one-value change; the
+panel found a reachable false-flag (below) and the owner ruled the fix lands here rather than being
+deferred. **It is still driver-only, which is what made §29a a legitimate BOUNDED prerequisite.**
 
 **Tech Stack:** C# (`Clavity.Ls`), xUnit (`Clavity.Ls.Tests`).
 
@@ -61,7 +67,7 @@ do not record this as hardening. The only fix for that class is the rejected `[V
 | file | responsibility | status |
 |---|---|---|
 | `clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs` | the token table - the ONE place these literals live | MODIFY (value + doc comment) |
-| `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs` | the matcher; **logic unchanged**, doc comment only | MODIFY (comment) |
+| `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs` | the matcher; **LOGIC CHANGES** - decoration set + normalise the expected token | MODIFY (Task 3) |
 | `clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs` | pins the table | MODIFY (InlineData + comment) |
 | `clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs` | pins the matcher against the panel shape | MODIFY (the assertion that encodes the defect) |
 
@@ -113,14 +119,11 @@ the unchanged contract and is therefore a genuine oracle.
         // Still rejects a reply that never reached a verdict line at all.
         Assert.False(TerminalToken.IsSatisfied("panel ran\n\nopen findings remain\n", tok));
 
-        // CHARACTERIZATION - pins a KNOWN GAP, not a desired behaviour. A bracket-wrapped verdict is
-        // REJECTED because TrimStart does not strip '['. MEASURED 2026-09-03. Do NOT "fix" this by
-        // adding '[' to TrimStart: the other three disciplines expect a token that BEGINS with '[',
-        // and stripping it breaks TerminalTokenTests.cs:20-21 and false-flags all three. See
-        // "WHAT THIS DOES NOT FIX".
-        Assert.False(TerminalToken.IsSatisfied("panel ran\n\n[PANEL VERDICT: GREEN]\n", tok));
     }
 ```
+
+⚠ **The bracket case belongs to Task 3, not here.** Do not add a `[PANEL VERDICT: ...]` row in this task:
+it would assert the CURRENT (wrong) behaviour and then have to be inverted two tasks later.
 
 ⚠ **THREE SUFFIX VARIANTS WERE DELIBERATELY REMOVED.** `PANEL VERDICT: GREEN`, `: cap-reached` and
 `: 2 open findings` all hit the identical `StartsWith` branch - the suffix is never examined - so they
@@ -227,7 +230,114 @@ git commit -m "fix(s29a): the panel's terminal token is PANEL VERDICT, not GREEN
 
 ---
 
-## Task 3: Close §29a in the ROADMAP with its SHA
+## Task 3: Fix the bracket false-flag - normalise BOTH sides
+
+**Owner-ruled during AGY-AFTER round 1: fold a correct fix in, do not defer it.**
+
+**Files:**
+- Modify: `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs`
+- Modify: `clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs` (add rows)
+
+**The defect.** A peer writing `[PANEL VERDICT: GREEN]` is falsely flagged as truncated: `[` is not in the
+strip set, so `StartsWith("PANEL VERDICT")` fails on a complete reply. Three of the four disciplines use a
+token that BEGINS with `[`, so bracketing is the habit this convention trains.
+
+🔴 **TWO WRONG FIXES, BOTH RULED OUT BY MEASUREMENT. Do not re-litigate them:**
+
+1. **Add `[` to the strip set and stop there.** It strips the `[` the other three tokens BEGIN with, so
+   `[VERDICT: ALIGNED]` becomes `VERDICT: ALIGNED]` and fails `StartsWith("[VERDICT:")`.
+   `TerminalTokenTests.cs:20-21` pins that case and goes red.
+2. **Subtract the expected token's first character from the strip set** (`Decoration.Where(c => c != expected[0])`).
+   MEASURED: full suite passed and the bracket case was fixed - **but the live peer produced a
+   counter-example that breaks it**, `[**VERDICT: ALIGNED**]` with expected `[VERDICT:`. Protecting `[`
+   makes `TrimStart` halt on the first `[`, so decoration NESTED INSIDE the bracket is never stripped.
+   **MEASURED as `TEMP_G`: it fails.**
+
+**THE FIX: normalise the EXPECTED token exactly as the line is normalised.** Decoration is stripped from
+both sides, so no character needs protecting and nesting works in either order. `DisciplineContract`'s
+three `[VERDICT:` values are **UNCHANGED** - a fourth candidate (retokenising them to `VERDICT:`) was
+rejected because it reaches into three working disciplines and into
+`AgyAskIntegrationTests.cs:1456,1474`, a second test project this plan otherwise does not touch.
+
+- [ ] **Step 1: Add the rows that must go RED**
+
+Append inside `TerminalTokenTests.cs`:
+
+```csharp
+    [Fact]
+    public void A_bracket_wrapped_verdict_is_compliance_not_truncation()
+    {
+        // Three of four disciplines use a token starting with '[', so peers bracket by habit. A complete
+        // reply must not be flagged for it. MEASURED 2026-09-03: both rows below fail before this fix.
+        Assert.True(TerminalToken.IsSatisfied("x\n\n[PANEL VERDICT: GREEN]\n", "PANEL VERDICT"));
+        Assert.True(TerminalToken.IsSatisfied("x\n\n[**VERDICT: ALIGNED**]\n", "[VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("x\n\n**[VERDICT: ALIGNED]**\n", "[VERDICT:"));
+
+        // REGRESSION GUARDS - these must not move. The negations stay rejected because the token does
+        // not LEAD the line, which is what StartsWith actually enforces.
+        Assert.True(TerminalToken.IsSatisfied("x\n\n[VERDICT: ALIGNED]\n", "[VERDICT:"));
+        Assert.False(TerminalToken.IsSatisfied("x\n\nno [VERDICT: ...] was produced\n", "[VERDICT:"));
+        Assert.False(TerminalToken.IsSatisfied("x\n\nTests are not GREEN\n", "GREEN"));
+        Assert.False(TerminalToken.IsSatisfied("x\n\nlast line with no token\n", "[VERDICT:"));
+    }
+```
+
+- [ ] **Step 2: Run it and watch it FAIL**
+
+```bash
+cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~A_bracket_wrapped_verdict"
+```
+Expected: **1 failed.** MEASURED at `00b27ca`: with the old matcher the two bracket rows fail and every
+regression guard passes. **If it passes here, STOP** - the rows are not exercising the matcher.
+
+- [ ] **Step 3: Implement**
+
+In `TerminalToken.cs`, add the field to the class and replace the loop body:
+
+```csharp
+public static class TerminalToken
+{
+    // '[' IS INCLUDED, AND THAT IS ONLY SAFE BECAUSE THE EXPECTED TOKEN IS STRIPPED THE SAME WAY.
+    // Stripping it from the LINE alone would break every discipline whose token begins with '['.
+    private static readonly char[] Decoration = { '*', '`', '_', '#', ' ', '[' };
+```
+
+```csharp
+        // NORMALISE BOTH SIDES. Decoration is noise wherever it appears, so it is removed from the
+        // expected token as well as from the line - that is what lets '[' be stripped without breaking
+        // the three disciplines whose token starts with it, and it handles nesting in either order
+        // ("[**VERDICT:" and "**[VERDICT:") because the characters are stripped as a set, not in order.
+        var want = expected.Trim().TrimStart(Decoration);
+        if (want.Length == 0) want = expected;   // a token that is ALL decoration would match everything
+
+        var lines = answer.Split('\n');
+        for (var i = lines.Length - 1; i >= 0; i--)
+        {
+            var line = lines[i].Trim().TrimStart(Decoration);
+            if (line.Length == 0) continue;
+            return line.StartsWith(want, StringComparison.Ordinal);
+        }
+        return false;
+```
+
+- [ ] **Step 4: Run the whole suite**
+
+```bash
+cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests
+```
+Expected: **0 failed**, `Total: 209` - the 208 baseline plus this one new `[Fact]`.
+**MEASURED during the panel: the fix passes the full suite with every added row green.**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add clavity-dotnet/src/Clavity.Ls/TerminalToken.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs
+git commit -m "fix(s29a): a bracket-wrapped terminal token is compliance, not truncation"
+```
+
+---
+
+## Task 4: Close §29a in the ROADMAP with its SHA
 
 **Files:**
 - Modify: `clavity-dotnet/ROADMAP.md` (the §29 header and its §29a paragraph)
@@ -276,17 +386,12 @@ git commit -m "docs(roadmap): close section 29a - the panel terminal token"
   supply NAMES only: the driver owns the terminal-token table."* **It is called out here because the
   driver broke it repeatedly on 2026-09-03.**
 
-- 🔴 **IT DOES NOT FIX THE BRACKET GAP, AND THE OBVIOUS FIX IS A TRAP.** A peer that writes
-  `[PANEL VERDICT: GREEN]` is **falsely flagged**: `TerminalToken.IsSatisfied` strips only `* ` `` ` ``
-  `_` `#` and space (`TerminalToken.cs`), so `[` survives and `StartsWith("PANEL VERDICT")` fails.
-  **MEASURED 2026-09-03 with a passing control.** The risk is real because every OTHER discipline's token
-  is `[VERDICT:`, so bracketing is the habit this convention trains.
-  ⚠ **DO NOT "fix" it by adding `[` to the `TrimStart` set.** The other three disciplines expect a token
-  that BEGINS with `[`; stripping it would make `[VERDICT: ALIGNED]` fail `StartsWith("[VERDICT:")` and
-  false-flag all three. `TerminalTokenTests.cs:20-21` pins exactly that case and would go red.
-  The gap is pre-existing (`[GREEN]` fails identically today) and is **tracked, not fixed here** - §29a is
-  a BOUNDED prerequisite. Task 1 pins the current behaviour with a characterization assertion so the gap
-  is recorded in executable form rather than as prose.
+- ⚠ **IT DOES NOT MAKE A NEGATED VERDICT FAIL, AND THAT IS DELIBERATE.** `[PANEL VERDICT is not reached]`
+  is ACCEPTED, as is the unbracketed form. **This is not a defect - it is what the check is for.** 13b
+  asks "did the reply REACH THE END", never "was the outcome good"; `TerminalToken.cs` says so in its own
+  summary. A peer whose last line is a negative verdict has finished cleanly. What `StartsWith` actually
+  enforces is that the token LEADS the line - which is why *"Tests are not GREEN"* is still rejected. The
+  live peer supplied this reading and it corrected mine; I had recorded it as a cost of the Task 3 fix.
 
 - **It does not test the WIRING.** `McpTools.cs:44` resolves the discipline to a token and `AgyView.cs:249`
   applies it; **no test covers that path end-to-end.** Task 1 now covers table -> matcher (it reads
@@ -297,9 +402,10 @@ git commit -m "docs(roadmap): close section 29a - the panel terminal token"
 
 ## Self-review
 
-**1. Coverage.** The ruling has one substantive half (the token) and one hygiene half (four stale
-citations of `SKILL.md:208`). Task 1 pins the behaviour, Task 2 changes the token and all four comments,
-Task 3 closes the item. Nothing in the ruling is unimplemented.
+**1. Coverage.** The original ruling has one substantive half (the token) and one hygiene half (four stale
+citations of `SKILL.md:208`); AGY-AFTER round 1 added a third, owner-ruled (the bracket false-flag).
+Task 1 pins the behaviour, Task 2 changes the token and all four comments, **Task 3 fixes the matcher**,
+Task 4 closes the item. Nothing in either ruling is unimplemented.
 
 **2. Placeholders.** None. Every step carries literal before/after text and an exact command. The one
 value that must not be copied is the closure SHA in Task 3, which says so.
@@ -327,10 +433,12 @@ below-floor discards.** The two dispositions that are not `FOLDED`:
   `Assert.Equal(expected, DisciplineContract.TerminalTokenFor(discipline))` fails in BOTH cases: a bad
   key returns `null`, a bad value returns the typo. Its **general** point — that no test covers the
   `McpTools` wiring — is true and is now recorded under "WHAT THIS DOES NOT FIX".
-- `DEFERRED-TO-ANOMALIES: clavity-dotnet/src/Clavity.Ls/TerminalToken.cs * 2026-09-03` — the bracket
-  gap. Reachable before this change (`[GREEN]` fails identically today) and not induced by it, so
-  deferral is admissible; **but it is MATERIAL and therefore needs an owner ruling before this plan is
-  called reviewed.** Pinned as a characterization assertion in Task 1 meanwhile.
+- `FOLDED: Task 3 - normalise the expected token as well as the line` — the bracket gap. It was first
+  disposed `DEFERRED-TO-ANOMALIES` as a MATERIAL deferral; **the owner ruled it be fixed inside §29a
+  instead**, so the deferral is withdrawn and the anomaly entry is superseded by Task 3.
+- `REJECTED: TerminalToken.cs summary + the live peer's Q2` — my own claim that accepting
+  `[PANEL VERDICT is not reached]` is a cost of the Task 3 fix. It is a category error: this check tests
+  for truncation, not for a good outcome. Recorded because I nearly shipped it as a known weakness.
 
 ## Review status
 
