@@ -280,6 +280,16 @@ lacks one of the five tokens. For this skill that means BOTH `[VERDICT: EXHAUSTI
 `[VERDICT: GAPS FOUND]`. GAPS FOUND is a COMPLETING terminus - it ends the run and writes the debounce
 marker - so gating only the clean verdict would leave the hole wide open.
 
+**Record the audit in `docs/agy-test-audit-ledger.md` before this run may COMPLETE.** One row: date,
+audited range, round count, verdict, and evidence that is independently checkable - the fold commits, or
+the brief in `.clavity/seams/`. `none` is not a permitted evidence value: a run that found nothing still
+produced a brief, so cite it. This binds to the SAME completing verdicts as the paragraph above, both of
+them, for the same reason - gating only the clean verdict would leave the hole wide open.
+
+Without this row the marker is the only trace an audit ever ran, and the marker is a debounce holding
+ambient `HEAD`, not a record of what was audited. The question the loop above depends on - is a re-audit
+owed? - then has no answer in the tree.
+
 **Anti-sweep.** Each run lists the top 1-2 findings it discarded below the floor, so a real defect cannot
 be swept under the floor unseen. The full list goes in the ephemeral per-run report; a one-line summary of
 each goes in the branch-finish commit message. An `UNVERIFIED-ACCEPTED` is recorded in
