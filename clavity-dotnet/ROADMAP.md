@@ -2408,7 +2408,25 @@ to four more sites and pinning it so a fifth cannot appear.
 
 ---
 
-### §29 — The 13b completeness check false-flags a valid reply, and its own remediation text says to discard the findings — ▶ **PROMOTED 2026-09-03, SPLIT: §29a is a Phase 0d PREREQUISITE, §29b is tracked debt**
+### §29 — The 13b completeness check false-flags a valid reply, and its own remediation text says to discard the findings — ✅ **§29a SHIPPED 2026-09-03** (`573914d` the token · `b98315f` the bracket) — ▶ **§29b REMAINS TRACKED DEBT**
+
+> ✅ **§29a CLOSED.** `DisciplineContract` maps `adversarial-panel-review` to `PANEL VERDICT`, and
+> `TerminalToken` treats a leading `[` as decoration so a peer writing `[VERDICT: ALIGNED]` — the form
+> three skills instruct — is no longer flagged as truncated. The other three tokens are stored WITHOUT
+> the bracket, so the contract states what it enforces. Measured: `Clavity.Ls.Tests` 210/210 and
+> `Clavity.Integration.Tests` 84/84, with both fixes proven non-vacuous by mutant.
+>
+> ⚠ **THE FIX IS NEUTRAL ON TRUNCATION SAFETY, NOT HARDENING.** `PANEL VERDICT` is negatable exactly as
+> `GREEN` was (`"PANEL VERDICT is not…"` satisfies `StartsWith`), and the bracket is now optional. Both
+> were measured and accepted; do not record either as a security improvement.
+>
+> 🔴 **NEW INVARIANT, mechanically enforced by `DisciplineContractTests`:** no stored token may BEGIN
+> with a character `TerminalToken.Decoration` strips, or it becomes unsatisfiable. Whoever adds a fifth
+> discipline will be stopped by that test rather than by a live false-flag.
+>
+> **The AGY-AFTER record: FIVE rounds, five blocking findings, four of them inside the previous round's
+> own repair.** Plan and full disposition ledger:
+> `docs/superpowers/plans/2026-09-03-s29a-panel-terminal-token.md`.
 
 > **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s28-30-sequencing.md`).**
 >
