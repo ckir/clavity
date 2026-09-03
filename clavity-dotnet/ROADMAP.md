@@ -2412,7 +2412,7 @@ to four more sites and pinning it so a fifth cannot appear.
 
 > **Placement ruled 2026-09-03 (AGY-FIRST, `.clavity/seams/agyfirst-s28-30-sequencing.md`).**
 >
-> **§29a — PREREQUISITE (Phase 0d), and deliberately BOUNDED.** Phase 0's bar is *"everything after them
+> **§29a — PREREQUISITE (Phase 0d), BOUNDED, and NARROWER than first written (see the correction below).** Phase 0's bar is *"everything after them
 > depends on their being true"*, which alone would promote almost any bug. The narrower test Phase 0
 > actually applies — and which 0b and 0c both fit — is that **the thing under repair is an INSTRUMENT OF
 > VERIFICATION**: a broken instrument does not merely block later work, it corrupts the evidence later
@@ -2435,17 +2435,24 @@ round fails the check by construction.**
 not fold findings from it."* MEASURED 2026-09-03: the first reply it flagged carried a **CONFIRMED
 BLOCKING defect** (`Test-Path` accepting a directory). Following the remediation would have discarded it.
 
-**It also flagged replies that were complete.** Four flags in one session; at least two were false:
+🔴 **CORRECTED 2026-09-03, BEFORE ANY PLAN WAS WRITTEN — THIS ENTRY ORIGINALLY CLAIMED "at least two were
+false" AND THAT WAS WRONG. Both were the DRIVER's errors, found by finally READING the two files instead
+of assuming their semantics.** The scope of §29a is correspondingly narrower.
 
-- one reply ended `[VERDICT: ALIGNED - ...] GREEN` — the expected literal IS on the last non-blank line
-  — and was still flagged `TerminalTokenMissing` AND `EchoMissing`;
-- one `EchoMissing` was **the driver's own fault** and is recorded as such: the brief told the peer to
-  quote the artifact's last line "with no backticks", and the source line CONTAINED backticks, so a
-  faithful echo could not match. **Fixing the instruction is part of this item**, not a separate one.
+- **`TerminalToken.IsSatisfied` uses `StartsWith`, not `Contains`** (`TerminalToken.cs`), and deliberately:
+  its own comment records that a substring test would accept *"Tests are not GREEN"*. The reply this entry
+  called a false flag ended `[VERDICT: ALIGNED - ...] GREEN`, whose last non-blank line starts with `[`.
+  **Flagging it was CORRECT.** The original entry asserted that reply "satisfies `IsSatisfied` as
+  documented" — written without ever opening `IsSatisfied`.
+- **The `EchoMissing` flag was correct too.** `SemanticEcho.Normalise` trims decoration (`` ` ``, `*`, `_`,
+  `>`) **at the ENDS only**. The quoted source line carries an INTERNAL backtick, and the driver's brief
+  told the peer to reproduce it "with no backticks" — so a faithful echo could not contain the needle.
+  **The defect is the driver's INSTRUCTION, not the matcher.**
 
-**Cause of the second false flag is NOT determined.** The returned `Answer` satisfies `IsSatisfied` as
-documented (`TerminalToken.cs:14-21`), so either the driver evaluates a different delta than it returns,
-or the peer's escaping defeats the matcher. **A plan must measure that before changing either side.**
+**So exactly ONE real defect survives, and it is the by-construction one:** `adversarial-panel-review`
+expects `GREEN` as a `StartsWith` on the last non-blank line, and a findings-bearing round CANNOT emit
+that — the panel skill names *"a list of the open findings"* as a legitimate terminal disposition. Such a
+round is flagged every time, and the flag tells the driver to discard its findings.
 
 ---
 
