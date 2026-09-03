@@ -74,6 +74,14 @@ do not record this as hardening. The only fix for that class is the rejected `[V
 **Blast radius: driver-only.** No plugin payload, no byte-identical pair, no `0c-local` reinstall. That
 is why §29a is a BOUNDED Phase 0d prerequisite.
 
+🔴 **EVERY COMMAND IN THIS PLAN IS SELF-LOCATING, AND THAT IS NOT DECORATION.** The executor's shell
+**keeps its working directory between steps.** An earlier draft opened Task 1 with a bare
+`cd clavity-dotnet`, which left every later step one level down; **MEASURED from there: `cd clavity-dotnet`
+gives "No such file or directory", and `git add clavity-dotnet/src/...` gives `fatal: pathspec ... did not
+match any files`.** The run would have died at Task 2. Found by AGY-AFTER round 2 — round 1 had fixed the
+same bug in ONE task and missed the other four, which is the incomplete-fold failure exactly.
+**Do not "simplify" `cd "$(git rev-parse --show-toplevel)"` back out of these commands.**
+
 ---
 
 ## Task 1: Flip the test that pins the defect (TDD - test first)
@@ -135,7 +143,7 @@ declares FOUR dispositions and the test never exercised `agy-required-but-unreac
 - [ ] **Step 2: Run it and watch it FAIL**
 
 ```bash
-cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~The_panel_token_comes_from_the_contract"
+cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~The_panel_token_comes_from_the_contract"
 ```
 Expected: **1 failed** - `TerminalTokenFor` still returns `GREEN`, so the first assertion fails.
 **If this test PASSES at this step, STOP** - the token is being read as a literal instead of from the
@@ -215,7 +223,7 @@ to:
 - [ ] **Step 5: Run the two suites and watch them PASS**
 
 ```bash
-cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests
+cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Ls.Tests
 ```
 Expected: **0 failed**, and **`Total: 208`** - MEASURED at `42cfa84` before this plan was executed, so
 the number is an oracle rather than "the same as before". Task 1 REPLACES a test rather than adding one,
@@ -224,7 +232,7 @@ so the total must not move. **A different total means a test was added or lost -
 - [ ] **Step 6: Commit**
 
 ```bash
-git add clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs clavity-dotnet/src/Clavity.Ls/TerminalToken.cs clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs
+cd "$(git rev-parse --show-toplevel)" && git add clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs clavity-dotnet/src/Clavity.Ls/TerminalToken.cs clavity-dotnet/tests/Clavity.Ls.Tests/DisciplineContractTests.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs
 git commit -m "fix(s29a): the panel's terminal token is PANEL VERDICT, not GREEN"
 ```
 
@@ -279,13 +287,26 @@ Append inside `TerminalTokenTests.cs`:
         Assert.False(TerminalToken.IsSatisfied("x\n\nno [VERDICT: ...] was produced\n", "[VERDICT:"));
         Assert.False(TerminalToken.IsSatisfied("x\n\nTests are not GREEN\n", "GREEN"));
         Assert.False(TerminalToken.IsSatisfied("x\n\nlast line with no token\n", "[VERDICT:"));
+
+        // DELIBERATE WIDENING, recorded so it is not mistaken for an oversight: because BOTH sides are
+        // normalised, a BRACKETLESS "VERDICT: ALIGNED" now also satisfies a discipline whose token is
+        // "[VERDICT:". Nothing downstream parses the bracket - the result is consumed as a boolean at
+        // McpTools.cs:74-84 - so this costs nothing today. It would matter the day something extracts a
+        // payload by regex, and that is why it is written down here rather than discovered later.
+        Assert.True(TerminalToken.IsSatisfied("x\n\nVERDICT: ALIGNED\n", "[VERDICT:"));
     }
 ```
+
+⚠ **LITERALS ARE CORRECT IN *THIS* TEST, unlike Task 1 — do not "fix" them.** Task 1 pins the CONTRACT and
+must therefore read the table. This test pins the MATCHER across several token SHAPES, including tokens
+belonging to other disciplines; coupling it to the table would let a table change silently alter what
+shapes are covered. **MEASURED that it is not vacuous:** with the old matcher the two bracket rows FAIL
+and every regression guard passes.
 
 - [ ] **Step 2: Run it and watch it FAIL**
 
 ```bash
-cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~A_bracket_wrapped_verdict"
+cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Ls.Tests --filter "FullyQualifiedName~A_bracket_wrapped_verdict"
 ```
 Expected: **1 failed.** MEASURED at `00b27ca`: with the old matcher the two bracket rows fail and every
 regression guard passes. **If it passes here, STOP** - the rows are not exercising the matcher.
@@ -323,7 +344,7 @@ public static class TerminalToken
 - [ ] **Step 4: Run the whole suite**
 
 ```bash
-cd clavity-dotnet && dotnet test tests/Clavity.Ls.Tests
+cd "$(git rev-parse --show-toplevel)/clavity-dotnet" && dotnet test tests/Clavity.Ls.Tests
 ```
 Expected: **0 failed**, `Total: 209` - the 208 baseline plus this one new `[Fact]`.
 **MEASURED during the panel: the fix passes the full suite with every added row green.**
@@ -331,7 +352,7 @@ Expected: **0 failed**, `Total: 209` - the 208 baseline plus this one new `[Fact
 - [ ] **Step 5: Commit**
 
 ```bash
-git add clavity-dotnet/src/Clavity.Ls/TerminalToken.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs
+cd "$(git rev-parse --show-toplevel)" && git add clavity-dotnet/src/Clavity.Ls/TerminalToken.cs clavity-dotnet/tests/Clavity.Ls.Tests/TerminalTokenTests.cs
 git commit -m "fix(s29a): a bracket-wrapped terminal token is compliance, not truncation"
 ```
 
@@ -368,7 +389,7 @@ will go and edit the ROADMAP to satisfy a checker that never ran.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add clavity-dotnet/ROADMAP.md
+cd "$(git rev-parse --show-toplevel)" && git add clavity-dotnet/ROADMAP.md
 git commit -m "docs(roadmap): close section 29a - the panel terminal token"
 ```
 
@@ -440,10 +461,32 @@ below-floor discards.** The two dispositions that are not `FOLDED`:
   `[PANEL VERDICT is not reached]` is a cost of the Task 3 fix. It is a category error: this check tests
   for truncation, not for a good outcome. Recorded because I nearly shipped it as a known weakness.
 
+**Round 2:**
+
+- `REJECTED: McpTools.cs:74-84` — the claim that making the bracket optional will break "a downstream
+  parser that extracts the verdict payload". **No such parser exists.** The only `[VERDICT:` occurrences
+  in `src/` are the three contract values and one comment; the matcher's result is consumed as a boolean.
+  The underlying behaviour change is real and is now pinned by an explicit assertion instead.
+- `REJECTED: measured` — the claim that Task 3's test "reintroduces the exact vacuous-TDD defect" by using
+  string literals. It does not: with the old matcher that test **FAILS** (`Failed: 1, Passed: 0`).
+  Literals are correct there because it pins the MATCHER across token shapes, including other disciplines'
+  tokens; only Task 1 pins the CONTRACT and must read the table. The seat was right that the two tests
+  look inconsistent, so the reason is now written into the plan beside the test.
+
 ## Review status
 
-⚠ **AGY-AFTER ROUND 1 COMPLETE — 6 findings folded, 1 rejected by measurement, 1 deferred pending an
-owner ruling.** Reviewed by the solo panel plus a live agy escalation round.
+⚠ **AGY-AFTER ROUNDS 1 AND 2 COMPLETE — 8 folded, 4 rejected by measurement, 0 open.** Round 1: solo
+panel (8 seats) + live escalation. Round 2: rotated onto State Corruptor, Activation Auditor and Literal
+Implementer, and found a **BLOCKING** defect in round 1's own repair.
+
+🔴 **ROUND 2'S BLOCKING FIND WAS AN INCOMPLETE FOLD OF ROUND 1's FIX.** Round 1 corrected a
+working-directory bug in ONE task and left the identical bug in four others; the executor's shell keeps
+its cwd, so the run would have died at Task 2 with `fatal: pathspec ... did not match any files`.
+**MEASURED.** Every command is now self-locating. This is the third law in its purest form: the dominant
+fold defect is an incomplete fold.
+
+**Both rounds' fixes were verified by RED/GREEN with the source reverted and the tests kept**, so no new
+test is assumed non-vacuous — each was watched failing first. Final: full suite **209/209**.
 
 **Reviewing version, recorded because this plan edits the discipline that reviews it (sequence spec,
 "Risks"):** `adversarial-panel-review/SKILL.md` at repo HEAD **`42cfa84`**, 380 lines.
@@ -454,5 +497,5 @@ still expects `GREEN`. The reply was complete and its echo passed. **This plan's
 measured instance of the defect it fixes, and the discarded findings included the vacuous-TDD defect that
 would have halted execution.**
 
-▶ **NOT YET EXECUTABLE-APPROVED:** the deferred bracket finding is MATERIAL and awaits an owner ruling;
-round 2 has not been run.
+▶ **READY TO EXECUTE**, subject to the owner's call on whether to run a third round. Every finding from
+both rounds carries a closed AGY-SCOPE token; nothing sits open.
