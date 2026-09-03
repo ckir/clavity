@@ -131,8 +131,15 @@ Describe 'check-agy-discipline-skills' {
             $target  = & $script:SkillPath $scratch $skill
             $real = Get-Content -Raw $target
             $real.Contains($ledger) | Should -BeTrue -Because "the fixture needs $ledger present in $skill before it can be stripped"
-            $body = $real.Replace($ledger, 'docs/some-other-file.md')
+            # DELETE the path, do not SUBSTITUTE a marker. AGY-TEST-AUDIT 2026-09-03 measured why: this
+            # row used to replace it with 'docs/some-other-file.md', and a guard rewritten as
+            # `if ($raw.Contains('docs/some-other-file.md'))` - keying on the decoy this fixture injects
+            # rather than on the real path's absence - passed all seven ledger rows, 7/0. The row proved
+            # the guard reacts to a string the TEST puts there, which is not the behaviour it guards.
+            # Deleting makes the fixture differ from the real repo by ABSENCE and nothing else.
+            $body = $real.Replace($ledger, '')
             $body | Should -Not -Be $real -Because 'the strip must take effect'
+            $body.Contains($ledger) | Should -BeFalse -Because 'every occurrence must be gone, not just the first'
             Set-Content -Path $target -Value $body -NoNewline -Encoding utf8
             $out = & $script:Lint -Root $scratch 2>&1
             $LASTEXITCODE | Should -Be 1
