@@ -681,12 +681,12 @@ agy-mark.Tests.ps1                               93,0s   32 tests   <- SLOW, NEW
                                                                       chained head calls proving the debounce breaks on a
                                                                       different session id, one against a git-tracked marker
                                                                       needing git rm --cached).
-agy-mark-stamp.Tests.ps1                         TBD-s   5 tests    <- SLOW, NEW 2026-09-04. Task 3 (2026-09-04-phase-2-conduct-s24-s25
+agy-mark-stamp.Tests.ps1                         24,4s   5 tests    <- SLOW, NEW 2026-09-04. Task 3 (2026-09-04-phase-2-conduct-s24-s25
                                                                       plan): the new `stamp` subcommand on agy-mark.sh that records
                                                                       consult/review cascade isolation (SHARED-CONTEXT vs ISOLATED).
-                                                                      TIME NOT YET MEASURED - placeholder, per this project's
-                                                                      top-level-only timing discipline; the driver measures and
-                                                                      replaces it.
+                                                                      Two runs at the top level: 27,4s cold / 24,4s warm. Background
+                                                                      load uncontrolled - four long-lived pwsh processes were present
+                                                                      and are not this session's to stop.
 agy-seam-inject.Tests.ps1                        39,4s   24 tests   <- SLOW, re-measured 2026-08-06 (+5:
                                                                       four root-walk cases plus the marker
                                                                       cwd-relative contract, which had
