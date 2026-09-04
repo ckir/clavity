@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace Clavity.Ls;
 
 /// <summary>Is a reply STRUCTURALLY complete - does it end with the terminal token its calling discipline
@@ -16,31 +18,40 @@ namespace Clavity.Ls;
 /// would flag every panel reply.</summary>
 public static class TerminalToken
 {
-    // '[' IS DECORATION. Three disciplines tell their peer to write "[VERDICT: ...]", so a peer that
-    // brackets a COMPLETE verdict was being flagged as truncated. The tokens in DisciplineContract are
-    // stored WITHOUT the bracket precisely so that stripping it here cannot contradict them.
+    // TWO SETS, TWO DIFFERENT QUESTIONS. Conflating them was a reachable false-GREEN; letting them
+    // DIVERGE is a reachable false-flag. The names say which question each answers - they are not
+    // synonyms for "ornamentation", because a reader who thinks they are will merge them.
+    //
+    // Q1: DOES THIS LINE EXIST? A line made only of these is furniture ("***"), not content: skip it and
+    // keep looking upward. '[' is deliberately ABSENT - see the measurement below.
+    private static readonly char[] SkipIfLineIsOnlyThese = { '*', '`', '_', '#', ' ' };
+
+    // Q2: HOW DO I MATCH A LINE THAT DOES EXIST? Stripped from its FRONT before comparing.
+    //
+    // 🔴 DERIVED, NEVER RETYPED. This is a STRICT SUPERSET of the skip set BY CONSTRUCTION, so the two
+    // cannot silently diverge. MEASURED (AGY-CAPSTONE round 2): with the sets written as two independent
+    // literals, adding '-' to the skip set alone left the suite 211/211 GREEN while a valid
+    // "-VERDICT: ALIGNED" was falsely REJECTED - a false-flag, the exact class this whole change exists
+    // to remove, reachable by a one-character edit that no test could see.
+    private static readonly char[] StripFromFrontBeforeMatching =
+        SkipIfLineIsOnlyThese.Concat(new[] { '[' }).ToArray();
+
+    // WHY '[' IS IN THE SECOND SET AND NOT THE FIRST. Three disciplines tell their peer to write
+    // "[VERDICT: ...]", so a peer bracketing a COMPLETE verdict was being flagged as truncated; the
+    // tokens in DisciplineContract are stored WITHOUT the bracket so this stripping cannot contradict
+    // them. But MEASURED (AGY-CAPSTONE round 1): with '[' also in the SKIP set, a reply ending
+    // "VERDICT: ALIGNED\n[" - a model truncated part-way through its next line - had that "[" stripped
+    // to empty, SKIPPED as blank, and the verdict ABOVE it matched. The gate returned COMPLETE for a
+    // demonstrably truncated reply. Control: the same shape ending in "Z" correctly failed.
     //
     // 🔴 INVARIANT, enforced by DisciplineContractTests: NO STORED TOKEN MAY BEGIN WITH ONE OF THESE
     // CHARACTERS. Only the LINE is stripped, so a token like "[NEW_VERDICT]" would be unsatisfiable -
     // the line loses its '[' and can never match an expectation that still carries one.
-    private static readonly char[] Decoration = { '*', '`', '_', '#', ' ', '[' };
-
-    // THE SKIP SET IS NOT THE STRIP SET, AND CONFLATING THEM WAS A REACHABLE FALSE-GREEN.
-    // A line is SKIPPED as ornamental only if it is blank or pure markdown furniture ("***", "---"'s
-    // cousins). '[' is deliberately ABSENT here: it earns its place in Decoration as a PREFIX to strip
-    // before matching, never as a reason to treat a line as absent.
-    //
-    // MEASURED (AGY-CAPSTONE round 1, and the defect was introduced by adding '[' to Decoration): with
-    // '[' in the skip set, a reply ending "VERDICT: ALIGNED\n[" - a model truncated mid-way through its
-    // next line - had that "[" stripped to empty, SKIPPED as blank, and the verdict above it matched.
-    // The completeness gate returned COMPLETE for a demonstrably truncated reply. Control: the same
-    // shape ending in "Z" correctly failed, which is what isolated it to '['.
-    private static readonly char[] Ornament = { '*', '`', '_', '#', ' ' };
 
     /// <summary>Is this character stripped from the front of a line before matching? EXPOSED so the
     /// invariant test cannot rot: a guard that hardcodes its own copy of the set silently stops covering
     /// the set the moment a character is added here, while still reading as an enforced invariant.</summary>
-    public static bool IsDecoration(char c) => Array.IndexOf(Decoration, c) >= 0;
+    public static bool IsDecoration(char c) => Array.IndexOf(StripFromFrontBeforeMatching, c) >= 0;
 
     /// <param name="answer">The reply text, or null when the delta ended on a non-assistant step.</param>
     /// <param name="expected">The literal the last non-blank line must contain; null = caller opts out.</param>
@@ -62,13 +73,13 @@ public static class TerminalToken
         {
             var raw = lines[i].Trim();
 
-            // SKIP decides whether this line EXISTS; STRIP decides how to match it. Two questions, two
-            // sets - see Ornament above. A line that is pure ornament is furniture and we look further
-            // up; a line that merely STARTS with decoration is a real line, and if what remains does not
-            // lead with the token, the reply did not end where it claims to.
-            if (raw.TrimStart(Ornament).Length == 0) continue;
+            // SKIP decides whether this line EXISTS; STRIP decides how to match one that does. A line
+            // that is ENTIRELY furniture is not content, so look further up; a line that merely STARTS
+            // with decoration is a real line, and if what remains does not lead with the token, the reply
+            // did not end where it claims to.
+            if (raw.TrimStart(SkipIfLineIsOnlyThese).Length == 0) continue;
 
-            return raw.TrimStart(Decoration).StartsWith(expected, StringComparison.Ordinal);
+            return raw.TrimStart(StripFromFrontBeforeMatching).StartsWith(expected, StringComparison.Ordinal);
         }
         return false;
     }

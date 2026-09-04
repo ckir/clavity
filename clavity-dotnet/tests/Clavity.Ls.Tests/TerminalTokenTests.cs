@@ -122,8 +122,11 @@ public class TerminalTokenTests
         // A model truncated part-way through its next line was therefore reported COMPLETE - a
         // false-GREEN in the completeness gate itself.
         //
-        // The fix separates the two questions: Ornament decides whether a line EXISTS, Decoration
-        // decides how to match one that does.
+        // The fix separates the two questions: SkipIfLineIsOnlyThese decides whether a line EXISTS,
+        // StripFromFrontBeforeMatching decides how to match one that does - and the second is DERIVED
+        // from the first, so a later edit cannot make them diverge (AGY-CAPSTONE round 2 measured that
+        // divergence: adding '-' to the skip set alone kept the suite green while falsely rejecting a
+        // valid "-VERDICT: ALIGNED").
         Assert.False(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n[", "VERDICT:"));
 
         // CONTROL, and it is what isolated the defect to '[': the identical shape ending in a character
