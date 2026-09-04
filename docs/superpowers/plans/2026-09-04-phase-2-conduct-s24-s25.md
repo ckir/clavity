@@ -172,6 +172,43 @@ Describe 'check-capstone-new-code' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'FIRES on a C# CONSTRUCTOR, which carries no return type' {
+        # AGY-AFTER round 2, Mechanism Gamer, attacking round 1's OWN FIX. The two-identifier method
+        # pattern cannot see `public MyClass()`, so nesting the new logic in a constructor still
+        # bypassed the trigger after fold 4. This row pins the constructor pattern specifically.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/Widget.cs' -Value @('public class Widget', '{', '}')
+            git add src/Widget.cs 2>&1 | Out-Null; git commit -qm cls 2>&1 | Out-Null
+            Set-Content -Path 'src/Widget.cs' -Value @('public class Widget', '{', '    public Widget(int n)', '    {', '    }', '}')
+            git commit -qam ctor 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a constructor is new executable code'
+            $res.Out | Should -Match 'new-declaration'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT desync on a status it does not know' {
+        # AGY-AFTER round 2, Cascade Analyst, attacking round 1's OWN FIX. An unhandled status letter
+        # left its path unconsumed, desyncing the index so the NEXT path was read as a status - and a
+        # path starting with 'A' then registered as a phantom new file. The exhaustive else prevents
+        # it. A plain modify-only range must stay silent no matter how many files it touches.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            foreach ($n in 1..4) { Set-Content -Path "src/Afile$n.ps1" -Value "Write-Output $n" }
+            git add -A 2>&1 | Out-Null; git commit -qm many 2>&1 | Out-Null
+            foreach ($n in 1..4) { Add-Content -Path "src/Afile$n.ps1" -Value "# touched" }
+            git commit -qam touch 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 0 -Because 'modifying files whose names begin with A creates nothing'
+            $res.Out | Should -Not -Match 'new-file'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'FIRES on a file that arrives by RENAME, not only by plain add' {
         # AGY-AFTER round 1. '^A' alone misses R### and C### statuses, and a renamed file is a file
         # that now exists at a path where it did not before.
@@ -309,6 +346,13 @@ $DeclarationPatterns = @(
     # code in this repository. Matches an access modifier followed by a return type and a call-shaped
     # name, excluding control-flow keywords that also take parentheses.
     '^\+\s*(public|private|internal|protected)\s+(static\s+|async\s+|override\s+|virtual\s+|sealed\s+)*[A-Za-z_][A-Za-z0-9_<>,\[\]\.\?]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
+    # CONSTRUCTORS have NO return type, so the two-identifier pattern above cannot see them. AGY-AFTER
+    # round 2 (Mechanism Gamer) caught that fold 4 left this bypass open: nest the new logic in a
+    # constructor and the trigger stays silent. Access modifier, then a Capitalized name, then '('.
+    '^\+\s*(public|private|internal|protected)\s+[A-Z][A-Za-z0-9_]*\s*\('
+    # TUPLE RETURNS start with a parenthesis - `public (int, int) Get()` - which the two-identifier
+    # pattern also misses. Same round, same seat.
+    '^\+\s*(public|private|internal|protected)\s+(static\s+|async\s+)*\([^)]*\)\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
     '^\+\s*(def|class)\s+[A-Za-z_]'                    # Python
 )
 
@@ -345,18 +389,23 @@ try {
     # A RENAME and a COPY create a file too. `git diff --name-status` emits R### / C### with TWO paths
     # (old then new), so anchoring on '^A' alone - as this rule first did - misses every new file that
     # arrived by rename or copy. AGY-AFTER round 1 finding, folded.
+    # THE else IS EXHAUSTIVE ON PURPOSE, and that is a correctness property rather than tidiness.
+    # AGY-AFTER round 2 (Cascade Analyst) caught an earlier draft matching only '^[MTD]': a status this
+    # parser does not know - U (unmerged), X (unknown), B (broken) - fell through ALL branches, so its
+    # path was never consumed, the index desynced by one, and the NEXT iteration read that path as a
+    # status. A path beginning with 'A' then registered as a phantom new file. Every git status carries
+    # exactly ONE path except R and C, which carry two, so branching on that alone cannot desync.
     for ($i = 0; $i -lt $nameStatus.Count; $i++) {
         $status = $nameStatus[$i]
-        if ($status -match '^A') {
-            $path = $nameStatus[++$i]
-            if (-not (Test-IsTestPath $path)) { $fired.Add("new-file: $path") }
-        }
-        elseif ($status -match '^[RC]') {
+        if ($status -match '^[RC]') {
             $null = $nameStatus[++$i]          # the OLD path, which we do not care about
             $path = $nameStatus[++$i]          # the NEW path, which is the one that now exists
             if (-not (Test-IsTestPath $path)) { $fired.Add("new-file-via-$($status.Substring(0,1)): $path") }
         }
-        elseif ($status -match '^[MTD]') { $null = $nameStatus[++$i] }
+        else {
+            $path = $nameStatus[++$i]          # EVERY other status carries exactly one path
+            if ($status -match '^A' -and -not (Test-IsTestPath $path)) { $fired.Add("new-file: $path") }
+        }
     }
 
     # --- Rules B and C need the patch, and only for non-test paths ---------------------------
@@ -425,7 +474,7 @@ finally { Pop-Location }
 
 Run: `pwsh -NoProfile -Command "Invoke-Pester scripts/tests/check-capstone-new-code.Tests.ps1"`
 
-Expected: `Tests Passed: 10, Failed: 0`.
+Expected: `Tests Passed: 12, Failed: 0`.
 
 - [ ] **Step 5: Prove the non-test clause is non-vacuous with a logic mutant**
 
@@ -619,17 +668,33 @@ Add this case arm alongside the existing `head)`, `log)` and `prepare)` arms. **
         else
             isolation="ISOLATED"
         fi
+        # CREATE THE DIRECTORY FIRST. AGY-AFTER round 2 (Cascade Analyst) caught this as BLOCKING:
+        # without it, `>>` into a missing .clavity/agy-marks fails with "No such file or directory"
+        # and the arm exits NON-ZERO on a fresh clone or the very first consult - turning the one step
+        # that is explicitly "a record, never a gate" into an accidental blocker. VERIFIED: this file
+        # has NO shared mkdir; the head, log and prepare arms each do their own.
+        #
+        # A FAILED MKDIR STILL MUST NOT GATE. head) and prepare) call _die_refuse here because their
+        # write is load-bearing; ours is not, so a genuinely unwritable directory degrades to a warning
+        # on stderr and exit 0 rather than blocking the round.
+        mkdir -p "$root/.clavity/agy-marks" 2>/dev/null || {
+            echo "agy-mark stamp: could not create .clavity/agy-marks - isolation NOT recorded" >&2
+            exit 0
+        }
         # Append with >>, never >. Two sessions can be open on one repository, and a truncating
         # writer silently eats the other's row.
         printf '%s %s consult=%s review=%s %s %s\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$discipline" "$consult_id" "$review_id" \
             "$isolation" "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
-            >> "$marks_dir/consults.log"
+            >> "$root/.clavity/agy-marks/consults.log" 2>/dev/null || {
+            echo "agy-mark stamp: could not write consults.log - isolation NOT recorded" >&2
+            exit 0
+        }
         exit 0
         ;;
 ```
 
-⚠ `$marks_dir` is the variable the existing arms already use for `.clavity/agy-marks/`. **Confirm its real name by reading the file** — if it differs, use the existing name rather than introducing this one.
+🔴 **`$root` is the variable the existing arms already use** — VERIFIED 2026-09-04: they write the path literally as `"$root/.clavity/agy-marks"`. **There is no `$marks_dir` variable in this file**; an earlier draft of this plan invented one. Read the file and use `$root`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -992,10 +1057,14 @@ tie-break, and a "negotiate with agy" manual backstop. **The real scope was TWO 
 
 - [ ] **Step 2: Mark both sections shipped — WITH their closing SHAs**
 
-🔴 **DO NOT PASTE THESE LITERALLY.** AGY-AFTER round 1 (Axiom Breaker) caught an earlier draft handing a literal SHA-less string to Step 2 while Step 4 asserted the gate rejects exactly that — a literal executor would have pasted it and become stuck. **First collect the real SHAs**, then substitute them:
+🔴 **DO NOT PASTE THESE LITERALLY.** AGY-AFTER round 1 (Axiom Breaker) caught an earlier draft handing a literal SHA-less string to Step 2 while Step 4 asserted the gate rejects exactly that — a literal executor would have pasted it and become stuck. **First collect the real SHAs**, then substitute them.
+
+⚠ **`<base-sha>` IS THE PLAN'S OWN STARTING COMMIT, and AGY-AFTER round 2 (Novice Executor) caught that nothing here ever defined it** — a literal executor running the line below verbatim gets `fatal: ambiguous argument '<base-sha>..HEAD'`. **It is `9ac45ed`** — the commit that folded AGY-AFTER round 1, immediately before Task 1 begins. Resolve it mechanically rather than trusting that value if any commit landed since:
 
 ```bash
-git log --oneline <base-sha>..HEAD
+BASE=$(git log --oneline --all --grep='fold AGY-AFTER round 1' -1 --format=%h)
+echo "base=$BASE"
+git log --oneline "$BASE..HEAD"
 ```
 
 Change the §24 header's trailing status from `▶ **OWNER ACCEPTED 2026-08-31, not yet planned**` to the following, with `<TASK1-SHA>` and `<TASK3-SHA>` replaced by the actual 7-char SHAs from that log:
