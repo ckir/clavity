@@ -2152,7 +2152,7 @@ audit of `d33416c..d528328` survives only in a commit message and a private memo
 `check-seed-artifacts-synced.sh`) plus one new `docs/` file. Plugin-shipped, so class 2 - **panel, then
 capstone**, not a quiet edit.
 
-### §24 — AGY-FIRST is mandatory when a capstone round has to DEVELOP NEW CODE — ▶ **OWNER ACCEPTED 2026-08-31, not yet planned**
+### §24 — AGY-FIRST is mandatory when a capstone round has to DEVELOP NEW CODE — ✅ **SHIPPED 2026-09-04** (`0218f81` the trigger · `ff05520` the stamp · `f426d3a` the wiring) — isolation RECORDED, not gated (owner ruling 2026-09-04)
 
 **Owner accepted both this and §25 on 2026-08-31, to be executed as one plan.** Raised by the owner,
 consulted with the live peer, refinements folded. The peer's answer was YES with a mechanical trigger.
@@ -2194,18 +2194,38 @@ chosen - but this proposal makes the arrangement systematic rather than incident
 this to plan time (2026-08-31).** Decide whether the design consult and the review rounds may be the
 same peer.
 
+✅ **RULED 2026-09-04 — RECORD ISOLATION, DO NOT GATE ON IT.** The consult is mechanically mandatory; the
+isolation property is recorded and surfaced, never blocking. `agy-mark.sh stamp` writes one append-only
+row per consult to `.clavity/agy-marks/consults.log` marking `SHARED-CONTEXT` or `ISOLATED`, and the owner
+sees it at GREEN adjudication and may demand a fresh-cascade re-review.
+
+**The peer recommended human-in-the-loop structural separation and was overruled, on mechanism.** Its
+evidence for isolation was sound and was verified rather than taken on trust - the sequencing spec records
+this same peer attacking a §25 refinement it had itself argued for in an earlier consult, having no memory
+of its own contribution in a fresh cascade. But it conceded on measurement that **no MCP tool can start a
+cascade**: `Clavity.Mcp/McpTools.cs` exposes exactly three, all addressing the ACTIVE conversation, and
+`RunAsync` carries an explicit `waiting_for_human` path for when agy has no conversation at all. Structural
+separation is therefore a human action, not a scriptable one, and a rule that blocks on it would recreate
+the skip-pressure §24 exists to remove. ⚠ `clavity-classic/src/tmux.rs:224-262` DOES expose `send_keys`
+and `kill-session`, so lifecycle control exists on that half - **the byte-identical-pair constraint is what
+forces the rule to the weaker transport.**
+
 ---
 
-### §25 — A negotiation discipline in ALL four review-only skills — ▶ **OWNER ACCEPTED 2026-08-31, not yet planned**
+### §25 — A negotiation discipline in ALL four review-only skills — ✅ **SHIPPED 2026-09-04** (`d55b611` the sections · `716bba6` the pin) — `AGY-NEGOTIATE` now in all four review disciplines
 
 **Ship the mechanism; do NOT make AGREEMENT the success criterion.** Owner accepted with that
 refinement on 2026-08-31, to be executed alongside §24.
 
 **What exists today:** `agy-capstone/SKILL.md` has an `AGY-NEGOTIATE` section - auto-fires on MATERIAL
 disagreement, caps at `MAX_NEGOTIATE_ROUNDS = 2`, hands the human a tie-break on impasse with both
-positions documented. **It exists in exactly one skill.** `agy-first`, `agy-test-audit` and
-`adversarial-panel-review` each require one substantive counter-turn but have no loop and no impasse
-protocol.
+positions documented. 🔴 **CORRECTED 2026-09-04, BEFORE THE PLAN WAS WRITTEN: this entry originally said
+"it exists in exactly one skill" and listed `agy-first` among those lacking it. Both claims were wrong.**
+MEASURED across both plugin halves with `grep -c 'AGY-NEGOTIATE'`: `agy-first` = 2, `agy-capstone` = 3,
+`agy-test-audit` = 0, `adversarial-panel-review` = 0. `agy-first/SKILL.md:162-175` carries a COMPLETE
+protocol - material-only trigger, `MAX_NEGOTIATE_ROUNDS = 2` marked tunable, impasse with a human
+tie-break, and a "negotiate with agy" manual backstop. **The real scope was TWO skills, not three**, and
+`agy-first`'s wording - not the capstone's - was the model the fix lifted.
 
 🔴 **THE PEER DECLARED A CONFLICT OF INTEREST AND THEN ARGUED AGAINST ITS OWN INTEREST.** Asked to
 review a proposal about how much weight its own opinion carries, it wrote that its RLHF tuning biases
