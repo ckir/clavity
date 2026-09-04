@@ -140,4 +140,81 @@ public class TerminalTokenTests
         Assert.True(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n***\n", "VERDICT:"));
         Assert.True(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n\n   \n", "VERDICT:"));
     }
+
+    [Fact]
+    public void EVERY_character_in_the_skip_set_is_treated_as_furniture()
+    {
+        // AGY-TEST-AUDIT 2026-09-04, Mechanism Gamer. The skip set carries FIVE characters and only '*'
+        // and ' ' had a fixture. MEASURED: shrinking it to { '*', ' ' } left the suite 211/211 GREEN, so
+        // three of the five were unpinned - a maintainer "simplifying" the array would falsely FLAG every
+        // reply that signs off with a code fence, an underscore rule, or a trailing heading marker.
+        Assert.True(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n```\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n___\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n###\n", "VERDICT:"));
+
+        // Mixed, because the characters are stripped as a SET and not in sequence.
+        Assert.True(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n *_`# \n", "VERDICT:"));
+
+        // THE DISTRACTOR, and it is what stops this test passing on a matcher that skips any line
+        // CONTAINING furniture: one of these characters plus real text is CONTENT, so it must NOT be
+        // skipped - otherwise the verdict above it would certify a reply truncated in its next line.
+        Assert.False(TerminalToken.IsSatisfied("findings\n\nVERDICT: ALIGNED\n# Next section\n", "VERDICT:"));
+    }
+
+    [Fact]
+    public void A_reply_that_is_ONE_LINE_is_matched()
+    {
+        // AGY-TEST-AUDIT 2026-09-04, Boundary Smuggler. Every other fixture in this file carries a
+        // newline, so index 0 was never the line that decided the answer. MEASURED: both the literal
+        // `if (lines.Length == 1) return false;` after the Split AND the far more plausible off-by-one
+        // `for (var i = lines.Length - 1; i > 0; i--)` left the suite 211/211 GREEN. A loop rewrite could
+        // therefore drop the whole reply, whenever the reply is a single line, with nothing going red.
+        Assert.True(TerminalToken.IsSatisfied("[VERDICT: ALIGNED]", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("PANEL VERDICT: GREEN", "PANEL VERDICT"));
+
+        // THE FAILING CONTROL at the identical shape. Without it the rows above would also pass on a
+        // matcher that returns true for ANY single-line input.
+        Assert.False(TerminalToken.IsSatisfied("no verdict here", "VERDICT:"));
+    }
+
+    [Fact]
+    public void IsDecoration_ANSWERS_the_question_the_invariant_guard_asks_it()
+    {
+        // AGY-TEST-AUDIT 2026-09-04, driver. DisciplineContractTests asserts !IsDecoration(tok[0]) for
+        // every stored token - but nothing asserted IsDecoration returns TRUE for anything, so that guard
+        // was vacuous under a broken oracle. MEASURED: `IsDecoration(char c) => false` left the suite
+        // 211/211 GREEN while the guard still read as enforced. The doc comment on that method claims it
+        // is exposed "so the invariant test cannot rot"; without this row the ORACLE rots instead, and
+        // the fifth discipline to be added could store an unsatisfiable token unchallenged.
+        Assert.True(TerminalToken.IsDecoration('['));   // the character the whole bracket fold turns on
+        Assert.True(TerminalToken.IsDecoration('*'));
+        Assert.True(TerminalToken.IsDecoration('`'));
+        Assert.True(TerminalToken.IsDecoration('_'));
+        Assert.True(TerminalToken.IsDecoration('#'));
+        Assert.True(TerminalToken.IsDecoration(' '));
+
+        // THE DISTRACTORS - it must REJECT a near-miss, or `=> true` satisfies every row above. 'V' and
+        // 'P' are the first characters of the four stored tokens, which is precisely what the invariant
+        // guard hands it; '-' is the character the capstone's divergence mutant used.
+        Assert.False(TerminalToken.IsDecoration('V'));
+        Assert.False(TerminalToken.IsDecoration('P'));
+        Assert.False(TerminalToken.IsDecoration('-'));
+    }
+
+    [Fact]
+    public void A_CRLF_reply_is_matched_INCLUDING_its_furniture_lines()
+    {
+        // AGY-TEST-AUDIT 2026-09-04, driver. The reply is split on '\n', so CRLF input leaves a trailing
+        // '\r' on every line, and only the TRAILING half of `.Trim()` removes it. MEASURED:
+        // `lines[i].Trim()` -> `lines[i].TrimStart()` left the suite 211/211 GREEN, because every fixture
+        // used bare '\n'. Under that mutant a CRLF sign-off rule reads as "***\r", which is no longer
+        // PURE furniture: it is not skipped, does not start with the token, and a complete reply is
+        // falsely FLAGGED as truncated. That is the exact class this whole change exists to remove.
+        Assert.True(TerminalToken.IsSatisfied("findings\r\n\r\nVERDICT: ALIGNED\r\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("findings\r\n\r\nVERDICT: ALIGNED\r\n***\r\n", "VERDICT:"));
+        Assert.True(TerminalToken.IsSatisfied("findings\r\n\r\n[VERDICT: ALIGNED]\r\n", "VERDICT:"));
+
+        // THE FAILING CONTROL: CRLF must not become a way to PASS a reply that never reached a verdict.
+        Assert.False(TerminalToken.IsSatisfied("findings\r\n\r\nlast line with no token\r\n", "VERDICT:"));
+    }
 }
