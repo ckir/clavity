@@ -394,3 +394,59 @@ summary with a green table and called §29a shipped; the gate fires at exactly t
 then found a BLOCKING regression in code declared complete forty minutes earlier. **Five AGY-AFTER panel
 rounds over the plan never came near it — a panel reasons over an artifact and never runs it.** That is
 the whole argument for this discipline, reproduced in one session.
+
+---
+
+## 2026-09-04 — the SessionStart hook-emission fix
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-04 | `f5d98a1..7dd31a8` (re-extended after every fold) | 7 | **CAPPED, NOT GREEN — owner-ruled stop at round 7.** No round was ever clean. `WAIVED reason=round-cap` in `skipped.log` at `7dd31a8`; marker written, which is what a round-cap waiver does (unlike a breach waiver, which writes none). 2 findings remain, both DEFERRED-TO-ANOMALIES 2026-09-04. No review-only breach in any round — HEAD, branch, reflog and tree unmoved throughout, scratch dir empty. | folds `5d71344` `6c2c0aa` `d1412e6` `7174717` `2edd991` `7dd31a8`; boundary `8ade858`; briefs `.clavity/seams/capstone-hookemit{,-r2..r7}.md` |
+
+🔴 **EIGHTEEN FINDINGS ACROSS SEVEN ROUNDS. EVERY ONE VERIFIED BY MUTANT BEFORE FOLDING. NOT ONE FALSE
+POSITIVE.** The peer's `evidence: reasoned` claims were true every single time, against this repo's
+standing prior that it over-counts. It also **refuted the driver's own Q1 guess in four consecutive
+rounds**, correctly each time, and its count of dead assertions (9) beat the driver's grep (7).
+
+**R1–R3 were the driver's own defects, each introduced while fixing the previous one.** R1: the silence
+tests were vacuous against stderr noise, because the fix MOVED assertions from StdErr to StdOut instead of
+ADDING them. R2: that fix was incomplete (silence tests only, not reporting tests), and every stderr
+assertion was HOLLOW — negative assertions against a dependency with nothing proving it could return
+non-empty; blanking the helper's capture left the suite green. R3: nine assertions were then DEAD, shadowed
+by the wrapper that replaced them, plus a CRLF control script. **The fix-spawns-a-defect chain ran three
+rounds deep and broke only at R4.**
+
+**R4–R7 found pre-existing gaps**, which is what convergence looks like: the error-path wire contract was
+unpinned while both other paths enforced it; half the `.no-agy` kill-switch had no test; the UNC walk guard
+was unpinned; the entire `cwd` fallback tier was unpinned; worktree support was a comment with nothing
+behind it. **R7 caught the driver repeating R2's exact mistake** — R6 proved the fallback existed at BOTH
+sites, said so in its own commit message, and covered only one.
+
+🔴 **THE TWO TECHNIQUES THAT PRODUCED THE MOST, both reusable.** (1) **Demand a CENSUS, never an adjective**
+— one cited row per exit path with the covering test named or the literal `NONE`, then CHECK it against the
+file. The census came back accurate and complete, and the peer itself then said a branch census is
+*necessary but insufficient* and named the payload-shape axis, which produced two more findings. (2) **Make
+it dispose of its OWN prose.** R6's Q2 named two payload shapes and gave neither a verdict — not a finding,
+not below the floor. R7's brief allowed only three outcomes for each: promote with a falsifiable trigger,
+put below the floor citing a guard at `file:line`, or name the covering test. **It promoted both to
+BLOCKING.** A shape named in prose and left unjudged is where a real defect sits, because nothing
+downstream reads prose.
+
+**Dispositions.** `FOLDED` ×16. `UNVERIFIED-ACCEPTED` ×1 — the UNC volume-root guard, measured to be
+performance-only (byte-identical stdout with it removed, against a real reachable UNC path), so the only
+oracle is wall-clock time, which this repo's timing discipline bars from a suite; recorded in
+`docs/accepted-boundaries.md`, the first entry it has ever held. `DEFERRED-TO-ANOMALIES` ×2 at the cap — a
+file `cwd` defeats `.no-agy` on the degraded path (measured both ways), and an empty `PATH` leaks stderr
+(claim right, the peer's stated mechanism wrong — it predicted `cat`, the error comes from bash).
+`DISCARDED-BELOW-FLOOR`: the peer's own items, all accepted, none swept.
+
+⚠ **A METHOD DEFECT IN THE DRIVER'S BRIEF, found by the peer in R1:** the terminal-token list offered only
+`ALIGNED` and `NEGOTIATE`, with no token for "I found BLOCKING defects", so the peer correctly PAUSED under
+the ask-don't-guess rule rather than force a wrong verdict. **Every capstone brief needs a findings token.**
+
+⚠ **`Tests Passed: 0` IS AN ABORTED RUN AND READS LIKE A PASS.** Caused by `\"` inside a double-quoted
+PowerShell string, which is not an escape there. A parse control now runs before any suite number is
+trusted.
+
+**Suites at the capped sha:** `agy-anomaly-reminder` **29/29** (was 20), `plugin-hooks-payload` 3/3,
+`check-seed-artifacts-synced` exit 0, hook pair byte-identical with clavity-classic.
