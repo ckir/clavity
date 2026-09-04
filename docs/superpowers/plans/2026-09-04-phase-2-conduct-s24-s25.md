@@ -220,8 +220,15 @@ Describe 'check-capstone-new-code' {
             # The rename IS a new path, so the trigger fires - but on the RENAME only.
             $res.ExitCode | Should -Be 3
             $res.Out | Should -Match 'src/Amoved\.ps1'
-            $res.Out | Should -Not -Match 'Adoomed' -Because 'a DELETED file is not a new file; seeing it here means the two-path branch desynced'
-            $res.Out | Should -Not -Match 'keeper'  -Because 'a MODIFIED file is not a new file'
+            # AGY-AFTER round 4 (Assertion Strength Auditor) sharpened this. The obvious negatives -
+            # "not Adoomed", "not keeper" - are nearly VACUOUS: under the desync mutant the parser
+            # prints some OTHER token entirely, so those never appear and both assertions pass on
+            # broken code. The negative that actually bites names the OLD side of the rename, because
+            # dropping the first `$null = $nameStatus[++$i]` makes the parser report `Aoriginal`
+            # instead of `Amoved` - that is the mutant, and this is the line that catches it.
+            $res.Out | Should -Not -Match 'Aoriginal' -Because 'reporting the PRE-rename path means the two-path branch consumed the wrong entry'
+            $res.Out | Should -Not -Match 'Adoomed'   -Because 'a DELETED file is not a new file'
+            $res.Out | Should -Not -Match 'keeper'    -Because 'a MODIFIED file is not a new file'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -1199,6 +1206,21 @@ git log --stat <base-sha>..HEAD | grep -c '\.clavity/'
 ```
 
 Expected: `0`.
+
+---
+
+## AGY-AFTER record — 4 rounds, CLEAN at round 4
+
+Rounds 1–3 each returned `NOT CLEAN - 1 BLOCKING FINDING`, and **each round's blocking defect was in the previous round's fix.** Round 4 returned `PANEL VERDICT: CLEAN - 0 BLOCKING FINDINGS`. Peer calibration across the panel: **4/4, 4/4, 3/4, 2/4 true.**
+
+**REJECTED by measurement — do NOT re-raise these:**
+- *"`agy-capstone` lacks `MAX_NEGOTIATE_ROUNDS`, so Task 6's linter will fail CI."* False — it is at `agy-capstone/SKILL.md:391`.
+- *"`adversarial-panel-review/SKILL.md` probably has no `## Disposition of findings (AGY-SCOPE)` heading, so Task 5 Step 2's insertion anchor will not resolve."* False — it is at `adversarial-panel-review/SKILL.md:244` (and `agy-test-audit/SKILL.md:236`). The peer flagged this one as uncertain rather than asserting it, which is the right shape for a contingent claim.
+- *"`UNVERIFIED-ACCEPTED` cross-contaminates the panel skill with test-audit semantics."* False — it appears **3 times natively** in that skill; the AGY-SCOPE set is shared, not test-audit-specific.
+
+🔴 **ONE ANSWER THE OWNER SHOULD SEE, because it challenges the bar this plan was reviewed against.** Asked whether "no BLOCKING finding" is the right ship bar for a PLAN as opposed to for code, the peer said **no**: a plan is executed by a literal agent with no human's contextual flexibility, so a merely *prose-level* ambiguity — an instruction to insert text relative to a heading that turns out not to exist — makes an agent halt, loop, or invent a brittle workaround, where a human would correct it on the fly. Its proposed bar is **"zero executable ambiguities."** That argument is sound in general even though the specific example it offered was false; it is recorded here rather than acted on, because changing the ship bar is the owner's call.
+
+⚠ **A CLASS NO ROUND EXAMINED, named by the peer when asked:** side-effects and state leakage — whether a crashed suite leaves the executor in a mutated directory, whether the throwaway repos are reliably purged on failure, and whether two agents running `check-capstone-new-code.ps1` concurrently collide. Every round hunted correctness in the mechanism. **This is a coverage gap in the REVIEW, not a known defect**, and it is the natural first lens if a further round is ever run.
 
 ---
 
