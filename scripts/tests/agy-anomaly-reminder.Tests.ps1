@@ -48,7 +48,7 @@ Describe 'agy-anomaly-reminder.sh' {
         try {
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
-            $x.StdErr   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
+            $x.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
             $x.ExitCode | Should -Be 0
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -58,8 +58,8 @@ Describe 'agy-anomaly-reminder.sh' {
         $r = New-RepoWithAnomaly; $h = New-CleanHome
         try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
-            $x.StdErr   | Should -Match 'AGY-ANOMALIES' -Because 'without the opt-out it must still report - otherwise the silence test proves nothing'
-            $x.ExitCode | Should -Be 2 -Because 'SessionStart routes the owner notice via stderr at exit 2'
+            $x.StdOut   | Should -Match 'AGY-ANOMALIES' -Because 'without the opt-out it must still report - otherwise the silence test proves nothing'
+            $x.ExitCode | Should -Be 0 -Because 'SessionStart routes the owner notice via the JSON envelope on stdout at exit 0'
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'honours a root .no-agy from a subdirectory on the DEGRADED (no jq) path too' {
@@ -69,7 +69,7 @@ Describe 'agy-anomaly-reminder.sh' {
         try {
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
-            $x.StdErr   | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
+            $x.StdOut   | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
             $x.ExitCode | Should -Be 0
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -77,7 +77,7 @@ Describe 'agy-anomaly-reminder.sh' {
         $r = New-RepoWithAnomaly; $h = New-CleanHome
         try {
             $x = Invoke-BashHook -HookPath $script:Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
-            $x.StdErr | Should -Match 'guard inactive: missing jq' -Because 'without the opt-out the degraded path must still announce itself'
+            $x.StdOut | Should -Match 'guard inactive: missing jq' -Because 'without the opt-out the degraded path must still announce itself'
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -86,7 +86,7 @@ Describe 'agy-anomaly-reminder.sh' {
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -95,7 +95,7 @@ Describe 'agy-anomaly-reminder.sh' {
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -107,10 +107,10 @@ Describe 'agy-anomaly-reminder.sh' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match '2 untriaged'
-            $r.StdErr   | Should -Match 'promote'
-            $r.StdErr   | Should -Match 'delete'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '2 untriaged'
+            $r.StdOut   | Should -Match 'promote'
+            $r.StdOut   | Should -Match 'delete'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -122,8 +122,8 @@ Describe 'agy-anomaly-reminder.sh' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
-            $r.StdErr | Should -Match '2026-07-14'
-            $r.StdErr | Should -Not -Match '2026-08-01'
+            $r.StdOut | Should -Match '2026-07-14'
+            $r.StdOut | Should -Not -Match '2026-08-01'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -137,8 +137,8 @@ Describe 'agy-anomaly-reminder.sh' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match '1 untriaged'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '1 untriaged'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -148,7 +148,7 @@ Describe 'agy-anomaly-reminder.sh' {
             New-Item -ItemType File -Path (Join-Path $w '.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -158,17 +158,17 @@ Describe 'agy-anomaly-reminder.sh' {
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'warns ONCE (exit 2) when jq is absent rather than failing silently' {
+    It 'warns ONCE (exit 0, one JSON line) when jq is absent rather than failing silently' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload '{"cwd":".","source":"startup"}' -Env @{ PATH = $script:NoJqPath; HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'missing jq'
-            ($r.StdErr -split "`n").Count | Should -Be 1
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'missing jq'
+            ($r.StdOut -split "`n").Count | Should -Be 1
         } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -182,8 +182,8 @@ Describe 'agy-anomaly-reminder.sh' {
             $sub = Join-Path $repo 'scripts/deep'
             New-Item -ItemType Directory -Path $sub -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $sub) -Env @{ HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match '1 untriaged'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '1 untriaged'
         } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -199,8 +199,8 @@ Describe 'agy-anomaly-reminder.sh' {
             Set-Content (Join-Path $sub '.clavity/local-anomalies.md') "# Untriaged anomalies`n`n- [defect] y * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
             Test-Path (Join-Path $repo '.clavity/local-anomalies.md') | Should -BeFalse
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $sub) -Env @{ HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match '1 untriaged'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '1 untriaged'
         } finally { Remove-Item $repo,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -214,8 +214,8 @@ Describe 'agy-anomaly-reminder.sh' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match '2 untriaged'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '2 untriaged'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -225,8 +225,8 @@ Describe 'agy-anomaly-reminder.sh' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
-            $r.StdErr | Should -Match '2026-08-01'
-            $r.StdErr | Should -Not -Match '2024-01-01'
+            $r.StdOut | Should -Match '2026-08-01'
+            $r.StdOut | Should -Not -Match '2024-01-01'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -245,10 +245,10 @@ Describe 'agy-anomaly-reminder.sh' {
         $h = New-CleanHome
         try {
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match '2 untriaged'
-            $r.StdErr   | Should -Match '2026-07-11'
-            $r.StdErr   | Should -Not -Match '2026-08-01'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '2 untriaged'
+            $r.StdOut   | Should -Match '2026-07-11'
+            $r.StdOut   | Should -Not -Match '2026-08-01'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -261,7 +261,7 @@ Describe 'agy-anomaly-reminder.sh' {
             New-Item -ItemType File -Path (Join-Path $h '.claude/.no-agy') -Force | Out-Null
             $r = Invoke-BashHook -HookPath $script:Hook -Payload '{"cwd":".","source":"startup"}' -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty
+            $r.StdOut   | Should -BeNullOrEmpty
         } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -285,12 +285,51 @@ Describe 'agy-anomaly-reminder.sh' {
                 return
             }
             $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $w) -Env @{ HOME = $h }
-            $r.ExitCode | Should -Be 2
-            $r.StdErr   | Should -Match 'cannot be read'
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match 'cannot be read'
         } finally {
             & icacls (Join-Path $w '.clavity/local-anomalies.md') /remove:d "$($env:USERNAME)" 2>&1 | Out-Null
             Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
         }
+    }
+
+    # --- THE REGRESSION GUARDS FOR THE 2026-09-04 EMISSION FIX -----------------------------------
+    It 'emits the notice on STDOUT at exit 0, never on stderr at a non-zero exit' {
+        # THE DEFECT THIS PINS, observed by the owner: the hook used stderr + exit 2, and Claude Code
+        # renders ANY non-zero SessionStart hook as "SessionStart:startup hook error" in red. A routine
+        # triage reminder was therefore displayed as a FAILING HOOK at every single startup, which is how
+        # a notice trains people to skip past it.
+        #
+        # All three assertions are load-bearing, because each of the other two passes over a broken form:
+        # exit 0 with the text still on stderr is invisible to the model; stdout at a non-zero exit still
+        # renders as an error; and without the third this test passes on a hook that says NOTHING at all.
+        $d = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $d) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0 -Because 'a non-zero SessionStart hook is rendered to the owner as a hook ERROR'
+            $r.StdErr   | Should -BeNullOrEmpty -Because 'stderr at a non-zero exit is what produced the red error banner'
+            $r.StdOut   | Should -Match 'AGY-ANOMALIES' -Because 'the notice must still be emitted, or the two assertions above are vacuous'
+        } finally { Remove-Item $d,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'emits an envelope carrying BOTH the owner surface and the model surface' {
+        # systemMessage reaches the OWNER, who is the one who triages; hookSpecificOutput.additionalContext
+        # reaches the MODEL. The old stderr form happened to deliver both, so a fix that kept only one
+        # would silently drop an audience and no other test here would notice.
+        # MEASURED 2026-09-04 with `claude -p` asking the session whether its SessionStart context
+        # mentioned AGY-ANOMALIES: YES under the old form, YES under this one.
+        #
+        # hookEventName is pinned to SessionStart because the hook is registered under FOUR matchers
+        # (startup, resume, clear, compact) that are `source` values of ONE event - naming any of those
+        # as the event would be rejected as a schema violation and the owner would see a validation dump.
+        $d = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        try {
+            $r = Invoke-BashHook -HookPath $script:Hook -Payload (Payload $d) -Env @{ HOME = $h }
+            $j = $r.StdOut | ConvertFrom-Json      # throws, and so fails, if the envelope is malformed
+            $j.systemMessage                        | Should -Match 'AGY-ANOMALIES'
+            $j.hookSpecificOutput.hookEventName     | Should -Be 'SessionStart'
+            $j.hookSpecificOutput.additionalContext | Should -Match 'AGY-ANOMALIES'
+        } finally { Remove-Item $d,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
     It 'ships as pure ASCII' {

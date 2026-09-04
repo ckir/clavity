@@ -6,10 +6,24 @@
 # sibling agy-learn inbox, which reached 69 entries against a stated threshold of 8 because its reminder
 # never counts anything and never asks anyone to clear it.
 #
-# EMISSION = stderr + `exit 2`, deliberately, matching agy-liveness-check.sh. At SessionStart there is no
-# user turn, so additionalContext/stdout is absorbed into the model's context and the OWNER never sees it.
-# The owner is the one who triages, so the notice has to reach a human surface. exit 2 is non-blocking for
-# SessionStart.
+# EMISSION = the JSON ENVELOPE on stdout at exit 0, carrying BOTH keys. This hook used stderr + `exit 2`
+# until 2026-09-04, reasoning that stdout is absorbed into the model's context where the OWNER -- the one
+# who actually triages -- never sees it. That half was right about PLAIN stdout and wrong about the
+# envelope, and it cost a real defect: Claude Code renders a non-zero SessionStart hook as
+# "SessionStart:startup hook error" in red, so a routine reminder was displayed to the owner as a FAILING
+# HOOK at every startup. A notice that cries wolf is a notice people learn to skip past.
+#
+# The envelope reaches both surfaces at once, which is why nothing is traded away:
+#   systemMessage                        -> the OWNER sees it, with no error styling
+#   hookSpecificOutput.additionalContext -> the MODEL receives it, as before
+# MEASURED 2026-09-04, before and after, with `claude -p` asking the session whether its SessionStart
+# context mentioned AGY-ANOMALIES: YES under the old stderr form, YES under this one. The owner-visible
+# half was confirmed from the PreCompact sibling, whose envelope renders as "completed successfully".
+# The same contract, and the measurement behind it, is documented at agy-anomaly-capture-reminder.sh:9-15:
+# plain stdout at exit 0 reaches the model NOT AT ALL, and stdout at exit 2 is dropped too.
+#
+# hookEventName MUST be "SessionStart" for every matcher this hook is registered under (startup, resume,
+# clear, compact) -- those are `source` values of ONE event, not four events.
 #
 # NOT gated on a marker or a relevance path: the anomalies file has no natural relevance gate, and firing
 # once per session is already the quietest useful cadence. It is silent whenever there is nothing to say.
@@ -52,8 +66,13 @@ if ! command -v jq >/dev/null 2>&1; then
   if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
     exit 0
   fi
-  printf '%s\n' "[AGY-ANOMALIES] guard inactive: missing jq - cannot check for untriaged anomalies; install jq" >&2
-  exit 2
+  # HAND-BUILT because this is the jq-ABSENT path. Safe only because the message is a FIXED literal with
+  # no double quote, backslash or backtick in it - the same constraint agy-anomaly-capture-reminder.sh
+  # states at its line 17. Do NOT interpolate a path into this one: $f is not known here anyway, and a
+  # Windows path is exactly the value that would smuggle a backslash into the envelope and break it.
+  _m="[AGY-ANOMALIES] guard inactive: missing jq - cannot check for untriaged anomalies; install jq"
+  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_m" "$_m"
+  exit 0
 fi
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)
@@ -126,8 +145,9 @@ f="$root/.clavity/local-anomalies.md"
 n=$(grep -c '^- \[[^]]*\]' "$f" 2>/dev/null)
 rc=$?
 if [ "$rc" -gt 1 ]; then
-  printf '%s\n' "[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted" >&2
-  exit 2
+  _m="[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted"
+  jq -nc --arg m "$_m" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+  exit 0
 fi
 [ -z "$n" ] && n=0
 [ "$n" -eq 0 ] && exit 0
@@ -151,5 +171,8 @@ oldest=$(grep '^- \[[^]]*\]' "$f" 2>/dev/null \
 # Name the RESOLVED path, not a relative one. The reader may have started the session in a subdirectory,
 # and a notice that says ".clavity/local-anomalies.md" sends them to a path that does not exist from where
 # they are standing -- at exactly the moment they are least inclined to go hunting for it.
-printf '%s\n' "[AGY-ANOMALIES] $n untriaged$oldest in $f. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill." >&2
-exit 2
+# jq -nc owns the escaping here, and that is load-bearing rather than tidy: $f is a PATH, the one value in
+# this message that can legitimately contain a character the envelope would choke on.
+_m="[AGY-ANOMALIES] $n untriaged$oldest in $f. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill."
+jq -nc --arg m "$_m" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+exit 0
