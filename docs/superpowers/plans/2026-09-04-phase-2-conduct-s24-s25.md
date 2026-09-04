@@ -923,6 +923,12 @@ It named the literal command, quoted *"The trigger is MECHANICAL and you do not 
 
 🔴 **Load the `writing-skills` skill before this task.**
 
+🔴🔴 **THIS PLAN'S OWN PROSE IS NOT ASCII — TRANSLITERATE THE BLOCKS BELOW BEFORE PASTING THEM.** Found at execution 2026-09-04 by the implementer, and it is a defect in THIS DOCUMENT: the markdown blocks below carry emoji and em-dashes for readability, but **`agy-test-audit/SKILL.md` is ASCII-ONLY by contract** (mojibake risk; this project has hit corruption). Measured: this task's section contains dozens of non-ASCII characters.
+
+**When you paste, convert every one to the target file's own convention** — plain bold instead of an emoji marker, a hyphen instead of an em-dash. `agy-test-audit` uses **zero** emoji natively; match that. Verify your inserted text with `LC_ALL=C grep -c '[^ -~\t]' <file>` expecting `0`.
+
+⚠ **`grep -c` counts matching LINES, not bytes or characters** — two separate implementers misread it as a byte count and reported a "wildly inflated" figure as a tool bug. Measured against `od` ground truth, `grep -cP '[^\x00-\x7F]'` and `LC_ALL=C grep -c '[^ -~\t]'` are both CORRECT on ASCII, on 2-byte, and on 4-byte inputs. The tool is fine; the reading was not.
+
 🔴 **SCOPE CORRECTION — VERIFIED 2026-09-04, and the ROADMAP is WRONG about it.** §25's body claims `AGY-NEGOTIATE` "exists in exactly one skill" and lists `agy-first` among those lacking it. **That is false.** Measured with `grep -c 'AGY-NEGOTIATE'` across both plugin halves: `agy-first` = 2, `agy-capstone` = 3, `agy-test-audit` = 0, `adversarial-panel-review` = 0. `agy-first/SKILL.md:162-175` carries a complete protocol — material-only trigger, `MAX_NEGOTIATE_ROUNDS = 2` marked tunable, impasse with human tie-break, and a "negotiate with agy" manual backstop. **Real scope is TWO skills, not three.** Task 7 fixes the ROADMAP text.
 
 **Use `agy-first`'s wording as the model, not the capstone's.** It is tighter, it marks the cap tunable, and it states "Do not fabricate agreement" explicitly.
