@@ -119,6 +119,38 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # --- .no-agy in the SUBDIRECTORY the session runs from, repo root UNMARKED --------------------
+    # AGY-CAPSTONE round 4, Coverage Adversary. The kill-switch is
+    #   [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]
+    # at BOTH the jq path and the degraded path, but every existing test marked the ROOT or $HOME, so the
+    # SECOND half was never exercised. MEASURED: deleting `|| [ -f "$cwd_path/.no-agy" ]` from both sites
+    # left the suite 23/23 GREEN - half of the documented opt-out was unprotected.
+    #
+    # BOTH paths get a row deliberately. Covering only the jq one would leave a mutant that removes the
+    # degraded site alone still green, which is the same incomplete-fold shape rounds 2 and 3 both caught.
+    # The positive controls already above ('DOES report from that same subdirectory...') are what make
+    # these two meaningful: they prove the identical fixture DOES report when the opt-out is absent.
+    It 'is SILENT when .no-agy is in the SUBDIRECTORY the session runs from and the root is unmarked' {
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            New-Item -ItemType File -Path (Join-Path $r 'src/.no-agy') -Force | Out-Null
+            (Test-Path (Join-Path $r '.no-agy')) | Should -BeFalse -Because 'the ROOT must stay unmarked, or this passes through the OTHER half of the kill-switch and proves nothing'
+            $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
+            $x.StdOut   | Should -BeNullOrEmpty
+            $x.ExitCode | Should -Be 0
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    It 'honours a SUBDIRECTORY .no-agy on the DEGRADED (no jq) path too, root unmarked' {
+        $r = New-RepoWithAnomaly; $h = New-CleanHome
+        try {
+            New-Item -ItemType File -Path (Join-Path $r 'src/.no-agy') -Force | Out-Null
+            (Test-Path (Join-Path $r '.no-agy')) | Should -BeFalse -Because 'the ROOT must stay unmarked, or this passes through the OTHER half of the kill-switch and proves nothing'
+            $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $x.StdOut   | Should -BeNullOrEmpty
+            $x.ExitCode | Should -Be 0
+        } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT (exit 0) when the anomalies file does not exist' {
         $w = New-Workspace $null; $h = New-CleanHome
         try {
@@ -334,7 +366,19 @@ Describe 'agy-anomaly-reminder.sh' {
             }
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
-            $r.StdOut   | Should -Match 'cannot be read'
+
+            # PARSE THE ENVELOPE HERE TOO. AGY-CAPSTONE round 4, Coverage Adversary: this branch was the
+            # last emission site pinned by a substring alone. MEASURED: dropping `hookSpecificOutput` from
+            # its `jq -nc` payload left the suite 23/23 GREEN - the MODEL's half of the wire contract was
+            # unprotected on the error path while both other paths enforced it.
+            #
+            # This is NOT the finding round 3 refuted. That one was about MALFORMED json, which `jq -nc`
+            # cannot emit; this is VALID json missing a key, which it emits happily. The distinction is the
+            # whole point: `jq` guarantees syntax, never shape.
+            $j = $r.StdOut | ConvertFrom-Json
+            $j.systemMessage                        | Should -Match 'cannot be read'
+            $j.hookSpecificOutput.hookEventName     | Should -Be 'SessionStart'
+            $j.hookSpecificOutput.additionalContext | Should -Match 'cannot be read'
         } finally {
             & icacls (Join-Path $w '.clavity/local-anomalies.md') /remove:d "$($env:USERNAME)" 2>&1 | Out-Null
             Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
@@ -348,9 +392,11 @@ Describe 'agy-anomaly-reminder.sh' {
         # triage reminder was therefore displayed as a FAILING HOOK at every single startup, which is how
         # a notice trains people to skip past it.
         #
-        # All three assertions are load-bearing, because each of the other two passes over a broken form:
-        # exit 0 with the text still on stderr is invisible to the model; stdout at a non-zero exit still
-        # renders as an error; and without the third this test passes on a hook that says NOTHING at all.
+        # BOTH assertions here are load-bearing, and the stderr half of the invariant now lives in the
+        # Invoke-Hook wrapper rather than in this body: stdout at a non-zero exit still renders as an
+        # error, and without the StdOut match this test would pass on a hook that says NOTHING at all.
+        # (This comment said "all three" until AGY-CAPSTONE round 4 - round 3 removed the local stderr
+        # assertion as dead code once the wrapper covered it, and left the comment describing it.)
         $d = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
         try {
             $r = Invoke-Hook -Payload (Payload $d) -Env @{ HOME = $h }
