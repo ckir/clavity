@@ -119,6 +119,50 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    # --- THE cwd FALLBACK TIER: malformed and cwd-less payloads ----------------------------------
+    # AGY-CAPSTONE round 6, Payload Shape Adversary. Every fixture in this file sends well-formed JSON
+    # with a non-empty cwd, so the hook's ENTIRE defensive tier was structurally unpinned.
+    #
+    # THE TWO ROUTES ARE DIFFERENT CODE and each needs its own row - this is the distinction the peer drew
+    # and it is the reason one test would not do:
+    #   malformed payload -> jq FAILS, 2>/dev/null swallows it, cwd is EMPTY
+    #                     -> caught by `[ -z "$cwd_path" ] && cwd_path="."`   (MEASURED: deleting it from
+    #                        both sites left the suite 25/25 GREEN)
+    #   cwd key ABSENT    -> jq SUCCEEDS and its own `// "."` default supplies the dot
+    #                     -> the shell fallback never sees it                  (MEASURED: changing
+    #                        `jq -r '.cwd // "."'` to `jq -r '.cwd'` left the suite 25/25 GREEN)
+    #
+    # THE PROCESS DIRECTORY IS SET DELIBERATELY in both rows. The fallback resolves cwd to ".", so without
+    # controlling it the hook reads THIS repository's own .clavity/local-anomalies.md and the assertion
+    # would depend on how many entries happen to be untriaged today. Both the PowerShell location and
+    # [Environment]::CurrentDirectory are set, because a native child inherits the latter.
+    It 'falls back to the PROCESS directory when the payload is not JSON at all' {
+        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
+        try {
+            Set-Location $w; [Environment]::CurrentDirectory = $w
+            $r = Invoke-Hook -Payload 'this is not json at all' -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '1 untriaged' -Because 'a malformed payload must fall back to the process directory, where the fixture lives'
+        } finally {
+            Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
+            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    It 'falls back to the PROCESS directory when the payload OMITS cwd entirely' {
+        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
+        $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
+        try {
+            Set-Location $w; [Environment]::CurrentDirectory = $w
+            $r = Invoke-Hook -Payload '{"source":"startup"}' -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '1 untriaged' -Because 'the jq default // "." must supply the dot when the cwd key is absent'
+        } finally {
+            Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
+            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     # --- .no-agy in the SUBDIRECTORY the session runs from, repo root UNMARKED --------------------
     # AGY-CAPSTONE round 4, Coverage Adversary. The kill-switch is
     #   [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]
