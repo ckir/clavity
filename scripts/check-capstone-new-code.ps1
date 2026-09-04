@@ -38,11 +38,71 @@ function Test-IsTestPath([string]$p) {
 # qualifier for yml/yaml - both are load-bearing per the ruling.
 $CodeExtensions = @('.ps1', '.sh', '.cs', '.rs', '.py', '.js', '.ts')
 
+# EXTENSIONLESS EXECUTABLE files, matched by leaf NAME (FIX 2, adversarial capstone round 2026-09-04
+# - a REGRESSION from the extension allow-list above). The allow-list is scoped by extension, but
+# `justfile`/`Makefile`/`Dockerfile` carry none and are executable build/deploy DEFINITIONS, not
+# documentation - this repo ships a live 12KB justfile that Rules A/B/C stopped scanning the moment
+# the extension allow-list shipped. Owner ruling 2026-09-04: WIDEN the allow-list, do not convert it
+# to a deny-list. `.gitignore` is deliberately NOT here - it is declarative configuration, nothing in
+# it executes.
+$CodeExecutableNames = @('justfile', 'Justfile', 'Makefile', 'makefile', 'Dockerfile')
+
 function Test-IsCodeFile([string]$p) {
     $ext = [System.IO.Path]::GetExtension($p)
     if ($CodeExtensions -contains $ext) { return $true }
     if (($ext -eq '.yml' -or $ext -eq '.yaml') -and $p -match '(^|/)\.github/workflows/') { return $true }
+    if ($ext -eq '' -and ($CodeExecutableNames -contains [System.IO.Path]::GetFileName($p))) { return $true }
     return $false
+}
+
+# FIX 1 (adversarial capstone round 2026-09-04, severity 0, SILENT BYPASS - the most important of the
+# four): decodes a path from a `+++`/`---` diff header that git may have wrapped in double quotes. git
+# quotes a path (core.quotepath, on by default) and C-escapes every byte it treats as "unsafe" - each
+# non-ASCII byte, plus \, ", tab and newline - so src/café.ps1 (UTF-8 bytes for é = 0xC3 0xA9) is
+# emitted as "b/src/caf\303\251.ps1". MEASURED on this machine, matches exactly.
+#
+# Each \NNN escape is ONE BYTE, and a multi-byte UTF-8 character therefore produces SEVERAL
+# consecutive escapes that must be recombined at the BYTE level before decoding back to a .NET string
+# - decoding one escape at a time as an independent character would corrupt anything outside ASCII.
+# Returns $null when the text cannot be decoded (an escape this function does not recognise, or a
+# truncated escape), so the caller can FAIL CLOSED instead of silently treating the file as absent.
+#
+# ⚠ Do NOT touch this for the space-in-path case - MEASURED, git leaves a path containing only a space
+# UNQUOTED (`+++ b/src/my file.ps1` with a trailing tab), and the existing `.Trim()` in the caller
+# already handles that. This function only has quoted input to decode.
+function ConvertFrom-GitDiffPath([string]$raw) {
+    if ($raw.Length -lt 2 -or $raw[0] -ne '"' -or $raw[$raw.Length - 1] -ne '"') {
+        return $raw   # not quoted - already the literal path
+    }
+    $inner = $raw.Substring(1, $raw.Length - 2)
+    $bytes = [System.Collections.Generic.List[byte]]::new()
+    $i = 0
+    while ($i -lt $inner.Length) {
+        $c = $inner[$i]
+        if ($c -ne '\') {
+            if ([int]$c -gt 127) { return $null }   # git always escapes non-ASCII - unexpected shape
+            $bytes.Add([byte][int]$c)
+            $i++
+            continue
+        }
+        if ($i + 1 -ge $inner.Length) { return $null }   # dangling backslash - cannot decode
+        $next = $inner[$i + 1]
+        if ($next -ge '0' -and $next -le '7') {
+            if ($i + 3 -ge $inner.Length) { return $null }   # truncated octal escape
+            $oct = $inner.Substring($i + 1, 3)
+            if ($oct -notmatch '^[0-7]{3}$') { return $null }
+            $bytes.Add([byte]([Convert]::ToInt32($oct, 8)))
+            $i += 4
+            continue
+        }
+        $mapped = switch ($next) {
+            '\' { 92 }; '"' { 34 }; 't' { 9 }; 'n' { 10 }; default { -1 }
+        }
+        if ($mapped -eq -1) { return $null }   # an escape this parser does not recognise - fail closed
+        $bytes.Add([byte]$mapped)
+        $i += 2
+    }
+    return [System.Text.Encoding]::UTF8.GetString($bytes.ToArray())
 }
 
 # A new DECLARATION, per language, for files any extension applies to. Anchored on the '+' of the
@@ -90,6 +150,13 @@ $CSharpDeclarationPatterns = @(
     # An optional run of static/async/override/virtual/sealed, then a return type, then a name, then
     # '('. Scoped to .cs files only - see the block comment above.
     '^\+\s*(static\s+|async\s+|override\s+|virtual\s+|sealed\s+)*[A-Za-z_][A-Za-z0-9_<>,\[\]\.\?]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
+    # AUTO-PROPERTIES carry NO parentheses at all - `public string Name { get; set; }` - so every
+    # pattern above, which all require a trailing '(', is blind to them (FIX 3, adversarial capstone
+    # round 2026-09-04). Access modifier, optional modifiers, a TYPE that is explicitly NOT one of the
+    # five type-declaration keywords via the negative lookahead - without that exclusion this pattern
+    # would ALSO match `public class Thing {` / `public struct Foo {` and double-report the very line
+    # the first C# pattern above already reports - then a name, then '{'. Scoped to .cs files only.
+    '^\+\s*(public|private|internal|protected)\s+(static\s+|readonly\s+|virtual\s+|override\s+|abstract\s+|sealed\s+)*(?!(class|record|struct|interface|enum)\b)[A-Za-z_][A-Za-z0-9_<>,\[\]\.\?]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\{'
 )
 
 Push-Location $Root
@@ -175,11 +242,31 @@ try {
     }
 
     foreach ($line in $patch) {
-        if ($line -match '^\+\+\+ b/(.+)$') {
+        if ($line -match '^\+\+\+ (.+)$') {
             Complete-Hunk
-            $currentFile = $Matches[1].Trim()
-            $currentIsTest = Test-IsTestPath $currentFile
-            $currentIsCode = Test-IsCodeFile $currentFile
+            $rawPath = $Matches[1].Trim()
+            $decoded = ConvertFrom-GitDiffPath $rawPath
+            if ($null -ne $decoded -and $decoded -match '^b/(.+)$') {
+                # The common case, quoted or not (FIX 1): a real path on the 'after' side.
+                $currentFile = $Matches[1]
+                $currentIsTest = Test-IsTestPath $currentFile
+                $currentIsCode = Test-IsCodeFile $currentFile
+            }
+            elseif ($rawPath -eq '/dev/null') {
+                # The 'after' side of a pure deletion - nothing here to classify, and a deletion-only
+                # hunk carries no '+' line for Rules B/C to scan regardless.
+                $currentFile = $null
+                $currentIsTest = $false
+                $currentIsCode = $false
+            }
+            else {
+                # FAIL CLOSED (FIX 1): this +++ line's path could not be parsed - a quoting/escaping
+                # shape this function does not recognise. Treat the file as CODE rather than silently
+                # skipping it. A gate an agent runs on itself must never fail toward silence.
+                $currentFile = $rawPath
+                $currentIsTest = $false
+                $currentIsCode = $true
+            }
             continue
         }
         if ($line -match '^@@ [^@]+ @@(.*)$') {

@@ -681,7 +681,7 @@ agy-mark.Tests.ps1                               93,0s   32 tests   <- SLOW, NEW
                                                                       chained head calls proving the debounce breaks on a
                                                                       different session id, one against a git-tracked marker
                                                                       needing git rm --cached).
-agy-mark-stamp.Tests.ps1                         24,4s   6 tests    <- SLOW, NEW 2026-09-04. Task 3 (2026-09-04-phase-2-conduct-s24-s25
+agy-mark-stamp.Tests.ps1                         24,4s   7 tests    <- SLOW, NEW 2026-09-04. Task 3 (2026-09-04-phase-2-conduct-s24-s25
                                                                       plan): the new `stamp` subcommand on agy-mark.sh that records
                                                                       consult/review cascade isolation (SHARED-CONTEXT vs ISOLATED).
                                                                       Two runs at the top level: 27,4s cold / 24,4s warm. Background
@@ -795,7 +795,7 @@ check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW
                                                                       modest test count. Measured solo as the
                                                                       sole command: "Tests completed in
                                                                       135,92s", 16 passed / 0 failed.
-check-capstone-new-code.Tests.ps1               107,0s   19 tests   <- SLOW, NEW 2026-09-04 (ROADMAP s24 trigger). Two runs on an idle machine, 108,2s cold / 107,0s warm; background load uncontrolled.
+check-capstone-new-code.Tests.ps1               107,0s   22 tests   <- SLOW, NEW 2026-09-04 (ROADMAP s24 trigger). Two runs on an idle machine, 108,2s cold / 107,0s warm; background load uncontrolled.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the

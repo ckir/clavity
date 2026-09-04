@@ -389,6 +389,68 @@ Describe 'check-capstone-new-code' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'FIRES on a new declaration in a NON-ASCII-named file, not silently skipped' {
+        # FIX 1, adversarial capstone round 2026-09-04, severity 0 SILENT BYPASS - the most important
+        # of the four. git QUOTES a non-ASCII path in the +++ diff header (core.quotepath, on by
+        # default) and C-escapes each non-ASCII byte as an octal triplet -
+        # `+++ "b/src/caf\303\251.ps1"` for src/café.ps1 - MEASURED, matches exactly. The old regex
+        # anchored on an UNQUOTED 'b/' never matched, so $currentFile was never updated,
+        # $currentIsCode stayed false, and the FIX-4 code-extension guard skipped the file's added
+        # lines entirely. MEASURED before this fix: exit 0, "no new code ... consult not required".
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/café.ps1' -Value "Write-Output 'seed'" -Encoding utf8
+            git add -- 'src/café.ps1' 2>&1 | Out-Null
+            git commit -qm addnonascii 2>&1 | Out-Null
+            Add-Content -Path 'src/café.ps1' -Value "function New-Thing { 1 }"
+            git commit -qam newfnnonascii 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a non-ASCII path must not silently defeat the code-extension gate'
+            $res.Out | Should -Match 'new-declaration'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES on a new declaration added to an extensionless EXECUTABLE file (justfile)' {
+        # FIX 2, adversarial capstone round 2026-09-04 - a REGRESSION from the FIX-4 code-extension
+        # allow-list: extensionless executables like justfile/Makefile/Dockerfile carry no extension
+        # and became invisible to Rules A/B/C the moment that allow-list shipped. This repo has a live
+        # 12KB justfile; before FIX 4 shipped, Rules B/C scanned it. MEASURED before this fix: exit 0,
+        # "no new code ... consult not required".
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'justfile' -Value @('build:', '    echo build')
+            git add justfile 2>&1 | Out-Null; git commit -qm addjustfile 2>&1 | Out-Null
+            Add-Content -Path 'justfile' -Value 'function deploy() { echo deploy }'
+            git commit -qam newfnjustfile 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'an extensionless executable is still shipped code'
+            $res.Out | Should -Match 'new-declaration'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES on a C# auto-property, which carries no parentheses at all' {
+        # FIX 3, adversarial capstone round 2026-09-04. All five ORIGINAL C#-only patterns require a
+        # trailing '(', and `public string Name { get; set; }` has none. MEASURED before this fix:
+        # exit 0.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/Thing.cs' -Value @('public class Thing', '{', '}')
+            git add src/Thing.cs 2>&1 | Out-Null; git commit -qm cls 2>&1 | Out-Null
+            Set-Content -Path 'src/Thing.cs' -Value @('public class Thing', '{', '    public string Name { get; set; }', '}')
+            git commit -qam prop 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'an auto-property is new executable C# surface'
+            $res.Out | Should -Match 'new-declaration'
+            $res.Out | Should -Match 'Name'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'FIRES on a Rust TYPE-only addition with no fn anywhere in the diff' {
         # FIX 2, adversarial capstone round 2026-09-04. The Rust declaration pattern was
         # function-only, so a new `pub struct`/`pub enum` addition with no `fn` bypassed the

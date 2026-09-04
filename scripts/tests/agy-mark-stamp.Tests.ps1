@@ -79,14 +79,31 @@ Describe 'agy-mark.sh stamp' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'rejects a cascade id containing whitespace, and writes NO row' {
-        # FIX 3, adversarial capstone round 2026-09-04. A cascade id containing whitespace
-        # corrupted the log line's POSITIONAL fields - a reader parsing field 5 as the isolation
-        # token read a fragment of the id instead. MEASURED before the fix: exit 0, and the
-        # corrupted row landed in consults.log.
+    It 'rejects a consult-cascade-id containing whitespace, and writes NO row' {
+        # FIX 3 (script) / FIX 4 (this test), adversarial capstone round 2026-09-04. A cascade id
+        # containing whitespace corrupted the log line's POSITIONAL fields - a reader parsing field 5
+        # as the isolation token read a fragment of the id instead. MEASURED before the script fix:
+        # exit 0, and the corrupted row landed in consults.log.
+        #
+        # SPLIT FROM A SINGLE COMBINED ROW that put spaces in BOTH ids: the script checks consult_id
+        # BEFORE review_id and exits 64 on the first failure, so that one row proved nothing about the
+        # review_id check on its own - deleting the review_id check entirely left the combined row
+        # green. This row isolates the consult_id check with a GOOD review_id alongside it.
         $r = New-Repo
         try {
-            $res = Invoke-Stamp $r @('stamp','agy-capstone','id with spaces','other id')
+            $res = Invoke-Stamp $r @('stamp','agy-capstone','id with spaces','good-review-id')
+            $res.ExitCode | Should -Not -Be 0
+            Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'rejects a review-cascade-id containing whitespace, and writes NO row' {
+        # FIX 4, adversarial capstone round 2026-09-04. Isolates the review_id check specifically -
+        # see the row above for why a single row with spaces in both ids proved nothing about this
+        # half. A GOOD consult_id alongside it means only the review_id check can be what fires.
+        $r = New-Repo
+        try {
+            $res = Invoke-Stamp $r @('stamp','agy-capstone','good-consult-id','id with spaces')
             $res.ExitCode | Should -Not -Be 0
             Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
