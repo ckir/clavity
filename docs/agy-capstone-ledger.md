@@ -329,3 +329,68 @@ probes at live code rather than at fixtures.
 **Envelope.** Clean in both arms: `git status --short` unchanged (only the owner's untracked `TODO.md`),
 `HEAD` and the reflog tip unmoved at `97bb44b`, and the sanctioned scratch dir
 `.clavity/scratch/task5-isolation/` still empty. No review-only breach.
+
+---
+
+## 2026-09-04 — §29a, the panel terminal token
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-04 | `84d36aa..902a6ef` (the §29a implementation, re-extended TWICE to cover both fold commits) | 3 | **GREEN — owner-confirmed 2026-09-04.** Marker `.clavity/agy-marks/agy-capstone.head` = `902a6ef`, the REVIEWED tip, verified equal to `HEAD` at the moment of writing. No `WAIVED` line in `skipped.log` for this HEAD: a clean adjudicated GREEN, not a waiver. No review-only breach in any round — tree, `HEAD`, branch and reflog tip unmoved, sanctioned scratch dir `.clavity/scratch/capstone-s29a/` empty throughout. | folds `e6012d6`, `902a6ef`; briefs `.clavity/seams/capstone-s29a-r{1,2,3}.md` and `.clavity/seams/negotiate-13b-mechanism.md` |
+
+**R1 — one BLOCKING finding, and it was a regression the change itself introduced.** Adding `[` to the
+strip set meant a line containing only `[` stripped to empty, hit `if (line.Length == 0) continue`, and
+was SKIPPED AS BLANK — so a reply truncated part-way through its next line matched the verdict ABOVE it.
+🔴 **A FALSE-GREEN inside the completeness gate**, which is the thing that decides whether a review's
+findings are discarded. MEASURED: `IsSatisfied("findings\n\nVERDICT: ALIGNED\n[", "VERDICT:")` returned
+TRUE; the identical shape ending in `Z` returned false, which is what isolated the cause to `[`.
+⚠ **The obvious fix was a trap** — "skip only genuinely blank lines" closes it by opening the reverse
+hole, falsely flagging any reply that signs off with a markdown rule. Fixed by SPLITTING the sets.
+Two further folds: the invariant guard CRASHED on an empty token (`tok[0]`) instead of reporting, and an
+empty token silently disables that discipline's gate entirely; and a token ending in whitespace can never
+match. Seats: Mechanism Gamer, Axiom Breaker, Cascade Analyst.
+
+**R2 — two DEBT findings, and it CORRECTED the driver's stated guess.** The driver expected the hazard to
+be a maintainer COLLAPSING the two sets; the peer showed that direction is already guarded (the test
+reds) and that the real hazard is the OPPOSITE — adding a character to the SKIP set and forgetting the
+STRIP set. MEASURED: adding `-` to the skip set alone left the suite **211/211 GREEN** while a valid
+`-VERDICT: ALIGNED` was falsely REJECTED — a false-flag, the exact class §29a exists to remove, reachable
+by a one-character edit no test could see. 🔴 **Fixed STRUCTURALLY rather than with a test:** the strip
+set is now DERIVED from the skip set, so the dangerous direction is unrepresentable. **Control — same
+mutant either side: two literals → rejected; derived → accepted.** Also renamed both sets, which had been
+synonyms (`Ornament`/`Decoration`) and so invited the very merge that caused R1's false-GREEN.
+Seats: Dependency Cynic, Blindspot Auditor.
+
+**R3 — CLEAN. Empty findings array, and it named its own coverage gaps** (did not examine live suite
+execution, `TrimStart` under malformed Unicode, or downstream consumers of `IsDecoration`). It also
+**contradicted the driver twice, and measurement backed the peer both times.**
+- The driver feared the new static-init coupling would silently produce a wrong array. MEASURED: it
+  throws `TypeInitializationException` ← `ArgumentNullException (Parameter 'first')` on first access —
+  a loud crash, 0% reachable as a silent defect. Driver's concern REFUTED.
+- The peer argued R2 over-fixed and proposed a subset assertion in a test instead of production
+  machinery. **Diagnosis acknowledged, remedy REJECTED by measurement:** both fields are `private` and
+  the solution carries no `InternalsVisibleTo`, so that test cannot be written without exposing BOTH
+  arrays publicly — strictly more production surface than the single `using` the derivation costs.
+Seats: State Corruptor, Protocol Pedant, Boundary Smuggler, Resource Vampire.
+
+**AGY-NEGOTIATE — converged in ONE round, `[VERDICT: ALIGNED]`.** The peer's R1 verdict was
+`NEGOTIATE`: that `StartsWith`-on-conversational-text is a category error and a native tool call is the
+right framing. It conceded on measurement. 🔴 **A tool call is DOUBLY unavailable:**
+`BoundedView.cs:112-124` NULLIFIES `Answer` by design when a delta ends on a tool step (so a tool-call
+verdict would fail this very check), `clavity.proto` models no verdict field, and clavity does not own
+agy's tool registry. 🔴 **And `StartsWith` on the LAST line is load-bearing, not merely convenient** —
+any signal searching earlier in the body re-admits the mid-body-quote false positive that
+`TerminalTokenTests.cs:24-31` pins. **Closed; do not reopen without new transport facts.**
+
+**Stand-downs.** None. No finding was discarded below the floor in any round; the two refutations above
+are `REJECTED`-by-measurement, both quoted.
+
+**Suites at the reviewed sha:** `Clavity.Ls.Tests` **211/211**, `Clavity.Integration.Tests` **84/84**.
+The `CS8604` warning in `SemanticEcho.cs` is PRE-EXISTING — present in the session's first build, before
+any change in this range.
+
+🔴 **THE RUN'S ONE TRANSFERABLE LESSON. This capstone was nearly skipped.** The driver wrote a completion
+summary with a green table and called §29a shipped; the gate fires at exactly that moment, and running it
+then found a BLOCKING regression in code declared complete forty minutes earlier. **Five AGY-AFTER panel
+rounds over the plan never came near it — a panel reasons over an artifact and never runs it.** That is
+the whole argument for this discipline, reproduced in one session.
