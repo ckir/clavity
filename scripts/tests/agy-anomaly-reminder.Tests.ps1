@@ -314,6 +314,25 @@ Describe 'agy-anomaly-reminder.sh' {
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'does NOT count a bracketed type that appears MID-SENTENCE in prose' {
+        # THE '^' ANCHOR IS THE ASSERTION. The sibling test above uses prose that contains no bullet at
+        # all, so it passes with the anchor gone -- MEASURED, dropping '^' left the suite 29/29 GREEN.
+        # The anchor cannot be dropped by simply deleting the caret, because 'grep -c '- \[...'' makes
+        # grep parse the pattern as OPTIONS and exit 2, which the unreadable-file branch turns into a
+        # loud failure; the silent form is 'grep -c -- '- \[...'', and that is what this row pins.
+        $w = New-Workspace @(
+            'The count regex once matched a - [defect] mention written inside prose.',
+            '- [defect] the only real entry * a.cs:1 * 2026-07-20 * task=z'
+        )
+        $h = New-CleanHome
+        try {
+            $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '1 untriaged'
+            $r.StdOut   | Should -Not -Match '2 untriaged' -Because 'a mid-sentence bracketed type is prose, not an entry'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'is SILENT under a workspace .no-agy kill-switch' {
         $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-20 * task=z'); $h = New-CleanHome
         try {
@@ -431,6 +450,60 @@ Describe 'agy-anomaly-reminder.sh' {
             $r.StdOut   | Should -Match '2 untriaged'
             $r.StdOut   | Should -Match '2026-07-11'
             $r.StdOut   | Should -Not -Match '2026-08-01'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'extracts the date by ANCHORING on task=, not by counting to a fixed field' {
+        # THE FIELD INDEX OF THE OLDER DATE IS THE ASSERTION. Every sibling date test happens to put its
+        # OLDER date at field 3, so a hook rewritten as the brittle `awk -F' [*] ' '{ print $3 }'` still
+        # extracts it and every one of them passes -- MEASURED, that mutant left the suite 29/29 GREEN
+        # while silently destroying the other entry's date.
+        #
+        # Here the OLDER date sits at field 4 and the NEWER one at field 3, so `print $3` yields the
+        # newer date plus a non-date ('n/a') that the ISO filter drops, and the reported oldest flips.
+        $w = New-Workspace @(
+            '- [defect] x * a.cs:1 * 2026-08-01 * task=z',
+            '- [tool] a * b thing * n/a * 2026-07-05 * task=y'
+        )
+        $h = New-CleanHome
+        try {
+            $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '2 untriaged'
+            $r.StdOut   | Should -Match '2026-07-05' -Because 'the date is the field BEFORE task=, wherever that lands'
+            $r.StdOut   | Should -Not -Match '2026-08-01'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'wraps the date as "(oldest <date>)" rather than emitting it bare' {
+        # Every other date test asserts only that the bare date STRING appears, so the wrapper at
+        # agy-anomaly-reminder.sh:169 is invisible to them -- MEASURED, rewriting it to `oldest=" $oldest"`
+        # left the suite 29/29 GREEN. The wrapper is what makes the number legible to a reader; without
+        # it the notice reads "3 untriaged 2026-07-14 in ...", which parses as a fourth count.
+        $w = New-Workspace @('- [defect] x * a.cs:1 * 2026-07-14 * task=z')
+        $h = New-CleanHome
+        try {
+            $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '\(oldest 2026-07-14\)'
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'OMITS the oldest clause entirely when no entry carries a parseable date' {
+        # The false branch of `[ -n "$oldest" ]` at agy-anomaly-reminder.sh:169. Every fixture in this
+        # file carries a well-formed date, so nothing exercised it -- MEASURED, deleting the guard so the
+        # clause is appended unconditionally left the suite 29/29 GREEN while emitting the empty
+        # "(oldest )" to the owner.
+        #
+        # An entry with no task= field is the reachable shape: the awk anchor finds nothing to print, so
+        # the date comes back empty even though the entry itself is counted.
+        $w = New-Workspace @('- [defect] x with no task field * a.cs:1 * 2026-07-14')
+        $h = New-CleanHome
+        try {
+            $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
+            $r.ExitCode | Should -Be 0
+            $r.StdOut   | Should -Match '1 untriaged in ' -Because 'the count is followed directly by "in", with no clause between'
+            $r.StdOut   | Should -Not -Match 'oldest'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
