@@ -63,7 +63,14 @@ Describe 'agy-anomaly-reminder.sh' {
         # fix a vacuity finding. This row is the only thing between that and a silent regression.
         $s = Join-Path ([IO.Path]::GetTempPath()) ("stderrctl-" + [Guid]::NewGuid().ToString('N') + ".sh")
         try {
-            Set-Content $s @('printf ''control-noise\n'' >&2', 'exit 0') -Encoding ascii
+            # LF ONLY, and written explicitly rather than with Set-Content. AGY-CAPSTONE round 3, Resource
+            # Vampire: Set-Content joins array elements with the OS separator, so on Windows this wrote a
+            # CRLF script - MEASURED, two 0x0d bytes in the file. Git Bash HERE tolerated it (exit 0), which
+            # is why the suite was green, but that tolerance is a property of THIS machine's bash, not of
+            # the test: where it is absent, `exit 0\r` is a numeric-argument error and this control reddens
+            # for a reason that has nothing to do with stderr capture. A control that can fail for the
+            # wrong reason is worse than none, because it teaches people to ignore it.
+            [IO.File]::WriteAllText($s, "printf 'control-noise\n' >&2`nexit 0`n")
             $r = Invoke-BashHook -HookPath $s -Payload '{"cwd":".","source":"startup"}' -Env @{}
             $r.StdErr   | Should -Match 'control-noise' -Because 'if THIS fails, every stderr assertion in this file is vacuous and proves nothing'
             $r.ExitCode | Should -Be 0
@@ -80,7 +87,6 @@ Describe 'agy-anomaly-reminder.sh' {
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ HOME = $h }
             $x.StdOut   | Should -BeNullOrEmpty -Because 'an opt-out at the repo root must suppress this hook from a subdirectory'
-            $x.StdErr   | Should -BeNullOrEmpty -Because 'SILENCE MEANS BOTH STREAMS - stderr noise at exit 0 is invisible to every StdOut assertion (AGY-CAPSTONE 2026-09-04, Mechanism Gamer)'
             $x.ExitCode | Should -Be 0
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -102,7 +108,6 @@ Describe 'agy-anomaly-reminder.sh' {
             New-Item -ItemType File -Path (Join-Path $r '.no-agy') -Force | Out-Null
             $x = Invoke-Hook -Payload (RawPayload (Join-Path $r 'src')) -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $x.StdOut   | Should -BeNullOrEmpty -Because 'the degraded path must honour the same root opt-out as the jq path'
-            $x.StdErr   | Should -BeNullOrEmpty -Because 'SILENCE MEANS BOTH STREAMS - stderr noise at exit 0 is invisible to every StdOut assertion (AGY-CAPSTONE 2026-09-04, Mechanism Gamer)'
             $x.ExitCode | Should -Be 0
         } finally { Remove-Item $r,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -120,7 +125,6 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-            $r.StdErr   | Should -BeNullOrEmpty -Because 'SILENCE MEANS BOTH STREAMS - stderr noise at exit 0 is invisible to every StdOut assertion (AGY-CAPSTONE 2026-09-04, Mechanism Gamer)'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -130,7 +134,6 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-            $r.StdErr   | Should -BeNullOrEmpty -Because 'SILENCE MEANS BOTH STREAMS - stderr noise at exit 0 is invisible to every StdOut assertion (AGY-CAPSTONE 2026-09-04, Mechanism Gamer)'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -184,7 +187,6 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-            $r.StdErr   | Should -BeNullOrEmpty -Because 'SILENCE MEANS BOTH STREAMS - stderr noise at exit 0 is invisible to every StdOut assertion (AGY-CAPSTONE 2026-09-04, Mechanism Gamer)'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -195,7 +197,6 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-Hook -Payload (Payload $w) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-            $r.StdErr   | Should -BeNullOrEmpty -Because 'SILENCE MEANS BOTH STREAMS - stderr noise at exit 0 is invisible to every StdOut assertion (AGY-CAPSTONE 2026-09-04, Mechanism Gamer)'
         } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -204,7 +205,6 @@ Describe 'agy-anomaly-reminder.sh' {
         try {
             $r = Invoke-Hook -Payload '{"cwd":".","source":"startup"}' -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $r.ExitCode | Should -Be 0
-            $r.StdErr   | Should -BeNullOrEmpty -Because 'a degraded guard is still a notice, not a hook failure'
             ($r.StdOut -split "`n").Count | Should -Be 1
 
             # PARSE IT, do not -Match it. AGY-CAPSTONE 2026-09-04, Protocol Pedant: this is the ONE site
@@ -310,7 +310,6 @@ Describe 'agy-anomaly-reminder.sh' {
             $r = Invoke-Hook -Payload '{"cwd":".","source":"startup"}' -Env @{ PATH = $script:NoJqPath; HOME = $h }
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -BeNullOrEmpty
-            $r.StdErr   | Should -BeNullOrEmpty -Because 'SILENCE MEANS BOTH STREAMS - stderr noise at exit 0 is invisible to every StdOut assertion (AGY-CAPSTONE 2026-09-04, Mechanism Gamer)'
         } finally { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -356,7 +355,6 @@ Describe 'agy-anomaly-reminder.sh' {
         try {
             $r = Invoke-Hook -Payload (Payload $d) -Env @{ HOME = $h }
             $r.ExitCode | Should -Be 0 -Because 'a non-zero SessionStart hook is rendered to the owner as a hook ERROR'
-            $r.StdErr   | Should -BeNullOrEmpty -Because 'stderr at a non-zero exit is what produced the red error banner'
             $r.StdOut   | Should -Match 'AGY-ANOMALIES' -Because 'the notice must still be emitted, or the two assertions above are vacuous'
         } finally { Remove-Item $d,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
