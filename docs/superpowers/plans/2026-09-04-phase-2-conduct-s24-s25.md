@@ -190,22 +190,38 @@ Describe 'check-capstone-new-code' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'does NOT desync on a status it does not know' {
-        # AGY-AFTER round 2, Cascade Analyst, attacking round 1's OWN FIX. An unhandled status letter
-        # left its path unconsumed, desyncing the index so the NEXT path was read as a status - and a
-        # path starting with 'A' then registered as a phantom new file. The exhaustive else prevents
-        # it. A plain modify-only range must stay silent no matter how many files it touches.
+    It 'stays in sync when a two-path RENAME is interleaved with delete and modify' {
+        # AGY-AFTER round 3, Assertion Strength Auditor, killed this row's PREVIOUS form as VACUOUS -
+        # correctly. That version fed the parser a modify-only range, and `M` was handled even by the
+        # broken parser, so it stayed green over the very defect it claimed to pin.
+        #
+        # MEASURED while folding: a commit-to-commit `git diff --name-status` emits only A/C/D/M/R/T.
+        # U (unmerged) needs an index or worktree diff, X is a bug marker, B needs -B. The broken
+        # parser handled ALL SIX, so the desync it was accused of is UNREACHABLE at this call site -
+        # the exhaustive `else` is defensive, not a fix for a live bug, and this row must therefore
+        # pin something that IS reachable rather than pretending otherwise.
+        #
+        # What IS reachable is a desync in the TWO-PATH branch: R consumes two entries, so a range
+        # mixing R with single-path statuses is where an off-by-one actually bites. The deleted file
+        # is named to start with 'A' so that any desync surfaces loudly as a phantom new-file hit.
         $r = New-Repo
         try {
             Push-Location $r
-            foreach ($n in 1..4) { Set-Content -Path "src/Afile$n.ps1" -Value "Write-Output $n" }
-            git add -A 2>&1 | Out-Null; git commit -qm many 2>&1 | Out-Null
-            foreach ($n in 1..4) { Add-Content -Path "src/Afile$n.ps1" -Value "# touched" }
-            git commit -qam touch 2>&1 | Out-Null
+            Set-Content -Path 'src/Aoriginal.ps1' -Value ("Write-Output 1`n" * 12)
+            Set-Content -Path 'src/Adoomed.ps1'   -Value "Write-Output 2"
+            Set-Content -Path 'src/keeper.ps1'    -Value "Write-Output 3"
+            git add -A 2>&1 | Out-Null; git commit -qm seed2 2>&1 | Out-Null
+            git mv src/Aoriginal.ps1 src/Amoved.ps1 2>&1 | Out-Null   # R: two paths
+            git rm -q src/Adoomed.ps1 2>&1 | Out-Null                  # D: one path
+            Add-Content -Path 'src/keeper.ps1' -Value "# touched"      # M: one path
+            git commit -qam mixed 2>&1 | Out-Null
             Pop-Location
             $res = Invoke-Checker $r 'HEAD~1'
-            $res.ExitCode | Should -Be 0 -Because 'modifying files whose names begin with A creates nothing'
-            $res.Out | Should -Not -Match 'new-file'
+            # The rename IS a new path, so the trigger fires - but on the RENAME only.
+            $res.ExitCode | Should -Be 3
+            $res.Out | Should -Match 'src/Amoved\.ps1'
+            $res.Out | Should -Not -Match 'Adoomed' -Because 'a DELETED file is not a new file; seeing it here means the two-path branch desynced'
+            $res.Out | Should -Not -Match 'keeper'  -Because 'a MODIFIED file is not a new file'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -350,6 +366,10 @@ $DeclarationPatterns = @(
     # round 2 (Mechanism Gamer) caught that fold 4 left this bypass open: nest the new logic in a
     # constructor and the trigger stays silent. Access modifier, then a Capitalized name, then '('.
     '^\+\s*(public|private|internal|protected)\s+[A-Z][A-Za-z0-9_]*\s*\('
+    # STATIC CONSTRUCTORS carry NO access modifier at all - `static MyClass()` - so the pattern above
+    # cannot see them either. AGY-AFTER round 3 (Cascade Analyst) caught that round 2's constructor
+    # fix left this last sliver of the bypass open.
+    '^\+\s*static\s+[A-Z][A-Za-z0-9_]*\s*\(\s*\)'
     # TUPLE RETURNS start with a parenthesis - `public (int, int) Get()` - which the two-identifier
     # pattern also misses. Same round, same seat.
     '^\+\s*(public|private|internal|protected)\s+(static\s+|async\s+)*\([^)]*\)\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
@@ -884,12 +904,29 @@ measured.
 
 - [ ] **Step 2: Add the same section to `adversarial-panel-review/SKILL.md`**
 
-Insert before its `## Disposition of findings (AGY-SCOPE)` heading. Use the identical text from Step 1 **except** the first paragraph, which names this discipline's own material class:
+Insert before its `## Disposition of findings (AGY-SCOPE)` heading.
+
+🔴 **DO NOT COPY STEP 1'S TEXT WHOLESALE.** AGY-AFTER round 3 (Contract Archaeologist) caught an earlier draft saying "use the identical text except the first paragraph" — which would have injected **`agy-test-audit`'s token names** (`[VERDICT: EXHAUSTIVE]`, `[VERDICT: GAPS FOUND]`) into the panel skill, whose actual terminal contract is `PANEL VERDICT`. An agent obeying that text would emit the wrong token and be reported as a truncated reply. **TWO paragraphs differ, not one.** Use Step 1's text with BOTH of these substituted:
+
+First paragraph — this discipline's own material class:
 
 ```markdown
 Engage negotiation ONLY on a **material** disagreement - one that changes the artifact's correctness,
 safety, contract behaviour or completeness. Style, naming and trivia never qualify; you yield on those.
 ```
+
+Impasse paragraph — this discipline's own terminal contract:
+
+```markdown
+🔴 **AN IMPASSE EMITS NO NEW TOKEN. Do not invent one.** This discipline closes every round with a
+single `PANEL VERDICT` line, and that does not change. **An impasse is a per-finding disposition, not a
+round outcome:** the disputed finding resolves to `UNVERIFIED-ACCEPTED: <finding>` once your human has
+taken the tie-break, and the round still closes with its own `PANEL VERDICT`. `UNVERIFIED-ACCEPTED`
+exists in the AGY-SCOPE set for exactly this - "neither provable nor refutable, and the owner accepted
+the risk".
+```
+
+⚠ **This skill is NOT enrolled in `check-agy-discipline-skills.ps1`'s `$skills` list** (it carries non-ASCII and no marker constant), so the linter will not catch a wrong token name here. The `$disciplineNames` check added in Task 6 pins only the section's PRESENCE, not its contents. **Read what you paste.**
 
 ⚠ **This skill already carries a one-substantive-counter-turn rule in its Step 3.** Do not duplicate it — add a sentence there pointing at this section as the bounded escalation when one turn does not settle a material disagreement, rather than leaving two protocols that a reader must reconcile.
 
@@ -1004,6 +1041,8 @@ foreach ($d in $disciplineNames) {
     }
 }
 ```
+
+✅ **This will NOT break the two skills that already have the section — MEASURED 2026-09-04, do not re-raise.** AGY-AFTER round 3 (Regression Simulator) predicted this check would fail CI by faulting `agy-capstone` for a missing `MAX_NEGOTIATE_ROUNDS`. **That is false.** `grep -c 'MAX_NEGOTIATE_ROUNDS'` returns `agy-first` = 1, `agy-capstone` = 1, `agy-test-audit` = 0, `adversarial-panel-review` = 0, and the capstone's is at `agy-capstone/SKILL.md:391` — `- **Round cap:** \`MAX_NEGOTIATE_ROUNDS = 2\`.` The two zeros are exactly the two skills Task 5 fixes, which is the intended state.
 
 - [ ] **Step 4: Run to verify it passes**
 
