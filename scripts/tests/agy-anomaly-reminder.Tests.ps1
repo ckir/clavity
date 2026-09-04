@@ -163,6 +163,64 @@ Describe 'agy-anomaly-reminder.sh' {
         }
     }
 
+    It 'the DEGRADED path ALSO falls back to the process directory when cwd cannot be recovered' {
+        # AGY-CAPSTONE round 7, Coverage Adversary - and this one is MY incomplete fold. Round 6 proved
+        # the fallback exists at BOTH line 46 (degraded) and line 85 (jq), SAID SO IN ITS OWN COMMIT
+        # MESSAGE, and then routed both new rows through the jq path only. MEASURED: deleting line 46
+        # ALONE left the suite 27/27 GREEN. Same shape as rounds 2 and 3 - fix one site, miss its twin.
+        #
+        # ONE row covers both payload shapes here, unlike the jq path which needed two: the degraded path
+        # recovers cwd with a bash regex over the RAW payload, so a malformed payload and an absent key
+        # both simply fail to match and land on the same fallback. There is no `// "."` default to split
+        # them, because there is no jq.
+        #
+        # The observable difference is the KILL-SWITCH. With the fallback, cwd_path is "." and a .no-agy
+        # in the process directory silences the hook; without it, cwd_path is empty, the probe degrades to
+        # "/.no-agy", and the hook warns instead.
+        $w = New-Workspace $null; $h = New-CleanHome
+        $prevLoc = Get-Location; $prevEnv = [Environment]::CurrentDirectory
+        try {
+            Set-Location $w; [Environment]::CurrentDirectory = $w
+
+            # CONTROL FIRST, and it is the load-bearing half: with no .no-agy the same call MUST warn, or
+            # the silence below would prove only that the degraded path says nothing in general.
+            $before = Invoke-Hook -Payload 'not json at all' -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $before.StdOut | Should -Match 'guard inactive' -Because 'without the opt-out this call must warn, or the assertion below is vacuous'
+
+            New-Item -ItemType File -Path (Join-Path $w '.no-agy') -Force | Out-Null
+            $r = Invoke-Hook -Payload 'not json at all' -Env @{ PATH = $script:NoJqPath; HOME = $h }
+            $r.StdOut   | Should -BeNullOrEmpty -Because 'the degraded fallback must resolve cwd to the process directory, where .no-agy silences it'
+            $r.ExitCode | Should -Be 0
+        } finally {
+            Set-Location $prevLoc; [Environment]::CurrentDirectory = $prevEnv
+            Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'finds the repo root when .git is a FILE (worktree or submodule), not a directory' {
+        # AGY-CAPSTONE round 7, Fixture Monoculture. The probe is `[ -e "$_d/.git" ]` and NOT `-d`
+        # precisely so a worktree or submodule - where .git is a FILE holding "gitdir: ..." - is
+        # recognised; the hook's own comment says so in as many words. But New-TempRepo always runs
+        # `git init`, which creates a DIRECTORY, so every fixture in this suite varied in one dimension
+        # and that support was never exercised. MEASURED: changing both probes to `-d` left the suite
+        # 27/27 GREEN - a comment promising worktree support with nothing behind it.
+        $w = Join-Path ([IO.Path]::GetTempPath()) ("anom-wt-" + [Guid]::NewGuid().ToString('N'))
+        $h = New-CleanHome
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $w '.clavity') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $w 'src') -Force | Out-Null
+            Set-Content (Join-Path $w '.clavity/local-anomalies.md') `
+                "# Untriaged anomalies`n`n- [defect] x * a.cs:1 * 2026-07-20 * task=z" -Encoding ascii
+            # THE POINT OF THE FIXTURE: .git is a FILE here, exactly as git writes it in a worktree.
+            Set-Content (Join-Path $w '.git') 'gitdir: /somewhere/else/.git/worktrees/wt' -Encoding ascii
+            (Get-Item (Join-Path $w '.git')).PSIsContainer | Should -BeFalse -Because 'the fixture is worthless unless .git really is a FILE'
+
+            $x = Invoke-Hook -Payload (RawPayload (Join-Path $w 'src')) -Env @{ HOME = $h }
+            $x.StdOut   | Should -Match '1 untriaged' -Because 'the walk must recognise a FILE .git as the repo root and find the anomalies file above it'
+            $x.ExitCode | Should -Be 0
+        } finally { Remove-Item $w,$h -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     # --- .no-agy in the SUBDIRECTORY the session runs from, repo root UNMARKED --------------------
     # AGY-CAPSTONE round 4, Coverage Adversary. The kill-switch is
     #   [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]
