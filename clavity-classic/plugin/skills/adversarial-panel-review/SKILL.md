@@ -188,7 +188,9 @@ folding anyway is the same rubber-stamping this step forbids in the other direct
 capitulation (folding purely because agy asserted something) nor reflexive dismissal (waving a finding off
 as "unverified" with no actual counter-argument) is acceptable — engage with genuine respect, but respect is
 not the same thing as credulity. This one negotiation turn is a single extra exchange, not a full panel
-round: it does not consume or reset the round budget tracked in Step 4/Step 5.
+round: it does not consume or reset the round budget tracked in Step 4/Step 5. If that one counter-turn
+does not settle a **material** disagreement, escalate to the bounded "AGY-NEGOTIATE" section below rather
+than extending this single exchange indefinitely.
 
 **Frame that counter-turn the way Step 2 frames the review: give it the FILE and LINE and ask what it
 measures there — do not paste your own measurement and invite it to concede.** A peer handed your evidence
@@ -240,6 +242,42 @@ auto-stop. (This is the same halt-and-ask mechanism as the agy-escalation gate i
 human — but a distinct terminal outcome.) If there is no operator to ask (a non-interactive run), reaching
 the cap is itself a hard stop, and the run reports "cap-reached" in its final disposition rather than
 continuing or hanging.
+
+## AGY-NEGOTIATE (conditional sub-protocol)
+
+Engage negotiation ONLY on a **material** disagreement - one that changes the artifact's correctness,
+safety, contract behaviour or completeness. Style, naming and trivia never qualify; you yield on those.
+
+**SHIP THE MECHANISM; AGREEMENT IS NOT THE SUCCESS CRITERION.** The stopping condition is EXHAUSTION OF
+EVIDENCE, not consensus. Once both sides have put one round of MEASURED proof on the table, an unresolved
+divergence is a legitimate terminal state - hand your human both positions with their evidence.
+
+- **Round cap:** `MAX_NEGOTIATE_ROUNDS = 2` (tunable). Round 1: you present the measurement, the peer
+  counters. Round 2: you attempt a synthesis taking the best of both.
+- **Impasse (no forced synthesis):** if not converged at the cap, declare **IMPASSE**, document both
+  positions plainly in-chat with their measured support, and hand your human the tie-break. **Do not
+  fabricate agreement**, and do not concede a measured position to reach the stopping condition.
+- **Straight to your human with NO negotiation at all:** a material design fork, a security boundary, or
+  an architectural axiom. The moment the two of you disagree on a load-bearing shape, the human decides.
+- **Manual backstop:** your human can type "negotiate with agy" to trigger this protocol on any observed
+  disagreement, regardless of what token was emitted.
+
+**AN IMPASSE EMITS NO NEW TOKEN. Do not invent one.** This discipline closes every round with a
+single `PANEL VERDICT` line, and that does not change. **An impasse is a per-finding disposition, not a
+round outcome:** the disputed finding resolves to `UNVERIFIED-ACCEPTED: <finding>` once your human has
+taken the tie-break, and the round still closes with its own `PANEL VERDICT`. `UNVERIFIED-ACCEPTED`
+exists in the AGY-SCOPE set for exactly this - "neither provable nor refutable, and the owner accepted
+the risk". A finding can be TRUE while the mechanism the peer gives for it is FALSE. Dispose of the
+FINDING on its own merits and record YOUR measured mechanism, never the peer's disputed one - do not
+reject a real finding because its stated cause was wrong, and do not write a cause you could not
+reproduce into the ledger.
+
+**Why agreement is the wrong criterion, measured:** across an 8-round capstone roughly 60% of this peer's
+findings were confirmed and 40% were refuted - a fabricated census string, a `chmod 000` trigger that does
+not exist on this platform, an ARG_MAX ceiling that measured fine at 12000 files. An agreement requirement
+means burning rounds arguing the peer out of those, or conceding to move on. Worse, under pressure to
+agree two models will synthesise a FABRICATED COMPROMISE that neither originally proposed and neither has
+measured.
 
 ## Disposition of findings (AGY-SCOPE)
 

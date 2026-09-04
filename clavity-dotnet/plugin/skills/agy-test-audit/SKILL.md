@@ -233,6 +233,45 @@ each of which produced a real finding on 2026-08-19:
 **A payload whose questions all have knowable answers is not asking anything.** If you can predict every
 answer, you are seeking agreement, not review.
 
+## AGY-NEGOTIATE (conditional sub-protocol)
+
+Engage negotiation ONLY on a **material** disagreement - one that changes what the suite actually
+guarantees: a claimed gap you believe is already covered, or a covered behaviour the peer says is not.
+Style, naming and trivia never qualify; you yield on those.
+
+**SHIP THE MECHANISM; AGREEMENT IS NOT THE SUCCESS CRITERION.** The stopping condition is EXHAUSTION OF
+EVIDENCE, not consensus. Once both sides have put one round of MEASURED proof on the table, an unresolved
+divergence is a legitimate terminal state - hand your human both positions with their evidence.
+
+- **Round cap:** `MAX_NEGOTIATE_ROUNDS = 2` (tunable). Round 1: you present the measurement, the peer
+  counters. Round 2: you attempt a synthesis taking the best of both.
+- **Impasse (no forced synthesis):** if not converged at the cap, declare **IMPASSE**, document both
+  positions plainly in-chat with their measured support, and hand your human the tie-break. **Do not
+  fabricate agreement**, and do not concede a measured position to reach the stopping condition.
+- **Straight to your human with NO negotiation at all:** a material design fork, a security boundary, or
+  an architectural axiom. The moment the two of you disagree on a load-bearing shape, the human decides.
+- **Manual backstop:** your human can type "negotiate with agy" to trigger this protocol on any observed
+  disagreement, regardless of what token was emitted.
+
+**AN IMPASSE EMITS NO NEW TOKEN. Do not invent one.** This discipline's terminal tokens are
+`[VERDICT: EXHAUSTIVE]`, `[VERDICT: GAPS FOUND]` and `[VERDICT: agy-required-but-unreachable]`, and that
+list is enforced mechanically by `scripts/check-agy-discipline-skills.ps1` - a `[VERDICT: NEGOTIATE]`
+here would fail the driver's own contract check. **An impasse is a per-finding disposition, not a round
+outcome:** the disputed finding resolves to `UNVERIFIED-ACCEPTED: <finding>` once your human has taken
+the tie-break, and the ROUND still terminates on its own existing token. `UNVERIFIED-ACCEPTED` exists in
+the AGY-SCOPE set for exactly this - "neither provable nor refutable, and the owner accepted the risk".
+A finding can be TRUE while the mechanism the peer gives for it is FALSE. Dispose of the FINDING on its
+own merits and record YOUR measured mechanism, never the peer's disputed one - do not reject a real
+finding because its stated cause was wrong, and do not write a cause you could not reproduce into the
+ledger.
+
+**Why agreement is the wrong criterion, measured:** across an 8-round capstone roughly 60% of this peer's
+findings were confirmed and 40% were refuted - a fabricated census string, a `chmod 000` trigger that does
+not exist on this platform, an ARG_MAX ceiling that measured fine at 12000 files. An agreement requirement
+means burning rounds arguing the peer out of those, or conceding to move on. Worse, under pressure to
+agree two models will synthesise a FABRICATED COMPROMISE that neither originally proposed and neither has
+measured.
+
 ## Disposition of findings (AGY-SCOPE)
 
 Every finding raised in any round resolves to EXACTLY ONE of these five tokens. The set is closed -
