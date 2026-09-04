@@ -267,6 +267,22 @@ case "$mode" in
             echo "agy-mark stamp: need <discipline> <consult-cascade-id> <review-cascade-id>" >&2
             exit 64
         fi
+        # A cascade id containing whitespace corrupts the log line's POSITIONAL fields below (a
+        # reader parsing field 5 as the isolation token would read a fragment of the id instead).
+        # Reject at the door - do NOT reformat the record; its field order and separators are a
+        # contract other rows already exist in.
+        case "$consult_id" in
+            *[[:space:]]*)
+                echo "agy-mark stamp: consult-cascade-id must not contain whitespace, got: [$consult_id]" >&2
+                exit 64
+                ;;
+        esac
+        case "$review_id" in
+            *[[:space:]]*)
+                echo "agy-mark stamp: review-cascade-id must not contain whitespace, got: [$review_id]" >&2
+                exit 64
+                ;;
+        esac
         if [ "$consult_id" = "$review_id" ]; then
             isolation="SHARED-CONTEXT"
         else

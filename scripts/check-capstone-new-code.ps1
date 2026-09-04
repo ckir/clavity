@@ -51,6 +51,10 @@ $DeclarationPatterns = @(
     '^\+\s*function\s+[A-Za-z_]'                       # PowerShell, bash 'function f'
     '^\+\s*[A-Za-z_][A-Za-z0-9_]*\s*\(\)\s*\{'         # bash 'f() {'
     '^\+\s*(pub\s+)?(async\s+)?fn\s+[A-Za-z_]'         # Rust
+    '^\+\s*(pub\s+)?(struct|enum|trait|union|type)\s+[A-Za-z_]'  # Rust TYPE declarations (FIX 2,
+        # adversarial capstone round 2026-09-04): the fn pattern above is function-only, so a new
+        # `pub struct`/`pub enum` with no fn anywhere in the diff bypassed the trigger entirely -
+        # unlike C#, whose patterns already cover class/record/struct/interface/enum.
     '^\+\s*(def|class)\s+[A-Za-z_]'                    # Python
 )
 
@@ -155,12 +159,13 @@ try {
 
     $currentFile = $null
     $currentIsTest = $false
+    $currentIsCode = $false
     $hunkHeader = $null
     $hunkAdds = 0
     $hunkDels = 0
 
     function Complete-Hunk {
-        if ($null -ne $script:hunkHeader -and -not $script:currentIsTest) {
+        if ($null -ne $script:hunkHeader -and -not $script:currentIsTest -and $script:currentIsCode) {
             # Rule C: git named an enclosing function AND both sides are substantial.
             if ($script:hunkHeader.Trim() -ne '' -and $script:hunkAdds -ge 5 -and $script:hunkDels -ge 5) {
                 $script:fired.Add("whole-function-rewrite: $($script:currentFile) [$($script:hunkHeader.Trim())]")
@@ -174,6 +179,7 @@ try {
             Complete-Hunk
             $currentFile = $Matches[1].Trim()
             $currentIsTest = Test-IsTestPath $currentFile
+            $currentIsCode = Test-IsCodeFile $currentFile
             continue
         }
         if ($line -match '^@@ [^@]+ @@(.*)$') {
@@ -182,6 +188,11 @@ try {
             continue
         }
         if ($currentIsTest) { continue }
+        # FIX 1 (owner ruling 2026-09-04): Rule A is scoped to code-extension paths via
+        # Test-IsCodeFile, but Rules B/C read every non-test file's added lines regardless of
+        # extension - so a documentation-only change containing a declaration-shaped line (e.g.
+        # a README code sample) fired the mandatory consult. Mirror the same allow-list here.
+        if (-not $currentIsCode) { continue }
         if ($line -match '^\+' -and $line -notmatch '^\+\+\+') {
             $hunkAdds++
             # FIX 1: the C#-only set applies only when the current file is a .cs file - applying its

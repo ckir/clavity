@@ -368,4 +368,50 @@ Describe 'check-capstone-new-code' {
             $res.Out | Should -Match 'src/allowed\.ps1'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'does NOT fire on a docs-only change containing a declaration-shaped line' {
+        # FIX 1, adversarial capstone round 2026-09-04 - the most important of the three, because it
+        # violates an explicit owner ruling. Rule A was already restricted to CODE-extension paths
+        # (FIX 4), but Rules B and C read the patch body of EVERY file regardless of extension, so a
+        # brand-new README.md containing a declaration-shaped line (e.g. a code sample) still fired
+        # the mandatory consult. MEASURED before the fix: exit 3, `new-declaration: README.md :
+        # function Get-Thing { 1 }`.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'README.md' -Value @('# Notes', '', '```powershell', 'function Get-Thing { 1 }', '```')
+            git add README.md 2>&1 | Out-Null
+            git commit -qm docsample 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 0 -Because 'documentation must not fire the trigger even when it contains declaration-shaped text'
+            $res.Out | Should -Not -Match 'TRIGGER'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES on a Rust TYPE-only addition with no fn anywhere in the diff' {
+        # FIX 2, adversarial capstone round 2026-09-04. The Rust declaration pattern was
+        # function-only, so a new `pub struct`/`pub enum` addition with no `fn` bypassed the
+        # trigger entirely - unlike C#, whose patterns already cover
+        # class/record/struct/interface/enum. MEASURED before the fix: exit 0, "no new code".
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/lib.rs' -Value 'pub fn existing() {}'
+            git add src/lib.rs 2>&1 | Out-Null; git commit -qm seedrs 2>&1 | Out-Null
+            Set-Content -Path 'src/lib.rs' -Value @(
+                'pub fn existing() {}'
+                ''
+                'pub struct Config {'
+                '    pub name: String,'
+                '}'
+            )
+            git commit -qam addtype 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a new Rust type declaration is new shipped code even with no new fn'
+            $res.Out | Should -Match 'new-declaration'
+            $res.Out | Should -Match 'Config'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }

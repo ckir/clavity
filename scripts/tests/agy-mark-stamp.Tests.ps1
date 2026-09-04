@@ -78,4 +78,17 @@ Describe 'agy-mark.sh stamp' {
             Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'rejects a cascade id containing whitespace, and writes NO row' {
+        # FIX 3, adversarial capstone round 2026-09-04. A cascade id containing whitespace
+        # corrupted the log line's POSITIONAL fields - a reader parsing field 5 as the isolation
+        # token read a fragment of the id instead. MEASURED before the fix: exit 0, and the
+        # corrupted row landed in consults.log.
+        $r = New-Repo
+        try {
+            $res = Invoke-Stamp $r @('stamp','agy-capstone','id with spaces','other id')
+            $res.ExitCode | Should -Not -Be 0
+            Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
