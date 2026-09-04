@@ -35,7 +35,7 @@ orphaned entries. A routine diff-scoped run cannot see deleted code, so it canno
 
 ## clavity-dotnet
 
-_(none yet)_
+- [boundary] The UNC volume-root short-circuit in `agy-anomaly-reminder.sh`'s repository-root walk is not covered by any test, and cannot be: it is a LATENCY optimisation with no behavioural difference. MEASURED 2026-09-04 against a real reachable UNC path (`//localhost/C$/...`): stdout is byte-identical with the guard present and with both copies removed, because the walk finds no `.git` either way and falls back to the same root. The only possible oracle is wall-clock time, and this repo's timing discipline bars that from a suite - a figure needs a tool-idle machine and two runs quoting a range, none of which Pester can guarantee, so such a test would be flaky in CI and would erode trust in the other 25 rows. Raised by the agy peer as AGY-CAPSTONE round 5, Coverage Adversary, severity 1; the finding is TRUE - removing both guards leaves the suite 25/25 GREEN. * clavity-dotnet/plugin/hooks/agy-anomaly-reminder.sh:109 * compensation=owner-accepted:2026-09-04 the guard's own inline comment carries the measurement that justifies it (20314ms walking an unreachable //server/share/a/b/c vs 9282ms gated), and its failure mode is latency on an unreachable share, never a wrong answer * 2026-09-04
 
 ## clavity-classic
 
