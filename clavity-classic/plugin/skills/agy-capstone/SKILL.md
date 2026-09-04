@@ -383,6 +383,56 @@ something it no longer holds). Ledger entries are plain factual findings, not yo
   halt-and-ask re-triggers only if, after the authorized extension, findings are STILL live and no fresh
   override is given - so the ceiling holds without trapping you in an instant re-prompt loop.
 
+## The mandatory design consult when a round writes NEW CODE (ROADMAP section 24)
+
+A capstone round that has to DEVELOP NEW CODE must get an AGY-FIRST design consult on that code BEFORE
+the fold ships. This is not advisory and it is not your call.
+
+**MEASURED, and this is why the rule exists.** In the 8-round capstone `6c998ce..274afbd` (ledger
+`8c7bf18`) three pieces of new code were written mid-capstone, and **every one produced a defect in the
+very next round**: a recursive census whose exclusion boundary was a glob over a path we do not control;
+a chunked batch hasher whose `else return 1` sat on the left of a pipeline, so it ran in a subshell and
+reported SUCCESS on failure; and a digest function that returned a CONSTANT on a short count, which
+compares equal to itself and blinds the monitor. **The one piece that got a design consult first had
+three defects found BEFORE it shipped**, including a GNU-only `xargs -r` that would have made the digest
+a constant on macOS - blind while reporting clean.
+
+**The trigger is MECHANICAL and you do not evaluate it.** Run the checker:
+
+```bash
+pwsh -NoProfile -File scripts/check-capstone-new-code.ps1 -BaseRef "<this round's base sha>"
+```
+
+Exit `0` - no new code, proceed. Exit `3` - **consult required.** Exit `2` - the checker could not answer
+(an unresolvable ref); treat that as REQUIRED, never as "no".
+
+The trigger is: a **new file**, a **new function or class declaration**, or a **whole-function rewrite**,
+in **non-test** code. It is deliberately NOT line-count based - a line threshold is comment-sensitive, and
+this repository's folds are heavily commented, so a two-line behavioural change routinely exceeds ten
+lines.
+
+**PAUSE THE FOLD; DO NOT ABORT THE CAPSTONE.** An abort throws away the round's accumulated context and
+ledger for something one consult fixes. The round pauses, the consult runs, the round resumes.
+
+**Then record the isolation property.** Capture the cascade id of the consult (the `CascadeId` on the
+`agy_ask` result) and of the review round (the `CascadeId` from `agy_status`), and stamp them:
+
+```bash
+bash "<BASE>/../../hooks/agy-mark.sh" stamp "agy-capstone" "<consult-cascade-id>" "<review-cascade-id>"
+```
+
+**This is a RECORD, never a GATE.** It always exits 0. A `SHARED-CONTEXT` row means the peer reviewed a
+design it had itself endorsed in the same context window; surface that row to your human at the GREEN
+adjudication so they can demand a fresh-cascade re-review if the design was load-bearing. Do NOT block on
+it, and do NOT skip the consult because it would be shared - **owner ruling 2026-09-04: record isolation,
+do not gate on it.** A blocking step would recreate exactly the skip-pressure this rule removes.
+
+**Why recorded rather than enforced, so nobody redesigns this by accident:** no tool in the
+clavity-dotnet MCP surface can start a fresh cascade - `agy_look`, `agy_status` and `agy_ask` all address
+the ACTIVE conversation - so structural separation is not an action the driver can take. It is available
+only by a human cycling the peer. The rule is written to that weaker transport because these skills ship
+byte-identical across both plugin halves.
+
 ## AGY-NEGOTIATE (auto-fires on material disagreement)
 When a **material** disagreement (architecture / performance / security - never style / naming / trivia)
 surfaces inside a round, run AGY-NEGOTIATE **immediately** - the moment a
