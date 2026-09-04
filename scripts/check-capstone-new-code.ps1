@@ -29,11 +29,40 @@ function Test-IsTestPath([string]$p) {
     return $false
 }
 
-# A new DECLARATION, per language. Anchored on the '+' of the diff so only ADDED lines count.
+# CODE extensions Rule A is allowed to fire on (FIX 4, owner ruling 2026-09-04). Section 24's own
+# wording is "NON-TEST shipped CODE" - a new .md/.json/.yml is not code, and this repo tracks 264
+# markdown files and adds specs, roadmap sections and ledger rows constantly, so an unscoped Rule A
+# fires on documentation-only commits until the gate is noise the driver waves through. .yml/.yaml
+# is admitted ONLY under a CI workflow path because a workflow file is executable configuration; a
+# random data YAML is not. Do NOT "simplify" this back to "any extension" or drop the workflow-path
+# qualifier for yml/yaml - both are load-bearing per the ruling.
+$CodeExtensions = @('.ps1', '.sh', '.cs', '.rs', '.py', '.js', '.ts')
+
+function Test-IsCodeFile([string]$p) {
+    $ext = [System.IO.Path]::GetExtension($p)
+    if ($CodeExtensions -contains $ext) { return $true }
+    if (($ext -eq '.yml' -or $ext -eq '.yaml') -and $p -match '(^|/)\.github/workflows/') { return $true }
+    return $false
+}
+
+# A new DECLARATION, per language, for files any extension applies to. Anchored on the '+' of the
+# diff so only ADDED lines count.
 $DeclarationPatterns = @(
     '^\+\s*function\s+[A-Za-z_]'                       # PowerShell, bash 'function f'
     '^\+\s*[A-Za-z_][A-Za-z0-9_]*\s*\(\)\s*\{'         # bash 'f() {'
     '^\+\s*(pub\s+)?(async\s+)?fn\s+[A-Za-z_]'         # Rust
+    '^\+\s*(def|class)\s+[A-Za-z_]'                    # Python
+)
+
+# C#-ONLY declaration patterns (FIX 1, code-quality review 2026-09-04). Applied only when the
+# current file's path ends in '.cs' - the parsing loop already tracks it as $currentFile. All five
+# ORIGINAL patterns below require a literal access-modifier first token, so a modifier-less
+# declaration - legal, idiomatic C#, e.g. `static void Spawn(LaunchCommand cmd, bool wait)` at
+# clavity-dotnet/src/Clavity.Cli/Program.cs:117 - evaded every one of them. Making the modifier
+# optional in a pattern applied to EVERY file (as the last entry below does) would, if applied
+# repo-wide, fire on ordinary two-identifier lines in bash/PowerShell diffs - so that entry is
+# scoped to C# files only, alongside the five unchanged originals.
+$CSharpDeclarationPatterns = @(
     '^\+\s*(public|private|internal|protected)\s+.*\b(class|record|struct|interface|enum)\s+'  # C# types
     # C# METHODS, not just types. AGY-AFTER round 1 (Mechanism Gamer) caught this: with types-only,
     # an agent that wants to skip the consult drops its new code into a `public void Foo()` on an
@@ -52,7 +81,11 @@ $DeclarationPatterns = @(
     # TUPLE RETURNS start with a parenthesis - `public (int, int) Get()` - which the two-identifier
     # pattern also misses. Same round, same seat.
     '^\+\s*(public|private|internal|protected)\s+(static\s+|async\s+)*\([^)]*\)\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
-    '^\+\s*(def|class)\s+[A-Za-z_]'                    # Python
+    # MODIFIER-LESS method/constructor declarations (FIX 1, new). No access modifier is required by
+    # C#; a member defaults to `private` (or, on a top-level type, `internal`) when none is written.
+    # An optional run of static/async/override/virtual/sealed, then a return type, then a name, then
+    # '('. Scoped to .cs files only - see the block comment above.
+    '^\+\s*(static\s+|async\s+|override\s+|virtual\s+|sealed\s+)*[A-Za-z_][A-Za-z0-9_<>,\[\]\.\?]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
 )
 
 Push-Location $Root
@@ -77,13 +110,19 @@ try {
 
     $fired = [System.Collections.Generic.List[string]]::new()
 
-    # --- Rule A: a NEW FILE in non-test code -------------------------------------------------
+    # --- Rule A: a NEW FILE in non-test, non-generated, CODE-extension paths -----------------
     # -z gives NUL-separated, UNQUOTED paths. Without it git QUOTES any path containing a space or a
     # non-ASCII byte ("my file.ps1"), and the captured quotes then defeat Test-IsTestPath's anchors -
     # a path the exclusion should have caught sails through as shippable. The peer flagged this as the
     # one thing it could not judge without running it; measured, git does quote such paths, so -z is
     # the fix rather than a regex that strips quotes.
-    $nameStatus = (& git diff --name-status -z "$BaseRef..HEAD") -split "`0" | Where-Object { $_ -ne '' }
+    # Generated and vendored paths are excluded the same way the capstone excludes them from review -
+    # this call previously had no exclusions at all (FIX 2, code-quality review 2026-09-04) even
+    # though the comment always claimed it did, so a first-time-added package-lock.json fired
+    # `new-file`. Kept even with the FIX 4 extension allow-list below because '*.min.js' would
+    # otherwise pass the '.js' allow-list.
+    $nameStatus = (& git diff --name-status -z "$BaseRef..HEAD" -- . `
+        ':(exclude)*.lock' ':(exclude)*.min.js' ':(exclude)package-lock.json') -split "`0" | Where-Object { $_ -ne '' }
 
     # A RENAME and a COPY create a file too. `git diff --name-status` emits R### / C### with TWO paths
     # (old then new), so anchoring on '^A' alone - as this rule first did - misses every new file that
@@ -99,11 +138,11 @@ try {
         if ($status -match '^[RC]') {
             $null = $nameStatus[++$i]          # the OLD path, which we do not care about
             $path = $nameStatus[++$i]          # the NEW path, which is the one that now exists
-            if (-not (Test-IsTestPath $path)) { $fired.Add("new-file-via-$($status.Substring(0,1)): $path") }
+            if ((-not (Test-IsTestPath $path)) -and (Test-IsCodeFile $path)) { $fired.Add("new-file-via-$($status.Substring(0,1)): $path") }
         }
         else {
             $path = $nameStatus[++$i]          # EVERY other status carries exactly one path
-            if ($status -match '^A' -and -not (Test-IsTestPath $path)) { $fired.Add("new-file: $path") }
+            if ($status -match '^A' -and (-not (Test-IsTestPath $path)) -and (Test-IsCodeFile $path)) { $fired.Add("new-file: $path") }
         }
     }
 
@@ -145,7 +184,12 @@ try {
         if ($currentIsTest) { continue }
         if ($line -match '^\+' -and $line -notmatch '^\+\+\+') {
             $hunkAdds++
-            foreach ($pat in $DeclarationPatterns) {
+            # FIX 1: the C#-only set applies only when the current file is a .cs file - applying its
+            # modifier-optional entry to every file would false-positive on ordinary two-identifier
+            # lines in bash/PowerShell diffs.
+            $patternsToCheck = $DeclarationPatterns
+            if ($currentFile -match '\.cs$') { $patternsToCheck = $DeclarationPatterns + $CSharpDeclarationPatterns }
+            foreach ($pat in $patternsToCheck) {
                 if ($line -match $pat) {
                     $fired.Add("new-declaration: $currentFile : $($line.TrimStart('+').Trim())")
                     break

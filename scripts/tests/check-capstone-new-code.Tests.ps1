@@ -243,4 +243,129 @@ Describe 'check-capstone-new-code' {
             $res.Out | Should -Match 'could not resolve'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'FIRES on a modifier-less C# method added to an existing class' {
+        # FIX 1, code-quality review 2026-09-04, verified by measurement. All five ORIGINAL
+        # C#-related patterns require a literal access-modifier first token, so a modifier-less
+        # declaration - legal, idiomatic C#, e.g. `static void Spawn(LaunchCommand cmd, bool wait)`
+        # at clavity-dotnet/src/Clavity.Cli/Program.cs:117 - evaded every one of them. This row pins
+        # the new C#-only, modifier-optional entry.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/Spawner.cs' -Value @('public class Spawner', '{', '}')
+            git add src/Spawner.cs 2>&1 | Out-Null; git commit -qm cls 2>&1 | Out-Null
+            Set-Content -Path 'src/Spawner.cs' -Value @('public class Spawner', '{', '    static void Spawn(int n)', '    {', '    }', '}')
+            git commit -qam noaccessmod 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a modifier-less method is still new executable C# code'
+            $res.Out | Should -Match 'new-declaration'
+            $res.Out | Should -Match 'Spawn'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT fire on a newly added package-lock.json' {
+        # FIX 2, code-quality review 2026-09-04, verified by measurement. Rule A's --name-status
+        # call had NO exclusions even though the comment above it always claimed generated and
+        # vendored paths were excluded the same way Rules B/C exclude them - a first-time-added
+        # package-lock.json fired `new-file`.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'package-lock.json' -Value '{"name": "x", "lockfileVersion": 3}'
+            git add package-lock.json 2>&1 | Out-Null
+            git commit -qm lock 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 0 -Because 'package-lock.json is excluded the same way Rules B/C exclude it'
+            $res.Out | Should -Not -Match 'new-file'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES on a whole-function-rewrite that adds no new declaration' {
+        # FIX 3, code-quality review 2026-09-04. Rule C - the ONLY defense against a "gut and
+        # replace" edit that touches no declaration line - had ZERO test coverage before this row;
+        # nothing would have caught its `-ge 5` threshold regressing (e.g. drifting to `-gt 5` or
+        # any other boundary). The body below is replaced line-for-line (8 adds, 8 dels in one
+        # hunk, git names the enclosing function in the @@ header) without touching the `function`
+        # declaration line itself, so Rules A and B stay silent and only Rule C can fire.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/rewritten.ps1' -Value @(
+                'function Get-Census {'
+                '    param($x)'
+                '    $a = 1'
+                '    $b = 2'
+                '    $c = 3'
+                '    $d = 4'
+                '    $e = 5'
+                '    $f = 6'
+                '    $g = 7'
+                '    $h = 8'
+                '    return $h'
+                '}'
+            )
+            git add src/rewritten.ps1 2>&1 | Out-Null; git commit -qm seedfn 2>&1 | Out-Null
+            Set-Content -Path 'src/rewritten.ps1' -Value @(
+                'function Get-Census {'
+                '    param($x)'
+                '    $a = 11'
+                '    $b = 22'
+                '    $c = 33'
+                '    $d = 44'
+                '    $e = 55'
+                '    $f = 66'
+                '    $g = 77'
+                '    $h = 88'
+                '    return $h'
+                '}'
+            )
+            git commit -qam rewrite 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a whole-function-body rewrite is new logic even with no new declaration line'
+            $res.Out | Should -Match 'whole-function-rewrite'
+            $res.Out | Should -Match 'Get-Census'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT fire on a new documentation-only .md file' {
+        # FIX 4, owner ruling 2026-09-04, verified by measurement. Section 24's own wording is
+        # "NON-TEST shipped CODE" - a new markdown file is not code, and this repo tracks 264
+        # markdown files and adds specs/roadmap sections/ledger rows constantly, so an unscoped
+        # Rule A fires on documentation-only commits until the gate is noise the driver waves
+        # through.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            New-Item -ItemType Directory -Path (Join-Path $r 'docs') -Force | Out-Null
+            Set-Content -Path 'docs/NOTES.md' -Value '# notes'
+            git add -A 2>&1 | Out-Null
+            git commit -qm docs 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 0 -Because 'a new .md file is documentation, not code'
+            $res.Out | Should -Not -Match 'new-file'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'still FIRES on a new .ps1 file under the FIX 4 code-extension allow-list' {
+        # FIX 4 companion row: the allow-list must admit ordinary shipped code, not just exclude
+        # documentation. Pins that restricting Rule A to CODE extensions did not also silence it
+        # on the extensions it is supposed to catch.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/allowed.ps1' -Value "Write-Output 'x'"
+            git add src/allowed.ps1 2>&1 | Out-Null
+            git commit -qm addps1 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3
+            $res.Out | Should -Match 'new-file'
+            $res.Out | Should -Match 'src/allowed\.ps1'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
