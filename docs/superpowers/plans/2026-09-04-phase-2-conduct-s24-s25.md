@@ -60,6 +60,12 @@
 
 **How "whole-function rewrite" is detected mechanically:** git's own hunk header carries the enclosing function context (`@@ -10,8 +10,12 @@ function Foo-Bar`). A hunk whose header names a context AND which removes at least 5 lines AND adds at least 5 lines is a rewrite. This uses git's language-aware function detection rather than a hand-rolled parser.
 
+🔴 **A KNOWN, OWNER-ACCEPTED HOLE — recorded so it is a stated trade and not a silent gap (ruled 2026-09-04).** Because Rule C requires BOTH sides of the hunk, **purely additive logic inside an existing function does not fire the trigger.** MEASURED: appending 30 lines of new branching logic to an existing PowerShell function, with zero deletions, returns `exit 0`. That is the easiest available dodge — append rather than rewrite.
+
+**It is accepted deliberately, not overlooked.** Closing it means reintroducing a line-count threshold, and the `>10 lines` clause was dropped for a measured reason: this repository's folds are heavily commented, so a two-line behavioural change routinely exceeds ten lines and the clause fired constantly. **A gate that cries wolf gets waved through, which costs more than this hole does.** The consult still fires on every new file, every new declaration, and every whole-function rewrite.
+
+⚠ **Do not "fix" this in a later round without an owner ruling** — reversing it reverses a decision taken twice, on 2026-08-31 and again on 2026-09-04.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `scripts/tests/check-capstone-new-code.Tests.ps1`:
@@ -558,17 +564,41 @@ Expected: two long `Invoke-Pester @(...)` lines, at or near 101 and 108.
 
 Insert `'scripts/tests/check-capstone-new-code.Tests.ps1', ` into that array, matching the existing `'path', ` quoting and comma-space style exactly. **Keep it one line** — the recipe is a single shell command and breaking the array across lines changes the recipe's meaning.
 
-- [ ] **Step 3: Verify registration is now satisfied**
+- [ ] **Step 3: Add the `_partition.md` row — the justfile alone does NOT satisfy the oracle**
+
+🔴 **FOUND AT EXECUTION 2026-09-04; an earlier draft of this task named only the `justfile` and could never have reached its own oracle.** `scripts/tests/test-suite-registration.Tests.ps1:144` carries an `It` named *"the `_partition.md` runtimes table is a complete census of every TRACKED suite"*, and a second one, *"every `_partition.md` row states the CURRENT test count for its suite"*. **Registering in the justfile without adding a row makes the gate red.**
+
+Add a row to the fenced table under `## Measured runtimes` in `scripts/tests/_partition.md`, matching the existing column shape exactly and starting with the **BARE file name**, never a path:
+
+```
+check-capstone-new-code.Tests.ps1               <TIME>s   12 tests   <- SLOW, NEW 2026-09-04 (ROADMAP section 24 trigger)
+```
+
+⚠ **The TEST COUNT is enforced; the TIME is explicitly NOT.** That row's own comment says *"a time cannot be verified by reading it"* and the file calls its figures indicative. So the count must be exactly right (**12**), while the time is a recorded observation.
+
+🔴 **MEASURE THE TIME AT THE TOP LEVEL, NEVER IN A SUBAGENT, AND NEVER WHILE OTHER WORK IS RUNNING.** This repository's timing discipline is explicit: a wall-clock figure is a claim about a machine, agent work during a run is contention by construction, and only the top level can guarantee no concurrent tool calls. Take **two** runs, name the warm figure, and state that background load was uncontrolled.
+
+- [ ] **Step 4: Repair the STALE row this task exposed**
+
+⚠ **This gate was ALREADY RED before this plan started, and fixing it is a precondition for Step 5 — not scope creep.** `scripts/tests/_partition.md:554` reads `agy-anomaly-reminder.Tests.ps1 ... 20 tests`; **MEASURED 2026-09-04 that suite has 33.** The capstone grew it 20→29 and the AGY-TEST-AUDIT grew it 29→33, and neither fold updated the row. Correct the count to `33 tests`, leaving its time figure alone (the time is indicative and was not re-measured).
+
+**Re-count rather than trusting these numbers:** `grep -c "^    It '" scripts/tests/agy-anomaly-reminder.Tests.ps1`.
+
+- [ ] **Step 5: Verify registration is now satisfied**
 
 Run: `pwsh -NoProfile -Command "Invoke-Pester scripts/tests/test-suite-registration.Tests.ps1"`
 
 Expected: `Failed: 0`. This is the mechanical proof the suite is wired in — do not substitute eyeballing the justfile for it.
 
-- [ ] **Step 4: Commit**
+⚠ If it still reports failures, **read WHICH assertion failed** before changing anything. A census failure names the missing suite; a count failure names the suite whose number is wrong. They have different fixes and the same red.
+
+- [ ] **Step 6: Commit**
+
+Stage BOTH files — the justfile edit alone leaves the gate red, so committing it on its own would ship a known-red gate:
 
 ```bash
-git add justfile
-git commit -m "chore(s24): register the capstone new-code checker suite"
+git add justfile scripts/tests/_partition.md
+git commit -m "chore(s24): register the capstone new-code checker suite, and repair a stale partition row"
 ```
 
 ---
