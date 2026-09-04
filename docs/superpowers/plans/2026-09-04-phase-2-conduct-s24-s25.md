@@ -154,6 +154,58 @@ Describe 'check-capstone-new-code' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'FIRES on a new C# METHOD added to an existing class, not only on a new type' {
+        # AGY-AFTER round 1, Mechanism Gamer. A types-only regex is blind to the most common unit of
+        # new C# code, so an agent skips the consult by adding a method instead of a class.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/Thing.cs' -Value @('public class Thing', '{', '}')
+            git add src/Thing.cs 2>&1 | Out-Null; git commit -qm cls 2>&1 | Out-Null
+            Set-Content -Path 'src/Thing.cs' -Value @('public class Thing', '{', '    public void DoWork(int n)', '    {', '    }', '}')
+            git commit -qam method 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3
+            $res.Out | Should -Match 'new-declaration'
+            $res.Out | Should -Match 'DoWork'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES on a file that arrives by RENAME, not only by plain add' {
+        # AGY-AFTER round 1. '^A' alone misses R### and C### statuses, and a renamed file is a file
+        # that now exists at a path where it did not before.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/original.ps1' -Value ("function Get-Body { 1 }`n" * 12)
+            git add src/original.ps1 2>&1 | Out-Null; git commit -qm orig 2>&1 | Out-Null
+            git mv src/original.ps1 src/renamed.ps1 2>&1 | Out-Null
+            git commit -qm ren 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3
+            $res.Out | Should -Match 'src/renamed\.ps1'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'handles a path containing a SPACE without letting it defeat the test-path exclusion' {
+        # git QUOTES such paths in --name-status unless -z is used, and the quotes defeat the
+        # anchored exclusion patterns. The peer flagged this as the one thing it could not judge
+        # without running it; this row is the measurement.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            New-Item -ItemType Directory -Path (Join-Path $r 'scripts/tests') -Force | Out-Null
+            Set-Content -Path 'scripts/tests/my file.Tests.ps1' -Value "Describe 'x' { It 'y' { 1 | Should -Be 1 } }"
+            git add -- 'scripts/tests/my file.Tests.ps1' 2>&1 | Out-Null
+            git commit -qm spaced 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 0 -Because 'a spaced TEST path is still a test path'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'reports EVERY rule that fired, not just the first' {
         # A checker that stops at the first hit under-reports the blast radius, and the driver then
         # consults on one shape while shipping two.
@@ -169,6 +221,22 @@ Describe 'check-capstone-new-code' {
             $res.ExitCode | Should -Be 3
             $res.Out | Should -Match 'new-file'
             $res.Out | Should -Match 'new-declaration'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'REFUSES a base ref that resolves to HEAD, rather than reporting a clean empty range' {
+        # THE SKIP HOLE. The checker is mechanical, but its INPUT comes from the agent that would
+        # benefit from skipping the consult. Handed HEAD it sees an empty diff and, without this
+        # guard, returns exit 0 - handing that agent a clean bill of health as evidence.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/sneaky.ps1' -Value "function Get-Sneaky { 1 }"
+            git add src/sneaky.ps1 2>&1 | Out-Null; git commit -qm sneak 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD'
+            $res.ExitCode | Should -Be 2 -Because 'an empty range is an unanswerable question, not a negative answer'
+            $res.Out | Should -Match 'resolves to HEAD'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -235,6 +303,12 @@ $DeclarationPatterns = @(
     '^\+\s*[A-Za-z_][A-Za-z0-9_]*\s*\(\)\s*\{'         # bash 'f() {'
     '^\+\s*(pub\s+)?(async\s+)?fn\s+[A-Za-z_]'         # Rust
     '^\+\s*(public|private|internal|protected)\s+.*\b(class|record|struct|interface|enum)\s+'  # C# types
+    # C# METHODS, not just types. AGY-AFTER round 1 (Mechanism Gamer) caught this: with types-only,
+    # an agent that wants to skip the consult drops its new code into a `public void Foo()` on an
+    # EXISTING class and the trigger stays silent - which is the single most common unit of new C#
+    # code in this repository. Matches an access modifier followed by a return type and a call-shaped
+    # name, excluding control-flow keywords that also take parentheses.
+    '^\+\s*(public|private|internal|protected)\s+(static\s+|async\s+|override\s+|virtual\s+|sealed\s+)*[A-Za-z_][A-Za-z0-9_<>,\[\]\.\?]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
     '^\+\s*(def|class)\s+[A-Za-z_]'                    # Python
 )
 
@@ -247,15 +321,42 @@ try {
         exit 2
     }
 
+    # THE INPUT IS PART OF THE TRIGGER. Section 24 says the trigger is evaluated mechanically and never
+    # by the agent that wants to skip it - but an agent that supplies its own BaseRef can hand us HEAD,
+    # get an empty diff, and collect a clean exit 0 as PROOF that no consult was owed. That is a guard
+    # certifying exactly what it stopped checking. A base that IS head is not a range; refuse it.
+    $baseSha = (& git rev-parse "$BaseRef^{commit}").Trim()
+    $headSha = (& git rev-parse 'HEAD^{commit}').Trim()
+    if ($baseSha -eq $headSha) {
+        Write-Output "check-capstone-new-code: base ref '$BaseRef' resolves to HEAD - that is an empty range, not a clean result. Supply the round's recorded base."
+        exit 2
+    }
+
     $fired = [System.Collections.Generic.List[string]]::new()
 
     # --- Rule A: a NEW FILE in non-test code -------------------------------------------------
-    $nameStatus = & git diff --name-status "$BaseRef..HEAD"
-    foreach ($line in $nameStatus) {
-        if ($line -match '^A\s+(.+)$') {
-            $path = $Matches[1].Trim()
+    # -z gives NUL-separated, UNQUOTED paths. Without it git QUOTES any path containing a space or a
+    # non-ASCII byte ("my file.ps1"), and the captured quotes then defeat Test-IsTestPath's anchors -
+    # a path the exclusion should have caught sails through as shippable. The peer flagged this as the
+    # one thing it could not judge without running it; measured, git does quote such paths, so -z is
+    # the fix rather than a regex that strips quotes.
+    $nameStatus = (& git diff --name-status -z "$BaseRef..HEAD") -split "`0" | Where-Object { $_ -ne '' }
+
+    # A RENAME and a COPY create a file too. `git diff --name-status` emits R### / C### with TWO paths
+    # (old then new), so anchoring on '^A' alone - as this rule first did - misses every new file that
+    # arrived by rename or copy. AGY-AFTER round 1 finding, folded.
+    for ($i = 0; $i -lt $nameStatus.Count; $i++) {
+        $status = $nameStatus[$i]
+        if ($status -match '^A') {
+            $path = $nameStatus[++$i]
             if (-not (Test-IsTestPath $path)) { $fired.Add("new-file: $path") }
         }
+        elseif ($status -match '^[RC]') {
+            $null = $nameStatus[++$i]          # the OLD path, which we do not care about
+            $path = $nameStatus[++$i]          # the NEW path, which is the one that now exists
+            if (-not (Test-IsTestPath $path)) { $fired.Add("new-file-via-$($status.Substring(0,1)): $path") }
+        }
+        elseif ($status -match '^[MTD]') { $null = $nameStatus[++$i] }
     }
 
     # --- Rules B and C need the patch, and only for non-test paths ---------------------------
@@ -324,7 +425,7 @@ finally { Pop-Location }
 
 Run: `pwsh -NoProfile -Command "Invoke-Pester scripts/tests/check-capstone-new-code.Tests.ps1"`
 
-Expected: `Tests Passed: 6, Failed: 0`.
+Expected: `Tests Passed: 10, Failed: 0`.
 
 - [ ] **Step 5: Prove the non-test clause is non-vacuous with a logic mutant**
 
@@ -700,6 +801,14 @@ divergence is a legitimate terminal state - hand your human both positions with 
 - **Manual backstop:** your human can type "negotiate with agy" to trigger this protocol on any observed
   disagreement, regardless of what token was emitted.
 
+🔴 **AN IMPASSE EMITS NO NEW TOKEN. Do not invent one.** This discipline's terminal tokens are
+`[VERDICT: EXHAUSTIVE]`, `[VERDICT: GAPS FOUND]` and `[VERDICT: agy-required-but-unreachable]`, and that
+list is enforced mechanically by `scripts/check-agy-discipline-skills.ps1` - a `[VERDICT: NEGOTIATE]`
+here would fail the driver's own contract check. **An impasse is a per-finding disposition, not a round
+outcome:** the disputed finding resolves to `UNVERIFIED-ACCEPTED: <finding>` once your human has taken
+the tie-break, and the ROUND still terminates on its own existing token. `UNVERIFIED-ACCEPTED` exists in
+the AGY-SCOPE set for exactly this - "neither provable nor refutable, and the owner accepted the risk".
+
 **Why agreement is the wrong criterion, measured:** across an 8-round capstone roughly 60% of this peer's
 findings were confirmed and 40% were refuted - a fabricated census string, a `chmod 000` trigger that does
 not exist on this platform, an ARG_MAX ceiling that measured fine at 12000 files. An agreement requirement
@@ -776,9 +885,20 @@ Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
     It 'FAILS when a discipline loses its AGY-NEGOTIATE section' {
         # Non-vacuity. Strip the section from ONE skill in a sandbox copy and prove the linter
         # names that skill. A linter that passes with the section gone is certifying nothing.
+        # 🔴 COPY ONLY WHAT THE LINTER READS. AGY-AFTER round 1 caught an earlier draft doing
+        # `Copy-Item $script:RepoRoot -Recurse`: MEASURED, this working tree is 18G, with
+        # clavity-classic/target at 2.6G and .git at 95M. A whole-tree copy inside a Pester test
+        # thrashes the disk, hits file locks on live build artifacts, and turns a string-replacement
+        # test into the slowest thing in the suite. The linter takes -Root, so give it a minimal tree.
         $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("negpin-" + [guid]::NewGuid().ToString('N'))
         try {
-            Copy-Item $script:RepoRoot $sandbox -Recurse -Force
+            foreach ($d in @('agy-first','agy-capstone','agy-test-audit','adversarial-panel-review')) {
+                $dest = Join-Path $sandbox "clavity-dotnet/plugin/skills/$d"
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot "clavity-dotnet/plugin/skills/$d/SKILL.md") $dest -Force
+            }
+            New-Item -ItemType Directory -Path (Join-Path $sandbox 'scripts') -Force | Out-Null
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/check-agy-discipline-skills.ps1') (Join-Path $sandbox 'scripts') -Force
             $victim = Join-Path $sandbox 'clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md'
             (Get-Content $victim -Raw).Replace('## AGY-NEGOTIATE', '## Something Else Entirely') |
                 Set-Content $victim -NoNewline
@@ -870,19 +990,27 @@ tie-break, and a "negotiate with agy" manual backstop. **The real scope was TWO 
 `agy-first`'s wording - not the capstone's - was the model the fix lifted.
 ```
 
-- [ ] **Step 2: Mark both sections shipped**
+- [ ] **Step 2: Mark both sections shipped — WITH their closing SHAs**
 
-Change the §24 header's trailing status from `▶ **OWNER ACCEPTED 2026-08-31, not yet planned**` to:
+🔴 **DO NOT PASTE THESE LITERALLY.** AGY-AFTER round 1 (Axiom Breaker) caught an earlier draft handing a literal SHA-less string to Step 2 while Step 4 asserted the gate rejects exactly that — a literal executor would have pasted it and become stuck. **First collect the real SHAs**, then substitute them:
+
+```bash
+git log --oneline <base-sha>..HEAD
+```
+
+Change the §24 header's trailing status from `▶ **OWNER ACCEPTED 2026-08-31, not yet planned**` to the following, with `<TASK1-SHA>` and `<TASK3-SHA>` replaced by the actual 7-char SHAs from that log:
 
 ```
-✅ **SHIPPED 2026-09-04** — trigger `scripts/check-capstone-new-code.ps1`, isolation RECORDED via `agy-mark.sh stamp` (owner ruling: record, do not gate)
+✅ **SHIPPED 2026-09-04** (`<TASK1-SHA>` the trigger · `<TASK3-SHA>` the stamp) — isolation RECORDED, not gated (owner ruling 2026-09-04)
 ```
 
-Change the §25 header's trailing status likewise to:
+Change the §25 header's trailing status likewise, substituting the Task 5 and Task 6 SHAs:
 
 ```
-✅ **SHIPPED 2026-09-04** — `AGY-NEGOTIATE` added to `agy-test-audit` + `adversarial-panel-review`, pinned by `check-agy-discipline-skills.ps1`
+✅ **SHIPPED 2026-09-04** (`<TASK5-SHA>` the sections · `<TASK6-SHA>` the pin) — `AGY-NEGOTIATE` in `agy-test-audit` + `adversarial-panel-review`
 ```
+
+⚠ **Every backticked SHA must be a commit that actually exists** — Step 4's checker verifies exactly that, so a placeholder left unsubstituted will fail the gate loudly rather than silently shipping a false claim.
 
 - [ ] **Step 3: Close §24's open question in the section body**
 
