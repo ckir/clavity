@@ -255,6 +255,47 @@ case "$mode" in
         mkdir -p "$_parent" 2>/dev/null || _die_refuse "could not create $_parent"
         exit 0
         ;;
+    stamp)
+        # Record whether a design consult and the review that follows it shared one agy cascade.
+        # THIS IS A RECORD, NOT A GATE. It always exits 0 on a well-formed call, including
+        # SHARED-CONTEXT. Owner ruling 2026-09-04: "record isolation, do not gate on it" - a blocking
+        # step here would recreate the skip-pressure the mandatory consult exists to remove.
+        discipline="${2:-}"
+        consult_id="${3:-}"
+        review_id="${4:-}"
+        if [ -z "$discipline" ] || [ -z "$consult_id" ] || [ -z "$review_id" ]; then
+            echo "agy-mark stamp: need <discipline> <consult-cascade-id> <review-cascade-id>" >&2
+            exit 64
+        fi
+        if [ "$consult_id" = "$review_id" ]; then
+            isolation="SHARED-CONTEXT"
+        else
+            isolation="ISOLATED"
+        fi
+        # CREATE THE DIRECTORY FIRST. AGY-AFTER round 2 (Cascade Analyst) caught this as BLOCKING:
+        # without it, `>>` into a missing .clavity/agy-marks fails with "No such file or directory"
+        # and the arm exits NON-ZERO on a fresh clone or the very first consult - turning the one step
+        # that is explicitly "a record, never a gate" into an accidental blocker. VERIFIED: this file
+        # has NO shared mkdir; the head, log and prepare arms each do their own.
+        #
+        # A FAILED MKDIR STILL MUST NOT GATE. head) and prepare) call _die_refuse here because their
+        # write is load-bearing; ours is not, so a genuinely unwritable directory degrades to a warning
+        # on stderr and exit 0 rather than blocking the round.
+        mkdir -p "$root/.clavity/agy-marks" 2>/dev/null || {
+            echo "agy-mark stamp: could not create .clavity/agy-marks - isolation NOT recorded" >&2
+            exit 0
+        }
+        # Append with >>, never >. Two sessions can be open on one repository, and a truncating
+        # writer silently eats the other's row.
+        printf '%s %s consult=%s review=%s %s %s\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$discipline" "$consult_id" "$review_id" \
+            "$isolation" "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
+            >> "$root/.clavity/agy-marks/consults.log" 2>/dev/null || {
+            echo "agy-mark stamp: could not write consults.log - isolation NOT recorded" >&2
+            exit 0
+        }
+        exit 0
+        ;;
     *)
         _die_refuse "unknown mode: [$mode] (expected head|log|prepare)"
         ;;
