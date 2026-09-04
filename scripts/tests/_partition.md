@@ -551,7 +551,7 @@ accept-drain.Tests.ps1                           42,4s   10 tests   <- SLOW, re-
 agy-after-reminder.Tests.ps1                      9,7s   14 tests   <- COUNT 2026-08-06 (+4: root-walk
                                                                       silence + control, jq and no-jq).
                                                                       TIME is the 2026-08-05 solo figure.
-agy-anomaly-reminder.Tests.ps1                   26,8s   20 tests   <- SLOW, re-measured 2026-08-06 (+4)
+agy-anomaly-reminder.Tests.ps1                   26,8s   33 tests   <- SLOW, re-measured 2026-08-06 (+4)
 agy-anomaly-capture-reminder.Tests.ps1            8,4s   26 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-dispatch-reminder.Tests.ps1          12,7s   22 tests   <- COUNT 2026-08-06 (+4)
 agy-anomaly-model-notice.Tests.ps1               16,7s   11 tests   <- COUNT 2026-08-06 (+2)
@@ -789,6 +789,7 @@ check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW
                                                                       modest test count. Measured solo as the
                                                                       sole command: "Tests completed in
                                                                       135,92s", 16 passed / 0 failed.
+check-capstone-new-code.Tests.ps1               107,0s   17 tests   <- SLOW, NEW 2026-09-04 (ROADMAP s24 trigger). Two runs on an idle machine, 108,2s cold / 107,0s warm; background load uncontrolled.
 check-core-integrity.Tests.ps1                   27,0s    7 tests   <- SLOW, re-measured 2026-08-06
 check-curate-in-progress.Tests.ps1               69,5s   20 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
