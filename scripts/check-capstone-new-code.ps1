@@ -15,6 +15,15 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# Rule B round-trips a path read FROM git (via `git diff --name-only -z`) back INTO git (via
+# `git show "<ref>:<path>"`) to materialise both versions for ast-grep. MEASURED: without this, a
+# non-ASCII path (src/café.rs) captures correctly for DISPLAY, but re-encoding it as a process
+# argument under the default console encoding corrupts it - `git show` then answers "fatal: path
+# 'src/caf├⌐.rs' does not exist", Rule B silently treats the file as absent, and the range reads as
+# no new code. Rule A never hit this because it only ever STRING-MATCHES such a path; it was Rule B's
+# round-trip that introduced the need for this.
+[System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 # A path is TEST code if any of these match. Kept deliberately broad: a false "this is a test" only
 # ever SUPPRESSES the consult, so each entry must be one nothing shipped can match.
 $TestPatterns = @(
@@ -105,59 +114,97 @@ function ConvertFrom-GitDiffPath([string]$raw) {
     return [System.Text.Encoding]::UTF8.GetString($bytes.ToArray())
 }
 
-# A new DECLARATION, per language, for files any extension applies to. Anchored on the '+' of the
-# diff so only ADDED lines count.
-$DeclarationPatterns = @(
-    '^\+\s*function\s+[A-Za-z_]'                       # PowerShell, bash 'function f'
-    '^\+\s*[A-Za-z_][A-Za-z0-9_]*\s*\(\)\s*\{'         # bash 'f() {'
-    '^\+\s*(pub\s+)?(async\s+)?fn\s+[A-Za-z_]'         # Rust
-    '^\+\s*(pub\s+)?(struct|enum|trait|union|type)\s+[A-Za-z_]'  # Rust TYPE declarations (FIX 2,
-        # adversarial capstone round 2026-09-04): the fn pattern above is function-only, so a new
-        # `pub struct`/`pub enum` with no fn anywhere in the diff bypassed the trigger entirely -
-        # unlike C#, whose patterns already cover class/record/struct/interface/enum.
-    '^\+\s*(def|class)\s+[A-Za-z_]'                    # Python
-)
+# RULE B, replaced 2026-09-05 (owner ruling): the regex engine above this comment used to live here.
+# It produced the same finding class - a declaration shape nobody had enumerated a regex for yet - in
+# three consecutive adversarial rounds (Rust types, C# properties, Python `async def`), because a
+# regex enumerates SHAPES and every enumeration is incomplete by construction. Rule B now asks
+# ast-grep to parse both sides of the diff and diff the AST-level declaration NAMES it finds, so a
+# shape the old regex list never anticipated is caught by the same mechanism as everything else -
+# see Get-AstGrepDeclarationNames below.
+#
+# ast-grep is REQUIRED for Rule B to run - see the PATH check right before Push-Location. Never
+# invent a bypass that lets Rule B silently no-op when ast-grep is missing; a gate an agent runs on
+# itself must never fail toward silence (the same principle the base-ref checks above already apply).
 
-# C#-ONLY declaration patterns (FIX 1, code-quality review 2026-09-04). Applied only when the
-# current file's path ends in '.cs' - the parsing loop already tracks it as $currentFile. All five
-# ORIGINAL patterns below require a literal access-modifier first token, so a modifier-less
-# declaration - legal, idiomatic C#, e.g. `static void Spawn(LaunchCommand cmd, bool wait)` at
-# clavity-dotnet/src/Clavity.Cli/Program.cs:117 - evaded every one of them. Making the modifier
-# optional in a pattern applied to EVERY file (as the last entry below does) would, if applied
-# repo-wide, fire on ordinary two-identifier lines in bash/PowerShell diffs - so that entry is
-# scoped to C# files only, alongside the five unchanged originals.
-$CSharpDeclarationPatterns = @(
-    '^\+\s*(public|private|internal|protected)\s+.*\b(class|record|struct|interface|enum)\s+'  # C# types
-    # C# METHODS, not just types. AGY-AFTER round 1 (Mechanism Gamer) caught this: with types-only,
-    # an agent that wants to skip the consult drops its new code into a `public void Foo()` on an
-    # EXISTING class and the trigger stays silent - which is the single most common unit of new C#
-    # code in this repository. Matches an access modifier followed by a return type and a call-shaped
-    # name, excluding control-flow keywords that also take parentheses.
-    '^\+\s*(public|private|internal|protected)\s+(static\s+|async\s+|override\s+|virtual\s+|sealed\s+)*[A-Za-z_][A-Za-z0-9_<>,\[\]\.\?]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
-    # CONSTRUCTORS have NO return type, so the two-identifier pattern above cannot see them. AGY-AFTER
-    # round 2 (Mechanism Gamer) caught that fold 4 left this bypass open: nest the new logic in a
-    # constructor and the trigger stays silent. Access modifier, then a Capitalized name, then '('.
-    '^\+\s*(public|private|internal|protected)\s+[A-Z][A-Za-z0-9_]*\s*\('
-    # STATIC CONSTRUCTORS carry NO access modifier at all - `static MyClass()` - so the pattern above
-    # cannot see them either. AGY-AFTER round 3 (Cascade Analyst) caught that round 2's constructor
-    # fix left this last sliver of the bypass open.
-    '^\+\s*static\s+[A-Z][A-Za-z0-9_]*\s*\(\s*\)'
-    # TUPLE RETURNS start with a parenthesis - `public (int, int) Get()` - which the two-identifier
-    # pattern also misses. Same round, same seat.
-    '^\+\s*(public|private|internal|protected)\s+(static\s+|async\s+)*\([^)]*\)\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
-    # MODIFIER-LESS method/constructor declarations (FIX 1, new). No access modifier is required by
-    # C#; a member defaults to `private` (or, on a top-level type, `internal`) when none is written.
-    # An optional run of static/async/override/virtual/sealed, then a return type, then a name, then
-    # '('. Scoped to .cs files only - see the block comment above.
-    '^\+\s*(static\s+|async\s+|override\s+|virtual\s+|sealed\s+)*[A-Za-z_][A-Za-z0-9_<>,\[\]\.\?]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\('
-    # AUTO-PROPERTIES carry NO parentheses at all - `public string Name { get; set; }` - so every
-    # pattern above, which all require a trailing '(', is blind to them (FIX 3, adversarial capstone
-    # round 2026-09-04). Access modifier, optional modifiers, a TYPE that is explicitly NOT one of the
-    # five type-declaration keywords via the negative lookahead - without that exclusion this pattern
-    # would ALSO match `public class Thing {` / `public struct Foo {` and double-report the very line
-    # the first C# pattern above already reports - then a name, then '{'. Scoped to .cs files only.
-    '^\+\s*(public|private|internal|protected)\s+(static\s+|readonly\s+|virtual\s+|override\s+|abstract\s+|sealed\s+)*(?!(class|record|struct|interface|enum)\b)[A-Za-z_][A-Za-z0-9_<>,\[\]\.\?]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\{'
-)
+# Maps a changed file's EXTENSION to the ast-grep language name Rule B parses it as. An extension not
+# in this map has no ast-grep grammar available on this machine - MEASURED, `ast-grep --lang
+# powershell` answers "powershell is not supported!" - and Rule B cannot run on it. That gap is
+# OWNER-ACCEPTED (.ps1 is this repo's largest tracked language, 105 files, and the owner was shown
+# that before ruling): Rule A and Rule C still apply to such a file, but Rule B must SAY it skipped
+# the file rather than silently doing nothing - see the RULE-B-SKIPPED line below.
+$AstGrepLanguageByExtension = @{
+    '.cs' = 'CSharp'
+    '.rs' = 'Rust'
+    '.py' = 'Python'
+    '.js' = 'JavaScript'
+    '.ts' = 'TypeScript'
+    '.sh' = 'Bash'
+}
+
+# The tree-sitter NODE KINDS Rule B looks for per language - "at minimum: functions, classes/
+# structs/enums/traits/interfaces/records, and methods/properties where the language has them"
+# (owner ruling). Each kind is matched via `has: {field: name, pattern: $NAME}` (see
+# Get-AstGrepDeclarationNames), which captures the declared NAME regardless of which modifiers
+# (public/static/async/sealed/... in any combination) precede it - a plain `ast-grep run --pattern`
+# would need one literal pattern PER MODIFIER COMBINATION to match what this one kind+field rule
+# matches, which is exactly the enumerate-every-shape brittleness this replacement exists to end.
+# MEASURED per kind against hand-built fixtures before this list was relied on (0/1/2/3-modifier C#
+# methods, static/instance/tuple-return methods, static and instance constructors, auto-properties,
+# Rust items with and without `pub`, Python `def`/`async def`/`class`, JS/TS functions/classes/
+# methods/fields, both bash function forms `function f() {}` and `f() {}`).
+$AstGrepKindsByLanguage = @{
+    'CSharp'     = @('class_declaration', 'struct_declaration', 'enum_declaration', 'interface_declaration', 'record_declaration', 'method_declaration', 'constructor_declaration', 'property_declaration')
+    'Rust'       = @('function_item', 'struct_item', 'enum_item', 'trait_item', 'union_item', 'type_item')
+    'Python'     = @('function_definition', 'class_definition')   # function_definition covers `async def` too - MEASURED, one kind matches both.
+    'JavaScript' = @('function_declaration', 'class_declaration', 'method_definition')
+    'TypeScript' = @('function_declaration', 'class_declaration', 'interface_declaration', 'type_alias_declaration', 'method_definition', 'public_field_definition')
+    'Bash'       = @('function_definition')   # covers BOTH `function f() {}` and bare `f() {}` - MEASURED.
+}
+
+# Builds the `ast-grep scan --inline-rules` document for one language: one YAML rule per node kind,
+# joined by the `---` separator the CLI documents for running several rules in one process. Each rule
+# asks for the node's `name` FIELD specifically (not a hand-written pattern for the whole
+# declaration) so it does not care what modifiers surround that field - see the block comment above.
+function Get-AstGrepInlineRules([string]$Lang) {
+    $rules = $AstGrepKindsByLanguage[$Lang] | ForEach-Object {
+        "id: k_$_`nlanguage: $Lang`nrule:`n  kind: $_`n  has:`n    field: name`n    pattern: `$NAME"
+    }
+    return ($rules -join "`n---`n")
+}
+
+# Runs ast-grep against one version (base or HEAD) of one file's content and returns the SET of
+# declaration names it finds, for every kind $Lang has registered. $Content is written to a TEMP
+# file carrying the SAME extension as the real path - ast-grep's own file-type discovery filters by
+# extension even when the rule's `language:` is given explicitly (MEASURED: an identical .cs fixture
+# saved without an extension matched nothing), so the temp file must keep it.
+function Get-AstGrepDeclarationNames([string]$Lang, [string]$Content, [string]$Extension) {
+    $tmpFile = Join-Path ([System.IO.Path]::GetTempPath()) "ccnc-astgrep-$([guid]::NewGuid().ToString('N'))$Extension"
+    try {
+        Set-Content -Path $tmpFile -Value $Content -NoNewline -Encoding utf8
+        $rulesText = Get-AstGrepInlineRules $Lang
+        $jsonText = & ast-grep scan --inline-rules $rulesText --json=compact $tmpFile 2>$null
+        if ([string]::IsNullOrWhiteSpace($jsonText)) { return @() }
+        $matches = $jsonText | ConvertFrom-Json
+        # KEYED BY KIND, not bare name (MEASURED bug, folded before this shipped): a C# constructor is
+        # ALWAYS named after its enclosing class - `class Widget { Widget(int n) {} }` - so a bare-name
+        # set diff sees "Widget" already present (from class_declaration) and masks a brand-new
+        # constructor entirely. $_.ruleId is "k_<kind>" (see Get-AstGrepInlineRules), so pairing it with
+        # NAME keeps a same-named declaration of a DIFFERENT kind visible as its own entry.
+        return @($matches | ForEach-Object { $n = $_.metaVariables.single.NAME.text; if ($n) { "$($_.ruleId)::$n" } } | Where-Object { $_ } | Sort-Object -Unique)
+    }
+    finally {
+        Remove-Item -Path $tmpFile -ErrorAction SilentlyContinue
+    }
+}
+
+# ast-grep ABSENT -> FAIL CLOSED, never silently "no new code". Rule B cannot run without it, and a
+# gate an agent runs on itself must never fail toward silence - the same principle the base-ref
+# checks below apply to a bad BaseRef. Checked before Push-Location so it fails fast regardless of
+# $Root.
+if (-not (Get-Command ast-grep -ErrorAction SilentlyContinue)) {
+    Write-Output "check-capstone-new-code: ast-grep is not on PATH - Rule B (new AST declarations) cannot run, and the question cannot be answered."
+    exit 2
+}
 
 Push-Location $Root
 try {
@@ -263,8 +310,18 @@ try {
                 # FAIL CLOSED (FIX 1): this +++ line's path could not be parsed - a quoting/escaping
                 # shape this function does not recognise. Treat the file as CODE rather than silently
                 # skipping it. A gate an agent runs on itself must never fail toward silence.
+                #
+                # ALSO FOLD (adversarial round 2026-09-05): only the CODE-ness fails closed. Forcing
+                # $currentIsTest to $false here too meant an unparseable TEST path (still decodable as
+                # a path by Test-IsTestPath even when ConvertFrom-GitDiffPath's octal-escape decoder
+                # gives up) was silently PROMOTED to production code and its added lines scanned by
+                # Rules B/C - a false positive, and the opposite of what "fail closed" is supposed to
+                # protect: fail closed means "when in doubt, still require the consult", not "when in
+                # doubt, invent a test exemption's negation". Test-IsTestPath runs on the raw,
+                # undecoded path - that is all this branch has - which is the same best-effort input
+                # the code-ness classification below it already accepts.
                 $currentFile = $rawPath
-                $currentIsTest = $false
+                $currentIsTest = Test-IsTestPath $rawPath
                 $currentIsCode = $true
             }
             continue
@@ -276,27 +333,68 @@ try {
         }
         if ($currentIsTest) { continue }
         # FIX 1 (owner ruling 2026-09-04): Rule A is scoped to code-extension paths via
-        # Test-IsCodeFile, but Rules B/C read every non-test file's added lines regardless of
+        # Test-IsCodeFile, but Rule C reads every non-test file's added/deleted lines regardless of
         # extension - so a documentation-only change containing a declaration-shaped line (e.g.
         # a README code sample) fired the mandatory consult. Mirror the same allow-list here.
         if (-not $currentIsCode) { continue }
-        if ($line -match '^\+' -and $line -notmatch '^\+\+\+') {
-            $hunkAdds++
-            # FIX 1: the C#-only set applies only when the current file is a .cs file - applying its
-            # modifier-optional entry to every file would false-positive on ordinary two-identifier
-            # lines in bash/PowerShell diffs.
-            $patternsToCheck = $DeclarationPatterns
-            if ($currentFile -match '\.cs$') { $patternsToCheck = $DeclarationPatterns + $CSharpDeclarationPatterns }
-            foreach ($pat in $patternsToCheck) {
-                if ($line -match $pat) {
-                    $fired.Add("new-declaration: $currentFile : $($line.TrimStart('+').Trim())")
-                    break
-                }
-            }
-        }
+        if ($line -match '^\+' -and $line -notmatch '^\+\+\+') { $hunkAdds++ }
         elseif ($line -match '^-' -and $line -notmatch '^---') { $hunkDels++ }
+        # Rule B no longer reads added lines here - it runs separately, below, as a whole-file AST
+        # diff via ast-grep. This loop keeps only what Rule C needs: per-hunk add/del counts and the
+        # enclosing-function header git already names in the @@ line.
     }
     Complete-Hunk
+
+    # --- Rule B: a new AST-level DECLARATION NAME, via ast-grep ------------------------------
+    # For each non-test, code-extension file the diff TOUCHES (not just added - Rule A already owns
+    # brand-new files, and a file absent at base is that same "newly added" shape even when it
+    # arrived via a rename, so it is skipped here too), parse both the base and HEAD version and
+    # diff the declaration NAME sets ast-grep finds. A name present at HEAD but absent at base is new
+    # shipped code, independent of which line it landed on or how many modifiers precede it.
+    $ruleBSkipped = [System.Collections.Generic.List[string]]::new()
+    $changedForRuleB = (& git diff --name-only -z "$BaseRef..HEAD" -- . `
+        ':(exclude)*.lock' ':(exclude)*.min.js' ':(exclude)package-lock.json') -split "`0" | Where-Object { $_ -ne '' }
+
+    foreach ($path in $changedForRuleB) {
+        if (Test-IsTestPath $path) { continue }
+        if (-not (Test-IsCodeFile $path)) { continue }
+
+        # A file absent at HEAD (deleted) has no content left for Rule B to examine, regardless of
+        # whether ast-grep supports its language - check this FIRST, before the language-support
+        # check, so a deletion never earns a RULE-B-SKIPPED line. MEASURED bug this fixes: without
+        # this ordering, a deleted .ps1 path still printed "RULE-B-SKIPPED: <that path>", which reads
+        # as flagging a file that no longer exists and broke the rename/delete/modify test's assertion
+        # that a deleted file's name must not appear in the output at all.
+        $headContent = & git show "HEAD:$path" 2>$null
+        if ($LASTEXITCODE -ne 0) { continue }
+
+        $ext = [System.IO.Path]::GetExtension($path)
+        if (-not $AstGrepLanguageByExtension.ContainsKey($ext)) {
+            # THE GAP MUST BE LOUD (owner ruling). Rule A and Rule C still see this file; only Rule B
+            # cannot. Collected here and printed unconditionally below, whether or not the trigger
+            # otherwise fires - a silently-skipped file is the exact defect an earlier round already
+            # found in this script.
+            $ruleBSkipped.Add($path)
+            continue
+        }
+        $lang = $AstGrepLanguageByExtension[$ext]
+
+        $baseContent = & git show "${BaseRef}:$path" 2>$null
+        if ($LASTEXITCODE -ne 0) { continue }   # absent at base (new file, or the new side of a rename) - Rule A's business
+
+        $baseNames = Get-AstGrepDeclarationNames -Lang $lang -Content ($baseContent -join "`n") -Extension $ext
+        $headNames = Get-AstGrepDeclarationNames -Lang $lang -Content ($headContent -join "`n") -Extension $ext
+        foreach ($key in $headNames) {
+            if ($baseNames -notcontains $key) {
+                $name = $key.Substring($key.IndexOf('::') + 2)   # strip the "k_<kind>::" prefix for the human-facing message
+                $fired.Add("new-declaration: $path : $name")
+            }
+        }
+    }
+
+    if ($ruleBSkipped.Count -gt 0) {
+        $ruleBSkipped | Sort-Object -Unique | ForEach-Object { Write-Output "  - RULE-B-SKIPPED (no ast-grep grammar): $_" }
+    }
 
     if ($fired.Count -eq 0) {
         Write-Output "check-capstone-new-code: no new code in $BaseRef..HEAD - AGY-FIRST consult not required."

@@ -75,10 +75,18 @@ Describe 'check-capstone-new-code' {
     }
 
     It 'FIRES on a new function declaration added to an existing file' {
+        # LEGITIMATELY CHANGED under the 2026-09-05 ast-grep engine swap (owner ruling). This row
+        # originally used the New-Repo seed's OWN language, PowerShell, as its vehicle - but Rule B is
+        # now ast-grep-backed and ast-grep has no PowerShell grammar (the owner-accepted gap; see the
+        # dedicated RULE-B-SKIPPED row below). The row's INTENT - Rule B fires on a new declaration
+        # added to an EXISTING file - is preserved by retargeting the vehicle to Python, a language
+        # ast-grep does support, rather than deleting the row's coverage.
         $r = New-Repo
         try {
             Push-Location $r
-            Add-Content -Path 'src/seed.ps1' -Value "function Get-Census { param(`$p) return 1 }"
+            Set-Content -Path 'src/mod.py' -Value 'def existing(): pass'
+            git add src/mod.py 2>&1 | Out-Null; git commit -qm seedpy 2>&1 | Out-Null
+            Add-Content -Path 'src/mod.py' -Value 'def get_census(): return 1'
             git commit -qam newfn 2>&1 | Out-Null
             Pop-Location
             $res = Invoke-Checker $r 'HEAD~1'
@@ -160,8 +168,15 @@ Describe 'check-capstone-new-code' {
             # dropping the first `$null = $nameStatus[++$i]` makes the parser report `Aoriginal`
             # instead of `Amoved` - that is the mutant, and this is the line that catches it.
             $res.Out | Should -Not -Match 'Aoriginal' -Because 'reporting the PRE-rename path means the two-path branch consumed the wrong entry'
-            $res.Out | Should -Not -Match 'Adoomed'   -Because 'a DELETED file is not a new file'
-            $res.Out | Should -Not -Match 'keeper'    -Because 'a MODIFIED file is not a new file'
+            $res.Out | Should -Not -Match 'Adoomed'   -Because 'a DELETED file is not a new file, and Rule B must not report a RULE-B-SKIPPED line for it either - there is no content left to skip examining'
+            # LEGITIMATELY CHANGED under the 2026-09-05 ast-grep engine swap (owner ruling): bare
+            # 'keeper' now DOES appear in the output, in a RULE-B-SKIPPED line - Rule B is honest that
+            # it could not examine the MODIFIED src/keeper.ps1 for a new declaration (PowerShell has no
+            # ast-grep grammar), which is new, mandated transparency, not a regression. The assertion
+            # that still matters - keeper must never be reported as NEW - is narrowed to the two rule
+            # prefixes that would actually mean that.
+            $res.Out | Should -Not -Match 'new-file[^\r\n]*keeper'        -Because 'a MODIFIED file is not a new file'
+            $res.Out | Should -Not -Match 'new-declaration[^\r\n]*keeper' -Because 'a MODIFIED file is not a new file'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -202,11 +217,19 @@ Describe 'check-capstone-new-code' {
     It 'reports EVERY rule that fired, not just the first' {
         # A checker that stops at the first hit under-reports the blast radius, and the driver then
         # consults on one shape while shipping two.
+        #
+        # LEGITIMATELY CHANGED under the 2026-09-05 ast-grep engine swap (owner ruling): the
+        # new-declaration half of this row originally added a function to the New-Repo seed's OWN
+        # PowerShell file, which Rule B can no longer see (the owner-accepted ast-grep gap). Retargeted
+        # to Python, alongside the new-file .ps1 half unchanged, so both rules still fire together in
+        # one range as the row's own name requires.
         $r = New-Repo
         try {
             Push-Location $r
+            Set-Content -Path 'src/mod.py' -Value 'def existing(): pass'
+            git add src/mod.py 2>&1 | Out-Null; git commit -qm seedpy 2>&1 | Out-Null
             Set-Content -Path 'src/another.ps1' -Value "Write-Output 'a'"
-            Add-Content -Path 'src/seed.ps1' -Value "function Get-Second { return 2 }"
+            Add-Content -Path 'src/mod.py' -Value 'def get_second(): return 2'
             git add -A 2>&1 | Out-Null
             git commit -qm both 2>&1 | Out-Null
             Pop-Location
@@ -397,27 +420,43 @@ Describe 'check-capstone-new-code' {
         # anchored on an UNQUOTED 'b/' never matched, so $currentFile was never updated,
         # $currentIsCode stayed false, and the FIX-4 code-extension guard skipped the file's added
         # lines entirely. MEASURED before this fix: exit 0, "no new code ... consult not required".
+        #
+        # LEGITIMATELY CHANGED under the 2026-09-05 ast-grep engine swap (owner ruling): retargeted
+        # from .ps1 to .rs, since Rule B is now ast-grep-backed and PowerShell has no ast-grep grammar
+        # (the owner-accepted gap). Retargeting this row SURFACED A REAL BUG rather than papering over
+        # one: Rule B round-trips a path read from `git diff --name-only -z` back into `git show
+        # "<ref>:<path>"` to materialise both versions, and MEASURED, under the default console
+        # encoding a non-ASCII path corrupts on that round-trip (`git show` answered "fatal: path
+        # 'src/caf├⌐.rs' does not exist") - silently treating the file as absent and reporting exit 0.
+        # Fixed by setting [Console]::OutputEncoding to UTF8 near the top of the script; this row is
+        # what pins that fix now that it exercises the AST-diff path rather than the old regex path.
         $r = New-Repo
         try {
             Push-Location $r
-            Set-Content -Path 'src/café.ps1' -Value "Write-Output 'seed'" -Encoding utf8
-            git add -- 'src/café.ps1' 2>&1 | Out-Null
+            Set-Content -Path 'src/café.rs' -Value 'pub fn existing() {}' -Encoding utf8
+            git add -- 'src/café.rs' 2>&1 | Out-Null
             git commit -qm addnonascii 2>&1 | Out-Null
-            Add-Content -Path 'src/café.ps1' -Value "function New-Thing { 1 }"
+            Add-Content -Path 'src/café.rs' -Value 'pub fn new_thing() {}'
             git commit -qam newfnnonascii 2>&1 | Out-Null
             Pop-Location
             $res = Invoke-Checker $r 'HEAD~1'
-            $res.ExitCode | Should -Be 3 -Because 'a non-ASCII path must not silently defeat the code-extension gate'
+            $res.ExitCode | Should -Be 3 -Because 'a non-ASCII path must not silently defeat Rule B either'
             $res.Out | Should -Match 'new-declaration'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'FIRES on a new declaration added to an extensionless EXECUTABLE file (justfile)' {
+    It 'prints RULE-B-SKIPPED, not a false positive, for a declaration added to an extensionless EXECUTABLE file (justfile)' {
         # FIX 2, adversarial capstone round 2026-09-04 - a REGRESSION from the FIX-4 code-extension
         # allow-list: extensionless executables like justfile/Makefile/Dockerfile carry no extension
         # and became invisible to Rules A/B/C the moment that allow-list shipped. This repo has a live
-        # 12KB justfile; before FIX 4 shipped, Rules B/C scanned it. MEASURED before this fix: exit 0,
-        # "no new code ... consult not required".
+        # 12KB justfile; before FIX 4 shipped, Rules B/C scanned it.
+        #
+        # LEGITIMATELY CHANGED under the 2026-09-05 ast-grep engine swap (owner ruling). ast-grep's
+        # language map (see $AstGrepLanguageByExtension) is keyed by EXTENSION, and an extensionless
+        # file has no extension to key on - so justfile falls under the exact same owner-accepted gap
+        # as .ps1, even though it is not PowerShell. Rules A and C are UNCHANGED and still see this
+        # file (this row's original 2026-09-04 concern); only Rule B's OWN declaration-name diffing is
+        # gone, and it must say so rather than silently answering "no new code".
         $r = New-Repo
         try {
             Push-Location $r
@@ -427,8 +466,9 @@ Describe 'check-capstone-new-code' {
             git commit -qam newfnjustfile 2>&1 | Out-Null
             Pop-Location
             $res = Invoke-Checker $r 'HEAD~1'
-            $res.ExitCode | Should -Be 3 -Because 'an extensionless executable is still shipped code'
-            $res.Out | Should -Match 'new-declaration'
+            $res.ExitCode | Should -Be 0 -Because 'ast-grep has no language mapping for an extensionless file, so Rule B cannot examine it'
+            $res.Out | Should -Match 'RULE-B-SKIPPED'
+            $res.Out | Should -Match 'justfile'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -456,6 +496,8 @@ Describe 'check-capstone-new-code' {
         # function-only, so a new `pub struct`/`pub enum` addition with no `fn` bypassed the
         # trigger entirely - unlike C#, whose patterns already cover
         # class/record/struct/interface/enum. MEASURED before the fix: exit 0, "no new code".
+        # STILL PINS ast-grep's Rust `struct_item` kind after the 2026-09-05 engine swap: it fires
+        # via the same `kind: struct_item, has: {field: name}` rule regardless of a `pub` prefix.
         $r = New-Repo
         try {
             Push-Location $r
@@ -474,6 +516,74 @@ Describe 'check-capstone-new-code' {
             $res.ExitCode | Should -Be 3 -Because 'a new Rust type declaration is new shipped code even with no new fn'
             $res.Out | Should -Match 'new-declaration'
             $res.Out | Should -Match 'Config'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES on a Python `async def`, covered automatically by the ast-grep rewrite' {
+        # Owner ruling 2026-09-05: `async def` is covered automatically by ast-grep's Python
+        # `function_definition` kind - MEASURED, one kind matches both `def` and `async def` - so no
+        # separate pattern was added for it. This row is the verification the ruling asked for.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/mod.py' -Value 'def existing(): pass'
+            git add src/mod.py 2>&1 | Out-Null; git commit -qm seedpy 2>&1 | Out-Null
+            Set-Content -Path 'src/mod.py' -Value @(
+                'def existing(): pass'
+                ''
+                'async def do_async():'
+                '    pass'
+            )
+            git commit -qam addasync 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a new async def is new shipped Python code'
+            $res.Out | Should -Match 'new-declaration'
+            $res.Out | Should -Match 'do_async'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'prints RULE-B-SKIPPED for a changed .ps1 file, loudly rather than silently' {
+        # The PowerShell gap is OWNER-ACCEPTED (ast-grep has no PowerShell grammar - MEASURED,
+        # `ast-grep --lang powershell` answers "powershell is not supported!" - and .ps1 is this
+        # repo's largest tracked language at 105 files) but must never be SILENT - a silently-skipped
+        # file is the exact defect an earlier round already found in this script. A small
+        # non-declaration edit to an EXISTING .ps1 file fires no rule (Rule A needs a new file, Rule
+        # C needs a whole-function rewrite), so exit 0 is expected AND the skip line must still show.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Add-Content -Path 'src/seed.ps1' -Value "Write-Output 'one more line'"
+            git commit -qam edit 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 0
+            $res.Out | Should -Match 'RULE-B-SKIPPED'
+            $res.Out | Should -Match 'src/seed\.ps1'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'exits 2 when ast-grep is not on PATH, rather than silently answering no new code' {
+        # FAIL CLOSED (owner ruling). Rule B cannot run without ast-grep, and a gate an agent runs on
+        # itself must never fail toward silence. Simulated by restricting PATH to just what pwsh and
+        # git need, deliberately excluding ast-grep's directory.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Add-Content -Path 'src/seed.ps1' -Value "Write-Output 'x'"
+            git commit -qam edit 2>&1 | Out-Null
+            Pop-Location
+            $pwshDir = Split-Path -Parent (Get-Command pwsh).Source
+            $gitDir = Split-Path -Parent (Get-Command git).Source
+            $savedPath = $env:PATH
+            try {
+                $env:PATH = "$pwshDir;$gitDir;$env:SystemRoot;$env:SystemRoot\System32"
+                $res = Invoke-Checker $r 'HEAD~1'
+            } finally {
+                $env:PATH = $savedPath
+            }
+            $res.ExitCode | Should -Be 2 -Because 'ast-grep missing must fail closed, never silently answer no new code'
+            $res.Out | Should -Match 'ast-grep is not on PATH'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

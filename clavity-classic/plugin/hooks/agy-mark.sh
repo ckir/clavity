@@ -270,7 +270,15 @@ case "$mode" in
         # A cascade id containing whitespace corrupts the log line's POSITIONAL fields below (a
         # reader parsing field 5 as the isolation token would read a fragment of the id instead).
         # Reject at the door - do NOT reformat the record; its field order and separators are a
-        # contract other rows already exist in.
+        # contract other rows already exist in. $discipline occupies field 2 and is exactly as
+        # exposed to this corruption as $consult_id/$review_id are - unlike head)/log), this arm
+        # never routes $discipline through _check_discipline, so nothing else in this file catches it.
+        case "$discipline" in
+            *[[:space:]]*)
+                echo "agy-mark stamp: discipline must not contain whitespace, got: [$discipline]" >&2
+                exit 64
+                ;;
+        esac
         case "$consult_id" in
             *[[:space:]]*)
                 echo "agy-mark stamp: consult-cascade-id must not contain whitespace, got: [$consult_id]" >&2
