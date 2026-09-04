@@ -76,3 +76,24 @@ unrelated ROADMAP read (§23) quoted the repo line and the two did not match.
 **What this adds to the case for fixing this item:** the existing entry showed drift produces INCOMPLETE
 work. This shows it produces CONFIDENTLY WRONG work that passes its own self-checks, because the agent
 verifies against the text it was given. No amount of care inside a run detects a stale instruction file.
+
+## Second confirmed instance — `agy-learn/SKILL.md`, found 2026-09-03, recorded at the 2026-09-04 triage
+
+The same drift class hit a second skill in the same plugin, with a sharper consequence: the INSTALLED
+`agy-learn` is **pre-14g**, so it directs every capture to a path that 14g declared DEAD.
+
+**MEASURED 2026-09-04 by line count on all three copies:**
+
+| copy | lines |
+|---|---|
+| `AppData/Local/Programs/agy-autotrain/plugins/agy-autotrain/skills/agy-learn/SKILL.md` | 69 |
+| `.claude/plugins/cache/clavity-agy-autotrain/agy-autotrain/0.4.0/skills/agy-learn/SKILL.md` | 69 |
+| `agy-autotrain/skills/agy-learn/SKILL.md` (repo) | 143 |
+
+Both installed copies' step 3 reads *"Append to `../../knowledge/agy-observations.md`"*; the repo copy
+names `<USERPROFILE|HOME>/.clavity/agy-observations.md`. **An agent following the installed skill writes
+captures where no drain ever reads them.** This is not hypothetical — it happened, and the write had to be
+reverted (`42cfa84`).
+
+This strengthens the original finding rather than duplicating it: the first instance degraded a
+*procedure* (half a drain), this one silently *misroutes durable data* while reporting success.

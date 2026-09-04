@@ -2559,6 +2559,89 @@ counter-argument after one negotiation turn: `agy-discipline-reaching.sh:129-132
 `.clavity/.gitignore`, so the created directory never reaches the unrelated repository's `git status`.
 **The harm is to the OWNER'S ATTENTION, not to any repository's integrity.**
 
+### §32 — Two pathological-input defects in `agy-anomaly-reminder.sh`, deferred at the round-7 capstone cap — ▶ **PROMOTED 2026-09-04 from the anomalies conveyor, not yet planned**
+
+Both were raised by the live peer in AGY-CAPSTONE round 7 on the SessionStart hook-emission fix, both are
+REACHABLE rather than unreachable — which is why neither carries a `DISCARDED-BELOW-FLOOR` citation — and
+both were deferred because **the owner ruled that capstone CAPPED at round 7 rather than take a further
+source change.** Class 2: the hook ships in the plugin payload as a byte-identical pair, so either fix
+lands in both halves in one commit and needs a reinstall before it takes effect.
+
+**32a — a `cwd` that names a FILE defeats the `.no-agy` kill-switch on the DEGRADED (no-jq) path.**
+`[ -d "$cwd_path" ]` at `clavity-dotnet/plugin/hooks/agy-anomaly-reminder.sh:53` gates the root walk. With
+a file `cwd` the walk is skipped, `root` stays the file path, both kill-switch probes become
+`<file>/.no-agy` and miss, and the degraded path — unlike the main path — has no anomalies-file check to
+mask it, so it printfs unconditionally. **MEASURED 2026-09-04:** a repo with `.no-agy` at its root and
+`cwd=<root>/afile.txt` with no jq on PATH emits the guard-inactive envelope; the same repo with
+`cwd=<root>` is correctly silent. The main path is masked by `[ -f "$f" ] || exit 0`, so only the degraded
+path bites. Low reachability — Claude Code sends a directory `cwd` — but **`.no-agy` is the user-facing
+off switch, and this is it not switching off.** ⚠ The peer also corrected the driver here, who had
+predicted the main path. Fix shape: resolve a non-directory `cwd` to its parent before the walk, or give
+the degraded path the same anomalies-file guard.
+
+**32b — an EMPTY `PATH` makes the hook write to stderr**, violating the no-stderr-on-any-path invariant
+that `14101f5` established and that the suite's `Invoke-Hook` wrapper asserts on every call.
+**MEASURED 2026-09-04:** `printf '{"cwd":".","source":"startup"}' | PATH='' bash <hook>` writes
+`bash: command not found` to stderr. ⚠ **The peer's CLAIM was right and its stated MECHANISM was wrong** —
+it predicted `cat: command not found` from `input=$(cat)` at `:33`; the observed error comes from bash
+itself. Score claim and evidence separately. The suite cannot see this because the degraded-path fixtures
+set `PATH` to a directory that still contains `cat`. **Genuinely pathological** — nothing invokes a hook
+with an empty `PATH`, and in that state bash cannot find its own tools either — so note that a bare
+`2>/dev/null` here would suppress the diagnostic saying the environment is broken, which is arguably worse
+than the noise. Decide that trade at plan time rather than assuming the suppression is the fix.
+
+---
+
+### §33 — The terminal-token matcher and its contract lookup disagree on case, and nothing pins either — ▶ **PROMOTED 2026-09-04, tracked debt, sibling of §29b**
+
+Two halves of one feature use different case semantics and only one of them is asserted.
+**VERIFIED 2026-09-04 by reading both files:** `clavity-dotnet/src/Clavity.Ls/TerminalToken.cs:82` matches
+with `StringComparison.Ordinal` (case-SENSITIVE), while the contract lookup beside it at
+`clavity-dotnet/src/Clavity.Ls/DisciplineContract.cs:28` is built with `StringComparer.OrdinalIgnoreCase`.
+
+**MEASURED 2026-09-04:** changing `Ordinal` to `OrdinalIgnoreCase` leaves `Clavity.Ls.Tests` **215/215
+GREEN** — so nothing in the suite pins the case behaviour of the matcher at all.
+
+Raised by the agy peer in the AGY-TEST-AUDIT of `84d36aa..902a6ef` and **discarded by the peer itself
+below the severity floor**, on the reasoning that the mutation LOOSENS the gate (it would admit a
+lowercase verdict line) rather than tightening it (it would not reject a valid one). That reasoning is
+sound as far as it goes, and the owner scoped that audit to the other four gaps — but the gap is
+**reachable, not unreachable**, so it is tracked here rather than stood down.
+
+⚠ **The open question is which case semantics is intended, not merely that the assertion is missing.**
+Case-sensitive matching on the token is defensible (a verdict token is uppercase by contract); an
+ignore-case lookup for the discipline NAME is also defensible. Decide whether the mismatch is deliberate
+before writing the test, or the test will simply pin whatever is there today. Fix shape if the current
+behaviour is confirmed correct: one assertion in `TerminalTokenTests` that a lowercase `verdict: aligned`
+does NOT satisfy `VERDICT:`.
+
+---
+
+### §34 — Nine hook test files allocate temp resources OUTSIDE the `try`, so a failed allocation leaks every earlier one — ▶ **PROMOTED 2026-09-04, tracked debt**
+
+The shape is `$r = New-RepoWithAnomaly; $h = New-CleanHome` followed by
+`try { ... } finally { Remove-Item $r,$h ... }`. Any allocation past the first that throws leaks the
+earlier ones permanently, because the `finally` that would clean them is never entered.
+
+Raised by the agy peer as AGY-CAPSTONE round 2 (State Corruptor, severity 1) and **deferred rather than
+folded because it is a repo-wide test convention, not a defect that change introduced.** Patching one
+file's sites would leave that file inconsistent with the ~92 sites elsewhere, for a consequence that is
+one orphaned temp directory in the case where creating a temp directory has ALREADY failed — at which
+point every test is failing anyway and `TEMP` is OS-swept.
+
+⚠ **THE COUNT IN THE CAPTURED ENTRY IS ALREADY STALE, AND THAT IS EXPECTED** — it recorded 105 sites
+across 9 files on 2026-09-04, but these suites grow (`agy-anomaly-reminder` alone went 29→33 tests in the
+test-audit that same day). **The NINE FILES are confirmed still current** — `agy-liveness-check`,
+`agy-anomaly-capture-reminder`, `agy-anomaly-reminder`, `agy-discipline-reaching`,
+`agy-anomaly-dispatch-reminder`, `agy-anomaly-model-notice`, `agy-drive-session-reset`,
+`agy-after-reminder`, `agy-anomaly-contract-stamp` — but **re-measure the site count at plan time rather
+than quoting this line.**
+
+Fix shape: initialise each handle to `$null` before the `try` and move the allocations inside it,
+repo-wide in one pass so no file is left inconsistent with its siblings.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
