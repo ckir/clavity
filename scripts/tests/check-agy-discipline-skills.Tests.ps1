@@ -958,3 +958,38 @@ Describe 'AGY-SCOPE disposition taxonomy' {
         }
     }
 }
+
+Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
+
+    It 'passes on the real tree' {
+        $r = & pwsh -NoProfile -File $script:Lint 2>&1 | Out-String
+        $LASTEXITCODE | Should -Be 0 -Because 'all four skills carry AGY-NEGOTIATE after section 25'
+    }
+
+    It 'FAILS when a discipline loses its AGY-NEGOTIATE section' {
+        # Non-vacuity. Strip the section from ONE skill in a sandbox copy and prove the linter
+        # names that skill. A linter that passes with the section gone is certifying nothing.
+        # 🔴 COPY ONLY WHAT THE LINTER READS. AGY-AFTER round 1 caught an earlier draft doing
+        # `Copy-Item $script:RepoRoot -Recurse`: MEASURED, this working tree is 18G, with
+        # clavity-classic/target at 2.6G and .git at 95M. A whole-tree copy inside a Pester test
+        # thrashes the disk, hits file locks on live build artifacts, and turns a string-replacement
+        # test into the slowest thing in the suite. The linter takes -Root, so give it a minimal tree.
+        $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("negpin-" + [guid]::NewGuid().ToString('N'))
+        try {
+            foreach ($d in @('agy-first','agy-capstone','agy-test-audit','adversarial-panel-review')) {
+                $dest = Join-Path $sandbox "clavity-dotnet/plugin/skills/$d"
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                Copy-Item (Join-Path $script:RepoRoot "clavity-dotnet/plugin/skills/$d/SKILL.md") $dest -Force
+            }
+            New-Item -ItemType Directory -Path (Join-Path $sandbox 'scripts') -Force | Out-Null
+            Copy-Item (Join-Path $script:RepoRoot 'scripts/check-agy-discipline-skills.ps1') (Join-Path $sandbox 'scripts') -Force
+            $victim = Join-Path $sandbox 'clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md'
+            (Get-Content $victim -Raw).Replace('## AGY-NEGOTIATE', '## Something Else Entirely') |
+                Set-Content $victim -NoNewline
+            $out = & pwsh -NoProfile -File (Join-Path $sandbox 'scripts/check-agy-discipline-skills.ps1') 2>&1 | Out-String
+            $LASTEXITCODE | Should -Not -Be 0
+            $out | Should -Match 'agy-test-audit'
+            $out | Should -Match 'AGY-NEGOTIATE'
+        } finally { Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}

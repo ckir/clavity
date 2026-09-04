@@ -330,6 +330,21 @@ foreach ($skill in $disciplineNames) {
     }
 }
 
+# ROADMAP section 25: every review-only discipline carries a bounded negotiation protocol. Checked
+# against $disciplineNames, NOT $skills - adversarial-panel-review is excluded from $skills on purpose
+# (non-ASCII content, no marker constant) but must still carry this section.
+foreach ($d in $disciplineNames) {
+    $p = Join-Path $Root "clavity-dotnet/plugin/skills/$d/SKILL.md"
+    if (-not (Test-Path $p)) { Fail "agy-discipline-skills: missing SKILL.md for '$d'"; continue }
+    $text = Get-Content -Raw $p
+    if ($text -notmatch '(?m)^##\s+AGY-NEGOTIATE') {
+        Fail "agy-discipline-skills: '$d' has no '## AGY-NEGOTIATE' section (ROADMAP section 25)."
+    }
+    if ($text -notmatch 'MAX_NEGOTIATE_ROUNDS') {
+        Fail "agy-discipline-skills: '$d' has an AGY-NEGOTIATE section with no round cap constant."
+    }
+}
+
 # ---------------------------------------------------------------------------------------------------
 # THE ROSTER ITSELF, which nothing checked until AGY-CAPSTONE 2026-09-02. Every guard above asks whether
 # a LISTED discipline is well-formed; not one asks whether the list is complete. Add a fifth discipline
