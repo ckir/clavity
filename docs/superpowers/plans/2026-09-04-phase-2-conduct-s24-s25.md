@@ -513,7 +513,16 @@ Temporarily empty the exclusion so every path counts as shippable:
 
 Run: `pwsh -NoProfile -Command "Invoke-Pester scripts/tests/check-capstone-new-code.Tests.ps1 -PassThru | Select-Object -ExpandProperty Failed | Select-Object -ExpandProperty Name"`
 
-Expected: the failing test is named **`does NOT fire on a new TEST file`**. Confirm that specific name — a non-zero suite alone proves nothing, and a mutant that reddens for an unrelated reason (a parse error, a `grep` that exits 2) certifies a real gap as covered. **Then restore the function body and re-run to confirm 6/6 green again.**
+Expected: **TWO** tests are named, and both are correct —
+
+```
+does NOT fire on a new TEST file
+handles a path containing a SPACE without letting it defeat the test-path exclusion
+```
+
+⚠ **MEASURED 2026-09-04 during execution; an earlier draft of this step named only the first and was wrong.** Both rows exercise the same exclusion, so one mutant legitimately reddens both. **Seeing two here is the expected result, not a sign something went wrong** — an executor told to expect one red would otherwise stop and investigate a correct outcome.
+
+Confirm those specific NAMES. A non-zero suite alone proves nothing, and a mutant that reddens for an unrelated reason (a parse error, a `grep` that exits 2) certifies a real gap as covered. **Then restore the function body and re-run to confirm the full suite is green again.**
 
 - [ ] **Step 6: Commit**
 
