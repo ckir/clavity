@@ -387,6 +387,8 @@ try {
     # diff the declaration NAME sets ast-grep finds. A name present at HEAD but absent at base is new
     # shipped code, independent of which line it landed on or how many modifiers precede it.
     $ruleBSkipped = [System.Collections.Generic.List[string]]::new()
+    # Files Rule B DID examine but can only partly understand - see the RULE-B-PARTIAL block below.
+    $ruleBPartial = [System.Collections.Generic.List[string]]::new()
     $changedForRuleB = (& git diff --name-only -z "$BaseRef..HEAD" -- . `
         ':(exclude)*.lock' ':(exclude)*.min.js' ':(exclude)package-lock.json') -split "`0" | Where-Object { $_ -ne '' }
 
@@ -437,7 +439,17 @@ try {
         else {
             # An extensionless executable is parsed as Bash, and its temp file MUST carry a .sh suffix
             # or ast-grep's extension-keyed discovery ignores it entirely - see the block comment above.
-            if ($isShellNamed) { $lang = 'Bash'; $tmpExt = '.sh' }
+            #
+            # 🔴 THE COVERAGE HERE IS PARTIAL, AND IT MUST SAY SO. MEASURED (capstone R4): the Bash
+            # grammar sees a `deploy() { ... }` function in a justfile, but a NORMAL RECIPE - `deploy:`
+            # followed by indented lines - is not a Bash function_definition, so adding one returns
+            # exit 0. Recipes are the ordinary way to add work to a justfile or Makefile.
+            #
+            # An earlier round reported these files as RULE-B-SKIPPED, which was an HONEST miss. Parsing
+            # them as Bash without saying so converted that into a SILENT one - partial coverage that
+            # reads as full coverage, which is the False Safety Promise shape this review keeps finding.
+            # So they now announce the limit on every run, exactly as a skip does.
+            if ($isShellNamed) { $lang = 'Bash'; $tmpExt = '.sh'; $ruleBPartial.Add($path) }
             else               { $lang = $AstGrepLanguageByExtension[$ext]; $tmpExt = $ext }
             $baseNames = Get-AstGrepDeclarationNames -Lang $lang -Content ($baseContent -join "`n") -Extension $tmpExt
             $headNames = Get-AstGrepDeclarationNames -Lang $lang -Content ($headContent -join "`n") -Extension $tmpExt
@@ -448,6 +460,14 @@ try {
                 $fired.Add("new-declaration: $path : $name")
             }
         }
+    }
+
+    # PARTIAL coverage is announced exactly as a SKIP is. A build file parsed as shell yields its
+    # `f() {}` functions and NOT its recipe targets, so reporting "no new code" for one without saying
+    # so would be a silent half-answer. MEASURED (capstone R4): adding `deploy:` to a justfile returns
+    # exit 0 under the Bash grammar.
+    if ($ruleBPartial.Count -gt 0) {
+        $ruleBPartial | Sort-Object -Unique | ForEach-Object { Write-Output "  - RULE-B-PARTIAL (build file parsed as shell; recipe targets NOT covered): $_" }
     }
 
     if ($ruleBSkipped.Count -gt 0) {

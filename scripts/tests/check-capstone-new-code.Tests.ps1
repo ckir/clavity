@@ -468,7 +468,9 @@ Describe 'check-capstone-new-code' {
         $r = New-Repo
         try {
             Push-Location $r
-            Set-Content -Path 'justfile' -Value @('build:', '    echo build')
+            # `already_there` is a Bash function present AT BASE - it is the control for the baseline
+            # negative assertion below, and without it that assertion cannot bite.
+            Set-Content -Path 'justfile' -Value @('build:', '    echo build', '', 'already_there() {', '  echo old', '}')
             git add justfile 2>&1 | Out-Null; git commit -qm addjustfile 2>&1 | Out-Null
             Add-Content -Path 'justfile' -Value @('', 'deploy() {', '  echo deploy', '}')
             git commit -qam newfnjustfile 2>&1 | Out-Null
@@ -477,6 +479,36 @@ Describe 'check-capstone-new-code' {
             $res.ExitCode | Should -Be 3 -Because 'an extensionless executable is parsed as shell, so a new function in it is new code'
             $res.Out | Should -Match 'new-declaration[^\r\n]*deploy'
             $res.Out | Should -Not -Match 'RULE-B-SKIPPED[^\r\n]*justfile' -Because 'it is examined now, not skipped'
+            # BASELINE NEGATIVE (capstone R4, Assertion Strength Auditor). Without this the row cannot
+            # tell working set-diffing from a base side that came back EMPTY: if `git show <base>:path`
+            # failed and yielded no names, EVERY head declaration would report as new and this row would
+            # still pass. `already_there` exists at base, so seeing it reported as new proves the base
+            # side collapsed rather than diffed.
+            $res.Out | Should -Not -Match 'new-declaration[^\r\n]*already_there' -Because 'a declaration present at base is not new - if it reports, the base side returned empty'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'is PARTIAL, not complete, on a build file - a recipe target is NOT covered and says so' {
+        # 🔴 THE DRIVER OVERSTATED THE EARLIER FIX, AND THIS ROW RECORDS THE CORRECTION. Capstone R4.
+        # MEASURED: adding a normal recipe - `deploy:` followed by an indented line - to a justfile
+        # returns exit 0. ast-grep's Bash grammar sees `f() {}` functions; a recipe target is not a
+        # function_definition. Recipes are the ORDINARY way to add work to a justfile or Makefile, so
+        # the coverage restored earlier was the narrower half.
+        #
+        # Before that fix these files printed RULE-B-SKIPPED - an HONEST miss. Parsing them as shell
+        # without saying so made it a SILENT one. The gate now announces RULE-B-PARTIAL on every run
+        # for these files, so a reader is told which half was examined.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'justfile' -Value @('build:', '    echo build')
+            git add justfile 2>&1 | Out-Null; git commit -qm addjustfile 2>&1 | Out-Null
+            Add-Content -Path 'justfile' -Value @('', 'deploy:', '    echo deploy')
+            git commit -qam newrecipe 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 0 -Because 'the Bash grammar cannot see a recipe target - this is the stated limit, not a claim of coverage'
+            $res.Out | Should -Match 'RULE-B-PARTIAL[^\r\n]*justfile' -Because 'a half-understood file must announce that, exactly as a skipped one does'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -577,6 +609,29 @@ Describe 'check-capstone-new-code' {
             $res = Invoke-Checker $r 'HEAD~1'
             $res.ExitCode | Should -Be 0
             $res.Out | Should -Not -Match 'RULE-B-SKIPPED[^\r\n]*seed\.ps1' -Because 'the native parser covers .ps1, so it is examined rather than skipped'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'PROVES .ps1 is actually examined, not merely un-skipped' {
+        # 🔴 THE ROW ABOVE IS VACUOUS ON ITS OWN, AND THIS ROW EXISTS BECAUSE OF THAT. Capstone R4,
+        # Assertion Strength Auditor, attacking a test the DRIVER had written to prove its own fix.
+        # MEASURED: drop '.ps1' from $CodeExtensions and the checker returns exit 0 with ZERO
+        # RULE-B-SKIPPED lines - which is EXACTLY what the row above asserts. It passes while .ps1 is
+        # completely unexamined, certifying the silent bypass it was written to exclude.
+        #
+        # SILENCE IS NOT PROOF OF SCANNING; it is also the symptom of not looking. The only thing that
+        # proves examination is a POSITIVE result from the same engine on the same file type, so this
+        # row adds a declaration and requires the trigger to fire. Under that same mutant this row
+        # goes red, which is what makes the pair non-vacuous.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Add-Content -Path 'src/seed.ps1' -Value "function Proof-OfExamination { 42 }"
+            git commit -qam proof 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a positive fire is the only evidence the file was parsed at all'
+            $res.Out | Should -Match 'new-declaration[^\r\n]*Proof-OfExamination'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

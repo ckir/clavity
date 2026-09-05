@@ -795,7 +795,7 @@ check-cheatsheet-parity.Tests.ps1               135,9s   16 tests   <- SLOW, NEW
                                                                       modest test count. Measured solo as the
                                                                       sole command: "Tests completed in
                                                                       135,92s", 16 passed / 0 failed.
-check-capstone-new-code.Tests.ps1               107,0s   28 tests   <- SLOW, NEW 2026-09-04 (ROADMAP s24 trigger). Two runs on an idle machine, 108,2s cold / 107,0s warm; background load uncontrolled.
+check-capstone-new-code.Tests.ps1               107,0s   30 tests   <- SLOW, NEW 2026-09-04 (ROADMAP s24 trigger). Two runs on an idle machine, 108,2s cold / 107,0s warm; background load uncontrolled.
                                                                       COUNT 22 -> 25 on 2026-09-05 (Rule B's regex
                                                                       engine replaced with ast-grep, owner ruling;
                                                                       3 rows added for Python `async def`, the
