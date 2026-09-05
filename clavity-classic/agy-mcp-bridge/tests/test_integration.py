@@ -8,13 +8,24 @@ import aiosqlite
 
 # OPT-IN ONLY. Both tests below SELF-SKIP unless CLAVITY_RUN_INTEGRATION_TESTS is set to a real value.
 #
-# WHAT THESE ACTUALLY MUTATE - stated exactly, because it took three attempts to describe correctly and
-# two of those attempts shipped. Read server.py:194-210 rather than trusting the tool's name:
-#   * `init_db(target_dir)` and `log_start(...)` create and write `.agent/telemetry.db`;
-#   * `create_worktree(target_dir, task_id)` creates a REAL GIT WORKTREE.
-# Both happen BEFORE the MOCK_AGENT_RESPONSE check at server.py:218, so the mock does NOT prevent them.
-# `target_dir` is `os.path.abspath(".")`, so all of it lands in whatever directory pytest was invoked
-# from. THAT is why these are gated.
+# WHAT THESE ACTUALLY MUTATE - and this is the FOURTH attempt, so read the cited lines rather than
+# trusting any summary, including this one. The three wrong versions were: "runs agy in a worktree"
+# (worktree right, agent wrong); then "telemetry.db + pytest_artifact.txt" (dropped the worktree,
+# invented the artifact); then the version below minus its first bullet, which described the SECOND
+# test's mutations as though both tests performed them.
+#
+#   * ON IMPORT, BOTH TESTS, server.py:65-71 - `os.makedirs(".agent", exist_ok=True)` and
+#     `logging.basicConfig(filename=".agent/server.log", ...)` run at MODULE LOAD, unconditionally.
+#     Merely spawning the server creates `.agent/` and `.agent/server.log` in its CWD. No tool call is
+#     needed, so this is the ONLY mutation `test_mcp_server_available` performs - it calls list_tools()
+#     and never call_tool(), so it never reaches the delegation path at all.
+#   * ONLY THE SECOND TEST, server.py:194-210 - `init_db(target_dir)` and `log_start(...)` create and
+#     write `.agent/telemetry.db`, and `create_worktree(target_dir, task_id)` creates a REAL GIT
+#     WORKTREE. All three run BEFORE the MOCK_AGENT_RESPONSE check at :218, so the mock does not
+#     prevent them.
+#
+# `target_dir` is `os.path.abspath(".")`, so everything lands in whatever directory the process was
+# started from. THAT is why these are gated.
 #
 # What the mock DOES prevent: the agent never runs, so the task prompt is ignored and
 # `pytest_artifact.txt` is NEVER created - which makes the `os.remove` cleanup at the end of the second

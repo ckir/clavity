@@ -40,7 +40,21 @@ test:
 # `ModuleNotFoundError: No module named 'mcp'`. uv is what makes the recipe reproducible rather than
 # dependent on whatever happens to be installed.
 #
-# Hermetic agy-mcp-bridge Python tests (24). NOT in `test:` - see above.
+# NOT QUITE HERMETIC, and the word was mine and wrong. Capstone R7 follow-up. `tests/test_secret_scrub.py:15`
+# and `tests/test_mcp_wiring.py:19` both `import server`, and server.py runs `os.makedirs(".agent",
+# exist_ok=True)` at MODULE LOAD - so this recipe creates a `.agent/` directory in its CWD.
+#
+# MEASURED, because the peer's version of this finding was directionally right and wrong in both
+# specifics: it lands in `clavity-classic/` (not agy-mcp-bridge/, because `--project` leaves CWD here),
+# and it is an EMPTY directory - no `server.log`, because `logging.basicConfig` is a no-op once pytest
+# has installed root-logger handlers, so only the makedirs survives. It is gitignored at
+# clavity-classic/.gitignore:6, so nothing reaches `git status`.
+#
+# Left as-is rather than "fixed": an empty ignored directory is not worth adding indirection to prevent,
+# and moving CWD would relocate the side effect rather than remove it. Recorded so the next reader is not
+# told this recipe touches nothing.
+#
+# agy-mcp-bridge Python tests (24). NOT in `test:` - see above.
 pytest:
     uv run --project agy-mcp-bridge --frozen pytest \
         agy-mcp-bridge/test_agy_bus.py \
@@ -51,10 +65,15 @@ pytest:
         agy-mcp-bridge/tests/test_mcp_wiring.py \
         agy-mcp-bridge/tests/test_secret_scrub.py
 
-# OPT-IN and MUTATING. Verified behaviour, not inferred from the tool's name (server.py:194-210):
-# init_db + log_start write `.agent/telemetry.db`, and create_worktree makes a REAL GIT WORKTREE - all
-# BEFORE the MOCK_AGENT_RESPONSE check at :218, so the mock does not prevent them. The agent itself IS
-# mocked, so no live peer runs. Everything lands in the process CWD.
+# OPT-IN and MUTATING. Verified by reading, not inferred from the tool's name - and corrected four times,
+# so the line numbers are cited to be checked:
+#   server.py:65-71  ON IMPORT, unconditionally: creates `.agent/` and `.agent/server.log`. Spawning the
+#                    server is enough; no tool call needed. This is the ONLY thing the first test does -
+#                    it calls list_tools() and never reaches the delegation path.
+#   server.py:194-210 SECOND TEST ONLY: init_db + log_start write `.agent/telemetry.db`, and
+#                    create_worktree makes a REAL GIT WORKTREE - all BEFORE the MOCK_AGENT_RESPONSE
+#                    check at :218, so the mock does not prevent them.
+# The agent itself IS mocked, so no live peer runs. Everything lands in the process CWD.
 #
 # TWO THINGS THIS RECIPE MUST DO, and the first draft did NEITHER:
 #   1. SET THE OPT-IN VAR. test_integration.py self-skips without it, so the recipe written to RUN these
