@@ -51,14 +51,23 @@ pytest:
         agy-mcp-bridge/tests/test_mcp_wiring.py \
         agy-mcp-bridge/tests/test_secret_scrub.py
 
-# OPT-IN, MUTATING. tests/test_integration.py drives the real delegation bridge - it runs agy in a
-# worktree and gates on committed changes - and has no skip guard of its own. Never call this from a
-# default path, and do not add it to `test:`. Worth hardening later with a skipif on an env var, the
-# way scripts/tests/check-peer-reply-citations.Tests.ps1 guards its own dependency.
+# OPT-IN and MUTATING. Verified behaviour, not inferred from the tool's name (server.py:194-210):
+# init_db + log_start write `.agent/telemetry.db`, and create_worktree makes a REAL GIT WORKTREE - all
+# BEFORE the MOCK_AGENT_RESPONSE check at :218, so the mock does not prevent them. The agent itself IS
+# mocked, so no live peer runs. Everything lands in the process CWD.
 #
-# OPT-IN and MUTATING - drives the real agy delegation bridge. Never call from a default path.
+# TWO THINGS THIS RECIPE MUST DO, and the first draft did NEITHER:
+#   1. SET THE OPT-IN VAR. test_integration.py self-skips without it, so the recipe written to RUN these
+#      tests silently SKIPPED them and reported success - MEASURED, `2 skipped`, exit 0. The guard was
+#      added after the recipe and the recipe was never re-run.
+#   2. RUN FROM THE BRIDGE DIRECTORY. The tests spawn `args=["server.py"]`, a RELATIVE path. MEASURED,
+#      `uv run --project agy-mcp-bridge` keeps CWD at clavity-classic/, where server.py does not exist,
+#      so the spawn would fail. `--directory` puts CWD where the tests assume it is - which is also where
+#      the worktree and telemetry DB then land, instead of in the repo root.
+#
+# OPT-IN and MUTATING - creates a git worktree and a telemetry DB. Never call from a default path.
 pytest-integration:
-    uv run --project agy-mcp-bridge --frozen pytest agy-mcp-bridge/tests/test_integration.py
+    CLAVITY_RUN_INTEGRATION_TESTS=1 uv run --directory agy-mcp-bridge --frozen pytest tests/test_integration.py
 
 # Release build — no test-fakes, so the fake psmux never ships (ci-classic "Build (release)" step).
 build:

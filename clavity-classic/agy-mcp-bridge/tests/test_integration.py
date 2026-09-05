@@ -6,27 +6,32 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 import aiosqlite
 
-# OPT-IN ONLY. Both tests below are SELF-SKIPPING unless CLAVITY_RUN_INTEGRATION_TESTS is set.
+# OPT-IN ONLY. Both tests below SELF-SKIP unless CLAVITY_RUN_INTEGRATION_TESTS is set to a real value.
 #
-# They are not unsafe in the "spawns a live agent" sense - both set MOCK_AGENT_RESPONSE, so the agent
-# itself is mocked. They are gated because they MUTATE THE CURRENT WORKING DIRECTORY: target_directory
-# is os.path.abspath("."), the bridge writes .agent/telemetry.db there, and the second test creates and
-# removes pytest_artifact.txt there. Whatever directory pytest is invoked from is what gets written to,
-# which makes them unfit for a routine `just` recipe or a bare `pytest` at the bridge root.
+# WHAT THESE ACTUALLY MUTATE - stated exactly, because it took three attempts to describe correctly and
+# two of those attempts shipped. Read server.py:194-210 rather than trusting the tool's name:
+#   * `init_db(target_dir)` and `log_start(...)` create and write `.agent/telemetry.db`;
+#   * `create_worktree(target_dir, task_id)` creates a REAL GIT WORKTREE.
+# Both happen BEFORE the MOCK_AGENT_RESPONSE check at server.py:218, so the mock does NOT prevent them.
+# `target_dir` is `os.path.abspath(".")`, so all of it lands in whatever directory pytest was invoked
+# from. THAT is why these are gated.
 #
-# Before this guard existed, a plain `pytest` collected these two alongside the 24 hermetic tests with
-# nothing to stop them - which is why clavity-classic/justfile lists its test files EXPLICITLY rather
-# than pointing at a directory. This marker makes the file safe on its own, so the recipe's explicit
-# list is no longer the only thing standing between a routine run and a mutated working directory.
+# What the mock DOES prevent: the agent never runs, so the task prompt is ignored and
+# `pytest_artifact.txt` is NEVER created - which makes the `os.remove` cleanup at the end of the second
+# test dead code. An earlier version of this comment claimed the file was created and removed. It was not.
 #
-# Skip-by-default is right for a developer box AND for CI: a run that silently writes a telemetry
-# database into the checkout is not something to opt out of, it is something to opt IN to. Set
-# CLAVITY_RUN_INTEGRATION_TESTS=1 (or run `just classic::pytest-integration`) to exercise them.
+# EXPLICIT OPT-IN VALUES, not truthiness. `not os.environ.get(...)` was the first attempt and it FAILED
+# OPEN: every non-empty string is truthy in Python, so `CLAVITY_RUN_INTEGRATION_TESTS=0` made the skip
+# condition False and RAN the tests - the exact opposite of what a person typing `0` intends. MEASURED:
+# value='0' -> skip_condition=False. The off-switch turned it on.
+_OPT_IN = os.environ.get("CLAVITY_RUN_INTEGRATION_TESTS", "").strip().lower()
+_RUN_INTEGRATION = _OPT_IN not in ("", "0", "false", "no", "off")
+
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("CLAVITY_RUN_INTEGRATION_TESTS"),
+    not _RUN_INTEGRATION,
     reason=(
-        "integration tests mutate the current working directory "
-        "(.agent/telemetry.db, pytest_artifact.txt); "
+        "integration tests create a git worktree and write .agent/telemetry.db "
+        "into the current working directory; "
         "set CLAVITY_RUN_INTEGRATION_TESTS=1 to opt in"
     ),
 )
