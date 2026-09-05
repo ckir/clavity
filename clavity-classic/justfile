@@ -20,11 +20,20 @@ test:
 # gate stricter than CI, which is the one thing this file tells you not to do. Reachability is what was
 # missing; whether CI should run them is a separate decision that belongs in ci-classic.yml.
 #
-# EXPLICIT FILE LIST, not a directory. `pytest` at the bridge root collects 26 tests - the extra two are
-# tests/test_integration.py, which carries NO skip guard and drives delegate_to_antigravity for real: it
-# runs agy in a worktree and gates success on COMMITTED CHANGES. A routine test recipe must not spawn a
-# peer and mutate a worktree, so those two live in `pytest-integration` below and are opt-in.
-# The same explicit-list convention the Pester suites use, for the same reason.
+# EXPLICIT FILE LIST, not a directory. `pytest` at the bridge root collects 26 tests, not 24 - the extra
+# two are tests/test_integration.py. They MUTATE THE CURRENT WORKING DIRECTORY: target_directory is
+# os.path.abspath("."), the bridge writes .agent/telemetry.db there, and one test creates and removes
+# pytest_artifact.txt there. A routine test recipe must not write into whatever directory it was invoked
+# from, so those two live in `pytest-integration` below.
+#
+# CORRECTION, recorded because an earlier version of this comment and its commit message said it: those
+# tests do NOT spawn a live agy. Both set MOCK_AGENT_RESPONSE, so the agent is mocked. The reason to gate
+# them is the working-directory mutation above, not a live peer. Reading the file corrected the claim.
+#
+# Belt AND braces: tests/test_integration.py now also self-skips via a module-level
+# pytest.mark.skipif on CLAVITY_RUN_INTEGRATION_TESTS, so the file is safe even when someone runs bare
+# `pytest`. The explicit list here is no longer the only thing standing between a routine run and a
+# mutated working directory - it is the same explicit-list convention the Pester suites use.
 #
 # `uv run --frozen` resolves from uv.lock, so this works from a fresh clone. The bridge's .venv is
 # gitignored, and MEASURED 2026-09-05 the system interpreter cannot run these at all:

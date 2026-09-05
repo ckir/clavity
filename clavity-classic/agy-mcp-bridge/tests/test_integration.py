@@ -6,6 +6,31 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 import aiosqlite
 
+# OPT-IN ONLY. Both tests below are SELF-SKIPPING unless CLAVITY_RUN_INTEGRATION_TESTS is set.
+#
+# They are not unsafe in the "spawns a live agent" sense - both set MOCK_AGENT_RESPONSE, so the agent
+# itself is mocked. They are gated because they MUTATE THE CURRENT WORKING DIRECTORY: target_directory
+# is os.path.abspath("."), the bridge writes .agent/telemetry.db there, and the second test creates and
+# removes pytest_artifact.txt there. Whatever directory pytest is invoked from is what gets written to,
+# which makes them unfit for a routine `just` recipe or a bare `pytest` at the bridge root.
+#
+# Before this guard existed, a plain `pytest` collected these two alongside the 24 hermetic tests with
+# nothing to stop them - which is why clavity-classic/justfile lists its test files EXPLICITLY rather
+# than pointing at a directory. This marker makes the file safe on its own, so the recipe's explicit
+# list is no longer the only thing standing between a routine run and a mutated working directory.
+#
+# Skip-by-default is right for a developer box AND for CI: a run that silently writes a telemetry
+# database into the checkout is not something to opt out of, it is something to opt IN to. Set
+# CLAVITY_RUN_INTEGRATION_TESTS=1 (or run `just classic::pytest-integration`) to exercise them.
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("CLAVITY_RUN_INTEGRATION_TESTS"),
+    reason=(
+        "integration tests mutate the current working directory "
+        "(.agent/telemetry.db, pytest_artifact.txt); "
+        "set CLAVITY_RUN_INTEGRATION_TESTS=1 to opt in"
+    ),
+)
+
 
 @pytest.mark.asyncio
 async def test_mcp_server_available():
