@@ -2717,6 +2717,101 @@ recovery possible — it does not force the reading. Any scoping that claims oth
 
 ---
 
+### §36 — Orphaned tests: three runners keep three disagreeing ledgers, and two of them assert coverage they do not provide — ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt**
+
+**Owner's statement of the problem:** *"The repo has a task runner and CI. The agent implements tests.
+Then the agent forgets to add them to the runner."* Recorded with BOTH proposals below; the owner chose
+to track rather than build. **Nothing here is implemented.**
+
+**ORPHAN RISK IS A PROPERTY OF THE DISCOVERY MODEL, NOT OF THE LANGUAGE OR THE AGENT'S DILIGENCE:**
+
+| Runner | Discovery | A newly added test file is |
+|---|---|---|
+| `cargo test --all --features test-fakes` | auto-discovers every `#[test]` in the workspace | run automatically |
+| `dotnet test <project>` | auto-discovers inside THAT project | run automatically **within that project only** |
+| `Invoke-Pester @('a','b',…)` | an EXPLICIT list in the justfile | **silently never run** |
+| `pytest <explicit files>` | an EXPLICIT list in the justfile | **silently never run** |
+
+Every orphan this repo has had came from the bottom two rows. Rust has never had one and structurally
+cannot.
+
+**THREE DISTINCT FAILURE SHAPES, MEASURED 2026-09-05 — the owner's sentence describes only the first:**
+
+1. **A test file reaching no runner at all.** 8 Python test files + 1 helper under
+   `clavity-classic/agy-mcp-bridge/` had no justfile recipe: they existed, passed by hand, and no gate
+   executed them. Closed by the `classic::pytest` recipe (`fc85437`). ⚠ **They remain in NO CI** —
+   `ci-classic.yml:42-48` runs cargo only, and `clavity-classic/justfile:2` forbids the local recipes
+   being stricter than CI, so wiring them in is a `ci-classic.yml` decision.
+2. **The local runner is strictly WEAKER than CI in the same repo half.** `clavity-dotnet/justfile:13-14`
+   runs `dotnet test tests/Clavity.Ls.Tests` and nothing else, while `.github/workflows/ci-dotnet.yml:26`
+   **and** `:32` run `Clavity.Ls.Tests` AND `Clavity.Integration.Tests`. **`just dotnet::test` returns
+   green over a smaller set than CI enforces** — the inverse of the usual risk, so a local gate cannot be
+   trusted as a CI predictor.
+3. **Prose asserting coverage the commands do not provide — this is what made 1 and 2 invisible.**
+   `clavity-dotnet/justfile:12` reads `# Unit + integration tests (…)` above a recipe running ONE project.
+   The owner's own `TODO.md` states *"All `.cs` test files under `clavity-dotnet/tests/` are reached by the
+   `dotnet::test` recipe … which MSBuild resolves across all test projects under `tests/`"* — `dotnet test`
+   on one project directory does not resolve siblings. **By this ROADMAP's own severity table both are
+   rule-4 False Safety Promises**, and fixing them is the cheapest item here.
+
+**TWO CONSTRAINTS ANY PROPOSAL MUST SATISFY — these are deliberate, not oversights:**
+
+- **A legitimately unregistered suite exists.** `clavity-dotnet/tests/Clavity.Live.Acceptance/` is in no
+  runner and no workflow ON PURPOSE — it drives a live agy, self-gates with `Skip`, and
+  `clavity-dotnet/CONTRIBUTING.md:29` documents it as a manual runbook. A rule requiring every test
+  artifact to appear in a runner flags it. **In this repo a noisy gate is not neutral** —
+  `scripts/tests/test-suite-registration.Tests.ps1`'s header records a text guard already defeated by
+  someone commenting a suite out.
+- **A globbing runner ALREADY EXISTS AND NOBODY RUNS IT.** `just test-scripts` globs `scripts/tests`;
+  the gates people actually run are `test-scripts-fast` / `test-scripts-slow`, which are explicit lists.
+  `scripts/tests/_partition.md` records the split as a MEASURED judgement, and the fast half is
+  cap-adjacent. **A glob cannot know a suite takes ~108 seconds.** Globbing has been tried here and lost
+  to that constraint — any proposal that reduces to "just glob it" must say how it encodes the partition.
+
+**AN EXISTING GATE ALREADY SOLVES THIS FOR ONE DIRECTORY.**
+`scripts/tests/test-suite-registration.Tests.ps1` pins that every suite in `scripts/tests/` appears in
+exactly one half. Its own header states the limit and hands the decision here: *"THE SCOPE IS
+`scripts/tests/` ONLY. A suite anywhere else in the repository is invisible to this guard, and a review
+has already found one running in no gate at all… Widening the scope is a decision about other products'
+suites, not a fold."*
+
+#### The two proposals, recorded side by side
+
+**THE AGY PEER'S (AGY-FIRST consult, 2026-09-05) — directory-based partitioning.** Reorganise test files
+into routing directories (`scripts/tests/fast/`, `slow/`, `tests/manual/` for the exempt Live.Acceptance);
+runners glob those directories; a gate fails if a test file exists outside an authorised one, oracled by
+`git ls-files` against the naming conventions. Its argument: *"the filesystem IS the manifest"*, so a test
+on disk but not in a runner becomes structurally impossible while the batching judgement survives as
+directory membership. It rejected a central `tests.json` manifest as bookkeeping friction requiring custom
+parsers. **It named its own worst failure:** shared helpers and fixtures (this repo has
+`real_test_client.py`) get flagged unless path-exclusions are added, *"which slowly reintroduces the very
+whitelist fragility we are trying to escape"*, plus fragmented files and disrupted `git blame` from the
+move. A suite that grows from fast to slow needs a FILE MOVE rather than a list edit.
+
+**THE DRIVER'S — three steps, cheapest first, no file moves.** (a) Fix the two false prose claims in 3
+above. (b) **Adopt the peer's own third answer, below.** (c) Widen `test-suite-registration.Tests.ps1`
+past `scripts/tests/` with an exceptions file carrying a REASON per entry — reusing code whose header
+documents several rounds of comment-stripping fixes, and turning Live.Acceptance into a named exemption
+rather than a false positive. Argument against the peer's: directory partitioning pays its full cost up
+front across 56 suites to solve what a census gate solves without moving anything, and *"the filesystem is
+the manifest"* is not quite true while the gate must still know `tests/manual/` is exempt — an allow-list
+spelled as a path.
+
+🔴 **THE PEER'S THIRD ANSWER IS THE BEST IDEA IN THE CONSULT AND THE DRIVER HAD NOT NAMED IT: MAKE CI A
+DUMB EXECUTOR OF THE `justfile`.** Today `ci-dotnet.yml` and `ci-classic.yml` declare their own
+`dotnet test` / `cargo test` commands. Gut them to invoke a `just` recipe and **local/CI divergence becomes
+structurally impossible** rather than merely repaired — it strips CI of the ability to define its own
+execution path, which is what produced failure shape 2. Both proposals are compatible with it.
+
+**THE PEER ALSO REJECTED THE FRAMING, and the rejection is worth keeping:** *"'Orphaned tests' implies the
+tests themselves are the defect. The real problem is **fragmented, hand-maintained execution ledgers**"* —
+the justfile lists, the CI YAMLs and the prose are parallel accounting books that do not agree, and the
+local/CI gap is *"the inevitable structural consequence of letting CI and local tools define their own
+separate lists"*. **Scope any implementation against that framing, not against "add the test to the
+runner".**
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
