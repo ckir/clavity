@@ -197,6 +197,41 @@ function Get-AstGrepDeclarationNames([string]$Lang, [string]$Content, [string]$E
     }
 }
 
+# POWERSHELL, via the parser built into the runtime this script ALREADY executes in - no ast-grep, no
+# new dependency. ast-grep has no PowerShell grammar (MEASURED: `--lang powershell` answers
+# "powershell is not supported!"), and .ps1 is this repository's largest tracked language at 105 files.
+# The gate script itself is PowerShell, so leaving Rule B blind here meant the gate could not see a new
+# function appended to its OWN source - MEASURED, that returned exit 0 and would let the gate be
+# silently disabled. Owner ruling 2026-09-05 after an AGY-FIRST consult that independently reached the
+# same answer.
+#
+# Returns the SAME "<kind>::<name>" shape Get-AstGrepDeclarationNames returns, so the caller's set-diff
+# is identical for both engines. KEYED BY KIND for the same measured reason recorded there: a `class Foo`
+# and a `function Foo` are different declarations and must not collapse into one entry.
+function Get-PowerShellDeclarationNames([string]$Content) {
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Content, [ref]$tokens, [ref]$errors)
+    if ($null -eq $ast) { return @() }
+    # A file with syntax errors still yields a PARTIAL ast here rather than $null, and that is what we
+    # want: a half-parseable file should surrender the declarations it can, not silently contribute none.
+    $out = [System.Collections.Generic.List[string]]::new()
+    foreach ($f in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+        # A `filter` is a FunctionDefinitionAst with IsFilter set - same node type, different keyword,
+        # and it is executable code exactly as a function is.
+        $kind = if ($f.IsFilter) { 'ps_filter' } else { 'ps_function' }
+        if ($f.Name) { $out.Add("${kind}::$($f.Name)") }
+    }
+    foreach ($t in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.TypeDefinitionAst] }, $true)) {
+        $kind = if ($t.IsEnum) { 'ps_enum' } else { 'ps_class' }
+        if ($t.Name) { $out.Add("${kind}::$($t.Name)") }
+    }
+    return @($out | Sort-Object -Unique)
+}
+
+# The extensions Rule B parses with the NATIVE PowerShell parser rather than ast-grep.
+$PowerShellExtensions = @('.ps1', '.psm1')
+
 # ast-grep ABSENT -> FAIL CLOSED, never silently "no new code". Rule B cannot run without it, and a
 # gate an agent runs on itself must never fail toward silence - the same principle the base-ref
 # checks below apply to a bad BaseRef. Checked before Push-Location so it fails fast regardless of
@@ -369,7 +404,19 @@ try {
         if ($LASTEXITCODE -ne 0) { continue }
 
         $ext = [System.IO.Path]::GetExtension($path)
-        if (-not $AstGrepLanguageByExtension.ContainsKey($ext)) {
+        $isPowerShell = $PowerShellExtensions -contains $ext
+
+        # EXTENSIONLESS EXECUTABLES (justfile, Makefile, Dockerfile) - parse the shell-shaped bodies as
+        # Bash. This restores a case an earlier round had fixed and the ast-grep migration then REGRESSED:
+        # ast-grep's file-type discovery is EXTENSION-keyed, so an extensionless file matched nothing and
+        # fell into RULE-B-SKIPPED. MEASURED both halves: identical justfile content saved as `jf.sh`
+        # yields `{"NAME":{"text":"deploy"}}`, while the same content saved with NO extension yields `[]`.
+        # So the parse works and only the discovery was the problem - we give the temp file a .sh suffix.
+        # Best-effort by nature: a justfile is not bash, but its recipe bodies and `f() {}` declarations
+        # are shell-shaped, which is exactly what this rule is looking for.
+        $isShellNamed = ($ext -eq '' -and ($CodeExecutableNames -contains [System.IO.Path]::GetFileName($path)))
+
+        if (-not $isPowerShell -and -not $isShellNamed -and -not $AstGrepLanguageByExtension.ContainsKey($ext)) {
             # THE GAP MUST BE LOUD (owner ruling). Rule A and Rule C still see this file; only Rule B
             # cannot. Collected here and printed unconditionally below, whether or not the trigger
             # otherwise fires - a silently-skipped file is the exact defect an earlier round already
@@ -377,13 +424,24 @@ try {
             $ruleBSkipped.Add($path)
             continue
         }
-        $lang = $AstGrepLanguageByExtension[$ext]
 
         $baseContent = & git show "${BaseRef}:$path" 2>$null
         if ($LASTEXITCODE -ne 0) { continue }   # absent at base (new file, or the new side of a rename) - Rule A's business
 
-        $baseNames = Get-AstGrepDeclarationNames -Lang $lang -Content ($baseContent -join "`n") -Extension $ext
-        $headNames = Get-AstGrepDeclarationNames -Lang $lang -Content ($headContent -join "`n") -Extension $ext
+        if ($isPowerShell) {
+            # Native parser - no ast-grep grammar exists for PowerShell. Same "<kind>::<name>" set
+            # shape, so the diff below is engine-agnostic.
+            $baseNames = Get-PowerShellDeclarationNames (($baseContent -join "`n"))
+            $headNames = Get-PowerShellDeclarationNames (($headContent -join "`n"))
+        }
+        else {
+            # An extensionless executable is parsed as Bash, and its temp file MUST carry a .sh suffix
+            # or ast-grep's extension-keyed discovery ignores it entirely - see the block comment above.
+            if ($isShellNamed) { $lang = 'Bash'; $tmpExt = '.sh' }
+            else               { $lang = $AstGrepLanguageByExtension[$ext]; $tmpExt = $ext }
+            $baseNames = Get-AstGrepDeclarationNames -Lang $lang -Content ($baseContent -join "`n") -Extension $tmpExt
+            $headNames = Get-AstGrepDeclarationNames -Lang $lang -Content ($headContent -join "`n") -Extension $tmpExt
+        }
         foreach ($key in $headNames) {
             if ($baseNames -notcontains $key) {
                 $name = $key.Substring($key.IndexOf('::') + 2)   # strip the "k_<kind>::" prefix for the human-facing message

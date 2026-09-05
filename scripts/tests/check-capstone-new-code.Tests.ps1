@@ -445,30 +445,38 @@ Describe 'check-capstone-new-code' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'prints RULE-B-SKIPPED, not a false positive, for a declaration added to an extensionless EXECUTABLE file (justfile)' {
-        # FIX 2, adversarial capstone round 2026-09-04 - a REGRESSION from the FIX-4 code-extension
-        # allow-list: extensionless executables like justfile/Makefile/Dockerfile carry no extension
-        # and became invisible to Rules A/B/C the moment that allow-list shipped. This repo has a live
-        # 12KB justfile; before FIX 4 shipped, Rules B/C scanned it.
+    It 'FIRES on a declaration added to an extensionless EXECUTABLE file (justfile), parsed as shell' {
+        # 🔴 THIS ROW HAS NOW FLIPPED TWICE, and the history is the point - it is a live record of one
+        # defect being fixed, silently regressed by a later fix, and restored:
+        #   2026-09-04, capstone R2: extensionless executables became invisible when the code-extension
+        #     allow-list shipped. This repo has a live 12KB justfile. FIXED - the row asserted exit 3.
+        #   2026-09-05, ast-grep swap: REGRESSED. ast-grep's discovery is EXTENSION-keyed, so an
+        #     extensionless file matched nothing and fell into RULE-B-SKIPPED. The row was flipped to
+        #     assert the skip - honest at the time, but it recorded a coverage LOSS as if it were the
+        #     intended design.
+        #   2026-09-05, this row: RESTORED. MEASURED that the loss was never necessary - identical
+        #     justfile content saved as `jf.sh` yields `{"NAME":{"text":"deploy"}}` from ast-grep's Bash
+        #     grammar, while the same bytes with NO extension yield `[]`. The PARSE always worked; only
+        #     the discovery failed. Rule B now writes the temp file with a .sh suffix for these names.
         #
-        # LEGITIMATELY CHANGED under the 2026-09-05 ast-grep engine swap (owner ruling). ast-grep's
-        # language map (see $AstGrepLanguageByExtension) is keyed by EXTENSION, and an extensionless
-        # file has no extension to key on - so justfile falls under the exact same owner-accepted gap
-        # as .ps1, even though it is not PowerShell. Rules A and C are UNCHANGED and still see this
-        # file (this row's original 2026-09-04 concern); only Rule B's OWN declaration-name diffing is
-        # gone, and it must say so rather than silently answering "no new code".
+        # ⚠ THE REGRESSION WAS ONLY VISIBLE BECAUSE THE SKIP PRINTS. Had RULE-B-SKIPPED been silent,
+        # an earlier round's fix would have been quietly undone and this row would have been deleted as
+        # obsolete rather than restored.
+        #
+        # Best-effort by nature: a justfile is not bash. Its recipe bodies and `f() {}` declarations are
+        # shell-shaped, which is what this rule looks for.
         $r = New-Repo
         try {
             Push-Location $r
             Set-Content -Path 'justfile' -Value @('build:', '    echo build')
             git add justfile 2>&1 | Out-Null; git commit -qm addjustfile 2>&1 | Out-Null
-            Add-Content -Path 'justfile' -Value 'function deploy() { echo deploy }'
+            Add-Content -Path 'justfile' -Value @('', 'deploy() {', '  echo deploy', '}')
             git commit -qam newfnjustfile 2>&1 | Out-Null
             Pop-Location
             $res = Invoke-Checker $r 'HEAD~1'
-            $res.ExitCode | Should -Be 0 -Because 'ast-grep has no language mapping for an extensionless file, so Rule B cannot examine it'
-            $res.Out | Should -Match 'RULE-B-SKIPPED'
-            $res.Out | Should -Match 'justfile'
+            $res.ExitCode | Should -Be 3 -Because 'an extensionless executable is parsed as shell, so a new function in it is new code'
+            $res.Out | Should -Match 'new-declaration[^\r\n]*deploy'
+            $res.Out | Should -Not -Match 'RULE-B-SKIPPED[^\r\n]*justfile' -Because 'it is examined now, not skipped'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -543,13 +551,23 @@ Describe 'check-capstone-new-code' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'prints RULE-B-SKIPPED for a changed .ps1 file, loudly rather than silently' {
-        # The PowerShell gap is OWNER-ACCEPTED (ast-grep has no PowerShell grammar - MEASURED,
-        # `ast-grep --lang powershell` answers "powershell is not supported!" - and .ps1 is this
-        # repo's largest tracked language at 105 files) but must never be SILENT - a silently-skipped
-        # file is the exact defect an earlier round already found in this script. A small
-        # non-declaration edit to an EXISTING .ps1 file fires no rule (Rule A needs a new file, Rule
-        # C needs a whole-function rewrite), so exit 0 is expected AND the skip line must still show.
+    It 'does NOT skip a .ps1 file - the native PowerShell parser covers it' {
+        # 🔴 THIS ROW ASSERTED THE OPPOSITE UNTIL 2026-09-05, and the change is an OWNER RULING, not a
+        # weakened test. It used to pin the PowerShell gap as accepted-but-loud: ast-grep has no
+        # PowerShell grammar (MEASURED, `--lang powershell` answers "powershell is not supported!"),
+        # so Rule B skipped .ps1 and merely SAID so.
+        #
+        # That gap was then closed rather than accepted, after an AGY-FIRST consult returned
+        # [VERDICT: ALIGNED]: PowerShell ships its own parser in the runtime this script already runs
+        # in, so Rule B uses [System.Management.Automation.Language.Parser] for .ps1 - a true AST, and
+        # no new dependency. The deciding fact was that the gate script is ITSELF 18.7KB of non-test
+        # PowerShell, so the old behaviour meant a new function appended to the gate's own source
+        # returned exit 0 - MEASURED - and the gate could be silently disabled.
+        #
+        # A small NON-declaration edit still fires nothing (Rule A needs a new file, Rule C needs a
+        # whole-function rewrite), so exit 0 is still correct here. What must NOT appear any more is a
+        # skip line naming a .ps1 file: Rule B examined it and found no new declaration, which is a
+        # different and much stronger statement than "could not look".
         $r = New-Repo
         try {
             Push-Location $r
@@ -558,8 +576,56 @@ Describe 'check-capstone-new-code' {
             Pop-Location
             $res = Invoke-Checker $r 'HEAD~1'
             $res.ExitCode | Should -Be 0
-            $res.Out | Should -Match 'RULE-B-SKIPPED'
-            $res.Out | Should -Match 'src/seed\.ps1'
+            $res.Out | Should -Not -Match 'RULE-B-SKIPPED[^\r\n]*seed\.ps1' -Because 'the native parser covers .ps1, so it is examined rather than skipped'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES on a new function added to an existing .ps1 file, via the native PowerShell AST' {
+        # The behaviour the ruling bought, and the case that matters most: the gate script and every
+        # non-test script in scripts/ are PowerShell. MEASURED before the fix, this returned exit 0.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Add-Content -Path 'src/seed.ps1' -Value "function New-Thing { 1 }"
+            git commit -qam addfn 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3
+            $res.Out | Should -Match 'new-declaration[^\r\n]*New-Thing'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'FIRES on a PowerShell class, not only on a function' {
+        # TypeDefinitionAst, not FunctionDefinitionAst - a separate node type, and a separate way to
+        # add executable code to a .ps1 file. Keyed on (kind, name) so a `class Foo` and a
+        # `function Foo` cannot collapse into one entry.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Add-Content -Path 'src/seed.ps1' -Value 'class Widget { [int]$n }'
+            git commit -qam addclass 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3
+            $res.Out | Should -Match 'new-declaration[^\r\n]*Widget'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'does NOT fire on a function added to a .ps1 TEST file' {
+        # The test exclusion must survive the engine change - new tests are not supposed to demand a
+        # design consult, in PowerShell exactly as in every other language.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            New-Item -ItemType Directory -Path (Join-Path $r 'scripts/tests') -Force | Out-Null
+            Set-Content -Path 'scripts/tests/thing.Tests.ps1' -Value "Describe 'x' { It 'y' { 1 | Should -Be 1 } }"
+            git add -- 'scripts/tests/thing.Tests.ps1' 2>&1 | Out-Null
+            git commit -qm addtest 2>&1 | Out-Null
+            Add-Content -Path 'scripts/tests/thing.Tests.ps1' -Value "function Helper { 1 }"
+            git commit -qam addfn 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 0
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
