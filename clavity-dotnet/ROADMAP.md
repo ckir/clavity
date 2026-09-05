@@ -2741,17 +2741,25 @@ SWEEP, not a list.** So a newly-added Pester suite that nobody registers in the 
 in CI**; what it escapes is the LOCAL `test-scripts-fast` / `-slow` gates. That is drift, not silence, and
 `scripts/tests/test-suite-registration.Tests.ps1` already fails on it.
 
-**The genuinely uncovered case is pytest: NO workflow runs it at all.** Scope any implementation against
-that, not against the Pester lists — which is the opposite of where the first draft of this section
-pointed. Surfaced by the owner's second `TODO.md` report and verified at the cited line.
+**The genuinely uncovered case was pytest: NO workflow ran it at all** — measured the same day with
+`grep -rl "pytest\|uv run" .github/workflows/`, which returned nothing. Surfaced by the owner's second
+`TODO.md` report and verified at the cited line. ✅ **CLOSED the same day** — see failure shape 1 above.
+
+**So of the three failure shapes, ONE remains open: shape 2, the dotnet half**, where
+`just dotnet::test` still runs one project while CI runs two. **That is now the whole of this item's live
+surface**, plus the two proposals below for preventing the class from recurring.
 
 **THREE DISTINCT FAILURE SHAPES, MEASURED 2026-09-05 — the owner's sentence describes only the first:**
 
 1. **A test file reaching no runner at all.** 8 Python test files + 1 helper under
    `clavity-classic/agy-mcp-bridge/` had no justfile recipe: they existed, passed by hand, and no gate
-   executed them. Closed by the `classic::pytest` recipe (`fc85437`). ⚠ **They remain in NO CI** —
-   `ci-classic.yml:42-48` runs cargo only, and `clavity-classic/justfile:2` forbids the local recipes
-   being stricter than CI, so wiring them in is a `ci-classic.yml` decision.
+   executed them. Reachability closed by the `classic::pytest` recipe (`fc85437`).
+   ✅ **AND THE CI HALF IS NOW CLOSED TOO — the owner ruled to fix it 2026-09-05.** `ci-classic.yml` gained
+   a `Test (Python bridge, 24)` step, and `clavity-classic/justfile`'s `test:` gained `&& pytest` so the
+   local gate mirrors it rather than falling behind — which line 2 of that file requires once CI runs them.
+   ⚠ **VERIFIED ON BOTH MATRIX ARMS FIRST**, because these had only ever run on one Windows box and four of
+   the seven files touch platform-specific things: Windows 24 passed, **Linux 24 passed in 82s under WSL**.
+   Wiring an unverified suite into CI reddens `main` on the first push instead of catching a defect.
 2. **The local runner is strictly WEAKER than CI in the same repo half.** `clavity-dotnet/justfile:13-14`
    runs `dotnet test tests/Clavity.Ls.Tests` and nothing else, while `.github/workflows/ci-dotnet.yml:26`
    **and** `:32` run `Clavity.Ls.Tests` AND `Clavity.Integration.Tests`. **`just dotnet::test` returns

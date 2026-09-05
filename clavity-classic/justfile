@@ -9,16 +9,30 @@ lint:
     cargo fmt --all --check
     cargo clippy --all-targets --features test-fakes -- -D warnings
 
-# Hermetic unit tests (ci-classic "Test" step).
-test:
+# `&& pytest` is a just POST-DEPENDENCY: the cargo body runs first, then the `pytest` recipe below. Used
+# instead of repeating the seven-file list here, so the recipe and CI cannot drift apart by editing one.
+#
+# ⚠ THE LINE DIRECTLY BELOW IS WHAT `just --list` PRINTS AS THIS RECIPE'S DESCRIPTION - not the block
+# above it. Caught here for the second time: the first draft of this comment ended on the "instead of
+# repeating the seven-file list" sentence, and `just --list` advertised that fragment as what `test` does.
+# Keep a real one-line summary immediately above every recipe, and RUN `just --list` to check it.
+#
+# Rust tests + the 24 Python bridge tests (mirrors ci-classic's two Test steps).
+test: && pytest
     cargo test --all --features test-fakes
 
-# agy-mcp-bridge Python tests — 24 hermetic tests that NO recipe reached until 2026-09-05.
+# agy-mcp-bridge Python tests — 24 tests that NO recipe reached until 2026-09-05, and NO CI ran until the
+# same day.
 #
-# NOT wired into `test:` ON PURPOSE. Line 2 of this file says the recipes mirror ci-classic.yml exactly
-# and forbids adding stricter gates, and ci-classic runs cargo only. Wiring these in would make the local
-# gate stricter than CI, which is the one thing this file tells you not to do. Reachability is what was
-# missing; whether CI should run them is a separate decision that belongs in ci-classic.yml.
+# NOW WIRED INTO `test:`, AND THE EARLIER VERSION OF THIS COMMENT SAID THE OPPOSITE. It said "NOT wired
+# into `test:` ON PURPOSE", on the correct reasoning that line 2 forbids the local recipes being STRICTER
+# than ci-classic.yml, which then ran cargo only. That premise is gone: ci-classic.yml now runs these same
+# 24 tests as its own step, so the mirror rule does not merely permit wiring them in - it REQUIRES it.
+# Leaving them out would make the LOCAL gate weaker than CI, which is exactly the failure shape ROADMAP
+# section 36 records for the dotnet half (`just dotnet::test` greens over a smaller set than CI enforces).
+#
+# The comment is rewritten rather than deleted because the reasoning was right both times; only the fact
+# it depended on changed. If ci-classic ever drops the Python step, this must go back.
 #
 # EXPLICIT FILE LIST, not a directory. `pytest` at the bridge root collects 26 tests, not 24 - the extra
 # two are tests/test_integration.py. They MUTATE THE CURRENT WORKING DIRECTORY: target_directory is
@@ -54,7 +68,7 @@ test:
 # and moving CWD would relocate the side effect rather than remove it. Recorded so the next reader is not
 # told this recipe touches nothing.
 #
-# agy-mcp-bridge Python tests (24). NOT in `test:` - see above.
+# agy-mcp-bridge Python tests (24) - also run by `test:` and by ci-classic.
 pytest:
     uv run --project agy-mcp-bridge --frozen pytest \
         agy-mcp-bridge/test_agy_bus.py \

@@ -44,6 +44,39 @@ jobs:
         run: cargo clippy --all-targets --features test-fakes -- -D warnings
       - name: Test
         run: cargo test --all --features test-fakes
+
+      # THE PYTHON BRIDGE'S 24 TESTS, WHICH NO WORKFLOW RAN UNTIL 2026-09-05. Measured that day:
+      # `grep -rl "pytest\|uv run" .github/workflows/` returned NOTHING, while `just classic::pytest`
+      # collected 24 tests. They existed, passed by hand, and no gate anywhere executed them - the exact
+      # shape ROADMAP section 36 calls "a test file reaching no runner at all", and the only one of its
+      # three shapes still open after the justfile recipe was added.
+      #
+      # EXPLICIT FILE LIST, mirroring `clavity-classic/justfile`'s `pytest` recipe rather than a directory.
+      # A bare `pytest` at the bridge root collects 26, not 24: the extra two are tests/test_integration.py,
+      # which creates a REAL GIT WORKTREE and writes .agent/telemetry.db into the process CWD. Those stay
+      # opt-in behind CLAVITY_RUN_INTEGRATION_TESTS and must NEVER run here. The file also self-skips, so
+      # this is belt and braces - but the list is what keeps CI honest if that guard is ever removed.
+      #
+      # --frozen resolves from the tracked uv.lock, so this is reproducible from a clean checkout and
+      # cannot silently drift onto a newer dependency.
+      #
+      # VERIFIED ON BOTH ARMS OF THIS MATRIX BEFORE WIRING IT UP, because these tests had only ever run on
+      # one Windows box and four of the seven files touch platform-specific things (tmux, .exe suffixes):
+      # Windows 24 passed; Linux 24 passed in 82s under WSL with Python 3.14.4. Wiring an unverified suite
+      # into CI would have reddened main on the first push rather than caught a defect.
+      - name: Install uv (for the Python bridge tests)
+        uses: astral-sh/setup-uv@v10.0.1
+      - name: Test (Python bridge, 24)
+        run: >
+          uv run --project agy-mcp-bridge --frozen pytest
+          agy-mcp-bridge/test_agy_bus.py
+          agy-mcp-bridge/test_client.py
+          agy-mcp-bridge/test_isolation.py
+          agy-mcp-bridge/test_agy_tmux.py
+          agy-mcp-bridge/tests/test_hooked_commit.py
+          agy-mcp-bridge/tests/test_mcp_wiring.py
+          agy-mcp-bridge/tests/test_secret_scrub.py
+
       - name: Build (release)
         run: cargo build --release   # no test-fakes -> the fake psmux never ships
 
