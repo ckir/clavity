@@ -10,6 +10,17 @@ BeforeAll {
         git init -q 2>&1 | Out-Null
         git config user.email t@t.t; git config user.name t
         git config commit.gpgsign false
+        # FIXTURE HYGIENE - never inherit the host's settings. AGY-TEST-AUDIT 2026-09-05, Axiom Breaker,
+        # and it was an INCONSISTENCY inside this repo rather than an abstract worry: the sibling fixture
+        # at agy-mark.Tests.ps1:34 already pins core.autocrlf under exactly this comment, and this one
+        # pinned neither setting.
+        #
+        # core.quotepath is LOAD-BEARING FOR THIS SUITE SPECIFICALLY. The whole `-z` story these rows
+        # exist to pin is about git QUOTING paths that contain a space or non-ASCII byte, and quotepath is
+        # the setting that governs it. A host with `core.quotepath=false` would silently change what these
+        # rows exercise, so the suite would still pass while testing a different thing than it claims.
+        git config core.quotepath true
+        git config core.autocrlf false
         New-Item -ItemType Directory -Path (Join-Path $d 'src') | Out-Null
         Set-Content -Path (Join-Path $d 'src/seed.ps1') -Value "Write-Output 'seed'"
         git add src/seed.ps1 2>&1 | Out-Null
@@ -240,6 +251,82 @@ Describe 'check-capstone-new-code' {
             Pop-Location
             $res = Invoke-Checker $r 'HEAD~1'
             $res.ExitCode | Should -Be 3 -Because 'a spaced NON-TEST code path is new code and must fire; if this returns 0 the path parser has been truncated at the space'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'handles a filename with a LEADING DASH - it must not be read as an option' {
+        # AGY-TEST-AUDIT 2026-09-05, Boundary Smuggler. MEASURED as CORRECT today (exit 3); this row pins
+        # it against regression rather than reporting a defect.
+        #
+        # Why it is worth a row: this script ROUND-TRIPS a path read from git back INTO git, as
+        # `git show "<ref>:<path>"`. A leading dash is the classic argument-injection shape for exactly
+        # that pattern - a future refactor that drops the quoting, or passes the path as a bare argument,
+        # turns `-leading.ps1` into an OPTION and the file silently vanishes from the scan. The gate would
+        # then answer "no new code" for a commit that added a function, which is the fail-open direction
+        # section 24 exists to prevent.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/-leading.ps1' -Value "function Get-Dashed { 1 }"
+            git add -- 'src/-leading.ps1' 2>&1 | Out-Null
+            git commit -qm dashed 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a leading dash is part of the FILENAME, never an option; exit 0 means the path was consumed as a flag and the file went unscanned'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'handles a code file whose name COLLIDES with a git ref' {
+        # AGY-TEST-AUDIT 2026-09-05, Boundary Smuggler. MEASURED as CORRECT today (exit 3).
+        #
+        # `git show "HEAD:src/HEAD.ps1"` is unambiguous only because the ref and the path sit on opposite
+        # sides of the colon. A refactor that builds that argument differently - or drops the `<ref>:`
+        # prefix - makes `HEAD` resolve as a REF instead of a path, and the file is read as a commit
+        # object or not at all. Both failures are silent and both answer "no new code".
+        $r = New-Repo
+        try {
+            Push-Location $r
+            Set-Content -Path 'src/HEAD.ps1' -Value "function Get-RefNamed { 1 }"
+            git add -- 'src/HEAD.ps1' 2>&1 | Out-Null
+            git commit -qm refnamed 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a file named HEAD is a PATH; if this returns 0 the name was resolved as a ref'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'reports the NEW DECLARATION as well as the rename when a detected rename adds one' {
+        # AGY-TEST-AUDIT 2026-09-05. Rule B skipped the new side of a rename as "absent at base", so a
+        # declaration added in the SAME commit was never reported - the reviewer saw one of two reasons.
+        # The gate's DECISION was never wrong (Rule A fires on the rename either way); this is about what
+        # the consult is told.
+        #
+        # THE FIXTURE MUST DEFEAT GIT'S SIMILARITY THRESHOLD, and that is the whole subtlety. My first
+        # attempt renamed a 1-line file and appended a function: MEASURED, git scored it 48% and reported
+        # D + A, NOT a rename - in which case `new-file` IS complete and nothing is missing. The filler
+        # below keeps similarity at 96% so git actually emits `R096`, which is the only shape that hid
+        # anything. A fixture that does not reproduce the trigger tests nothing.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            $filler = (1..40 | ForEach-Object { "# filler $_" }) -join "`n"
+            Set-Content -Path 'src/orig.ps1' -Value "function Existing { 1 }`n$filler"
+            git add -- 'src/orig.ps1' 2>&1 | Out-Null
+            git commit -qm 'large original' 2>&1 | Out-Null
+
+            git mv 'src/orig.ps1' 'src/moved.ps1' 2>&1 | Out-Null
+            Add-Content -Path 'src/moved.ps1' -Value "function Brand-New { 2 }"
+            git add -A 2>&1 | Out-Null
+            git commit -qm 'rename plus a new declaration' 2>&1 | Out-Null
+
+            # Guard the fixture itself: if git did not DETECT the rename this row proves nothing.
+            $status = (& git diff --name-status 'HEAD~1..HEAD') -join ' '
+            $status | Should -Match '^R' -Because "the fixture must produce a DETECTED rename; git said: [$status]"
+            Pop-Location
+
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3
+             $res.Out | Should -Match 'new-declaration.*Brand-New' -Because 'a declaration added alongside a rename must be reported, not hidden behind the rename line'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

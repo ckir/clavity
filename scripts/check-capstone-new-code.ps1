@@ -277,6 +277,7 @@ try {
         exit 2
     }
 
+    $renameOrigin = @{}   # new path -> old path, for renames git DETECTED; read by Rule B below
     $fired = [System.Collections.Generic.List[string]]::new()
 
     # --- Rule A: a NEW FILE in non-test, non-generated, CODE-extension paths -----------------
@@ -305,7 +306,19 @@ try {
     for ($i = 0; $i -lt $nameStatus.Count; $i++) {
         $status = $nameStatus[$i]
         if ($status -match '^[RC]') {
-            $null = $nameStatus[++$i]          # the OLD path, which we do not care about
+            # THE OLD PATH IS KEPT, and it used to be discarded here. AGY-TEST-AUDIT 2026-09-05: on a
+            # rename git DETECTS (similarity >= 50%), Rule B below skips the new path because it is
+            # absent at base, so a declaration added in the SAME commit as the rename was never reported.
+            # MEASURED: `R096 src/a.ps1 src/b.ps1` with a function appended reported only
+            # `new-file-via-R: src/b.ps1`, never `Brand-New`. The gate still FIRED - the decision was
+            # always right - but the reviewer was told one of the two reasons.
+            #
+            # SCOPE OF THE GAP, because it is narrower than it first looks: if the file is renamed AND
+            # heavily modified, similarity drops below git's 50% default and git reports D + A instead.
+            # In that case `new-file` IS the complete answer - the whole file is new - and nothing is
+            # missing. Only a detected rename hid anything.
+            $renameOrigin[$nameStatus[$i + 2]] = $nameStatus[$i + 1]
+            $null = $nameStatus[++$i]          # the OLD path, now recorded above
             $path = $nameStatus[++$i]          # the NEW path, which is the one that now exists
             if ((-not (Test-IsTestPath $path)) -and (Test-IsCodeFile $path)) { $fired.Add("new-file-via-$($status.Substring(0,1)): $path") }
         }
@@ -452,7 +465,23 @@ try {
         }
 
         $baseContent = & git show "${BaseRef}:$path" 2>$null
-        if ($LASTEXITCODE -ne 0) { continue }   # absent at base (new file, or the new side of a rename) - Rule A's business
+        if ($LASTEXITCODE -ne 0) {
+            # ABSENT AT BASE. Two different situations arrive here and they are NOT the same, which is
+            # what this branch used to miss (AGY-TEST-AUDIT 2026-09-05):
+            #
+            #   a GENUINELY new file        -> Rule A's business, and `new-file:` is the complete answer.
+            #   the new side of a DETECTED RENAME -> the file EXISTED at base under another name, so a
+            #                                       declaration added in the same commit is a real new
+            #                                       declaration that nothing reported.
+            #
+            # Retry against the rename origin rather than skipping. If that also fails, fall through to
+            # the original behaviour - Rule A has already fired on the path, so the gate's DECISION was
+            # never at stake here; only the completeness of what the reviewer is told.
+            $origin = $renameOrigin[$path]
+            if (-not $origin) { continue }
+            $baseContent = & git show "${BaseRef}:$origin" 2>$null
+            if ($LASTEXITCODE -ne 0) { continue }
+        }
 
         if ($isPowerShell) {
             # Native parser - no ast-grep grammar exists for PowerShell. Same "<kind>::<name>" set
