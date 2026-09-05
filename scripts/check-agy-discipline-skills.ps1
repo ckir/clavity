@@ -340,8 +340,22 @@ foreach ($d in $disciplineNames) {
     if ($text -notmatch '(?m)^##\s+AGY-NEGOTIATE') {
         Fail "agy-discipline-skills: '$d' has no '## AGY-NEGOTIATE' section (ROADMAP section 25)."
     }
-    if ($text -notmatch 'MAX_NEGOTIATE_ROUNDS') {
-        Fail "agy-discipline-skills: '$d' has an AGY-NEGOTIATE section with no round cap constant."
+    else {
+        # SCOPE THE CAP CHECK TO THE SECTION, or the message lies. Capstone R8, Coverage-Gap Walker -
+        # a seat aimed here because the peer had told me it never walked this loop. The check was
+        # `$text -notmatch 'MAX_NEGOTIATE_ROUNDS'` over the WHOLE FILE, while its own failure text says
+        # "has an AGY-NEGOTIATE section with no round cap constant". MEASURED with a fixture whose
+        # section is empty and which mentions the constant once in an unrelated paragraph: the
+        # file-wide check PASSED it, a section-scoped check FAILED it.
+        #
+        # The section runs to the next `## ` heading or EOF. Split on the heading and take everything
+        # after it, then cut at the next top-level heading - `-split` with a capturing-free pattern
+        # returns the text after the match as element [1].
+        $section = ($text -split '(?m)^##\s+AGY-NEGOTIATE')[1]
+        $section = ($section -split '(?m)^##\s+')[0]
+        if ($section -notmatch 'MAX_NEGOTIATE_ROUNDS') {
+            Fail "agy-discipline-skills: '$d' has an AGY-NEGOTIATE section with no round cap constant."
+        }
     }
 }
 

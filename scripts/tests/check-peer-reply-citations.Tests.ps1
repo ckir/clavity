@@ -249,14 +249,28 @@ Describe 'check-peer-reply-citations' {
         # runtime assignment made this row PASS while certifying nothing. That is the third time in this
         # capstone that a guard reading another file's source text was fooled by a docstring, and the
         # answer is the same one the owner ruled for the linter: count the assignments, fail unless there
-        # is exactly one. '\s*=\s*' is there so an ordinary formatter pass cannot turn it into a false RED.
+        # is exactly one.
         # ast.literal_eval is what makes both forms equivalent to this row. A future maintainer may write
         # the characters literally again and this pin still passes, because it asks what Python BUILDS.
+        #
+        # '\s*=\s*' AND re.S TOGETHER, and the earlier comment here was WRONG about why. Capstone R8,
+        # Disposition Challenger, challenging my own claim that '\s*=\s*' alone meant "an ordinary
+        # formatter pass cannot turn this into a false RED". It cannot do that: '\s*=\s*' absorbs spacing
+        # around the '=' only, while '.' does not cross a newline without re.S - so a formatter that
+        # WRAPPED the tuple across lines yielded ZERO hits and this row would have gone RED on correct
+        # code. MEASURED with the peer's own command: the wrapped form "DASHES = (\n1\n)" gave 0 hits and
+        # the inline form gave 1.
+        #
+        # The trigger is not reachable TODAY - lefthook.yml:63-65 scopes ruff to
+        # clavity-classic/agy-mcp-bridge/, so nothing formats scripts/*.py - but the assignment is 93
+        # characters against ruff's 88-column default, so it would wrap the first time that glob widened.
+        # Fixed rather than deferred because the claim in the comment was false either way, and because a
+        # pin that fails on correctly-formatted code is the failure mode this row exists to prevent.
         $checker = Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py'
         $prog = @'
 import ast, io, re, sys
 src = io.open(sys.argv[1], encoding="utf-8").read()
-hits = re.findall(r"^DASHES\s*=\s*(\(.*?\))", src, re.M)
+hits = re.findall(r"^DASHES\s*=\s*(\(.*?\))", src, re.M | re.S)
 if len(hits) != 1:
     raise SystemExit("expected exactly ONE DASHES assignment, found %d" % len(hits))
 print(",".join(str(ord(c)) for c in ast.literal_eval(hits[0])))

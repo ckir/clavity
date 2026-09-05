@@ -43,6 +43,13 @@ Describe 'agy-mark.sh stamp' {
             $log = Get-Content (Join-Path $r '.clavity/agy-marks/consults.log') -Raw
             $log | Should -Match 'ISOLATED'
             $log | Should -Not -Match 'SHARED-CONTEXT'
+            # THE SUCCESS PATH OF THE TIMESTAMP LIVES HERE. Capstone R8, Test Vacuity Hunter, and it was
+            # RIGHT: the dedicated timestamp row below exercises only the FAILURE path and accepts the
+            # literal `unknown`, so hardcoding `_ts=unknown` in the stamp arm left the WHOLE SUITE GREEN
+            # at 10/0 - MEASURED. A fallback row without a success-path row certifies the fallback and
+            # nothing else. Asserted here rather than in a new row because this row already performs an
+            # ordinary, unshimmed stamp - the success path is a property of it.
+            ($log -split ' ')[0] | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$' -Because "an ordinary run must record a REAL timestamp, not the 'unknown' fallback, got row: [$log]"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
@@ -189,7 +196,13 @@ Describe 'agy-mark.sh stamp' {
 
             $res = Invoke-Stamp $r @('stamp','agy-capstone','cascade-ccc','cascade-ddd')
             $res.ExitCode | Should -Be 0
-            Test-Path (Join-Path $r '.clavity/.gitignore') | Should -BeTrue
+            # ASSERT THE CONTENT, NOT MERE EXISTENCE. Capstone R8, Test Vacuity Hunter, and it was RIGHT:
+            # this row asserted only `Test-Path`, so replacing the agy_shield call with a bare `touch`
+            # left an EMPTY .gitignore and the row still PASSED while the repository was exposed.
+            # MEASURED: that mutant reddened the fresh-repo row above (it checks content) and left THIS
+            # row green - which is why the same mutant must be judged per-row, never per-suite.
+            $shield = Get-Content (Join-Path $r '.clavity/.gitignore') -Raw
+            $shield | Should -Match '\*' -Because "a repaired shield must actually contain the ignore-all pattern, got: [$shield]"
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
