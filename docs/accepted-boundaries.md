@@ -57,4 +57,25 @@ _(none yet)_
 
 Root and cross-product code: `scripts/`, root `docs/`, CI workflows.
 
-_(none yet)_
+- **Symlinked paths are never fed to `check-capstone-new-code.ps1` by its suite.**
+  Anchor: `scripts/tests/check-capstone-new-code.Tests.ps1` (`New-Repo`).
+  COMPENSATION: creating a symlink on Windows needs elevation or Developer Mode, so such a row would
+  pass or fail on the HOST'S PRIVILEGE LEVEL rather than on the code — an environment-dependent row is
+  worse than an absent one. The behaviour itself is compensated structurally: a symlink's path is
+  matched by the same string predicates every other path takes (`Test-IsTestPath` / `Test-IsCodeFile` in
+  `scripts/check-capstone-new-code.ps1`), neither of which dereferences anything.
+  Raised by AGY-TEST-AUDIT 2026-09-05, Boundary Smuggler.
+
+- **Submodule entries (gitlinks) are never fed to it either.**
+  Anchor: the absent-at-base guard in `scripts/check-capstone-new-code.ps1` (Rule B's
+  `git show "${BaseRef}:$path"` followed by `if ($LASTEXITCODE -ne 0)`).
+  COMPENSATION: a gitlink has no blob, so that `git show` exits non-zero and the file takes the SAME
+  fail-safe branch a genuinely new file takes — verified by reading, and the peer independently traced
+  the same path. A fixture would need a second repository stood up to exercise a branch already proven
+  safe by two routes.
+  Raised by AGY-TEST-AUDIT 2026-09-05, Boundary Smuggler / Cascade Analyst.
+
+  ⚠ **RE-VALIDATE BOTH COMPENSATIONS BEFORE HONOURING THE DO-NOT-RE-RAISE.** They rest on two specific
+  things staying true: that the path predicates never dereference, and that the absent-at-base guard
+  still exists. The second one was EDITED on 2026-09-05 (it now retries against a rename origin before
+  giving up), so it is exactly the kind of anchor that can move.
