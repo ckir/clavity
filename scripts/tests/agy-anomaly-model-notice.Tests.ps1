@@ -103,16 +103,23 @@ Describe 'agy-anomaly-model-notice.sh' {
         # THE DESIGN INVARIANT, AND NOTHING ELSE PINS IT. The whole justification for duplicating the
         # counting logic in this hook rather than sharing it is that the two halves must never disagree
         # about what is pending - one telling the owner 3 while the other tells the model 2 is worse than
-        # either being silent. The two use different channels (stdout JSON at exit 0 vs stderr at exit 2),
-        # so the only way to compare them is to run both and parse each one's own output.
+        # either being silent.
+        #
+        # BOTH HALVES NOW SPEAK ON STDOUT, and this comment said the opposite until 2026-09-05. It read
+        # "different channels (stdout JSON at exit 0 vs stderr at exit 2)", which was true when written
+        # and was falsified by the commit that stopped the owner-side reminder rendering as a SessionStart
+        # hook ERROR - stderr plus a non-zero exit is exactly what Claude Code paints red, so the reminder
+        # moved to a stdout JSON envelope like this one. CAUGHT BY CI, not locally: this row read
+        # `.StdErr`, found nothing, and failed on "the owner-side hook must also be reporting a count".
+        # The row was right and its premise had rotted underneath it.
         $r = New-RepoWith (New-Entries 5); $h = New-CleanHome
         try {
             $model = Get-Ctx (Invoke-BashHook -HookPath $script:Hook -Payload (Payload $r) -Env @{ HOME = $h })
             ($model -match '(\d+) untriaged') | Should -BeTrue -Because 'the model half must name a count'
             $modelN = $Matches[1]
 
-            $owner = (Invoke-BashHook -HookPath $script:Drain -Payload (Payload $r) -Env @{ HOME = $h }).StdErr
-            ($owner -match '(\d+) untriaged') | Should -BeTrue -Because 'the owner-side hook must also be reporting a count here'
+            $owner = (Invoke-BashHook -HookPath $script:Drain -Payload (Payload $r) -Env @{ HOME = $h }).StdOut
+            ($owner -match '(\d+) untriaged') | Should -BeTrue -Because 'the owner-side hook must also be reporting a count here - on STDOUT since it became a SessionStart JSON envelope'
             $ownerN = $Matches[1]
 
             $modelN | Should -BeExactly $ownerN

@@ -70,8 +70,8 @@ if ! command -v jq >/dev/null 2>&1; then
   # no double quote, backslash or backtick in it - the same constraint agy-anomaly-capture-reminder.sh
   # states at its line 17. Do NOT interpolate a path into this one: $f is not known here anyway, and a
   # Windows path is exactly the value that would smuggle a backslash into the envelope and break it.
-  _m="[AGY-ANOMALIES] guard inactive: missing jq - cannot check for untriaged anomalies; install jq"
-  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_m" "$_m"
+  msg="[AGY-ANOMALIES] guard inactive: missing jq - cannot check for untriaged anomalies; install jq"
+  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$msg" "$msg"
   exit 0
 fi
 
@@ -145,8 +145,8 @@ f="$root/.clavity/local-anomalies.md"
 n=$(grep -c '^- \[[^]]*\]' "$f" 2>/dev/null)
 rc=$?
 if [ "$rc" -gt 1 ]; then
-  _m="[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted"
-  jq -nc --arg m "$_m" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+  msg="[AGY-ANOMALIES] $f exists but cannot be read - untriaged anomalies NOT counted"
+  jq -nc --arg m "$msg" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
   exit 0
 fi
 [ -z "$n" ] && n=0
@@ -173,6 +173,6 @@ oldest=$(grep '^- \[[^]]*\]' "$f" 2>/dev/null \
 # they are standing -- at exactly the moment they are least inclined to go hunting for it.
 # jq -nc owns the escaping here, and that is load-bearing rather than tidy: $f is a PATH, the one value in
 # this message that can legitimately contain a character the envelope would choke on.
-_m="[AGY-ANOMALIES] $n untriaged$oldest in $f. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill."
-jq -nc --arg m "$_m" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+msg="[AGY-ANOMALIES] $n untriaged$oldest in $f. Triage before new work: each entry is either PROMOTED to a tracked ROADMAP item with an owner, or DELETEd with a recorded reason. There is no parked state. Use the open-issues skill."
+jq -nc --arg m "$msg" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
 exit 0

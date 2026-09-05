@@ -200,6 +200,31 @@ jobs:
           lefthook version
           if ($LASTEXITCODE -ne 0) { throw "lefthook install failed: lefthook is not on PATH" }
 
+      - name: Install ast-grep (required by check-capstone-new-code)
+        shell: pwsh
+        # ADDED 2026-09-05 after this workflow went RED on its first exposure to
+        # scripts/tests/check-capstone-new-code.Tests.ps1. 33 of 37 failing rows had ONE cause:
+        # `check-capstone-new-code.ps1:255` refuses to run without ast-grep and exits 2 - "the question
+        # cannot be answered" - so every row expecting 0 or 3 got 2. The GATE was correct; the WORKFLOW
+        # was missing a dependency the dev box has on PATH and the runner does not.
+        #
+        # ⚠ THE ROW THAT PINS THE MISSING-TOOL PATH PASSED, and that is the trap worth recording:
+        # 'exits 2 when ast-grep is not on PATH' was GREEN in that same run - trivially, because the tool
+        # really was absent. A suite can be 33-rows-red and still show a green row asserting the failure
+        # mode, so "some rows passed" says nothing about whether the environment is right.
+        #
+        # PIN THE MAJOR LINE, for the same reason lefthook and Pester are pinned above: an unpinned
+        # install rolls forward silently, and Rule B reads ast-grep's tree-sitter node KINDS - a grammar
+        # bump can rename a kind and turn every declaration invisible, which is the fail-open direction.
+        # The floor is the version the dev box runs (0.45.1, measured 2026-09-05).
+        run: |
+          npm install -g '@ast-grep/cli@^0.45.1'
+          $prefix = (npm prefix -g).Trim()
+          $prefix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "$prefix;$env:PATH"
+          ast-grep --version
+          if ($LASTEXITCODE -ne 0) { throw "ast-grep install failed: ast-grep is not on PATH" }
+
       - name: Install Pester v6
         shell: pwsh
         run: Install-Module Pester -MinimumVersion 6.0.0 -MaximumVersion 6.99.99 -Force -SkipPublisherCheck -Scope CurrentUser -ErrorAction Stop
