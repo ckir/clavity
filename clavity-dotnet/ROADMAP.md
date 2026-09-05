@@ -2398,6 +2398,15 @@ must let the waiver through without reopening the hole it closes.
 **Blast radius:** `agy-mark.sh` is a shipped, byte-identical pair — class 2, so plan → panel → capstone
 → audit, the full loop.
 
+▶ **AGY-AFTER ROUND 1 FOLDED 2026-09-05 (solo panel + agy escalation + one negotiation turn).** Brief
+`.clavity/seams/panel-s27-r1.md`, reply `.clavity/seams/panel-s27-r1-REPLY.md`. The spec went 94 → 275
+lines: four new constraints (C6 the shipped-hook population, C7 the second anchor, C8 the git dependency
+and its collision with an open backlog item, C9 the row-before-marker ordering), a rewritten C1, a
+corrected C2 citation, and two new forks. 🔴 **THE FORK COUNT IS NOW SIX AND FOUR OF THEM CHANGE WHAT THE
+GATE IS — the panel is PAUSED for owner rulings, and no line-level plan may be written before them.**
+Two findings were killed by measurement and are recorded in the spec's `## Stand-downs`, including the
+peer's own retraction of "the write path is the wrong chokepoint".
+
 ### §28 — Four gate scripts repeat the 8.3 prefix-arithmetic shape that `41eef75` fixed once — ▶ **PROMOTED 2026-09-03, SEQUENCED as Phase 3b with §30, not yet planned**
 
 **The shape.** Each script resolves a root with `Resolve-Path ... .Path`/`.ProviderPath`, which
