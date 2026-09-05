@@ -518,3 +518,29 @@ removed (fail-safe: the discipline re-fires).
 
 ▶ **NEXT GATE: AGY-TEST-AUDIT over this same range.** It asks the orthogonal question this capstone never
 did — not "are there defects in the shipped code" but "would the tests catch the next one".
+
+### ✅ OWNER WAIVER 2026-09-05 — the capstone-invalidation rule is WAIVED for the audit's gap-4 fix
+
+**AGY-TEST-AUDIT (row dated 2026-09-05 in `docs/agy-test-audit-ledger.md`) closed a coverage gap that
+required an IMPLEMENTATION-SOURCE change** to `scripts/check-capstone-new-code.ps1` — Rule B now retries
+against a rename origin instead of skipping the new side of a detected rename (`827d765`). By the
+capstone-invalidation rule in `agy-test-audit/SKILL.md` that would normally invalidate the conclusion
+above and oblige a re-capstone over the delta.
+
+**The owner WAIVED that requirement on 2026-09-05.** Recorded here rather than left silent, because a
+rule that is skipped without a record is indistinguishable from a rule that was forgotten — and this
+ledger is read to answer exactly that question.
+
+**What the waiver rests on, stated so a later reader can judge it rather than trust it:**
+- The change is **~15 lines in one branch of one rule**, and it only ADDS a retry on a path that
+  previously returned early. No existing branch changed behaviour.
+- The gate's **DECISION was never affected** — Rule A already fired on every rename, before and after.
+  The change makes the gate's REPORT complete, not its answer different.
+- It is covered by a row proven non-vacuous against a mutant that reverts exactly it: **35/0 clean, and
+  reverting the fix reddens that one row by name with 34 others passing.**
+- The full suite set was re-run green at the post-fix sha: `check-capstone-new-code` **35/0** ·
+  `agy-mark` 36/0 · `agy-mark-stamp` 11/0 · `check-agy-discipline-skills` 85/0 ·
+  `check-peer-reply-citations` 34/0 · `agy-shield-lib` 45/0 · `test-suite-registration` 9/0.
+
+⚠ **The waiver covers THIS change only.** A further implementation-source change in this range re-arms the
+rule.
