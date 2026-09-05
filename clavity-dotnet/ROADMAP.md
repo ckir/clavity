@@ -2889,6 +2889,53 @@ sentence in a user's document. Subject lengths, last 30 commits: **min 56, media
 **Switching generators would render the same subjects.** Recorded as an open question about the WRITING
 convention, deliberately NOT actioned here.
 
+### §38 — The `.gitignore` prose describes a per-file read-before-publish control for plans that does not run — ▶ **PROMOTED 2026-09-05 from the anomalies conveyor, not yet planned**
+
+**The False Safety Promise shape:** prose asserting a review control that is not the control in operation.
+`.gitignore:38-39` reads *"same DEFAULT-DENY opt-IN discipline as specs above: re-admit the plans/
+directory, exclude its contents, **then negate each public-safe plan file by name after reading it**."*
+
+**MEASURED 2026-09-05, with a mechanical oracle rather than a reading:**
+
+| the claim | the measurement |
+|---|---|
+| a named negation per published plan | **2** — `.gitignore:42-43`, both dated 2026-07-22 |
+| — | **41** tracked files under `docs/superpowers/plans/` |
+| specs carry the same shape one level up | **3** named negations (`:35-37`) against **36** tracked specs |
+| files reaching this PUBLIC repo past the stated control | **72** of the 77 |
+
+That last row is not an estimate. `git check-ignore --no-index -q` over every tracked plan and spec
+returns 72 files that the ignore rules **would exclude** — they are in the repository only because
+something force-added them, not because the opt-IN was ever exercised. **The §27 spec this phase is
+built on is one of the 72.**
+
+🔴 **WHY THE DRIFT IS INVISIBLE, which is the interesting half.** `git check-ignore` **without**
+`--no-index` reports a TRACKED file as NOT ignored, because tracking wins. So the ignore rules and the
+tracked set can disagree indefinitely and every ordinary invocation says the tree is fine. Seeing it
+requires comparing two counts nothing compares — named negations against tracked files — and the
+`--no-index` flag that makes the comparison possible is exactly the flag a casual check omits.
+
+**Why this is more than tidiness.** The repo is public, and the control the comment names is the only
+stated gate between an agent-authored plan — which routinely carries absolute user paths, machine
+names, and internal reasoning — and publication. For 72 files that gate did not run. Nothing found is
+alleged here; the finding is that nothing *looked*.
+
+**Three fixes, and they point in different directions — an OWNER FORK, not a driver call:**
+
+- **(a) Make the comment true.** Negate each tracked plan and spec by name. Restores the stated control
+  and makes every future publish one deliberate line. Costs ~77 negation lines and a standing rule that
+  `git add -f` is forbidden here.
+- **(b) Make the comment honest.** Rewrite it to describe force-add as the real mechanism. Cheapest, and
+  it removes the False Safety Promise — but it removes the promise by abandoning the control, so the
+  read step then exists nowhere.
+- **(c) Keep force-add, add the detector.** A checker that fails when a tracked file under
+  `docs/superpowers/` has no named negation, i.e. mechanises the very count comparison that nothing does
+  today. This is the option that converts prose into a gate, which is this repository's own stated
+  preference — *a rule with no implementation is worse than no rule*.
+
+**Blast radius:** `.gitignore`, plus (under (c)) one new checker script, its Pester suite, its
+`_partition.md` row and its `justfile`/CI registration. **No plugin pair, no installer payload** — class 1.
+
 ---
 
 ## Non-goals / accepted limitations
