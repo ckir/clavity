@@ -534,6 +534,44 @@ Describe 'agy-mark.sh' {
             (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')) | Should -Match '(?m)^\*$'
         }
 
+        It 'PRESERVES a human negation - <Mode> must PREPEND, never append' -ForEach @(
+            @{ Mode = @('head','agy-first','deadbeefdeadbeefdeadbeefdeadbeefdeadbeef') },
+            @{ Mode = @('log','agy-first','SKIPPED-UNREACHABLE','deadbeefdeadbeefdeadbeefdeadbeefdeadbeef') },
+            @{ Mode = @('prepare','seams/topic.md') },
+            @{ Mode = @('stamp','agy-capstone','cascade-aaa','cascade-bbb') }
+        ) {
+            # Capstone R10 found this for `stamp`; R11 asked whether the OTHER call sites were pinned.
+            # MEASURED, mutating each arm to bypass agy_shield while PRESERVING the directory side effect
+            # (`mkdir -p ...; echo "*" >> .clavity/.gitignore`) and running agy-mark.Tests.ps1:
+            #     head    31/1  - caught, but by 'FORWARDS $AGY_SESSION_ID', which detects the MISSING
+            #                     CALL rather than the inversion. The peer claimed no row reddens for
+            #                     head; that claim was refuted by measurement.
+            #     log     32/0  - NOTHING reddened.
+            #     prepare 32/0  - NOTHING reddened.
+            # So two arms were genuinely unpinned and one was covered incidentally, by a row asserting a
+            # different property. Incidental coverage is not coverage: it disappears the moment someone
+            # writes a mutant that keeps the call and appends anyway.
+            #
+            # ALL FOUR ARMS ARE ENUMERATED HERE ON PURPOSE. The root cause of the stamp hole was that
+            # `stamp` was added to agy-mark.sh long after these -ForEach lists were written, and no one
+            # extended the enumeration - the same shape as ROADMAP section 36's orphaned tests: an
+            # explicit list that a new member was never added to. A row that enumerates every arm makes
+            # the next added arm visibly absent instead of silently uncovered.
+            #
+            # .gitignore is LAST-MATCH-WINS, so appending `*` after `!keep.md` INVERTS the negation and a
+            # deliberately un-ignored file becomes hidden - the data-leak guard running backwards.
+            # The assertion is on GIT'S BEHAVIOUR, because that is the whole point of a negation.
+            $d = New-MarkFixture -Shield "!keep.md`n"
+            [IO.File]::WriteAllText((Join-Path $d '.clavity/keep.md'), "x`n")
+            Invoke-Mark -Cwd $d -MarkArgs $Mode | Out-Null
+
+            $shield = Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')
+            $shield | Should -Match '(?m)^\*$' -Because "the ignore-all pattern must still be present, got: [$shield]"
+
+            & git -C $d check-ignore -q '.clavity/keep.md' 2>&1 | Out-Null
+            ($LASTEXITCODE -eq 0) | Should -BeFalse -Because "the human negation must survive: appending * after '!keep.md' inverts it, prepending does not. Shield is now: [$shield]"
+        }
+
         It 'FORWARDS $AGY_SESSION_ID to the helper' {
             # The hook's forwarding is pinned in Task 5; the WRAPPER's is a separate code path.
             $d = New-MarkFixture

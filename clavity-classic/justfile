@@ -34,11 +34,21 @@ test: && pytest
 # The comment is rewritten rather than deleted because the reasoning was right both times; only the fact
 # it depended on changed. If ci-classic ever drops the Python step, this must go back.
 #
-# EXPLICIT FILE LIST, not a directory. `pytest` at the bridge root collects 26 tests, not 24 - the extra
-# two are tests/test_integration.py. They MUTATE THE CURRENT WORKING DIRECTORY: target_directory is
-# os.path.abspath("."), the bridge writes .agent/telemetry.db there, and one test creates and removes
-# pytest_artifact.txt there. A routine test recipe must not write into whatever directory it was invoked
-# from, so those two live in `pytest-integration` below.
+# EXPLICIT FILE LIST, not a directory, and there are TWO independent reasons for it. Capstone R11 caught
+# this block explaining only the first, which left the second looking like an accident.
+#
+# REASON 1 - the MUTATING pair. `pytest` at the bridge root collects 26 tests, not 24; the extra two are
+# tests/test_integration.py. They MUTATE THE CURRENT WORKING DIRECTORY: target_directory is
+# os.path.abspath("."), the bridge writes .agent/telemetry.db there, and create_worktree makes a REAL git
+# worktree. A routine test recipe must not write into whatever directory it was invoked from, so those
+# two live in `pytest-integration` below.
+#
+# REASON 2 - the THREE ZERO-COLLECTION files, cut in capstone R9. `test_client.py`, `test_isolation.py`
+# and `tests/test_hooked_commit.py` are named `test_*` but are standalone `async def main()` scripts with
+# ZERO `def test_` functions. MEASURED: 6 + 8 + 5 + 5 = 24 from the four listed here, and those three
+# report "no tests collected". Listing them made the recipe NAME files it never ran, and pytest exits 5
+# only when the OVERALL collection is empty - so the zeros were silently absorbed. They are consequently
+# reached by no gate at all, which is recorded in ROADMAP section 36 rather than papered over here.
 #
 # CORRECTION, recorded because an earlier version of this comment and its commit message said it: those
 # tests do NOT spawn a live agy. Both set MOCK_AGENT_RESPONSE, so the agent is mocked. The reason to gate
