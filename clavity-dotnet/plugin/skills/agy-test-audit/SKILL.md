@@ -257,8 +257,17 @@ divergence is a legitimate terminal state - hand your human both positions with 
 `[VERDICT: EXHAUSTIVE]`, `[VERDICT: GAPS FOUND]` and `[VERDICT: agy-required-but-unreachable]`, and that
 list is enforced mechanically by `scripts/check-agy-discipline-skills.ps1` - a `[VERDICT: NEGOTIATE]`
 here would fail the driver's own contract check. **An impasse is a per-finding disposition, not a round
-outcome:** the disputed finding resolves to `UNVERIFIED-ACCEPTED: <finding>` once your human has taken
-the tie-break, and the ROUND still terminates on its own existing token. `UNVERIFIED-ACCEPTED` exists in
+outcome:** the disputed finding takes `UNVERIFIED-ACCEPTED: <finding>` **AT THE MOMENT YOU DECLARE THE
+IMPASSE**, and the ROUND still terminates on its own existing token.
+
+**DISPOSE AT IMPASSE, NOT AFTER THE HUMAN ANSWERS - and this wording is load-bearing.** An earlier
+draft said the finding resolved "once your human has taken the tie-break", which trapped you: the
+Completeness gate below forbids BOTH completing tokens while any finding lacks a disposition, the third
+token would be a lie, and inventing one is forbidden - leaving no legal way to end the reply you must end
+in order to ask. So the disposition is assigned WHEN YOU DECLARE THE IMPASSE, before the human replies.
+It is a statement about the EVIDENCE ("neither provable nor refutable from what either of us measured"),
+which is already true at that moment - not a record of a ruling that has not happened yet. Your human's
+answer may later change it to `FOLDED` or `REJECTED`; that is a revision, not the first disposition. `UNVERIFIED-ACCEPTED` exists in
 the AGY-SCOPE set for exactly this - "neither provable nor refutable, and the owner accepted the risk".
 A finding can be TRUE while the mechanism the peer gives for it is FALSE. Dispose of the FINDING on its
 own merits and record YOUR measured mechanism, never the peer's disputed one - do not reject a real

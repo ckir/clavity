@@ -183,6 +183,22 @@ function Get-AstGrepDeclarationNames([string]$Lang, [string]$Content, [string]$E
         Set-Content -Path $tmpFile -Value $Content -NoNewline -Encoding utf8
         $rulesText = Get-AstGrepInlineRules $Lang
         $jsonText = & ast-grep scan --inline-rules $rulesText --json=compact $tmpFile 2>$null
+        # 🔴 FAIL CLOSED ON A FAILED PARSE. Capstone R5, and it corrected a DISPOSITION of mine: I had
+        # ruled tree-sitter grammar drift "not severity 0 because no command exits non-zero". MEASURED,
+        # that was wrong - `ast-grep scan` with an invalid kind exits **8**:
+        #     Kind `nonexistent_kind` is invalid.   ast-grep exit=8
+        # (control: the same shape with a valid kind exits 0). Node kinds are grammar names, not a
+        # stable API, so a version bump can invalidate one.
+        #
+        # Without this check that exit code was DISCARDED - stderr to $null, empty stdout, `return @()`
+        # - and an empty name set is indistinguishable from "this file declares nothing". Every
+        # declaration in the file would then look unchanged and the gate would answer "no new code".
+        # That is FAIL-OPEN in the one place that must fail closed: a gate an agent runs on ITSELF.
+        if ($LASTEXITCODE -ne 0) {
+            Write-Output "check-capstone-new-code: ast-grep exited $LASTEXITCODE parsing a $Lang file - Rule B cannot answer, and an unanswered question is not a 'no'."
+            Write-Output "  (a node kind in `$AstGrepKindsByLanguage may no longer exist in this ast-grep's grammar)"
+            exit 2
+        }
         if ([string]::IsNullOrWhiteSpace($jsonText)) { return @() }
         $matches = $jsonText | ConvertFrom-Json
         # KEYED BY KIND, not bare name (MEASURED bug, folded before this shipped): a C# constructor is
@@ -356,7 +372,15 @@ try {
                 # undecoded path - that is all this branch has - which is the same best-effort input
                 # the code-ness classification below it already accepts.
                 $currentFile = $rawPath
-                $currentIsTest = Test-IsTestPath $rawPath
+                # 🔴 NORMALISE BEFORE TESTING, or this "fix" fixes nothing. Capstone R5, End-to-end
+                # Walker. $rawPath is the UNDECODED `+++` payload, so it still carries git's surrounding
+                # double quotes and its `b/` prefix. Every entry in $TestPatterns is END-ANCHORED
+                # (`\.Tests\.ps1$`), and a trailing `"` defeats an end anchor - so `"b/src/x.Tests.ps1"`
+                # matched NOTHING and the branch below promoted a TEST file to production code, which is
+                # exactly the outcome the previous round's fix was written to prevent.
+                $probePath = $rawPath.Trim('"')
+                if ($probePath.StartsWith('b/')) { $probePath = $probePath.Substring(2) }
+                $currentIsTest = Test-IsTestPath $probePath
                 $currentIsCode = $true
             }
             continue

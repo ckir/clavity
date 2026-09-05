@@ -707,4 +707,41 @@ Describe 'check-capstone-new-code' {
             $res.Out | Should -Match 'ast-grep is not on PATH'
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'exits 2 when ast-grep is PRESENT but FAILS, rather than reading its silence as no new code' {
+        # A MISSING dependency was already handled; a BROKEN one was not, and that is the worse case
+        # because the binary is right there. Capstone R5, and it overturned a DISPOSITION of mine: I had
+        # ruled tree-sitter grammar drift "not severity 0, because no command exits non-zero today".
+        # MEASURED, that was wrong - `ast-grep scan` with an invalid kind exits 8:
+        #     Kind `nonexistent_kind` is invalid.
+        # The script sent stderr to $null and returned an EMPTY name set on any failure, and an empty
+        # set is indistinguishable from "this file declares nothing" - so every declaration looked
+        # unchanged and the gate answered "no new code". FAIL-OPEN, in a gate an agent runs on itself.
+        #
+        # Simulated with a shim named ast-grep that exits non-zero, placed FIRST on PATH. That is the
+        # honest simulation of a grammar bump: the binary exists, runs, and fails.
+        $r = New-Repo
+        $shim = Join-Path ([System.IO.Path]::GetTempPath()) ("agshim-" + [guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $shim -Force | Out-Null
+            Set-Content -Path (Join-Path $shim 'ast-grep.cmd') -Value @('@echo off', 'exit /b 8')
+            Push-Location $r
+            New-Item -ItemType Directory -Path (Join-Path $r 'src') -Force | Out-Null
+            Set-Content -Path 'src/T.cs' -Value @('public class T', '{', '}')
+            git add -- 'src/T.cs' 2>&1 | Out-Null; git commit -qm addcs 2>&1 | Out-Null
+            Set-Content -Path 'src/T.cs' -Value @('public class T', '{', '    public void Go() { }', '}')
+            git commit -qam addmethod 2>&1 | Out-Null
+            Pop-Location
+            $savedPath = $env:PATH
+            try {
+                $env:PATH = "$shim;$env:PATH"
+                $res = Invoke-Checker $r 'HEAD~1'
+            } finally { $env:PATH = $savedPath }
+            $res.ExitCode | Should -Be 2 -Because 'an ast-grep that FAILS has not answered the question, and an unanswered question is not a no'
+            $res.Out | Should -Match 'ast-grep exited'
+        } finally {
+            Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $shim -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
