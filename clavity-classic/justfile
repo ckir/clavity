@@ -13,6 +13,44 @@ lint:
 test:
     cargo test --all --features test-fakes
 
+# agy-mcp-bridge Python tests — 24 hermetic tests that NO recipe reached until 2026-09-05.
+#
+# NOT wired into `test:` ON PURPOSE. Line 2 of this file says the recipes mirror ci-classic.yml exactly
+# and forbids adding stricter gates, and ci-classic runs cargo only. Wiring these in would make the local
+# gate stricter than CI, which is the one thing this file tells you not to do. Reachability is what was
+# missing; whether CI should run them is a separate decision that belongs in ci-classic.yml.
+#
+# EXPLICIT FILE LIST, not a directory. `pytest` at the bridge root collects 26 tests - the extra two are
+# tests/test_integration.py, which carries NO skip guard and drives delegate_to_antigravity for real: it
+# runs agy in a worktree and gates success on COMMITTED CHANGES. A routine test recipe must not spawn a
+# peer and mutate a worktree, so those two live in `pytest-integration` below and are opt-in.
+# The same explicit-list convention the Pester suites use, for the same reason.
+#
+# `uv run --frozen` resolves from uv.lock, so this works from a fresh clone. The bridge's .venv is
+# gitignored, and MEASURED 2026-09-05 the system interpreter cannot run these at all:
+# `ModuleNotFoundError: No module named 'mcp'`. uv is what makes the recipe reproducible rather than
+# dependent on whatever happens to be installed.
+#
+# Hermetic agy-mcp-bridge Python tests (24). NOT in `test:` - see above.
+pytest:
+    uv run --project agy-mcp-bridge --frozen pytest \
+        agy-mcp-bridge/test_agy_bus.py \
+        agy-mcp-bridge/test_client.py \
+        agy-mcp-bridge/test_isolation.py \
+        agy-mcp-bridge/test_agy_tmux.py \
+        agy-mcp-bridge/tests/test_hooked_commit.py \
+        agy-mcp-bridge/tests/test_mcp_wiring.py \
+        agy-mcp-bridge/tests/test_secret_scrub.py
+
+# OPT-IN, MUTATING. tests/test_integration.py drives the real delegation bridge - it runs agy in a
+# worktree and gates on committed changes - and has no skip guard of its own. Never call this from a
+# default path, and do not add it to `test:`. Worth hardening later with a skipif on an env var, the
+# way scripts/tests/check-peer-reply-citations.Tests.ps1 guards its own dependency.
+#
+# OPT-IN and MUTATING - drives the real agy delegation bridge. Never call from a default path.
+pytest-integration:
+    uv run --project agy-mcp-bridge --frozen pytest agy-mcp-bridge/tests/test_integration.py
+
 # Release build — no test-fakes, so the fake psmux never ships (ci-classic "Build (release)" step).
 build:
     cargo build --release
