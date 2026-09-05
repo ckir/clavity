@@ -296,6 +296,23 @@ case "$mode" in
         else
             isolation="ISOLATED"
         fi
+        # ASSERT THE SHIELD BEFORE WRITING. Capstone R7 named this arm's MISSING agy_shield call
+        # below its reachability floor, on the reasoning that stamp "only appends to a hardcoded,
+        # non-load-bearing audit file" and so cannot be weaponized to mutate protected configuration.
+        # That answers a PATH-TRAVERSAL threat. It is not what agy_shield does here: Stage A2 asserts
+        # `.clavity/.gitignore` contains `*`, and it is a DATA-LEAK guard for a PUBLIC repository.
+        #
+        # MEASURED in a throwaway repo, with a passing control - `stamp` as the FIRST agy-mark call in
+        # a fresh clone left the shield ABSENT and `git status` reporting `?? .clavity/`, while the
+        # `prepare` arm on the identical fixture produced `[*]` and a CLEAN status. Measured again:
+        # `stamp` does NOT repair a shield that has been removed, though every other arm does. So this
+        # arm could publish cascade ids, disciplines and HEAD shas into a committable directory.
+        # A control run INSIDE this repository would have false-passed - the shield already exists here.
+        #
+        # It cannot gate: no path in agy-shield-lib.sh returns non-zero, so the owner's "record
+        # isolation, do not gate on it" ruling is preserved unchanged.
+        rel=".clavity/agy-marks/consults.log"
+        agy_shield "$root" "$rel" "$_key"
         # CREATE THE DIRECTORY FIRST. AGY-AFTER round 2 (Cascade Analyst) caught this as BLOCKING:
         # without it, `>>` into a missing .clavity/agy-marks fails with "No such file or directory"
         # and the arm exits NON-ZERO on a fresh clone or the very first consult - turning the one step

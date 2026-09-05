@@ -108,4 +108,44 @@ Describe 'agy-mark.sh stamp' {
             Test-Path (Join-Path $r '.clavity/agy-marks/consults.log') | Should -BeFalse
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
+
+    It 'ASSERTS THE .clavity SHIELD when it is the FIRST agy-mark call in a fresh repo' {
+        # Capstone R7 put this below its reachability floor, reasoning that stamp writes only a
+        # "non-load-bearing audit file" and so cannot mutate protected configuration. That answers a
+        # path-traversal threat; agy_shield's Stage A2 is a DATA-LEAK guard - it asserts
+        # `.clavity/.gitignore` contains `*` so nothing under .clavity/ can be committed to a PUBLIC
+        # repository. stamp was the ONLY arm not calling it.
+        #
+        # THE ASSERTION IS ON GIT'S VIEW, not on the file's existence, because git's view is the
+        # actual harm: cascade ids, disciplines and HEAD shas landing in a committable directory.
+        # MEASURED before the fix: shield ABSENT and `?? .clavity/` in porcelain output.
+        # This must be the FIRST call in the repo - any earlier shielded arm would create the shield
+        # and this row would pass against an unfixed stamp. That is also why it cannot be tested in
+        # the clavity repository itself, whose shield already exists.
+        $r = New-Repo
+        try {
+            $res = Invoke-Stamp $r @('stamp','agy-capstone','cascade-aaa','cascade-bbb')
+            $res.ExitCode | Should -Be 0
+            Get-Content (Join-Path $r '.clavity/.gitignore') -Raw | Should -Match '\*'
+
+            Push-Location $r
+            try { $porcelain = (& git status --porcelain 2>&1 | Out-String).Trim() } finally { Pop-Location }
+            $porcelain | Should -BeExactly '' -Because "stamp must leave nothing under .clavity/ visible to git, got: [$porcelain]"
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'REPAIRS a shield that was removed, rather than writing under a broken one' {
+        # The ordering half of the same defect, measured separately: before the fix a later stamp did
+        # NOT restore a deleted shield, though every other arm does. A row asserting only the
+        # fresh-repo case would stay green against a stamp that shields once and never re-checks.
+        $r = New-Repo
+        try {
+            Invoke-Stamp $r @('stamp','agy-capstone','cascade-aaa','cascade-bbb') | Out-Null
+            Remove-Item (Join-Path $r '.clavity/.gitignore') -Force
+
+            $res = Invoke-Stamp $r @('stamp','agy-capstone','cascade-ccc','cascade-ddd')
+            $res.ExitCode | Should -Be 0
+            Test-Path (Join-Path $r '.clavity/.gitignore') | Should -BeTrue
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
