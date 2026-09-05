@@ -993,3 +993,37 @@ Describe 'AGY-NEGOTIATE is pinned across all four disciplines' {
         } finally { Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+
+Describe 'this suite ENUMERATES the skills the linter enrols - the two must not drift' {
+
+    It 'covers every name in the linter''s $skills array' {
+        # Capstone R12, Enumeration Auditor. The peer cited a file that does not exist
+        # (scripts/hooks/pre-commit-agy-linter.ps1), but the SHAPE it described is real and is here:
+        # check-agy-discipline-skills.ps1:51 declares `$skills = @('agy-first','agy-capstone',
+        # 'agy-test-audit')`, and THIS FILE enumerates skill names independently across six -ForEach
+        # rows. Two hand-maintained lists, no mechanism keeping them in step - so a skill added to the
+        # linter would be enrolled by it and silently untested by us.
+        #
+        # THIS IS THE SAME DEFECT SHAPE AS ROADMAP SECTION 36's ORPHANED TESTS, and as the `stamp` hole
+        # capstone R10/R11 closed in agy-mark.Tests.ps1: an EXPLICIT LIST that a new member is never
+        # added to. The answer that worked there was to make the omission VISIBLE rather than to trust
+        # the next author to remember.
+        #
+        # SUBSET, NOT EQUALITY, and the asymmetry is deliberate. This file legitimately enumerates a
+        # FOURTH name - adversarial-panel-review - which is NOT in $skills: the linter excludes it on
+        # purpose (non-ASCII content, no marker constant) and it is pinned by the AGY-SCOPE Describe
+        # instead. Asserting equality would red-gate that correct arrangement. What must hold is only
+        # that nothing the LINTER enrols escapes THIS suite.
+        $lintSrc = Get-Content -Raw $script:Lint
+        $m = [regex]::Match($lintSrc, "(?m)^\`$skills\s*=\s*@\((?<body>[^)]*)\)")
+        $m.Success | Should -BeTrue -Because 'the $skills array must be locatable in the linter; if this fails the ARRAY moved and this row is checking nothing'
+
+        $enrolled = [regex]::Matches($m.Groups['body'].Value, "'(?<n>[^']+)'") | ForEach-Object { $_.Groups['n'].Value }
+        $enrolled.Count | Should -BeGreaterThan 0 -Because 'an empty parse would make every assertion below vacuously true'
+
+        $mySrc = Get-Content -Raw $PSCommandPath
+        foreach ($skill in $enrolled) {
+            $mySrc | Should -Match ([regex]::Escape("'$skill'")) -Because "the linter enrols '$skill' but this suite never names it, so nothing here tests it - add it to the -ForEach rows above"
+        }
+    }
+}

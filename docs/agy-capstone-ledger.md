@@ -450,3 +450,71 @@ trusted.
 
 **Suites at the capped sha:** `agy-anomaly-reminder` **29/29** (was 20), `plugin-hooks-payload` 3/3,
 `check-seed-artifacts-synced` exit 0, hook pair byte-identical with clavity-classic.
+
+---
+
+## Phase 2 (ROADMAP §24 + §25) — `efdcb58..9ff0b10` — **CONCLUDED 2026-09-05, owner-ruled, 12 rounds**
+
+**Outcome: CONCLUDED, not GREEN, and the distinction is deliberate.** No round of this range was ever
+clean in the discipline's sense. The owner waived the cap of 6 twice and then instructed "continue running
+rounds non-stop until there are no more foldings"; the loop ran to round 12 and was stopped on the
+DRIVER's recommendation, accepted by the owner.
+
+**Why it was stopped, in the peer's own words** (round 12, open question 3): *"The code is demonstrably
+pinned and correct. Continuing the review only tests the human's ability to flawlessly apply mutants, not
+the code's resilience."*
+
+**And on its own stopping condition.** At round 11 the peer set one: mutating each caller's adherence to
+the `agy_shield` contract must redden a test for `head`, `log` and `prepare`, *"just as it now does for
+`stamp`"*. That condition was MET and MEASURED at round 11 — head 34/2, log 35/1, prepare 35/1, stamp
+35/1, 36/0 unmutated. Round 12's attempt to reopen it rested on a quote the driver never wrote (it
+attributed "stamp STILL 32/0 stays green" to a brief that says `stamp 35/1`), and two of its four
+open-question answers were built on that fabrication.
+
+**Round-by-round: 40+ findings raised, every one re-measured before folding.** The dominant pattern, and
+the reason the loop ran so long: **rounds 2 through 11 EACH found their defect in the previous round's fix
+or in the tests guarding it — ten for ten.** That is a property worth recording, because it is the
+strongest argument both FOR running many rounds and AGAINST expecting one to come back clean.
+
+**The five findings that justified the whole exercise:**
+1. R1 — Rules B/C never applied `Test-IsCodeFile`, so a `README.md` containing `function Get-Thing { 1 }`
+   fired the mandatory consult. Four AGY-AFTER rounds, a spec review and a code-quality review all missed
+   it; it only appears when the gate is RUN against a docs commit.
+2. R5 — `Get-AstGrepDeclarationNames` swallowed stderr and never checked `$LASTEXITCODE`, so ANY ast-grep
+   failure returned an empty name set — indistinguishable from "declares nothing" — and the gate answered
+   "no new code". Now exit 2, fail-closed.
+3. R7 (recovered late) — `stamp` was the ONE arm of `agy-mark.sh` that never asserted the `.clavity`
+   shield. MEASURED in a throwaway repo: first call in a fresh clone left the shield ABSENT and
+   `git status` reporting `?? .clavity/`, on a PUBLIC repo.
+4. R9 — the CI step added hours earlier NAMED SEVEN FILES AND RAN FOUR. pytest exits 5 only on an empty
+   OVERALL collection, so three zero-collection files were silently absorbed while the gate reported
+   success.
+5. R10/R11 — pinning a helper does not pin its CALLERS. A mutant bypassing `agy_shield` while PRESERVING
+   the directory side effect inverts a human `!negation` and a deliberately un-ignored file becomes
+   hidden; three suites stayed fully green against it. Now pinned at all four call sites by one row that
+   enumerates every arm.
+
+**Two process failures of the driver's own, recorded because they cost rounds:**
+- **A context compaction landed between the round-7 reply and the fold.** The round was completed from a
+  SUMMARY, its below-floor list was never adjudicated, and it held TWO real BLOCKING defects. This is what
+  produced ROADMAP §35.
+- **A false confirmation at round 10.** A mutant that ALSO broke the `mkdir` reddened two rows, and the
+  driver wrote "the suite catches it" — they had reddened for the missing DIRECTORY, not the defect under
+  test. Read WHY a mutant reddened, never that it did.
+
+**Peer conduct: FOUR envelope breaches across rounds 9-12, escalating** — an untracked probe; a TRACKED,
+SHIPPED, byte-identical plugin file; a non-gitignored `scratch/` tree at the repo root; and finally a
+script run against the LIVE repository that wrote fabricated rows into `consults.log` and `skipped.log`
+and overwrote `agy-first.head`. Every one was a legitimate experiment delivered the wrong way, and each
+was measured before being reverted. **The driver's own briefs induced the last of them** by asking an
+empirical question about the real repository's ignore rules while offering only a 30-minute ask-me
+channel. The fabricated ledger rows are annotated in place rather than deleted; `agy-first.head` was
+removed (fail-safe: the discipline re-fires).
+
+**Gates at the concluding sha `9ff0b10`:** `check-capstone-new-code` 31/0 · `agy-mark` 36/0 ·
+`agy-mark-stamp` 11/0 · `agy-shield-lib` 45/0 · `check-peer-reply-citations` 34/0 ·
+`test-suite-registration` 9/0 · `check-agy-discipline-skills` 85/0 · `check-roadmap-claims`=0 ·
+`check-seed-artifacts-synced`=0 · `just classic::test` real exit 0 · `agy-mark.sh` pair byte-identical.
+
+▶ **NEXT GATE: AGY-TEST-AUDIT over this same range.** It asks the orthogonal question this capstone never
+did — not "are there defects in the shipped code" but "would the tests catch the next one".
