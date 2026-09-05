@@ -214,6 +214,35 @@ Describe 'check-capstone-new-code' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'handles a space in a NON-TEST path - the row above cannot detect its own regression' {
+        # AGY-TEST-AUDIT 2026-09-05, Mechanism Gamer. The row ABOVE was written to pin the `-z` handling
+        # and CANNOT DETECT ITS OWN REGRESSION. MEASURED: remove `-z` from the --name-status call at
+        # check-capstone-new-code.ps1:293 and revert to `-split '\s+'`, and the WHOLE SUITE stays green
+        # at 31/0 - not one row notices.
+        #
+        # WHY, and it is the sharpest fixture lesson in this repo so far: that row's fixture is
+        # `scripts/tests/my file.Tests.ps1`. Split on whitespace it becomes `scripts/tests/my`, which
+        # STILL MATCHES the `(^|/)tests?/` exclusion - so the gate still concludes "test file, skip",
+        # still exits 0, and the row still passes. THE FIXTURE'S TRUNCATED FRAGMENT GIVES THE SAME ANSWER
+        # AS THE WHOLE PATH, so the assertion is blind to the truncation it exists to catch.
+        #
+        # A fixture must be chosen so that BREAKING THE PARSER CHANGES THE ANSWER. This row uses a
+        # NON-TEST path with a space and a real declaration, which must FIRE (exit 3). Under the mutant
+        # the path truncates to `src/my` - no code extension, no declaration - so Rule A goes silent and
+        # the gate returns 0. Same defect, opposite direction, and THIS row sees it.
+        $r = New-Repo
+        try {
+            Push-Location $r
+            New-Item -ItemType Directory -Path (Join-Path $r 'src') -Force | Out-Null
+            Set-Content -Path 'src/my file.ps1' -Value "function Get-Spaced { 1 }"
+            git add -- 'src/my file.ps1' 2>&1 | Out-Null
+            git commit -qm 'spaced non-test' 2>&1 | Out-Null
+            Pop-Location
+            $res = Invoke-Checker $r 'HEAD~1'
+            $res.ExitCode | Should -Be 3 -Because 'a spaced NON-TEST code path is new code and must fire; if this returns 0 the path parser has been truncated at the space'
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'reports EVERY rule that fired, not just the first' {
         # A checker that stops at the first hit under-reports the blast radius, and the driver then
         # consults on one shape while shipping two.
