@@ -185,6 +185,42 @@ Describe 'agy-mark.sh stamp' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'PRESERVES a human negation in an EXISTING shield - the caller must not append' {
+        # Capstone R10, Disposition Challenger, and it overturned my own R9 rejection. I had argued the
+        # prepend contract is pinned in agy-shield-lib.Tests.ps1:216. It is - FOR THE HELPER IN ISOLATION.
+        # The CALLER's adherence to it was unpinned, and that is a different claim.
+        #
+        # MEASURED, with the mutant that makes the difference: replace this arm's `agy_shield` call with
+        # `mkdir -p "$root/.clavity"; echo "*" >> "$root/.clavity/.gitignore"` - PRESERVING the directory
+        # side effect - and against a repo whose shield already reads `!keep.md`, the file becomes
+        # `!keep.md` then `*`. .gitignore is LAST-MATCH-WINS, so the negation INVERTS and keep.md becomes
+        # IGNORED: a file the human deliberately un-ignored is silently hidden. agy-mark 32/0,
+        # agy-mark-stamp 10/0 and agy-shield-lib 45/0 ALL STAYED GREEN against that mutant.
+        #
+        # 🔴 AND MY FIRST ATTEMPT TO CHECK THIS PRODUCED A FALSE CONFIRMATION. An earlier mutant that
+        # dropped the `mkdir` DID redden two rows - but for the missing DIRECTORY, not the inverted
+        # negation. I nearly recorded "the suite catches it". Read WHY a mutant reddened, never that it did.
+        #
+        # THE ASSERTION IS ON GIT'S BEHAVIOUR, not on file contents: the negation's whole purpose is that
+        # git still sees the file, and only `git check-ignore` can answer that.
+        $r = New-Repo
+        try {
+            New-Item -ItemType Directory -Path (Join-Path $r '.clavity') -Force | Out-Null
+            Set-Content -Path (Join-Path $r '.clavity/.gitignore') -Value "!keep.md`n" -NoNewline
+            Set-Content -Path (Join-Path $r '.clavity/keep.md') -Value 'x' -NoNewline
+
+            $res = Invoke-Stamp $r @('stamp','agy-capstone','cascade-aaa','cascade-bbb')
+            $res.ExitCode | Should -Be 0
+
+            $shield = Get-Content (Join-Path $r '.clavity/.gitignore') -Raw
+            $shield | Should -Match '\*' -Because "the shield must still carry the ignore-all pattern, got: [$shield]"
+
+            Push-Location $r
+            try { & git check-ignore -q '.clavity/keep.md' 2>&1 | Out-Null; $ignored = ($LASTEXITCODE -eq 0) } finally { Pop-Location }
+            $ignored | Should -BeFalse -Because "the human negation must survive: appending * after '!keep.md' INVERTS it, prepending does not. Shield is now: [$shield]"
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'REPAIRS a shield that was removed, rather than writing under a broken one' {
         # The ordering half of the same defect, measured separately: before the fix a later stamp did
         # NOT restore a deleted shield, though every other arm does. A row asserting only the

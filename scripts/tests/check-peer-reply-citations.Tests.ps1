@@ -270,6 +270,13 @@ Describe 'check-peer-reply-citations' {
         # unless there is exactly one, which is what defeats a decoy. A decoy in a docstring was never an
         # Assign node, so ast is strictly stronger here than the text scan it replaces.
         #
+        # AnnAssign IS HANDLED TOO, capstone R10. `DASHES: tuple = (...)` is an ast.AnnAssign, NOT an
+        # ast.Assign, so walking only Assign returned zero and red-gated correct code. MEASURED: the peer
+        # called this a regression from the regex; it is NOT - the regex scored 0 on the annotated form as
+        # well, and both fail CLOSED. So this is a false-RED both versions shared, not something v3 broke.
+        # Folded anyway, because a pin that reddens on correct code is the exact failure this row exists to
+        # prevent, and the fix is four lines.
+        #
         # The trigger was not reachable today - lefthook.yml:63-65 scopes ruff to
         # clavity-classic/agy-mcp-bridge/, so nothing formats scripts/*.py - but the assignment is 93
         # characters against ruff's 88-column default and would wrap the first time that glob widened.
@@ -277,9 +284,15 @@ Describe 'check-peer-reply-citations' {
         $prog = @'
 import ast, io, sys
 src = io.open(sys.argv[1], encoding="utf-8").read()
-vals = [n.value
-        for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Assign)
-        for t in n.targets if isinstance(t, ast.Name) and t.id == "DASHES"]
+vals = []
+for n in ast.walk(ast.parse(src)):
+    if isinstance(n, ast.Assign):
+        for t in n.targets:
+            if isinstance(t, ast.Name) and t.id == "DASHES":
+                vals.append(n.value)
+    elif isinstance(n, ast.AnnAssign) and n.value is not None:
+        if isinstance(n.target, ast.Name) and n.target.id == "DASHES":
+            vals.append(n.value)
 if len(vals) != 1:
     raise SystemExit("expected exactly ONE DASHES assignment, found %d" % len(vals))
 print(",".join(str(ord(c)) for c in ast.literal_eval(vals[0])))
