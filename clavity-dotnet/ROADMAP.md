@@ -2729,11 +2729,21 @@ to track rather than build. **Nothing here is implemented.**
 |---|---|---|
 | `cargo test --all --features test-fakes` | auto-discovers every `#[test]` in the workspace | run automatically |
 | `dotnet test <project>` | auto-discovers inside THAT project | run automatically **within that project only** |
-| `Invoke-Pester @('a','b',…)` | an EXPLICIT list in the justfile | **silently never run** |
-| `pytest <explicit files>` | an EXPLICIT list in the justfile | **silently never run** |
+| `Invoke-Pester @('a','b',…)` | an EXPLICIT list in the justfile | **never run LOCALLY** — but see the CI-sweep correction below |
+| `pytest <explicit files>` | an EXPLICIT list in the justfile | **silently never run, anywhere** |
 
 Every orphan this repo has had came from the bottom two rows. Rust has never had one and structurally
 cannot.
+
+🔴 **CORRECTION, 2026-09-05, and it NARROWS this item — the first version of this section overstated the
+Pester risk.** `.github/workflows/ci-scripts.yml:211` runs `Invoke-Pester scripts/tests` — a **DIRECTORY
+SWEEP, not a list.** So a newly-added Pester suite that nobody registers in the justfile **does still run
+in CI**; what it escapes is the LOCAL `test-scripts-fast` / `-slow` gates. That is drift, not silence, and
+`scripts/tests/test-suite-registration.Tests.ps1` already fails on it.
+
+**The genuinely uncovered case is pytest: NO workflow runs it at all.** Scope any implementation against
+that, not against the Pester lists — which is the opposite of where the first draft of this section
+pointed. Surfaced by the owner's second `TODO.md` report and verified at the cited line.
 
 **THREE DISTINCT FAILURE SHAPES, MEASURED 2026-09-05 — the owner's sentence describes only the first:**
 
@@ -2753,6 +2763,16 @@ cannot.
    `dotnet::test` recipe … which MSBuild resolves across all test projects under `tests/`"* — `dotnet test`
    on one project directory does not resolve siblings. **By this ROADMAP's own severity table both are
    rule-4 False Safety Promises**, and fixing them is the cheapest item here.
+
+   🔴 **AND IT RECURRED, WHICH IS THE REAL FINDING.** A SECOND `TODO.md` report dated the same day restated
+   the identical false reassurance in new wording — *".NET unit + integration | `dotnet::test` | `dotnet
+   test` across both projects"* — after the first had been corrected. It also listed **"(2 projects)" when
+   three exist on disk**, omitting `Clavity.Live.Acceptance` entirely rather than recording it as the
+   deliberate exclusion it is, and split the Pester suites **27/30 where the measured split is 26/31**
+   (total 57 correct). **Two independent audits of the same area produced the same wrong conclusion in the
+   REASSURING direction.** That is a property of the area, not of one author: `dotnet::test`'s recipe
+   comment invites exactly this reading. **Fix the comment first — an audit that clears something is
+   exactly as checkable as one that flags it, and this one has now been wrong twice.**
 
 **TWO CONSTRAINTS ANY PROPOSAL MUST SATISFY — these are deliberate, not oversights:**
 
@@ -2809,6 +2829,57 @@ the justfile lists, the CI YAMLs and the prose are parallel accounting books tha
 local/CI gap is *"the inevitable structural consequence of letting CI and local tools define their own
 separate lists"*. **Scope any implementation against that framing, not against "add the test to the
 runner".**
+
+---
+
+### §37 — git-cliff: DECIDED, NOT ADOPTING — the release engine already models a topology git-cliff cannot — ✅ **RULED 2026-09-05 (owner asked; driver and agy peer independently agreed)**
+
+**Not backlog work. A decision record, kept because it carries a CHECKABLE condition that would reverse
+it** — so a future session re-asking this question can settle it by measurement instead of re-deriving it.
+
+**The question, owner-raised while scoping §36:** if we are touching CI anyway, should we also adopt
+git-cliff for changelog generation?
+
+**THE PRECONDITION IS MET, WHICH IS WHY THIS NEEDED A REAL ANSWER.** Conventional-commit conformance on
+the last 60 commits is **60 of 60**, so git-cliff would parse this history cleanly. The answer is not "our
+commits are too messy for it".
+
+**WHY NOT, AND THE FIRST REASON IS THE PEER'S — verified rather than taken on trust.** The existing engine
+models a versioning topology git-cliff has no concept of:
+
+- **`SharedPaths` fan-out**, `scripts/lib/release-lib.ps1:41-49`. One commit touching
+  `installer/_shared/register-plugin.ps1` or `claude-running.iss` correctly bumps **FIVE** independent
+  members. git-cliff attributes by path or tag; it cannot express "this shared asset ships into these five
+  members, therefore bump all five".
+- **A default-deny path taxonomy** — member-owned / shared-shipping / dev-only, where an UNCLASSIFIED path
+  **fails the release loudly** (`release-lib.ps1:26-29`), plus `Assert-SharedMapHealthy` re-deriving the
+  map from the members' own installer sources and failing on disagreement.
+- **ghidrust's dual channel** — two channels sharing ONE changelog, with a recorded fix at
+  `release-lib.ps1:345-346` that the H1 must use the member KEY, because a channel-specific title is
+  permanently wrong for the other channel.
+
+**THE SECOND REASON IS THAT THIS IS A REWRITE, NOT AN ADDITION.** The changelog is ALREADY generated from
+parsed conventional commits — `scripts/compute-release.ps1:61` computes `Notes=(Group-Notes $conv)` and
+derives the **semver bump level** from the same parse. Two suites pin it (`release-lib.Tests.ps1`,
+`compute-release.Tests.ps1`). Adopting git-cliff means discarding tested, roster-aware code **with no named
+failure to point at**, and re-creating the path-routing above in a config language.
+
+**WHAT GIT-CLIFF WOULD GENUINELY IMPROVE, stated so this record is not one-sided:** entries render as
+`- feat(hooks): …` *underneath* a `### Features` heading, so the type prefix is redundant. git-cliff strips
+it. **That is a one-line change to `Update-Changelog` if it ever matters — not a reason to switch tools.**
+
+🔴 **THE CHECKABLE FLIP CONDITION (the peer's, and it is a good one): if the repository ever collapses to
+exactly ONE `CHANGELOG.md` at the root**, the shared-path attribution becomes dead code and git-cliff
+becomes the correct drop-in. Measure with `git ls-files '*CHANGELOG*'` — **six today.**
+
+⚠ **THE PEER ALSO REJECTED THE FRAMING, and neither tool fixes what it named.** *"The real question is:
+should our release notes be generated from our commit subjects at all?"* — a commit subject serves a diff
+reviewer, a changelog entry serves a user, and automating one from the other forces a compromise. The
+evidence is in the shipped output: `clavity-dotnet/CHANGELOG.md` carries
+`- feat(hooks): discipline-reaching recorder - and the 20,9s budget blowout it hid`, which is a reviewer's
+sentence in a user's document. Subject lengths, last 30 commits: **min 56, median 85, max 111.**
+**Switching generators would render the same subjects.** Recorded as an open question about the WRITING
+convention, deliberately NOT actioned here.
 
 ---
 
