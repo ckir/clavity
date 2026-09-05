@@ -10,11 +10,11 @@ lint:
     cargo clippy --all-targets --features test-fakes -- -D warnings
 
 # `&& pytest` is a just POST-DEPENDENCY: the cargo body runs first, then the `pytest` recipe below. Used
-# instead of repeating the seven-file list here, so the recipe and CI cannot drift apart by editing one.
+# instead of repeating the four-file list here, so the recipe and CI cannot drift apart by editing one.
 #
 # ⚠ THE LINE DIRECTLY BELOW IS WHAT `just --list` PRINTS AS THIS RECIPE'S DESCRIPTION - not the block
 # above it. Caught here for the second time: the first draft of this comment ended on the "instead of
-# repeating the seven-file list" sentence, and `just --list` advertised that fragment as what `test` does.
+# repeating the file list" sentence, and `just --list` advertised that fragment as what `test` does.
 # Keep a real one-line summary immediately above every recipe, and RUN `just --list` to check it.
 #
 # Rust tests + the 24 Python bridge tests (mirrors ci-classic's two Test steps).
@@ -72,10 +72,7 @@ test: && pytest
 pytest:
     uv run --project agy-mcp-bridge --frozen pytest \
         agy-mcp-bridge/test_agy_bus.py \
-        agy-mcp-bridge/test_client.py \
-        agy-mcp-bridge/test_isolation.py \
         agy-mcp-bridge/test_agy_tmux.py \
-        agy-mcp-bridge/tests/test_hooked_commit.py \
         agy-mcp-bridge/tests/test_mcp_wiring.py \
         agy-mcp-bridge/tests/test_secret_scrub.py
 

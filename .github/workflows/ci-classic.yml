@@ -57,11 +57,28 @@ jobs:
       # opt-in behind CLAVITY_RUN_INTEGRATION_TESTS and must NEVER run here. The file also self-skips, so
       # this is belt and braces - but the list is what keeps CI honest if that guard is ever removed.
       #
+      # 🔴 FOUR FILES, NOT SEVEN, AND THE FIRST VERSION OF THIS STEP LISTED SEVEN. Capstone R9, CI Contract
+      # Auditor. THREE of the seven collect NOTHING: test_client.py, test_isolation.py and
+      # tests/test_hooked_commit.py are standalone `async def main()` + `__main__` scripts with ZERO
+      # `def test_` functions. MEASURED per file - 6 + 8 + 5 + 5 = 24, and the other three report
+      # "no tests collected".
+      #
+      # THE STEP STILL EXITED 0, which is the part that matters. pytest returns 5 only when the OVERALL
+      # collection is empty; because the four real suites collect 24, the three zero-collection files were
+      # silently ignored and the gate reported success while naming files it never ran. I asked the seat
+      # to hunt exactly this - "can this step pass while collecting nothing?" - and the honest answer was
+      # sharper than my question: it cannot collect nothing, but it can collect nothing FROM A NAMED FILE.
+      #
+      # The three are now OUT of this list, so it names only what it runs. They are consequently reached by
+      # NO gate at all - a fresh instance of ROADMAP section 36's failure shape 1, recorded there rather
+      # than hidden here. tests/test_hooked_commit.py is the one that stings: its own docstring calls it a
+      # regression test for the --no-verify fix. Converting the three to pytest is a scope decision.
+      #
       # --frozen resolves from the tracked uv.lock, so this is reproducible from a clean checkout and
       # cannot silently drift onto a newer dependency.
       #
       # VERIFIED ON BOTH ARMS OF THIS MATRIX BEFORE WIRING IT UP, because these tests had only ever run on
-      # one Windows box and four of the seven files touch platform-specific things (tmux, .exe suffixes):
+      # one Windows box and the suite touches platform-specific things (tmux, .exe suffixes):
       # Windows 24 passed; Linux 24 passed in 82s under WSL with Python 3.14.4. Wiring an unverified suite
       # into CI would have reddened main on the first push rather than caught a defect.
       - name: Install uv (for the Python bridge tests)
@@ -70,10 +87,7 @@ jobs:
         run: >
           uv run --project agy-mcp-bridge --frozen pytest
           agy-mcp-bridge/test_agy_bus.py
-          agy-mcp-bridge/test_client.py
-          agy-mcp-bridge/test_isolation.py
           agy-mcp-bridge/test_agy_tmux.py
-          agy-mcp-bridge/tests/test_hooked_commit.py
           agy-mcp-bridge/tests/test_mcp_wiring.py
           agy-mcp-bridge/tests/test_secret_scrub.py
 

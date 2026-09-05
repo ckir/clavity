@@ -253,27 +253,36 @@ Describe 'check-peer-reply-citations' {
         # ast.literal_eval is what makes both forms equivalent to this row. A future maintainer may write
         # the characters literally again and this pin still passes, because it asks what Python BUILDS.
         #
-        # '\s*=\s*' AND re.S TOGETHER, and the earlier comment here was WRONG about why. Capstone R8,
-        # Disposition Challenger, challenging my own claim that '\s*=\s*' alone meant "an ordinary
-        # formatter pass cannot turn this into a false RED". It cannot do that: '\s*=\s*' absorbs spacing
-        # around the '=' only, while '.' does not cross a newline without re.S - so a formatter that
-        # WRAPPED the tuple across lines yielded ZERO hits and this row would have gone RED on correct
-        # code. MEASURED with the peer's own command: the wrapped form "DASHES = (\n1\n)" gave 0 hits and
-        # the inline form gave 1.
+        # NO REGEX AT ALL - THE THIRD VERSION, AND THE FIRST TWO EACH BROKE ON CORRECT CODE. This asks
+        # Python what the module ASSIGNS, via ast.parse, so formatting and comments cannot reach it.
         #
-        # The trigger is not reachable TODAY - lefthook.yml:63-65 scopes ruff to
+        # v1 `^DASHES\s*=\s*(\(.*?\))` with re.M: '\s*=\s*' absorbs spacing around the '=' only, and '.'
+        #    does not cross a newline. A formatter that WRAPPED the tuple gave ZERO hits -> false RED on
+        #    correct code. Capstone R8 caught it; MEASURED, wrapped gave 0 hits and inline gave 1.
+        # v2 the same regex with re.M | re.S: fixed wrapping and INTRODUCED A NEW EDGE, which capstone R9
+        #    caught one round later. Non-greedy `.*?` stops at the FIRST ')', so a wrapped tuple carrying a
+        #    comment with a parenthesis - `# em dash (U+2014)` - extracts malformed Python and
+        #    ast.literal_eval CRASHES. MEASURED, all three cases: inline OK, wrapped OK, wrapped-with-paren
+        #    SyntaxError. A fix that spawns its own edge is this range's signature failure; the answer was
+        #    to stop patching the pattern and delete the category.
+        #
+        # WHAT SURVIVES FROM THE REGEX VERSIONS, deliberately: it still COUNTS the assignments and fails
+        # unless there is exactly one, which is what defeats a decoy. A decoy in a docstring was never an
+        # Assign node, so ast is strictly stronger here than the text scan it replaces.
+        #
+        # The trigger was not reachable today - lefthook.yml:63-65 scopes ruff to
         # clavity-classic/agy-mcp-bridge/, so nothing formats scripts/*.py - but the assignment is 93
-        # characters against ruff's 88-column default, so it would wrap the first time that glob widened.
-        # Fixed rather than deferred because the claim in the comment was false either way, and because a
-        # pin that fails on correctly-formatted code is the failure mode this row exists to prevent.
+        # characters against ruff's 88-column default and would wrap the first time that glob widened.
         $checker = Join-Path $script:RepoRoot 'scripts/check-peer-reply-citations.py'
         $prog = @'
-import ast, io, re, sys
+import ast, io, sys
 src = io.open(sys.argv[1], encoding="utf-8").read()
-hits = re.findall(r"^DASHES\s*=\s*(\(.*?\))", src, re.M | re.S)
-if len(hits) != 1:
-    raise SystemExit("expected exactly ONE DASHES assignment, found %d" % len(hits))
-print(",".join(str(ord(c)) for c in ast.literal_eval(hits[0])))
+vals = [n.value
+        for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Assign)
+        for t in n.targets if isinstance(t, ast.Name) and t.id == "DASHES"]
+if len(vals) != 1:
+    raise SystemExit("expected exactly ONE DASHES assignment, found %d" % len(vals))
+print(",".join(str(ord(c)) for c in ast.literal_eval(vals[0])))
 '@
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ("dashpin-" + [guid]::NewGuid() + ".py")
         [IO.File]::WriteAllText($tmp, $prog); $script:Made.Add($tmp)
