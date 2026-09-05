@@ -326,10 +326,25 @@ case "$mode" in
             echo "agy-mark stamp: could not create .clavity/agy-marks - isolation NOT recorded" >&2
             exit 0
         }
+        # THE TIMESTAMP MUST NEVER BE EMPTY, for the same reason the whitespace guards above exist.
+        # Capstone R7 stood this down below its floor, reasoning that a failed `date` "simply leaves the
+        # first field empty without breaking the positional contract for readers"; asked which reader it
+        # had checked, it answered NONE and retracted. MEASURED with a `date` shim exiting 1: the row
+        # becomes " agy-capstone consult=ccc ..." and awk reports field1=[agy-capstone],
+        # field2=[consult=ccc] - EVERY positional field shifts by one, and the arm still exits 0, so
+        # nothing announces the corruption. That is precisely the failure the whitespace guards reject
+        # at the door; leaving it reachable through an empty first field made those guards partial.
+        # The reader is a human at capstone-GREEN adjudication (ROADMAP.md:2199), which is why a shifted
+        # row is worse than a missing one - it reads as a valid record of a different consult.
+        # `|| echo unknown` alone is not enough: it fires on a NON-ZERO exit, not on a date that exits 0
+        # and prints nothing, so the emptiness is re-checked directly. Same shape as the `git rev-parse`
+        # fallback in the printf below - this arm's established idiom, not a new convention.
+        _ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+        [ -n "$_ts" ] || _ts=unknown
         # Append with >>, never >. Two sessions can be open on one repository, and a truncating
         # writer silently eats the other's row.
         printf '%s %s consult=%s review=%s %s %s\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$discipline" "$consult_id" "$review_id" \
+            "$_ts" "$discipline" "$consult_id" "$review_id" \
             "$isolation" "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
             >> "$root/.clavity/agy-marks/consults.log" 2>/dev/null || {
             echo "agy-mark stamp: could not write consults.log - isolation NOT recorded" >&2

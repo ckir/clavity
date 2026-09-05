@@ -134,6 +134,50 @@ Describe 'agy-mark.sh stamp' {
         } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'keeps the timestamp field NON-EMPTY when date fails, so no positional field shifts' {
+        # Capstone R7 stood this down below the floor ("simply leaves the first field empty without
+        # breaking the positional contract"); asked which reader it had checked it answered NONE and
+        # retracted. MEASURED with a date shim exiting 1: field1 became the discipline and field2 became
+        # `consult=<id>` - every field shifted by one, while the arm still exited 0.
+        #
+        # THE ASSERTION IS ON FIELD IDENTITY, NOT ON A COUNT and not on the row merely existing. A count
+        # is invariant under the shift this pins - the corrupt row has the same number of fields as the
+        # good one, which is exactly what makes the corruption silent.
+        $r = New-Repo
+        try {
+            # THE SHIM MUST BE PREPENDED IN BASH'S OWN IDIOM, NOT POWERSHELL'S, and the first version of
+            # this row got that wrong in a way that made it VACUOUS. Setting $env:PATH = "$shim;$old"
+            # hands bash a SEMICOLON-separated list; bash splits PATH on COLONS, so the shim directory
+            # was never on the search path, the real `date` ran, and the row passed against a deliberately
+            # mutated script. Caught only because the mutant left the suite 10/0 GREEN.
+            # The PATH is therefore built inside bash, where `:` is correct and `$PATH` is bash's own.
+            $shim = Join-Path $r 'shim'
+            New-Item -ItemType Directory -Path $shim | Out-Null
+            Set-Content -Path (Join-Path $shim 'date') -Value "#!/bin/sh`nexit 1" -NoNewline
+
+            Push-Location $r
+            try {
+                & bash -c 'PATH="./shim:$PATH" bash "$1" stamp agy-capstone cascade-aaa cascade-bbb' _ $script:Mark 2>&1 | Out-Null
+                $code = $LASTEXITCODE
+            } finally { Pop-Location }
+
+            $code | Should -Be 0 -Because 'a degraded clock must still not gate the record'
+            $row = (Get-Content (Join-Path $r '.clavity/agy-marks/consults.log') | Select-Object -First 1)
+
+            # DO NOT SPLIT ON '\s+' HERE. The second version of this row did, and it was VACUOUS for a
+            # subtler reason than the first: on the corrupt row " agy-capstone consult=..." PowerShell's
+            # -split '\s+' emits an EMPTY leading element, which shifts every later field back into the
+            # exact index the good row puts it at. Good and corrupt rows produced identical $fields[1..4],
+            # so the assertions passed against the mutant. The matcher normalised away the one difference
+            # it existed to detect - the same class as asserting a COUNT over a reordered collection.
+            # Assert on the RAW row instead: the defect IS the leading whitespace and the absent field.
+            $row | Should -Not -Match '^\s' -Because "the row must not begin with whitespace, got: [$row]"
+            $first = ($row -split ' ')[0]
+            $first | Should -Not -BeNullOrEmpty -Because "field 1 must be present, got row: [$row]"
+            $first | Should -Match '^(unknown|\d{4}-\d{2}-\d{2}T)' -Because "field 1 must be a timestamp or the explicit 'unknown' fallback, got: [$first]"
+        } finally { Remove-Item $r -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     It 'REPAIRS a shield that was removed, rather than writing under a broken one' {
         # The ordering half of the same defect, measured separately: before the fix a later stamp did
         # NOT restore a deleted shield, though every other arm does. A row asserting only the
