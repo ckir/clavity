@@ -2662,6 +2662,61 @@ repo-wide in one pass so no file is left inconsistent with its siblings.
 
 ---
 
+### §35 — Persist every peer reply to disk; the practice existed, was never mechanised, and died silently — ▶ **PROMOTED 2026-09-05, owner-raised, tracked debt**
+
+**The owner proposed this to earlier sessions and those agents agreed; it was never written down anywhere
+executable, so it survived only in agent memory and was lost across several memory compactions.** The
+owner re-raised it on 2026-09-05 and waived the AGY-FIRST consult for the promotion itself.
+
+**MEASURED 2026-09-05, so the history is not asserted from memory:**
+
+- **129 `-REPLY.md` files exist under `.clavity/seams/`, dated 2026-08-10 through 2026-08-14, and NOTHING
+  after 2026-08-14.** The practice ran for five days and stopped.
+- **No skill, hook or script mandates the write.** `git grep -c "REPLY" -- '*/plugin/skills/*'` returns
+  one hit in each of the four discipline skills — the unrelated `[13b] TRUNCATED REPLY` diagnostic string
+  — plus two in `driving/SKILL.md`, which are the peer-facing instruction *"Just REPLY on the bus - do NOT
+  write or edit files"*. Note `clavity-classic/plugin/skills/driving/` has no `clavity-dotnet` twin, so
+  that pair is 5 files to 4. **None of the six is an instruction to persist a reply.**
+- **A READER for these files was designed and never built.**
+  `docs/superpowers/specs/2026-08-13-workflow-position-resilience-design.md` is still marked
+  *"Status: design, 2026-08-13"*, and `git grep -ln "REPLY.md" -- scripts/ */plugin/` returns nothing.
+
+**WHY IT MATTERS, from a failure this cost on 2026-09-05.** AGY-CAPSTONE round 7 returned
+`[VERDICT: EXHAUSTIVE]`. A context compaction landed between the peer's reply and the driver's fold, the
+round was completed from a SUMMARY of the reply, and the below-floor list was never adjudicated — it held
+**two real BLOCKING defects** in `agy-mark.sh stamp`, fixed later at `62d6aee` and `ee22909`. Recovery via
+`agy_look` was only partial: **its trajectory summary truncates mid-sentence**, cutting the third
+below-floor item off at `"could sil…"` with no marker that anything was missing.
+
+That spec anticipated this exact failure a month earlier, at its line 995: *"dropping `-REPLY` severs the
+consult loop … the crash window that matters most is between the peer answering and the author reading;
+pointing a successor at the question while the answer sits unread invites it to re-ask."*
+
+**TWO DISTINCT BENEFITS, and the second is the one the owner named.** (1) RECOVERY — a successor session,
+or the same session after a compaction, can read the reply instead of a paraphrase of it. (2) WRITTEN
+EVIDENCE — every fold is currently justified by the driver's own account of what the peer said, and that
+account is not independently checkable. The same session described one 125-line test file wrongly FOUR
+times, twice in shipped commit messages. An on-disk reply lets a fold be audited against the source.
+
+⚠ **PROSE ALONE HAS A MEASURED SURVIVAL TIME OF FIVE DAYS HERE.** This is the repo's own standing law —
+a rule with no implementation is worse than no rule — and this item is the evidence for it. Scoping must
+decide where the write is anchored; the fork is NOT settled and needs its own AGY-FIRST consult:
+
+- **Skill text** in the four discipline SKILL.md files (plus byte-identical classic twins). Available now,
+  works on both transports, and is exactly the form that already died once.
+- **Driver-side**, in `Clavity.Mcp/McpTools.cs`'s `agy_ask`, writing each reply as a side effect. Fully
+  mechanical and needs no agent compliance — but it is a binary change, and the installed exe already lags
+  the tree, so it does not take effect without a rebuild+publish, which is **release-shaped and the
+  owner's call**. Note `clavity-classic` reaches the peer through the `clavity ask` CLI, where the same
+  guarantee is a shell redirect rather than a code change — the two halves do not need the same mechanism.
+- **A gate** that refuses to record a round as folded unless a matching `-REPLY` exists.
+
+⚠ **Writing the file does NOT by itself fix the 2026-09-05 failure.** The reply was retrievable; the
+defect was that its below-floor list was never adjudicated. Persistence makes the evidence durable and
+recovery possible — it does not force the reading. Any scoping that claims otherwise is overclaiming.
+
+---
+
 ## Non-goals / accepted limitations
 
 - **True mid-turn push to Claude Code** — none exists; long-poll `await-reply` / a bounded idle-wait is the
