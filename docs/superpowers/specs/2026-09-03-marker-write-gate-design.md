@@ -70,9 +70,10 @@ that.** In `docs/agy-capstone-ledger.md`:
   `agy-test-audit discipline`, `clavity-ls channel resilience`, plus the 8 anomaly rows — and the rest mix
   backticked and bare ranges, trailing parentheticals, and `^..` syntax (`77aa257^..08254ab`).
   `git rev-parse 'SP-B agy-capstone skill'` has no answer, so **a normaliser reading the range column
-  needs a defined behaviour for an unresolvable token.** ▶ **F7's ruling removes that requirement rather
-  than answering it: the gate never reads the range column at all.** This measurement is kept because it
-  is the evidence FOR that ruling — delete it and the ruling looks arbitrary.
+  needs a defined behaviour for an unresolvable token.** ▶ **F7 answers it: hex-validate BEFORE calling
+  git, and skip anything that fails.** Measured, that drops all 21 non-sha values in the capstone ledger
+  — separators, the header, the anomaly table's prose column and these three — without a single one
+  reaching git.
 
 - 🔴 **A NAIVE SHA SEARCH ALREADY FALSE-PASSES ON TODAY'S FILE, WITH NO HOSTILE AUTHOR REQUIRED.** The
   panel's escalation round raised this as a hypothetical — someone writing "we audited 9ff0b10 but it
@@ -117,14 +118,14 @@ and the escape (the flag), or the flag is a secret and C3 is unmet in practice.
 
 **C4 — BOOTSTRAPPING, AND IT ARRIVES ON DAY ONE.** The first marker for a new ledger-owning discipline is
 written against an empty or absent ledger, and that case must be reachable without disabling the gate.
-**See C6: absence is not only a first-run state.** ▶ **F7's ruling makes the empty-history state
-universal but harmless, and the distinction matters.** The gate reads only rows carrying the
-machine-readable token, and no existing row has one, so from the gate's point of view every ledger is
-empty the day it ships. That is **not** a bootstrap problem, because the gate never asks "does this
-ledger have any rows?" — it asks "does it record THIS sha?", and under C9 the current run has just
-written that row. The genuine bootstrap case is narrower than the spec first stated: **a ledger file that
-exists but is empty**, for a discipline whose first run has not yet written its row. Under F1/F5 an
-*absent* ledger means the gate does not apply at all, so only the present-and-empty case remains.
+**See C6: absence is not only a first-run state.** ▶ **F7's REVERSAL shrank this constraint to almost
+nothing, and that is one of the reasons the reversal was taken.** The gate reads the existing range
+column, so **all 42 historical rows across the two ledgers are visible on day one** — where the token
+design would have seen zero until each was retrofitted. The gate never asks "does this ledger have any
+rows?" anyway; it asks "does it record THIS sha?", and under C9 the current run has just written that
+row. So the genuine bootstrap case is narrow: **a ledger file that exists but is empty**, for a
+discipline whose first run has not yet written its row. Under F1/F5 an *absent* ledger means the gate
+does not apply at all, so only the present-and-empty case remains.
 
 **C5 — BYTE-IDENTICAL PAIR.** `agy-mark.sh` ships in both plugin halves and is gated by
 `check-seed-artifacts-synced.sh` (verified `cmp`-identical 2026-09-05). Every change mirrors, and the
@@ -235,69 +236,53 @@ call:** `skipped.log` and the marker file live in the *same directory*, `.clavit
 filesystem that rejects the audit append rejects the marker write too. The operator was already blocked;
 refusing does not add a stranding case, it just refuses honestly instead of writing an unlogged bypass.
 
-**F7 — how the sha is located. ▶ RULED: A MACHINE-READABLE TOKEN PER ROW.** *Found by the peer, and it
-was right that this is the mechanical core the spec had deferred.* Each new ledger row carries a
-canonical token the gate reads, and the gate reads nothing else — no exposure to the
-four-tables-and-prose shape C1 measured.
+**F7 — how the sha is located. ▶ RULED 2026-09-06, THEN REVERSED THE SAME DAY: NO TOKEN. THE GATE READS
+THE RANGE COLUMN POSITIONALLY.** *The fork was found by the peer, and the reversal was too — its round-2
+challenge that a per-row token is circular turned out to point at a design that is strictly cheaper.*
 
-### The token, pinned — because round 2 proved that leaving it abstract broke the ruling
+**The rule, in one sentence:** for each line beginning with `|`, take **field 2**, strip backticks, take
+the first whitespace- or paren-delimited word, require it to match a hex range or bare sha, take the
+right-hand endpoint, resolve it through `git rev-parse`, and compare to the sha being marked.
 
-Round 2 caught the ruling contradicting C1 in the artifact's own words: the previous draft said the gate
-does "no table walking, no column counting", which — read literally, and it is right to read it literally
-— leaves nothing but **searching the file**, the one thing C1 forbids. A token pasted into evidence prose
-would then authenticate a marker exactly as a bare sha does today. **The resolution is that the token is
-positional at the LINE level, which needs no table semantics at all:**
+### Why this is safe, measured on the real ledgers rather than on a fixture
 
-🔴 **ROUND 3 KILLED THE FIRST VERSION OF THIS FORMAT BY MEASUREMENT, AND THE REPLACEMENT IS BELOW.**
-The draft above placed the token on **its own physical line** beneath its row. Two independent defects,
-both confirmed:
+| what was measured | `agy-capstone-ledger.md` | `agy-test-audit-ledger.md` |
+|---|---|---|
+| pipe-rows yielding an endpoint | 37 | 5 |
+| of those, endpoints that RESOLVE as commits | **37 (100%)** | **5 (100%)** |
+| endpoints that fail to resolve | **0** | **0** |
+| rows correctly skipped | 21 | 2 |
 
-- **It destroys the table it annotates.** MEASURED 2026-09-06 with `mdcat` and BOTH controls: a clean
-  3-row table renders whole; the same table with a blank line between rows truncates after row 1 with the
-  remainder falling out as raw text (the failing control, proving the probe can see breakage); and **the
-  HTML-comment-between-rows case renders identically to the blank-line case.** An HTML comment is a
-  block-level construct, so it terminates the table exactly as a blank line does.
-- **It does not close the bypass it claimed to close.** The line anchor keeps a token out of a table
-  *cell*, but the ledgers are mostly free prose — a token on its own line inside an evidence paragraph or
-  a heading section matches just as well. The claim that the anchor was "structural" was wrong.
+**Every skipped value is genuinely non-sha** — the separator rows, the `range` header, the 3-column
+anomaly table's prose second column, and the three prose ranges (`SP-B agy-capstone skill`,
+`agy-test-audit discipline`, `clavity-ls channel resilience`). They fail hex validation and are dropped
+**before git is ever invoked**, which is what makes this safe where ancestry was not: the objection that
+killed ancestry was feeding scraped prose to git, and hex-validating first removes exactly that.
 
-**The format, corrected — and measured before being written down this time:**
+🔴 **AND C1's FALSE PASS IS STRUCTURALLY UNREACHABLE, NOT MERELY UNLIKELY.** The fold-commit shas that
+would authenticate a bogus marker live in the **evidence** column, field 5. MEASURED with a presence
+control: each of `2b634ca`, `113525c`, `b8e9a61`, `65b889a`, `f3ea3e9` occurs **0 times in field 2** while
+occurring in the file. A gate that reads field 2 and nothing else cannot see them. **No format change is
+required to close C1** — reading the right column closes it.
 
-- **Shape:** the token is an HTML comment occupying a **dedicated leading CELL** of the ledger row:
-  `| <!-- agy-mark: <discipline> <40-hex-sha> --> | date | range | … |`.
-- **How the gate finds it:** the line must begin with `|`; the gate takes **field 1** and matches the
-  token pattern there. Field 1 and nowhere else.
-- 🔴 **WHY THIS IS BOTH POSITIONAL AND UNSPOOFABLE, measured rather than argued.** The table renders
-  **intact** — all rows, one table — and the token is **invisible**, `grep -c agy-mark` over the rendered
-  output returning **0**. Positional means *field 1 of a pipe-anchored line*, which is column counting,
-  and column counting was never what C1 forbade — **C1 forbids SEARCHING**. And a spoof can no longer
-  hide: to be read it must be field 1 of a line beginning with `|`, which **is** a table row, so a forged
-  token renders as a visible extra row in the ledger rather than as invisible prose. The bypass moves
-  from "paste a string in a comment" to "add a fake row to a table people read".
-- **40 characters, and written by a tool, never by hand.** Round 2 argued that exact matching against the
-  40-char sha `head` receives would force humans to hand-write 40-char shas. That does not follow — a
-  token is validated hex, so unlike C1's prose cells it is safe to expand through git. **The spec chooses
-  the tool-written full sha anyway**, because it removes the transcription step entirely rather than
-  making it recoverable, and this repository has already had a marker corrupted by exactly one
-  hand-transcribed sha (`docs/backlog/agy-mark-accepts-a-nonexistent-sha.md`).
-- **The pairing is what the format linter checks:** every ledger row is followed by exactly one token
-  line, and no token line is an orphan. ⚠ **This does NOT prove the token agrees with the prose in its
-  row** — round 2 named that split-brain honestly and it is not fully closed. What closes it in practice
-  is that both are emitted by one writer, so divergence requires a hand edit, and the token sits directly
-  under the row a human reads rather than in a second file.
+### What the reversal costs, stated rather than buried
 
-**The accepted consequence, stated because it is the kind of thing that surfaces later as a surprise:**
-pre-existing rows carry no token, so **the gate sees an empty ledger for all history** and only rows
-written after the change are visible to it. Per C4 that is harmless — the gate asks only whether THIS
-sha is recorded — but it does mean the gate cannot retroactively validate an old marker, and must not
-pretend to.
+- **The heading-section records are invisible to the gate.** `docs/agy-capstone-ledger.md:456` records
+  Phase 2 as a `##` section, not a row, so its range is not in any field 2. This is a **convention
+  obligation**, not a code one: a record that must be gate-visible has to be a table row. The token design
+  had the identical limitation, so nothing was lost in the trade.
+- **The gate calls `git rev-parse` per candidate row.** That is the git dependency C8 already names,
+  arriving for real. It is bounded — 42 rows across both ledgers today — and every input is hex-validated
+  first.
+- **A hand-written row still passes**, exactly as the spec has said from the start. The gate proves a row
+  exists, never that an audit happened.
 
-⚠ **F7 IS UNDER CHALLENGE AND THE OWNER OWNS THE ANSWER.** Round 2's reviewer argued the whole mechanism
-is circular — *"the agent writes a string solely so the bash script can find it, while a separate linter
-is required solely to ensure the agent wrote the token."* The driver may not reopen a ruling, so this is
-recorded rather than acted on. Its force is reduced but not removed by the fold above: a line-anchored,
-tool-written token is not something an agent writes at all, so the circularity is between two tools
-rather than between an agent and a linter.
+### What it saves, which is why the reversal was taken
+
+No ledger format change. No writer. No format linter, so no diff-scoping problem. No migration, so none
+of the half-migrated states round 3 called worse than never starting. **It works on all existing history
+immediately** — 42 rows visible on day one, where the token design would have seen zero.
+
 ## Sequencing
 
 **The line-level plan is UNBLOCKED as of 2026-09-06** — every fork is ruled, so a plan can cite real
@@ -307,27 +292,27 @@ also spec-written and unbuilt, and the owner sequences the two.
 **What the plan must carry, derived from the rulings rather than restated from them. 🔴 THE ORDER BELOW
 IS LOAD-BEARING — round 3 found that the obvious order breaks the repository partway through.**
 
-1. **The ledger format lands first** (F7's token cell), in both ledgers, together with the writer that
-   emits it and its format linter.
-   🔴 **THE LINTER MUST BE DIFF-SCOPED, NOT A STATIC FILE SCAN.** Round 3 caught this: pre-existing rows
-   carry no token and are never retrofitted, so a linter that scans the whole file fails on every
-   historical row the moment it lands — it would break the build on arrival. It must check only rows
-   **added in the range under test**. That pattern already exists in this repository:
-   `scripts/check-capstone-new-code.ps1:13` takes a mandatory `-BaseRef` for exactly this reason.
-2. **The discipline skills learn the ordering — row before marker (C9) — and the token.** 🔴 **THIS MUST
-   LAND BEFORE THE GATE, and round 3 is why.** A gate that arrives first refuses every agent still
-   following the old, unspecified ordering, so the repository would spend the gap actively breaking
-   compliant runs. Prose landing early is harmless; the gate landing early is not. Both plugin halves, a
-   `writing-skills` change, twin mirrored in the same commit.
-3. **A new sourced helper** (F4) beside `agy-shield-lib.sh`, plus its Pester suite, its `_partition.md`
-   row, and its `justfile`/CI registration. **That registration is an explicit list, not a glob** — the
-   orphaned-test class of §36.
-4. **The `head` arm gains the gate and the F6 override flag, LAST**, mirrored byte-identically into
+> ⚠ **The F7 reversal deleted this list's first step entirely.** It used to open with a ledger format
+> change, its writer and a diff-scoped format linter. There is no format change any more, so there is
+> nothing to migrate and nothing to lint — which is the single largest reason the reversal was worth
+> taking. What survives is round 3's *ordering* lesson, which was never about the token.
+
+1. **The discipline skills learn the ordering — row before marker (C9).** 🔴 **THIS MUST LAND BEFORE THE
+   GATE, and round 3 is why.** A gate that arrives first refuses every agent still following the old,
+   unspecified ordering, so the repository would spend the gap actively breaking compliant runs. Prose
+   landing early is harmless; the gate landing early is not. Both plugin halves, a `writing-skills`
+   change, twin mirrored in the same commit.
+2. **A new sourced helper** (F4) beside `agy-shield-lib.sh` carrying the field-2 parser, plus its Pester
+   suite, its `_partition.md` row, and its `justfile`/CI registration. **That registration is an explicit
+   list, not a glob** — the orphaned-test class of §36. **Its suite must include the 21 rows the parser is
+   required to SKIP**, not only the 37 it must read: a parser proven only on the rows it accepts has no
+   evidence it rejects the anomaly table.
+3. **The `head` arm gains the gate and the F6 override flag, LAST**, mirrored byte-identically into
    `clavity-classic/plugin/hooks/` in the SAME commit (C5), with `check-seed-artifacts-synced.sh` green.
-   **The refusal message must distinguish its two causes** — no row at all, versus a row present whose
-   token is absent or does not match. Round 3's Blindspot seat noted that "write the row" is a misleading
-   diagnostic for an operator looking straight at the row they just wrote.
-5. **C8's collision is resolved in the same plan, not after it:**
+   **The refusal message must distinguish its two causes** — no row for this sha at all, versus a row
+   whose range column could not be parsed or resolved. Round 3's Blindspot seat noted that "write the
+   row" is a misleading diagnostic for an operator looking straight at the row they just wrote.
+4. **C8's collision is resolved in the same plan, not after it:**
    `docs/backlog/agy-mark-accepts-a-nonexistent-sha.md` proposes a `git cat-file -e` check on these same
    three lines and asks the same out-of-repository question. Either fold it in or record why it waits.
 
@@ -351,8 +336,9 @@ satisfy it. Every step above is safe to stop after, in this order.
 - `REJECTED: round 2's claim that exact endpoint matching FORCES humans to hand-write 40-character shas
   into the token. The forcing step does not hold — a token is validated hex, so it is safe to expand
   through git, which is exactly what made ancestry unsafe for the PROSE cells and does not transfer here.
-  The decision the finding exposed was real and is made (tool-written 40-char sha); the claim that one
-  answer was compelled is what is rejected.`
+  The decision the finding exposed was real; the claim that one answer was compelled is what is rejected.
+  ⚠ Superseded in substance by the F7 reversal — there is no token to write, and the gate expands the
+  ledger's existing 7-char endpoint through git, which is the very move this stand-down said was open.`
 - `REJECTED: the escalation round's finding that the write path is the wrong chokepoint, retracted by its
   own author after measurement — agy-seam-inject.sh:125 re-injects on any marker that is not exactly HEAD,
   and agy-test-audit-reminder.sh:43-46 re-fires on an ancestor marker once executable code has landed. An
@@ -410,8 +396,10 @@ Activation Auditor. Five findings, four self-classed BLOCKING. Envelope clean.
   counting" left the gate nothing to do but SEARCH — precisely what C1 forbids — so the ruling as drafted
   re-introduced the false pass it was chosen to remove. Folded by anchoring the token to a line boundary,
   which is positional without needing table semantics.
-- **The token's format was undefined and is now pinned**, including the choice of a tool-written 40-char
-  sha over a hand-written short one.
+- **The token's format was undefined and was pinned here**, including the choice of a tool-written 40-char
+  sha over a hand-written short one. ⚠ **SUPERSEDED — there is no token any more.** Round 3 killed this
+  format by measurement and the owner then reversed F7 entirely; the bullets in this round-2 block are
+  kept as the record of how the design got there, not as a description of what is being built.
 - **The override's own logger had no error path.** Folded: it refuses, and the refusal costs nothing
   because both files live in one directory.
 - **One conclusion was REJECTED as overstated** — that exact matching forces humans to hand-write 40-char
@@ -438,6 +426,14 @@ discipline records as normal rather than alarming.
 - **The refusal message must distinguish "no row" from "row with a bad token"** — otherwise the operator
   debugs the wrong component while looking at the row they just wrote.
 
-🔴 **ROUND 4 IS OWED, AND ONE ITEM STILL NEEDS THE OWNER.** Round 2's challenge to F7-as-circular is a
-ruled decision the driver may not reopen; it is with the owner. **This spec still has no GREEN, and no
-round has yet been clean.**
+**▶ F7 REVERSED BY THE OWNER, 2026-09-06, ON ROUND 2's CHALLENGE.** The driver put the challenge up with
+both options costed; the owner dropped the token and took the range-column parse. **The review process
+paid for itself here rather than in any single finding:** round 2 questioned the ruling, round 3 killed
+the fix that ruling produced, and the reversal removed a format change, a writer, a linter and a
+four-step migration from the plan — replaced by a parser measured at **42/42 endpoints resolvable, 0
+false positives, 21/21 non-sha values correctly skipped before git is called.**
+
+🔴 **ROUND 4 IS OWED.** The reversal is a new design and no panel has seen it. **This spec still has no
+GREEN, and no round has yet been clean.** Round 4 must rotate onto a seat none of the first three used —
+the palette is exhausted and both bespoke seats are spent, so it needs a third bespoke lens aimed at the
+parser itself.
