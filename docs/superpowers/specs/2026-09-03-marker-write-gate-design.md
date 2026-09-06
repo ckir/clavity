@@ -335,6 +335,26 @@ required to close C1** — reading the right column closes it.
 - **A hand-written row still passes**, exactly as the spec has said from the start. The gate proves a row
   exists, never that an audit happened.
 
+### ⚠ F7 CHALLENGED AGAIN AT CAPSTONE ROUND 2, AND UPHELD BY THE OWNER (2026-09-06)
+
+Having found a second and then a third input channel into the line-oriented parser, the reviewer argued
+the FRAME is wrong: *"Attempting to parse markdown with a line-by-line regex tool like `awk` is
+fundamentally flawed because `awk` lacks block scope awareness … the structural change that makes this
+moot is to extract the ledger data using a proper markdown AST parser, or to strictly parse only the
+final N lines."* Two rounds of evidence stand behind that — fenced blocks, tilde fences, nested fences,
+and an unclosed fence that blinded the live set.
+
+**The owner ruled: keep the parser and keep hardening.** The reasoning, recorded so a later reader can
+judge it rather than trust it: every channel found is now closed and mutant-pinned; an unparseable file
+fails CLOSED with a NAMED cause (`MALFORMED unclosed-code-fence`) rather than silently; the ledgers are
+this repository's own artifacts rather than hostile input; and a third design for one gate in one session
+would spend the remaining rounds writing new code instead of finding defects in what ships — the
+capstone's actual job.
+
+🔴 **THE HONEST COUNTER, KEPT BECAUSE IT MAY YET BE RIGHT:** the argument for hardening gets weaker with
+every channel found. Two rounds produced three. If a later round finds a fourth in the same class, that
+is the signal to reverse — **not** a fresh argument about elegance.
+
 ### What it saves, which is why the reversal was taken
 
 No ledger format change. No writer. No format linter, so no diff-scoping problem. No migration, so none
