@@ -1,12 +1,14 @@
 # Gating the completion-marker write on a ledger row — design spec
 
-> **Status:** SPEC, not a plan. The gate does not exist, so this carries intent, contracts and open forks
-> — **no line numbers into code that has not been written.** The line-level plan is owed only once this
-> spec has been reviewed and the build is scheduled.
+> **Status:** SPEC, not a plan. The gate does not exist, so this carries intent, contracts and rulings
+> — **no line numbers into code that has not been written.** As of 2026-09-06 every fork is closed and
+> the line-level plan is unblocked; the plan is the artifact that may cite lines, and only into code that
+> exists when it is written.
 
 **ROADMAP item:** `clavity-dotnet/ROADMAP.md` §27, owner-accepted 2026-09-03.
 **AGY-FIRST consult:** `.clavity/seams/agyfirst-s23-behavioural-gate.md`.
-**AGY-AFTER:** panel round 1 (solo) folded 2026-09-05 — see `## Review status`.
+**AGY-AFTER:** round 1 folded 2026-09-05 (solo panel + agy escalation + one negotiation turn); forks
+owner-ruled 2026-09-06 — see `## Resolved forks` and `## Review status`.
 
 ---
 
@@ -67,8 +69,10 @@ that.** In `docs/agy-capstone-ledger.md`:
 - **The range column is free prose in 11 of 51 rows** — `SP-B agy-capstone skill`,
   `agy-test-audit discipline`, `clavity-ls channel resilience`, plus the 8 anomaly rows — and the rest mix
   backticked and bare ranges, trailing parentheticals, and `^..` syntax (`77aa257^..08254ab`).
-  `git rev-parse 'SP-B agy-capstone skill'` has no answer, so **the normaliser needs a defined behaviour
-  for an unresolvable token and this spec does not yet give it one.**
+  `git rev-parse 'SP-B agy-capstone skill'` has no answer, so **a normaliser reading the range column
+  needs a defined behaviour for an unresolvable token.** ▶ **F7's ruling removes that requirement rather
+  than answering it: the gate never reads the range column at all.** This measurement is kept because it
+  is the evidence FOR that ruling — delete it and the ruling looks arbitrary.
 
 - 🔴 **A NAIVE SHA SEARCH ALREADY FALSE-PASSES ON TODAY'S FILE, WITH NO HOSTILE AUTHOR REQUIRED.** The
   panel's escalation round raised this as a hypothetical — someone writing "we audited 9ff0b10 but it
@@ -81,16 +85,24 @@ that.** In `docs/agy-capstone-ledger.md`:
 `docs/agy-test-audit-ledger.md` is, today, a single table (`:35`) — but it is the younger file, and
 nothing keeps it that way.
 
-**C2 — A `round-cap` WAIVER MUST STILL PASS.** `agy-capstone/SKILL.md:519` specifies that a round-cap
-completion-gate waiver **also writes the `.head` marker** (a `breach` waiver writes the audit line and
-**no** marker), and it exists precisely for the case where the owner accepts "done" with findings still
-live. A gate that blocks it converts an owner decision into a dead end. Whatever is built must let the
-waiver through without reopening the hole it closes.
+**C2 — ~~A `round-cap` WAIVER MUST STILL PASS.~~ DISSOLVED 2026-09-06 — ITS PREMISE IS FALSE, MEASURED.**
+`agy-capstone/SKILL.md:519` is correct that a round-cap waiver **also writes the `.head` marker** (a
+`breach` waiver writes the audit line and **no** marker). The spec inferred from that a gate would block a
+legitimate owner waiver. **It would not.** `agy-capstone/SKILL.md:375` requires the ledger row
+unconditionally — *"Record the round in `docs/agy-capstone-ledger.md` before declaring the plan
+complete"* — with **no waiver exemption anywhere in the file**, and the real round-cap-waived run bears
+this out: `docs/agy-capstone-ledger.md:404` carries the row for `f5d98a1..7dd31a8`, the exact range whose
+marker was written under `WAIVED reason=round-cap`.
+
+So a waiver already owes a row and already has one; the gate passes it like any other terminal state.
+**What C2 was actually protecting against is ORDERING** — a marker written before its row blocks every
+terminal state equally, waived or clean. That is C9, and C9 is where the obligation now lives.
 
 > ⚠ This constraint previously cited `:461`. That line sits inside the `[VERDICT: ALIGNED]` bullet and says
 > nothing about waivers or markers; the rule is 58 lines further on. The claim was true and its anchor was
 > false — corrected by the panel, and recorded because a spec that cites confidently is the artifact a plan
-> will trust without re-checking.
+> will trust without re-checking. **The citation was the smaller error: the constraint built on it was
+> load-bearing for a whole fork (F3), and both are gone.**
 
 **C3 — IT MUST FAIL CLOSED, BUT NOT FAIL STUCK.** A gate that cannot read the ledger, cannot resolve a
 sha, or meets an unparseable table must refuse rather than pass — a size-zero read certifying "fine" is
@@ -99,11 +111,20 @@ it is mid-discipline. 🔴 **The refusal is terminal and has no recovery path to
 `_die_refuse` (exit 1), and `agy-mark.sh:52-59` records that every call site spells
 `if ! bash …; then <echo>; exit 1; fi`. So a false refusal aborts a discipline that has already done its
 work, and the only way out is editing the ledger until a parser is satisfied. **C3 is not satisfiable by
-a good error message alone — it needs a named override, and naming it is fork F6.**
+a good error message alone — it needs a named override.** ▶ **F6 names it: an explicit flag, loud and
+auditable rather than restricted.** The refusal message must therefore name BOTH the fix (write the row)
+and the escape (the flag), or the flag is a secret and C3 is unmet in practice.
 
-**C4 — BOOTSTRAPPING.** The first marker for a new ledger-owning discipline is written against an empty
-or absent ledger. That case must be reachable without disabling the gate. **See C6: absence is not only a
-first-run state.**
+**C4 — BOOTSTRAPPING, AND IT ARRIVES ON DAY ONE.** The first marker for a new ledger-owning discipline is
+written against an empty or absent ledger, and that case must be reachable without disabling the gate.
+**See C6: absence is not only a first-run state.** ▶ **F7's ruling makes the empty-history state
+universal but harmless, and the distinction matters.** The gate reads only rows carrying the
+machine-readable token, and no existing row has one, so from the gate's point of view every ledger is
+empty the day it ships. That is **not** a bootstrap problem, because the gate never asks "does this
+ledger have any rows?" — it asks "does it record THIS sha?", and under C9 the current run has just
+written that row. The genuine bootstrap case is narrower than the spec first stated: **a ledger file that
+exists but is empty**, for a discipline whose first run has not yet written its row. Under F1/F5 an
+*absent* ledger means the gate does not apply at all, so only the present-and-empty case remains.
 
 **C5 — BYTE-IDENTICAL PAIR.** `agy-mark.sh` ships in both plugin halves and is gated by
 `check-seed-artifacts-synced.sh` (verified `cmp`-identical 2026-09-05). Every change mirrors, and the
@@ -147,77 +168,97 @@ marker-write time, so under it the row-then-marker ordering stops being a conven
 precondition. No skill instructs that order. Making it mandatory means amending the discipline
 `SKILL.md` files across both plugin halves — a blast-radius item this spec had not listed.
 
-## Open forks — for the owner, at plan time
+## Resolved forks — OWNER-RULED 2026-09-06
 
-**F1. Which disciplines does the gate cover?** `agy-test-audit` alone (the §23 subject), or every
-discipline that owns a ledger — which today also means `agy-capstone`. Covering both is consistent with
-how §23's linter check was scoped; covering one is a smaller blast radius. **Panel note:** three
-disciplines call `head` — `agy-capstone`, `agy-first`, `agy-test-audit` (`SKILL.md:500`, `:213`, `:416`,
-both plugin halves) — and `agy-first` owns no ledger, so the gate must discriminate somehow. **If it
-discriminates from a hardcoded roster, that roster is an explicit enumeration whose next member is never
-added — the failure class that bit this repository four separate times on 2026-09-05 alone
-(`_partition.md` rows, a `-ForEach` arm, a `$skills` list, `scripts/README.md`).** Deriving the roster
-from the ledger files that exist is an option this fork had not named.
+Every fork below is closed. The reasoning that produced each is kept because a later reader needs to
+judge the ruling, not merely obey it. Where the owner ruled against the driver, that is said plainly.
 
-**F2. What does "the ledger records this sha" MEAN?** Exact endpoint match against a range's right-hand
-side? Ancestry (`git merge-base --is-ancestor`) so a marker at a descendant of an audited tip still
-passes? The two differ precisely in the case that matters — a marker written after a fold commit.
+**F1 + F5 — how the gate learns what it applies to. ▶ RULED: DERIVE FROM THE LEDGER'S PRESENCE.**
+The gate applies to a discipline **iff** that discipline's ledger exists at the convention path. No
+roster, no config file, no caller argument — so there is nothing an agent can forget to pass and no
+enumeration whose next member is never added. In a repository with no ledger the gate does not apply and
+passes silently, which answers C6's population without a notice in every foreign repo.
 
-> 🔴 **THIS FORK IS ALREADY ANSWERED TWICE IN SHIPPED CODE, AND THE TWO ANSWERS DISAGREE.** MEASURED
-> 2026-09-05, quotes verified verbatim:
->
-> - `agy-seam-inject.sh:125` — `[ "$(cat "$marker" 2>/dev/null)" = "$head" ]` — **strict equality.** Any
->   commit at all invalidates the marker and the seam re-injects.
-> - `agy-test-audit-reminder.sh:43` — `git merge-base --is-ancestor "$sha" "$head"`, then
->   `:45-46` diff the range and forgive it unless something matching the executable-code pattern landed —
->   **ancestry, conditionally forgiven.**
->
-> Both are deliberate: the reminder's header at `:24-29` records that relaxing only the capstone marker
-> once punished the driver who did the right thing. **So F2 is not a free choice — the gate either picks
-> one of the two live rules and diverges from the other consumer, or a third and diverges from both.**
-> Whichever is chosen, the divergence must be stated in the code, not discovered later.
+*Both reads agreed these are ONE fork; the peer put it sharpest — "the real fork is F5; F1 is a ghost".*
+*They differed on the mechanism.* The peer proposed a repository-local config declaring
+discipline→ledger, to avoid baking a path convention into a shipped hook. **Two things decided it against
+that.** Its own example location cannot exist — MEASURED with a passing and a failing control,
+`git check-ignore -v --no-index .clavity/ledgers.conf` resolves to `.gitignore:45:.clavity/` while
+`docs/agy-capstone-ledger.md` returns exit 1, and the root `.gitignore:26-31` documents that a negation
+cannot resurrect a file beneath an excluded directory. And a config file is itself a thing a repository
+can simply never write, which is the omission failure the gate exists to remove, moved one level up.
+**The accepted cost is real and is stated here rather than argued away:** a path convention now ships to
+every user. It is inert for them — no ledger, no gate — but it is this repository's shape in their tree.
 
-**F3. How does C2's waiver path signal itself?** An env var the waiver sets, a separate `head --waived`
-mode, or the audit log consulted as the authority. Each leaks the waiver concept into a different file.
-🔴 **Panel note on the third option:** `.clavity/agy-marks/skipped.log` currently contains **four
-fabricated rows** — `agy-first  SKIPPED-UNREACHABLE  HEAD=deadbeef…` — written by the agy peer against
-this live repository during capstone rounds 10 and 12, and annotated as fabricated in the file itself.
-Making that file the waiver authority would let anything that can append to it mint a waiver.
+**F2 — what "the ledger records this sha" means. ▶ EXACT ENDPOINT MATCH, positionally located.**
+Not ancestry. Both reads independently reached this, and the peer named the mechanical reason the driver
+had only felt: ancestry forces the gate to feed a token it scraped out of prose to
+`git merge-base --is-ancestor`, and C1 proves the prose contains tokens like `SP-B agy-capstone skill`
+that resolve to nothing. **Discount the agreement — the driver framed the options.** The peer also named
+F2 as the fork most likely to be answered *wrongly*: ancestry "looks right conceptually but is a
+mechanical trap", because it matches the forgiving rule the reminder hook already uses.
 
-**F4. Does the gate live in `agy-mark.sh` or beside it?** In-script is one chokepoint and no new file;
-a sourced helper keeps a **358-line** script (measured 2026-09-05; this spec previously said 261) from
-growing a ledger parser. C5 makes both changes ship, so this is about readability, not surface.
+⚠ **The divergence from `agy-test-audit-reminder.sh:43` is now DELIBERATE and must be stated in the
+code.** The write-gate asks "was this exact sha recorded?"; the reminder asks "is this marker still good
+enough to stay quiet?". Two questions, two rules, one marker — and nothing in the tree currently says so.
 
-**F5 — NEW, from the panel. What does the gate do where no ledger exists?** C6 makes this the majority
-case rather than an edge. Candidate answers, none yet chosen: pass silently when the ledger file is
-absent (the gate is then clavity-only in effect); pass with a one-line stderr notice; require an opt-in
-marker file in the repository; or derive applicability from the ledger's own presence, which collapses F5
-into F1's roster question. **This fork governs whether §27 ships a gate or a gate-shaped no-op for most
-users**, so it outranks F2 and F4 in sequencing.
+**F3 — how the waiver signals itself. ▶ DISSOLVED. There is no fork.** See C2: a round-cap waiver already
+owes a ledger row and the real waived run has one, so the gate passes it unaided. No `--waived` mode, no
+env var, no reading the audit log. **This is the second thing this review removed rather than answered**,
+and both removals came from checking a premise instead of designing against it.
 
-> **A fifth option was proposed in the escalation round and then withdrawn by its own author, which is
-> why it is recorded here rather than listed above.** The proposal: the caller passes `--ledger-path=…`,
-> and the gate passes silently when the flag is absent. Asked what stops an agent from simply omitting the
-> flag, the peer answered that nothing does, and that the hole is **worse** than the one the spec already
-> accepts — *"My fifth option introduces a new sin of omission: the agent simply forgets the
-> `--ledger-path` argument, the gate silently passes, and the marker is written without a ledger row. This
-> completely defeats the purpose of the gate."* **Any F5 answer whose applicability depends on something
-> the CALLER remembers to say inherits this**, so the withdrawn option survives as a constraint on the
-> others.
+**F4 — where the gate lives. ▶ A SOURCED HELPER beside `agy-mark.sh`.** Both reads agreed; again
+discount, the options were the driver's. `agy-mark.sh` is 358 lines of unusually dense
+comment-as-contract, and a positional ledger parser belongs beside `agy-shield-lib.sh` rather than inside
+the mode switch. C5 makes both halves ship regardless, so this buys readability and unit-testability, not
+surface.
 
-**F6 — NEW. What is C3's override, and who may use it?** C3 requires the gate to fail closed without
-failing stuck, and the refusal is terminal for the discipline. So there must be a named way past it for
-the operator who is legitimately blocked — and every candidate is equally a way past it for an agent that
-simply wants the marker written. Candidates: an environment variable; an owner-only flag; a `skipped.log`
-audit line, the way the existing waivers already work; or **no override at all**, on the reasoning that a
-refusal should be answered by writing the missing row rather than by bypassing the gate. **This fork
-cannot be deferred to implementation** — an implementer with no override named will invent one, which is
-the worst outcome on the list.
+**F6 — C3's override. ▶ RULED AGAINST THE DRIVER: AN EXPLICIT OVERRIDE FLAG EXISTS.**
+The driver argued for no override at all — a refusal names the missing row, writing it takes seconds, and
+every override is a bypass an agent will reach for. The owner ruled for the peer's position: an operator
+stranded by a parser problem, possibly caused by *someone else's* malformed row, needs a mechanical way
+out.
 
+🔴 **THE DRIVER'S OBJECTION IS NOT WITHDRAWN AND CONSTRAINS THE BUILD.** `agy-mark.sh` runs as a plain
+process with **no owner identity available to it**, so "owner-only" is not implementable as stated: any
+flag a human can pass, an agent can pass. The ruling is therefore implemented as a flag that is
+**loud and auditable rather than restricted** — every use appends a durable line to
+`.clavity/agy-marks/skipped.log` naming the override, exactly as the existing waivers do, so a bypass is
+a recorded act rather than a silent one. That converts the residual hole from invisible to visible, which
+is the same trade the whole gate is built on.
+
+**F7 — how the sha is located. ▶ RULED: A MACHINE-READABLE TOKEN PER ROW.** *Found by the peer, and it
+was right that this is the mechanical core the spec had deferred.* Each new ledger row carries a
+canonical token the gate reads, and the gate reads nothing else — no table walking, no column counting,
+no heading sections, no anomaly-table rows, and no exposure to the four-tables-and-prose shape C1
+measured.
+
+**The accepted consequence, stated because it is the kind of thing that surfaces later as a surprise:**
+pre-existing rows carry no token, so **the gate sees an empty ledger for all history** and only rows
+written after the change are visible to it. That is C4's bootstrap case arriving on day one rather than
+never, and it is benign in one direction only — the gate cannot retroactively validate an old marker, and
+must not pretend to.
 ## Sequencing
 
-**Build deferred.** §26 (the footprint analyzer) is now unblocked by §23 shipping, and both are
-spec-written and unbuilt. The owner sequences them.
+**The line-level plan is UNBLOCKED as of 2026-09-06** — every fork is ruled, so a plan can cite real
+lines in code that exists. The BUILD remains the owner's to schedule; §26 (the footprint analyzer) is
+also spec-written and unbuilt, and the owner sequences the two.
+
+**What the plan must carry, derived from the rulings rather than restated from them:**
+
+1. **A ledger format change lands first** (F7's token), in both ledgers, with its own gate — a row
+   without a token is invisible to the marker gate, so nothing must be able to add an untokened row
+   silently.
+2. **A new sourced helper** (F4) beside `agy-shield-lib.sh`, plus its Pester suite, its `_partition.md`
+   row, and its `justfile`/CI registration. **That registration is an explicit list, not a glob** — the
+   orphaned-test class of §36.
+3. **The `head` arm gains the gate and the F6 override flag**, mirrored byte-identically into
+   `clavity-classic/plugin/hooks/` in the SAME commit (C5), with `check-seed-artifacts-synced.sh` green.
+4. **C9's ordering becomes explicit in the discipline skills** — row before marker — in both plugin
+   halves, which is a `writing-skills` change and needs the twin mirrored in the same commit.
+5. **C8's collision is resolved in the same plan, not after it:**
+   `docs/backlog/agy-mark-accepts-a-nonexistent-sha.md` proposes a `git cat-file -e` check on these same
+   three lines and asks the same out-of-repository question. Either fold it in or record why it waits.
 
 ## Stand-downs
 
@@ -267,9 +308,17 @@ reply `.clavity/seams/panel-s27-r1-REPLY.md`. Five seats returned, all self-clas
 the spec and `agy-mark.sh`. **F2 is already answered twice in shipped code, incompatibly**
 (`agy-seam-inject.sh:125` strict, `agy-test-audit-reminder.sh:43` ancestral). Folded into F2.
 
-🔴 **ROUND 2 IS OWED, BUT F1–F6 GATE IT.** Six forks are open and four of them change what the gate *is*;
-a further round would review a shape the owner has not chosen. **The panel is PAUSED for owner rulings,
-not concluded** — this spec has no GREEN, and its terminal disposition is "open findings, fold decisions
-recorded". The palette is nearly exhausted for rotation (ten of twelve seats used), so round 2 should
-seat a bespoke **Consumer Coherence Auditor** — the lens that found the F2 divergence, which no palette
-seat covers.
+**OWNER RULINGS 2026-09-06 — all seven forks closed.** Presented as both reads side by side, per
+AGY-FIRST. The owner took the driver's call on F1/F5 and F7, and **the peer's call on F6, against the
+driver's recommendation** — recorded in `## Resolved forks` with the driver's unwithdrawn objection and
+the auditability requirement it forces. F2 and F4 were concurrences and are discounted as such: the
+driver framed the options. F3 was not ruled but **dissolved** — its premise failed a measurement taken
+while folding the rulings.
+
+🔴 **ROUND 2 IS STILL OWED, AND IT IS NOW WORTH RUNNING.** Round 1 reviewed a spec with six open forks;
+the rulings have changed the artifact's shape substantially — a constraint dissolved, a fork removed, a
+format change introduced, and a new ordering obligation on four skill files. **This spec has no GREEN.**
+Round 2 must rotate onto an unused lens; ten of twelve palette seats are already used, so it should seat
+a bespoke **Consumer Coherence Auditor** — the lens that found the F2 divergence between two shipped
+consumers of one marker, which no palette seat covers, and which the F7 format change now points
+straight at.
