@@ -47,6 +47,7 @@ agy_ledger_path() {
 #   NO-LEDGER                     - this discipline owns no ledger here, so the gate does not apply
 #   FOUND                         - a record's range right-endpoint resolves to <sha>
 #   ABSENT unparsed=<n> lines=<l> - no record matched; <n> candidate records could not be parsed
+#   MALFORMED unclosed-code-fence  - a fence was opened and never closed, so rows below it are hidden
 # ALWAYS returns 0. The caller decides what to do; this function only answers.
 agy_ledger_lookup() {
     local _agl_cwd=$1 _agl_disc=$2 _agl_sha=$3
@@ -67,6 +68,14 @@ agy_ledger_lookup() {
     # row from a malformed one instead of silently skipping both.
     while IFS="$(printf '\t')" read -r _agl_n _agl_tok; do
         [ -n "$_agl_n" ] || continue
+        # A fence opened and never closed hides every row below it, and rows are appended at the BOTTOM,
+        # so that silently hides the live set. Report it as its own answer rather than letting it look
+        # like a missing row: the operator otherwise reads "does not record <sha>" and has no way to
+        # connect it to a stray backtick line hundreds of lines above.
+        if [ "$_agl_tok" = '!UNCLOSED' ]; then
+            printf 'MALFORMED unclosed-code-fence'
+            return 0
+        fi
         if [ "$_agl_tok" = '-' ]; then
             _agl_unparsed=$((_agl_unparsed + 1))
             _agl_lines="${_agl_lines:+$_agl_lines,}$_agl_n"
@@ -90,8 +99,29 @@ $(awk -F'|' '
     # record. MEASURED in a throwaway repo: a fence containing `| 2026-01-01 | ccccccc..<sha> | ... |`
     # answered FOUND for a sha that appeared NOWHERE else in the file. That is the C1 false pass this
     # design exists to close, returning through a channel the field-3 rule never covered.
-    /^[ \t]*```/ { _agl_fence = !_agl_fence; next }
+    #
+    # ROUND 2 THEN BROKE THE FIRST VERSION OF THIS GUARD, WHICH WAS A BARE TOGGLE ON ``` ONLY, in three
+    # ways - and the first was worse than the defect it repaired:
+    #   (a) AN UNCLOSED FENCE BLINDED EVERYTHING BELOW IT. Rows are appended at the BOTTOM of these
+    #       files, so a single stray opener near the top silently hid the entire live set and every
+    #       legitimate run was refused with a message about a missing row. Fail-closed, but undiagnosable.
+    #       Now tracked to EOF and reported as MALFORMED, which names the real cause.
+    #   (b) TILDE FENCES were not matched at all - `~~~` is valid CommonMark and reached the parser.
+    #   (c) NESTED FENCES toggled the guard back OFF: an inner ``` inside a longer ```` block re-exposed
+    #       its contents. A fence closes only with the SAME character and at least the same run length,
+    #       which is what CommonMark says and what this now implements.
+    /^[ \t]*(```+|~~~+)/ {
+        _agl_line = $0
+        sub(/^[ \t]+/, "", _agl_line)
+        _agl_c = substr(_agl_line, 1, 1)
+        _agl_n = 0
+        while (substr(_agl_line, _agl_n + 1, 1) == _agl_c) _agl_n++
+        if (!_agl_fence) { _agl_fence = 1; _agl_fc = _agl_c; _agl_fn = _agl_n }
+        else if (_agl_c == _agl_fc && _agl_n >= _agl_fn) { _agl_fence = 0 }
+        next
+    }
     _agl_fence { next }
+    END { if (_agl_fence) printf "0\t!UNCLOSED\n" }
     /^\|/ && NF >= 7 {
         d = $2
         gsub(/^[ \t]+|[ \t]+$/, "", d)
@@ -100,14 +130,21 @@ $(awk -F'|' '
         # Strip the markup a range can legitimately be wrapped in. Backticks were always stripped;
         # BRACKETS were not, and capstone round 1 measured the consequence: a range written as a
         # markdown link, `[aaaaaaa..bbbbbbb](url)`, left the brackets on the token, failed the hex
-        # test, and the row became UNPARSEABLE - a false REFUSAL of a perfectly good record. Control:
-        # the identical row without the link markup answered FOUND. `[][]` is the awk idiom for a
-        # bracket expression containing both brackets - the closing one must come first.
+        # test, and the row became UNPARSEABLE - a false REFUSAL of a perfectly good record.
+        #
+        # ROUND 2 KILLED THE FIRST FIX, WHICH DELETED BRACKETS OUTRIGHT. That merges a REFERENCE-style
+        # link into one token: `[aaaaaaa..bbbbbbb][1]` became `aaaaaaa..bbbbbbb1`, whose right endpoint
+        # is still valid hex, so it passed the regex and resolved to a DIFFERENT commit or to none - a
+        # wrong answer rather than a refused one, which is the worse of the two failures. Brackets are
+        # therefore SEPARATORS, not noise: strip one leading `[`, then split on both brackets as well as
+        # whitespace and `(`. That handles inline links, reference links, and a bare range identically.
+        # `[][ \t()]` is the awk idiom for a bracket expression containing both brackets - the closing
+        # one must come first.
         gsub(/`/, "", cell)
-        gsub(/[][]/, "", cell)
         gsub(/^[ \t]+|[ \t]+$/, "", cell)
+        sub(/^\[/, "", cell)
         if (cell == "") next
-        split(cell, w, /[ \t(]/)
+        split(cell, w, /[][ \t()]/)
         tok = w[1]
         if (tok ~ /^[0-9a-fA-F]+\^?\.\.[0-9a-fA-F]+$/ && length(tok) >= 16) {
             i = index(tok, "..")

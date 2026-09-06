@@ -100,6 +100,58 @@ An earlier row, quoted here to explain a fold:
 |------|-------|--------|---------|----------|
 | 2026-09-06 | [aaaaaaa..<<SHORT>>](https://example.invalid/x) | 1 | GREEN | e |
 '@
+        # CAPSTONE ROUND 2. Three ways the round-1 fence guard - a bare toggle on ``` only - was wrong.
+        # (b) A TILDE fence is valid CommonMark and was not matched at all.
+        $script:TildeFenceLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+~~~
+| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+~~~
+'@
+        # (c) A NESTED fence toggled the guard back OFF, re-exposing its own contents. A fence closes
+        # only with the SAME character and at least the same run length.
+        $script:NestedFenceLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+````
+```
+| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+```
+````
+'@
+        # (a) The worst of the three, and worse than the defect it repaired: an UNCLOSED fence hid every
+        # row BELOW it - and rows are appended at the bottom, so it hid the live set while the refusal
+        # blamed a missing row.
+        $script:UnclosedFenceLedger = @'
+# ledger
+
+```
+an example that was never closed
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | e |
+'@
+        # A REFERENCE-style link. Deleting brackets outright merged the range and the label into one
+        # token whose right endpoint was still valid hex - a WRONG answer rather than a refused one.
+        $script:RefLinkLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | [aaaaaaa..<<SHORT>>][1] | 1 | GREEN | e |
+
+[1]: https://example.invalid/x
+'@
         # A record whose range is PROSE, as three real historical rows are.
         $script:ProseRangeLedger = @'
 # ledger
@@ -259,6 +311,39 @@ An earlier row, quoted here to explain a fold:
         $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
         $out | Should -Match 'ABSENT'
         $out | Should -Not -Match 'FOUND'
+    }
+
+    It 'ignores a pipe-row quoted inside a TILDE fence' {
+        # CAPSTONE ROUND 2. `~~~` is valid CommonMark; the round-1 guard matched backticks only.
+        $r = New-LedgerRepo -LedgerBody $script:TildeFenceLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
+    }
+
+    It 'a NESTED fence does not re-expose its own contents' {
+        # CAPSTONE ROUND 2. A bare toggle flipped OFF at the inner fence. A fence closes only with the
+        # same character and at least the same run length.
+        $r = New-LedgerRepo -LedgerBody $script:NestedFenceLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
+    }
+
+    It 'reports an UNCLOSED fence as MALFORMED rather than as a missing row' {
+        # CAPSTONE ROUND 2, BLOCKING, and the defect was introduced by round 1's own fix. An unclosed
+        # fence hides every row below it; rows are appended at the BOTTOM, so it hides the live set. The
+        # answer must name the real cause - "does not record <sha>" sends the operator hunting for a row
+        # that is present and merely invisible.
+        $r = New-LedgerRepo -LedgerBody $script:UnclosedFenceLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'MALFORMED'
+        $out | Should -Match 'unclosed-code-fence'
+        $out | Should -Not -Match 'FOUND'
+    }
+
+    It 'parses a range wrapped in a REFERENCE-style link' {
+        # CAPSTONE ROUND 2. Deleting brackets merged `[range][1]` into `range1`, whose right endpoint is
+        # still valid hex - so it resolved to the WRONG commit or to none. A wrong answer, not a refusal,
+        # which is the worse of the two. Brackets are separators now, not noise.
+        $r = New-LedgerRepo -LedgerBody $script:RefLinkLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
     }
 
     It 'never exits the calling shell - it is sourced, not executed' {
