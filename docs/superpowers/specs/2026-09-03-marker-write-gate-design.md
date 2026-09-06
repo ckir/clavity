@@ -227,17 +227,60 @@ flag a human can pass, an agent can pass. The ruling is therefore implemented as
 a recorded act rather than a silent one. That converts the residual hole from invisible to visible, which
 is the same trade the whole gate is built on.
 
+**If that audit line cannot be written, the override REFUSES** — round 2 caught that the override's own
+logger had no error path, and that either answer looked bad: failing open makes the override silent
+(defeating the auditability the ruling rests on), failing closed appears to strand the operator C3
+protects. **Failing closed is nearly free here, and the reason is structural rather than a judgement
+call:** `skipped.log` and the marker file live in the *same directory*, `.clavity/agy-marks/`, so a
+filesystem that rejects the audit append rejects the marker write too. The operator was already blocked;
+refusing does not add a stranding case, it just refuses honestly instead of writing an unlogged bypass.
+
 **F7 — how the sha is located. ▶ RULED: A MACHINE-READABLE TOKEN PER ROW.** *Found by the peer, and it
 was right that this is the mechanical core the spec had deferred.* Each new ledger row carries a
-canonical token the gate reads, and the gate reads nothing else — no table walking, no column counting,
-no heading sections, no anomaly-table rows, and no exposure to the four-tables-and-prose shape C1
-measured.
+canonical token the gate reads, and the gate reads nothing else — no exposure to the
+four-tables-and-prose shape C1 measured.
+
+### The token, pinned — because round 2 proved that leaving it abstract broke the ruling
+
+Round 2 caught the ruling contradicting C1 in the artifact's own words: the previous draft said the gate
+does "no table walking, no column counting", which — read literally, and it is right to read it literally
+— leaves nothing but **searching the file**, the one thing C1 forbids. A token pasted into evidence prose
+would then authenticate a marker exactly as a bare sha does today. **The resolution is that the token is
+positional at the LINE level, which needs no table semantics at all:**
+
+- **Shape:** `<!-- agy-mark: <discipline> <40-hex-sha> -->`, occupying **its own physical line**,
+  immediately beneath the ledger row it belongs to.
+- **How the gate finds it:** a **line-anchored** match — the line must BEGIN with `<!-- agy-mark: `.
+  Nothing else in the file is read.
+- 🔴 **WHY THE ANCHOR CLOSES THE BYPASS, and this is a structural property rather than a convention:**
+  a markdown table row is **one physical line**, so a table cell cannot contain a line break. A line that
+  *begins* with the token literal is therefore, by construction, **not inside any cell** — the prose
+  columns that made a bare `grep` false-pass cannot host a token at all. C1 and F7 stop contradicting
+  each other because "positional" is satisfied by the line boundary, not by parsing the table.
+- **40 characters, and written by a tool, never by hand.** Round 2 argued that exact matching against the
+  40-char sha `head` receives would force humans to hand-write 40-char shas. That does not follow — a
+  token is validated hex, so unlike C1's prose cells it is safe to expand through git. **The spec chooses
+  the tool-written full sha anyway**, because it removes the transcription step entirely rather than
+  making it recoverable, and this repository has already had a marker corrupted by exactly one
+  hand-transcribed sha (`docs/backlog/agy-mark-accepts-a-nonexistent-sha.md`).
+- **The pairing is what the format linter checks:** every ledger row is followed by exactly one token
+  line, and no token line is an orphan. ⚠ **This does NOT prove the token agrees with the prose in its
+  row** — round 2 named that split-brain honestly and it is not fully closed. What closes it in practice
+  is that both are emitted by one writer, so divergence requires a hand edit, and the token sits directly
+  under the row a human reads rather than in a second file.
 
 **The accepted consequence, stated because it is the kind of thing that surfaces later as a surprise:**
 pre-existing rows carry no token, so **the gate sees an empty ledger for all history** and only rows
-written after the change are visible to it. That is C4's bootstrap case arriving on day one rather than
-never, and it is benign in one direction only — the gate cannot retroactively validate an old marker, and
-must not pretend to.
+written after the change are visible to it. Per C4 that is harmless — the gate asks only whether THIS
+sha is recorded — but it does mean the gate cannot retroactively validate an old marker, and must not
+pretend to.
+
+⚠ **F7 IS UNDER CHALLENGE AND THE OWNER OWNS THE ANSWER.** Round 2's reviewer argued the whole mechanism
+is circular — *"the agent writes a string solely so the bash script can find it, while a separate linter
+is required solely to ensure the agent wrote the token."* The driver may not reopen a ruling, so this is
+recorded rather than acted on. Its force is reduced but not removed by the fold above: a line-anchored,
+tool-written token is not something an agent writes at all, so the circularity is between two tools
+rather than between an agent and a linter.
 ## Sequencing
 
 **The line-level plan is UNBLOCKED as of 2026-09-06** — every fork is ruled, so a plan can cite real
@@ -272,6 +315,11 @@ also spec-written and unbuilt, and the owner sequences the two.
   exactly 7 characters, and git rev-parse --short HEAD returns 7 against 2002 objects. The FINDING it
   supported (no safe string-equality path) survives on other grounds and is folded into C1; only the
   mechanism is rejected.`
+- `REJECTED: round 2's claim that exact endpoint matching FORCES humans to hand-write 40-character shas
+  into the token. The forcing step does not hold — a token is validated hex, so it is safe to expand
+  through git, which is exactly what made ancestry unsafe for the PROSE cells and does not transfer here.
+  The decision the finding exposed was real and is made (tool-written 40-char sha); the claim that one
+  answer was compelled is what is rejected.`
 - `REJECTED: the escalation round's finding that the write path is the wrong chokepoint, retracted by its
   own author after measurement — agy-seam-inject.sh:125 re-injects on any marker that is not exactly HEAD,
   and agy-test-audit-reminder.sh:43-46 re-fires on an ancestor marker once executable code has landed. An
@@ -315,10 +363,29 @@ the auditability requirement it forces. F2 and F4 were concurrences and are disc
 driver framed the options. F3 was not ruled but **dissolved** — its premise failed a measurement taken
 while folding the rulings.
 
-🔴 **ROUND 2 IS STILL OWED, AND IT IS NOW WORTH RUNNING.** Round 1 reviewed a spec with six open forks;
-the rulings have changed the artifact's shape substantially — a constraint dissolved, a fork removed, a
-format change introduced, and a new ordering obligation on four skill files. **This spec has no GREEN.**
-Round 2 must rotate onto an unused lens; ten of twelve palette seats are already used, so it should seat
-a bespoke **Consumer Coherence Auditor** — the lens that found the F2 divergence between two shipped
-consumers of one marker, which no palette seat covers, and which the F7 format change now points
-straight at.
+**AGY-AFTER round 2 — folded 2026-09-06.** Brief `.clavity/seams/panel-s27-r2.md`; reply
+`.clavity/seams/panel-s27-r2-REPLY.md`. Rotated onto a bespoke **Consumer Coherence Auditor** (no palette
+seat covers "two consumers of one artifact applying different rules"; ten of twelve palette seats were
+already spent in round 1) plus Mechanism Gamer, Protocol Pedant, Literal Implementer, Cascade Analyst and
+Activation Auditor. Five findings, four self-classed BLOCKING. Envelope clean.
+
+🔴 **CITATIONS WERE VERIFIED MECHANICALLY, NOT BY EYE** —
+`python scripts/check-peer-reply-citations.py <reply.json> 06948b5 adversarial-panel-review` returned
+**`0 problem(s) across 5 row(s)`**. Every `quoted_line` is verbatim.
+
+- **The round's best finding was a contradiction inside this artifact.** F7's "no table walking, no column
+  counting" left the gate nothing to do but SEARCH — precisely what C1 forbids — so the ruling as drafted
+  re-introduced the false pass it was chosen to remove. Folded by anchoring the token to a line boundary,
+  which is positional without needing table semantics.
+- **The token's format was undefined and is now pinned**, including the choice of a tool-written 40-char
+  sha over a hand-written short one.
+- **The override's own logger had no error path.** Folded: it refuses, and the refusal costs nothing
+  because both files live in one directory.
+- **One conclusion was REJECTED as overstated** — that exact matching forces humans to hand-write 40-char
+  shas. It does not follow; a validated hex token is safe to expand through git, unlike the prose cells
+  that killed ancestry. See `## Stand-downs`.
+- **The split-brain the Consumer Coherence seat named is NOT fully closed**, and the spec says so rather
+  than claiming otherwise: the linter proves pairing, not agreement between token and prose.
+
+🔴 **ROUND 3 IS OWED, AND ONE ITEM NEEDS THE OWNER FIRST.** Round 2 challenged F7 itself as circular —
+a ruled decision the driver may not reopen. **This spec still has no GREEN.**
