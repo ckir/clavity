@@ -252,7 +252,16 @@ case "$mode" in
                         >> "$root/.clavity/agy-marks/skipped.log" 2>/dev/null \
                         || _die_refuse 'GATE-OVERRIDE could not be recorded, so the marker was NOT written'
                 else
-                    _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). Append the row for this run FIRST, then write the marker. If the ledger itself is unparseable and you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                    # THE MESSAGE NAMES THE not-a-ledger CASE ON PURPOSE. The gate applies to any
+                    # discipline whose docs/<name>-ledger.md exists, so a file created under that name
+                    # for any other reason - a scratchpad, a copy-paste - switches the gate on for a
+                    # discipline that never appends rows and blocks its marker permanently. MEASURED
+                    # (capstone round 1): `docs/agy-first-ledger.md` holding two lines of prose made
+                    # `head agy-first` exit 1, with the control exiting 0. Deriving applicability from
+                    # CONTENT instead would fail OPEN - a real ledger whose header was reformatted
+                    # would silently stop gating - so the fail-closed rule stays and the message
+                    # carries the recovery instead.
+                    _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). Append the row for this run FIRST, then write the marker. If that file is NOT actually a ledger, the gate applies to any discipline whose docs/<name>-ledger.md exists - remove or rename it. If the ledger is genuinely unparseable and you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
                 fi
                 ;;
         esac

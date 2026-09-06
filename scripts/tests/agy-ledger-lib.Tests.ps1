@@ -73,6 +73,33 @@ Describe 'agy-ledger-lib.sh' {
 |------|-------|--------|---------|----------|
 | 2026-09-06 | `aaaaaaa..bbbbbbb` (the folds run ccccccc..<<SHORT>>) | 1 | GREEN | fold `deadbee` |
 '@
+        # CAPSTONE ROUND 1, the BLOCKING finding. A table row QUOTED inside a fenced code block - which
+        # these ledgers do routinely, to show what a row looked like before a fold. awk has no notion of
+        # markdown block scope, so before the fence guard this answered FOUND for a sha appearing
+        # NOWHERE else in the file: the C1 false pass returning through a channel field-3 never covered.
+        $script:FencedQuoteLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+An earlier row, quoted here to explain a fold:
+
+```
+| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+```
+'@
+        # CAPSTONE ROUND 1. A range written as a markdown link. Backticks were stripped, brackets were
+        # not, so the token failed the hex test and a perfectly good record became UNPARSEABLE - a false
+        # REFUSAL rather than a false pass, but a refusal of a legitimate run all the same.
+        $script:LinkedRangeLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | [aaaaaaa..<<SHORT>>](https://example.invalid/x) | 1 | GREEN | e |
+'@
         # A record whose range is PROSE, as three real historical rows are.
         $script:ProseRangeLedger = @'
 # ledger
@@ -204,6 +231,34 @@ Describe 'agy-ledger-lib.sh' {
         $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
         $out | Should -Match 'ABSENT'
         $out | Should -Match 'unparsed=1'
+    }
+
+    It 'ignores a pipe-row quoted inside a fenced code block' {
+        # CAPSTONE ROUND 1, BLOCKING. Measured before the fix: this exact fixture answered FOUND for a
+        # sha present only inside the fence. The row outside the fence cites a real earlier commit, so
+        # it parses and resolves and simply does not match - which is what isolates the fence.
+        $r = New-LedgerRepo -LedgerBody $script:FencedQuoteLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'ABSENT' -Because 'a quoted row inside a fence is prose, not a ledger record'
+        $out | Should -Not -Match 'FOUND'
+    }
+
+    It 'parses a range wrapped in markdown link brackets' {
+        # CAPSTONE ROUND 1. Before the bracket strip this answered ABSENT unparsed=1 - a legitimate
+        # record refused because of its markup.
+        $r = New-LedgerRepo -LedgerBody $script:LinkedRangeLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+    }
+
+    It 'a record for a DIFFERENT sha does not authenticate this one' {
+        # This pins the measurement that REFUTED capstone round 1's claim that an old row falsely
+        # authenticates a new run. The gate's contract is per-SHA: a row for an earlier commit answers
+        # ABSENT for a later one. At an UNCHANGED sha the marker is already that sha, so a same-sha
+        # re-run advances nothing - which is why the "stale row" has no consequence to exploit.
+        $r = New-LedgerRepo -LedgerBody $script:ResolvableNoMatchLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'ABSENT'
+        $out | Should -Not -Match 'FOUND'
     }
 
     It 'never exits the calling shell - it is sourced, not executed' {

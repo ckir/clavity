@@ -84,12 +84,27 @@ agy_ledger_lookup() {
         fi
     done <<EOF
 $(awk -F'|' '
+    # FENCED CODE BLOCKS ARE NOT LEDGER ROWS, and capstone round 1 proved this the hard way. awk reads
+    # line by line with no notion of markdown block scope, so a table row QUOTED inside a fence - which
+    # these ledgers do routinely, to show what a row looked like before a fold - was parsed as a live
+    # record. MEASURED in a throwaway repo: a fence containing `| 2026-01-01 | ccccccc..<sha> | ... |`
+    # answered FOUND for a sha that appeared NOWHERE else in the file. That is the C1 false pass this
+    # design exists to close, returning through a channel the field-3 rule never covered.
+    /^[ \t]*```/ { _agl_fence = !_agl_fence; next }
+    _agl_fence { next }
     /^\|/ && NF >= 7 {
         d = $2
         gsub(/^[ \t]+|[ \t]+$/, "", d)
         if (d !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) next
         cell = $3
+        # Strip the markup a range can legitimately be wrapped in. Backticks were always stripped;
+        # BRACKETS were not, and capstone round 1 measured the consequence: a range written as a
+        # markdown link, `[aaaaaaa..bbbbbbb](url)`, left the brackets on the token, failed the hex
+        # test, and the row became UNPARSEABLE - a false REFUSAL of a perfectly good record. Control:
+        # the identical row without the link markup answered FOUND. `[][]` is the awk idiom for a
+        # bracket expression containing both brackets - the closing one must come first.
         gsub(/`/, "", cell)
+        gsub(/[][]/, "", cell)
         gsub(/^[ \t]+|[ \t]+$/, "", cell)
         if (cell == "") next
         split(cell, w, /[ \t(]/)
