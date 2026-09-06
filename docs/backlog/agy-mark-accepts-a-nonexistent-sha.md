@@ -49,3 +49,22 @@ via the file's existing `_die_refuse` path. **It is not a drive-by fix**, for th
 There is a design question worth settling first: whether the check should run when the marker is written
 **outside a repository** (`git cat-file` would fail for a reason that is not the caller's fault), and
 whether that case should refuse or pass through.
+
+## ▶ PARTLY ANSWERED BY ROADMAP §27 (2026-09-06) — still OPEN
+
+**§27's ledger gate settles the design question this stub left hanging.** Outside a repository, or with
+no git on `PATH`, `agy_ledger_lookup` resolves no git root, answers `NO-LEDGER`, and the gate does not
+apply — so `agy-mark.sh` stays **git-optional**, which is the property this stub was unsure whether it
+could afford to break. A sha check added later should follow the same shape: **no repo means no check**,
+not a refusal.
+
+🔴 **THIS STUB IS NOT CLOSED, and §27 does not close it.** The gate proves the LEDGER records the sha; it
+performs no existence check on the sha itself. A fabricated 40-character string is still written verbatim
+exactly as recorded above — the two guards catch different mistakes, and a marker can satisfy the ledger
+gate while naming a commit that does not exist (both the row and the marker would have to carry the same
+phantom, which is precisely what a transcription slip produces, since the agent writes both).
+
+**The fix is now cheaper than when this was raised.** The `head` arm already resolves a git root, already
+sources a helper, and already carries a refusal path with a two-cause diagnostic and a documented
+`--gate-override` escape. Adding `git cat-file -e <sha>^{commit}` is a few lines inside machinery that
+now exists.

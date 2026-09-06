@@ -71,6 +71,21 @@ duplicate paid consult). SP-C's reader consumes this same constant.
   next trigger). Content is the audited `git rev-parse HEAD`.
 - A `SKIPPED-UNREACHABLE` or a review-only breach writes NO `.head` marker (the discipline re-fires next
   trigger); the skip appends to `skipped.log` as above.
+- 🔴 **A TERMINAL STATE IS NECESSARY AND, SINCE ROADMAP §27, NO LONGER SUFFICIENT.** For a discipline
+  that owns a ledger, `agy-mark.sh` **refuses** the write unless that ledger already records the sha
+  being marked, so **the row precedes the marker**. The refusal names the ledger and the
+  `--gate-override` escape; the override writes the marker and appends a `GATE-OVERRIDE` line to
+  `skipped.log`, and refuses if that record cannot be made.
+  - **Which disciplines are covered is DERIVED, never enumerated:** the gate applies iff
+    `docs/<discipline>-ledger.md` exists. Today that is `agy-capstone` and `agy-test-audit`.
+  - ⚠ **`agy-first` owns no ledger, so the gate does not apply to it** - the rule above that `agy-first`
+    writes after a consult completes is unchanged.
+  - **In any repository without such a ledger the gate is inert**, which is every repository but this
+    one, since this file ships in a plugin. A missing git root counts as "no ledger", which is what keeps
+    `agy-mark.sh` git-optional.
+  - **What it proves and what it does not:** a row EXISTS. Not that a discipline ran. A fabricated row
+    passes. Its value is that it converts forgetting the row from an invisible omission into a
+    deliberate act.
 - **Cross-marker sequencing (AGY-TEST-AUDIT).** Unlike the SP-C `agy-seam-inject.sh` reader (which reads
   only its own discipline's marker), the `agy-test-audit-reminder.sh` hook READS `agy-capstone.head` to
   enforce ordering: it nudges the audit only when `agy-capstone.head` STILL DESCRIBES HEAD - it either

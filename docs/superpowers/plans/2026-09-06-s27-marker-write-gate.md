@@ -883,6 +883,18 @@ Panel round 5's whole subject, and this repository's dominant defect class: a co
 - Modify: `docs/agy-disciplines-marker-contract.md:55`
 - Modify: `clavity-dotnet/plugin/hooks/agy-mark.sh:52-59` (header comment) + classic twin
 - Modify: `docs/backlog/agy-mark-accepts-a-nonexistent-sha.md`
+- Modify: `clavity-dotnet/ROADMAP.md:1242-1243` — **a FIFTH obligation, found during execution rather than by any review**
+
+🔴 **THE ROADMAP STATES THE LINE COUNTS OF THE TWO SKILL FILES TASK 1 EDITS, AND A GATE ENFORCES THEM.**
+`clavity-dotnet/ROADMAP.md:1242-1243` carry `` `agy-test-audit/SKILL.md` (441 lines) `` and
+`` `agy-capstone/SKILL.md` (526 lines) ``, and `scripts/check-roadmap-claims.ps1` fails on a stale one.
+MEASURED: Task 1's five-line paragraph turned both false (`441 -> 447`, `526 -> 531`) and the gate went
+red two tasks later, in Task 4, with nothing connecting the symptom to its cause.
+
+**This is the count corollary: a count is DERIVED, so grepping for the SUBJECT never finds it.** Do not
+hunt for these by hand — after any `SKILL.md` edit run
+`pwsh -NoProfile -File scripts/check-roadmap-claims.ps1` and fix exactly what it names. Better still, run
+it at the END OF TASK 1, where the cause is still obvious.
 
 - [ ] **Step 1: Update the marker contract**
 

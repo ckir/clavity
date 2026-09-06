@@ -58,6 +58,13 @@
 # rejected means it cannot write the repo-anchored state the discipline requires and has no legal fallback
 # location. The caller pattern was evidence the API was over-designed, not that the callers were buggy.
 #
+# ROADMAP SECTION 27 ADDED A THIRD REFUSAL CAUSE AND THE FIRST PROGRAMMATIC RECOVERY, so the paragraph
+# above is no longer the whole story and is kept because it stays true of the other two. `head` also
+# refuses when the discipline's LEDGER does not record the sha - an ENVIRONMENT fault rather than a
+# malformed caller - and `--gate-override` recovers from it programmatically while recording the bypass
+# in skipped.log. A caller that reads "no programmatic recovery" and gives up on a gate refusal is acting
+# on a sentence that predates the gate.
+#
 # WHAT THE COLLAPSE COST, AND WHERE IT WENT. The exit code no longer distinguishes a refusal from a
 # rejected write, so the stderr messages carry that burden alone and MUST NOT be merged or reworded -
 # agy-mark.Tests.ps1 asserts each by its distinct text for exactly this reason. Note also that a rejected
