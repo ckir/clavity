@@ -1048,3 +1048,38 @@ self-undercutting shape as the four earlier breaches.
 **This plan has no GREEN.** One round ran; it found BLOCKING defects; they are folded. A second round is
 owed before execution, or the owner may accept the risk and execute — that is the owner's call, not the
 driver's.
+
+---
+
+## Executed 2026-09-06 — what running it found that no review did
+
+The owner ruled EXECUTE after round 1. All five tasks landed: `3a3eb4d`, `ca60ad7`, `5d25825`,
+`493121c`. Gates at the end: `Invoke-Pester scripts/tests` **1334/0** (was 1313; **+21 = +10 new
+`agy-ledger-lib`, +6 `agy-mark` 36→42, +5 skills 85→90**, an arithmetic that accounts for every added
+row), `Clavity.Ls.Tests` **215/215**, `Clavity.Integration.Tests` **84/84**.
+
+**Five defects surfaced during execution — three in this plan, two in the driver's own work.** Each is
+fixed above rather than merely noted here, so a later reader follows the corrected artifact:
+
+1. 🔴 **Pester 5 separates Discovery from Run.** The plan's test read `$skill`/`$half` inside an `It`
+   body, where they are null: every path resolved to `<repo>//plugin/skills//SKILL.md` and the roster
+   counted 0. Rewritten to `-ForEach`, the idiom the sibling suites use at `agy-mark.Tests.ps1:141`.
+2. 🔴 **Every shipped `SKILL.md` is ASCII-only** (`check-agy-discipline-skills.ps1:130`). The plan's own
+   paragraph carried a red-circle emoji and a section sign — 3 non-ASCII per file, the emoji being a
+   surrogate pair — and reddened **five PRE-EXISTING rows** while the five new rows were all green.
+   **Reading only one's own rows would have called that a pass.**
+3. 🔴 **The house test idiom pins Git Bash** through `BashHookHelpers.ps1`; bare `bash` here resolves to
+   the WSL stub and fails every row with exit 127 saying nothing about the file under test. The plan used
+   bare `bash -c`.
+4. 🔴 **A one-commit fixture cannot express "parses, resolves, and is not the target."** Every non-target
+   range must then cite a fabricated sha, which does not resolve and so counts as unparsed, masking the
+   assertion. Two commits fixed it and added a row for the parses-but-does-not-resolve path.
+5. 🔴 **`ROADMAP.md:1242-1243` state the LINE COUNTS of the two edited `SKILL.md` files**, gate-enforced.
+   A five-line paragraph turned both stale and the gate went red two tasks later. Now listed in Task 4.
+
+**And one finding of the driver's own was REJECTED BY MEASUREMENT.** The `--gate-override` branch appends
+to `skipped.log` before the arm's own `agy_shield` call, which looked like capstone R7's `stamp` leak. A
+mutant refuted it: deleting the shield call left the suite at 43/0, because the arm shields a few lines
+later and the END STATE is identical. `stamp` had no later shield, so its window was permanent; this one
+is transient. The vacuous row was deleted with the reason left in its place, the call was kept for the
+narrow window, and its comment now says exactly what it does and does not do.
