@@ -34,7 +34,7 @@
 | `justfile` **(modify)** | Register the new suite in `test-scripts-slow`. |
 | `clavity-{dotnet,classic}/plugin/skills/agy-capstone/SKILL.md` **(modify)** | State the row-before-marker ordering. |
 | `clavity-{dotnet,classic}/plugin/skills/agy-test-audit/SKILL.md` **(modify)** | Same. |
-| `scripts/check-agy-discipline-skills.ps1` **(modify)** | Pin the ordering sentence in both halves mechanically. |
+| `scripts/tests/check-agy-discipline-skills.Tests.ps1` **(modify)** | Pin the ordering sentence in both halves mechanically, over a DISCOVERED roster of ledger-owning disciplines. |
 | `docs/agy-disciplines-marker-contract.md` **(modify)** | Record the new refusal condition in the declared single source of truth. |
 
 ---
@@ -48,8 +48,9 @@
 - Modify: `clavity-classic/plugin/skills/agy-capstone/SKILL.md` (same line content)
 - Modify: `clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md:331`
 - Modify: `clavity-classic/plugin/skills/agy-test-audit/SKILL.md` (same line content)
-- Modify: `scripts/check-agy-discipline-skills.ps1`
 - Test: `scripts/tests/check-agy-discipline-skills.Tests.ps1`
+
+⚠ **`scripts/check-agy-discipline-skills.ps1` itself is NOT modified.** An earlier draft listed it here and then staged it in the commit step without any step editing it — a phantom requirement that would stall an implementer looking for the step they missed. The enforcement lives in the `.Tests.ps1`, which is where this repository's other cross-half assertions live.
 
 - [ ] **Step 1: Read the four skill files and confirm the anchor text still exists**
 
@@ -70,14 +71,26 @@ Add to `scripts/tests/check-agy-discipline-skills.Tests.ps1`, inside the existin
     Context 'the row-before-marker ordering (ROADMAP section 27)' {
         # MECHANICAL, not a process promise. The incomplete fold is this repository's dominant defect
         # class, and "edit the skill in both halves" is exactly the promise that gets kept in one half.
+        #
+        # THE ROSTER IS DISCOVERED, NEVER HARDCODED, and a panel round caught the first draft of this
+        # test doing the opposite. A literal @('agy-capstone','agy-test-audit') array would be true only
+        # today: the next discipline to adopt a ledger goes unchecked until a human remembers to append
+        # it - which is the exact enumeration failure this test was written to eliminate, reintroduced
+        # one layer up. Discovery is also what makes the test agree with the GATE, which decides
+        # applicability the same way: by whether docs/<discipline>-ledger.md exists.
+        $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
         $ledgerOwners = @(
-            @{ Skill = 'agy-capstone';   Ledger = 'docs/agy-capstone-ledger.md' }
-            @{ Skill = 'agy-test-audit'; Ledger = 'docs/agy-test-audit-ledger.md' }
+            Get-ChildItem -LiteralPath (Join-Path $repo 'docs') -Filter '*-ledger.md' -File |
+                ForEach-Object { $_.BaseName -replace '-ledger$', '' }
         )
+        # A discovery that finds nothing would make every row below vacuous, so fail loudly instead.
+        It 'discovers at least one ledger-owning discipline' {
+            $ledgerOwners.Count | Should -BeGreaterThan 0
+        }
         foreach ($half in @('clavity-dotnet', 'clavity-classic')) {
-            foreach ($owner in $ledgerOwners) {
-                It "$($owner.Skill) in $half states that the ledger row precedes the marker write" {
-                    $p = Join-Path $script:RepoRoot "$half/plugin/skills/$($owner.Skill)/SKILL.md"
+            foreach ($skill in $ledgerOwners) {
+                It "$skill in $half states that the ledger row precedes the marker write" {
+                    $p = Join-Path $script:RepoRoot "$half/plugin/skills/$skill/SKILL.md"
                     Test-Path -LiteralPath $p | Should -BeTrue
                     $text = Get-Content -LiteralPath $p -Raw
                     # Assert the BEHAVIOUR is stated, not one exact sentence: the row must be described
@@ -122,7 +135,9 @@ Run:
 ```bash
 pwsh -NoProfile -c "Invoke-Pester scripts/tests/check-agy-discipline-skills.Tests.ps1 -Output Detailed -CI"
 ```
-Expected: **PASS**, `Tests Passed: 89` (was 85 — four new rows). 🔴 **If the line reads `Tests Passed: 0`, or there is no `Tests Passed:` line at all, that is an ABORTED run, not a pass** — a `.ps1` parse error produces exactly that. Re-read the file and fix the syntax before continuing.
+Expected: **PASS**, `Tests Passed: 90` (was 85 — five new rows: two ledger-owning disciplines × two plugin halves, **plus** the `discovers at least one ledger-owning discipline` guard). 🔴 **Do not take 90 on trust — it is DERIVED from what the discovery finds.** If a third `docs/*-ledger.md` exists by the time you run this, the count is 92, and the number to write into `_partition.md` in Step 7 is whatever this run actually reports. **Read the number; do not assume it.**
+
+🔴 **If the line reads `Tests Passed: 0`, or there is no `Tests Passed:` line at all, that is an ABORTED run, not a pass** — a `.ps1` parse error produces exactly that. Re-read the file and fix the syntax before continuing.
 
 - [ ] **Step 6: Verify the pair is still byte-identical**
 
@@ -134,13 +149,13 @@ Expected: no `SEED-DRIFT` output, `exit=0`.
 
 - [ ] **Step 7: Update the `_partition.md` count for the changed suite**
 
-`scripts/tests/_partition.md` states a per-suite test count that `test-suite-registration.Tests.ps1:185` enforces. **The row is `_partition.md:722`** and reads `check-agy-discipline-skills.Tests.ps1   43,2s   85 tests   <- FAST, re-measured 2026-09-03` (verified 2026-09-06). Change `85 tests` to `89 tests` and leave the rest of the row alone.
+`scripts/tests/_partition.md` states a per-suite test count that `test-suite-registration.Tests.ps1:185` enforces. **The row is `_partition.md:722`** and reads `check-agy-discipline-skills.Tests.ps1   43,2s   85 tests   <- FAST, re-measured 2026-09-03` (verified 2026-09-06). Change `85 tests` to **the number Step 5 actually reported** — 90 if the discovery found the two ledgers that exist today — and leave the rest of the row alone.
 
 Run:
 ```bash
 grep -n 'check-agy-discipline-skills.Tests.ps1' scripts/tests/_partition.md
 ```
-Expected: the row now reads `89 tests`.
+Expected: the row now reads the count Step 5 reported.
 
 🔴 **This is the step that gets forgotten.** A count is DERIVED, so grepping for the subject never finds it — grep for the OLD NUMBER as a literal. This exact row-count gate has shipped stale twice in this repository.
 
@@ -159,7 +174,6 @@ git add clavity-dotnet/plugin/skills/agy-capstone/SKILL.md \
         clavity-classic/plugin/skills/agy-capstone/SKILL.md \
         clavity-dotnet/plugin/skills/agy-test-audit/SKILL.md \
         clavity-classic/plugin/skills/agy-test-audit/SKILL.md \
-        scripts/check-agy-discipline-skills.ps1 \
         scripts/tests/check-agy-discipline-skills.Tests.ps1 \
         scripts/tests/_partition.md
 git commit -m "feat(s27): the ledger row precedes the marker write, pinned in both halves"
@@ -180,7 +194,9 @@ git commit -m "feat(s27): the ledger row precedes the marker write, pinned in bo
 
 Every rule below was measured against the two real ledgers on 2026-09-06. Do not "simplify" them.
 
-- **A candidate record is a line beginning with `|` with at least 7 delimiter fields**, whose **field 3** (the range column) is non-empty after trimming and is not composed solely of `-` and spaces.
+- **A candidate record is a line beginning with `|` with at least 7 delimiter fields**, whose **field 2** (the date column) matches `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` after trimming.
+  - **The date test is what separates a RECORD from a header or a separator**, and it is why the `unparsed=` diagnostic is not noise. MEASURED 2026-09-06: it yields **40 records / 6 non-records** in the capstone ledger and **5 / 2** in the test-audit ledger, and the 6 and 2 are exactly the header rows and the `|---|` separators. Without it a header (`| date | range | ... |`) is a candidate whose range token is the word `range`, which fails hex validation and is then reported as an unparseable record on every single run.
+  - The 40 reconciles with the endpoint measurement: **37 parse, and the 3 that do not are the genuinely prose-ranged historical rows** (`SP-B agy-capstone skill`, `agy-test-audit discipline`, `clavity-ls channel resilience`). So a refusal on the real capstone ledger reports `unparsed=3`, permanently and harmlessly.
   - `awk -F'|'` on `| a | b | c | d | e |` yields **7** fields: `$1` is the empty string *before* the leading pipe, `$2..$6` are the five columns, `$7` is empty after the trailing pipe. **So the range column a reader sees as second is `$3`, not `$2`.** Getting this wrong builds a gate that reads the DATE, which fails hex validation on every row and refuses every write forever.
   - MEASURED field-count distribution: the capstone ledger has 12 lines at NF=5, 43 at NF=7, 2 at NF=9, 1 at NF=12; the test-audit ledger has 7 at NF=7. **The NF=5 lines are the 3-column anomaly table at `docs/agy-capstone-ledger.md:132`**, which is not a capstone record at all — `NF >= 7` excludes it structurally. The NF=9/12 lines are records carrying unescaped pipes in their evidence prose; extra delimiters only add fields at the END, so `$3` is unaffected.
   - The dash test removes the `|---|---|` separator rows, which otherwise share NF=7 with real records.
@@ -318,7 +334,13 @@ Describe 'agy-ledger-lib.sh' {
 |------|-------|--------|---------|----------|
 | 2026-07-25 | SP-B agy-capstone skill | 4 | GREEN | folds `deadbee` |
 '@
-        try { Invoke-Lookup -Dir $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha | Should -Match 'unparsed=5' }
+        # unparsed is a COUNT; lines carries the LINE NUMBERS. The fixture's prose row is the 5th line
+        # of the file, so the answer is `unparsed=1 lines=5` - assert BOTH, and do not conflate them.
+        try {
+            $r2 = Invoke-Lookup -Dir $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha
+            $r2 | Should -Match 'unparsed=1'
+            $r2 | Should -Match 'lines=5'
+        }
         finally { Remove-Item -Recurse -Force $r.Dir -ErrorAction SilentlyContinue }
     }
 
@@ -421,11 +443,17 @@ agy_ledger_lookup() {
     done <<EOF
 $(awk -F'|' '
     /^\|/ && NF >= 7 {
+        # THE DATE COLUMN DECIDES WHETHER THIS IS A RECORD AT ALL. Without this test a header row
+        # ("| date | range | ...") is a candidate whose range token is the word "range", which fails
+        # hex validation and is then reported as an unparseable record on every run. MEASURED: with it,
+        # 40 records / 6 non-records in the capstone ledger, the 6 being 3 headers and 3 separators.
+        d = $2
+        gsub(/^[ \t]+|[ \t]+$/, "", d)
+        if (d !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) next
         cell = $3
         gsub(/`/, "", cell)
         gsub(/^[ \t]+|[ \t]+$/, "", cell)
         if (cell == "") next
-        if (cell ~ /^[- ]+$/) next            # a |---|---| separator row
         split(cell, w, /[ \t(]/)
         tok = w[1]
         if (tok ~ /^[0-9a-fA-F]{7,40}\^?\.\.[0-9a-fA-F]{7,40}$/) {
@@ -470,25 +498,38 @@ pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-ledger-lib.Tests.ps1 -Output
 ```
 Expected: **PASS**, `Tests Passed: 8, Failed: 0`.
 
-- [ ] **Step 7: Prove the suite is NOT vacuous with a logic mutant**
+- [ ] **Step 7: STAGE THE NEW FILES BEFORE MUTATING THEM**
 
-Break the field index — the exact defect a panel round caught in the prose — and confirm the suite reddens:
+🔴 **This step exists because the restore in Step 8 cannot work without it, and skipping it costs the whole task.** `git checkout -- <path>` restores a path **from the index**. A brand-new file is not in the index, so the command fails with `error: pathspec ... did not match any file(s) known to git` and leaves you holding a mutated helper with no way back. Staging first also means the restore reads back exactly the bytes you wrote.
+
+```bash
+git add clavity-dotnet/plugin/hooks/agy-ledger-lib.sh clavity-classic/plugin/hooks/agy-ledger-lib.sh
+git status --short clavity-dotnet/plugin/hooks/agy-ledger-lib.sh
+```
+Expected: `A  clavity-dotnet/plugin/hooks/agy-ledger-lib.sh` — the `A` means added to the index, which is what makes Step 8 reversible.
+
+- [ ] **Step 8: Prove the suite is NOT vacuous with a logic mutant**
+
+Break the field index — the exact defect a panel round caught in the spec's own prose — and confirm the suite reddens:
 
 ```bash
 sed -i 's/        cell = \$3/        cell = $2/' clavity-dotnet/plugin/hooks/agy-ledger-lib.sh
 grep -n 'cell = \$2' clavity-dotnet/plugin/hooks/agy-ledger-lib.sh   # CONTROL: prove the mutant landed
 pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-ledger-lib.Tests.ps1 -Output Detailed -CI"
 ```
-Expected: the grep prints a hit (**if it prints nothing the mutant did not apply and the run proves nothing**), and the suite **FAILS** with the `FOUND` row red.
+Expected: the grep prints a hit, and the suite **FAILS** with the `FOUND` row red.
 
-Restore:
+🔴 **If the grep prints NOTHING the mutant did not apply and the run proves nothing.** The likeliest cause is shell quoting: `$3` must reach `sed` literally, which is why the pattern is in **single** quotes. In double quotes or unquoted, the shell expands `$3` to the empty string and the pattern silently becomes `        cell = `, matching nothing. Re-check the quoting rather than concluding the test is weak.
+
+Restore **from the index** — which now works, because Step 7 staged the file:
 ```bash
 git checkout -- clavity-dotnet/plugin/hooks/agy-ledger-lib.sh
+cmp clavity-dotnet/plugin/hooks/agy-ledger-lib.sh clavity-classic/plugin/hooks/agy-ledger-lib.sh && echo IDENTICAL
 pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-ledger-lib.Tests.ps1 -Output Detailed -CI"
 ```
-Expected: back to `Tests Passed: 8, Failed: 0`.
+Expected: `IDENTICAL`, then back to `Tests Passed: 8, Failed: 0`.
 
-- [ ] **Step 8: Register the suite in the runner**
+- [ ] **Step 9: Register the suite in the runner**
 
 `justfile:108` (`test-scripts-slow`) is an explicit list. Add `'scripts/tests/agy-ledger-lib.Tests.ps1'` to it, immediately after `'scripts/tests/agy-shield-lib.Tests.ps1'`.
 
@@ -498,7 +539,7 @@ grep -c 'agy-ledger-lib.Tests.ps1' justfile
 ```
 Expected: `1`.
 
-- [ ] **Step 9: Add the `_partition.md` row**
+- [ ] **Step 10: Add the `_partition.md` row**
 
 Add to `scripts/tests/_partition.md`, next to the `agy-shield-lib` entry, following the existing row format:
 
@@ -513,7 +554,7 @@ pwsh -NoProfile -c "Invoke-Pester scripts/tests/test-suite-registration.Tests.ps
 ```
 Expected: **PASS**, `Failed: 0`.
 
-- [ ] **Step 10: Verify pair sync and commit**
+- [ ] **Step 11: Verify pair sync and commit**
 
 ```bash
 bash scripts/check-seed-artifacts-synced.sh; echo "exit=$?"
@@ -629,6 +670,10 @@ $row
                 Remove-Item -LiteralPath (Join-Path $r.Dir 'docs/agy-capstone-ledger.md') -Force
                 $out = & bash -c "cd '$($r.Dir -replace '\\','/')' && bash '$script:Mark' head agy-capstone $($r.Sha) 2>&1; echo rc=`$?"
                 ($out | Out-String) | Should -Match 'rc=0'
+                # ASSERT THE MARKER REACHED DISK, not merely that the process exited 0. A panel round
+                # caught these two rows asserting the exit code alone: a gate that silently exited 0
+                # without writing anything would have passed them while the behaviour they name is broken.
+                Get-Content -LiteralPath (Join-Path $r.Dir '.clavity/agy-marks/agy-capstone.head') -Raw | Should -Be $r.Sha
             } finally { Remove-Item -Recurse -Force $r.Dir -ErrorAction SilentlyContinue }
         }
 
@@ -637,6 +682,12 @@ $row
             try {
                 $out = & bash -c "cd '$($r.Dir -replace '\\','/')' && bash '$script:Mark' head agy-first $($r.Sha) 2>&1; echo rc=`$?"
                 ($out | Out-String) | Should -Match 'rc=0'
+                # ASSERT THE MARKER REACHED DISK, not merely that the process exited 0. A panel round
+                # caught these two rows asserting the exit code alone: a gate that silently exited 0
+                # without writing anything would have passed them while the behaviour they name is broken.
+                # NOTE the filename: this row marks agy-first, so the marker is agy-first.head. Asserting
+                # agy-capstone.head here would fail for the wrong reason and read as a gate defect.
+                Get-Content -LiteralPath (Join-Path $r.Dir '.clavity/agy-marks/agy-first.head') -Raw | Should -Be $r.Sha
             } finally { Remove-Item -Recurse -Force $r.Dir -ErrorAction SilentlyContinue }
         }
     }
@@ -738,26 +789,44 @@ pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-mark.Tests.ps1 -Output Detai
 ```
 Expected: **PASS**, `Tests Passed: 42, Failed: 0` (was 36; six new rows).
 
-- [ ] **Step 8: Prove the gate rows are not vacuous**
+- [ ] **Step 8: STAGE THE GATE CODE BEFORE MUTATING IT**
 
-Neuter the gate and confirm exactly the refusal rows redden:
+🔴 **Do not skip this, and do not reorder it after the mutant. A panel round found that the original plan destroyed the implementer's own work here.** The gate code written in Steps 4 and 5 is an **unstaged modification**. `git checkout -- <path>` restores from the index, and the index still holds the *pre-task* `agy-mark.sh` — so running it before staging silently reverts every line of the gate, and the plan then walks you into committing a branch with the feature missing.
+
+```bash
+git add clavity-dotnet/plugin/hooks/agy-mark.sh clavity-classic/plugin/hooks/agy-mark.sh
+git status --short clavity-dotnet/plugin/hooks/agy-mark.sh
+```
+Expected: `M  clavity-dotnet/plugin/hooks/agy-mark.sh` — note the `M` is in the **first** column (staged), not the second.
+
+- [ ] **Step 9: Prove the gate rows are not vacuous**
+
+Neuter the gate and confirm the right rows redden:
 
 ```bash
 sed -i 's/            NO-LEDGER|FOUND) : ;;/            NO-LEDGER|FOUND|ABSENT*) : ;;/' clavity-dotnet/plugin/hooks/agy-mark.sh
 grep -n 'ABSENT\*) : ;;' clavity-dotnet/plugin/hooks/agy-mark.sh   # CONTROL: prove the mutant landed
 pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-mark.Tests.ps1 -Output Detailed -CI"
 ```
-Expected: the grep prints a hit, and the suite fails with **the two refusal rows red by name** — `REFUSES the marker write ...` and `the refusal names BOTH the fix and the escape`. **Not merely a non-zero suite: read WHICH rows went red.** A mutant that reddens unrelated rows has broken something else and proves nothing.
 
-Restore:
+Expected: the grep prints a hit, and **THREE rows go red by name** —
+
+1. `REFUSES the marker write when the ledger has no row for the sha`
+2. `the refusal names BOTH the fix and the escape`
+3. `--gate-override writes the marker AND a GATE-OVERRIDE audit line`
+
+**The third one is not collateral damage; it is the mutant working.** Widening the `case` arm to swallow `ABSENT*` means the `*)` fallback never runs, so the override branch never executes and `skipped.log` is never written. An earlier draft of this plan predicted "exactly two" and warned that extra red rows mean something else broke — which would have made an implementer abandon a correct validation. **Read WHICH rows went red and check them against this list of three; a non-zero suite on its own still proves nothing.**
+
+Restore **from the index**, which works because Step 8 staged it:
 ```bash
 git checkout -- clavity-dotnet/plugin/hooks/agy-mark.sh
 cp clavity-dotnet/plugin/hooks/agy-mark.sh clavity-classic/plugin/hooks/agy-mark.sh
+cmp clavity-dotnet/plugin/hooks/agy-mark.sh clavity-classic/plugin/hooks/agy-mark.sh && echo IDENTICAL
 pwsh -NoProfile -c "Invoke-Pester scripts/tests/agy-mark.Tests.ps1 -Output Detailed -CI"
 ```
-Expected: back to `Tests Passed: 42, Failed: 0`.
+Expected: `IDENTICAL`, then back to `Tests Passed: 42, Failed: 0`. 🔴 **If instead the six new gate rows fail here, the restore reverted too far** — you staged nothing in Step 8 and the index handed back the pre-task file. Re-apply Steps 4 and 5.
 
-- [ ] **Step 9: Update the enforced count and re-run the registration gate**
+- [ ] **Step 10: Update the enforced count and re-run the registration gate**
 
 `scripts/tests/_partition.md:677` currently reads `36 tests` for `agy-mark.Tests.ps1`. Change it to `42 tests`.
 
@@ -767,7 +836,7 @@ pwsh -NoProfile -c "Invoke-Pester scripts/tests/test-suite-registration.Tests.ps
 ```
 Expected: the row reads `42 tests`; the registration suite passes with `Failed: 0`.
 
-- [ ] **Step 10: Verify pair sync and commit**
+- [ ] **Step 11: Verify pair sync and commit**
 
 ```bash
 bash scripts/check-seed-artifacts-synced.sh; echo "exit=$?"
@@ -776,6 +845,8 @@ git add clavity-dotnet/plugin/hooks/agy-mark.sh clavity-classic/plugin/hooks/agy
         scripts/tests/agy-mark.Tests.ps1 scripts/tests/_partition.md
 git commit -m "feat(s27): the head arm refuses a marker the ledger does not record"
 ```
+
+⚠ The `git add` here is deliberately repeated even though Step 8 already staged the two hook files — Steps 9 and 10 touched the test suite and `_partition.md`, which are not yet in the index, and re-staging an unchanged path is a no-op.
 Expected: `exit=0`, no `SEED-DRIFT`, payload suite green.
 
 ---
@@ -890,3 +961,54 @@ Do **not** push. The owner owns every push. Report: the commit range, the sweep 
 2. **The heading-section record at `docs/agy-capstone-ledger.md:456` is invisible to the gate** — it is a `##` section, not a table row. A record that must be gate-visible has to be a row. This is a convention obligation with no mechanical enforcement in this plan.
 3. **No test covers a ledger with CRLF line endings.** `awk`'s `$3` would carry a trailing `\r` on the last field only, which is field 7, not field 3 — so the parser should be unaffected. **This is reasoned, not measured**, and is the first thing to check if the gate misbehaves on a Windows-authored ledger.
 4. **The override is not owner-only**, because `agy-mark.sh` has no owner identity: any flag a human can pass, an agent can pass. The owner ruled for the flag with that objection on the record; auditability is the compensation, not restriction.
+
+---
+
+## Review status — AGY-AFTER round 1 on this PLAN, folded 2026-09-06
+
+Brief `.clavity/seams/panel-s27-plan-r1.md`. Seats: bespoke **Execution Realist** (what breaks when
+someone actually RUNS these steps), Literal Implementer, Mechanism Gamer, Axiom Breaker, Cascade Analyst.
+Seven findings, three BLOCKING. Citations verified mechanically: **`0 problem(s) across 5 row(s)`** against
+`51a3433`.
+
+🔴 **THIS ROUND EARNED ITS COST TWICE OVER — THE PLAN AS WRITTEN WOULD HAVE DESTROYED THE IMPLEMENTER'S OWN
+WORK.** Both mutant steps restored with `git checkout -- <path>` while the code under test was unstaged.
+In Task 2 that fails outright (the helper is untracked, so git reports a pathspec error). In Task 3 it
+succeeds and is worse: the gate written in Steps 4–5 is reverted to HEAD and silently lost. **Fixed by
+staging before mutating** in both tasks, which also makes the restore read back exactly the bytes written.
+
+- **`unparsed=5` conflated a COUNT with a LINE NUMBER.** The helper emits `unparsed=1 lines=5`. Fixed —
+  and it exposed a real design gap: without a date-shape test on the date column, header rows are
+  candidate records whose range token is the word `range`, reported as unparseable on every run. The
+  predicate now requires a date, MEASURED at 40 records / 6 non-records (capstone) and 5 / 2 (test-audit).
+- **The mutant expectation was wrong and the warning around it was actively harmful.** It predicted
+  "exactly two" red rows and told the implementer that extra red rows mean something else broke. The
+  mutant reddens **three** — swallowing `ABSENT*` also bypasses the override branch. An implementer
+  obeying the old warning would have abandoned a correct validation.
+- **The two `is INERT` rows asserted only `rc=0`** and would have passed against a gate that exited 0
+  without writing anything. They now assert the marker's contents — and the `agy-first` row asserts
+  `agy-first.head`, not `agy-capstone.head`.
+- **A phantom `git add scripts/check-agy-discipline-skills.ps1`** appeared in Task 1's commit step with no
+  step modifying that file. Removed from the step, the file list and the File Structure table.
+- **The roster in Task 1's new test was hardcoded** — reintroducing the exact enumeration failure the test
+  exists to prevent. It now **discovers** `docs/*-ledger.md`, which is also how the gate itself decides
+  applicability, plus a guard row so a discovery finding nothing fails loudly instead of vacuously.
+
+**One claim was REJECTED as overstated.** The round's answer to "name a step whose Expected line could
+print while the step failed" said Task 3's post-restore run would print `Tests Passed: 42, Failed: 0`.
+It would not: reverting past the gate makes the six new gate rows FAIL, so the implementer sees red, not a
+false pass. The underlying finding — that `git checkout --` destroys unstaged work — is true and is
+folded; its stated symptom is not. **Fourth time this session a true finding arrived with a wrong
+mechanism.**
+
+⚠ **A review-only envelope breach occurred during this round** and is recorded in
+`.clavity/agy-marks/skipped.log` as `BREACH-REVERTED`. Four scratch files reached the repository root; all
+were deleted, and HEAD, branch and reflog were unmoved throughout. The cause is worth keeping: the peer
+placed its script correctly in `.clavity/scratch/panel-s27/` but the script wrote its output **relative to
+CWD** and was run from the root. **Naming a scratch directory does not confine writes — bind the working
+directory.** The brief also invited a file-creating check while forbidding all writes, which is the same
+self-undercutting shape as the four earlier breaches.
+
+**This plan has no GREEN.** One round ran; it found BLOCKING defects; they are folded. A second round is
+owed before execution, or the owner may accept the risk and execute — that is the owner's call, not the
+driver's.
