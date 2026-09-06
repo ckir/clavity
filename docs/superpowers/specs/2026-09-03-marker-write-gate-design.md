@@ -1,9 +1,10 @@
 # Gating the completion-marker write on a ledger row — design spec
 
-> **Status:** SPEC, not a plan. The gate does not exist, so this carries intent, contracts and rulings
-> — **no line numbers into code that has not been written.** As of 2026-09-06 every fork is closed and
-> the line-level plan is unblocked; the plan is the artifact that may cite lines, and only into code that
-> exists when it is written.
+> **Status: REVIEWED AND SHIPPED 2026-09-06 — `cap-reached`, NOT GREEN.** Five AGY-AFTER rounds, none of
+> them clean; the owner stopped the review at the hard cap and released the spec to planning. Every fork
+> is ruled and every finding is dispositioned. This is a SPEC: it carries intent, contracts and rulings,
+> and **no line numbers into code that does not exist.** The plan is the artifact that may cite lines,
+> and it is owed a panel of its own. See `## TERMINAL DISPOSITION` before trusting any of this.
 
 **ROADMAP item:** `clavity-dotnet/ROADMAP.md` §27, owner-accepted 2026-09-03.
 **AGY-FIRST consult:** `.clavity/seams/agyfirst-s23-behavioural-gate.md`.
@@ -560,7 +561,26 @@ verified mechanically, **`0 problem(s) across 4 row(s)`** against `efa398d`. Env
   The two-cause refusal message *is* impossible under a rule that only skips — but round 4's row-shape
   requirement already supplies the distinction, and the spec had simply never joined them.
 
+## ✅ TERMINAL DISPOSITION — `cap-reached`, owner-ruled 2026-09-06. **NOT GREEN.**
+
 🔴 **FIVE ROUNDS. NONE CLEAN. EVERY ONE BLOCKING.** Rounds 2, 3 and 4 each found their defect in the
-previous round's fold or its description; round 5 found what the folds did not say. **This spec has no
-GREEN.** The next round is the discipline's **hard cap of 6**, at which the driver must halt and ask the
-owner *continue or ship* — that is not the driver's call to make.
+previous round's fold or its description; round 5 found what the folds did not say. At the discipline's
+hard cap of 6 the driver halted and asked, and **the owner ruled: ship the spec, write the plan.**
+
+**This review closes as `cap-reached`, NOT as `GREEN`, and the distinction is the record's whole value.**
+GREEN would mean a full round landed with no live challenge. That never happened. What is claimed is
+narrower and true: **every finding raised across five rounds carries a disposition** — folded, or rejected
+on a quoted measurement, or stood down below the floor with its guard cited — and the driver's
+recommendation to stop rested on the shape of the findings changing, not on their supply drying up.
+Round 5 produced **no design defect at all**; it produced three obligations the spec had not listed. That
+is plan-shaped work, and a plan is the better instrument for it, because it forces each obligation into a
+numbered step with a file path instead of a paragraph.
+
+⚠ **What a later reader must NOT take from this section.** Not that the spec is proven correct — five
+rounds of BLOCKING findings are evidence against any such reading. Not that review was exhausted — it was
+stopped. The honest summary is that the design survived four rounds of adversarial attack on its
+correctness and a fifth on its completeness, was rebuilt twice along the way, and is now good enough to
+plan against **with the plan itself owed a review of its own.**
+
+**AGY-AFTER is therefore SATISFIED for this artifact and RE-ARMS for the plan.** The plan is a new
+artifact; it gets its own panel.
