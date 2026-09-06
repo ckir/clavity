@@ -152,6 +152,32 @@ an example that was never closed
 
 [1]: https://example.invalid/x
 '@
+        # CAPSTONE ROUND 3. An INFO STRING on a line inside a fence. CommonMark allows an info string on
+        # an OPENING fence and forbids one on a CLOSER, so ```bash sitting inside a block is content. A
+        # closer-blind tracker treated it as the close, the REAL closer re-opened the fence, and the file
+        # ended open - reporting MALFORMED on a perfectly valid ledger.
+        $script:InfoStringFenceLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+```
+how to write a fence:
+```bash
+echo hi
+```
+'@
+        # CAPSTONE ROUND 3. PADDED brackets. The first trim ran before the bracket came off, so the split
+        # hit a leading space as its first delimiter and returned an empty token.
+        $script:PaddedBracketLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | [ aaaaaaa..<<SHORT>> ] | 1 | GREEN | e |
+'@
         # A record whose range is PROSE, as three real historical rows are.
         $script:ProseRangeLedger = @'
 # ledger
@@ -343,6 +369,23 @@ an example that was never closed
         # still valid hex - so it resolved to the WRONG commit or to none. A wrong answer, not a refusal,
         # which is the worse of the two. Brackets are separators now, not noise.
         $r = New-LedgerRepo -LedgerBody $script:RefLinkLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+    }
+
+    It 'an INFO STRING inside a fence does not falsely close it' {
+        # CAPSTONE ROUND 3. Before the closer rule this answered MALFORMED on a valid file: the tracker
+        # closed on ```bash, the real closer re-opened, and the fence was open at EOF. A closing fence
+        # carries no info string; an opening one may.
+        $r = New-LedgerRepo -LedgerBody $script:InfoStringFenceLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Not -Match 'MALFORMED' -Because 'the file is valid markdown and must not be called malformed'
+        $out | Should -Not -Match 'FOUND'    -Because 'the quoted content is still not a record'
+    }
+
+    It 'parses a range in PADDED brackets' {
+        # CAPSTONE ROUND 3. Order of operations, not regex: the first trim ran before the bracket came
+        # off, so the split hit a leading space and returned an empty token, refusing a good row.
+        $r = New-LedgerRepo -LedgerBody $script:PaddedBracketLedger
         (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
     }
 

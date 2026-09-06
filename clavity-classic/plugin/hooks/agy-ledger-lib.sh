@@ -116,8 +116,15 @@ $(awk -F'|' '
         _agl_c = substr(_agl_line, 1, 1)
         _agl_n = 0
         while (substr(_agl_line, _agl_n + 1, 1) == _agl_c) _agl_n++
+        # A CLOSING fence carries NO info string; an OPENING one may. CommonMark says so, and round 3
+        # measured what ignoring it costs: a line like ```bash sitting INSIDE a block is content, but a
+        # closer-blind tracker treated it as the close, so the REAL closer re-opened the fence and the
+        # file ended open - reporting MALFORMED on a perfectly valid ledger. A false refusal, loud
+        # rather than silent, but wrong. Anything after the run of fence characters means "not a close".
+        _agl_rest = substr(_agl_line, _agl_n + 1)
+        sub(/[ \t]+$/, "", _agl_rest)
         if (!_agl_fence) { _agl_fence = 1; _agl_fc = _agl_c; _agl_fn = _agl_n }
-        else if (_agl_c == _agl_fc && _agl_n >= _agl_fn) { _agl_fence = 0 }
+        else if (_agl_c == _agl_fc && _agl_n >= _agl_fn && _agl_rest == "") { _agl_fence = 0 }
         next
     }
     _agl_fence { next }
@@ -143,6 +150,11 @@ $(awk -F'|' '
         gsub(/`/, "", cell)
         gsub(/^[ \t]+|[ \t]+$/, "", cell)
         sub(/^\[/, "", cell)
+        # TRIM AGAIN. The first trim ran BEFORE the bracket came off, so `[ deadbeef ]` was left as
+        # " deadbeef ]" and the split hit the leading space as its first delimiter, returning an empty
+        # token and refusing a legitimate row. MEASURED in round 3: padded brackets answered ABSENT
+        # while the unpadded control answered FOUND. Order of operations, not regex.
+        gsub(/^[ \t]+|[ \t]+$/, "", cell)
         if (cell == "") next
         split(cell, w, /[][ \t()]/)
         tok = w[1]
