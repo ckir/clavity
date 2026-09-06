@@ -150,8 +150,9 @@ $(awk -F'|' '
     _agl_fence { next }
     END { if (_agl_fence) printf "0\t!UNCLOSED\n" }
 
-    # A RECORD MUST BELONG TO A CONTIGUOUS TABLE BLOCK, and this is the rule that replaced five rounds of
-    # container-blacklisting. OWNER-RULED 2026-09-06 after the reversal condition written into the spec
+    # A RECORD MUST BELONG TO A CONTIGUOUS TABLE BLOCK. WHAT THIS RULE ENDS IS THE ORPHAN-ROW CLASS, NOT
+    # THE CONTAINER CLASS - see the ACCEPTED LIMITATION below, which corrects what this comment used to
+    # claim. OWNER-RULED 2026-09-06 after the reversal condition written into the spec
     # was met: five separate prose channels had reached the parser (fenced blocks, tilde fences, nested
     # fences, HTML <pre>, lazy-continuation blockquotes), and two of them were MEASURED false passes that
     # the fence guard never touched. Guarding containers one at a time is a blacklist, and a blacklist of
@@ -161,6 +162,21 @@ $(awk -F'|' '
     # with a header and a |---| separator. A row QUOTED in prose does not - whatever wraps it, it is one
     # or two orphan lines with no separator above them in the same run. So the locator asks "is there a
     # separator earlier in this same block?" rather than "which container might this be inside?".
+    #
+    # ACCEPTED LIMITATION, OWNER-RULED 2026-09-07, recorded here because the first draft of this comment
+    # claimed more than the rule delivers. A COMPLETE table - header, separator and rows together -
+    # placed inside a container that PRESERVES LEADING PIPES still reads as live. MEASURED in capstone
+    # round 4: a full table inside an HTML <div> answers FOUND, and so does one under a lazy blockquote
+    # whose FIRST LINE ALONE carries the quote marker. A fully quoted blockquote, where every line
+    # carries it, is correctly ignored.
+    #
+    # It is ACCEPTED rather than closed because every such case requires the row to have been WRITTEN,
+    # and this gate defends against FORGETTING one - a fabricated row passes BY DESIGN, as the header
+    # of this file says. The candidate repair was MEASURED and REFUSED: requiring a block to OPEN at a
+    # blank line or a thematic break closes both cases and changes nothing else across 20 fixtures, but
+    # it SILENTLY refuses a legitimate table placed directly under a heading or an HTML comment, which
+    # is legal GFM. Trading a fail-open that needs an authored row for a silent false refusal of a
+    # valid ledger is the worse bargain. agy-ledger-lib.Tests.ps1 PINS both halves of this.
     #
     # The fence tracker above is KEPT as well, because a fully quoted table - header, separator and rows
     # together inside a fence - satisfies this rule on its own. Neither guard is sufficient alone. They

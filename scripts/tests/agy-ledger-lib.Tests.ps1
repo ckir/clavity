@@ -181,7 +181,8 @@ echo hi
         # CAPSTONE ROUND 3's UNFILED CENSUS ITEMS. Two prose channels the peer named only in its census
         # and never filed as findings - both MEASURED false passes, and both the same class as round 1's
         # BLOCKING defect. Finding five channels in that class is what met the spec's own reversal
-        # condition and replaced container-blacklisting with the contiguous-table-block rule.
+        # condition and produced the contiguous-table-block rule. That rule ends the ORPHAN-ROW class,
+        # NOT the container class - the two rows at the end of this file pin what it still accepts.
         $script:PreBlockLedger = @'
 # ledger
 
@@ -202,6 +203,48 @@ echo hi
 
 > quoting an old row:
 | 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+'@
+        # ACCEPTED LIMITATION, OWNER-RULED 2026-09-07. A COMPLETE table inside a container that preserves
+        # leading pipes is itself a contiguous run containing a separator, so it satisfies the block rule
+        # exactly. These two rows PIN that, so closing it later is a DELIBERATE decision and not a silent
+        # drift. It is accepted because every such case required the row to be WRITTEN, and this gate
+        # defends against FORGETTING one.
+        $script:DivTableLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+<div>
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+</div>
+'@
+        # The LAZY half: only the FIRST line carries the quote marker, so every following line begins with
+        # a pipe. Contrast the fully-quoted form, where every line carries it and the rule DOES reject it.
+        $script:LazyTableLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+> | date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+'@
+        $script:FullyQuotedTableLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+> | date | range | rounds | verdict | evidence |
+> |---|---|---|---|---|
+> | 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
 '@
         # CAPSTONE ROUND 4. A FENCE INTERRUPTING A LIVE TABLE. The fence rule runs BEFORE the block rule
         # and ends in `next`, which jumped straight over the block reset - so an authorised table was
@@ -465,6 +508,31 @@ illustrative
         # closed its quote and every negative row would still have passed.
         $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
         $out | Should -Not -Match 'FOUND' -Because 'a fence ends the table block it interrupts'
+    }
+
+    It 'ACCEPTED LIMITATION: a complete table inside an HTML div still reads as live' {
+        # Named in capstone round 4 PROSE and never filed as a finding, then MEASURED true. Kept as an
+        # accepted limitation, so this row asserts the CURRENT behaviour deliberately. If it ever turns
+        # red, someone closed the container class - which is a decision for the owner, not a bug fix.
+        $r = New-LedgerRepo -LedgerBody $script:DivTableLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
+            Should -Match 'FOUND' -Because 'the block rule ends the orphan-row class, not the container class'
+    }
+
+    It 'ACCEPTED LIMITATION: a lazily-quoted complete table still reads as live' {
+        # The lazy half. Only the FIRST line carries the quote marker.
+        $r = New-LedgerRepo -LedgerBody $script:LazyTableLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
+            Should -Match 'FOUND' -Because 'every line after the first begins with a pipe, so the run is contiguous'
+    }
+
+    It 'a FULLY quoted table - every line marked - is still correctly ignored' {
+        # The success-path counterpart: without it the two rows above would document a limitation with no
+        # evidence that the rule rejects ANYTHING wrapped in the same container.
+        $r = New-LedgerRepo -LedgerBody $script:FullyQuotedTableLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
+        $out | Should -Not -Match 'FOUND'
     }
 
     It 'refuses a range endpoint that is a hex-named BRANCH rather than a sha' {
