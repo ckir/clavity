@@ -203,6 +203,21 @@ echo hi
 > quoting an old row:
 | 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
 '@
+        # CAPSTONE ROUND 4. A FENCE INTERRUPTING A LIVE TABLE. The fence rule runs BEFORE the block rule
+        # and ends in `next`, which jumped straight over the block reset - so an authorised table was
+        # carried ACROSS the fence and the orphan pipe-line below it answered FOUND, though markdown
+        # renders that line as literal text and not a row. The target sha appears NOWHERE else here.
+        $script:FenceInTableLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+```text
+illustrative
+```
+| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+'@
         # A range endpoint that is a pure-hex BRANCH NAME. `git rev-parse` resolves any ref, so this
         # authenticated a marker for whatever the branch pointed at - a moving target validating a fixed
         # claim. The fixture creates a branch literally named `deadbeef`.
@@ -437,6 +452,19 @@ echo hi
         # Same class, same census, also unfiled. A quoted row has no separator above it in its own block.
         $r = New-LedgerRepo -LedgerBody $script:LazyQuoteLedger
         (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
+    }
+
+    It 'ignores an orphan row after a fence that interrupts a live table' {
+        # CAPSTONE ROUND 4, and the FENCE TRACKER was the smuggler: two guards that were documented as
+        # independent were not, because the earlier one carried block state past the later one.
+        # MEASURED FOUND before the fix, for a sha appearing nowhere else in the fixture.
+        $r = New-LedgerRepo -LedgerBody $script:FenceInTableLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        # ASSERT THE PROBE ANSWERED AT ALL. A broken library returns EMPTY, and empty satisfies a bare
+        # -Not -Match vacuously - measured this very session, when an apostrophe inside the awk program
+        # closed its quote and every negative row would still have passed.
+        $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
+        $out | Should -Not -Match 'FOUND' -Because 'a fence ends the table block it interrupts'
     }
 
     It 'refuses a range endpoint that is a hex-named BRANCH rather than a sha' {

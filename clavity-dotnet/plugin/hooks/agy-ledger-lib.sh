@@ -138,6 +138,13 @@ $(awk -F'|' '
         sub(/[ \t]+$/, "", _agl_rest)
         if (!_agl_fence) { _agl_fence = 1; _agl_fc = _agl_c; _agl_fn = _agl_n }
         else if (_agl_c == _agl_fc && _agl_n >= _agl_fn && _agl_rest == "") { _agl_fence = 0 }
+        # A FENCE LINE IS NOT A TABLE ROW, so it ENDS the block - the same thing any other non-pipe line
+        # does at the block rule below. Without this, the `next` in this rule jumped OVER that reset and
+        # left the block authorised across the fence. MEASURED in capstone round 4: a table, a fenced
+        # block, then a single orphan pipe-line carrying a sha answered FOUND, though markdown renders
+        # that trailing line as literal text and not a row. The two guards are only independent once the
+        # earlier one stops smuggling state past the later one.
+        _agl_blk = 0; _agl_sep = 0
         next
     }
     _agl_fence { next }
@@ -156,8 +163,9 @@ $(awk -F'|' '
     # separator earlier in this same block?" rather than "which container might this be inside?".
     #
     # The fence tracker above is KEPT as well, because a fully quoted table - header, separator and rows
-    # together inside a fence - satisfies this rule on its own. Two independent guards, and neither is
-    # sufficient alone.
+    # together inside a fence - satisfies this rule on its own. Neither guard is sufficient alone. They
+    # became genuinely independent only in round 4, when the fence rule was made to reset this block
+    # state; before that it `next`ed over the reset and carried an authorised block across a fence.
     !/^\|/ { _agl_blk = 0; _agl_sep = 0; next }
     {
         _agl_s = $0
