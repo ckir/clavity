@@ -82,6 +82,19 @@ agy_ledger_lookup() {
             continue
         fi
         _agl_ep=$(git -C "$_agl_root" rev-parse --verify --quiet "${_agl_tok}^{commit}" 2>/dev/null) || _agl_ep=''
+        # THE TOKEN MUST BE A PREFIX OF WHAT IT RESOLVED TO. `git rev-parse` resolves ANY ref, not only an
+        # abbreviated sha, so a branch or tag whose NAME happens to be 7-40 hex characters authenticates a
+        # marker for whatever it currently points at. MEASURED: a branch literally named `deadbeef`
+        # resolved to HEAD and the gate answered FOUND for a commit the ledger never recorded - a moving
+        # target authenticating a fixed claim. An abbreviated sha is always a prefix of its own full form;
+        # a ref name essentially never is. This also rejects `HEAD`, `main` and tags for free.
+        if [ -n "$_agl_ep" ]; then
+            _agl_lc=$(printf '%s' "$_agl_tok" | tr 'ABCDEF' 'abcdef')
+            case "$_agl_ep" in
+                "$_agl_lc"*) : ;;
+                *)           _agl_ep='' ;;
+            esac
+        fi
         if [ -z "$_agl_ep" ]; then
             _agl_unparsed=$((_agl_unparsed + 1))
             _agl_lines="${_agl_lines:+$_agl_lines,}$_agl_n"
@@ -129,6 +142,30 @@ $(awk -F'|' '
     }
     _agl_fence { next }
     END { if (_agl_fence) printf "0\t!UNCLOSED\n" }
+
+    # A RECORD MUST BELONG TO A CONTIGUOUS TABLE BLOCK, and this is the rule that replaced five rounds of
+    # container-blacklisting. OWNER-RULED 2026-09-06 after the reversal condition written into the spec
+    # was met: five separate prose channels had reached the parser (fenced blocks, tilde fences, nested
+    # fences, HTML <pre>, lazy-continuation blockquotes), and two of them were MEASURED false passes that
+    # the fence guard never touched. Guarding containers one at a time is a blacklist, and a blacklist of
+    # markdown containers is not a finite list.
+    #
+    # The structural fact instead: a real ledger row sits in an unbroken run of pipe-lines that BEGINS
+    # with a header and a |---| separator. A row QUOTED in prose does not - whatever wraps it, it is one
+    # or two orphan lines with no separator above them in the same run. So the locator asks "is there a
+    # separator earlier in this same block?" rather than "which container might this be inside?".
+    #
+    # The fence tracker above is KEPT as well, because a fully quoted table - header, separator and rows
+    # together inside a fence - satisfies this rule on its own. Two independent guards, and neither is
+    # sufficient alone.
+    !/^\|/ { _agl_blk = 0; _agl_sep = 0; next }
+    {
+        _agl_s = $0
+        gsub(/[|: \t-]/, "", _agl_s)
+        if (_agl_s == "") { _agl_blk = 1; _agl_sep = 1; next }
+        if (!_agl_blk) { _agl_blk = 1 }
+    }
+    !_agl_sep { next }
     /^\|/ && NF >= 7 {
         d = $2
         gsub(/^[ \t]+|[ \t]+$/, "", d)

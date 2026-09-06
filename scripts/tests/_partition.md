@@ -713,7 +713,7 @@ agy-shield-lib.Tests.ps1                        409,1s   45 tests   <- SLOW, NEW
                                                                       machine the agent is working on. The 409,1s
                                                                       is the last figure measured under the stated
                                                                       conditions and is now one row short.
-agy-ledger-lib.Tests.ps1                        105,0s   19 tests   <- SLOW, NEW 2026-09-06. ROADMAP
+agy-ledger-lib.Tests.ps1                        105,0s   22 tests   <- SLOW, NEW 2026-09-06. ROADMAP
                                                                       section 27: the ledger reader behind the
                                                                       marker-write gate. Fixture-heavy like its
                                                                       agy-shield-lib sibling - every row builds a

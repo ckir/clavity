@@ -178,6 +178,41 @@ echo hi
 |------|-------|--------|---------|----------|
 | 2026-09-06 | [ aaaaaaa..<<SHORT>> ] | 1 | GREEN | e |
 '@
+        # CAPSTONE ROUND 3's UNFILED CENSUS ITEMS. Two prose channels the peer named only in its census
+        # and never filed as findings - both MEASURED false passes, and both the same class as round 1's
+        # BLOCKING defect. Finding five channels in that class is what met the spec's own reversal
+        # condition and replaced container-blacklisting with the contiguous-table-block rule.
+        $script:PreBlockLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+<pre>
+| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+</pre>
+'@
+        $script:LazyQuoteLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+> quoting an old row:
+| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+'@
+        # A range endpoint that is a pure-hex BRANCH NAME. `git rev-parse` resolves any ref, so this
+        # authenticated a marker for whatever the branch pointed at - a moving target validating a fixed
+        # claim. The fixture creates a branch literally named `deadbeef`.
+        $script:HexBranchLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-06 | `aaaaaaa..deadbeef` | 1 | GREEN | e |
+'@
         # A record whose range is PROSE, as three real historical rows are.
         $script:ProseRangeLedger = @'
 # ledger
@@ -188,7 +223,7 @@ echo hi
 '@
 
         function New-LedgerRepo {
-            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone')
+            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [switch]$HexBranch)
             $d = Join-Path ([IO.Path]::GetTempPath()) ("aglfx-" + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
@@ -212,6 +247,8 @@ echo hi
             & git -C $d add seed2.txt
             & git -C $d commit -q -m seed2
             $sha = (& git -C $d rev-parse HEAD).Trim()
+            # A branch whose NAME is 8 hex characters. git rev-parse resolves refs as happily as shas.
+            if ($HexBranch) { & git -C $d branch deadbeef 2>&1 | Out-Null }
             New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null
             $body = $LedgerBody.Replace('<<SHORT>>', $sha.Substring(0, 7)).
                                 Replace('<<FULL>>', $sha).
@@ -387,6 +424,29 @@ echo hi
         # off, so the split hit a leading space and returned an empty token, refusing a good row.
         $r = New-LedgerRepo -LedgerBody $script:PaddedBracketLedger
         (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+    }
+
+    It 'ignores a row quoted inside an HTML pre block' {
+        # Named in a census and never filed as a finding; MEASURED a false pass. Closed structurally by
+        # the contiguous-table-block rule rather than by adding <pre> to a blacklist.
+        $r = New-LedgerRepo -LedgerBody $script:PreBlockLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
+    }
+
+    It 'ignores a row in a lazy-continuation blockquote' {
+        # Same class, same census, also unfiled. A quoted row has no separator above it in its own block.
+        $r = New-LedgerRepo -LedgerBody $script:LazyQuoteLedger
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
+    }
+
+    It 'refuses a range endpoint that is a hex-named BRANCH rather than a sha' {
+        # git rev-parse resolves any ref. A branch named `deadbeef` pointing at HEAD authenticated a
+        # marker for a commit the ledger never recorded - a moving target validating a fixed claim.
+        # An abbreviated sha is always a prefix of its own full form; a ref name essentially never is.
+        $r = New-LedgerRepo -LedgerBody $script:HexBranchLedger -HexBranch
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Not -Match 'FOUND' -Because 'a branch name must not authenticate a marker'
+        $out | Should -Match 'unparsed=1' -Because 'the row is a candidate whose endpoint is unusable'
     }
 
     It 'never exits the calling shell - it is sourced, not executed' {
