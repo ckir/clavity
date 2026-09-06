@@ -240,9 +240,47 @@ refusing does not add a stranding case, it just refuses honestly instead of writ
 THE RANGE COLUMN POSITIONALLY.** *The fork was found by the peer, and the reversal was too — its round-2
 challenge that a per-row token is circular turned out to point at a design that is strictly cheaper.*
 
-**The rule, in one sentence:** for each line beginning with `|`, take **field 2**, strip backticks, take
-the first whitespace- or paren-delimited word, require it to match a hex range or bare sha, take the
-right-hand endpoint, resolve it through `git rev-parse`, and compare to the sha being marked.
+**The rule.** For each line beginning with `|`, take the **RANGE column — the second column a reader
+sees**, strip backticks, take its **first** whitespace- or paren-delimited token, require that token to
+match a hex range or bare sha, take the **right-hand endpoint**, resolve it through `git rev-parse` (with
+stderr suppressed), and compare to the sha being marked. Anything failing hex validation is skipped
+**before git is invoked**.
+
+🔴 **"THE SECOND COLUMN" IS NOT "FIELD 2", AND ROUND 4 CAUGHT THIS SPEC SAYING THE WRONG ONE.** Under a
+delimiter split — `awk -F'|'`, `cut -d'|'` — a leading `|` makes field 1 the **empty string before it**,
+so the reader's *first* column is `$2` and the RANGE is **`$3`**. The previous wording said "field 2",
+which a literal implementer would code as `$2` and get the **date**. Both consequences were measured:
+
+- **With dates as they are written today** (`2026-09-04`), `$2` fails hex validation, so **every row is
+  skipped and the gate refuses every marker write, permanently.** A gate that fails closed on all inputs
+  is not a gate; it is an outage.
+- **With a date written without hyphens** (`20260904`), the value is **pure hex** — MEASURED, it passes
+  the same validation a sha does — so if it resolved as a commit prefix the gate would confidently
+  authenticate a **date** as the audited endpoint.
+
+The measurement that produced the 42/42 figures used `$3`. **The numbers were right and the sentence
+describing them was wrong**, which is exactly the failure a spec hands to an implementer intact. The plan
+must state the column by NAME and the field index by MEASUREMENT, never by counting in prose.
+
+**The first token is canonical, and later tokens in the cell are prose the gate ignores — deliberately.**
+Round 4 proposed scanning every token in the cell so a second range could not be missed. **That fix is
+rejected on a measurement:** the range cells at `docs/agy-capstone-ledger.md:69-70` carry parenthetical
+prose containing *further* `..` ranges (`the folds this round produced run f9f2998..e60a…`), so scanning
+every token would let a fold commit mentioned in passing authenticate a marker — a weaker rerun of the
+C1 false pass this design exists to close. The finding is accepted as a documentation duty instead: **the
+canonical range is the cell's first token; a record needing two ranges needs two rows.**
+
+**Two invariants the parser depends on, now written down because round 4 found them unstated:**
+
+- **Every ledger table row begins with `|`.** GFM permits a row without leading and trailing pipes; such
+  a row renders correctly and is **invisible to the gate**. MEASURED: all 42 rows carry a leading pipe
+  today, so this is true now and unenforced — it belongs in the ledger's own format note and in the
+  linter.
+- **A row must look like a record, not merely contain a sha.** A minimal fragment such as `| | <sha> |`
+  appended anywhere would satisfy a parser that checks only for a leading pipe and a hex token. The gate
+  should require the row to carry the ledger's full column count. This does not make forgery impossible —
+  the spec has said from the start that a fabricated row passes — it keeps a forgery from being a
+  one-line fragment.
 
 ### Why this is safe, measured on the real ledgers rather than on a fixture
 
@@ -258,6 +296,15 @@ anomaly table's prose second column, and the three prose ranges (`SP-B agy-capst
 `agy-test-audit discipline`, `clavity-ls channel resilience`). They fail hex validation and are dropped
 **before git is ever invoked**, which is what makes this safe where ancestry was not: the objection that
 killed ancestry was feeding scraped prose to git, and hex-validating first removes exactly that.
+
+🔴 **ESCAPED AND EMBEDDED PIPES CANNOT REACH THE RANGE COLUMN, AND THE REASON IS STRUCTURAL — NOT, AS
+THIS SPEC PREVIOUSLY GUESSED, A PROPERTY OF TODAY'S DATA.** The driver put it to round 4 that the design's
+safety rested on escaped pipes happening to sit in field 5 rather than field 2, and invited the reviewer
+to disagree. It did, correctly: **a delimiter shifts only the indices of fields AFTER it**, and the range
+column precedes the evidence column that carries the prose. So no `\|` in evidence can move the range's
+index, whatever the data does later. The measurement stands (2 escaped pipes in the capstone ledger, 1 in
+the test-audit ledger, none in the first two columns, with a control showing the probe finds them in
+field 5) — but it is now corroboration, not the argument.
 
 🔴 **AND C1's FALSE PASS IS STRUCTURALLY UNREACHABLE, NOT MERELY UNLIKELY.** The fold-commit shas that
 would authenticate a bogus marker live in the **evidence** column, field 5. MEASURED with a presence
@@ -433,7 +480,30 @@ the fix that ruling produced, and the reversal removed a format change, a writer
 four-step migration from the plan — replaced by a parser measured at **42/42 endpoints resolvable, 0
 false positives, 21/21 non-sha values correctly skipped before git is called.**
 
-🔴 **ROUND 4 IS OWED.** The reversal is a new design and no panel has seen it. **This spec still has no
-GREEN, and no round has yet been clean.** Round 4 must rotate onto a seat none of the first three used —
-the palette is exhausted and both bespoke seats are spent, so it needs a third bespoke lens aimed at the
-parser itself.
+**AGY-AFTER round 4 — folded 2026-09-06.** Brief `.clavity/seams/panel-s27-r4.md`. Rotated onto a third
+bespoke seat, **Parser Adversary** — "what input makes this parser answer confidently and incorrectly" —
+plus Mechanism Gamer, Cascade Analyst, Axiom Breaker and Blindspot Auditor. Five findings; citations again
+verified mechanically, **`0 problem(s) across 5 row(s)`** against `bd629fb`. Envelope clean.
+
+- 🔴 **The round found the spec describing its own measurement wrongly.** "Field 2" under a delimiter
+  split is the DATE, not the range — `$1` is the empty string before a leading `|`. The measurement had
+  used `$3` and was right; the sentence was wrong, and a literal implementer would have built a gate that
+  **refuses every marker write, permanently.** Both failure modes measured, including that an unhyphenated
+  date is pure hex.
+- **One proposed fix was REJECTED on a measurement** — scanning every token in the range cell would let a
+  fold commit quoted in that cell's parenthetical prose authenticate a marker
+  (`agy-capstone-ledger.md:69-70` carry exactly that shape). The finding was accepted as a documentation
+  duty instead. **Third time this session a true finding arrived with a wrong fix.**
+- **Two unstated invariants are now written down:** every row begins with `|` (GFM does not require it,
+  and a row without one is invisible to the gate), and a row must carry the full column count so a
+  one-line fragment cannot authenticate a sha.
+- 🔴 **THE DRIVER'S OWN GUESS WAS WRONG AND THE PEER CORRECTED IT.** Asked where the design was weakest,
+  the driver proposed that escaped-pipe safety rested on today's data. It does not: a delimiter shifts
+  only *subsequent* field indices, and the range column precedes the prose column. That upgraded a
+  measured coincidence into a structural argument — the single best outcome available from a
+  "disagree with my guess" question.
+
+🔴 **ROUND 5 IS OWED. FOUR ROUNDS, NONE CLEAN, EVERY ONE BLOCKING.** Rounds 2, 3 and 4 each found their
+defect in the previous round's fold or its description. **This spec still has no GREEN.** The palette is
+exhausted and three bespoke seats are spent; round 5 needs a fourth, and the hard round cap of 6 is
+approaching — at that cap the owner decides continue-or-ship.
