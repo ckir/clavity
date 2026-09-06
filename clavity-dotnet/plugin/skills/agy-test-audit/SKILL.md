@@ -334,6 +334,12 @@ the brief in `.clavity/seams/`. `none` is not a permitted evidence value: a run 
 produced a brief, so cite it. This binds to the SAME completing verdicts as the paragraph above, both of
 them, for the same reason - gating only the clean verdict would leave the hole wide open.
 
+**WRITE THIS ROW BEFORE THE MARKER, NOT AFTER.** Since ROADMAP section 27 the marker writer
+`agy-mark.sh` **refuses** to write a completion marker whose sha the ledger does not already record.
+The ordering was always the convention; it is now a precondition, and reversing it makes the writer
+refuse a run that did everything else correctly. If you hit that refusal, the fix is to append the
+row and re-run the write - not to bypass the gate.
+
 **READ THAT FILE'S HEADER BEFORE YOU APPEND TO IT.** It carries two conventions that NOTHING validates:
 the newest row goes at the BOTTOM, and every `|` inside a cell must be escaped as `\|`. The evidence
 column invites shell commands and citations, so an unescaped pipe is the ordinary case, not an exotic

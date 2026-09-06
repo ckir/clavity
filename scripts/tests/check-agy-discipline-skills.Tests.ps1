@@ -918,6 +918,51 @@ SCHEMAS = {
             Remove-Item -Recurse -Force $scratch
         }
     }
+
+    Context 'the row-before-marker ordering (ROADMAP section 27)' {
+        # MECHANICAL, not a process promise. The incomplete fold is this repository's dominant defect
+        # class, and "edit the skill in both halves" is exactly the promise that gets kept in one half.
+        #
+        # THE ROSTER IS DISCOVERED, NEVER HARDCODED. A literal @('agy-capstone','agy-test-audit') array
+        # would be true only today: the next discipline to adopt a ledger goes unchecked until a human
+        # remembers to append it - the exact enumeration failure this test exists to eliminate,
+        # reintroduced one layer up. Discovery is also what makes this test agree with the GATE, which
+        # decides applicability the same way: by whether docs/<discipline>-ledger.md exists.
+        #
+        # PESTER 5 SCOPE, AND IT IS THE REASON FOR -ForEach. Variables assigned during DISCOVERY are not
+        # visible inside an It body, which runs in a later phase. MEASURED: a first draft read the
+        # discovery variables directly and all five rows failed - the roster counted 0 and every path
+        # resolved to '<repo>//plugin/skills//SKILL.md'. The data is handed to each row through
+        # -ForEach instead, the idiom the sibling suites already use (agy-mark.Tests.ps1:141), where a
+        # hashtable's keys bind as bare variables in the body.
+        $s27Repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $s27Owners = @(
+            Get-ChildItem -LiteralPath (Join-Path $s27Repo 'docs') -Filter '*-ledger.md' -File |
+                ForEach-Object { $_.BaseName -replace '-ledger$', '' }
+        )
+        $s27Rows = @(
+            foreach ($h in @('clavity-dotnet', 'clavity-classic')) {
+                foreach ($s in $s27Owners) { @{ Half = $h; Skill = $s } }
+            }
+        )
+
+        # A discovery that finds nothing would make every row below vacuous, so fail loudly instead.
+        It 'discovers at least one ledger-owning discipline' -ForEach @(@{ Found = $s27Owners.Count }) {
+            $Found | Should -BeGreaterThan 0
+        }
+
+        It '<Skill> in <Half> states that the ledger row precedes the marker write' -ForEach $s27Rows {
+            $p = Join-Path $script:RepoRoot "$Half/plugin/skills/$Skill/SKILL.md"
+            Test-Path -LiteralPath $p | Should -BeTrue
+            $text = Get-Content -LiteralPath $p -Raw
+            # Assert the BEHAVIOUR is stated, not one exact sentence: the row must be described as
+            # preceding the marker write, and the marker gate must be named as the reason. PowerShell's
+            # -Match is case-INSENSITIVE (-cmatch is the case-sensitive one). Both needles must sit on
+            # ONE line for the second pattern to hold.
+            $text | Should -Match 'BEFORE THE MARKER'
+            $text | Should -Match 'agy-mark\.sh[^\r\n]*refuses'
+        }
+    }
 }
 
 Describe 'AGY-SCOPE disposition taxonomy' {

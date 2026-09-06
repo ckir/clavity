@@ -83,25 +83,34 @@ Add to `scripts/tests/check-agy-discipline-skills.Tests.ps1`, inside the existin
             Get-ChildItem -LiteralPath (Join-Path $repo 'docs') -Filter '*-ledger.md' -File |
                 ForEach-Object { $_.BaseName -replace '-ledger$', '' }
         )
-        # A discovery that finds nothing would make every row below vacuous, so fail loudly instead.
-        It 'discovers at least one ledger-owning discipline' {
-            $ledgerOwners.Count | Should -BeGreaterThan 0
-        }
-        foreach ($half in @('clavity-dotnet', 'clavity-classic')) {
-            foreach ($skill in $ledgerOwners) {
-                It "$skill in $half states that the ledger row precedes the marker write" {
-                    $p = Join-Path $script:RepoRoot "$half/plugin/skills/$skill/SKILL.md"
-                    Test-Path -LiteralPath $p | Should -BeTrue
-                    $text = Get-Content -LiteralPath $p -Raw
-                    # Assert the BEHAVIOUR is stated, not one exact sentence: the row must be described
-                    # as preceding the marker write, and the marker gate must be named as the reason.
-                    # PowerShell's -Match is case-INSENSITIVE (-cmatch is the case-sensitive one), so
-                    # these match the uppercase heading in Step 4's paragraph. Both needles must sit on
-                    # ONE line for the second pattern to hold - Step 4's text is written that way.
-                    $text | Should -Match 'BEFORE THE MARKER'
-                    $text | Should -Match 'agy-mark\.sh[^\r\n]*refuses'
-                }
+        # 🔴 PESTER 5 SCOPE, AND IT IS THE REASON FOR -ForEach. Variables assigned during DISCOVERY are
+        # NOT visible inside an It body, which runs in a later phase. MEASURED during execution: a draft
+        # that read the discovery variables directly inside the It failed all five rows - the roster
+        # counted 0 and every path resolved to '<repo>//plugin/skills//SKILL.md'. Hand the data to each
+        # row through -ForEach, the idiom the sibling suites already use (agy-mark.Tests.ps1:141), where
+        # a hashtable's keys bind as bare variables in the body.
+        $s27Rows = @(
+            foreach ($h in @('clavity-dotnet', 'clavity-classic')) {
+                foreach ($s in $ledgerOwners) { @{ Half = $h; Skill = $s } }
             }
+        )
+
+        # A discovery that finds nothing would make every row below vacuous, so fail loudly instead.
+        It 'discovers at least one ledger-owning discipline' -ForEach @(@{ Found = $ledgerOwners.Count }) {
+            $Found | Should -BeGreaterThan 0
+        }
+
+        It '<Skill> in <Half> states that the ledger row precedes the marker write' -ForEach $s27Rows {
+            $p = Join-Path $script:RepoRoot "$Half/plugin/skills/$Skill/SKILL.md"
+            Test-Path -LiteralPath $p | Should -BeTrue
+            $text = Get-Content -LiteralPath $p -Raw
+            # Assert the BEHAVIOUR is stated, not one exact sentence: the row must be described
+            # as preceding the marker write, and the marker gate must be named as the reason.
+            # PowerShell's -Match is case-INSENSITIVE (-cmatch is the case-sensitive one), so
+            # these match the uppercase heading in Step 4's paragraph. Both needles must sit on
+            # ONE line for the second pattern to hold - Step 4's text is written that way.
+            $text | Should -Match 'BEFORE THE MARKER'
+            $text | Should -Match 'agy-mark\.sh[^\r\n]*refuses'
         }
     }
 ```
@@ -116,18 +125,33 @@ Expected: **FAIL**, 4 new tests red with `Expected regular expression 'BEFORE th
 
 - [ ] **Step 4: Add the ordering paragraph to all four skill files**
 
-In **each** of the four `SKILL.md` files, immediately after the existing ledger-row bullet (`agy-capstone/SKILL.md:375`, `agy-test-audit/SKILL.md:331`), insert this paragraph **verbatim and identically**:
+🔴 **EVERY SHIPPED `SKILL.md` IS ASCII-ONLY, AND THE LINTER ENFORCES IT.**
+`scripts/check-agy-discipline-skills.ps1:130` fails with `contains N non-ASCII char(s)`. MEASURED during
+execution: a first draft of this paragraph used a red-circle emoji and a `§` sign — **3 non-ASCII
+characters per file** (the emoji is a surrogate PAIR, counting 2) — and reddened **5 pre-existing rows**
+in a suite whose own new rows were all green. **Write no emoji, no `§`, no en dash, no curly quote.** The
+rest of this plan uses those characters freely in its prose; the SKILL.md text is the one place they are
+forbidden.
+
+In **each** of the four `SKILL.md` files, immediately after the existing ledger-row bullet
+(`agy-capstone/SKILL.md:375`, `agy-test-audit/SKILL.md:331`), insert this paragraph **verbatim and
+identically**. Indent it two spaces in `agy-capstone` (it continues a bullet) and flush-left in
+`agy-test-audit` (it follows a paragraph):
 
 ```markdown
-  🔴 **WRITE THIS ROW BEFORE THE MARKER, NOT AFTER.** Since ROADMAP §27 the marker writer
-  `agy-mark.sh` **refuses** to write a completion marker whose sha the ledger does not already record.
-  The ordering was always the convention; it is now a precondition, and reversing it makes the writer
-  refuse a run that did everything else correctly. If you hit that refusal, the fix is to append the
-  row and re-run the write — not to bypass the gate.
+**WRITE THIS ROW BEFORE THE MARKER, NOT AFTER.** Since ROADMAP section 27 the marker writer
+`agy-mark.sh` **refuses** to write a completion marker whose sha the ledger does not already record.
+The ordering was always the convention; it is now a precondition, and reversing it makes the writer
+refuse a run that did everything else correctly. If you hit that refusal, the fix is to append the
+row and re-run the write - not to bypass the gate.
 ```
 
 ⚠ **The two halves must be byte-identical.** Write the text once and copy the file, or run
 `scripts/check-seed-artifacts-synced.sh` (Step 6) until it is silent.
+
+⚠ **These files have MIXED line endings** — measured, `agy-test-audit/SKILL.md` has CRLF at the anchor
+while the capstone anchor is LF. A scripted insert that hardcodes `\n` silently matches nothing in one
+file and succeeds in the other. Detect the terminator that follows the anchor and reuse it.
 
 - [ ] **Step 5: Run the test to verify it passes**
 

@@ -377,6 +377,11 @@ something it no longer holds). Ledger entries are plain factual findings, not yo
   or the review transcript). `none` is not a permitted evidence value - a clean first round still
   produces a transcript, so cite it. Without this row a green capstone is indistinguishable from one
   that never ran, which is precisely the gap this ledger exists to close.
+  **WRITE THIS ROW BEFORE THE MARKER, NOT AFTER.** Since ROADMAP section 27 the marker writer
+  `agy-mark.sh` **refuses** to write a completion marker whose sha the ledger does not already record.
+  The ordering was always the convention; it is now a precondition, and reversing it makes the writer
+  refuse a run that did everything else correctly. If you hit that refusal, the fix is to append the
+  row and re-run the write - not to bypass the gate.
 - **Override re-entry.** If the human rejects a proposed GREEN or names an unaddressed defect, **re-enter
   capstone rounds on that defect** rather than closing the book. A human "continue" / re-entry answer
   AUTHORIZES that ordered work; the cap does NOT re-halt inside the authorized extension. The
