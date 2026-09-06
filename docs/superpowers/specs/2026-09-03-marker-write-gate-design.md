@@ -248,15 +248,32 @@ does "no table walking, no column counting", which — read literally, and it is
 would then authenticate a marker exactly as a bare sha does today. **The resolution is that the token is
 positional at the LINE level, which needs no table semantics at all:**
 
-- **Shape:** `<!-- agy-mark: <discipline> <40-hex-sha> -->`, occupying **its own physical line**,
-  immediately beneath the ledger row it belongs to.
-- **How the gate finds it:** a **line-anchored** match — the line must BEGIN with `<!-- agy-mark: `.
-  Nothing else in the file is read.
-- 🔴 **WHY THE ANCHOR CLOSES THE BYPASS, and this is a structural property rather than a convention:**
-  a markdown table row is **one physical line**, so a table cell cannot contain a line break. A line that
-  *begins* with the token literal is therefore, by construction, **not inside any cell** — the prose
-  columns that made a bare `grep` false-pass cannot host a token at all. C1 and F7 stop contradicting
-  each other because "positional" is satisfied by the line boundary, not by parsing the table.
+🔴 **ROUND 3 KILLED THE FIRST VERSION OF THIS FORMAT BY MEASUREMENT, AND THE REPLACEMENT IS BELOW.**
+The draft above placed the token on **its own physical line** beneath its row. Two independent defects,
+both confirmed:
+
+- **It destroys the table it annotates.** MEASURED 2026-09-06 with `mdcat` and BOTH controls: a clean
+  3-row table renders whole; the same table with a blank line between rows truncates after row 1 with the
+  remainder falling out as raw text (the failing control, proving the probe can see breakage); and **the
+  HTML-comment-between-rows case renders identically to the blank-line case.** An HTML comment is a
+  block-level construct, so it terminates the table exactly as a blank line does.
+- **It does not close the bypass it claimed to close.** The line anchor keeps a token out of a table
+  *cell*, but the ledgers are mostly free prose — a token on its own line inside an evidence paragraph or
+  a heading section matches just as well. The claim that the anchor was "structural" was wrong.
+
+**The format, corrected — and measured before being written down this time:**
+
+- **Shape:** the token is an HTML comment occupying a **dedicated leading CELL** of the ledger row:
+  `| <!-- agy-mark: <discipline> <40-hex-sha> --> | date | range | … |`.
+- **How the gate finds it:** the line must begin with `|`; the gate takes **field 1** and matches the
+  token pattern there. Field 1 and nowhere else.
+- 🔴 **WHY THIS IS BOTH POSITIONAL AND UNSPOOFABLE, measured rather than argued.** The table renders
+  **intact** — all rows, one table — and the token is **invisible**, `grep -c agy-mark` over the rendered
+  output returning **0**. Positional means *field 1 of a pipe-anchored line*, which is column counting,
+  and column counting was never what C1 forbade — **C1 forbids SEARCHING**. And a spoof can no longer
+  hide: to be read it must be field 1 of a line beginning with `|`, which **is** a table row, so a forged
+  token renders as a visible extra row in the ledger rather than as invisible prose. The bypass moves
+  from "paste a string in a comment" to "add a fake row to a table people read".
 - **40 characters, and written by a tool, never by hand.** Round 2 argued that exact matching against the
   40-char sha `head` receives would force humans to hand-write 40-char shas. That does not follow — a
   token is validated hex, so unlike C1's prose cells it is safe to expand through git. **The spec chooses
@@ -287,21 +304,37 @@ rather than between an agent and a linter.
 lines in code that exists. The BUILD remains the owner's to schedule; §26 (the footprint analyzer) is
 also spec-written and unbuilt, and the owner sequences the two.
 
-**What the plan must carry, derived from the rulings rather than restated from them:**
+**What the plan must carry, derived from the rulings rather than restated from them. 🔴 THE ORDER BELOW
+IS LOAD-BEARING — round 3 found that the obvious order breaks the repository partway through.**
 
-1. **A ledger format change lands first** (F7's token), in both ledgers, with its own gate — a row
-   without a token is invisible to the marker gate, so nothing must be able to add an untokened row
-   silently.
-2. **A new sourced helper** (F4) beside `agy-shield-lib.sh`, plus its Pester suite, its `_partition.md`
+1. **The ledger format lands first** (F7's token cell), in both ledgers, together with the writer that
+   emits it and its format linter.
+   🔴 **THE LINTER MUST BE DIFF-SCOPED, NOT A STATIC FILE SCAN.** Round 3 caught this: pre-existing rows
+   carry no token and are never retrofitted, so a linter that scans the whole file fails on every
+   historical row the moment it lands — it would break the build on arrival. It must check only rows
+   **added in the range under test**. That pattern already exists in this repository:
+   `scripts/check-capstone-new-code.ps1:13` takes a mandatory `-BaseRef` for exactly this reason.
+2. **The discipline skills learn the ordering — row before marker (C9) — and the token.** 🔴 **THIS MUST
+   LAND BEFORE THE GATE, and round 3 is why.** A gate that arrives first refuses every agent still
+   following the old, unspecified ordering, so the repository would spend the gap actively breaking
+   compliant runs. Prose landing early is harmless; the gate landing early is not. Both plugin halves, a
+   `writing-skills` change, twin mirrored in the same commit.
+3. **A new sourced helper** (F4) beside `agy-shield-lib.sh`, plus its Pester suite, its `_partition.md`
    row, and its `justfile`/CI registration. **That registration is an explicit list, not a glob** — the
    orphaned-test class of §36.
-3. **The `head` arm gains the gate and the F6 override flag**, mirrored byte-identically into
+4. **The `head` arm gains the gate and the F6 override flag, LAST**, mirrored byte-identically into
    `clavity-classic/plugin/hooks/` in the SAME commit (C5), with `check-seed-artifacts-synced.sh` green.
-4. **C9's ordering becomes explicit in the discipline skills** — row before marker — in both plugin
-   halves, which is a `writing-skills` change and needs the twin mirrored in the same commit.
+   **The refusal message must distinguish its two causes** — no row at all, versus a row present whose
+   token is absent or does not match. Round 3's Blindspot seat noted that "write the row" is a misleading
+   diagnostic for an operator looking straight at the row they just wrote.
 5. **C8's collision is resolved in the same plan, not after it:**
    `docs/backlog/agy-mark-accepts-a-nonexistent-sha.md` proposes a `git cat-file -e` check on these same
    three lines and asks the same out-of-repository question. Either fold it in or record why it waits.
+
+**The stopping-point test, which is what makes the order above more than a preference:** asked which
+single landing would leave the repository *worse than never having started*, round 3 named the gate
+arriving before the skills — the state where the mechanism is live and nothing has taught anyone to
+satisfy it. Every step above is safe to stop after, in this order.
 
 ## Stand-downs
 
@@ -387,5 +420,24 @@ Activation Auditor. Five findings, four self-classed BLOCKING. Envelope clean.
 - **The split-brain the Consumer Coherence seat named is NOT fully closed**, and the spec says so rather
   than claiming otherwise: the linter proves pairing, not agreement between token and prose.
 
-🔴 **ROUND 3 IS OWED, AND ONE ITEM NEEDS THE OWNER FIRST.** Round 2 challenged F7 itself as circular —
-a ruled decision the driver may not reopen. **This spec still has no GREEN.**
+**AGY-AFTER round 3 — folded 2026-09-06.** Brief `.clavity/seams/panel-s27-r3.md`. Rotated onto a second
+bespoke seat, **Migration Auditor** — "what does the transition break, and what is left half-migrated if
+it stops partway" — the palette having been exhausted; plus Axiom Breaker, Boundary Smuggler, State
+Corruptor and Blindspot Auditor. Five findings, four BLOCKING. Citations again verified mechanically:
+**`0 problem(s) across 5 row(s)`** against `9ebcdf5`. Envelope clean.
+
+🔴 **ROUND 3 KILLED ROUND 2's FIX.** The token-on-its-own-line format was confirmed dead by measurement —
+it breaks the markdown table, and its "structural" anti-spoof property was false because the ledgers are
+mostly prose. Replaced by a token CELL, measured intact and invisible before being written down. **Two
+rounds in a row found their defect in the previous round's fold**, which is the pattern the capstone
+discipline records as normal rather than alarming.
+
+- **The migration itself had never been reviewed, and it broke twice.** A static format linter would fail
+  on all historical rows the day it lands; the gate landing before the skills would refuse compliant
+  agents. Both folded into an explicit, load-bearing landing order.
+- **The refusal message must distinguish "no row" from "row with a bad token"** — otherwise the operator
+  debugs the wrong component while looking at the row they just wrote.
+
+🔴 **ROUND 4 IS OWED, AND ONE ITEM STILL NEEDS THE OWNER.** Round 2's challenge to F7-as-circular is a
+ruled decision the driver may not reopen; it is with the owner. **This spec still has no GREEN, and no
+round has yet been clean.**
