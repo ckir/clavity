@@ -594,4 +594,90 @@ Describe 'agy-mark.sh' {
                 Should -Be 1 -Because 'a DIFFERENT session id must not be debounced - that is what proves the key is the forwarded value and not a constant'
         }
     }
+
+    Context 'the ROADMAP section 27 ledger gate' {
+        # THE FIXTURE MUST CARRY A LEDGER. Every other fixture in this file is New-MarkFixture with no
+        # docs/ directory, which means NO-LEDGER, which means the gate does not apply - a row written
+        # against one of those would pass no matter what the gate does. That inertness is also why every
+        # PRE-EXISTING row in this suite is unaffected by the gate: measured, they still pass unchanged.
+        BeforeAll {
+            function New-GatedFixture {
+                param([switch]$WithRow, [string]$Discipline = 'agy-capstone')
+                $d = New-MarkFixture
+                $sha = (& git -C $d rev-parse HEAD).Trim()
+                New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null
+                $row = if ($WithRow) { "| 2026-09-06 | ``aaaaaaa..$($sha.Substring(0,7))`` | 1 | GREEN | e |" } else { '' }
+                $body = "# ledger`n`n| date | range | rounds | verdict | evidence |`n|------|-------|--------|---------|----------|`n$row`n"
+                [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), $body)
+                [pscustomobject]@{ Dir = $d; Sha = $sha }
+            }
+        }
+
+        It 'REFUSES the marker write when the ledger has no row for the sha' {
+            $f = New-GatedFixture
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'REFUSED'
+            Test-Path -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/agy-capstone.head') | Should -BeFalse
+        }
+
+        It 'WRITES the marker when the ledger records the sha' {
+            $f = New-GatedFixture -WithRow
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
+            $r.ExitCode | Should -Be 0
+            (Get-Content -Raw -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/agy-capstone.head')) | Should -Be $f.Sha
+        }
+
+        It 'the refusal names BOTH the fix and the escape' {
+            # C3 is not satisfiable by failing closed alone: the operator hitting this is mid-discipline,
+            # so the message must say what to do AND how to get past it. A refusal that names neither is
+            # the "fail stuck" half of the constraint.
+            $f = New-GatedFixture
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
+            $r.Err | Should -Match 'docs/agy-capstone-ledger\.md'
+            $r.Err | Should -Match '--gate-override'
+        }
+
+        It '--gate-override writes the marker AND a GATE-OVERRIDE audit line' {
+            $f = New-GatedFixture
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha, '--gate-override')
+            $r.ExitCode | Should -Be 0
+            (Get-Content -Raw -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/agy-capstone.head')) | Should -Be $f.Sha
+            $log = Get-Content -Raw -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/skipped.log')
+            $log | Should -Match 'GATE-OVERRIDE'
+            # NEVER 'WAIVED'. agy-mark.sh:91-93 records that skipped.log is READ for WAIVED lines to
+            # decide whether a capstone was waived inside a range, so reusing that token here would
+            # manufacture an attestation nobody made.
+            $log | Should -Not -Match 'WAIVED'
+        }
+
+        It 'is INERT in a repository that owns no such ledger' {
+            $f = New-GatedFixture
+            Remove-Item -LiteralPath (Join-Path $f.Dir 'docs/agy-capstone-ledger.md') -Force
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
+            $r.ExitCode | Should -Be 0
+            # ASSERT THE MARKER REACHED DISK, not merely that the process exited 0. A gate that silently
+            # exited 0 without writing anything would pass an exit-code-only row while the behaviour the
+            # row names is broken.
+            (Get-Content -Raw -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/agy-capstone.head')) | Should -Be $f.Sha
+        }
+
+        # NO ROW ASSERTS THE OVERRIDE'S OWN agy_shield CALL, AND ITS ABSENCE IS DELIBERATE.
+        # A row was written for it and then DELETED, because a mutant proved it vacuous: removing
+        # the shield call from the override branch left this suite at 43/0. The reason is in
+        # agy-mark.sh - the head arm's own agy_shield runs a few lines later, before the marker
+        # write, so the END STATE is shielded either way and a black-box row cannot see the
+        # transient window in between. The call is kept for that window; the claim that it is
+        # load-bearing was the driver's, and measurement refuted it. A row that passes with and
+        # without the code it names is worse than no row.
+
+        It 'is INERT for a discipline that owns no ledger, even where other ledgers exist' {
+            $f = New-GatedFixture -WithRow
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-first', $f.Sha)
+            $r.ExitCode | Should -Be 0
+            # NOTE the filename: this row marks agy-first, so the marker is agy-first.head. Asserting
+            # agy-capstone.head here would fail for the wrong reason and read as a gate defect.
+            (Get-Content -Raw -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/agy-first.head')) | Should -Be $f.Sha
+        }
+    }
 }

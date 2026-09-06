@@ -186,14 +186,69 @@ _lib="$(dirname "$0")/agy-shield-lib.sh"
 . "$_lib" 2>/dev/null || _die_refuse "shield helper could not be sourced: [$_lib]"
 command -v agy_shield >/dev/null 2>&1 || _die_refuse "shield helper loaded but agy_shield is not defined: [$_lib]"
 
+# Load the ledger reader. Same contract as the shield helper: sourced, never executed, and its answer is
+# an advisory STRING rather than an exit code. ROADMAP section 27.
+_ledger_lib="$(dirname "$0")/agy-ledger-lib.sh"
+[ -f "$_ledger_lib" ] || _die_refuse "ledger helper not found beside this script: [$_ledger_lib]"
+# shellcheck source=agy-ledger-lib.sh
+. "$_ledger_lib" 2>/dev/null || _die_refuse "ledger helper could not be sourced: [$_ledger_lib]"
+command -v agy_ledger_lookup >/dev/null 2>&1 || _die_refuse "ledger helper loaded but agy_ledger_lookup is not defined: [$_ledger_lib]"
+
 _key=${AGY_SESSION_ID:-}
 
 case "$mode" in
     head)
-        discipline=${2:-}; sha=${3:-}
+        discipline=${2:-}; sha=${3:-}; _gate_override=${4:-}
         _check_discipline "$discipline"
         [ -n "$sha" ] || _die_refuse 'head requires a sha argument'
         _check_sha "$sha"
+        # ROADMAP section 27: a completion marker may not advance past a ledger that does not record it.
+        # THE GATE IS INERT WHERE NO SUCH LEDGER EXISTS - which is every repository but clavity's own,
+        # since this file ships in a plugin. NO-LEDGER is the overwhelmingly common answer in the wild,
+        # and it is also what keeps this script git-optional: no git root means no ledger to find.
+        _gate=$(agy_ledger_lookup "$root" "$discipline" "$sha")
+        case "$_gate" in
+            NO-LEDGER|FOUND) : ;;
+            *)
+                if [ "$_gate_override" = '--gate-override' ]; then
+                    # AUDIT FIRST, WRITE SECOND. An override nobody can see is the silent bypass this
+                    # gate exists to prevent, so a failure to record it refuses the write. That costs
+                    # nothing: skipped.log and the marker live in the SAME directory, so a filesystem
+                    # that rejects one rejects the other and the operator was already blocked.
+                    # THE TOKEN IS 'GATE-OVERRIDE', NEVER 'WAIVED' - see the note at :91-93, where
+                    # skipped.log is READ for WAIVED lines to decide whether a capstone was waived
+                    # inside a range. Reusing that token would manufacture an attestation nobody made.
+                    #
+                    # ASSERT THE SHIELD BEFORE THIS WRITE. Stage A2 asserts that .clavity/.gitignore
+                    # contains `*`, and this repository is PUBLIC.
+                    #
+                    # BE PRECISE ABOUT WHAT THIS DOES, BECAUSE A MUTANT MEASURED THE HONEST ANSWER. The
+                    # driver first wrote this believing an override in a fresh clone would leave shas in
+                    # a committable directory, by analogy with the `stamp` arm - where capstone R7 stood
+                    # the same concern down and was measured WRONG. The analogy does not hold. `stamp`
+                    # has no later shield call, so its window was PERMANENT; this arm's own
+                    # `agy_shield "$root" "$rel"` runs a few lines below, before the marker write, and
+                    # shields `.clavity/` whatever happens here. MEASURED: deleting this line leaves the
+                    # suite at 43/0 - the END STATE is identical with or without it.
+                    #
+                    # It is kept because the window it closes is real even though it is narrow: between
+                    # the append below and that later call, an interrupted process would leave
+                    # `.clavity/` unshielded with shas already in it. One line for a transient exposure
+                    # on a public repo. It is NOT load-bearing for the end state, and no test asserts
+                    # that it is - a black-box row cannot see a window that closes before the process
+                    # exits, and a row that passes either way would be worse than no row.
+                    agy_shield "$root" ".clavity/agy-marks/skipped.log" "$_key"
+                    mkdir -p "$root/.clavity/agy-marks" 2>/dev/null || _die_refuse 'could not create .clavity/agy-marks'
+                    printf -v _go_ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null || _go_ts=$(TZ=UTC date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
+                    [ -n "$_go_ts" ] || _go_ts=unknown
+                    printf '%s  %s  GATE-OVERRIDE  HEAD=%s  %s\n' "$_go_ts" "$discipline" "$sha" "$_gate" \
+                        >> "$root/.clavity/agy-marks/skipped.log" 2>/dev/null \
+                        || _die_refuse 'GATE-OVERRIDE could not be recorded, so the marker was NOT written'
+                else
+                    _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). Append the row for this run FIRST, then write the marker. If the ledger itself is unparseable and you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                fi
+                ;;
+        esac
         rel=".clavity/agy-marks/$discipline.head"
         agy_shield "$root" "$rel" "$_key"
         # EVERY mode creates the directory it writes into. The helper's Stage A1 creates .clavity/ and
