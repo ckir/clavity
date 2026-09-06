@@ -228,6 +228,16 @@ flag a human can pass, an agent can pass. The ruling is therefore implemented as
 a recorded act rather than a silent one. That converts the residual hole from invisible to visible, which
 is the same trade the whole gate is built on.
 
+🔴 **THE OVERRIDE'S STATUS TOKEN MUST BE NEW, AND REUSING `WAIVED` WOULD FORGE AN ATTESTATION.** Round 5
+caught that the spec said "naming the override, exactly as the existing waivers do" without saying which
+`<status>` token goes in the record — leaving the implementer to invent a contract. The obvious guess is
+the dangerous one: `agy-mark.sh:91-93` records that **`skipped.log` is READ** — *"the ledger convention
+corrected in `c5477ad` reads this file to decide whether a capstone was waived inside a given range, by
+looking for a WAIVED line whose HEAD is in that range"*. A marker-gate override logged as `WAIVED` would
+therefore manufacture a capstone-waiver attestation that nobody made. **The token is a distinct
+`GATE-OVERRIDE`**, which is consistent with the varied tokens the file already carries
+(`BREACH-REVERTED`, `CORRECTION`, `UNVERIFIED-ACCEPTED`, `PEER-ARM-UNREACHABLE`).
+
 **If that audit line cannot be written, the override REFUSES** — round 2 caught that the override's own
 logger had no error path, and that either answer looked bad: failing open makes the override silent
 (defeating the auditability the ruling rests on), failing closed appears to strand the operator C3
@@ -359,7 +369,37 @@ IS LOAD-BEARING — round 3 found that the obvious order breaks the repository p
    **The refusal message must distinguish its two causes** — no row for this sha at all, versus a row
    whose range column could not be parsed or resolved. Round 3's Blindspot seat noted that "write the
    row" is a misleading diagnostic for an operator looking straight at the row they just wrote.
-4. **C8's collision is resolved in the same plan, not after it:**
+   🔴 **ROUND 5 ARGUED THIS IS MECHANICALLY IMPOSSIBLE, AND IT IS — UNDER THE RULE AS THE SPEC STATED IT.**
+   A row skipped by hex validation is indistinguishable from a separator, so a gate that only skips
+   cannot report what it skipped. **The mechanism it needs was already required one step earlier and the
+   spec simply never connected them:** round 4's row-shape rule (a row must carry the ledger's full column
+   count) is exactly what separates a MALFORMED RECORD from a separator or a prose line. So the
+   classification is: a line with the full column count whose range token fails to parse or resolve is a
+   **malformed record** and is REPORTED; anything else is **not a record** and is skipped silently.
+   Without that connection the requirement really would be unmeetable, which is what the round found.
+4. 🔴 **THE DOCUMENTS AND TESTS THIS CHANGE MAKES STALE — round 5's whole subject, and the class this
+   repository loses most work to.** None of these were in the blast radius before:
+   - **`docs/agy-disciplines-marker-contract.md`** declares itself at `:3` the *"Single source of truth
+     for the debounce marker"*, and `:55` states the skill writes the marker **"only at that discipline's
+     terminal state"**. That stays true and stops being *sufficient*: after the gate, a terminal state is
+     necessary and a ledger row is also required. A document that calls itself the single source of truth
+     and omits a refusal condition is the False Safety Promise shape this spec already names elsewhere.
+     ⚠ It also records at `:56` that `agy-first` writes a marker — and `agy-first` owns **no ledger**, so
+     under F1/F5 the gate correctly does not apply to it. That consistency must survive the edit.
+   - **`scripts/tests/agy-mark.Tests.ps1`** was never named in this plan. The `head` arm gains a refusal
+     path and an override flag; both need rows there, not only in the new helper's suite.
+     ✅ **The EXISTING rows survive unchanged, and that is a measured consequence of F1/F5:** the suite
+     builds its fixture as a temp directory with a `.clavity/` and **no `docs/`**, so no ledger exists, so
+     the gate does not apply and every current row still passes.
+     🔴 **The corollary is the vacuity trap: the NEW rows must CREATE a ledger in the fixture**, or they
+     exercise the not-applicable path and prove nothing while looking green. Every new row is
+     mutant-proven with the ledger present.
+   - **`agy-mark.sh:57`'s own header comment** says a refusal means *"this script's own caller is
+     malformed"* and that both failures are *"terminally fatal with no programmatic recovery"*. After
+     this change a refusal can also mean the ledger lacks a row, and the F6 flag **is** a programmatic
+     recovery. The comment is load-bearing documentation in a file whose header is explicitly "the entire
+     contract" — it must be edited in the same commit.
+5. **C8's collision is resolved in the same plan, not after it:**
    `docs/backlog/agy-mark-accepts-a-nonexistent-sha.md` proposes a `git cat-file -e` check on these same
    three lines and asks the same out-of-repository question. Either fold it in or record why it waits.
 
@@ -503,7 +543,24 @@ verified mechanically, **`0 problem(s) across 5 row(s)`** against `bd629fb`. Env
   measured coincidence into a structural argument — the single best outcome available from a
   "disagree with my guess" question.
 
-🔴 **ROUND 5 IS OWED. FOUR ROUNDS, NONE CLEAN, EVERY ONE BLOCKING.** Rounds 2, 3 and 4 each found their
-defect in the previous round's fold or its description. **This spec still has no GREEN.** The palette is
-exhausted and three bespoke seats are spent; round 5 needs a fourth, and the hard round cap of 6 is
-approaching — at that cap the owner decides continue-or-ship.
+**AGY-AFTER round 5 — folded 2026-09-06.** Brief `.clavity/seams/panel-s27-r5.md`. Rotated onto a fourth
+bespoke seat, **Obligation Auditor** — "what else does shipping this oblige, that nobody has written
+down" — plus Literal Implementer, Protocol Pedant and Blindspot Auditor. Four findings; citations
+verified mechanically, **`0 problem(s) across 4 row(s)`** against `efa398d`. Envelope clean.
+
+- **The round's subject was this repository's dominant defect class, and it found three unlisted
+  obligations** — the marker contract, `agy-mark.Tests.ps1`, and `agy-mark.sh`'s own header comment.
+  All three are now in the plan list.
+- 🔴 **One MATERIAL finding turned out to be worse than the round argued.** It said the override's
+  `skipped.log` status token was undefined. Measured, the obvious guess is actively unsafe:
+  `agy-mark.sh:91-93` records that the file **is read** for `WAIVED` lines to decide whether a capstone
+  was waived in a range, so logging the override as `WAIVED` would forge an attestation. The token is
+  `GATE-OVERRIDE`.
+- **One BLOCKING finding was true against the spec and dissolved on connection rather than on argument.**
+  The two-cause refusal message *is* impossible under a rule that only skips — but round 4's row-shape
+  requirement already supplies the distinction, and the spec had simply never joined them.
+
+🔴 **FIVE ROUNDS. NONE CLEAN. EVERY ONE BLOCKING.** Rounds 2, 3 and 4 each found their defect in the
+previous round's fold or its description; round 5 found what the folds did not say. **This spec has no
+GREEN.** The next round is the discipline's **hard cap of 6**, at which the driver must halt and ask the
+owner *continue or ship* — that is not the driver's call to make.
