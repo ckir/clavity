@@ -713,6 +713,12 @@ agy-shield-lib.Tests.ps1                        409,1s   45 tests   <- SLOW, NEW
                                                                       machine the agent is working on. The 409,1s
                                                                       is the last figure measured under the stated
                                                                       conditions and is now one row short.
+agy-ledger-lib.Tests.ps1                        105,0s   10 tests   <- SLOW, NEW 2026-09-06. ROADMAP
+                                                                      section 27: the ledger reader behind the
+                                                                      marker-write gate. Fixture-heavy like its
+                                                                      agy-shield-lib sibling - every row builds a
+                                                                      throwaway git repo with TWO commits and
+                                                                      spawns bash, so ~7-20s per row.
 agy-test-audit-reminder.Tests.ps1                50,8s   24 tests   <- SLOW, re-measured 2026-08-06 (+4)
 assertion-strength-reminder.Tests.ps1            54,9s   37 tests   <- SLOW as of 2026-08-25; was FAST, measured 2026-08-12 with the driver
                                                                       resident - the same CPU runs the
