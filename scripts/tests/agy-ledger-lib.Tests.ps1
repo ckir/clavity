@@ -257,6 +257,29 @@ echo hi
 |---|---|---|---|---|
 | 06-09-2026 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | e |
 '@
+        # CAPSTONE ROUND 8. CommonMark allows a block to be indented 0-3 spaces. The bare ^| anchor
+        # rejected such a row, and worse, RESET the block - so ONE stray space hid every row BELOW it.
+        # The target sha is in the LAST row here, so this fixture fails if the indented row poisons
+        # what follows, which is the half that made it severe rather than merely annoying.
+        $script:IndentedRowLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+  | 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+| 2026-09-06 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | e |
+'@
+        # FOUR spaces is an indented CODE BLOCK, not a row. This is the boundary the fix must NOT
+        # cross: without it, widening the anchor would swallow quoted rows in indented code.
+        $script:CodeIndentLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|---|---|---|---|---|
+| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
+
+    | 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+'@
         # CAPSTONE ROUND 4. A FENCE INTERRUPTING A LIVE TABLE. The fence rule runs BEFORE the block rule
         # and ends in `next`, which jumped straight over the block reset - so an authorised table was
         # carried ACROSS the fence and the orphan pipe-line below it answered FOUND, though markdown
@@ -581,6 +604,23 @@ illustrative
         $out | Should -Not -Match 'FOUND' -Because 'a malformed date is not a valid record'
         $out | Should -Match 'unparsed=1' -Because 'the row must be COUNTED, not silently skipped'
         $out | Should -Not -Match 'lines=-' -Because 'the answer must NAME the offending line'
+    }
+
+    It 'reads a row indented up to three spaces, and does not let it hide later rows' {
+        # The target is the row AFTER the indented one, so this reds if the indented row still
+        # terminates the block - the poisoning half of the round-8 defect.
+        $r = New-LedgerRepo -LedgerBody $script:IndentedRowLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'FOUND' -Because '0-3 spaces of indentation is still a table row'
+    }
+
+    It 'still ignores a row indented FOUR spaces, which is a code block' {
+        # The success-path counterpart. Without it the row above could pass by widening the anchor to
+        # any indentation at all, which would swallow quoted rows sitting in indented code.
+        $r = New-LedgerRepo -LedgerBody $script:CodeIndentLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
+        $out | Should -Not -Match 'FOUND' -Because 'four spaces makes it an indented code block'
     }
 
     It 'refuses a range endpoint that is a hex-named BRANCH rather than a sha' {

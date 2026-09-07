@@ -230,14 +230,22 @@ $(awk -F'|' '
     # together inside a fence - satisfies this rule on its own. Neither guard is sufficient alone. They
     # became genuinely independent only in round 4, when the fence rule was made to reset this block
     # state; before that it `next`ed over the reset and carried an authorised block across a fence.
-    !/^\|/ { _agl_sep = 0; next }
+    # UP TO THREE SPACES OF INDENTATION IS STILL A TABLE ROW. CommonMark allows a block to be
+    # indented by 0-3 spaces; FOUR makes it an indented code block, which is not a row at all.
+    # Capstone round 8 MEASURED what the bare ^| cost: a table indented by two spaces answered
+    # ABSENT unparsed=0 - silently, for a perfectly valid and visibly correct ledger - and worse,
+    # ONE indented row RESET the block and hid EVERY row below it, so a single stray space
+    # disabled the rest of the file. The 4-space case still answers ABSENT, which is correct.
+    # Indentation does not move the field indices: awk -F| on "  | a | b |" puts the leading
+    # spaces in $1, exactly where the empty string sits when the row is flush left.
+    !/^ {0,3}\|/ { _agl_sep = 0; next }
     {
         _agl_s = $0
         gsub(/[|: \t-]/, "", _agl_s)
         if (_agl_s == "") { _agl_sep = 1; next }
     }
     !_agl_sep { next }
-    /^\|/ && NF >= 7 {
+    /^ {0,3}\|/ && NF >= 7 {
         d = $2
         gsub(/^[ \t]+|[ \t]+$/, "", d)
         # COUNT IT, DO NOT SKIP IT. Capstone round 7: a row whose DATE is malformed used to be

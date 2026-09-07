@@ -128,6 +128,11 @@ if [ "$mode" = 'log' ]; then
     _pl_flatten "$_pl_sha";    _pl_sha=$_pl_flat
     _pl_flatten "$_pl_text";   _pl_text=$_pl_flat
     printf -v _pl_ts '%(%Y-%m-%dT%H:%M:%SZ)T' -1 2>/dev/null || _pl_ts=$(TZ=UTC date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
+    # THE SAME FALLBACK THE OTHER TWO TIMESTAMP SITES ALREADY HAD. Capstone round 8 found this one
+    # missing: if the bash 4.2 printf extension AND date both fail, _pl_ts is EMPTY, the line
+    # begins with a space, and every positional field in skipped.log shifts by one for any reader
+    # - a silently corrupted audit record written by a run that reports success.
+    [ -n "$_pl_ts" ] || _pl_ts=unknown
     if [ -n "$_pl_text" ]; then
         _pending_log=$(printf '%s  %s  %s  HEAD=%s  %s' "$_pl_ts" "$_pl_disc" "$_pl_status" "$_pl_sha" "$_pl_text")
     else
@@ -178,9 +183,12 @@ _check_relpath() {
         # and NOT `.clavity/scratch/<topic>` - the discipline's next write then fails mid-run, far from
         # the mistake. Every call site substitutes `<PATH>` BY HAND, so the mistake is the caller's to
         # make and a prose warning is the only thing standing in front of it.
-        # This is NOT a directory mode and NOT a dummy-file convention - both are forbidden a few lines
-        # below the warning. It rejects one malformed ARGUMENT, loudly, naming it, exactly as the
-        # class-`validation` contract requires - and it leaves a legal file path untouched.
+        # This is NOT a directory mode and NOT a dummy-file convention: neither is supported at all,
+        # and the single arm BELOW is the whole of the enforcement - there is no second check further
+        # down. (The previous wording said both were "forbidden a few lines below", which sent a
+        # reader hunting for a structure that does not exist; capstone round 8 caught it.) It rejects
+        # one malformed ARGUMENT, loudly, naming it, exactly as the class-`validation` contract
+        # requires - and it leaves a legal file path untouched.
         */)    _die_refuse "relpath must name a FILE, not a directory - it ends in '/': [$1] (pass a concrete file that will live in that directory, e.g. scratch/<topic>/notes.md)" ;;
     esac
 }
@@ -278,6 +286,13 @@ case "$mode" in
                         UNREADABLE*)
                             _die_refuse "docs/$discipline-ledger.md exists but could NOT BE READ, so the gate can make no claim about $sha - this is a PERMISSIONS or filesystem fault, not a missing row. Fix the file permissions and re-run. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
                             ;;
+                        # UNREACHABLE TODAY, AND THAT IS THE POINT. Every answer the reader can
+                        # currently produce is matched above, so capstone round 8 called this arm
+                        # dead code. It is the FAIL-CLOSED BACKSTOP: MEASURED with a stub reader
+                        # returning an answer no arm anticipates, removing this arm made the case
+                        # match nothing, execution fell through, and THE MARKER WAS WRITTEN with
+                        # exit 0. Keeping it costs nothing; deleting it converts every future
+                        # answer into a silent pass. Do not remove it because it looks unused.
                         *)
                             _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). Append the row for this run FIRST, then write the marker. If that file is NOT actually a ledger, the gate applies to any discipline whose docs/<name>-ledger.md exists - remove or rename it. If the ledger is genuinely unparseable and you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
                             ;;
