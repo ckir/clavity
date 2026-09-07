@@ -86,7 +86,19 @@ agy_ledger_lookup() {
     # produced nothing, the loop read nothing, and the function reported ABSENT unparsed=0 - the exact
     # answer a correctly-parsed ledger with no matching row gives - while awk leaked its own fatal to
     # the caller stderr. Both answers refuse, so the gate stayed fail-closed; the DIAGNOSIS was wrong.
-    [ -r "$_agl_file" ] || { printf 'UNREADABLE'; return 0; }
+    #
+    # `[ -r ]` IS NOT AN ORACLE FOR THAT, AND THE ROUND-5 FIX ONLY EVER WORKED ON ONE PLATFORM. Its
+    # measurement was taken on Linux, and the comment above inherited that omission without saying so.
+    # MEASURED 2026-09-07 on Windows, deny-read ACL, passing and failing control in one process: `cat`
+    # failed with Permission denied while `[ -r ]` answered TRUE, so this guard never fired, the lookup
+    # answered `ABSENT unparsed=0 lines=-`, and awk leaked its fatal exactly as before the fix. The
+    # predicate consults a permission model that the ACL does not populate.
+    #
+    # OPENING THE FILE IS THE PORTABLE ORACLE, because it is the very thing awk is about to do - there
+    # is no second permission model for it to disagree with. An EMPTY ledger still opens, so this does
+    # not conflate "cannot be read" with "has no rows", and the redirect runs in a subshell so no file
+    # descriptor leaks back to the caller that sourced this file.
+    ( : < "$_agl_file" ) 2>/dev/null || { printf 'UNREADABLE'; return 0; }
 
     # awk emits one "<line-number><TAB><token-or-dash>" per CANDIDATE RECORD. A dash means "this looked
     # like a record but its range did not parse" - that is what lets the refusal distinguish a missing

@@ -462,6 +462,49 @@ illustrative
         $out | Should -Match 'unparsed=0'
     }
 
+    It 'answers UNREADABLE - not ABSENT - when the ledger cannot be OPENED' {
+        # AGY-TEST-AUDIT gap 5, and the live defect that probing it uncovered. The round-5 follow-up
+        # added this guard as `[ -r ]` and measured it on LINUX ONLY; the comment beside it inherited
+        # that omission without saying so. MEASURED 2026-09-07 on Windows with a deny-read ACL: `cat`
+        # failed with Permission denied while `[ -r ]` answered TRUE, so the guard never fired and the
+        # lookup answered `ABSENT unparsed=0 lines=-` - the exact false claim the guard exists to
+        # prevent. The fix OPENS the file rather than asking a predicate about it.
+        $r = New-LedgerRepo -LedgerBody $script:GoodLedger
+        $ledger = Join-Path $r.Dir 'docs/agy-capstone-ledger.md'
+
+        # PASSING CONTROL, in the same process as the failing case: while readable this fixture answers
+        # FOUND. Without it, a later UNREADABLE could equally mean the fixture never worked at all.
+        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
+            Should -Match 'FOUND' -Because 'the fixture must answer FOUND while readable, or its failing case proves nothing'
+
+        try {
+            if ($IsWindows) { & icacls $ledger /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null }
+            else            { & chmod 000 $ledger }
+
+            # ORACLE CONTROL, deliberately through something OTHER than the code under test: .NET opens
+            # the file by a different path than MSYS bash does, so it can contradict the fix rather than
+            # echo it. If the deny did NOT take - an elevated token, a filesystem that ignores ACLs -
+            # this row cannot reach its failing answer, and a row that cannot fail certifies nothing.
+            # SKIP loudly instead of passing silently; an inert row that reads as coverage is worse than
+            # a missing one.
+            $reallyDenied = $false
+            try { [void][IO.File]::ReadAllText($ledger) } catch { $reallyDenied = $true }
+            if (-not $reallyDenied) {
+                Set-ItResult -Skipped -Because 'the read-deny did not take on this account, so the unreadable state is unreachable here'
+            }
+
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+            $out | Should -Match 'UNREADABLE' -Because 'nothing read the file, so no claim about its CONTENT may be made'
+            $out | Should -Not -Match 'ABSENT' -Because 'ABSENT asserts the file does not record the sha, which is false when the file was never opened'
+        }
+        finally {
+            # Restore BEFORE fixture cleanup: a denied file may resist deletion, which would leak the
+            # temp directory and, worse, leave the next run reading a half-removed fixture.
+            if ($IsWindows) { & icacls $ledger /remove:d "$env:USERNAME" 2>&1 | Out-Null }
+            else            { & chmod 644 $ledger }
+        }
+    }
+
     It 'ACCEPTS a bare range endpoint at the minimum sha length' {
         # The accepting half of the boundary pair, and the control that gives the refusing half its
         # meaning: without it, the row below could pass because the BARE-endpoint shape is unsupported
