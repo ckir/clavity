@@ -35,6 +35,27 @@ Describe 'agy-ledger-lib.sh' {
 |------|-------|--------|---------|----------|
 | 2026-09-06 | `aaaaaaa..bbbbbbb` | 1 | GREEN | fold `deadbee` |
 '@
+        # A BARE endpoint - no `..` - which is the parser's second accepted range shape and, before these
+        # two rows, had NO fixture of any kind. Six characters is one below its `length(tok) >= 7` bound.
+        # NOT written as `aaaaaaa..<<SHORT6>>`: that token is 15 characters and the RANGE branch bounds
+        # itself at >= 16, so it is refused by the RANGE guard and never reaches the bare-endpoint one.
+        # MEASURED - the first draft of this row did exactly that and passed under the mutant it existed
+        # to catch, because it was asserting a different guard than the one it named.
+        $script:ShortEndpointLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `<<SHORT6>>` | 1 | GREEN | fold `deadbee` |
+'@
+        # The ACCEPTING side of the same boundary: identical shape, one character longer.
+        $script:BareEndpointLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `<<SHORT>>` | 1 | GREEN | fold `deadbee` |
+'@
         # A record that parses AND resolves AND is not the target: the only shape that isolates the
         # header row from the noise a fabricated sha would add.
         $script:ResolvableNoMatchLedger = @'
@@ -342,7 +363,13 @@ illustrative
             # A branch whose NAME is 8 hex characters. git rev-parse resolves refs as happily as shas.
             if ($HexBranch) { & git -C $d branch deadbeef 2>&1 | Out-Null }
             New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null
-            $body = $LedgerBody.Replace('<<SHORT>>', $sha.Substring(0, 7)).
+            # <<SHORT6>> is a REAL prefix of the target, one character below the parser's `length(tok) >= 7`
+            # bound. That is deliberate and load-bearing: a fabricated 6-character token would be refused
+            # for not resolving even if the bound were removed, so it could never tell the two apart. A
+            # real prefix makes LOWERING the bound change the ANSWER - git resolves it and ABSENT becomes
+            # FOUND - which is what gives the boundary row a mutant it can actually fail.
+            $body = $LedgerBody.Replace('<<SHORT6>>', $sha.Substring(0, 6)).
+                                Replace('<<SHORT>>', $sha.Substring(0, 7)).
                                 Replace('<<FULL>>', $sha).
                                 Replace('<<PREV>>', $prev.Substring(0, 7))
             # -Crlf writes REAL CR bytes instead of normalising. See the CRLF row for why this is
@@ -433,6 +460,33 @@ illustrative
         $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
         $out | Should -Match 'ABSENT'
         $out | Should -Match 'unparsed=0'
+    }
+
+    It 'ACCEPTS a bare range endpoint at the minimum sha length' {
+        # The accepting half of the boundary pair, and the control that gives the refusing half its
+        # meaning: without it, the row below could pass because the BARE-endpoint shape is unsupported
+        # outright rather than because 6 characters is too few. The whole bare-endpoint branch had no
+        # fixture before these two rows.
+        $r = New-LedgerRepo -LedgerBody $script:BareEndpointLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'FOUND' -Because 'a bare 7-character endpoint is a supported range shape'
+    }
+
+    It 'refuses a bare range endpoint one character SHORT of the minimum sha length' {
+        # AGY-TEST-AUDIT gap 3. The parser bounds a bare endpoint at `length(tok) >= 7`, and before this
+        # row every sha in this suite was 7 or 8 characters - 50 of them, none shorter - so the bound was
+        # exercised only from its ACCEPTING side. Six hex characters is not a contrived input: ordinary
+        # English words are valid hex (`facade`, `decade`, `deface`), so this bound is what stops a word
+        # in a range cell being handed to git as a sha.
+        #
+        # The endpoint is a REAL prefix of the target, which is what makes the row mutant-sensitive:
+        # lowering the bound to 6 lets git resolve it and the answer becomes FOUND. A fabricated
+        # 6-character token would be refused either way and could never fail.
+        $r = New-LedgerRepo -LedgerBody $script:ShortEndpointLedger
+        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+        $out | Should -Match 'ABSENT' -Because 'a token below the minimum length is not a sha the gate may resolve'
+        $out | Should -Not -Match 'FOUND'
+        $out | Should -Match 'unparsed=1' -Because 'it is a CANDIDATE record whose range did not parse, so the refusal must name its line rather than drop it silently'
     }
 
     It 'counts a record whose endpoint parses but does not RESOLVE as unparsed' {

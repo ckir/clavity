@@ -133,6 +133,20 @@ Describe 'agy-mark.sh' {
             (Test-Path -LiteralPath (Join-Path $d '.clavity/seams')) | Should -BeTrue
             (Get-Content -Raw -LiteralPath (Join-Path $d '.clavity/.gitignore')) | Should -Match '(?m)^\*$'
         }
+        It 'creates the parent and NOT the named file as a directory' {
+            # AGY-TEST-AUDIT gap 2, and the mutant that found it: with `dirname` dropped at
+            # agy-mark.sh:360, `prepare` mkdir -p's the FILE path, so `.clavity/seams/topic.md` becomes a
+            # DIRECTORY. Its parent `.clavity/seams` then exists either way, so the row above passes -
+            # MEASURED, all 45 rows stayed green under that mutant. The failure it misses is the one the
+            # skills warn about by name: the next write into that path fails mid-discipline.
+            $d = New-MarkFixture -Shield ''
+            (Invoke-Mark -Cwd $d -MarkArgs @('prepare','seams/topic.md')).ExitCode | Should -Be 0
+            $target = Join-Path $d '.clavity/seams/topic.md'
+            (Test-Path -LiteralPath $target -PathType Container) | Should -BeFalse -Because 'prepare resolves its target with dirname; creating the FILE as a directory makes the next write fail'
+            # And the parent must be writable AS a directory - the positive half, so this row cannot pass
+            # by the target merely being absent for some unrelated reason.
+            { [IO.File]::WriteAllText($target, 'x') } | Should -Not -Throw
+        }
     }
 
     Context 'argument validation - it CANNOT delegate this' {
@@ -205,10 +219,15 @@ Describe 'agy-mark.sh' {
             @(Get-ChildItem -LiteralPath (Join-Path $d '.clavity') -Force -Recurse).Count |
                 Should -Be 1 -Because 'a refused invocation creates nothing; only the fixture shield may exist'
         }
-        It 'head refuses with NO sha' {
+        It 'head refuses with NO sha - and NAMES the missing argument' {
+            # AGY-TEST-AUDIT gap 1. The two rows on either side of this one already assert their refusal
+            # TEXT; this one asserted only the exit code, so it stayed green over any failure that exits
+            # 1 on the way to the check - a syntax error, a helper that will not source, a rename of the
+            # mode itself. The neighbouring `unknown mode` row states the principle in its own -Because.
             $d = New-MarkFixture
             $r = Invoke-Mark -Cwd $d -MarkArgs @('head','agy-first')
             $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'head requires a sha argument' -Because 'exit 1 alone cannot tell a rejected argument from a crash on the way to the check'
             (Test-Path -LiteralPath (Join-Path $d '.clavity/agy-marks/agy-first.head')) | Should -BeFalse
         }
         It 'log refuses with NO status - and STILL emits the line it could not write' {
