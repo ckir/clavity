@@ -95,7 +95,7 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 0
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    It 'announces .no-agy in cwd (systemMessage, exit 0) and does NOT also emit the superpowers/jq notice' {
+    It 'reports .no-agy in cwd to the MODEL ONLY, and does NOT also emit the superpowers/jq notice' {
         $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome  # superpowers disabled too
         try {
             New-Item -ItemType File -Path (Join-Path $repo '.no-agy') -Force | Out-Null
@@ -105,6 +105,16 @@ Describe 'agy-liveness-check.sh' {
             $r.StdOut   | Should -Match 'suppressed by .no-agy'
             $r.StdOut   | Should -Not -Match 'superpowers not detected'   # no triple-spam
             ($r.StdOut -split "`n").Count | Should -Be 1
+
+            # THE SURFACE SPLIT, and a substring match cannot see it. Settled by AGY-NEGOTIATE
+            # 2026-09-08: `.no-agy` is a CHOSEN STATE, not an actionable fault, so it reaches the MODEL
+            # and not the owner's screen. Asserting only that the text appears in stdout would pass
+            # identically whether it arrived as `systemMessage` (owner sees a notice at every single
+            # start) or as `additionalContext` (owner sees nothing) - the two outcomes this decision is
+            # entirely about. Parse the envelope and name the key.
+            $j = $r.StdOut | ConvertFrom-Json
+            $j.PSObject.Properties.Name | Should -Not -Contain 'systemMessage' -Because 'a state the owner chose demands no action, and a boot notice that demands nothing trains them to ignore the ones that do'
+            $j.hookSpecificOutput.additionalContext | Should -Match 'suppressed by \.no-agy' -Because 'the model must still be able to answer "why are the disciplines not firing" with the exact path'
         } finally { Remove-Item $repo,$cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
     It 'announces a global $HOME/.claude/.no-agy' {
@@ -121,7 +131,7 @@ Describe 'agy-liveness-check.sh' {
     # This hook exists to say LOUDLY and TRUTHFULLY why the disciplines are off, so naming a path that
     # does not exist is a defect in the one hook meant to prevent confusion. Every other test here
     # forward-slashes cwd; these feed the raw backslashed shape the real payload carries.
-    It 'names the ROOT .no-agy path when suppressed from a subdirectory' {
+    It 'names the ROOT .no-agy path when suppressed from a subdirectory (still, in the model half)' {
         $repo = New-TempRepo; $cfg = New-ConfigFixture $false; $h = New-CleanHome
         try {
             $sub = Join-Path $repo 'src'
@@ -210,6 +220,15 @@ Describe 'agy-liveness-check.sh' {
             $r.ExitCode | Should -Be 0
             $r.StdOut   | Should -Match 'suppressed by .no-agy'
             $r.StdOut   | Should -Match 'agy-liveness-check'
+
+            # CONSTRAINT 5 IS THE EXCEPTION TO THE SURFACE SPLIT, and it is the whole reason the
+            # kill-switch branch is not simply model-only. An override IS an actionable fault - someone
+            # has personally registered a shipped hook - so it must reach the OWNER even here, or the
+            # kill-switch becomes a way to hide one. The suppression text rides along in the model half.
+            $j = $r.StdOut | ConvertFrom-Json
+            $j.systemMessage | Should -Match 'agy-liveness-check' -Because 'a gate the policed party can switch off is not a gate'
+            $j.systemMessage | Should -Not -Match 'suppressed by \.no-agy' -Because 'the override earns the screen; the chosen state that hid it does not'
+            $j.hookSpecificOutput.additionalContext | Should -Match 'suppressed by \.no-agy'
         } finally { Remove-Item $cfg,$h -Recurse -Force -ErrorAction SilentlyContinue }
     }
 

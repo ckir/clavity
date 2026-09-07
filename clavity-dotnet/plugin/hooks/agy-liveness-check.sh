@@ -2,7 +2,7 @@
 # AGY-DISCIPLINES liveness/degradation notice (plugin-shipped, SP-D / spec Decision 3). SessionStart(startup):
 # the agy-driving disciplines auto-fire only when superpowers is installed+enabled; if it is not -- or a
 # .no-agy kill-switch is suppressing them -- the user must be told LOUDLY at boot, else the disciplines die
-# silently. This is the ONE boot-time liveness surface (superpowers presence + .no-agy announce + jq guard).
+# silently. This is the ONE boot-time liveness surface (superpowers presence + .no-agy state + jq guard).
 #
 # EMISSION = the JSON ENVELOPE on stdout at exit 0, carrying `systemMessage`. This hook used stderr +
 # `exit 2` until ROADMAP section 31, reasoning that stdout at SessionStart is absorbed into the model's
@@ -17,18 +17,26 @@
 # 2026-09-08 with a control pair in a throwaway repo: with `.no-agy` present, exit 2 and a stderr line;
 # with it removed, exit 0 and silence.
 #
-# ONLY THE CHANNEL AND THE EXIT CODE CHANGED. Every message is still emitted, under the same condition,
-# with the same text -- including the suppression notice, because saying truthfully WHY the disciplines
-# are off is this hook's stated job. Whether the kill-switch should instead be SILENT is a separate
-# question about purpose, deliberately left open rather than smuggled into a channel migration.
+# WHICH SURFACE EACH NOTICE EARNS, settled by AGY-NEGOTIATE 2026-09-08. The criterion is not "is this
+# true" but "does it demand an immediate corrective action from the OWNER":
+#   an ACTIONABLE FAULT  - superpowers not live, jq missing, a personal hook overriding a shipped one -
+#                          earns the owner's screen: `systemMessage` AND `additionalContext`.
+#   a CHOSEN STATE       - `.no-agy` is present - earns `additionalContext` ONLY. It reports something
+#                          the owner decided and cannot "fix" except by undoing their own decision, so
+#                          announcing it at every start is noise by construction, and a boot notice that
+#                          demands nothing trains people to stop reading the ones that do.
+# NOTHING IS TRADED AWAY: the model still receives the suppressing PATH at boot, so "why are the
+# disciplines not firing?" is answerable exactly. The alternative considered and rejected was total
+# silence, which loses that. Both halves of the .no-agy decision were argued out with the peer and
+# neither of us started where we ended.
 #
 # EXIT-CODE CONTRACT: every reachable end-state now exits 0, and stderr is never written. (1) healthy /
-# superpowers live AND sole hook ownership -> exit 0, NO output at all; (2) a DETECTION OUTCOME warranting
-# a notice (superpowers not-live incl. corrupt/unreadable settings, .no-agy active, or jq missing) -> ONE
-# envelope on stdout; (3) a shipped hook ALSO registered personally, or an unreadable settings/hooks.json
-# blocking that check -> the ownership line, in that SAME envelope rather than a second one, because a
-# hook gets one stdout and a second JSON object on it would not parse. State (3) is reported even under
-# .no-agy (D1 constraint 5) -- deliberately, so the kill-switch cannot hide an override.
+# superpowers live AND sole hook ownership -> exit 0, NO output at all; (2) an ACTIONABLE FAULT -> ONE
+# envelope carrying both keys; (3) `.no-agy` with no override -> ONE envelope carrying additionalContext
+# ONLY, so the owner sees nothing; (4) a shipped hook ALSO registered personally -> the ownership line
+# reaches the owner even under .no-agy (D1 constraint 5), deliberately, so the kill-switch cannot hide an
+# override - it rides in that SAME envelope rather than a second one, because a hook gets one stdout and
+# a second JSON object on it would not parse.
 # `set +e` is the fail-open guard: a mid-detection command failure does not abort the hook,
 # it continues to the not-live advisory (exit 2) -- non-blocking for SessionStart and fail-toward-loud, the
 # posture Decision 3 wants (a soft advisory beats a silent swallow for a liveness hook). NO blanket
@@ -69,24 +77,27 @@ if ! command -v jq >/dev/null 2>&1; then
   # FAILING PLUGIN at every start - the identical defect agy-anomaly-reminder.sh was rewritten to end on
   # 2026-09-04, still live here because the fix was applied per-FILE rather than per-CLASS.
   #
-  # ONLY THE CHANNEL AND THE EXIT CODE CHANGE HERE. Every message this hook used to emit, it still emits,
-  # under the same condition and with the same text - including the suppression notice, because saying
-  # truthfully WHY the disciplines are off is this hook's stated job and a folded defect already lives in
-  # naming the right `.no-agy` path. Whether the kill-switch should instead be silent is a separate
-  # question about PURPOSE, and it is not this change's to answer.
+  # Every message this hook used to emit, it still emits, under the same condition and with the same
+  # text. What changed is the exit code, the stream, and - for the kill-switch alone - WHICH SURFACE it
+  # reaches: see the surface criterion in the header. The folded defect about naming the ROOT `.no-agy`
+  # path rather than the cwd one is therefore untouched and still pinned; the path is simply carried to
+  # the model rather than announced to the owner.
   # ESCAPE BY HAND HERE, because this is the branch where jq is MISSING and the one value interpolated
   # into the envelope is a PATH - the only value in these messages that can legitimately carry a
   # backslash or a quote. `cwd_path` above already folds backslashes to forward slashes, so today no
   # shipped path reaches this, but a hook that emits malformed JSON fails in a way nobody can read.
   # Backslash FIRST, then quote: the other order would re-escape the backslash it just inserted.
   _json() { _v=${1//\\/\\\\}; _v=${_v//\"/\\\"}; printf '%s' "$_v"; }
+  # MODEL-ONLY, exactly as on the jq path: no `systemMessage` key, so the owner's terminal stays clean
+  # while the model still learns the suppressing path. The degraded branch must not diverge from the
+  # main one on WHO gets told - only on how the JSON is built.
   if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ]; then
     _s="$root/.no-agy"; [ -f "$_s" ] || _s="$cwd_path/.no-agy"
-    printf '{"systemMessage":"[AGY-DISCIPLINES] suppressed by .no-agy at %s"}\n' "$(_json "$_s")"
+    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[AGY-DISCIPLINES] suppressed by .no-agy at %s"}}\n' "$(_json "$_s")"
     exit 0
   fi
   if [ -f "$HOME/.claude/.no-agy" ]; then
-    printf '{"systemMessage":"[AGY-DISCIPLINES] suppressed by .no-agy at %s"}\n' "$(_json "$HOME/.claude/.no-agy")"
+    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[AGY-DISCIPLINES] suppressed by .no-agy at %s"}}\n' "$(_json "$HOME/.claude/.no-agy")"
     exit 0
   fi
   # THE ENVELOPE IS BUILT WITH printf HERE, NOT jq, because this is the branch where jq is MISSING - a
@@ -222,11 +233,21 @@ fi
 # suppressed install as a broken plugin. agy-anomaly-reminder.sh was rewritten off that mechanism on
 # 2026-09-04; this file was missed because the fix was applied per-FILE rather than per-CLASS, and the
 # worst instance was the kill-switch: asking for silence was itself what produced the red error.
+# _emit <user-visible text, may be EMPTY> <model text>
+#
+# THE TWO SURFACES ARE ADDRESSED SEPARATELY, and that is the whole point. MEASURED 2026-09-04, recorded
+# at agy-anomaly-reminder.sh:16-23: `systemMessage` is what the OWNER sees; `hookSpecificOutput.
+# additionalContext` is what the MODEL receives; plain stdout reaches neither.
+#
+# AN EMPTY FIRST ARGUMENT OMITS THE systemMessage KEY ENTIRELY, so the notice still reaches the model
+# while the owner's terminal stays clean. That is what lets a fact be DIAGNOSTIC without being an ALERT.
+# jq owns the escaping: these strings carry paths and the ownership note's own newlines.
 _emit() {
-  # ONE envelope, both keys - systemMessage is what the OWNER sees, additionalContext is what the model
-  # sees, and this hook's findings are for both. jq owns the escaping because $1 carries PATHS and the
-  # ownership note's own newlines.
-  jq -nc --arg m "$1" '{systemMessage:$m,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+  if [ -n "$1" ]; then
+    jq -nc --arg u "$1" --arg m "$2" '{systemMessage:$u,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+  else
+    jq -nc --arg m "$2" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+  fi
   exit 0
 }
 
@@ -243,7 +264,21 @@ if [ -f "$root/.no-agy" ] || [ -f "$cwd_path/.no-agy" ] || [ -f "$HOME/.claude/.
   # ONE envelope carries both, because a hook gets one stdout and a second JSON object would not parse.
   [ -n "$ownership_note" ] && _m="$_m
 $ownership_note"
-  _emit "$_m"
+  # THE SUPPRESSION NOTICE GOES TO THE MODEL ONLY. Settled by AGY-NEGOTIATE 2026-09-08, on a criterion
+  # worth more than this one line: a boot-time notice earns the OWNER'S SCREEN only if it demands an
+  # immediate corrective action. `.no-agy` demands none - it reports a state the owner chose and cannot
+  # "fix" except by undoing their own decision - so announcing it at every start is noise by construction
+  # and trains them to stop reading boot output, which is the same cries-wolf failure section 31 exists
+  # to end, in a gentler colour.
+  #
+  # NOTHING IS TRADED AWAY, which is why this beats the plain silence I first wrote and reverted: the
+  # MODEL still receives the path at boot, so "why are the disciplines not firing?" is answerable
+  # immediately and exactly. The diagnostic survives; only the interruption goes.
+  #
+  # OWNERSHIP STILL REACHES THE OWNER because it DOES demand action - a personal registration of a
+  # shipped hook is a live override, not a preference. So the user-visible argument is the ownership
+  # note ALONE, and it is empty (hence no systemMessage key at all) whenever there is no override.
+  _emit "$ownership_note" "$_m"
 fi
 
 live=0
@@ -256,7 +291,7 @@ if [ "${#present[@]}" -gt 0 ]; then
 fi
 
 if [ "$live" = "1" ]; then
-  [ -n "$ownership_note" ] && _emit "$ownership_note"
+  [ -n "$ownership_note" ] && _emit "$ownership_note" "$ownership_note"
   exit 0   # healthy install AND sole ownership: SILENT
 fi
 
@@ -269,4 +304,4 @@ _msg="[AGY-DISCIPLINES] superpowers not detected as enabled - the agy discipline
 # hook gets one stdout and a second JSON object on it would not parse.
 [ -n "$ownership_note" ] && _msg="$_msg
 $ownership_note"
-_emit "$_msg"
+_emit "$_msg" "$_msg"
