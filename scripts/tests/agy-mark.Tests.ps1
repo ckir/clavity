@@ -629,50 +629,58 @@ Describe 'agy-mark.sh' {
                        elseif ($BadRow) { "| 06-09-2026 | ``aaaaaaa..$($sha.Substring(0,7))`` | 1 | GREEN | e |" }
                        else { '' }
                 $body = "# ledger`n`n| date | range | rounds | verdict | evidence |`n|------|-------|--------|---------|----------|`n$row`n"
-                # -Unclosed opens a fence and never closes it, which hides every row BELOW it. The gate
-                # then answers MALFORMED rather than ABSENT, and the two need different advice.
+                # -Unclosed opens a fence and never closes it. Under the old awk parser that hid every
+                # row BELOW it and the gate answered MALFORMED; the regex that replaced it has no fence
+                # concept, so the row is read normally. The row that consumes this switch now PINS that
+                # accepted weakening rather than the refusal it used to assert.
+                # -BadRow writes the date as DD-MM-YYYY, so the line is not a record - but the sha is
+                # still IN the file, which is what makes it the mentioned=1 case rather than mentioned=0.
                 if ($Unclosed) { $body = "# ledger`n`n``````text`nopened and never closed`n" + $body }
                 [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), $body)
                 [pscustomobject]@{ Dir = $d; Sha = $sha }
             }
         }
 
-        It 'tells an operator whose row was SEEN-BUT-REJECTED to read the line numbers' {
-            # CAPSTONE ROUND 7, the novice loop. `ABSENT unparsed=0` and `ABSENT unparsed=N` are
-            # different situations - nothing was a candidate, versus rows were candidates and failed
-            # to parse - and they need different advice. Telling the second operator to `append the
-            # row FIRST` sends them round the loop again with the same mistake.
+        It 'tells an operator whose row EXISTS but is shaped wrongly to fix that row' {
+            # CAPSTONE ROUND 7, the novice loop, carried across the parser removal. "the sha is nowhere"
+            # and "the sha is here but not where the gate reads" are different situations needing
+            # opposite instructions, and telling the second operator to APPEND a row sends them round
+            # the loop again with the same mistake. The answers are now mentioned=0 and mentioned=1.
             $f = New-GatedFixture -BadRow
             $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
             $r.ExitCode | Should -Be 1
-            $r.Err | Should -Match 'unparsed=1' -Because 'the row must be counted'
-            $r.Err | Should -Match 'READ THE LINE NUMBERS' -Because 'the advice must point at the row'
-            $r.Err | Should -Not -Match 'NO row in that file was even a candidate' -Because 'that is the OTHER branch'
+            $r.Err | Should -Match 'mentioned=1' -Because 'the sha IS in the file, and the answer must say so'
+            $r.Err | Should -Match 'DOES mention' -Because 'the advice must point at the existing row'
+            $r.Err | Should -Match 'RIGHT-hand endpoint' -Because 'it must name what is actually wrong with the row'
+            $r.Err | Should -Not -Match 'appears NOWHERE' -Because 'that is the OTHER branch'
         }
 
-        It 'tells an operator with NO candidate row that nothing was a candidate' {
-            # The success-path counterpart of the row above. Without it, both branches could emit the
-            # same text and the pair would still pass.
+        It 'tells an operator with NO mention of the sha to append the row' {
+            # The counterpart of the row above. Without it, both branches could emit the same text and
+            # the pair would still pass.
             $f = New-GatedFixture
             $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
             $r.ExitCode | Should -Be 1
-            $r.Err | Should -Match 'NO row in that file was even a candidate'
-            $r.Err | Should -Not -Match 'READ THE LINE NUMBERS'
+            $r.Err | Should -Match 'appears NOWHERE'
+            $r.Err | Should -Match 'mentioned=0'
+            $r.Err | Should -Not -Match 'DOES mention'
         }
 
-        It 'gives MALFORMED its own advice instead of telling the operator to append a row' {
-            # CAPSTONE ROUND 6. Every non-FOUND answer shared ONE static message whose first instruction
-            # is "Append the row for this run FIRST". For MALFORMED that advice is actively WRONG: the
-            # appended row lands BELOW the unclosed fence, stays hidden, and the operator is refused a
-            # second time having done exactly what they were told.
+        It 'ACCEPTS a row under an unclosed fence - the documented cost of dropping the parser' {
+            # THIS ROW RECORDS A DELIBERATE WEAKENING, so that it can never happen silently. The awk
+            # parser tracked fences and answered MALFORMED here, refusing; capstone round 1 had measured
+            # a fenced row authenticating a marker, and round 4 that an unclosed fence hid every row
+            # below it. The regex has no fence concept at all, so this fixture now PASSES.
+            #
+            # The owner accepted that trade when the parser was removed: it is the same shape as the
+            # container limitation already accepted twice - the row has to have been WRITTEN, which is
+            # not the omission this gate defends against - and MEASURED 2026-09-07, neither shipped
+            # ledger contains a single fence line. If a ledger ever grows one, this row is where that
+            # decision is written down.
             $f = New-GatedFixture -WithRow -Unclosed
             $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
-            $r.ExitCode | Should -Be 1
-            $r.Err | Should -Match 'UNPARSEABLE' -Because 'the refusal must name the actual cause'
-            $r.Err | Should -Match 'DO NOT append the row yet' -Because 'the old advice is a trap here'
-            # AND the generic advice must NOT be the one shown, or the fix is cosmetic.
-            $r.Err | Should -Not -Match 'does not record' -Because 'that is the ABSENT message, not this one'
-            Test-Path -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/agy-capstone.head') | Should -BeFalse
+            $r.ExitCode | Should -Be 0 -Because 'the regex reads the row regardless of the stray fence above it'
+            Test-Path -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/agy-capstone.head') | Should -BeTrue
         }
 
         It 'REFUSES the marker write when the ledger has no row for the sha' {

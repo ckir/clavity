@@ -270,18 +270,19 @@ case "$mode" in
                     # would silently stop gating - so the fail-closed rule stays and the message
                     # carries the recovery instead.
                     # THE ADVICE MUST MATCH THE CAUSE. Capstone round 6: every non-FOUND answer got one
-                    # static message whose FIRST instruction is "append the row" - which is actively
-                    # WRONG for MALFORMED, because an appended row lands BELOW the unclosed fence and
-                    # stays hidden, so the operator follows the advice and is refused again.
+                    # static message whose FIRST instruction is "append the row", which was actively WRONG
+                    # for half the causes - the operator followed it and was refused again. That is why
+                    # the reader distinguishes mentioned=0 from mentioned=1 at all, and why the reader
+                    # keeps a diagnostic second pass it could otherwise do without: `mentioned=1` means
+                    # the row very likely EXISTS and is shaped wrongly, which is the opposite instruction
+                    # from `mentioned=0`. The MALFORMED arm that used to sit here is gone with the awk
+                    # parser - an unclosed fence is no longer an answer the reader can produce.
                     case "$_gate" in
-                        MALFORMED*)
-                            _die_refuse "docs/$discipline-ledger.md is UNPARSEABLE ($_gate), so no row below the fault is visible to the gate. DO NOT append the row yet - it would land below the unclosed fence and stay hidden, and this refusal would repeat. Close the fence in that file FIRST, then append the row, then write the marker. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                        *mentioned=0*)
+                            _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). That sha appears NOWHERE in the file, so no row was even a candidate for it. Append the row for this run FIRST, then write the marker. If that file is NOT actually a ledger, the gate applies to any discipline whose docs/<name>-ledger.md exists - remove or rename it. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
                             ;;
-                        *unparsed=0*)
-                            _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). NO row in that file was even a candidate for this sha. Append the row for this run FIRST, then write the marker. If that file is NOT actually a ledger, the gate applies to any discipline whose docs/<name>-ledger.md exists - remove or rename it. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
-                            ;;
-                        ABSENT*)
-                            _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). READ THE LINE NUMBERS: those rows LOOK like records but their range column did not parse, so appending another row in the same shape will fail the same way. Fix the cited lines - the range must be the FIRST thing in that column, and the date column must be YYYY-MM-DD - then write the marker. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                        *mentioned=1*)
+                            _die_refuse "docs/$discipline-ledger.md DOES mention $sha, but not where the gate reads ($_gate). A record is matched by its RANGE COLUMN only: the range must be the FIRST thing in that column, this sha must be its RIGHT-hand endpoint, and the date column must be YYYY-MM-DD. A sha in the evidence prose does not count, and neither does one on the LEFT of the range - both are things the ledger mentions rather than records. Fix that row, then write the marker. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
                             ;;
                         UNREADABLE*)
                             _die_refuse "docs/$discipline-ledger.md exists but could NOT BE READ, so the gate can make no claim about $sha - this is a PERMISSIONS or filesystem fault, not a missing row. Fix the file permissions and re-run. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."

@@ -674,7 +674,7 @@ agy-learn-reminder.Tests.ps1                      6,4s    5 tests   <- SLOW, new
                                                                       idle CPU; 11,1s cold. It will not be the
                                                                       cold-start absorber in this half
 agy-liveness-check.Tests.ps1                     56,4s   31 tests   <- SLOW, re-measured 2026-08-06 (+4)
-agy-mark.Tests.ps1                               93,0s   42 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
+agy-mark.Tests.ps1                               93,0s   46 tests   <- SLOW, NEW 2026-08-16. Task 6 (14c):
                                                                       agy-mark.sh, the sanctioned .clavity writer for the
                                                                       skills. Bash + git subprocess spawns across 26 Its; the
                                                                       FORWARDS $AGY_SESSION_ID row alone costs ~33,5s (three
@@ -713,7 +713,7 @@ agy-shield-lib.Tests.ps1                        409,1s   45 tests   <- SLOW, NEW
                                                                       machine the agent is working on. The 409,1s
                                                                       is the last figure measured under the stated
                                                                       conditions and is now one row short.
-agy-ledger-lib.Tests.ps1                        105,0s   22 tests   <- SLOW, NEW 2026-09-06. ROADMAP
+agy-ledger-lib.Tests.ps1                        105,0s   24 tests   <- SLOW. RUNTIME NOT RE-MEASURED since the awk parser was replaced by a regex 2026-09-07; the count is current, the seconds are not. ROADMAP
                                                                       section 27: the ledger reader behind the
                                                                       marker-write gate. Fixture-heavy like its
                                                                       agy-shield-lib sibling - every row builds a

@@ -1,9 +1,15 @@
 # Tests for the shipped ledger reader, clavity-dotnet/plugin/hooks/agy-ledger-lib.sh (ROADMAP section 27).
 #
 # The reader is SOURCED by agy-mark.sh and answers a string; it never exits. These rows exercise it
-# through a one-line bash driver inside a throwaway git repo, because its answers depend on REAL commits:
-# it resolves ledger tokens through `git rev-parse`, so a fixture with no objects could not tell a
-# correct resolution from a failed one.
+# through a one-line bash driver inside a throwaway git repo.
+#
+# WHAT CHANGED, AND WHY THIS SUITE IS SMALLER THAN THE ONE IT REPLACES. The reader used to be a ~200-line
+# awk markdown parser, and most of the old rows exercised ITS INTERNALS - fence tracking, tilde and nested
+# fences, info strings, contiguous-block state, CRLF, a `git rev-parse` round-trip per row. That machinery
+# is gone; rows asserting it would now be asserting nothing. What survives is the CONTRACT: which shapes
+# authenticate a marker, which do not, and whether a refusal names its cause. The two rows that matter
+# most are new - a sha in EVIDENCE PROSE and a sha as a range's LEFT ENDPOINT both false-pass a cell-wide
+# search, and both are pinned here against the REAL ledger as well as against fixtures.
 Describe 'agy-ledger-lib.sh' {
     BeforeAll {
         $script:Fixtures = New-Object System.Collections.ArrayList   # FIXTURE HYGIENE
@@ -21,322 +27,99 @@ Describe 'agy-ledger-lib.sh' {
         # Ledger bodies live here, NOT at Describe scope. Pester 5 runs Discovery and Run in separate
         # phases and a variable assigned during Discovery is invisible inside an It body; $script:
         # variables assigned in BeforeAll are visible, which is why every sibling suite uses this shape.
-        $script:GoodLedger = @'
+
+        # --- shapes that MUST authenticate --------------------------------------------------------
+        $script:RangeLedger = @'
 # ledger
 
 | date | range | rounds | verdict | evidence |
 |------|-------|--------|---------|----------|
 | 2026-09-06 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | fold `deadbee` |
 '@
-        $script:NoMatchLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..bbbbbbb` | 1 | GREEN | fold `deadbee` |
-'@
-        # A BARE endpoint - no `..` - which is the parser's second accepted range shape and, before these
-        # two rows, had NO fixture of any kind. Six characters is one below its `length(tok) >= 7` bound.
-        # NOT written as `aaaaaaa..<<SHORT6>>`: that token is 15 characters and the RANGE branch bounds
-        # itself at >= 16, so it is refused by the RANGE guard and never reaches the bare-endpoint one.
-        # MEASURED - the first draft of this row did exactly that and passed under the mutant it existed
-        # to catch, because it was asserting a different guard than the one it named.
-        $script:ShortEndpointLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `<<SHORT6>>` | 1 | GREEN | fold `deadbee` |
-'@
-        # The ACCEPTING side of the same boundary: identical shape, one character longer.
-        $script:BareEndpointLedger = @'
+        $script:BareLedger = @'
 # ledger
 
 | date | range | rounds | verdict | evidence |
 |------|-------|--------|---------|----------|
 | 2026-09-06 | `<<SHORT>>` | 1 | GREEN | fold `deadbee` |
 '@
-        # A record that parses AND resolves AND is not the target: the only shape that isolates the
-        # header row from the noise a fabricated sha would add.
-        $script:ResolvableNoMatchLedger = @'
+        $script:FullShaLedger = @'
 # ledger
 
 | date | range | rounds | verdict | evidence |
 |------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | fold `deadbee` |
+| 2026-09-06 | `aaaaaaa..<<FULL>>` | 1 | GREEN | fold `deadbee` |
 '@
-        # The sha sits ONLY in the evidence column. This is the C1 false pass the design exists to
-        # close: fold-commit shas live in evidence prose, and a whole-file grep would authenticate them.
-        $script:EvidenceOnlyLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..bbbbbbb` | 1 | GREEN | fold `<<FULL>>` |
-'@
-        # A 3-column table, as the real capstone ledger carries. Too few fields to be a record.
-        $script:AnomalyTableLedger = @'
-# ledger
-
-| n | anomaly |
-|---|---------|
-| 1 | <<SHORT>> |
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..bbbbbbb` | 1 | GREEN | fold `deadbee` |
-'@
-        # A second range quoted in the cell's trailing prose, as docs/agy-capstone-ledger.md:69-70 do.
-        $script:TrailingProseLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..bbbbbbb` (the folds run ccccccc..<<SHORT>>) | 1 | GREEN | fold `deadbee` |
-'@
-        # CAPSTONE ROUND 1, the BLOCKING finding. A table row QUOTED inside a fenced code block - which
-        # these ledgers do routinely, to show what a row looked like before a fold. awk has no notion of
-        # markdown block scope, so before the fence guard this answered FOUND for a sha appearing
-        # NOWHERE else in the file: the C1 false pass returning through a channel field-3 never covered.
-        $script:FencedQuoteLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-An earlier row, quoted here to explain a fold:
-
-```
-| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-```
-'@
-        # CAPSTONE ROUND 1. A range written as a markdown link. Backticks were stripped, brackets were
-        # not, so the token failed the hex test and a perfectly good record became UNPARSEABLE - a false
-        # REFUSAL rather than a false pass, but a refusal of a legitimate run all the same.
-        $script:LinkedRangeLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | [aaaaaaa..<<SHORT>>](https://example.invalid/x) | 1 | GREEN | e |
-'@
-        # CAPSTONE ROUND 2. Three ways the round-1 fence guard - a bare toggle on ``` only - was wrong.
-        # (b) A TILDE fence is valid CommonMark and was not matched at all.
-        $script:TildeFenceLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-~~~
-| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-~~~
-'@
-        # (c) A NESTED fence toggled the guard back OFF, re-exposing its own contents. A fence closes
-        # only with the SAME character and at least the same run length.
-        $script:NestedFenceLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-````
-```
-| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-```
-````
-'@
-        # (a) The worst of the three, and worse than the defect it repaired: an UNCLOSED fence hid every
-        # row BELOW it - and rows are appended at the bottom, so it hid the live set while the refusal
-        # blamed a missing row.
-        $script:UnclosedFenceLedger = @'
-# ledger
-
-```
-an example that was never closed
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | e |
-'@
-        # A REFERENCE-style link. Deleting brackets outright merged the range and the label into one
-        # token whose right endpoint was still valid hex - a WRONG answer rather than a refused one.
-        $script:RefLinkLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | [aaaaaaa..<<SHORT>>][1] | 1 | GREEN | e |
-
-[1]: https://example.invalid/x
-'@
-        # CAPSTONE ROUND 3. An INFO STRING on a line inside a fence. CommonMark allows an info string on
-        # an OPENING fence and forbids one on a CLOSER, so ```bash sitting inside a block is content. A
-        # closer-blind tracker treated it as the close, the REAL closer re-opened the fence, and the file
-        # ended open - reporting MALFORMED on a perfectly valid ledger.
-        $script:InfoStringFenceLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|------|-------|--------|---------|----------|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-```
-how to write a fence:
-```bash
-echo hi
-```
-'@
-        # CAPSTONE ROUND 3. PADDED brackets. The first trim ran before the bracket came off, so the split
-        # hit a leading space as its first delimiter and returned an empty token.
         $script:PaddedBracketLedger = @'
 # ledger
 
 | date | range | rounds | verdict | evidence |
 |------|-------|--------|---------|----------|
-| 2026-09-06 | [ aaaaaaa..<<SHORT>> ] | 1 | GREEN | e |
+| 2026-09-06 | [ `aaaaaaa..<<SHORT>>` ] | 1 | GREEN | fold `deadbee` |
 '@
-        # CAPSTONE ROUND 3's UNFILED CENSUS ITEMS. Two prose channels the peer named only in its census
-        # and never filed as findings - both MEASURED false passes, and both the same class as round 1's
-        # BLOCKING defect. Finding five channels in that class is what met the spec's own reversal
-        # condition and produced the contiguous-table-block rule. That rule ends the ORPHAN-ROW class,
-        # NOT the container class - the two rows at the end of this file pin what it still accepts.
-        $script:PreBlockLedger = @'
+        # Three spaces is still a table row under CommonMark; four makes it an indented code block.
+        $script:Indent3Ledger = @'
 # ledger
 
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-<pre>
-| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-</pre>
+   | date | range | rounds | verdict | evidence |
+   |------|-------|--------|---------|----------|
+   | 2026-09-06 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | fold `deadbee` |
 '@
-        $script:LazyQuoteLedger = @'
+        $script:Indent4Ledger = @'
 # ledger
 
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-> quoting an old row:
-| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
+    | date | range | rounds | verdict | evidence |
+    |------|-------|--------|---------|----------|
+    | 2026-09-06 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | fold `deadbee` |
 '@
-        # ACCEPTED LIMITATION, OWNER-RULED 2026-09-07. A COMPLETE table inside a container that preserves
-        # leading pipes is itself a contiguous run containing a separator, so it satisfies the block rule
-        # exactly. These two rows PIN that, so closing it later is a DELIBERATE decision and not a silent
-        # drift. It is accepted because every such case required the row to be WRITTEN, and this gate
-        # defends against FORGETTING one.
-        $script:DivTableLedger = @'
-# ledger
 
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-<div>
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-</div>
-'@
-        # The LAZY half: only the FIRST line carries the quote marker, so every following line begins with
-        # a pipe. Contrast the fully-quoted form, where every line carries it and the rule DOES reject it.
-        $script:LazyTableLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-> | date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-'@
-        $script:FullyQuotedTableLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-> | date | range | rounds | verdict | evidence |
-> |---|---|---|---|---|
-> | 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-'@
-        # CAPSTONE ROUND 7. A row whose DATE column is malformed. It used to be dropped SILENTLY, so
-        # the answer was byte-identical to a ledger with no candidate row at all - and an operator who
-        # had just appended a row got back a refusal naming nothing, with no way to learn their row was
-        # seen and rejected. The documented failure is appending a SECOND malformed row and looping.
-        $script:BadDateLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 06-09-2026 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | e |
-'@
-        # CAPSTONE ROUND 8. CommonMark allows a block to be indented 0-3 spaces. The bare ^| anchor
-        # rejected such a row, and worse, RESET the block - so ONE stray space hid every row BELOW it.
-        # The target sha is in the LAST row here, so this fixture fails if the indented row poisons
-        # what follows, which is the half that made it severe rather than merely annoying.
-        $script:IndentedRowLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-  | 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-| 2026-09-06 | `aaaaaaa..<<SHORT>>` | 1 | GREEN | e |
-'@
-        # FOUR spaces is an indented CODE BLOCK, not a row. This is the boundary the fix must NOT
-        # cross: without it, widening the anchor would swallow quoted rows in indented code.
-        $script:CodeIndentLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-
-    | 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-'@
-        # CAPSTONE ROUND 4. A FENCE INTERRUPTING A LIVE TABLE. The fence rule runs BEFORE the block rule
-        # and ends in `next`, which jumped straight over the block reset - so an authorised table was
-        # carried ACROSS the fence and the orphan pipe-line below it answered FOUND, though markdown
-        # renders that line as literal text and not a row. The target sha appears NOWHERE else here.
-        $script:FenceInTableLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-09-06 | `aaaaaaa..<<PREV>>` | 1 | GREEN | e |
-```text
-illustrative
-```
-| 2026-01-01 | `ccccccc..<<SHORT>>` | 1 | GREEN | e |
-'@
-        # A range endpoint that is a pure-hex BRANCH NAME. `git rev-parse` resolves any ref, so this
-        # authenticated a marker for whatever the branch pointed at - a moving target validating a fixed
-        # claim. The fixture creates a branch literally named `deadbeef`.
-        $script:HexBranchLedger = @'
-# ledger
-
-| date | range | rounds | verdict | evidence |
-|---|---|---|---|---|
-| 2026-09-06 | `aaaaaaa..deadbeef` | 1 | GREEN | e |
-'@
-        # A record whose range is PROSE, as three real historical rows are.
-        $script:ProseRangeLedger = @'
+        # --- shapes that MUST NOT authenticate ----------------------------------------------------
+        # THE FOUNDING FALSE-PASS CLASS. Range cells legitimately carry further ranges in their trailing
+        # prose, and the EVIDENCE column quotes fold shas constantly. A search that reads the whole line,
+        # or the whole cell, authenticates a marker for a commit the ledger never recorded as reviewed.
+        $script:EvidenceProseLedger = @'
 # ledger
 
 | date | range | rounds | verdict | evidence |
 |------|-------|--------|---------|----------|
-| 2026-07-25 | SP-B agy-capstone skill | 4 | GREEN | folds `deadbee` |
+| 2026-09-06 | `aaaaaaa..bbbbbbb` | 1 | GREEN | the folds this round produced run `ccccccc..<<SHORT>>` |
+'@
+        # THE SECOND FALSE-PASS CLASS. The sha is the range's LEFT endpoint - where the work STARTED, not
+        # the tip that was reviewed. It appears in the right column of the right row and still must not
+        # authenticate anything.
+        $script:LeftEndpointLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | `<<SHORT>>..bbbbbbb` | 1 | GREEN | fold `deadbee` |
+'@
+        # The range is present and correct but is not the FIRST thing in its column.
+        $script:NotFirstLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
+| 2026-09-06 | see below: `aaaaaaa..<<SHORT>>` | 1 | GREEN | fold `deadbee` |
+'@
+        # The second column is not a date, so the line is not a record. This is also what excludes the
+        # 3-column anomaly table that shares the real capstone ledger.
+        $script:NoDateLedger = @'
+# ledger
+
+| kind | range | note |
+|------|-------|------|
+| anomaly | `aaaaaaa..<<SHORT>>` | not a capstone record |
+'@
+        $script:HeaderOnlyLedger = @'
+# ledger
+
+| date | range | rounds | verdict | evidence |
+|------|-------|--------|---------|----------|
 '@
 
         function New-LedgerRepo {
-            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [switch]$HexBranch, [switch]$Crlf)
+            param([string]$LedgerBody, [string]$Discipline = 'agy-capstone', [string]$RawBody)
             $d = Join-Path ([IO.Path]::GetTempPath()) ("aglfx-" + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Force -Path $d | Out-Null
             [void]$script:Fixtures.Add($d)   # FIXTURE HYGIENE
@@ -347,37 +130,21 @@ illustrative
             # line endings under us, and quotepath governs how git hands paths back.
             & git -C $d config core.autocrlf false
             & git -C $d config core.quotepath true
-            # TWO commits, and the second one matters. A fixture with only one commit cannot express
-            # "this row parses AND resolves, but is not the sha we are looking for" - every non-target
-            # range has to cite a fabricated sha, which does not resolve and is therefore counted as
-            # unparsed. That conflation hid a real distinction the first draft of this suite asserted
-            # wrongly. <<PREV>> is a REAL earlier commit; <<SHORT>>/<<FULL>> are the target.
             [IO.File]::WriteAllText((Join-Path $d 'seed.txt'), "seed`n")
             & git -C $d add seed.txt
             & git -C $d commit -q -m seed
-            $prev = (& git -C $d rev-parse HEAD).Trim()
-            [IO.File]::WriteAllText((Join-Path $d 'seed2.txt'), "seed2`n")
-            & git -C $d add seed2.txt
-            & git -C $d commit -q -m seed2
             $sha = (& git -C $d rev-parse HEAD).Trim()
-            # A branch whose NAME is 8 hex characters. git rev-parse resolves refs as happily as shas.
-            if ($HexBranch) { & git -C $d branch deadbeef 2>&1 | Out-Null }
             New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null
-            # <<SHORT6>> is a REAL prefix of the target, one character below the parser's `length(tok) >= 7`
-            # bound. That is deliberate and load-bearing: a fabricated 6-character token would be refused
-            # for not resolving even if the bound were removed, so it could never tell the two apart. A
-            # real prefix makes LOWERING the bound change the ANSWER - git resolves it and ABSENT becomes
-            # FOUND - which is what gives the boundary row a mutant it can actually fail.
-            $body = $LedgerBody.Replace('<<SHORT6>>', $sha.Substring(0, 6)).
-                                Replace('<<SHORT>>', $sha.Substring(0, 7)).
-                                Replace('<<FULL>>', $sha).
-                                Replace('<<PREV>>', $prev.Substring(0, 7))
-            # -Crlf writes REAL CR bytes instead of normalising. See the CRLF row for why this is
-            # opt-in and what it can and cannot prove on each platform.
-            $text = $body -replace "`r`n", "`n"
-            if ($Crlf) { $text = $text -replace "`n", "`r`n" }
-            [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), $text)
-            [pscustomobject]@{ Dir = $d; Sha = $sha; Prev = $prev }
+            # RawBody writes a ledger verbatim - used to plant a COPY of the real shipped ledger, whose
+            # shas deliberately do NOT resolve in this throwaway repo. They do not need to: the reader
+            # no longer asks git about ledger tokens at all, which is precisely what this proves.
+            if ($RawBody) {
+                $text = $RawBody
+            } else {
+                $text = $LedgerBody.Replace('<<SHORT>>', $sha.Substring(0, 7)).Replace('<<FULL>>', $sha)
+            }
+            [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), ($text -replace "`r`n", "`n"))
+            [pscustomobject]@{ Dir = $d; Sha = $sha }
         }
 
         function Invoke-Lookup {
@@ -408,334 +175,195 @@ illustrative
         foreach ($f in $script:Fixtures) { Remove-Item -LiteralPath $f -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    It 'answers FOUND when a row records the sha as its range right-endpoint' {
-        $r = New-LedgerRepo -LedgerBody $script:GoodLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+    Context 'applicability - the gate is inert where no ledger exists' {
+        It 'answers NO-LEDGER when the discipline owns no ledger file' {
+            $r = New-LedgerRepo -LedgerBody $script:RangeLedger -Discipline 'agy-capstone'
+            # Same repo, DIFFERENT discipline: the file for this one does not exist.
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-first' -Sha $r.Sha).Out
+            $out | Should -Match 'NO-LEDGER'
+            $out | Should -Not -Match 'ABSENT' -Because 'ABSENT claims a file was read; NO-LEDGER says the gate does not apply at all'
+        }
+
+        It 'answers NO-LEDGER when the ledger path is a DIRECTORY rather than a file' {
+            $r = New-LedgerRepo -LedgerBody $script:RangeLedger
+            Remove-Item -LiteralPath (Join-Path $r.Dir 'docs/agy-capstone-ledger.md') -Force
+            New-Item -ItemType Directory -Force -Path (Join-Path $r.Dir 'docs/agy-capstone-ledger.md') | Out-Null
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'NO-LEDGER'
+        }
     }
 
-    It 'answers ABSENT when no row records the sha' {
-        $r = New-LedgerRepo -LedgerBody $script:NoMatchLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'ABSENT'
+    Context 'FOUND - the shapes a real ledger actually uses' {
+        It 'authenticates a range whose RIGHT endpoint is the sha' {
+            $r = New-LedgerRepo -LedgerBody $script:RangeLedger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+        }
+
+        It 'authenticates a BARE endpoint with no range at all' {
+            $r = New-LedgerRepo -LedgerBody $script:BareLedger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+        }
+
+        It 'authenticates a row carrying the FULL 40-character sha' {
+            # The gate is called with 40 characters and the ledger usually writes 7, so BOTH directions
+            # have to work. This is the row that fails if the prefix alternation is built the wrong way
+            # round - matching the query against the row rather than the row against the query.
+            $r = New-LedgerRepo -LedgerBody $script:FullShaLedger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+        }
+
+        It 'authenticates a padded-bracket range cell' {
+            $r = New-LedgerRepo -LedgerBody $script:PaddedBracketLedger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+        }
+
+        It 'authenticates a row indented up to THREE spaces' {
+            $r = New-LedgerRepo -LedgerBody $script:Indent3Ledger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+        }
+
+        It 'authenticates an UPPERCASE sha in the ledger' {
+            # Ledgers are hand-written; case is not a contract. The match is case-insensitive, and this
+            # row is what stops a future -E losing its -i.
+            $r = New-LedgerRepo -LedgerBody $script:RangeLedger
+            $p = Join-Path $r.Dir 'docs/agy-capstone-ledger.md'
+            $body = [IO.File]::ReadAllText($p).Replace($r.Sha.Substring(0, 7), $r.Sha.Substring(0, 7).ToUpper())
+            [IO.File]::WriteAllText($p, $body)
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
+        }
     }
 
-    It 'answers NO-LEDGER when the discipline owns no ledger file' {
-        $r = New-LedgerRepo -LedgerBody $script:GoodLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-first' -Sha $r.Sha).Out | Should -Match 'NO-LEDGER'
-    }
-
-    It 'does NOT match a sha that appears only in the evidence column' {
-        $r = New-LedgerRepo -LedgerBody $script:EvidenceOnlyLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'ABSENT'
-    }
-
-    It 'ignores a 3-column table, which has too few fields to be a record' {
-        $r = New-LedgerRepo -LedgerBody $script:AnomalyTableLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'ABSENT'
-    }
-
-    It 'ignores tokens after the first, so a range quoted in the cell prose does not match' {
-        $r = New-LedgerRepo -LedgerBody $script:TrailingProseLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'ABSENT'
-    }
-
-    It 'counts a prose-ranged record as unparsed and reports its line number' {
-        # unparsed is a COUNT; lines carries the LINE NUMBERS. The fixture's prose row is the file's
-        # 5th line, so the answer is `unparsed=1 lines=5`. Assert BOTH - conflating them was a real
-        # defect in the first draft of this suite.
-        $r = New-LedgerRepo -LedgerBody $script:ProseRangeLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'unparsed=1'
-        $out | Should -Match 'lines=5'
-    }
-
-    It 'does not count the header row as an unparsed record' {
-        # Without a date-shape test on the date column, the header is a candidate whose range token is
-        # the word 'range' - reported as unparseable on every single run. MEASURED against the real
-        # ledgers: the date test yields 40 records / 6 non-records in the capstone ledger.
-        #
-        # The fixture's one record cites a REAL earlier commit, so it parses AND resolves AND does not
-        # match. That is the only shape that isolates the header: a row citing a fabricated sha would
-        # itself count as unparsed and mask what this row is asserting.
-        $r = New-LedgerRepo -LedgerBody $script:ResolvableNoMatchLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'ABSENT'
-        $out | Should -Match 'unparsed=0'
-    }
-
-    It 'answers UNREADABLE - not ABSENT - when the ledger cannot be OPENED' {
-        # AGY-TEST-AUDIT gap 5, and the live defect that probing it uncovered. The round-5 follow-up
-        # added this guard as `[ -r ]` and measured it on LINUX ONLY; the comment beside it inherited
-        # that omission without saying so. MEASURED 2026-09-07 on Windows with a deny-read ACL: `cat`
-        # failed with Permission denied while `[ -r ]` answered TRUE, so the guard never fired and the
-        # lookup answered `ABSENT unparsed=0 lines=-` - the exact false claim the guard exists to
-        # prevent. The fix OPENS the file rather than asking a predicate about it.
-        $r = New-LedgerRepo -LedgerBody $script:GoodLedger
-        $ledger = Join-Path $r.Dir 'docs/agy-capstone-ledger.md'
-
-        # PASSING CONTROL, in the same process as the failing case: while readable this fixture answers
-        # FOUND. Without it, a later UNREADABLE could equally mean the fixture never worked at all.
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
-            Should -Match 'FOUND' -Because 'the fixture must answer FOUND while readable, or its failing case proves nothing'
-
-        try {
-            if ($IsWindows) { & icacls $ledger /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null }
-            else            { & chmod 000 $ledger }
-
-            # ORACLE CONTROL, deliberately through something OTHER than the code under test: .NET opens
-            # the file by a different path than MSYS bash does, so it can contradict the fix rather than
-            # echo it. If the deny did NOT take - an elevated token, a filesystem that ignores ACLs -
-            # this row cannot reach its failing answer, and a row that cannot fail certifies nothing.
-            # SKIP loudly instead of passing silently; an inert row that reads as coverage is worse than
-            # a missing one.
-            $reallyDenied = $false
-            try { [void][IO.File]::ReadAllText($ledger) } catch { $reallyDenied = $true }
-            if (-not $reallyDenied) {
-                Set-ItResult -Skipped -Because 'the read-deny did not take on this account, so the unreadable state is unreachable here'
-            }
-
+    Context 'refusals - and each one names its cause' {
+        It 'refuses with mentioned=0 when the sha appears NOWHERE' {
+            $r = New-LedgerRepo -LedgerBody $script:HeaderOnlyLedger
             $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-            $out | Should -Match 'UNREADABLE' -Because 'nothing read the file, so no claim about its CONTENT may be made'
-            $out | Should -Not -Match 'ABSENT' -Because 'ABSENT asserts the file does not record the sha, which is false when the file was never opened'
+            $out | Should -Match 'ABSENT'
+            $out | Should -Match 'mentioned=0' -Because 'nothing to fix in an existing row: the advice must be APPEND one'
+            $out | Should -Not -Match 'FOUND'
         }
-        finally {
-            # Restore BEFORE fixture cleanup: a denied file may resist deletion, which would leak the
-            # temp directory and, worse, leave the next run reading a half-removed fixture.
-            if ($IsWindows) { & icacls $ledger /remove:d "$env:USERNAME" 2>&1 | Out-Null }
-            else            { & chmod 644 $ledger }
+
+        It 'refuses a sha that appears only in the EVIDENCE column' {
+            # THE FOUNDING FALSE-PASS. A fold sha quoted in evidence prose is mentioned, never recorded.
+            $r = New-LedgerRepo -LedgerBody $script:EvidenceProseLedger
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+            $out | Should -Not -Match 'FOUND' -Because 'a sha quoted in prose is mentioned, not recorded'
+            $out | Should -Match 'mentioned=1' -Because 'the sha IS in the file, so the advice must be FIX the row, not append one'
+        }
+
+        It 'refuses a sha that is the range LEFT endpoint' {
+            # The commit the work STARTED from was never the reviewed tip.
+            $r = New-LedgerRepo -LedgerBody $script:LeftEndpointLedger
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+            $out | Should -Not -Match 'FOUND' -Because 'the left endpoint is where the range began, not what was reviewed'
+            $out | Should -Match 'mentioned=1'
+        }
+
+        It 'refuses a range that is not FIRST in its column' {
+            $r = New-LedgerRepo -LedgerBody $script:NotFirstLedger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
+        }
+
+        It 'refuses a row whose second column is not a DATE' {
+            # This is also what excludes the 3-column anomaly table sharing the real capstone ledger.
+            $r = New-LedgerRepo -LedgerBody $script:NoDateLedger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
+        }
+
+        It 'refuses a row indented FOUR spaces, which is an indented code block' {
+            $r = New-LedgerRepo -LedgerBody $script:Indent4Ledger
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
+        }
+
+        It 'answers UNREADABLE - not ABSENT - when the ledger cannot be OPENED' {
+            # AGY-TEST-AUDIT gap 5, and the live defect probing it uncovered: `[ -r ]` calls an ACL-denied
+            # file readable on Windows, so the guard that used to sit here never fired and the reader
+            # claimed ABSENT about a file nothing had read. The oracle is now grep's EXIT CODE.
+            $r = New-LedgerRepo -LedgerBody $script:RangeLedger
+            $ledger = Join-Path $r.Dir 'docs/agy-capstone-ledger.md'
+
+            # PASSING CONTROL in the same process: while readable this fixture answers FOUND. Without it a
+            # later UNREADABLE could equally mean the fixture never worked.
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
+                Should -Match 'FOUND' -Because 'the fixture must answer FOUND while readable, or its failing case proves nothing'
+
+            try {
+                if ($IsWindows) { & icacls $ledger /deny "$($env:USERNAME):(R)" 2>&1 | Out-Null }
+                else            { & chmod 000 $ledger }
+
+                # ORACLE CONTROL, deliberately through something OTHER than the code under test: .NET
+                # opens the file by a different path than MSYS bash does, so it can contradict the reader
+                # rather than echo it. If the deny did not take - an elevated token, a filesystem that
+                # ignores ACLs - this row cannot reach its failing answer, and a row that cannot fail
+                # certifies nothing. SKIP loudly instead of passing silently.
+                $reallyDenied = $false
+                try { [void][IO.File]::ReadAllText($ledger) } catch { $reallyDenied = $true }
+                if (-not $reallyDenied) {
+                    Set-ItResult -Skipped -Because 'the read-deny did not take on this account, so the unreadable state is unreachable here'
+                }
+
+                $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
+                $out | Should -Match 'UNREADABLE' -Because 'nothing read the file, so no claim about its CONTENT may be made'
+                $out | Should -Not -Match 'ABSENT' -Because 'ABSENT asserts the file does not record the sha, which is false when it was never opened'
+            }
+            finally {
+                # Restore BEFORE fixture cleanup: a denied file may resist deletion, leaking the temp dir.
+                if ($IsWindows) { & icacls $ledger /remove:d "$env:USERNAME" 2>&1 | Out-Null }
+                else            { & chmod 644 $ledger }
+            }
         }
     }
 
-    It 'ACCEPTS a bare range endpoint at the minimum sha length' {
-        # The accepting half of the boundary pair, and the control that gives the refusing half its
-        # meaning: without it, the row below could pass because the BARE-endpoint shape is unsupported
-        # outright rather than because 6 characters is too few. The whole bare-endpoint branch had no
-        # fixture before these two rows.
-        $r = New-LedgerRepo -LedgerBody $script:BareEndpointLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'FOUND' -Because 'a bare 7-character endpoint is a supported range shape'
+    Context 'the QUERY is data, never a pattern' {
+        It 'refuses a non-hex query instead of interpolating it into the regex' -ForEach @(
+            @{ Q = 'not-a-sha' }, @{ Q = '.*' }, @{ Q = 'aaaaaaa|bbbbbbb' }, @{ Q = '' }
+        ) {
+            # A query reaching the regex as PATTERN TEXT would let `.*` authenticate any row at all.
+            $r = New-LedgerRepo -LedgerBody $script:RangeLedger
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $Q).Out
+            $out | Should -Not -Match 'FOUND' -Because 'a metacharacter query must be refused as data, never executed as a pattern'
+            $out | Should -Match 'mentioned=0'
+        }
+
+        It 'refuses a hex query SHORTER than the seven-character minimum' {
+            $r = New-LedgerRepo -LedgerBody $script:RangeLedger
+            $short = $r.Sha.Substring(0, 6)
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $short).Out
+            $out | Should -Not -Match 'FOUND' -Because 'six hex characters is not a sha; ordinary words like facade and decade are valid hex'
+        }
     }
 
-    It 'refuses a bare range endpoint one character SHORT of the minimum sha length' {
-        # AGY-TEST-AUDIT gap 3. The parser bounds a bare endpoint at `length(tok) >= 7`, and before this
-        # row every sha in this suite was 7 or 8 characters - 50 of them, none shorter - so the bound was
-        # exercised only from its ACCEPTING side. Six hex characters is not a contrived input: ordinary
-        # English words are valid hex (`facade`, `decade`, `deface`), so this bound is what stops a word
-        # in a range cell being handed to git as a sha.
-        #
-        # The endpoint is a REAL prefix of the target, which is what makes the row mutant-sensitive:
-        # lowering the bound to 6 lets git resolve it and the answer becomes FOUND. A fabricated
-        # 6-character token would be refused either way and could never fail.
-        $r = New-LedgerRepo -LedgerBody $script:ShortEndpointLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'ABSENT' -Because 'a token below the minimum length is not a sha the gate may resolve'
-        $out | Should -Not -Match 'FOUND'
-        $out | Should -Match 'unparsed=1' -Because 'it is a CANDIDATE record whose range did not parse, so the refusal must name its line rather than drop it silently'
-    }
+    Context 'pinned against the REAL shipped ledger' {
+        # These three rows are the regression pins for the change that replaced the parser. They plant a
+        # COPY of the live docs/agy-capstone-ledger.md in a throwaway repo, so they read the same bytes
+        # the gate reads in production while writing nothing into the working tree. The shas are literal
+        # and immutable. Their point is that a cell-wide or line-wide search passes rows 2 and 3.
+        BeforeAll {
+            $script:RealLedgerBody = [IO.File]::ReadAllText((Join-Path $script:RepoRoot 'docs/agy-capstone-ledger.md'))
+        }
 
-    It 'counts a record whose endpoint parses but does not RESOLVE as unparsed' {
-        # A distinct failure from a prose range: the token is well-formed hex and git still cannot find
-        # it. Both are unusable to the gate, and both are worth naming in a refusal.
-        $r = New-LedgerRepo -LedgerBody $script:NoMatchLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'ABSENT'
-        $out | Should -Match 'unparsed=1'
-    }
+        It 'authenticates <Name>, a real reviewed tip' -ForEach @(
+            @{ Name = 'fac6fa5'; Sha = 'fac6fa526a3b5ce9587d13f62ded9182b284c993' }
+            @{ Name = 'f62e659'; Sha = 'f62e659d9f256aea4c0893e5b96df2b0f938fbc5' }
+        ) {
+            $r = New-LedgerRepo -RawBody $script:RealLedgerBody
+            (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $Sha).Out |
+                Should -Match 'FOUND' -Because "$Name is recorded as a range right-endpoint in the shipped ledger"
+        }
 
-    It 'ignores a pipe-row quoted inside a fenced code block' {
-        # CAPSTONE ROUND 1, BLOCKING. Measured before the fix: this exact fixture answered FOUND for a
-        # sha present only inside the fence. The row outside the fence cites a real earlier commit, so
-        # it parses and resolves and simply does not match - which is what isolates the fence.
-        $r = New-LedgerRepo -LedgerBody $script:FencedQuoteLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'ABSENT' -Because 'a quoted row inside a fence is prose, not a ledger record'
-        $out | Should -Not -Match 'FOUND'
-    }
+        It 'refuses e60ad19, a fold sha the shipped ledger mentions only in a range cell PROSE' {
+            # MEASURED against the live file: a cell-wide grep answers FOUND here. The ledger names this
+            # sha at docs/agy-capstone-ledger.md:69 as one of a round's own fold commits - mentioned, and
+            # never recorded as a reviewed tip.
+            $r = New-LedgerRepo -RawBody $script:RealLedgerBody
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha 'e60ad19e2951bbb32659ae81936520e4e3743911').Out
+            $out | Should -Not -Match 'FOUND'
+            $out | Should -Match 'mentioned=1'
+        }
 
-    It 'parses a range wrapped in markdown link brackets' {
-        # CAPSTONE ROUND 1. Before the bracket strip this answered ABSENT unparsed=1 - a legitimate
-        # record refused because of its markup.
-        $r = New-LedgerRepo -LedgerBody $script:LinkedRangeLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
-    }
-
-    It 'a record for a DIFFERENT sha does not authenticate this one' {
-        # This pins the measurement that REFUTED capstone round 1's claim that an old row falsely
-        # authenticates a new run. The gate's contract is per-SHA: a row for an earlier commit answers
-        # ABSENT for a later one. At an UNCHANGED sha the marker is already that sha, so a same-sha
-        # re-run advances nothing - which is why the "stale row" has no consequence to exploit.
-        $r = New-LedgerRepo -LedgerBody $script:ResolvableNoMatchLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'ABSENT'
-        $out | Should -Not -Match 'FOUND'
-    }
-
-    It 'ignores a pipe-row quoted inside a TILDE fence' {
-        # CAPSTONE ROUND 2. `~~~` is valid CommonMark; the round-1 guard matched backticks only.
-        $r = New-LedgerRepo -LedgerBody $script:TildeFenceLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
-    }
-
-    It 'a NESTED fence does not re-expose its own contents' {
-        # CAPSTONE ROUND 2. A bare toggle flipped OFF at the inner fence. A fence closes only with the
-        # same character and at least the same run length.
-        $r = New-LedgerRepo -LedgerBody $script:NestedFenceLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
-    }
-
-    It 'reports an UNCLOSED fence as MALFORMED rather than as a missing row' {
-        # CAPSTONE ROUND 2, BLOCKING, and the defect was introduced by round 1's own fix. An unclosed
-        # fence hides every row below it; rows are appended at the BOTTOM, so it hides the live set. The
-        # answer must name the real cause - "does not record <sha>" sends the operator hunting for a row
-        # that is present and merely invisible.
-        $r = New-LedgerRepo -LedgerBody $script:UnclosedFenceLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'MALFORMED'
-        $out | Should -Match 'unclosed-code-fence'
-        $out | Should -Not -Match 'FOUND'
-    }
-
-    It 'parses a range wrapped in a REFERENCE-style link' {
-        # CAPSTONE ROUND 2. Deleting brackets merged `[range][1]` into `range1`, whose right endpoint is
-        # still valid hex - so it resolved to the WRONG commit or to none. A wrong answer, not a refusal,
-        # which is the worse of the two. Brackets are separators now, not noise.
-        $r = New-LedgerRepo -LedgerBody $script:RefLinkLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
-    }
-
-    It 'an INFO STRING inside a fence does not falsely close it' {
-        # CAPSTONE ROUND 3. Before the closer rule this answered MALFORMED on a valid file: the tracker
-        # closed on ```bash, the real closer re-opened, and the fence was open at EOF. A closing fence
-        # carries no info string; an opening one may.
-        $r = New-LedgerRepo -LedgerBody $script:InfoStringFenceLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Not -Match 'MALFORMED' -Because 'the file is valid markdown and must not be called malformed'
-        $out | Should -Not -Match 'FOUND'    -Because 'the quoted content is still not a record'
-    }
-
-    It 'parses a range in PADDED brackets' {
-        # CAPSTONE ROUND 3. Order of operations, not regex: the first trim ran before the bracket came
-        # off, so the split hit a leading space and returned an empty token, refusing a good row.
-        $r = New-LedgerRepo -LedgerBody $script:PaddedBracketLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Match 'FOUND'
-    }
-
-    It 'ignores a row quoted inside an HTML pre block' {
-        # Named in a census and never filed as a finding; MEASURED a false pass. Closed structurally by
-        # the contiguous-table-block rule rather than by adding <pre> to a blacklist.
-        $r = New-LedgerRepo -LedgerBody $script:PreBlockLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
-    }
-
-    It 'ignores a row in a lazy-continuation blockquote' {
-        # Same class, same census, also unfiled. A quoted row has no separator above it in its own block.
-        $r = New-LedgerRepo -LedgerBody $script:LazyQuoteLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out | Should -Not -Match 'FOUND'
-    }
-
-    It 'ignores an orphan row after a fence that interrupts a live table' {
-        # CAPSTONE ROUND 4, and the FENCE TRACKER was the smuggler: two guards that were documented as
-        # independent were not, because the earlier one carried block state past the later one.
-        # MEASURED FOUND before the fix, for a sha appearing nowhere else in the fixture.
-        $r = New-LedgerRepo -LedgerBody $script:FenceInTableLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        # ASSERT THE PROBE ANSWERED AT ALL. A broken library returns EMPTY, and empty satisfies a bare
-        # -Not -Match vacuously - measured this very session, when an apostrophe inside the awk program
-        # closed its quote and every negative row would still have passed.
-        $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
-        $out | Should -Not -Match 'FOUND' -Because 'a fence ends the table block it interrupts'
-    }
-
-    It 'ACCEPTED LIMITATION: a complete table inside an HTML div still reads as live' {
-        # Named in capstone round 4 PROSE and never filed as a finding, then MEASURED true. Kept as an
-        # accepted limitation, so this row asserts the CURRENT behaviour deliberately. If it ever turns
-        # red, someone closed the container class - which is a decision for the owner, not a bug fix.
-        $r = New-LedgerRepo -LedgerBody $script:DivTableLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
-            Should -Match 'FOUND' -Because 'the block rule ends the orphan-row class, not the container class'
-    }
-
-    It 'ACCEPTED LIMITATION: a lazily-quoted complete table still reads as live' {
-        # The lazy half. Only the FIRST line carries the quote marker.
-        $r = New-LedgerRepo -LedgerBody $script:LazyTableLedger
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
-            Should -Match 'FOUND' -Because 'every line after the first begins with a pipe, so the run is contiguous'
-    }
-
-    It 'a FULLY quoted table - every line marked - is still correctly ignored' {
-        # The success-path counterpart: without it the two rows above would document a limitation with no
-        # evidence that the rule rejects ANYTHING wrapped in the same container.
-        $r = New-LedgerRepo -LedgerBody $script:FullyQuotedTableLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
-        $out | Should -Not -Match 'FOUND'
-    }
-
-    It 'reads a ledger written with CRLF line endings' {
-        # CAPSTONE ROUND 5, BLOCKING, and PLATFORM-CONDITIONAL - read this before trusting a green.
-        # gawk on WINDOWS opens files in text mode and turns CRLF into LF before $0 exists, so on the
-        # platform this suite normally runs on THIS ROW PASSES WITH OR WITHOUT THE FIX. It is live on
-        # Linux and in any LF-native CI. The real evidence is a WSL measurement recorded in the fold
-        # commit: before the fix this exact fixture answered ABSENT unparsed=0 with NO FENCE PRESENT -
-        # a silent refusal of a valid ledger, because the separator test reduces the line with gsub and
-        # a surviving CR is not the empty string - and MALFORMED once a fence was added, because a
-        # closing fence carries no info string and a surviving CR reads as one. Both answer FOUND now.
-        # It is kept despite being inert here because these hooks SHIP to other repositories, where a
-        # ledger committed from Windows without a .gitattributes carries real CR bytes.
-        $r = New-LedgerRepo -LedgerBody $script:GoodLedger -Crlf
-        $raw = [IO.File]::ReadAllBytes((Join-Path $r.Dir 'docs/agy-capstone-ledger.md'))
-        # ASSERT THE FIXTURE IS WHAT IT CLAIMS. Without this the row could silently degrade into a
-        # duplicate of the plain success case if the -Crlf switch ever stopped writing CR bytes.
-        ($raw | Where-Object { $_ -eq 13 }).Count |
-            Should -BeGreaterThan 0 -Because 'the fixture is worthless unless it really contains CR bytes'
-        (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out |
-            Should -Match 'FOUND' -Because 'a CRLF ledger is a valid ledger'
-    }
-
-    It 'COUNTS a row whose date is malformed, and names its line' {
-        # The point is the CONTRAST: this must NOT be indistinguishable from an empty ledger. The row
-        # would otherwise have matched the target sha, so a silent drop is the worst case - the
-        # operator wrote the right sha and was told nothing was found.
-        $r = New-LedgerRepo -LedgerBody $script:BadDateLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
-        $out | Should -Not -Match 'FOUND' -Because 'a malformed date is not a valid record'
-        $out | Should -Match 'unparsed=1' -Because 'the row must be COUNTED, not silently skipped'
-        $out | Should -Not -Match 'lines=-' -Because 'the answer must NAME the offending line'
-    }
-
-    It 'reads a row indented up to three spaces, and does not let it hide later rows' {
-        # The target is the row AFTER the indented one, so this reds if the indented row still
-        # terminates the block - the poisoning half of the round-8 defect.
-        $r = New-LedgerRepo -LedgerBody $script:IndentedRowLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'FOUND' -Because '0-3 spaces of indentation is still a table row'
-    }
-
-    It 'still ignores a row indented FOUR spaces, which is a code block' {
-        # The success-path counterpart. Without it the row above could pass by widening the anchor to
-        # any indentation at all, which would swallow quoted rows sitting in indented code.
-        $r = New-LedgerRepo -LedgerBody $script:CodeIndentLedger
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Match 'ABSENT' -Because 'an empty answer is a broken probe, not a refusal'
-        $out | Should -Not -Match 'FOUND' -Because 'four spaces makes it an indented code block'
-    }
-
-    It 'refuses a range endpoint that is a hex-named BRANCH rather than a sha' {
-        # git rev-parse resolves any ref. A branch named `deadbeef` pointing at HEAD authenticated a
-        # marker for a commit the ledger never recorded - a moving target validating a fixed claim.
-        # An abbreviated sha is always a prefix of its own full form; a ref name essentially never is.
-        $r = New-LedgerRepo -LedgerBody $script:HexBranchLedger -HexBranch
-        $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha $r.Sha).Out
-        $out | Should -Not -Match 'FOUND' -Because 'a branch name must not authenticate a marker'
-        $out | Should -Match 'unparsed=1' -Because 'the row is a candidate whose endpoint is unusable'
-    }
-
-    It 'never exits the calling shell - it is sourced, not executed' {
-        # A helper that called exit would kill agy-mark.sh mid-run. Prove the caller survives even on
-        # the path that finds nothing to answer with.
-        $r = New-LedgerRepo -LedgerBody $script:GoodLedger
-        $res = Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-first' -Sha 'not-a-sha-at-all'
-        $res.Out | Should -Match 'rc=0'
-        $res.ExitCode | Should -Be 0
+        It 'refuses 49be0c4, a range LEFT endpoint in the shipped ledger' {
+            $r = New-LedgerRepo -RawBody $script:RealLedgerBody
+            $out = (Invoke-Lookup -Cwd $r.Dir -Discipline 'agy-capstone' -Sha '49be0c4e2c63fc2f3875d63ca607908d28a9d760').Out
+            $out | Should -Not -Match 'FOUND'
+            $out | Should -Match 'mentioned=1'
+        }
     }
 }
