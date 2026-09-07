@@ -261,7 +261,21 @@ case "$mode" in
                     # CONTENT instead would fail OPEN - a real ledger whose header was reformatted
                     # would silently stop gating - so the fail-closed rule stays and the message
                     # carries the recovery instead.
-                    _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). Append the row for this run FIRST, then write the marker. If that file is NOT actually a ledger, the gate applies to any discipline whose docs/<name>-ledger.md exists - remove or rename it. If the ledger is genuinely unparseable and you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                    # THE ADVICE MUST MATCH THE CAUSE. Capstone round 6: every non-FOUND answer got one
+                    # static message whose FIRST instruction is "append the row" - which is actively
+                    # WRONG for MALFORMED, because an appended row lands BELOW the unclosed fence and
+                    # stays hidden, so the operator follows the advice and is refused again.
+                    case "$_gate" in
+                        MALFORMED*)
+                            _die_refuse "docs/$discipline-ledger.md is UNPARSEABLE ($_gate), so no row below the fault is visible to the gate. DO NOT append the row yet - it would land below the unclosed fence and stay hidden, and this refusal would repeat. Close the fence in that file FIRST, then append the row, then write the marker. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                            ;;
+                        UNREADABLE*)
+                            _die_refuse "docs/$discipline-ledger.md exists but could NOT BE READ, so the gate can make no claim about $sha - this is a PERMISSIONS or filesystem fault, not a missing row. Fix the file permissions and re-run. If you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                            ;;
+                        *)
+                            _die_refuse "docs/$discipline-ledger.md does not record $sha ($_gate). Append the row for this run FIRST, then write the marker. If that file is NOT actually a ledger, the gate applies to any discipline whose docs/<name>-ledger.md exists - remove or rename it. If the ledger is genuinely unparseable and you must proceed anyway, re-run with --gate-override, which records the bypass in .clavity/agy-marks/skipped.log."
+                            ;;
+                    esac
                 fi
                 ;;
         esac

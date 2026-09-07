@@ -38,6 +38,19 @@
 
 # agy_ledger_path <git-root> <discipline>
 # Echoes the convention path. Performs NO existence check.
+#
+# THE DISCIPLINE STRING IS USED RAW, AND THAT IS LOAD-BEARING. Capstone round 6 argued that a
+# mis-cased discipline is a gate bypass, because a case-INSENSITIVE filesystem resolves
+# docs/Agy-Capstone-ledger.md to the real ledger while a case-SENSITIVE one does not and answers
+# NO-LEDGER. MEASURED on both: the divergence is real - exit 1 on Windows, exit 0 on Linux - but no
+# bypass is achieved, because agy-mark.sh derives the MARKER path from THE SAME STRING
+# (.clavity/agy-marks/<discipline>.head). The mis-cased run writes Agy-Capstone.head, which no
+# reader consults, so the gate simply re-arms.
+#
+# The two paths agree BY CONSTRUCTION: same string, same filesystem, same case semantics. Wherever
+# the ledger resolves, the marker counts; wherever it does not, the marker is not read either.
+# DO NOT normalise the discipline for one path without normalising it for the other - doing so to
+# only one of them converts this non-issue into a real bypass.
 agy_ledger_path() {
     printf '%s/docs/%s-ledger.md' "$1" "$2"
 }
@@ -48,6 +61,7 @@ agy_ledger_path() {
 #   FOUND                         - a record's range right-endpoint resolves to <sha>
 #   ABSENT unparsed=<n> lines=<l> - no record matched; <n> candidate records could not be parsed
 #   MALFORMED unclosed-code-fence  - a fence was opened and never closed, so rows below it are hidden
+#   UNREADABLE                    - the ledger exists but cannot be read, so NO claim can be made
 # ALWAYS returns 0. The caller decides what to do; this function only answers.
 agy_ledger_lookup() {
     local _agl_cwd=$1 _agl_disc=$2 _agl_sha=$3
@@ -62,6 +76,13 @@ agy_ledger_lookup() {
 
     _agl_file=$(agy_ledger_path "$_agl_root" "$_agl_disc")
     [ -f "$_agl_file" ] || { printf 'NO-LEDGER'; return 0; }
+    # AN UNREADABLE LEDGER IS NOT AN ABSENT ROW, and answering ABSENT for one is a false claim: it
+    # says "this file does not record the sha" when nothing read the file at all. MEASURED in capstone
+    # round 5 follow-up, on Linux with the ledger at chmod 000: awk failed, the command substitution
+    # produced nothing, the loop read nothing, and the function reported ABSENT unparsed=0 - the exact
+    # answer a correctly-parsed ledger with no matching row gives - while awk leaked its own fatal to
+    # the caller stderr. Both answers refuse, so the gate stayed fail-closed; the DIAGNOSIS was wrong.
+    [ -r "$_agl_file" ] || { printf 'UNREADABLE'; return 0; }
 
     # awk emits one "<line-number><TAB><token-or-dash>" per CANDIDATE RECORD. A dash means "this looked
     # like a record but its range did not parse" - that is what lets the refusal distinguish a missing

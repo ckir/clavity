@@ -602,15 +602,33 @@ Describe 'agy-mark.sh' {
         # PRE-EXISTING row in this suite is unaffected by the gate: measured, they still pass unchanged.
         BeforeAll {
             function New-GatedFixture {
-                param([switch]$WithRow, [string]$Discipline = 'agy-capstone')
+                param([switch]$WithRow, [switch]$Unclosed, [string]$Discipline = 'agy-capstone')
                 $d = New-MarkFixture
                 $sha = (& git -C $d rev-parse HEAD).Trim()
                 New-Item -ItemType Directory -Force -Path (Join-Path $d 'docs') | Out-Null
                 $row = if ($WithRow) { "| 2026-09-06 | ``aaaaaaa..$($sha.Substring(0,7))`` | 1 | GREEN | e |" } else { '' }
                 $body = "# ledger`n`n| date | range | rounds | verdict | evidence |`n|------|-------|--------|---------|----------|`n$row`n"
+                # -Unclosed opens a fence and never closes it, which hides every row BELOW it. The gate
+                # then answers MALFORMED rather than ABSENT, and the two need different advice.
+                if ($Unclosed) { $body = "# ledger`n`n``````text`nopened and never closed`n" + $body }
                 [IO.File]::WriteAllText((Join-Path $d "docs/$Discipline-ledger.md"), $body)
                 [pscustomobject]@{ Dir = $d; Sha = $sha }
             }
+        }
+
+        It 'gives MALFORMED its own advice instead of telling the operator to append a row' {
+            # CAPSTONE ROUND 6. Every non-FOUND answer shared ONE static message whose first instruction
+            # is "Append the row for this run FIRST". For MALFORMED that advice is actively WRONG: the
+            # appended row lands BELOW the unclosed fence, stays hidden, and the operator is refused a
+            # second time having done exactly what they were told.
+            $f = New-GatedFixture -WithRow -Unclosed
+            $r = Invoke-Mark -Cwd $f.Dir -MarkArgs @('head', 'agy-capstone', $f.Sha)
+            $r.ExitCode | Should -Be 1
+            $r.Err | Should -Match 'UNPARSEABLE' -Because 'the refusal must name the actual cause'
+            $r.Err | Should -Match 'DO NOT append the row yet' -Because 'the old advice is a trap here'
+            # AND the generic advice must NOT be the one shown, or the fix is cosmetic.
+            $r.Err | Should -Not -Match 'does not record' -Because 'that is the ABSENT message, not this one'
+            Test-Path -LiteralPath (Join-Path $f.Dir '.clavity/agy-marks/agy-capstone.head') | Should -BeFalse
         }
 
         It 'REFUSES the marker write when the ledger has no row for the sha' {
